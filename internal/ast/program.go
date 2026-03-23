@@ -1,6 +1,9 @@
 package ast
 
-import "oct/internal/source"
+import (
+	"oct/internal/dimension"
+	"oct/internal/source"
+)
 
 type File struct {
 	Source    source.File
@@ -22,8 +25,10 @@ type Parameter struct {
 }
 
 type TypeRef struct {
-	Name    string
-	IsArray bool
+	Name      string
+	Dimension dimension.Dimension
+	HasUnit   bool
+	IsArray   bool
 }
 
 type Block struct {
@@ -70,13 +75,17 @@ type Expr interface {
 }
 
 type IntegerLiteral struct {
-	Value string
+	Value     string
+	Dimension dimension.Dimension
+	HasUnit   bool
 }
 
 func (IntegerLiteral) exprNode() {}
 
 type FloatLiteral struct {
-	Value string
+	Value     string
+	Dimension dimension.Dimension
+	HasUnit   bool
 }
 
 func (FloatLiteral) exprNode() {}

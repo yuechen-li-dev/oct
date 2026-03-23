@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"oct/internal/ast"
+	"oct/internal/dimension"
 )
 
 func isBuiltinFunction(name string) bool {
@@ -32,14 +33,15 @@ const (
 )
 
 type Value struct {
-	Kind  ValueKind
-	Int   int64
-	Float float64
-	Bool  bool
-	Text  string
-	Array []Value
-	Range RangeValue
-	Error ErrorValue
+	Kind      ValueKind
+	Dimension dimension.Dimension
+	Int       int64
+	Float     float64
+	Bool      bool
+	Text      string
+	Array     []Value
+	Range     RangeValue
+	Error     ErrorValue
 }
 
 type ErrorValue struct {
@@ -55,9 +57,9 @@ type RangeValue struct {
 func (v Value) String() string {
 	switch v.Kind {
 	case ValueInt:
-		return strconv.FormatInt(v.Int, 10)
+		return strconv.FormatInt(v.Int, 10) + formatUnitSuffix(v.Dimension)
 	case ValueFloat:
-		return strconv.FormatFloat(v.Float, 'g', -1, 64)
+		return strconv.FormatFloat(v.Float, 'g', -1, 64) + formatUnitSuffix(v.Dimension)
 	case ValueBool:
 		return strconv.FormatBool(v.Bool)
 	case ValueString:
@@ -154,16 +156,16 @@ func (i interpreter) findMain() (ast.FunctionDecl, error) {
 		return function, nil
 	}
 	if function.ReturnType.IsArray {
-		return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s[]", function.ReturnType.Name)
+		return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], optionally dimension-qualified for numeric types, got %s[]", function.ReturnType.Name)
 	}
-	return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s", function.ReturnType.Name)
+	return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], optionally dimension-qualified for numeric types, got %s", function.ReturnType.Name)
 }
 
 func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
 	if typeRef.IsArray {
 		switch typeRef.Name {
 		case string(ValueInt), string(ValueFloat), string(ValueBool):
-			return true
+			return !typeRef.HasUnit || typeRef.Name == string(ValueInt) || typeRef.Name == string(ValueFloat)
 		default:
 			return false
 		}
@@ -171,7 +173,7 @@ func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
 
 	switch typeRef.Name {
 	case string(ValueInt), string(ValueFloat), string(ValueBool):
-		return true
+		return !typeRef.HasUnit || typeRef.Name == string(ValueInt) || typeRef.Name == string(ValueFloat)
 	default:
 		return false
 	}
@@ -278,13 +280,13 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		if err != nil {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: invalid integer literal %q: %w", node.Value, err)
 		}
-		return evalResult{value: Value{Kind: ValueInt, Int: value}}, nil
+		return evalResult{value: Value{Kind: ValueInt, Int: value, Dimension: node.Dimension}}, nil
 	case ast.FloatLiteral:
 		value, err := strconv.ParseFloat(node.Value, 64)
 		if err != nil {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: invalid float literal %q: %w", node.Value, err)
 		}
-		return evalResult{value: Value{Kind: ValueFloat, Float: value}}, nil
+		return evalResult{value: Value{Kind: ValueFloat, Float: value, Dimension: node.Dimension}}, nil
 	case ast.BoolLiteral:
 		return evalResult{value: Value{Kind: ValueBool, Bool: node.Value}}, nil
 	case ast.StringLiteralExpr:
@@ -321,8 +323,8 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		if index.hasError {
 			return evalResult{hasError: true, errorVal: index.errorVal}, nil
 		}
-		if index.value.Kind != ValueInt {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: array index must be Int, got %s", index.value.Kind)
+		if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: array index must be Int, got %s", valueTypeName(index.value))
 		}
 		if index.value.Int < 0 || index.value.Int >= int64(len(target.value.Array)) {
 			return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(target.value.Array))
@@ -453,13 +455,16 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (e
 			if value < 0 {
 				value = -value
 			}
-			return evalResult{value: Value{Kind: ValueInt, Int: value}}, nil
+			return evalResult{value: Value{Kind: ValueInt, Int: value, Dimension: argument.value.Dimension}}, nil
 		case ValueFloat:
-			return evalResult{value: Value{Kind: ValueFloat, Float: math.Abs(argument.value.Float)}}, nil
+			return evalResult{value: Value{Kind: ValueFloat, Float: math.Abs(argument.value.Float), Dimension: argument.value.Dimension}}, nil
 		default:
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Abs expects Int or Float, got %s", argument.value.Kind)
 		}
 	case "Sqrt":
+		if !argument.value.Dimension.CanSqrt() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Sqrt requires even dimension exponents")
+		}
 		value, err := numericValueAsFloat(argument.value, "Sqrt")
 		if err != nil {
 			return evalResult{}, err
@@ -467,14 +472,20 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (e
 		if value < 0 {
 			return evalResult{}, fmt.Errorf("runtime error: Sqrt expects non-negative input, got %s", argument.value.String())
 		}
-		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sqrt(value)}}, nil
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sqrt(value), Dimension: argument.value.Dimension.Sqrt()}}, nil
 	case "Sin":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Sin requires dimensionless input")
+		}
 		value, err := numericValueAsFloat(argument.value, "Sin")
 		if err != nil {
 			return evalResult{}, err
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sin(value)}}, nil
 	case "Cos":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Cos requires dimensionless input")
+		}
 		value, err := numericValueAsFloat(argument.value, "Cos")
 		if err != nil {
 			return evalResult{}, err
@@ -504,8 +515,8 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 	if start.hasError {
 		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range start")
 	}
-	if start.value.Kind != ValueInt {
-		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", start.value.Kind)
+	if start.value.Kind != ValueInt || !start.value.Dimension.IsDimensionless() {
+		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", valueTypeName(start.value))
 	}
 	end, err := i.evalExpr(env, expr.End)
 	if err != nil {
@@ -514,8 +525,8 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 	if end.hasError {
 		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range end")
 	}
-	if end.value.Kind != ValueInt {
-		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", end.value.Kind)
+	if end.value.Kind != ValueInt || !end.value.Dimension.IsDimensionless() {
+		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", valueTypeName(end.value))
 	}
 	step := int64(1)
 	if expr.Step != nil {
@@ -526,8 +537,8 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 		if stepValue.hasError {
 			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range step")
 		}
-		if stepValue.value.Kind != ValueInt {
-			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", stepValue.value.Kind)
+		if stepValue.value.Kind != ValueInt || !stepValue.value.Dimension.IsDimensionless() {
+			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", valueTypeName(stepValue.value))
 		}
 		step = stepValue.value.Int
 	}
@@ -542,7 +553,7 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 
 func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLiteralExpr) (Value, error) {
 	elements := make([]Value, 0, len(expr.Elements))
-	var elementKind ValueKind
+	var firstType string
 	for idx, elementExpr := range expr.Elements {
 		element, err := i.evalExpr(env, elementExpr)
 		if err != nil {
@@ -555,9 +566,9 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLitera
 			return Value{}, errors.New("runtime invariant violation: nested arrays are not supported")
 		}
 		if idx == 0 {
-			elementKind = element.value.Kind
-		} else if element.value.Kind != elementKind {
-			return Value{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", elementKind, element.value.Kind)
+			firstType = valueTypeName(element.value)
+		} else if valueTypeName(element.value) != firstType {
+			return Value{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", firstType, valueTypeName(element.value))
 		}
 		elements = append(elements, element.value)
 	}
@@ -566,21 +577,27 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLitera
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError {
-		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, left.Kind, right.Kind)
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if left.Kind == ValueArray || right.Kind == ValueArray {
 		return evalArrayBinaryExpr(operator, left, right)
 	}
 	if left.Kind == ValueBool || right.Kind == ValueBool {
-		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, left.Kind, right.Kind)
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 
 	if operator == "/" && isZero(right) {
 		return Value{}, errors.New("runtime error: division by zero")
 	}
+	if (operator == "+" || operator == "-") && left.Dimension != right.Dimension {
+		return Value{}, fmt.Errorf("runtime invariant violation: cannot %s %s and %s", operatorName(operator), formatDimension(left.Dimension), formatDimension(right.Dimension))
+	}
 
 	if left.Kind == ValueInt && right.Kind == ValueInt {
-		return evalIntBinaryExpr(operator, left.Int, right.Int)
+		resultDim := combineDimensions(operator, left.Dimension, right.Dimension)
+		if operator != "/" || resultDim.IsDimensionless() {
+			return evalIntBinaryExpr(operator, left, right)
+		}
 	}
 
 	leftFloat, err := asFloat(left)
@@ -592,15 +609,16 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 		return Value{}, err
 	}
 
+	resultDim := combineDimensions(operator, left.Dimension, right.Dimension)
 	switch operator {
 	case "+":
-		return Value{Kind: ValueFloat, Float: leftFloat + rightFloat}, nil
+		return Value{Kind: ValueFloat, Float: leftFloat + rightFloat, Dimension: resultDim}, nil
 	case "-":
-		return Value{Kind: ValueFloat, Float: leftFloat - rightFloat}, nil
+		return Value{Kind: ValueFloat, Float: leftFloat - rightFloat, Dimension: resultDim}, nil
 	case "*":
-		return Value{Kind: ValueFloat, Float: leftFloat * rightFloat}, nil
+		return Value{Kind: ValueFloat, Float: leftFloat * rightFloat, Dimension: resultDim}, nil
 	case "/":
-		return Value{Kind: ValueFloat, Float: leftFloat / rightFloat}, nil
+		return Value{Kind: ValueFloat, Float: leftFloat / rightFloat, Dimension: resultDim}, nil
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported operator %q", operator)
 	}
@@ -608,7 +626,7 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 
 func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if left.Kind != ValueArray || right.Kind != ValueArray {
-		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, left.Kind, right.Kind)
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if len(left.Array) != len(right.Array) {
 		return Value{}, fmt.Errorf("runtime error: array length mismatch: %d vs %d", len(left.Array), len(right.Array))
@@ -629,16 +647,17 @@ func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error
 	return Value{Kind: ValueArray, Array: result}, nil
 }
 
-func evalIntBinaryExpr(operator string, left int64, right int64) (Value, error) {
+func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	resultDim := combineDimensions(operator, left.Dimension, right.Dimension)
 	switch operator {
 	case "+":
-		return Value{Kind: ValueInt, Int: left + right}, nil
+		return Value{Kind: ValueInt, Int: left.Int + right.Int, Dimension: resultDim}, nil
 	case "-":
-		return Value{Kind: ValueInt, Int: left - right}, nil
+		return Value{Kind: ValueInt, Int: left.Int - right.Int, Dimension: resultDim}, nil
 	case "*":
-		return Value{Kind: ValueInt, Int: left * right}, nil
+		return Value{Kind: ValueInt, Int: left.Int * right.Int, Dimension: resultDim}, nil
 	case "/":
-		return Value{Kind: ValueInt, Int: left / right}, nil
+		return Value{Kind: ValueInt, Int: left.Int / right.Int, Dimension: resultDim}, nil
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported operator %q", operator)
 	}
@@ -663,5 +682,51 @@ func isZero(value Value) bool {
 		return value.Float == 0
 	default:
 		return false
+	}
+}
+
+func combineDimensions(operator string, left dimension.Dimension, right dimension.Dimension) dimension.Dimension {
+	switch operator {
+	case "+", "-":
+		return left
+	case "*":
+		return left.Multiply(right)
+	case "/":
+		return left.Divide(right)
+	default:
+		return dimension.Zero()
+	}
+}
+
+func valueTypeName(value Value) string {
+	base := string(value.Kind)
+	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {
+		base += "<" + value.Dimension.String() + ">"
+	}
+	return base
+}
+
+func formatUnitSuffix(dim dimension.Dimension) string {
+	if dim.IsDimensionless() {
+		return ""
+	}
+	return dim.String()
+}
+
+func formatDimension(dim dimension.Dimension) string {
+	if dim.IsDimensionless() {
+		return "dimensionless"
+	}
+	return dim.String()
+}
+
+func operatorName(operator string) string {
+	switch operator {
+	case "+":
+		return "add"
+	case "-":
+		return "subtract"
+	default:
+		return operator
 	}
 }

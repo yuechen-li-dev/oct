@@ -2,8 +2,10 @@ package parse
 
 import (
 	"fmt"
+	"strconv"
 
 	"oct/internal/ast"
+	"oct/internal/dimension"
 	"oct/internal/lex"
 	"oct/internal/source"
 )
@@ -124,6 +126,17 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	}
 
 	typeRef := ast.TypeRef{Name: token.Lexeme}
+	if p.match(lex.LeftAngle) {
+		dim, err := p.parseDimensionSpec()
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		if _, err := p.expect(lex.RightAngle, "expected '>' after dimension qualifier"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		typeRef.Dimension = dim
+		typeRef.HasUnit = true
+	}
 	if p.match(lex.LeftBracket) {
 		if _, err := p.expect(lex.RightBracket, "expected ']' after '[' in array type"); err != nil {
 			return ast.TypeRef{}, err
@@ -393,10 +406,18 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	switch token.Kind {
 	case lex.IntLiteral:
 		p.advance()
-		return ast.IntegerLiteral{Value: token.Lexeme}, nil
+		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
+		if err != nil {
+			return nil, err
+		}
+		return ast.IntegerLiteral{Value: token.Lexeme, Dimension: dim, HasUnit: hasUnit}, nil
 	case lex.FloatLiteral:
 		p.advance()
-		return ast.FloatLiteral{Value: token.Lexeme}, nil
+		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
+		if err != nil {
+			return nil, err
+		}
+		return ast.FloatLiteral{Value: token.Lexeme, Dimension: dim, HasUnit: hasUnit}, nil
 	case lex.StringLiteral:
 		p.advance()
 		return ast.StringLiteralExpr{Value: token.Lexeme}, nil
@@ -472,10 +493,15 @@ func (p *parser) expect(kind lex.TokenKind, message string) (lex.Token, error) {
 }
 
 func (p *parser) current() lex.Token {
-	if p.position >= len(p.tokens) {
+	return p.peek(0)
+}
+
+func (p *parser) peek(offset int) lex.Token {
+	position := p.position + offset
+	if position >= len(p.tokens) {
 		return lex.Token{Kind: lex.EOF}
 	}
-	return p.tokens[p.position]
+	return p.tokens[position]
 }
 
 func (p *parser) advance() {
@@ -504,4 +530,74 @@ func binaryPrecedence(kind lex.TokenKind) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func (p *parser) parseLiteralUnitSuffix(numberToken lex.Token) (dimension.Dimension, bool, error) {
+	if p.current().Kind != lex.Identifier || !tokensAdjacent(numberToken, p.current()) {
+		return dimension.Zero(), false, nil
+	}
+	dim, err := p.parseDimensionSpec()
+	if err != nil {
+		return dimension.Dimension{}, false, err
+	}
+	return dim, true, nil
+}
+
+func (p *parser) parseDimensionSpec() (dimension.Dimension, error) {
+	dim, err := p.parseDimensionProduct()
+	if err != nil {
+		return dimension.Dimension{}, err
+	}
+	for p.current().Kind == lex.Slash && p.peek(1).Kind == lex.Identifier {
+		p.advance()
+		right, err := p.parseDimensionProduct()
+		if err != nil {
+			return dimension.Dimension{}, err
+		}
+		dim = dim.Divide(right)
+	}
+	return dim, nil
+}
+
+func (p *parser) parseDimensionProduct() (dimension.Dimension, error) {
+	dim, err := p.parseDimensionFactor()
+	if err != nil {
+		return dimension.Dimension{}, err
+	}
+	for p.current().Kind == lex.Star && p.peek(1).Kind == lex.Identifier {
+		p.advance()
+		right, err := p.parseDimensionFactor()
+		if err != nil {
+			return dimension.Dimension{}, err
+		}
+		dim = dim.Multiply(right)
+	}
+	return dim, nil
+}
+
+func (p *parser) parseDimensionFactor() (dimension.Dimension, error) {
+	unitToken, err := p.expect(lex.Identifier, "expected unit name")
+	if err != nil {
+		return dimension.Dimension{}, err
+	}
+	baseDim, ok := dimension.FromBaseName(unitToken.Lexeme)
+	if !ok {
+		return dimension.Dimension{}, p.errorAtToken(unitToken, fmt.Sprintf("unknown base unit: %s", unitToken.Lexeme))
+	}
+	exponent := 1
+	if p.match(lex.Caret) {
+		valueToken, err := p.expect(lex.IntLiteral, "expected integer exponent after '^'")
+		if err != nil {
+			return dimension.Dimension{}, err
+		}
+		exponent, err = strconv.Atoi(valueToken.Lexeme)
+		if err != nil || exponent <= 0 {
+			return dimension.Dimension{}, p.errorAtToken(valueToken, "expected positive integer exponent")
+		}
+	}
+	return baseDim.Pow(exponent), nil
+}
+
+func tokensAdjacent(left lex.Token, right lex.Token) bool {
+	return left.Line == right.Line && left.Column+len(left.Lexeme) == right.Column
 }
