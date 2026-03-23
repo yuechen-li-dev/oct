@@ -11,7 +11,8 @@ import (
 func TestRunCommandSucceeds(t *testing.T) {
 	tempDir := t.TempDir()
 	sourcePath := filepath.Join(tempDir, "example.oct")
-	if err := os.WriteFile(sourcePath, []byte("ignored for m0\n"), 0o644); err != nil {
+	source := "fn Main() -> Int {\n    return 0\n}\n"
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
 
@@ -31,7 +32,8 @@ func TestRunCommandSucceeds(t *testing.T) {
 func TestBuildCommandSucceeds(t *testing.T) {
 	tempDir := t.TempDir()
 	sourcePath := filepath.Join(tempDir, "example.oct")
-	if err := os.WriteFile(sourcePath, []byte("ignored for m0\n"), 0o644); err != nil {
+	source := "fn Main() -> Int {\n    return 0\n}\n"
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
 
@@ -55,6 +57,32 @@ func TestBuildCommandSucceeds(t *testing.T) {
 
 	if !strings.Contains(string(output), "build succeeded: "+artifactPath) {
 		t.Fatalf("expected build success output, got %q", output)
+	}
+}
+
+func TestSyntaxErrorsFailDeterministically(t *testing.T) {
+	tempDir := t.TempDir()
+	sourcePath := filepath.Join(tempDir, "bad.oct")
+	source := "fn Main() {\n    return 0\n}\n"
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	for _, command := range []string{"run", "build"} {
+		t.Run(command, func(t *testing.T) {
+			cmd := exec.Command("go", "run", "./cmd/oct", command, sourcePath)
+			cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
+
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected failure, got success with %q", output)
+			}
+
+			expected := command + " failed: parse " + sourcePath + ": expected '->' before return type"
+			if !strings.Contains(string(output), expected) {
+				t.Fatalf("expected deterministic syntax error %q, got %q", expected, output)
+			}
+		})
 	}
 }
 
