@@ -105,6 +105,49 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"}\n",
 			want: "[4, 6]\n",
 		},
+
+		{
+			name: "dimensioned int literal",
+			source: "fn Main() -> Int<m> {\n" +
+				"    return 5m\n" +
+				"}\n",
+			want: "5m\n",
+		},
+		{
+			name: "dimensioned float literal",
+			source: "fn Main() -> Float<s> {\n" +
+				"    return 2.5s\n" +
+				"}\n",
+			want: "2.5s\n",
+		},
+		{
+			name: "dimensioned multiplication",
+			source: "fn Main() -> Int<m*s> {\n" +
+				"    return 2m * 3s\n" +
+				"}\n",
+			want: "6m*s\n",
+		},
+		{
+			name: "dimensioned division",
+			source: "fn Main() -> Float<m/s> {\n" +
+				"    return 10m / 2s\n" +
+				"}\n",
+			want: "5m/s\n",
+		},
+		{
+			name: "dimensioned sqrt",
+			source: "fn Main() -> Float<m> {\n" +
+				"    return Sqrt(4m^2)\n" +
+				"}\n",
+			want: "2m\n",
+		},
+		{
+			name: "dimensioned arrays",
+			source: "fn Main() -> Int<m>[] {\n" +
+				"    return [1m, 2m, 3m]\n" +
+				"}\n",
+			want: "[1m, 2m, 3m]\n",
+		},
 		{
 			name: "for loop returns first iteration",
 			source: "fn Main() -> Int {\n" +
@@ -868,4 +911,36 @@ func executeCLI(command string, sourcePath string) (string, string, error) {
 	var stderr bytes.Buffer
 	err := cli.Execute([]string{command, sourcePath}, &stdout, &stderr)
 	return stdout.String(), stderr.String(), err
+}
+
+func TestRunCommandRejectsInvalidDimensions(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name:        "mismatched addition",
+			source:      "fn Main() -> Int {\n    return 1m + 2s\n}\n",
+			wantMessage: "function Main: cannot add m and s",
+		},
+		{
+			name:        "sin requires dimensionless input",
+			source:      "fn Main() -> Float {\n    return Sin(1m)\n}\n",
+			wantMessage: "function Main: Sin requires dimensionless input",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected run command to fail\nstdout:%s\nstderr:%s", stdout, stderr)
+			}
+			if !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("expected error to contain %q, got %q", test.wantMessage, err.Error())
+			}
+		})
+	}
 }

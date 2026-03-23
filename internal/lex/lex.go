@@ -35,6 +35,8 @@ const (
 	RightBrace   TokenKind = "RightBrace"
 	LeftBracket  TokenKind = "LeftBracket"
 	RightBracket TokenKind = "RightBracket"
+	LeftAngle    TokenKind = "LeftAngle"
+	RightAngle   TokenKind = "RightAngle"
 	Comma        TokenKind = "Comma"
 	Colon        TokenKind = "Colon"
 	Assign       TokenKind = "Assign"
@@ -43,6 +45,7 @@ const (
 	DotDot       TokenKind = "DotDot"
 	Question     TokenKind = "Question"
 	Bang         TokenKind = "Bang"
+	Caret        TokenKind = "Caret"
 	Plus         TokenKind = "Plus"
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
@@ -162,6 +165,12 @@ func (l *lexer) nextToken() (Token, error) {
 	case ']':
 		l.advanceRune()
 		return Token{Kind: RightBracket, Lexeme: "]", Line: line, Column: column}, nil
+	case '<':
+		l.advanceRune()
+		return Token{Kind: LeftAngle, Lexeme: "<", Line: line, Column: column}, nil
+	case '>':
+		l.advanceRune()
+		return Token{Kind: RightAngle, Lexeme: ">", Line: line, Column: column}, nil
 	case ',':
 		l.advanceRune()
 		return Token{Kind: Comma, Lexeme: ",", Line: line, Column: column}, nil
@@ -186,6 +195,9 @@ func (l *lexer) nextToken() (Token, error) {
 	case '!':
 		l.advanceRune()
 		return Token{Kind: Bang, Lexeme: "!", Line: line, Column: column}, nil
+	case '^':
+		l.advanceRune()
+		return Token{Kind: Caret, Lexeme: "^", Line: line, Column: column}, nil
 	case '+':
 		l.advanceRune()
 		return Token{Kind: Plus, Lexeme: "+", Line: line, Column: column}, nil

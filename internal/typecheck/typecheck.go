@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"oct/internal/ast"
+	"oct/internal/dimension"
 )
 
 func isReservedBuiltinFunctionName(name string) bool {
@@ -27,15 +28,20 @@ const (
 )
 
 type Type struct {
-	Base    BaseType
-	IsArray bool
+	Base      BaseType
+	Dimension dimension.Dimension
+	IsArray   bool
 }
 
 func (t Type) String() string {
-	if t.IsArray {
-		return string(t.Base) + "[]"
+	base := string(t.Base)
+	if isNumericBaseType(t.Base) && !t.Dimension.IsDimensionless() {
+		base += "<" + t.Dimension.String() + ">"
 	}
-	return string(t.Base)
+	if t.IsArray {
+		return base + "[]"
+	}
+	return base
 }
 
 type ExprType struct {
@@ -116,7 +122,7 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 		return functionSignature{}, err
 	}
 	if function.IsFallible {
-		if function.ErrorType.IsArray || function.ErrorType.Name != string(BaseTypeError) {
+		if function.ErrorType.IsArray || function.ErrorType.Name != string(BaseTypeError) || function.ErrorType.HasUnit {
 			return functionSignature{}, fmt.Errorf("only built-in Error is allowed in fallible signatures")
 		}
 	}
@@ -188,12 +194,12 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: return value must not be fallible; handle it with '?', '!', or match", ctx.name)
 		}
 		if ctx.isFallible {
-			if valueType.ValueType == ctx.returnType || valueType.ValueType == (Type{Base: BaseTypeError}) {
+			if isAssignable(valueType.ValueType, ctx.returnType) || valueType.ValueType == (Type{Base: BaseTypeError}) {
 				return true, nil
 			}
 			return false, fmt.Errorf("function %s: function expects %s or Error, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 		}
-		if valueType.ValueType != ctx.returnType {
+		if !isAssignable(valueType.ValueType, ctx.returnType) {
 			return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 		}
 		return true, nil
@@ -247,9 +253,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (ExprType, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
-		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeInt, Dimension: node.Dimension}}, nil
 	case ast.FloatLiteral:
-		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: node.Dimension}}, nil
 	case ast.BoolLiteral:
 		return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
 	case ast.StringLiteralExpr:
@@ -289,7 +295,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("array index must be Int, got %s", indexType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: targetType.ValueType.Base}}, nil
+		return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 	case ast.ParenExpr:
 		return c.checkExpr(scope, node.Inner, ctx)
 	case ast.BinaryExpr:
@@ -344,7 +350,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			if stepType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("range step must be Int, got %s", stepType.ValueType)
 			}
-			if integerLiteral, ok := node.Step.(ast.IntegerLiteral); ok && integerLiteral.Value == "0" {
+			if integerLiteral, ok := node.Step.(ast.IntegerLiteral); ok && integerLiteral.Value == "0" && integerLiteral.Dimension.IsDimensionless() {
 				return ExprType{}, fmt.Errorf("range step must be positive, got 0")
 			}
 		}
@@ -380,11 +386,9 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		if len(expr.Arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
 		}
-		argument, ok := expr.Arguments[0].(ast.StringLiteralExpr)
-		if !ok {
+		if _, ok := expr.Arguments[0].(ast.StringLiteralExpr); !ok {
 			return ExprType{}, fmt.Errorf("error() requires a string literal")
 		}
-		_ = argument
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
 	if isReservedBuiltinFunctionName(expr.Callee) {
@@ -406,7 +410,7 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		if argumentType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		if argumentType.ValueType != signature.parameters[i] {
+		if !isAssignable(argumentType.ValueType, signature.parameters[i]) {
 			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", expr.Callee, i+1, signature.parameters[i], argumentType.ValueType)
 		}
 	}
@@ -438,15 +442,26 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
 		}
 	case "Abs":
-		if argumentType.ValueType == (Type{Base: BaseTypeInt}) || argumentType.ValueType == (Type{Base: BaseTypeFloat}) {
+		if isNumericScalar(argumentType.ValueType) {
 			return ExprType{ValueType: argumentType.ValueType}, nil
 		}
 		return ExprType{}, fmt.Errorf("function 'Abs' argument 1 expects Int or Float, got %s", argumentType.ValueType)
-	case "Sqrt", "Sin", "Cos":
-		if argumentType.ValueType == (Type{Base: BaseTypeInt}) || argumentType.ValueType == (Type{Base: BaseTypeFloat}) {
-			return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	case "Sqrt":
+		if !isNumericScalar(argumentType.ValueType) {
+			return ExprType{}, fmt.Errorf("function 'Sqrt' argument 1 expects Int or Float, got %s", argumentType.ValueType)
 		}
-		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", expr.Callee, argumentType.ValueType)
+		if !argumentType.ValueType.Dimension.CanSqrt() {
+			return ExprType{}, fmt.Errorf("Sqrt requires even dimension exponents")
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: argumentType.ValueType.Dimension.Sqrt()}}, nil
+	case "Sin", "Cos":
+		if !isNumericScalar(argumentType.ValueType) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", expr.Callee, argumentType.ValueType)
+		}
+		if !argumentType.ValueType.Dimension.IsDimensionless() {
+			return ExprType{}, fmt.Errorf("%s requires dimensionless input", expr.Callee)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function: %s", expr.Callee)
 	}
@@ -481,7 +496,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 	}
 
-	return Type{Base: firstType.ValueType.Base, IsArray: true}, nil
+	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
 }
 
 func resolveType(typeRef ast.TypeRef) (Type, error) {
@@ -489,13 +504,16 @@ func resolveType(typeRef ast.TypeRef) (Type, error) {
 	if err != nil {
 		return Type{}, err
 	}
+	if typeRef.HasUnit && !isNumericBaseType(baseType) {
+		return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
+	}
 	if typeRef.IsArray {
 		if baseType == BaseTypeError || baseType == BaseTypeRange {
 			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
 		}
-		return Type{Base: baseType, IsArray: true}, nil
+		return Type{Base: baseType, Dimension: typeRef.Dimension, IsArray: true}, nil
 	}
-	return Type{Base: baseType}, nil
+	return Type{Base: baseType, Dimension: typeRef.Dimension}, nil
 }
 
 func resolveBaseType(name string) (BaseType, error) {
@@ -514,26 +532,81 @@ func checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, erro
 	if leftType.IsArray || rightType.IsArray {
 		return checkArrayBinaryExpr(operator, leftType, rightType)
 	}
-
 	if leftType.Base == BaseTypeBool || rightType.Base == BaseTypeBool {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 
+	resultBase := BaseTypeInt
 	if leftType.Base == BaseTypeFloat || rightType.Base == BaseTypeFloat {
-		return Type{Base: BaseTypeFloat}, nil
+		resultBase = BaseTypeFloat
 	}
-	return Type{Base: BaseTypeInt}, nil
+
+	switch operator {
+	case "+", "-":
+		if leftType.Dimension != rightType.Dimension {
+			return Type{}, fmt.Errorf("cannot %s %s and %s", operatorName(operator), formatDimension(leftType.Dimension), formatDimension(rightType.Dimension))
+		}
+		return Type{Base: resultBase, Dimension: leftType.Dimension}, nil
+	case "*":
+		return Type{Base: resultBase, Dimension: leftType.Dimension.Multiply(rightType.Dimension)}, nil
+	case "/":
+		resultDimension := leftType.Dimension.Divide(rightType.Dimension)
+		if resultBase == BaseTypeInt && !resultDimension.IsDimensionless() {
+			resultBase = BaseTypeFloat
+		}
+		return Type{Base: resultBase, Dimension: resultDimension}, nil
+	default:
+		return Type{}, fmt.Errorf("unsupported operator %q", operator)
+	}
 }
 
 func checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
 	if !leftType.IsArray || !rightType.IsArray {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	if leftType.Base != rightType.Base {
+	if leftType.Base == BaseTypeBool || leftType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeBool || rightType.Base == BaseTypeString || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	if leftType.Base == BaseTypeBool || leftType.Base == BaseTypeString || leftType.Base == BaseTypeError {
-		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	result, err := checkBinaryExpr(operator, Type{Base: leftType.Base, Dimension: leftType.Dimension}, Type{Base: rightType.Base, Dimension: rightType.Dimension})
+	if err != nil {
+		return Type{}, err
 	}
-	return leftType, nil
+	result.IsArray = true
+	return result, nil
+}
+
+func isNumericBaseType(baseType BaseType) bool {
+	return baseType == BaseTypeInt || baseType == BaseTypeFloat
+}
+
+func isNumericScalar(valueType Type) bool {
+	return !valueType.IsArray && isNumericBaseType(valueType.Base)
+}
+
+func formatDimension(dim dimension.Dimension) string {
+	if dim.IsDimensionless() {
+		return "dimensionless"
+	}
+	return dim.String()
+}
+
+func operatorName(operator string) string {
+	switch operator {
+	case "+":
+		return "add"
+	case "-":
+		return "subtract"
+	default:
+		return operator
+	}
+}
+
+func isAssignable(actual Type, expected Type) bool {
+	if actual == expected {
+		return true
+	}
+	if actual.IsArray != expected.IsArray || actual.Dimension != expected.Dimension {
+		return false
+	}
+	return actual.Base == BaseTypeInt && expected.Base == BaseTypeFloat
 }

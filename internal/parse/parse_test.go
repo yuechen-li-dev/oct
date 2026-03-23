@@ -287,3 +287,35 @@ func assertParseErrorContains(t *testing.T, text string, want string) {
 		t.Fatalf("expected error to contain %q, got %q", want, err.Error())
 	}
 }
+
+func TestBuildFileParsesDimensionQualifiedTypesAndLiterals(t *testing.T) {
+	file := parseSource(t, "fn Speed(distance: Float<m>, time: Float<s>) -> Float<m/s> { return 10m/s }")
+
+	fn := file.Functions[0]
+	if got := fn.Parameters[0].Type.Dimension.String(); got != "m" {
+		t.Fatalf("expected first parameter dimension m, got %q", got)
+	}
+	if got := fn.Parameters[1].Type.Dimension.String(); got != "s" {
+		t.Fatalf("expected second parameter dimension s, got %q", got)
+	}
+	if got := fn.ReturnType.Dimension.String(); got != "m/s" {
+		t.Fatalf("expected return dimension m/s, got %q", got)
+	}
+
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	literal, ok := ret.Value.(ast.IntegerLiteral)
+	if !ok {
+		t.Fatalf("expected FloatLiteral, got %T", ret.Value)
+	}
+	if got := literal.Dimension.String(); got != "m/s" {
+		t.Fatalf("expected literal dimension m/s, got %q", got)
+	}
+}
+
+func TestBuildFileRejectsUnknownUnitInType(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int<foo> { return 1 }", "unknown base unit: foo")
+}
+
+func TestBuildFileRejectsMalformedUnitSuffix(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int<m> { return 1m/ }", "expected expression")
+}

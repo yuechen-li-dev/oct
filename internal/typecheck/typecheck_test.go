@@ -200,3 +200,36 @@ func assertTypeErrorContains(t *testing.T, text string, want string) {
 		t.Fatalf("expected error to contain %q, got %q", want, err.Error())
 	}
 }
+
+func TestCheckValidatesM8Dimensions(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int<m> { return 5m }",
+		"fn Main() -> Float<s> { return 2.5s }",
+		"fn Main() -> Int<m> { return 1m + 2m }",
+		"fn Main() -> Int<m*s> { return 2m * 3s }",
+		"fn Main() -> Float<m/s> { return 10m / 2s }",
+		"fn Main() -> Int { return 10m / 2m }",
+		"fn Speed(distance: Float<m>, time: Float<s>) -> Float<m/s> { return distance / time } fn Main() -> Float<m/s> { return Speed(10m, 2s) }",
+		"fn Main() -> Float<m> { return Abs(0m - 3m) }",
+		"fn Main() -> Float<m> { return Sqrt(4m^2) }",
+		"fn Main() -> Int<m>[] { return [1m, 2m, 3m] }",
+	}
+
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM8Dimensions(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { return 1m + 2s }", "function Main: cannot add m and s")
+	assertTypeErrorContains(t, "fn Main() -> Int<m> { return 1 + 2m }", "function Main: cannot add dimensionless and m")
+	assertTypeErrorContains(t, "fn Speed(distance: Float<m>, time: Float<s>) -> Float<m/s> { return distance / time } fn Main() -> Float<m/s> { return Speed(10s, 2m) }", "function Main: function 'Speed' argument 1 expects Float<m>, got Int<s>")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1m) }", "function Main: Sin requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(4m) }", "function Main: Sqrt requires even dimension exponents")
+	assertTypeErrorContains(t, "fn Main() -> Int<m>[] { return [1m, 2s] }", "function Main: array literal elements must all have the same type; found Int<m> and Int<s>")
+	assertTypeErrorContains(t, "fn Main() -> Bool<m> { return true }", "function Main: invalid dimension-qualified type syntax: Bool<m>")
+	assertTypeErrorContains(t, "fn Main() -> Float<m/s> { return 1m }", "function Main: function expects Float<m/s>, but return is Int<m>")
+}
