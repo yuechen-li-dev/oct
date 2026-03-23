@@ -21,11 +21,11 @@ func TestCheckValidPrograms(t *testing.T) {
 		},
 		{
 			name: "let binding and parameters",
-			src:  "fn Add(x: Int, y: Int) -> Int { let sum = x + y return sum }",
+			src:  "fn Add(x: Int, y: Int) -> Int { let sum = x + y return sum } fn Main() -> Int { return Add(1, 2) }",
 		},
 		{
 			name: "mixed numeric return",
-			src:  "fn Mix(a: Int, b: Float) -> Float { return a + b }",
+			src:  "fn Mix(a: Int, b: Float) -> Float { return a + b } fn Main() -> Float { return Mix(1, 2.0) }",
 		},
 		{
 			name: "int array return",
@@ -46,6 +46,14 @@ func TestCheckValidPrograms(t *testing.T) {
 		{
 			name: "for loop scope shadowing",
 			src:  "fn Main() -> Int { let i = 9 for i in 0..1 { return i } return i }",
+		},
+		{
+			name: "fallible propagation",
+			src:  "fn Safe() -> Int ! Error { return 5 } fn Main() -> Int ! Error { let x = Safe()? return x }",
+		},
+		{
+			name: "match fallible result",
+			src:  "fn Safe() -> Int ! Error { return 7 } fn Main() -> Int { match Safe() { ok(value) => { return value } err(e) => { return 0 } } }",
 		},
 	}
 
@@ -115,6 +123,24 @@ func TestCheckRejectsInvalidRanges(t *testing.T) {
 
 func TestCheckRejectsLoopVariableOutsideLoop(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..1 { return i } return i }", "function Main: undefined variable: i")
+}
+
+func TestCheckRejectsInvalidPropagationAndFallibility(t *testing.T) {
+	assertTypeErrorContains(t, "fn Fail() -> Int ! Error { return error(\"bad\") } fn Main() -> Int { let x = Fail()? return x }", "function Main: let x: cannot use '?' in infallible function")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = 1? return x }", "function Main: let x: operator '?' requires fallible expression")
+	assertTypeErrorContains(t, "fn Bad() -> Int ! MyError { return 1 }", "function Bad: only built-in Error is allowed in fallible signatures")
+	assertTypeErrorContains(t, "fn Add(x: Int, y: Int) -> Int { return x + y } fn Main() -> Int { return Add(1) }", "function Main: function 'Add' expects 2 arguments, got 1")
+}
+
+func TestCheckRejectsCallTypeMismatchAndUnhandledFallibleUsage(t *testing.T) {
+	assertTypeErrorContains(t, "fn Add(x: Int, y: Int) -> Int { return x + y } fn Main() -> Int { return Add(true, 1) }", "function Main: function 'Add' argument 1 expects Int, got Bool")
+	assertTypeErrorContains(t, "fn Safe() -> Int ! Error { return 5 } fn Main() -> Int { return Safe() }", "function Main: return value must not be fallible; handle it with '?', '!', or match")
+	assertTypeErrorContains(t, "fn Safe() -> Int ! Error { return 5 } fn Main() -> Int { let x = Safe() return 0 }", "function Main: let x: fallible expression must be handled explicitly")
+	assertTypeErrorContains(t, "fn Main() -> Int { match 1 { ok(value) => { return value } err(e) => { return 0 } } }", "function Main: match requires fallible expression")
+}
+
+func TestCheckRejectsInvalidErrorConstruction(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Error { return error(1) }", "function Main: error() requires a string literal")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

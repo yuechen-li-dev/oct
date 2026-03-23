@@ -49,6 +49,68 @@ func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int ! Error { let x = Safe()? match Safe() { ok(value) => { return value } err(e) => { return error(\"bad\") } } }")
+
+	fn := file.Functions[0]
+	if !fn.IsFallible {
+		t.Fatal("expected function to be fallible")
+	}
+	if fn.ErrorType.Name != "Error" {
+		t.Fatalf("expected Error error type, got %+v", fn.ErrorType)
+	}
+
+	letStmt, ok := fn.Body.Statements[0].(ast.LetStmt)
+	if !ok {
+		t.Fatalf("expected let statement, got %T", fn.Body.Statements[0])
+	}
+	propagate, ok := letStmt.Value.(ast.PropagateExpr)
+	if !ok {
+		t.Fatalf("expected propagate expression, got %T", letStmt.Value)
+	}
+	call, ok := propagate.Inner.(ast.CallExpr)
+	if !ok || call.Callee != "Safe" {
+		t.Fatalf("expected propagated Safe() call, got %T %#v", propagate.Inner, propagate.Inner)
+	}
+
+	matchStmt, ok := fn.Body.Statements[1].(ast.MatchStmt)
+	if !ok {
+		t.Fatalf("expected match statement, got %T", fn.Body.Statements[1])
+	}
+	matchCall, ok := matchStmt.Subject.(ast.CallExpr)
+	if !ok || matchCall.Callee != "Safe" {
+		t.Fatalf("expected match subject Safe() call, got %T %#v", matchStmt.Subject, matchStmt.Subject)
+	}
+	if matchStmt.OkName != "value" || matchStmt.ErrName != "e" {
+		t.Fatalf("unexpected match bindings: ok=%q err=%q", matchStmt.OkName, matchStmt.ErrName)
+	}
+}
+
+func TestBuildFileParsesFatalUnwrapAndStrings(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let x = Fail()! return x }")
+
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	unwrap, ok := letStmt.Value.(ast.UnwrapExpr)
+	if !ok {
+		t.Fatalf("expected unwrap expression, got %T", letStmt.Value)
+	}
+	call, ok := unwrap.Inner.(ast.CallExpr)
+	if !ok || call.Callee != "Fail" {
+		t.Fatalf("expected Fail() call inside unwrap, got %T %#v", unwrap.Inner, unwrap.Inner)
+	}
+
+	errorFile := parseSource(t, "fn Fail() -> Int ! Error { return error(\"boom\") }")
+	ret := errorFile.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	errorCall, ok := ret.Value.(ast.CallExpr)
+	if !ok || errorCall.Callee != "error" {
+		t.Fatalf("expected error() call, got %T %#v", ret.Value, ret.Value)
+	}
+	stringArg, ok := errorCall.Arguments[0].(ast.StringLiteralExpr)
+	if !ok || stringArg.Value != "boom" {
+		t.Fatalf("expected string literal argument, got %T %#v", errorCall.Arguments[0], errorCall.Arguments[0])
+	}
+}
+
 func TestBuildFileRespectsExpressionPrecedence(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { return 1 + 2 * 3 }")
 
@@ -188,6 +250,10 @@ func TestBuildFileRejectsEmptyArrayLiteral(t *testing.T) {
 
 func TestBuildFileRejectsNestedArrayTypeSyntax(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int[][] { return [1] }", "nested array types are not supported")
+}
+
+func TestBuildFileRejectsMalformedMatch(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { match Safe() { err(e) => { return 0 } ok(v) => { return v } } }", "expected 'ok' arm")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

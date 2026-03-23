@@ -9,10 +9,12 @@ import (
 type BaseType string
 
 const (
-	BaseTypeInt   BaseType = "Int"
-	BaseTypeFloat BaseType = "Float"
-	BaseTypeBool  BaseType = "Bool"
-	BaseTypeRange BaseType = "Range"
+	BaseTypeInt    BaseType = "Int"
+	BaseTypeFloat  BaseType = "Float"
+	BaseTypeBool   BaseType = "Bool"
+	BaseTypeRange  BaseType = "Range"
+	BaseTypeString BaseType = "String"
+	BaseTypeError  BaseType = "Error"
 )
 
 type Type struct {
@@ -27,12 +29,31 @@ func (t Type) String() string {
 	return string(t.Base)
 }
 
+type ExprType struct {
+	ValueType Type
+	Fallible  bool
+}
+
+type functionSignature struct {
+	parameters []Type
+	returnType Type
+	isFallible bool
+}
+
+type functionContext struct {
+	name       string
+	returnType Type
+	isFallible bool
+}
+
 func Check(file ast.File) error {
-	checker := checker{}
+	checker := checker{functions: make(map[string]functionSignature)}
 	return checker.checkFile(file)
 }
 
-type checker struct{}
+type checker struct {
+	functions map[string]functionSignature
+}
 
 type scope struct {
 	parent *scope
@@ -59,6 +80,17 @@ func (s *scope) lookup(name string) (Type, bool) {
 
 func (c checker) checkFile(file ast.File) error {
 	for _, function := range file.Functions {
+		signature, err := c.resolveFunctionSignature(function)
+		if err != nil {
+			return fmt.Errorf("function %s: %w", function.Name, err)
+		}
+		if _, exists := c.functions[function.Name]; exists {
+			return fmt.Errorf("duplicate function: %s", function.Name)
+		}
+		c.functions[function.Name] = signature
+	}
+
+	for _, function := range file.Functions {
 		if err := c.checkFunction(function); err != nil {
 			return err
 		}
@@ -66,22 +98,38 @@ func (c checker) checkFile(file ast.File) error {
 	return nil
 }
 
-func (c checker) checkFunction(function ast.FunctionDecl) error {
+func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSignature, error) {
 	returnType, err := resolveType(function.ReturnType)
 	if err != nil {
-		return fmt.Errorf("function %s: %w", function.Name, err)
+		return functionSignature{}, err
+	}
+	if function.IsFallible {
+		if function.ErrorType.IsArray || function.ErrorType.Name != string(BaseTypeError) {
+			return functionSignature{}, fmt.Errorf("only built-in Error is allowed in fallible signatures")
+		}
 	}
 
-	functionScope := newScope(nil)
+	parameters := make([]Type, 0, len(function.Parameters))
 	for _, parameter := range function.Parameters {
 		parameterType, err := resolveType(parameter.Type)
 		if err != nil {
-			return fmt.Errorf("function %s: parameter %s: %w", function.Name, parameter.Name, err)
+			return functionSignature{}, fmt.Errorf("parameter %s: %w", parameter.Name, err)
 		}
-		functionScope.define(parameter.Name, parameterType)
+		parameters = append(parameters, parameterType)
 	}
 
-	hasReturn, err := c.checkBlock(functionScope, function.Body, returnType, function.Name)
+	return functionSignature{parameters: parameters, returnType: returnType, isFallible: function.IsFallible}, nil
+}
+
+func (c checker) checkFunction(function ast.FunctionDecl) error {
+	signature := c.functions[function.Name]
+	functionScope := newScope(nil)
+	for i, parameter := range function.Parameters {
+		functionScope.define(parameter.Name, signature.parameters[i])
+	}
+
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible}
+	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
 	}
@@ -92,11 +140,11 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 	return nil
 }
 
-func (c checker) checkBlock(parent *scope, block ast.Block, returnType Type, functionName string) (bool, error) {
+func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext) (bool, error) {
 	blockScope := newScope(parent)
 	hasReturn := false
 	for _, statement := range block.Statements {
-		returned, err := c.checkStmt(blockScope, statement, returnType, functionName)
+		returned, err := c.checkStmt(blockScope, statement, ctx)
 		if err != nil {
 			return false, err
 		}
@@ -107,145 +155,279 @@ func (c checker) checkBlock(parent *scope, block ast.Block, returnType Type, fun
 	return hasReturn, nil
 }
 
-func (c checker) checkStmt(scope *scope, stmt ast.Stmt, returnType Type, functionName string) (bool, error) {
+func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bool, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
-		valueType, err := c.checkExpr(scope, node.Value)
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
-			return false, fmt.Errorf("function %s: let %s: %w", functionName, node.Name, err)
+			return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, err)
 		}
-		scope.define(node.Name, valueType)
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+		}
+		scope.define(node.Name, valueType.ValueType)
 		return false, nil
 	case ast.ReturnStmt:
-		valueType, err := c.checkExpr(scope, node.Value)
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
-			return false, fmt.Errorf("function %s: %w", functionName, err)
+			return false, fmt.Errorf("function %s: %w", ctx.name, err)
 		}
-		if valueType != returnType {
-			return false, fmt.Errorf("function %s: function expects %s, but return is %s", functionName, returnType, valueType)
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: return value must not be fallible; handle it with '?', '!', or match", ctx.name)
+		}
+		if ctx.isFallible {
+			if valueType.ValueType == ctx.returnType || valueType.ValueType == (Type{Base: BaseTypeError}) {
+				return true, nil
+			}
+			return false, fmt.Errorf("function %s: function expects %s or Error, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
+		}
+		if valueType.ValueType != ctx.returnType {
+			return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 		}
 		return true, nil
 	case ast.ForStmt:
-		rangeType, err := c.checkExpr(scope, node.Range)
+		rangeType, err := c.checkExpr(scope, node.Range, ctx)
 		if err != nil {
-			return false, fmt.Errorf("function %s: for %s: %w", functionName, node.Name, err)
+			return false, fmt.Errorf("function %s: for %s: %w", ctx.name, node.Name, err)
 		}
-		if rangeType != (Type{Base: BaseTypeRange}) {
-			return false, fmt.Errorf("function %s: for %s: expected Range, got %s", functionName, node.Name, rangeType)
+		if rangeType.Fallible {
+			return false, fmt.Errorf("function %s: for %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+		}
+		if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
+			return false, fmt.Errorf("function %s: for %s: expected Range, got %s", ctx.name, node.Name, rangeType.ValueType)
 		}
 		loopScope := newScope(scope)
 		loopScope.define(node.Name, Type{Base: BaseTypeInt})
-		_, err = c.checkBlock(loopScope, node.Body, returnType, functionName)
+		_, err = c.checkBlock(loopScope, node.Body, ctx)
 		if err != nil {
 			return false, err
 		}
 		return false, nil
+	case ast.MatchStmt:
+		subjectType, err := c.checkExpr(scope, node.Subject, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: match: %w", ctx.name, err)
+		}
+		if !subjectType.Fallible {
+			return false, fmt.Errorf("function %s: match requires fallible expression", ctx.name)
+		}
+
+		okScope := newScope(scope)
+		okScope.define(node.OkName, subjectType.ValueType)
+		okReturned, err := c.checkBlock(okScope, node.OkBody, ctx)
+		if err != nil {
+			return false, err
+		}
+
+		errScope := newScope(scope)
+		errScope.define(node.ErrName, Type{Base: BaseTypeError})
+		errReturned, err := c.checkBlock(errScope, node.ErrBody, ctx)
+		if err != nil {
+			return false, err
+		}
+
+		return okReturned && errReturned, nil
 	default:
-		return false, fmt.Errorf("function %s: unsupported statement %T", functionName, stmt)
+		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
 	}
 }
 
-func (c checker) checkExpr(scope *scope, expr ast.Expr) (Type, error) {
+func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (ExprType, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
-		return Type{Base: BaseTypeInt}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 	case ast.FloatLiteral:
-		return Type{Base: BaseTypeFloat}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	case ast.BoolLiteral:
-		return Type{Base: BaseTypeBool}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+	case ast.StringLiteralExpr:
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	case ast.ArrayLiteralExpr:
-		return c.checkArrayLiteralExpr(scope, node)
+		valueType, err := c.checkArrayLiteralExpr(scope, node, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		return ExprType{ValueType: valueType}, nil
 	case ast.IdentifierExpr:
 		valueType, ok := scope.lookup(node.Name)
 		if !ok {
-			return Type{}, fmt.Errorf("undefined variable: %s", node.Name)
+			return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
 		}
-		return valueType, nil
+		return ExprType{ValueType: valueType}, nil
+	case ast.CallExpr:
+		return c.checkCallExpr(scope, node, ctx)
 	case ast.IndexExpr:
-		targetType, err := c.checkExpr(scope, node.Target)
+		targetType, err := c.checkExpr(scope, node.Target, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		if !targetType.IsArray {
-			return Type{}, fmt.Errorf("cannot index non-array value of type %s", targetType)
+		if targetType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		indexType, err := c.checkExpr(scope, node.Index)
+		if !targetType.ValueType.IsArray {
+			return ExprType{}, fmt.Errorf("cannot index non-array value of type %s", targetType.ValueType)
+		}
+		indexType, err := c.checkExpr(scope, node.Index, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		if indexType != (Type{Base: BaseTypeInt}) {
-			return Type{}, fmt.Errorf("array index must be Int, got %s", indexType)
+		if indexType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		return Type{Base: targetType.Base}, nil
+		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("array index must be Int, got %s", indexType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: targetType.ValueType.Base}}, nil
 	case ast.ParenExpr:
-		return c.checkExpr(scope, node.Inner)
+		return c.checkExpr(scope, node.Inner, ctx)
 	case ast.BinaryExpr:
-		leftType, err := c.checkExpr(scope, node.Left)
+		leftType, err := c.checkExpr(scope, node.Left, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		rightType, err := c.checkExpr(scope, node.Right)
+		if leftType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		rightType, err := c.checkExpr(scope, node.Right, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		return checkBinaryExpr(node.Operator, leftType, rightType)
+		if rightType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		resultType, err := checkBinaryExpr(node.Operator, leftType.ValueType, rightType.ValueType)
+		if err != nil {
+			return ExprType{}, err
+		}
+		return ExprType{ValueType: resultType}, nil
 	case ast.RangeExpr:
-		startType, err := c.checkExpr(scope, node.Start)
+		startType, err := c.checkExpr(scope, node.Start, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		if startType != (Type{Base: BaseTypeInt}) {
-			return Type{}, fmt.Errorf("range start must be Int, got %s", startType)
+		if startType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		endType, err := c.checkExpr(scope, node.End)
+		if startType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("range start must be Int, got %s", startType.ValueType)
+		}
+		endType, err := c.checkExpr(scope, node.End, ctx)
 		if err != nil {
-			return Type{}, err
+			return ExprType{}, err
 		}
-		if endType != (Type{Base: BaseTypeInt}) {
-			return Type{}, fmt.Errorf("range end must be Int, got %s", endType)
+		if endType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if endType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("range end must be Int, got %s", endType.ValueType)
 		}
 		if node.Step != nil {
-			stepType, err := c.checkExpr(scope, node.Step)
+			stepType, err := c.checkExpr(scope, node.Step, ctx)
 			if err != nil {
-				return Type{}, err
+				return ExprType{}, err
 			}
-			if stepType != (Type{Base: BaseTypeInt}) {
-				return Type{}, fmt.Errorf("range step must be Int, got %s", stepType)
+			if stepType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if stepType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("range step must be Int, got %s", stepType.ValueType)
 			}
 			if integerLiteral, ok := node.Step.(ast.IntegerLiteral); ok && integerLiteral.Value == "0" {
-				return Type{}, fmt.Errorf("range step must be positive, got 0")
+				return ExprType{}, fmt.Errorf("range step must be positive, got 0")
 			}
 		}
-		return Type{Base: BaseTypeRange}, nil
+		return ExprType{ValueType: Type{Base: BaseTypeRange}}, nil
+	case ast.PropagateExpr:
+		innerType, err := c.checkExpr(scope, node.Inner, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !innerType.Fallible {
+			return ExprType{}, fmt.Errorf("operator '?' requires fallible expression")
+		}
+		if !ctx.isFallible {
+			return ExprType{}, fmt.Errorf("cannot use '?' in infallible function")
+		}
+		return ExprType{ValueType: innerType.ValueType}, nil
+	case ast.UnwrapExpr:
+		innerType, err := c.checkExpr(scope, node.Inner, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !innerType.Fallible {
+			return ExprType{}, fmt.Errorf("operator '!' requires fallible expression")
+		}
+		return ExprType{ValueType: innerType.ValueType}, nil
 	default:
-		return Type{}, fmt.Errorf("unsupported expression %T", expr)
+		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
 }
 
-func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr) (Type, error) {
+func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if expr.Callee == "error" {
+		if len(expr.Arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
+		}
+		argument, ok := expr.Arguments[0].(ast.StringLiteralExpr)
+		if !ok {
+			return ExprType{}, fmt.Errorf("error() requires a string literal")
+		}
+		_ = argument
+		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
+	}
+
+	signature, ok := c.functions[expr.Callee]
+	if !ok {
+		return ExprType{}, fmt.Errorf("undefined function: %s", expr.Callee)
+	}
+	if len(expr.Arguments) != len(signature.parameters) {
+		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", expr.Callee, len(signature.parameters), len(expr.Arguments))
+	}
+	for i, argumentExpr := range expr.Arguments {
+		argumentType, err := c.checkExpr(scope, argumentExpr, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argumentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argumentType.ValueType != signature.parameters[i] {
+			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", expr.Callee, i+1, signature.parameters[i], argumentType.ValueType)
+		}
+	}
+	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
+}
+
+func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext) (Type, error) {
 	if len(expr.Elements) == 0 {
 		return Type{}, fmt.Errorf("empty array literals are not supported")
 	}
 
-	firstType, err := c.checkExpr(scope, expr.Elements[0])
+	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
 	if err != nil {
 		return Type{}, err
 	}
-	if firstType.IsArray {
+	if firstType.Fallible {
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if firstType.ValueType.IsArray {
 		return Type{}, fmt.Errorf("nested arrays are not supported")
 	}
 
 	for _, element := range expr.Elements[1:] {
-		elementType, err := c.checkExpr(scope, element)
+		elementType, err := c.checkExpr(scope, element, ctx)
 		if err != nil {
 			return Type{}, err
 		}
-		if elementType != firstType {
-			return Type{}, fmt.Errorf("array literal elements must all have the same type; found %s and %s", firstType, elementType)
+		if elementType.Fallible {
+			return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if elementType.ValueType != firstType.ValueType {
+			return Type{}, fmt.Errorf("array literal elements must all have the same type; found %s and %s", firstType.ValueType, elementType.ValueType)
 		}
 	}
 
-	return Type{Base: firstType.Base, IsArray: true}, nil
+	return Type{Base: firstType.ValueType.Base, IsArray: true}, nil
 }
 
 func resolveType(typeRef ast.TypeRef) (Type, error) {
@@ -254,6 +436,9 @@ func resolveType(typeRef ast.TypeRef) (Type, error) {
 		return Type{}, err
 	}
 	if typeRef.IsArray {
+		if baseType == BaseTypeError || baseType == BaseTypeRange {
+			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
+		}
 		return Type{Base: baseType, IsArray: true}, nil
 	}
 	return Type{Base: baseType}, nil
@@ -261,7 +446,7 @@ func resolveType(typeRef ast.TypeRef) (Type, error) {
 
 func resolveBaseType(name string) (BaseType, error) {
 	switch BaseType(name) {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeBool:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeError:
 		return BaseType(name), nil
 	default:
 		return "", fmt.Errorf("unknown type: %s", name)
@@ -269,7 +454,7 @@ func resolveBaseType(name string) (BaseType, error) {
 }
 
 func checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
-	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange {
+	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	if leftType.IsArray || rightType.IsArray {
@@ -293,7 +478,7 @@ func checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type,
 	if leftType.Base != rightType.Base {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	if leftType.Base == BaseTypeBool {
+	if leftType.Base == BaseTypeBool || leftType.Base == BaseTypeString || leftType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	return leftType, nil
