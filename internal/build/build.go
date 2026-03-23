@@ -20,10 +20,16 @@ func Compile(path string) (Result, error) {
 		return Result{}, err
 	}
 
-	tokens := lex.Analyze(file)
-	program := parse.BuildProgram(tokens)
+	lexed, err := lex.Analyze(file)
+	if err != nil {
+		return Result{}, err
+	}
+	program, err := parse.BuildFile(lexed)
+	if err != nil {
+		return Result{}, err
+	}
 
-	artifactPath := artifactPathFor(program.SourcePath)
+	artifactPath := artifactPathFor(program.Source.Path)
 	artifactBody := []byte("oct m0 placeholder artifact\n")
 	if err := os.WriteFile(artifactPath, artifactBody, 0o644); err != nil {
 		return Result{}, fmt.Errorf("write artifact %s: %w", artifactPath, err)
