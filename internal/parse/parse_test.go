@@ -23,8 +23,8 @@ func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	if len(fn.Parameters) != 0 {
 		t.Fatalf("expected no parameters, got %d", len(fn.Parameters))
 	}
-	if fn.ReturnType.Name != "Int" {
-		t.Fatalf("expected return type Int, got %q", fn.ReturnType.Name)
+	if fn.ReturnType.Name != "Int" || fn.ReturnType.IsArray {
+		t.Fatalf("expected return type Int, got %+v", fn.ReturnType)
 	}
 }
 
@@ -35,7 +35,7 @@ func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	if len(fn.Parameters) != 2 {
 		t.Fatalf("expected two parameters, got %d", len(fn.Parameters))
 	}
-	if fn.Parameters[0].Name != "x" || fn.Parameters[0].Type.Name != "Int" {
+	if fn.Parameters[0].Name != "x" || fn.Parameters[0].Type.Name != "Int" || fn.Parameters[0].Type.IsArray {
 		t.Fatalf("unexpected first parameter: %+v", fn.Parameters[0])
 	}
 	if len(fn.Body.Statements) != 2 {
@@ -98,6 +98,35 @@ func TestBuildFileParsesMultipleFunctions(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesArrayTypesLiteralsAndIndexing(t *testing.T) {
+	file := parseSource(t, "fn Main(values: Int[]) -> Int[] { return [values[0], values[1]] }")
+
+	fn := file.Functions[0]
+	if !fn.Parameters[0].Type.IsArray || fn.Parameters[0].Type.Name != "Int" {
+		t.Fatalf("expected array parameter type, got %+v", fn.Parameters[0].Type)
+	}
+	if !fn.ReturnType.IsArray || fn.ReturnType.Name != "Int" {
+		t.Fatalf("expected array return type, got %+v", fn.ReturnType)
+	}
+
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	arrayLiteral, ok := ret.Value.(ast.ArrayLiteralExpr)
+	if !ok {
+		t.Fatalf("expected ArrayLiteralExpr, got %T", ret.Value)
+	}
+	if len(arrayLiteral.Elements) != 2 {
+		t.Fatalf("expected two elements, got %d", len(arrayLiteral.Elements))
+	}
+	indexExpr, ok := arrayLiteral.Elements[0].(ast.IndexExpr)
+	if !ok {
+		t.Fatalf("expected first element to be IndexExpr, got %T", arrayLiteral.Elements[0])
+	}
+	identifier, ok := indexExpr.Target.(ast.IdentifierExpr)
+	if !ok || identifier.Name != "values" {
+		t.Fatalf("expected index target values identifier, got %T %#v", indexExpr.Target, indexExpr.Target)
+	}
+}
+
 func TestBuildFileRejectsMissingReturnType(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() { return 0 }", "expected '->' before return type")
 }
@@ -120,6 +149,14 @@ func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {
 
 func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { return 0", "expected '}' to close block")
+}
+
+func TestBuildFileRejectsEmptyArrayLiteral(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int[] { return [] }", "empty array literals are not supported")
+}
+
+func TestBuildFileRejectsNestedArrayTypeSyntax(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int[][] { return [1] }", "nested array types are not supported")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

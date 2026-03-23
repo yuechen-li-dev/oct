@@ -76,6 +76,35 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"}\n",
 			want: "2.5\n",
 		},
+		{
+			name: "int array literal return",
+			source: "fn Main() -> Int[] {\n" +
+				"    return [1, 2, 3]\n" +
+				"}\n",
+			want: "[1, 2, 3]\n",
+		},
+		{
+			name: "array indexing",
+			source: "fn Main() -> Int {\n" +
+				"    let x = [1, 2, 3]\n" +
+				"    return x[1]\n" +
+				"}\n",
+			want: "2\n",
+		},
+		{
+			name: "array arithmetic",
+			source: "fn Main() -> Int[] {\n" +
+				"    return [1, 2, 3] + [4, 5, 6]\n" +
+				"}\n",
+			want: "[5, 7, 9]\n",
+		},
+		{
+			name: "float array arithmetic",
+			source: "fn Main() -> Float[] {\n" +
+				"    return [1.0, 2.0] + [3.0, 4.0]\n" +
+				"}\n",
+			want: "[4, 6]\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -98,20 +127,30 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 
 func TestRunCommandRejectsDivisionByZero(t *testing.T) {
 	tests := []struct {
-		name   string
-		source string
+		name        string
+		source      string
+		wantMessage string
 	}{
 		{
 			name: "int division by zero",
 			source: "fn Main() -> Int {\n" +
 				"    return 5 / 0\n" +
 				"}\n",
+			wantMessage: "run failed: runtime error: division by zero",
 		},
 		{
 			name: "float division by zero",
 			source: "fn Main() -> Float {\n" +
 				"    return 5.0 / 0.0\n" +
 				"}\n",
+			wantMessage: "run failed: runtime error: division by zero",
+		},
+		{
+			name: "array division by zero",
+			source: "fn Main() -> Int[] {\n" +
+				"    return [4, 6] / [2, 0]\n" +
+				"}\n",
+			wantMessage: "run failed: runtime error: division by zero",
 		},
 	}
 
@@ -125,8 +164,48 @@ func TestRunCommandRejectsDivisionByZero(t *testing.T) {
 			if stdout != "" {
 				t.Fatalf("expected no computed result on stdout, got %q", stdout)
 			}
-			if !strings.Contains(stderr, "run failed: runtime error: division by zero") {
-				t.Fatalf("expected deterministic division-by-zero error, got %q", stderr)
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected deterministic division-by-zero error %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsArrayRuntimeErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "out of bounds index",
+			source: "fn Main() -> Int {\n" +
+				"    let x = [1, 2, 3]\n" +
+				"    return x[5]\n" +
+				"}\n",
+			wantMessage: "run failed: runtime error: index 5 out of bounds for array of length 3",
+		},
+		{
+			name: "array size mismatch",
+			source: "fn Main() -> Int[] {\n" +
+				"    return [1, 2] + [1, 2, 3]\n" +
+				"}\n",
+			wantMessage: "run failed: runtime error: array length mismatch: 2 vs 3",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected runtime failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected no computed result on stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected deterministic array runtime error %q, got %q", test.wantMessage, stderr)
 			}
 		})
 	}

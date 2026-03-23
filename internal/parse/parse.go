@@ -110,7 +110,19 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
-	return ast.TypeRef{Name: token.Lexeme}, nil
+
+	typeRef := ast.TypeRef{Name: token.Lexeme}
+	if p.match(lex.LeftBracket) {
+		if _, err := p.expect(lex.RightBracket, "expected ']' after '[' in array type"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		if p.current().Kind == lex.LeftBracket {
+			return ast.TypeRef{}, p.errorAtCurrent("nested array types are not supported")
+		}
+		typeRef.IsArray = true
+	}
+
+	return typeRef, nil
 }
 
 func (p *parser) parseBlock() (ast.Block, error) {
@@ -175,7 +187,7 @@ func (p *parser) parseExpression() (ast.Expr, error) {
 }
 
 func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
-	left, err := p.parsePrimaryExpr()
+	left, err := p.parsePostfixExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +209,26 @@ func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
 	}
 
 	return left, nil
+}
+
+func (p *parser) parsePostfixExpr() (ast.Expr, error) {
+	expr, err := p.parsePrimaryExpr()
+	if err != nil {
+		return nil, err
+	}
+
+	for p.match(lex.LeftBracket) {
+		index, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after index expression"); err != nil {
+			return nil, err
+		}
+		expr = ast.IndexExpr{Target: expr, Index: index}
+	}
+
+	return expr, nil
 }
 
 func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
@@ -227,9 +259,39 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 			return nil, err
 		}
 		return ast.ParenExpr{Inner: inner}, nil
+	case lex.LeftBracket:
+		return p.parseArrayLiteralExpr()
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {
+	if _, err := p.expect(lex.LeftBracket, "expected '[' to start array literal"); err != nil {
+		return nil, err
+	}
+	if p.current().Kind == lex.RightBracket {
+		return nil, p.errorAtCurrent("empty array literals are not supported")
+	}
+
+	var elements []ast.Expr
+	for {
+		element, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, element)
+
+		if !p.match(lex.Comma) {
+			break
+		}
+	}
+
+	if _, err := p.expect(lex.RightBracket, "expected ']' after array literal"); err != nil {
+		return nil, err
+	}
+
+	return ast.ArrayLiteralExpr{Elements: elements}, nil
 }
 
 func (p *parser) match(kind lex.TokenKind) bool {
