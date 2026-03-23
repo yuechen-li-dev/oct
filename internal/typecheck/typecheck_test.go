@@ -27,6 +27,18 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "mixed numeric return",
 			src:  "fn Mix(a: Int, b: Float) -> Float { return a + b }",
 		},
+		{
+			name: "int array return",
+			src:  "fn Main() -> Int[] { return [1, 2, 3] }",
+		},
+		{
+			name: "float array arithmetic",
+			src:  "fn Main() -> Float[] { return [1.0, 2.0] + [3.0, 4.0] }",
+		},
+		{
+			name: "array indexing",
+			src:  "fn Main() -> Int { let x = [1, 2, 3] return x[1] }",
+		},
 	}
 
 	for _, test := range tests {
@@ -46,6 +58,8 @@ func TestCheckRejectsReturnTypeMismatches(t *testing.T) {
 
 func TestCheckRejectsInvalidOperatorUsage(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return true + 1 }", `function Main: operator "+" not defined for Bool and Int`)
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return [1, 2] + 1 }", `function Main: operator "+" not defined for Int[] and Int`)
+	assertTypeErrorContains(t, "fn Main() -> Bool[] { return [true, false] + [true, true] }", `function Main: operator "+" not defined for Bool[] and Bool[]`)
 }
 
 func TestCheckRejectsUndefinedVariable(t *testing.T) {
@@ -75,6 +89,15 @@ func TestCheckRejectsUnknownTypes(t *testing.T) {
 
 func TestCheckRejectsMissingReturnStatement(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = 1 }", "function Main: missing return statement")
+}
+
+func TestCheckRejectsMixedTypeArrayLiteral(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return [1, 2.0] }", "function Main: array literal elements must all have the same type; found Int and Float")
+}
+
+func TestCheckRejectsInvalidIndexing(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { return 1[0] }", "function Main: cannot index non-array value of type Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: array index must be Int, got Bool")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

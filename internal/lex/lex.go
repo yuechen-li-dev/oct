@@ -23,18 +23,20 @@ const (
 	KeywordTrue   TokenKind = "KeywordTrue"
 	KeywordFalse  TokenKind = "KeywordFalse"
 
-	LeftParen  TokenKind = "LeftParen"
-	RightParen TokenKind = "RightParen"
-	LeftBrace  TokenKind = "LeftBrace"
-	RightBrace TokenKind = "RightBrace"
-	Comma      TokenKind = "Comma"
-	Colon      TokenKind = "Colon"
-	Assign     TokenKind = "Assign"
-	Arrow      TokenKind = "Arrow"
-	Plus       TokenKind = "Plus"
-	Minus      TokenKind = "Minus"
-	Star       TokenKind = "Star"
-	Slash      TokenKind = "Slash"
+	LeftParen    TokenKind = "LeftParen"
+	RightParen   TokenKind = "RightParen"
+	LeftBrace    TokenKind = "LeftBrace"
+	RightBrace   TokenKind = "RightBrace"
+	LeftBracket  TokenKind = "LeftBracket"
+	RightBracket TokenKind = "RightBracket"
+	Comma        TokenKind = "Comma"
+	Colon        TokenKind = "Colon"
+	Assign       TokenKind = "Assign"
+	Arrow        TokenKind = "Arrow"
+	Plus         TokenKind = "Plus"
+	Minus        TokenKind = "Minus"
+	Star         TokenKind = "Star"
+	Slash        TokenKind = "Slash"
 )
 
 type Token struct {
@@ -138,6 +140,12 @@ func (l *lexer) nextToken() (Token, error) {
 	case '}':
 		l.advanceRune()
 		return Token{Kind: RightBrace, Lexeme: "}", Line: line, Column: column}, nil
+	case '[':
+		l.advanceRune()
+		return Token{Kind: LeftBracket, Lexeme: "[", Line: line, Column: column}, nil
+	case ']':
+		l.advanceRune()
+		return Token{Kind: RightBracket, Lexeme: "]", Line: line, Column: column}, nil
 	case ',':
 		l.advanceRune()
 		return Token{Kind: Comma, Lexeme: ",", Line: line, Column: column}, nil
@@ -260,14 +268,14 @@ func lookupKeyword(lexeme string) TokenKind {
 	}
 }
 
+func isWhitespace(r rune) bool {
+	return unicode.IsSpace(r)
+}
+
 func isIdentifierStart(r rune) bool {
 	return r == '_' || unicode.IsLetter(r)
 }
 
 func isIdentifierPart(r rune) bool {
 	return isIdentifierStart(r) || unicode.IsDigit(r)
-}
-
-func isWhitespace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\n' || r == '\r'
 }

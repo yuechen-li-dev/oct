@@ -20,7 +20,8 @@ type Parameter struct {
 }
 
 type TypeRef struct {
-	Name string
+	Name    string
+	IsArray bool
 }
 
 type Block struct {
@@ -66,11 +67,24 @@ type BoolLiteral struct {
 
 func (BoolLiteral) exprNode() {}
 
+type ArrayLiteralExpr struct {
+	Elements []Expr
+}
+
+func (ArrayLiteralExpr) exprNode() {}
+
 type IdentifierExpr struct {
 	Name string
 }
 
 func (IdentifierExpr) exprNode() {}
+
+type IndexExpr struct {
+	Target Expr
+	Index  Expr
+}
+
+func (IndexExpr) exprNode() {}
 
 type BinaryExpr struct {
 	Left     Expr
