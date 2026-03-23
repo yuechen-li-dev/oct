@@ -3,11 +3,21 @@ package interpret
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	"oct/internal/ast"
 )
+
+func isBuiltinFunction(name string) bool {
+	switch name {
+	case "Len", "Abs", "Sqrt", "Sin", "Cos":
+		return true
+	default:
+		return false
+	}
+}
 
 type ValueKind string
 
@@ -386,6 +396,9 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 		}
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
+	if isBuiltinFunction(expr.Callee) {
+		return i.evalBuiltinCallExpr(env, expr)
+	}
 
 	function, ok := i.functions[expr.Callee]
 	if !ok {
@@ -412,6 +425,75 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 		return evalResult{hasError: true, errorVal: result.errorVal}, nil
 	}
 	return evalResult{value: result.value}, nil
+}
+
+func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (evalResult, error) {
+	if len(expr.Arguments) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", expr.Callee)
+	}
+
+	argument, err := i.evalExpr(env, expr.Arguments[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if argument.hasError {
+		return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+	}
+
+	switch expr.Callee {
+	case "Len":
+		if argument.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects Array, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Array))}}, nil
+	case "Abs":
+		switch argument.value.Kind {
+		case ValueInt:
+			value := argument.value.Int
+			if value < 0 {
+				value = -value
+			}
+			return evalResult{value: Value{Kind: ValueInt, Int: value}}, nil
+		case ValueFloat:
+			return evalResult{value: Value{Kind: ValueFloat, Float: math.Abs(argument.value.Float)}}, nil
+		default:
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Abs expects Int or Float, got %s", argument.value.Kind)
+		}
+	case "Sqrt":
+		value, err := numericValueAsFloat(argument.value, "Sqrt")
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Sqrt expects non-negative input, got %s", argument.value.String())
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sqrt(value)}}, nil
+	case "Sin":
+		value, err := numericValueAsFloat(argument.value, "Sin")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sin(value)}}, nil
+	case "Cos":
+		value, err := numericValueAsFloat(argument.value, "Cos")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Cos(value)}}, nil
+	default:
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", expr.Callee)
+	}
+}
+
+func numericValueAsFloat(value Value, functionName string) (float64, error) {
+	switch value.Kind {
+	case ValueInt:
+		return float64(value.Int), nil
+	case ValueFloat:
+		return value.Float, nil
+	default:
+		return 0, fmt.Errorf("runtime invariant violation: %s expects Int or Float, got %s", functionName, value.Kind)
+	}
 }
 
 func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value, error) {

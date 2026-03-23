@@ -143,6 +143,36 @@ func TestCheckRejectsInvalidErrorConstruction(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Error { return error(1) }", "function Main: error() requires a string literal")
 }
 
+func TestCheckValidatesM7Builtins(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int { return Len([1, 2, 3]) }",
+		"fn Main() -> Int { let xs = [true, false, true, false] return Len(xs) }",
+		"fn Main() -> Int { return Abs(0 - 3) }",
+		"fn Main() -> Float { return Abs(0.0 - 3.5) }",
+		"fn Main() -> Float { return Sqrt(4) }",
+		"fn Main() -> Float { return Sqrt(2.25) }",
+		"fn Main() -> Float { return Sin(0) }",
+		"fn Main() -> Float { return Cos(0) }",
+	}
+
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int or Float, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Len() }", "function Main: function 'Len' expects 1 arguments, got 0")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1, 2) }", "function Main: function 'Sin' expects 1 arguments, got 2")
+	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
+}
+
 func parseSource(t *testing.T, text string) ast.File {
 	t.Helper()
 

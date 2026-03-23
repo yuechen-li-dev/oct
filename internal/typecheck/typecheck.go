@@ -6,6 +6,15 @@ import (
 	"oct/internal/ast"
 )
 
+func isReservedBuiltinFunctionName(name string) bool {
+	switch name {
+	case "Len", "Abs", "Sqrt", "Sin", "Cos":
+		return true
+	default:
+		return false
+	}
+}
+
 type BaseType string
 
 const (
@@ -80,6 +89,9 @@ func (s *scope) lookup(name string) (Type, bool) {
 
 func (c checker) checkFile(file ast.File) error {
 	for _, function := range file.Functions {
+		if isReservedBuiltinFunctionName(function.Name) {
+			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
+		}
 		signature, err := c.resolveFunctionSignature(function)
 		if err != nil {
 			return fmt.Errorf("function %s: %w", function.Name, err)
@@ -375,6 +387,9 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		_ = argument
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
+	if isReservedBuiltinFunctionName(expr.Callee) {
+		return c.checkBuiltinCallExpr(scope, expr, ctx)
+	}
 
 	signature, ok := c.functions[expr.Callee]
 	if !ok {
@@ -396,6 +411,45 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		}
 	}
 	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
+}
+
+func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if len(expr.Arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", expr.Callee, len(expr.Arguments))
+	}
+
+	argumentType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if argumentType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+
+	switch expr.Callee {
+	case "Len":
+		if !argumentType.ValueType.IsArray {
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+		}
+		switch argumentType.ValueType.Base {
+		case BaseTypeInt, BaseTypeFloat, BaseTypeBool:
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		default:
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+		}
+	case "Abs":
+		if argumentType.ValueType == (Type{Base: BaseTypeInt}) || argumentType.ValueType == (Type{Base: BaseTypeFloat}) {
+			return ExprType{ValueType: argumentType.ValueType}, nil
+		}
+		return ExprType{}, fmt.Errorf("function 'Abs' argument 1 expects Int or Float, got %s", argumentType.ValueType)
+	case "Sqrt", "Sin", "Cos":
+		if argumentType.ValueType == (Type{Base: BaseTypeInt}) || argumentType.ValueType == (Type{Base: BaseTypeFloat}) {
+			return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+		}
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", expr.Callee, argumentType.ValueType)
+	default:
+		return ExprType{}, fmt.Errorf("unsupported built-in function: %s", expr.Callee)
+	}
 }
 
 func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext) (Type, error) {
