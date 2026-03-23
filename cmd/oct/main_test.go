@@ -156,6 +156,208 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 	}
 }
 
+func TestRunCommandSupportsM6ErrorHandling(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantStdout  string
+		wantMessage string
+	}{
+		{
+			name: "infallible function call",
+			source: `fn Add(x: Int, y: Int) -> Int {
+    return x + y
+}
+fn Main() -> Int {
+    return Add(1, 2)
+}
+`,
+			wantStdout: "3\n",
+		},
+		{
+			name: "fallible success",
+			source: `fn Safe() -> Int ! Error {
+    return 5
+}
+fn Main() -> Int ! Error {
+    let x = Safe()?
+    return x
+}
+`,
+			wantStdout: "5\n",
+		},
+		{
+			name: "fallible propagation",
+			source: `fn Fail() -> Int ! Error {
+    return error("bad input")
+}
+fn Main() -> Int ! Error {
+    let x = Fail()?
+    return x
+}
+`,
+			wantMessage: "run failed: fatal error: bad input",
+		},
+		{
+			name: "fatal unwrap",
+			source: `fn Fail() -> Int ! Error {
+    return error("boom")
+}
+fn Main() -> Int {
+    let x = Fail()!
+    return x
+}
+`,
+			wantMessage: "run failed: fatal error: boom",
+		},
+		{
+			name: "match success arm",
+			source: `fn Safe() -> Int ! Error {
+    return 7
+}
+fn Main() -> Int {
+    match Safe() {
+        ok(value) => {
+            return value
+        }
+        err(e) => {
+            return 0
+        }
+    }
+}
+`,
+			wantStdout: "7\n",
+		},
+		{
+			name: "match error arm",
+			source: `fn Fail() -> Int ! Error {
+    return error("bad")
+}
+fn Main() -> Int {
+    match Fail() {
+        ok(value) => {
+            return value
+        }
+        err(e) => {
+            return 0
+        }
+    }
+}
+`,
+			wantStdout: "0\n",
+		},
+		{
+			name: "fallible Main success",
+			source: `fn Main() -> Int ! Error {
+    return 9
+}
+`,
+			wantStdout: "9\n",
+		},
+		{
+			name: "fallible Main failure",
+			source: `fn Main() -> Int ! Error {
+    return error("top-level fail")
+}
+`,
+			wantMessage: "run failed: fatal error: top-level fail",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if test.wantMessage != "" {
+				if err == nil {
+					t.Fatalf("expected failure, got success with stdout %q", stdout)
+				}
+				if stdout != "" {
+					t.Fatalf("expected empty stdout on failure, got %q", stdout)
+				}
+				if !strings.Contains(stderr, test.wantMessage) {
+					t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.wantStdout {
+				t.Fatalf("expected stdout %q, got %q", test.wantStdout, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsInvalidM6Programs(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "invalid question in infallible function",
+			source: `fn Fail() -> Int ! Error {
+    return error("bad")
+}
+fn Main() -> Int {
+    let x = Fail()?
+    return x
+}
+`,
+			wantMessage: "run failed: function Main: let x: cannot use '?' in infallible function",
+		},
+		{
+			name: "invalid question on infallible expression",
+			source: `fn Main() -> Int {
+    let x = 1?
+    return x
+}
+`,
+			wantMessage: "run failed: function Main: let x: operator '?' requires fallible expression",
+		},
+		{
+			name: "invalid fallible signature",
+			source: `fn Bad() -> Int ! MyError {
+    return 1
+}
+`,
+			wantMessage: "run failed: function Bad: only built-in Error is allowed in fallible signatures",
+		},
+		{
+			name: "call arity mismatch",
+			source: `fn Add(x: Int, y: Int) -> Int {
+    return x + y
+}
+fn Main() -> Int {
+    return Add(1)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Add' expects 2 arguments, got 1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
 func TestRunCommandRejectsDivisionByZero(t *testing.T) {
 	tests := []struct {
 		name        string

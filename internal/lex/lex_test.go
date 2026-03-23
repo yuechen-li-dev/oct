@@ -41,6 +41,58 @@ func TestAnalyzeTokenizesFrozenSubset(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesM6OperatorsAndStrings(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int ! Error { match Fail()? { ok(value) => { return value } err(e) => { return error(\"boom\")! } } }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		Bang,
+		Identifier,
+		LeftBrace,
+		KeywordMatch,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Question,
+		LeftBrace,
+		Identifier,
+		LeftParen,
+		Identifier,
+		RightParen,
+		FatArrow,
+		LeftBrace,
+		KeywordReturn,
+		Identifier,
+		RightBrace,
+		Identifier,
+		LeftParen,
+		Identifier,
+		RightParen,
+		FatArrow,
+		LeftBrace,
+		KeywordReturn,
+		Identifier,
+		LeftParen,
+		StringLiteral,
+		RightParen,
+		Bang,
+		RightBrace,
+		RightBrace,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeTokenizesRangesAndForLoops(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { for i in 0..10 step 2 { return i } return 0 }"}
 

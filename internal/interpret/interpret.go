@@ -12,11 +12,13 @@ import (
 type ValueKind string
 
 const (
-	ValueInt   ValueKind = "Int"
-	ValueFloat ValueKind = "Float"
-	ValueBool  ValueKind = "Bool"
-	ValueArray ValueKind = "Array"
-	ValueRange ValueKind = "Range"
+	ValueInt    ValueKind = "Int"
+	ValueFloat  ValueKind = "Float"
+	ValueBool   ValueKind = "Bool"
+	ValueArray  ValueKind = "Array"
+	ValueRange  ValueKind = "Range"
+	ValueString ValueKind = "String"
+	ValueError  ValueKind = "Error"
 )
 
 type Value struct {
@@ -24,8 +26,14 @@ type Value struct {
 	Int   int64
 	Float float64
 	Bool  bool
+	Text  string
 	Array []Value
 	Range RangeValue
+	Error ErrorValue
+}
+
+type ErrorValue struct {
+	Message string
 }
 
 type RangeValue struct {
@@ -42,6 +50,8 @@ func (v Value) String() string {
 		return strconv.FormatFloat(v.Float, 'g', -1, 64)
 	case ValueBool:
 		return strconv.FormatBool(v.Bool)
+	case ValueString:
+		return v.Text
 	case ValueArray:
 		parts := make([]string, 0, len(v.Array))
 		for _, element := range v.Array {
@@ -50,32 +60,58 @@ func (v Value) String() string {
 		return "[" + strings.Join(parts, ", ") + "]"
 	case ValueRange:
 		return fmt.Sprintf("%d..%d step %d", v.Range.Start, v.Range.End, v.Range.Step)
+	case ValueError:
+		return v.Error.Message
 	default:
 		return "<invalid>"
 	}
 }
 
-func ExecuteMain(file ast.File) (Value, error) {
-	mainFunction, err := findMain(file.Functions)
-	if err != nil {
-		return Value{}, err
-	}
-
-	env := newEnvironment(nil)
-	result, err := executeBlock(env, mainFunction.Body)
-	if err != nil {
-		return Value{}, err
-	}
-	if result.returned {
-		return result.value, nil
-	}
-
-	return Value{}, errors.New("runtime invariant violation: Main completed without returning")
+type interpreter struct {
+	functions map[string]ast.FunctionDecl
 }
 
 type environment struct {
 	parent *environment
 	values map[string]Value
+}
+
+type stmtResult struct {
+	value    Value
+	returned bool
+}
+
+type evalResult struct {
+	value    Value
+	hasError bool
+	errorVal Value
+}
+
+type callResult struct {
+	value    Value
+	hasError bool
+	errorVal Value
+}
+
+func ExecuteMain(file ast.File) (Value, error) {
+	interpreter := interpreter{functions: make(map[string]ast.FunctionDecl, len(file.Functions))}
+	for _, function := range file.Functions {
+		interpreter.functions[function.Name] = function
+	}
+
+	mainFunction, err := interpreter.findMain()
+	if err != nil {
+		return Value{}, err
+	}
+
+	result, err := interpreter.executeFunction(mainFunction, nil)
+	if err != nil {
+		return Value{}, err
+	}
+	if result.hasError {
+		return Value{}, fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
+	}
+	return result.value, nil
 }
 
 func newEnvironment(parent *environment) *environment {
@@ -96,29 +132,21 @@ func (e *environment) lookup(name string) (Value, bool) {
 	return Value{}, false
 }
 
-type stmtResult struct {
-	value    Value
-	returned bool
-}
-
-func findMain(functions []ast.FunctionDecl) (ast.FunctionDecl, error) {
-	for _, function := range functions {
-		if function.Name != "Main" {
-			continue
-		}
-		if len(function.Parameters) != 0 {
-			return ast.FunctionDecl{}, errors.New("Main must not have parameters")
-		}
-		if isSupportedMainReturnType(function.ReturnType) {
-			return function, nil
-		}
-		if function.ReturnType.IsArray {
-			return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s[]", function.ReturnType.Name)
-		}
-		return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s", function.ReturnType.Name)
+func (i interpreter) findMain() (ast.FunctionDecl, error) {
+	function, ok := i.functions["Main"]
+	if !ok {
+		return ast.FunctionDecl{}, errors.New("missing Main function")
 	}
-
-	return ast.FunctionDecl{}, errors.New("missing Main function")
+	if len(function.Parameters) != 0 {
+		return ast.FunctionDecl{}, errors.New("Main must not have parameters")
+	}
+	if isSupportedMainReturnType(function.ReturnType) {
+		return function, nil
+	}
+	if function.ReturnType.IsArray {
+		return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s[]", function.ReturnType.Name)
+	}
+	return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], got %s", function.ReturnType.Name)
 }
 
 func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
@@ -139,10 +167,29 @@ func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
 	}
 }
 
-func executeBlock(parent *environment, block ast.Block) (stmtResult, error) {
+func (i interpreter) executeFunction(function ast.FunctionDecl, arguments []Value) (callResult, error) {
+	env := newEnvironment(nil)
+	for index, parameter := range function.Parameters {
+		env.define(parameter.Name, arguments[index])
+	}
+
+	result, err := i.executeBlock(env, function.Body)
+	if err != nil {
+		return callResult{}, err
+	}
+	if !result.returned {
+		return callResult{}, fmt.Errorf("runtime invariant violation: %s completed without returning", function.Name)
+	}
+	if function.IsFallible && result.value.Kind == ValueError {
+		return callResult{hasError: true, errorVal: result.value}, nil
+	}
+	return callResult{value: result.value}, nil
+}
+
+func (i interpreter) executeBlock(parent *environment, block ast.Block) (stmtResult, error) {
 	blockEnv := newEnvironment(parent)
 	for _, statement := range block.Statements {
-		result, err := executeStmt(blockEnv, statement)
+		result, err := i.executeStmt(blockEnv, statement)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -153,33 +200,42 @@ func executeBlock(parent *environment, block ast.Block) (stmtResult, error) {
 	return stmtResult{}, nil
 }
 
-func executeStmt(env *environment, stmt ast.Stmt) (stmtResult, error) {
+func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
-		value, err := evalExpr(env, node.Value)
+		value, err := i.evalExpr(env, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
-		env.define(node.Name, value)
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		env.define(node.Name, value.value)
 		return stmtResult{}, nil
 	case ast.ReturnStmt:
-		value, err := evalExpr(env, node.Value)
+		value, err := i.evalExpr(env, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
-		return stmtResult{value: value, returned: true}, nil
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		return stmtResult{value: value.value, returned: true}, nil
 	case ast.ForStmt:
-		rangeValue, err := evalExpr(env, node.Range)
+		rangeValue, err := i.evalExpr(env, node.Range)
 		if err != nil {
 			return stmtResult{}, err
 		}
-		if rangeValue.Kind != ValueRange {
-			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.Kind)
+		if rangeValue.hasError {
+			return stmtResult{value: rangeValue.errorVal, returned: true}, nil
 		}
-		for current := rangeValue.Range.Start; current < rangeValue.Range.End; current += rangeValue.Range.Step {
+		if rangeValue.value.Kind != ValueRange {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
+		}
+		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
 			iterationEnv := newEnvironment(env)
 			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current})
-			result, err := executeBlock(iterationEnv, node.Body)
+			result, err := i.executeBlock(iterationEnv, node.Body)
 			if err != nil {
 				return stmtResult{}, err
 			}
@@ -188,131 +244,246 @@ func executeStmt(env *environment, stmt ast.Stmt) (stmtResult, error) {
 			}
 		}
 		return stmtResult{}, nil
+	case ast.MatchStmt:
+		subject, err := i.evalExpr(env, node.Subject)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		armEnv := newEnvironment(env)
+		if subject.hasError {
+			armEnv.define(node.ErrName, subject.errorVal)
+			return i.executeBlock(armEnv, node.ErrBody)
+		}
+		armEnv.define(node.OkName, subject.value)
+		return i.executeBlock(armEnv, node.OkBody)
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
 }
 
-func evalExpr(env *environment, expr ast.Expr) (Value, error) {
+func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		value, err := strconv.ParseInt(node.Value, 10, 64)
 		if err != nil {
-			return Value{}, fmt.Errorf("runtime invariant violation: invalid integer literal %q: %w", node.Value, err)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: invalid integer literal %q: %w", node.Value, err)
 		}
-		return Value{Kind: ValueInt, Int: value}, nil
+		return evalResult{value: Value{Kind: ValueInt, Int: value}}, nil
 	case ast.FloatLiteral:
 		value, err := strconv.ParseFloat(node.Value, 64)
 		if err != nil {
-			return Value{}, fmt.Errorf("runtime invariant violation: invalid float literal %q: %w", node.Value, err)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: invalid float literal %q: %w", node.Value, err)
 		}
-		return Value{Kind: ValueFloat, Float: value}, nil
+		return evalResult{value: Value{Kind: ValueFloat, Float: value}}, nil
 	case ast.BoolLiteral:
-		return Value{Kind: ValueBool, Bool: node.Value}, nil
+		return evalResult{value: Value{Kind: ValueBool, Bool: node.Value}}, nil
+	case ast.StringLiteralExpr:
+		return evalResult{value: Value{Kind: ValueString, Text: node.Value}}, nil
 	case ast.ArrayLiteralExpr:
-		return evalArrayLiteralExpr(env, node)
+		value, err := i.evalArrayLiteralExpr(env, node)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
 	case ast.IdentifierExpr:
 		value, ok := env.lookup(node.Name)
 		if !ok {
-			return Value{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
 		}
-		return value, nil
+		return evalResult{value: value}, nil
+	case ast.CallExpr:
+		return i.evalCallExpr(env, node)
 	case ast.IndexExpr:
-		target, err := evalExpr(env, node.Target)
+		target, err := i.evalExpr(env, node.Target)
 		if err != nil {
-			return Value{}, err
+			return evalResult{}, err
 		}
-		if target.Kind != ValueArray {
-			return Value{}, fmt.Errorf("runtime invariant violation: cannot index non-array value of kind %s", target.Kind)
+		if target.hasError {
+			return evalResult{hasError: true, errorVal: target.errorVal}, nil
 		}
-		index, err := evalExpr(env, node.Index)
+		if target.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index non-array value of kind %s", target.value.Kind)
+		}
+		index, err := i.evalExpr(env, node.Index)
 		if err != nil {
-			return Value{}, err
+			return evalResult{}, err
 		}
-		if index.Kind != ValueInt {
-			return Value{}, fmt.Errorf("runtime invariant violation: array index must be Int, got %s", index.Kind)
+		if index.hasError {
+			return evalResult{hasError: true, errorVal: index.errorVal}, nil
 		}
-		if index.Int < 0 || index.Int >= int64(len(target.Array)) {
-			return Value{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.Int, len(target.Array))
+		if index.value.Kind != ValueInt {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: array index must be Int, got %s", index.value.Kind)
 		}
-		return target.Array[index.Int], nil
+		if index.value.Int < 0 || index.value.Int >= int64(len(target.value.Array)) {
+			return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(target.value.Array))
+		}
+		return evalResult{value: target.value.Array[index.value.Int]}, nil
 	case ast.ParenExpr:
-		return evalExpr(env, node.Inner)
+		return i.evalExpr(env, node.Inner)
 	case ast.BinaryExpr:
-		left, err := evalExpr(env, node.Left)
+		left, err := i.evalExpr(env, node.Left)
 		if err != nil {
-			return Value{}, err
+			return evalResult{}, err
 		}
-		right, err := evalExpr(env, node.Right)
+		if left.hasError {
+			return evalResult{hasError: true, errorVal: left.errorVal}, nil
+		}
+		right, err := i.evalExpr(env, node.Right)
 		if err != nil {
-			return Value{}, err
+			return evalResult{}, err
 		}
-		return evalBinaryExpr(node.Operator, left, right)
+		if right.hasError {
+			return evalResult{hasError: true, errorVal: right.errorVal}, nil
+		}
+		value, err := evalBinaryExpr(node.Operator, left.value, right.value)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
 	case ast.RangeExpr:
-		return evalRangeExpr(env, node)
+		value, err := i.evalRangeExpr(env, node)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
+	case ast.PropagateExpr:
+		inner, err := i.evalExpr(env, node.Inner)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if inner.hasError {
+			return inner, nil
+		}
+		return evalResult{value: inner.value}, nil
+	case ast.UnwrapExpr:
+		inner, err := i.evalExpr(env, node.Inner)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if inner.hasError {
+			return evalResult{}, fmt.Errorf("fatal error: %s", inner.errorVal.Error.Message)
+		}
+		return evalResult{value: inner.value}, nil
 	default:
-		return Value{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
 	}
 }
 
-func evalRangeExpr(env *environment, expr ast.RangeExpr) (Value, error) {
-	start, err := evalExpr(env, expr.Start)
+func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResult, error) {
+	if expr.Callee == "error" {
+		if len(expr.Arguments) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: error() expects 1 argument")
+		}
+		messageValue, err := i.evalExpr(env, expr.Arguments[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if messageValue.hasError {
+			return evalResult{hasError: true, errorVal: messageValue.errorVal}, nil
+		}
+		if messageValue.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: error() expects String, got %s", messageValue.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
+	}
+
+	function, ok := i.functions[expr.Callee]
+	if !ok {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", expr.Callee)
+	}
+
+	arguments := make([]Value, 0, len(expr.Arguments))
+	for _, argumentExpr := range expr.Arguments {
+		argument, err := i.evalExpr(env, argumentExpr)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		arguments = append(arguments, argument.value)
+	}
+
+	result, err := i.executeFunction(function, arguments)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if result.hasError {
+		return evalResult{hasError: true, errorVal: result.errorVal}, nil
+	}
+	return evalResult{value: result.value}, nil
+}
+
+func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value, error) {
+	start, err := i.evalExpr(env, expr.Start)
 	if err != nil {
 		return Value{}, err
 	}
-	if start.Kind != ValueInt {
-		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", start.Kind)
+	if start.hasError {
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range start")
 	}
-	end, err := evalExpr(env, expr.End)
+	if start.value.Kind != ValueInt {
+		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", start.value.Kind)
+	}
+	end, err := i.evalExpr(env, expr.End)
 	if err != nil {
 		return Value{}, err
 	}
-	if end.Kind != ValueInt {
-		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", end.Kind)
+	if end.hasError {
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range end")
+	}
+	if end.value.Kind != ValueInt {
+		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", end.value.Kind)
 	}
 	step := int64(1)
 	if expr.Step != nil {
-		stepValue, err := evalExpr(env, expr.Step)
+		stepValue, err := i.evalExpr(env, expr.Step)
 		if err != nil {
 			return Value{}, err
 		}
-		if stepValue.Kind != ValueInt {
-			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", stepValue.Kind)
+		if stepValue.hasError {
+			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range step")
 		}
-		step = stepValue.Int
+		if stepValue.value.Kind != ValueInt {
+			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", stepValue.value.Kind)
+		}
+		step = stepValue.value.Int
 	}
 	if step <= 0 {
 		return Value{}, fmt.Errorf("runtime error: range step must be positive, got %d", step)
 	}
-	if start.Int > end.Int {
-		return Value{}, fmt.Errorf("runtime error: range start must be less than or equal to end, got %d..%d", start.Int, end.Int)
+	if start.value.Int > end.value.Int {
+		return Value{}, fmt.Errorf("runtime error: range start must be less than or equal to end, got %d..%d", start.value.Int, end.value.Int)
 	}
-	return Value{Kind: ValueRange, Range: RangeValue{Start: start.Int, End: end.Int, Step: step}}, nil
+	return Value{Kind: ValueRange, Range: RangeValue{Start: start.value.Int, End: end.value.Int, Step: step}}, nil
 }
 
-func evalArrayLiteralExpr(env *environment, expr ast.ArrayLiteralExpr) (Value, error) {
+func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLiteralExpr) (Value, error) {
 	elements := make([]Value, 0, len(expr.Elements))
 	var elementKind ValueKind
-	for i, elementExpr := range expr.Elements {
-		element, err := evalExpr(env, elementExpr)
+	for idx, elementExpr := range expr.Elements {
+		element, err := i.evalExpr(env, elementExpr)
 		if err != nil {
 			return Value{}, err
 		}
-		if element.Kind == ValueArray {
+		if element.hasError {
+			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached array literal element %d", idx)
+		}
+		if element.value.Kind == ValueArray {
 			return Value{}, errors.New("runtime invariant violation: nested arrays are not supported")
 		}
-		if i == 0 {
-			elementKind = element.Kind
-		} else if element.Kind != elementKind {
-			return Value{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", elementKind, element.Kind)
+		if idx == 0 {
+			elementKind = element.value.Kind
+		} else if element.value.Kind != elementKind {
+			return Value{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", elementKind, element.value.Kind)
 		}
-		elements = append(elements, element)
+		elements = append(elements, element.value)
 	}
 	return Value{Kind: ValueArray, Array: elements}, nil
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
-	if left.Kind == ValueRange || right.Kind == ValueRange {
+	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, left.Kind, right.Kind)
 	}
 	if left.Kind == ValueArray || right.Kind == ValueArray {

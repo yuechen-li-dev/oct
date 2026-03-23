@@ -2,6 +2,7 @@ package lex
 
 import (
 	"fmt"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -13,9 +14,10 @@ type TokenKind string
 const (
 	EOF TokenKind = "EOF"
 
-	Identifier   TokenKind = "Identifier"
-	IntLiteral   TokenKind = "IntLiteral"
-	FloatLiteral TokenKind = "FloatLiteral"
+	Identifier    TokenKind = "Identifier"
+	IntLiteral    TokenKind = "IntLiteral"
+	FloatLiteral  TokenKind = "FloatLiteral"
+	StringLiteral TokenKind = "StringLiteral"
 
 	KeywordFn     TokenKind = "KeywordFn"
 	KeywordLet    TokenKind = "KeywordLet"
@@ -25,6 +27,7 @@ const (
 	KeywordStep   TokenKind = "KeywordStep"
 	KeywordTrue   TokenKind = "KeywordTrue"
 	KeywordFalse  TokenKind = "KeywordFalse"
+	KeywordMatch  TokenKind = "KeywordMatch"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -36,7 +39,10 @@ const (
 	Colon        TokenKind = "Colon"
 	Assign       TokenKind = "Assign"
 	Arrow        TokenKind = "Arrow"
+	FatArrow     TokenKind = "FatArrow"
 	DotDot       TokenKind = "DotDot"
+	Question     TokenKind = "Question"
+	Bang         TokenKind = "Bang"
 	Plus         TokenKind = "Plus"
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
@@ -132,6 +138,12 @@ func (l *lexer) nextToken() (Token, error) {
 	}
 
 	switch r {
+	case '"':
+		lexeme, err := l.scanString()
+		if err != nil {
+			return Token{}, err
+		}
+		return Token{Kind: StringLiteral, Lexeme: lexeme, Line: line, Column: column}, nil
 	case '(':
 		l.advanceRune()
 		return Token{Kind: LeftParen, Lexeme: "(", Line: line, Column: column}, nil
@@ -164,7 +176,16 @@ func (l *lexer) nextToken() (Token, error) {
 		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	case '=':
 		l.advanceRune()
+		if l.matchString(">") {
+			return Token{Kind: FatArrow, Lexeme: "=>", Line: line, Column: column}, nil
+		}
 		return Token{Kind: Assign, Lexeme: "=", Line: line, Column: column}, nil
+	case '?':
+		l.advanceRune()
+		return Token{Kind: Question, Lexeme: "?", Line: line, Column: column}, nil
+	case '!':
+		l.advanceRune()
+		return Token{Kind: Bang, Lexeme: "!", Line: line, Column: column}, nil
 	case '+':
 		l.advanceRune()
 		return Token{Kind: Plus, Lexeme: "+", Line: line, Column: column}, nil
@@ -228,6 +249,27 @@ func (l *lexer) scanNumber() (TokenKind, string) {
 	return kind, l.source[start:l.offset]
 }
 
+func (l *lexer) scanString() (string, error) {
+	line, column := l.line, l.column
+	l.advanceRune()
+
+	var builder strings.Builder
+	for !l.atEnd() {
+		r, _ := l.peekRune()
+		if r == '"' {
+			l.advanceRune()
+			return builder.String(), nil
+		}
+		if r == '\n' {
+			return "", fmt.Errorf("unterminated string literal at %d:%d", line, column)
+		}
+		builder.WriteRune(r)
+		l.advanceRune()
+	}
+
+	return "", fmt.Errorf("unterminated string literal at %d:%d", line, column)
+}
+
 func (l *lexer) atEnd() bool {
 	return l.offset >= len(l.source)
 }
@@ -279,6 +321,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordTrue
 	case "false":
 		return KeywordFalse
+	case "match":
+		return KeywordMatch
 	default:
 		return Identifier
 	}

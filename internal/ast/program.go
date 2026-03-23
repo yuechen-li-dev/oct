@@ -11,6 +11,8 @@ type FunctionDecl struct {
 	Name       string
 	Parameters []Parameter
 	ReturnType TypeRef
+	IsFallible bool
+	ErrorType  TypeRef
 	Body       Block
 }
 
@@ -53,6 +55,16 @@ type ForStmt struct {
 
 func (ForStmt) stmtNode() {}
 
+type MatchStmt struct {
+	Subject Expr
+	OkName  string
+	OkBody  Block
+	ErrName string
+	ErrBody Block
+}
+
+func (MatchStmt) stmtNode() {}
+
 type Expr interface {
 	exprNode()
 }
@@ -75,6 +87,12 @@ type BoolLiteral struct {
 
 func (BoolLiteral) exprNode() {}
 
+type StringLiteralExpr struct {
+	Value string
+}
+
+func (StringLiteralExpr) exprNode() {}
+
 type ArrayLiteralExpr struct {
 	Elements []Expr
 }
@@ -86,6 +104,13 @@ type IdentifierExpr struct {
 }
 
 func (IdentifierExpr) exprNode() {}
+
+type CallExpr struct {
+	Callee    string
+	Arguments []Expr
+}
+
+func (CallExpr) exprNode() {}
 
 type IndexExpr struct {
 	Target Expr
@@ -115,3 +140,15 @@ type ParenExpr struct {
 }
 
 func (ParenExpr) exprNode() {}
+
+type PropagateExpr struct {
+	Inner Expr
+}
+
+func (PropagateExpr) exprNode() {}
+
+type UnwrapExpr struct {
+	Inner Expr
+}
+
+func (UnwrapExpr) exprNode() {}

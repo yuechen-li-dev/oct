@@ -69,12 +69,24 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
+
+	function := ast.FunctionDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType}
+	if p.match(lex.Bang) {
+		errorType, err := p.parseTypeRef()
+		if err != nil {
+			return ast.FunctionDecl{}, err
+		}
+		function.IsFallible = true
+		function.ErrorType = errorType
+	}
+
 	body, err := p.parseBlock()
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
+	function.Body = body
 
-	return ast.FunctionDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType, Body: body}, nil
+	return function, nil
 }
 
 func (p *parser) parseParameters() ([]ast.Parameter, error) {
@@ -154,6 +166,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseReturnStmt()
 	case lex.KeywordFor:
 		return p.parseForStmt()
+	case lex.KeywordMatch:
+		return p.parseMatchStmt()
 	default:
 		return nil, p.errorAtCurrent("expected statement")
 	}
@@ -202,6 +216,59 @@ func (p *parser) parseForStmt() (ast.Stmt, error) {
 		return nil, err
 	}
 	return ast.ForStmt{Name: name.Lexeme, Range: rangeExpr, Body: body}, nil
+}
+
+func (p *parser) parseMatchStmt() (ast.Stmt, error) {
+	p.advance()
+	subject, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start match"); err != nil {
+		return nil, err
+	}
+
+	okName, okBody, err := p.parseMatchArm("ok")
+	if err != nil {
+		return nil, err
+	}
+	errName, errBody, err := p.parseMatchArm("err")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.RightBrace, "expected '}' to close match"); err != nil {
+		return nil, err
+	}
+
+	return ast.MatchStmt{Subject: subject, OkName: okName, OkBody: okBody, ErrName: errName, ErrBody: errBody}, nil
+}
+
+func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
+	name, err := p.expect(lex.Identifier, fmt.Sprintf("expected '%s' arm", expectedName))
+	if err != nil {
+		return "", ast.Block{}, err
+	}
+	if name.Lexeme != expectedName {
+		return "", ast.Block{}, p.errorAtToken(name, fmt.Sprintf("expected '%s' arm", expectedName))
+	}
+	if _, err := p.expect(lex.LeftParen, fmt.Sprintf("expected '(' after '%s'", expectedName)); err != nil {
+		return "", ast.Block{}, err
+	}
+	binding, err := p.expect(lex.Identifier, fmt.Sprintf("expected identifier in %s arm", expectedName))
+	if err != nil {
+		return "", ast.Block{}, err
+	}
+	if _, err := p.expect(lex.RightParen, fmt.Sprintf("expected ')' after %s binding", expectedName)); err != nil {
+		return "", ast.Block{}, err
+	}
+	if _, err := p.expect(lex.FatArrow, fmt.Sprintf("expected '=>' after %s arm", expectedName)); err != nil {
+		return "", ast.Block{}, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return "", ast.Block{}, err
+	}
+	return binding.Lexeme, body, nil
 }
 
 func (p *parser) parseExpression() (ast.Expr, error) {
@@ -264,18 +331,61 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 		return nil, err
 	}
 
-	for p.match(lex.LeftBracket) {
-		index, err := p.parseExpression()
+	for {
+		switch {
+		case p.current().Kind == lex.LeftParen:
+			identifier, ok := expr.(ast.IdentifierExpr)
+			if !ok {
+				return nil, p.errorAtCurrent("only direct named function calls are supported")
+			}
+			arguments, err := p.parseCallArguments()
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.CallExpr{Callee: identifier.Name, Arguments: arguments}
+		case p.match(lex.LeftBracket):
+			index, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.RightBracket, "expected ']' after index expression"); err != nil {
+				return nil, err
+			}
+			expr = ast.IndexExpr{Target: expr, Index: index}
+		case p.match(lex.Question):
+			expr = ast.PropagateExpr{Inner: expr}
+		case p.match(lex.Bang):
+			expr = ast.UnwrapExpr{Inner: expr}
+		default:
+			return expr, nil
+		}
+	}
+}
+
+func (p *parser) parseCallArguments() ([]ast.Expr, error) {
+	if _, err := p.expect(lex.LeftParen, "expected '(' after function name"); err != nil {
+		return nil, err
+	}
+	if p.current().Kind == lex.RightParen {
+		p.advance()
+		return nil, nil
+	}
+
+	var arguments []ast.Expr
+	for {
+		argument, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.expect(lex.RightBracket, "expected ']' after index expression"); err != nil {
-			return nil, err
+		arguments = append(arguments, argument)
+		if !p.match(lex.Comma) {
+			break
 		}
-		expr = ast.IndexExpr{Target: expr, Index: index}
 	}
-
-	return expr, nil
+	if _, err := p.expect(lex.RightParen, "expected ')' after argument list"); err != nil {
+		return nil, err
+	}
+	return arguments, nil
 }
 
 func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
@@ -287,6 +397,9 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	case lex.FloatLiteral:
 		p.advance()
 		return ast.FloatLiteral{Value: token.Lexeme}, nil
+	case lex.StringLiteral:
+		p.advance()
+		return ast.StringLiteralExpr{Value: token.Lexeme}, nil
 	case lex.KeywordTrue:
 		p.advance()
 		return ast.BoolLiteral{Value: true}, nil
@@ -372,7 +485,10 @@ func (p *parser) advance() {
 }
 
 func (p *parser) errorAtCurrent(message string) error {
-	token := p.current()
+	return p.errorAtToken(p.current(), message)
+}
+
+func (p *parser) errorAtToken(token lex.Token, message string) error {
 	if token.Kind == lex.EOF {
 		return fmt.Errorf("%s at end of file", message)
 	}
