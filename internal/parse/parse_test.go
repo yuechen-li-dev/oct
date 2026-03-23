@@ -127,6 +127,37 @@ func TestBuildFileParsesArrayTypesLiteralsAndIndexing(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesRangeExpressionsAndForLoops(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { for i in 0..10 step 2 { return i } return 0 }")
+
+	fn := file.Functions[0]
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("expected two statements, got %d", len(fn.Body.Statements))
+	}
+
+	forStmt, ok := fn.Body.Statements[0].(ast.ForStmt)
+	if !ok {
+		t.Fatalf("expected first statement to be ForStmt, got %T", fn.Body.Statements[0])
+	}
+	if forStmt.Name != "i" {
+		t.Fatalf("expected loop variable i, got %q", forStmt.Name)
+	}
+
+	rangeExpr, ok := forStmt.Range.(ast.RangeExpr)
+	if !ok {
+		t.Fatalf("expected for range to be RangeExpr, got %T", forStmt.Range)
+	}
+	if _, ok := rangeExpr.Start.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected range start integer literal, got %T", rangeExpr.Start)
+	}
+	if _, ok := rangeExpr.End.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected range end integer literal, got %T", rangeExpr.End)
+	}
+	if _, ok := rangeExpr.Step.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected range step integer literal, got %T", rangeExpr.Step)
+	}
+}
+
 func TestBuildFileRejectsMissingReturnType(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() { return 0 }", "expected '->' before return type")
 }

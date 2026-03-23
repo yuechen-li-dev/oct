@@ -12,6 +12,7 @@ const (
 	BaseTypeInt   BaseType = "Int"
 	BaseTypeFloat BaseType = "Float"
 	BaseTypeBool  BaseType = "Bool"
+	BaseTypeRange BaseType = "Range"
 )
 
 type Type struct {
@@ -33,7 +34,28 @@ func Check(file ast.File) error {
 
 type checker struct{}
 
-type env map[string]Type
+type scope struct {
+	parent *scope
+	values map[string]Type
+}
+
+func newScope(parent *scope) *scope {
+	return &scope{parent: parent, values: make(map[string]Type)}
+}
+
+func (s *scope) define(name string, valueType Type) {
+	s.values[name] = valueType
+}
+
+func (s *scope) lookup(name string) (Type, bool) {
+	for current := s; current != nil; current = current.parent {
+		valueType, ok := current.values[name]
+		if ok {
+			return valueType, true
+		}
+	}
+	return Type{}, false
+}
 
 func (c checker) checkFile(file ast.File) error {
 	for _, function := range file.Functions {
@@ -50,38 +72,19 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		return fmt.Errorf("function %s: %w", function.Name, err)
 	}
 
-	scope := make(env, len(function.Parameters))
+	functionScope := newScope(nil)
 	for _, parameter := range function.Parameters {
 		parameterType, err := resolveType(parameter.Type)
 		if err != nil {
 			return fmt.Errorf("function %s: parameter %s: %w", function.Name, parameter.Name, err)
 		}
-		scope[parameter.Name] = parameterType
+		functionScope.define(parameter.Name, parameterType)
 	}
 
-	hasReturn := false
-	for _, statement := range function.Body.Statements {
-		switch stmt := statement.(type) {
-		case ast.LetStmt:
-			valueType, err := c.checkExpr(scope, stmt.Value)
-			if err != nil {
-				return fmt.Errorf("function %s: let %s: %w", function.Name, stmt.Name, err)
-			}
-			scope[stmt.Name] = valueType
-		case ast.ReturnStmt:
-			hasReturn = true
-			valueType, err := c.checkExpr(scope, stmt.Value)
-			if err != nil {
-				return fmt.Errorf("function %s: %w", function.Name, err)
-			}
-			if valueType != returnType {
-				return fmt.Errorf("function %s: function expects %s, but return is %s", function.Name, returnType, valueType)
-			}
-		default:
-			return fmt.Errorf("function %s: unsupported statement %T", function.Name, statement)
-		}
+	hasReturn, err := c.checkBlock(functionScope, function.Body, returnType, function.Name)
+	if err != nil {
+		return err
 	}
-
 	if !hasReturn {
 		return fmt.Errorf("function %s: missing return statement", function.Name)
 	}
@@ -89,7 +92,60 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 	return nil
 }
 
-func (c checker) checkExpr(scope env, expr ast.Expr) (Type, error) {
+func (c checker) checkBlock(parent *scope, block ast.Block, returnType Type, functionName string) (bool, error) {
+	blockScope := newScope(parent)
+	hasReturn := false
+	for _, statement := range block.Statements {
+		returned, err := c.checkStmt(blockScope, statement, returnType, functionName)
+		if err != nil {
+			return false, err
+		}
+		if returned {
+			hasReturn = true
+		}
+	}
+	return hasReturn, nil
+}
+
+func (c checker) checkStmt(scope *scope, stmt ast.Stmt, returnType Type, functionName string) (bool, error) {
+	switch node := stmt.(type) {
+	case ast.LetStmt:
+		valueType, err := c.checkExpr(scope, node.Value)
+		if err != nil {
+			return false, fmt.Errorf("function %s: let %s: %w", functionName, node.Name, err)
+		}
+		scope.define(node.Name, valueType)
+		return false, nil
+	case ast.ReturnStmt:
+		valueType, err := c.checkExpr(scope, node.Value)
+		if err != nil {
+			return false, fmt.Errorf("function %s: %w", functionName, err)
+		}
+		if valueType != returnType {
+			return false, fmt.Errorf("function %s: function expects %s, but return is %s", functionName, returnType, valueType)
+		}
+		return true, nil
+	case ast.ForStmt:
+		rangeType, err := c.checkExpr(scope, node.Range)
+		if err != nil {
+			return false, fmt.Errorf("function %s: for %s: %w", functionName, node.Name, err)
+		}
+		if rangeType != (Type{Base: BaseTypeRange}) {
+			return false, fmt.Errorf("function %s: for %s: expected Range, got %s", functionName, node.Name, rangeType)
+		}
+		loopScope := newScope(scope)
+		loopScope.define(node.Name, Type{Base: BaseTypeInt})
+		_, err = c.checkBlock(loopScope, node.Body, returnType, functionName)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("function %s: unsupported statement %T", functionName, stmt)
+	}
+}
+
+func (c checker) checkExpr(scope *scope, expr ast.Expr) (Type, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		return Type{Base: BaseTypeInt}, nil
@@ -100,7 +156,7 @@ func (c checker) checkExpr(scope env, expr ast.Expr) (Type, error) {
 	case ast.ArrayLiteralExpr:
 		return c.checkArrayLiteralExpr(scope, node)
 	case ast.IdentifierExpr:
-		valueType, ok := scope[node.Name]
+		valueType, ok := scope.lookup(node.Name)
 		if !ok {
 			return Type{}, fmt.Errorf("undefined variable: %s", node.Name)
 		}
@@ -133,12 +189,40 @@ func (c checker) checkExpr(scope env, expr ast.Expr) (Type, error) {
 			return Type{}, err
 		}
 		return checkBinaryExpr(node.Operator, leftType, rightType)
+	case ast.RangeExpr:
+		startType, err := c.checkExpr(scope, node.Start)
+		if err != nil {
+			return Type{}, err
+		}
+		if startType != (Type{Base: BaseTypeInt}) {
+			return Type{}, fmt.Errorf("range start must be Int, got %s", startType)
+		}
+		endType, err := c.checkExpr(scope, node.End)
+		if err != nil {
+			return Type{}, err
+		}
+		if endType != (Type{Base: BaseTypeInt}) {
+			return Type{}, fmt.Errorf("range end must be Int, got %s", endType)
+		}
+		if node.Step != nil {
+			stepType, err := c.checkExpr(scope, node.Step)
+			if err != nil {
+				return Type{}, err
+			}
+			if stepType != (Type{Base: BaseTypeInt}) {
+				return Type{}, fmt.Errorf("range step must be Int, got %s", stepType)
+			}
+			if integerLiteral, ok := node.Step.(ast.IntegerLiteral); ok && integerLiteral.Value == "0" {
+				return Type{}, fmt.Errorf("range step must be positive, got 0")
+			}
+		}
+		return Type{Base: BaseTypeRange}, nil
 	default:
 		return Type{}, fmt.Errorf("unsupported expression %T", expr)
 	}
 }
 
-func (c checker) checkArrayLiteralExpr(scope env, expr ast.ArrayLiteralExpr) (Type, error) {
+func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr) (Type, error) {
 	if len(expr.Elements) == 0 {
 		return Type{}, fmt.Errorf("empty array literals are not supported")
 	}
@@ -185,6 +269,9 @@ func resolveBaseType(name string) (BaseType, error) {
 }
 
 func checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange {
+		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	}
 	if leftType.IsArray || rightType.IsArray {
 		return checkArrayBinaryExpr(operator, leftType, rightType)
 	}

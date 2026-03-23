@@ -45,6 +45,14 @@ type ReturnStmt struct {
 
 func (ReturnStmt) stmtNode() {}
 
+type ForStmt struct {
+	Name  string
+	Range Expr
+	Body  Block
+}
+
+func (ForStmt) stmtNode() {}
+
 type Expr interface {
 	exprNode()
 }
@@ -93,6 +101,14 @@ type BinaryExpr struct {
 }
 
 func (BinaryExpr) exprNode() {}
+
+type RangeExpr struct {
+	Start Expr
+	End   Expr
+	Step  Expr
+}
+
+func (RangeExpr) exprNode() {}
 
 type ParenExpr struct {
 	Inner Expr

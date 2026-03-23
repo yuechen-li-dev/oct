@@ -39,6 +39,14 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "array indexing",
 			src:  "fn Main() -> Int { let x = [1, 2, 3] return x[1] }",
 		},
+		{
+			name: "for loop over range",
+			src:  "fn Main() -> Int { for i in 0..3 { return i } return 0 }",
+		},
+		{
+			name: "for loop scope shadowing",
+			src:  "fn Main() -> Int { let i = 9 for i in 0..1 { return i } return i }",
+		},
 	}
 
 	for _, test := range tests {
@@ -98,6 +106,15 @@ func TestCheckRejectsMixedTypeArrayLiteral(t *testing.T) {
 func TestCheckRejectsInvalidIndexing(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return 1[0] }", "function Main: cannot index non-array value of type Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: array index must be Int, got Bool")
+}
+
+func TestCheckRejectsInvalidRanges(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1.0..10 { return i } return 0 }", "function Main: for i: range start must be Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1..10 step 0 { return i } return 0 }", "function Main: for i: range step must be positive, got 0")
+}
+
+func TestCheckRejectsLoopVariableOutsideLoop(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..1 { return i } return i }", "function Main: undefined variable: i")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

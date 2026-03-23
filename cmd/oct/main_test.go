@@ -105,6 +105,37 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"}\n",
 			want: "[4, 6]\n",
 		},
+		{
+			name: "for loop returns first iteration",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 0..3 {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "0\n",
+		},
+		{
+			name: "for loop with step returns first iteration",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 0..10 step 3 {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "0\n",
+		},
+		{
+			name: "loop local scope",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 0..1 {\n" +
+				"        let x = i\n" +
+				"        return x\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "0\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -206,6 +237,61 @@ func TestRunCommandRejectsArrayRuntimeErrors(t *testing.T) {
 			}
 			if !strings.Contains(stderr, test.wantMessage) {
 				t.Fatalf("expected deterministic array runtime error %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsInvalidRanges(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "zero step",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 1..10 step 0 {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "run failed: function Main: for i: range step must be positive, got 0",
+		},
+		{
+			name: "reverse range",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 5..0 {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "run failed: runtime error: range start must be less than or equal to end, got 5..0",
+		},
+		{
+			name: "loop variable out of scope",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 0..1 {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return i\n" +
+				"}\n",
+			wantMessage: "run failed: function Main: undefined variable: i",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected no computed result on stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
 			}
 		})
 	}
