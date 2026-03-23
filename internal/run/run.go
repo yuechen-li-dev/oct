@@ -7,6 +7,7 @@ import (
 	"oct/internal/lex"
 	"oct/internal/parse"
 	"oct/internal/source"
+	"oct/internal/typecheck"
 )
 
 func Execute(path string, output io.Writer) error {
@@ -19,7 +20,11 @@ func Execute(path string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if _, err := parse.BuildFile(lexed); err != nil {
+	program, err := parse.BuildFile(lexed)
+	if err != nil {
+		return err
+	}
+	if err := typecheck.Check(program); err != nil {
 		return err
 	}
 

@@ -8,6 +8,7 @@ import (
 	"oct/internal/lex"
 	"oct/internal/parse"
 	"oct/internal/source"
+	"oct/internal/typecheck"
 )
 
 type Result struct {
@@ -26,6 +27,9 @@ func Compile(path string) (Result, error) {
 	}
 	program, err := parse.BuildFile(lexed)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := typecheck.Check(program); err != nil {
 		return Result{}, err
 	}
 
