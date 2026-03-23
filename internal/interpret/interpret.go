@@ -16,6 +16,7 @@ const (
 	ValueFloat ValueKind = "Float"
 	ValueBool  ValueKind = "Bool"
 	ValueArray ValueKind = "Array"
+	ValueRange ValueKind = "Range"
 )
 
 type Value struct {
@@ -24,6 +25,13 @@ type Value struct {
 	Float float64
 	Bool  bool
 	Array []Value
+	Range RangeValue
+}
+
+type RangeValue struct {
+	Start int64
+	End   int64
+	Step  int64
 }
 
 func (v Value) String() string {
@@ -40,6 +48,8 @@ func (v Value) String() string {
 			parts = append(parts, element.String())
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	case ValueRange:
+		return fmt.Sprintf("%d..%d step %d", v.Range.Start, v.Range.End, v.Range.Step)
 	default:
 		return "<invalid>"
 	}
@@ -51,21 +61,40 @@ func ExecuteMain(file ast.File) (Value, error) {
 		return Value{}, err
 	}
 
-	env := make(environment)
-	for _, statement := range mainFunction.Body.Statements {
-		result, err := executeStmt(env, statement)
-		if err != nil {
-			return Value{}, err
-		}
-		if result.returned {
-			return result.value, nil
-		}
+	env := newEnvironment(nil)
+	result, err := executeBlock(env, mainFunction.Body)
+	if err != nil {
+		return Value{}, err
+	}
+	if result.returned {
+		return result.value, nil
 	}
 
 	return Value{}, errors.New("runtime invariant violation: Main completed without returning")
 }
 
-type environment map[string]Value
+type environment struct {
+	parent *environment
+	values map[string]Value
+}
+
+func newEnvironment(parent *environment) *environment {
+	return &environment{parent: parent, values: make(map[string]Value)}
+}
+
+func (e *environment) define(name string, value Value) {
+	e.values[name] = value
+}
+
+func (e *environment) lookup(name string) (Value, bool) {
+	for current := e; current != nil; current = current.parent {
+		value, ok := current.values[name]
+		if ok {
+			return value, true
+		}
+	}
+	return Value{}, false
+}
 
 type stmtResult struct {
 	value    Value
@@ -110,14 +139,28 @@ func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
 	}
 }
 
-func executeStmt(env environment, stmt ast.Stmt) (stmtResult, error) {
+func executeBlock(parent *environment, block ast.Block) (stmtResult, error) {
+	blockEnv := newEnvironment(parent)
+	for _, statement := range block.Statements {
+		result, err := executeStmt(blockEnv, statement)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if result.returned {
+			return result, nil
+		}
+	}
+	return stmtResult{}, nil
+}
+
+func executeStmt(env *environment, stmt ast.Stmt) (stmtResult, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
 		value, err := evalExpr(env, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
-		env[node.Name] = value
+		env.define(node.Name, value)
 		return stmtResult{}, nil
 	case ast.ReturnStmt:
 		value, err := evalExpr(env, node.Value)
@@ -125,12 +168,32 @@ func executeStmt(env environment, stmt ast.Stmt) (stmtResult, error) {
 			return stmtResult{}, err
 		}
 		return stmtResult{value: value, returned: true}, nil
+	case ast.ForStmt:
+		rangeValue, err := evalExpr(env, node.Range)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if rangeValue.Kind != ValueRange {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.Kind)
+		}
+		for current := rangeValue.Range.Start; current < rangeValue.Range.End; current += rangeValue.Range.Step {
+			iterationEnv := newEnvironment(env)
+			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current})
+			result, err := executeBlock(iterationEnv, node.Body)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			if result.returned {
+				return result, nil
+			}
+		}
+		return stmtResult{}, nil
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
 }
 
-func evalExpr(env environment, expr ast.Expr) (Value, error) {
+func evalExpr(env *environment, expr ast.Expr) (Value, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		value, err := strconv.ParseInt(node.Value, 10, 64)
@@ -149,7 +212,7 @@ func evalExpr(env environment, expr ast.Expr) (Value, error) {
 	case ast.ArrayLiteralExpr:
 		return evalArrayLiteralExpr(env, node)
 	case ast.IdentifierExpr:
-		value, ok := env[node.Name]
+		value, ok := env.lookup(node.Name)
 		if !ok {
 			return Value{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
 		}
@@ -185,12 +248,49 @@ func evalExpr(env environment, expr ast.Expr) (Value, error) {
 			return Value{}, err
 		}
 		return evalBinaryExpr(node.Operator, left, right)
+	case ast.RangeExpr:
+		return evalRangeExpr(env, node)
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
 	}
 }
 
-func evalArrayLiteralExpr(env environment, expr ast.ArrayLiteralExpr) (Value, error) {
+func evalRangeExpr(env *environment, expr ast.RangeExpr) (Value, error) {
+	start, err := evalExpr(env, expr.Start)
+	if err != nil {
+		return Value{}, err
+	}
+	if start.Kind != ValueInt {
+		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", start.Kind)
+	}
+	end, err := evalExpr(env, expr.End)
+	if err != nil {
+		return Value{}, err
+	}
+	if end.Kind != ValueInt {
+		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", end.Kind)
+	}
+	step := int64(1)
+	if expr.Step != nil {
+		stepValue, err := evalExpr(env, expr.Step)
+		if err != nil {
+			return Value{}, err
+		}
+		if stepValue.Kind != ValueInt {
+			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", stepValue.Kind)
+		}
+		step = stepValue.Int
+	}
+	if step <= 0 {
+		return Value{}, fmt.Errorf("runtime error: range step must be positive, got %d", step)
+	}
+	if start.Int > end.Int {
+		return Value{}, fmt.Errorf("runtime error: range start must be less than or equal to end, got %d..%d", start.Int, end.Int)
+	}
+	return Value{Kind: ValueRange, Range: RangeValue{Start: start.Int, End: end.Int, Step: step}}, nil
+}
+
+func evalArrayLiteralExpr(env *environment, expr ast.ArrayLiteralExpr) (Value, error) {
 	elements := make([]Value, 0, len(expr.Elements))
 	var elementKind ValueKind
 	for i, elementExpr := range expr.Elements {
@@ -212,6 +312,9 @@ func evalArrayLiteralExpr(env environment, expr ast.ArrayLiteralExpr) (Value, er
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	if left.Kind == ValueRange || right.Kind == ValueRange {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, left.Kind, right.Kind)
+	}
 	if left.Kind == ValueArray || right.Kind == ValueArray {
 		return evalArrayBinaryExpr(operator, left, right)
 	}

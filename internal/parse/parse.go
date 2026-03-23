@@ -152,6 +152,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseLetStmt()
 	case lex.KeywordReturn:
 		return p.parseReturnStmt()
+	case lex.KeywordFor:
+		return p.parseForStmt()
 	default:
 		return nil, p.errorAtCurrent("expected statement")
 	}
@@ -182,8 +184,53 @@ func (p *parser) parseReturnStmt() (ast.Stmt, error) {
 	return ast.ReturnStmt{Value: value}, nil
 }
 
+func (p *parser) parseForStmt() (ast.Stmt, error) {
+	p.advance()
+	name, err := p.expect(lex.Identifier, "expected loop variable after 'for'")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.KeywordIn, "expected 'in' after loop variable"); err != nil {
+		return nil, err
+	}
+	rangeExpr, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return ast.ForStmt{Name: name.Lexeme, Range: rangeExpr, Body: body}, nil
+}
+
 func (p *parser) parseExpression() (ast.Expr, error) {
-	return p.parseBinaryExpr(0)
+	return p.parseRangeExpr()
+}
+
+func (p *parser) parseRangeExpr() (ast.Expr, error) {
+	start, err := p.parseBinaryExpr(0)
+	if err != nil {
+		return nil, err
+	}
+	if !p.match(lex.DotDot) {
+		return start, nil
+	}
+
+	end, err := p.parseBinaryExpr(0)
+	if err != nil {
+		return nil, err
+	}
+
+	var step ast.Expr
+	if p.match(lex.KeywordStep) {
+		step, err = p.parseBinaryExpr(0)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ast.RangeExpr{Start: start, End: end, Step: step}, nil
 }
 
 func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {

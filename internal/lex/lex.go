@@ -20,6 +20,9 @@ const (
 	KeywordFn     TokenKind = "KeywordFn"
 	KeywordLet    TokenKind = "KeywordLet"
 	KeywordReturn TokenKind = "KeywordReturn"
+	KeywordFor    TokenKind = "KeywordFor"
+	KeywordIn     TokenKind = "KeywordIn"
+	KeywordStep   TokenKind = "KeywordStep"
 	KeywordTrue   TokenKind = "KeywordTrue"
 	KeywordFalse  TokenKind = "KeywordFalse"
 
@@ -33,6 +36,7 @@ const (
 	Colon        TokenKind = "Colon"
 	Assign       TokenKind = "Assign"
 	Arrow        TokenKind = "Arrow"
+	DotDot       TokenKind = "DotDot"
 	Plus         TokenKind = "Plus"
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
@@ -152,6 +156,12 @@ func (l *lexer) nextToken() (Token, error) {
 	case ':':
 		l.advanceRune()
 		return Token{Kind: Colon, Lexeme: ":", Line: line, Column: column}, nil
+	case '.':
+		l.advanceRune()
+		if l.matchString(".") {
+			return Token{Kind: DotDot, Lexeme: "..", Line: line, Column: column}, nil
+		}
+		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	case '=':
 		l.advanceRune()
 		return Token{Kind: Assign, Lexeme: "=", Line: line, Column: column}, nil
@@ -259,6 +269,12 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordLet
 	case "return":
 		return KeywordReturn
+	case "for":
+		return KeywordFor
+	case "in":
+		return KeywordIn
+	case "step":
+		return KeywordStep
 	case "true":
 		return KeywordTrue
 	case "false":

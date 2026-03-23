@@ -41,6 +41,41 @@ func TestAnalyzeTokenizesFrozenSubset(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesRangesAndForLoops(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { for i in 0..10 step 2 { return i } return 0 }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordFor,
+		Identifier,
+		KeywordIn,
+		IntLiteral,
+		DotDot,
+		IntLiteral,
+		KeywordStep,
+		IntLiteral,
+		LeftBrace,
+		KeywordReturn,
+		Identifier,
+		RightBrace,
+		KeywordReturn,
+		IntLiteral,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "// heading\n\nfn Main() -> Int {\n  // inside\n  return true\n}\n"}
 
