@@ -60,6 +60,40 @@ func TestBuildCommandSucceeds(t *testing.T) {
 	}
 }
 
+func TestTypeErrorsFailBeforeExecution(t *testing.T) {
+	tempDir := t.TempDir()
+	sourcePath := filepath.Join(tempDir, "bad_type.oct")
+	source := "fn Main() -> Int {\n    return 1.0\n}\n"
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	for _, command := range []string{"run", "build"} {
+		t.Run(command, func(t *testing.T) {
+			cmd := exec.Command("go", "run", "./cmd/oct", command, sourcePath)
+			cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
+
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected failure, got success with %q", output)
+			}
+
+			expected := command + " failed: function Main: function expects Int, but return is Float"
+			if !strings.Contains(string(output), expected) {
+				t.Fatalf("expected deterministic type error %q, got %q", expected, output)
+			}
+			if strings.Contains(string(output), "hello from oct") {
+				t.Fatalf("expected type error to stop execution, got %q", output)
+			}
+			if command == "build" {
+				if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+					t.Fatalf("expected no artifact on type error, stat err = %v", statErr)
+				}
+			}
+		})
+	}
+}
+
 func TestSyntaxErrorsFailDeterministically(t *testing.T) {
 	tempDir := t.TempDir()
 	sourcePath := filepath.Join(tempDir, "bad.oct")
