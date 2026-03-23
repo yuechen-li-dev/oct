@@ -538,6 +538,227 @@ func TestRunCommandValidatesMainEntryPoint(t *testing.T) {
 	}
 }
 
+func TestRunCommandSupportsM7Builtins(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "len int array",
+			source: `fn Main() -> Int {
+    return Len([1, 2, 3])
+}
+`,
+			want: "3\n",
+		},
+		{
+			name: "len bool array variable",
+			source: `fn Main() -> Int {
+    let xs = [true, false, true, false]
+    return Len(xs)
+}
+`,
+			want: "4\n",
+		},
+		{
+			name: "abs int",
+			source: `fn Main() -> Int {
+    return Abs(0 - 3)
+}
+`,
+			want: "3\n",
+		},
+		{
+			name: "abs float",
+			source: `fn Main() -> Float {
+    return Abs(0.0 - 3.5)
+}
+`,
+			want: "3.5\n",
+		},
+		{
+			name: "sqrt int result uses stable float formatting",
+			source: `fn Main() -> Float {
+    return Sqrt(4)
+}
+`,
+			want: "2\n",
+		},
+		{
+			name: "sqrt float",
+			source: `fn Main() -> Float {
+    return Sqrt(2.25)
+}
+`,
+			want: "1.5\n",
+		},
+		{
+			name: "sin zero",
+			source: `fn Main() -> Float {
+    return Sin(0)
+}
+`,
+			want: "0\n",
+		},
+		{
+			name: "cos zero",
+			source: `fn Main() -> Float {
+    return Cos(0)
+}
+`,
+			want: "1\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "len wrong type",
+			source: `fn Main() -> Int {
+    return Len(1)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int",
+		},
+		{
+			name: "abs wrong type",
+			source: `fn Main() -> Int {
+    return Abs(true)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Abs' argument 1 expects Int or Float, got Bool",
+		},
+		{
+			name: "sqrt wrong type",
+			source: `fn Main() -> Float {
+    return Sqrt(true)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool",
+		},
+		{
+			name: "cos wrong type",
+			source: `fn Main() -> Float {
+    return Cos(true)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Cos' argument 1 expects Int or Float, got Bool",
+		},
+		{
+			name: "len arity mismatch",
+			source: `fn Main() -> Int {
+    return Len()
+}
+`,
+			wantMessage: "run failed: function Main: function 'Len' expects 1 arguments, got 0",
+		},
+		{
+			name: "sin arity mismatch",
+			source: `fn Main() -> Float {
+    return Sin(1, 2)
+}
+`,
+			wantMessage: "run failed: function Main: function 'Sin' expects 1 arguments, got 2",
+		},
+		{
+			name: "builtin collision",
+			source: `fn Len(x: Int) -> Int {
+    return x
+}
+
+fn Main() -> Int {
+    return Len(1)
+}
+`,
+			wantMessage: "run failed: function Len: cannot redeclare built-in function",
+		},
+		{
+			name: "sqrt negative runtime error",
+			source: `fn Main() -> Float {
+    return Sqrt(0 - 1)
+}
+`,
+			wantMessage: "run failed: runtime error: Sqrt expects non-negative input, got -1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestBuildCommandHandlesM7Builtins(t *testing.T) {
+	t.Run("valid program builds", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m7_valid.oct", "fn Main() -> Float {\n    return Sqrt(4)\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err != nil {
+			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		artifactPath := sourcePath + ".octbin"
+		if _, err := os.Stat(artifactPath); err != nil {
+			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		}
+		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
+			t.Fatalf("expected build success output, got %q", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("invalid program fails before artifact generation", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m7_invalid.oct", "fn Main() -> Int {\n    return Len(1)\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
+		}
+		want := "build failed: function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		}
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		}
+	})
+}
+
 func TestBuildCommandSucceedsAfterTypeCheck(t *testing.T) {
 	sourcePath := writeSourceFile(t, "example.oct", "fn Main() -> Int {\n    return 0\n}\n")
 
