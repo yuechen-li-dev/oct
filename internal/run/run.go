@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"oct/internal/interpret"
 	"oct/internal/lex"
 	"oct/internal/parse"
 	"oct/internal/source"
@@ -28,6 +29,11 @@ func Execute(path string, output io.Writer) error {
 		return err
 	}
 
-	_, err = fmt.Fprintln(output, "hello from oct")
+	value, err := interpret.ExecuteMain(program)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintln(output, value.String())
 	return err
 }

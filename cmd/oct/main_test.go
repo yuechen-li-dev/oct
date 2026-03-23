@@ -1,48 +1,182 @@
 package main
 
 import (
+	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"oct/internal/cli"
 )
 
-func TestRunCommandSucceeds(t *testing.T) {
-	tempDir := t.TempDir()
-	sourcePath := filepath.Join(tempDir, "example.oct")
-	source := "fn Main() -> Int {\n    return 0\n}\n"
-	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
+func TestRunCommandExecutesMainPrograms(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "int literal return",
+			source: "fn Main() -> Int {\n" +
+				"    return 42\n" +
+				"}\n",
+			want: "42\n",
+		},
+		{
+			name: "float computation",
+			source: "fn Main() -> Float {\n" +
+				"    let x = 1\n" +
+				"    let y = 2.5\n" +
+				"    return x + y\n" +
+				"}\n",
+			want: "3.5\n",
+		},
+		{
+			name: "bool return",
+			source: "fn Main() -> Bool {\n" +
+				"    return true\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "arithmetic precedence",
+			source: "fn Main() -> Int {\n" +
+				"    return 2 + 3 * 4\n" +
+				"}\n",
+			want: "14\n",
+		},
+		{
+			name: "parenthesized arithmetic",
+			source: "fn Main() -> Int {\n" +
+				"    return (2 + 3) * 4\n" +
+				"}\n",
+			want: "20\n",
+		},
+		{
+			name: "let chaining",
+			source: "fn Main() -> Float {\n" +
+				"    let a = 1\n" +
+				"    let b = a + 2.5\n" +
+				"    return b\n" +
+				"}\n",
+			want: "3.5\n",
+		},
+		{
+			name: "integer division truncates",
+			source: "fn Main() -> Int {\n" +
+				"    return 5 / 2\n" +
+				"}\n",
+			want: "2\n",
+		},
+		{
+			name: "mixed division promotes to float",
+			source: "fn Main() -> Float {\n" +
+				"    return 5 / 2.0\n" +
+				"}\n",
+			want: "2.5\n",
+		},
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "run", sourcePath)
-	cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run command failed: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(string(output), "hello from oct") {
-		t.Fatalf("expected hello output, got %q", output)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
 	}
 }
 
-func TestBuildCommandSucceeds(t *testing.T) {
-	tempDir := t.TempDir()
-	sourcePath := filepath.Join(tempDir, "example.oct")
-	source := "fn Main() -> Int {\n    return 0\n}\n"
-	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
+func TestRunCommandRejectsDivisionByZero(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "int division by zero",
+			source: "fn Main() -> Int {\n" +
+				"    return 5 / 0\n" +
+				"}\n",
+		},
+		{
+			name: "float division by zero",
+			source: "fn Main() -> Float {\n" +
+				"    return 5.0 / 0.0\n" +
+				"}\n",
+		},
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "build", sourcePath)
-	cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected runtime failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected no computed result on stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, "run failed: runtime error: division by zero") {
+				t.Fatalf("expected deterministic division-by-zero error, got %q", stderr)
+			}
+		})
+	}
+}
 
-	output, err := cmd.CombinedOutput()
+func TestRunCommandValidatesMainEntryPoint(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "missing Main",
+			source: "fn Add(x: Int, y: Int) -> Int {\n" +
+				"    return x + y\n" +
+				"}\n",
+			wantMessage: "run failed: missing Main function",
+		},
+		{
+			name: "Main has parameters",
+			source: "fn Main(x: Int) -> Int {\n" +
+				"    return x\n" +
+				"}\n",
+			wantMessage: "run failed: Main must not have parameters",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected entrypoint failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestBuildCommandSucceedsAfterTypeCheck(t *testing.T) {
+	sourcePath := writeSourceFile(t, "example.oct", "fn Main() -> Int {\n    return 0\n}\n")
+
+	stdout, stderr, err := executeCLI("build", sourcePath)
 	if err != nil {
-		t.Fatalf("build command failed: %v\n%s", err, output)
+		t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
 	}
 
 	artifactPath := sourcePath + ".octbin"
@@ -54,36 +188,30 @@ func TestBuildCommandSucceeds(t *testing.T) {
 	if string(artifact) != "oct m0 placeholder artifact\n" {
 		t.Fatalf("unexpected artifact body %q", artifact)
 	}
-
-	if !strings.Contains(string(output), "build succeeded: "+artifactPath) {
-		t.Fatalf("expected build success output, got %q", output)
+	if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
+		t.Fatalf("expected build success output, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 }
 
 func TestTypeErrorsFailBeforeExecution(t *testing.T) {
-	tempDir := t.TempDir()
-	sourcePath := filepath.Join(tempDir, "bad_type.oct")
-	source := "fn Main() -> Int {\n    return 1.0\n}\n"
-	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+	sourcePath := writeSourceFile(t, "bad_type.oct", "fn Main() -> Int {\n    return 1.0\n}\n")
 
 	for _, command := range []string{"run", "build"} {
 		t.Run(command, func(t *testing.T) {
-			cmd := exec.Command("go", "run", "./cmd/oct", command, sourcePath)
-			cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
-
-			output, err := cmd.CombinedOutput()
+			stdout, stderr, err := executeCLI(command, sourcePath)
 			if err == nil {
-				t.Fatalf("expected failure, got success with %q", output)
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
 			}
 
 			expected := command + " failed: function Main: function expects Int, but return is Float"
-			if !strings.Contains(string(output), expected) {
-				t.Fatalf("expected deterministic type error %q, got %q", expected, output)
+			if !strings.Contains(stderr, expected) {
+				t.Fatalf("expected deterministic type error %q, got %q", expected, stderr)
 			}
-			if strings.Contains(string(output), "hello from oct") {
-				t.Fatalf("expected type error to stop execution, got %q", output)
+			if stdout != "" {
+				t.Fatalf("expected no stdout on type error, got %q", stdout)
 			}
 			if command == "build" {
 				if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
@@ -95,26 +223,21 @@ func TestTypeErrorsFailBeforeExecution(t *testing.T) {
 }
 
 func TestSyntaxErrorsFailDeterministically(t *testing.T) {
-	tempDir := t.TempDir()
-	sourcePath := filepath.Join(tempDir, "bad.oct")
-	source := "fn Main() {\n    return 0\n}\n"
-	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+	sourcePath := writeSourceFile(t, "bad.oct", "fn Main() {\n    return 0\n}\n")
 
 	for _, command := range []string{"run", "build"} {
 		t.Run(command, func(t *testing.T) {
-			cmd := exec.Command("go", "run", "./cmd/oct", command, sourcePath)
-			cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
-
-			output, err := cmd.CombinedOutput()
+			stdout, stderr, err := executeCLI(command, sourcePath)
 			if err == nil {
-				t.Fatalf("expected failure, got success with %q", output)
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
 			}
 
 			expected := command + " failed: parse " + sourcePath + ": expected '->' before return type"
-			if !strings.Contains(string(output), expected) {
-				t.Fatalf("expected deterministic syntax error %q, got %q", expected, output)
+			if !strings.Contains(stderr, expected) {
+				t.Fatalf("expected deterministic syntax error %q, got %q", expected, stderr)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout on parse failure, got %q", stdout)
 			}
 		})
 	}
@@ -126,18 +249,35 @@ func TestMissingFileFailsDeterministically(t *testing.T) {
 
 	for _, command := range []string{"run", "build"} {
 		t.Run(command, func(t *testing.T) {
-			cmd := exec.Command("go", "run", "./cmd/oct", command, missingPath)
-			cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
-
-			output, err := cmd.CombinedOutput()
+			stdout, stderr, err := executeCLI(command, missingPath)
 			if err == nil {
-				t.Fatalf("expected failure, got success with %q", output)
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
 			}
 
 			expected := command + " failed: source file not found: " + missingPath
-			if !strings.Contains(string(output), expected) {
-				t.Fatalf("expected deterministic error %q, got %q", expected, output)
+			if !strings.Contains(stderr, expected) {
+				t.Fatalf("expected deterministic error %q, got %q", expected, stderr)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout on missing file, got %q", stdout)
 			}
 		})
 	}
+}
+
+func writeSourceFile(t *testing.T, name string, source string) string {
+	t.Helper()
+	tempDir := t.TempDir()
+	sourcePath := filepath.Join(tempDir, name)
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	return sourcePath
+}
+
+func executeCLI(command string, sourcePath string) (string, string, error) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{command, sourcePath}, &stdout, &stderr)
+	return stdout.String(), stderr.String(), err
 }
