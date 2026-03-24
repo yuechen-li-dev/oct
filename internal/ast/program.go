@@ -7,6 +7,8 @@ import (
 
 type File struct {
 	Source    source.File
+	Package   string
+	Imports   []string
 	Records   []RecordDecl
 	Enums     []EnumDecl
 	Functions []FunctionDecl

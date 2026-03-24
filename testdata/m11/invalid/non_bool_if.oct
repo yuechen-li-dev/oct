@@ -1,3 +1,4 @@
+package Main
 fn Main() -> Int {
     if 1 {
         return 1

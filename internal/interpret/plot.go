@@ -17,26 +17,26 @@ const (
 	plotHeight = 4 * vg.Inch
 )
 
-func (i interpreter) evalPlotBuiltinCallExpr(env *environment, expr ast.CallExpr) (Value, error) {
+func (i interpreter) evalPlotBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (Value, error) {
 	if len(expr.Arguments) != 3 {
 		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' expects 3 arguments", expr.Callee)
 	}
 
-	xResult, err := i.evalExpr(env, expr.Arguments[0])
+	xResult, err := i.evalExpr(env, pkgName, expr.Arguments[0])
 	if err != nil {
 		return Value{}, err
 	}
 	if xResult.hasError {
 		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 1", expr.Callee)
 	}
-	yResult, err := i.evalExpr(env, expr.Arguments[1])
+	yResult, err := i.evalExpr(env, pkgName, expr.Arguments[1])
 	if err != nil {
 		return Value{}, err
 	}
 	if yResult.hasError {
 		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 2", expr.Callee)
 	}
-	pathResult, err := i.evalExpr(env, expr.Arguments[2])
+	pathResult, err := i.evalExpr(env, pkgName, expr.Arguments[2])
 	if err != nil {
 		return Value{}, err
 	}

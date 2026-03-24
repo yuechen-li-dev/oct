@@ -1,3 +1,4 @@
+package Main
 fn Main() -> Int {
     let xs = [5, 8, 13]
     return xs[2]

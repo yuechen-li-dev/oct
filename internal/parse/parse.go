@@ -31,6 +31,32 @@ type parser struct {
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
 	file := ast.File{Source: src}
+	if _, err := p.expect(lex.KeywordPackage, "missing package declaration"); err != nil {
+		return ast.File{}, err
+	}
+	packageName, err := p.expect(lex.Identifier, "expected package name")
+	if err != nil {
+		return ast.File{}, err
+	}
+	file.Package = packageName.Lexeme
+
+	seenImports := make(map[string]struct{})
+	for p.current().Kind == lex.KeywordImport {
+		p.advance()
+		importName, err := p.expect(lex.Identifier, "expected import package name")
+		if err != nil {
+			return ast.File{}, err
+		}
+		if importName.Lexeme == file.Package {
+			return ast.File{}, p.errorAtToken(importName, fmt.Sprintf("package '%s' cannot import itself", file.Package))
+		}
+		if _, exists := seenImports[importName.Lexeme]; exists {
+			return ast.File{}, p.errorAtToken(importName, fmt.Sprintf("duplicate import '%s'", importName.Lexeme))
+		}
+		seenImports[importName.Lexeme] = struct{}{}
+		file.Imports = append(file.Imports, importName.Lexeme)
+	}
+
 	for p.current().Kind != lex.EOF {
 		switch p.current().Kind {
 		case lex.KeywordRecord:
@@ -487,7 +513,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 	for {
 		switch {
 		case p.current().Kind == lex.LeftParen:
-			identifier, ok := expr.(ast.IdentifierExpr)
+			callee, ok := p.flattenCallee(expr)
 			if !ok {
 				return nil, p.errorAtCurrent("only direct named function calls are supported")
 			}
@@ -495,7 +521,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: identifier.Name, Arguments: arguments}
+			expr = ast.CallExpr{Callee: callee, Arguments: arguments}
 		case p.match(lex.Dot):
 			field, err := p.expect(lex.Identifier, "expected field name after '.'")
 			if err != nil {
@@ -518,6 +544,21 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 		default:
 			return expr, nil
 		}
+	}
+}
+
+func (p *parser) flattenCallee(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		left, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", false
+		}
+		return left.Name + "." + node.Field, true
+	default:
+		return "", false
 	}
 }
 

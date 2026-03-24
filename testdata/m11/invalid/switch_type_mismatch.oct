@@ -1,3 +1,4 @@
+package Main
 fn Main() -> Int {
     let x = switch 1 {
         case true => 2

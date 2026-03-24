@@ -2,10 +2,12 @@ package typecheck
 
 import (
 	"fmt"
+	"strings"
 
 	"oct/internal/ast"
 	"oct/internal/builtin"
 	"oct/internal/dimension"
+	"oct/internal/project"
 )
 
 type BaseType string
@@ -67,11 +69,51 @@ func Check(file ast.File) error {
 	return checker.checkFile(file)
 }
 
+func CheckProgram(program project.Program) error {
+	packageCheckers := make(map[string]checker, len(program.Packages))
+	for name, pkg := range program.Packages {
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		chk := checker{
+			functions: make(map[string]functionSignature),
+			records:   make(map[string]recordInfo),
+			enums:     make(map[string]enumInfo),
+			typeNames: make(map[string]struct{}),
+		}
+		if err := chk.registerPackageDeclarations(file); err != nil {
+			return err
+		}
+		packageCheckers[name] = chk
+	}
+
+	for name, chk := range packageCheckers {
+		imports := make(map[string]map[string]functionSignature)
+		for _, imp := range program.Packages[name].Imports {
+			imported, ok := packageCheckers[imp]
+			if !ok {
+				return fmt.Errorf("unknown package '%s'", imp)
+			}
+			imports[imp] = imported.functions
+		}
+		chk.importedFunctions = imports
+		packageCheckers[name] = chk
+	}
+
+	for name, pkg := range program.Packages {
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		chk := packageCheckers[name]
+		if err := chk.checkPackageFunctions(file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type checker struct {
-	functions map[string]functionSignature
-	records   map[string]recordInfo
-	enums     map[string]enumInfo
-	typeNames map[string]struct{}
+	functions         map[string]functionSignature
+	records           map[string]recordInfo
+	enums             map[string]enumInfo
+	typeNames         map[string]struct{}
+	importedFunctions map[string]map[string]functionSignature
 }
 
 type recordInfo struct {
@@ -107,6 +149,13 @@ func (s *scope) lookup(name string) (Type, bool) {
 }
 
 func (c checker) checkFile(file ast.File) error {
+	if err := c.registerPackageDeclarations(file); err != nil {
+		return err
+	}
+	return c.checkPackageFunctions(file)
+}
+
+func (c checker) registerPackageDeclarations(file ast.File) error {
 	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
@@ -136,6 +185,10 @@ func (c checker) checkFile(file ast.File) error {
 		c.functions[function.Name] = signature
 	}
 
+	return nil
+}
+
+func (c checker) checkPackageFunctions(file ast.File) error {
 	for _, function := range file.Functions {
 		if err := c.checkFunction(function); err != nil {
 			return err
@@ -677,8 +730,26 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		return c.checkBuiltinCallExpr(scope, expr, ctx)
 	}
 
-	signature, ok := c.functions[expr.Callee]
+	lookupName := expr.Callee
+	lookupTable := c.functions
+	if dot := strings.Index(expr.Callee, "."); dot >= 0 {
+		pkgName := expr.Callee[:dot]
+		symbol := expr.Callee[dot+1:]
+		imported, ok := c.importedFunctions[pkgName]
+		if !ok {
+			return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
+		}
+		lookupName = symbol
+		lookupTable = imported
+	}
+
+	signature, ok := lookupTable[lookupName]
 	if !ok {
+		if dot := strings.Index(expr.Callee, "."); dot >= 0 {
+			pkgName := expr.Callee[:dot]
+			symbol := expr.Callee[dot+1:]
+			return ExprType{}, fmt.Errorf("package '%s' has no symbol '%s'", pkgName, symbol)
+		}
 		return ExprType{}, fmt.Errorf("undefined function: %s", expr.Callee)
 	}
 	if len(expr.Arguments) != len(signature.parameters) {

@@ -5,9 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/source"
+	"oct/internal/project"
 	"oct/internal/typecheck"
 )
 
@@ -16,24 +14,15 @@ type Result struct {
 }
 
 func Compile(path string) (Result, error) {
-	file, err := source.Load(path)
+	program, err := project.Load(path)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
 		return Result{}, err
 	}
 
-	lexed, err := lex.Analyze(file)
-	if err != nil {
-		return Result{}, err
-	}
-	program, err := parse.BuildFile(lexed)
-	if err != nil {
-		return Result{}, err
-	}
-	if err := typecheck.Check(program); err != nil {
-		return Result{}, err
-	}
-
-	artifactPath := artifactPathFor(program.Source.Path)
+	artifactPath := artifactPathFor(program.EntrySource)
 	artifactBody := []byte("oct m0 placeholder artifact\n")
 	if err := os.WriteFile(artifactPath, artifactBody, 0o644); err != nil {
 		return Result{}, fmt.Errorf("write artifact %s: %w", artifactPath, err)
