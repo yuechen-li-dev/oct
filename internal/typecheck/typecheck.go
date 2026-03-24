@@ -86,15 +86,28 @@ func CheckProgram(program project.Program) error {
 	}
 
 	for name, chk := range packageCheckers {
-		imports := make(map[string]map[string]functionSignature)
+		imports := make(map[string]packageSymbols)
 		for _, imp := range program.Packages[name].Imports {
 			imported, ok := packageCheckers[imp]
 			if !ok {
 				return fmt.Errorf("unknown package '%s'", imp)
 			}
-			imports[imp] = imported.functions
+			imports[imp] = packageSymbols{
+				functions: imported.functions,
+				records:   imported.records,
+				enums:     imported.enums,
+			}
 		}
-		chk.importedFunctions = imports
+		chk.importedPackages = imports
+		packageCheckers[name] = chk
+	}
+
+	for name, pkg := range program.Packages {
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		chk := packageCheckers[name]
+		if err := chk.registerFunctionSignatures(file); err != nil {
+			return err
+		}
 		packageCheckers[name] = chk
 	}
 
@@ -109,11 +122,17 @@ func CheckProgram(program project.Program) error {
 }
 
 type checker struct {
-	functions         map[string]functionSignature
-	records           map[string]recordInfo
-	enums             map[string]enumInfo
-	typeNames         map[string]struct{}
-	importedFunctions map[string]map[string]functionSignature
+	functions        map[string]functionSignature
+	records          map[string]recordInfo
+	enums            map[string]enumInfo
+	typeNames        map[string]struct{}
+	importedPackages map[string]packageSymbols
+}
+
+type packageSymbols struct {
+	functions map[string]functionSignature
+	records   map[string]recordInfo
+	enums     map[string]enumInfo
 }
 
 type recordInfo struct {
@@ -152,6 +171,9 @@ func (c checker) checkFile(file ast.File) error {
 	if err := c.registerPackageDeclarations(file); err != nil {
 		return err
 	}
+	if err := c.registerFunctionSignatures(file); err != nil {
+		return err
+	}
 	return c.checkPackageFunctions(file)
 }
 
@@ -175,16 +197,23 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 		if builtin.IsName(function.Name) {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
+		if _, exists := c.functions[function.Name]; exists {
+			return fmt.Errorf("duplicate function: %s", function.Name)
+		}
+		c.functions[function.Name] = functionSignature{}
+	}
+
+	return nil
+}
+
+func (c checker) registerFunctionSignatures(file ast.File) error {
+	for _, function := range file.Functions {
 		signature, err := c.resolveFunctionSignature(function)
 		if err != nil {
 			return fmt.Errorf("function %s: %w", function.Name, err)
 		}
-		if _, exists := c.functions[function.Name]; exists {
-			return fmt.Errorf("duplicate function: %s", function.Name)
-		}
 		c.functions[function.Name] = signature
 	}
-
 	return nil
 }
 
@@ -454,7 +483,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 	case ast.RecordLiteralExpr:
 		return c.checkRecordLiteralExpr(scope, node, ctx)
 	case ast.EnumValueExpr:
-		enumDecl, ok := c.enums[node.EnumName]
+		enumDecl, ok := c.lookupEnum(node.EnumName)
 		if !ok {
 			return ExprType{}, fmt.Errorf("unknown enum type: %s", node.EnumName)
 		}
@@ -486,12 +515,25 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 	case ast.FieldAccessExpr:
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
-			if enumDecl, enumExists := c.enums[identifier.Name]; enumExists {
+			if enumDecl, enumExists := c.lookupEnum(identifier.Name); enumExists {
 				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
 					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", identifier.Name, node.Field)
 				}
 				return ExprType{ValueType: Type{Name: identifier.Name}}, nil
 			}
+		}
+		if enumName, ok := c.flattenEnumTypeName(node.Target); ok {
+			enumDecl, enumExists := c.lookupEnum(enumName)
+			if enumExists {
+				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
+					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", enumName, node.Field)
+				}
+				return ExprType{ValueType: Type{Name: enumName}}, nil
+			}
+			if c.isKnownTypeName(enumName) {
+				return ExprType{}, fmt.Errorf("type '%s' is not an enum", enumName)
+			}
+			return ExprType{}, fmt.Errorf("unknown enum type: %s", enumName)
 		}
 		targetType, err := c.checkExpr(scope, node.Target, ctx)
 		if err != nil {
@@ -500,7 +542,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if targetType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		recordDecl, ok := c.records[targetType.ValueType.Name]
+		recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
 		if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
 			return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
 		}
@@ -732,15 +774,17 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 
 	lookupName := expr.Callee
 	lookupTable := c.functions
+	calleePackage := ""
 	if dot := strings.Index(expr.Callee, "."); dot >= 0 {
 		pkgName := expr.Callee[:dot]
 		symbol := expr.Callee[dot+1:]
-		imported, ok := c.importedFunctions[pkgName]
+		imported, ok := c.importedPackages[pkgName]
 		if !ok {
 			return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
 		}
 		lookupName = symbol
-		lookupTable = imported
+		lookupTable = imported.functions
+		calleePackage = pkgName
 	}
 
 	signature, ok := lookupTable[lookupName]
@@ -748,9 +792,20 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		if dot := strings.Index(expr.Callee, "."); dot >= 0 {
 			pkgName := expr.Callee[:dot]
 			symbol := expr.Callee[dot+1:]
-			return ExprType{}, fmt.Errorf("package '%s' has no symbol '%s'", pkgName, symbol)
+			if imported, ok := c.importedPackages[pkgName]; ok {
+				if _, exists := imported.records[symbol]; exists {
+					return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
+				}
+				if _, exists := imported.enums[symbol]; exists {
+					return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
+				}
+			}
+			return ExprType{}, fmt.Errorf("package '%s' has no function '%s'", pkgName, symbol)
 		}
 		return ExprType{}, fmt.Errorf("undefined function: %s", expr.Callee)
+	}
+	if calleePackage != "" {
+		signature = c.qualifyImportedSignature(calleePackage, signature)
 	}
 	if len(expr.Arguments) != len(signature.parameters) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", expr.Callee, len(signature.parameters), len(expr.Arguments))
@@ -768,6 +823,37 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		}
 	}
 	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
+}
+
+func (c checker) qualifyImportedSignature(pkgName string, signature functionSignature) functionSignature {
+	qualified := functionSignature{
+		parameters: make([]Type, 0, len(signature.parameters)),
+		returnType: c.qualifyImportedType(pkgName, signature.returnType),
+		isFallible: signature.isFallible,
+	}
+	for _, parameter := range signature.parameters {
+		qualified.parameters = append(qualified.parameters, c.qualifyImportedType(pkgName, parameter))
+	}
+	return qualified
+}
+
+func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
+	if valueType.Name == "" || valueType.IsArray {
+		return valueType
+	}
+	if strings.Contains(valueType.Name, ".") {
+		return valueType
+	}
+	imported := c.importedPackages[pkgName]
+	if _, ok := imported.records[valueType.Name]; ok {
+		valueType.Name = pkgName + "." + valueType.Name
+		return valueType
+	}
+	if _, ok := imported.enums[valueType.Name]; ok {
+		valueType.Name = pkgName + "." + valueType.Name
+		return valueType
+	}
+	return valueType
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
@@ -928,8 +1014,11 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 }
 
 func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr, ctx functionContext) (ExprType, error) {
-	recordDecl, ok := c.records[expr.TypeName]
+	recordDecl, ok := c.lookupRecord(expr.TypeName)
 	if !ok {
+		if c.isKnownTypeName(expr.TypeName) {
+			return ExprType{}, fmt.Errorf("record literal requires record type, got %s", expr.TypeName)
+		}
 		return ExprType{}, fmt.Errorf("unknown record type: %s", expr.TypeName)
 	}
 	seen := make(map[string]struct{}, len(expr.Fields))
@@ -963,6 +1052,37 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
+	qualifiedName := typeRef.Name
+	if typeRef.Package != "" {
+		qualifiedName = typeRef.Package + "." + typeRef.Name
+		imported, ok := c.importedPackages[typeRef.Package]
+		if !ok {
+			return Type{}, fmt.Errorf("unknown package '%s'", typeRef.Package)
+		}
+		if _, ok := imported.records[typeRef.Name]; ok {
+			if typeRef.HasUnit {
+				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
+			}
+			if typeRef.IsArray {
+				return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
+			}
+			return Type{Name: qualifiedName}, nil
+		}
+		if _, ok := imported.enums[typeRef.Name]; ok {
+			if typeRef.HasUnit {
+				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
+			}
+			if typeRef.IsArray {
+				return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
+			}
+			return Type{Name: qualifiedName}, nil
+		}
+		if _, ok := imported.functions[typeRef.Name]; ok {
+			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
+		}
+		return Type{}, fmt.Errorf("package '%s' has no type '%s'", typeRef.Package, typeRef.Name)
+	}
+
 	baseType, err := resolveBaseType(typeRef.Name)
 	if err != nil {
 		if _, isRecord := c.records[typeRef.Name]; !isRecord {
@@ -1096,8 +1216,67 @@ func isEnumType(c checker, valueType Type) bool {
 	if valueType.IsArray || valueType.Name == "" {
 		return false
 	}
-	_, ok := c.enums[valueType.Name]
+	_, ok := c.lookupEnum(valueType.Name)
 	return ok
+}
+
+func (c checker) lookupRecord(typeName string) (recordInfo, bool) {
+	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
+		imported, exists := c.importedPackages[pkgName]
+		if !exists {
+			return recordInfo{}, false
+		}
+		recordDecl, exists := imported.records[localName]
+		return recordDecl, exists
+	}
+	recordDecl, exists := c.records[typeName]
+	return recordDecl, exists
+}
+
+func (c checker) lookupEnum(typeName string) (enumInfo, bool) {
+	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
+		imported, exists := c.importedPackages[pkgName]
+		if !exists {
+			return enumInfo{}, false
+		}
+		enumDecl, exists := imported.enums[localName]
+		return enumDecl, exists
+	}
+	enumDecl, exists := c.enums[typeName]
+	return enumDecl, exists
+}
+
+func (c checker) isKnownTypeName(typeName string) bool {
+	if _, exists := c.lookupRecord(typeName); exists {
+		return true
+	}
+	if _, exists := c.lookupEnum(typeName); exists {
+		return true
+	}
+	return false
+}
+
+func (c checker) flattenEnumTypeName(expr ast.Expr) (string, bool) {
+	fieldAccess, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		return "", false
+	}
+	pkgIdentifier, ok := fieldAccess.Target.(ast.IdentifierExpr)
+	if !ok {
+		return "", false
+	}
+	return pkgIdentifier.Name + "." + fieldAccess.Field, true
+}
+
+func splitQualifiedTypeName(typeName string) (string, string, bool) {
+	dot := strings.Index(typeName, ".")
+	if dot <= 0 || dot == len(typeName)-1 {
+		return "", "", false
+	}
+	if strings.Index(typeName[dot+1:], ".") >= 0 {
+		return "", "", false
+	}
+	return typeName[:dot], typeName[dot+1:], true
 }
 
 func isComparisonOperator(operator string) bool {

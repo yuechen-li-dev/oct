@@ -44,6 +44,7 @@ type Parameter struct {
 }
 
 type TypeRef struct {
+	Package   string
 	Name      string
 	Dimension dimension.Dimension
 	HasUnit   bool

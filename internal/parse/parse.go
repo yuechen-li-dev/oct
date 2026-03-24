@@ -232,6 +232,14 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	}
 
 	typeRef := ast.TypeRef{Name: token.Lexeme}
+	if p.match(lex.Dot) {
+		typeName, err := p.expect(lex.Identifier, "expected type name after '.'")
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		typeRef.Package = token.Lexeme
+		typeRef.Name = typeName.Lexeme
+	}
 	if p.match(lex.LeftAngle) {
 		dim, err := p.parseDimensionSpec()
 		if err != nil {
@@ -522,6 +530,15 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: callee, Arguments: arguments}
+		case p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() && p.isRecordLiteralTypeExpr(expr):
+			typeName, err := p.flattenTypeExpr(expr)
+			if err != nil {
+				return nil, err
+			}
+			expr, err = p.parseRecordLiteralExpr(typeName)
+			if err != nil {
+				return nil, err
+			}
 		case p.match(lex.Dot):
 			field, err := p.expect(lex.Identifier, "expected field name after '.'")
 			if err != nil {
@@ -559,6 +576,33 @@ func (p *parser) flattenCallee(expr ast.Expr) (string, bool) {
 		return left.Name + "." + node.Field, true
 	default:
 		return "", false
+	}
+}
+
+func (p *parser) isRecordLiteralTypeExpr(expr ast.Expr) bool {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return true
+	case ast.FieldAccessExpr:
+		_, ok := node.Target.(ast.IdentifierExpr)
+		return ok
+	default:
+		return false
+	}
+}
+
+func (p *parser) flattenTypeExpr(expr ast.Expr) (string, error) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, nil
+	case ast.FieldAccessExpr:
+		left, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", p.errorAtCurrent("qualified symbol form is not supported here")
+		}
+		return left.Name + "." + node.Field, nil
+	default:
+		return "", p.errorAtCurrent("qualified symbol form is not supported here")
 	}
 }
 
@@ -618,9 +662,6 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.BoolLiteral{Value: false}, nil
 	case lex.Identifier:
 		p.advance()
-		if p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() {
-			return p.parseRecordLiteralExpr(token.Lexeme)
-		}
 		return ast.IdentifierExpr{Name: token.Lexeme}, nil
 	case lex.LeftParen:
 		p.advance()

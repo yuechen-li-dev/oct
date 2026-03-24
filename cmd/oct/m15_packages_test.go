@@ -91,7 +91,7 @@ func TestM15RejectsInvalidPackagePrograms(t *testing.T) {
 				writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nfn Distance() -> Int { return 0 }\n")
 				return filepath.Join(root, "Main", "main.oct")
 			},
-			wantErr: "package 'Geometry' has no symbol 'Nope'",
+			wantErr: "package 'Geometry' has no function 'Nope'",
 		},
 	}
 
@@ -121,6 +121,132 @@ func TestM15BuildAndBuiltinsCoexist(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "build succeeded") {
 		t.Fatalf("expected build success output, got %q", stdout)
+	}
+}
+
+func TestM15aQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\nfn MakePoint() -> Point { return Point { X: 4m Y: 2m } }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn UsePoint(p: Geometry.Point) -> Float<m> { return p.X }\nfn Main() -> Float<m> { return UsePoint(Geometry.MakePoint()) }\n")
+
+	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	}
+	if stdout != "4m\n" {
+		t.Fatalf("expected 4m, got %q", stdout)
+	}
+}
+
+func TestM15aQualifiedRecordConstruction(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { return Geometry.Point { X: 1m Y: 2m } }\n")
+
+	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	}
+	if stdout != "Geometry.Point{X: 1m, Y: 2m}\n" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+}
+
+func TestM15aQualifiedEnumValueReference(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Euler }\n")
+
+	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	}
+	if stdout != "Physics.Method.Euler\n" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+}
+
+func TestM15aRejectsUnknownQualifiedType(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main(p: Geometry.Nope) -> Int { return 0 }\n")
+
+	_, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err == nil {
+		t.Fatal("expected run to fail")
+	}
+	if !strings.Contains(stderr, "package 'Geometry' has no type 'Nope'") {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestM15aRejectsUnknownQualifiedEnumVariant(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Bogus }\n")
+
+	_, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err == nil {
+		t.Fatal("expected run to fail")
+	}
+	if !strings.Contains(stderr, "enum 'Physics.Method' has no variant 'Bogus'") {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestM15aRejectsQualifiedRecordLiteralWrongField(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { return Geometry.Point { X: 1m Z: 2m } }\n")
+
+	_, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err == nil {
+		t.Fatal("expected run to fail")
+	}
+	if !strings.Contains(stderr, "record 'Geometry.Point' has no field 'Z'") {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestM15aRejectsQualifiedSymbolKindMismatch(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int }\nfn Distance() -> Int { return 42 }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { let x = Geometry.Point() return 0 }\n")
+
+	_, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err == nil {
+		t.Fatal("expected run to fail")
+	}
+	if !strings.Contains(stderr, "package-qualified type 'Geometry.Point' used where a function is required") {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestM15aBuiltinsCoexistWithQualifiedTypesAndFunctions(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int Y: Int }\nfn Origin() -> Point { return Point { X: 0 Y: 0 } }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { let p = Geometry.Origin() Print(p.X) return 0 }\n")
+
+	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	}
+	if stdout != "0\n0\n" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+}
+
+func TestM15aBuildRejectsInvalidQualifiedPrograms(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Nope }\n")
+
+	_, stderr, err := executeCLI("build", filepath.Join(root, "Main", "main.oct"))
+	if err == nil {
+		t.Fatal("expected build to fail")
+	}
+	if !strings.Contains(stderr, "enum 'Physics.Method' has no variant 'Nope'") {
+		t.Fatalf("unexpected stderr: %q", stderr)
 	}
 }
 
