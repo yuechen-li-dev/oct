@@ -7,7 +7,24 @@ import (
 
 type File struct {
 	Source    source.File
+	Records   []RecordDecl
+	Enums     []EnumDecl
 	Functions []FunctionDecl
+}
+
+type RecordDecl struct {
+	Name   string
+	Fields []RecordField
+}
+
+type RecordField struct {
+	Name string
+	Type TypeRef
+}
+
+type EnumDecl struct {
+	Name     string
+	Variants []string
 }
 
 type FunctionDecl struct {
@@ -149,6 +166,13 @@ type IndexExpr struct {
 
 func (IndexExpr) exprNode() {}
 
+type FieldAccessExpr struct {
+	Target Expr
+	Field  string
+}
+
+func (FieldAccessExpr) exprNode() {}
+
 type BinaryExpr struct {
 	Left     Expr
 	Operator string
@@ -195,3 +219,22 @@ type SwitchExpr struct {
 }
 
 func (SwitchExpr) exprNode() {}
+
+type RecordLiteralExpr struct {
+	TypeName string
+	Fields   []RecordLiteralField
+}
+
+func (RecordLiteralExpr) exprNode() {}
+
+type RecordLiteralField struct {
+	Name  string
+	Value Expr
+}
+
+type EnumValueExpr struct {
+	EnumName string
+	Variant  string
+}
+
+func (EnumValueExpr) exprNode() {}

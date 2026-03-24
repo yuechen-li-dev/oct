@@ -33,6 +33,8 @@ const (
 	KeywordWhile  TokenKind = "KeywordWhile"
 	KeywordSwitch TokenKind = "KeywordSwitch"
 	KeywordCase   TokenKind = "KeywordCase"
+	KeywordRecord TokenKind = "KeywordRecord"
+	KeywordEnum   TokenKind = "KeywordEnum"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -43,6 +45,7 @@ const (
 	LeftAngle    TokenKind = "LeftAngle"
 	RightAngle   TokenKind = "RightAngle"
 	Comma        TokenKind = "Comma"
+	Dot          TokenKind = "Dot"
 	Colon        TokenKind = "Colon"
 	Assign       TokenKind = "Assign"
 	Arrow        TokenKind = "Arrow"
@@ -187,7 +190,7 @@ func (l *lexer) nextToken() (Token, error) {
 		if l.matchString(".") {
 			return Token{Kind: DotDot, Lexeme: "..", Line: line, Column: column}, nil
 		}
-		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
+		return Token{Kind: Dot, Lexeme: ".", Line: line, Column: column}, nil
 	case '=':
 		l.advanceRune()
 		if l.matchString(">") {
@@ -350,6 +353,10 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordSwitch
 	case "case":
 		return KeywordCase
+	case "record":
+		return KeywordRecord
+	case "enum":
+		return KeywordEnum
 	default:
 		return Identifier
 	}
