@@ -19,7 +19,7 @@ const (
 
 func (i interpreter) evalPlotBuiltinCallExpr(env *environment, expr ast.CallExpr) (Value, error) {
 	if len(expr.Arguments) != 3 {
-		return Value{}, fmt.Errorf("runtime invariant violation: %s expects 3 arguments", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' expects 3 arguments", expr.Callee)
 	}
 
 	xResult, err := i.evalExpr(env, expr.Arguments[0])
@@ -27,25 +27,25 @@ func (i interpreter) evalPlotBuiltinCallExpr(env *environment, expr ast.CallExpr
 		return Value{}, err
 	}
 	if xResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached %s x argument", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 1", expr.Callee)
 	}
 	yResult, err := i.evalExpr(env, expr.Arguments[1])
 	if err != nil {
 		return Value{}, err
 	}
 	if yResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached %s y argument", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 2", expr.Callee)
 	}
 	pathResult, err := i.evalExpr(env, expr.Arguments[2])
 	if err != nil {
 		return Value{}, err
 	}
 	if pathResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached %s path argument", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 3", expr.Callee)
 	}
 
 	if pathResult.value.Kind != ValueString {
-		return Value{}, fmt.Errorf("runtime invariant violation: %s path must be String, got %s", expr.Callee, pathResult.value.Kind)
+		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' argument 3 expects String, got %s", expr.Callee, pathResult.value.Kind)
 	}
 	if !strings.HasSuffix(pathResult.value.Text, ".png") {
 		return Value{}, fmt.Errorf("runtime error: plot output path must end with .png")
@@ -60,10 +60,10 @@ func (i interpreter) evalPlotBuiltinCallExpr(env *environment, expr ast.CallExpr
 		return Value{}, err
 	}
 	if len(xs) == 0 || len(ys) == 0 {
-		return Value{}, fmt.Errorf("runtime error: %s requires non-empty x and y arrays", expr.Callee)
+		return Value{}, fmt.Errorf("runtime error: function '%s' requires non-empty x and y arrays", expr.Callee)
 	}
 	if len(xs) != len(ys) {
-		return Value{}, fmt.Errorf("runtime error: %s requires x and y arrays of equal length", expr.Callee)
+		return Value{}, fmt.Errorf("runtime error: function '%s' requires x and y arrays of equal length", expr.Callee)
 	}
 
 	if err := writePlot(expr.Callee, xs, ys, pathResult.value.Text); err != nil {
@@ -75,12 +75,12 @@ func (i interpreter) evalPlotBuiltinCallExpr(env *environment, expr ast.CallExpr
 
 func toPlotData(functionName string, value Value, label string) ([]float64, error) {
 	if value.Kind != ValueArray {
-		return nil, fmt.Errorf("runtime error: %s requires %s to be an array", functionName, label)
+		return nil, fmt.Errorf("runtime error: function '%s' requires argument %s to be an array", functionName, label)
 	}
 	points := make([]float64, 0, len(value.Array))
 	for _, element := range value.Array {
 		if !element.Dimension.IsDimensionless() {
-			return nil, fmt.Errorf("runtime error: %s does not accept dimensioned arrays", functionName)
+			return nil, fmt.Errorf("runtime error: function '%s' does not accept dimensioned arrays", functionName)
 		}
 		switch element.Kind {
 		case ValueInt:
@@ -88,7 +88,7 @@ func toPlotData(functionName string, value Value, label string) ([]float64, erro
 		case ValueFloat:
 			points = append(points, element.Float)
 		default:
-			return nil, fmt.Errorf("runtime error: %s requires %s to contain only Int or Float values", functionName, label)
+			return nil, fmt.Errorf("runtime error: function '%s' requires argument %s to contain only Int or Float values", functionName, label)
 		}
 	}
 	return points, nil
@@ -119,7 +119,7 @@ func writePlot(functionName string, xs []float64, ys []float64, outputPath strin
 		}
 		p.Add(scatter)
 	default:
-		return fmt.Errorf("runtime invariant violation: unsupported plotting built-in %s", functionName)
+		return fmt.Errorf("runtime invariant violation: unsupported plotting built-in function '%s'", functionName)
 	}
 
 	if err := p.Save(plotWidth, plotHeight, filepath.Clean(outputPath)); err != nil {

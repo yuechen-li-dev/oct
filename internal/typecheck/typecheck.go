@@ -4,17 +4,9 @@ import (
 	"fmt"
 
 	"oct/internal/ast"
+	"oct/internal/builtin"
 	"oct/internal/dimension"
 )
-
-func isReservedBuiltinFunctionName(name string) bool {
-	switch name {
-	case "Len", "Abs", "Sqrt", "Sin", "Cos", "PlotLine", "PlotScatter":
-		return true
-	default:
-		return false
-	}
-}
 
 type BaseType string
 
@@ -95,7 +87,7 @@ func (s *scope) lookup(name string) (Type, bool) {
 
 func (c checker) checkFile(file ast.File) error {
 	for _, function := range file.Functions {
-		if isReservedBuiltinFunctionName(function.Name) {
+		if builtin.IsName(function.Name) {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		signature, err := c.resolveFunctionSignature(function)
@@ -212,7 +204,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: for %s: fallible expression must be handled explicitly", ctx.name, node.Name)
 		}
 		if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
-			return false, fmt.Errorf("function %s: for %s: expected Range, got %s", ctx.name, node.Name, rangeType.ValueType)
+			return false, fmt.Errorf("function %s: for %s: range expression expects Range, got %s", ctx.name, node.Name, rangeType.ValueType)
 		}
 		loopScope := newScope(scope)
 		loopScope.define(node.Name, Type{Base: BaseTypeInt})
@@ -529,7 +521,7 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
-	if isReservedBuiltinFunctionName(expr.Callee) {
+	if builtin.IsName(expr.Callee) {
 		return c.checkBuiltinCallExpr(scope, expr, ctx)
 	}
 
@@ -605,7 +597,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
-		return ExprType{}, fmt.Errorf("unsupported built-in function: %s", expr.Callee)
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", expr.Callee)
 	}
 }
 
@@ -655,7 +647,7 @@ func requirePlotArrayType(functionName string, index int, valueType Type) error 
 		return fmt.Errorf("function '%s' argument %d expects Int[] or Float[], got %s", functionName, index, valueType)
 	}
 	if !valueType.Dimension.IsDimensionless() {
-		return fmt.Errorf("%s does not accept dimensioned arrays", functionName)
+		return fmt.Errorf("function '%s' does not accept dimensioned arrays", functionName)
 	}
 	switch valueType.Base {
 	case BaseTypeInt, BaseTypeFloat:

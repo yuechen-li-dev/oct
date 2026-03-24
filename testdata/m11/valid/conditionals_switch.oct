@@ -1,0 +1,11 @@
+fn Main() -> Int {
+    let x = switch 2 {
+        case 1 => 10
+        case 2 => 20
+        else => 30
+    }
+    if true {
+        return x
+    }
+    return 0
+}
