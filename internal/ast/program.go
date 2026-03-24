@@ -70,6 +70,14 @@ type MatchStmt struct {
 
 func (MatchStmt) stmtNode() {}
 
+type IfStmt struct {
+	Condition Expr
+	ThenBody  Block
+	ElseBody  *Block
+}
+
+func (IfStmt) stmtNode() {}
+
 type Expr interface {
 	exprNode()
 }
@@ -161,3 +169,16 @@ type UnwrapExpr struct {
 }
 
 func (UnwrapExpr) exprNode() {}
+
+type SwitchCase struct {
+	Match Expr
+	Value Expr
+}
+
+type SwitchExpr struct {
+	Subject Expr
+	Cases   []SwitchCase
+	Else    Expr
+}
+
+func (SwitchExpr) exprNode() {}

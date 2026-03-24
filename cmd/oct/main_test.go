@@ -179,6 +179,61 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"}\n",
 			want: "0\n",
 		},
+		{
+			name: "if true returns then branch",
+			source: "fn Main() -> Int {\n" +
+				"    if true {\n" +
+				"        return 1\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "1\n",
+		},
+		{
+			name: "if false returns else branch",
+			source: "fn Main() -> Int {\n" +
+				"    if false {\n" +
+				"        return 1\n" +
+				"    } else {\n" +
+				"        return 2\n" +
+				"    }\n" +
+				"}\n",
+			want: "2\n",
+		},
+		{
+			name: "switch int expression",
+			source: "fn Main() -> Int {\n" +
+				"    let x = switch 1 {\n" +
+				"        case 0 => 10\n" +
+				"        case 1 => 20\n" +
+				"        else => 30\n" +
+				"    }\n" +
+				"    return x\n" +
+				"}\n",
+			want: "20\n",
+		},
+		{
+			name: "switch string expression",
+			source: "fn Main() -> Int {\n" +
+				"    let x = switch \"a\" {\n" +
+				"        case \"b\" => 1\n" +
+				"        case \"a\" => 2\n" +
+				"        else => 3\n" +
+				"    }\n" +
+				"    return x\n" +
+				"}\n",
+			want: "2\n",
+		},
+		{
+			name: "switch dimensioned result expression",
+			source: "fn Main() -> Float<m> {\n" +
+				"    return switch 1 {\n" +
+				"        case 1 => 1m\n" +
+				"        else => 2m\n" +
+				"    }\n" +
+				"}\n",
+			want: "1m\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -396,6 +451,57 @@ fn Main() -> Int {
 			}
 			if !strings.Contains(stderr, test.wantMessage) {
 				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestRunAndBuildRejectInvalidM9Programs(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "if condition must be bool",
+			source: `fn Main() -> Int {
+    if 1 {
+        return 1
+    }
+    return 0
+}
+`,
+			wantMessage: "if condition must be Bool, got Int",
+		},
+		{
+			name: "switch requires else",
+			source: `fn Main() -> Int {
+    let x = switch 1 {
+        case 1 => 2
+    }
+    return x
+}
+`,
+			wantMessage: "switch requires else arm",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			for _, command := range []string{"run", "build"} {
+				t.Run(command, func(t *testing.T) {
+					stdout, stderr, err := executeCLI(command, sourcePath)
+					if err == nil {
+						t.Fatalf("expected failure, got success with stdout %q", stdout)
+					}
+					if stdout != "" {
+						t.Fatalf("expected empty stdout, got %q", stdout)
+					}
+					if !strings.Contains(stderr, test.wantMessage) {
+						t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+					}
+				})
 			}
 		})
 	}

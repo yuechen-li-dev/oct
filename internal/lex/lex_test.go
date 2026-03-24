@@ -128,6 +128,48 @@ func TestAnalyzeTokenizesRangesAndForLoops(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesIfElseAndSwitch(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { if true { return switch 1 { case 1 => 2 else => 3 } } else { return 0 } }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordIf,
+		KeywordTrue,
+		LeftBrace,
+		KeywordReturn,
+		KeywordSwitch,
+		IntLiteral,
+		LeftBrace,
+		KeywordCase,
+		IntLiteral,
+		FatArrow,
+		IntLiteral,
+		KeywordElse,
+		FatArrow,
+		IntLiteral,
+		RightBrace,
+		RightBrace,
+		KeywordElse,
+		LeftBrace,
+		KeywordReturn,
+		IntLiteral,
+		RightBrace,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "// heading\n\nfn Main() -> Int {\n  // inside\n  return true\n}\n"}
 

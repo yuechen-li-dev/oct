@@ -233,3 +233,32 @@ func TestCheckRejectsInvalidM8Dimensions(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Bool<m> { return true }", "function Main: invalid dimension-qualified type syntax: Bool<m>")
 	assertTypeErrorContains(t, "fn Main() -> Float<m/s> { return 1m }", "function Main: function expects Float<m/s>, but return is Int<m>")
 }
+
+func TestCheckValidatesM9Conditionals(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int { if true { return 1 } return 0 }",
+		"fn Main() -> Int { if false { return 1 } else { return 2 } }",
+		"fn Main() -> Int { let x = switch 1 { case 0 => 10 case 1 => 20 else => 30 } return x }",
+		"fn Main() -> Int { let x = switch true { case true => 1 else => 0 } return x }",
+		"fn Main() -> Int { let x = switch \"a\" { case \"b\" => 1 case \"a\" => 2 else => 3 } return x }",
+		"fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2m } }",
+		"fn Main() -> Int ! Error { if true { return 1 } else { return error(\"bad\") } }",
+		"fn Safe() -> Int ! Error { return 5 } fn Main() -> Int ! Error { let x = switch 1 { case 1 => Safe()? else => 0 } return x }",
+	}
+
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { if 1 { return 1 } return 0 }", "function Main: if condition must be Bool, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1 { case true => 2 else => 3 } return x }", "function Main: let x: switch case 1: case type Bool does not match subject type Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 => 2 else => 3.0 } return x }", "function Main: let x: switch else: result type Float does not match Int")
+	assertTypeErrorContains(t, "fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2s } }", "function Main: switch else: result type Int<s> does not match Int<m>")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch [1, 2] { else => 0 } return x }", "function Main: let x: switch subject type Int[] is not supported")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1m { case 1m => 2 else => 3 } return x }", "function Main: let x: switch subject type Int<m> is not supported")
+}

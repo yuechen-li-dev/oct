@@ -268,6 +268,24 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		}
 		armEnv.define(node.OkName, subject.value)
 		return i.executeBlock(armEnv, node.OkBody)
+	case ast.IfStmt:
+		condition, err := i.evalExpr(env, node.Condition)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if condition.hasError {
+			return stmtResult{value: condition.errorVal, returned: true}, nil
+		}
+		if condition.value.Kind != ValueBool {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: if condition must be Bool, got %s", condition.value.Kind)
+		}
+		if condition.value.Bool {
+			return i.executeBlock(env, node.ThenBody)
+		}
+		if node.ElseBody != nil {
+			return i.executeBlock(env, *node.ElseBody)
+		}
+		return stmtResult{}, nil
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
@@ -376,8 +394,62 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 			return evalResult{}, fmt.Errorf("fatal error: %s", inner.errorVal.Error.Message)
 		}
 		return evalResult{value: inner.value}, nil
+	case ast.SwitchExpr:
+		return i.evalSwitchExpr(env, node)
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
+	}
+}
+
+func (i interpreter) evalSwitchExpr(env *environment, expr ast.SwitchExpr) (evalResult, error) {
+	subject, err := i.evalExpr(env, expr.Subject)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if subject.hasError {
+		return evalResult{hasError: true, errorVal: subject.errorVal}, nil
+	}
+
+	for _, switchCase := range expr.Cases {
+		matched, err := i.switchCaseMatches(env, subject.value, switchCase.Match)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if !matched {
+			continue
+		}
+		return i.evalExpr(env, switchCase.Value)
+	}
+	return i.evalExpr(env, expr.Else)
+}
+
+func (i interpreter) switchCaseMatches(env *environment, subject Value, matchExpr ast.Expr) (bool, error) {
+	caseValueResult, err := i.evalExpr(env, matchExpr)
+	if err != nil {
+		return false, err
+	}
+	if caseValueResult.hasError {
+		return false, fmt.Errorf("runtime invariant violation: case label evaluation produced error")
+	}
+	caseValue := caseValueResult.value
+	if !subject.Dimension.IsDimensionless() || !caseValue.Dimension.IsDimensionless() {
+		return false, fmt.Errorf("runtime invariant violation: switch case values must be dimensionless")
+	}
+	if subject.Kind != caseValue.Kind {
+		return false, nil
+	}
+
+	switch subject.Kind {
+	case ValueInt:
+		return subject.Int == caseValue.Int, nil
+	case ValueFloat:
+		return subject.Float == caseValue.Float, nil
+	case ValueBool:
+		return subject.Bool == caseValue.Bool, nil
+	case ValueString:
+		return subject.Text == caseValue.Text, nil
+	default:
+		return false, fmt.Errorf("runtime invariant violation: unsupported switch subject kind %s", subject.Kind)
 	}
 }
 

@@ -28,6 +28,10 @@ const (
 	KeywordTrue   TokenKind = "KeywordTrue"
 	KeywordFalse  TokenKind = "KeywordFalse"
 	KeywordMatch  TokenKind = "KeywordMatch"
+	KeywordIf     TokenKind = "KeywordIf"
+	KeywordElse   TokenKind = "KeywordElse"
+	KeywordSwitch TokenKind = "KeywordSwitch"
+	KeywordCase   TokenKind = "KeywordCase"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -335,6 +339,14 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordFalse
 	case "match":
 		return KeywordMatch
+	case "if":
+		return KeywordIf
+	case "else":
+		return KeywordElse
+	case "switch":
+		return KeywordSwitch
+	case "case":
+		return KeywordCase
 	default:
 		return Identifier
 	}

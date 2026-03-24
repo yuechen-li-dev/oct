@@ -181,6 +181,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseForStmt()
 	case lex.KeywordMatch:
 		return p.parseMatchStmt()
+	case lex.KeywordIf:
+		return p.parseIfStmt()
 	default:
 		return nil, p.errorAtCurrent("expected statement")
 	}
@@ -254,6 +256,29 @@ func (p *parser) parseMatchStmt() (ast.Stmt, error) {
 	}
 
 	return ast.MatchStmt{Subject: subject, OkName: okName, OkBody: okBody, ErrName: errName, ErrBody: errBody}, nil
+}
+
+func (p *parser) parseIfStmt() (ast.Stmt, error) {
+	p.advance()
+	condition, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	thenBody, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+
+	var elseBody *ast.Block
+	if p.match(lex.KeywordElse) {
+		block, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		elseBody = &block
+	}
+
+	return ast.IfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
@@ -404,6 +429,8 @@ func (p *parser) parseCallArguments() ([]ast.Expr, error) {
 func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	token := p.current()
 	switch token.Kind {
+	case lex.KeywordSwitch:
+		return p.parseSwitchExpr()
 	case lex.IntLiteral:
 		p.advance()
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
@@ -444,6 +471,77 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseArrayLiteralExpr()
 	default:
 		return nil, p.errorAtCurrent("expected expression")
+	}
+}
+
+func (p *parser) parseSwitchExpr() (ast.Expr, error) {
+	p.advance()
+	subject, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start switch"); err != nil {
+		return nil, err
+	}
+
+	var cases []ast.SwitchCase
+	var elseValue ast.Expr
+	hasElse := false
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, p.errorAtCurrent("expected '}' to close switch")
+		}
+		switch p.current().Kind {
+		case lex.KeywordCase:
+			if hasElse {
+				return nil, p.errorAtCurrent("case arms must come before else arm")
+			}
+			p.advance()
+			match, err := p.parseSwitchCaseLiteral()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.FatArrow, "expected '=>' after case label"); err != nil {
+				return nil, err
+			}
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, ast.SwitchCase{Match: match, Value: value})
+		case lex.KeywordElse:
+			if hasElse {
+				return nil, p.errorAtCurrent("switch can only have one else arm")
+			}
+			p.advance()
+			if _, err := p.expect(lex.FatArrow, "expected '=>' after else"); err != nil {
+				return nil, err
+			}
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			elseValue = value
+			hasElse = true
+		default:
+			return nil, p.errorAtCurrent("expected 'case' or 'else' in switch")
+		}
+	}
+	p.advance()
+
+	if !hasElse {
+		return nil, p.errorAtCurrent("switch requires else arm")
+	}
+	return ast.SwitchExpr{Subject: subject, Cases: cases, Else: elseValue}, nil
+}
+
+func (p *parser) parseSwitchCaseLiteral() (ast.Expr, error) {
+	token := p.current()
+	switch token.Kind {
+	case lex.IntLiteral, lex.FloatLiteral, lex.StringLiteral, lex.KeywordTrue, lex.KeywordFalse:
+		return p.parsePrimaryExpr()
+	default:
+		return nil, p.errorAtCurrent("switch case must use int, float, bool, or string literal")
 	}
 }
 
