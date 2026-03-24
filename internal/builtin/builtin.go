@@ -6,6 +6,7 @@ var names = map[string]struct{}{
 	"Sqrt":        {},
 	"Sin":         {},
 	"Cos":         {},
+	"Print":       {},
 	"PlotLine":    {},
 	"PlotScatter": {},
 }

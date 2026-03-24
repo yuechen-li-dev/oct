@@ -129,7 +129,7 @@ func TestAnalyzeTokenizesRangesAndForLoops(t *testing.T) {
 }
 
 func TestAnalyzeTokenizesIfElseAndSwitch(t *testing.T) {
-	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { if true { return switch 1 { case 1 => 2 else => 3 } } else { return 0 } }"}
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { while false { return 9 } if true { return switch 1 { case 1 => 2 else => 3 } } else { return 0 } }"}
 
 	result, err := Analyze(file)
 	if err != nil {
@@ -144,6 +144,12 @@ func TestAnalyzeTokenizesIfElseAndSwitch(t *testing.T) {
 		Arrow,
 		Identifier,
 		LeftBrace,
+		KeywordWhile,
+		KeywordFalse,
+		LeftBrace,
+		KeywordReturn,
+		IntLiteral,
+		RightBrace,
 		KeywordIf,
 		KeywordTrue,
 		LeftBrace,

@@ -55,6 +55,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "match fallible result",
 			src:  "fn Safe() -> Int ! Error { return 7 } fn Main() -> Int { match Safe() { ok(value) => { return value } err(e) => { return 0 } } }",
 		},
+		{
+			name: "print builtin and while bool condition",
+			src:  "fn Main() -> Int { while false { return 1 } return Print(5m) }",
+		},
 	}
 
 	for _, test := range tests {
@@ -195,6 +199,13 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len() }", "function Main: function 'Len' expects 1 arguments, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1, 2) }", "function Main: function 'Sin' expects 1 arguments, got 2")
 	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
+}
+
+func TestCheckValidatesM12PrintAndWhile(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { return Print() }", "function Main: function 'Print' expects 1 arguments, got 0")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Print(1, 2) }", "function Main: function 'Print' expects 1 arguments, got 2")
+	assertTypeErrorContains(t, "fn Main() -> Int { while 1 { return 1 } return 0 }", "function Main: while condition must be Bool, got Int")
+	assertTypeErrorContains(t, "fn Print(x: Int) -> Int { return x } fn Main() -> Int { return 0 }", "function Print: cannot redeclare built-in function")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

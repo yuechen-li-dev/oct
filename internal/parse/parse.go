@@ -183,7 +183,12 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseMatchStmt()
 	case lex.KeywordIf:
 		return p.parseIfStmt()
+	case lex.KeywordWhile:
+		return p.parseWhileStmt()
 	default:
+		if p.isExpressionStart(p.current().Kind) {
+			return p.parseExprStmt()
+		}
 		return nil, p.errorAtCurrent("expected statement")
 	}
 }
@@ -211,6 +216,14 @@ func (p *parser) parseReturnStmt() (ast.Stmt, error) {
 		return nil, err
 	}
 	return ast.ReturnStmt{Value: value}, nil
+}
+
+func (p *parser) parseExprStmt() (ast.Stmt, error) {
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	return ast.ExprStmt{Value: value}, nil
 }
 
 func (p *parser) parseForStmt() (ast.Stmt, error) {
@@ -279,6 +292,28 @@ func (p *parser) parseIfStmt() (ast.Stmt, error) {
 	}
 
 	return ast.IfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
+}
+
+func (p *parser) parseWhileStmt() (ast.Stmt, error) {
+	p.advance()
+	condition, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return ast.WhileStmt{Condition: condition, Body: body}, nil
+}
+
+func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
+	switch kind {
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {

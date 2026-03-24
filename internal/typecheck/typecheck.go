@@ -195,6 +195,15 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 		}
 		return true, nil
+	case ast.ExprStmt:
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: %w", ctx.name, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: expression statement must not be fallible; handle it with '?', '!', or match", ctx.name)
+		}
+		return false, nil
 	case ast.ForStmt:
 		rangeType, err := c.checkExpr(scope, node.Range, ctx)
 		if err != nil {
@@ -261,6 +270,23 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, err
 		}
 		return thenReturned && elseReturned, nil
+	case ast.WhileStmt:
+		conditionType, err := c.checkExpr(scope, node.Condition, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: while condition: %w", ctx.name, err)
+		}
+		if conditionType.Fallible {
+			return false, fmt.Errorf("function %s: while condition: fallible expression must be handled explicitly", ctx.name)
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return false, fmt.Errorf("function %s: while condition must be Bool, got %s", ctx.name, conditionType.ValueType)
+		}
+
+		_, err = c.checkBlock(scope, node.Body, ctx)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
 	default:
 		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
 	}
@@ -565,6 +591,11 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 	}
 
 	switch expr.Callee {
+	case "Print":
+		if isPrintableType(argumentType.ValueType) {
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		}
+		return ExprType{}, fmt.Errorf("function 'Print' argument 1 has unsupported type %s", argumentType.ValueType)
 	case "Len":
 		if !argumentType.ValueType.IsArray {
 			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
@@ -599,6 +630,13 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", expr.Callee)
 	}
+}
+
+func isPrintableType(valueType Type) bool {
+	if valueType.IsArray {
+		return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString
+	}
+	return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString || valueType.Base == BaseTypeError
 }
 
 func (c checker) checkPlotBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {

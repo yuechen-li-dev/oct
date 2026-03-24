@@ -3,6 +3,7 @@ package interpret
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -73,6 +74,7 @@ func (v Value) String() string {
 
 type interpreter struct {
 	functions map[string]ast.FunctionDecl
+	stdout    io.Writer
 }
 
 type environment struct {
@@ -97,8 +99,11 @@ type callResult struct {
 	errorVal Value
 }
 
-func ExecuteMain(file ast.File) (Value, error) {
-	interpreter := interpreter{functions: make(map[string]ast.FunctionDecl, len(file.Functions))}
+func ExecuteMain(file ast.File, stdout io.Writer) (Value, error) {
+	interpreter := interpreter{
+		functions: make(map[string]ast.FunctionDecl, len(file.Functions)),
+		stdout:    stdout,
+	}
 	for _, function := range file.Functions {
 		interpreter.functions[function.Name] = function
 	}
@@ -225,6 +230,15 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
 		return stmtResult{value: value.value, returned: true}, nil
+	case ast.ExprStmt:
+		value, err := i.evalExpr(env, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		return stmtResult{}, nil
 	case ast.ForStmt:
 		rangeValue, err := i.evalExpr(env, node.Range)
 		if err != nil {
@@ -278,6 +292,30 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 			return i.executeBlock(env, *node.ElseBody)
 		}
 		return stmtResult{}, nil
+	case ast.WhileStmt:
+		for {
+			condition, err := i.evalExpr(env, node.Condition)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			if condition.hasError {
+				return stmtResult{value: condition.errorVal, returned: true}, nil
+			}
+			if condition.value.Kind != ValueBool {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: while condition must be Bool, got %s", condition.value.Kind)
+			}
+			if !condition.value.Bool {
+				return stmtResult{}, nil
+			}
+
+			result, err := i.executeBlock(env, node.Body)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			if result.returned {
+				return result, nil
+			}
+		}
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
@@ -515,6 +553,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (e
 	}
 
 	switch expr.Callee {
+	case "Print":
+		_, writeErr := fmt.Fprintln(i.stdout, argument.value.String())
+		if writeErr != nil {
+			return evalResult{}, fmt.Errorf("runtime error: write stdout: %w", writeErr)
+		}
+		return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
 	case "Len":
 		if argument.value.Kind != ValueArray {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects Array, got %s", argument.value.Kind)
