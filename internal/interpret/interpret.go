@@ -372,7 +372,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 	case ast.RecordLiteralExpr:
 		return i.evalRecordLiteralExpr(env, pkgName, node)
 	case ast.EnumValueExpr:
-		enumDecl, ok := i.enums[pkgName+"."+node.EnumName]
+		enumDecl, enumTypeName, ok := i.lookupEnumDecl(pkgName, node.EnumName)
 		if !ok {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: unknown enum type %s", node.EnumName)
 		}
@@ -386,7 +386,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if !found {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", node.EnumName, node.Variant)
 		}
-		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: node.EnumName, Variant: node.Variant}}}, nil
+		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Variant}}}, nil
 	case ast.IndexExpr:
 		target, err := i.evalExpr(env, pkgName, node.Target)
 		if err != nil {
@@ -414,13 +414,23 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return evalResult{value: target.value.Array[index.value.Int]}, nil
 	case ast.FieldAccessExpr:
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
-			if enumDecl, enumExists := i.enums[pkgName+"."+identifier.Name]; enumExists {
+			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, identifier.Name); enumExists {
 				for _, variant := range enumDecl.Variants {
 					if variant == node.Field {
-						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: identifier.Name, Variant: node.Field}}}, nil
+						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
 					}
 				}
 				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", identifier.Name, node.Field)
+			}
+		}
+		if enumName, ok := flattenQualifiedEnumTarget(node.Target); ok {
+			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, enumName); enumExists {
+				for _, variant := range enumDecl.Variants {
+					if variant == node.Field {
+						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
+					}
+				}
+				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", enumName, node.Field)
 			}
 		}
 		target, err := i.evalExpr(env, pkgName, node.Target)
@@ -760,7 +770,7 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr
 }
 
 func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, expr ast.RecordLiteralExpr) (evalResult, error) {
-	recordDecl, ok := i.records[pkgName+"."+expr.TypeName]
+	recordDecl, resolvedTypeName, ok := i.lookupRecordDecl(pkgName, expr.TypeName)
 	if !ok {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unknown record type %s", expr.TypeName)
 	}
@@ -800,7 +810,48 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 		}
 		fieldOrder = append(fieldOrder, field.Name)
 	}
-	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: expr.TypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
+	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: resolvedTypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
+}
+
+func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (ast.RecordDecl, string, bool) {
+	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
+		recordDecl, exists := i.records[pkgName+"."+localName]
+		return recordDecl, pkgName + "." + localName, exists
+	}
+	recordDecl, exists := i.records[currentPackage+"."+typeName]
+	return recordDecl, typeName, exists
+}
+
+func (i interpreter) lookupEnumDecl(currentPackage string, typeName string) (ast.EnumDecl, string, bool) {
+	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
+		enumDecl, exists := i.enums[pkgName+"."+localName]
+		return enumDecl, pkgName + "." + localName, exists
+	}
+	enumDecl, exists := i.enums[currentPackage+"."+typeName]
+	return enumDecl, typeName, exists
+}
+
+func splitQualifiedTypeName(typeName string) (string, string, bool) {
+	dot := strings.Index(typeName, ".")
+	if dot <= 0 || dot == len(typeName)-1 {
+		return "", "", false
+	}
+	if strings.Index(typeName[dot+1:], ".") >= 0 {
+		return "", "", false
+	}
+	return typeName[:dot], typeName[dot+1:], true
+}
+
+func flattenQualifiedEnumTarget(expr ast.Expr) (string, bool) {
+	fieldAccess, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		return "", false
+	}
+	pkgIdentifier, ok := fieldAccess.Target.(ast.IdentifierExpr)
+	if !ok {
+		return "", false
+	}
+	return pkgIdentifier.Name + "." + fieldAccess.Field, true
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {

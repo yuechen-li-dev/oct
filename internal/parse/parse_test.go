@@ -49,6 +49,30 @@ func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesPackageQualifiedTypeReferences(t *testing.T) {
+	file := parseSource(t, "import Geometry\nfn UsePoint(p: Geometry.Point) -> Geometry.Point { return p }")
+
+	fn := file.Functions[0]
+	if fn.Parameters[0].Type.Package != "Geometry" || fn.Parameters[0].Type.Name != "Point" {
+		t.Fatalf("expected qualified parameter type Geometry.Point, got %+v", fn.Parameters[0].Type)
+	}
+	if fn.ReturnType.Package != "Geometry" || fn.ReturnType.Name != "Point" {
+		t.Fatalf("expected qualified return type Geometry.Point, got %+v", fn.ReturnType)
+	}
+}
+
+func TestBuildFileParsesPackageQualifiedRecordLiteral(t *testing.T) {
+	file := parseSource(t, "import Geometry\nfn Main() -> Int { let p = Geometry.Point { X: 1 Y: 2 } return p.X }")
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	recordLiteral, ok := letStmt.Value.(ast.RecordLiteralExpr)
+	if !ok {
+		t.Fatalf("expected RecordLiteralExpr, got %T", letStmt.Value)
+	}
+	if recordLiteral.TypeName != "Geometry.Point" {
+		t.Fatalf("expected qualified record literal type, got %q", recordLiteral.TypeName)
+	}
+}
+
 func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int ! Error { let x = Safe()? match Safe() { ok(value) => { return value } err(e) => { return error(\"bad\") } } }")
 
