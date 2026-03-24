@@ -1264,6 +1264,199 @@ func TestMissingFileFailsDeterministically(t *testing.T) {
 	}
 }
 
+func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
+	validTests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "record construction and field access",
+			source: "record Point {\n" +
+				"    X: Float<m>\n" +
+				"    Y: Float<m>\n" +
+				"}\n" +
+				"fn Main() -> Float<m> {\n" +
+				"    let p = Point {\n" +
+				"        X: 1m\n" +
+				"        Y: 2m\n" +
+				"    }\n" +
+				"    return p.X\n" +
+				"}\n",
+			want: "1m\n",
+		},
+		{
+			name: "record field order independence",
+			source: "record Point {\n" +
+				"    X: Int\n" +
+				"    Y: Int\n" +
+				"}\n" +
+				"fn Main() -> Int {\n" +
+				"    let p = Point {\n" +
+				"        Y: 2\n" +
+				"        X: 1\n" +
+				"    }\n" +
+				"    return p.Y\n" +
+				"}\n",
+			want: "2\n",
+		},
+		{
+			name: "basic enum value",
+			source: "enum Method {\n" +
+				"    Euler\n" +
+				"    Rk4\n" +
+				"}\n" +
+				"fn Main() -> Method {\n" +
+				"    return Method.Euler\n" +
+				"}\n",
+			want: "Method.Euler\n",
+		},
+		{
+			name: "call expression statements remain allowed",
+			source: "fn Main() -> Int {\n" +
+				"    Print(1)\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "1\n0\n",
+		},
+		{
+			name: "record printing",
+			source: "record Point {\n" +
+				"    X: Int\n" +
+				"    Y: Int\n" +
+				"}\n" +
+				"fn Main() -> Point {\n" +
+				"    return Point {\n" +
+				"        X: 1\n" +
+				"        Y: 2\n" +
+				"    }\n" +
+				"}\n",
+			want: "Point{X: 1, Y: 2}\n",
+		},
+	}
+
+	for _, test := range validTests {
+		t.Run("valid/"+test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+		})
+	}
+
+	invalidTests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{
+			name: "record missing field",
+			source: "record Point { X: Int Y: Int }\n" +
+				"fn Main() -> Int {\n" +
+				"    let p = Point { X: 1 }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "record 'Point' missing field 'Y'",
+		},
+		{
+			name: "record unknown field",
+			source: "record Point { X: Int Y: Int }\n" +
+				"fn Main() -> Int {\n" +
+				"    let p = Point { X: 1 Z: 2 Y: 3 }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "record 'Point' has no field 'Z'",
+		},
+		{
+			name: "record duplicate field",
+			source: "record Point { X: Int Y: Int }\n" +
+				"fn Main() -> Int {\n" +
+				"    let p = Point { X: 1 X: 2 Y: 3 }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "record 'Point' field 'X' specified more than once",
+		},
+		{
+			name: "field access on non record",
+			source: "fn Main() -> Int {\n" +
+				"    return 1.X\n" +
+				"}\n",
+			wantMessage: "field access requires record type, got Int",
+		},
+		{
+			name: "enum unknown variant",
+			source: "enum Method { Euler Rk4 }\n" +
+				"fn Main() -> Method {\n" +
+				"    return Method.Bogus\n" +
+				"}\n",
+			wantMessage: "enum 'Method' has no variant 'Bogus'",
+		},
+		{
+			name: "enum duplicate variant",
+			source: "enum Method { Euler Euler }\n" +
+				"fn Main() -> Int { return 0 }\n",
+			wantMessage: "enum 'Method' variant 'Euler' specified more than once",
+		},
+		{
+			name: "expr stmt cleanup",
+			source: "fn Main() -> Int {\n" +
+				"    1 + 2\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "expression statements must be call expressions",
+		},
+		{
+			name: "enum switch deferred",
+			source: "enum Method { Euler Rk4 }\n" +
+				"fn Main() -> Int {\n" +
+				"    let method = Method.Euler\n" +
+				"    return switch method {\n" +
+				"        case Method.Euler => 1\n" +
+				"        else => 0\n" +
+				"    }\n" +
+				"}\n",
+			wantMessage: "switch case must use int, float, bool, or string literal",
+		},
+	}
+
+	for _, test := range invalidTests {
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+
+			buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
+			if buildErr == nil {
+				t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
+			}
+			if buildStdout != "" {
+				t.Fatalf("expected empty build stdout, got %q", buildStdout)
+			}
+			if !strings.Contains(buildStderr, test.wantMessage) {
+				t.Fatalf("expected build stderr to contain %q, got %q", test.wantMessage, buildStderr)
+			}
+			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+			}
+		})
+	}
+}
+
 func writeSourceFile(t *testing.T, name string, source string) string {
 	t.Helper()
 	tempDir := t.TempDir()

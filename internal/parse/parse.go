@@ -32,13 +32,93 @@ type parser struct {
 func (p *parser) parseFile(src source.File) (ast.File, error) {
 	file := ast.File{Source: src}
 	for p.current().Kind != lex.EOF {
-		function, err := p.parseFunctionDecl()
-		if err != nil {
-			return ast.File{}, err
+		switch p.current().Kind {
+		case lex.KeywordRecord:
+			record, err := p.parseRecordDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			file.Records = append(file.Records, record)
+		case lex.KeywordEnum:
+			enumDecl, err := p.parseEnumDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			file.Enums = append(file.Enums, enumDecl)
+		case lex.KeywordFn:
+			function, err := p.parseFunctionDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			file.Functions = append(file.Functions, function)
+		default:
+			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
 		}
-		file.Functions = append(file.Functions, function)
 	}
 	return file, nil
+}
+
+func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
+	if _, err := p.expect(lex.KeywordRecord, "expected 'record'"); err != nil {
+		return ast.RecordDecl{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected record name")
+	if err != nil {
+		return ast.RecordDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' after record name"); err != nil {
+		return ast.RecordDecl{}, err
+	}
+
+	var fields []ast.RecordField
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return ast.RecordDecl{}, p.errorAtCurrent("expected '}' to close record declaration")
+		}
+		fieldName, err := p.expect(lex.Identifier, "expected record field name")
+		if err != nil {
+			return ast.RecordDecl{}, err
+		}
+		if _, err := p.expect(lex.Colon, "expected ':' after record field name"); err != nil {
+			return ast.RecordDecl{}, err
+		}
+		fieldType, err := p.parseTypeRef()
+		if err != nil {
+			return ast.RecordDecl{}, err
+		}
+		fields = append(fields, ast.RecordField{Name: fieldName.Lexeme, Type: fieldType})
+	}
+	p.advance()
+
+	return ast.RecordDecl{Name: name.Lexeme, Fields: fields}, nil
+}
+
+func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
+	if _, err := p.expect(lex.KeywordEnum, "expected 'enum'"); err != nil {
+		return ast.EnumDecl{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected enum name")
+	if err != nil {
+		return ast.EnumDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' after enum name"); err != nil {
+		return ast.EnumDecl{}, err
+	}
+
+	var variants []string
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return ast.EnumDecl{}, p.errorAtCurrent("expected '}' to close enum declaration")
+		}
+		variant, err := p.expect(lex.Identifier, "expected enum variant name")
+		if err != nil {
+			return ast.EnumDecl{}, err
+		}
+		variants = append(variants, variant.Lexeme)
+	}
+	p.advance()
+
+	return ast.EnumDecl{Name: name.Lexeme, Variants: variants}, nil
 }
 
 func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
@@ -416,6 +496,12 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: identifier.Name, Arguments: arguments}
+		case p.match(lex.Dot):
+			field, err := p.expect(lex.Identifier, "expected field name after '.'")
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.FieldAccessExpr{Target: expr, Field: field.Lexeme}
 		case p.match(lex.LeftBracket):
 			index, err := p.parseExpression()
 			if err != nil {
@@ -491,6 +577,9 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.BoolLiteral{Value: false}, nil
 	case lex.Identifier:
 		p.advance()
+		if p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() {
+			return p.parseRecordLiteralExpr(token.Lexeme)
+		}
 		return ast.IdentifierExpr{Name: token.Lexeme}, nil
 	case lex.LeftParen:
 		p.advance()
@@ -507,6 +596,41 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) looksLikeRecordLiteral() bool {
+	if p.peek(0).Kind != lex.LeftBrace {
+		return false
+	}
+	return p.peek(1).Kind == lex.Identifier && p.peek(2).Kind == lex.Colon
+}
+
+func (p *parser) parseRecordLiteralExpr(typeName string) (ast.Expr, error) {
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start record literal"); err != nil {
+		return nil, err
+	}
+
+	var fields []ast.RecordLiteralField
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, p.errorAtCurrent("expected '}' to close record literal")
+		}
+		name, err := p.expect(lex.Identifier, "expected record literal field name")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lex.Colon, "expected ':' after record literal field name"); err != nil {
+			return nil, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, ast.RecordLiteralField{Name: name.Lexeme, Value: value})
+	}
+	p.advance()
+
+	return ast.RecordLiteralExpr{TypeName: typeName, Fields: fields}, nil
 }
 
 func (p *parser) parseSwitchExpr() (ast.Expr, error) {

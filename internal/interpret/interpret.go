@@ -23,6 +23,8 @@ const (
 	ValueRange  ValueKind = "Range"
 	ValueString ValueKind = "String"
 	ValueError  ValueKind = "Error"
+	ValueRecord ValueKind = "Record"
+	ValueEnum   ValueKind = "Enum"
 )
 
 type Value struct {
@@ -35,6 +37,8 @@ type Value struct {
 	Array     []Value
 	Range     RangeValue
 	Error     ErrorValue
+	Record    RecordValue
+	Enum      EnumValue
 }
 
 type ErrorValue struct {
@@ -45,6 +49,17 @@ type RangeValue struct {
 	Start int64
 	End   int64
 	Step  int64
+}
+
+type RecordValue struct {
+	TypeName   string
+	FieldOrder []string
+	Fields     map[string]Value
+}
+
+type EnumValue struct {
+	TypeName string
+	Variant  string
 }
 
 func (v Value) String() string {
@@ -67,6 +82,14 @@ func (v Value) String() string {
 		return fmt.Sprintf("%d..%d step %d", v.Range.Start, v.Range.End, v.Range.Step)
 	case ValueError:
 		return v.Error.Message
+	case ValueRecord:
+		parts := make([]string, 0, len(v.Record.FieldOrder))
+		for _, fieldName := range v.Record.FieldOrder {
+			parts = append(parts, fmt.Sprintf("%s: %s", fieldName, v.Record.Fields[fieldName].String()))
+		}
+		return fmt.Sprintf("%s{%s}", v.Record.TypeName, strings.Join(parts, ", "))
+	case ValueEnum:
+		return fmt.Sprintf("%s.%s", v.Enum.TypeName, v.Enum.Variant)
 	default:
 		return "<invalid>"
 	}
@@ -74,6 +97,8 @@ func (v Value) String() string {
 
 type interpreter struct {
 	functions map[string]ast.FunctionDecl
+	records   map[string]ast.RecordDecl
+	enums     map[string]ast.EnumDecl
 	stdout    io.Writer
 }
 
@@ -102,7 +127,15 @@ type callResult struct {
 func ExecuteMain(file ast.File, stdout io.Writer) (Value, error) {
 	interpreter := interpreter{
 		functions: make(map[string]ast.FunctionDecl, len(file.Functions)),
+		records:   make(map[string]ast.RecordDecl, len(file.Records)),
+		enums:     make(map[string]ast.EnumDecl, len(file.Enums)),
 		stdout:    stdout,
+	}
+	for _, record := range file.Records {
+		interpreter.records[record.Name] = record
+	}
+	for _, enumDecl := range file.Enums {
+		interpreter.enums[enumDecl.Name] = enumDecl
 	}
 	for _, function := range file.Functions {
 		interpreter.functions[function.Name] = function
@@ -149,31 +182,7 @@ func (i interpreter) findMain() (ast.FunctionDecl, error) {
 	if len(function.Parameters) != 0 {
 		return ast.FunctionDecl{}, errors.New("Main must not have parameters")
 	}
-	if isSupportedMainReturnType(function.ReturnType) {
-		return function, nil
-	}
-	if function.ReturnType.IsArray {
-		return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], optionally dimension-qualified for numeric types, got %s[]", function.ReturnType.Name)
-	}
-	return ast.FunctionDecl{}, fmt.Errorf("Main must return Int, Float, Bool, Int[], Float[], or Bool[], optionally dimension-qualified for numeric types, got %s", function.ReturnType.Name)
-}
-
-func isSupportedMainReturnType(typeRef ast.TypeRef) bool {
-	if typeRef.IsArray {
-		switch typeRef.Name {
-		case string(ValueInt), string(ValueFloat), string(ValueBool):
-			return !typeRef.HasUnit || typeRef.Name == string(ValueInt) || typeRef.Name == string(ValueFloat)
-		default:
-			return false
-		}
-	}
-
-	switch typeRef.Name {
-	case string(ValueInt), string(ValueFloat), string(ValueBool):
-		return !typeRef.HasUnit || typeRef.Name == string(ValueInt) || typeRef.Name == string(ValueFloat)
-	default:
-		return false
-	}
+	return function, nil
 }
 
 func (i interpreter) executeFunction(function ast.FunctionDecl, arguments []Value) (callResult, error) {
@@ -353,6 +362,24 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		return evalResult{value: value}, nil
 	case ast.CallExpr:
 		return i.evalCallExpr(env, node)
+	case ast.RecordLiteralExpr:
+		return i.evalRecordLiteralExpr(env, node)
+	case ast.EnumValueExpr:
+		enumDecl, ok := i.enums[node.EnumName]
+		if !ok {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: unknown enum type %s", node.EnumName)
+		}
+		found := false
+		for _, variant := range enumDecl.Variants {
+			if variant == node.Variant {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", node.EnumName, node.Variant)
+		}
+		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: node.EnumName, Variant: node.Variant}}}, nil
 	case ast.IndexExpr:
 		target, err := i.evalExpr(env, node.Target)
 		if err != nil {
@@ -378,6 +405,32 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 			return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(target.value.Array))
 		}
 		return evalResult{value: target.value.Array[index.value.Int]}, nil
+	case ast.FieldAccessExpr:
+		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
+			if enumDecl, enumExists := i.enums[identifier.Name]; enumExists {
+				for _, variant := range enumDecl.Variants {
+					if variant == node.Field {
+						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: identifier.Name, Variant: node.Field}}}, nil
+					}
+				}
+				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", identifier.Name, node.Field)
+			}
+		}
+		target, err := i.evalExpr(env, node.Target)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if target.hasError {
+			return evalResult{hasError: true, errorVal: target.errorVal}, nil
+		}
+		if target.value.Kind != ValueRecord {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: field access requires record value, got %s", valueTypeName(target.value))
+		}
+		fieldValue, ok := target.value.Record.Fields[node.Field]
+		if !ok {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: type '%s' has no field '%s'", target.value.Record.TypeName, node.Field)
+		}
+		return evalResult{value: fieldValue}, nil
 	case ast.ParenExpr:
 		return i.evalExpr(env, node.Inner)
 	case ast.BinaryExpr:
@@ -691,6 +744,50 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLitera
 	return Value{Kind: ValueArray, Array: elements}, nil
 }
 
+func (i interpreter) evalRecordLiteralExpr(env *environment, expr ast.RecordLiteralExpr) (evalResult, error) {
+	recordDecl, ok := i.records[expr.TypeName]
+	if !ok {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unknown record type %s", expr.TypeName)
+	}
+
+	fieldValues := make(map[string]Value, len(recordDecl.Fields))
+	seen := make(map[string]struct{}, len(expr.Fields))
+	for _, field := range expr.Fields {
+		if _, exists := seen[field.Name]; exists {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' field '%s' specified more than once", expr.TypeName, field.Name)
+		}
+		seen[field.Name] = struct{}{}
+
+		foundDecl := false
+		for _, declField := range recordDecl.Fields {
+			if declField.Name == field.Name {
+				foundDecl = true
+				break
+			}
+		}
+		if !foundDecl {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' has no field '%s'", expr.TypeName, field.Name)
+		}
+		value, err := i.evalExpr(env, field.Value)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value.hasError {
+			return evalResult{hasError: true, errorVal: value.errorVal}, nil
+		}
+		fieldValues[field.Name] = value.value
+	}
+
+	fieldOrder := make([]string, 0, len(recordDecl.Fields))
+	for _, field := range recordDecl.Fields {
+		if _, exists := seen[field.Name]; !exists {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' missing field '%s'", expr.TypeName, field.Name)
+		}
+		fieldOrder = append(fieldOrder, field.Name)
+	}
+	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: expr.TypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
+}
+
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
@@ -815,6 +912,12 @@ func combineDimensions(operator string, left dimension.Dimension, right dimensio
 }
 
 func valueTypeName(value Value) string {
+	if value.Kind == ValueRecord {
+		return value.Record.TypeName
+	}
+	if value.Kind == ValueEnum {
+		return value.Enum.TypeName
+	}
 	base := string(value.Kind)
 	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {
 		base += "<" + value.Dimension.String() + ">"

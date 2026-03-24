@@ -21,12 +21,16 @@ const (
 
 type Type struct {
 	Base      BaseType
+	Name      string
 	Dimension dimension.Dimension
 	IsArray   bool
 }
 
 func (t Type) String() string {
-	base := string(t.Base)
+	base := t.Name
+	if base == "" {
+		base = string(t.Base)
+	}
 	if isNumericBaseType(t.Base) && !t.Dimension.IsDimensionless() {
 		base += "<" + t.Dimension.String() + ">"
 	}
@@ -54,12 +58,29 @@ type functionContext struct {
 }
 
 func Check(file ast.File) error {
-	checker := checker{functions: make(map[string]functionSignature)}
+	checker := checker{
+		functions: make(map[string]functionSignature),
+		records:   make(map[string]recordInfo),
+		enums:     make(map[string]enumInfo),
+		typeNames: make(map[string]struct{}),
+	}
 	return checker.checkFile(file)
 }
 
 type checker struct {
 	functions map[string]functionSignature
+	records   map[string]recordInfo
+	enums     map[string]enumInfo
+	typeNames map[string]struct{}
+}
+
+type recordInfo struct {
+	fields     map[string]Type
+	fieldOrder []string
+}
+
+type enumInfo struct {
+	variants map[string]struct{}
 }
 
 type scope struct {
@@ -86,6 +107,21 @@ func (s *scope) lookup(name string) (Type, bool) {
 }
 
 func (c checker) checkFile(file ast.File) error {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError)} {
+		c.typeNames[builtinTypeName] = struct{}{}
+	}
+
+	for _, record := range file.Records {
+		if err := c.registerRecord(record); err != nil {
+			return err
+		}
+	}
+	for _, enumDecl := range file.Enums {
+		if err := c.registerEnum(enumDecl); err != nil {
+			return err
+		}
+	}
+
 	for _, function := range file.Functions {
 		if builtin.IsName(function.Name) {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
@@ -108,8 +144,51 @@ func (c checker) checkFile(file ast.File) error {
 	return nil
 }
 
+func (c checker) registerRecord(record ast.RecordDecl) error {
+	if _, exists := c.typeNames[record.Name]; exists {
+		return fmt.Errorf("duplicate type: %s", record.Name)
+	}
+	c.typeNames[record.Name] = struct{}{}
+
+	fields := make(map[string]Type, len(record.Fields))
+	fieldOrder := make([]string, 0, len(record.Fields))
+	for _, field := range record.Fields {
+		if _, exists := fields[field.Name]; exists {
+			return fmt.Errorf("record '%s' field '%s' specified more than once", record.Name, field.Name)
+		}
+		fieldType, err := c.resolveType(field.Type)
+		if err != nil {
+			return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
+		}
+		fields[field.Name] = fieldType
+		fieldOrder = append(fieldOrder, field.Name)
+	}
+	c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder}
+	return nil
+}
+
+func (c checker) registerEnum(enumDecl ast.EnumDecl) error {
+	if _, exists := c.typeNames[enumDecl.Name]; exists {
+		return fmt.Errorf("duplicate type: %s", enumDecl.Name)
+	}
+	if len(enumDecl.Variants) == 0 {
+		return fmt.Errorf("enum '%s' must declare at least one variant", enumDecl.Name)
+	}
+	c.typeNames[enumDecl.Name] = struct{}{}
+
+	variants := make(map[string]struct{}, len(enumDecl.Variants))
+	for _, variant := range enumDecl.Variants {
+		if _, exists := variants[variant]; exists {
+			return fmt.Errorf("enum '%s' variant '%s' specified more than once", enumDecl.Name, variant)
+		}
+		variants[variant] = struct{}{}
+	}
+	c.enums[enumDecl.Name] = enumInfo{variants: variants}
+	return nil
+}
+
 func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSignature, error) {
-	returnType, err := resolveType(function.ReturnType)
+	returnType, err := c.resolveType(function.ReturnType)
 	if err != nil {
 		return functionSignature{}, err
 	}
@@ -121,7 +200,7 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 
 	parameters := make([]Type, 0, len(function.Parameters))
 	for _, parameter := range function.Parameters {
-		parameterType, err := resolveType(parameter.Type)
+		parameterType, err := c.resolveType(parameter.Type)
 		if err != nil {
 			return functionSignature{}, fmt.Errorf("parameter %s: %w", parameter.Name, err)
 		}
@@ -196,6 +275,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		return true, nil
 	case ast.ExprStmt:
+		if _, ok := node.Value.(ast.CallExpr); !ok {
+			return false, fmt.Errorf("function %s: expression statements must be call expressions", ctx.name)
+		}
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
 			return false, fmt.Errorf("function %s: %w", ctx.name, err)
@@ -316,6 +398,17 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return ExprType{ValueType: valueType}, nil
 	case ast.CallExpr:
 		return c.checkCallExpr(scope, node, ctx)
+	case ast.RecordLiteralExpr:
+		return c.checkRecordLiteralExpr(scope, node, ctx)
+	case ast.EnumValueExpr:
+		enumDecl, ok := c.enums[node.EnumName]
+		if !ok {
+			return ExprType{}, fmt.Errorf("unknown enum type: %s", node.EnumName)
+		}
+		if _, ok := enumDecl.variants[node.Variant]; !ok {
+			return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", node.EnumName, node.Variant)
+		}
+		return ExprType{ValueType: Type{Name: node.EnumName}}, nil
 	case ast.IndexExpr:
 		targetType, err := c.checkExpr(scope, node.Target, ctx)
 		if err != nil {
@@ -338,6 +431,31 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			return ExprType{}, fmt.Errorf("array index must be Int, got %s", indexType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+	case ast.FieldAccessExpr:
+		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
+			if enumDecl, enumExists := c.enums[identifier.Name]; enumExists {
+				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
+					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", identifier.Name, node.Field)
+				}
+				return ExprType{ValueType: Type{Name: identifier.Name}}, nil
+			}
+		}
+		targetType, err := c.checkExpr(scope, node.Target, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if targetType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		recordDecl, ok := c.records[targetType.ValueType.Name]
+		if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
+			return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
+		}
+		fieldType, ok := recordDecl.fields[node.Field]
+		if !ok {
+			return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType.Name, node.Field)
+		}
+		return ExprType{ValueType: fieldType}, nil
 	case ast.ParenExpr:
 		return c.checkExpr(scope, node.Inner, ctx)
 	case ast.BinaryExpr:
@@ -633,6 +751,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 }
 
 func isPrintableType(valueType Type) bool {
+	if valueType.Name != "" {
+		return !valueType.IsArray
+	}
 	if valueType.IsArray {
 		return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString
 	}
@@ -727,10 +848,56 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
 }
 
-func resolveType(typeRef ast.TypeRef) (Type, error) {
+func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr, ctx functionContext) (ExprType, error) {
+	recordDecl, ok := c.records[expr.TypeName]
+	if !ok {
+		return ExprType{}, fmt.Errorf("unknown record type: %s", expr.TypeName)
+	}
+	seen := make(map[string]struct{}, len(expr.Fields))
+	for _, field := range expr.Fields {
+		if _, exists := seen[field.Name]; exists {
+			return ExprType{}, fmt.Errorf("record '%s' field '%s' specified more than once", expr.TypeName, field.Name)
+		}
+		seen[field.Name] = struct{}{}
+
+		expectedType, exists := recordDecl.fields[field.Name]
+		if !exists {
+			return ExprType{}, fmt.Errorf("record '%s' has no field '%s'", expr.TypeName, field.Name)
+		}
+		actualType, err := c.checkExpr(scope, field.Value, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if actualType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isAssignable(actualType.ValueType, expectedType) {
+			return ExprType{}, fmt.Errorf("record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
+		}
+	}
+	for _, fieldName := range recordDecl.fieldOrder {
+		if _, exists := seen[fieldName]; !exists {
+			return ExprType{}, fmt.Errorf("record '%s' missing field '%s'", expr.TypeName, fieldName)
+		}
+	}
+	return ExprType{ValueType: Type{Name: expr.TypeName}}, nil
+}
+
+func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
 	baseType, err := resolveBaseType(typeRef.Name)
 	if err != nil {
-		return Type{}, err
+		if _, isRecord := c.records[typeRef.Name]; !isRecord {
+			if _, isEnum := c.enums[typeRef.Name]; !isEnum {
+				return Type{}, err
+			}
+		}
+		if typeRef.HasUnit {
+			return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
+		}
+		if typeRef.IsArray {
+			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
+		}
+		return Type{Name: typeRef.Name}, nil
 	}
 	if typeRef.HasUnit && !isNumericBaseType(baseType) {
 		return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
@@ -832,6 +999,9 @@ func operatorName(operator string) string {
 func isAssignable(actual Type, expected Type) bool {
 	if actual == expected {
 		return true
+	}
+	if actual.Name != "" || expected.Name != "" {
+		return false
 	}
 	if actual.IsArray != expected.IsArray || actual.Dimension != expected.Dimension {
 		return false
