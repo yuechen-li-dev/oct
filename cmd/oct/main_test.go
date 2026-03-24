@@ -235,6 +235,77 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"}\n",
 			want: "1m\n",
 		},
+		{
+			name: "print int writes output and returns zero",
+			source: "fn Main() -> Int {\n" +
+				"    Print(1)\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "1\n0\n",
+		},
+		{
+			name: "print float bool and string",
+			source: "fn Main() -> Int {\n" +
+				"    Print(2.5)\n" +
+				"    Print(true)\n" +
+				"    Print(\"hi\")\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "2.5\ntrue\nhi\n0\n",
+		},
+		{
+			name: "print arrays and dimensions",
+			source: "fn Main() -> Int {\n" +
+				"    Print([1, 2, 3])\n" +
+				"    Print(5m)\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "[1, 2, 3]\n5m\n0\n",
+		},
+		{
+			name: "while false skips body",
+			source: "fn Main() -> Int {\n" +
+				"    while false {\n" +
+				"        return 1\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "0\n",
+		},
+		{
+			name: "while true returns from body",
+			source: "fn Main() -> Int {\n" +
+				"    while true {\n" +
+				"        return 7\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "7\n",
+		},
+		{
+			name: "while with nested if",
+			source: "fn Main() -> Int {\n" +
+				"    while true {\n" +
+				"        if true {\n" +
+				"            return 3\n" +
+				"        } else {\n" +
+				"            return 4\n" +
+				"        }\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "3\n",
+		},
+		{
+			name: "fallible while return",
+			source: "fn Main() -> Int ! Error {\n" +
+				"    while true {\n" +
+				"        return 5\n" +
+				"    }\n" +
+				"    return error(\"bad\")\n" +
+				"}\n",
+			want: "5\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -484,6 +555,17 @@ func TestRunAndBuildRejectInvalidM9Programs(t *testing.T) {
 }
 `,
 			wantMessage: "switch requires else arm",
+		},
+		{
+			name: "while condition must be bool",
+			source: `fn Main() -> Int {
+    while 1 {
+        return 1
+    }
+    return 0
+}
+`,
+			wantMessage: "while condition must be Bool, got Int",
 		},
 	}
 
@@ -852,6 +934,26 @@ fn Main() -> Int {
 `,
 			wantMessage: "run failed: runtime error: Sqrt expects non-negative input, got -1",
 		},
+		{
+			name: "print arity mismatch",
+			source: `fn Main() -> Int {
+    return Print()
+}
+`,
+			wantMessage: "run failed: function Main: function 'Print' expects 1 arguments, got 0",
+		},
+		{
+			name: "print builtin collision",
+			source: `fn Print(x: Int) -> Int {
+    return x
+}
+
+fn Main() -> Int {
+    return 0
+}
+`,
+			wantMessage: "run failed: function Print: cannot redeclare built-in function",
+		},
 	}
 
 	for _, test := range tests {
@@ -904,6 +1006,45 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
 		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		}
+	})
+}
+
+func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
+	t.Run("valid program builds", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m12_valid_build.oct", "fn Main() -> Int {\n    while false {\n        return 1\n    }\n    return Print(1)\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err != nil {
+			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		artifactPath := sourcePath + ".octbin"
+		if _, err := os.Stat(artifactPath); err != nil {
+			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		}
+		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
+			t.Fatalf("expected build success output, got %q", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("invalid program fails before artifact generation", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m12_invalid_build.oct", "fn Main() -> Int {\n    while 1 {\n        return 1\n    }\n    return 0\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
+		}
+		want := "build failed: function Main: while condition must be Bool, got Int"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		}
+		artifactPath := sourcePath + ".octbin"
+		if _, statErr := os.Stat(artifactPath); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})

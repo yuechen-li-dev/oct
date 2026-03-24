@@ -52,6 +52,12 @@ type ReturnStmt struct {
 
 func (ReturnStmt) stmtNode() {}
 
+type ExprStmt struct {
+	Value Expr
+}
+
+func (ExprStmt) stmtNode() {}
+
 type ForStmt struct {
 	Name  string
 	Range Expr
@@ -77,6 +83,13 @@ type IfStmt struct {
 }
 
 func (IfStmt) stmtNode() {}
+
+type WhileStmt struct {
+	Condition Expr
+	Body      Block
+}
+
+func (WhileStmt) stmtNode() {}
 
 type Expr interface {
 	exprNode()

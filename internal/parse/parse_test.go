@@ -234,6 +234,17 @@ func TestBuildFileParsesIfElseStatements(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesWhileStatements(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { while true { return 7 } return 0 }")
+	whileStmt, ok := file.Functions[0].Body.Statements[0].(ast.WhileStmt)
+	if !ok {
+		t.Fatalf("expected WhileStmt, got %T", file.Functions[0].Body.Statements[0])
+	}
+	if _, ok := whileStmt.Condition.(ast.BoolLiteral); !ok {
+		t.Fatalf("expected bool condition, got %T", whileStmt.Condition)
+	}
+}
+
 func TestBuildFileParsesSwitchExpression(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { let x = switch 1 { case 0 => 10 case 1 => 20 else => 30 } return x }")
 	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)

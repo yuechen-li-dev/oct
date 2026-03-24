@@ -29,7 +29,7 @@ func Execute(path string, output io.Writer) error {
 		return err
 	}
 
-	value, err := interpret.ExecuteMain(program)
+	value, err := interpret.ExecuteMain(program, output)
 	if err != nil {
 		return err
 	}
