@@ -163,6 +163,30 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 	}
 }
 
+func TestCheckValidatesM10PlotBuiltins(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int { return PlotLine([0.0, 1.0], [0.0, 1.0], \"line.png\") }",
+		"fn Main() -> Int { return PlotScatter([0, 1, 2], [0, 1, 4], \"scatter.png\") }",
+		"fn Main() -> Int { return PlotLine([0, 1, 2], [0.0, 1.0, 4.0], \"mixed.png\") }",
+	}
+
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine(1, [1], \"x.png\") }", "function Main: function 'PlotLine' argument 1 expects Int[] or Float[], got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([true], [false], \"x.png\") }", "function Main: function 'PlotLine' argument 1 expects Int[] or Float[], got Bool[]")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1m], [2m], \"x.png\") }", "function Main: PlotLine does not accept dimensioned arrays")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1], [2], 3) }", "function Main: function 'PlotLine' argument 3 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotScatter([1], [2]) }", "function Main: function 'PlotScatter' expects 3 arguments, got 2")
+	assertTypeErrorContains(t, "fn PlotLine(x: Int[], y: Int[], path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function PlotLine: cannot redeclare built-in function")
+}
+
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int or Float, got Bool")
