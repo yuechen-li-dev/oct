@@ -8,17 +8,9 @@ import (
 	"strings"
 
 	"oct/internal/ast"
+	"oct/internal/builtin"
 	"oct/internal/dimension"
 )
-
-func isBuiltinFunction(name string) bool {
-	switch name {
-	case "Len", "Abs", "Sqrt", "Sin", "Cos", "PlotLine", "PlotScatter":
-		return true
-	default:
-		return false
-	}
-}
 
 type ValueKind string
 
@@ -470,7 +462,7 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 		}
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
-	if isBuiltinFunction(expr.Callee) {
+	if builtin.IsName(expr.Callee) {
 		return i.evalBuiltinCallExpr(env, expr)
 	}
 

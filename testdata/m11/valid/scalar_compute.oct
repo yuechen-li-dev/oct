@@ -1,0 +1,7 @@
+fn Add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn Main() -> Int {
+    return Add(20, 22)
+}

@@ -1,0 +1,4 @@
+fn Main() -> Int {
+    let x = 1?
+    return x
+}

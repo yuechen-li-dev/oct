@@ -967,7 +967,7 @@ func TestRunCommandHandlesM10PlotBuiltins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "run failed: runtime error: PlotLine requires x and y arrays of equal length"
+		want := "run failed: runtime error: function 'PlotLine' requires x and y arrays of equal length"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
@@ -1019,7 +1019,7 @@ func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main: PlotLine does not accept dimensioned arrays"
+		want := "build failed: function Main: function 'PlotLine' does not accept dimensioned arrays"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}

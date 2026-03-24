@@ -1,0 +1,3 @@
+fn Main() -> Int {
+    return 1m + 2s
+}

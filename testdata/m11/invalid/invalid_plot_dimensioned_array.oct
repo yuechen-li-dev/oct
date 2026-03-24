@@ -1,0 +1,3 @@
+fn Main() -> Int {
+    return PlotScatter([1m], [2m], "bad.png")
+}

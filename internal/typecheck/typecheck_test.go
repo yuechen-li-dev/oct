@@ -181,7 +181,7 @@ func TestCheckValidatesM10PlotBuiltins(t *testing.T) {
 func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine(1, [1], \"x.png\") }", "function Main: function 'PlotLine' argument 1 expects Int[] or Float[], got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([true], [false], \"x.png\") }", "function Main: function 'PlotLine' argument 1 expects Int[] or Float[], got Bool[]")
-	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1m], [2m], \"x.png\") }", "function Main: PlotLine does not accept dimensioned arrays")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1m], [2m], \"x.png\") }", "function Main: function 'PlotLine' does not accept dimensioned arrays")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1], [2], 3) }", "function Main: function 'PlotLine' argument 3 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotScatter([1], [2]) }", "function Main: function 'PlotScatter' expects 3 arguments, got 2")
 	assertTypeErrorContains(t, "fn PlotLine(x: Int[], y: Int[], path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function PlotLine: cannot redeclare built-in function")
