@@ -245,6 +245,30 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 
 		return okReturned && errReturned, nil
+	case ast.IfStmt:
+		conditionType, err := c.checkExpr(scope, node.Condition, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: if condition: %w", ctx.name, err)
+		}
+		if conditionType.Fallible {
+			return false, fmt.Errorf("function %s: if condition: fallible expression must be handled explicitly", ctx.name)
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return false, fmt.Errorf("function %s: if condition must be Bool, got %s", ctx.name, conditionType.ValueType)
+		}
+
+		thenReturned, err := c.checkBlock(scope, node.ThenBody, ctx)
+		if err != nil {
+			return false, err
+		}
+		if node.ElseBody == nil {
+			return false, nil
+		}
+		elseReturned, err := c.checkBlock(scope, *node.ElseBody, ctx)
+		if err != nil {
+			return false, err
+		}
+		return thenReturned && elseReturned, nil
 	default:
 		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
 	}
@@ -376,8 +400,122 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			return ExprType{}, fmt.Errorf("operator '!' requires fallible expression")
 		}
 		return ExprType{ValueType: innerType.ValueType}, nil
+	case ast.SwitchExpr:
+		return c.checkSwitchExpr(scope, node, ctx)
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
+	}
+}
+
+func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
+	subjectType, err := c.checkExpr(scope, expr.Subject, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("switch subject: %w", err)
+	}
+	if subjectType.Fallible {
+		return ExprType{}, fmt.Errorf("switch subject: fallible expression must be handled explicitly")
+	}
+	if !isSwitchSubjectTypeSupported(subjectType.ValueType) {
+		return ExprType{}, fmt.Errorf("switch subject type %s is not supported", subjectType.ValueType)
+	}
+
+	var resultType Type
+	hasResultType := false
+	seenLabels := make(map[string]struct{}, len(expr.Cases))
+	for index, switchCase := range expr.Cases {
+		caseLabelType, err := c.checkSwitchCaseLabelType(scope, switchCase.Match, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
+		}
+		if caseLabelType != subjectType.ValueType {
+			return ExprType{}, fmt.Errorf("switch case %d: case type %s does not match subject type %s", index+1, caseLabelType, subjectType.ValueType)
+		}
+		labelKey, err := switchCaseKey(switchCase.Match)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
+		}
+		if _, exists := seenLabels[labelKey]; exists {
+			return ExprType{}, fmt.Errorf("switch case %d: duplicate case label", index+1)
+		}
+		seenLabels[labelKey] = struct{}{}
+
+		caseValueType, err := c.checkExpr(scope, switchCase.Value, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
+		}
+		if caseValueType.Fallible {
+			return ExprType{}, fmt.Errorf("switch case %d: fallible expression must be handled explicitly", index+1)
+		}
+		if !hasResultType {
+			resultType = caseValueType.ValueType
+			hasResultType = true
+		} else if caseValueType.ValueType != resultType {
+			return ExprType{}, fmt.Errorf("switch case %d: result type %s does not match %s", index+1, caseValueType.ValueType, resultType)
+		}
+	}
+
+	elseType, err := c.checkExpr(scope, expr.Else, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("switch else: %w", err)
+	}
+	if elseType.Fallible {
+		return ExprType{}, fmt.Errorf("switch else: fallible expression must be handled explicitly")
+	}
+	if !hasResultType {
+		resultType = elseType.ValueType
+		return ExprType{ValueType: resultType}, nil
+	}
+	if elseType.ValueType != resultType {
+		return ExprType{}, fmt.Errorf("switch else: result type %s does not match %s", elseType.ValueType, resultType)
+	}
+	return ExprType{ValueType: resultType}, nil
+}
+
+func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx functionContext) (Type, error) {
+	exprType, err := c.checkExpr(scope, expr, ctx)
+	if err != nil {
+		return Type{}, err
+	}
+	if exprType.Fallible {
+		return Type{}, fmt.Errorf("case label must not be fallible")
+	}
+	switch expr.(type) {
+	case ast.IntegerLiteral, ast.FloatLiteral, ast.BoolLiteral, ast.StringLiteralExpr:
+		return exprType.ValueType, nil
+	default:
+		return Type{}, fmt.Errorf("case label must be int, float, bool, or string literal")
+	}
+}
+
+func isSwitchSubjectTypeSupported(valueType Type) bool {
+	if valueType.IsArray {
+		return false
+	}
+	switch valueType.Base {
+	case BaseTypeInt, BaseTypeFloat:
+		return valueType.Dimension.IsDimensionless()
+	case BaseTypeBool, BaseTypeString:
+		return true
+	default:
+		return false
+	}
+}
+
+func switchCaseKey(expr ast.Expr) (string, error) {
+	switch node := expr.(type) {
+	case ast.IntegerLiteral:
+		return "int:" + node.Value, nil
+	case ast.FloatLiteral:
+		return "float:" + node.Value, nil
+	case ast.BoolLiteral:
+		if node.Value {
+			return "bool:true", nil
+		}
+		return "bool:false", nil
+	case ast.StringLiteralExpr:
+		return "string:" + node.Value, nil
+	default:
+		return "", fmt.Errorf("case label must be int, float, bool, or string literal")
 	}
 }
 

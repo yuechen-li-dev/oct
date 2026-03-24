@@ -220,6 +220,32 @@ func TestBuildFileParsesRangeExpressionsAndForLoops(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesIfElseStatements(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { if true { return 1 } else { return 2 } }")
+	ifStmt, ok := file.Functions[0].Body.Statements[0].(ast.IfStmt)
+	if !ok {
+		t.Fatalf("expected IfStmt, got %T", file.Functions[0].Body.Statements[0])
+	}
+	if _, ok := ifStmt.Condition.(ast.BoolLiteral); !ok {
+		t.Fatalf("expected bool condition, got %T", ifStmt.Condition)
+	}
+	if ifStmt.ElseBody == nil {
+		t.Fatal("expected else body")
+	}
+}
+
+func TestBuildFileParsesSwitchExpression(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let x = switch 1 { case 0 => 10 case 1 => 20 else => 30 } return x }")
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	switchExpr, ok := letStmt.Value.(ast.SwitchExpr)
+	if !ok {
+		t.Fatalf("expected SwitchExpr, got %T", letStmt.Value)
+	}
+	if len(switchExpr.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(switchExpr.Cases))
+	}
+}
+
 func TestBuildFileRejectsMissingReturnType(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() { return 0 }", "expected '->' before return type")
 }
@@ -254,6 +280,14 @@ func TestBuildFileRejectsNestedArrayTypeSyntax(t *testing.T) {
 
 func TestBuildFileRejectsMalformedMatch(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { match Safe() { err(e) => { return 0 } ok(v) => { return v } } }", "expected 'ok' arm")
+}
+
+func TestBuildFileRejectsSwitchWithoutElse(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 => 2 } return x }", "switch requires else arm")
+}
+
+func TestBuildFileRejectsNonLiteralSwitchCase(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 + 1 => 2 else => 3 } return x }", "expected '=>' after case label")
 }
 
 func parseSource(t *testing.T, text string) ast.File {
