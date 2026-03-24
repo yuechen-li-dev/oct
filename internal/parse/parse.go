@@ -780,6 +780,8 @@ func (p *parser) errorAtToken(token lex.Token, message string) error {
 
 func binaryPrecedence(kind lex.TokenKind) (int, bool) {
 	switch kind {
+	case lex.EqualEqual, lex.BangEqual, lex.LeftAngle, lex.LeftEqual, lex.RightAngle, lex.RightEqual:
+		return 0, true
 	case lex.Plus, lex.Minus:
 		return 1, true
 	case lex.Star, lex.Slash:

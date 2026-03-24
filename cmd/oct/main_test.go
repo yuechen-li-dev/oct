@@ -1505,3 +1505,47 @@ func TestRunCommandRejectsInvalidDimensions(t *testing.T) {
 		})
 	}
 }
+
+func TestM14ComparisonsRunAndBuild(t *testing.T) {
+	t.Run("valid comparison program", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m14_valid.oct", "fn Main() -> Int {\n    if 3 >= 2 {\n        while 1 < 2 {\n            return 7\n        }\n    }\n    return 0\n}\n")
+		stdout, stderr, err := executeCLI("run", sourcePath)
+		if err != nil {
+			t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		if stdout != "7\n" {
+			t.Fatalf("expected stdout %q, got %q", "7\n", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+
+		buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
+		if buildErr != nil {
+			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
+		}
+		if !strings.Contains(buildStdout, "build succeeded: "+sourcePath+".octbin") {
+			t.Fatalf("expected build success output, got %q", buildStdout)
+		}
+		if buildStderr != "" {
+			t.Fatalf("expected empty build stderr, got %q", buildStderr)
+		}
+	})
+
+	t.Run("invalid comparison program fails before artifact generation", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m14_invalid.oct", "fn Main() -> Bool {\n    return [1, 2] == [1, 2]\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty build stdout, got %q", stdout)
+		}
+		if !strings.Contains(stderr, `operator "==" not defined for Int[] and Int[]`) {
+			t.Fatalf("expected stderr to contain comparison error, got %q", stderr)
+		}
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		}
+	})
+}

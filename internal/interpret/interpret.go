@@ -789,7 +789,10 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, expr ast.RecordLite
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
-	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError {
+	if isComparisonOperator(operator) {
+		return evalComparisonExpr(operator, left, right)
+	}
+	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError || left.Kind == ValueEnum || right.Kind == ValueEnum || left.Kind == ValueRecord || right.Kind == ValueRecord {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if left.Kind == ValueArray || right.Kind == ValueArray {
@@ -838,6 +841,9 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 }
 
 func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	if isComparisonOperator(operator) {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
 	if left.Kind != ValueArray || right.Kind != ValueArray {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
@@ -873,6 +879,66 @@ func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) 
 		return Value{Kind: ValueInt, Int: left.Int / right.Int, Dimension: resultDim}, nil
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported operator %q", operator)
+	}
+}
+
+func evalComparisonExpr(operator string, left Value, right Value) (Value, error) {
+	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+	if (left.Kind == ValueInt || left.Kind == ValueFloat) && (right.Kind == ValueInt || right.Kind == ValueFloat) {
+		if left.Dimension != right.Dimension {
+			return Value{}, fmt.Errorf("runtime invariant violation: cannot compare %s and %s", valueTypeName(left), valueTypeName(right))
+		}
+		leftFloat, _ := asFloat(left)
+		rightFloat, _ := asFloat(right)
+		return Value{Kind: ValueBool, Bool: compareFloat(operator, leftFloat, rightFloat)}, nil
+	}
+	if isEqualityOperator(operator) {
+		if left.Kind == ValueBool && right.Kind == ValueBool {
+			equal := left.Bool == right.Bool
+			if operator == "!=" {
+				equal = !equal
+			}
+			return Value{Kind: ValueBool, Bool: equal}, nil
+		}
+		if left.Kind == ValueString && right.Kind == ValueString {
+			equal := left.Text == right.Text
+			if operator == "!=" {
+				equal = !equal
+			}
+			return Value{Kind: ValueBool, Bool: equal}, nil
+		}
+		if left.Kind == ValueEnum && right.Kind == ValueEnum {
+			if left.Enum.TypeName != right.Enum.TypeName {
+				return Value{}, fmt.Errorf("runtime invariant violation: operator %q requires matching enum types", operator)
+			}
+			equal := left.Enum.Variant == right.Enum.Variant
+			if operator == "!=" {
+				equal = !equal
+			}
+			return Value{Kind: ValueBool, Bool: equal}, nil
+		}
+	}
+	return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+}
+
+func compareFloat(operator string, left float64, right float64) bool {
+	switch operator {
+	case "==":
+		return left == right
+	case "!=":
+		return left != right
+	case "<":
+		return left < right
+	case "<=":
+		return left <= right
+	case ">":
+		return left > right
+	case ">=":
+		return left >= right
+	default:
+		return false
 	}
 }
 
@@ -948,4 +1014,12 @@ func operatorName(operator string) string {
 	default:
 		return operator
 	}
+}
+
+func isComparisonOperator(operator string) bool {
+	return isEqualityOperator(operator) || operator == "<" || operator == "<=" || operator == ">" || operator == ">="
+}
+
+func isEqualityOperator(operator string) bool {
+	return operator == "==" || operator == "!="
 }

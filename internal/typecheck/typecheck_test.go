@@ -289,6 +289,39 @@ func TestCheckValidatesM9Conditionals(t *testing.T) {
 	}
 }
 
+func TestCheckValidatesM14Comparisons(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Bool { return 1 == 1 }",
+		"fn Main() -> Bool { return 1 < 2.5 }",
+		"fn Main() -> Bool { return 1 + 2 < 4 }",
+		"fn Main() -> Bool { return 1m == 1m }",
+		"fn Main() -> Bool { return 1m < 2m }",
+		"fn Main() -> Bool { return true != false }",
+		"fn Main() -> Bool { return \"a\" == \"a\" }",
+		"enum Method { Euler Rk4 } fn Main() -> Bool { return Method.Euler != Method.Rk4 }",
+		"fn Main() -> Int { while 1 < 2 { return 7 } return 0 }",
+		"fn Main() -> Int { if 3 >= 2 { return 1 } else { return 0 } }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM14Comparisons(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Bool { return 1m == 1s }", "cannot compare Int<m> and Int<s>")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return 1m < 2s }", "cannot compare Int<m> and Int<s>")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return true < false }", `operator "<" not defined for Bool`)
+	assertTypeErrorContains(t, "fn Main() -> Bool { return \"a\" < \"b\" }", `operator "<" not defined for String`)
+	assertTypeErrorContains(t, "enum A { X } enum B { X } fn Main() -> Bool { return A.X == B.X }", `operator "==" requires matching enum types`)
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Bool { return Method.Euler < Method.Rk4 }", `operator "<" not defined for Method`)
+	assertTypeErrorContains(t, "fn Main() -> Bool { return [1, 2] == [1, 2] }", `operator "==" not defined for Int[] and Int[]`)
+	assertTypeErrorContains(t, "record Point { X: Int Y: Int } fn Main() -> Bool { let p1 = Point { X: 1 Y: 2 } let p2 = Point { X: 1 Y: 2 } return p1 == p2 }", `operator "==" not defined for Point and Point`)
+	assertTypeErrorContains(t, "fn Main() -> Bool { return 0 < 1 < 2 }", "chained comparisons are not supported")
+}
+
 func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { if 1 { return 1 } return 0 }", "function Main: if condition must be Bool, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1 { case true => 2 else => 3 } return x }", "function Main: let x: switch case 1: case type Bool does not match subject type Int")

@@ -53,11 +53,15 @@ const (
 	DotDot       TokenKind = "DotDot"
 	Question     TokenKind = "Question"
 	Bang         TokenKind = "Bang"
+	BangEqual    TokenKind = "BangEqual"
 	Caret        TokenKind = "Caret"
 	Plus         TokenKind = "Plus"
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
 	Slash        TokenKind = "Slash"
+	EqualEqual   TokenKind = "EqualEqual"
+	LeftEqual    TokenKind = "LeftEqual"
+	RightEqual   TokenKind = "RightEqual"
 )
 
 type Token struct {
@@ -175,9 +179,15 @@ func (l *lexer) nextToken() (Token, error) {
 		return Token{Kind: RightBracket, Lexeme: "]", Line: line, Column: column}, nil
 	case '<':
 		l.advanceRune()
+		if l.matchString("=") {
+			return Token{Kind: LeftEqual, Lexeme: "<=", Line: line, Column: column}, nil
+		}
 		return Token{Kind: LeftAngle, Lexeme: "<", Line: line, Column: column}, nil
 	case '>':
 		l.advanceRune()
+		if l.matchString("=") {
+			return Token{Kind: RightEqual, Lexeme: ">=", Line: line, Column: column}, nil
+		}
 		return Token{Kind: RightAngle, Lexeme: ">", Line: line, Column: column}, nil
 	case ',':
 		l.advanceRune()
@@ -196,12 +206,18 @@ func (l *lexer) nextToken() (Token, error) {
 		if l.matchString(">") {
 			return Token{Kind: FatArrow, Lexeme: "=>", Line: line, Column: column}, nil
 		}
+		if l.matchString("=") {
+			return Token{Kind: EqualEqual, Lexeme: "==", Line: line, Column: column}, nil
+		}
 		return Token{Kind: Assign, Lexeme: "=", Line: line, Column: column}, nil
 	case '?':
 		l.advanceRune()
 		return Token{Kind: Question, Lexeme: "?", Line: line, Column: column}, nil
 	case '!':
 		l.advanceRune()
+		if l.matchString("=") {
+			return Token{Kind: BangEqual, Lexeme: "!=", Line: line, Column: column}, nil
+		}
 		return Token{Kind: Bang, Lexeme: "!", Line: line, Column: column}, nil
 	case '^':
 		l.advanceRune()
