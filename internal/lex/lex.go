@@ -19,22 +19,24 @@ const (
 	FloatLiteral  TokenKind = "FloatLiteral"
 	StringLiteral TokenKind = "StringLiteral"
 
-	KeywordFn     TokenKind = "KeywordFn"
-	KeywordLet    TokenKind = "KeywordLet"
-	KeywordReturn TokenKind = "KeywordReturn"
-	KeywordFor    TokenKind = "KeywordFor"
-	KeywordIn     TokenKind = "KeywordIn"
-	KeywordStep   TokenKind = "KeywordStep"
-	KeywordTrue   TokenKind = "KeywordTrue"
-	KeywordFalse  TokenKind = "KeywordFalse"
-	KeywordMatch  TokenKind = "KeywordMatch"
-	KeywordIf     TokenKind = "KeywordIf"
-	KeywordElse   TokenKind = "KeywordElse"
-	KeywordWhile  TokenKind = "KeywordWhile"
-	KeywordSwitch TokenKind = "KeywordSwitch"
-	KeywordCase   TokenKind = "KeywordCase"
-	KeywordRecord TokenKind = "KeywordRecord"
-	KeywordEnum   TokenKind = "KeywordEnum"
+	KeywordFn      TokenKind = "KeywordFn"
+	KeywordLet     TokenKind = "KeywordLet"
+	KeywordReturn  TokenKind = "KeywordReturn"
+	KeywordFor     TokenKind = "KeywordFor"
+	KeywordIn      TokenKind = "KeywordIn"
+	KeywordStep    TokenKind = "KeywordStep"
+	KeywordTrue    TokenKind = "KeywordTrue"
+	KeywordFalse   TokenKind = "KeywordFalse"
+	KeywordMatch   TokenKind = "KeywordMatch"
+	KeywordIf      TokenKind = "KeywordIf"
+	KeywordElse    TokenKind = "KeywordElse"
+	KeywordWhile   TokenKind = "KeywordWhile"
+	KeywordSwitch  TokenKind = "KeywordSwitch"
+	KeywordCase    TokenKind = "KeywordCase"
+	KeywordRecord  TokenKind = "KeywordRecord"
+	KeywordEnum    TokenKind = "KeywordEnum"
+	KeywordPackage TokenKind = "KeywordPackage"
+	KeywordImport  TokenKind = "KeywordImport"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -373,6 +375,10 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordRecord
 	case "enum":
 		return KeywordEnum
+	case "package":
+		return KeywordPackage
+	case "import":
+		return KeywordImport
 	default:
 		return Identifier
 	}

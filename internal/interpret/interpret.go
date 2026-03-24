@@ -11,6 +11,7 @@ import (
 	"oct/internal/ast"
 	"oct/internal/builtin"
 	"oct/internal/dimension"
+	"oct/internal/project"
 )
 
 type ValueKind string
@@ -96,10 +97,11 @@ func (v Value) String() string {
 }
 
 type interpreter struct {
-	functions map[string]ast.FunctionDecl
-	records   map[string]ast.RecordDecl
-	enums     map[string]ast.EnumDecl
-	stdout    io.Writer
+	functions      map[string]ast.FunctionDecl
+	records        map[string]ast.RecordDecl
+	enums          map[string]ast.EnumDecl
+	functionSource map[string]string
+	stdout         io.Writer
 }
 
 type environment struct {
@@ -124,29 +126,34 @@ type callResult struct {
 	errorVal Value
 }
 
-func ExecuteMain(file ast.File, stdout io.Writer) (Value, error) {
+func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 	interpreter := interpreter{
-		functions: make(map[string]ast.FunctionDecl, len(file.Functions)),
-		records:   make(map[string]ast.RecordDecl, len(file.Records)),
-		enums:     make(map[string]ast.EnumDecl, len(file.Enums)),
-		stdout:    stdout,
+		functions:      make(map[string]ast.FunctionDecl),
+		records:        make(map[string]ast.RecordDecl),
+		enums:          make(map[string]ast.EnumDecl),
+		functionSource: make(map[string]string),
+		stdout:         stdout,
 	}
-	for _, record := range file.Records {
-		interpreter.records[record.Name] = record
-	}
-	for _, enumDecl := range file.Enums {
-		interpreter.enums[enumDecl.Name] = enumDecl
-	}
-	for _, function := range file.Functions {
-		interpreter.functions[function.Name] = function
+	for pkgName, pkg := range program.Packages {
+		for _, record := range pkg.Records {
+			interpreter.records[pkgName+"."+record.Name] = record
+		}
+		for _, enumDecl := range pkg.Enums {
+			interpreter.enums[pkgName+"."+enumDecl.Name] = enumDecl
+		}
+		for _, function := range pkg.Functions {
+			key := pkgName + "." + function.Name
+			interpreter.functions[key] = function
+			interpreter.functionSource[key] = pkgName
+		}
 	}
 
-	mainFunction, err := interpreter.findMain()
+	mainFunction, err := interpreter.findMain(program.Entry)
 	if err != nil {
 		return Value{}, err
 	}
 
-	result, err := interpreter.executeFunction(mainFunction, nil)
+	result, err := interpreter.executeFunction(mainFunction, program.Entry, nil)
 	if err != nil {
 		return Value{}, err
 	}
@@ -174,8 +181,8 @@ func (e *environment) lookup(name string) (Value, bool) {
 	return Value{}, false
 }
 
-func (i interpreter) findMain() (ast.FunctionDecl, error) {
-	function, ok := i.functions["Main"]
+func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
+	function, ok := i.functions[entryPackage+".Main"]
 	if !ok {
 		return ast.FunctionDecl{}, errors.New("missing Main function")
 	}
@@ -185,13 +192,13 @@ func (i interpreter) findMain() (ast.FunctionDecl, error) {
 	return function, nil
 }
 
-func (i interpreter) executeFunction(function ast.FunctionDecl, arguments []Value) (callResult, error) {
+func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, arguments []Value) (callResult, error) {
 	env := newEnvironment(nil)
 	for index, parameter := range function.Parameters {
 		env.define(parameter.Name, arguments[index])
 	}
 
-	result, err := i.executeBlock(env, function.Body)
+	result, err := i.executeBlock(env, pkgName, function.Body)
 	if err != nil {
 		return callResult{}, err
 	}
@@ -204,10 +211,10 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, arguments []Valu
 	return callResult{value: result.value}, nil
 }
 
-func (i interpreter) executeBlock(parent *environment, block ast.Block) (stmtResult, error) {
+func (i interpreter) executeBlock(parent *environment, pkgName string, block ast.Block) (stmtResult, error) {
 	blockEnv := newEnvironment(parent)
 	for _, statement := range block.Statements {
-		result, err := i.executeStmt(blockEnv, statement)
+		result, err := i.executeStmt(blockEnv, pkgName, statement)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -218,10 +225,10 @@ func (i interpreter) executeBlock(parent *environment, block ast.Block) (stmtRes
 	return stmtResult{}, nil
 }
 
-func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, error) {
+func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt) (stmtResult, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
-		value, err := i.evalExpr(env, node.Value)
+		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -231,7 +238,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		env.define(node.Name, value.value)
 		return stmtResult{}, nil
 	case ast.ReturnStmt:
-		value, err := i.evalExpr(env, node.Value)
+		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -240,7 +247,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		}
 		return stmtResult{value: value.value, returned: true}, nil
 	case ast.ExprStmt:
-		value, err := i.evalExpr(env, node.Value)
+		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -249,7 +256,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		}
 		return stmtResult{}, nil
 	case ast.ForStmt:
-		rangeValue, err := i.evalExpr(env, node.Range)
+		rangeValue, err := i.evalExpr(env, pkgName, node.Range)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -262,7 +269,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
 			iterationEnv := newEnvironment(env)
 			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current})
-			result, err := i.executeBlock(iterationEnv, node.Body)
+			result, err := i.executeBlock(iterationEnv, pkgName, node.Body)
 			if err != nil {
 				return stmtResult{}, err
 			}
@@ -272,19 +279,19 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 		}
 		return stmtResult{}, nil
 	case ast.MatchStmt:
-		subject, err := i.evalExpr(env, node.Subject)
+		subject, err := i.evalExpr(env, pkgName, node.Subject)
 		if err != nil {
 			return stmtResult{}, err
 		}
 		armEnv := newEnvironment(env)
 		if subject.hasError {
 			armEnv.define(node.ErrName, subject.errorVal)
-			return i.executeBlock(armEnv, node.ErrBody)
+			return i.executeBlock(armEnv, pkgName, node.ErrBody)
 		}
 		armEnv.define(node.OkName, subject.value)
-		return i.executeBlock(armEnv, node.OkBody)
+		return i.executeBlock(armEnv, pkgName, node.OkBody)
 	case ast.IfStmt:
-		condition, err := i.evalExpr(env, node.Condition)
+		condition, err := i.evalExpr(env, pkgName, node.Condition)
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -295,15 +302,15 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: if condition must be Bool, got %s", condition.value.Kind)
 		}
 		if condition.value.Bool {
-			return i.executeBlock(env, node.ThenBody)
+			return i.executeBlock(env, pkgName, node.ThenBody)
 		}
 		if node.ElseBody != nil {
-			return i.executeBlock(env, *node.ElseBody)
+			return i.executeBlock(env, pkgName, *node.ElseBody)
 		}
 		return stmtResult{}, nil
 	case ast.WhileStmt:
 		for {
-			condition, err := i.evalExpr(env, node.Condition)
+			condition, err := i.evalExpr(env, pkgName, node.Condition)
 			if err != nil {
 				return stmtResult{}, err
 			}
@@ -317,7 +324,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 				return stmtResult{}, nil
 			}
 
-			result, err := i.executeBlock(env, node.Body)
+			result, err := i.executeBlock(env, pkgName, node.Body)
 			if err != nil {
 				return stmtResult{}, err
 			}
@@ -330,7 +337,7 @@ func (i interpreter) executeStmt(env *environment, stmt ast.Stmt) (stmtResult, e
 	}
 }
 
-func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, error) {
+func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (evalResult, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		value, err := strconv.ParseInt(node.Value, 10, 64)
@@ -349,7 +356,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 	case ast.StringLiteralExpr:
 		return evalResult{value: Value{Kind: ValueString, Text: node.Value}}, nil
 	case ast.ArrayLiteralExpr:
-		value, err := i.evalArrayLiteralExpr(env, node)
+		value, err := i.evalArrayLiteralExpr(env, pkgName, node)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -361,11 +368,11 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: value}, nil
 	case ast.CallExpr:
-		return i.evalCallExpr(env, node)
+		return i.evalCallExpr(env, pkgName, node)
 	case ast.RecordLiteralExpr:
-		return i.evalRecordLiteralExpr(env, node)
+		return i.evalRecordLiteralExpr(env, pkgName, node)
 	case ast.EnumValueExpr:
-		enumDecl, ok := i.enums[node.EnumName]
+		enumDecl, ok := i.enums[pkgName+"."+node.EnumName]
 		if !ok {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: unknown enum type %s", node.EnumName)
 		}
@@ -381,7 +388,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: node.EnumName, Variant: node.Variant}}}, nil
 	case ast.IndexExpr:
-		target, err := i.evalExpr(env, node.Target)
+		target, err := i.evalExpr(env, pkgName, node.Target)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -391,7 +398,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		if target.value.Kind != ValueArray {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index non-array value of kind %s", target.value.Kind)
 		}
-		index, err := i.evalExpr(env, node.Index)
+		index, err := i.evalExpr(env, pkgName, node.Index)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -407,7 +414,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		return evalResult{value: target.value.Array[index.value.Int]}, nil
 	case ast.FieldAccessExpr:
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
-			if enumDecl, enumExists := i.enums[identifier.Name]; enumExists {
+			if enumDecl, enumExists := i.enums[pkgName+"."+identifier.Name]; enumExists {
 				for _, variant := range enumDecl.Variants {
 					if variant == node.Field {
 						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: identifier.Name, Variant: node.Field}}}, nil
@@ -416,7 +423,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", identifier.Name, node.Field)
 			}
 		}
-		target, err := i.evalExpr(env, node.Target)
+		target, err := i.evalExpr(env, pkgName, node.Target)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -432,16 +439,16 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: fieldValue}, nil
 	case ast.ParenExpr:
-		return i.evalExpr(env, node.Inner)
+		return i.evalExpr(env, pkgName, node.Inner)
 	case ast.BinaryExpr:
-		left, err := i.evalExpr(env, node.Left)
+		left, err := i.evalExpr(env, pkgName, node.Left)
 		if err != nil {
 			return evalResult{}, err
 		}
 		if left.hasError {
 			return evalResult{hasError: true, errorVal: left.errorVal}, nil
 		}
-		right, err := i.evalExpr(env, node.Right)
+		right, err := i.evalExpr(env, pkgName, node.Right)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -454,13 +461,13 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: value}, nil
 	case ast.RangeExpr:
-		value, err := i.evalRangeExpr(env, node)
+		value, err := i.evalRangeExpr(env, pkgName, node)
 		if err != nil {
 			return evalResult{}, err
 		}
 		return evalResult{value: value}, nil
 	case ast.PropagateExpr:
-		inner, err := i.evalExpr(env, node.Inner)
+		inner, err := i.evalExpr(env, pkgName, node.Inner)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -469,7 +476,7 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: inner.value}, nil
 	case ast.UnwrapExpr:
-		inner, err := i.evalExpr(env, node.Inner)
+		inner, err := i.evalExpr(env, pkgName, node.Inner)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -478,14 +485,14 @@ func (i interpreter) evalExpr(env *environment, expr ast.Expr) (evalResult, erro
 		}
 		return evalResult{value: inner.value}, nil
 	case ast.SwitchExpr:
-		return i.evalSwitchExpr(env, node)
+		return i.evalSwitchExpr(env, pkgName, node)
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
 	}
 }
 
-func (i interpreter) evalSwitchExpr(env *environment, expr ast.SwitchExpr) (evalResult, error) {
-	subject, err := i.evalExpr(env, expr.Subject)
+func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.SwitchExpr) (evalResult, error) {
+	subject, err := i.evalExpr(env, pkgName, expr.Subject)
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -494,20 +501,20 @@ func (i interpreter) evalSwitchExpr(env *environment, expr ast.SwitchExpr) (eval
 	}
 
 	for _, switchCase := range expr.Cases {
-		matched, err := i.switchCaseMatches(env, subject.value, switchCase.Match)
+		matched, err := i.switchCaseMatches(env, pkgName, subject.value, switchCase.Match)
 		if err != nil {
 			return evalResult{}, err
 		}
 		if !matched {
 			continue
 		}
-		return i.evalExpr(env, switchCase.Value)
+		return i.evalExpr(env, pkgName, switchCase.Value)
 	}
-	return i.evalExpr(env, expr.Else)
+	return i.evalExpr(env, pkgName, expr.Else)
 }
 
-func (i interpreter) switchCaseMatches(env *environment, subject Value, matchExpr ast.Expr) (bool, error) {
-	caseValueResult, err := i.evalExpr(env, matchExpr)
+func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject Value, matchExpr ast.Expr) (bool, error) {
+	caseValueResult, err := i.evalExpr(env, pkgName, matchExpr)
 	if err != nil {
 		return false, err
 	}
@@ -536,12 +543,12 @@ func (i interpreter) switchCaseMatches(env *environment, subject Value, matchExp
 	}
 }
 
-func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResult, error) {
+func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
 	if expr.Callee == "error" {
 		if len(expr.Arguments) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: error() expects 1 argument")
 		}
-		messageValue, err := i.evalExpr(env, expr.Arguments[0])
+		messageValue, err := i.evalExpr(env, pkgName, expr.Arguments[0])
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -554,17 +561,21 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
 	if builtin.IsName(expr.Callee) {
-		return i.evalBuiltinCallExpr(env, expr)
+		return i.evalBuiltinCallExpr(env, pkgName, expr)
 	}
 
-	function, ok := i.functions[expr.Callee]
+	functionKey := expr.Callee
+	if !strings.Contains(functionKey, ".") {
+		functionKey = pkgName + "." + functionKey
+	}
+	function, ok := i.functions[functionKey]
 	if !ok {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", expr.Callee)
+		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}
 
 	arguments := make([]Value, 0, len(expr.Arguments))
 	for _, argumentExpr := range expr.Arguments {
-		argument, err := i.evalExpr(env, argumentExpr)
+		argument, err := i.evalExpr(env, pkgName, argumentExpr)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -574,7 +585,11 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 		arguments = append(arguments, argument.value)
 	}
 
-	result, err := i.executeFunction(function, arguments)
+	targetPkg := pkgName
+	if dot := strings.Index(functionKey, "."); dot >= 0 {
+		targetPkg = functionKey[:dot]
+	}
+	result, err := i.executeFunction(function, targetPkg, arguments)
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -584,9 +599,9 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 	return evalResult{value: result.value}, nil
 }
 
-func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (evalResult, error) {
+func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
 	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
-		value, err := i.evalPlotBuiltinCallExpr(env, expr)
+		value, err := i.evalPlotBuiltinCallExpr(env, pkgName, expr)
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -597,7 +612,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (e
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", expr.Callee)
 	}
 
-	argument, err := i.evalExpr(env, expr.Arguments[0])
+	argument, err := i.evalExpr(env, pkgName, expr.Arguments[0])
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -676,8 +691,8 @@ func numericValueAsFloat(value Value, functionName string) (float64, error) {
 	}
 }
 
-func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value, error) {
-	start, err := i.evalExpr(env, expr.Start)
+func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {
+	start, err := i.evalExpr(env, pkgName, expr.Start)
 	if err != nil {
 		return Value{}, err
 	}
@@ -687,7 +702,7 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 	if start.value.Kind != ValueInt || !start.value.Dimension.IsDimensionless() {
 		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", valueTypeName(start.value))
 	}
-	end, err := i.evalExpr(env, expr.End)
+	end, err := i.evalExpr(env, pkgName, expr.End)
 	if err != nil {
 		return Value{}, err
 	}
@@ -699,7 +714,7 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 	}
 	step := int64(1)
 	if expr.Step != nil {
-		stepValue, err := i.evalExpr(env, expr.Step)
+		stepValue, err := i.evalExpr(env, pkgName, expr.Step)
 		if err != nil {
 			return Value{}, err
 		}
@@ -720,11 +735,11 @@ func (i interpreter) evalRangeExpr(env *environment, expr ast.RangeExpr) (Value,
 	return Value{Kind: ValueRange, Range: RangeValue{Start: start.value.Int, End: end.value.Int, Step: step}}, nil
 }
 
-func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLiteralExpr) (Value, error) {
+func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr ast.ArrayLiteralExpr) (Value, error) {
 	elements := make([]Value, 0, len(expr.Elements))
 	var firstType string
 	for idx, elementExpr := range expr.Elements {
-		element, err := i.evalExpr(env, elementExpr)
+		element, err := i.evalExpr(env, pkgName, elementExpr)
 		if err != nil {
 			return Value{}, err
 		}
@@ -744,8 +759,8 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, expr ast.ArrayLitera
 	return Value{Kind: ValueArray, Array: elements}, nil
 }
 
-func (i interpreter) evalRecordLiteralExpr(env *environment, expr ast.RecordLiteralExpr) (evalResult, error) {
-	recordDecl, ok := i.records[expr.TypeName]
+func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, expr ast.RecordLiteralExpr) (evalResult, error) {
+	recordDecl, ok := i.records[pkgName+"."+expr.TypeName]
 	if !ok {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unknown record type %s", expr.TypeName)
 	}
@@ -768,7 +783,7 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, expr ast.RecordLite
 		if !foundDecl {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' has no field '%s'", expr.TypeName, field.Name)
 		}
-		value, err := i.evalExpr(env, field.Value)
+		value, err := i.evalExpr(env, pkgName, field.Value)
 		if err != nil {
 			return evalResult{}, err
 		}

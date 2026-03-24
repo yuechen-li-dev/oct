@@ -1,3 +1,4 @@
+package Main
 fn Main() -> Float<m/s> {
     return 10m / 4s
 }

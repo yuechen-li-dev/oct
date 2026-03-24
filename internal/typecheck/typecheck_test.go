@@ -210,6 +210,9 @@ func TestCheckValidatesM12PrintAndWhile(t *testing.T) {
 
 func parseSource(t *testing.T, text string) ast.File {
 	t.Helper()
+	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {
+		text = "package Main\n" + text
+	}
 
 	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: text})
 	if err != nil {

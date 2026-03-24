@@ -1,3 +1,4 @@
+package Main
 fn Add(a: Int, b: Int) -> Int {
     return a + b
 }

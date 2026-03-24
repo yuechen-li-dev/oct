@@ -5,7 +5,10 @@ Oct v0 focuses on a small, explicit core: native arrays, explicit error handling
 
 ## Oct v0 feature set
 
-- Programs are collections of `fn` declarations and must define `Main`.
+- Packages are explicit: each `.oct` file must start with `package Name`, followed by zero or more `import Name` lines.
+- Package imports are Oct-native and explicit (no aliases/wildcards), and cross-package calls are qualified (`Geometry.Distance()`).
+- Package resolution rule (v0): one directory = one package, and imports resolve to sibling directories under the program root.
+- Program entrypoint is `Main.Main()`.
 - Static base types: `Int`, `Float`, `Bool`, `String`, and built-in `Error`.
 - Native one-dimensional arrays: `Int[]`, `Float[]`, `Bool[]`, including array arithmetic and indexing.
 - Control flow: `if`/`else`, `for i in 0..n` with optional `step`, and expression `switch` with literal `case` arms plus required `else`.

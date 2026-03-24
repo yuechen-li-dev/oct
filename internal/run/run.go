@@ -5,27 +5,16 @@ import (
 	"io"
 
 	"oct/internal/interpret"
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/source"
+	"oct/internal/project"
 	"oct/internal/typecheck"
 )
 
 func Execute(path string, output io.Writer) error {
-	file, err := source.Load(path)
+	program, err := project.Load(path)
 	if err != nil {
 		return err
 	}
-
-	lexed, err := lex.Analyze(file)
-	if err != nil {
-		return err
-	}
-	program, err := parse.BuildFile(lexed)
-	if err != nil {
-		return err
-	}
-	if err := typecheck.Check(program); err != nil {
+	if err := typecheck.CheckProgram(program); err != nil {
 		return err
 	}
 

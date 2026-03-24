@@ -319,6 +319,9 @@ func TestBuildFileRejectsNonLiteralSwitchCase(t *testing.T) {
 
 func parseSource(t *testing.T, text string) ast.File {
 	t.Helper()
+	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {
+		text = "package Main\n" + text
+	}
 
 	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: text})
 	if err != nil {
@@ -334,6 +337,9 @@ func parseSource(t *testing.T, text string) ast.File {
 
 func assertParseErrorContains(t *testing.T, text string, want string) {
 	t.Helper()
+	if !strings.HasPrefix(strings.TrimSpace(text), "package ") && !strings.Contains(want, "package declaration") {
+		text = "package Main\n" + text
+	}
 
 	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: text})
 	if err != nil {

@@ -1461,6 +1461,10 @@ func writeSourceFile(t *testing.T, name string, source string) string {
 	t.Helper()
 	tempDir := t.TempDir()
 	sourcePath := filepath.Join(tempDir, name)
+	trimmed := strings.TrimSpace(source)
+	if strings.HasSuffix(name, ".oct") && !strings.HasPrefix(trimmed, "package ") {
+		source = "package Main\n" + source
+	}
 	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
