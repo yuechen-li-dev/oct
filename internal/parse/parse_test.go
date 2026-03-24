@@ -149,6 +149,22 @@ func TestBuildFilePreservesParenthesizedExpression(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesComparisonPrecedenceBelowArithmetic(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Bool { return 1 + 2 < 4 }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected BinaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "<" {
+		t.Fatalf("expected top-level '<' operator, got %q", expr.Operator)
+	}
+	left, ok := expr.Left.(ast.BinaryExpr)
+	if !ok || left.Operator != "+" {
+		t.Fatalf("expected left branch '+' BinaryExpr, got %T %#v", expr.Left, expr.Left)
+	}
+}
+
 func TestBuildFileParsesMultipleFunctions(t *testing.T) {
 	file := parseSource(t, "fn One() -> Int { return 1 } fn Two() -> Bool { return true }")
 

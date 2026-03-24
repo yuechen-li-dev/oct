@@ -176,6 +176,41 @@ func TestAnalyzeTokenizesIfElseAndSwitch(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesComparisonOperators(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Bool { return 1 == 1 != 2 < 3 <= 4 > 5 >= 6 }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordReturn,
+		IntLiteral,
+		EqualEqual,
+		IntLiteral,
+		BangEqual,
+		IntLiteral,
+		LeftAngle,
+		IntLiteral,
+		LeftEqual,
+		IntLiteral,
+		RightAngle,
+		IntLiteral,
+		RightEqual,
+		IntLiteral,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "// heading\n\nfn Main() -> Int {\n  // inside\n  return true\n}\n"}
 

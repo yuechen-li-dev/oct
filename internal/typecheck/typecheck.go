@@ -459,6 +459,14 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 	case ast.ParenExpr:
 		return c.checkExpr(scope, node.Inner, ctx)
 	case ast.BinaryExpr:
+		if isComparisonOperator(node.Operator) {
+			if leftBinary, ok := node.Left.(ast.BinaryExpr); ok && isComparisonOperator(leftBinary.Operator) {
+				return ExprType{}, fmt.Errorf("chained comparisons are not supported")
+			}
+			if rightBinary, ok := node.Right.(ast.BinaryExpr); ok && isComparisonOperator(rightBinary.Operator) {
+				return ExprType{}, fmt.Errorf("chained comparisons are not supported")
+			}
+		}
 		leftType, err := c.checkExpr(scope, node.Left, ctx)
 		if err != nil {
 			return ExprType{}, err
@@ -473,7 +481,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if rightType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		resultType, err := checkBinaryExpr(node.Operator, leftType.ValueType, rightType.ValueType)
+		resultType, err := c.checkBinaryExpr(node.Operator, leftType.ValueType, rightType.ValueType)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -920,14 +928,17 @@ func resolveBaseType(name string) (BaseType, error) {
 	}
 }
 
-func checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if isComparisonOperator(operator) {
+		return c.checkComparisonExpr(operator, leftType, rightType)
+	}
 	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	if leftType.IsArray || rightType.IsArray {
-		return checkArrayBinaryExpr(operator, leftType, rightType)
+		return c.checkArrayBinaryExpr(operator, leftType, rightType)
 	}
-	if leftType.Base == BaseTypeBool || rightType.Base == BaseTypeBool {
+	if leftType.Base == BaseTypeBool || rightType.Base == BaseTypeBool || leftType.Name != "" || rightType.Name != "" {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 
@@ -955,19 +966,79 @@ func checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, erro
 	}
 }
 
-func checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
 	if !leftType.IsArray || !rightType.IsArray {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	if leftType.Base == BaseTypeBool || leftType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeBool || rightType.Base == BaseTypeString || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	result, err := checkBinaryExpr(operator, Type{Base: leftType.Base, Dimension: leftType.Dimension}, Type{Base: rightType.Base, Dimension: rightType.Dimension})
+	result, err := c.checkBinaryExpr(operator, Type{Base: leftType.Base, Dimension: leftType.Dimension}, Type{Base: rightType.Base, Dimension: rightType.Dimension})
 	if err != nil {
 		return Type{}, err
 	}
 	result.IsArray = true
 	return result, nil
+}
+
+func (c checker) checkComparisonExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString})) && leftType == rightType {
+		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
+	}
+	if leftType.IsArray || rightType.IsArray || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
+		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	}
+
+	if isNumericScalar(leftType) && isNumericScalar(rightType) {
+		if leftType.Dimension != rightType.Dimension {
+			return Type{}, fmt.Errorf("cannot compare %s and %s", leftType, rightType)
+		}
+		return Type{Base: BaseTypeBool}, nil
+	}
+
+	if isEqualityOperator(operator) {
+		if leftType == (Type{Base: BaseTypeBool}) && rightType == (Type{Base: BaseTypeBool}) {
+			return Type{Base: BaseTypeBool}, nil
+		}
+		if leftType == (Type{Base: BaseTypeString}) && rightType == (Type{Base: BaseTypeString}) {
+			return Type{Base: BaseTypeBool}, nil
+		}
+		if leftType.Name != "" && rightType.Name != "" {
+			if _, leftIsEnum := c.enums[leftType.Name]; leftIsEnum {
+				if _, rightIsEnum := c.enums[rightType.Name]; rightIsEnum {
+					if leftType.Name != rightType.Name {
+						return Type{}, fmt.Errorf("operator %q requires matching enum types", operator)
+					}
+					return Type{Base: BaseTypeBool}, nil
+				}
+			}
+		}
+	}
+
+	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || isEnumType(c, leftType)) && leftType == rightType {
+		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
+	}
+	return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+}
+
+func isEnumType(c checker, valueType Type) bool {
+	if valueType.IsArray || valueType.Name == "" {
+		return false
+	}
+	_, ok := c.enums[valueType.Name]
+	return ok
+}
+
+func isComparisonOperator(operator string) bool {
+	return isEqualityOperator(operator) || isOrderingOperator(operator)
+}
+
+func isEqualityOperator(operator string) bool {
+	return operator == "==" || operator == "!="
+}
+
+func isOrderingOperator(operator string) bool {
+	return operator == "<" || operator == "<=" || operator == ">" || operator == ">="
 }
 
 func isNumericBaseType(baseType BaseType) bool {
