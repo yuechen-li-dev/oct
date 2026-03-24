@@ -9,7 +9,7 @@ import (
 
 func isReservedBuiltinFunctionName(name string) bool {
 	switch name {
-	case "Len", "Abs", "Sqrt", "Sin", "Cos":
+	case "Len", "Abs", "Sqrt", "Sin", "Cos", "PlotLine", "PlotScatter":
 		return true
 	default:
 		return false
@@ -556,6 +556,10 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
+		return c.checkPlotBuiltinCallExpr(scope, expr, ctx)
+	}
+
 	if len(expr.Arguments) != 1 {
 		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", expr.Callee, len(expr.Arguments))
 	}
@@ -602,6 +606,62 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function: %s", expr.Callee)
+	}
+}
+
+func (c checker) checkPlotBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if len(expr.Arguments) != 3 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", expr.Callee, len(expr.Arguments))
+	}
+
+	xType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if xType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if err := requirePlotArrayType(expr.Callee, 1, xType.ValueType); err != nil {
+		return ExprType{}, err
+	}
+
+	yType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if yType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if err := requirePlotArrayType(expr.Callee, 2, yType.ValueType); err != nil {
+		return ExprType{}, err
+	}
+
+	pathType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if pathType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if pathType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", expr.Callee, pathType.ValueType)
+	}
+
+	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+}
+
+func requirePlotArrayType(functionName string, index int, valueType Type) error {
+	if !valueType.IsArray {
+		return fmt.Errorf("function '%s' argument %d expects Int[] or Float[], got %s", functionName, index, valueType)
+	}
+	if !valueType.Dimension.IsDimensionless() {
+		return fmt.Errorf("%s does not accept dimensioned arrays", functionName)
+	}
+	switch valueType.Base {
+	case BaseTypeInt, BaseTypeFloat:
+		return nil
+	default:
+		return fmt.Errorf("function '%s' argument %d expects Int[] or Float[], got %s", functionName, index, valueType)
 	}
 }
 

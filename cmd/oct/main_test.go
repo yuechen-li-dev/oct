@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -899,6 +900,126 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
 		want := "build failed: function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		}
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		}
+	})
+}
+
+func TestRunCommandHandlesM10PlotBuiltins(t *testing.T) {
+	t.Run("line plot writes png", func(t *testing.T) {
+		outputPath := filepath.Join(t.TempDir(), "line.png")
+		sourcePath := writeSourceFile(t, "m10_line.oct", "fn Main() -> Int {\n    let x = [0.0, 1.0, 2.0]\n    let y = [0.0, 1.0, 4.0]\n    return PlotLine(x, y, "+strconv.Quote(outputPath)+")\n}\n")
+
+		stdout, stderr, err := executeCLI("run", sourcePath)
+		if err != nil {
+			t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		if stdout != "0\n" {
+			t.Fatalf("expected stdout %q, got %q", "0\\n", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		info, statErr := os.Stat(outputPath)
+		if statErr != nil {
+			t.Fatalf("expected output png %s: %v", outputPath, statErr)
+		}
+		if info.Size() == 0 {
+			t.Fatalf("expected non-empty output png %s", outputPath)
+		}
+	})
+
+	t.Run("scatter plot writes png for int arrays", func(t *testing.T) {
+		outputPath := filepath.Join(t.TempDir(), "scatter.png")
+		sourcePath := writeSourceFile(t, "m10_scatter.oct", "fn Main() -> Int {\n    let x = [0, 1, 2]\n    let y = [0, 1, 4]\n    return PlotScatter(x, y, "+strconv.Quote(outputPath)+")\n}\n")
+
+		stdout, stderr, err := executeCLI("run", sourcePath)
+		if err != nil {
+			t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		if stdout != "0\n" {
+			t.Fatalf("expected stdout %q, got %q", "0\\n", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		info, statErr := os.Stat(outputPath)
+		if statErr != nil {
+			t.Fatalf("expected output png %s: %v", outputPath, statErr)
+		}
+		if info.Size() == 0 {
+			t.Fatalf("expected non-empty output png %s", outputPath)
+		}
+	})
+
+	t.Run("length mismatch fails at runtime", func(t *testing.T) {
+		outputPath := filepath.Join(t.TempDir(), "bad.png")
+		sourcePath := writeSourceFile(t, "m10_length_mismatch.oct", "fn Main() -> Int {\n    let x = [0.0, 1.0]\n    let y = [0.0, 1.0, 4.0]\n    return PlotLine(x, y, "+strconv.Quote(outputPath)+")\n}\n")
+
+		stdout, stderr, err := executeCLI("run", sourcePath)
+		if err == nil {
+			t.Fatalf("expected failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
+		}
+		want := "run failed: runtime error: PlotLine requires x and y arrays of equal length"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		}
+	})
+
+	t.Run("wrong extension fails deterministically", func(t *testing.T) {
+		outputPath := filepath.Join(t.TempDir(), "plot.jpg")
+		sourcePath := writeSourceFile(t, "m10_wrong_extension.oct", "fn Main() -> Int {\n    let x = [0.0]\n    let y = [1.0]\n    return PlotScatter(x, y, "+strconv.Quote(outputPath)+")\n}\n")
+
+		stdout, stderr, err := executeCLI("run", sourcePath)
+		if err == nil {
+			t.Fatalf("expected failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
+		}
+		want := "run failed: runtime error: plot output path must end with .png"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		}
+	})
+}
+
+func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
+	t.Run("valid plotting program builds", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m10_valid_build.oct", "fn Main() -> Int {\n    return PlotLine([0.0], [1.0], \"plot.png\")\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err != nil {
+			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		}
+		artifactPath := sourcePath + ".octbin"
+		if _, err := os.Stat(artifactPath); err != nil {
+			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		}
+		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
+			t.Fatalf("expected build success output, got %q", stdout)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("invalid plotting program fails before artifact generation", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m10_invalid_build.oct", "fn Main() -> Int {\n    return PlotLine([1m], [2m], \"bad.png\")\n}\n")
+		stdout, stderr, err := executeCLI("build", sourcePath)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		}
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
+		}
+		want := "build failed: function Main: PlotLine does not accept dimensioned arrays"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}

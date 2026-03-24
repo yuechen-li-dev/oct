@@ -13,7 +13,7 @@ import (
 
 func isBuiltinFunction(name string) bool {
 	switch name {
-	case "Len", "Abs", "Sqrt", "Sin", "Cos":
+	case "Len", "Abs", "Sqrt", "Sin", "Cos", "PlotLine", "PlotScatter":
 		return true
 	default:
 		return false
@@ -502,6 +502,14 @@ func (i interpreter) evalCallExpr(env *environment, expr ast.CallExpr) (evalResu
 }
 
 func (i interpreter) evalBuiltinCallExpr(env *environment, expr ast.CallExpr) (evalResult, error) {
+	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
+		value, err := i.evalPlotBuiltinCallExpr(env, expr)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
+	}
+
 	if len(expr.Arguments) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", expr.Callee)
 	}
