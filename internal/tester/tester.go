@@ -24,42 +24,47 @@ type testCase struct {
 }
 
 func Execute(path string, stdout io.Writer) error {
-	program, err := project.LoadForTest(path)
+	var tests []testCase
+	octFailCases, err := discoverOctFailCases(path)
 	if err != nil {
 		return err
 	}
-	if err := typecheck.CheckProgram(program); err != nil {
-		return err
-	}
 
-	var tests []testCase
-	for pkgName, pkg := range program.Packages {
-		for _, fn := range pkg.Functions {
-			if fn.IsFact {
-				tests = append(tests, testCase{
-					pkg:         pkgName,
-					filePath:    fn.SourcePath,
-					name:        fn.Name,
-					displayName: fn.Name,
-				})
-			}
-			if fn.IsTheory {
-				for i, row := range fn.InlineData {
-					args, err := inlineDataArgumentsToValues(row.Values, pkgName)
-					if err != nil {
-						return fmt.Errorf("%s.%s inline case %d: %w", pkgName, fn.Name, i, err)
-					}
+	program, loadErr := project.LoadForTest(path)
+	if loadErr == nil {
+		if err := typecheck.CheckProgram(program); err != nil {
+			return err
+		}
+		for pkgName, pkg := range program.Packages {
+			for _, fn := range pkg.Functions {
+				if fn.IsFact {
 					tests = append(tests, testCase{
 						pkg:         pkgName,
 						filePath:    fn.SourcePath,
 						name:        fn.Name,
-						displayName: fmt.Sprintf("%s[%d]", fn.Name, i),
-						caseIndex:   i,
-						arguments:   args,
+						displayName: fn.Name,
 					})
+				}
+				if fn.IsTheory {
+					for i, row := range fn.InlineData {
+						args, err := inlineDataArgumentsToValues(row.Values, pkgName)
+						if err != nil {
+							return fmt.Errorf("%s.%s inline case %d: %w", pkgName, fn.Name, i, err)
+						}
+						tests = append(tests, testCase{
+							pkg:         pkgName,
+							filePath:    fn.SourcePath,
+							name:        fn.Name,
+							displayName: fmt.Sprintf("%s[%d]", fn.Name, i),
+							caseIndex:   i,
+							arguments:   args,
+						})
+					}
 				}
 			}
 		}
+	} else if len(octFailCases) == 0 && !strings.Contains(loadErr.Error(), "unknown package") {
+		return loadErr
 	}
 	sort.Slice(tests, func(i, j int) bool {
 		if tests[i].pkg != tests[j].pkg {
@@ -74,12 +79,14 @@ func Execute(path string, stdout io.Writer) error {
 		return tests[i].caseIndex < tests[j].caseIndex
 	})
 
-	if len(tests) == 0 {
-		return fmt.Errorf("no [Fact] or [Theory] tests found")
+	if len(tests) == 0 && len(octFailCases) == 0 {
+		return fmt.Errorf("no [Fact], [Theory], or .octfail tests found")
 	}
 
 	failed := 0
+	total := 0
 	for _, testCase := range tests {
+		total++
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
 		err := interpret.ExecuteFunctionWithArgs(program, testCase.pkg, testCase.name, testCase.arguments, io.Discard)
 		if err != nil {
@@ -89,8 +96,23 @@ func Execute(path string, stdout io.Writer) error {
 		}
 		_, _ = fmt.Fprintf(stdout, "PASS %s (%s)\n", qualified, shortPath(path, testCase.filePath))
 	}
+	for _, octFailCase := range octFailCases {
+		total++
+		actual, err := runOctFailCase(octFailCase)
+		if err != nil {
+			failed++
+			_, _ = fmt.Fprintf(stdout, "FAIL %s\n", octFailCase.displayName)
+			_, _ = fmt.Fprintf(stdout, "  expected error containing: %q\n", octFailCase.expectedError)
+			if actual == "" {
+				actual = err.Error()
+			}
+			_, _ = fmt.Fprintf(stdout, "  actual: %q\n", actual)
+			continue
+		}
+		_, _ = fmt.Fprintf(stdout, "PASS %s\n", octFailCase.displayName)
+	}
 
-	_, _ = fmt.Fprintf(stdout, "Result: %d passed, %d failed\n", len(tests)-failed, failed)
+	_, _ = fmt.Fprintf(stdout, "Result: %d passed, %d failed\n", total-failed, failed)
 	if failed > 0 {
 		return fmt.Errorf("%d test(s) failed", failed)
 	}

@@ -1,0 +1,9 @@
+expect error: "condition switch requires else arm"
+
+package Main
+
+fn Main() -> Int {
+    return switch {
+        case true => 1
+    }
+}

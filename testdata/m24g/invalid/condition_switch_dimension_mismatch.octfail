@@ -1,0 +1,10 @@
+expect error: "condition switch result arms must have matching dimensions"
+
+package Main
+
+fn Main() -> Int<m> {
+    return switch {
+        case true => 1m
+        else => 2s
+    }
+}
