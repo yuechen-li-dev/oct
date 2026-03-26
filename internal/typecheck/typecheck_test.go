@@ -197,6 +197,9 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> Float { return Sqrt(2.25) }",
 		"fn Main() -> Float { return Sin(0) }",
 		"fn Main() -> Float { return Cos(0) }",
+		"fn Main() -> Int[] { var xs = [1, 2] xs = Append(xs, 3) return xs }",
+		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
+		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
 	}
 
 	for _, src := range validPrograms {
@@ -238,7 +241,11 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len() }", "function Main: function 'Len' expects 1 arguments, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1, 2) }", "function Main: function 'Sin' expects 1 arguments, got 2")
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return Append(1, 2) }", "function Main: Append requires array as first argument")
+	assertTypeErrorContains(t, "fn Main() -> Int[] { var xs = [1, 2] return Append(xs, 3.0) }", "function Main: Append element type must match array element type")
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return Append([1, 2], 3, 4) }", "function Main: function 'Append' expects 2 arguments, got 3")
 	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
+	assertTypeErrorContains(t, "fn Append(xs: Int[], x: Int) -> Int[] { return xs } fn Main() -> Int { return 0 }", "function Append: cannot redeclare built-in function")
 }
 
 func TestCheckValidatesM12PrintAndWhile(t *testing.T) {

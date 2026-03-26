@@ -1136,6 +1136,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
 		return c.checkPlotBuiltinCallExpr(scope, expr, ctx)
 	}
+	if expr.Callee == "Append" {
+		return c.checkAppendBuiltinCallExpr(scope, expr, ctx)
+	}
 
 	if len(expr.Arguments) != 1 {
 		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", expr.Callee, len(expr.Arguments))
@@ -1192,6 +1195,39 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", expr.Callee)
 	}
+}
+
+func (c checker) checkAppendBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if len(expr.Arguments) != 2 {
+		return ExprType{}, fmt.Errorf("function 'Append' expects 2 arguments, got %d", len(expr.Arguments))
+	}
+
+	arrayType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if arrayType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if !arrayType.ValueType.IsArray {
+		return ExprType{}, fmt.Errorf("Append requires array as first argument")
+	}
+
+	elementType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if elementType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+
+	expectedElementType := arrayType.ValueType
+	expectedElementType.IsArray = false
+	if elementType.ValueType != expectedElementType {
+		return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s", expectedElementType, elementType.ValueType)
+	}
+
+	return ExprType{ValueType: arrayType.ValueType}, nil
 }
 
 func isPrintableType(valueType Type) bool {
