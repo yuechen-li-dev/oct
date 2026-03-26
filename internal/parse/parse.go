@@ -306,6 +306,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 	switch p.current().Kind {
 	case lex.KeywordLet:
 		return p.parseLetStmt()
+	case lex.KeywordVar:
+		return p.parseVarStmt()
 	case lex.KeywordReturn:
 		return p.parseReturnStmt()
 	case lex.KeywordFor:
@@ -317,6 +319,9 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 	case lex.KeywordWhile:
 		return p.parseWhileStmt()
 	default:
+		if p.current().Kind == lex.Identifier && p.peek(1).Kind == lex.Assign {
+			return p.parseAssignStmt()
+		}
 		if p.isExpressionStart(p.current().Kind) {
 			return p.parseExprStmt()
 		}
@@ -338,6 +343,37 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 		return nil, err
 	}
 	return ast.LetStmt{Name: name.Lexeme, Value: value}, nil
+}
+
+func (p *parser) parseVarStmt() (ast.Stmt, error) {
+	p.advance()
+	name, err := p.expect(lex.Identifier, "expected identifier after 'var'")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.Assign, "expected '=' after binding name"); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	return ast.VarStmt{Name: name.Lexeme, Value: value}, nil
+}
+
+func (p *parser) parseAssignStmt() (ast.Stmt, error) {
+	name, err := p.expect(lex.Identifier, "expected assignment target")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.Assign, "expected '=' after assignment target"); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	return ast.AssignStmt{Name: name.Lexeme, Value: value}, nil
 }
 
 func (p *parser) parseReturnStmt() (ast.Stmt, error) {

@@ -21,6 +21,7 @@ const (
 
 	KeywordFn      TokenKind = "KeywordFn"
 	KeywordLet     TokenKind = "KeywordLet"
+	KeywordVar     TokenKind = "KeywordVar"
 	KeywordReturn  TokenKind = "KeywordReturn"
 	KeywordFor     TokenKind = "KeywordFor"
 	KeywordIn      TokenKind = "KeywordIn"
@@ -354,6 +355,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordFn
 	case "let":
 		return KeywordLet
+	case "var":
+		return KeywordVar
 	case "return":
 		return KeywordReturn
 	case "for":

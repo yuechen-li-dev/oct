@@ -1703,3 +1703,69 @@ func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
 		})
 	}
 }
+
+func TestM18MutableLocalsAndReassignment(t *testing.T) {
+	valid := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"basic mutable local", "fn Main() -> Int { var x = 1 x = 2 return x }", "2\n"},
+		{"while loop update", "fn Main() -> Int { var x = 0 while x < 3 { x = x + 1 } return x }", "3\n"},
+		{"dimension preserving reassignment", "fn Main() -> Int<m> { var d = 1m d = 2m return d }", "2m\n"},
+		{"record whole value reassignment", "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }", "Point{X: 3, Y: 4}\n"},
+		{"array whole value reassignment", "fn Main() -> Int[] { var xs = [1, 2] xs = [3, 4] return xs }", "[3, 4]\n"},
+		{"vector whole value reassignment", "fn Main() -> Vector<Int> { var v = vector[1, 2] v = vector[3, 4] return v }", "vector[3, 4]\n"},
+		{"matrix whole value reassignment", "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m = matrix[[5, 6] [7, 8]] return m }", "matrix[[5, 6], [7, 8]]\n"},
+		{"fallible function mutable local", "fn Main() -> Int ! Error { var x = 1 x = 2 return x }", "2\n"},
+	}
+
+	for _, test := range valid {
+		t.Run("valid/"+test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+
+	invalidBuild := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{"dimension mismatch reassignment", "fn Main() -> Int<m> { var d = 1m d = 2s return d }", "assignment to d: expected Int<m>, got Int<s>"},
+		{"assign to immutable let", "fn Main() -> Int { let x = 1 x = 2 return x }", "cannot assign to immutable binding 'x'"},
+		{"assign to unknown name", "fn Main() -> Int { x = 1 return 0 }", "unknown binding 'x'"},
+		{"record field mutation rejected", "record Point { X: Int Y: Int } fn Main() -> Int { var p = Point { X: 1 Y: 2 } p.X = 3 return 0 }", "expected statement"},
+		{"array element mutation rejected", "fn Main() -> Int[] { var xs = [1, 2] xs[0] = 3 return xs }", "expected statement"},
+		{"vector element mutation rejected", "fn Main() -> Vector<Int> { var v = vector[1, 2] v[0] = 3 return v }", "expected statement"},
+		{"matrix element mutation rejected", "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9 return m }", "expected statement"},
+	}
+
+	for _, test := range invalidBuild {
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("build", sourcePath)
+			if err == nil {
+				t.Fatalf("expected build failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty build stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+			}
+		})
+	}
+}
