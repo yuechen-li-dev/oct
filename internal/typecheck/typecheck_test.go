@@ -116,8 +116,8 @@ func TestCheckRejectsMixedTypeArrayLiteral(t *testing.T) {
 }
 
 func TestCheckRejectsInvalidIndexing(t *testing.T) {
-	assertTypeErrorContains(t, "fn Main() -> Int { return 1[0] }", "function Main: cannot index non-array value of type Int")
-	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: array index must be Int, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { return 1[0] }", "function Main: cannot index non-indexable value of type Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: index must be Int, got Bool")
 }
 
 func TestCheckRejectsInvalidRanges(t *testing.T) {
@@ -332,4 +332,30 @@ func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2s } }", "function Main: switch else: result type Int<s> does not match Int<m>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch [1, 2] { else => 0 } return x }", "function Main: let x: switch subject type Int[] is not supported")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1m { case 1m => 2 else => 3 } return x }", "function Main: let x: switch subject type Int<m> is not supported")
+}
+
+func TestCheckValidatesM16VectorsMatrices(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Vector<Int> { return vector[1, 2, 3] }",
+		"fn Main() -> Matrix<Int> { return matrix[[1, 2] [3, 4]] }",
+		"fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[1, 0] }",
+		"fn Main() -> Vector<Int> { let m = matrix[[1, 2] [3, 4]] let v = vector[10, 20] return m @ v }",
+		"fn Main() -> Matrix<Int> { let a = matrix[[1, 2] [3, 4]] let b = matrix[[5, 6] [7, 8]] return a @ b }",
+		"fn Main() -> Vector<Int> { return vector[1, 2, 3] + 1 }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3]] }", "matrix rows must all have equal length")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2.0] }", "Vector literals require homogeneous element type")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>")
+	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[0] }", "matrix indexing requires exactly 2 indices, got 1")
+	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
 }

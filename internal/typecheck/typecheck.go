@@ -26,6 +26,8 @@ type Type struct {
 	Name      string
 	Dimension dimension.Dimension
 	IsArray   bool
+	IsVector  bool
+	IsMatrix  bool
 }
 
 func (t Type) String() string {
@@ -38,6 +40,12 @@ func (t Type) String() string {
 	}
 	if t.IsArray {
 		return base + "[]"
+	}
+	if t.IsVector {
+		return "Vector<" + base + ">"
+	}
+	if t.IsMatrix {
+		return "Matrix<" + base + ">"
 	}
 	return base
 }
@@ -472,6 +480,18 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			return ExprType{}, err
 		}
 		return ExprType{ValueType: valueType}, nil
+	case ast.VectorLiteralExpr:
+		valueType, err := c.checkVectorLiteralExpr(scope, node, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		return ExprType{ValueType: valueType}, nil
+	case ast.MatrixLiteralExpr:
+		valueType, err := c.checkMatrixLiteralExpr(scope, node, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		return ExprType{ValueType: valueType}, nil
 	case ast.IdentifierExpr:
 		valueType, ok := scope.lookup(node.Name)
 		if !ok {
@@ -499,20 +519,37 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if targetType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		if !targetType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("cannot index non-array value of type %s", targetType.ValueType)
+		for _, idxExpr := range node.Indices {
+			indexType, err := c.checkExpr(scope, idxExpr, ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if indexType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if indexType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("index must be Int, got %s", indexType.ValueType)
+			}
 		}
-		indexType, err := c.checkExpr(scope, node.Index, ctx)
-		if err != nil {
-			return ExprType{}, err
+		switch {
+		case targetType.ValueType.IsArray:
+			if len(node.Indices) != 1 {
+				return ExprType{}, fmt.Errorf("array indexing requires exactly 1 index, got %d", len(node.Indices))
+			}
+			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+		case targetType.ValueType.IsVector:
+			if len(node.Indices) != 1 {
+				return ExprType{}, fmt.Errorf("vector indexing requires exactly 1 index, got %d", len(node.Indices))
+			}
+			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+		case targetType.ValueType.IsMatrix:
+			if len(node.Indices) != 2 {
+				return ExprType{}, fmt.Errorf("matrix indexing requires exactly 2 indices, got %d", len(node.Indices))
+			}
+			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+		default:
+			return ExprType{}, fmt.Errorf("cannot index non-indexable value of type %s", targetType.ValueType)
 		}
-		if indexType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
-		}
-		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
-			return ExprType{}, fmt.Errorf("array index must be Int, got %s", indexType.ValueType)
-		}
-		return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 	case ast.FieldAccessExpr:
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumExists := c.lookupEnum(identifier.Name); enumExists {
@@ -727,7 +764,7 @@ func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx funct
 }
 
 func isSwitchSubjectTypeSupported(valueType Type) bool {
-	if valueType.IsArray {
+	if valueType.IsArray || valueType.IsVector || valueType.IsMatrix {
 		return false
 	}
 	switch valueType.Base {
@@ -917,10 +954,13 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 
 func isPrintableType(valueType Type) bool {
 	if valueType.Name != "" {
-		return !valueType.IsArray
+		return !valueType.IsArray && !valueType.IsVector && !valueType.IsMatrix
 	}
 	if valueType.IsArray {
 		return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString
+	}
+	if valueType.IsVector || valueType.IsMatrix {
+		return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat
 	}
 	return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString || valueType.Base == BaseTypeError
 }
@@ -1013,6 +1053,73 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
 }
 
+func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr, ctx functionContext) (Type, error) {
+	if len(expr.Elements) == 0 {
+		return Type{}, fmt.Errorf("empty vector literals are not supported")
+	}
+	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
+	if err != nil {
+		return Type{}, err
+	}
+	if firstType.Fallible {
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if !isNumericScalar(firstType.ValueType) {
+		return Type{}, fmt.Errorf("Vector literals require numeric elements, got %s", firstType.ValueType)
+	}
+	for _, element := range expr.Elements[1:] {
+		elementType, err := c.checkExpr(scope, element, ctx)
+		if err != nil {
+			return Type{}, err
+		}
+		if elementType.Fallible {
+			return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if elementType.ValueType != firstType.ValueType {
+			return Type{}, fmt.Errorf("Vector literals require homogeneous element type")
+		}
+	}
+	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsVector: true}, nil
+}
+
+func (c checker) checkMatrixLiteralExpr(scope *scope, expr ast.MatrixLiteralExpr, ctx functionContext) (Type, error) {
+	if len(expr.Rows) == 0 {
+		return Type{}, fmt.Errorf("empty matrix literals are not supported")
+	}
+	if len(expr.Rows[0]) == 0 {
+		return Type{}, fmt.Errorf("matrix rows must not be empty")
+	}
+	expectedCols := len(expr.Rows[0])
+	firstType, err := c.checkExpr(scope, expr.Rows[0][0], ctx)
+	if err != nil {
+		return Type{}, err
+	}
+	if firstType.Fallible {
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if !isNumericScalar(firstType.ValueType) {
+		return Type{}, fmt.Errorf("Matrix literals require numeric elements, got %s", firstType.ValueType)
+	}
+	for _, row := range expr.Rows {
+		if len(row) != expectedCols {
+			return Type{}, fmt.Errorf("matrix rows must all have equal length")
+		}
+		for _, element := range row {
+			elementType, err := c.checkExpr(scope, element, ctx)
+			if err != nil {
+				return Type{}, err
+			}
+			if elementType.Fallible {
+				return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if elementType.ValueType != firstType.ValueType {
+				return Type{}, fmt.Errorf("Matrix literals require homogeneous element type")
+			}
+		}
+	}
+	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsMatrix: true}, nil
+}
+
 func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr, ctx functionContext) (ExprType, error) {
 	recordDecl, ok := c.lookupRecord(expr.TypeName)
 	if !ok {
@@ -1052,6 +1159,27 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
+	if typeRef.VectorOf != nil || typeRef.MatrixOf != nil {
+		var elementRef ast.TypeRef
+		isVector := typeRef.VectorOf != nil
+		if isVector {
+			elementRef = *typeRef.VectorOf
+		} else {
+			elementRef = *typeRef.MatrixOf
+		}
+		elementType, err := c.resolveType(elementRef)
+		if err != nil {
+			return Type{}, err
+		}
+		if !isNumericScalar(elementType) {
+			if isVector {
+				return Type{}, fmt.Errorf("Vector does not support %s elements in M16", elementType)
+			}
+			return Type{}, fmt.Errorf("Matrix does not support %s elements in M16", elementType)
+		}
+		return Type{Base: elementType.Base, Dimension: elementType.Dimension, IsVector: isVector, IsMatrix: !isVector}, nil
+	}
+
 	qualifiedName := typeRef.Name
 	if typeRef.Package != "" {
 		qualifiedName = typeRef.Package + "." + typeRef.Name
@@ -1123,6 +1251,9 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 	if isComparisonOperator(operator) {
 		return c.checkComparisonExpr(operator, leftType, rightType)
 	}
+	if leftType.IsVector || leftType.IsMatrix || rightType.IsVector || rightType.IsMatrix {
+		return c.checkLinearAlgebraBinaryExpr(operator, leftType, rightType)
+	}
 	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
@@ -1157,6 +1288,64 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 	}
 }
 
+func (c checker) checkLinearAlgebraBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	isLeftContainer := leftType.IsVector || leftType.IsMatrix
+	isRightContainer := rightType.IsVector || rightType.IsMatrix
+	leftScalar := Type{Base: leftType.Base, Dimension: leftType.Dimension}
+	rightScalar := Type{Base: rightType.Base, Dimension: rightType.Dimension}
+
+	if operator == "@" {
+		if leftType.IsMatrix && rightType.IsMatrix {
+			result, err := c.checkBinaryExpr("*", leftScalar, rightScalar)
+			if err != nil {
+				return Type{}, err
+			}
+			return Type{Base: result.Base, Dimension: result.Dimension, IsMatrix: true}, nil
+		}
+		if leftType.IsMatrix && rightType.IsVector {
+			result, err := c.checkBinaryExpr("*", leftScalar, rightScalar)
+			if err != nil {
+				return Type{}, err
+			}
+			return Type{Base: result.Base, Dimension: result.Dimension, IsVector: true}, nil
+		}
+		return Type{}, fmt.Errorf("operator '@' not defined for %s and %s", leftType, rightType)
+	}
+
+	if isLeftContainer && isRightContainer {
+		if leftType.IsVector != rightType.IsVector || leftType.IsMatrix != rightType.IsMatrix {
+			return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+		}
+		result, err := c.checkBinaryExpr(operator, leftScalar, rightScalar)
+		if err != nil {
+			return Type{}, err
+		}
+		result.IsVector = leftType.IsVector
+		result.IsMatrix = leftType.IsMatrix
+		return result, nil
+	}
+
+	if (operator == "+" || operator == "-" || operator == "*" || operator == "/") && isLeftContainer && isNumericScalar(rightType) {
+		result, err := c.checkBinaryExpr(operator, leftScalar, rightScalar)
+		if err != nil {
+			return Type{}, err
+		}
+		result.IsVector = leftType.IsVector
+		result.IsMatrix = leftType.IsMatrix
+		return result, nil
+	}
+	if (operator == "+" || operator == "-" || operator == "*" || operator == "/") && isRightContainer && isNumericScalar(leftType) {
+		result, err := c.checkBinaryExpr(operator, leftScalar, rightScalar)
+		if err != nil {
+			return Type{}, err
+		}
+		result.IsVector = rightType.IsVector
+		result.IsMatrix = rightType.IsMatrix
+		return result, nil
+	}
+	return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+}
+
 func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
 	if !leftType.IsArray || !rightType.IsArray {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
@@ -1176,7 +1365,7 @@ func (c checker) checkComparisonExpr(operator string, leftType Type, rightType T
 	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString})) && leftType == rightType {
 		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
 	}
-	if leftType.IsArray || rightType.IsArray || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
+	if leftType.IsArray || rightType.IsArray || leftType.IsVector || rightType.IsVector || leftType.IsMatrix || rightType.IsMatrix || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 
@@ -1296,7 +1485,7 @@ func isNumericBaseType(baseType BaseType) bool {
 }
 
 func isNumericScalar(valueType Type) bool {
-	return !valueType.IsArray && isNumericBaseType(valueType.Base)
+	return !valueType.IsArray && !valueType.IsVector && !valueType.IsMatrix && isNumericBaseType(valueType.Base)
 }
 
 func formatDimension(dim dimension.Dimension) string {
@@ -1324,7 +1513,7 @@ func isAssignable(actual Type, expected Type) bool {
 	if actual.Name != "" || expected.Name != "" {
 		return false
 	}
-	if actual.IsArray != expected.IsArray || actual.Dimension != expected.Dimension {
+	if actual.IsArray != expected.IsArray || actual.IsVector != expected.IsVector || actual.IsMatrix != expected.IsMatrix || actual.Dimension != expected.Dimension {
 		return false
 	}
 	return actual.Base == BaseTypeInt && expected.Base == BaseTypeFloat

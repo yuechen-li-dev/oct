@@ -26,6 +26,8 @@ const (
 	ValueError  ValueKind = "Error"
 	ValueRecord ValueKind = "Record"
 	ValueEnum   ValueKind = "Enum"
+	ValueVector ValueKind = "Vector"
+	ValueMatrix ValueKind = "Matrix"
 )
 
 type Value struct {
@@ -36,6 +38,8 @@ type Value struct {
 	Bool      bool
 	Text      string
 	Array     []Value
+	Vector    []Value
+	Matrix    MatrixValue
 	Range     RangeValue
 	Error     ErrorValue
 	Record    RecordValue
@@ -63,6 +67,12 @@ type EnumValue struct {
 	Variant  string
 }
 
+type MatrixValue struct {
+	Rows     int
+	Cols     int
+	Elements []Value
+}
+
 func (v Value) String() string {
 	switch v.Kind {
 	case ValueInt:
@@ -79,6 +89,22 @@ func (v Value) String() string {
 			parts = append(parts, element.String())
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	case ValueVector:
+		parts := make([]string, 0, len(v.Vector))
+		for _, element := range v.Vector {
+			parts = append(parts, element.String())
+		}
+		return "vector[" + strings.Join(parts, ", ") + "]"
+	case ValueMatrix:
+		rows := make([]string, 0, v.Matrix.Rows)
+		for r := 0; r < v.Matrix.Rows; r++ {
+			parts := make([]string, 0, v.Matrix.Cols)
+			for c := 0; c < v.Matrix.Cols; c++ {
+				parts = append(parts, v.Matrix.Elements[r*v.Matrix.Cols+c].String())
+			}
+			rows = append(rows, "["+strings.Join(parts, ", ")+"]")
+		}
+		return "matrix[" + strings.Join(rows, ", ") + "]"
 	case ValueRange:
 		return fmt.Sprintf("%d..%d step %d", v.Range.Start, v.Range.End, v.Range.Step)
 	case ValueError:
@@ -361,6 +387,18 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{}, err
 		}
 		return evalResult{value: value}, nil
+	case ast.VectorLiteralExpr:
+		value, err := i.evalVectorLiteralExpr(env, pkgName, node)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
+	case ast.MatrixLiteralExpr:
+		value, err := i.evalMatrixLiteralExpr(env, pkgName, node)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: value}, nil
 	case ast.IdentifierExpr:
 		value, ok := env.lookup(node.Name)
 		if !ok {
@@ -395,23 +433,49 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if target.hasError {
 			return evalResult{hasError: true, errorVal: target.errorVal}, nil
 		}
-		if target.value.Kind != ValueArray {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index non-array value of kind %s", target.value.Kind)
+		indices := make([]int64, 0, len(node.Indices))
+		for _, idxExpr := range node.Indices {
+			index, err := i.evalExpr(env, pkgName, idxExpr)
+			if err != nil {
+				return evalResult{}, err
+			}
+			if index.hasError {
+				return evalResult{hasError: true, errorVal: index.errorVal}, nil
+			}
+			if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
+			}
+			indices = append(indices, index.value.Int)
 		}
-		index, err := i.evalExpr(env, pkgName, node.Index)
-		if err != nil {
-			return evalResult{}, err
+		switch target.value.Kind {
+		case ValueArray:
+			if len(indices) != 1 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: array indexing requires exactly 1 index, got %d", len(indices))
+			}
+			if indices[0] < 0 || indices[0] >= int64(len(target.value.Array)) {
+				return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", indices[0], len(target.value.Array))
+			}
+			return evalResult{value: target.value.Array[indices[0]]}, nil
+		case ValueVector:
+			if len(indices) != 1 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires exactly 1 index, got %d", len(indices))
+			}
+			if indices[0] < 0 || indices[0] >= int64(len(target.value.Vector)) {
+				return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for vector of length %d", indices[0], len(target.value.Vector))
+			}
+			return evalResult{value: target.value.Vector[indices[0]]}, nil
+		case ValueMatrix:
+			if len(indices) != 2 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: matrix indexing requires exactly 2 indices, got %d", len(indices))
+			}
+			r, c := indices[0], indices[1]
+			if r < 0 || r >= int64(target.value.Matrix.Rows) || c < 0 || c >= int64(target.value.Matrix.Cols) {
+				return evalResult{}, fmt.Errorf("runtime error: index [%d, %d] out of bounds for matrix of shape %dx%d", r, c, target.value.Matrix.Rows, target.value.Matrix.Cols)
+			}
+			return evalResult{value: target.value.Matrix.Elements[int(r)*target.value.Matrix.Cols+int(c)]}, nil
+		default:
+			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index value of kind %s", target.value.Kind)
 		}
-		if index.hasError {
-			return evalResult{hasError: true, errorVal: index.errorVal}, nil
-		}
-		if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: array index must be Int, got %s", valueTypeName(index.value))
-		}
-		if index.value.Int < 0 || index.value.Int >= int64(len(target.value.Array)) {
-			return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(target.value.Array))
-		}
-		return evalResult{value: target.value.Array[index.value.Int]}, nil
 	case ast.FieldAccessExpr:
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, identifier.Name); enumExists {
@@ -701,6 +765,10 @@ func numericValueAsFloat(value Value, functionName string) (float64, error) {
 	}
 }
 
+func isNumericValue(value Value) bool {
+	return value.Kind == ValueInt || value.Kind == ValueFloat
+}
+
 func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {
 	start, err := i.evalExpr(env, pkgName, expr.Start)
 	if err != nil {
@@ -767,6 +835,69 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr
 		elements = append(elements, element.value)
 	}
 	return Value{Kind: ValueArray, Array: elements}, nil
+}
+
+func (i interpreter) evalVectorLiteralExpr(env *environment, pkgName string, expr ast.VectorLiteralExpr) (Value, error) {
+	if len(expr.Elements) == 0 {
+		return Value{}, errors.New("runtime invariant violation: empty vector literals are not supported")
+	}
+	elements := make([]Value, 0, len(expr.Elements))
+	var firstType string
+	for idx, elementExpr := range expr.Elements {
+		element, err := i.evalExpr(env, pkgName, elementExpr)
+		if err != nil {
+			return Value{}, err
+		}
+		if element.hasError {
+			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached vector literal element %d", idx)
+		}
+		if !isNumericValue(element.value) {
+			return Value{}, fmt.Errorf("runtime invariant violation: vector elements must be numeric, got %s", valueTypeName(element.value))
+		}
+		if idx == 0 {
+			firstType = valueTypeName(element.value)
+		} else if valueTypeName(element.value) != firstType {
+			return Value{}, errors.New("runtime invariant violation: Vector literals require homogeneous element type")
+		}
+		elements = append(elements, element.value)
+	}
+	return Value{Kind: ValueVector, Vector: elements}, nil
+}
+
+func (i interpreter) evalMatrixLiteralExpr(env *environment, pkgName string, expr ast.MatrixLiteralExpr) (Value, error) {
+	if len(expr.Rows) == 0 {
+		return Value{}, errors.New("runtime invariant violation: empty matrix literals are not supported")
+	}
+	cols := len(expr.Rows[0])
+	if cols == 0 {
+		return Value{}, errors.New("runtime invariant violation: matrix rows must not be empty")
+	}
+	elements := make([]Value, 0, len(expr.Rows)*cols)
+	var firstType string
+	for r, row := range expr.Rows {
+		if len(row) != cols {
+			return Value{}, errors.New("runtime invariant violation: matrix rows must all have equal length")
+		}
+		for c, elementExpr := range row {
+			element, err := i.evalExpr(env, pkgName, elementExpr)
+			if err != nil {
+				return Value{}, err
+			}
+			if element.hasError {
+				return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached matrix literal element [%d, %d]", r, c)
+			}
+			if !isNumericValue(element.value) {
+				return Value{}, fmt.Errorf("runtime invariant violation: matrix elements must be numeric, got %s", valueTypeName(element.value))
+			}
+			if r == 0 && c == 0 {
+				firstType = valueTypeName(element.value)
+			} else if valueTypeName(element.value) != firstType {
+				return Value{}, errors.New("runtime invariant violation: Matrix literals require homogeneous element type")
+			}
+			elements = append(elements, element.value)
+		}
+	}
+	return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: len(expr.Rows), Cols: cols, Elements: elements}}, nil
 }
 
 func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, expr ast.RecordLiteralExpr) (evalResult, error) {
@@ -858,6 +989,9 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if isComparisonOperator(operator) {
 		return evalComparisonExpr(operator, left, right)
 	}
+	if left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix {
+		return evalLinearBinaryExpr(operator, left, right)
+	}
 	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError || left.Kind == ValueEnum || right.Kind == ValueEnum || left.Kind == ValueRecord || right.Kind == ValueRecord {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
@@ -906,6 +1040,138 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	}
 }
 
+func evalLinearBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	if operator == "@" {
+		if left.Kind == ValueMatrix && right.Kind == ValueMatrix {
+			return evalMatrixMultiply(left, right)
+		}
+		if left.Kind == ValueMatrix && right.Kind == ValueVector {
+			return evalMatrixVectorMultiply(left, right)
+		}
+		return Value{}, fmt.Errorf("runtime invariant violation: operator '@' not defined for %s and %s", valueTypeName(left), valueTypeName(right))
+	}
+	if !isLinearElementwiseOperator(operator) {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+	if (left.Kind == ValueVector || left.Kind == ValueMatrix) && isNumericValue(right) {
+		return evalLinearScalarExpansion(operator, left, right)
+	}
+	if (right.Kind == ValueVector || right.Kind == ValueMatrix) && isNumericValue(left) {
+		return evalLinearScalarExpansion(operator, right, left)
+	}
+	if left.Kind == ValueVector && right.Kind == ValueVector {
+		if len(left.Vector) != len(right.Vector) {
+			return Value{}, fmt.Errorf("runtime error: vector lengths must match; got %d and %d", len(left.Vector), len(right.Vector))
+		}
+		result := make([]Value, len(left.Vector))
+		for i := range left.Vector {
+			v, err := evalBinaryExpr(operator, left.Vector[i], right.Vector[i])
+			if err != nil {
+				return Value{}, err
+			}
+			result[i] = v
+		}
+		return Value{Kind: ValueVector, Vector: result}, nil
+	}
+	if left.Kind == ValueMatrix && right.Kind == ValueMatrix {
+		if left.Matrix.Rows != right.Matrix.Rows || left.Matrix.Cols != right.Matrix.Cols {
+			return Value{}, fmt.Errorf("runtime error: matrix shapes must match; got %dx%d and %dx%d", left.Matrix.Rows, left.Matrix.Cols, right.Matrix.Rows, right.Matrix.Cols)
+		}
+		result := make([]Value, len(left.Matrix.Elements))
+		for i := range left.Matrix.Elements {
+			v, err := evalBinaryExpr(operator, left.Matrix.Elements[i], right.Matrix.Elements[i])
+			if err != nil {
+				return Value{}, err
+			}
+			result[i] = v
+		}
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: left.Matrix.Rows, Cols: left.Matrix.Cols, Elements: result}}, nil
+	}
+	return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+}
+
+func isLinearElementwiseOperator(operator string) bool {
+	return operator == "+" || operator == "-" || operator == "*" || operator == "/"
+}
+
+func evalLinearScalarExpansion(operator string, container Value, scalar Value) (Value, error) {
+	if container.Kind == ValueVector {
+		result := make([]Value, len(container.Vector))
+		for i := range container.Vector {
+			v, err := evalBinaryExpr(operator, container.Vector[i], scalar)
+			if err != nil {
+				return Value{}, err
+			}
+			result[i] = v
+		}
+		return Value{Kind: ValueVector, Vector: result}, nil
+	}
+	result := make([]Value, len(container.Matrix.Elements))
+	for i := range container.Matrix.Elements {
+		v, err := evalBinaryExpr(operator, container.Matrix.Elements[i], scalar)
+		if err != nil {
+			return Value{}, err
+		}
+		result[i] = v
+	}
+	return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: container.Matrix.Rows, Cols: container.Matrix.Cols, Elements: result}}, nil
+}
+
+func evalMatrixVectorMultiply(left Value, right Value) (Value, error) {
+	if left.Matrix.Cols != len(right.Vector) {
+		return Value{}, fmt.Errorf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %d", left.Matrix.Rows, left.Matrix.Cols, len(right.Vector))
+	}
+	result := make([]Value, left.Matrix.Rows)
+	for r := 0; r < left.Matrix.Rows; r++ {
+		acc := Value{}
+		for c := 0; c < left.Matrix.Cols; c++ {
+			term, err := evalBinaryExpr("*", left.Matrix.Elements[r*left.Matrix.Cols+c], right.Vector[c])
+			if err != nil {
+				return Value{}, err
+			}
+			if c == 0 {
+				acc = term
+			} else {
+				acc, err = evalBinaryExpr("+", acc, term)
+				if err != nil {
+					return Value{}, err
+				}
+			}
+		}
+		result[r] = acc
+	}
+	return Value{Kind: ValueVector, Vector: result}, nil
+}
+
+func evalMatrixMultiply(left Value, right Value) (Value, error) {
+	if left.Matrix.Cols != right.Matrix.Rows {
+		return Value{}, fmt.Errorf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %dx%d", left.Matrix.Rows, left.Matrix.Cols, right.Matrix.Rows, right.Matrix.Cols)
+	}
+	rows, cols, inner := left.Matrix.Rows, right.Matrix.Cols, left.Matrix.Cols
+	result := make([]Value, rows*cols)
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			acc := Value{}
+			for k := 0; k < inner; k++ {
+				term, err := evalBinaryExpr("*", left.Matrix.Elements[r*inner+k], right.Matrix.Elements[k*cols+c])
+				if err != nil {
+					return Value{}, err
+				}
+				if k == 0 {
+					acc = term
+				} else {
+					acc, err = evalBinaryExpr("+", acc, term)
+					if err != nil {
+						return Value{}, err
+					}
+				}
+			}
+			result[r*cols+c] = acc
+		}
+	}
+	return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: result}}, nil
+}
+
 func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if isComparisonOperator(operator) {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
@@ -949,7 +1215,7 @@ func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) 
 }
 
 func evalComparisonExpr(operator string, left Value, right Value) (Value, error) {
-	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
+	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if (left.Kind == ValueInt || left.Kind == ValueFloat) && (right.Kind == ValueInt || right.Kind == ValueFloat) {
@@ -1049,6 +1315,20 @@ func valueTypeName(value Value) string {
 	}
 	if value.Kind == ValueEnum {
 		return value.Enum.TypeName
+	}
+	if value.Kind == ValueVector {
+		element := "Unknown"
+		if len(value.Vector) > 0 {
+			element = valueTypeName(value.Vector[0])
+		}
+		return "Vector<" + element + ">"
+	}
+	if value.Kind == ValueMatrix {
+		element := "Unknown"
+		if len(value.Matrix.Elements) > 0 {
+			element = valueTypeName(value.Matrix.Elements[0])
+		}
+		return "Matrix<" + element + ">"
 	}
 	base := string(value.Kind)
 	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {

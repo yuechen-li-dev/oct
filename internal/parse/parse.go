@@ -230,6 +230,23 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
+	if token.Lexeme == "Vector" || token.Lexeme == "Matrix" {
+		container := token.Lexeme
+		if _, err := p.expect(lex.LeftAngle, fmt.Sprintf("expected '<' after %s", container)); err != nil {
+			return ast.TypeRef{}, err
+		}
+		elementType, err := p.parseTypeRef()
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		if _, err := p.expect(lex.RightAngle, fmt.Sprintf("expected '>' after %s element type", container)); err != nil {
+			return ast.TypeRef{}, err
+		}
+		if container == "Vector" {
+			return ast.TypeRef{VectorOf: &elementType}, nil
+		}
+		return ast.TypeRef{MatrixOf: &elementType}, nil
+	}
 
 	typeRef := ast.TypeRef{Name: token.Lexeme}
 	if p.match(lex.Dot) {
@@ -546,14 +563,21 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			}
 			expr = ast.FieldAccessExpr{Target: expr, Field: field.Lexeme}
 		case p.match(lex.LeftBracket):
-			index, err := p.parseExpression()
-			if err != nil {
-				return nil, err
+			var indices []ast.Expr
+			for {
+				index, err := p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				indices = append(indices, index)
+				if !p.match(lex.Comma) {
+					break
+				}
 			}
 			if _, err := p.expect(lex.RightBracket, "expected ']' after index expression"); err != nil {
 				return nil, err
 			}
-			expr = ast.IndexExpr{Target: expr, Index: index}
+			expr = ast.IndexExpr{Target: expr, Indices: indices}
 		case p.match(lex.Question):
 			expr = ast.PropagateExpr{Inner: expr}
 		case p.match(lex.Bang):
@@ -662,6 +686,12 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.BoolLiteral{Value: false}, nil
 	case lex.Identifier:
 		p.advance()
+		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
+			return p.parseVectorLiteralExpr()
+		}
+		if token.Lexeme == "matrix" && p.current().Kind == lex.LeftBracket {
+			return p.parseMatrixLiteralExpr()
+		}
 		return ast.IdentifierExpr{Name: token.Lexeme}, nil
 	case lex.LeftParen:
 		p.advance()
@@ -814,6 +844,65 @@ func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {
 	return ast.ArrayLiteralExpr{Elements: elements}, nil
 }
 
+func (p *parser) parseVectorLiteralExpr() (ast.Expr, error) {
+	if _, err := p.expect(lex.LeftBracket, "expected '[' to start vector literal"); err != nil {
+		return nil, err
+	}
+	if p.current().Kind == lex.RightBracket {
+		return nil, p.errorAtCurrent("empty vector literals are not supported")
+	}
+	var elements []ast.Expr
+	for {
+		element, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, element)
+		if !p.match(lex.Comma) {
+			break
+		}
+	}
+	if _, err := p.expect(lex.RightBracket, "expected ']' after vector literal"); err != nil {
+		return nil, err
+	}
+	return ast.VectorLiteralExpr{Elements: elements}, nil
+}
+
+func (p *parser) parseMatrixLiteralExpr() (ast.Expr, error) {
+	if _, err := p.expect(lex.LeftBracket, "expected '[' to start matrix literal"); err != nil {
+		return nil, err
+	}
+	if p.current().Kind == lex.RightBracket {
+		return nil, p.errorAtCurrent("empty matrix literals are not supported")
+	}
+	var rows [][]ast.Expr
+	for p.current().Kind != lex.RightBracket {
+		if _, err := p.expect(lex.LeftBracket, "expected '[' to start matrix row"); err != nil {
+			return nil, err
+		}
+		if p.current().Kind == lex.RightBracket {
+			return nil, p.errorAtCurrent("matrix rows must not be empty")
+		}
+		var row []ast.Expr
+		for {
+			element, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			row = append(row, element)
+			if !p.match(lex.Comma) {
+				break
+			}
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after matrix row"); err != nil {
+			return nil, err
+		}
+		rows = append(rows, row)
+	}
+	p.advance()
+	return ast.MatrixLiteralExpr{Rows: rows}, nil
+}
+
 func (p *parser) match(kind lex.TokenKind) bool {
 	if p.current().Kind != kind {
 		return false
@@ -866,8 +955,10 @@ func binaryPrecedence(kind lex.TokenKind) (int, bool) {
 		return 0, true
 	case lex.Plus, lex.Minus:
 		return 1, true
-	case lex.Star, lex.Slash:
+	case lex.At:
 		return 2, true
+	case lex.Star, lex.Slash:
+		return 3, true
 	default:
 		return 0, false
 	}

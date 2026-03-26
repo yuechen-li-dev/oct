@@ -410,3 +410,24 @@ func TestBuildFileRejectsUnknownUnitInType(t *testing.T) {
 func TestBuildFileRejectsMalformedUnitSuffix(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int<m> { return 1m/ }", "expected expression")
 }
+
+func TestBuildFileParsesM16VectorMatrixSyntax(t *testing.T) {
+	file := parseSource(t, "fn Main(v: Vector<Int>, m: Matrix<Float<m>>) -> Int { return m[0, 0] + v[0] }")
+	fn := file.Functions[0]
+	if fn.Parameters[0].Type.VectorOf == nil {
+		t.Fatalf("expected Vector type, got %+v", fn.Parameters[0].Type)
+	}
+	if fn.Parameters[1].Type.MatrixOf == nil {
+		t.Fatalf("expected Matrix type, got %+v", fn.Parameters[1].Type)
+	}
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	sum := ret.Value.(ast.BinaryExpr)
+	left := sum.Left.(ast.IndexExpr)
+	if len(left.Indices) != 2 {
+		t.Fatalf("expected matrix index to have 2 indices, got %d", len(left.Indices))
+	}
+	right := sum.Right.(ast.IndexExpr)
+	if len(right.Indices) != 1 {
+		t.Fatalf("expected vector index to have 1 index, got %d", len(right.Indices))
+	}
+}

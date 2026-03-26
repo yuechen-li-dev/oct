@@ -1553,3 +1553,90 @@ func TestM14ComparisonsRunAndBuild(t *testing.T) {
 		}
 	})
 }
+
+func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
+	valid := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"vector literal", "fn Main() -> Vector<Int> { return vector[1, 2, 3] }", "vector[1, 2, 3]\n"},
+		{"matrix literal", "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3, 4]] }", "matrix[[1, 2], [3, 4]]\n"},
+		{"vector index", "fn Main() -> Int { let v = vector[1, 2, 3] return v[1] }", "2\n"},
+		{"matrix index", "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[1, 0] }", "3\n"},
+		{"vector add", "fn Main() -> Vector<Int> { return vector[1, 2, 3] + vector[4, 5, 6] }", "vector[5, 7, 9]\n"},
+		{"matrix elementwise multiply", "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3, 4]] * matrix[[2, 3] [4, 5]] }", "matrix[[2, 6], [12, 20]]\n"},
+		{"scalar expansion", "fn Main() -> Vector<Int> { return vector[1, 2, 3] + 1 }", "vector[2, 3, 4]\n"},
+		{"matrix at vector", "fn Main() -> Vector<Int> { let m = matrix[[1, 2] [3, 4]] let v = vector[10, 20] return m @ v }", "vector[50, 110]\n"},
+		{"matrix at matrix", "fn Main() -> Matrix<Int> { let a = matrix[[1, 2] [3, 4]] let b = matrix[[5, 6] [7, 8]] return a @ b }", "matrix[[19, 22], [43, 50]]\n"},
+		{"dimensioned matrix vector", "fn Main() -> Vector<Float<m>> { let k = matrix[[1.0m/s, 0.0m/s] [0.0m/s, 2.0m/s]] let x = vector[3.0s, 4.0s] return k @ x }", "vector[3m, 8m]\n"},
+	}
+	for _, test := range valid {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+
+	invalidBuild := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{"ragged matrix", "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3]] }", "matrix rows must all have equal length"},
+		{"vector at vector unsupported", "fn Main() -> Int { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>"},
+		{"vector compare unsupported", "fn Main() -> Bool { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>"},
+	}
+	for _, test := range invalidBuild {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("build", sourcePath)
+			if err == nil {
+				t.Fatalf("expected build failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty build stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+			}
+		})
+	}
+
+	invalidRun := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{"vector length mismatch", "fn Main() -> Vector<Int> { return vector[1, 2, 3] + vector[1, 2] }", "vector lengths must match"},
+		{"matrix shape mismatch", "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3, 4]] + matrix[[1, 2, 3] [4, 5, 6]] }", "matrix shapes must match"},
+		{"invalid at dimensions", "fn Main() -> Matrix<Int> { let a = matrix[[1, 2, 3] [4, 5, 6]] let b = matrix[[1, 2] [3, 4]] return a @ b }", "matrix multiplication requires left cols = right rows"},
+	}
+	for _, test := range invalidRun {
+		t.Run(test.name+" runtime", func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+"-runtime.oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected run failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}

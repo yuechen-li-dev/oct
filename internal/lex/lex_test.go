@@ -235,14 +235,14 @@ func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 }
 
 func TestAnalyzeRejectsInvalidToken(t *testing.T) {
-	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { return @ }"}
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { return $ }"}
 
 	_, err := Analyze(file)
 	if err == nil {
 		t.Fatal("expected invalid token error")
 	}
 
-	if got := err.Error(); !strings.Contains(got, `invalid token`) || !strings.Contains(got, `"@"`) {
+	if got := err.Error(); !strings.Contains(got, `invalid token`) || !strings.Contains(got, `"$"`) {
 		t.Fatalf("expected deterministic invalid token error, got %q", got)
 	}
 }
