@@ -306,6 +306,46 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Name)
 		}
 		return stmtResult{}, nil
+	case ast.IndexAssignStmt:
+		targetBinding, ok := env.lookup(node.Target)
+		if !ok {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Target)
+		}
+		if !targetBinding.mutable {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
+		}
+		if targetBinding.value.Kind != ValueArray {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires array target")
+		}
+
+		index, err := i.evalExpr(env, pkgName, node.Index)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if index.hasError {
+			return stmtResult{value: index.errorVal, returned: true}, nil
+		}
+		if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
+		}
+		if index.value.Int < 0 || index.value.Int >= int64(len(targetBinding.value.Array)) {
+			return stmtResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(targetBinding.value.Array))
+		}
+
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+
+		updated := targetBinding.value
+		updated.Array[index.value.Int] = value.value
+		if !env.assign(node.Target, updated) {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
+		}
+		return stmtResult{}, nil
 	case ast.ReturnStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {

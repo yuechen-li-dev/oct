@@ -319,8 +319,12 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 	case lex.KeywordWhile:
 		return p.parseWhileStmt()
 	default:
-		if p.current().Kind == lex.Identifier && p.peek(1).Kind == lex.Assign {
-			return p.parseAssignStmt()
+		if p.current().Kind == lex.Identifier {
+			if stmt, handled, err := p.tryParseIdentifierLeadingAssignment(); err != nil {
+				return nil, err
+			} else if handled {
+				return stmt, nil
+			}
 		}
 		if p.isExpressionStart(p.current().Kind) {
 			return p.parseExprStmt()
@@ -374,6 +378,51 @@ func (p *parser) parseAssignStmt() (ast.Stmt, error) {
 		return nil, err
 	}
 	return ast.AssignStmt{Name: name.Lexeme, Value: value}, nil
+}
+
+func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
+	savedPosition := p.position
+	name, err := p.expect(lex.Identifier, "expected assignment target")
+	if err != nil {
+		return nil, false, err
+	}
+
+	if p.match(lex.Assign) {
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, false, err
+		}
+		return ast.AssignStmt{Name: name.Lexeme, Value: value}, true, nil
+	}
+
+	if !p.match(lex.LeftBracket) {
+		p.position = savedPosition
+		return nil, false, nil
+	}
+
+	index, err := p.parseExpression()
+	if err != nil {
+		return nil, false, err
+	}
+	if p.match(lex.Comma) {
+		return nil, false, p.errorAtCurrent("index assignment target must use exactly one index")
+	}
+	if _, err := p.expect(lex.RightBracket, "expected ']' after index assignment target"); err != nil {
+		return nil, false, err
+	}
+	if p.current().Kind == lex.LeftBracket {
+		return nil, false, p.errorAtCurrent("nested index assignment targets are not supported")
+	}
+	if !p.match(lex.Assign) {
+		p.position = savedPosition
+		return nil, false, nil
+	}
+
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, false, err
+	}
+	return ast.IndexAssignStmt{Target: name.Lexeme, Index: index, Value: value}, true, nil
 }
 
 func (p *parser) parseReturnStmt() (ast.Stmt, error) {
