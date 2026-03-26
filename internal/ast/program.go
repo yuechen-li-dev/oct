@@ -258,6 +258,14 @@ type SwitchExpr struct {
 
 func (SwitchExpr) exprNode() {}
 
+type IfExpr struct {
+	Condition Expr
+	ThenExpr  Expr
+	ElseExpr  Expr
+}
+
+func (IfExpr) exprNode() {}
+
 type RecordLiteralExpr struct {
 	TypeName string
 	Fields   []RecordLiteralField
