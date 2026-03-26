@@ -305,6 +305,62 @@ func TestAnalyzeRejectsInvalidToken(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTokenizesScientificNotationFloats(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Float { return 2e11 + 2.0e11 + 1e-6 + 1.5e-6 + 6E3 + 3.25E-2 }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordReturn,
+		FloatLiteral,
+		Plus,
+		FloatLiteral,
+		Plus,
+		FloatLiteral,
+		Plus,
+		FloatLiteral,
+		Plus,
+		FloatLiteral,
+		Plus,
+		FloatLiteral,
+		RightBrace,
+		EOF,
+	)
+}
+
+func TestAnalyzeRejectsMalformedScientificNotation(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "missing exponent", source: "fn Main() -> Float { return 2e }"},
+		{name: "missing exponent after plus sign", source: "fn Main() -> Float { return 2e+ }"},
+		{name: "missing exponent after minus sign", source: "fn Main() -> Float { return 2e- }"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Analyze(source.File{Path: "example.oct", Text: test.source})
+			if err == nil {
+				t.Fatal("expected invalid float literal error")
+			}
+			if got := err.Error(); !strings.Contains(got, "invalid float literal") {
+				t.Fatalf("expected invalid float literal error, got %q", got)
+			}
+		})
+	}
+}
+
 func assertTokenKinds(t *testing.T, tokens []Token, expected ...TokenKind) {
 	t.Helper()
 	if len(tokens) != len(expected) {

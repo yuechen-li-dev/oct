@@ -155,7 +155,10 @@ func (l *lexer) nextToken() (Token, error) {
 	}
 
 	if unicode.IsDigit(r) {
-		kind, lexeme := l.scanNumber()
+		kind, lexeme, err := l.scanNumber()
+		if err != nil {
+			return Token{}, err
+		}
 		return Token{Kind: kind, Lexeme: lexeme, Line: line, Column: column}, nil
 	}
 
@@ -264,7 +267,7 @@ func (l *lexer) scanIdentifier() string {
 	return l.source[start:l.offset]
 }
 
-func (l *lexer) scanNumber() (TokenKind, string) {
+func (l *lexer) scanNumber() (TokenKind, string, error) {
 	start := l.offset
 	for !l.atEnd() {
 		r, _ := l.peekRune()
@@ -292,7 +295,28 @@ func (l *lexer) scanNumber() (TokenKind, string) {
 		}
 	}
 
-	return kind, l.source[start:l.offset]
+	r, ok := l.peekRune()
+	if ok && (r == 'e' || r == 'E') {
+		kind = FloatLiteral
+		l.advanceRune()
+		sign, signOK := l.peekRune()
+		if signOK && (sign == '+' || sign == '-') {
+			l.advanceRune()
+		}
+		expStart := l.offset
+		for !l.atEnd() {
+			expDigit, _ := l.peekRune()
+			if !unicode.IsDigit(expDigit) {
+				break
+			}
+			l.advanceRune()
+		}
+		if l.offset == expStart {
+			return "", "", fmt.Errorf("invalid float literal at %d:%d: %q", l.line, l.column, l.source[start:l.offset])
+		}
+	}
+
+	return kind, l.source[start:l.offset], nil
 }
 
 func (l *lexer) scanString() (string, error) {
