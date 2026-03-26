@@ -660,7 +660,10 @@ func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.S
 		}
 		return i.evalExpr(env, pkgName, switchCase.Value)
 	}
-	return i.evalExpr(env, pkgName, expr.Else)
+	if expr.Else != nil {
+		return i.evalExpr(env, pkgName, expr.Else)
+	}
+	return evalResult{}, fmt.Errorf("runtime invariant violation: non-exhaustive switch without else")
 }
 
 func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject Value, matchExpr ast.Expr) (bool, error) {
@@ -688,6 +691,8 @@ func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject
 		return subject.Bool == caseValue.Bool, nil
 	case ValueString:
 		return subject.Text == caseValue.Text, nil
+	case ValueEnum:
+		return subject.Enum.TypeName == caseValue.Enum.TypeName && subject.Enum.Variant == caseValue.Enum.Variant, nil
 	default:
 		return false, fmt.Errorf("runtime invariant violation: unsupported switch subject kind %s", subject.Kind)
 	}

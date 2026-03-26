@@ -815,7 +815,7 @@ func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 				return nil, p.errorAtCurrent("case arms must come before else arm")
 			}
 			p.advance()
-			match, err := p.parseSwitchCaseLiteral()
+			match, err := p.parseSwitchCaseLabel()
 			if err != nil {
 				return nil, err
 			}
@@ -847,19 +847,30 @@ func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 	}
 	p.advance()
 
-	if !hasElse {
-		return nil, p.errorAtCurrent("switch requires else arm")
-	}
 	return ast.SwitchExpr{Subject: subject, Cases: cases, Else: elseValue}, nil
 }
 
-func (p *parser) parseSwitchCaseLiteral() (ast.Expr, error) {
+func (p *parser) parseSwitchCaseLabel() (ast.Expr, error) {
 	token := p.current()
 	switch token.Kind {
 	case lex.IntLiteral, lex.FloatLiteral, lex.StringLiteral, lex.KeywordTrue, lex.KeywordFalse:
 		return p.parsePrimaryExpr()
+	case lex.Identifier:
+		label := ast.Expr(ast.IdentifierExpr{Name: token.Lexeme})
+		p.advance()
+		for p.match(lex.Dot) {
+			segment, err := p.expect(lex.Identifier, "expected identifier after '.' in case label")
+			if err != nil {
+				return nil, err
+			}
+			label = ast.FieldAccessExpr{Target: label, Field: segment.Lexeme}
+		}
+		if _, ok := label.(ast.FieldAccessExpr); !ok {
+			return nil, p.errorAtCurrent("switch case enum label must be qualified as EnumName.Variant")
+		}
+		return label, nil
 	default:
-		return nil, p.errorAtCurrent("switch case must use int, float, bool, or string literal")
+		return nil, p.errorAtCurrent("switch case must use int, float, bool, string literal, or qualified enum variant")
 	}
 }
 

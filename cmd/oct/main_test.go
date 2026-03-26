@@ -1475,18 +1475,6 @@ func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
 				"}\n",
 			wantMessage: "expression statements must be call expressions",
 		},
-		{
-			name: "enum switch deferred",
-			source: "enum Method { Euler Rk4 }\n" +
-				"fn Main() -> Int {\n" +
-				"    let method = Method.Euler\n" +
-				"    return switch method {\n" +
-				"        case Method.Euler => 1\n" +
-				"        else => 0\n" +
-				"    }\n" +
-				"}\n",
-			wantMessage: "switch case must use int, float, bool, or string literal",
-		},
 	}
 
 	for _, test := range invalidTests {
