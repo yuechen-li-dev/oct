@@ -1,0 +1,9 @@
+package Main
+import Signal
+
+fn Main() -> Int {
+    let result = Signal.AnalyzeSignal(0.0, 0.5, 3)
+    Print(Len(result.Raw))
+    Print(result.Raw[0])
+    return PlotLine(result.X, result.Smoothed, "signal_output.png")
+}

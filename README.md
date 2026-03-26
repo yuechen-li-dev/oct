@@ -114,3 +114,19 @@ Ergonomics assessment (M22cr):
 - **Material improvement:** yes. The core population loop is now straightforward Oct code and no longer relies on whole-array reassignment helpers.
 - **Earlier awkwardness removed:** mostly yes for fixed-size workflows; direct indexed writes make the proof package read naturally.
 - **Residual friction:** meaningful but narrower. Dynamic-growth workflows remain awkward because append/push is still unavailable, so this proof continues using fixed-size arrays.
+
+## M22d proof package: Signal (Small Signal Processing Workflow v0)
+
+M22d adds a native `Signal` package in Oct source under `testdata/m22d/valid/Signal` with:
+
+- structured workflow output via `SignalAnalysisResult { X, Raw, Smoothed }`
+- deterministic sample generation via `GenerateSignalValues()`
+- explicit moving-average filtering via `MovingAverage(values, window)`
+- one end-to-end analysis function via `AnalyzeSignal(start, delta, window)` that prepares axis values, applies filtering, and returns a record
+- direct plotting from package-produced arrays in `Main` using `PlotLine`
+
+This milestone is a proof that Oct can express a small, readable signal workflow (generate -> smooth -> return structured arrays -> plot) using packages, records, loops, mutable locals, indexing, array assignment, `Len`, and strings for output paths.
+
+Implementation friction observed in M22d:
+
+- The workflow is clean for fixed-size arrays, but dynamic dataset growth still requires predeclared sizing because append/push is not available in v0.
