@@ -154,25 +154,30 @@ type enumInfo struct {
 
 type scope struct {
 	parent *scope
-	values map[string]Type
+	values map[string]binding
+}
+
+type binding struct {
+	valueType Type
+	mutable   bool
 }
 
 func newScope(parent *scope) *scope {
-	return &scope{parent: parent, values: make(map[string]Type)}
+	return &scope{parent: parent, values: make(map[string]binding)}
 }
 
-func (s *scope) define(name string, valueType Type) {
-	s.values[name] = valueType
+func (s *scope) define(name string, valueType Type, mutable bool) {
+	s.values[name] = binding{valueType: valueType, mutable: mutable}
 }
 
-func (s *scope) lookup(name string) (Type, bool) {
+func (s *scope) lookup(name string) (binding, bool) {
 	for current := s; current != nil; current = current.parent {
-		valueType, ok := current.values[name]
+		value, ok := current.values[name]
 		if ok {
-			return valueType, true
+			return value, true
 		}
 	}
-	return Type{}, false
+	return binding{}, false
 }
 
 func (c checker) checkFile(file ast.File) error {
@@ -304,7 +309,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 	signature := c.functions[function.Name]
 	functionScope := newScope(nil)
 	for i, parameter := range function.Parameters {
-		functionScope.define(parameter.Name, signature.parameters[i])
+		functionScope.define(parameter.Name, signature.parameters[i], false)
 	}
 
 	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible}
@@ -344,7 +349,36 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly", ctx.name, node.Name)
 		}
-		scope.define(node.Name, valueType.ValueType)
+		scope.define(node.Name, valueType.ValueType, false)
+		return false, nil
+	case ast.VarStmt:
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: var %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+		}
+		scope.define(node.Name, valueType.ValueType, true)
+		return false, nil
+	case ast.AssignStmt:
+		target, ok := scope.lookup(node.Name)
+		if !ok {
+			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Name)
+		}
+		if !target.mutable {
+			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'", ctx.name, node.Name)
+		}
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: assignment to %s: %w", ctx.name, node.Name, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: assignment to %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+		}
+		if !isAssignable(valueType.ValueType, target.valueType) {
+			return false, fmt.Errorf("function %s: assignment to %s: expected %s, got %s", ctx.name, node.Name, target.valueType, valueType.ValueType)
+		}
 		return false, nil
 	case ast.ReturnStmt:
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
@@ -388,7 +422,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: for %s: range expression expects Range, got %s", ctx.name, node.Name, rangeType.ValueType)
 		}
 		loopScope := newScope(scope)
-		loopScope.define(node.Name, Type{Base: BaseTypeInt})
+		loopScope.define(node.Name, Type{Base: BaseTypeInt}, false)
 		_, err = c.checkBlock(loopScope, node.Body, ctx)
 		if err != nil {
 			return false, err
@@ -404,14 +438,14 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 
 		okScope := newScope(scope)
-		okScope.define(node.OkName, subjectType.ValueType)
+		okScope.define(node.OkName, subjectType.ValueType, false)
 		okReturned, err := c.checkBlock(okScope, node.OkBody, ctx)
 		if err != nil {
 			return false, err
 		}
 
 		errScope := newScope(scope)
-		errScope.define(node.ErrName, Type{Base: BaseTypeError})
+		errScope.define(node.ErrName, Type{Base: BaseTypeError}, false)
 		errReturned, err := c.checkBlock(errScope, node.ErrBody, ctx)
 		if err != nil {
 			return false, err
@@ -493,11 +527,11 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		}
 		return ExprType{ValueType: valueType}, nil
 	case ast.IdentifierExpr:
-		valueType, ok := scope.lookup(node.Name)
+		valueBinding, ok := scope.lookup(node.Name)
 		if !ok {
 			return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
 		}
-		return ExprType{ValueType: valueType}, nil
+		return ExprType{ValueType: valueBinding.valueType}, nil
 	case ast.CallExpr:
 		return c.checkCallExpr(scope, node, ctx)
 	case ast.RecordLiteralExpr:

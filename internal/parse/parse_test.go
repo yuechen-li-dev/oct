@@ -323,6 +323,24 @@ func TestBuildFileParsesWhileStatements(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesVarAndAssignStatements(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { var x = 1 x = 2 return x }")
+	varStmt, ok := file.Functions[0].Body.Statements[0].(ast.VarStmt)
+	if !ok {
+		t.Fatalf("expected VarStmt, got %T", file.Functions[0].Body.Statements[0])
+	}
+	if varStmt.Name != "x" {
+		t.Fatalf("expected var name x, got %q", varStmt.Name)
+	}
+	assignStmt, ok := file.Functions[0].Body.Statements[1].(ast.AssignStmt)
+	if !ok {
+		t.Fatalf("expected AssignStmt, got %T", file.Functions[0].Body.Statements[1])
+	}
+	if assignStmt.Name != "x" {
+		t.Fatalf("expected assignment target x, got %q", assignStmt.Name)
+	}
+}
+
 func TestBuildFileParsesSwitchExpression(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { let x = switch 1 { case 0 => 10 case 1 => 20 else => 30 } return x }")
 	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
@@ -349,6 +367,14 @@ func TestBuildFileRejectsMalformedLetStatement(t *testing.T) {
 
 func TestBuildFileRejectsMalformedReturnExpression(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { return 1 + }", "expected expression")
+}
+
+func TestBuildFileRejectsFieldAssignment(t *testing.T) {
+	assertParseErrorContains(t, "record Point { X: Int }\nfn Main() -> Int { let p = Point { X: 1 } p.X = 2 return 0 }", "expected statement")
+}
+
+func TestBuildFileRejectsIndexAssignment(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { let xs = [1, 2] xs[0] = 3 return 0 }", "expected statement")
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {

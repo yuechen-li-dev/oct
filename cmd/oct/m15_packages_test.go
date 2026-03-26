@@ -208,6 +208,20 @@ func TestM15aRejectsQualifiedRecordLiteralWrongField(t *testing.T) {
 	}
 }
 
+func TestM18PackageCoexistenceWithMutableLocalReassignment(t *testing.T) {
+	root := t.TempDir()
+	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int Y: Int }\nfn P1() -> Point { return Point { X: 1 Y: 2 } }\nfn P2() -> Point { return Point { X: 3 Y: 4 } }\n")
+	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { var p = Geometry.P1() p = Geometry.P2() return p }\n")
+
+	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	}
+	if stdout != "Point{X: 3, Y: 4}\n" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+}
+
 func TestM15aRejectsQualifiedSymbolKindMismatch(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int }\nfn Distance() -> Int { return 42 }\n")

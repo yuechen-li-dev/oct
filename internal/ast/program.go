@@ -68,6 +68,20 @@ type LetStmt struct {
 
 func (LetStmt) stmtNode() {}
 
+type VarStmt struct {
+	Name  string
+	Value Expr
+}
+
+func (VarStmt) stmtNode() {}
+
+type AssignStmt struct {
+	Name  string
+	Value Expr
+}
+
+func (AssignStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Value Expr
 }

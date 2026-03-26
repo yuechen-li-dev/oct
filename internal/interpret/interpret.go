@@ -132,7 +132,12 @@ type interpreter struct {
 
 type environment struct {
 	parent *environment
-	values map[string]Value
+	values map[string]binding
+}
+
+type binding struct {
+	value   Value
+	mutable bool
 }
 
 type stmtResult struct {
@@ -190,21 +195,37 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 }
 
 func newEnvironment(parent *environment) *environment {
-	return &environment{parent: parent, values: make(map[string]Value)}
+	return &environment{parent: parent, values: make(map[string]binding)}
 }
 
-func (e *environment) define(name string, value Value) {
-	e.values[name] = value
+func (e *environment) define(name string, value Value, mutable bool) {
+	e.values[name] = binding{value: value, mutable: mutable}
 }
 
-func (e *environment) lookup(name string) (Value, bool) {
+func (e *environment) lookup(name string) (binding, bool) {
 	for current := e; current != nil; current = current.parent {
 		value, ok := current.values[name]
 		if ok {
 			return value, true
 		}
 	}
-	return Value{}, false
+	return binding{}, false
+}
+
+func (e *environment) assign(name string, value Value) bool {
+	for current := e; current != nil; current = current.parent {
+		bindingValue, ok := current.values[name]
+		if !ok {
+			continue
+		}
+		if !bindingValue.mutable {
+			return false
+		}
+		bindingValue.value = value
+		current.values[name] = bindingValue
+		return true
+	}
+	return false
 }
 
 func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
@@ -221,7 +242,7 @@ func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
 func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, arguments []Value) (callResult, error) {
 	env := newEnvironment(nil)
 	for index, parameter := range function.Parameters {
-		env.define(parameter.Name, arguments[index])
+		env.define(parameter.Name, arguments[index], false)
 	}
 
 	result, err := i.executeBlock(env, pkgName, function.Body)
@@ -261,7 +282,29 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		env.define(node.Name, value.value)
+		env.define(node.Name, value.value, false)
+		return stmtResult{}, nil
+	case ast.VarStmt:
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		env.define(node.Name, value.value, true)
+		return stmtResult{}, nil
+	case ast.AssignStmt:
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		if !env.assign(node.Name, value.value) {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Name)
+		}
 		return stmtResult{}, nil
 	case ast.ReturnStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -294,7 +337,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
 			iterationEnv := newEnvironment(env)
-			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current})
+			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
 			result, err := i.executeBlock(iterationEnv, pkgName, node.Body)
 			if err != nil {
 				return stmtResult{}, err
@@ -311,10 +354,10 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		armEnv := newEnvironment(env)
 		if subject.hasError {
-			armEnv.define(node.ErrName, subject.errorVal)
+			armEnv.define(node.ErrName, subject.errorVal, false)
 			return i.executeBlock(armEnv, pkgName, node.ErrBody)
 		}
-		armEnv.define(node.OkName, subject.value)
+		armEnv.define(node.OkName, subject.value, false)
 		return i.executeBlock(armEnv, pkgName, node.OkBody)
 	case ast.IfStmt:
 		condition, err := i.evalExpr(env, pkgName, node.Condition)
@@ -400,11 +443,11 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		}
 		return evalResult{value: value}, nil
 	case ast.IdentifierExpr:
-		value, ok := env.lookup(node.Name)
+		valueBinding, ok := env.lookup(node.Name)
 		if !ok {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
 		}
-		return evalResult{value: value}, nil
+		return evalResult{value: valueBinding.value}, nil
 	case ast.CallExpr:
 		return i.evalCallExpr(env, pkgName, node)
 	case ast.RecordLiteralExpr:

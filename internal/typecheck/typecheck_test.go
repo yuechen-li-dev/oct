@@ -59,6 +59,18 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "print builtin and while bool condition",
 			src:  "fn Main() -> Int { while false { return 1 } return Print(5m) }",
 		},
+		{
+			name: "var declaration and reassignment",
+			src:  "fn Main() -> Int { var x = 1 x = 2 return x }",
+		},
+		{
+			name: "while loop with mutable local",
+			src:  "fn Main() -> Int { var x = 0 while x < 3 { x = x + 1 } return x }",
+		},
+		{
+			name: "whole value record reassignment",
+			src:  "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }",
+		},
 	}
 
 	for _, test := range tests {
@@ -127,6 +139,12 @@ func TestCheckRejectsInvalidRanges(t *testing.T) {
 
 func TestCheckRejectsLoopVariableOutsideLoop(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..1 { return i } return i }", "function Main: undefined variable: i")
+}
+
+func TestCheckValidatesM18Assignments(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = 1 x = 2 return x }", "function Main: cannot assign to immutable binding 'x'")
+	assertTypeErrorContains(t, "fn Main() -> Int { x = 1 return 0 }", "function Main: unknown binding 'x'")
+	assertTypeErrorContains(t, "fn Main() -> Int<m> { var d = 1m d = 2s return d }", "function Main: assignment to d: expected Int<m>, got Int<s>")
 }
 
 func TestCheckRejectsInvalidPropagationAndFallibility(t *testing.T) {
