@@ -3,6 +3,7 @@ package parse
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"oct/internal/ast"
 	"oct/internal/dimension"
@@ -30,7 +31,7 @@ type parser struct {
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
-	file := ast.File{Source: src}
+	file := ast.File{Source: src, IsTest: strings.HasSuffix(src.Path, ".octest")}
 	if _, err := p.expect(lex.KeywordPackage, "missing package declaration"); err != nil {
 		return ast.File{}, err
 	}
@@ -57,15 +58,35 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		file.Imports = append(file.Imports, importName.Lexeme)
 	}
 
+	pendingFact := false
 	for p.current().Kind != lex.EOF {
+		if p.current().Kind == lex.LeftBracket {
+			if !file.IsTest {
+				return ast.File{}, p.errorAtCurrent("[Fact] is only valid in .octest files")
+			}
+			if pendingFact {
+				return ast.File{}, p.errorAtCurrent("duplicate [Fact] attribute on function")
+			}
+			if err := p.parseFactAttribute(); err != nil {
+				return ast.File{}, err
+			}
+			pendingFact = true
+			continue
+		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
+			if pendingFact {
+				return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+			}
 			record, err := p.parseRecordDecl()
 			if err != nil {
 				return ast.File{}, err
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
+			if pendingFact {
+				return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+			}
 			enumDecl, err := p.parseEnumDecl()
 			if err != nil {
 				return ast.File{}, err
@@ -76,12 +97,43 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if err != nil {
 				return ast.File{}, err
 			}
+			function.IsTestFile = file.IsTest
+			if pendingFact {
+				if len(function.Parameters) != 0 {
+					return ast.File{}, p.errorAtCurrent("[Fact] function must not declare parameters")
+				}
+				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
+					return ast.File{}, p.errorAtCurrent("[Fact] function must return Void")
+				}
+				function.IsFact = true
+				pendingFact = false
+			}
 			file.Functions = append(file.Functions, function)
 		default:
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
 		}
 	}
+	if pendingFact {
+		return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+	}
 	return file, nil
+}
+
+func (p *parser) parseFactAttribute() error {
+	if _, err := p.expect(lex.LeftBracket, "expected '['"); err != nil {
+		return err
+	}
+	name, err := p.expect(lex.Identifier, "expected attribute name")
+	if err != nil {
+		return err
+	}
+	if name.Lexeme != "Fact" {
+		return p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
+	}
+	if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
@@ -178,7 +230,7 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 		return ast.FunctionDecl{}, err
 	}
 
-	function := ast.FunctionDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType}
+	function := ast.FunctionDecl{Name: name.Lexeme, SourcePath: p.sourcePath, Parameters: parameters, ReturnType: returnType}
 	if p.match(lex.Bang) {
 		errorType, err := p.parseTypeRef()
 		if err != nil {
@@ -427,6 +479,9 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 
 func (p *parser) parseReturnStmt() (ast.Stmt, error) {
 	p.advance()
+	if !p.isExpressionStart(p.current().Kind) {
+		return ast.ReturnStmt{}, nil
+	}
 	value, err := p.parseExpression()
 	if err != nil {
 		return nil, err

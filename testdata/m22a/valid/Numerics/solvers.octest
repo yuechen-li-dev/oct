@@ -1,0 +1,14 @@
+package Numerics
+
+[Fact]
+fn BisectionConvergesForSqrt2() -> Void {
+    let options = SolveOptions {
+        MaxIterations: 100
+        Tolerance: 0.000001
+    }
+    let result = Bisection(ProblemSqrt2(), 1.0, 2.0, options)!
+
+    Assert.True(result.Converged, "bisection should converge for sqrt(2)")
+    Assert.Equal(ReasonConverged(), result.ReasonCode, "reason code should indicate convergence")
+    Assert.Near(1.41421356, result.Value, 0.0001, "bisection value should be close to sqrt(2)")
+}

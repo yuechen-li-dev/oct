@@ -141,6 +141,22 @@ func TestCheckRejectsMissingReturnStatement(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = 1 }", "function Main: missing return statement")
 }
 
+func TestCheckValidatesVoidReturnRules(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Void { return }")
+	if err := Check(file); err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	file = parseSource(t, "fn Main() -> Void { let x = 1 }")
+	if err := Check(file); err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	assertTypeErrorContains(t, "fn Main() -> Void { return 1 }", "function Main: Void function cannot return a value")
+	assertTypeErrorContains(t, "fn Main(x: Void) -> Int { return 0 }", "function Main: parameter x: Void is only allowed as a function return type")
+	assertTypeErrorContains(t, "record R { X: Void } fn Main() -> Int { return 0 }", "record 'R' field 'X': Void is only allowed as a function return type")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = Nop() return 0 } fn Nop() -> Void { return }", "function Main: let x: Void result cannot be used as a value")
+}
+
 func TestCheckRejectsMixedTypeArrayLiteral(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int[] { return [1, 2.0] }", "function Main: array literal elements must all have the same type; found Int and Float")
 }
