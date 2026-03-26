@@ -1,0 +1,21 @@
+package Signal
+
+[Fact]
+fn AnalyzeSignalReturnsConsistentShapes() -> Void {
+    let result = AnalyzeSignal(0.0, 0.5, 3)
+
+    Assert.Equal(12, Len(result.Raw), "raw should contain 12 samples")
+    Assert.Equal(Len(result.Raw), Len(result.X), "x axis length should match raw samples")
+    Assert.Equal(Len(result.Raw), Len(result.Smoothed), "smoothed length should match raw samples")
+    Assert.Near(0.0, result.X[0], 0.0001, "x should start at the provided start value")
+    Assert.Near(1.5, result.X[3], 0.0001, "x should advance by delta")
+}
+
+[Theory]
+[InlineData(0, 0.0)]
+[InlineData(5, 3.2)]
+[InlineData(11, 5.0)]
+fn GeneratedSignalContainsKnownSamples(index: Int, expected: Float) -> Void {
+    let raw = GenerateSignalValues()
+    Assert.Near(expected, raw[index], 0.0001, "raw sample mismatch")
+}
