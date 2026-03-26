@@ -1,0 +1,15 @@
+package Main
+import Structures
+
+fn Main() -> Int {
+    let element = Structures.BarElement2D {
+        Area: 0.02m*m
+        YoungsModulus: 200000000000kg/m/s/s
+        Length: 2m
+    }
+
+    let response = Structures.AnalyzeAxialElement(element, 0.0m, 0.001m)
+    Print(response.Stiffness)
+    Print(response.InternalForce)
+    return 0
+}

@@ -1,0 +1,37 @@
+package Structures
+
+record BarElement2D {
+    Area: Float<m^2>
+    YoungsModulus: Float<kg/m/s^2>
+    Length: Float<m>
+}
+
+record AxialElementResponse {
+    Stiffness: Matrix<Float<kg/s^2>>
+    Displacement: Vector<Float<m>>
+    InternalForce: Vector<Float<kg*m/s^2>>
+}
+
+fn AxialStiffness(element: BarElement2D) -> Matrix<Float<kg/s^2>> {
+    let axial = element.Area * element.YoungsModulus / element.Length
+    return matrix[
+        [axial, 0kg/s^2 - axial]
+        [0kg/s^2 - axial, axial]
+    ]
+}
+
+fn AxialForceFromDisplacement(element: BarElement2D, displacement: Vector<Float<m>>) -> Vector<Float<kg*m/s^2>> {
+    let stiffness = AxialStiffness(element)
+    return stiffness @ displacement
+}
+
+fn AnalyzeAxialElement(element: BarElement2D, u1: Float<m>, u2: Float<m>) -> AxialElementResponse {
+    let displacement = vector[u1, u2]
+    let stiffness = AxialStiffness(element)
+    let internalForce = stiffness @ displacement
+    return AxialElementResponse {
+        Stiffness: stiffness
+        Displacement: displacement
+        InternalForce: internalForce
+    }
+}
