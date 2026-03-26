@@ -1,0 +1,41 @@
+package Main
+import Numerics
+
+fn Main() -> Int {
+    let options = Numerics.SolveOptions {
+        MaxIterations: 64
+        Tolerance: 0.000001
+    }
+
+    match Numerics.Bisection(Numerics.ProblemSqrt2(), 1.0, 2.0, options) {
+        ok(result) => {
+            Print(result)
+        }
+        err(e) => {
+            Print(e)
+            return 1
+        }
+    }
+
+    match Numerics.NewtonRaphson(Numerics.ProblemCubic(), 1.5, options) {
+        ok(result) => {
+            Print(result)
+        }
+        err(e) => {
+            Print(e)
+            return 1
+        }
+    }
+
+    match Numerics.Bisection(Numerics.ProblemSqrt2(), 3.0, 4.0, options) {
+        ok(result) => {
+            Print(result)
+            return 1
+        }
+        err(e) => {
+            Print(e)
+        }
+    }
+
+    return 0
+}

@@ -52,3 +52,20 @@ Plotting contract:
 - `x` and `y` must be arrays of numeric, dimensionless values.
 - Dimensioned arrays are rejected.
 - `x` and `y` must be non-empty and have equal length.
+
+## M22a proof package: Numerics (Root Finding v0)
+
+M22a adds a native `Numerics` package in Oct source under `testdata/m22a/valid/Numerics` with:
+
+- root-finding methods: `Bisection` and `NewtonRaphson`
+- structured solver configuration via `SolveOptions`
+- structured outcomes via `RootResult`
+- explicit termination status via `RootReason`
+- a small fixed problem selector (`ProblemSqrt2()` / `ProblemCubic()`) for `x*x - 2` and `x*x*x - x - 2`
+
+This milestone is a proof that package-based Oct code can express real iterative numerical algorithms with records/enums, loops, convergence checks, explicit fallible errors, and cross-package reuse from `Main`.
+
+Implementation friction observed in M22a:
+
+- Without first-class functions, solver APIs use explicit problem selectors and package-owned residual/derivative functions.
+- Cross-package enum value flow is still awkward in v0, so this proof package uses integer problem IDs while keeping a dedicated termination enum for package status design.
