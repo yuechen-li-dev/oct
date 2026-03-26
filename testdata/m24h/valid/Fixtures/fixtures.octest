@@ -1,0 +1,13 @@
+package Fixtures
+
+[Artifact]
+fn GenerateSignalCsvTemplate() -> Void {
+    Print(Header())
+    Print(FirstRow())
+    Print(SecondRow())
+}
+
+[Fact]
+fn HeaderStillStable() -> Void {
+    Assert.Equal("time_s,value", Header(), "header remains stable")
+}
