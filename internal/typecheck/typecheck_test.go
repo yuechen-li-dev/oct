@@ -343,9 +343,11 @@ func TestCheckValidatesM9Conditionals(t *testing.T) {
 		"fn Main() -> Int { if true { return 1 } return 0 }",
 		"fn Main() -> Int { if false { return 1 } else { return 2 } }",
 		"fn Main() -> Int { let x = switch 1 { case 0 => 10 case 1 => 20 else => 30 } return x }",
+		"fn Main() -> Int { let x = switch { case true => 10 else => 20 } return x }",
 		"fn Main() -> Int { let x = switch true { case true => 1 else => 0 } return x }",
 		"fn Main() -> Int { let x = switch \"a\" { case \"b\" => 1 case \"a\" => 2 else => 3 } return x }",
 		"fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2m } }",
+		"fn Main() -> Int<m> { return switch { case true => 1m else => 2m } }",
 		"enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 case Method.Rk4 => 4 } }",
 		"enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 else => 0 } }",
 		"fn Main() -> Int ! Error { if true { return 1 } else { return error(\"bad\") } }",
@@ -421,6 +423,10 @@ func TestCheckRejectsInvalidM14Comparisons(t *testing.T) {
 
 func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { if 1 { return 1 } return 0 }", "function Main: if condition must be Bool, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return switch { case 1 => 1 else => 2 } }", "function Main: condition switch case must be Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { return switch { case true => 1 } }", "function Main: condition switch requires else arm")
+	assertTypeErrorContains(t, "fn Main() -> Int { return switch { case true => 1 else => 2.0 } }", "function Main: condition switch result arms must have matching types")
+	assertTypeErrorContains(t, "fn Main() -> Int<m> { return switch { case true => 1m else => 2s } }", "function Main: condition switch result arms must have matching dimensions")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1 { case true => 2 else => 3 } return x }", "function Main: let x: switch case 1: case type Bool does not match subject type Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 => 2 else => 3.0 } return x }", "function Main: let x: switch else: result type Float does not match Int")
 	assertTypeErrorContains(t, "fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2s } }", "function Main: switch else: result type Int<s> does not match Int<m>")

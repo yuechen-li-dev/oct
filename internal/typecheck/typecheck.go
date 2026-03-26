@@ -837,6 +837,10 @@ func fallibilitySuffix(fallible bool) string {
 }
 
 func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
+	if expr.Subject == nil {
+		return c.checkConditionSwitchExpr(scope, expr, ctx)
+	}
+
 	subjectType, err := c.checkExpr(scope, expr.Subject, ctx)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("switch subject: %w", err)
@@ -936,6 +940,75 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 		return ExprType{}, fmt.Errorf("switch must include at least one case or else arm")
 	}
 	return ExprType{ValueType: resultType}, nil
+}
+
+func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
+	var resultType Type
+	hasResultType := false
+
+	for index, switchCase := range expr.Cases {
+		conditionType, err := c.checkExpr(scope, switchCase.Match, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("condition switch case %d: %w", index+1, err)
+		}
+		if conditionType.Fallible {
+			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly", index+1)
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("condition switch case must be Bool")
+		}
+
+		caseValueType, err := c.checkExpr(scope, switchCase.Value, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("condition switch case %d: %w", index+1, err)
+		}
+		if caseValueType.Fallible {
+			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly", index+1)
+		}
+		if !hasResultType {
+			resultType = caseValueType.ValueType
+			hasResultType = true
+			continue
+		}
+		if caseValueType.ValueType != resultType {
+			if hasMatchingShapeDifferentDimensions(caseValueType.ValueType, resultType) {
+				return ExprType{}, fmt.Errorf("condition switch result arms must have matching dimensions")
+			}
+			return ExprType{}, fmt.Errorf("condition switch result arms must have matching types")
+		}
+	}
+
+	if expr.Else == nil {
+		return ExprType{}, fmt.Errorf("condition switch requires else arm")
+	}
+
+	elseType, err := c.checkExpr(scope, expr.Else, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("condition switch else: %w", err)
+	}
+	if elseType.Fallible {
+		return ExprType{}, fmt.Errorf("condition switch else: fallible expression must be handled explicitly")
+	}
+	if !hasResultType {
+		return ExprType{ValueType: elseType.ValueType}, nil
+	}
+	if elseType.ValueType != resultType {
+		if hasMatchingShapeDifferentDimensions(elseType.ValueType, resultType) {
+			return ExprType{}, fmt.Errorf("condition switch result arms must have matching dimensions")
+		}
+		return ExprType{}, fmt.Errorf("condition switch result arms must have matching types")
+	}
+
+	return ExprType{ValueType: resultType}, nil
+}
+
+func hasMatchingShapeDifferentDimensions(left Type, right Type) bool {
+	return left.Base == right.Base &&
+		left.Name == right.Name &&
+		left.IsArray == right.IsArray &&
+		left.IsVector == right.IsVector &&
+		left.IsMatrix == right.IsMatrix &&
+		left.Dimension != right.Dimension
 }
 
 func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx functionContext) (Type, error) {
