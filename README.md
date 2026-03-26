@@ -99,5 +99,18 @@ This milestone is a proof that Oct can express a readable data -> compute -> str
 
 Implementation friction observed in M22c:
 
-- v0 arrays do not support element assignment or dynamic append, so loop-driven population is currently expressed through whole-array reassignment patterns.
-- this proof keeps scope intentionally small and explicit while exposing that array ergonomics are a practical area for future improvement.
+- v0 arrays do not support dynamic append, so fixed-size preallocation is still required for loop-driven datasets.
+
+## M22cr proof refresh: Analysis (Post-M23 Array Ergonomics Recheck)
+
+M22cr refreshes the same `Analysis` package and workflow after M23 array element assignment landed.
+
+- `GenerateAndCompute` now fills arrays directly inside the loop with `x[i] = ...`, `y[i] = ...`, and `z[i] = ...`.
+- the workflow shape remains intentionally unchanged: generate data -> compute values -> return `AnalysisResult` -> plot from `Main`.
+- tests continue to validate result correctness, plotting output generation, package integration/build behavior, and now include a proof-oriented check that the package source uses direct element assignment.
+
+Ergonomics assessment (M22cr):
+
+- **Material improvement:** yes. The core population loop is now straightforward Oct code and no longer relies on whole-array reassignment helpers.
+- **Earlier awkwardness removed:** mostly yes for fixed-size workflows; direct indexed writes make the proof package read naturally.
+- **Residual friction:** meaningful but narrower. Dynamic-growth workflows remain awkward because append/push is still unavailable, so this proof continues using fixed-size arrays.
