@@ -636,9 +636,28 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return evalResult{value: inner.value}, nil
 	case ast.SwitchExpr:
 		return i.evalSwitchExpr(env, pkgName, node)
+	case ast.IfExpr:
+		return i.evalIfExpr(env, pkgName, node)
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
 	}
+}
+
+func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExpr) (evalResult, error) {
+	condition, err := i.evalExpr(env, pkgName, expr.Condition)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if condition.hasError {
+		return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+	}
+	if condition.value.Kind != ValueBool {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: if expression condition must be Bool, got %s", condition.value.Kind)
+	}
+	if condition.value.Bool {
+		return i.evalExpr(env, pkgName, expr.ThenExpr)
+	}
+	return i.evalExpr(env, pkgName, expr.ElseExpr)
 }
 
 func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.SwitchExpr) (evalResult, error) {

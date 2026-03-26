@@ -476,7 +476,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordNot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordNot:
 		return true
 	default:
 		return false
@@ -708,6 +708,8 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	switch token.Kind {
 	case lex.KeywordSwitch:
 		return p.parseSwitchExpr()
+	case lex.KeywordIf:
+		return p.parseIfExpr()
 	case lex.IntLiteral:
 		p.advance()
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
@@ -755,6 +757,40 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseIfExpr() (ast.Expr, error) {
+	p.advance()
+	condition, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	thenExpr, err := p.parseIfExprBranch("then")
+	if err != nil {
+		return nil, err
+	}
+	if !p.match(lex.KeywordElse) {
+		return nil, p.errorAtCurrent("if expression requires else branch")
+	}
+	elseExpr, err := p.parseIfExprBranch("else")
+	if err != nil {
+		return nil, err
+	}
+	return ast.IfExpr{Condition: condition, ThenExpr: thenExpr, ElseExpr: elseExpr}, nil
+}
+
+func (p *parser) parseIfExprBranch(name string) (ast.Expr, error) {
+	if _, err := p.expect(lex.LeftBrace, fmt.Sprintf("expected '{' to start if expression %s branch", name)); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.RightBrace, "expected '}' to close if expression branch"); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 func (p *parser) looksLikeRecordLiteral() bool {

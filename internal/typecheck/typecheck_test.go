@@ -226,6 +226,25 @@ func TestCheckValidatesM12PrintAndWhile(t *testing.T) {
 	assertTypeErrorContains(t, "fn Print(x: Int) -> Int { return x } fn Main() -> Int { return 0 }", "function Print: cannot redeclare built-in function")
 }
 
+func TestCheckValidatesM20IfExpressions(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int { let x = if true { 1 } else { 2 } return x }",
+		"fn Main() -> Int { return (if true { 1 } else { 2 }) + 3 }",
+		"fn Main() -> Int<m> { return if true { 1m } else { 2m } }",
+		"record Point { X: Int Y: Int } fn Main() -> Point { return if true { Point { X: 1 Y: 2 } } else { Point { X: 3 Y: 4 } } }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+
+	assertTypeErrorContains(t, "fn Main() -> Int { return if 1 { 1 } else { 2 } }", "if expression condition must be Bool, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int<m> { return if true { 1m } else { 2s } }", "if expression branches must have matching types")
+	assertTypeErrorContains(t, "fn Main() -> Int { return if true { 1 } else { 2.0 } }", "if expression branches must have matching types")
+}
+
 func parseSource(t *testing.T, text string) ast.File {
 	t.Helper()
 	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {

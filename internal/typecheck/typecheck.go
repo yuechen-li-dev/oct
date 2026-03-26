@@ -729,9 +729,51 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return ExprType{ValueType: innerType.ValueType}, nil
 	case ast.SwitchExpr:
 		return c.checkSwitchExpr(scope, node, ctx)
+	case ast.IfExpr:
+		return c.checkIfExpr(scope, node, ctx)
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
+}
+
+func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext) (ExprType, error) {
+	conditionType, err := c.checkExpr(scope, expr.Condition, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("if expression condition: %w", err)
+	}
+	if conditionType.Fallible {
+		return ExprType{}, fmt.Errorf("if expression condition: fallible expression must be handled explicitly")
+	}
+	if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+		return ExprType{}, fmt.Errorf("if expression condition must be Bool, got %s", conditionType.ValueType)
+	}
+
+	thenType, err := c.checkExpr(scope, expr.ThenExpr, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("if expression then branch: %w", err)
+	}
+	elseType, err := c.checkExpr(scope, expr.ElseExpr, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("if expression else branch: %w", err)
+	}
+
+	if thenType.ValueType != elseType.ValueType || thenType.Fallible != elseType.Fallible {
+		return ExprType{}, fmt.Errorf(
+			"if expression branches must have matching types, got %s%s and %s%s",
+			thenType.ValueType,
+			fallibilitySuffix(thenType.Fallible),
+			elseType.ValueType,
+			fallibilitySuffix(elseType.Fallible),
+		)
+	}
+	return thenType, nil
+}
+
+func fallibilitySuffix(fallible bool) string {
+	if fallible {
+		return "!"
+	}
+	return ""
 }
 
 func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {

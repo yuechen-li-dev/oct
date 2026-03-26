@@ -238,6 +238,36 @@ func TestBuildFileParsesMultipleFunctions(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesIfExpression(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let x = if true { 1 } else { 2 } return x }")
+
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	ifExpr, ok := letStmt.Value.(ast.IfExpr)
+	if !ok {
+		t.Fatalf("expected IfExpr, got %T", letStmt.Value)
+	}
+	if _, ok := ifExpr.ThenExpr.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer then branch, got %T", ifExpr.ThenExpr)
+	}
+	if _, ok := ifExpr.ElseExpr.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer else branch, got %T", ifExpr.ElseExpr)
+	}
+}
+
+func TestBuildFileRejectsIfExpressionWithoutElse(t *testing.T) {
+	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: "package Main\nfn Main() -> Int { return if true { 1 } }"})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	_, err = BuildFile(lexed)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "if expression requires else branch") {
+		t.Fatalf("expected missing else error, got %q", err.Error())
+	}
+}
+
 func TestBuildFileParsesArrayTypesLiteralsAndIndexing(t *testing.T) {
 	file := parseSource(t, "fn Main(values: Int[]) -> Int[] { return [values[0], values[1]] }")
 
