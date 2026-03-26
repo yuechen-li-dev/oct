@@ -397,8 +397,13 @@ func TestBuildFileRejectsMalformedMatch(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { match Safe() { err(e) => { return 0 } ok(v) => { return v } } }", "expected 'ok' arm")
 }
 
-func TestBuildFileRejectsSwitchWithoutElse(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 => 2 } return x }", "switch requires else arm")
+func TestBuildFileParsesSwitchWithoutElse(t *testing.T) {
+	file := parseSource(t, "enum Method { Euler Rk4 } fn Main() -> Int { let x = switch Method.Euler { case Method.Euler => 1 case Method.Rk4 => 4 } return x }")
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	switchExpr := letStmt.Value.(ast.SwitchExpr)
+	if switchExpr.Else != nil {
+		t.Fatalf("expected nil else arm for switch without else")
+	}
 }
 
 func TestBuildFileRejectsNonLiteralSwitchCase(t *testing.T) {

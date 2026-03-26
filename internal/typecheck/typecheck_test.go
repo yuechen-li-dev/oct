@@ -298,6 +298,8 @@ func TestCheckValidatesM9Conditionals(t *testing.T) {
 		"fn Main() -> Int { let x = switch true { case true => 1 else => 0 } return x }",
 		"fn Main() -> Int { let x = switch \"a\" { case \"b\" => 1 case \"a\" => 2 else => 3 } return x }",
 		"fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2m } }",
+		"enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 case Method.Rk4 => 4 } }",
+		"enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 else => 0 } }",
 		"fn Main() -> Int ! Error { if true { return 1 } else { return error(\"bad\") } }",
 		"fn Safe() -> Int ! Error { return 5 } fn Main() -> Int ! Error { let x = switch 1 { case 1 => Safe()? else => 0 } return x }",
 	}
@@ -376,6 +378,11 @@ func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float<m> { return switch 1 { case 1 => 1m else => 2s } }", "function Main: switch else: result type Int<s> does not match Int<m>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch [1, 2] { else => 0 } return x }", "function Main: let x: switch subject type Int[] is not supported")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = switch 1m { case 1m => 2 else => 3 } return x }", "function Main: let x: switch subject type Int<m> is not supported")
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Unknown => 1 else => 0 } }", "enum 'Method' has no variant 'Unknown'")
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } enum OtherEnum { Value } fn Main() -> Int { let m = Method.Euler return switch m { case OtherEnum.Value => 1 else => 0 } }", "case type OtherEnum does not match subject type Method")
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 case Method.Euler => 2 else => 0 } }", "duplicate case 'Method.Euler'")
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 } }", "non-exhaustive switch over enum 'Method'; missing cases and no else")
+	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 case 1 => 2 else => 0 } }", "mixing enum and non-enum case labels is not allowed")
 }
 
 func TestCheckValidatesM16VectorsMatrices(t *testing.T) {

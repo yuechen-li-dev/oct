@@ -742,14 +742,23 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 	if subjectType.Fallible {
 		return ExprType{}, fmt.Errorf("switch subject: fallible expression must be handled explicitly")
 	}
-	if !isSwitchSubjectTypeSupported(subjectType.ValueType) {
+	if !isSwitchSubjectTypeSupported(c, subjectType.ValueType) {
 		return ExprType{}, fmt.Errorf("switch subject type %s is not supported", subjectType.ValueType)
 	}
 
+	subjectEnum, isEnumSubject := c.lookupEnum(subjectType.ValueType.Name)
 	var resultType Type
 	hasResultType := false
 	seenLabels := make(map[string]struct{}, len(expr.Cases))
+	seenEnumVariants := make(map[string]struct{}, len(expr.Cases))
+	enumCaseCount := 0
+	nonEnumCaseCount := 0
 	for index, switchCase := range expr.Cases {
+		_, isEnumCaseLabel := switchCase.Match.(ast.FieldAccessExpr)
+		if isEnumSubject && ((isEnumCaseLabel && nonEnumCaseCount > 0) || (!isEnumCaseLabel && enumCaseCount > 0)) {
+			return ExprType{}, fmt.Errorf("mixing enum and non-enum case labels is not allowed")
+		}
+
 		caseLabelType, err := c.checkSwitchCaseLabelType(scope, switchCase.Match, ctx)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
@@ -762,9 +771,22 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
 		}
 		if _, exists := seenLabels[labelKey]; exists {
+			if isEnumSubject {
+				return ExprType{}, fmt.Errorf("switch case %d: duplicate case '%s'", index+1, labelKey)
+			}
 			return ExprType{}, fmt.Errorf("switch case %d: duplicate case label", index+1)
 		}
 		seenLabels[labelKey] = struct{}{}
+		if enumCaseLabel, ok := switchCase.Match.(ast.FieldAccessExpr); ok {
+			enumCaseCount++
+			if isEnumSubject {
+				if variant, ok := extractEnumVariantName(enumCaseLabel, subjectType.ValueType.Name); ok {
+					seenEnumVariants[variant] = struct{}{}
+				}
+			}
+		} else {
+			nonEnumCaseCount++
+		}
 
 		caseValueType, err := c.checkExpr(scope, switchCase.Value, ctx)
 		if err != nil {
@@ -781,19 +803,35 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 		}
 	}
 
-	elseType, err := c.checkExpr(scope, expr.Else, ctx)
-	if err != nil {
-		return ExprType{}, fmt.Errorf("switch else: %w", err)
-	}
-	if elseType.Fallible {
-		return ExprType{}, fmt.Errorf("switch else: fallible expression must be handled explicitly")
-	}
-	if !hasResultType {
-		resultType = elseType.ValueType
+	hasElse := expr.Else != nil
+	if hasElse {
+		elseType, err := c.checkExpr(scope, expr.Else, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("switch else: %w", err)
+		}
+		if elseType.Fallible {
+			return ExprType{}, fmt.Errorf("switch else: fallible expression must be handled explicitly")
+		}
+		if !hasResultType {
+			resultType = elseType.ValueType
+			return ExprType{ValueType: resultType}, nil
+		}
+		if elseType.ValueType != resultType {
+			return ExprType{}, fmt.Errorf("switch else: result type %s does not match %s", elseType.ValueType, resultType)
+		}
 		return ExprType{ValueType: resultType}, nil
 	}
-	if elseType.ValueType != resultType {
-		return ExprType{}, fmt.Errorf("switch else: result type %s does not match %s", elseType.ValueType, resultType)
+
+	if isEnumSubject {
+		if !hasAllEnumVariantsCovered(subjectEnum, seenEnumVariants) {
+			return ExprType{}, fmt.Errorf("non-exhaustive switch over enum '%s'; missing cases and no else", subjectType.ValueType.Name)
+		}
+	} else {
+		return ExprType{}, fmt.Errorf("switch requires else arm")
+	}
+
+	if !hasResultType {
+		return ExprType{}, fmt.Errorf("switch must include at least one case or else arm")
 	}
 	return ExprType{ValueType: resultType}, nil
 }
@@ -809,12 +847,17 @@ func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx funct
 	switch expr.(type) {
 	case ast.IntegerLiteral, ast.FloatLiteral, ast.BoolLiteral, ast.StringLiteralExpr:
 		return exprType.ValueType, nil
+	case ast.FieldAccessExpr:
+		if _, ok := c.lookupEnum(exprType.ValueType.Name); !ok {
+			return Type{}, fmt.Errorf("case labels must match switch subject type")
+		}
+		return exprType.ValueType, nil
 	default:
-		return Type{}, fmt.Errorf("case label must be int, float, bool, or string literal")
+		return Type{}, fmt.Errorf("case label must be int, float, bool, string literal, or qualified enum variant")
 	}
 }
 
-func isSwitchSubjectTypeSupported(valueType Type) bool {
+func isSwitchSubjectTypeSupported(c checker, valueType Type) bool {
 	if valueType.IsArray || valueType.IsVector || valueType.IsMatrix {
 		return false
 	}
@@ -824,7 +867,7 @@ func isSwitchSubjectTypeSupported(valueType Type) bool {
 	case BaseTypeBool, BaseTypeString:
 		return true
 	default:
-		return false
+		return isEnumType(c, valueType)
 	}
 }
 
@@ -841,9 +884,76 @@ func switchCaseKey(expr ast.Expr) (string, error) {
 		return "bool:false", nil
 	case ast.StringLiteralExpr:
 		return "string:" + node.Value, nil
+	case ast.FieldAccessExpr:
+		return enumCaseLabel(node)
 	default:
-		return "", fmt.Errorf("case label must be int, float, bool, or string literal")
+		return "", fmt.Errorf("case label must be int, float, bool, string literal, or qualified enum variant")
 	}
+}
+
+func enumCaseLabel(expr ast.FieldAccessExpr) (string, error) {
+	enumTypeName, variant, ok := flattenEnumValueExpr(expr)
+	if !ok {
+		return "", fmt.Errorf("switch case enum label must be qualified as EnumName.Variant")
+	}
+	return enumTypeName + "." + variant, nil
+}
+
+func flattenEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
+	switch target := expr.Target.(type) {
+	case ast.IdentifierExpr:
+		return target.Name, expr.Field, true
+	case ast.FieldAccessExpr:
+		enumName, ok := flattenEnumTypeNameFromFieldAccess(target)
+		if !ok {
+			return "", "", false
+		}
+		return enumName, expr.Field, true
+	default:
+		return "", "", false
+	}
+}
+
+func flattenEnumTypeNameFromFieldAccess(expr ast.FieldAccessExpr) (string, bool) {
+	parts := make([]string, 0, 2)
+	current := ast.Expr(expr)
+	for {
+		fieldExpr, ok := current.(ast.FieldAccessExpr)
+		if !ok {
+			break
+		}
+		parts = append([]string{fieldExpr.Field}, parts...)
+		current = fieldExpr.Target
+	}
+	identifier, ok := current.(ast.IdentifierExpr)
+	if !ok {
+		return "", false
+	}
+	parts = append([]string{identifier.Name}, parts...)
+	if len(parts) != 2 {
+		return "", false
+	}
+	return parts[0] + "." + parts[1], true
+}
+
+func extractEnumVariantName(expr ast.FieldAccessExpr, expectedEnumName string) (string, bool) {
+	enumName, variant, ok := flattenEnumValueExpr(expr)
+	if !ok || enumName != expectedEnumName {
+		return "", false
+	}
+	return variant, true
+}
+
+func hasAllEnumVariantsCovered(info enumInfo, seen map[string]struct{}) bool {
+	if len(info.variants) != len(seen) {
+		return false
+	}
+	for variant := range info.variants {
+		if _, ok := seen[variant]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
