@@ -85,3 +85,19 @@ Implementation friction observed in M22b:
 
 - A single generic `Vec2<T>` shape is still not available, so this proof uses explicit domain-specific records (`Vec2Force`, `Displacement2`).
 - Matrix shape constraints are runtime/value-level rather than encoded in the type, so API documentation and tests carry shape intent (`2x2` with `2x1`).
+
+## M22c proof package: Analysis (Data -> Compute -> Plot Workflow v0)
+
+M22c adds a native `Analysis` package in Oct source under `testdata/m22c/valid/Analysis` with:
+
+- structured workflow output via `AnalysisResult { X, Y, Z }`
+- one linear end-to-end function: `GenerateAndCompute(start, increment)`
+- explicit array-oriented analysis flow for a small fixed-size dataset (`x = start + i*increment`, `y = x*x - 2`, `z = x*x`)
+- direct plotting from package-produced arrays using built-in `PlotLine`/`PlotScatter` in `Main`
+
+This milestone is a proof that Oct can express a readable data -> compute -> structured result -> plot flow with packages, records, loops, mutable locals, indexing, `Len`, and plotting.
+
+Implementation friction observed in M22c:
+
+- v0 arrays do not support element assignment or dynamic append, so loop-driven population is currently expressed through whole-array reassignment patterns.
+- this proof keeps scope intentionally small and explicit while exposing that array ergonomics are a practical area for future improvement.

@@ -1,0 +1,9 @@
+package Main
+import Analysis
+
+fn Main() -> Int {
+    let result = Analysis.GenerateAndCompute(0.0, 1.0)
+    Print(Len(result.X))
+    Print(result.Y[0])
+    return PlotLine(result.X, result.Y, "analysis_output.png")
+}
