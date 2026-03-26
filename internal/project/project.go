@@ -30,6 +30,14 @@ type Program struct {
 }
 
 func Load(path string) (Program, error) {
+	return load(path, false)
+}
+
+func LoadForTest(path string) (Program, error) {
+	return load(path, true)
+}
+
+func load(path string, includeTests bool) (Program, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -39,12 +47,12 @@ func Load(path string) (Program, error) {
 	}
 
 	if info.IsDir() {
-		return loadFromDir(path)
+		return loadFromDir(path, includeTests)
 	}
-	return loadFromFile(path)
+	return loadFromFile(path, includeTests)
 }
 
-func loadFromFile(path string) (Program, error) {
+func loadFromFile(path string, includeTests bool) (Program, error) {
 	packageDir := filepath.Dir(path)
 	entryFile, err := parseFile(path)
 	if err != nil {
@@ -54,33 +62,44 @@ func loadFromFile(path string) (Program, error) {
 	if filepath.Base(packageDir) == entryFile.Package {
 		root = filepath.Dir(packageDir)
 	}
-	builder := builder{root: root, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+	builder := builder{root: root, includeTests: includeTests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
 	return Program{Root: root, Entry: entryFile.Package, EntrySource: path, Packages: builder.packages}, nil
 }
 
-func loadFromDir(root string) (Program, error) {
-	builder := builder{root: root, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+func loadFromDir(root string, includeTests bool) (Program, error) {
+	builder := builder{root: root, includeTests: includeTests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
 	mainDir := filepath.Join(root, "Main")
 	if _, err := os.Stat(mainDir); err == nil {
 		if err := builder.loadPackage("Main", mainDir); err != nil {
 			return Program{}, err
+		}
+		if includeTests {
+			if err := builder.loadAllPackagesInRoot(); err != nil {
+				return Program{}, err
+			}
 		}
 		return Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages}, nil
 	}
 	if err := builder.loadPackage("Main", root); err != nil {
 		return Program{}, err
 	}
+	if includeTests {
+		if err := builder.loadAllPackagesInRoot(); err != nil {
+			return Program{}, err
+		}
+	}
 	return Program{Root: root, Entry: "Main", EntrySource: root, Packages: builder.packages}, nil
 }
 
 type builder struct {
-	root     string
-	packages map[string]Package
-	visiting map[string]struct{}
-	visited  map[string]struct{}
+	root         string
+	includeTests bool
+	packages     map[string]Package
+	visiting     map[string]struct{}
+	visited      map[string]struct{}
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
@@ -93,7 +112,7 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	b.visiting[packageName] = struct{}{}
 	defer delete(b.visiting, packageName)
 
-	files, err := loadPackageFiles(directory)
+	files, err := loadPackageFiles(directory, b.includeTests)
 	if err != nil {
 		return err
 	}
@@ -154,7 +173,31 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	return nil
 }
 
-func loadPackageFiles(directory string) ([]ast.File, error) {
+func (b *builder) loadAllPackagesInRoot() error {
+	entries, err := os.ReadDir(b.root)
+	if err != nil {
+		return fmt.Errorf("read package root %s: %w", b.root, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(b.root, entry.Name())
+		files, err := loadPackageFiles(dir, b.includeTests)
+		if err != nil {
+			return err
+		}
+		if len(files) == 0 {
+			continue
+		}
+		if err := b.loadPackage(entry.Name(), dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -164,7 +207,11 @@ func loadPackageFiles(directory string) ([]ast.File, error) {
 	}
 	var files []string
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".oct" {
+		if entry.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".oct" && (!includeTests || ext != ".octest") {
 			continue
 		}
 		files = append(files, filepath.Join(directory, entry.Name()))

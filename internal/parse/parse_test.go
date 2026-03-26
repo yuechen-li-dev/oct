@@ -476,13 +476,33 @@ func TestBuildFileRejectsNonLiteralSwitchCase(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 + 1 => 2 else => 3 } return x }", "expected '=>' after case label")
 }
 
+func TestBuildFileParsesFactInOctest(t *testing.T) {
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Fact]\nfn Works() -> Void { return }\n")
+	if !file.IsTest {
+		t.Fatal("expected .octest to mark test file")
+	}
+	if len(file.Functions) != 1 || !file.Functions[0].IsFact {
+		t.Fatalf("expected one [Fact] function, got %+v", file.Functions)
+	}
+}
+
+func TestBuildFileRejectsInvalidFactUsage(t *testing.T) {
+	assertParseErrorContains(t, "package Main\n[Fact]\nfn Nope() -> Int { return 0 }\n", "[Fact] is only valid in .octest files")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\nrecord R { X: Int }\n", "[Fact] must apply to a function declaration")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\n[Fact]\nfn Dup() -> Void { return }\n", "duplicate [Fact] attribute on function")
+}
+
 func parseSource(t *testing.T, text string) ast.File {
+	return parseSourceWithPath(t, "example.oct", text)
+}
+
+func parseSourceWithPath(t *testing.T, path string, text string) ast.File {
 	t.Helper()
 	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {
 		text = "package Main\n" + text
 	}
 
-	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: text})
+	lexed, err := lex.Analyze(source.File{Path: path, Text: text})
 	if err != nil {
 		t.Fatalf("Analyze returned error: %v", err)
 	}
@@ -495,12 +515,16 @@ func parseSource(t *testing.T, text string) ast.File {
 }
 
 func assertParseErrorContains(t *testing.T, text string, want string) {
+	assertParseErrorContainsWithPath(t, "example.oct", text, want)
+}
+
+func assertParseErrorContainsWithPath(t *testing.T, path string, text string, want string) {
 	t.Helper()
 	if !strings.HasPrefix(strings.TrimSpace(text), "package ") && !strings.Contains(want, "package declaration") {
 		text = "package Main\n" + text
 	}
 
-	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: text})
+	lexed, err := lex.Analyze(source.File{Path: path, Text: text})
 	if err != nil {
 		t.Fatalf("Analyze returned error: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 
 type File struct {
 	Source    source.File
+	IsTest    bool
 	Package   string
 	Imports   []string
 	Records   []RecordDecl
@@ -31,6 +32,9 @@ type EnumDecl struct {
 
 type FunctionDecl struct {
 	Name       string
+	SourcePath string
+	IsTestFile bool
+	IsFact     bool
 	Parameters []Parameter
 	ReturnType TypeRef
 	IsFallible bool

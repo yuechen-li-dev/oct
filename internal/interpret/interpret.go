@@ -194,6 +194,45 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 	return result.value, nil
 }
 
+func ExecuteFunction(program project.Program, pkgName string, functionName string, stdout io.Writer) error {
+	interpreter := interpreter{
+		functions:      make(map[string]ast.FunctionDecl),
+		records:        make(map[string]ast.RecordDecl),
+		enums:          make(map[string]ast.EnumDecl),
+		functionSource: make(map[string]string),
+		stdout:         stdout,
+	}
+	for currentPkg, pkg := range program.Packages {
+		for _, record := range pkg.Records {
+			interpreter.records[currentPkg+"."+record.Name] = record
+		}
+		for _, enumDecl := range pkg.Enums {
+			interpreter.enums[currentPkg+"."+enumDecl.Name] = enumDecl
+		}
+		for _, function := range pkg.Functions {
+			key := currentPkg + "." + function.Name
+			interpreter.functions[key] = function
+			interpreter.functionSource[key] = currentPkg
+		}
+	}
+	key := pkgName + "." + functionName
+	function, ok := interpreter.functions[key]
+	if !ok {
+		return fmt.Errorf("missing function %s", key)
+	}
+	if len(function.Parameters) != 0 {
+		return fmt.Errorf("test function %s must not have parameters", key)
+	}
+	result, err := interpreter.executeFunction(function, pkgName, nil)
+	if err != nil {
+		return err
+	}
+	if result.hasError {
+		return fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
+	}
+	return nil
+}
+
 func newEnvironment(parent *environment) *environment {
 	return &environment{parent: parent, values: make(map[string]binding)}
 }
@@ -250,6 +289,9 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 		return callResult{}, err
 	}
 	if !result.returned {
+		if function.ReturnType.Name == "Void" {
+			return callResult{}, nil
+		}
 		return callResult{}, fmt.Errorf("runtime invariant violation: %s completed without returning", function.Name)
 	}
 	if function.IsFallible && result.value.Kind == ValueError {
@@ -347,6 +389,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		return stmtResult{}, nil
 	case ast.ReturnStmt:
+		if node.Value == nil {
+			return stmtResult{returned: true}, nil
+		}
 		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
 			return stmtResult{}, err
@@ -800,6 +845,9 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 	if builtin.IsName(expr.Callee) {
 		return i.evalBuiltinCallExpr(env, pkgName, expr)
 	}
+	if strings.HasPrefix(expr.Callee, "Assert.") {
+		return i.evalAssertCallExpr(env, pkgName, expr)
+	}
 
 	functionKey := expr.Callee
 	if !strings.Contains(functionKey, ".") {
@@ -837,6 +885,65 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 		result.value = qualifyCrossPackageValue(result.value, targetPkg)
 	}
 	return evalResult{value: result.value}, nil
+}
+
+func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
+	arguments := make([]Value, 0, len(expr.Arguments))
+	for _, argumentExpr := range expr.Arguments {
+		argument, err := i.evalExpr(env, pkgName, argumentExpr)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		arguments = append(arguments, argument.value)
+	}
+
+	fail := func(message string) (evalResult, error) {
+		return evalResult{}, fmt.Errorf("assertion failed: %s", message)
+	}
+	switch expr.Callee {
+	case "Assert.True":
+		if !arguments[0].Bool {
+			return fail(arguments[1].Text)
+		}
+	case "Assert.False":
+		if arguments[0].Bool {
+			return fail(arguments[1].Text)
+		}
+	case "Assert.Equal":
+		if !valuesEqual(arguments[0], arguments[1]) {
+			return fail(arguments[2].Text)
+		}
+	case "Assert.Near":
+		if math.Abs(arguments[0].Float-arguments[1].Float) > arguments[2].Float {
+			return fail(arguments[3].Text)
+		}
+	default:
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported Assert function %s", expr.Callee)
+	}
+	return evalResult{}, nil
+}
+
+func valuesEqual(left Value, right Value) bool {
+	if left.Kind != right.Kind || left.Dimension != right.Dimension {
+		return false
+	}
+	switch left.Kind {
+	case ValueBool:
+		return left.Bool == right.Bool
+	case ValueInt:
+		return left.Int == right.Int
+	case ValueFloat:
+		return left.Float == right.Float
+	case ValueString:
+		return left.Text == right.Text
+	case ValueEnum:
+		return left.Enum == right.Enum
+	default:
+		return false
+	}
 }
 
 func qualifyCrossPackageValue(value Value, pkgName string) Value {

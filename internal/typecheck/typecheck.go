@@ -21,6 +21,7 @@ const (
 	BaseTypeRange  BaseType = "Range"
 	BaseTypeString BaseType = "String"
 	BaseTypeError  BaseType = "Error"
+	BaseTypeVoid   BaseType = "Void"
 )
 
 type Type struct {
@@ -67,6 +68,7 @@ type functionContext struct {
 	name       string
 	returnType Type
 	isFallible bool
+	isTestFile bool
 }
 
 func Check(file ast.File) error {
@@ -142,7 +144,7 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 		fields := make(map[string]Type, len(record.Fields))
 		fieldOrder := make([]string, 0, len(record.Fields))
 		for _, field := range record.Fields {
-			fieldType, err := c.resolveType(field.Type)
+			fieldType, err := c.resolveNonReturnType(field.Type)
 			if err != nil {
 				return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 			}
@@ -217,7 +219,7 @@ func (c checker) checkFile(file ast.File) error {
 }
 
 func (c checker) registerPackageDeclarations(file ast.File) error {
-	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError)} {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
 
@@ -277,7 +279,7 @@ func (c checker) registerRecord(record ast.RecordDecl) error {
 		if _, exists := fields[field.Name]; exists {
 			return fmt.Errorf("record '%s' field '%s' specified more than once", record.Name, field.Name)
 		}
-		fieldType, err := c.resolveType(field.Type)
+		fieldType, err := c.resolveNonReturnType(field.Type)
 		if err != nil {
 			return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 		}
@@ -309,7 +311,7 @@ func (c checker) registerEnum(enumDecl ast.EnumDecl) error {
 }
 
 func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSignature, error) {
-	returnType, err := c.resolveType(function.ReturnType)
+	returnType, err := c.resolveReturnType(function.ReturnType)
 	if err != nil {
 		return functionSignature{}, err
 	}
@@ -321,7 +323,7 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 
 	parameters := make([]Type, 0, len(function.Parameters))
 	for _, parameter := range function.Parameters {
-		parameterType, err := c.resolveType(parameter.Type)
+		parameterType, err := c.resolveNonReturnType(parameter.Type)
 		if err != nil {
 			return functionSignature{}, fmt.Errorf("parameter %s: %w", parameter.Name, err)
 		}
@@ -338,10 +340,13 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		functionScope.define(parameter.Name, signature.parameters[i], false)
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible}
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
+	}
+	if signature.returnType.Base == BaseTypeVoid {
+		return nil
 	}
 	if !hasReturn {
 		return fmt.Errorf("function %s: missing return statement", function.Name)
@@ -375,6 +380,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly", ctx.name, node.Name)
 		}
+		if valueType.ValueType.Base == BaseTypeVoid {
+			return false, fmt.Errorf("function %s: let %s: Void result cannot be used as a value", ctx.name, node.Name)
+		}
 		scope.define(node.Name, valueType.ValueType, false)
 		return false, nil
 	case ast.VarStmt:
@@ -384,6 +392,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: var %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+		}
+		if valueType.ValueType.Base == BaseTypeVoid {
+			return false, fmt.Errorf("function %s: var %s: Void result cannot be used as a value", ctx.name, node.Name)
 		}
 		scope.define(node.Name, valueType.ValueType, true)
 		return false, nil
@@ -443,6 +454,15 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		return false, nil
 	case ast.ReturnStmt:
+		if node.Value == nil {
+			if ctx.returnType.Base != BaseTypeVoid {
+				return false, fmt.Errorf("function %s: function expects %s, but return has no value", ctx.name, ctx.returnType)
+			}
+			return true, nil
+		}
+		if ctx.returnType.Base == BaseTypeVoid {
+			return false, fmt.Errorf("function %s: Void function cannot return a value", ctx.name)
+		}
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
 			return false, fmt.Errorf("function %s: %w", ctx.name, err)
@@ -1145,6 +1165,12 @@ func hasAllEnumVariantsCovered(info enumInfo, seen map[string]struct{}) bool {
 }
 
 func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if strings.HasPrefix(expr.Callee, "Assert.") {
+		if !ctx.isTestFile {
+			return ExprType{}, fmt.Errorf("Assert is only available in .octest files")
+		}
+		return c.checkAssertCallExpr(scope, expr, ctx)
+	}
 	if expr.Callee == "error" {
 		if len(expr.Arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
@@ -1204,11 +1230,116 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		if argumentType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
+		if argumentType.ValueType.Base == BaseTypeVoid {
+			return ExprType{}, fmt.Errorf("Void result cannot be used as a value")
+		}
 		if !isAssignable(argumentType.ValueType, signature.parameters[i]) {
 			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", expr.Callee, i+1, signature.parameters[i], argumentType.ValueType)
 		}
 	}
 	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
+}
+
+func (c checker) checkAssertCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	voidType := ExprType{ValueType: Type{Base: BaseTypeVoid}}
+	switch expr.Callee {
+	case "Assert.True", "Assert.False":
+		if len(expr.Arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", expr.Callee, len(expr.Arguments))
+		}
+		condType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if condType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bool, got %s", expr.Callee, condType.ValueType)
+		}
+		msgType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if msgType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", expr.Callee, msgType.ValueType)
+		}
+		return voidType, nil
+	case "Assert.Equal":
+		if len(expr.Arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", expr.Callee, len(expr.Arguments))
+		}
+		expectedType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		actualType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !isAssignable(actualType.ValueType, expectedType.ValueType) || !isAssignable(expectedType.ValueType, actualType.ValueType) {
+			return ExprType{}, fmt.Errorf("function '%s' arguments 1 and 2 must have the same type", expr.Callee)
+		}
+		if !supportsAssertEqualType(expectedType.ValueType) {
+			return ExprType{}, fmt.Errorf("Assert.Equal does not support type %s in M24a", expectedType.ValueType)
+		}
+		msgType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if msgType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", expr.Callee, msgType.ValueType)
+		}
+		return voidType, nil
+	case "Assert.Near":
+		if len(expr.Arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", expr.Callee, len(expr.Arguments))
+		}
+		expectedType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		actualType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		toleranceType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if expectedType.ValueType.Base != BaseTypeFloat || actualType.ValueType.Base != BaseTypeFloat || toleranceType.ValueType.Base != BaseTypeFloat ||
+			expectedType.ValueType.IsArray || actualType.ValueType.IsArray || toleranceType.ValueType.IsArray ||
+			expectedType.ValueType.IsVector || actualType.ValueType.IsVector || toleranceType.ValueType.IsVector ||
+			expectedType.ValueType.IsMatrix || actualType.ValueType.IsMatrix || toleranceType.ValueType.IsMatrix ||
+			expectedType.ValueType.Name != "" || actualType.ValueType.Name != "" || toleranceType.ValueType.Name != "" {
+			return ExprType{}, fmt.Errorf("Assert.Near supports only Float scalars in M24a")
+		}
+		if expectedType.ValueType.Dimension != actualType.ValueType.Dimension || expectedType.ValueType.Dimension != toleranceType.ValueType.Dimension {
+			return ExprType{}, fmt.Errorf("Assert.Near requires matching dimensions for expected, actual, and tolerance")
+		}
+		msgType, err := c.checkExpr(scope, expr.Arguments[3], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if msgType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", expr.Callee, msgType.ValueType)
+		}
+		return voidType, nil
+	default:
+		return ExprType{}, fmt.Errorf("unsupported Assert function '%s'", expr.Callee)
+	}
+}
+
+func supportsAssertEqualType(valueType Type) bool {
+	if valueType.IsArray || valueType.IsVector || valueType.IsMatrix {
+		return false
+	}
+	if valueType.Name != "" {
+		return true
+	}
+	switch valueType.Base {
+	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c checker) qualifyImportedSignature(pkgName string, signature functionSignature) functionSignature {
@@ -1546,7 +1677,15 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 	return ExprType{ValueType: Type{Name: expr.TypeName}}, nil
 }
 
-func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
+func (c checker) resolveReturnType(typeRef ast.TypeRef) (Type, error) {
+	return c.resolveType(typeRef, true)
+}
+
+func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
+	return c.resolveType(typeRef, false)
+}
+
+func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
 	if typeRef.VectorOf != nil || typeRef.MatrixOf != nil {
 		var elementRef ast.TypeRef
 		isVector := typeRef.VectorOf != nil
@@ -1555,7 +1694,7 @@ func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
 		} else {
 			elementRef = *typeRef.MatrixOf
 		}
-		elementType, err := c.resolveType(elementRef)
+		elementType, err := c.resolveType(elementRef, false)
 		if err != nil {
 			return Type{}, err
 		}
@@ -1627,17 +1766,20 @@ func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
 		return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
 	}
 	if typeRef.IsArray {
-		if baseType == BaseTypeError || baseType == BaseTypeRange {
+		if baseType == BaseTypeError || baseType == BaseTypeRange || baseType == BaseTypeVoid {
 			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
 		}
 		return Type{Base: baseType, Dimension: typeRef.Dimension, IsArray: true}, nil
+	}
+	if baseType == BaseTypeVoid && !allowVoid {
+		return Type{}, fmt.Errorf("Void is only allowed as a function return type")
 	}
 	return Type{Base: baseType, Dimension: typeRef.Dimension}, nil
 }
 
 func resolveBaseType(name string) (BaseType, error) {
 	switch BaseType(name) {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeError:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeError, BaseTypeVoid:
 		return BaseType(name), nil
 	default:
 		return "", fmt.Errorf("unknown type: %s", name)

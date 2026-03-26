@@ -7,6 +7,7 @@ import (
 
 	"oct/internal/build"
 	"oct/internal/run"
+	"oct/internal/tester"
 )
 
 func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
@@ -30,6 +31,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
+	case "test":
+		if err := tester.Execute(path, stdout); err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return nil
 	default:
 		return writeUsage(stderr)
 	}
@@ -44,6 +50,6 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build> <file>")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test> <file-or-root>")
 	return err
 }
