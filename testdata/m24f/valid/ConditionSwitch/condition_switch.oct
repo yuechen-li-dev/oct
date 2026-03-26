@@ -1,0 +1,47 @@
+package ConditionSwitch
+
+fn Score(x: Int) -> Int {
+    return switch {
+        case x > 10 => 1
+        case x > 5 => 2
+        else => 3
+    }
+}
+
+fn FirstMatchWins() -> Int {
+    return switch {
+        case true => 1
+        case true => 2
+        else => 3
+    }
+}
+
+fn DistanceLabel(distance: Int<m>) -> Int {
+    return switch {
+        case distance > 5m => 2
+        case distance > 0m => 1
+        else => 0
+    }
+}
+
+fn SafeLazyElseArm() -> Int {
+    return switch {
+        case true => 1
+        else => 1 / 0
+    }
+}
+
+fn SafeLazyLaterCondition() -> Int {
+    return switch {
+        case true => 1
+        case 1 / 0 == 0 => 2
+        else => 3
+    }
+}
+
+fn ShiftedPositiveScore(x: Int) -> Int {
+    return (switch {
+        case x > 0 => 10
+        else => 20
+    }) + 1
+}

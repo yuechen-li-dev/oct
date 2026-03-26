@@ -1,0 +1,8 @@
+package Main
+
+fn Main() -> Int {
+    return switch {
+        case 1 => 1
+        else => 2
+    }
+}
