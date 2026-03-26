@@ -60,6 +60,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 
 	pendingFact := false
 	pendingTheory := false
+	pendingArtifact := false
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
@@ -82,6 +83,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingTheory {
 					return ast.File{}, p.errorAtCurrent("[Fact] and [Theory] cannot both apply to the same function")
 				}
+				if pendingArtifact {
+					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Fact]")
+				}
 				pendingFact = true
 			case "Theory":
 				if pendingTheory {
@@ -90,7 +94,21 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingFact {
 					return ast.File{}, p.errorAtCurrent("[Fact] and [Theory] cannot both apply to the same function")
 				}
+				if pendingArtifact {
+					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Theory]")
+				}
 				pendingTheory = true
+			case "Artifact":
+				if pendingArtifact {
+					return ast.File{}, p.errorAtCurrent("duplicate [Artifact] attribute on function")
+				}
+				if pendingFact {
+					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Fact]")
+				}
+				if pendingTheory {
+					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Theory]")
+				}
+				pendingArtifact = true
 			case "InlineData":
 				pendingInlineData = append(pendingInlineData, ast.InlineDataRow{Values: attribute.values})
 			}
@@ -98,7 +116,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
-			if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -107,7 +125,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
-			if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -134,6 +152,19 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				function.IsFact = true
 				pendingFact = false
 			}
+			if pendingArtifact {
+				if len(function.Parameters) != 0 {
+					return ast.File{}, p.errorAtCurrent("[Artifact] function must not declare parameters")
+				}
+				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
+					return ast.File{}, p.errorAtCurrent("[Artifact] function must return Void")
+				}
+				if len(pendingInlineData) > 0 {
+					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Artifact]")
+				}
+				function.IsArtifact = true
+				pendingArtifact = false
+			}
 			if pendingTheory {
 				if len(function.Parameters) == 0 {
 					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one parameter")
@@ -156,7 +187,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+	if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	return file, nil
@@ -176,7 +207,7 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 		return testAttribute{}, err
 	}
 	switch name.Lexeme {
-	case "Fact", "Theory":
+	case "Fact", "Theory", "Artifact":
 		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
 			return testAttribute{}, err
 		}

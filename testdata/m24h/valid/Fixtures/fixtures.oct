@@ -1,0 +1,13 @@
+package Fixtures
+
+fn Header() -> String {
+    return "time_s,value"
+}
+
+fn FirstRow() -> String {
+    return "0,1.0"
+}
+
+fn SecondRow() -> String {
+    return "1,0.5"
+}

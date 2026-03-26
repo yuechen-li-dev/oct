@@ -36,6 +36,7 @@ type FunctionDecl struct {
 	IsTestFile bool
 	IsFact     bool
 	IsTheory   bool
+	IsArtifact bool
 	InlineData []InlineDataRow
 	Parameters []Parameter
 	ReturnType TypeRef

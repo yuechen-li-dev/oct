@@ -522,6 +522,23 @@ func TestBuildFileRejectsInvalidTheoryUsage(t *testing.T) {
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[InlineData([1])]\n[Theory]\nfn NotAllowed(x: Int[]) -> Void { return }\n", "[InlineData] supports only scalar literals and enum values in M24b")
 }
 
+func TestBuildFileParsesArtifactInOctest(t *testing.T) {
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Artifact]\nfn Generate() -> Void { return }\n")
+	if len(file.Functions) != 1 || !file.Functions[0].IsArtifact {
+		t.Fatalf("expected one [Artifact] function, got %+v", file.Functions)
+	}
+}
+
+func TestBuildFileRejectsInvalidArtifactUsage(t *testing.T) {
+	assertParseErrorContains(t, "package Main\n[Artifact]\nfn Nope() -> Void { return }\n", "[Artifact] is only valid in .octest files")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\nrecord R { X: Int }\n", "test attributes must apply to a function declaration")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\n[Artifact]\nfn Dup() -> Void { return }\n", "duplicate [Artifact] attribute on function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\nfn WrongReturn() -> Int { return 1 }\n", "[Artifact] function must return Void")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\nfn NeedsNoArgs(x: Int) -> Void { return }\n", "[Artifact] function must not declare parameters")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\n[Fact]\nfn Bad() -> Void { return }\n", "[Artifact] cannot be combined with [Fact]")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "[Artifact] cannot be combined with [Theory]")
+}
+
 func parseSource(t *testing.T, text string) ast.File {
 	return parseSourceWithPath(t, "example.oct", text)
 }

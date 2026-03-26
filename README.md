@@ -227,6 +227,16 @@ Migration friction still present after M24f:
 - dimension-heavy numeric assertions still require normalization workarounds before scalar `Assert.Near`
 - dynamic-growth array workflows remain awkward while append/push ergonomics continue to evolve
 
+## Native Artifact Generators (`[Artifact]`)
+
+M24h adds explicit artifact generation in `.octest` for test-adjacent utilities such as fixture templates and small harness outputs.
+
+- `[Artifact]` applies to `.octest` functions only
+- artifact functions must be `fn() -> Void`
+- run artifacts explicitly with `oct artifact <file-or-root>`
+- artifacts are not tests and are not executed by `oct test`
+- artifact functions are expected to be idempotent by convention; the runner always executes them when requested
+
 ## Expected-Failure Tests (`.octfail`)
 
 M24g adds native expected-failure fixtures so invalid language contracts can live in Oct-native artifacts instead of embedded Go source strings.
