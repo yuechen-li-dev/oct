@@ -61,6 +61,7 @@ const (
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
 	Slash        TokenKind = "Slash"
+	At           TokenKind = "At"
 	EqualEqual   TokenKind = "EqualEqual"
 	LeftEqual    TokenKind = "LeftEqual"
 	RightEqual   TokenKind = "RightEqual"
@@ -239,6 +240,9 @@ func (l *lexer) nextToken() (Token, error) {
 			return Token{Kind: Arrow, Lexeme: "->", Line: line, Column: column}, nil
 		}
 		return Token{Kind: Minus, Lexeme: "-", Line: line, Column: column}, nil
+	case '@':
+		l.advanceRune()
+		return Token{Kind: At, Lexeme: "@", Line: line, Column: column}, nil
 	default:
 		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	}

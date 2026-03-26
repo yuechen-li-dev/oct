@@ -49,6 +49,8 @@ type TypeRef struct {
 	Dimension dimension.Dimension
 	HasUnit   bool
 	IsArray   bool
+	VectorOf  *TypeRef
+	MatrixOf  *TypeRef
 }
 
 type Block struct {
@@ -149,6 +151,18 @@ type ArrayLiteralExpr struct {
 
 func (ArrayLiteralExpr) exprNode() {}
 
+type VectorLiteralExpr struct {
+	Elements []Expr
+}
+
+func (VectorLiteralExpr) exprNode() {}
+
+type MatrixLiteralExpr struct {
+	Rows [][]Expr
+}
+
+func (MatrixLiteralExpr) exprNode() {}
+
 type IdentifierExpr struct {
 	Name string
 }
@@ -163,8 +177,8 @@ type CallExpr struct {
 func (CallExpr) exprNode() {}
 
 type IndexExpr struct {
-	Target Expr
-	Index  Expr
+	Target  Expr
+	Indices []Expr
 }
 
 func (IndexExpr) exprNode() {}
