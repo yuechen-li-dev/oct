@@ -1,0 +1,30 @@
+package Structures
+
+[Fact]
+fn AnalyzeAxialElementProducesExpectedStiffnessAndForce() -> Void {
+    let element = BarElement2D {
+        Area: 0.02m*m
+        YoungsModulus: 200000000000kg/m/s/s
+        Length: 2m
+    }
+
+    let response = AnalyzeAxialElement(element, 0.0m, 0.001m)
+    Assert.Near(2000000000.0, response.Stiffness[0, 0] / (1kg/s^2), 0.1, "k11 mismatch")
+    Assert.Near(0.0 - 2000000000.0, response.Stiffness[0, 1] / (1kg/s^2), 0.1, "k12 mismatch")
+    Assert.Near(0.0 - 2000000.0, response.InternalForce[0] / (1kg*m/s^2), 0.1, "f1 mismatch")
+    Assert.Near(2000000.0, response.InternalForce[1] / (1kg*m/s^2), 0.1, "f2 mismatch")
+}
+
+[Theory]
+[InlineData(0.0, 0.0)]
+[InlineData(0.001, 2000000.0)]
+fn AxialForceFromDisplacementMatchesKnownCases(u2: Float, expectedF2: Float) -> Void {
+    let element = BarElement2D {
+        Area: 0.02m*m
+        YoungsModulus: 200000000000kg/m/s/s
+        Length: 2m
+    }
+
+    let force = AxialForceFromDisplacement(element, vector[0.0m, u2 * 1m])
+    Assert.Near(expectedF2, force[1] / (1kg*m/s^2), 0.1, "second nodal force mismatch")
+}

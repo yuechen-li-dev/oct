@@ -9,80 +9,16 @@ import (
 )
 
 func TestM22dSignalGenerationCorrectness(t *testing.T) {
-	root := setupM22dSignalFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Signal",
-		"",
-		"fn Main() -> Int {",
-		"    let raw = Signal.GenerateSignalValues()",
-		"    if Len(raw) != 12 { return 1 }",
-		"    if Abs(raw[0] - 0.0) > 0.0001 { return 2 }",
-		"    if Abs(raw[5] - 3.2) > 0.0001 { return 3 }",
-		"    if Abs(raw[11] - 5.0) > 0.0001 { return 4 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	root := setupM22dFixture(t)
+	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Signal.AnalyzeSignalReturnsConsistentShapes") {
+		t.Fatalf("expected fact pass output, got %q", stdout)
 	}
-}
-
-func TestM22dMovingAverageCorrectness(t *testing.T) {
-	root := setupM22dSignalFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Signal",
-		"",
-		"fn Main() -> Int {",
-		"    let raw = Signal.GenerateSignalValues()",
-		"    let smoothed = Signal.MovingAverage(raw, 3)",
-		"    if Len(smoothed) != Len(raw) { return 1 }",
-		"    if Abs(smoothed[0] - 0.0) > 0.0001 { return 2 }",
-		"    if Abs(smoothed[1] - 0.2) > 0.0001 { return 3 }",
-		"    if Abs(smoothed[3] - 1.2) > 0.0001 { return 4 }",
-		"    if Abs(smoothed[8] - 2.0) > 0.0001 { return 5 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
-	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
-	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
-	}
-}
-
-func TestM22dAnalysisResultShape(t *testing.T) {
-	root := setupM22dSignalFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Signal",
-		"",
-		"fn Main() -> Int {",
-		"    let result = Signal.AnalyzeSignal(0.0, 0.5, 3)",
-		"    if Len(result.X) != Len(result.Raw) { return 1 }",
-		"    if Len(result.Raw) != Len(result.Smoothed) { return 2 }",
-		"    if Len(result.X) <= 0 { return 3 }",
-		"    if Abs(result.X[0] - 0.0) > 0.0001 { return 4 }",
-		"    if Abs(result.X[3] - 1.5) > 0.0001 { return 5 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
-	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
-	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Signal.GeneratedSignalContainsKnownSamples[0]") {
+		t.Fatalf("expected theory case pass output, got %q", stdout)
 	}
 }
 

@@ -147,6 +147,23 @@ Implementation friction observed in M22e:
 
 - Matrix/vector shape intent is still validated by usage/tests instead of being encoded at the type level (fixed 2-entry displacement for a 2x2 local stiffness workflow).
 
+## M24c native package-test golden path: proof package migration slice
+
+M24c establishes the package-local native testing pattern for proof packages by migrating validation checks into `.octest` files that sit alongside package code.
+
+- migrated package-local native tests:
+  - `testdata/m22a/valid/Numerics/solvers.octest`
+  - `testdata/m22d/valid/Signal/signal.octest`
+  - `testdata/m22e/valid/Structures/structures.octest`
+- correctness checks now run through `oct test` for these packages using `[Fact]`, `[Theory]`, and `Assert`
+- `Main/main.oct` files remain demo/workflow entrypoints (printing/plotting/integration) rather than the primary home for validation logic
+
+Pattern for future proof packages:
+
+1. keep package correctness/regression checks in package-local `.octest`
+2. keep `Main` focused on demo/workflow behavior
+3. run package validation through `oct test` at the proof fixture root
+
 ## M23d ergonomics polish: explicit cross-package enum flow
 
 M23d tightens cross-package enum ergonomics while keeping package and enum qualification explicit.
