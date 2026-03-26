@@ -297,6 +297,27 @@ func TestBuildFileParsesArrayTypesLiteralsAndIndexing(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesIndexAssignmentStatement(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { var x = [1, 2, 3] x[1] = 5 return x[1] }")
+	fn := file.Functions[0]
+	if len(fn.Body.Statements) != 3 {
+		t.Fatalf("expected three statements, got %d", len(fn.Body.Statements))
+	}
+	assignStmt, ok := fn.Body.Statements[1].(ast.IndexAssignStmt)
+	if !ok {
+		t.Fatalf("expected second statement to be IndexAssignStmt, got %T", fn.Body.Statements[1])
+	}
+	if assignStmt.Target != "x" {
+		t.Fatalf("expected target x, got %q", assignStmt.Target)
+	}
+	if _, ok := assignStmt.Index.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer index, got %T", assignStmt.Index)
+	}
+	if _, ok := assignStmt.Value.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer value, got %T", assignStmt.Value)
+	}
+}
+
 func TestBuildFileParsesRangeExpressionsAndForLoops(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { for i in 0..10 step 2 { return i } return 0 }")
 
@@ -403,8 +424,8 @@ func TestBuildFileRejectsFieldAssignment(t *testing.T) {
 	assertParseErrorContains(t, "record Point { X: Int }\nfn Main() -> Int { let p = Point { X: 1 } p.X = 2 return 0 }", "expected statement")
 }
 
-func TestBuildFileRejectsIndexAssignment(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int { let xs = [1, 2] xs[0] = 3 return 0 }", "expected statement")
+func TestBuildFileRejectsNestedIndexAssignmentTarget(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { let xs = [1, 2] xs[0][0] = 3 return 0 }", "nested index assignment targets are not supported")
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {

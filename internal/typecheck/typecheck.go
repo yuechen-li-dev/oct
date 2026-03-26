@@ -380,6 +380,42 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s: expected %s, got %s", ctx.name, node.Name, target.valueType, valueType.ValueType)
 		}
 		return false, nil
+	case ast.IndexAssignStmt:
+		target, ok := scope.lookup(node.Target)
+		if !ok {
+			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Target)
+		}
+		if !target.mutable {
+			return false, fmt.Errorf("function %s: cannot assign to immutable binding", ctx.name)
+		}
+		if !target.valueType.IsArray {
+			return false, fmt.Errorf("function %s: index assignment requires array type", ctx.name)
+		}
+
+		indexType, err := c.checkExpr(scope, node.Index, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
+		}
+		if indexType.Fallible {
+			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
+		}
+		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
+			return false, fmt.Errorf("function %s: array index must be Int", ctx.name)
+		}
+
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
+		}
+		elementType := target.valueType
+		elementType.IsArray = false
+		if !isAssignable(valueType.ValueType, elementType) {
+			return false, fmt.Errorf("function %s: assigned value type does not match array element type", ctx.name)
+		}
+		return false, nil
 	case ast.ReturnStmt:
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
@@ -570,7 +606,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("array indexing requires exactly 1 index, got %d", len(node.Indices))
 			}
-			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+			return ExprType{ValueType: Type{Name: targetType.ValueType.Name, Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 		case targetType.ValueType.IsVector:
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("vector indexing requires exactly 1 index, got %d", len(node.Indices))
@@ -1256,7 +1292,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 	}
 
-	return Type{Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
+	return Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
 }
 
 func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr, ctx functionContext) (Type, error) {

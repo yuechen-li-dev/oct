@@ -82,6 +82,14 @@ type AssignStmt struct {
 
 func (AssignStmt) stmtNode() {}
 
+type IndexAssignStmt struct {
+	Target string
+	Index  Expr
+	Value  Expr
+}
+
+func (IndexAssignStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Value Expr
 }
