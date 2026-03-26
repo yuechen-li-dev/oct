@@ -2,6 +2,7 @@ package builtin
 
 var names = map[string]struct{}{
 	"Len":         {},
+	"Append":      {},
 	"Abs":         {},
 	"Sqrt":        {},
 	"Sin":         {},

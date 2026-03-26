@@ -821,6 +821,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr 
 		}
 		return evalResult{value: value}, nil
 	}
+	if expr.Callee == "Append" {
+		return i.evalAppendBuiltinCallExpr(env, pkgName, expr)
+	}
 
 	if len(expr.Arguments) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", expr.Callee)
@@ -895,6 +898,40 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr 
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", expr.Callee)
 	}
+}
+
+func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
+	if len(expr.Arguments) != 2 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Append expects 2 arguments")
+	}
+
+	array, err := i.evalExpr(env, pkgName, expr.Arguments[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if array.hasError {
+		return evalResult{hasError: true, errorVal: array.errorVal}, nil
+	}
+	if array.value.Kind != ValueArray {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Append expects Array as first argument, got %s", array.value.Kind)
+	}
+
+	element, err := i.evalExpr(env, pkgName, expr.Arguments[1])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if element.hasError {
+		return evalResult{hasError: true, errorVal: element.errorVal}, nil
+	}
+
+	if len(array.value.Array) > 0 && !sameValueType(array.value.Array[0], element.value) {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Append element type mismatch: expected %s, got %s", valueTypeName(array.value.Array[0]), valueTypeName(element.value))
+	}
+
+	result := make([]Value, 0, len(array.value.Array)+1)
+	result = append(result, array.value.Array...)
+	result = append(result, element.value)
+	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
 }
 
 func numericValueAsFloat(value Value, functionName string) (float64, error) {
@@ -1490,6 +1527,23 @@ func valueTypeName(value Value) string {
 		base += "<" + value.Dimension.String() + ">"
 	}
 	return base
+}
+
+func sameValueType(left Value, right Value) bool {
+	if left.Kind != right.Kind {
+		return false
+	}
+
+	switch left.Kind {
+	case ValueInt, ValueFloat:
+		return left.Dimension == right.Dimension
+	case ValueRecord:
+		return left.Record.TypeName == right.Record.TypeName
+	case ValueEnum:
+		return left.Enum.TypeName == right.Enum.TypeName
+	default:
+		return true
+	}
 }
 
 func formatUnitSuffix(dim dimension.Dimension) string {
