@@ -13,18 +13,11 @@ fn GenerateSignalValues() -> Float[] {
     while i < Len(raw) {
         let base = i * 0.4
 
-        let shape = if i < 3 {
-            0.0
-        } else {
-            if i < 6 {
-                1.2
-            } else {
-                if i < 9 {
-                    0.0 - 0.8
-                } else {
-                    0.6
-                }
-            }
+        let shape = switch {
+            case i < 3 => 0.0
+            case i < 6 => 1.2
+            case i < 9 => 0.0 - 0.8
+            else => 0.6
         }
 
         raw[i] = base + shape

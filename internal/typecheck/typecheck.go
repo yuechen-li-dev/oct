@@ -10,6 +10,8 @@ import (
 	"oct/internal/project"
 )
 
+const decisionLadderIfElseDiagnostic = "nested decision-ladder `if/else` is not allowed in Oct by design. Use a condition-switch expression instead:\nlet value = switch {\n    case cond1 => value1\n    case cond2 => value2\n    else => defaultValue\n}"
+
 type BaseType string
 
 const (
@@ -513,6 +515,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 
 		return okReturned && errReturned, nil
 	case ast.IfStmt:
+		if isDecisionLadderElseIf(node) {
+			return false, fmt.Errorf("function %s: %s", ctx.name, decisionLadderIfElseDiagnostic)
+		}
 		conditionType, err := c.checkExpr(scope, node.Condition, ctx)
 		if err != nil {
 			return false, fmt.Errorf("function %s: if condition: %w", ctx.name, err)
@@ -556,6 +561,14 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 	default:
 		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
 	}
+}
+
+func isDecisionLadderElseIf(node ast.IfStmt) bool {
+	if node.ElseBody == nil || len(node.ElseBody.Statements) != 1 {
+		return false
+	}
+	_, ok := node.ElseBody.Statements[0].(ast.IfStmt)
+	return ok
 }
 
 func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (ExprType, error) {
