@@ -161,3 +161,10 @@ Intentionally unchanged in M23d:
 - no alias imports
 - no enum-variant injection (`case Euler` remains unsupported)
 - no package namespace flattening or package-model redesign
+
+## M23e control-flow shape rule: no decision-ladder `if/else`
+
+M23e deliberately disallows nested decision-ladder `if/else` chains (the `else { if ... }` multi-case shape).
+
+- for multi-condition selection, use the condition-switch expression (`switch { case cond => value ... else => default }`)
+- ordinary nested local-control `if` blocks remain valid (for example nested checks inside a then-branch or loop body)

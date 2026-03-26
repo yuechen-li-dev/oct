@@ -439,6 +439,25 @@ func TestCheckRejectsInvalidM9Conditionals(t *testing.T) {
 	assertTypeErrorContains(t, "enum Method { Euler Rk4 } fn Main() -> Int { let m = Method.Euler return switch m { case Method.Euler => 1 case 1 => 2 else => 0 } }", "mixing enum and non-enum case labels is not allowed")
 }
 
+func TestCheckValidatesM23eDecisionLadderShape(t *testing.T) {
+	assertTypeErrorContains(t,
+		"fn Main() -> Int { if true { return 1 } else { if false { return 2 } else { return 3 } } }",
+		"function Main: nested decision-ladder `if/else` is not allowed in Oct by design. Use a condition-switch expression instead:")
+
+	validPrograms := []string{
+		"fn Main() -> Int { if true { if true { return 1 } return 2 } return 3 }",
+		"fn Main() -> Int { var x = 0 while x < 1 { if true { if false { return 2 } x = 1 } } return x }",
+		"fn Main() -> Int { return switch { case true => 1 case false => 2 else => 3 } }",
+	}
+
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
 func TestCheckValidatesM16VectorsMatrices(t *testing.T) {
 	validPrograms := []string{
 		"fn Main() -> Vector<Int> { return vector[1, 2, 3] }",
