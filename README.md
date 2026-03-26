@@ -171,6 +171,24 @@ Out of scope (intentionally unchanged in M24d):
 - buried Go compiler/runtime test migration
 - testing-framework redesign or fixture/snapshot systems
 
+
+## M24e native language-contract golden path: if-expression semantics
+
+M24e migrates one coherent class of user-visible language contracts into native `.octest`: **if-expression selection semantics**.
+
+- native coverage lives in `testdata/m24e/valid/IfContracts/if_contracts.octest` and validates then/else value selection, lazy non-selected branch behavior, and sign-bucket selection through `[Fact]` + `[Theory]`
+- corresponding fixture code lives in `testdata/m24e/valid/IfContracts/if_contracts.oct`
+- rejection-path orchestration remains host-owned via `testdata/m24e/invalid/Main/main.oct` (branch-type mismatch), asserted from Go as a CLI/build boundary
+
+Go vs Oct boundary clarified by M24e:
+
+- **Oct-native tests own:** user-visible language semantics and contract readability for if-expression behavior
+- **Go tests own:** CLI integration/orchestration and invalid-fixture rejection assertions, plus compiler/parser/runtime internals
+
+Migration friction observed in M24e:
+
+- negative/rejection contracts are clearest today through host orchestration over invalid fixtures, because `.octest` does not directly encode expected-compile-failure cases inline
+
 ## M23d ergonomics polish: explicit cross-package enum flow
 
 M23d tightens cross-package enum ergonomics while keeping package and enum qualification explicit.
