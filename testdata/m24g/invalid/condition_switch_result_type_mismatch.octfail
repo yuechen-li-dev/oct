@@ -1,0 +1,10 @@
+expect error: "condition switch result arms must have matching types"
+
+package Main
+
+fn Main() -> Int {
+    return switch {
+        case true => 1
+        else => 2.0
+    }
+}

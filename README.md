@@ -227,6 +227,35 @@ Migration friction still present after M24f:
 - dimension-heavy numeric assertions still require normalization workarounds before scalar `Assert.Near`
 - dynamic-growth array workflows remain awkward while append/push ergonomics continue to evolve
 
+## Expected-Failure Tests (`.octfail`)
+
+M24g adds native expected-failure fixtures so invalid language contracts can live in Oct-native artifacts instead of embedded Go source strings.
+
+- `.octfail` is a single-failure fixture format, discovered by `oct test`
+- each file must start with one header line: `expect error: "<substring>"`
+- the rest of the file is Oct source that is expected to fail build/typecheck
+- pass rule: compile fails and the error message contains the expected substring
+- fail rule: compile succeeds unexpectedly, header is malformed/missing, or message substring does not match
+
+Example:
+
+```oct
+expect error: "condition switch requires else arm"
+
+package Main
+
+fn Main() -> Int {
+    return switch {
+        case true => 1
+    }
+}
+```
+
+How it differs from `.octest`:
+
+- `.octest` runs executable `[Fact]` / `[Theory]` tests for valid programs
+- `.octfail` runs compile-failure expectation fixtures for invalid contracts
+
 ## M23d ergonomics polish: explicit cross-package enum flow
 
 M23d tightens cross-package enum ergonomics while keeping package and enum qualification explicit.

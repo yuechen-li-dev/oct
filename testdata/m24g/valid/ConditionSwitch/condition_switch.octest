@@ -1,0 +1,7 @@
+package ConditionSwitch
+
+[Fact]
+fn ConditionSwitchSelectsExpectedArm() -> Void {
+    Assert.Equal(1, Score(true), "true case")
+    Assert.Equal(0, Score(false), "else case")
+}

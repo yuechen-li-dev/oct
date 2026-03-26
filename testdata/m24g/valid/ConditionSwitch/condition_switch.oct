@@ -1,0 +1,8 @@
+package ConditionSwitch
+
+fn Score(flag: Bool) -> Int {
+    return switch {
+        case flag => 1
+        else => 0
+    }
+}

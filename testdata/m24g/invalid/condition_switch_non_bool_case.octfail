@@ -1,0 +1,10 @@
+expect error: "condition switch case must be Bool"
+
+package Main
+
+fn Main() -> Int {
+    return switch {
+        case 1 => 1
+        else => 2
+    }
+}
