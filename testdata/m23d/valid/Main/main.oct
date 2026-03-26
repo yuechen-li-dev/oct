@@ -1,0 +1,44 @@
+package Main
+import Physics
+
+record SolveConfig {
+    Method: Physics.Method
+}
+
+fn SelectMethod() -> Physics.Method {
+    var method = Physics.Method.Euler
+    method = Physics.Method.RK4
+    return method
+}
+
+fn Main() -> Int {
+    let local = Physics.Method.Euler
+    let cfg = SolveConfig {
+        Method: local
+    }
+    let selected = SelectMethod()
+    let fromPhysics = Physics.PickMethod(false)
+
+    let localScore = switch local {
+        case Physics.Method.Euler => 1
+        case Physics.Method.RK4 => 4
+    }
+    let cfgScore = switch cfg.Method {
+        case Physics.Method.Euler => 1
+        case Physics.Method.RK4 => 4
+    }
+    let selectedScore = switch selected {
+        case Physics.Method.Euler => 1
+        case Physics.Method.RK4 => 4
+    }
+    let fromPhysicsScore = switch fromPhysics {
+        case Physics.Method.Euler => 1
+        case Physics.Method.RK4 => 4
+    }
+
+    if localScore != 1 { return 1 }
+    if cfgScore != 1 { return 2 }
+    if selectedScore != 4 { return 3 }
+    if fromPhysicsScore != 4 { return 4 }
+    return 0
+}

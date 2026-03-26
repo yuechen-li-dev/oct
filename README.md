@@ -146,3 +146,18 @@ This milestone is a proof that Oct can express a small, physically meaningful st
 Implementation friction observed in M22e:
 
 - Matrix/vector shape intent is still validated by usage/tests instead of being encoded at the type level (fixed 2-entry displacement for a 2x2 local stiffness workflow).
+
+## M23d ergonomics polish: explicit cross-package enum flow
+
+M23d tightens cross-package enum ergonomics while keeping package and enum qualification explicit.
+
+- imported enum types continue to be written explicitly in type positions (`Physics.Method`)
+- imported enum values continue to be written explicitly (`Physics.Method.Euler`)
+- package-qualified enum values now flow consistently through local bindings, records, returns, mutation, and enum `switch` labels across package boundaries
+
+Intentionally unchanged in M23d:
+
+- no wildcard imports
+- no alias imports
+- no enum-variant injection (`case Euler` remains unsupported)
+- no package namespace flattening or package-model redesign

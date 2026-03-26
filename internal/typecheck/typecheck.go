@@ -82,10 +82,11 @@ func CheckProgram(program project.Program) error {
 	for name, pkg := range program.Packages {
 		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
 		chk := checker{
-			functions: make(map[string]functionSignature),
-			records:   make(map[string]recordInfo),
-			enums:     make(map[string]enumInfo),
-			typeNames: make(map[string]struct{}),
+			functions:                    make(map[string]functionSignature),
+			records:                      make(map[string]recordInfo),
+			enums:                        make(map[string]enumInfo),
+			typeNames:                    make(map[string]struct{}),
+			allowUnresolvedImportedTypes: true,
 		}
 		if err := chk.registerPackageDeclarations(file); err != nil {
 			return err
@@ -107,6 +108,11 @@ func CheckProgram(program project.Program) error {
 			}
 		}
 		chk.importedPackages = imports
+		chk.allowUnresolvedImportedTypes = false
+		file := ast.File{Package: name, Imports: program.Packages[name].Imports, Records: program.Packages[name].Records, Enums: program.Packages[name].Enums, Functions: program.Packages[name].Functions}
+		if err := chk.rebindRecordTypes(file); err != nil {
+			return err
+		}
 		packageCheckers[name] = chk
 	}
 
@@ -129,12 +135,30 @@ func CheckProgram(program project.Program) error {
 	return nil
 }
 
+func (c checker) rebindRecordTypes(file ast.File) error {
+	for _, record := range file.Records {
+		fields := make(map[string]Type, len(record.Fields))
+		fieldOrder := make([]string, 0, len(record.Fields))
+		for _, field := range record.Fields {
+			fieldType, err := c.resolveType(field.Type)
+			if err != nil {
+				return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
+			}
+			fields[field.Name] = fieldType
+			fieldOrder = append(fieldOrder, field.Name)
+		}
+		c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder}
+	}
+	return nil
+}
+
 type checker struct {
-	functions        map[string]functionSignature
-	records          map[string]recordInfo
-	enums            map[string]enumInfo
-	typeNames        map[string]struct{}
-	importedPackages map[string]packageSymbols
+	functions                    map[string]functionSignature
+	records                      map[string]recordInfo
+	enums                        map[string]enumInfo
+	typeNames                    map[string]struct{}
+	importedPackages             map[string]packageSymbols
+	allowUnresolvedImportedTypes bool
 }
 
 type packageSymbols struct {
@@ -1463,6 +1487,15 @@ func (c checker) resolveType(typeRef ast.TypeRef) (Type, error) {
 		qualifiedName = typeRef.Package + "." + typeRef.Name
 		imported, ok := c.importedPackages[typeRef.Package]
 		if !ok {
+			if c.allowUnresolvedImportedTypes {
+				if typeRef.HasUnit {
+					return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
+				}
+				if typeRef.IsArray {
+					return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
+				}
+				return Type{Name: qualifiedName}, nil
+			}
 			return Type{}, fmt.Errorf("unknown package '%s'", typeRef.Package)
 		}
 		if _, ok := imported.records[typeRef.Name]; ok {
@@ -1671,13 +1704,11 @@ func (c checker) checkComparisonExpr(operator string, leftType Type, rightType T
 			return Type{Base: BaseTypeBool}, nil
 		}
 		if leftType.Name != "" && rightType.Name != "" {
-			if _, leftIsEnum := c.enums[leftType.Name]; leftIsEnum {
-				if _, rightIsEnum := c.enums[rightType.Name]; rightIsEnum {
-					if leftType.Name != rightType.Name {
-						return Type{}, fmt.Errorf("operator %q requires matching enum types", operator)
-					}
-					return Type{Base: BaseTypeBool}, nil
+			if isEnumType(c, leftType) && isEnumType(c, rightType) {
+				if leftType.Name != rightType.Name {
+					return Type{}, fmt.Errorf("operator %q requires matching enum types", operator)
 				}
+				return Type{Base: BaseTypeBool}, nil
 			}
 		}
 	}

@@ -810,7 +810,36 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 	if result.hasError {
 		return evalResult{hasError: true, errorVal: result.errorVal}, nil
 	}
+	if targetPkg != pkgName {
+		result.value = qualifyCrossPackageValue(result.value, targetPkg)
+	}
 	return evalResult{value: result.value}, nil
+}
+
+func qualifyCrossPackageValue(value Value, pkgName string) Value {
+	switch value.Kind {
+	case ValueRecord:
+		for fieldName, fieldValue := range value.Record.Fields {
+			value.Record.Fields[fieldName] = qualifyCrossPackageValue(fieldValue, pkgName)
+		}
+	case ValueEnum:
+		if !strings.Contains(value.Enum.TypeName, ".") {
+			value.Enum.TypeName = pkgName + "." + value.Enum.TypeName
+		}
+	case ValueArray:
+		for index := range value.Array {
+			value.Array[index] = qualifyCrossPackageValue(value.Array[index], pkgName)
+		}
+	case ValueVector:
+		for index := range value.Vector {
+			value.Vector[index] = qualifyCrossPackageValue(value.Vector[index], pkgName)
+		}
+	case ValueMatrix:
+		for index := range value.Matrix.Elements {
+			value.Matrix.Elements[index] = qualifyCrossPackageValue(value.Matrix.Elements[index], pkgName)
+		}
+	}
+	return value
 }
 
 func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {

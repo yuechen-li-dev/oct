@@ -1,0 +1,13 @@
+package Physics
+
+enum Method {
+    Euler
+    RK4
+}
+
+fn PickMethod(useEuler: Bool) -> Method {
+    if useEuler {
+        return Method.Euler
+    }
+    return Method.RK4
+}
