@@ -189,6 +189,44 @@ Migration friction observed in M24e:
 
 - negative/rejection contracts are clearest today through host orchestration over invalid fixtures, because `.octest` does not directly encode expected-compile-failure cases inline
 
+## M24f native-vs-host test boundary formalization
+
+M24f closes this migration round by documenting and enforcing where tests belong.
+
+### What belongs in `.octest`
+
+- package-local proof/package correctness (`testdata/m22*/valid/*/*.octest`)
+- user-visible valid-language semantics (for example `testdata/m24e/valid/IfContracts/if_contracts.octest`)
+- readable language-contract checks that should be expressed from an Oct user's perspective
+
+### What remains in Go tests
+
+- parser/lexer/compiler/typechecker internals and host runtime plumbing
+- invalid-fixture orchestration and expected compile-failure assertions (for example `testdata/m24e/invalid` and `testdata/m24f/invalid`)
+- CLI/tooling boundary checks (`oct run`, `oct build`, `oct test`) and artifact expectations
+
+### Decision rule for new tests
+
+- if behavior is a **valid, user-visible language contract**, prefer `.octest`
+- if behavior is an **implementation/internal detail** or an **invalid fixture / tool orchestration** concern, prefer Go tests
+
+### Demo vs test separation
+
+- `Main/main.oct` files remain demo/integration entrypoints and are not the primary home for correctness assertions
+- `.octest` files are the canonical home for correctness assertions
+- Go tests remain the host-side verification layer for invalid fixtures and CLI/tool boundaries
+
+### M24f consolidation notes
+
+- condition-switch valid semantics now have native coverage in `testdata/m24f/valid/ConditionSwitch/condition_switch.octest`
+- Go coverage for condition-switch focuses on invalid contracts and build rejection paths
+
+Migration friction still present after M24f:
+
+- some semantic classes are intentionally split: valid contracts in `.octest`, invalid/rejection contracts in Go-hosted fixture orchestration
+- dimension-heavy numeric assertions still require normalization workarounds before scalar `Assert.Near`
+- dynamic-growth array workflows remain awkward while append/push ergonomics continue to evolve
+
 ## M23d ergonomics polish: explicit cross-package enum flow
 
 M23d tightens cross-package enum ergonomics while keeping package and enum qualification explicit.

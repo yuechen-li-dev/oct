@@ -1,0 +1,31 @@
+package ConditionSwitch
+
+[Fact]
+fn ConditionSwitchSelectsFirstMatchingCase() -> Void {
+    Assert.Equal(2, Score(7), "condition switch should select first matching case")
+}
+
+[Fact]
+fn ConditionSwitchFirstTrueCaseWins() -> Void {
+    Assert.Equal(1, FirstMatchWins(), "earlier true condition must win")
+}
+
+[Fact]
+fn ConditionSwitchSupportsDimensionedConditions() -> Void {
+    Assert.Equal(2, DistanceLabel(8m), "dimensioned comparisons should remain valid in conditions")
+}
+
+[Fact]
+fn ConditionSwitchIntegratesIntoArithmeticExpressions() -> Void {
+    Assert.Equal(11, ShiftedPositiveScore(4), "condition switch result should compose in arithmetic")
+}
+
+[Fact]
+fn ConditionSwitchSkipsNonSelectedResultArmEvaluation() -> Void {
+    Assert.Equal(1, SafeLazyElseArm(), "non-selected result arm must not be evaluated")
+}
+
+[Fact]
+fn ConditionSwitchStopsEvaluatingLaterConditionsAfterMatch() -> Void {
+    Assert.Equal(1, SafeLazyLaterCondition(), "later conditions should not evaluate after first match")
+}
