@@ -1,0 +1,17 @@
+package Numerics
+
+fn Residual(problemId: Int, x: Float) -> Float {
+    return switch problemId {
+        case 1 => x * x - 2.0
+        case 2 => x * x * x - x - 2.0
+        else => 0.0
+    }
+}
+
+fn Derivative(problemId: Int, x: Float) -> Float {
+    return switch problemId {
+        case 1 => 2.0 * x
+        case 2 => 3.0 * x * x - 1.0
+        else => 0.0
+    }
+}

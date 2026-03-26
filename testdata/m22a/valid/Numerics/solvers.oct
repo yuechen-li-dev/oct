@@ -1,0 +1,104 @@
+package Numerics
+
+fn Bisection(problemId: Int, a: Float, b: Float, options: SolveOptions) -> RootResult ! Error {
+    let fa = Residual(problemId, a)
+    let fb = Residual(problemId, b)
+
+    if fa == 0.0 {
+        return RootResult {
+            Converged: true
+            Iterations: 0
+            Value: a
+            Residual: fa
+            ReasonCode: ReasonConverged()
+        }
+    }
+
+    if fb == 0.0 {
+        return RootResult {
+            Converged: true
+            Iterations: 0
+            Value: b
+            Residual: fb
+            ReasonCode: ReasonConverged()
+        }
+    }
+
+    if fa * fb > 0.0 {
+        return error("invalid bracket")
+    }
+
+    var left = a
+    var right = b
+    var fLeft = fa
+    var iteration = 0
+
+    while iteration < options.MaxIterations {
+        let midpoint = (left + right) / 2.0
+        let fMid = Residual(problemId, midpoint)
+
+        if Abs(fMid) <= options.Tolerance or Abs(right - left) <= options.Tolerance {
+            return RootResult {
+                Converged: true
+                Iterations: iteration + 1
+                Value: midpoint
+                Residual: fMid
+                ReasonCode: ReasonConverged()
+            }
+        }
+
+        if fLeft * fMid < 0.0 {
+            right = midpoint
+        } else {
+            left = midpoint
+            fLeft = fMid
+        }
+
+        iteration = iteration + 1
+    }
+
+    let value = (left + right) / 2.0
+    let residual = Residual(problemId, value)
+    return RootResult {
+        Converged: false
+        Iterations: options.MaxIterations
+        Value: value
+        Residual: residual
+        ReasonCode: ReasonMaxIterationsReached()
+    }
+}
+
+fn NewtonRaphson(problemId: Int, initialGuess: Float, options: SolveOptions) -> RootResult ! Error {
+    var x = initialGuess
+    var iteration = 0
+
+    while iteration < options.MaxIterations {
+        let fx = Residual(problemId, x)
+        if Abs(fx) <= options.Tolerance {
+            return RootResult {
+                Converged: true
+                Iterations: iteration
+                Value: x
+                Residual: fx
+                ReasonCode: ReasonConverged()
+            }
+        }
+
+        let slope = Derivative(problemId, x)
+        if Abs(slope) <= 0.000000000001 {
+            return error("zero derivative")
+        }
+
+        x = x - fx / slope
+        iteration = iteration + 1
+    }
+
+    let residual = Residual(problemId, x)
+    return RootResult {
+        Converged: false
+        Iterations: options.MaxIterations
+        Value: x
+        Residual: residual
+        ReasonCode: ReasonMaxIterationsReached()
+    }
+}
