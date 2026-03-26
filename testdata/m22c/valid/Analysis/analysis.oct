@@ -1,0 +1,53 @@
+package Analysis
+
+record AnalysisResult {
+    X: Float[]
+    Y: Float[]
+    Z: Float[]
+}
+
+fn Basis5(index: Int) -> Float[] {
+    if index == 0 {
+        return [1.0, 0.0, 0.0, 0.0, 0.0]
+    }
+    if index == 1 {
+        return [0.0, 1.0, 0.0, 0.0, 0.0]
+    }
+    if index == 2 {
+        return [0.0, 0.0, 1.0, 0.0, 0.0]
+    }
+    if index == 3 {
+        return [0.0, 0.0, 0.0, 1.0, 0.0]
+    }
+    return [0.0, 0.0, 0.0, 0.0, 1.0]
+}
+
+fn Splat5(value: Float) -> Float[] {
+    return [value, value, value, value, value]
+}
+
+fn GenerateAndCompute(start: Float, increment: Float) -> AnalysisResult {
+    var x = [0.0, 0.0, 0.0, 0.0, 0.0]
+    var y = [0.0, 0.0, 0.0, 0.0, 0.0]
+    var z = [0.0, 0.0, 0.0, 0.0, 0.0]
+
+    var i = 0
+    while i < 5 {
+        let xi = start + increment * i
+        let yi = xi * xi - 2.0
+        let zi = xi * xi
+
+        let mask = Basis5(i)
+        x = x + (mask * Splat5(xi))
+        y = y + (mask * Splat5(yi))
+        z = z + (mask * Splat5(zi))
+
+        i = i + 1
+    }
+
+    return AnalysisResult {
+        X: x
+        Y: y
+        Z: z
+    }
+}
