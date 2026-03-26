@@ -130,3 +130,19 @@ This milestone is a proof that Oct can express a small, readable signal workflow
 Implementation friction observed in M22d:
 
 - The workflow is clean for fixed-size arrays, but dynamic dataset growth still requires predeclared sizing because append/push is not available in v0.
+
+## M22e proof package: Structures (Small Structural / Truss-Lite v0)
+
+M22e adds a native `Structures` package in Oct source under `testdata/m22e/valid/Structures` with:
+
+- structured element input via `BarElement2D { Area, YoungsModulus, Length }`
+- structured output via `AxialElementResponse { Stiffness, Displacement, InternalForce }`
+- a matrix-producing mechanics helper `AxialStiffness(element)` for a 2x2 axial bar element local matrix (`AE/L` form)
+- a matrix @ vector response path `AxialForceFromDisplacement(element, displacement)`
+- an end-to-end package API `AnalyzeAxialElement(element, u1, u2)` used by `Main`
+
+This milestone is a proof that Oct can express a small, physically meaningful structural computation with packages, records, SI dimensions, matrices, vectors, and clear engineering formulas.
+
+Implementation friction observed in M22e:
+
+- Matrix/vector shape intent is still validated by usage/tests instead of being encoded at the type level (fixed 2-entry displacement for a 2x2 local stiffness workflow).
