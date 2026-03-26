@@ -1,0 +1,19 @@
+package IfContracts
+
+[Fact]
+fn IfExpressionSelectsThenArm() -> Void {
+    Assert.Equal(5, Select(true, 5, 9), "if true should select then arm")
+}
+
+[Fact]
+fn IfExpressionSkipsNonSelectedBranchEvaluation() -> Void {
+    Assert.Equal(7, LazyElseGuard(), "if should not evaluate else arm when condition is true")
+}
+
+[Theory]
+[InlineData(0, 0)]
+[InlineData(4, 1)]
+[InlineData(8, 1)]
+fn IfExpressionValueSelectionBucketsBySign(x: Int, expected: Int) -> Void {
+    Assert.Equal(expected, Bucket(x), "if expression bucket mismatch")
+}
