@@ -1,0 +1,21 @@
+package Analysis
+
+[Fact]
+fn GenerateAndComputeReturnsExpectedSeriesShape() -> Void {
+    let result = GenerateAndCompute(0.0, 1.0)
+
+    Assert.Equal(Len(result.X), Len(result.Y), "x and y lengths should match")
+    Assert.Equal(Len(result.X), Len(result.Z), "x and z lengths should match")
+    Assert.Equal(5, Len(result.X), "expected fixed 5-point series")
+}
+
+[Theory]
+[InlineData(2, 2.0, 2.0, 4.0)]
+[InlineData(3, 3.0, 7.0, 9.0)]
+[InlineData(4, 4.0, 14.0, 16.0)]
+fn GenerateAndComputeKnownSamples(index: Int, expectedX: Float, expectedY: Float, expectedZ: Float) -> Void {
+    let result = GenerateAndCompute(0.0, 1.0)
+    Assert.Near(expectedX, result.X[index], 0.0001, "x sample mismatch")
+    Assert.Near(expectedY, result.Y[index], 0.0001, "y sample mismatch")
+    Assert.Near(expectedZ, result.Z[index], 0.0001, "z sample mismatch")
+}

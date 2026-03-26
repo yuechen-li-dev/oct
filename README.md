@@ -147,22 +147,29 @@ Implementation friction observed in M22e:
 
 - Matrix/vector shape intent is still validated by usage/tests instead of being encoded at the type level (fixed 2-entry displacement for a 2x2 local stiffness workflow).
 
-## M24c native package-test golden path: proof package migration slice
+## M24d proof/package native-test generalization
 
-M24c establishes the package-local native testing pattern for proof packages by migrating validation checks into `.octest` files that sit alongside package code.
+M24d completes the current proof-package migration to package-local native tests by extending the M24c pattern across the remaining proof packages.
 
-- migrated package-local native tests:
+- package-local native tests now cover the current proof suite:
   - `testdata/m22a/valid/Numerics/solvers.octest`
+  - `testdata/m22b/valid/Mechanics/mechanics.octest`
+  - `testdata/m22c/valid/Analysis/analysis.octest`
   - `testdata/m22d/valid/Signal/signal.octest`
   - `testdata/m22e/valid/Structures/structures.octest`
-- correctness checks now run through `oct test` for these packages using `[Fact]`, `[Theory]`, and `Assert`
-- `Main/main.oct` files remain demo/workflow entrypoints (printing/plotting/integration) rather than the primary home for validation logic
+- proof-package correctness checks now run through `oct test` with `[Fact]`, `[Theory]`, and `Assert`
+- `Main/main.oct` files remain demo/workflow entrypoints (printing/plotting/integration) and are kept distinct from correctness tests
+- Go harness tests now focus on CLI/integration boundaries for these proof fixtures rather than reenacting package semantics in ad hoc `Main` return-code checks
 
-Pattern for future proof packages:
+Migration friction observed in M24d:
 
-1. keep package correctness/regression checks in package-local `.octest`
-2. keep `Main` focused on demo/workflow behavior
-3. run package validation through `oct test` at the proof fixture root
+- dimension-heavy assertions still rely on manual normalization (for example dividing by `1kg*m/s^2`) to use scalar `Assert.Near`, which is workable but verbose
+- package-local tests are readable for fixed-size workflows, but dynamic-growth array workflows remain awkward while append/push is still unavailable in v0
+
+Out of scope (intentionally unchanged in M24d):
+
+- buried Go compiler/runtime test migration
+- testing-framework redesign or fixture/snapshot systems
 
 ## M23d ergonomics polish: explicit cross-package enum flow
 

@@ -8,78 +8,19 @@ import (
 )
 
 func TestM22bBasicVec2ForceOperation(t *testing.T) {
-	root := setupM22bMechanicsFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Mechanics",
-		"",
-		"fn Main() -> Int {",
-		"    let a = Mechanics.Vec2Force { X: 2kg*m/s^2 Y: 3kg*m/s^2 }",
-		"    let b = Mechanics.Vec2Force { X: 5kg*m/s^2 Y: 0kg*m/s^2 - 1kg*m/s^2 }",
-		"    let c = Mechanics.AddForce(a, b)",
-		"    if c.X != 7kg*m/s^2 { return 1 }",
-		"    if c.Y != 2kg*m/s^2 { return 2 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	root := setupM22bFixture(t)
+	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Mechanics.AddForceAndMagnitudePreserveUnits") {
+		t.Fatalf("expected fact pass output, got %q", stdout)
 	}
-}
-
-func TestM22bUnitPreservingComputation(t *testing.T) {
-	root := setupM22bMechanicsFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Mechanics",
-		"",
-		"fn Main() -> Int {",
-		"    let force = Mechanics.Vec2Force { X: 4.0kg*m/s^2 Y: 3.0kg*m/s^2 }",
-		"    let magSq = Mechanics.MagnitudeSquared(force)",
-		"    if Abs(Sqrt(magSq) - 5.0kg*m/s^2) > 0.0001kg*m/s^2 { return 1 }",
-		"    if Abs(magSq - 25.0kg^2*m^2/s^4) > 0.0001kg^2*m^2/s^4 { return 2 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
-	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+	if !strings.Contains(stdout, "PASS Mechanics.DominantAxisMatchesKnownCases[2]") {
+		t.Fatalf("expected theory case pass output, got %q", stdout)
 	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
-	}
-}
-
-func TestM22bMatrixBackedComputation(t *testing.T) {
-	root := setupM22bMechanicsFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Mechanics",
-		"",
-		"fn Main() -> Int {",
-		"    let stiffness = Mechanics.Stiffness2 {",
-		"        K: matrix[[100kg/s^2, 0kg/s^2] [0kg/s^2, 50kg/s^2]]",
-		"    }",
-		"    let d = Mechanics.Displacement2 { X: 0.3m Y: 0m - 0.2m }",
-		"    let force = Mechanics.InternalForce(stiffness, d)",
-		"    if Abs(force.X - 30kg*m/s^2) > 0.0001kg*m/s^2 { return 1 }",
-		"    if Abs(force.Y + 10kg*m/s^2) > 0.0001kg*m/s^2 { return 2 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
-	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
-	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Mechanics.InternalForceMatchesKnownMatrixCase") {
+		t.Fatalf("expected internal force fact pass output, got %q", stdout)
 	}
 }
 
