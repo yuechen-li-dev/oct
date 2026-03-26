@@ -9,34 +9,16 @@ import (
 )
 
 func TestM22cBasicAnalysisResult(t *testing.T) {
-	root := setupM22cAnalysisFixture(t)
-	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
-		"package Main",
-		"import Analysis",
-		"",
-		"fn Main() -> Int {",
-		"    let result = Analysis.GenerateAndCompute(0.0, 1.0)",
-		"    if Len(result.X) != Len(result.Y) { return 1 }",
-		"    if Len(result.X) <= 0 { return 2 }",
-		"    if Abs(result.X[0] - 0.0) > 0.0001 { return 3 }",
-		"    if Abs(result.X[2] - 2.0) > 0.0001 { return 4 }",
-		"    if Abs(result.X[4] - 4.0) > 0.0001 { return 5 }",
-		"    if Abs(result.Y[0] + 2.0) > 0.0001 { return 6 }",
-		"    if Abs(result.Y[2] - 2.0) > 0.0001 { return 7 }",
-		"    if Abs(result.Y[4] - 14.0) > 0.0001 { return 8 }",
-		"    if Abs(result.Z[0] - 0.0) > 0.0001 { return 9 }",
-		"    if Abs(result.Z[2] - 4.0) > 0.0001 { return 10 }",
-		"    if Abs(result.Z[4] - 16.0) > 0.0001 { return 11 }",
-		"    return 0",
-		"}",
-	}, "\n"))
-
-	stdout, stderr, err := executeCLI("run", filepath.Join(root, "Main", "main.oct"))
+	root := setupM22cFixture(t)
+	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
-		t.Fatalf("run failed: %v stderr=%s", err, stderr)
+		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
-	if stdout != "0\n" {
-		t.Fatalf("expected success code 0, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Analysis.GenerateAndComputeReturnsExpectedSeriesShape") {
+		t.Fatalf("expected fact pass output, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "PASS Analysis.GenerateAndComputeKnownSamples[2]") {
+		t.Fatalf("expected theory case pass output, got %q", stdout)
 	}
 }
 

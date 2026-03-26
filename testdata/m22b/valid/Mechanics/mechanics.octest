@@ -1,0 +1,35 @@
+package Mechanics
+
+[Fact]
+fn AddForceAndMagnitudePreserveUnits() -> Void {
+    let a = Vec2Force { X: 2kg*m/s^2 Y: 3kg*m/s^2 }
+    let b = Vec2Force { X: 5kg*m/s^2 Y: 0kg*m/s^2 - 1kg*m/s^2 }
+    let c = AddForce(a, b)
+
+    Assert.True(c.X == 7kg*m/s^2, "x force mismatch")
+    Assert.True(c.Y == 2kg*m/s^2, "y force mismatch")
+
+    let magSq = MagnitudeSquared(Vec2Force { X: 4.0kg*m/s^2 Y: 3.0kg*m/s^2 })
+    Assert.Near(25.0, magSq / (1kg^2*m^2/s^4), 0.0001, "magnitude squared mismatch")
+}
+
+[Theory]
+[InlineData(0.0, 0.0, true)]
+[InlineData(4.0, 3.0, true)]
+[InlineData(2.0, 5.0, false)]
+fn DominantAxisMatchesKnownCases(x: Float, y: Float, expectedHorizontal: Bool) -> Void {
+    let axis = DominantAxis(Vec2Force { X: x * 1kg*m/s^2 Y: y * 1kg*m/s^2 })
+    Assert.True((axis == Axis.Horizontal) == expectedHorizontal, "dominant axis mismatch")
+}
+
+[Fact]
+fn InternalForceMatchesKnownMatrixCase() -> Void {
+    let stiffness = Stiffness2 {
+        K: matrix[[100kg/s^2, 0kg/s^2] [0kg/s^2, 50kg/s^2]]
+    }
+    let d = Displacement2 { X: 0.3m Y: 0m - 0.2m }
+    let force = InternalForce(stiffness, d)
+
+    Assert.Near(30.0, force.X / (1kg*m/s^2), 0.0001, "internal x mismatch")
+    Assert.Near(0.0 - 10.0, force.Y / (1kg*m/s^2), 0.0001, "internal y mismatch")
+}
