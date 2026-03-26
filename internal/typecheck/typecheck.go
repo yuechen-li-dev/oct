@@ -1120,14 +1120,17 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 		}
 		return ExprType{}, fmt.Errorf("function 'Print' argument 1 has unsupported type %s", argumentType.ValueType)
 	case "Len":
+		if argumentType.ValueType == (Type{Base: BaseTypeString}) {
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		}
 		if !argumentType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], or Bool[], got %s", argumentType.ValueType)
 		}
 		switch argumentType.ValueType.Base {
 		case BaseTypeInt, BaseTypeFloat, BaseTypeBool:
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		default:
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], or Bool[], got %s", argumentType.ValueType)
 		}
 	case "Abs":
 		if isNumericScalar(argumentType.ValueType) {
@@ -1462,6 +1465,9 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 	}
 	if leftType.IsVector || leftType.IsMatrix || rightType.IsVector || rightType.IsMatrix {
 		return c.checkLinearAlgebraBinaryExpr(operator, leftType, rightType)
+	}
+	if operator == "+" && leftType == (Type{Base: BaseTypeString}) && rightType == (Type{Base: BaseTypeString}) {
+		return Type{Base: BaseTypeString}, nil
 	}
 	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)

@@ -71,6 +71,14 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "whole value record reassignment",
 			src:  "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }",
 		},
+		{
+			name: "string concatenation",
+			src:  `fn Main() -> String { return "hello" + " world" }`,
+		},
+		{
+			name: "Len on string",
+			src:  `fn Main() -> Int { return Len("abc") }`,
+		},
 	}
 
 	for _, test := range tests {
@@ -92,6 +100,8 @@ func TestCheckRejectsInvalidOperatorUsage(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return true + 1 }", `function Main: operator "+" not defined for Bool and Int`)
 	assertTypeErrorContains(t, "fn Main() -> Int[] { return [1, 2] + 1 }", `function Main: operator "+" not defined for Int[] and Int`)
 	assertTypeErrorContains(t, "fn Main() -> Bool[] { return [true, false] + [true, true] }", `function Main: operator "+" not defined for Bool[] and Bool[]`)
+	assertTypeErrorContains(t, `fn Main() -> String { return "value: " + 1 }`, `function Main: operator "+" not defined for String and Int`)
+	assertTypeErrorContains(t, `fn Main() -> String { return 1 + "x" }`, `function Main: operator "+" not defined for Int and String`)
 }
 
 func TestCheckRejectsUndefinedVariable(t *testing.T) {
@@ -210,7 +220,7 @@ func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
 }
 
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
-	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects Int[], Float[], or Bool[], got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Int[], Float[], or Bool[], got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
