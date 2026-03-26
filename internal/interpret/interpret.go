@@ -195,7 +195,31 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 }
 
 func ExecuteFunction(program project.Program, pkgName string, functionName string, stdout io.Writer) error {
-	interpreter := interpreter{
+	return ExecuteFunctionWithArgs(program, pkgName, functionName, nil, stdout)
+}
+
+func ExecuteFunctionWithArgs(program project.Program, pkgName string, functionName string, arguments []Value, stdout io.Writer) error {
+	interpreter := newInterpreter(program, stdout)
+	key := pkgName + "." + functionName
+	function, ok := interpreter.functions[key]
+	if !ok {
+		return fmt.Errorf("missing function %s", key)
+	}
+	if len(function.Parameters) != len(arguments) {
+		return fmt.Errorf("test function %s expects %d arguments, got %d", key, len(function.Parameters), len(arguments))
+	}
+	result, err := interpreter.executeFunction(function, pkgName, arguments)
+	if err != nil {
+		return err
+	}
+	if result.hasError {
+		return fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
+	}
+	return nil
+}
+
+func newInterpreter(program project.Program, stdout io.Writer) interpreter {
+	interp := interpreter{
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
 		enums:          make(map[string]ast.EnumDecl),
@@ -204,33 +228,18 @@ func ExecuteFunction(program project.Program, pkgName string, functionName strin
 	}
 	for currentPkg, pkg := range program.Packages {
 		for _, record := range pkg.Records {
-			interpreter.records[currentPkg+"."+record.Name] = record
+			interp.records[currentPkg+"."+record.Name] = record
 		}
 		for _, enumDecl := range pkg.Enums {
-			interpreter.enums[currentPkg+"."+enumDecl.Name] = enumDecl
+			interp.enums[currentPkg+"."+enumDecl.Name] = enumDecl
 		}
 		for _, function := range pkg.Functions {
 			key := currentPkg + "." + function.Name
-			interpreter.functions[key] = function
-			interpreter.functionSource[key] = currentPkg
+			interp.functions[key] = function
+			interp.functionSource[key] = currentPkg
 		}
 	}
-	key := pkgName + "." + functionName
-	function, ok := interpreter.functions[key]
-	if !ok {
-		return fmt.Errorf("missing function %s", key)
-	}
-	if len(function.Parameters) != 0 {
-		return fmt.Errorf("test function %s must not have parameters", key)
-	}
-	result, err := interpreter.executeFunction(function, pkgName, nil)
-	if err != nil {
-		return err
-	}
-	if result.hasError {
-		return fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
-	}
-	return nil
+	return interp
 }
 
 func newEnvironment(parent *environment) *environment {
