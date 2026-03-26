@@ -33,6 +33,9 @@ const (
 	KeywordWhile   TokenKind = "KeywordWhile"
 	KeywordSwitch  TokenKind = "KeywordSwitch"
 	KeywordCase    TokenKind = "KeywordCase"
+	KeywordAnd     TokenKind = "KeywordAnd"
+	KeywordOr      TokenKind = "KeywordOr"
+	KeywordNot     TokenKind = "KeywordNot"
 	KeywordRecord  TokenKind = "KeywordRecord"
 	KeywordEnum    TokenKind = "KeywordEnum"
 	KeywordPackage TokenKind = "KeywordPackage"
@@ -375,6 +378,12 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordSwitch
 	case "case":
 		return KeywordCase
+	case "and":
+		return KeywordAnd
+	case "or":
+		return KeywordOr
+	case "not":
+		return KeywordNot
 	case "record":
 		return KeywordRecord
 	case "enum":

@@ -41,6 +41,69 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 			want: "true\n",
 		},
 		{
+			name: "logical and",
+			source: "fn Main() -> Bool {\n" +
+				"    return true and true\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "logical or",
+			source: "fn Main() -> Bool {\n" +
+				"    return false or true\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "logical not",
+			source: "fn Main() -> Bool {\n" +
+				"    return not false\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "logical precedence",
+			source: "fn Main() -> Bool {\n" +
+				"    return true or false and false\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "not precedence with comparison",
+			source: "fn Main() -> Bool {\n" +
+				"    return not 1 == 2\n" +
+				"}\n",
+			want: "true\n",
+		},
+		{
+			name: "if with logical expression",
+			source: "fn Main() -> Int {\n" +
+				"    if true and not false {\n" +
+				"        return 1\n" +
+				"    } else {\n" +
+				"        return 0\n" +
+				"    }\n" +
+				"}\n",
+			want: "1\n",
+		},
+		{
+			name: "while with logical expression",
+			source: "fn Main() -> Int {\n" +
+				"    while true and not false {\n" +
+				"        return 7\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			want: "7\n",
+		},
+		{
+			name: "logical short circuit avoids division by zero",
+			source: "fn Main() -> Bool {\n" +
+				"    return false and (1 / 0 == 0)\n" +
+				"}\n",
+			want: "false\n",
+		},
+		{
 			name: "arithmetic precedence",
 			source: "fn Main() -> Int {\n" +
 				"    return 2 + 3 * 4\n" +

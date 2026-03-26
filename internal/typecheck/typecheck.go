@@ -618,6 +618,23 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			return ExprType{}, err
 		}
 		return ExprType{ValueType: resultType}, nil
+	case ast.UnaryExpr:
+		operandType, err := c.checkExpr(scope, node.Operand, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if operandType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		switch node.Operator {
+		case "not":
+			if operandType.ValueType != (Type{Base: BaseTypeBool}) {
+				return ExprType{}, fmt.Errorf("operator 'not' requires Bool operand")
+			}
+			return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+		default:
+			return ExprType{}, fmt.Errorf("unsupported unary operator %q", node.Operator)
+		}
 	case ast.RangeExpr:
 		startType, err := c.checkExpr(scope, node.Start, ctx)
 		if err != nil {
@@ -1248,6 +1265,12 @@ func resolveBaseType(name string) (BaseType, error) {
 }
 
 func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if operator == "and" || operator == "or" {
+		if leftType != (Type{Base: BaseTypeBool}) || rightType != (Type{Base: BaseTypeBool}) {
+			return Type{}, fmt.Errorf("operator '%s' requires Bool operands", operator)
+		}
+		return Type{Base: BaseTypeBool}, nil
+	}
 	if isComparisonOperator(operator) {
 		return c.checkComparisonExpr(operator, leftType, rightType)
 	}

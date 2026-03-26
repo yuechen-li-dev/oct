@@ -522,6 +522,22 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if left.hasError {
 			return evalResult{hasError: true, errorVal: left.errorVal}, nil
 		}
+		if node.Operator == "and" {
+			if left.value.Kind != ValueBool {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: operator 'and' requires Bool operands")
+			}
+			if !left.value.Bool {
+				return evalResult{value: Value{Kind: ValueBool, Bool: false}}, nil
+			}
+		}
+		if node.Operator == "or" {
+			if left.value.Kind != ValueBool {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: operator 'or' requires Bool operands")
+			}
+			if left.value.Bool {
+				return evalResult{value: Value{Kind: ValueBool, Bool: true}}, nil
+			}
+		}
 		right, err := i.evalExpr(env, pkgName, node.Right)
 		if err != nil {
 			return evalResult{}, err
@@ -534,6 +550,23 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{}, err
 		}
 		return evalResult{value: value}, nil
+	case ast.UnaryExpr:
+		operand, err := i.evalExpr(env, pkgName, node.Operand)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if operand.hasError {
+			return evalResult{hasError: true, errorVal: operand.errorVal}, nil
+		}
+		switch node.Operator {
+		case "not":
+			if operand.value.Kind != ValueBool {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: operator 'not' requires Bool operand")
+			}
+			return evalResult{value: Value{Kind: ValueBool, Bool: !operand.value.Bool}}, nil
+		default:
+			return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported unary operator %q", node.Operator)
+		}
 	case ast.RangeExpr:
 		value, err := i.evalRangeExpr(env, pkgName, node)
 		if err != nil {
@@ -986,6 +1019,15 @@ func flattenQualifiedEnumTarget(expr ast.Expr) (string, bool) {
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	if operator == "and" || operator == "or" {
+		if left.Kind != ValueBool || right.Kind != ValueBool {
+			return Value{}, fmt.Errorf("runtime invariant violation: operator %q requires Bool operands", operator)
+		}
+		if operator == "and" {
+			return Value{Kind: ValueBool, Bool: left.Bool && right.Bool}, nil
+		}
+		return Value{Kind: ValueBool, Bool: left.Bool || right.Bool}, nil
+	}
 	if isComparisonOperator(operator) {
 		return evalComparisonExpr(operator, left, right)
 	}
