@@ -802,8 +802,11 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr 
 		}
 		return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
 	case "Len":
+		if argument.value.Kind == ValueString {
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Text))}}, nil
+		}
 		if argument.value.Kind != ValueArray {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects Array, got %s", argument.value.Kind)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String or Array, got %s", argument.value.Kind)
 		}
 		return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Array))}}, nil
 	case "Abs":
@@ -1100,6 +1103,9 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	}
 	if left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix {
 		return evalLinearBinaryExpr(operator, left, right)
+	}
+	if operator == "+" && left.Kind == ValueString && right.Kind == ValueString {
+		return Value{Kind: ValueString, Text: left.Text + right.Text}, nil
 	}
 	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError || left.Kind == ValueEnum || right.Kind == ValueEnum || left.Kind == ValueRecord || right.Kind == ValueRecord {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
