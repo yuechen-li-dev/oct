@@ -404,6 +404,21 @@ func TestBuildFileParsesSwitchExpression(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesConditionSwitchExpression(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let x = switch { case true => 1 else => 2 } return x }")
+	letStmt := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	switchExpr, ok := letStmt.Value.(ast.SwitchExpr)
+	if !ok {
+		t.Fatalf("expected SwitchExpr, got %T", letStmt.Value)
+	}
+	if switchExpr.Subject != nil {
+		t.Fatalf("expected nil subject for condition switch, got %T", switchExpr.Subject)
+	}
+	if len(switchExpr.Cases) != 1 {
+		t.Fatalf("expected 1 case, got %d", len(switchExpr.Cases))
+	}
+}
+
 func TestBuildFileRejectsMissingReturnType(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() { return 0 }", "expected '->' before return type")
 }

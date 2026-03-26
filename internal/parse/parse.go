@@ -879,9 +879,18 @@ func (p *parser) parseRecordLiteralExpr(typeName string) (ast.Expr, error) {
 
 func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 	p.advance()
-	subject, err := p.parseExpression()
-	if err != nil {
-		return nil, err
+	var (
+		subject           ast.Expr
+		err               error
+		isConditionSwitch bool
+	)
+	if p.current().Kind == lex.LeftBrace {
+		isConditionSwitch = true
+	} else {
+		subject, err = p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start switch"); err != nil {
 		return nil, err
@@ -900,9 +909,17 @@ func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 				return nil, p.errorAtCurrent("case arms must come before else arm")
 			}
 			p.advance()
-			match, err := p.parseSwitchCaseLabel()
-			if err != nil {
-				return nil, err
+			var match ast.Expr
+			if isConditionSwitch {
+				match, err = p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				match, err = p.parseSwitchCaseLabel()
+				if err != nil {
+					return nil, err
+				}
 			}
 			if _, err := p.expect(lex.FatArrow, "expected '=>' after case label"); err != nil {
 				return nil, err

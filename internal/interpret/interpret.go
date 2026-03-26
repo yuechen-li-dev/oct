@@ -701,6 +701,29 @@ func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExp
 }
 
 func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.SwitchExpr) (evalResult, error) {
+	if expr.Subject == nil {
+		for _, switchCase := range expr.Cases {
+			condition, err := i.evalExpr(env, pkgName, switchCase.Match)
+			if err != nil {
+				return evalResult{}, err
+			}
+			if condition.hasError {
+				return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+			}
+			if condition.value.Kind != ValueBool {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: condition switch case must be Bool, got %s", condition.value.Kind)
+			}
+			if !condition.value.Bool {
+				continue
+			}
+			return i.evalExpr(env, pkgName, switchCase.Value)
+		}
+		if expr.Else != nil {
+			return i.evalExpr(env, pkgName, expr.Else)
+		}
+		return evalResult{}, fmt.Errorf("runtime invariant violation: condition switch requires else arm")
+	}
+
 	subject, err := i.evalExpr(env, pkgName, expr.Subject)
 	if err != nil {
 		return evalResult{}, err
