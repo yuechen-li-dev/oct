@@ -24,6 +24,9 @@ func TestM22cBasicAnalysisResult(t *testing.T) {
 		"    if Abs(result.Y[0] + 2.0) > 0.0001 { return 6 }",
 		"    if Abs(result.Y[2] - 2.0) > 0.0001 { return 7 }",
 		"    if Abs(result.Y[4] - 14.0) > 0.0001 { return 8 }",
+		"    if Abs(result.Z[0] - 0.0) > 0.0001 { return 9 }",
+		"    if Abs(result.Z[2] - 4.0) > 0.0001 { return 10 }",
+		"    if Abs(result.Z[4] - 16.0) > 0.0001 { return 11 }",
 		"    return 0",
 		"}",
 	}, "\n"))
@@ -114,6 +117,24 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact, stat err = %v", statErr)
+	}
+}
+
+func TestM22cAnalysisUsesDirectArrayAssignment(t *testing.T) {
+	// M22cr proof note: this package now populates arrays with x[i]/y[i]/z[i] assignment.
+	analysisPath := filepath.Join("..", "..", "testdata", "m22c", "valid", "Analysis", "analysis.oct")
+	contents, err := os.ReadFile(analysisPath)
+	if err != nil {
+		t.Fatalf("read analysis source: %v", err)
+	}
+	src := string(contents)
+	for _, snippet := range []string{"x[i] =", "y[i] =", "z[i] ="} {
+		if !strings.Contains(src, snippet) {
+			t.Fatalf("expected direct array assignment snippet %q in %s", snippet, analysisPath)
+		}
+	}
+	if strings.Contains(src, "Basis5") || strings.Contains(src, "Splat5") {
+		t.Fatalf("expected M22cr refresh to remove whole-array reassignment helpers")
 	}
 }
 
