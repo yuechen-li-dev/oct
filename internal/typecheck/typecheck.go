@@ -335,6 +335,22 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 
 func (c checker) checkFunction(function ast.FunctionDecl) error {
 	signature := c.functions[function.Name]
+	if function.IsTheory {
+		for rowIndex, row := range function.InlineData {
+			if len(row.Values) != len(signature.parameters) {
+				return fmt.Errorf("function %s: [InlineData] row %d argument count mismatch: expected %d, got %d", function.Name, rowIndex, len(signature.parameters), len(row.Values))
+			}
+			for argIndex, value := range row.Values {
+				inlineType, err := c.checkInlineDataExpr(value)
+				if err != nil {
+					return fmt.Errorf("function %s: [InlineData] row %d argument %d: %w", function.Name, rowIndex, argIndex, err)
+				}
+				if inlineType != signature.parameters[argIndex] {
+					return fmt.Errorf("function %s: [InlineData] row %d argument %d expects %s, got %s", function.Name, rowIndex, argIndex, signature.parameters[argIndex], inlineType)
+				}
+			}
+		}
+	}
 	functionScope := newScope(nil)
 	for i, parameter := range function.Parameters {
 		functionScope.define(parameter.Name, signature.parameters[i], false)
@@ -353,6 +369,34 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 	}
 
 	return nil
+}
+
+func (c checker) checkInlineDataExpr(expr ast.Expr) (Type, error) {
+	switch node := expr.(type) {
+	case ast.IntegerLiteral:
+		return Type{Base: BaseTypeInt, Dimension: node.Dimension}, nil
+	case ast.FloatLiteral:
+		return Type{Base: BaseTypeFloat, Dimension: node.Dimension}, nil
+	case ast.BoolLiteral:
+		return Type{Base: BaseTypeBool}, nil
+	case ast.StringLiteralExpr:
+		return Type{Base: BaseTypeString}, nil
+	case ast.FieldAccessExpr:
+		enumName, variant, ok := flattenEnumValueExpr(node)
+		if !ok {
+			return Type{}, fmt.Errorf("enum value must be qualified as EnumName.Variant")
+		}
+		enumDecl, exists := c.lookupEnum(enumName)
+		if !exists {
+			return Type{}, fmt.Errorf("unknown enum type: %s", enumName)
+		}
+		if _, ok := enumDecl.variants[variant]; !ok {
+			return Type{}, fmt.Errorf("enum '%s' has no variant '%s'", enumName, variant)
+		}
+		return Type{Name: enumName}, nil
+	default:
+		return Type{}, fmt.Errorf("unsupported inline data value")
+	}
 }
 
 func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext) (bool, error) {

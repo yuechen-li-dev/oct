@@ -89,6 +89,94 @@ func TestOctTestRejectsInvalidFactShapesAndVoidRules(t *testing.T) {
 	}
 }
 
+func TestOctTestRunsTheoryInlineDataCasesAndReportsPerCase(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "theory.octest", strings.Join([]string{
+		"package Main",
+		"[Theory]",
+		"[InlineData(1, 2, 3)]",
+		"[InlineData(2, 2, 5)]",
+		"fn AddsCorrectly(a: Int, b: Int, expected: Int) -> Void { Assert.Equal(expected, a + b, \"sum mismatch\") }",
+	}, "\n")+"\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{"test", root}, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected one failing theory case")
+	}
+	if !strings.Contains(stdout.String(), "PASS Main.AddsCorrectly[0]") {
+		t.Fatalf("expected first theory case pass output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "FAIL Main.AddsCorrectly[1]") {
+		t.Fatalf("expected second theory case fail output, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "test failed: 1 test(s) failed") {
+		t.Fatalf("expected overall failure summary, got %q", stderr.String())
+	}
+}
+
+func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
+	type testCase struct {
+		name    string
+		content string
+		wantErr string
+	}
+
+	cases := []testCase{
+		{
+			name: "zero parameter theory",
+			content: "package Main\n[Theory]\n[InlineData(1)]\nfn Bad() -> Void { return }\n",
+			wantErr: "[Theory] function must declare at least one parameter",
+		},
+		{
+			name: "theory with no data",
+			content: "package Main\n[Theory]\nfn Bad(x: Int) -> Void { return }\n",
+			wantErr: "[Theory] function must declare at least one [InlineData] row",
+		},
+		{
+			name: "arity mismatch",
+			content: "package Main\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int, y: Int) -> Void { return }\n",
+			wantErr: "argument count mismatch",
+		},
+		{
+			name: "type mismatch",
+			content: "package Main\n[Theory]\n[InlineData(\"oops\")]\nfn Bad(x: Int) -> Void { return }\n",
+			wantErr: "expects Int, got String",
+		},
+		{
+			name: "inline data on non theory",
+			content: "package Main\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n",
+			wantErr: "[InlineData] must apply to a [Theory] function",
+		},
+		{
+			name: "fact and theory together",
+			content: "package Main\n[Fact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n",
+			wantErr: "[Fact] and [Theory] cannot both apply to the same function",
+		},
+		{
+			name: "inline data on fact",
+			content: "package Main\n[Fact]\n[InlineData(1)]\nfn Bad() -> Void { return }\n",
+			wantErr: "[InlineData] cannot be used with [Fact]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+			writeOctPkgFile(t, root, "Main", "bad.octest", tc.content)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			err := cli.Execute([]string{"test", root}, &stdout, &stderr)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got err=%v stderr=%q stdout=%q", tc.wantErr, err, stderr.String(), stdout.String())
+			}
+		})
+	}
+}
+
 func TestOctTestMigratedNumericsProofPackage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -98,6 +186,9 @@ func TestOctTestMigratedNumericsProofPackage(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "PASS Numerics.BisectionConvergesForSqrt2") {
 		t.Fatalf("expected migrated test pass output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "PASS Numerics.ResidualMatchesKnownCases[0]") {
+		t.Fatalf("expected migrated theory output, got %q", stdout.String())
 	}
 }
 

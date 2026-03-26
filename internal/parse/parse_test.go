@@ -488,8 +488,38 @@ func TestBuildFileParsesFactInOctest(t *testing.T) {
 
 func TestBuildFileRejectsInvalidFactUsage(t *testing.T) {
 	assertParseErrorContains(t, "package Main\n[Fact]\nfn Nope() -> Int { return 0 }\n", "[Fact] is only valid in .octest files")
-	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\nrecord R { X: Int }\n", "[Fact] must apply to a function declaration")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\nrecord R { X: Int }\n", "test attributes must apply to a function declaration")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\n[Fact]\nfn Dup() -> Void { return }\n", "duplicate [Fact] attribute on function")
+}
+
+func TestBuildFileParsesTheoryInlineDataInOrder(t *testing.T) {
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Theory]\n[InlineData(1, 2)]\n[InlineData(3, 4)]\nfn Sum(a: Int, b: Int) -> Void { return }\n")
+	if len(file.Functions) != 1 {
+		t.Fatalf("expected one function, got %d", len(file.Functions))
+	}
+	function := file.Functions[0]
+	if !function.IsTheory || function.IsFact {
+		t.Fatalf("expected theory metadata, got %+v", function)
+	}
+	if len(function.InlineData) != 2 {
+		t.Fatalf("expected two inline data rows, got %d", len(function.InlineData))
+	}
+	firstA := function.InlineData[0].Values[0].(ast.IntegerLiteral).Value
+	secondA := function.InlineData[1].Values[0].(ast.IntegerLiteral).Value
+	if firstA != "1" || secondA != "3" {
+		t.Fatalf("expected inline data order preserved, got %q then %q", firstA, secondA)
+	}
+}
+
+func TestBuildFileRejectsInvalidTheoryUsage(t *testing.T) {
+	assertParseErrorContains(t, "package Main\n[Theory]\nfn Nope(x: Int) -> Void { return }\n", "[Theory] is only valid in .octest files")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\nfn Bad() -> Void { return }\n", "[Theory] function must declare at least one parameter")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Int { return x }\n", "[Theory] function must return Void")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "duplicate [Theory] attribute on function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "[Fact] and [Theory] cannot both apply to the same function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\nfn MissingData(x: Int) -> Void { return }\n", "[Theory] function must declare at least one [InlineData] row")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[InlineData(1)]\nfn NotTheory(x: Int) -> Void { return }\n", "[InlineData] must apply to a [Theory] function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[InlineData([1])]\n[Theory]\nfn NotAllowed(x: Int[]) -> Void { return }\n", "[InlineData] supports only scalar literals and enum values in M24b")
 }
 
 func parseSource(t *testing.T, text string) ast.File {

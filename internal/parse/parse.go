@@ -59,24 +59,47 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	}
 
 	pendingFact := false
+	pendingTheory := false
+	pendingInlineData := make([]ast.InlineDataRow, 0)
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
 			if !file.IsTest {
-				return ast.File{}, p.errorAtCurrent("[Fact] is only valid in .octest files")
+				attrName := "attribute"
+				if p.position+1 < len(p.tokens) && p.tokens[p.position+1].Kind == lex.Identifier {
+					attrName = "[" + p.tokens[p.position+1].Lexeme + "]"
+				}
+				return ast.File{}, p.errorAtCurrent(fmt.Sprintf("%s is only valid in .octest files", attrName))
 			}
-			if pendingFact {
-				return ast.File{}, p.errorAtCurrent("duplicate [Fact] attribute on function")
-			}
-			if err := p.parseFactAttribute(); err != nil {
+			attribute, err := p.parseTestAttribute()
+			if err != nil {
 				return ast.File{}, err
 			}
-			pendingFact = true
+			switch attribute.kind {
+			case "Fact":
+				if pendingFact {
+					return ast.File{}, p.errorAtCurrent("duplicate [Fact] attribute on function")
+				}
+				if pendingTheory {
+					return ast.File{}, p.errorAtCurrent("[Fact] and [Theory] cannot both apply to the same function")
+				}
+				pendingFact = true
+			case "Theory":
+				if pendingTheory {
+					return ast.File{}, p.errorAtCurrent("duplicate [Theory] attribute on function")
+				}
+				if pendingFact {
+					return ast.File{}, p.errorAtCurrent("[Fact] and [Theory] cannot both apply to the same function")
+				}
+				pendingTheory = true
+			case "InlineData":
+				pendingInlineData = append(pendingInlineData, ast.InlineDataRow{Values: attribute.values})
+			}
 			continue
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
-			if pendingFact {
-				return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+			if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
 			if err != nil {
@@ -84,8 +107,8 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
-			if pendingFact {
-				return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+			if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
 			if err != nil {
@@ -105,35 +128,99 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
 					return ast.File{}, p.errorAtCurrent("[Fact] function must return Void")
 				}
+				if len(pendingInlineData) > 0 {
+					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Fact]")
+				}
 				function.IsFact = true
 				pendingFact = false
+			}
+			if pendingTheory {
+				if len(function.Parameters) == 0 {
+					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one parameter")
+				}
+				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
+					return ast.File{}, p.errorAtCurrent("[Theory] function must return Void")
+				}
+				if len(pendingInlineData) == 0 {
+					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one [InlineData] row")
+				}
+				function.IsTheory = true
+				function.InlineData = append(function.InlineData, pendingInlineData...)
+				pendingTheory = false
+				pendingInlineData = pendingInlineData[:0]
+			} else if len(pendingInlineData) > 0 {
+				return ast.File{}, p.errorAtCurrent("[InlineData] must apply to a [Theory] function")
 			}
 			file.Functions = append(file.Functions, function)
 		default:
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
 		}
 	}
-	if pendingFact {
-		return ast.File{}, p.errorAtCurrent("[Fact] must apply to a function declaration")
+	if pendingFact || pendingTheory || len(pendingInlineData) > 0 {
+		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	return file, nil
 }
 
-func (p *parser) parseFactAttribute() error {
+type testAttribute struct {
+	kind   string
+	values []ast.Expr
+}
+
+func (p *parser) parseTestAttribute() (testAttribute, error) {
 	if _, err := p.expect(lex.LeftBracket, "expected '['"); err != nil {
-		return err
+		return testAttribute{}, err
 	}
 	name, err := p.expect(lex.Identifier, "expected attribute name")
 	if err != nil {
-		return err
+		return testAttribute{}, err
 	}
-	if name.Lexeme != "Fact" {
-		return p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
+	switch name.Lexeme {
+	case "Fact", "Theory":
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: name.Lexeme}, nil
+	case "InlineData":
+		if _, err := p.expect(lex.LeftParen, "expected '(' after InlineData"); err != nil {
+			return testAttribute{}, err
+		}
+		values := make([]ast.Expr, 0)
+		if p.current().Kind != lex.RightParen {
+			for {
+				value, err := p.parseExpression()
+				if err != nil {
+					return testAttribute{}, err
+				}
+				if !isInlineDataValueExpr(value) {
+					return testAttribute{}, p.errorAtCurrent("[InlineData] supports only scalar literals and enum values in M24b")
+				}
+				values = append(values, value)
+				if p.current().Kind != lex.Comma {
+					break
+				}
+				p.advance()
+			}
+		}
+		if _, err := p.expect(lex.RightParen, "expected ')' after InlineData arguments"); err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: "InlineData", values: values}, nil
+	default:
+		return testAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
 	}
-	if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
-		return err
+}
+
+func isInlineDataValueExpr(expr ast.Expr) bool {
+	switch expr.(type) {
+	case ast.IntegerLiteral, ast.FloatLiteral, ast.BoolLiteral, ast.StringLiteralExpr, ast.FieldAccessExpr:
+		return true
+	default:
+		return false
 	}
-	return nil
 }
 
 func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {

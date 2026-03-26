@@ -35,11 +35,17 @@ type FunctionDecl struct {
 	SourcePath string
 	IsTestFile bool
 	IsFact     bool
+	IsTheory   bool
+	InlineData []InlineDataRow
 	Parameters []Parameter
 	ReturnType TypeRef
 	IsFallible bool
 	ErrorType  TypeRef
 	Body       Block
+}
+
+type InlineDataRow struct {
+	Values []Expr
 }
 
 type Parameter struct {
