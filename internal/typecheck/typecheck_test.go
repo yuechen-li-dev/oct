@@ -313,6 +313,32 @@ func TestCheckValidatesM14Comparisons(t *testing.T) {
 	}
 }
 
+func TestCheckValidatesM17LogicalOperators(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Bool { return true and true }",
+		"fn Main() -> Bool { return false or true }",
+		"fn Main() -> Bool { return not false }",
+		"fn Main() -> Bool { return 1 < 2 and 3 < 4 }",
+		"fn Main() -> Bool { return true or false and false }",
+		"fn Main() -> Bool { return not 1 == 2 }",
+		"fn Main() -> Int { if true and not false { return 1 } else { return 0 } }",
+		"fn Main() -> Int { while true and not false { return 7 } return 0 }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM17LogicalOperators(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Bool { return 1 and 2 }", "operator 'and' requires Bool operands")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return true or 1 }", "operator 'or' requires Bool operands")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return not 1 }", "operator 'not' requires Bool operand")
+	assertTypeErrorContains(t, "fn Main() -> Int { if 1 { return 1 } return 0 }", "if condition must be Bool, got Int")
+}
+
 func TestCheckRejectsInvalidM14Comparisons(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Bool { return 1m == 1s }", "cannot compare Int<m> and Int<s>")
 	assertTypeErrorContains(t, "fn Main() -> Bool { return 1m < 2s }", "cannot compare Int<m> and Int<s>")

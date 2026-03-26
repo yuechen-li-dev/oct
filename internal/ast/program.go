@@ -198,6 +198,13 @@ type BinaryExpr struct {
 
 func (BinaryExpr) exprNode() {}
 
+type UnaryExpr struct {
+	Operator string
+	Operand  Expr
+}
+
+func (UnaryExpr) exprNode() {}
+
 type RangeExpr struct {
 	Start Expr
 	End   Expr

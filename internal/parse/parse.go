@@ -440,7 +440,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordNot:
 		return true
 	default:
 		return false
@@ -480,7 +480,7 @@ func (p *parser) parseExpression() (ast.Expr, error) {
 }
 
 func (p *parser) parseRangeExpr() (ast.Expr, error) {
-	start, err := p.parseBinaryExpr(0)
+	start, err := p.parseBinaryExpr(precedenceOr)
 	if err != nil {
 		return nil, err
 	}
@@ -488,14 +488,14 @@ func (p *parser) parseRangeExpr() (ast.Expr, error) {
 		return start, nil
 	}
 
-	end, err := p.parseBinaryExpr(0)
+	end, err := p.parseBinaryExpr(precedenceOr)
 	if err != nil {
 		return nil, err
 	}
 
 	var step ast.Expr
 	if p.match(lex.KeywordStep) {
-		step, err = p.parseBinaryExpr(0)
+		step, err = p.parseBinaryExpr(precedenceOr)
 		if err != nil {
 			return nil, err
 		}
@@ -505,7 +505,7 @@ func (p *parser) parseRangeExpr() (ast.Expr, error) {
 }
 
 func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
-	left, err := p.parsePostfixExpr()
+	left, err := p.parsePrefixExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -527,6 +527,17 @@ func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
 	}
 
 	return left, nil
+}
+
+func (p *parser) parsePrefixExpr() (ast.Expr, error) {
+	if p.match(lex.KeywordNot) {
+		operand, err := p.parseBinaryExpr(precedenceComparison)
+		if err != nil {
+			return nil, err
+		}
+		return ast.UnaryExpr{Operator: "not", Operand: operand}, nil
+	}
+	return p.parsePostfixExpr()
 }
 
 func (p *parser) parsePostfixExpr() (ast.Expr, error) {
@@ -951,18 +962,31 @@ func (p *parser) errorAtToken(token lex.Token, message string) error {
 
 func binaryPrecedence(kind lex.TokenKind) (int, bool) {
 	switch kind {
+	case lex.KeywordOr:
+		return precedenceOr, true
+	case lex.KeywordAnd:
+		return precedenceAnd, true
 	case lex.EqualEqual, lex.BangEqual, lex.LeftAngle, lex.LeftEqual, lex.RightAngle, lex.RightEqual:
-		return 0, true
+		return precedenceComparison, true
 	case lex.Plus, lex.Minus:
-		return 1, true
+		return precedenceAddSub, true
 	case lex.At:
-		return 2, true
+		return precedenceMatMul, true
 	case lex.Star, lex.Slash:
-		return 3, true
+		return precedenceMulDiv, true
 	default:
 		return 0, false
 	}
 }
+
+const (
+	precedenceOr         = 0
+	precedenceAnd        = 1
+	precedenceComparison = 2
+	precedenceAddSub     = 3
+	precedenceMatMul     = 4
+	precedenceMulDiv     = 5
+)
 
 func (p *parser) parseLiteralUnitSuffix(numberToken lex.Token) (dimension.Dimension, bool, error) {
 	if p.current().Kind != lex.Identifier || !tokensAdjacent(numberToken, p.current()) {

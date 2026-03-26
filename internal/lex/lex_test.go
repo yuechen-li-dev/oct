@@ -211,6 +211,34 @@ func TestAnalyzeTokenizesComparisonOperators(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesLogicalOperators(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Bool { return not false and true or false }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordReturn,
+		KeywordNot,
+		KeywordFalse,
+		KeywordAnd,
+		KeywordTrue,
+		KeywordOr,
+		KeywordFalse,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "// heading\n\nfn Main() -> Int {\n  // inside\n  return true\n}\n"}
 

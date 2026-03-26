@@ -189,6 +189,44 @@ func TestBuildFileParsesComparisonPrecedenceBelowArithmetic(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesLogicalOperatorPrecedence(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Bool { return true or false and false }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected BinaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "or" {
+		t.Fatalf("expected top-level 'or', got %q", expr.Operator)
+	}
+	right, ok := expr.Right.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected right branch BinaryExpr, got %T", expr.Right)
+	}
+	if right.Operator != "and" {
+		t.Fatalf("expected nested 'and', got %q", right.Operator)
+	}
+}
+
+func TestBuildFileParsesNotAfterComparisons(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Bool { return not 1 == 2 }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.UnaryExpr)
+	if !ok {
+		t.Fatalf("expected UnaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "not" {
+		t.Fatalf("expected unary operator 'not', got %q", expr.Operator)
+	}
+	operand, ok := expr.Operand.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected not operand to be BinaryExpr, got %T", expr.Operand)
+	}
+	if operand.Operator != "==" {
+		t.Fatalf("expected comparison operand, got %q", operand.Operator)
+	}
+}
+
 func TestBuildFileParsesMultipleFunctions(t *testing.T) {
 	file := parseSource(t, "fn One() -> Int { return 1 } fn Two() -> Bool { return true }")
 
