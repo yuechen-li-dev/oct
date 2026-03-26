@@ -69,3 +69,19 @@ Implementation friction observed in M22a:
 
 - Without first-class functions, solver APIs use explicit problem selectors and package-owned residual/derivative functions.
 - Cross-package enum value flow is still awkward in v0, so this proof package uses integer problem IDs while keeping a dedicated termination enum for package status design.
+
+## M22b proof package: Mechanics (Unit-Safe 2D Statics / Kinematics Core)
+
+M22b adds a native `Mechanics` package in Oct source under `testdata/m22b/valid/Mechanics` with:
+
+- domain records: `Vec2Force`, `Displacement2`, `Stiffness2`, and `EquilibriumReport`
+- enum-driven helpers via `Axis` and `DominantAxis`
+- unit-safe 2D statics helpers: `AddForce`, `MagnitudeSquared`, and `ResultantReport`
+- a matrix/vector-backed mechanics helper: `InternalForce` computes `K @ d` for a 2x2 stiffness-like model
+
+This milestone is a proof that packages, records/enums, SI dimensions, comparisons/logical flow, and matrix/vector operations compose naturally in small mechanics-oriented Oct code.
+
+Implementation friction observed in M22b:
+
+- A single generic `Vec2<T>` shape is still not available, so this proof uses explicit domain-specific records (`Vec2Force`, `Displacement2`).
+- Matrix shape constraints are runtime/value-level rather than encoded in the type, so API documentation and tests carry shape intent (`2x2` with `2x1`).
