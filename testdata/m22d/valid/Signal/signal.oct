@@ -1,0 +1,92 @@
+package Signal
+
+record SignalAnalysisResult {
+    X: Float[]
+    Raw: Float[]
+    Smoothed: Float[]
+}
+
+fn GenerateSignalValues() -> Float[] {
+    var raw = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    var i = 0
+    while i < Len(raw) {
+        let base = i * 0.4
+
+        let shape = if i < 3 {
+            0.0
+        } else {
+            if i < 6 {
+                1.2
+            } else {
+                if i < 9 {
+                    0.0 - 0.8
+                } else {
+                    0.6
+                }
+            }
+        }
+
+        raw[i] = base + shape
+        i = i + 1
+    }
+
+    return raw
+}
+
+fn MovingAverage(values: Float[], window: Int) -> Float[] {
+    var smoothed = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    if Len(values) != Len(smoothed) {
+        return smoothed
+    }
+
+    if window <= 0 {
+        var copyIndex = 0
+        while copyIndex < Len(values) {
+            smoothed[copyIndex] = values[copyIndex]
+            copyIndex = copyIndex + 1
+        }
+        return smoothed
+    }
+
+    var i = 0
+    while i < Len(values) {
+        var start = i - window + 1
+        if start < 0 {
+            start = 0
+        }
+
+        var sum = 0.0
+        var count = 0
+        var j = start
+        while j <= i {
+            sum = sum + values[j]
+            count = count + 1
+            j = j + 1
+        }
+
+        smoothed[i] = sum / count
+        i = i + 1
+    }
+
+    return smoothed
+}
+
+fn AnalyzeSignal(start: Float, delta: Float, window: Int) -> SignalAnalysisResult {
+    let raw = GenerateSignalValues()
+    let smoothed = MovingAverage(raw, window)
+
+    var x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var i = 0
+    while i < Len(x) {
+        x[i] = start + delta * i
+        i = i + 1
+    }
+
+    return SignalAnalysisResult {
+        X: x
+        Raw: raw
+        Smoothed: smoothed
+    }
+}
