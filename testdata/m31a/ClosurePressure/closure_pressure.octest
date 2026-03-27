@@ -1,0 +1,148 @@
+package ClosurePressure
+
+enum Strategy {
+    Identity
+    Square
+    Negate
+}
+
+enum TransformMode {
+    AddOne
+    Double
+}
+
+enum FilterMode {
+    KeepPositive
+    KeepAtLeastThree
+}
+
+enum ResidualModel {
+    Linear
+    Squared
+}
+
+enum PipelinePreset {
+    NormalizeThenSquare
+    ShiftThenNegate
+}
+
+record FilterResult {
+    Values: Int[]
+    Kept: Int
+}
+
+record ThresholdRule {
+    Threshold: Float
+    Gain: Float
+}
+
+fn ApplyStrategy(x: Int, strategy: Strategy) -> Int {
+    return switch strategy {
+        case Strategy.Identity => x
+        case Strategy.Square => x * x
+        case Strategy.Negate => 0 - x
+    }
+}
+
+fn TransformArray(values: Int[], mode: TransformMode) -> Int[] {
+    var out = [0, 0, 0, 0]
+    for i in 0..Len(values) {
+        out[i] = switch mode {
+            case TransformMode.AddOne => values[i] + 1
+            case TransformMode.Double => values[i] * 2
+        }
+    }
+    return out
+}
+
+fn FilterArray(values: Int[], mode: FilterMode) -> FilterResult {
+    var out = [0, 0, 0, 0]
+    var kept = 0
+    for i in 0..Len(values) {
+        let keep = switch mode {
+            case FilterMode.KeepPositive => values[i] > 0
+            case FilterMode.KeepAtLeastThree => values[i] >= 3
+        }
+        if keep {
+            out[kept] = values[i]
+            kept = kept + 1
+        }
+    }
+    return FilterResult { Values: out Kept: kept }
+}
+
+fn ScoreWithRule(x: Float, rule: ThresholdRule) -> Float {
+    if x > rule.Threshold {
+        return x * rule.Gain
+    }
+    return x
+}
+
+fn IterateOnce(model: ResidualModel, x: Float, target: Float, delta: Float) -> Float {
+    let residual = switch model {
+        case ResidualModel.Linear => x - target
+        case ResidualModel.Squared => (x - target) * (x - target)
+    }
+    return x - delta * residual
+}
+
+fn ApplyPreset(value: Float, preset: PipelinePreset) -> Float {
+    if preset == PipelinePreset.NormalizeThenSquare {
+        let normalized = value / 10.0
+        return normalized * normalized
+    }
+    let shifted = value + 3.0
+    return 0.0 - shifted
+}
+
+[Fact]
+fn A_StrategySelectionWithoutClosures() -> Void {
+    var strategy = Strategy.Identity
+    let useSquare = true
+    if useSquare {
+        strategy = Strategy.Square
+    }
+    let got = ApplyStrategy(5, strategy)
+    Assert.Equal(25, got, "runtime strategy selection works with enum + switch")
+}
+
+[Fact]
+fn B_SmallCallbackLikeProcessing() -> Void {
+    let source = [1, 2, 3, 4]
+    let transformed = TransformArray(source, TransformMode.Double)
+    let filtered = FilterArray(source, FilterMode.KeepAtLeastThree)
+
+    Assert.Equal(2, transformed[0], "double transform at index 0")
+    Assert.Equal(8, transformed[3], "double transform at index 3")
+    Assert.Equal(2, filtered.Kept, "two values should pass even filter")
+    Assert.Equal(3, filtered.Values[0], "first kept value")
+    Assert.Equal(4, filtered.Values[1], "second kept value")
+}
+
+[Fact]
+fn C_ParameterizedBehaviorWithCapturedContextPressure() -> Void {
+    let rule = ThresholdRule { Threshold: 5.0 Gain: 0.5 }
+    let below = ScoreWithRule(4.0, rule)
+    let above = ScoreWithRule(8.0, rule)
+
+    Assert.Near(4.0, below, 0.0001, "values below threshold are unchanged")
+    Assert.Near(4.0, above, 0.0001, "values above threshold use configured gain")
+}
+
+[Fact]
+fn D_SolverWorkflowHookPressure() -> Void {
+    let linearNext = IterateOnce(ResidualModel.Linear, 8.0, 2.0, 0.25)
+    let squaredNext = IterateOnce(ResidualModel.Squared, 8.0, 2.0, 0.25)
+
+    Assert.Near(6.5, linearNext, 0.0001, "linear residual update")
+    Assert.Near(0.0 - 1.0, squaredNext, 0.0001, "squared residual update")
+}
+
+[Fact]
+fn E_PresetPipelineStillExplicit() -> Void {
+    let a = ApplyPreset(20.0, PipelinePreset.NormalizeThenSquare)
+    let b = ApplyPreset(1.0, PipelinePreset.ShiftThenNegate)
+
+    Assert.Near(4.0, a, 0.0001, "normalized then squared")
+    Assert.Near(0.0 - 4.0, b, 0.0001, "shift then negate")
+}
