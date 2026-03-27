@@ -93,7 +93,8 @@ func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 		t.Fatalf("expected propagate expression, got %T", letStmt.Value)
 	}
 	call, ok := propagate.Inner.(ast.CallExpr)
-	if !ok || call.Callee != "Safe" {
+	callee, isName := call.Callee.(ast.IdentifierExpr)
+	if !ok || !isName || callee.Name != "Safe" {
 		t.Fatalf("expected propagated Safe() call, got %T %#v", propagate.Inner, propagate.Inner)
 	}
 
@@ -102,7 +103,8 @@ func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 		t.Fatalf("expected match statement, got %T", fn.Body.Statements[1])
 	}
 	matchCall, ok := matchStmt.Subject.(ast.CallExpr)
-	if !ok || matchCall.Callee != "Safe" {
+	matchCallee, isMatchName := matchCall.Callee.(ast.IdentifierExpr)
+	if !ok || !isMatchName || matchCallee.Name != "Safe" {
 		t.Fatalf("expected match subject Safe() call, got %T %#v", matchStmt.Subject, matchStmt.Subject)
 	}
 	if matchStmt.OkName != "value" || matchStmt.ErrName != "e" {
@@ -119,14 +121,16 @@ func TestBuildFileParsesFatalUnwrapAndStrings(t *testing.T) {
 		t.Fatalf("expected unwrap expression, got %T", letStmt.Value)
 	}
 	call, ok := unwrap.Inner.(ast.CallExpr)
-	if !ok || call.Callee != "Fail" {
+	callee, isName := call.Callee.(ast.IdentifierExpr)
+	if !ok || !isName || callee.Name != "Fail" {
 		t.Fatalf("expected Fail() call inside unwrap, got %T %#v", unwrap.Inner, unwrap.Inner)
 	}
 
 	errorFile := parseSource(t, "fn Fail() -> Int ! Error { return error(\"boom\") }")
 	ret := errorFile.Functions[0].Body.Statements[0].(ast.ReturnStmt)
 	errorCall, ok := ret.Value.(ast.CallExpr)
-	if !ok || errorCall.Callee != "error" {
+	errorCallee, isErrorName := errorCall.Callee.(ast.IdentifierExpr)
+	if !ok || !isErrorName || errorCallee.Name != "error" {
 		t.Fatalf("expected error() call, got %T %#v", ret.Value, ret.Value)
 	}
 	stringArg, ok := errorCall.Arguments[0].(ast.StringLiteralExpr)

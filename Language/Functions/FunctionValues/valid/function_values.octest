@@ -1,0 +1,54 @@
+package FunctionValuesValid
+
+fn Double(x: Int) -> Int {
+    return x * 2
+}
+
+fn IsEven(x: Int) -> Bool {
+    return (x / 2) * 2 == x
+}
+
+fn ScaleByTwo(v: Float<m>) -> Float<m> {
+    return v * 2.0
+}
+
+fn ApplyOne(x: Int, f: fn(Int) -> Int) -> Int {
+    return f(x)
+}
+
+fn CountMatches(xs: Int[], pred: fn(Int) -> Bool) -> Int {
+    var total = 0
+    for x in 0..Len(xs) {
+        if pred(xs[x]) {
+            total = total + 1
+        }
+    }
+    return total
+}
+
+fn ApplyLengthScale(values: Float<m>[], op: fn(Float<m>) -> Float<m>) -> Float<m>[] {
+    var out = values
+    for i in 0..Len(values) {
+        out[i] = op(values[i])
+    }
+    return out
+}
+
+[Fact]
+fn NamedFunctionValueCanBePassedAndCalled() -> Void {
+    Assert.Equal(8, ApplyOne(4, Double), "named function value works")
+}
+
+[Fact]
+fn PredicateStyleHelperWorksWithNamedFunction() -> Void {
+    let values = [1, 2, 3, 4, 5, 6]
+    Assert.Equal(3, CountMatches(values, IsEven), "predicate parameter accepts named function")
+}
+
+[Fact]
+fn ScientificHookUsesNamedFunctionValue() -> Void {
+    let scaled = ApplyLengthScale([1.0m, 2.0m], ScaleByTwo)
+    Assert.Equal(2, Len(scaled), "scaled result length")
+    Assert.Near(2.0m, scaled[0], 0.000001m, "scaled first value")
+    Assert.Near(4.0m, scaled[1], 0.000001m, "scaled second value")
+}

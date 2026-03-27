@@ -37,6 +37,7 @@ fn Main() -> Int {
 * Package resolution (v0): one directory = one package; imports resolve to sibling directories under the program root.
 * Static base types: `Int`, `Float`, `Bool`, `String`, and built-in `Error`.
 * Native one-dimensional arrays: `Int[]`, `Float[]`, `Bool[]`, including arithmetic and indexing.
+* Non-capturing named function values are supported in a narrow surface via explicit function types (for example, `fn(Int) -> Int`), and only package-level named functions are valid function values.
 
 ---
 
@@ -188,6 +189,7 @@ These demonstrate real Oct usage across scientific and numerical domains.
 * No wildcard or alias imports
 * No enum-variant injection (`case Euler` unsupported)
 * No namespace flattening
+* No closures, lambdas, local function literals, or partial application
 * Dynamic array growth is limited (no append/push; preallocation is typical)
 
 Some transitional semantic fixtures remain in `testdata/` while classification is finalized.
@@ -198,6 +200,24 @@ Some transitional semantic fixtures remain in `testdata/` while classification i
 
 * Each file begins with: `expect error: "<substring>"`
 * Remaining content is Oct code expected to fail
+
+## M24f native-vs-host test boundary formalization
+
+### What belongs in `.octest`
+
+User-visible language behavior and contracts belong in native Oct test files under `Language/` as `.octest` and `.octfail`.
+
+### What remains in Go tests
+
+Go tests validate host-side integration boundaries (CLI behavior, package orchestration, and runtime wiring) rather than redefining language semantics.
+
+### Decision rule for new tests
+
+If a test defines language behavior, place it in `Language/`. If it validates host integration mechanics, keep it in Go.
+
+### Demo vs test separation
+
+`Packages/` and `testdata/` may hold demos/fixtures, but semantic pass/fail contracts are authored and maintained in `Language/`.
 * Pass: compilation fails and diagnostic matches substring
 * Fail: compilation succeeds or mismatch occurs
 

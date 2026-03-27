@@ -28,6 +28,7 @@ const (
 	ValueEnum   ValueKind = "Enum"
 	ValueVector ValueKind = "Vector"
 	ValueMatrix ValueKind = "Matrix"
+	ValueFunc   ValueKind = "Function"
 )
 
 type Value struct {
@@ -44,6 +45,7 @@ type Value struct {
 	Error     ErrorValue
 	Record    RecordValue
 	Enum      EnumValue
+	Function  FunctionValue
 }
 
 type ErrorValue struct {
@@ -71,6 +73,10 @@ type MatrixValue struct {
 	Rows     int
 	Cols     int
 	Elements []Value
+}
+
+type FunctionValue struct {
+	Key string
 }
 
 func (v Value) String() string {
@@ -117,6 +123,8 @@ func (v Value) String() string {
 		return fmt.Sprintf("%s{%s}", v.Record.TypeName, strings.Join(parts, ", "))
 	case ValueEnum:
 		return fmt.Sprintf("%s.%s", v.Enum.TypeName, v.Enum.Variant)
+	case ValueFunc:
+		return v.Function.Key
 	default:
 		return "<invalid>"
 	}
@@ -538,10 +546,14 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return evalResult{value: value}, nil
 	case ast.IdentifierExpr:
 		valueBinding, ok := env.lookup(node.Name)
-		if !ok {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
+		if ok {
+			return evalResult{value: valueBinding.value}, nil
 		}
-		return evalResult{value: valueBinding.value}, nil
+		functionKey := pkgName + "." + node.Name
+		if _, exists := i.functions[functionKey]; exists {
+			return evalResult{value: Value{Kind: ValueFunc, Function: FunctionValue{Key: functionKey}}}, nil
+		}
+		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
 	case ast.CallExpr:
 		return i.evalCallExpr(env, pkgName, node)
 	case ast.RecordLiteralExpr:
@@ -614,6 +626,12 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index value of kind %s", target.value.Kind)
 		}
 	case ast.FieldAccessExpr:
+		if pkgIdentifier, ok := node.Target.(ast.IdentifierExpr); ok {
+			functionKey := pkgIdentifier.Name + "." + node.Field
+			if _, exists := i.functions[functionKey]; exists {
+				return evalResult{value: Value{Kind: ValueFunc, Function: FunctionValue{Key: functionKey}}}, nil
+			}
+		}
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, identifier.Name); enumExists {
 				for _, variant := range enumDecl.Variants {
@@ -835,7 +853,8 @@ func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject
 }
 
 func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
-	if expr.Callee == "error" {
+	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
+	if hasDirectName && calleeName == "error" {
 		if len(expr.Arguments) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: error() expects 1 argument")
 		}
@@ -851,16 +870,31 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 		}
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
-	if builtin.IsName(expr.Callee) {
-		return i.evalBuiltinCallExpr(env, pkgName, expr)
+	if hasDirectName && builtin.IsName(calleeName) {
+		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.Arguments)
 	}
-	if strings.HasPrefix(expr.Callee, "Assert.") {
-		return i.evalAssertCallExpr(env, pkgName, expr)
+	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
+		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments)
 	}
 
-	functionKey := expr.Callee
-	if !strings.Contains(functionKey, ".") {
-		functionKey = pkgName + "." + functionKey
+	functionKey := ""
+	if hasDirectName {
+		functionKey = calleeName
+		if !strings.Contains(functionKey, ".") {
+			functionKey = pkgName + "." + functionKey
+		}
+	} else {
+		calleeValue, err := i.evalExpr(env, pkgName, expr.Callee)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if calleeValue.hasError {
+			return evalResult{hasError: true, errorVal: calleeValue.errorVal}, nil
+		}
+		if calleeValue.value.Kind != ValueFunc {
+			return evalResult{}, fmt.Errorf("runtime error: call target must be function value")
+		}
+		functionKey = calleeValue.value.Function.Key
 	}
 	function, ok := i.functions[functionKey]
 	if !ok {
@@ -896,9 +930,9 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 	return evalResult{value: result.value}, nil
 }
 
-func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
-	arguments := make([]Value, 0, len(expr.Arguments))
-	for _, argumentExpr := range expr.Arguments {
+func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	arguments := make([]Value, 0, len(argumentExprs))
+	for _, argumentExpr := range argumentExprs {
 		argument, err := i.evalExpr(env, pkgName, argumentExpr)
 		if err != nil {
 			return evalResult{}, err
@@ -912,7 +946,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, expr a
 	fail := func(message string) (evalResult, error) {
 		return evalResult{}, fmt.Errorf("assertion failed: %s", message)
 	}
-	switch expr.Callee {
+	switch callee {
 	case "Assert.True":
 		if !arguments[0].Bool {
 			return fail(arguments[1].Text)
@@ -930,7 +964,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, expr a
 			return fail(arguments[3].Text)
 		}
 	default:
-		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported Assert function %s", expr.Callee)
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported Assert function %s", callee)
 	}
 	return evalResult{}, nil
 }
@@ -981,23 +1015,23 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 	return value
 }
 
-func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
-	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
-		value, err := i.evalPlotBuiltinCallExpr(env, pkgName, expr)
+func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	if callee == "PlotLine" || callee == "PlotScatter" {
+		value, err := i.evalPlotBuiltinCallExpr(env, pkgName, callee, argumentExprs)
 		if err != nil {
 			return evalResult{}, err
 		}
 		return evalResult{value: value}, nil
 	}
-	if expr.Callee == "Append" {
-		return i.evalAppendBuiltinCallExpr(env, pkgName, expr)
+	if callee == "Append" {
+		return i.evalAppendBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
 
-	if len(expr.Arguments) != 1 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", expr.Callee)
+	if len(argumentExprs) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
 	}
 
-	argument, err := i.evalExpr(env, pkgName, expr.Arguments[0])
+	argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -1005,7 +1039,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr 
 		return evalResult{hasError: true, errorVal: argument.errorVal}, nil
 	}
 
-	switch expr.Callee {
+	switch callee {
 	case "Print":
 		_, writeErr := fmt.Fprintln(i.stdout, argument.value.String())
 		if writeErr != nil {
@@ -1064,16 +1098,16 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, expr 
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Cos(value)}}, nil
 	default:
-		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", expr.Callee)
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", callee)
 	}
 }
 
-func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
-	if len(expr.Arguments) != 2 {
+func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(argumentExprs) != 2 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: Append expects 2 arguments")
 	}
 
-	array, err := i.evalExpr(env, pkgName, expr.Arguments[0])
+	array, err := i.evalExpr(env, pkgName, argumentExprs[0])
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -1084,7 +1118,7 @@ func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string,
 		return evalResult{}, fmt.Errorf("runtime invariant violation: Append expects Array as first argument, got %s", array.value.Kind)
 	}
 
-	element, err := i.evalExpr(env, pkgName, expr.Arguments[1])
+	element, err := i.evalExpr(env, pkgName, argumentExprs[1])
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -1331,6 +1365,21 @@ func flattenQualifiedEnumTarget(expr ast.Expr) (string, bool) {
 		return "", false
 	}
 	return pkgIdentifier.Name + "." + fieldAccess.Field, true
+}
+
+func flattenDirectCallName(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		left, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", false
+		}
+		return left.Name + "." + node.Field, true
+	default:
+		return "", false
+	}
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {

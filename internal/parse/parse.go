@@ -433,6 +433,46 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 }
 
 func (p *parser) parseTypeRef() (ast.TypeRef, error) {
+	if p.current().Kind == lex.KeywordFn {
+		p.advance()
+		if _, err := p.expect(lex.LeftParen, "expected '(' after 'fn' in function type"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		parameters := make([]ast.TypeRef, 0)
+		if p.current().Kind != lex.RightParen {
+			for {
+				parameterType, err := p.parseTypeRef()
+				if err != nil {
+					return ast.TypeRef{}, err
+				}
+				parameters = append(parameters, parameterType)
+				if !p.match(lex.Comma) {
+					break
+				}
+			}
+		}
+		if _, err := p.expect(lex.RightParen, "expected ')' after function type parameter list"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		if _, err := p.expect(lex.Arrow, "expected '->' in function type"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		returnType, err := p.parseTypeRef()
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		functionType := ast.FunctionTypeRef{Parameters: parameters, ReturnType: returnType}
+		if p.match(lex.Bang) {
+			errorType, err := p.parseTypeRef()
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			functionType.IsFallible = true
+			functionType.ErrorType = &errorType
+		}
+		return ast.TypeRef{Function: &functionType}, nil
+	}
+
 	token, err := p.expect(lex.Identifier, "expected type name")
 	if err != nil {
 		return ast.TypeRef{}, err
@@ -844,15 +884,11 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 	for {
 		switch {
 		case p.current().Kind == lex.LeftParen:
-			callee, ok := p.flattenCallee(expr)
-			if !ok {
-				return nil, p.errorAtCurrent("only direct named function calls are supported")
-			}
 			arguments, err := p.parseCallArguments()
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: callee, Arguments: arguments}
+			expr = ast.CallExpr{Callee: expr, Arguments: arguments}
 		case p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() && p.isRecordLiteralTypeExpr(expr):
 			typeName, err := p.flattenTypeExpr(expr)
 			if err != nil {
@@ -891,21 +927,6 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 		default:
 			return expr, nil
 		}
-	}
-}
-
-func (p *parser) flattenCallee(expr ast.Expr) (string, bool) {
-	switch node := expr.(type) {
-	case ast.IdentifierExpr:
-		return node.Name, true
-	case ast.FieldAccessExpr:
-		left, ok := node.Target.(ast.IdentifierExpr)
-		if !ok {
-			return "", false
-		}
-		return left.Name + "." + node.Field, true
-	default:
-		return "", false
 	}
 }
 
