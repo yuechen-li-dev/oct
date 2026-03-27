@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn ArrayArithmetic() -> Void {
+    let xs = [1, 2, 3] + [4, 5, 6]
+    Assert.Equal(3, Len(xs), "array arithmetic length")
+    Assert.Equal(5, xs[0], "array arithmetic element 0")
+    Assert.Equal(7, xs[1], "array arithmetic element 1")
+    Assert.Equal(9, xs[2], "array arithmetic element 2")
+}

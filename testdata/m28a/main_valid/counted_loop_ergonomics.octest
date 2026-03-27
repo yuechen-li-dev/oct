@@ -1,0 +1,8 @@
+package MainValid
+[Fact]
+fn CountedLoopErgonomics() -> Void {
+    let values = [3,1,4,1]
+    var weighted = 0
+    for i in 0..Len(values) { weighted = weighted + (i + 1) * values[i] }
+    Assert.Equal(21, weighted, "counted loop ergonomics without while index mutation")
+}

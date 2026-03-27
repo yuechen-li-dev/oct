@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn WhileTrueReturnsFromBody() -> Void {
+    while true {
+        Assert.Equal(7, 7, "while true returns from body")
+        return
+    }
+    Assert.True(false, "while should execute")
+}

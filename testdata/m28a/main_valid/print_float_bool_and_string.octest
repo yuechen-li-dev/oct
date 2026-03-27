@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn PrintFloatBoolAndString() -> Void { Print(2.5) Print(true) Print("hi") Assert.Equal(0,0,"print float bool and string") }

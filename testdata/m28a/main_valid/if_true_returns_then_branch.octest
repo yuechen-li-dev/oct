@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn IfTrueReturnsThenBranch() -> Void { let v = if true { 1 } else { 0 } Assert.Equal(1, v, "if true returns then branch") }

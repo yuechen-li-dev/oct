@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn DimensionedMultiplication() -> Void { Assert.Equal(6m*s, 2m * 3s, "dimensioned multiplication") }

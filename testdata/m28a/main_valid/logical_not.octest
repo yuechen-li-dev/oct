@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn LogicalNot() -> Void { Assert.Equal(true, not false, "logical not") }

@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn ForLoopReturnsFirstIteration() -> Void {
+    for i in 0..3 {
+        Assert.Equal(0, i, "for loop returns first iteration")
+        return
+    }
+    Assert.True(false, "loop should execute")
+}

@@ -1,0 +1,11 @@
+package MainValid
+
+[Fact]
+fn LoopLocalScope() -> Void {
+    for i in 0..1 {
+        let x = i
+        Assert.Equal(0, x, "loop local scope")
+        return
+    }
+    Assert.True(false, "loop should execute")
+}

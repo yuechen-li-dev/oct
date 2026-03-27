@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn MixedDivisionPromotesToFloat() -> Void { Assert.Equal(2.5, 5 / 2.0, "mixed division promotes to float") }

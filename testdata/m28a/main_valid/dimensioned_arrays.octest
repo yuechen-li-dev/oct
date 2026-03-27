@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn DimensionedArrays() -> Void {
+    let xs = [1m, 2m, 3m]
+    Assert.Equal(3, Len(xs), "dimensioned arrays length")
+    Assert.Equal(1m, xs[0], "dimensioned arrays element 0")
+    Assert.Equal(2m, xs[1], "dimensioned arrays element 1")
+    Assert.Equal(3m, xs[2], "dimensioned arrays element 2")
+}

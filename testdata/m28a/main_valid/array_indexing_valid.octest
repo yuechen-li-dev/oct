@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn ArrayIndexingValid() -> Void { let x = [1,2,3] Assert.Equal(2, x[1], "array indexing") }

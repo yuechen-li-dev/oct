@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn PrintArraysAndDimensions() -> Void { Print([1,2,3]) Print(5m) Assert.Equal(0,0,"print arrays and dimensions") }

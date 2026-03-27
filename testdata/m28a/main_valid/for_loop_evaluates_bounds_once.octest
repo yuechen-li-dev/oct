@@ -1,0 +1,11 @@
+package MainValid
+[Fact]
+fn ForLoopEvaluatesBoundsOnce() -> Void {
+    var end = 5
+    var sum = 0
+    for i in 0..end {
+        sum = sum + i
+        end = 0
+    }
+    Assert.Equal(10, sum, "for loop evaluates bounds once before iteration")
+}

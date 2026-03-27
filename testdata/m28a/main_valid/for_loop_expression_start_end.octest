@@ -1,0 +1,9 @@
+package MainValid
+[Fact]
+fn ForLoopExpressionStartEnd() -> Void {
+    var sum = 0
+    let start = 2
+    let finish = 5
+    for i in start..finish { sum = sum + i }
+    Assert.Equal(9, sum, "for loop supports expression start and end")
+}

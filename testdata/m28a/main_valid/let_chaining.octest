@@ -1,0 +1,7 @@
+package MainValid
+[Fact]
+fn LetChaining() -> Void {
+    let a = 1
+    let b = a + 2.5
+    Assert.Equal(3.5, b, "let chaining")
+}
