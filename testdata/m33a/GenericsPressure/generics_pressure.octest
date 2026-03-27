@@ -1,0 +1,210 @@
+package GenericsPressure
+
+record PairIntFloat {
+    Left: Int
+    Right: Float
+}
+
+record PairFloatFloat {
+    Left: Float
+    Right: Float
+}
+
+record PairIntInt {
+    Left: Int
+    Right: Int
+}
+
+record IntRange {
+    Min: Int
+    Max: Int
+    Default: Int
+}
+
+record FloatRange {
+    Min: Float
+    Max: Float
+    Default: Float
+}
+
+record IntFilterResult {
+    Values: Int[]
+    Kept: Int
+}
+
+record FloatFilterResult {
+    Values: Float[]
+    Kept: Int
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MaxInt(a: Int, b: Int) -> Int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn ClampInt(value: Int, lo: Int, hi: Int) -> Int {
+    return MaxInt(lo, MinInt(value, hi))
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MaxFloat(a: Float, b: Float) -> Float {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn ClampFloat(value: Float, lo: Float, hi: Float) -> Float {
+    return MaxFloat(lo, MinFloat(value, hi))
+}
+
+fn DoubleInts(values: Int[]) -> Int[] {
+    var out = [0, 0, 0, 0]
+    for i in 0..Len(values) {
+        out[i] = values[i] * 2
+    }
+    return out
+}
+
+fn ScaleFloats(values: Float[], factor: Float) -> Float[] {
+    var out = [0.0, 0.0, 0.0, 0.0]
+    for i in 0..Len(values) {
+        out[i] = values[i] * factor
+    }
+    return out
+}
+
+fn KeepPositiveInts(values: Int[]) -> IntFilterResult {
+    var out = [0, 0, 0, 0]
+    var kept = 0
+    for i in 0..Len(values) {
+        if values[i] > 0 {
+            out[kept] = values[i]
+            kept = kept + 1
+        }
+    }
+    return IntFilterResult { Values: out Kept: kept }
+}
+
+fn KeepPositiveFloats(values: Float[]) -> FloatFilterResult {
+    var out = [0.0, 0.0, 0.0, 0.0]
+    var kept = 0
+    for i in 0..Len(values) {
+        if values[i] > 0.0 {
+            out[kept] = values[i]
+            kept = kept + 1
+        }
+    }
+    return FloatFilterResult { Values: out Kept: kept }
+}
+
+fn SumInts(values: Int[]) -> Int {
+    var total = 0
+    for i in 0..Len(values) {
+        total = total + values[i]
+    }
+    return total
+}
+
+fn SumFloats(values: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(values) {
+        total = total + values[i]
+    }
+    return total
+}
+
+fn CenterInt(value: Int, range: IntRange) -> Int {
+    return value - ((range.Min + range.Max) / 2)
+}
+
+fn CenterFloat(value: Float, range: FloatRange) -> Float {
+    return value - ((range.Min + range.Max) / 2.0)
+}
+
+fn ShiftIntByDelta(value: Int, delta: Int) -> Int {
+    return value + delta
+}
+
+fn ShiftFloatByDelta(value: Float, delta: Float) -> Float {
+    return value + delta
+}
+
+[Fact]
+fn A_ReusablePairsStillReadableAtSmallScale() -> Void {
+    let p1 = PairIntFloat { Left: 2 Right: 3.5 }
+    let p2 = PairFloatFloat { Left: 1.5 Right: 2.5 }
+    let p3 = PairIntInt { Left: 4 Right: 7 }
+
+    Assert.Equal(2, p1.Left, "int/float pair left")
+    Assert.Near(4.0, p2.Left + p2.Right, 0.0001, "float/float pair sum")
+    Assert.Equal(11, p3.Left + p3.Right, "int/int pair sum")
+}
+
+[Fact]
+fn B_SameAlgorithmAcrossIntAndFloat() -> Void {
+    Assert.Equal(3, MinInt(3, 7), "min int")
+    Assert.Equal(7, MaxInt(3, 7), "max int")
+    Assert.Equal(5, ClampInt(9, 1, 5), "clamp int upper bound")
+
+    Assert.Near(1.5, MinFloat(1.5, 7.0), 0.0001, "min float")
+    Assert.Near(7.0, MaxFloat(1.5, 7.0), 0.0001, "max float")
+    Assert.Near(2.0, ClampFloat(2.8, 1.0, 2.0), 0.0001, "clamp float upper bound")
+}
+
+[Fact]
+fn C_ArrayHelpersShowTypeByTypeDuplication() -> Void {
+    let ints = [1, 2, 3, 4]
+    let floats = [1.0, 2.0, 3.0, 4.0]
+
+    let doubled = DoubleInts(ints)
+    let scaled = ScaleFloats(floats, 0.5)
+
+    let keptInts = KeepPositiveInts([0 - 2, 1, 0, 3])
+    let keptFloats = KeepPositiveFloats([0.0 - 1.0, 2.5, 0.0, 4.0])
+
+    Assert.Equal(8, doubled[3], "double ints")
+    Assert.Near(2.0, scaled[3], 0.0001, "scale floats")
+    Assert.Equal(2, keptInts.Kept, "keep positive ints")
+    Assert.Equal(2, keptFloats.Kept, "keep positive floats")
+    Assert.Equal(10, SumInts(ints), "sum ints")
+    Assert.Near(10.0, SumFloats(floats), 0.0001, "sum floats")
+}
+
+[Fact]
+fn D_RecordFamilyDuplicationIsMechanical() -> Void {
+    let i = IntRange { Min: 0 Max: 10 Default: 5 }
+    let f = FloatRange { Min: 0.0 Max: 10.0 Default: 5.0 }
+
+    Assert.Equal(1, CenterInt(6, i), "center int")
+    Assert.Near(1.0, CenterFloat(6.0, f), 0.0001, "center float")
+}
+
+[Fact]
+fn E_ApiSurfaceDuplicationStaysExplicit() -> Void {
+    Assert.Equal(7, ShiftIntByDelta(3, 4), "shift int")
+    Assert.Near(7.0, ShiftFloatByDelta(3.0, 4.0), 0.0001, "shift float")
+}
+
+[Fact]
+fn F_OpenEndedTypeErasedContainerIsNotPursued() -> Void {
+    // This probe intentionally stays explicit.
+    // Trying to emulate an open-ended Any/Box container here would require
+    // manual tag-and-dispatch scaffolding and defeats Oct's explicit model.
+    Assert.True(true, "blocked pattern intentionally not encoded")
+}
