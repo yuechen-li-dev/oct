@@ -14,6 +14,32 @@ Oct v0 focuses on a small, explicit core: native arrays, explicit error handling
 - Control flow: `if`/`else`, `for i in 0..n` with optional `step`, and expression `switch` with literal `case` arms plus required `else`.
 - Built-ins: `Len`, `Abs`, `Sqrt`, `Sin`, `Cos`, `PlotLine`, `PlotScatter`, and `error("message")`.
 
+## M25 package layout + Oct-native manifest foundation
+
+Oct now formalizes package shape around one directory per package.
+
+- A formal package directory contains:
+  - `manifest.oct`
+  - one or more package source files (`*.oct`)
+  - optional package tests (`*.octest`)
+  - optional invalid fixtures under `invalid/*.octfail`
+- Demo/integration consumers continue to live in a `Main/` package.
+
+`manifest.oct` is ordinary Oct source (not JSON/TOML/YAML) and must expose:
+
+- `record PackageManifest { Name, Version, Description, Dependencies }`
+- `record Dependency { Name, VersionRequirement }`
+- `fn Manifest() -> PackageManifest`
+
+Current tooling validates manifest presence and shape for manifested package roots. For M25, dependency entries are metadata declarations only.
+
+M25 intentionally does **not** add package-manager capabilities:
+
+- no registry, publish, install, or update flows
+- no dependency resolution or lockfiles
+- no remote source fetching
+- no feature/target/build-script metadata in manifests
+
 ## Error handling model
 
 Fallible functions declare `! Error` in their signature.
