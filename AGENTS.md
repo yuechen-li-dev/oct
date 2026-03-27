@@ -230,6 +230,7 @@ Default to preserving the boundary:
 
 * If it feels like “this could be written in Oct instead of Go” → it probably should NOT be
 * If it feels like “this test could live in Language/ instead of Go” → it probably SHOULD
+* If something feels like a limitation, friction point, or missing feature → record it in `FEEDBACK.md` instead of working around the rules
 
 When in doubt:
 
