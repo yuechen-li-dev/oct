@@ -349,6 +349,30 @@ func TestBuildFileParsesRangeExpressionsAndForLoops(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesForLoopWithExpressionBoundsAndImplicitStep(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let start = 1 let finish = Len([1, 2, 3]) for i in start..finish + 1 { return i } return 0 }")
+
+	fn := file.Functions[0]
+	forStmt, ok := fn.Body.Statements[2].(ast.ForStmt)
+	if !ok {
+		t.Fatalf("expected third statement to be ForStmt, got %T", fn.Body.Statements[2])
+	}
+
+	rangeExpr, ok := forStmt.Range.(ast.RangeExpr)
+	if !ok {
+		t.Fatalf("expected for range to be RangeExpr, got %T", forStmt.Range)
+	}
+	if _, ok := rangeExpr.Start.(ast.IdentifierExpr); !ok {
+		t.Fatalf("expected range start identifier expression, got %T", rangeExpr.Start)
+	}
+	if _, ok := rangeExpr.End.(ast.BinaryExpr); !ok {
+		t.Fatalf("expected range end binary expression, got %T", rangeExpr.End)
+	}
+	if rangeExpr.Step != nil {
+		t.Fatalf("expected implicit step to be nil, got %T", rangeExpr.Step)
+	}
+}
+
 func TestBuildFileParsesIfElseStatements(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { if true { return 1 } else { return 2 } }")
 	ifStmt, ok := file.Functions[0].Body.Statements[0].(ast.IfStmt)
