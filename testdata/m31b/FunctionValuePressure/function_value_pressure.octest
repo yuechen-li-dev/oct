@@ -1,0 +1,179 @@
+package FunctionValuePressure
+
+enum TransformMode {
+    Identity
+    Square
+    ShiftUp
+}
+
+enum KeepRule {
+    Positive
+    AtLeastFive
+}
+
+enum ResidualModel {
+    Linear
+    Squared
+}
+
+enum NormalizeRule {
+    UnitClamp
+    SymmetricClamp
+}
+
+enum PipelineAttempt {
+    TransformThenFilter
+    FilterThenTransform
+}
+
+record FilterResult {
+    Values: Int[]
+    Kept: Int
+}
+
+record ThresholdRule {
+    Threshold: Float
+    Gain: Float
+}
+
+record AffineRule {
+    Scale: Float
+    Bias: Float
+}
+
+fn MapByMode(values: Int[], mode: TransformMode) -> Int[] {
+    var out = [0, 0, 0, 0, 0]
+    for i in 0..Len(values) {
+        out[i] = switch mode {
+            case TransformMode.Identity => values[i]
+            case TransformMode.Square => values[i] * values[i]
+            case TransformMode.ShiftUp => values[i] + 1
+        }
+    }
+    return out
+}
+
+fn FilterByRule(values: Int[], rule: KeepRule) -> FilterResult {
+    var out = [0, 0, 0, 0, 0]
+    var kept = 0
+    for i in 0..Len(values) {
+        let keep = switch rule {
+            case KeepRule.Positive => values[i] > 0
+            case KeepRule.AtLeastFive => values[i] >= 5
+        }
+        if keep {
+            out[kept] = values[i]
+            kept = kept + 1
+        }
+    }
+    return FilterResult { Values: out Kept: kept }
+}
+
+fn ScoreWithThreshold(x: Float, rule: ThresholdRule) -> Float {
+    if x > rule.Threshold {
+        return x * rule.Gain
+    }
+    return x
+}
+
+fn ApplyAffine(x: Float, rule: AffineRule) -> Float {
+    return x * rule.Scale + rule.Bias
+}
+
+fn OneStep(model: ResidualModel, x: Float, target: Float, dt: Float) -> Float {
+    let residual = switch model {
+        case ResidualModel.Linear => x - target
+        case ResidualModel.Squared => (x - target) * (x - target)
+    }
+    return x - dt * residual
+}
+
+fn Normalize(value: Float, rule: NormalizeRule) -> Float {
+    if rule == NormalizeRule.UnitClamp {
+        if value < 0.0 {
+            return 0.0
+        }
+        if value > 1.0 {
+            return 1.0
+        }
+        return value
+    }
+
+    if value < 0.0 - 1.0 {
+        return 0.0 - 1.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn ApplyPipelineAttempt(values: Int[], mode: TransformMode, rule: KeepRule, attempt: PipelineAttempt) -> FilterResult {
+    if attempt == PipelineAttempt.TransformThenFilter {
+        let transformed = MapByMode(values, mode)
+        return FilterByRule(transformed, rule)
+    }
+    let filtered = FilterByRule(values, rule)
+    let transformed = MapByMode(filtered.Values, mode)
+    return FilterResult { Values: transformed Kept: filtered.Kept }
+}
+
+[Fact]
+fn A_CallbackLikeArrayProcessingRevisited() -> Void {
+    let source = [1, 2, 3, 4, 5]
+    let mapped = MapByMode(source, TransformMode.Square)
+    let kept = FilterByRule(mapped, KeepRule.AtLeastFive)
+
+    Assert.Equal(1, mapped[0], "square at index 0")
+    Assert.Equal(25, mapped[4], "square at index 4")
+    Assert.Equal(3, kept.Kept, "three squared values are at least five")
+    Assert.Equal(9, kept.Values[0], "first kept squared value")
+}
+
+[Fact]
+fn B_ParameterizedBehaviorWithoutCapture() -> Void {
+    let t = ThresholdRule { Threshold: 5.0 Gain: 0.5 }
+    let a = AffineRule { Scale: 2.0 Bias: 0.0 - 3.0 }
+
+    let scoredBelow = ScoreWithThreshold(4.0, t)
+    let scoredAbove = ScoreWithThreshold(8.0, t)
+    let affine = ApplyAffine(5.0, a)
+
+    Assert.Near(4.0, scoredBelow, 0.0001, "below threshold unchanged")
+    Assert.Near(4.0, scoredAbove, 0.0001, "above threshold scaled")
+    Assert.Near(7.0, affine, 0.0001, "affine parameters threaded explicitly")
+}
+
+[Fact]
+fn C_SmallScientificHookPatterns() -> Void {
+    let linear = OneStep(ResidualModel.Linear, 8.0, 2.0, 0.25)
+    let squared = OneStep(ResidualModel.Squared, 8.0, 2.0, 0.25)
+    let normalized = Normalize(1.4, NormalizeRule.UnitClamp)
+
+    Assert.Near(6.5, linear, 0.0001, "linear one-step update")
+    Assert.Near(0.0 - 1.0, squared, 0.0001, "squared one-step update")
+    Assert.Near(1.0, normalized, 0.0001, "unit clamp normalization")
+}
+
+[Fact]
+fn D_BadPatternRiskCheck() -> Void {
+    let source = [1, 2, 3, 4, 5]
+    let a = ApplyPipelineAttempt(source, TransformMode.ShiftUp, KeepRule.Positive, PipelineAttempt.TransformThenFilter)
+    let b = ApplyPipelineAttempt(source, TransformMode.ShiftUp, KeepRule.Positive, PipelineAttempt.FilterThenTransform)
+
+    Assert.Equal(5, a.Kept, "all positive after shift then filter")
+    Assert.Equal(5, b.Kept, "all positive after filter then shift")
+    Assert.Equal(2, a.Values[0], "transform then filter keeps shifted first value")
+    Assert.Equal(2, b.Values[0], "filter then transform currently needs explicit two-stage glue")
+}
+
+[Fact]
+fn E_FeaturePressureVsLibraryPressure() -> Void {
+    let source = [1, 2, 3, 4, 5]
+
+    let mapIdentity = MapByMode(source, TransformMode.Identity)
+    let mapShifted = MapByMode(source, TransformMode.ShiftUp)
+
+    Assert.Equal(1, mapIdentity[0], "identity map baseline")
+    Assert.Equal(6, mapShifted[4], "shift map baseline")
+}
