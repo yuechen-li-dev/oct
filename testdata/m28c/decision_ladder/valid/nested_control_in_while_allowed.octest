@@ -1,0 +1,19 @@
+package DecisionLadderContracts
+
+[Fact]
+fn NestedControlInWhileAllowed() -> Void {
+    Assert.Equal(1, EvaluateNestedWhile(), "nested control in while should remain valid")
+}
+
+fn EvaluateNestedWhile() -> Int {
+    var x = 0
+    while x < 1 {
+        if true {
+            if false {
+                return 2
+            }
+            x = 1
+        }
+    }
+    return x
+}

@@ -1,0 +1,16 @@
+package DecisionLadderContracts
+
+[Fact]
+fn NestedThenIfAllowed() -> Void {
+    Assert.Equal(1, EvaluateNestedThen(), "nested if in then branch should be allowed")
+}
+
+fn EvaluateNestedThen() -> Int {
+    if true {
+        if true {
+            return 1
+        }
+        return 2
+    }
+    return 3
+}

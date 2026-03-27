@@ -1,0 +1,15 @@
+expect error: "nested decision-ladder `if/else` is not allowed in Oct by design. Use a condition-switch expression instead:"
+
+package Main
+
+fn Main() -> Int {
+    if true {
+        return 1
+    } else {
+        if false {
+            return 2
+        } else {
+            return 3
+        }
+    }
+}
