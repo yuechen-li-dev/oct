@@ -1,0 +1,11 @@
+expect error: "expected expression"
+
+package Main
+
+fn ApplyOne(x: Int, f: fn(Int) -> Int) -> Int {
+    return f(x)
+}
+
+fn Main() -> Int {
+    return ApplyOne(4, fn(y: Int) -> Int { return y * 2 })
+}

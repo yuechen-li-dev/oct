@@ -17,56 +17,56 @@ const (
 	plotHeight = 4 * vg.Inch
 )
 
-func (i interpreter) evalPlotBuiltinCallExpr(env *environment, pkgName string, expr ast.CallExpr) (Value, error) {
-	if len(expr.Arguments) != 3 {
-		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' expects 3 arguments", expr.Callee)
+func (i interpreter) evalPlotBuiltinCallExpr(env *environment, pkgName string, callee string, arguments []ast.Expr) (Value, error) {
+	if len(arguments) != 3 {
+		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' expects 3 arguments", callee)
 	}
 
-	xResult, err := i.evalExpr(env, pkgName, expr.Arguments[0])
+	xResult, err := i.evalExpr(env, pkgName, arguments[0])
 	if err != nil {
 		return Value{}, err
 	}
 	if xResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 1", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 1", callee)
 	}
-	yResult, err := i.evalExpr(env, pkgName, expr.Arguments[1])
+	yResult, err := i.evalExpr(env, pkgName, arguments[1])
 	if err != nil {
 		return Value{}, err
 	}
 	if yResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 2", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 2", callee)
 	}
-	pathResult, err := i.evalExpr(env, pkgName, expr.Arguments[2])
+	pathResult, err := i.evalExpr(env, pkgName, arguments[2])
 	if err != nil {
 		return Value{}, err
 	}
 	if pathResult.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 3", expr.Callee)
+		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached function '%s' argument 3", callee)
 	}
 
 	if pathResult.value.Kind != ValueString {
-		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' argument 3 expects String, got %s", expr.Callee, pathResult.value.Kind)
+		return Value{}, fmt.Errorf("runtime invariant violation: function '%s' argument 3 expects String, got %s", callee, pathResult.value.Kind)
 	}
 	if !strings.HasSuffix(pathResult.value.Text, ".png") {
 		return Value{}, fmt.Errorf("runtime error: plot output path must end with .png")
 	}
 
-	xs, err := toPlotData(expr.Callee, xResult.value, "x")
+	xs, err := toPlotData(callee, xResult.value, "x")
 	if err != nil {
 		return Value{}, err
 	}
-	ys, err := toPlotData(expr.Callee, yResult.value, "y")
+	ys, err := toPlotData(callee, yResult.value, "y")
 	if err != nil {
 		return Value{}, err
 	}
 	if len(xs) == 0 || len(ys) == 0 {
-		return Value{}, fmt.Errorf("runtime error: function '%s' requires non-empty x and y arrays", expr.Callee)
+		return Value{}, fmt.Errorf("runtime error: function '%s' requires non-empty x and y arrays", callee)
 	}
 	if len(xs) != len(ys) {
-		return Value{}, fmt.Errorf("runtime error: function '%s' requires x and y arrays of equal length", expr.Callee)
+		return Value{}, fmt.Errorf("runtime error: function '%s' requires x and y arrays of equal length", callee)
 	}
 
-	if err := writePlot(expr.Callee, xs, ys, pathResult.value.Text); err != nil {
+	if err := writePlot(callee, xs, ys, pathResult.value.Text); err != nil {
 		return Value{}, err
 	}
 

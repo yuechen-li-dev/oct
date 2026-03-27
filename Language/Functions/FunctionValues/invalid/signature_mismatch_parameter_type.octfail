@@ -1,0 +1,15 @@
+expect error: "function 'ApplyOne' argument 2 expects fn(Int) -> Int, got fn(Float) -> Int"
+
+package Main
+
+fn ApplyOne(x: Int, f: fn(Int) -> Int) -> Int {
+    return f(x)
+}
+
+fn WrongKind(x: Float) -> Int {
+    return 1
+}
+
+fn Main() -> Int {
+    return ApplyOne(4, WrongKind)
+}

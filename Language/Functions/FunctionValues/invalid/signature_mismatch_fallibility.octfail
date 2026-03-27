@@ -1,0 +1,18 @@
+expect error: "function 'ApplyOne' argument 2 expects fn(Int) -> Int, got fn(Int) -> Int ! Error"
+
+package Main
+
+fn ApplyOne(x: Int, f: fn(Int) -> Int) -> Int {
+    return f(x)
+}
+
+fn MaybeDouble(x: Int) -> Int ! Error {
+    if x < 0 {
+        return error("negative")
+    }
+    return x * 2
+}
+
+fn Main() -> Int {
+    return ApplyOne(4, MaybeDouble)
+}

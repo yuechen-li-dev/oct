@@ -1,0 +1,8 @@
+expect error: "call target must be a function value, got Int"
+
+package Main
+
+fn Main() -> Int {
+    let x = 3
+    return x(4)
+}

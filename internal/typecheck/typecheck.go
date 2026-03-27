@@ -26,12 +26,14 @@ const (
 )
 
 type Type struct {
-	Base      BaseType
-	Name      string
-	Dimension dimension.Dimension
-	IsArray   bool
-	IsVector  bool
-	IsMatrix  bool
+	Base              BaseType
+	Name              string
+	Dimension         dimension.Dimension
+	IsArray           bool
+	IsVector          bool
+	IsMatrix          bool
+	IsFunction        bool
+	FunctionSignature string
 }
 
 func (t Type) String() string {
@@ -44,6 +46,9 @@ func (t Type) String() string {
 	}
 	if t.IsArray {
 		return base + "[]"
+	}
+	if t.IsFunction {
+		return t.FunctionSignature
 	}
 	if t.IsVector {
 		return "Vector<" + base + ">"
@@ -65,6 +70,22 @@ type functionSignature struct {
 	isFallible bool
 }
 
+func (s functionSignature) asType() Type {
+	return Type{IsFunction: true, FunctionSignature: s.String()}
+}
+
+func (s functionSignature) String() string {
+	parts := make([]string, 0, len(s.parameters))
+	for _, parameter := range s.parameters {
+		parts = append(parts, parameter.String())
+	}
+	result := "fn(" + strings.Join(parts, ", ") + ") -> " + s.returnType.String()
+	if s.isFallible {
+		result += " ! Error"
+	}
+	return result
+}
+
 type functionContext struct {
 	name       string
 	returnType Type
@@ -74,10 +95,11 @@ type functionContext struct {
 
 func Check(file ast.File) error {
 	checker := checker{
-		functions: make(map[string]functionSignature),
-		records:   make(map[string]recordInfo),
-		enums:     make(map[string]enumInfo),
-		typeNames: make(map[string]struct{}),
+		functions:     make(map[string]functionSignature),
+		functionTypes: make(map[string]functionSignature),
+		records:       make(map[string]recordInfo),
+		enums:         make(map[string]enumInfo),
+		typeNames:     make(map[string]struct{}),
 	}
 	return checker.checkFile(file)
 }
@@ -88,6 +110,7 @@ func CheckProgram(program project.Program) error {
 		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
 		chk := checker{
 			functions:                    make(map[string]functionSignature),
+			functionTypes:                make(map[string]functionSignature),
 			records:                      make(map[string]recordInfo),
 			enums:                        make(map[string]enumInfo),
 			typeNames:                    make(map[string]struct{}),
@@ -159,6 +182,7 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 
 type checker struct {
 	functions                    map[string]functionSignature
+	functionTypes                map[string]functionSignature
 	records                      map[string]recordInfo
 	enums                        map[string]enumInfo
 	typeNames                    map[string]struct{}
@@ -666,10 +690,15 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return ExprType{ValueType: valueType}, nil
 	case ast.IdentifierExpr:
 		valueBinding, ok := scope.lookup(node.Name)
-		if !ok {
-			return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
+		if ok {
+			return ExprType{ValueType: valueBinding.valueType}, nil
 		}
-		return ExprType{ValueType: valueBinding.valueType}, nil
+		if signature, exists := c.functions[node.Name]; exists {
+			functionType := signature.asType()
+			c.functionTypes[functionType.FunctionSignature] = signature
+			return ExprType{ValueType: functionType}, nil
+		}
+		return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
 	case ast.CallExpr:
 		return c.checkCallExpr(scope, node, ctx)
 	case ast.RecordLiteralExpr:
@@ -723,6 +752,16 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			return ExprType{}, fmt.Errorf("cannot index non-indexable value of type %s", targetType.ValueType)
 		}
 	case ast.FieldAccessExpr:
+		if pkgName, symbol, ok := c.flattenQualifiedFunctionName(node); ok {
+			if imported, pkgExists := c.importedPackages[pkgName]; pkgExists {
+				if signature, fnExists := imported.functions[symbol]; fnExists {
+					qualified := c.qualifyImportedSignature(pkgName, signature)
+					functionType := qualified.asType()
+					c.functionTypes[functionType.FunctionSignature] = qualified
+					return ExprType{ValueType: functionType}, nil
+				}
+			}
+		}
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumExists := c.lookupEnum(identifier.Name); enumExists {
 				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
@@ -1249,13 +1288,14 @@ func hasAllEnumVariantsCovered(info enumInfo, seen map[string]struct{}) bool {
 }
 
 func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
-	if strings.HasPrefix(expr.Callee, "Assert.") {
+	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
+	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
 		if !ctx.isTestFile {
 			return ExprType{}, fmt.Errorf("Assert is only available in .octest files")
 		}
-		return c.checkAssertCallExpr(scope, expr, ctx)
+		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
 	}
-	if expr.Callee == "error" {
+	if hasDirectName && calleeName == "error" {
 		if len(expr.Arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
 		}
@@ -1264,49 +1304,55 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
-	if builtin.IsName(expr.Callee) {
-		return c.checkBuiltinCallExpr(scope, expr, ctx)
+	if hasDirectName && builtin.IsName(calleeName) {
+		return c.checkBuiltinCallExpr(scope, calleeName, expr.Arguments, ctx)
 	}
 
-	lookupName := expr.Callee
-	lookupTable := c.functions
-	calleePackage := ""
-	if dot := strings.Index(expr.Callee, "."); dot >= 0 {
-		pkgName := expr.Callee[:dot]
-		symbol := expr.Callee[dot+1:]
-		imported, ok := c.importedPackages[pkgName]
-		if !ok {
-			return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
+	if hasDirectName {
+		if signature, ok := c.lookupNamedFunctionSignature(calleeName); ok {
+			return c.checkFunctionCallArguments(calleeName, signature, scope, expr.Arguments, ctx)
 		}
-		lookupName = symbol
-		lookupTable = imported.functions
-		calleePackage = pkgName
-	}
-
-	signature, ok := lookupTable[lookupName]
-	if !ok {
-		if dot := strings.Index(expr.Callee, "."); dot >= 0 {
-			pkgName := expr.Callee[:dot]
-			symbol := expr.Callee[dot+1:]
-			if imported, ok := c.importedPackages[pkgName]; ok {
-				if _, exists := imported.records[symbol]; exists {
-					return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
-				}
-				if _, exists := imported.enums[symbol]; exists {
-					return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
-				}
+		if dot := strings.Index(calleeName, "."); dot >= 0 {
+			pkgName := calleeName[:dot]
+			symbol := calleeName[dot+1:]
+			imported, ok := c.importedPackages[pkgName]
+			if !ok {
+				return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
+			}
+			if _, exists := imported.records[symbol]; exists {
+				return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
+			}
+			if _, exists := imported.enums[symbol]; exists {
+				return ExprType{}, fmt.Errorf("package-qualified type '%s.%s' used where a function is required", pkgName, symbol)
 			}
 			return ExprType{}, fmt.Errorf("package '%s' has no function '%s'", pkgName, symbol)
 		}
-		return ExprType{}, fmt.Errorf("undefined function: %s", expr.Callee)
 	}
-	if calleePackage != "" {
-		signature = c.qualifyImportedSignature(calleePackage, signature)
+	calleeType, err := c.checkExpr(scope, expr.Callee, ctx)
+	if err != nil {
+		return ExprType{}, err
 	}
-	if len(expr.Arguments) != len(signature.parameters) {
-		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", expr.Callee, len(signature.parameters), len(expr.Arguments))
+	if calleeType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	for i, argumentExpr := range expr.Arguments {
+	if !calleeType.ValueType.IsFunction {
+		if hasDirectName {
+			return ExprType{}, fmt.Errorf("undefined function: %s", calleeName)
+		}
+		return ExprType{}, fmt.Errorf("call target must be a function value, got %s", calleeType.ValueType)
+	}
+	signature, ok := c.functionTypes[calleeType.ValueType.FunctionSignature]
+	if !ok {
+		return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", calleeType.ValueType.FunctionSignature)
+	}
+	return c.checkFunctionCallArguments(calleeType.ValueType.FunctionSignature, signature, scope, expr.Arguments, ctx)
+}
+
+func (c checker) checkFunctionCallArguments(displayName string, signature functionSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != len(signature.parameters) {
+		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
+	}
+	for i, argumentExpr := range arguments {
 		argumentType, err := c.checkExpr(scope, argumentExpr, ctx)
 		if err != nil {
 			return ExprType{}, err
@@ -1318,73 +1364,113 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 			return ExprType{}, fmt.Errorf("Void result cannot be used as a value")
 		}
 		if !isAssignable(argumentType.ValueType, signature.parameters[i]) {
-			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", expr.Callee, i+1, signature.parameters[i], argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", displayName, i+1, signature.parameters[i], argumentType.ValueType)
 		}
 	}
 	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
 }
 
-func (c checker) checkAssertCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
-	voidType := ExprType{ValueType: Type{Base: BaseTypeVoid}}
-	switch expr.Callee {
-	case "Assert.True", "Assert.False":
-		if len(expr.Arguments) != 2 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", expr.Callee, len(expr.Arguments))
+func (c checker) lookupNamedFunctionSignature(name string) (functionSignature, bool) {
+	lookupName := name
+	lookupTable := c.functions
+	calleePackage := ""
+	if dot := strings.Index(name, "."); dot >= 0 {
+		pkgName := name[:dot]
+		symbol := name[dot+1:]
+		imported, ok := c.importedPackages[pkgName]
+		if !ok {
+			return functionSignature{}, false
 		}
-		condType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		lookupName = symbol
+		lookupTable = imported.functions
+		calleePackage = pkgName
+	}
+	signature, ok := lookupTable[lookupName]
+	if !ok {
+		return functionSignature{}, false
+	}
+	if calleePackage != "" {
+		signature = c.qualifyImportedSignature(calleePackage, signature)
+	}
+	return signature, true
+}
+
+func flattenDirectCallName(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		left, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", false
+		}
+		return left.Name + "." + node.Field, true
+	default:
+		return "", false
+	}
+}
+
+func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	voidType := ExprType{ValueType: Type{Base: BaseTypeVoid}}
+	switch callee {
+	case "Assert.True", "Assert.False":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		condType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if condType.ValueType != (Type{Base: BaseTypeBool}) {
-			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bool, got %s", expr.Callee, condType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bool, got %s", callee, condType.ValueType)
 		}
-		msgType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		msgType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if msgType.ValueType != (Type{Base: BaseTypeString}) {
-			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", expr.Callee, msgType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, msgType.ValueType)
 		}
 		return voidType, nil
 	case "Assert.Equal":
-		if len(expr.Arguments) != 3 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", expr.Callee, len(expr.Arguments))
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
 		}
-		expectedType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		expectedType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
-		actualType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		actualType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if !isAssignable(actualType.ValueType, expectedType.ValueType) || !isAssignable(expectedType.ValueType, actualType.ValueType) {
-			return ExprType{}, fmt.Errorf("function '%s' arguments 1 and 2 must have the same type", expr.Callee)
+			return ExprType{}, fmt.Errorf("function '%s' arguments 1 and 2 must have the same type", callee)
 		}
 		if !supportsAssertEqualType(expectedType.ValueType) {
 			return ExprType{}, fmt.Errorf("Assert.Equal does not support type %s in M24a", expectedType.ValueType)
 		}
-		msgType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+		msgType, err := c.checkExpr(scope, arguments[2], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if msgType.ValueType != (Type{Base: BaseTypeString}) {
-			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", expr.Callee, msgType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, msgType.ValueType)
 		}
 		return voidType, nil
 	case "Assert.Near":
-		if len(expr.Arguments) != 4 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", expr.Callee, len(expr.Arguments))
+		if len(arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", callee, len(arguments))
 		}
-		expectedType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		expectedType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
-		actualType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+		actualType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
-		toleranceType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+		toleranceType, err := c.checkExpr(scope, arguments[2], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -1398,16 +1484,16 @@ func (c checker) checkAssertCallExpr(scope *scope, expr ast.CallExpr, ctx functi
 		if expectedType.ValueType.Dimension != actualType.ValueType.Dimension || expectedType.ValueType.Dimension != toleranceType.ValueType.Dimension {
 			return ExprType{}, fmt.Errorf("Assert.Near requires matching dimensions for expected, actual, and tolerance")
 		}
-		msgType, err := c.checkExpr(scope, expr.Arguments[3], ctx)
+		msgType, err := c.checkExpr(scope, arguments[3], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if msgType.ValueType != (Type{Base: BaseTypeString}) {
-			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", expr.Callee, msgType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", callee, msgType.ValueType)
 		}
 		return voidType, nil
 	default:
-		return ExprType{}, fmt.Errorf("unsupported Assert function '%s'", expr.Callee)
+		return ExprType{}, fmt.Errorf("unsupported Assert function '%s'", callee)
 	}
 }
 
@@ -1457,19 +1543,19 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 	return valueType
 }
 
-func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
-	if expr.Callee == "PlotLine" || expr.Callee == "PlotScatter" {
-		return c.checkPlotBuiltinCallExpr(scope, expr, ctx)
+func (c checker) checkBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "PlotLine" || callee == "PlotScatter" {
+		return c.checkPlotBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if expr.Callee == "Append" {
-		return c.checkAppendBuiltinCallExpr(scope, expr, ctx)
-	}
-
-	if len(expr.Arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", expr.Callee, len(expr.Arguments))
+	if callee == "Append" {
+		return c.checkAppendBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
 
-	argumentType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+
+	argumentType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
@@ -1477,7 +1563,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
 
-	switch expr.Callee {
+	switch callee {
 	case "Print":
 		if isPrintableType(argumentType.ValueType) {
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -1511,23 +1597,23 @@ func (c checker) checkBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx funct
 		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: argumentType.ValueType.Dimension.Sqrt()}}, nil
 	case "Sin", "Cos":
 		if !isNumericScalar(argumentType.ValueType) {
-			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", expr.Callee, argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
 		}
 		if !argumentType.ValueType.Dimension.IsDimensionless() {
-			return ExprType{}, fmt.Errorf("%s requires dimensionless input", expr.Callee)
+			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
-		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", expr.Callee)
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
 }
 
-func (c checker) checkAppendBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
-	if len(expr.Arguments) != 2 {
-		return ExprType{}, fmt.Errorf("function 'Append' expects 2 arguments, got %d", len(expr.Arguments))
+func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
 	}
 
-	arrayType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	arrayType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
@@ -1538,7 +1624,7 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx
 		return ExprType{}, fmt.Errorf("Append requires array as first argument")
 	}
 
-	elementType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+	elementType, err := c.checkExpr(scope, arguments[1], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
@@ -1568,34 +1654,34 @@ func isPrintableType(valueType Type) bool {
 	return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString || valueType.Base == BaseTypeError
 }
 
-func (c checker) checkPlotBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
-	if len(expr.Arguments) != 3 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", expr.Callee, len(expr.Arguments))
+func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 3 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
 	}
 
-	xType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+	xType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
 	if xType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if err := requirePlotArrayType(expr.Callee, 1, xType.ValueType); err != nil {
+	if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
 		return ExprType{}, err
 	}
 
-	yType, err := c.checkExpr(scope, expr.Arguments[1], ctx)
+	yType, err := c.checkExpr(scope, arguments[1], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
 	if yType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if err := requirePlotArrayType(expr.Callee, 2, yType.ValueType); err != nil {
+	if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
 		return ExprType{}, err
 	}
 
-	pathType, err := c.checkExpr(scope, expr.Arguments[2], ctx)
+	pathType, err := c.checkExpr(scope, arguments[2], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
@@ -1603,7 +1689,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, expr ast.CallExpr, ctx f
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
 	if pathType.ValueType != (Type{Base: BaseTypeString}) {
-		return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", expr.Callee, pathType.ValueType)
+		return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, pathType.ValueType)
 	}
 
 	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -1762,6 +1848,9 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 }
 
 func (c checker) resolveReturnType(typeRef ast.TypeRef) (Type, error) {
+	if typeRef.Function != nil {
+		return Type{}, fmt.Errorf("function return types are not supported in M32")
+	}
 	return c.resolveType(typeRef, true)
 }
 
@@ -1770,6 +1859,41 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
+	if typeRef.Function != nil {
+		functionRef := typeRef.Function
+		if functionRef.ReturnType.Function != nil {
+			return Type{}, fmt.Errorf("function types cannot return function types in M32")
+		}
+		parameters := make([]Type, 0, len(functionRef.Parameters))
+		for _, parameterRef := range functionRef.Parameters {
+			parameterType, err := c.resolveType(parameterRef, false)
+			if err != nil {
+				return Type{}, err
+			}
+			parameters = append(parameters, parameterType)
+		}
+		returnType, err := c.resolveType(functionRef.ReturnType, false)
+		if err != nil {
+			return Type{}, err
+		}
+		signature := functionSignature{parameters: parameters, returnType: returnType, isFallible: functionRef.IsFallible}
+		if functionRef.IsFallible {
+			if functionRef.ErrorType == nil {
+				return Type{}, fmt.Errorf("fallible function type must specify Error")
+			}
+			errorType, err := c.resolveType(*functionRef.ErrorType, false)
+			if err != nil {
+				return Type{}, err
+			}
+			if errorType != (Type{Base: BaseTypeError}) {
+				return Type{}, fmt.Errorf("fallible function type must use Error")
+			}
+		}
+		key := signature.String()
+		c.functionTypes[key] = signature
+		return Type{IsFunction: true, FunctionSignature: key}, nil
+	}
+
 	if typeRef.VectorOf != nil || typeRef.MatrixOf != nil {
 		var elementRef ast.TypeRef
 		isVector := typeRef.VectorOf != nil
@@ -2085,6 +2209,14 @@ func (c checker) flattenEnumTypeName(expr ast.Expr) (string, bool) {
 		return "", false
 	}
 	return pkgIdentifier.Name + "." + fieldAccess.Field, true
+}
+
+func (c checker) flattenQualifiedFunctionName(expr ast.FieldAccessExpr) (string, string, bool) {
+	pkgIdentifier, ok := expr.Target.(ast.IdentifierExpr)
+	if !ok {
+		return "", "", false
+	}
+	return pkgIdentifier.Name, expr.Field, true
 }
 
 func splitQualifiedTypeName(typeName string) (string, string, bool) {

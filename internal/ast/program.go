@@ -63,6 +63,14 @@ type TypeRef struct {
 	IsArray   bool
 	VectorOf  *TypeRef
 	MatrixOf  *TypeRef
+	Function  *FunctionTypeRef
+}
+
+type FunctionTypeRef struct {
+	Parameters []TypeRef
+	ReturnType TypeRef
+	IsFallible bool
+	ErrorType  *TypeRef
 }
 
 type Block struct {
@@ -204,7 +212,7 @@ type IdentifierExpr struct {
 func (IdentifierExpr) exprNode() {}
 
 type CallExpr struct {
-	Callee    string
+	Callee    Expr
 	Arguments []Expr
 }
 
