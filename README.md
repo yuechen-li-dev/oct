@@ -14,6 +14,15 @@ Oct v0 focuses on a small, explicit core: native arrays, explicit error handling
 - Control flow: `if`/`else`, `for i in 0..n` with optional `step`, and expression `switch` with literal `case` arms plus required `else`.
 - Built-ins: `Len`, `Abs`, `Sqrt`, `Sin`, `Cos`, `PlotLine`, `PlotScatter`, and `error("message")`.
 
+### Loop model (M27)
+
+- `for` is for structured counted iteration over integer progressions:
+  - `for i in start..end` where `start` and `end` are `Int` expressions.
+  - `for i in start..end step s` where `s` is an `Int` expression.
+  - range semantics are inclusive lower bound / exclusive upper bound.
+  - `step` is optional (defaults to `1`) and must be positive in v0.
+- `while` remains for state-driven looping (convergence/retry/sentinel patterns).
+
 ## M25 package layout + Oct-native manifest foundation
 
 Oct now formalizes package shape around one directory per package.

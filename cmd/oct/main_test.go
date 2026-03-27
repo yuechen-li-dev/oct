@@ -223,6 +223,31 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 			want: "0\n",
 		},
 		{
+			name: "for loop supports dynamic upper bound",
+			source: "fn Main() -> Int {\n" +
+				"    let xs = [1, 2, 3]\n" +
+				"    var sum = 0\n" +
+				"    for i in 0..Len(xs) {\n" +
+				"        sum = sum + xs[i]\n" +
+				"    }\n" +
+				"    return sum\n" +
+				"}\n",
+			want: "6\n",
+		},
+		{
+			name: "for loop supports expression start and end",
+			source: "fn Main() -> Int {\n" +
+				"    var sum = 0\n" +
+				"    let start = 2\n" +
+				"    let finish = 5\n" +
+				"    for i in start..finish {\n" +
+				"        sum = sum + i\n" +
+				"    }\n" +
+				"    return sum\n" +
+				"}\n",
+			want: "9\n",
+		},
+		{
 			name: "for loop with step returns first iteration",
 			source: "fn Main() -> Int {\n" +
 				"    for i in 0..10 step 3 {\n" +
@@ -231,6 +256,42 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 				"    return 0\n" +
 				"}\n",
 			want: "0\n",
+		},
+		{
+			name: "for loop with step sums even numbers",
+			source: "fn Main() -> Int {\n" +
+				"    var sum = 0\n" +
+				"    for i in 0..10 step 2 {\n" +
+				"        sum = sum + i\n" +
+				"    }\n" +
+				"    return sum\n" +
+				"}\n",
+			want: "20\n",
+		},
+		{
+			name: "for loop evaluates bounds once before iteration",
+			source: "fn Main() -> Int {\n" +
+				"    var end = 5\n" +
+				"    var sum = 0\n" +
+				"    for i in 0..end {\n" +
+				"        sum = sum + i\n" +
+				"        end = 0\n" +
+				"    }\n" +
+				"    return sum\n" +
+				"}\n",
+			want: "10\n",
+		},
+		{
+			name: "counted loop ergonomics without while index mutation",
+			source: "fn Main() -> Int {\n" +
+				"    let values = [3, 1, 4, 1]\n" +
+				"    var weighted = 0\n" +
+				"    for i in 0..Len(values) {\n" +
+				"        weighted = weighted + (i + 1) * values[i]\n" +
+				"    }\n" +
+				"    return weighted\n" +
+				"}\n",
+			want: "21\n",
 		},
 		{
 			name: "loop local scope",
@@ -754,6 +815,16 @@ func TestRunCommandRejectsInvalidRanges(t *testing.T) {
 				"    return 0\n" +
 				"}\n",
 			wantMessage: "run failed: function Main: for i: range step must be positive, got 0",
+		},
+		{
+			name: "negative step",
+			source: "fn Main() -> Int {\n" +
+				"    for i in 1..10 step (0 - 1) {\n" +
+				"        return i\n" +
+				"    }\n" +
+				"    return 0\n" +
+				"}\n",
+			wantMessage: "run failed: function Main: for i: range step must be positive, got -1",
 		},
 		{
 			name: "reverse range",

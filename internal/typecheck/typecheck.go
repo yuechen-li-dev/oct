@@ -2,6 +2,7 @@ package typecheck
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"oct/internal/ast"
@@ -838,8 +839,8 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			if stepType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("range step must be Int, got %s", stepType.ValueType)
 			}
-			if integerLiteral, ok := node.Step.(ast.IntegerLiteral); ok && integerLiteral.Value == "0" && integerLiteral.Dimension.IsDimensionless() {
-				return ExprType{}, fmt.Errorf("range step must be positive, got 0")
+			if stepValue, ok := staticIntegerValue(node.Step); ok && stepValue <= 0 {
+				return ExprType{}, fmt.Errorf("range step must be positive, got %d", stepValue)
 			}
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeRange}}, nil
@@ -871,6 +872,45 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
+}
+
+func staticIntegerValue(expr ast.Expr) (int64, bool) {
+	switch node := expr.(type) {
+	case ast.IntegerLiteral:
+		if !node.Dimension.IsDimensionless() {
+			return 0, false
+		}
+		value, err := strconv.ParseInt(node.Value, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return value, true
+	case ast.ParenExpr:
+		return staticIntegerValue(node.Inner)
+	case ast.BinaryExpr:
+		left, ok := staticIntegerValue(node.Left)
+		if !ok {
+			return 0, false
+		}
+		right, ok := staticIntegerValue(node.Right)
+		if !ok {
+			return 0, false
+		}
+		switch node.Operator {
+		case "+":
+			return left + right, true
+		case "-":
+			return left - right, true
+		case "*":
+			return left * right, true
+		case "/":
+			if right == 0 {
+				return 0, false
+			}
+			return left / right, true
+		}
+	}
+	return 0, false
 }
 
 func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext) (ExprType, error) {

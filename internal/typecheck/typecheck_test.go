@@ -48,6 +48,14 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "fn Main() -> Int { let i = 9 for i in 0..1 { return i } return i }",
 		},
 		{
+			name: "for loop with expression bounds and implicit step",
+			src:  "fn Main() -> Int { let xs = [1, 2, 3] var sum = 0 for i in 0..Len(xs) { sum = sum + xs[i] } return sum }",
+		},
+		{
+			name: "for loop with expression step",
+			src:  "fn Main() -> Int { var sum = 0 let stride = 2 for i in 0..10 step stride { sum = sum + i } return sum }",
+		},
+		{
 			name: "fallible propagation",
 			src:  "fn Safe() -> Int ! Error { return 5 } fn Main() -> Int ! Error { let x = Safe()? return x }",
 		},
@@ -168,7 +176,10 @@ func TestCheckRejectsInvalidIndexing(t *testing.T) {
 
 func TestCheckRejectsInvalidRanges(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1.0..10 { return i } return 0 }", "function Main: for i: range start must be Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..10.0 { return i } return 0 }", "function Main: for i: range end must be Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..10 step 1.0 { return i } return 0 }", "function Main: for i: range step must be Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1..10 step 0 { return i } return 0 }", "function Main: for i: range step must be positive, got 0")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1..10 step (0 - 1) { return i } return 0 }", "function Main: for i: range step must be positive, got -1")
 }
 
 func TestCheckRejectsLoopVariableOutsideLoop(t *testing.T) {
