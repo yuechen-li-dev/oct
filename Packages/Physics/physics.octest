@@ -1,0 +1,15 @@
+package Physics
+
+[Fact]
+fn PickMethodSelectsEulerForTrue() -> Void {
+    let method = PickMethod(true)
+    Assert.True(method == Method.Euler, "expected Euler when flag=true")
+}
+
+[Theory]
+[InlineData(true, true)]
+[InlineData(false, false)]
+fn PickMethodSelectsExpectedMethod(flag: Bool, expectEuler: Bool) -> Void {
+    let method = PickMethod(flag)
+    Assert.True((method == Method.Euler) == expectEuler, "unexpected method selection")
+}
