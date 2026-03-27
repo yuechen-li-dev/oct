@@ -62,7 +62,11 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 	if filepath.Base(packageDir) == entryFile.Package {
 		root = filepath.Dir(packageDir)
 	}
-	builder := builder{root: root, includeTests: includeTests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+	requireManifests, err := detectManifestedRoot(root)
+	if err != nil {
+		return Program{}, err
+	}
+	builder := builder{root: root, includeTests: includeTests, requireManifests: requireManifests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
@@ -70,7 +74,11 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 }
 
 func loadFromDir(root string, includeTests bool) (Program, error) {
-	builder := builder{root: root, includeTests: includeTests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+	requireManifests, err := detectManifestedRoot(root)
+	if err != nil {
+		return Program{}, err
+	}
+	builder := builder{root: root, includeTests: includeTests, requireManifests: requireManifests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
 	mainDir := filepath.Join(root, "Main")
 	if _, err := os.Stat(mainDir); err == nil {
 		if err := builder.loadPackage("Main", mainDir); err != nil {
@@ -95,11 +103,12 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 }
 
 type builder struct {
-	root         string
-	includeTests bool
-	packages     map[string]Package
-	visiting     map[string]struct{}
-	visited      map[string]struct{}
+	root             string
+	includeTests     bool
+	requireManifests bool
+	packages         map[string]Package
+	visiting         map[string]struct{}
+	visited          map[string]struct{}
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
@@ -118,6 +127,9 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	}
 	if len(files) == 0 {
 		return fmt.Errorf("unknown package '%s'", packageName)
+	}
+	if err := b.validateManifest(packageName, directory); err != nil {
+		return err
 	}
 
 	pkg := Package{Name: packageName, Directory: directory}
@@ -210,6 +222,9 @@ func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 		if entry.IsDir() {
 			continue
 		}
+		if entry.Name() == "manifest.oct" {
+			continue
+		}
 		ext := filepath.Ext(entry.Name())
 		if ext != ".oct" && (!includeTests || ext != ".octest") {
 			continue
@@ -226,6 +241,47 @@ func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func (b *builder) validateManifest(packageName string, directory string) error {
+	if !b.requireManifests {
+		return nil
+	}
+	manifestPath := filepath.Join(directory, "manifest.oct")
+	if _, err := os.Stat(manifestPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("package manifest missing")
+		}
+		return fmt.Errorf("read package manifest %s: %w", manifestPath, err)
+	}
+	manifestFile, err := parseFile(manifestPath)
+	if err != nil {
+		return err
+	}
+	if err := validateManifestFile(packageName, manifestFile); err != nil {
+		return err
+	}
+	return nil
+}
+
+func detectManifestedRoot(root string) (bool, error) {
+	if _, err := os.Stat(filepath.Join(root, "manifest.oct")); err == nil {
+		return true, nil
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false, fmt.Errorf("read package root %s: %w", root, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, entry.Name(), "manifest.oct")
+		if _, err := os.Stat(path); err == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func parseFile(path string) (ast.File, error) {

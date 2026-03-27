@@ -270,6 +270,37 @@ func writePkgFile(t *testing.T, root string, pkg string, name string, body strin
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
+	manifestPath := filepath.Join(dir, "manifest.oct")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		manifest := strings.Join([]string{
+			"package Manifest",
+			"",
+			"record PackageManifest {",
+			"    Name: String",
+			"    Version: String",
+			"    Description: String",
+			"    Dependencies: Dependency[]",
+			"}",
+			"",
+			"record Dependency {",
+			"    Name: String",
+			"    VersionRequirement: String",
+			"}",
+			"",
+			"fn Manifest() -> PackageManifest {",
+			"    return PackageManifest {",
+			"        Name: \"" + pkg + "\"",
+			"        Version: \"0.1.0\"",
+			"        Description: \"" + pkg + " test package\"",
+			"        Dependencies: [Dependency { Name: \"OctStd\" VersionRequirement: \"0.1.0\" }]",
+			"    }",
+			"}",
+			"",
+		}, "\n")
+		if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+			t.Fatalf("write %s: %v", manifestPath, err)
+		}
+	}
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)

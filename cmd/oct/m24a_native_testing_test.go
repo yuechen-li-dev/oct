@@ -126,37 +126,37 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 
 	cases := []testCase{
 		{
-			name: "zero parameter theory",
+			name:    "zero parameter theory",
 			content: "package Main\n[Theory]\n[InlineData(1)]\nfn Bad() -> Void { return }\n",
 			wantErr: "[Theory] function must declare at least one parameter",
 		},
 		{
-			name: "theory with no data",
+			name:    "theory with no data",
 			content: "package Main\n[Theory]\nfn Bad(x: Int) -> Void { return }\n",
 			wantErr: "[Theory] function must declare at least one [InlineData] row",
 		},
 		{
-			name: "arity mismatch",
+			name:    "arity mismatch",
 			content: "package Main\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int, y: Int) -> Void { return }\n",
 			wantErr: "argument count mismatch",
 		},
 		{
-			name: "type mismatch",
+			name:    "type mismatch",
 			content: "package Main\n[Theory]\n[InlineData(\"oops\")]\nfn Bad(x: Int) -> Void { return }\n",
 			wantErr: "expects Int, got String",
 		},
 		{
-			name: "inline data on non theory",
+			name:    "inline data on non theory",
 			content: "package Main\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n",
 			wantErr: "[InlineData] must apply to a [Theory] function",
 		},
 		{
-			name: "fact and theory together",
+			name:    "fact and theory together",
 			content: "package Main\n[Fact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n",
 			wantErr: "[Fact] and [Theory] cannot both apply to the same function",
 		},
 		{
-			name: "inline data on fact",
+			name:    "inline data on fact",
 			content: "package Main\n[Fact]\n[InlineData(1)]\nfn Bad() -> Void { return }\n",
 			wantErr: "[InlineData] cannot be used with [Fact]",
 		},
@@ -197,6 +197,37 @@ func writeOctPkgFile(t *testing.T, root, pkg, name, content string) {
 	dir := filepath.Join(root, pkg)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
+	}
+	manifestPath := filepath.Join(dir, "manifest.oct")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		manifest := strings.Join([]string{
+			"package Manifest",
+			"",
+			"record PackageManifest {",
+			"    Name: String",
+			"    Version: String",
+			"    Description: String",
+			"    Dependencies: Dependency[]",
+			"}",
+			"",
+			"record Dependency {",
+			"    Name: String",
+			"    VersionRequirement: String",
+			"}",
+			"",
+			"fn Manifest() -> PackageManifest {",
+			"    return PackageManifest {",
+			"        Name: \"" + pkg + "\"",
+			"        Version: \"0.1.0\"",
+			"        Description: \"" + pkg + " test package\"",
+			"        Dependencies: [Dependency { Name: \"OctStd\" VersionRequirement: \"0.1.0\" }]",
+			"    }",
+			"}",
+			"",
+		}, "\n")
+		if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+			t.Fatalf("write manifest: %v", err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
