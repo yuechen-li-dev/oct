@@ -1,0 +1,8 @@
+package Signal
+
+[Benchmark]
+fn MovingAverageSmall() -> Void {
+    let values = SampleSignal()
+    let _ = MovingAverage(values, 3)
+    return
+}

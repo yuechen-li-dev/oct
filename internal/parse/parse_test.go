@@ -539,6 +539,24 @@ func TestBuildFileRejectsInvalidArtifactUsage(t *testing.T) {
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "[Artifact] cannot be combined with [Theory]")
 }
 
+func TestBuildFileParsesBenchmarkInOctest(t *testing.T) {
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Benchmark]\nfn Bench() -> Void { return }\n")
+	if len(file.Functions) != 1 || !file.Functions[0].IsBenchmark {
+		t.Fatalf("expected one [Benchmark] function, got %+v", file.Functions)
+	}
+}
+
+func TestBuildFileRejectsInvalidBenchmarkUsage(t *testing.T) {
+	assertParseErrorContains(t, "package Main\n[Benchmark]\nfn Nope() -> Void { return }\n", "[Benchmark] is only valid in .octest files")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\nrecord R { X: Int }\n", "test attributes must apply to a function declaration")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\n[Benchmark]\nfn Dup() -> Void { return }\n", "duplicate [Benchmark] attribute on function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\nfn WrongReturn() -> Int { return 1 }\n", "[Benchmark] function must return Void")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\nfn NeedsNoArgs(x: Int) -> Void { return }\n", "[Benchmark] function must not declare parameters")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\n[Fact]\nfn Bad() -> Void { return }\n", "[Benchmark] cannot be combined with [Fact]")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "[Benchmark] cannot be combined with [Theory]")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\n[Artifact]\nfn Bad() -> Void { return }\n", "[Benchmark] cannot be combined with [Artifact]")
+}
+
 func parseSource(t *testing.T, text string) ast.File {
 	return parseSourceWithPath(t, "example.oct", text)
 }

@@ -31,18 +31,19 @@ type EnumDecl struct {
 }
 
 type FunctionDecl struct {
-	Name       string
-	SourcePath string
-	IsTestFile bool
-	IsFact     bool
-	IsTheory   bool
-	IsArtifact bool
-	InlineData []InlineDataRow
-	Parameters []Parameter
-	ReturnType TypeRef
-	IsFallible bool
-	ErrorType  TypeRef
-	Body       Block
+	Name        string
+	SourcePath  string
+	IsTestFile  bool
+	IsFact      bool
+	IsTheory    bool
+	IsArtifact  bool
+	IsBenchmark bool
+	InlineData  []InlineDataRow
+	Parameters  []Parameter
+	ReturnType  TypeRef
+	IsFallible  bool
+	ErrorType   TypeRef
+	Body        Block
 }
 
 type InlineDataRow struct {

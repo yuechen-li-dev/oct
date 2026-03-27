@@ -237,6 +237,16 @@ M24h adds explicit artifact generation in `.octest` for test-adjacent utilities 
 - artifacts are not tests and are not executed by `oct test`
 - artifact functions are expected to be idempotent by convention; the runner always executes them when requested
 
+## Native Benchmarks (`[Benchmark]`)
+
+M24i adds explicit benchmark workloads in `.octest` so measurement code is separate from correctness tests.
+
+- `[Benchmark]` applies to `.octest` functions only
+- benchmark functions must be `fn() -> Void`
+- run benchmarks explicitly with `oct bench <file-or-root>`
+- benchmarks are not tests and are not executed by `oct test`
+- M24i intentionally performs one measured execution per benchmark function (no warmup/repetition/statistics yet)
+
 ## Expected-Failure Tests (`.octfail`)
 
 M24g adds native expected-failure fixtures so invalid language contracts can live in Oct-native artifacts instead of embedded Go source strings.

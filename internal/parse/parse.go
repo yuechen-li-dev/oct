@@ -61,6 +61,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingFact := false
 	pendingTheory := false
 	pendingArtifact := false
+	pendingBenchmark := false
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
@@ -86,6 +87,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingArtifact {
 					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Fact]")
 				}
+				if pendingBenchmark {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Fact]")
+				}
 				pendingFact = true
 			case "Theory":
 				if pendingTheory {
@@ -96,6 +100,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				}
 				if pendingArtifact {
 					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Theory]")
+				}
+				if pendingBenchmark {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Theory]")
 				}
 				pendingTheory = true
 			case "Artifact":
@@ -108,7 +115,24 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingTheory {
 					return ast.File{}, p.errorAtCurrent("[Artifact] cannot be combined with [Theory]")
 				}
+				if pendingBenchmark {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Artifact]")
+				}
 				pendingArtifact = true
+			case "Benchmark":
+				if pendingBenchmark {
+					return ast.File{}, p.errorAtCurrent("duplicate [Benchmark] attribute on function")
+				}
+				if pendingFact {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Fact]")
+				}
+				if pendingTheory {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Theory]")
+				}
+				if pendingArtifact {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Artifact]")
+				}
+				pendingBenchmark = true
 			case "InlineData":
 				pendingInlineData = append(pendingInlineData, ast.InlineDataRow{Values: attribute.values})
 			}
@@ -116,7 +140,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
-			if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -125,7 +149,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
-			if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -165,6 +189,19 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				function.IsArtifact = true
 				pendingArtifact = false
 			}
+			if pendingBenchmark {
+				if len(function.Parameters) != 0 {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] function must not declare parameters")
+				}
+				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
+					return ast.File{}, p.errorAtCurrent("[Benchmark] function must return Void")
+				}
+				if len(pendingInlineData) > 0 {
+					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Benchmark]")
+				}
+				function.IsBenchmark = true
+				pendingBenchmark = false
+			}
 			if pendingTheory {
 				if len(function.Parameters) == 0 {
 					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one parameter")
@@ -187,7 +224,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || pendingArtifact || len(pendingInlineData) > 0 {
+	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	return file, nil
@@ -207,7 +244,7 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 		return testAttribute{}, err
 	}
 	switch name.Lexeme {
-	case "Fact", "Theory", "Artifact":
+	case "Fact", "Theory", "Artifact", "Benchmark":
 		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
 			return testAttribute{}, err
 		}

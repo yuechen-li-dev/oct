@@ -41,6 +41,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, command, err)
 		}
 		return nil
+	case "bench":
+		if err := tester.ExecuteBenchmarks(path, stdout); err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return nil
 	default:
 		return writeUsage(stderr)
 	}
@@ -55,6 +60,6 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact> <file-or-root>")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench> <file-or-root>")
 	return err
 }
