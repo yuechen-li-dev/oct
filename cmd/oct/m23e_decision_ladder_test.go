@@ -8,7 +8,7 @@ import (
 )
 
 func TestM23eDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
-	validRoot := filepath.Join("..", "..", "testdata", "m28c", "decision_ladder", "valid")
+	validRoot := filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid")
 	validStdout, validStderr, err := executeCLI("test", validRoot)
 	if err != nil {
 		t.Fatalf("expected valid decision-ladder fixtures to pass, err=%v stderr=%q stdout=%q", err, validStderr, validStdout)
@@ -25,7 +25,7 @@ func TestM23eDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
 		}
 	}
 
-	invalidRoot := filepath.Join("..", "..", "testdata", "m28c", "decision_ladder", "invalid")
+	invalidRoot := filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "invalid")
 	invalidStdout, invalidStderr, err := executeCLI("test", invalidRoot)
 	if err != nil {
 		t.Fatalf("expected invalid decision-ladder .octfail fixtures to pass, err=%v stderr=%q stdout=%q", err, invalidStderr, invalidStdout)

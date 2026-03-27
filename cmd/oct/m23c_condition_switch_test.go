@@ -7,7 +7,7 @@ import (
 )
 
 func TestM23cConditionSwitchInvalidCasesStayHostOwned(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "m24g", "invalid")
+	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "invalid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
 		t.Fatalf("expected .octfail fixtures to pass, err=%v stderr=%q stdout=%q", err, stderr, stdout)
