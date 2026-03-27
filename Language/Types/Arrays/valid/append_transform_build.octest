@@ -1,0 +1,21 @@
+package MainValid
+
+fn RunningPrefixSums(xs: Int[]) -> Int[] {
+    var out = [xs[0]]
+    var running = xs[0]
+    for i in 1..Len(xs) {
+        running = running + xs[i]
+        out = Append(out, running)
+    }
+    return out
+}
+
+[Fact]
+fn AppendTransformBuild() -> Void {
+    let ys = RunningPrefixSums([2, 3, 5, 7])
+    Assert.Equal(4, Len(ys), "append transform/build length")
+    Assert.Equal(2, ys[0], "append transform/build first")
+    Assert.Equal(5, ys[1], "append transform/build second")
+    Assert.Equal(10, ys[2], "append transform/build third")
+    Assert.Equal(17, ys[3], "append transform/build fourth")
+}

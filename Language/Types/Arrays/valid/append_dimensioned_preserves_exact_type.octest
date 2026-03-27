@@ -1,0 +1,18 @@
+package MainValid
+
+fn BuildDistances(xs: Int<m>[]) -> Int<m>[] {
+    var out = [xs[0]]
+    for i in 1..Len(xs) {
+        out = Append(out, xs[i])
+    }
+    return out
+}
+
+[Fact]
+fn AppendDimensionedPreservesExactType() -> Void {
+    let ys = BuildDistances([1m, 2m, 3m])
+    Assert.Equal(3, Len(ys), "append dimensioned array length")
+    Assert.Equal(1m, ys[0], "append dimensioned first")
+    Assert.Equal(2m, ys[1], "append dimensioned second")
+    Assert.Equal(3m, ys[2], "append dimensioned third")
+}

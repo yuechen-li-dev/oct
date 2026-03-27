@@ -1,0 +1,8 @@
+expect error: "Append element type must match array element type: expected Int, got Float"
+
+package Main
+
+fn Main() -> Int[] {
+    var xs = [1, 2]
+    return Append(xs, 3.0)
+}

@@ -1,0 +1,8 @@
+expect error: "Append element type must match array element type: expected Int<m>, got Int<s>"
+
+package Main
+
+fn Main() -> Int<m>[] {
+    var xs = [1m, 2m]
+    return Append(xs, 3s)
+}

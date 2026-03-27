@@ -63,7 +63,9 @@ fn Main() -> Int {
 
 ### Built-ins and Runtime Utilities
 
-* Built-ins include: `Len`, `Abs`, `Sqrt`, `Sin`, `Cos`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
+* In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
 * `Sin` and `Cos` require dimensionless input.
 
 ---
