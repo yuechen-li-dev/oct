@@ -19,6 +19,8 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 		{filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "valid"), "PASS IfContracts.IfExpressionSelectsThenArm"},
 		{filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid"), "PASS ConditionSwitch.ConditionSwitchSelectsFirstMatchingCase"},
 		{filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid"), "PASS DecisionLadderContracts.NestedThenIfAllowed"},
+		{filepath.Join("..", "..", "Language", "Expressions", "Arithmetic", "valid"), "PASS MainValid.ArithmeticPrecedence"},
+		{filepath.Join("..", "..", "Language", "Expressions", "Logical", "valid"), "PASS MainValid.LogicalAnd"},
 	}
 	for _, tc := range validRoots {
 		stdout, stderr, err := executeCLI("test", tc.root)
@@ -32,19 +34,36 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 }
 
 func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
-	root := filepath.Join("..", "..", "Language", "ControlFlow")
-	stdout, stderr, err := executeCLI("test", root)
-	if err != nil {
-		t.Fatalf("oct test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
+	invalidRoots := []struct {
+		root   string
+		passes []string
+	}{
+		{
+			root: filepath.Join("..", "..", "Language", "ControlFlow"),
+			passes: []string{
+				"PASS IfExpression/invalid/if_expression_branch_type_mismatch.octfail",
+				"PASS ConditionSwitch/invalid/condition_switch_missing_else.octfail",
+				"PASS DecisionLadder/invalid/decision_ladder_rejected.octfail",
+			},
+		},
+		{
+			root: filepath.Join("..", "..", "Language", "Errors", "Fallible", "invalid"),
+			passes: []string{
+				"PASS invalid_fallible_signature.octfail",
+				"PASS invalid_question_in_infallible_function.octfail",
+				"PASS invalid_question_on_infallible_expression.octfail",
+			},
+		},
 	}
-	requiredPasses := []string{
-		"PASS IfExpression/invalid/if_expression_branch_type_mismatch.octfail",
-		"PASS ConditionSwitch/invalid/condition_switch_missing_else.octfail",
-		"PASS DecisionLadder/invalid/decision_ladder_rejected.octfail",
-	}
-	for _, pass := range requiredPasses {
-		if !strings.Contains(stdout, pass) {
-			t.Fatalf("expected migrated octfail output %q, got %q", pass, stdout)
+	for _, tc := range invalidRoots {
+		stdout, stderr, err := executeCLI("test", tc.root)
+		if err != nil {
+			t.Fatalf("oct test failed for %s: %v\nstderr:%s\nstdout:%s", tc.root, err, stderr, stdout)
+		}
+		for _, pass := range tc.passes {
+			if !strings.Contains(stdout, pass) {
+				t.Fatalf("expected migrated octfail output %q, got %q", pass, stdout)
+			}
 		}
 	}
 }
