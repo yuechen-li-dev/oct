@@ -43,10 +43,26 @@ fn main() {
 * Place code in `.octest` or `.octfail`
 * Execute via `oct test` or CLI integration
 
-Exception:
+#### Exception (narrow and explicit)
 
-* Extremely small, parser-level or lexer-level unit tests only
-* Must not represent user-visible semantics
+Embedded Oct in Go is allowed only for **host-side implementation validation** where Oct cannot be the sole validator without circularity.
+
+This includes:
+
+* parser and lexer validation
+* typechecker validation
+* runtime/compiler boundary checks
+
+This exception must remain:
+
+* small in scope
+* focused on implementation correctness
+* not user-facing
+
+It does **not** allow:
+
+* duplicating language semantics already expressed in `Language/`
+* writing general program tests in Go
 
 ---
 
@@ -56,9 +72,9 @@ Oct is **100% implemented in Go and 0% implemented in Oct**.
 
 Do not:
 
-* add meta-programming layers in Oct to simulate language features
 * implement evaluation, typing, or execution logic in Oct
-* create "helper" Oct layers that act like a runtime
+* introduce meta-programming layers to simulate language features
+* build helper runtimes in Oct
 
 If behavior belongs to the language, it belongs in Go.
 
@@ -71,35 +87,60 @@ All user-visible behavior must be expressed as:
 * `.octest` (valid behavior)
 * `.octfail` (invalid/rejected behavior)
 
+These live under:
+
+* `Language/`
+
 ❌ Forbidden:
 
-* encoding language semantics in Go test assertions using string programs
-
-✅ Correct:
-
-* express behavior in `Language/` suites
-* use Go only to orchestrate execution
+* encoding language semantics in Go test assertions
+* using embedded Oct in Go to define behavior
 
 ---
 
-### 4. Go tests orchestrate, not define semantics
+### 4. Do not duplicate semantics across Go and Language/
+
+If a language contract exists in `Language/`, it must not be re-expressed in Go tests.
+
+Go tests must not:
+
+* mirror `.octest` or `.octfail` behavior
+* act as a second specification of the same semantics
+
+There must be a **single source of truth** for language behavior:
+
+> `Language/`
+
+---
+
+### 5. Go tests orchestrate, not define semantics
 
 Go test code should:
 
 * invoke `oct test`, `oct bench`, `oct artifact`
 * validate CLI boundaries and integration behavior
 
-Go test code should NOT:
+Go test code must not:
 
-* duplicate language semantics
-* reimplement logic that already exists in Oct tests
-* act as a second specification of the language
+* define or reimplement language semantics
+* encode evaluation logic that belongs to Oct tests
 
 ---
 
-### 5. Keep the repository roles clean
+### 6. Migrate legacy semantic tests out of Go
 
-Each top-level area has a specific purpose:
+If existing Go tests encode language semantics:
+
+* do not extend them
+* migrate the behavior into `.octest` or `.octfail` under `Language/`
+
+Go should not remain the owner of semantic contracts.
+
+---
+
+### 7. Keep the repository roles clean
+
+Each top-level area has a strict purpose:
 
 * `Language/`
   Canonical language contracts (semantic truth)
@@ -108,12 +149,38 @@ Each top-level area has a specific purpose:
   Reusable Oct packages (user-level code)
 
 * `testdata/`
-  Fixtures, synthetic inputs, transitional data
+  Fixtures, synthetic inputs, transitional data (not semantic contracts)
 
 * Go code (`cmd/`, `internal/`)
   Language implementation only
 
-Do not mix these roles.
+---
+
+### 8. Do not use testdata for language semantics
+
+`testdata/` must not contain language contracts.
+
+Do not:
+
+* place `.octest` or `.octfail` there as canonical behavior
+* hide semantic tests as fixtures
+
+Use `testdata/` only for:
+
+* synthetic inputs
+* invalid parsing cases
+* temporary or transitional data
+
+---
+
+## Placement Rule
+
+When adding code or tests:
+
+* If it defines language behavior → `Language/`
+* If it is reusable user code → `Packages/`
+* If it is synthetic or temporary → `testdata/`
+* If it implements the language → Go
 
 ---
 
@@ -124,23 +191,23 @@ Do not mix these roles.
 ✅ Correct:
 
 * implement behavior in Go
-* add `.octest` and/or `.octfail` under `Language/...`
+* add `.octest` / `.octfail` under `Language/...`
 
 ❌ Forbidden:
 
-* write Go tests with embedded Oct strings to define behavior
+* define behavior in Go tests using embedded Oct
 
 ---
 
-### Testing a feature
+### Testing behavior
 
 ✅ Correct:
 
-* place tests in `Language/<Domain>/<Concept>/valid` or `invalid`
+* use `Language/<Domain>/<Concept>/valid|invalid`
 
 ❌ Forbidden:
 
-* re-express the same behavior in Go test files
+* duplicate the same behavior in Go tests
 
 ---
 
@@ -152,7 +219,7 @@ Do not mix these roles.
 
 ❌ Forbidden:
 
-* simulate reuse via copied Oct strings inside Go
+* simulate reuse via embedded Oct strings in Go
 * build meta-systems in Oct to compensate for missing language features
 
 ---
@@ -174,7 +241,7 @@ When in doubt:
 
 * Go defines the language
 * Oct expresses the language
-* Tests live in Oct
+* Language contracts live in `Language/`
 * Go orchestrates, not specifies
 
 This separation is fundamental to the architecture.
