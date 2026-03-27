@@ -11,13 +11,11 @@ fn GenerateAndCompute(start: Float, increment: Float) -> AnalysisResult {
     var y = [0.0, 0.0, 0.0, 0.0, 0.0]
     var z = [0.0, 0.0, 0.0, 0.0, 0.0]
 
-    var i = 0
-    while i < Len(x) {
+    for i in 0 .. Len(x) {
         let xi = start + increment * i
         x[i] = xi
         y[i] = xi * xi - 2.0
         z[i] = xi * xi
-        i = i + 1
     }
 
     return AnalysisResult {
