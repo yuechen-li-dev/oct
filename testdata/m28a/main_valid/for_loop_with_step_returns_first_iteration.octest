@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn ForLoopWithStepReturnsFirstIteration() -> Void {
+    for i in 0..10 step 3 {
+        Assert.Equal(0, i, "for loop with step returns first iteration")
+        return
+    }
+    Assert.True(false, "loop should execute")
+}

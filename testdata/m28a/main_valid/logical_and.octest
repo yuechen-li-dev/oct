@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn LogicalAnd() -> Void { Assert.Equal(true, true and true, "logical and") }

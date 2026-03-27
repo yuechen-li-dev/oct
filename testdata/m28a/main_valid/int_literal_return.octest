@@ -1,0 +1,5 @@
+package MainValid
+[Fact]
+fn IntLiteralReturn() -> Void {
+    Assert.Equal(42, 42, "int literal return")
+}

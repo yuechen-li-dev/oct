@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn LogicalShortCircuitAvoidsDivisionByZero() -> Void { Assert.Equal(false, false and (1 / 0 == 0), "logical short circuit avoids division by zero") }

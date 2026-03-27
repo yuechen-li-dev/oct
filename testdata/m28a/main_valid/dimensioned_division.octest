@@ -1,0 +1,6 @@
+package MainValid
+
+[Fact]
+fn DimensionedDivision() -> Void {
+    Assert.Equal(5.0m/s, 10m / 2s, "dimensioned division")
+}

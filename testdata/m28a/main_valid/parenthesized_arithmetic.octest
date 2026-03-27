@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn ParenthesizedArithmetic() -> Void { Assert.Equal(20, (2 + 3) * 4, "parenthesized arithmetic") }

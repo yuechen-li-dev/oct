@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn NotPrecedenceWithComparison() -> Void { Assert.Equal(true, not 1 == 2, "not precedence with comparison") }

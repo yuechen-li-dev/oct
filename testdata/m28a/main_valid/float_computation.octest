@@ -1,0 +1,7 @@
+package MainValid
+[Fact]
+fn FloatComputation() -> Void {
+    let x = 1
+    let y = 2.5
+    Assert.Equal(3.5, x + y, "float computation")
+}

@@ -1,0 +1,14 @@
+package MainValid
+
+[Fact]
+fn WhileWithNestedIf() -> Void {
+    while true {
+        if true {
+            Assert.Equal(3, 3, "while with nested if")
+            return
+        } else {
+            Assert.True(false, "else arm should not run")
+        }
+    }
+    Assert.True(false, "while should execute")
+}

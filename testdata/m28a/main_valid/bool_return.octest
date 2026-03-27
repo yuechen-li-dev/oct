@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn BoolReturn() -> Void { Assert.Equal(true, true, "bool return") }

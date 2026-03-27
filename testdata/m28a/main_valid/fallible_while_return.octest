@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn FallibleWhileReturn() -> Void {
+    while true {
+        Assert.Equal(5, 5, "fallible while return")
+        return
+    }
+    Assert.True(false, "while should execute")
+}

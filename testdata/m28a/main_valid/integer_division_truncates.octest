@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn IntegerDivisionTruncates() -> Void { Assert.Equal(2, 5 / 2, "integer division truncates") }

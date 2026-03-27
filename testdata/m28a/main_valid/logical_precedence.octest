@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn LogicalPrecedence() -> Void { Assert.Equal(true, true or false and false, "logical precedence") }

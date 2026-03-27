@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn IntArrayLiteralReturn() -> Void {
+    let xs = [1, 2, 3]
+    Assert.Equal(3, Len(xs), "int array literal return length")
+    Assert.Equal(1, xs[0], "int array literal return element 0")
+    Assert.Equal(2, xs[1], "int array literal return element 1")
+    Assert.Equal(3, xs[2], "int array literal return element 2")
+}

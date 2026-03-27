@@ -1,0 +1,8 @@
+package MainValid
+[Fact]
+fn ForLoopDynamicUpperBound() -> Void {
+    let xs = [1, 2, 3]
+    var sum = 0
+    for i in 0..Len(xs) { sum = sum + xs[i] }
+    Assert.Equal(6, sum, "for loop supports dynamic upper bound")
+}

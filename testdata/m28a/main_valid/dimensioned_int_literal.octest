@@ -1,0 +1,3 @@
+package MainValid
+[Fact]
+fn DimensionedIntLiteral() -> Void { Assert.Equal(5m, 5m, "dimensioned int literal") }

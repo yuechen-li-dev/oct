@@ -1,0 +1,6 @@
+package MainValid
+
+[Fact]
+fn DimensionedSqrt() -> Void {
+    Assert.Equal(2.0m, Sqrt(4m^2), "dimensioned sqrt")
+}
