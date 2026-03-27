@@ -1,0 +1,13 @@
+package MainValid
+
+record Point {
+    X: Int
+}
+
+[Fact]
+fn AppendRecordPreservesNamedType() -> Void {
+    var points = [Point { X: 1 }]
+    points = Append(points, Point { X: 2 })
+    Assert.Equal(1, points[0].X, "append record first")
+    Assert.Equal(2, points[1].X, "append record second")
+}

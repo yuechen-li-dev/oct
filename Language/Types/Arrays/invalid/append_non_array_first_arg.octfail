@@ -1,0 +1,7 @@
+expect error: "Append requires array as first argument"
+
+package Main
+
+fn Main() -> Int[] {
+    return Append(1, 2)
+}

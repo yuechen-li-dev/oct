@@ -1,0 +1,17 @@
+expect error: "Append element type must match array element type: expected P, got Q"
+
+package Main
+
+record P {
+    X: Int
+}
+
+record Q {
+    X: Int
+}
+
+fn Main() -> Int {
+    var xs = [P { X: 1 }]
+    xs = Append(xs, Q { X: 2 })
+    return 0
+}

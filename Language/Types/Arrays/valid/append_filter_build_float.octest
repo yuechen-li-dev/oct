@@ -1,0 +1,19 @@
+package MainValid
+
+fn KeepAbove(xs: Float[], threshold: Float) -> Float[] {
+    var out = [xs[0]]
+    for i in 1..Len(xs) {
+        if xs[i] > threshold {
+            out = Append(out, xs[i])
+        }
+    }
+    return out
+}
+
+[Fact]
+fn AppendFilterBuildFloat() -> Void {
+    let ys = KeepAbove([1.2, 0.5, 0.9, 3.5], 1.0)
+    Assert.Equal(2, Len(ys), "append float filter/build length")
+    Assert.Equal(1.2, ys[0], "append float filter/build first")
+    Assert.Equal(3.5, ys[1], "append float filter/build second")
+}

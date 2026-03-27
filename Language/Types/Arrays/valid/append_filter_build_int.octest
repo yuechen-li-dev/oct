@@ -1,0 +1,20 @@
+package MainValid
+
+fn KeepPositive(xs: Int[]) -> Int[] {
+    var out = [xs[0]]
+    for i in 1..Len(xs) {
+        if xs[i] > 3 {
+            out = Append(out, xs[i])
+        }
+    }
+    return out
+}
+
+[Fact]
+fn AppendFilterBuildInt() -> Void {
+    let ys = KeepPositive([4, 2, 0, 7, 3, 9])
+    Assert.Equal(3, Len(ys), "append int filter/build length")
+    Assert.Equal(4, ys[0], "append int filter/build first")
+    Assert.Equal(7, ys[1], "append int filter/build second")
+    Assert.Equal(9, ys[2], "append int filter/build third")
+}
