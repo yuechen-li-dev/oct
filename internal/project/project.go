@@ -91,7 +91,14 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 		}
 		return Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages}, nil
 	}
-	if err := builder.loadPackage("Main", root); err != nil {
+	packageName, err := detectSinglePackageName(root, includeTests)
+	if err != nil {
+		return Program{}, err
+	}
+	if packageName == "" {
+		packageName = "Main"
+	}
+	if err := builder.loadPackage(packageName, root); err != nil {
 		return Program{}, err
 	}
 	if includeTests {
@@ -99,7 +106,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 			return Program{}, err
 		}
 	}
-	return Program{Root: root, Entry: "Main", EntrySource: root, Packages: builder.packages}, nil
+	return Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages}, nil
 }
 
 type builder struct {
@@ -282,6 +289,23 @@ func detectManifestedRoot(root string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func detectSinglePackageName(root string, includeTests bool) (string, error) {
+	files, err := loadPackageFiles(root, includeTests)
+	if err != nil {
+		return "", err
+	}
+	if len(files) == 0 {
+		return "", nil
+	}
+	packageName := files[0].Package
+	for _, file := range files[1:] {
+		if file.Package != packageName {
+			return "", fmt.Errorf("inconsistent package names in directory '%s': expected '%s', got '%s'", root, packageName, file.Package)
+		}
+	}
+	return packageName, nil
 }
 
 func parseFile(path string) (ast.File, error) {

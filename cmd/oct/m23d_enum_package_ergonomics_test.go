@@ -137,14 +137,14 @@ func TestM23dProofRegressionUsesExplicitQualifiedEnumFlow(t *testing.T) {
 func setupM23dPhysicsOnlyFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "testdata", "m23d", "valid", "Physics"), filepath.Join(root, "Physics"))
+	copyDir(t, filepath.Join("..", "..", "Packages", "Physics"), filepath.Join(root, "Physics"))
 	return root
 }
 
 func setupM23dFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "testdata", "m23d", "valid", "Physics"), filepath.Join(root, "Physics"))
+	copyDir(t, filepath.Join("..", "..", "Packages", "Physics"), filepath.Join(root, "Physics"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m23d", "valid", "Main"), filepath.Join(root, "Main"))
 	return root
 }

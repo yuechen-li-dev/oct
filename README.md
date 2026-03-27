@@ -63,6 +63,27 @@ Migration friction observed in M26a:
 - benchmark coverage previously pointed at `testdata/m24i/valid`; it now runs from the migrated `Packages/Signal` benchmark fixture
 - demo `Main` fixture packages remain under `testdata/m22*/valid/Main` to keep integration behavior stable while avoiding unnecessary demo churn in this milestone
 
+## M26b package-seed migration completion to `Packages/`
+
+M26b completes the remaining real proof-package seed migration by moving:
+
+- `Packages/Mechanics`
+- `Packages/Analysis`
+- `Packages/Physics`
+
+Repository distinction after M26b:
+
+- `Packages/`: real reusable/evolving proof packages (`Numerics`, `Signal`, `Structures`, `Mechanics`, `Analysis`, `Physics`).
+- `testdata/`: fixtures-first inputs (invalid fixtures, synthetic parser/typechecker/runtime cases, and demo/integration `Main` packages).
+
+M26b keeps package-local ownership intact (`manifest.oct`, package sources, `.octest`, and optional package-local files) and leaves demo consumers in `testdata/.../Main` where they remain useful for CLI integration coverage.
+
+Migration friction observed in M26b:
+
+- additional Go CLI/integration tests still had hard-coded `testdata/...` package-seed paths and were updated to copy package seeds from `Packages/`
+- package-seed vs fixture intent was still ambiguous in historical docs/examples and required explicit documentation refresh to reinforce `Packages/` vs `testdata/` roles
+- demo/consumer `Main` fixtures intentionally remain in `testdata/`, so integration setups now combine `Packages/*` libraries with `testdata/.../Main` consumers
+
 ## Error handling model
 
 Fallible functions declare `! Error` in their signature.
@@ -121,7 +142,7 @@ Implementation friction observed in M22a:
 
 ## M22b proof package: Mechanics (Unit-Safe 2D Statics / Kinematics Core)
 
-M22b adds a native `Mechanics` package in Oct source under `testdata/m22b/valid/Mechanics` with:
+M22b adds a native `Mechanics` package in Oct source (now at `Packages/Mechanics`, originally introduced under `testdata/m22b/valid/Mechanics`) with:
 
 - domain records: `Vec2Force`, `Displacement2`, `Stiffness2`, and `EquilibriumReport`
 - enum-driven helpers via `Axis` and `DominantAxis`
@@ -137,7 +158,7 @@ Implementation friction observed in M22b:
 
 ## M22c proof package: Analysis (Data -> Compute -> Plot Workflow v0)
 
-M22c adds a native `Analysis` package in Oct source under `testdata/m22c/valid/Analysis` with:
+M22c adds a native `Analysis` package in Oct source (now at `Packages/Analysis`, originally introduced under `testdata/m22c/valid/Analysis`) with:
 
 - structured workflow output via `AnalysisResult { X, Y, Z }`
 - one linear end-to-end function: `GenerateAndCompute(start, increment)`
@@ -202,8 +223,8 @@ M24d completes the current proof-package migration to package-local native tests
 
 - package-local native tests now cover the current proof suite:
   - `Packages/Numerics/solvers.octest`
-  - `testdata/m22b/valid/Mechanics/mechanics.octest`
-  - `testdata/m22c/valid/Analysis/analysis.octest`
+  - `Packages/Mechanics/mechanics.octest`
+  - `Packages/Analysis/analysis.octest`
   - `Packages/Signal/signal.octest`
   - `Packages/Structures/structures.octest`
 - proof-package correctness checks now run through `oct test` with `[Fact]`, `[Theory]`, and `Assert`
@@ -244,7 +265,7 @@ M24f closes this migration round by documenting and enforcing where tests belong
 
 ### What belongs in `.octest`
 
-- package-local proof/package correctness (for example `Packages/Numerics/solvers.octest`, `testdata/m22b/valid/Mechanics/mechanics.octest`)
+- package-local proof/package correctness (for example `Packages/Numerics/solvers.octest`, `Packages/Mechanics/mechanics.octest`)
 - user-visible valid-language semantics (for example `testdata/m24e/valid/IfContracts/if_contracts.octest`)
 - readable language-contract checks that should be expressed from an Oct user's perspective
 
