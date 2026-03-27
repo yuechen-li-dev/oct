@@ -1,0 +1,8 @@
+expect error: "operator '?' requires fallible expression"
+
+package Main
+
+fn Main() -> Int {
+    let x = 1?
+    return x
+}
