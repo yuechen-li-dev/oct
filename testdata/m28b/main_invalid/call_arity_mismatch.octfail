@@ -1,0 +1,11 @@
+expect error: "function 'Add' expects 2 arguments, got 1"
+
+package Main
+
+fn Add(x: Int, y: Int) -> Int {
+    return x + y
+}
+
+fn Main() -> Int {
+    return Add(1)
+}

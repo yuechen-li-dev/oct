@@ -1,0 +1,12 @@
+expect error: "cannot use '?' in infallible function"
+
+package Main
+
+fn Fail() -> Int ! Error {
+    return error("bad")
+}
+
+fn Main() -> Int {
+    let x = Fail()?
+    return x
+}

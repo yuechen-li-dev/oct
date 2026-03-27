@@ -1,0 +1,7 @@
+expect error: "only built-in Error is allowed in fallible signatures"
+
+package Main
+
+fn Bad() -> Int ! MyError {
+    return 1
+}

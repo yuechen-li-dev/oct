@@ -25,6 +25,25 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 	}
 }
 
+func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "m28b", "main_invalid")
+	stdout, stderr, err := executeCLI("test", root)
+	if err != nil {
+		t.Fatalf("oct test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
+	}
+	requiredPasses := []string{
+		"PASS call_arity_mismatch.octfail",
+		"PASS invalid_fallible_signature.octfail",
+		"PASS invalid_question_in_infallible_function.octfail",
+		"PASS invalid_question_on_infallible_expression.octfail",
+	}
+	for _, pass := range requiredPasses {
+		if !strings.Contains(stdout, pass) {
+			t.Fatalf("expected migrated octfail output %q, got %q", pass, stdout)
+		}
+	}
+}
+
 func TestRunCommandSupportsM6ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -157,71 +176,6 @@ fn Main() -> Int {
 			}
 			if stderr != "" {
 				t.Fatalf("expected empty stderr, got %q", stderr)
-			}
-		})
-	}
-}
-
-func TestRunCommandRejectsInvalidM6Programs(t *testing.T) {
-	tests := []struct {
-		name        string
-		source      string
-		wantMessage string
-	}{
-		{
-			name: "invalid question in infallible function",
-			source: `fn Fail() -> Int ! Error {
-    return error("bad")
-}
-fn Main() -> Int {
-    let x = Fail()?
-    return x
-}
-`,
-			wantMessage: "run failed: function Main: let x: cannot use '?' in infallible function",
-		},
-		{
-			name: "invalid question on infallible expression",
-			source: `fn Main() -> Int {
-    let x = 1?
-    return x
-}
-`,
-			wantMessage: "run failed: function Main: let x: operator '?' requires fallible expression",
-		},
-		{
-			name: "invalid fallible signature",
-			source: `fn Bad() -> Int ! MyError {
-    return 1
-}
-`,
-			wantMessage: "run failed: function Bad: only built-in Error is allowed in fallible signatures",
-		},
-		{
-			name: "call arity mismatch",
-			source: `fn Add(x: Int, y: Int) -> Int {
-    return x + y
-}
-fn Main() -> Int {
-    return Add(1)
-}
-`,
-			wantMessage: "run failed: function Main: function 'Add' expects 2 arguments, got 1",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
-			stdout, stderr, err := executeCLI("run", sourcePath)
-			if err == nil {
-				t.Fatalf("expected failure, got success with stdout %q", stdout)
-			}
-			if stdout != "" {
-				t.Fatalf("expected empty stdout, got %q", stdout)
-			}
-			if !strings.Contains(stderr, test.wantMessage) {
-				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
 			}
 		})
 	}
