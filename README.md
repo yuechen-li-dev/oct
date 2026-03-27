@@ -22,6 +22,7 @@ Oct v0 focuses on a small, explicit core: native arrays, explicit error handling
   - range semantics are inclusive lower bound / exclusive upper bound.
   - `step` is optional (defaults to `1`) and must be positive in v0.
 - `while` remains for state-driven looping (convergence/retry/sentinel patterns).
+- Style guidance: prefer `for` for clear counted/indexed iteration; keep `while` when loop progress or exit is primarily state-driven.
 
 ## M25 package layout + Oct-native manifest foundation
 
