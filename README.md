@@ -40,6 +40,29 @@ M25 intentionally does **not** add package-manager capabilities:
 - no remote source fetching
 - no feature/target/build-script metadata in manifests
 
+## M26a golden-path package seed migration to `Packages/`
+
+M26a starts the proof-package seed migration by moving a representative set of real package seeds into a first-class top-level package area:
+
+- `Packages/Numerics`
+- `Packages/Signal`
+- `Packages/Structures`
+
+Each migrated package keeps its package-local shape (`manifest.oct`, `*.oct`, `*.octest`, plus optional package-local support files).
+
+Repository distinction after M26a:
+
+- `Packages/`: real reusable proof-package seeds that evolve as first-class Oct packages.
+- `testdata/`: fixtures-first area for invalid cases, synthetic parser/typechecker/runtime inputs, and command-level scenario fixtures.
+
+M26a intentionally migrates only this small golden-path set; the rest of package-seed migration is deferred to later milestones.
+
+Migration friction observed in M26a:
+
+- several Go CLI/integration tests had direct `testdata/...` path assumptions for Numerics/Signal/Structures and now target `Packages/` for those seeds
+- benchmark coverage previously pointed at `testdata/m24i/valid`; it now runs from the migrated `Packages/Signal` benchmark fixture
+- demo `Main` fixture packages remain under `testdata/m22*/valid/Main` to keep integration behavior stable while avoiding unnecessary demo churn in this milestone
+
 ## Error handling model
 
 Fallible functions declare `! Error` in their signature.
@@ -81,7 +104,7 @@ Plotting contract:
 
 ## M22a proof package: Numerics (Root Finding v0)
 
-M22a adds a native `Numerics` package in Oct source under `testdata/m22a/valid/Numerics` with:
+M22a adds a native `Numerics` proof package (now at `Packages/Numerics`, originally introduced under `testdata/m22a/valid/Numerics`) with:
 
 - root-finding methods: `Bisection` and `NewtonRaphson`
 - structured solver configuration via `SolveOptions`
@@ -143,7 +166,7 @@ Ergonomics assessment (M22cr):
 
 ## M22d proof package: Signal (Small Signal Processing Workflow v0)
 
-M22d adds a native `Signal` package in Oct source under `testdata/m22d/valid/Signal` with:
+M22d adds a native `Signal` proof package (now at `Packages/Signal`, originally introduced under `testdata/m22d/valid/Signal`) with:
 
 - structured workflow output via `SignalAnalysisResult { X, Raw, Smoothed }`
 - deterministic sample generation via `GenerateSignalValues()`
@@ -159,7 +182,7 @@ Implementation friction observed in M22d:
 
 ## M22e proof package: Structures (Small Structural / Truss-Lite v0)
 
-M22e adds a native `Structures` package in Oct source under `testdata/m22e/valid/Structures` with:
+M22e adds a native `Structures` proof package (now at `Packages/Structures`, originally introduced under `testdata/m22e/valid/Structures`) with:
 
 - structured element input via `BarElement2D { Area, YoungsModulus, Length }`
 - structured output via `AxialElementResponse { Stiffness, Displacement, InternalForce }`
@@ -178,11 +201,11 @@ Implementation friction observed in M22e:
 M24d completes the current proof-package migration to package-local native tests by extending the M24c pattern across the remaining proof packages.
 
 - package-local native tests now cover the current proof suite:
-  - `testdata/m22a/valid/Numerics/solvers.octest`
+  - `Packages/Numerics/solvers.octest`
   - `testdata/m22b/valid/Mechanics/mechanics.octest`
   - `testdata/m22c/valid/Analysis/analysis.octest`
-  - `testdata/m22d/valid/Signal/signal.octest`
-  - `testdata/m22e/valid/Structures/structures.octest`
+  - `Packages/Signal/signal.octest`
+  - `Packages/Structures/structures.octest`
 - proof-package correctness checks now run through `oct test` with `[Fact]`, `[Theory]`, and `Assert`
 - `Main/main.oct` files remain demo/workflow entrypoints (printing/plotting/integration) and are kept distinct from correctness tests
 - Go harness tests now focus on CLI/integration boundaries for these proof fixtures rather than reenacting package semantics in ad hoc `Main` return-code checks
@@ -221,7 +244,7 @@ M24f closes this migration round by documenting and enforcing where tests belong
 
 ### What belongs in `.octest`
 
-- package-local proof/package correctness (`testdata/m22*/valid/*/*.octest`)
+- package-local proof/package correctness (for example `Packages/Numerics/solvers.octest`, `testdata/m22b/valid/Mechanics/mechanics.octest`)
 - user-visible valid-language semantics (for example `testdata/m24e/valid/IfContracts/if_contracts.octest`)
 - readable language-contract checks that should be expressed from an Oct user's perspective
 

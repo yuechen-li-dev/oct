@@ -2,7 +2,7 @@ package Signal
 
 [Benchmark]
 fn MovingAverageSmall() -> Void {
-    let values = SampleSignal()
+    let values = GenerateSignalValues()
     let _ = MovingAverage(values, 3)
     return
 }
