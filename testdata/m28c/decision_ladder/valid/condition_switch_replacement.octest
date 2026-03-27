@@ -1,0 +1,14 @@
+package DecisionLadderContracts
+
+[Fact]
+fn ConditionSwitchReplacementIsValid() -> Void {
+    Assert.Equal(1, EvaluateConditionSwitchReplacement(), "condition-switch replacement should stay valid")
+}
+
+fn EvaluateConditionSwitchReplacement() -> Int {
+    return switch {
+        case true => 1
+        case false => 2
+        else => 3
+    }
+}
