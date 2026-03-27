@@ -121,7 +121,7 @@ func TestM23eDecisionLadderShapePolicy(t *testing.T) {
 }
 
 func TestM23eProofSignalUsesConditionSwitch(t *testing.T) {
-	signalPath := filepath.Join("..", "..", "testdata", "m22d", "valid", "Signal", "signal.oct")
+	signalPath := filepath.Join("..", "..", "Packages", "Signal", "signal.oct")
 	bytes, err := os.ReadFile(signalPath)
 	if err != nil {
 		t.Fatalf("read signal proof package: %v", err)

@@ -178,9 +178,13 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 }
 
 func TestOctTestMigratedNumericsProofPackage(t *testing.T) {
+	root := t.TempDir()
+	copyDir(t, filepath.Join("..", "..", "Packages", "Numerics"), filepath.Join(root, "Numerics"))
+	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(root, "Main"))
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := cli.Execute([]string{"test", filepath.Join("..", "..", "testdata", "m22a", "valid")}, &stdout, &stderr)
+	err := cli.Execute([]string{"test", root}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("oct test on migrated numerics package failed: %v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}

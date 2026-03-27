@@ -105,14 +105,14 @@ func TestM22dBuildFailureDoesNotEmitArtifact(t *testing.T) {
 func setupM22dSignalFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "testdata", "m22d", "valid", "Signal"), filepath.Join(root, "Signal"))
+	copyDir(t, filepath.Join("..", "..", "Packages", "Signal"), filepath.Join(root, "Signal"))
 	return root
 }
 
 func setupM22dFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "testdata", "m22d", "valid", "Signal"), filepath.Join(root, "Signal"))
+	copyDir(t, filepath.Join("..", "..", "Packages", "Signal"), filepath.Join(root, "Signal"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m22d", "valid", "Main"), filepath.Join(root, "Main"))
 	return root
 }

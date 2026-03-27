@@ -71,14 +71,22 @@ func TestM25InvalidManifestShapeRejected(t *testing.T) {
 }
 
 func TestM25ProofPackagesRemainRunnable(t *testing.T) {
+	testRoot := t.TempDir()
+	copyDir(t, filepath.Join("..", "..", "Packages", "Numerics"), filepath.Join(testRoot, "Numerics"))
+	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(testRoot, "Main"))
+
+	benchRoot := t.TempDir()
+	copyDir(t, filepath.Join("..", "..", "Packages", "Signal"), filepath.Join(benchRoot, "Signal"))
+	copyDir(t, filepath.Join("..", "..", "testdata", "m24i", "valid", "Main"), filepath.Join(benchRoot, "Main"))
+
 	cases := []struct {
 		name string
 		args []string
 		want string
 	}{
-		{name: "test", args: []string{"test", filepath.Join("..", "..", "testdata", "m22a", "valid")}, want: "PASS Numerics.BisectionConvergesForSqrt2"},
+		{name: "test", args: []string{"test", testRoot}, want: "PASS Numerics.BisectionConvergesForSqrt2"},
 		{name: "artifact", args: []string{"artifact", filepath.Join("..", "..", "testdata", "m24h", "valid")}, want: "PASS Fixtures.GenerateSignalCsvTemplate"},
-		{name: "bench", args: []string{"bench", filepath.Join("..", "..", "testdata", "m24i", "valid")}, want: "PASS Signal.MovingAverageSmall"},
+		{name: "bench", args: []string{"bench", benchRoot}, want: "PASS Signal.MovingAverageSmall"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
