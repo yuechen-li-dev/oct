@@ -1,0 +1,168 @@
+package DimensionAwareNumericReusePressure
+
+fn MinLength(a: Float<m>, b: Float<m>) -> Float<m> {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MinForce(a: Float<kg*m/s^2>, b: Float<kg*m/s^2>) -> Float<kg*m/s^2> {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MaxTime(a: Float<s>, b: Float<s>) -> Float<s> {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn MaxDistance(a: Float<m>, b: Float<m>) -> Float<m> {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn ClampLength(value: Float<m>, lo: Float<m>, hi: Float<m>) -> Float<m> {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn ClampForce(value: Float<kg*m/s^2>, lo: Float<kg*m/s^2>, hi: Float<kg*m/s^2>) -> Float<kg*m/s^2> {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn SumLengths(xs: Float<m>[]) -> Float<m> {
+    var total = 0.0m
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn SumForces(xs: Float<kg*m/s^2>[]) -> Float<kg*m/s^2> {
+    var total = 0.0kg*m/s^2
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn AllNonNegativeLengths(xs: Float<m>[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] < 0.0m {
+            return false
+        }
+    }
+    return true
+}
+
+fn ClampArrayLengths(xs: Float<m>[], lo: Float<m>, hi: Float<m>) -> Float<m>[] {
+    var out = [0.0m, 0.0m, 0.0m, 0.0m]
+    for i in 0..Len(xs) {
+        out[i] = ClampLength(xs[i], lo, hi)
+    }
+    return out
+}
+
+fn ClampInt(value: Int, lo: Int, hi: Int) -> Int {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn ClampFloat(value: Float, lo: Float, hi: Float) -> Float {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn ClampMeasuredVelocity(value: Float<m/s>, lo: Float<m/s>, hi: Float<m/s>) -> Float<m/s> {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn SafeSpan(distance: Float<m>, duration: Float<s>) -> Float<m/s> {
+    let speed = distance / duration
+    return ClampMeasuredVelocity(speed, 0.0m/s, 100.0m/s)
+}
+
+fn SafeSupportForce(load: Float<kg*m/s^2>) -> Float<kg*m/s^2> {
+    return ClampForce(load, 0.0kg*m/s^2, 2500.0kg*m/s^2)
+}
+
+[Fact]
+fn A_SameShapeScalarHelpersAcrossDimensions() -> Void {
+    Assert.Near(2.0m, MinLength(2.0m, 5.0m), 0.0001m, "min length")
+    Assert.Near(5.0kg*m/s^2, MinForce(9.0kg*m/s^2, 5.0kg*m/s^2), 0.0001kg*m/s^2, "min force")
+
+    Assert.Near(7.0s, MaxTime(3.0s, 7.0s), 0.0001s, "max time")
+    Assert.Near(12.0m, MaxDistance(12.0m, 4.0m), 0.0001m, "max distance")
+
+    Assert.Near(8.0m, ClampLength(12.0m, 0.0m, 8.0m), 0.0001m, "clamp length")
+    Assert.Near(8.0kg*m/s^2, ClampForce(12.0kg*m/s^2, 0.0kg*m/s^2, 8.0kg*m/s^2), 0.0001kg*m/s^2, "clamp force")
+}
+
+[Fact]
+fn B_ArrayHelpersAcrossDimensions() -> Void {
+    Assert.Near(10.0m, SumLengths([1.0m, 2.0m, 3.0m, 4.0m]), 0.0001m, "sum lengths")
+    Assert.Near(10.0kg*m/s^2, SumForces([1.0kg*m/s^2, 2.0kg*m/s^2, 3.0kg*m/s^2, 4.0kg*m/s^2]), 0.0001kg*m/s^2, "sum forces")
+
+    Assert.True(AllNonNegativeLengths([0.0m, 1.0m, 2.0m, 3.0m]), "non-negative lengths")
+
+    let clamped = ClampArrayLengths([2.0m, 9.0m, 1.0m, 7.0m], 3.0m, 8.0m)
+    Assert.Near(8.0m, clamped[1], 0.0001m, "array high clamp")
+    Assert.Near(3.0m, clamped[2], 0.0001m, "array low clamp")
+}
+
+[Fact]
+fn D_PlainNumericVsDimensionedNumeric() -> Void {
+    Assert.Equal(5, ClampInt(9, 0, 5), "clamp int")
+    Assert.Near(5.0, ClampFloat(9.0, 0.0, 5.0), 0.0001, "clamp float")
+
+    Assert.Near(8.0m, ClampLength(12.0m, 0.0m, 8.0m), 0.0001m, "clamp length")
+    Assert.Near(8.0kg*m/s^2, ClampForce(12.0kg*m/s^2, 0.0kg*m/s^2, 8.0kg*m/s^2), 0.0001kg*m/s^2, "clamp force")
+}
+
+[Fact]
+fn E_ScientificReadabilityAndAuditabilityProbe() -> Void {
+    let segmentA = 12.0m
+    let segmentB = 7.0m
+    let totalSpan = SumLengths([segmentA, segmentB, 4.0m, 0.0m])
+    Assert.Near(23.0m, totalSpan, 0.0001m, "span sum")
+
+    let supportForce = SafeSupportForce(2600.0kg*m/s^2)
+    Assert.Near(2500.0kg*m/s^2, supportForce, 0.0001kg*m/s^2, "support force clamp")
+
+    let limitedSpeed = SafeSpan(220.0m, 2.0s)
+    Assert.Near(100.0m/s, limitedSpeed, 0.0001m/s, "velocity clamp")
+}
