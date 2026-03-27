@@ -19,8 +19,11 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 		{filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "valid"), "PASS IfContracts.IfExpressionSelectsThenArm"},
 		{filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid"), "PASS ConditionSwitch.ConditionSwitchSelectsFirstMatchingCase"},
 		{filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid"), "PASS DecisionLadderContracts.NestedThenIfAllowed"},
+		{filepath.Join("..", "..", "Language", "ControlFlow", "Loops", "valid"), "PASS MainValid.ForLoopDynamicUpperBound"},
 		{filepath.Join("..", "..", "Language", "Expressions", "Arithmetic", "valid"), "PASS MainValid.ArithmeticPrecedence"},
+		{filepath.Join("..", "..", "Language", "Expressions", "Literals", "valid"), "PASS MainValid.IntLiteralReturn"},
 		{filepath.Join("..", "..", "Language", "Expressions", "Logical", "valid"), "PASS MainValid.LogicalAnd"},
+		{filepath.Join("..", "..", "Language", "Types", "Arrays", "valid"), "PASS MainValid.ArrayIndexingValid"},
 	}
 	for _, tc := range validRoots {
 		stdout, stderr, err := executeCLI("test", tc.root)
@@ -52,6 +55,12 @@ func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
 				"PASS invalid_fallible_signature.octfail",
 				"PASS invalid_question_in_infallible_function.octfail",
 				"PASS invalid_question_on_infallible_expression.octfail",
+			},
+		},
+		{
+			root: filepath.Join("..", "..", "Language", "Functions", "Calls", "invalid"),
+			passes: []string{
+				"PASS call_arity_mismatch.octfail",
 			},
 		},
 	}

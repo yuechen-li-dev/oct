@@ -95,41 +95,55 @@ Migration friction observed in M26b:
 - demo/consumer `Main` fixtures intentionally remain in `testdata/`, so integration setups now combine `Packages/*` libraries with `testdata/.../Main` consumers
 
 
-## M29a/M29b permanent semantic-suite home in `Language/`
+## M29a/M29b/M29c permanent semantic-suite home in `Language/`
 
-M29a established `Language/` as the permanent home for canonical native language contract suites, and M29b generalizes that pattern to additional clearly classifiable semantic groups.
+M29a established `Language/` as the permanent home for canonical native language contract suites, M29b generalized the pattern to additional expression/error groups, and M29c continues the migration for the next cleanly separable classes.
 
-Repository distinction after M29b:
+Repository distinction after M29c:
 
 - `Language/`: canonical native language contracts (`.octest` and `.octfail`) organized by language concept.
 - `Packages/`: reusable/evolving package seeds.
 - `testdata/`: fixtures, demos/integration inputs, and synthetic/temporary scenario inputs.
 
-Canonical concept-first structure after M29b:
+Canonical concept-first structure after M29c:
 
 - `Language/ControlFlow/IfExpression/{valid,invalid}`
 - `Language/ControlFlow/ConditionSwitch/{valid,invalid}`
 - `Language/ControlFlow/DecisionLadder/{valid,invalid}`
+- `Language/ControlFlow/Loops/{valid,invalid}`
 - `Language/Expressions/Arithmetic/{valid,invalid}`
+- `Language/Expressions/Literals/{valid,invalid}`
 - `Language/Expressions/Logical/{valid,invalid}`
 - `Language/Errors/Fallible/{valid,invalid}`
+- `Language/Functions/Calls/{valid,invalid}`
+- `Language/Types/Arrays/{valid,invalid}`
 
 M29b moved the following classes out of transitional roots:
 
 - arithmetic expression `.octest` contracts from `testdata/m28a/main_valid` into `Language/Expressions/Arithmetic/valid`
 - logical expression `.octest` contracts from `testdata/m28a/main_valid` into `Language/Expressions/Logical/valid`
-- fallible-signature / `?` misuse `.octfail` contracts from `testdata/m28b/main_invalid` into `Language/Errors/Fallible/invalid`
+- fallible-signature / `?` misuse `.octfail` contracts from the former transitional `m28b` invalid root into `Language/Errors/Fallible/invalid`
 
-Intentionally deferred transitional remainder after M29b:
+M29c moved the following additional classes out of transitional roots:
 
-- mixed control-flow, array/indexing, dimensioned numerics, print, literals, and loop fixtures still in `testdata/m28a/main_valid`
-- call-shape invalid fixture (`call_arity_mismatch.octfail`) still in `testdata/m28b/main_invalid` because it is better classified under a future call semantics bucket rather than forced into the fallible taxonomy
+- loop control-flow `.octest` contracts into `Language/ControlFlow/Loops/valid`
+- array/indexing `.octest` contracts into `Language/Types/Arrays/valid`
+- literal `.octest` contracts (including dimensioned literals) into `Language/Expressions/Literals/valid`
+- call-arity invalid `.octfail` contract into `Language/Functions/Calls/invalid`
 
-Migration friction observed across M29a/M29b:
+Intentionally deferred transitional remainder after M29c:
+
+- dimensioned arithmetic contracts (`dimensioned_multiplication`, `dimensioned_division`, `dimensioned_sqrt`) remain in `testdata/m28a/main_valid` because they straddle arithmetic + dimensions taxonomy decisions
+- print contracts remain in `testdata/m28a/main_valid` pending a dedicated builtins/IO taxonomy bucket
+- switch-expression and if-expression transitional fixtures remain in `testdata/m28a/main_valid` because equivalent semantic areas already have canonical suites and need deduplication policy before migration
+- let-binding chaining fixture remains in `testdata/m28a/main_valid` pending a broader bindings/scope taxonomy pass
+- `testdata/m28b/main_invalid` has been retired after call-shape migration; future invalid additions should go directly to concept-first `Language/.../invalid` homes
+
+Migration friction observed across M29a/M29b/M29c:
 
 - several Go CLI orchestration tests had historical `testdata/...` assumptions and were updated to point at `Language/ControlFlow/...` for migrated classes
-- additional orchestration assumptions needed extension to `Language/Expressions/...` and `Language/Errors/...` roots for migrated classes
-- extracted corpus outside cleanly separable classes is still too mixed to classify safely without a larger follow-up pass
+- additional orchestration assumptions needed extension to `Language/Expressions/...`, `Language/Errors/...`, `Language/Types/...`, and `Language/Functions/...` roots for migrated classes
+- extracted corpus outside cleanly separable classes remains intentionally mixed to avoid forced, low-quality taxonomy decisions
 
 ## Error handling model
 
