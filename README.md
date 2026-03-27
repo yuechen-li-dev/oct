@@ -95,28 +95,41 @@ Migration friction observed in M26b:
 - demo/consumer `Main` fixtures intentionally remain in `testdata/`, so integration setups now combine `Packages/*` libraries with `testdata/.../Main` consumers
 
 
-## M29a permanent semantic-suite home in `Language/`
+## M29a/M29b permanent semantic-suite home in `Language/`
 
-M29a establishes `Language/` as the permanent home for canonical native language contract suites.
+M29a established `Language/` as the permanent home for canonical native language contract suites, and M29b generalizes that pattern to additional clearly classifiable semantic groups.
 
-Repository distinction after M29a:
+Repository distinction after M29b:
 
 - `Language/`: canonical native language contracts (`.octest` and `.octfail`) organized by language concept.
 - `Packages/`: reusable/evolving package seeds.
 - `testdata/`: fixtures, demos/integration inputs, and synthetic/temporary scenario inputs.
 
-Golden-path structure introduced in M29a:
+Canonical concept-first structure after M29b:
 
 - `Language/ControlFlow/IfExpression/{valid,invalid}`
 - `Language/ControlFlow/ConditionSwitch/{valid,invalid}`
 - `Language/ControlFlow/DecisionLadder/{valid,invalid}`
+- `Language/Expressions/Arithmetic/{valid,invalid}`
+- `Language/Expressions/Logical/{valid,invalid}`
+- `Language/Errors/Fallible/{valid,invalid}`
 
-M29a intentionally migrates only this clean concept-first subset. Broader classification of the remaining mixed extracted corpus (for example the large `m28a/main_valid` and `m28b/main_invalid` transitional roots) is deferred to a follow-up milestone.
+M29b moved the following classes out of transitional roots:
 
-Migration friction observed in M29a:
+- arithmetic expression `.octest` contracts from `testdata/m28a/main_valid` into `Language/Expressions/Arithmetic/valid`
+- logical expression `.octest` contracts from `testdata/m28a/main_valid` into `Language/Expressions/Logical/valid`
+- fallible-signature / `?` misuse `.octfail` contracts from `testdata/m28b/main_invalid` into `Language/Errors/Fallible/invalid`
+
+Intentionally deferred transitional remainder after M29b:
+
+- mixed control-flow, array/indexing, dimensioned numerics, print, literals, and loop fixtures still in `testdata/m28a/main_valid`
+- call-shape invalid fixture (`call_arity_mismatch.octfail`) still in `testdata/m28b/main_invalid` because it is better classified under a future call semantics bucket rather than forced into the fallible taxonomy
+
+Migration friction observed across M29a/M29b:
 
 - several Go CLI orchestration tests had historical `testdata/...` assumptions and were updated to point at `Language/ControlFlow/...` for migrated classes
-- extracted corpus outside these three semantic classes is still too mixed to classify safely without a larger follow-up pass
+- additional orchestration assumptions needed extension to `Language/Expressions/...` and `Language/Errors/...` roots for migrated classes
+- extracted corpus outside cleanly separable classes is still too mixed to classify safely without a larger follow-up pass
 
 ## Error handling model
 
