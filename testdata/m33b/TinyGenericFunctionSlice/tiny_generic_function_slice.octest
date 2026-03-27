@@ -1,0 +1,187 @@
+package TinyGenericFunctionSlice
+
+record IntPoint {
+    X: Int
+    Y: Int
+}
+
+record FloatPoint {
+    X: Float
+    Y: Float
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn ClampInt(value: Int, lo: Int, hi: Int) -> Int {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn ClampFloat(value: Float, lo: Float, hi: Float) -> Float {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn SumInts(xs: Int[]) -> Int {
+    var total = 0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn SumFloats(xs: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn AllNonNegativeInts(xs: Int[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] < 0 {
+            return false
+        }
+    }
+    return true
+}
+
+fn AllNonNegativeFloats(xs: Float[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] < 0.0 {
+            return false
+        }
+    }
+    return true
+}
+
+fn AllTrue(xs: Bool[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] == false {
+            return false
+        }
+    }
+    return true
+}
+
+fn IsEmptyString(s: String) -> Bool {
+    return Len(s) == 0
+}
+
+fn MidpointInt(a: IntPoint, b: IntPoint) -> IntPoint {
+    return IntPoint { X: (a.X + b.X) / 2 Y: (a.Y + b.Y) / 2 }
+}
+
+fn MidpointFloat(a: FloatPoint, b: FloatPoint) -> FloatPoint {
+    return FloatPoint { X: (a.X + b.X) / 2.0 Y: (a.Y + b.Y) / 2.0 }
+}
+
+fn NormalizePercentIntToFloat(xs: Int[]) -> Float[] {
+    var out = [0.0, 0.0, 0.0, 0.0]
+    for i in 0..Len(xs) {
+        out[i] = xs[i] / 100.0
+    }
+    return out
+}
+
+fn IsStrictlyPositiveInt(value: Int) -> Bool {
+    return value > 0
+}
+
+fn IsStrictlyPositiveFloat(value: Float) -> Bool {
+    return value > 0.0
+}
+
+fn ClampLength(value: Float<m>, lo: Float<m>, hi: Float<m>) -> Float<m> {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn ClampForce(value: Float<kg*m/s^2>, lo: Float<kg*m/s^2>, hi: Float<kg*m/s^2>) -> Float<kg*m/s^2> {
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+[Fact]
+fn A_SameTypeNumericHelpers() -> Void {
+    Assert.Equal(3, MinInt(3, 7), "min int")
+    Assert.Near(3.0, MinFloat(3.0, 7.0), 0.0001, "min float")
+    Assert.Equal(5, ClampInt(9, 0, 5), "clamp int")
+    Assert.Near(5.0, ClampFloat(9.0, 0.0, 5.0), 0.0001, "clamp float")
+}
+
+[Fact]
+fn B_SameTypeNumericArrayHelpers() -> Void {
+    Assert.Equal(10, SumInts([1, 2, 3, 4]), "sum ints")
+    Assert.Near(10.0, SumFloats([1.0, 2.0, 3.0, 4.0]), 0.0001, "sum floats")
+    Assert.True(AllNonNegativeInts([0, 1, 2, 3]), "all non-negative ints")
+    Assert.True(AllNonNegativeFloats([0.0, 1.0, 2.0, 3.0]), "all non-negative floats")
+}
+
+[Fact]
+fn C_BoundaryProbe_NonNumeric() -> Void {
+    Assert.True(AllTrue([true, true, true, true]), "bool helper")
+    Assert.True(IsEmptyString(""), "string helper")
+
+    let a = IntPoint { X: 0 Y: 10 }
+    let b = IntPoint { X: 2 Y: 14 }
+    let c = MidpointInt(a, b)
+    Assert.Equal(1, c.X, "record midpoint int x")
+
+    let fa = FloatPoint { X: 0.0 Y: 10.0 }
+    let fb = FloatPoint { X: 2.0 Y: 14.0 }
+    let fc = MidpointFloat(fa, fb)
+    Assert.Near(12.0, fc.Y, 0.0001, "record midpoint float y")
+}
+
+[Fact]
+fn D_BoundaryProbe_MixedTypeRelationships() -> Void {
+    let normalized = NormalizePercentIntToFloat([0, 20, 50, 100])
+    Assert.Near(0.0, normalized[0], 0.0001, "zero percent")
+    Assert.Near(0.2, normalized[1], 0.0001, "twenty percent")
+
+    Assert.True(IsStrictlyPositiveInt(10), "int to bool check")
+    Assert.True(IsStrictlyPositiveFloat(10.0), "float to bool check")
+}
+
+[Fact]
+fn E_BoundaryProbe_DimensionedNumericValues() -> Void {
+    let clampedLength = ClampLength(12.0m, 0.0m, 8.0m)
+    Assert.Near(8.0m, clampedLength, 0.0001m, "length clamp")
+
+    let clampedForce = ClampForce(12.0kg*m/s^2, 0.0kg*m/s^2, 8.0kg*m/s^2)
+    Assert.Near(8.0kg*m/s^2, clampedForce, 0.0001kg*m/s^2, "force clamp")
+}
