@@ -94,6 +94,30 @@ Migration friction observed in M26b:
 - package-seed vs fixture intent was still ambiguous in historical docs/examples and required explicit documentation refresh to reinforce `Packages/` vs `testdata/` roles
 - demo/consumer `Main` fixtures intentionally remain in `testdata/`, so integration setups now combine `Packages/*` libraries with `testdata/.../Main` consumers
 
+
+## M29a permanent semantic-suite home in `Language/`
+
+M29a establishes `Language/` as the permanent home for canonical native language contract suites.
+
+Repository distinction after M29a:
+
+- `Language/`: canonical native language contracts (`.octest` and `.octfail`) organized by language concept.
+- `Packages/`: reusable/evolving package seeds.
+- `testdata/`: fixtures, demos/integration inputs, and synthetic/temporary scenario inputs.
+
+Golden-path structure introduced in M29a:
+
+- `Language/ControlFlow/IfExpression/{valid,invalid}`
+- `Language/ControlFlow/ConditionSwitch/{valid,invalid}`
+- `Language/ControlFlow/DecisionLadder/{valid,invalid}`
+
+M29a intentionally migrates only this clean concept-first subset. Broader classification of the remaining mixed extracted corpus (for example the large `m28a/main_valid` and `m28b/main_invalid` transitional roots) is deferred to a follow-up milestone.
+
+Migration friction observed in M29a:
+
+- several Go CLI orchestration tests had historical `testdata/...` assumptions and were updated to point at `Language/ControlFlow/...` for migrated classes
+- extracted corpus outside these three semantic classes is still too mixed to classify safely without a larger follow-up pass
+
 ## Error handling model
 
 Fallible functions declare `! Error` in their signature.
@@ -256,9 +280,9 @@ Out of scope (intentionally unchanged in M24d):
 
 M24e migrates one coherent class of user-visible language contracts into native `.octest`: **if-expression selection semantics**.
 
-- native coverage lives in `testdata/m24e/valid/IfContracts/if_contracts.octest` and validates then/else value selection, lazy non-selected branch behavior, and sign-bucket selection through `[Fact]` + `[Theory]`
-- corresponding fixture code lives in `testdata/m24e/valid/IfContracts/if_contracts.oct`
-- rejection-path orchestration remains host-owned via `testdata/m24e/invalid/Main/main.oct` (branch-type mismatch), asserted from Go as a CLI/build boundary
+- native coverage lives in `Language/ControlFlow/IfExpression/valid/if_contracts.octest` and validates then/else value selection, lazy non-selected branch behavior, and sign-bucket selection through `[Fact]` + `[Theory]`
+- corresponding fixture code lives in `Language/ControlFlow/IfExpression/valid/if_contracts.oct`
+- rejection-path coverage now lives natively at `Language/ControlFlow/IfExpression/invalid/if_expression_branch_type_mismatch.octfail` (branch-type mismatch), asserted via `oct test`
 
 Go vs Oct boundary clarified by M24e:
 
@@ -267,7 +291,7 @@ Go vs Oct boundary clarified by M24e:
 
 Migration friction observed in M24e:
 
-- negative/rejection contracts are clearest today through host orchestration over invalid fixtures, because `.octest` does not directly encode expected-compile-failure cases inline
+- negative/rejection contracts are now represented natively with `.octfail`, but broader migration for mixed legacy suites is still deferred
 
 ## M24f native-vs-host test boundary formalization
 
@@ -276,13 +300,13 @@ M24f closes this migration round by documenting and enforcing where tests belong
 ### What belongs in `.octest`
 
 - package-local proof/package correctness (for example `Packages/Numerics/solvers.octest`, `Packages/Mechanics/mechanics.octest`)
-- user-visible valid-language semantics (for example `testdata/m24e/valid/IfContracts/if_contracts.octest`)
+- user-visible valid-language semantics (for example `Language/ControlFlow/IfExpression/valid/if_contracts.octest`)
 - readable language-contract checks that should be expressed from an Oct user's perspective
 
 ### What remains in Go tests
 
 - parser/lexer/compiler/typechecker internals and host runtime plumbing
-- invalid-fixture orchestration and expected compile-failure assertions (for example `testdata/m24e/invalid` and `testdata/m24f/invalid`)
+- invalid-fixture orchestration and expected compile-failure assertions for non-migrated fixture areas
 - CLI/tooling boundary checks (`oct run`, `oct build`, `oct test`) and artifact expectations
 
 ### Decision rule for new tests
@@ -298,12 +322,12 @@ M24f closes this migration round by documenting and enforcing where tests belong
 
 ### M24f consolidation notes
 
-- condition-switch valid semantics now have native coverage in `testdata/m24f/valid/ConditionSwitch/condition_switch.octest`
-- Go coverage for condition-switch focuses on invalid contracts and build rejection paths
+- condition-switch valid semantics now have native coverage in `Language/ControlFlow/ConditionSwitch/valid/condition_switch.octest`
+- condition-switch invalid contracts are now native `.octfail` fixtures in `Language/ControlFlow/ConditionSwitch/invalid`
 
 Migration friction still present after M24f:
 
-- some semantic classes are intentionally split: valid contracts in `.octest`, invalid/rejection contracts in Go-hosted fixture orchestration
+- remaining non-migrated semantic classes are intentionally deferred until they can be cleanly classified by concept
 - dimension-heavy numeric assertions still require normalization workarounds before scalar `Assert.Near`
 - dynamic-growth array workflows remain awkward while append/push ergonomics continue to evolve
 

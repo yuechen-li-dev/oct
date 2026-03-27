@@ -8,7 +8,7 @@ import (
 )
 
 func TestM24fConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "m24f", "valid")
+	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%q stdout=%q", err, stderr, stdout)
@@ -21,14 +21,14 @@ func TestM24fConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
 	}
 }
 
-func TestM24fConditionSwitchInvalidFixtureRejectedByBuild(t *testing.T) {
-	entry := filepath.Join("..", "..", "testdata", "m24f", "invalid", "Main", "main.oct")
-	stdout, stderr, err := executeCLI("build", entry)
-	if err == nil {
-		t.Fatalf("expected build failure, got success with stdout %q", stdout)
+func TestM24fConditionSwitchInvalidFixturesRunAsNativeOctFail(t *testing.T) {
+	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "invalid")
+	stdout, stderr, err := executeCLI("test", root)
+	if err != nil {
+		t.Fatalf("expected .octfail fixtures to pass, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	if !strings.Contains(stderr, "condition switch case must be Bool") {
-		t.Fatalf("expected condition-switch bool-case error, got %q", stderr)
+	if !strings.Contains(stdout, "PASS condition_switch_non_bool_case.octfail") {
+		t.Fatalf("expected condition-switch invalid fixture pass output, got %q", stdout)
 	}
 }
 

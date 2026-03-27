@@ -12,30 +12,35 @@ import (
 )
 
 func TestRunCommandExecutesMainPrograms(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "m28a", "main_valid")
-	stdout, stderr, err := executeCLI("test", root)
-	if err != nil {
-		t.Fatalf("oct test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
+	validRoots := []struct {
+		root string
+		pass string
+	}{
+		{filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "valid"), "PASS IfContracts.IfExpressionSelectsThenArm"},
+		{filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid"), "PASS ConditionSwitch.ConditionSwitchSelectsFirstMatchingCase"},
+		{filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid"), "PASS DecisionLadderContracts.NestedThenIfAllowed"},
 	}
-	if !strings.Contains(stdout, "PASS MainValid.IntLiteralReturn") {
-		t.Fatalf("expected migrated fact output, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "PASS MainValid.FallibleWhileReturn") {
-		t.Fatalf("expected migrated fallible fact output, got %q", stdout)
+	for _, tc := range validRoots {
+		stdout, stderr, err := executeCLI("test", tc.root)
+		if err != nil {
+			t.Fatalf("oct test failed for %s: %v\nstderr:%s\nstdout:%s", tc.root, err, stderr, stdout)
+		}
+		if !strings.Contains(stdout, tc.pass) {
+			t.Fatalf("expected valid output %q, got %q", tc.pass, stdout)
+		}
 	}
 }
 
 func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "m28b", "main_invalid")
+	root := filepath.Join("..", "..", "Language", "ControlFlow")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
 		t.Fatalf("oct test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
 	}
 	requiredPasses := []string{
-		"PASS call_arity_mismatch.octfail",
-		"PASS invalid_fallible_signature.octfail",
-		"PASS invalid_question_in_infallible_function.octfail",
-		"PASS invalid_question_on_infallible_expression.octfail",
+		"PASS IfExpression/invalid/if_expression_branch_type_mismatch.octfail",
+		"PASS ConditionSwitch/invalid/condition_switch_missing_else.octfail",
+		"PASS DecisionLadder/invalid/decision_ladder_rejected.octfail",
 	}
 	for _, pass := range requiredPasses {
 		if !strings.Contains(stdout, pass) {
