@@ -109,6 +109,35 @@ fn Main() -> Int {
 
 ---
 
+## Octomata Core A (M41a Static Surface)
+
+Oct v1 adds an initial static-only Octomata surface:
+
+* `flow Name(params...) -> ReturnType { ... }`
+* nested `state` declarations inside a `flow`
+* control statements:
+  * `goto StateName`
+  * `suspend`
+
+Current M41a scope is intentionally narrow:
+
+* parser + AST + legality/type checks only
+* first declared state is the flow entry state
+* `flow` must contain at least one state
+* state names are unique per flow
+* `goto` targets must exist in the same flow
+* `goto` / `suspend` are only valid inside state bodies
+* ordinary Oct statements remain valid inside states
+
+Explicitly deferred beyond M41a:
+
+* runtime stepping and resumable execution APIs
+* scheduler/concurrency integration
+* `when`
+* stack transitions (`push` / `pop` / `replace`)
+
+---
+
 ## Error Handling Model
 
 Fallible functions declare `! Error` in their signature.

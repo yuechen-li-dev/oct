@@ -13,6 +13,7 @@ type File struct {
 	Records   []RecordDecl
 	Enums     []EnumDecl
 	Functions []FunctionDecl
+	Flows     []FlowDecl
 }
 
 type RecordDecl struct {
@@ -44,6 +45,19 @@ type FunctionDecl struct {
 	IsFallible  bool
 	ErrorType   TypeRef
 	Body        Block
+}
+
+type FlowDecl struct {
+	Name       string
+	Parameters []Parameter
+	ReturnType TypeRef
+	States     []StateDecl
+	EntryState string
+}
+
+type StateDecl struct {
+	Name string
+	Body Block
 }
 
 type InlineDataRow struct {
@@ -154,6 +168,16 @@ type WhileStmt struct {
 }
 
 func (WhileStmt) stmtNode() {}
+
+type GotoStmt struct {
+	Target string
+}
+
+func (GotoStmt) stmtNode() {}
+
+type SuspendStmt struct{}
+
+func (SuspendStmt) stmtNode() {}
 
 type Expr interface {
 	exprNode()

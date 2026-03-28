@@ -20,6 +20,7 @@ type Package struct {
 	Records   []ast.RecordDecl
 	Enums     []ast.EnumDecl
 	Functions []ast.FunctionDecl
+	Flows     []ast.FlowDecl
 }
 
 type Program struct {
@@ -172,6 +173,13 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 			}
 			declSet[fn.Name] = struct{}{}
 			pkg.Functions = append(pkg.Functions, fn)
+		}
+		for _, flow := range file.Flows {
+			if _, exists := declSet[flow.Name]; exists {
+				return fmt.Errorf("duplicate declaration '%s' in package '%s'", flow.Name, packageName)
+			}
+			declSet[flow.Name] = struct{}{}
+			pkg.Flows = append(pkg.Flows, flow)
 		}
 	}
 

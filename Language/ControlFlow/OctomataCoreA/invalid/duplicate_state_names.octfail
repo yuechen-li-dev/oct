@@ -1,0 +1,17 @@
+expect error: "flow Dup: duplicate state 'Start'"
+
+package Main
+
+flow Dup() -> Int {
+    state Start {
+        suspend
+    }
+
+    state Start {
+        return 1
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

@@ -1,0 +1,8 @@
+expect error: "function Main: suspend is only valid inside flow state bodies"
+
+package Main
+
+fn Main() -> Int {
+    suspend
+    return 0
+}

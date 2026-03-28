@@ -1,0 +1,13 @@
+expect error: "flow Missing: goto target 'Never' does not exist"
+
+package Main
+
+flow Missing() -> Int {
+    state Start {
+        goto Never
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

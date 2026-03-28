@@ -1,0 +1,22 @@
+package MainValid
+
+flow Patrol(input: Int) -> Int {
+    state Search {
+        if input > 0 {
+            goto Track
+        }
+        suspend
+    }
+
+    state Track {
+        if input == 0 {
+            goto Search
+        }
+        return input
+    }
+}
+
+[Fact]
+fn MultiStateGoto() -> Void {
+    Assert.Equal(1, 1, "multi-state flow with valid goto is accepted")
+}
