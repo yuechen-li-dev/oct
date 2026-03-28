@@ -1,0 +1,20 @@
+package TrialBatchSimulation
+
+fn RunTrial(seed: Int) -> Int ! Error {
+    if seed < 0 {
+        return error("trial seed must be non-negative")
+    }
+
+    var score = seed * 3 + 5
+    for i in 0 .. 4 {
+        score = score + seed + i
+    }
+    return score
+}
+
+fn RunTrials(seeds: Int[]) -> Int[] ! Error {
+    let outcomes = batch seeds as seed {
+        return RunTrial(seed)?
+    }
+    return outcomes
+}
