@@ -97,6 +97,16 @@ type MIRConstructArray struct {
 
 func (MIRConstructArray) mirStmt() {}
 
+type MIRBatchMap struct {
+	Target     string
+	Input      string
+	Worker     string
+	InputType  string
+	ResultType string
+}
+
+func (MIRBatchMap) mirStmt() {}
+
 type MIRTerminator interface{ mirTerminator() }
 
 type MIRReturn struct{ Value string }
@@ -170,8 +180,11 @@ type lowerCtx struct {
 	blocks  []MIRBlock
 	cur     int
 	tempID  int
+	batchID int
 	retType string
 	fn      ast.FunctionDecl
+	extra   []MIRFunction
+	lastRet string
 }
 
 func lowerProgram(program project.Program) (MIRModule, error) {
@@ -209,15 +222,18 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 		for _, e := range pkg.Enums {
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: append([]string{}, e.Variants...)})
 		}
+		if len(pkg.Flows) > 0 {
+			return MIRModule{}, unsupported("flow")
+		}
 		for _, fn := range pkg.Functions {
 			if fn.IsTestFile || fn.IsTheory || fn.IsFact || fn.IsArtifact || fn.IsBenchmark {
 				continue
 			}
-			mirFn, err := lowerFunction(program, pkg, fn)
+			lowered, err := lowerFunction(program, pkg, fn)
 			if err != nil {
 				return MIRModule{}, err
 			}
-			module.Functions = append(module.Functions, mirFn)
+			module.Functions = append(module.Functions, lowered...)
 		}
 	}
 	if module.EntryFunc == "" {
@@ -226,7 +242,7 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 	return module, nil
 }
 
-func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) (MIRFunction, error) {
+func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) ([]MIRFunction, error) {
 	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn}
 	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
@@ -237,7 +253,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	ctx.blocks = append(ctx.blocks, MIRBlock{Label: "entry"})
 	ctx.cur = 0
 	if err := ctx.lowerBlock(fn.Body); err != nil {
-		return MIRFunction{}, fmt.Errorf("function %s.%s: %w", pkg.Name, fn.Name, err)
+		return nil, fmt.Errorf("function %s.%s: %w", pkg.Name, fn.Name, err)
 	}
 	if ctx.blocks[ctx.cur].Terminator == nil {
 		if mirFn.Return == "Void" {
@@ -247,7 +263,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: ""}
 			}
 		} else {
-			return MIRFunction{}, fmt.Errorf("missing return")
+			return nil, fmt.Errorf("missing return")
 		}
 	}
 	mirFn.Blocks = ctx.blocks
@@ -264,7 +280,9 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 		}
 	}
 	sort.Slice(mirFn.Locals, func(i, j int) bool { return mirFn.Locals[i].Name < mirFn.Locals[j].Name })
-	return mirFn, nil
+	out := []MIRFunction{mirFn}
+	out = append(out, ctx.extra...)
+	return out, nil
 }
 
 func (c *lowerCtx) lowerBlock(block ast.Block) error {
@@ -321,6 +339,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if err != nil {
 				return err
 			}
+			c.lastRet = t
 			if c.fn.IsFallible {
 				if t == "Error" {
 					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, v)}
@@ -716,7 +735,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.UnwrapExpr:
 		return c.lowerUnwrapExpr(e)
 	case ast.BatchExpr:
-		return "", "", false, unsupported("batch")
+		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
 		return "", "", false, unsupported("utility when")
 	case ast.ParenExpr:
@@ -724,6 +743,106 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	default:
 		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
+}
+
+func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error) {
+	input, inputType, _, err := c.lowerExpr(e.Input)
+	if err != nil {
+		return "", "", false, err
+	}
+	if !strings.HasSuffix(inputType, "[]") {
+		return "", "", false, fmt.Errorf("batch input must be an array")
+	}
+	itemType := strings.TrimSuffix(inputType, "[]")
+	worker, resultType, err := c.lowerBatchWorker(e, itemType)
+	if err != nil {
+		return "", "", false, err
+	}
+	c.extra = append(c.extra, worker)
+
+	raw := c.temp(fallibleType(resultType + "[]"))
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRBatchMap{
+		Target:     raw,
+		Input:      input,
+		Worker:     worker.Package + "." + worker.Name,
+		InputType:  itemType,
+		ResultType: resultType,
+	})
+	value := c.temp(resultType + "[]")
+	okID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", okID)})
+	errID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: raw + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+
+	c.cur = okID
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: value, Value: raw + ".Value"})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+
+	c.cur = errID
+	if c.fn.IsFallible {
+		c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, raw+".Err")}
+	} else {
+		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + %s.Err", "oct error: ", raw)}
+	}
+	c.cur = mergeID
+	return value, resultType + "[]", false, nil
+}
+
+func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFunction, string, error) {
+	name := fmt.Sprintf("__batch_%s_%d", c.fn.Name, c.batchID)
+	c.batchID++
+	const retPlaceholder = "__oct_batch_ret__"
+	workerDecl := ast.FunctionDecl{Name: name, IsFallible: true, ErrorType: ast.TypeRef{Name: "Error"}}
+	wctx := &lowerCtx{
+		pkg:     c.pkg,
+		program: c.program,
+		locals:  map[string]string{e.ItemName: itemType},
+		blocks:  []MIRBlock{{Label: "entry"}},
+		cur:     0,
+		retType: retPlaceholder,
+		fn:      workerDecl,
+	}
+	if err := wctx.lowerBlock(e.Body); err != nil {
+		return MIRFunction{}, "", err
+	}
+	if wctx.blocks[wctx.cur].Terminator == nil {
+		return MIRFunction{}, "", fmt.Errorf("batch body missing return")
+	}
+	if wctx.lastRet == "" {
+		return MIRFunction{}, "", fmt.Errorf("batch body return type could not be inferred")
+	}
+	worker := MIRFunction{
+		Package:    c.pkg.Name,
+		Name:       name,
+		Params:     []MIRField{{Name: e.ItemName, Type: itemType}},
+		Return:     wctx.lastRet,
+		IsFallible: true,
+		ErrorType:  "Error",
+		Blocks:     patchBatchReturnType(wctx.blocks, retPlaceholder, wctx.lastRet),
+	}
+	for n, t := range wctx.locals {
+		if n == e.ItemName {
+			continue
+		}
+		worker.Locals = append(worker.Locals, MIRField{Name: n, Type: t})
+	}
+	sort.Slice(worker.Locals, func(i, j int) bool { return worker.Locals[i].Name < worker.Locals[j].Name })
+	return worker, wctx.lastRet, nil
+}
+
+func patchBatchReturnType(blocks []MIRBlock, from, to string) []MIRBlock {
+	out := make([]MIRBlock, len(blocks))
+	for i, block := range blocks {
+		out[i] = block
+		if ret, ok := block.Terminator.(MIRReturn); ok {
+			ret.Value = strings.ReplaceAll(ret.Value, from, to)
+			out[i].Terminator = ret
+		}
+	}
+	return out
 }
 
 func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, bool) {
@@ -878,6 +997,8 @@ func dumpMIR(m MIRModule) string {
 					fmt.Fprintf(&b, "    %s = [%s]\n", st.Target, strings.Join(st.Values, ", "))
 				case MIRConstructRecord:
 					fmt.Fprintf(&b, "    %s = %s{...}\n", st.Target, st.TypeName)
+				case MIRBatchMap:
+					fmt.Fprintf(&b, "    %s = batch_map %s with %s\n", st.Target, st.Input, st.Worker)
 				}
 			}
 			switch t := bb.Terminator.(type) {
@@ -908,6 +1029,10 @@ func emitGo(m MIRModule) (string, error) {
 			for _, st := range bb.Statements {
 				call, ok := st.(MIRCall)
 				if !ok || !call.Builtin {
+					if batch, ok := st.(MIRBatchMap); ok {
+						usedBuiltins["BatchMap"] = true
+						resultTypes[batch.ResultType+"[]"] = struct{}{}
+					}
 					continue
 				}
 				usedBuiltins[call.Callee] = true
@@ -924,6 +1049,11 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	importSet := map[string]struct{}{"fmt": {}}
+	if usedBuiltins["BatchMap"] {
+		for _, pkg := range []string{"runtime", "sync"} {
+			importSet[pkg] = struct{}{}
+		}
+	}
 	if usedBuiltins["WriteOctagon"] {
 		for _, pkg := range []string{"os", "reflect", "strconv", "strings"} {
 			importSet[pkg] = struct{}{}
@@ -1019,6 +1149,9 @@ func emitGo(m MIRModule) (string, error) {
 				b.WriteString("}\n\n")
 			}
 		}
+	}
+	if usedBuiltins["BatchMap"] {
+		b.WriteString(__octBatchHelpers)
 	}
 	for _, fn := range m.Functions {
 		fmt.Fprintf(&b, "func fn_%s_%s(", fn.Package, fn.Name)
@@ -1495,6 +1628,63 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 }
 `
 
+const __octBatchHelpers = `
+func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(R) bool, errMsg func(R) string, value func(R) U) ([]U, string, bool) {
+	if len(items) == 0 {
+		return []U{}, "", false
+	}
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount < 1 {
+		workerCount = 1
+	}
+	if workerCount > len(items) {
+		workerCount = len(items)
+	}
+	type __octBatchItemResult[V any] struct {
+		index int
+		value V
+		err string
+		isErr bool
+	}
+	jobs := make(chan int, len(items))
+	results := make(chan __octBatchItemResult[U], len(items))
+	var wg sync.WaitGroup
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				out := worker(items[idx])
+				if isErr(out) {
+					results <- __octBatchItemResult[U]{index: idx, err: errMsg(out), isErr: true}
+					continue
+				}
+				results <- __octBatchItemResult[U]{index: idx, value: value(out)}
+			}
+		}()
+	}
+	for i := range items {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+	ordered := make([]U, len(items))
+	var firstErr string
+	for result := range results {
+		if firstErr == "" && result.isErr {
+			firstErr = result.err
+			continue
+		}
+		ordered[result.index] = result.value
+	}
+	if firstErr != "" {
+		return nil, firstErr, true
+	}
+	return ordered, "", false
+}
+`
+
 func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
@@ -1525,6 +1715,18 @@ func goStmt(s MIRStmt) (string, error) {
 			}
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
+	case MIRBatchMap:
+		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, fn_%s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
+			st.Target,
+			goType(fallibleType(st.ResultType+"[]")),
+			st.Input,
+			strings.ReplaceAll(st.Worker, ".", "_"),
+			goResultTypeName(st.ResultType),
+			goResultTypeName(st.ResultType),
+			goResultTypeName(st.ResultType),
+			goType(st.ResultType),
+			goResultTypeName(st.ResultType+"[]"),
+			goResultTypeName(st.ResultType+"[]")), nil
 	default:
 		return "", fmt.Errorf("unsupported MIR stmt %T", s)
 	}
@@ -1580,7 +1782,7 @@ func goResultTypeName(valueType string) string {
 }
 
 func goSafeName(valueType string) string {
-	s := strings.NewReplacer(".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "[]", "Slice", "<", "_", ">", "").Replace(valueType)
+	s := strings.NewReplacer("[]", "Slice", ".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "<", "_", ">", "").Replace(valueType)
 	for strings.Contains(s, "__") {
 		s = strings.ReplaceAll(s, "__", "_")
 	}

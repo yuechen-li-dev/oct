@@ -29,7 +29,7 @@ fn Main() -> Int {
 
 ## What Oct Is Right Now
 
-### Compiled Mode Bring-up (M60/M61)
+### Compiled Mode Bring-up (M60/M61/M62/M63)
 
 `oct build` now runs a real first-step compiled path for a narrow subset:
 
@@ -43,6 +43,11 @@ Current compiled subset is intentionally small:
 * plain functions and explicit returns
 * arithmetic/comparisons, `if`/`else`, locals/assignments
 * arrays, records, enums
+* structured `batch` map over arrays:
+  * `batch inputs as item { ... return expr }`
+  * ordered output aligned to input indexes
+  * implicit join at expression boundary
+  * fail-whole-batch semantics on item failure
 * ordinary function calls across packages
 * direct builtins: `Len`, `Append`, `Print`
 * runtime-backed `.octagon` data paths:
@@ -57,11 +62,11 @@ Current compiled subset is intentionally small:
 
 Compiled mode currently fails clearly (by design) for deferred features such as:
 
-* `batch`
 * Octomata (`flow/state/...`)
 * utility `when`
 * `remember` / `resume`
 * advanced `.octagon` features beyond the current representable typed subset
+* advanced concurrency beyond structured `batch` (channels, futures/tasks, scheduler controls, reductions, non-array/generalized parallelism)
 
 For bring-up inspection, set `OCT_MIR_DUMP=1` when running `oct build` to write a textual MIR dump next to the produced artifact.
 Fallibility is lowered as explicit result-value control flow in MIR/Go generation (not hidden exceptions).

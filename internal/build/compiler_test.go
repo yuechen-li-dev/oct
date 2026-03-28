@@ -134,27 +134,148 @@ fn Make(a: Int, b: Int) -> Pair {
 	}
 }
 
-func TestCompileRejectsUnsupportedBatch(t *testing.T) {
+func TestCompileAndRunBatchParameterSweepAndOrder(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
 
 fn main() -> Int {
-    let values = batch [1, 2] as x {
-        return x + 1
+    let values = batch [1, 2, 3, 4] as x {
+        return x * x
     }
-    return values[0]
+    return values[0] + values[1] + values[2] + values[3]
 }
 `
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Compile(mainPath)
-	if err == nil {
-		t.Fatal("expected compile to fail")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
 	}
-	if !strings.Contains(err.Error(), "compiled mode does not yet support batch") {
-		t.Fatalf("unexpected error: %v", err)
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "30" {
+		t.Fatalf("expected 30, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunBatchDeterministicRepeatedRuns(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Int {
+    let input = [2, 4, 6]
+    let first = batch input as x {
+        return x + 1
+    }
+    let second = batch input as x {
+        return x + 1
+    }
+    if first[0] == second[0] and first[1] == second[1] and first[2] == second[2] {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunBatchEmptyAndSingleElement(t *testing.T) {
+	root := t.TempDir()
+	emptyPath := filepath.Join(root, "empty.octagon")
+	if err := os.WriteFile(emptyPath, []byte("[]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+fn main() -> Int ! Error {
+    let source = LoadOctagon[Int[]](%q)?
+    let empty = batch source as x {
+        return x + 1
+    }
+    let one = batch [9] as x {
+        return x * 2
+    }
+    if Len(empty) == 0 and Len(one) == 1 {
+        return one[0]
+    }
+    return 0
+}
+`, emptyPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "18" {
+		t.Fatalf("expected 18, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunBatchFailWholeBatch(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn MaybeSample(n: Int) -> Int ! Error {
+    if n == 3 {
+        return error("sample failed")
+    }
+    return n + 10
+}
+
+fn Collect() -> Int[] ! Error {
+    let values = [1, 2, 3, 4]
+    let results = batch values as item {
+        return MaybeSample(item)?
+    }
+    return results
+}
+
+fn main() -> Int {
+    match Collect() {
+        ok(v) => { return 0 }
+        err(e) => { return 42 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "42" {
+		t.Fatalf("expected 42, got %q", strings.TrimSpace(string(out)))
 	}
 }
 
@@ -490,5 +611,65 @@ fn main() -> Int ! Error {
 	}
 	if !strings.Contains(text, "call LoadOctagon(") {
 		t.Fatalf("expected LoadOctagon runtime call in MIR, got:\n%s", text)
+	}
+}
+
+func TestMIRDumpShowsExplicitBatchLowering(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Int {
+    let values = batch [1, 2] as x {
+        return x + 1
+    }
+    return values[0]
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "batch_map") {
+		t.Fatalf("expected batch_map in MIR, got:\n%s", text)
+	}
+	if !strings.Contains(text, "__batch_main_0") {
+		t.Fatalf("expected lowered batch worker in MIR, got:\n%s", text)
+	}
+}
+
+func TestCompileStillRejectsUnsupportedAdvancedConcurrency(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow Machine() -> Int {
+    state Start {
+        return 1
+    }
+}
+
+fn main() -> Int {
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Compile(mainPath)
+	if err == nil {
+		t.Fatal("expected compile to fail")
+	}
+	if !strings.Contains(err.Error(), "compiled mode does not yet support") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
