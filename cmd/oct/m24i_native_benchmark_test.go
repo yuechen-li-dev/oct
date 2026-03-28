@@ -135,7 +135,7 @@ func TestOctBenchFailurePropagatesAndOtherCommandsUnaffected(t *testing.T) {
 
 func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Signal"), filepath.Join(root, "Signal"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Signal"), filepath.Join(root, "Signal"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m24i", "valid", "Main"), filepath.Join(root, "Main"))
 
 	var stdout bytes.Buffer

@@ -179,7 +179,7 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 
 func TestOctTestMigratedNumericsProofPackage(t *testing.T) {
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Numerics"), filepath.Join(root, "Numerics"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Numerics"), filepath.Join(root, "Numerics"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(root, "Main"))
 
 	var stdout bytes.Buffer

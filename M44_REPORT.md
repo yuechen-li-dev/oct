@@ -2,11 +2,11 @@
 
 ## 1) What was built
 
-- `Packages/SquadTacticsCoreB`
+- `Experiments/SquadTacticsCoreB`
   - Game-shaped tactics controller proof with `Idle`, `Alert`, `Chase`, `Attack`, and `Recover`.
   - Uses `when` as the primary guarded-choice surface in multiple states.
   - Tests cover progression, suspension/resume, realistic first-match ordering, else fallback, safety fallback, and deterministic equivalence.
-- `Packages/ReactorCycleCoreB`
+- `Experiments/ReactorCycleCoreB`
   - Industrial-controller-shaped reactor batch controller with `Standby`, `Fill`, `Heat`, `Hold`, `Drain`, and `Fault`.
   - Uses `when` for branch-heavy safety and process transitions where guard ordering matters.
   - Tests cover progression, completion, stable-running standby behavior, safety/fault branches, realistic first-match ordering, and deterministic equivalence.

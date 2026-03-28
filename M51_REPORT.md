@@ -2,12 +2,12 @@
 
 ## 1) What was built
 
-- `Packages/SignalBatchAnalysis`
+- `Experiments/SignalBatchAnalysis`
   - Scientific/analysis-shaped proof for independent signal metric extraction.
   - Uses `batch sampleMeans as sampleMean { ... }` to compute one analysis metric per independent signal mean.
   - Tests cover output shape and expected values, explicit ordering by input index, and deterministic repeated runs.
 
-- `Packages/TrialBatchSimulation`
+- `Experiments/TrialBatchSimulation`
   - Simulation/trial-shaped proof for independent scenario trials.
   - Uses `batch configs as config { ... }` to run one deterministic trial per scenario.
   - Tests cover output shape and expected values, explicit ordering, deterministic repeated runs, and fail-whole-batch behavior when one scenario is invalid.

@@ -2,10 +2,10 @@
 
 ## 1) What was built
 
-- `Packages/TurretControl`
+- `Experiments/TurretControl`
   - Game-shaped turret controller proof with explicit `Search`, `Track`, `Engage`, and `Recover` states.
   - Uses direct `if` + `goto` + `suspend` Core A patterns, plus runtime `Step`, `Active`, and `Result` tests.
-- `Packages/TankController`
+- `Experiments/TankController`
   - Industrial fill/settle/drain controller proof with explicit `Idle`, `Filling`, `Settling`, `Draining`, and `Fault` states.
   - Includes safety-oriented branching and a tested emergency-stop fault path.
 

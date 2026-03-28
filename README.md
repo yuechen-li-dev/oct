@@ -465,7 +465,8 @@ Not included in v0:
 ## Repository Roles
 
 * `Language/` — canonical language contracts (`.octest`, `.octfail`)
-* `Packages/` — reusable proof packages
+* `Libraries/` — reusable capability/toolbox packages
+* `Experiments/` — authored proofs, controllers, simulations, and studies
 * `testdata/` — fixtures, demos, and synthetic inputs
 
 Concept areas include:
@@ -478,7 +479,7 @@ Concept areas include:
 
 ---
 
-## Current Proof Packages
+## Current Libraries
 
 * `Numerics`
 * `Mechanics`
@@ -524,7 +525,7 @@ If a test defines language behavior, place it in `Language/`. If it validates ho
 
 ### Demo vs test separation
 
-`Packages/` and `testdata/` may hold demos/fixtures, but semantic pass/fail contracts are authored and maintained in `Language/`.
+`Libraries/`, `Experiments/`, and `testdata/` may hold demos/fixtures, but semantic pass/fail contracts are authored and maintained in `Language/`.
 * Pass: compilation fails and diagnostic matches substring
 * Fail: compilation succeeds or mismatch occurs
 
