@@ -1547,6 +1547,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, arguments []a
 	if callee == "PlotLine" || callee == "PlotScatter" {
 		return c.checkPlotBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "WriteOctagon" {
+		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "Append" {
 		return c.checkAppendBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
@@ -1605,6 +1608,58 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, arguments []a
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+	}
+}
+
+func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+	}
+
+	pathType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if pathType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if pathType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 1 expects String, got %s", pathType.ValueType)
+	}
+	if pathLiteral, ok := arguments[0].(ast.StringLiteralExpr); ok && !strings.HasSuffix(pathLiteral.Value, ".octagon") {
+		return ExprType{}, fmt.Errorf("WriteOctagon path must end with .octagon")
+	}
+
+	valueType, err := c.checkExpr(scope, arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if valueType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if !isOctagonRepresentableType(valueType.ValueType) {
+		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 2 expects .octagon-representable value, got %s", valueType.ValueType)
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+}
+
+func isOctagonRepresentableType(valueType Type) bool {
+	if valueType.IsVector || valueType.IsMatrix || valueType.IsFunction {
+		return false
+	}
+	if valueType.IsArray {
+		elementType := valueType
+		elementType.IsArray = false
+		return isOctagonRepresentableType(elementType)
+	}
+	if valueType.Name != "" {
+		return true
+	}
+	switch valueType.Base {
+	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString:
+		return true
+	default:
+		return false
 	}
 }
 

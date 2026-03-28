@@ -1,0 +1,7 @@
+expect error: "WriteOctagon path must end with .octagon"
+
+package OctagonEmissionInvalid
+
+fn Main() -> Int {
+    return WriteOctagon("artifact.txt", 1)
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -1023,6 +1024,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: value}, nil
 	}
+	if callee == "WriteOctagon" {
+		return i.evalWriteOctagonBuiltinCallExpr(env, pkgName, argumentExprs)
+	}
 	if callee == "Append" {
 		return i.evalAppendBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
@@ -1134,6 +1138,43 @@ func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string,
 	result = append(result, array.value.Array...)
 	result = append(result, element.value)
 	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
+}
+
+func (i interpreter) evalWriteOctagonBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(argumentExprs) != 2 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: WriteOctagon expects 2 arguments")
+	}
+
+	pathValue, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if pathValue.hasError {
+		return evalResult{hasError: true, errorVal: pathValue.errorVal}, nil
+	}
+	if pathValue.value.Kind != ValueString {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: WriteOctagon expects String path argument")
+	}
+	if !strings.HasSuffix(pathValue.value.Text, ".octagon") {
+		return evalResult{}, fmt.Errorf("runtime error: WriteOctagon path must end with .octagon")
+	}
+
+	contentValue, err := i.evalExpr(env, pkgName, argumentExprs[1])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if contentValue.hasError {
+		return evalResult{hasError: true, errorVal: contentValue.errorVal}, nil
+	}
+
+	rendered, err := serializeOctagonValue(contentValue.value)
+	if err != nil {
+		return evalResult{}, fmt.Errorf("runtime error: WriteOctagon cannot serialize value: %w", err)
+	}
+	if err := os.WriteFile(pathValue.value.Text, []byte(rendered+"\n"), 0o644); err != nil {
+		return evalResult{}, fmt.Errorf("runtime error: WriteOctagon write %s: %w", pathValue.value.Text, err)
+	}
+	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
 }
 
 func numericValueAsFloat(value Value, functionName string) (float64, error) {
