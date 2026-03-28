@@ -1,0 +1,20 @@
+expect error: "function BadCondition: let next: utility when case condition must be Bool"
+
+package MainInvalid
+
+flow BadCondition(x: Int) -> Int {
+    state S {
+        let next = when policy {
+            hysteresis: 1
+            min_commit: 1
+        } {
+            case 1 when x score 10
+            else 0
+        }
+        return next
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

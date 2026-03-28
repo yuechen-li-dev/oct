@@ -758,6 +758,28 @@ func TestBuildFileParsesWhenInFlowState(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesUtilityWhenExpressionInState(t *testing.T) {
+	file := parseSource(t, "flow Patrol(threat: Bool, flank: Bool) -> Int { state Search { let next = when policy { hysteresis: 3 min_commit: 2 } { case 1 when threat score 100 case 2 when flank score 80 else 0 } return next } }")
+	letStmt, ok := file.Flows[0].States[0].Body.Statements[0].(ast.LetStmt)
+	if !ok {
+		t.Fatalf("expected let statement, got %T", file.Flows[0].States[0].Body.Statements[0])
+	}
+	whenExpr, ok := letStmt.Value.(ast.UtilityWhenExpr)
+	if !ok {
+		t.Fatalf("expected utility when expression, got %T", letStmt.Value)
+	}
+	if len(whenExpr.Cases) != 2 {
+		t.Fatalf("expected 2 utility when cases, got %d", len(whenExpr.Cases))
+	}
+	if whenExpr.Else == nil {
+		t.Fatal("expected utility when else arm")
+	}
+}
+
+func TestBuildFileRejectsUtilityWhenWithoutElse(t *testing.T) {
+	assertParseErrorContains(t, "flow Patrol(flag: Bool) -> Int { state Search { let x = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 10 } return x } }", "utility when requires else arm")
+}
+
 func TestBuildFileRejectsMalformedFlowState(t *testing.T) {
 	assertParseErrorContains(t, "flow Patrol() -> Int { let x = 1 }", "expected 'state' declaration inside flow")
 }

@@ -1,0 +1,43 @@
+package MainValid
+
+flow MultiSiteIsolation() -> Int {
+    state Decide {
+        var t = 0
+        var first = 0
+        var second = 0
+        while true {
+            first = when policy {
+                hysteresis: 100
+                min_commit: 1
+            } {
+                case 1 when true score 50
+                case 2 when t > 0 score 120
+                else 0
+            }
+
+            second = when policy {
+                hysteresis: 0
+                min_commit: 1
+            } {
+                case 10 when true score 50
+                case 20 when t > 0 score 120
+                else 0
+            }
+
+            if t == 1 {
+                return first + second
+            }
+            t = t + 1
+        }
+    }
+}
+
+[Fact]
+fn UtilityWhenSitesDoNotInterfere() -> Void {
+    let f = MultiSiteIsolation()
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(21, value, "site-local policy state should remain independent") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

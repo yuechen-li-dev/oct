@@ -1,0 +1,20 @@
+expect error: "function BadResultType: let next: utility when result arms must have matching types"
+
+package MainInvalid
+
+flow BadResultType(flag: Bool) -> Int {
+    state S {
+        let next = when policy {
+            hysteresis: 1
+            min_commit: 1
+        } {
+            case 1 when flag score 1
+            else false
+        }
+        return next
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

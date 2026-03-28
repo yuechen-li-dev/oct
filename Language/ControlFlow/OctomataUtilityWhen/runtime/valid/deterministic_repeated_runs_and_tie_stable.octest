@@ -1,0 +1,37 @@
+package MainValid
+
+flow DeterministicUtility() -> Int {
+    state Decide {
+        let chosen = when policy {
+            hysteresis: 0
+            min_commit: 1
+        } {
+            case 1 when true score 42
+            case 2 when true score 42
+            else 3
+        }
+        return chosen
+    }
+}
+
+[Fact]
+fn DeterministicAcrossRunsAndTieStable() -> Void {
+    let first = DeterministicUtility()
+    let second = DeterministicUtility()
+
+    Step(first)
+    Step(second)
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => {
+                    Assert.Equal(v1, v2, "same inputs should produce same utility result")
+                    Assert.Equal(1, v1, "tie should resolve to first source-order case")
+                }
+                err(e2) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e1) => { Assert.True(false, "first result should be available") }
+    }
+}
