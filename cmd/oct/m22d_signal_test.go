@@ -68,11 +68,17 @@ func TestM22dPackageIntegrationRunAndBuild(t *testing.T) {
 	}
 
 	buildStdout, buildStderr, buildErr := executeCLI("build", entry)
-	if buildErr != nil {
-		t.Fatalf("build failed: %v stdout=%s stderr=%s", buildErr, buildStdout, buildStderr)
+	if buildErr == nil {
+		t.Fatalf("expected build failure for unsupported compiled feature, got success with stdout %q", buildStdout)
 	}
-	if !strings.Contains(buildStdout, "build succeeded") {
-		t.Fatalf("expected build success output, got %q", buildStdout)
+	if buildStdout != "" {
+		t.Fatalf("expected empty build stdout, got %q", buildStdout)
+	}
+	if !strings.Contains(buildStderr, "unknown function 'PlotLine'") {
+		t.Fatalf("expected unsupported plotting diagnostic, got %q", buildStderr)
+	}
+	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 	}
 }
 

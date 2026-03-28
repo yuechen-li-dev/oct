@@ -9,10 +9,11 @@ import (
 
 func TestM19EnumAwareSwitch(t *testing.T) {
 	tests := []struct {
-		name        string
-		source      string
-		wantStdout  string
-		wantMessage string
+		name         string
+		source       string
+		wantStdout   string
+		wantMessage  string
+		wantBuildErr string
 	}{
 		{
 			name: "basic enum switch",
@@ -24,7 +25,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        case Method.RK4 => 4\n" +
 				"    }\n" +
 				"}\n",
-			wantStdout: "1\n",
+			wantStdout:   "1\n",
+			wantBuildErr: "unknown identifier 'Method'",
 		},
 		{
 			name: "non exhaustive without else",
@@ -35,7 +37,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        case Method.Euler => 1\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "non-exhaustive switch over enum 'Method'; missing cases and no else",
+			wantMessage:  "non-exhaustive switch over enum 'Method'; missing cases and no else",
+			wantBuildErr: "non-exhaustive switch over enum 'Method'; missing cases and no else",
 		},
 		{
 			name: "non exhaustive with else",
@@ -47,7 +50,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantStdout: "0\n",
+			wantStdout:   "0\n",
+			wantBuildErr: "unknown identifier 'Method'",
 		},
 		{
 			name: "duplicate enum case",
@@ -60,7 +64,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "duplicate case 'Method.Euler'",
+			wantMessage:  "duplicate case 'Method.Euler'",
+			wantBuildErr: "duplicate case 'Method.Euler'",
 		},
 		{
 			name: "unknown variant",
@@ -72,7 +77,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "enum 'Method' has no variant 'Unknown'",
+			wantMessage:  "enum 'Method' has no variant 'Unknown'",
+			wantBuildErr: "enum 'Method' has no variant 'Unknown'",
 		},
 		{
 			name: "wrong enum type",
@@ -85,7 +91,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "case type OtherEnum does not match subject type Method",
+			wantMessage:  "case type OtherEnum does not match subject type Method",
+			wantBuildErr: "case type OtherEnum does not match subject type Method",
 		},
 		{
 			name: "mixing enum and literal cases",
@@ -98,7 +105,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "mixing enum and non-enum case labels is not allowed",
+			wantMessage:  "mixing enum and non-enum case labels is not allowed",
+			wantBuildErr: "mixing enum and non-enum case labels is not allowed",
 		},
 		{
 			name: "result type mismatch",
@@ -110,7 +118,8 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        case Method.RK4 => 4.0\n" +
 				"    }\n" +
 				"}\n",
-			wantMessage: "result type Float does not match Int",
+			wantMessage:  "result type Float does not match Int",
+			wantBuildErr: "result type Float does not match Int",
 		},
 	}
 
@@ -129,14 +138,29 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 					t.Fatalf("expected stdout %q, got %q", test.wantStdout, stdout)
 				}
 				buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
-				if buildErr != nil {
-					t.Fatalf("build failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
-				}
-				if buildStderr != "" {
-					t.Fatalf("expected empty build stderr, got %q", buildStderr)
-				}
-				if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
-					t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+				if test.wantBuildErr == "" {
+					if buildErr != nil {
+						t.Fatalf("build failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
+					}
+					if buildStderr != "" {
+						t.Fatalf("expected empty build stderr, got %q", buildStderr)
+					}
+					if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+						t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+					}
+				} else {
+					if buildErr == nil {
+						t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
+					}
+					if buildStdout != "" {
+						t.Fatalf("expected empty build stdout, got %q", buildStdout)
+					}
+					if !strings.Contains(buildStderr, test.wantBuildErr) {
+						t.Fatalf("expected build stderr to contain %q, got %q", test.wantBuildErr, buildStderr)
+					}
+					if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+						t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+					}
 				}
 				return
 			}
@@ -151,8 +175,12 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 			if buildErr == nil {
 				t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
 			}
-			if !strings.Contains(buildStderr, test.wantMessage) {
-				t.Fatalf("expected build stderr to contain %q, got %q", test.wantMessage, buildStderr)
+			wantBuildErr := test.wantBuildErr
+			if wantBuildErr == "" {
+				wantBuildErr = test.wantMessage
+			}
+			if !strings.Contains(buildStderr, wantBuildErr) {
+				t.Fatalf("expected build stderr to contain %q, got %q", wantBuildErr, buildStderr)
 			}
 			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)

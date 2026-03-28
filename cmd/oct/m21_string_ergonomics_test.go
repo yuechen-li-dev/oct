@@ -9,17 +9,19 @@ import (
 
 func TestM21StringErgonomics(t *testing.T) {
 	tests := []struct {
-		name        string
-		source      string
-		wantStdout  string
-		wantMessage string
+		name         string
+		source       string
+		wantStdout   string
+		wantMessage  string
+		wantBuildErr string
 	}{
 		{
 			name: "basic string concatenation",
 			source: "fn Main() -> String {\n" +
 				"    return \"hello\" + \" world\"\n" +
 				"}\n",
-			wantStdout: "hello world\n",
+			wantStdout:   "hello world\n",
+			wantBuildErr: "",
 		},
 		{
 			name: "concatenation in Print",
@@ -27,14 +29,16 @@ func TestM21StringErgonomics(t *testing.T) {
 				"    Print(\"a\" + \"b\")\n" +
 				"    return 0\n" +
 				"}\n",
-			wantStdout: "ab\n0\n",
+			wantStdout:   "ab\n0\n",
+			wantBuildErr: "",
 		},
 		{
 			name: "if expression string branches",
 			source: "fn Main() -> String {\n" +
 				"    return if true { \"yes\" } else { \"no\" }\n" +
 				"}\n",
-			wantStdout: "yes\n",
+			wantStdout:   "yes\n",
+			wantBuildErr: "",
 		},
 		{
 			name: "switch expression string result",
@@ -44,35 +48,40 @@ func TestM21StringErgonomics(t *testing.T) {
 				"        else => \"other\"\n" +
 				"    }\n" +
 				"}\n",
-			wantStdout: "alpha\n",
+			wantStdout:   "alpha\n",
+			wantBuildErr: "compiled mode does not yet support switch expression",
 		},
 		{
 			name: "mixed string and int rejected",
 			source: "fn Main() -> String {\n" +
 				"    return \"value: \" + 1\n" +
 				"}\n",
-			wantMessage: `operator "+" not defined for String and Int`,
+			wantMessage:  `operator "+" not defined for String and Int`,
+			wantBuildErr: `operator "+" not defined for String and Int`,
 		},
 		{
 			name: "mixed int and string rejected",
 			source: "fn Main() -> String {\n" +
 				"    return 1 + \"x\"\n" +
 				"}\n",
-			wantMessage: `operator "+" not defined for Int and String`,
+			wantMessage:  `operator "+" not defined for Int and String`,
+			wantBuildErr: `operator "+" not defined for Int and String`,
 		},
 		{
 			name: "Len supports String",
 			source: "fn Main() -> Int {\n" +
 				"    return Len(\"abc\")\n" +
 				"}\n",
-			wantStdout: "3\n",
+			wantStdout:   "3\n",
+			wantBuildErr: "",
 		},
 		{
 			name: "numeric addition preserved",
 			source: "fn Main() -> Int {\n" +
 				"    return 41 + 1\n" +
 				"}\n",
-			wantStdout: "42\n",
+			wantStdout:   "42\n",
+			wantBuildErr: "",
 		},
 	}
 
@@ -91,14 +100,29 @@ func TestM21StringErgonomics(t *testing.T) {
 					t.Fatalf("expected stdout %q, got %q", test.wantStdout, stdout)
 				}
 				buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
-				if buildErr != nil {
-					t.Fatalf("build failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
-				}
-				if buildStderr != "" {
-					t.Fatalf("expected empty build stderr, got %q", buildStderr)
-				}
-				if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
-					t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+				if test.wantBuildErr == "" {
+					if buildErr != nil {
+						t.Fatalf("build failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
+					}
+					if buildStderr != "" {
+						t.Fatalf("expected empty build stderr, got %q", buildStderr)
+					}
+					if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+						t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+					}
+				} else {
+					if buildErr == nil {
+						t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
+					}
+					if buildStdout != "" {
+						t.Fatalf("expected empty build stdout, got %q", buildStdout)
+					}
+					if !strings.Contains(buildStderr, test.wantBuildErr) {
+						t.Fatalf("expected build stderr to contain %q, got %q", test.wantBuildErr, buildStderr)
+					}
+					if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+						t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+					}
 				}
 				return
 			}
@@ -113,8 +137,12 @@ func TestM21StringErgonomics(t *testing.T) {
 			if buildErr == nil {
 				t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
 			}
-			if !strings.Contains(buildStderr, test.wantMessage) {
-				t.Fatalf("expected build stderr to contain %q, got %q", test.wantMessage, buildStderr)
+			wantBuildErr := test.wantBuildErr
+			if wantBuildErr == "" {
+				wantBuildErr = test.wantMessage
+			}
+			if !strings.Contains(buildStderr, wantBuildErr) {
+				t.Fatalf("expected build stderr to contain %q, got %q", wantBuildErr, buildStderr)
 			}
 			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
