@@ -60,11 +60,17 @@ Current compiled subset is intentionally small:
   * `match ok/err`
   * `!` unwrap (fatal on `err`)
 
-Compiled mode currently fails clearly (by design) for deferred features such as:
+Compiled mode now supports the Octomata **core machine** (M64a):
 
-* Octomata (`flow/state/...`)
-* utility `when`
+* `flow` / `state`
+* `goto`, `suspend`, `return`
+* flow instantiation plus `Step`, `Active`, `Result`, `Complete`, and `StateHistory`
+
+Compiled mode still fails clearly (by design) for deferred features such as:
+
+* ordered `when` and utility `when`
 * `remember` / `resume`
+* `ResumeTarget(...)`
 * advanced `.octagon` features beyond the current representable typed subset
 * advanced concurrency beyond structured `batch` (channels, futures/tasks, scheduler controls, reductions, non-array/generalized parallelism)
 

@@ -1,37 +1,47 @@
-# M64 — Compiled Octomata Bring-up Status
+# M64a — Compiled Octomata Core
 
 ## Summary
 
-M64 is the milestone for compiled-mode Octomata support (`flow`, `state`, `goto`, `suspend`, ordered `when`, utility `when`, `remember`/`resume`, and flow observability/runtime operations).
+Compiled mode now supports the Octomata core machine path:
 
-This repository change does **not** land full M64 semantics yet. It adds explicit compiled-mode diagnostics so unsupported Octomata paths fail clearly and deterministically.
+- `flow` declarations and flow instantiation
+- `state` execution with `goto`, `suspend`, and `return`
+- runtime builtins: `Step`, `Active`, `Result`, `Complete`, `StateHistory`
 
-## What changed in this patch
+This implementation is intentionally runtime-backed and explicit, preserving the interpreted core stepping model.
 
-- Compiled lowering now reports an explicit M64-oriented diagnostic when encountering flow declarations:
-  - `compiled mode does not yet support Octomata flow/state runtime in compiled mode (M64)`
-- Compiled call resolution now reports explicit diagnostics for Octomata runtime builtins:
-  - `Step`
-  - `Active`
-  - `Result`
-  - `Complete`
-  - `StateHistory`
-  - `ResumeTarget`
+## Lowering/runtime shape
 
-## Why this was added
+- MIR now carries explicit flow declarations (`MIRFlow`) so MIR dumps expose flow machine shape and state ordering.
+- Go backend emits one runtime struct per flow with explicit machine fields:
+  - started/completed flags
+  - current state id
+  - instruction index
+  - result storage
+  - deterministic state history
+- Backend emits per-flow step dispatch (`__octStep`) that executes until:
+  - `suspend`
+  - `return`
+  - invariant panic on malformed machine state
 
-Until full runtime-backed lowering is implemented, explicit diagnostics keep compiled-mode behavior honest and deterministic instead of surfacing generic “unknown function” failures.
+## Semantics now preserved in compiled mode
 
-## Deferred (still required for full M64)
+- flow call returns a flow instance, not final result
+- `Step` resumes machine execution
+- `goto` transitions immediately
+- `suspend` pauses and preserves state/instruction position
+- `return` completes flow and stores result
+- `Step` on completed flow is a no-op
+- `Active` is `""` before first step and after completion
+- `Result` returns error before completion
+- `StateHistory` records entry state on first step and each `goto` target
 
-- MIR representation for flow machine lowering
-- compiled flow instance construction + `Step(...)` execution path
-- state dispatch and `goto`/`suspend` lowering
-- ordered `when` lowering in flow states
-- resume slot runtime (`remember` / `resume`)
-- compiled observability parity (`Active`, `Complete`, `Result`, `StateHistory`, `ResumeTarget`)
-- utility `when` site memory + hysteresis/min-commit behavior in compiled mode
+## Still intentionally deferred
 
-## Notes
+- ordered `when`
+- utility `when`
+- `remember`
+- `resume`
+- `ResumeTarget(...)`
 
-This patch is an honesty/diagnostic tightening step only; it should be treated as preparatory work toward full M64 implementation.
+These remain explicit compiled-mode errors in this milestone.

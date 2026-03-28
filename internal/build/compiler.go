@@ -24,6 +24,7 @@ type MIRModule struct {
 	EntryFunc    string
 	Records      []MIRRecord
 	Enums        []MIREnum
+	Flows        []MIRFlow
 	Functions    []MIRFunction
 }
 
@@ -37,6 +38,11 @@ type MIREnum struct {
 	Package  string
 	Name     string
 	Variants []string
+}
+
+type MIRFlow struct {
+	Package string
+	Decl    ast.FlowDecl
 }
 
 type MIRField struct {
@@ -222,8 +228,8 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 		for _, e := range pkg.Enums {
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: append([]string{}, e.Variants...)})
 		}
-		if len(pkg.Flows) > 0 {
-			return MIRModule{}, unsupported("Octomata flow/state runtime in compiled mode (M64)")
+		for _, flow := range pkg.Flows {
+			module.Flows = append(module.Flows, MIRFlow{Package: pkgName, Decl: flow})
 		}
 		for _, fn := range pkg.Functions {
 			if fn.IsTestFile || fn.IsTheory || fn.IsFact || fn.IsArtifact || fn.IsBenchmark {
@@ -644,6 +650,22 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "LoadOctagon", Args: args, Builtin: true, RetType: ret})
 			return tmp, ret, true, nil
 		}
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "Result" {
+			if len(e.Arguments) != 1 {
+				return "", "", false, fmt.Errorf("Result expects one argument")
+			}
+			flowArg, flowType, _, err := c.lowerExpr(e.Arguments[0])
+			if err != nil {
+				return "", "", false, err
+			}
+			resultType, ok := parseFlowInstanceType(flowType)
+			if !ok {
+				return "", "", false, fmt.Errorf("Result expects FlowInstance argument")
+			}
+			tmp := c.temp(fallibleType(resultType))
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Result", Args: []string{flowArg}, Builtin: true, RetType: resultType})
+			return tmp, resultType, true, nil
+		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
 			return "", "", false, err
@@ -906,7 +928,21 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	case ast.IdentifierExpr:
 		switch x.Name {
 		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget":
-			return "", "", false, false, unsupported("Octomata flow runtime builtin " + x.Name)
+			if x.Name == "ResumeTarget" {
+				return "", "", false, false, unsupported("Octomata flow runtime builtin " + x.Name)
+			}
+			switch x.Name {
+			case "Step":
+				return "Step", "Int", true, false, nil
+			case "Active":
+				return "Active", "String", true, false, nil
+			case "Result":
+				return "Result", "", true, true, nil
+			case "Complete":
+				return "Complete", "Bool", true, false, nil
+			case "StateHistory":
+				return "StateHistory", "String[]", true, false, nil
+			}
 		}
 		if x.Name == "Len" {
 			return "Len", "Int", true, false, nil
@@ -920,6 +956,11 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {
 				return c.pkg.Name + "." + x.Name, typeRefStringForPackage(c.pkg.Name, fn.ReturnType), false, fn.IsFallible, nil
+			}
+		}
+		for _, flow := range c.pkg.Flows {
+			if flow.Name == x.Name {
+				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType)), false, false, nil
 			}
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
@@ -972,9 +1013,26 @@ func isBuiltinTypeName(name string) bool {
 	}
 }
 
+func flowInstanceTypeString(resultType string) string {
+	return "FlowInstance<" + resultType + ">"
+}
+
+func parseFlowInstanceType(t string) (string, bool) {
+	if !strings.HasPrefix(t, "FlowInstance<") || !strings.HasSuffix(t, ">") {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), true
+}
+
 func dumpMIR(m MIRModule) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "module entry=%s\n", m.EntryPackage)
+	for _, flow := range m.Flows {
+		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Decl.Name, typeRefStringForPackage(flow.Package, flow.Decl.ReturnType))
+		for idx, state := range flow.Decl.States {
+			fmt.Fprintf(&b, "  state[%d] %s\n", idx, state.Name)
+		}
+	}
 	for _, fn := range m.Functions {
 		fmt.Fprintf(&b, "fn %s.%s", fn.Package, fn.Name)
 		fmt.Fprintf(&b, "(")
@@ -1025,6 +1083,10 @@ func emitGo(m MIRModule) (string, error) {
 	usedBuiltins := map[string]bool{}
 	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
+	flowResultTypes := map[string]struct{}{}
+	for _, flow := range m.Flows {
+		flowResultTypes[typeRefStringForPackage(flow.Package, flow.Decl.ReturnType)] = struct{}{}
+	}
 	for _, fn := range m.Functions {
 		if fn.IsFallible {
 			resultTypes[fn.Return] = struct{}{}
@@ -1049,6 +1111,9 @@ func emitGo(m MIRModule) (string, error) {
 		for _, local := range fn.Locals {
 			if isFallibleType(local.Type) {
 				resultTypes[fallibleValueType(local.Type)] = struct{}{}
+			}
+			if flowRet, ok := parseFlowInstanceType(local.Type); ok {
+				flowResultTypes[flowRet] = struct{}{}
 			}
 		}
 	}
@@ -1100,6 +1165,29 @@ func emitGo(m MIRModule) (string, error) {
 			fmt.Fprintf(&b, "\t%s_%s %s_%s = %d\n", e.Name, v, e.Package, e.Name, i)
 		}
 		b.WriteString(")\n\n")
+	}
+	flowTypeNames := make([]string, 0, len(flowResultTypes))
+	for t := range flowResultTypes {
+		flowTypeNames = append(flowTypeNames, t)
+	}
+	sort.Strings(flowTypeNames)
+	for _, t := range flowTypeNames {
+		if t == "Void" {
+			b.WriteString("type __octVoid struct{}\n\n")
+			break
+		}
+	}
+	for _, t := range flowTypeNames {
+		fmt.Fprintf(&b, "type __octFlowInstance_%s interface {\n", goSafeName(t))
+		b.WriteString("\t__octStep()\n\t__octActive() string\n\t__octComplete() bool\n")
+		fmt.Fprintf(&b, "\t__octResult() (%s, bool)\n", goFlowResultType(t))
+		b.WriteString("\t__octStateHistory() []string\n}\n\n")
+		fmt.Fprintf(&b, "type __octResultFlow_%s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goSafeName(t), goFlowResultType(t))
+	}
+	for _, flow := range m.Flows {
+		if err := emitGoFlow(&b, flow); err != nil {
+			return "", err
+		}
 	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
@@ -1689,6 +1777,182 @@ func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(
 }
 `
 
+func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
+	structName := "__octFlow_" + flow.Package + "_" + flow.Decl.Name
+	resultType := typeRefStringForPackage(flow.Package, flow.Decl.ReturnType)
+	fmt.Fprintf(b, "type %s struct {\n", structName)
+	b.WriteString("\tstarted bool\n\tcompleted bool\n\tcurrentState int\n\tinstruction int\n")
+	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n\thistory []string\n", goFlowResultType(resultType))
+	for _, p := range flow.Decl.Parameters {
+		fmt.Fprintf(b, "\t%s %s\n", p.Name, goType(typeRefStringForPackage(flow.Package, p.Type)))
+	}
+	b.WriteString("}\n\n")
+	fmt.Fprintf(b, "func fn_%s_%s(", flow.Package, flow.Decl.Name)
+	for i, p := range flow.Decl.Parameters {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(b, "%s %s", p.Name, goType(typeRefStringForPackage(flow.Package, p.Type)))
+	}
+	fmt.Fprintf(b, ") %s {\n", goType(flowInstanceTypeString(resultType)))
+	fmt.Fprintf(b, "\tf := &%s{}\n", structName)
+	for _, p := range flow.Decl.Parameters {
+		fmt.Fprintf(b, "\tf.%s = %s\n", p.Name, p.Name)
+	}
+	b.WriteString("\treturn f\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octActive() string {\n", structName)
+	b.WriteString("\tif !f.started || f.completed { return \"\" }\n\tswitch f.currentState {\n")
+	for idx, state := range flow.Decl.States {
+		fmt.Fprintf(b, "\tcase %d: return %q\n", idx, state.Name)
+	}
+	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octComplete() bool { return f.completed }\n\n", structName)
+	fmt.Fprintf(b, "func (f *%s) __octResult() (%s, bool) {\n", structName, goFlowResultType(resultType))
+	b.WriteString("\treturn f.result, f.hasResult\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octStateHistory() []string {\n", structName)
+	b.WriteString("\tout := make([]string, len(f.history))\n\tcopy(out, f.history)\n\treturn out\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octStep() {\n", structName)
+	b.WriteString("\tif f.completed { return }\n")
+	entryID := 0
+	for idx, st := range flow.Decl.States {
+		if st.Name == flow.Decl.EntryState {
+			entryID = idx
+			break
+		}
+	}
+	fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q) }\n", entryID, flow.Decl.EntryState)
+	b.WriteString("\tfor {\n\t\tswitch f.currentState {\n")
+	stateIDs := map[string]int{}
+	for idx, state := range flow.Decl.States {
+		stateIDs[state.Name] = idx
+	}
+	for idx, state := range flow.Decl.States {
+		fmt.Fprintf(b, "\t\tcase %d:\n\t\t\tswitch f.instruction {\n", idx)
+		for stmtIdx, stmt := range state.Body.Statements {
+			fmt.Fprintf(b, "\t\t\tcase %d:\n", stmtIdx)
+			src, err := emitGoFlowStmt(stmt, flow.Package, stateIDs, resultType)
+			if err != nil {
+				return fmt.Errorf("flow %s.%s state %s: %w", flow.Package, flow.Decl.Name, state.Name, err)
+			}
+			for _, line := range strings.Split(src, "\n") {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				fmt.Fprintf(b, "\t\t\t\t%s\n", line)
+			}
+		}
+		fmt.Fprintf(b, "\t\t\tdefault:\n\t\t\t\tpanic(\"runtime invariant violation: flow state %s exited without suspend or return\")\n", state.Name)
+		b.WriteString("\t\t\t}\n")
+	}
+	b.WriteString("\t\tdefault:\n\t\t\tpanic(\"runtime invariant violation: unknown flow state\")\n\t\t}\n\t}\n}\n\n")
+	return nil
+}
+
+func emitGoFlowStmt(stmt ast.Stmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	switch s := stmt.(type) {
+	case ast.GotoStmt:
+		target, ok := stateIDs[s.Target]
+		if !ok {
+			return "", fmt.Errorf("unknown goto target %s", s.Target)
+		}
+		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
+	case ast.SuspendStmt:
+		return "f.instruction++\nreturn", nil
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			if resultType == "Void" {
+				return "f.result = __octVoid{}\nf.completed = true\nf.hasResult = true\nf.currentState = -1\nreturn", nil
+			}
+			return "f.completed = true\nf.hasResult = true\nf.currentState = -1\nreturn", nil
+		}
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("f.result = %s\nf.hasResult = true\nf.completed = true\nf.currentState = -1\nreturn", v), nil
+	case ast.IfStmt:
+		cond, err := emitGoFlowExpr(s.Condition, pkg)
+		if err != nil {
+			return "", err
+		}
+		thenSrc, err := emitGoFlowBlock(s.ThenBody, pkg, stateIDs, resultType)
+		if err != nil {
+			return "", err
+		}
+		out := "if " + cond + " {\n" + thenSrc + "\n}"
+		if s.ElseBody != nil {
+			elseSrc, err := emitGoFlowBlock(*s.ElseBody, pkg, stateIDs, resultType)
+			if err != nil {
+				return "", err
+			}
+			out += " else {\n" + elseSrc + "\n}"
+		}
+		out += "\nf.instruction++\ncontinue"
+		return out, nil
+	default:
+		return "", unsupported(fmt.Sprintf("flow statement %T", stmt))
+	}
+}
+
+func emitGoFlowBlock(block ast.Block, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	parts := make([]string, 0, len(block.Statements))
+	for _, st := range block.Statements {
+		src, err := emitGoFlowStmt(st, pkg, stateIDs, resultType)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, src)
+	}
+	return strings.Join(parts, "\n"), nil
+}
+
+func emitGoFlowExpr(expr ast.Expr, pkg string) (string, error) {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		return e.Value, nil
+	case ast.FloatLiteral:
+		return e.Value, nil
+	case ast.BoolLiteral:
+		if e.Value {
+			return "true", nil
+		}
+		return "false", nil
+	case ast.StringLiteralExpr:
+		return fmt.Sprintf("%q", e.Value), nil
+	case ast.IdentifierExpr:
+		return "f." + e.Name, nil
+	case ast.BinaryExpr:
+		l, err := emitGoFlowExpr(e.Left, pkg)
+		if err != nil {
+			return "", err
+		}
+		r, err := emitGoFlowExpr(e.Right, pkg)
+		if err != nil {
+			return "", err
+		}
+		op := e.Operator
+		if op == "and" {
+			op = "&&"
+		}
+		if op == "or" {
+			op = "||"
+		}
+		return fmt.Sprintf("(%s %s %s)", l, op, r), nil
+	case ast.UnaryExpr:
+		v, err := emitGoFlowExpr(e.Operand, pkg)
+		if err != nil {
+			return "", err
+		}
+		op := e.Operator
+		if op == "not" {
+			op = "!"
+		}
+		return fmt.Sprintf("(%s%s)", op, v), nil
+	default:
+		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
+	}
+}
+
 func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
@@ -1714,6 +1978,17 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":
 				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), st.Args[0]), nil
+			case "Step":
+				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
+			case "Active":
+				return fmt.Sprintf("%s = %s.__octActive()", st.Target, st.Args[0]), nil
+			case "Result":
+				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octResult(); if !__ok { return %s{Err: \"Result() called before flow completion\", IsErr: true} }; return %s{Value: __value} }()",
+					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+			case "Complete":
+				return fmt.Sprintf("%s = %s.__octComplete()", st.Target, st.Args[0]), nil
+			case "StateHistory":
+				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
@@ -1755,6 +2030,9 @@ func goTerminator(t MIRTerminator, labels map[string]int) (string, error) {
 }
 
 func goType(t string) string {
+	if flowRet, ok := parseFlowInstanceType(t); ok {
+		return "__octFlowInstance_" + goSafeName(flowRet)
+	}
 	switch t {
 	case "Int":
 		return "int"
@@ -1779,6 +2057,13 @@ func goType(t string) string {
 		return strings.ReplaceAll(t, ".", "_")
 	}
 	return t
+}
+
+func goFlowResultType(t string) string {
+	if t == "Void" {
+		return "__octVoid"
+	}
+	return goType(t)
 }
 
 func goResultTypeName(valueType string) string {
