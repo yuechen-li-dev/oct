@@ -64,6 +64,7 @@ fn Main() -> Int {
 ### Built-ins and Runtime Utilities
 
 * Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* Octomata runtime built-ins include: `Step`, `Active`, `Result`, `Complete`, and `StateHistory`.
 * `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
 * In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
 * `Sin` and `Cos` require dimensionless input.
@@ -195,6 +196,33 @@ Still explicitly out of scope:
 * stack HFSM transitions (`push` / `pop` / `replace`)
 * scheduler / concurrency
 * arbitrary branch statement blocks inside `when`
+
+## Octomata Observability Polish (M45)
+
+M45 adds a small, read-only observability surface for `FlowInstance<T>`:
+
+* `Complete(instance) -> Bool`
+  * `false` while a flow is still running
+  * `true` after the flow has completed
+* `StateHistory(instance) -> String[]`
+  * returns a deterministic history of state-entry names
+  * history records:
+    * first entry state on first `Step`
+    * each `goto` target when entered
+  * history does **not** record timestamps or nondeterministic metadata
+  * history remains available after completion
+
+M45 intent is narrow:
+
+* better multi-step test assertions
+* easier debugging of flow progression
+
+Still explicitly out of scope:
+
+* replay/checkpoint infrastructure
+* scheduler tooling/concurrency behavior
+* blackboard/shared-state/event systems
+* new control/branching semantics
 
 ---
 

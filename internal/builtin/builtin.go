@@ -15,6 +15,8 @@ var names = map[string]struct{}{
 	"Step":         {},
 	"Active":       {},
 	"Result":       {},
+	"Complete":     {},
+	"StateHistory": {},
 }
 
 func IsName(name string) bool {

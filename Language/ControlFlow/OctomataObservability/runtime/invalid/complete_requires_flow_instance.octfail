@@ -1,0 +1,7 @@
+expect error: "function 'Complete' argument 1 expects FlowInstance<T>, got Int"
+
+package MainInvalid
+
+fn Main() -> Void {
+    Complete(1)
+}

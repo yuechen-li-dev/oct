@@ -13,10 +13,15 @@ fn TurretProgressesFromSearchToEngageAndCompletes() -> Void {
     let f = TurretCycle(script)
 
     Step(f)
+    let historyAfterFirstStep = StateHistory(f)
+    Assert.Equal("Search", historyAfterFirstStep[0], "history should start at Search")
+    Assert.Equal("Track", historyAfterFirstStep[1], "history should show Search goto Track transition")
+    Assert.Equal("Engage", historyAfterFirstStep[2], "history should show Track goto Engage transition")
     Assert.Equal("Engage", Active(f), "first step should advance through Search and Track into Engage")
 
     Step(f)
     Assert.Equal("", Active(f), "second step resumes Engage and completes")
+    Assert.True(Complete(f), "completed flow should report completion")
 
     match Result(f) {
         ok(value) => { Assert.True(value == TurretOutcome.Fired, "turret should report Fired") }

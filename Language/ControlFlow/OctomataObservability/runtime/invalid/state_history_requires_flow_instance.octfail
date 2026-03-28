@@ -1,0 +1,8 @@
+expect error: "function 'StateHistory' argument 1 expects FlowInstance<T>, got String"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let x = StateHistory("not a flow")
+    Print(x)
+}
