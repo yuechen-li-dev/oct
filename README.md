@@ -29,6 +29,33 @@ fn Main() -> Int {
 
 ## What Oct Is Right Now
 
+### Compiled Mode Bring-up (M60)
+
+`oct build` now runs a real first-step compiled path for a narrow subset:
+
+* type-check program
+* lower to a typed structured MIR
+* emit deterministic Go from MIR
+* build final artifact with the Go toolchain
+
+Current compiled subset is intentionally small:
+
+* plain functions and explicit returns
+* arithmetic/comparisons, `if`/`else`, locals/assignments
+* arrays, records, enums
+* ordinary function calls across packages
+* direct builtins: `Len`, `Append`, `Print`
+
+Compiled mode currently fails clearly (by design) for deferred features such as:
+
+* `batch`
+* Octomata (`flow/state/...`)
+* utility `when`
+* `remember` / `resume`
+* `.octagon`-specific runtime paths
+
+For bring-up inspection, set `OCT_MIR_DUMP=1` when running `oct build` to write a textual MIR dump next to the produced artifact.
+
 ### Language Core
 
 * Program entrypoint is `Main.Main()`.
