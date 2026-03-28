@@ -228,6 +228,7 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
 		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
 		"enum Mode { A B } fn Main() -> Int { return WriteOctagon(\"artifact.octagon\", Mode.A) }",
+		"record Payload { Name: String Count: Int } fn Main() -> Payload ! Error { return LoadOctagon[Payload](\"artifact.octagon\")? }",
 	}
 
 	for _, src := range validPrograms {
@@ -276,6 +277,10 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(1, 2) }", "function Main: function 'WriteOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"artifact.octagon\", vector[1, 2]) }", "function Main: function 'WriteOctagon' argument 2 expects .octagon-representable value, got Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"a.octagon\") }", "function Main: function 'WriteOctagon' expects 2 arguments, got 1")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Vector<Int>](\"a.octagon\")? }", "function Main: function 'LoadOctagon' type argument expects .octagon-representable type, got Vector<Int>")
 	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn Append(xs: Int[], x: Int) -> Int[] { return xs } fn Main() -> Int { return 0 }", "function Append: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn WriteOctagon(path: String, value: Int) -> Int { return 0 } fn Main() -> Int { return 0 }", "function WriteOctagon: cannot redeclare built-in function")

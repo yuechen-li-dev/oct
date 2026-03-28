@@ -889,6 +889,16 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, Arguments: arguments}
+		case p.current().Kind == lex.LeftBracket && p.looksLikeTypeArgumentList():
+			typeArguments, err := p.parseTypeArguments()
+			if err != nil {
+				return nil, err
+			}
+			arguments, err := p.parseCallArguments()
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.CallExpr{Callee: expr, TypeArguments: typeArguments, Arguments: arguments}
 		case p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() && p.isRecordLiteralTypeExpr(expr):
 			typeName, err := p.flattenTypeExpr(expr)
 			if err != nil {
@@ -928,6 +938,41 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			return expr, nil
 		}
 	}
+}
+
+func (p *parser) looksLikeTypeArgumentList() bool {
+	start := p.position
+	p.advance()
+	if p.current().Kind == lex.RightBracket {
+		p.position = start
+		return false
+	}
+	if _, err := p.parseTypeRef(); err != nil {
+		p.position = start
+		return false
+	}
+	if p.current().Kind != lex.RightBracket {
+		p.position = start
+		return false
+	}
+	p.advance()
+	isTypeArgCall := p.current().Kind == lex.LeftParen
+	p.position = start
+	return isTypeArgCall
+}
+
+func (p *parser) parseTypeArguments() ([]ast.TypeRef, error) {
+	if _, err := p.expect(lex.LeftBracket, "expected '[' before type arguments"); err != nil {
+		return nil, err
+	}
+	typeArgument, err := p.parseTypeRef()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.RightBracket, "expected ']' after type arguments"); err != nil {
+		return nil, err
+	}
+	return []ast.TypeRef{typeArgument}, nil
 }
 
 func (p *parser) isRecordLiteralTypeExpr(expr ast.Expr) bool {

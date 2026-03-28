@@ -88,7 +88,9 @@ fn Main() -> Int {
 * `.octagon` rejects executable constructs: `package`, `import`, `fn`, `let`/`var`, control flow, function calls, mutation/assignment, and computed expressions such as `1 + 2`.
 * `.octagon` is not a manifest replacement and not a scripting/config language.
 * `.octagon` emission is explicit via `WriteOctagon(path, value)` (for example in `[Artifact] fn() -> Void` workflows).
-* `WriteOctagon` is write-only in v0: no `.octagon` import/load/deserialization surface and no general file I/O API.
+* `.octagon` loading is explicit, runtime, typed, and fallible via `LoadOctagon[T](path: String) -> T ! Error`.
+* `LoadOctagon[T](path)` only accepts `.octagon` paths, parses through the `.octagon` validator path, and strictly matches the loaded value against `T` (including exact record fields, enum identity, array element types, and numeric dimensions).
+* `.octagon` remains non-executable and narrow: no compile-time include/import semantics, no assignment-target type inference for loads, no broad generic system, and no general file I/O API.
 
 ---
 

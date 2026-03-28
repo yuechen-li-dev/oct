@@ -1,0 +1,4 @@
+SamplesConfig {
+    Name: "Run A"
+    Samples: [0.0m, 0.1m, 0.2m]
+}
