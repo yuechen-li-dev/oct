@@ -36,7 +36,7 @@ func TestM23eDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
 }
 
 func TestM23eProofSignalUsesConditionSwitch(t *testing.T) {
-	signalPath := filepath.Join("..", "..", "Libraries", "Signal", "signal.oct")
+	signalPath := filepath.Join("..", "..", "Libraries", "Signal", "Signal.Core.oct")
 	bytes, err := os.ReadFile(signalPath)
 	if err != nil {
 		t.Fatalf("read signal proof package: %v", err)
