@@ -1,0 +1,14 @@
+package SignalBatchAnalysis
+
+fn SignalMetric(sampleMean: Float, baseline: Float) -> Float {
+    let centered = sampleMean - baseline
+    let scaled = centered / 2.0
+    return scaled * scaled + sampleMean / 10.0
+}
+
+fn AnalyzeMeasurements(sampleMeans: Float[], baseline: Float) -> Float[] {
+    let metrics = batch sampleMeans as sampleMean {
+        return SignalMetric(sampleMean, baseline)
+    }
+    return metrics
+}

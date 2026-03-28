@@ -1,0 +1,41 @@
+package TrialBatchSimulation
+
+[Fact]
+fn BatchTrialsHaveExpectedShapeAndValues() -> Void ! Error {
+    let outcomes = RunTrials([1, 4, 7])?
+
+    Assert.Equal(3, Len(outcomes), "one trial output per seed")
+    Assert.Equal(18, outcomes[0], "first trial score")
+    Assert.Equal(39, outcomes[1], "second trial score")
+    Assert.Equal(60, outcomes[2], "third trial score")
+}
+
+[Fact]
+fn BatchTrialsPreserveInputOrdering() -> Void ! Error {
+    let outcomes = RunTrials([9, 2, 6])?
+
+    Assert.Equal(74, outcomes[0], "first output tracks first seed")
+    Assert.Equal(25, outcomes[1], "second output tracks second seed")
+    Assert.Equal(53, outcomes[2], "third output tracks third seed")
+}
+
+[Fact]
+fn BatchTrialsAreDeterministicAcrossRuns() -> Void ! Error {
+    let seeds = [3, 5, 8]
+
+    let first = RunTrials(seeds)?
+    let second = RunTrials(seeds)?
+
+    Assert.Equal(Len(first), Len(second), "same seeds should produce same result count")
+    Assert.Equal(first[0], second[0], "first trial deterministic")
+    Assert.Equal(first[1], second[1], "second trial deterministic")
+    Assert.Equal(first[2], second[2], "third trial deterministic")
+}
+
+[Fact]
+fn OneInvalidSeedFailsWholeBatchAndNoPartialOutputIsExposed() -> Void {
+    match RunTrials([4, 0 - 1, 6]) {
+        ok(value) => { Assert.True(false, "expected batch failure when one trial seed is invalid") }
+        err(e) => { return }
+    }
+}
