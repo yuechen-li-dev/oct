@@ -1,0 +1,226 @@
+package ConcurrencyPressure
+
+record SweepBatch {
+    Params: Float[]
+    Scores: Float[]
+}
+
+record SignalBatchStats {
+    Rms: Float[]
+    Peak: Float[]
+}
+
+record TrialBatch {
+    Hits: Int[]
+    Trials: Int[]
+}
+
+record ChunkBatchStats {
+    Mean: Float[]
+    Max: Float[]
+}
+
+record Histogram3 {
+    Low: Int
+    Mid: Int
+    High: Int
+}
+
+fn SweepScore(k: Float) -> Float {
+    // Simple engineering-shaped cost: energy + penalty.
+    let modeled = (k - 1.8) * (k - 1.8)
+    let regularization = 0.15 * k
+    return modeled + regularization
+}
+
+fn EvaluateSweep(params: Float[]) -> SweepBatch {
+    var scores = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    for i in 0..Len(params) {
+        scores[i] = SweepScore(params[i])
+    }
+
+    return SweepBatch {
+        Params: params
+        Scores: scores
+    }
+}
+
+fn AnalyzeSignalWindow(xs: Float[], start: Int, width: Int) -> Float[] {
+    var sumSquares = 0.0
+    var peak = xs[start]
+
+    for i in 0..width {
+        let v = xs[start + i]
+        sumSquares = sumSquares + v * v
+        if v > peak {
+            peak = v
+        }
+    }
+
+    return [Sqrt(sumSquares / width), peak]
+}
+
+fn AnalyzeSignalBatch(flat: Float[], width: Int, count: Int) -> SignalBatchStats {
+    var rms = [0.0, 0.0, 0.0, 0.0]
+    var peak = [0.0, 0.0, 0.0, 0.0]
+
+    for i in 0..count {
+        let metrics = AnalyzeSignalWindow(flat, i * width, width)
+        rms[i] = metrics[0]
+        peak[i] = metrics[1]
+    }
+
+    return SignalBatchStats {
+        Rms: rms
+        Peak: peak
+    }
+}
+
+fn NextSeed(x: Int) -> Int {
+    // Deterministic pseudo-random step for trial variability.
+    let advanced = x * 48271 + 1
+    return advanced - (advanced / 2147483647) * 2147483647
+}
+
+fn RunTrial(seed: Int, samples: Int) -> Int[] {
+    var s = seed
+    var hits = 0
+
+    for i in 0..samples {
+        s = NextSeed(s)
+        let x = (s - (s / 1000) * 1000) / 1000.0
+        s = NextSeed(s)
+        let y = (s - (s / 1000) * 1000) / 1000.0
+
+        if x * x + y * y <= 1.0 {
+            hits = hits + 1
+        }
+    }
+
+    return [hits, samples]
+}
+
+fn RunTrialBatch(seeds: Int[], samples: Int) -> TrialBatch {
+    var hits = [0, 0, 0, 0]
+    var trials = [0, 0, 0, 0]
+
+    for i in 0..Len(seeds) {
+        let summary = RunTrial(seeds[i], samples)
+        hits[i] = summary[0]
+        trials[i] = summary[1]
+    }
+
+    return TrialBatch {
+        Hits: hits
+        Trials: trials
+    }
+}
+
+fn ChunkStatsFromWindow(xs: Float[], start: Int, width: Int) -> Float[] {
+    var sum = 0.0
+    var maxV = xs[start]
+
+    for i in 0..width {
+        let v = xs[start + i]
+        sum = sum + v
+        if v > maxV {
+            maxV = v
+        }
+    }
+
+    return [sum / width, maxV]
+}
+
+fn AnalyzeChunks(flat: Float[], width: Int, count: Int) -> ChunkBatchStats {
+    var mean = [0.0, 0.0, 0.0, 0.0]
+    var max = [0.0, 0.0, 0.0, 0.0]
+
+    for i in 0..count {
+        let summary = ChunkStatsFromWindow(flat, i * width, width)
+        mean[i] = summary[0]
+        max[i] = summary[1]
+    }
+
+    return ChunkBatchStats {
+        Mean: mean
+        Max: max
+    }
+}
+
+fn BuildHistogram3(xs: Float[]) -> Histogram3 {
+    var low = 0
+    var mid = 0
+    var high = 0
+
+    for i in 0..Len(xs) {
+        let bucket = switch {
+            case xs[i] < 0.3 => 0
+            case xs[i] < 0.7 => 1
+            else => 2
+        }
+
+        if bucket == 0 {
+            low = low + 1
+        }
+        if bucket == 1 {
+            mid = mid + 1
+        }
+        if bucket == 2 {
+            high = high + 1
+        }
+    }
+
+    return Histogram3 {
+        Low: low
+        Mid: mid
+        High: high
+    }
+}
+
+[Fact]
+fn A_ParameterSweepBatchEvaluation() -> Void {
+    let params = [0.2, 0.8, 1.4, 2.0, 2.6, 3.2]
+    let results = EvaluateSweep(params)
+
+    Assert.Equal(6, Len(results.Scores), "sweep preserves item count")
+    Assert.Near(0.34, results.Scores[3], 0.0001, "k=2.0 score")
+    Assert.Near(2.59, results.Scores[0], 0.0001, "k=0.2 score")
+}
+
+[Fact]
+fn B_IndependentSignalSampleProcessing() -> Void {
+    let batchFlat = [1.0, 2.0, 3.0, 0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 4.0, 1.0]
+    let stats = AnalyzeSignalBatch(batchFlat, 3, 4)
+    Assert.Equal(4, Len(stats.Peak), "signal batch count")
+    Assert.Near(3.0, stats.Peak[0], 0.0001, "first signal peak")
+    Assert.Near(0.5, stats.Rms[1], 0.0001, "constant signal rms")
+}
+
+[Fact]
+fn C_RepeatedTrialMonteCarloStyle() -> Void {
+    let seeds = [7, 13, 23, 31]
+    let summaries = RunTrialBatch(seeds, 300)
+
+    Assert.Equal(4, Len(summaries.Hits), "trial batch count")
+    Assert.Equal(300, summaries.Trials[0], "trial count propagated")
+    Assert.True(summaries.Hits[2] > 0, "third trial has some circle hits")
+}
+
+[Fact]
+fn D_IndependentPerChunkProcessing() -> Void {
+    let chunksFlat = [1.0, 2.0, 3.0, 5.0, 7.0, 6.0, 10.0, 0.0, 5.0, 3.0, 3.0, 3.0]
+    let out = AnalyzeChunks(chunksFlat, 3, 4)
+    Assert.Near(2.0, out.Mean[0], 0.0001, "chunk 0 mean")
+    Assert.Near(7.0, out.Max[1], 0.0001, "chunk 1 max")
+    Assert.Near(5.0, out.Mean[2], 0.0001, "chunk 2 mean")
+}
+
+[Fact]
+fn E_StateSharedUpdatePattern() -> Void {
+    let h = BuildHistogram3([0.1, 0.9, 0.4, 0.2, 0.8, 0.35])
+
+    Assert.Equal(2, h.Low, "hist low bucket")
+    Assert.Equal(2, h.Mid, "hist mid bucket")
+    Assert.Equal(2, h.High, "hist high bucket")
+}
