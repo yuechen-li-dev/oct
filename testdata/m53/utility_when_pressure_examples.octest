@@ -1,0 +1,87 @@
+package M53Pressure
+
+record TacticalInput {
+    TargetVisible: Bool
+    InRange: Bool
+    LowAmmo: Bool
+    LowHealth: Bool
+}
+
+enum TacticalMode {
+    Search
+    Chase
+    Attack
+    Recover
+    Retreat
+}
+
+flow TacticalOrdered(input: TacticalInput) -> TacticalMode {
+    state Decide {
+        when {
+            case input.LowHealth -> return TacticalMode.Retreat
+            case input.LowAmmo -> return TacticalMode.Recover
+            case input.InRange -> return TacticalMode.Attack
+            case input.TargetVisible -> return TacticalMode.Chase
+            else -> return TacticalMode.Search
+        }
+    }
+}
+
+record ThermalInput {
+    TooHot: Bool
+    CoolingDone: Bool
+    Faulted: Bool
+}
+
+enum ThermalMode {
+    Hold
+    Cool
+    Fault
+}
+
+flow ThermalOrdered(input: ThermalInput) -> ThermalMode {
+    state Evaluate {
+        when {
+            case input.Faulted -> return ThermalMode.Fault
+            case input.TooHot -> goto Cooling
+            else -> return ThermalMode.Hold
+        }
+    }
+
+    state Cooling {
+        when {
+            case input.Faulted -> return ThermalMode.Fault
+            case input.CoolingDone -> return ThermalMode.Hold
+            else -> return ThermalMode.Cool
+        }
+    }
+}
+
+record AlertInput {
+    Faulted: Bool
+    Alerted: Bool
+    Confirmed: Bool
+}
+
+enum AlertMode {
+    Idle
+    Alert
+    Engage
+    Fault
+}
+
+flow AlertOrdered(input: AlertInput) -> AlertMode {
+    state Decide {
+        when {
+            case input.Faulted -> return AlertMode.Fault
+            case input.Confirmed -> return AlertMode.Engage
+            case input.Alerted -> return AlertMode.Alert
+            else -> return AlertMode.Idle
+        }
+    }
+}
+
+[Fact]
+fn PressureExamplesCompile() -> Void {
+    Assert.Equal(1, 1, "m53 ordered probes compile")
+}
