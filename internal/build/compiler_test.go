@@ -647,30 +647,156 @@ fn main() -> Int {
 	}
 }
 
-func TestCompileStillRejectsUnsupportedAdvancedConcurrency(t *testing.T) {
+func TestCompileAndRunFlowCoreRuntimeBuiltins(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
 
-flow Machine() -> Int {
+flow Machine(input: Int) -> Int {
     state Start {
-        return 1
+        if input > 0 {
+            goto Track
+        }
+        suspend
+        return 0
+    }
+
+    state Track {
+        suspend
+        return input
     }
 }
 
-fn main() -> Int {
-    return 0
+fn main() -> Int ! Error {
+    let f = Machine(4)
+    if Active(f) != "" {
+        return error("active should be empty before first step")
+    }
+    if Complete(f) {
+        return error("new flow must start incomplete")
+    }
+    Step(f)
+    if Active(f) != "Track" {
+        return error("first step should enter Track")
+    }
+    let h1 = StateHistory(f)
+    if h1[0] != "Start" or h1[1] != "Track" {
+        return error("history should include Start and Track after goto")
+    }
+    Step(f)
+    if not Complete(f) {
+        return error("flow should be complete after second step")
+    }
+    if Active(f) != "" {
+        return error("active should clear after completion")
+    }
+    Step(f)
+    if Active(f) != "" {
+        return error("step on completed flow should be no-op")
+    }
+    let value = Result(f)?
+    return value
 }
 `
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Compile(mainPath)
-	if err == nil {
-		t.Fatal("expected compile to fail")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
 	}
-	if !strings.Contains(err.Error(), "compiled mode does not yet support") {
-		t.Fatalf("unexpected error: %v", err)
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "4" {
+		t.Fatalf("expected 4, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFlowResultBeforeCompletionFails(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow OneSuspend() -> Int {
+    state Start {
+        suspend
+        return 7
+    }
+}
+
+fn main() -> Int {
+    let f = OneSuspend()
+    match Result(f) {
+        ok(v) => { return 0 }
+        err(e) => {
+            return 1
+        }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFlowStillRejectsDeferredOctomataFeatures(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "ordered-when",
+			src: `package Main
+flow F() -> Int { state S { when { case true -> return 1 else -> return 0 } } }
+fn main() -> Int { return 0 }`,
+		},
+		{
+			name: "remember",
+			src: `package Main
+flow F() -> Int { state A { remember goto B } state B { return 1 } }
+fn main() -> Int { return 0 }`,
+		},
+		{
+			name: "resume",
+			src: `package Main
+flow F() -> Int { state A { resume } }
+fn main() -> Int { return 0 }`,
+		},
+		{
+			name: "resume-target-builtin",
+			src: `package Main
+flow F() -> Int { state A { return 1 } }
+fn main() -> String { let f = F() return ResumeTarget(f) }`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Compile(mainPath)
+			if err == nil {
+				t.Fatal("expected compile to fail")
+			}
+			if !strings.Contains(err.Error(), "compiled mode does not yet support") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
