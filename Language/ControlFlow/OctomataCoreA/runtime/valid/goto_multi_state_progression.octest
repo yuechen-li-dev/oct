@@ -1,0 +1,31 @@
+package MainValid
+
+flow PatrolGoto(input: Int) -> Int {
+    state Search {
+        if input > 0 {
+            goto Track
+        }
+        suspend
+    }
+
+    state Track {
+        suspend
+        return input
+    }
+}
+
+[Fact]
+fn GotoTransitionsWithinSingleStep() -> Void {
+    let f = PatrolGoto(3)
+
+    Step(f)
+    Assert.Equal("Track", Active(f), "goto transitions to Track during same step")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step completes flow")
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(3, value, "flow returns value from Track state") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}

@@ -12,6 +12,9 @@ var names = map[string]struct{}{
 	"LoadOctagon":  {},
 	"PlotLine":     {},
 	"PlotScatter":  {},
+	"Step":         {},
+	"Active":       {},
+	"Result":       {},
 }
 
 func IsName(name string) bool {

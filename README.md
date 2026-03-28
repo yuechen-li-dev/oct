@@ -136,6 +136,40 @@ Explicitly deferred beyond M41a:
 * `when`
 * stack transitions (`push` / `pop` / `replace`)
 
+## Octomata Core A (M41b Runtime Stepping)
+
+M41b activates `flow` with explicit runtime stepping:
+
+* calling a `flow` now returns a `FlowInstance<T>` runtime object
+* `Step(instance)` advances execution deterministically until:
+  * `suspend`
+  * `return`
+* `goto` transitions immediately and continues execution in the same `Step`
+* `Active(instance)` returns the active state name while running and `""` after completion
+* `Result(instance)` returns `T ! Error`
+  * `ok(value)` once complete
+  * `err(...)` if queried before completion
+
+Lifecycle:
+
+* created (no active state yet)
+* first `Step` enters the entry state
+* repeatedly suspend/resume with `Step`
+* complete on `return`
+
+M41b decisions:
+
+* stepping a completed flow is a no-op
+* `Active` on completed flow returns empty string
+* `Result` before completion returns an `Error`
+
+Still explicitly out of scope:
+
+* `when`
+* stack HFSM transitions (`push` / `pop` / `replace`)
+* scheduler / concurrency
+* automatic stepping
+
 ---
 
 ## Error Handling Model

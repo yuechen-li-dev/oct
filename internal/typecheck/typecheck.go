@@ -34,6 +34,9 @@ type Type struct {
 	IsMatrix          bool
 	IsFunction        bool
 	FunctionSignature string
+	IsFlowInstance    bool
+	FlowResultType    string
+	FlowResult        *Type
 }
 
 func (t Type) String() string {
@@ -49,6 +52,9 @@ func (t Type) String() string {
 	}
 	if t.IsFunction {
 		return t.FunctionSignature
+	}
+	if t.IsFlowInstance {
+		return "FlowInstance<" + t.FlowResultType + ">"
 	}
 	if t.IsVector {
 		return "Vector<" + base + ">"
@@ -138,6 +144,7 @@ func CheckProgram(program project.Program) error {
 				functions: imported.functions,
 				records:   imported.records,
 				enums:     imported.enums,
+				flows:     imported.flows,
 			}
 		}
 		chk.importedPackages = imports
@@ -200,6 +207,7 @@ type packageSymbols struct {
 	functions map[string]functionSignature
 	records   map[string]recordInfo
 	enums     map[string]enumInfo
+	flows     map[string]flowSignature
 }
 
 type recordInfo struct {
@@ -307,7 +315,6 @@ func (c checker) registerFunctionSignatures(file ast.File) error {
 			return fmt.Errorf("flow %s: %w", flow.Name, err)
 		}
 		c.flows[flow.Name] = signature
-		c.functions[flow.Name] = functionSignature{parameters: signature.parameters, returnType: signature.returnType}
 	}
 	return nil
 }
@@ -1416,6 +1423,9 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 	}
 
 	if hasDirectName {
+		if signature, ok := c.lookupNamedFlowSignature(calleeName); ok {
+			return c.checkFlowCallArguments(calleeName, signature, scope, expr.Arguments, ctx)
+		}
 		if signature, ok := c.lookupNamedFunctionSignature(calleeName); ok {
 			return c.checkFunctionCallArguments(calleeName, signature, scope, expr.Arguments, ctx)
 		}
@@ -1453,6 +1463,32 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", calleeType.ValueType.FunctionSignature)
 	}
 	return c.checkFunctionCallArguments(calleeType.ValueType.FunctionSignature, signature, scope, expr.Arguments, ctx)
+}
+
+func flowInstanceType(resultType Type) Type {
+	resultCopy := resultType
+	return Type{IsFlowInstance: true, FlowResultType: resultType.String(), FlowResult: &resultCopy}
+}
+
+func (c checker) checkFlowCallArguments(displayName string, signature flowSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != len(signature.parameters) {
+		return ExprType{}, fmt.Errorf("flow '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
+	}
+	for i, argumentExpr := range arguments {
+		argumentType, err := c.checkExpr(scope, argumentExpr, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argumentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		expected := signature.parameters[i]
+		if isAssignable(argumentType.ValueType, expected) {
+			continue
+		}
+		return ExprType{}, fmt.Errorf("flow '%s' argument %d expects %s, got %s", displayName, i+1, expected, argumentType.ValueType)
+	}
+	return ExprType{ValueType: flowInstanceType(signature.returnType)}, nil
 }
 
 func (c checker) checkFunctionCallArguments(displayName string, signature functionSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -1500,6 +1536,23 @@ func (c checker) lookupNamedFunctionSignature(name string) (functionSignature, b
 		signature = c.qualifyImportedSignature(calleePackage, signature)
 	}
 	return signature, true
+}
+
+func (c checker) lookupNamedFlowSignature(name string) (flowSignature, bool) {
+	lookupName := name
+	lookupTable := c.flows
+	if dot := strings.Index(name, "."); dot >= 0 {
+		pkgName := name[:dot]
+		symbol := name[dot+1:]
+		imported, ok := c.importedPackages[pkgName]
+		if !ok {
+			return flowSignature{}, false
+		}
+		lookupName = symbol
+		lookupTable = imported.flows
+	}
+	signature, ok := lookupTable[lookupName]
+	return signature, ok
 }
 
 func flattenDirectCallName(expr ast.Expr) (string, bool) {
@@ -1671,6 +1724,66 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
 		}
 		return c.checkAppendBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "Step" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Step' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Step' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Step' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
+	}
+	if callee == "Active" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Active' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Active' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Active' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "Result" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Result' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Result' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Result' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		if flowType.ValueType.FlowResult == nil {
+			return ExprType{}, fmt.Errorf("internal error: missing flow result type metadata")
+		}
+		return ExprType{ValueType: *flowType.ValueType.FlowResult, Fallible: true}, nil
 	}
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -2481,6 +2594,9 @@ func operatorName(operator string) string {
 func isAssignable(actual Type, expected Type) bool {
 	if actual == expected {
 		return true
+	}
+	if actual.IsFlowInstance || expected.IsFlowInstance {
+		return actual.IsFlowInstance && expected.IsFlowInstance && actual.FlowResultType == expected.FlowResultType
 	}
 	if actual.Name != "" || expected.Name != "" {
 		return false
