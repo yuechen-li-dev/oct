@@ -45,12 +45,14 @@ type MIRField struct {
 }
 
 type MIRFunction struct {
-	Package string
-	Name    string
-	Params  []MIRField
-	Return  string
-	Locals  []MIRField
-	Blocks  []MIRBlock
+	Package    string
+	Name       string
+	Params     []MIRField
+	Return     string
+	IsFallible bool
+	ErrorType  string
+	Locals     []MIRField
+	Blocks     []MIRBlock
 }
 
 type MIRBlock struct {
@@ -108,6 +110,10 @@ func (MIRJump) mirTerminator() {}
 type MIRBranch struct{ Cond, TrueTarget, FalseTarget string }
 
 func (MIRBranch) mirTerminator() {}
+
+type MIRFail struct{ Value string }
+
+func (MIRFail) mirTerminator() {}
 
 func Compile(path string) (Result, error) {
 	program, err := project.Load(path)
@@ -222,7 +228,7 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 
 func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) (MIRFunction, error) {
 	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn}
-	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType}
+	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
 		mirFn.Params = append(mirFn.Params, MIRField{Name: p.Name, Type: t})
@@ -235,7 +241,11 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	}
 	if ctx.blocks[ctx.cur].Terminator == nil {
 		if mirFn.Return == "Void" {
-			ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: ""}
+			if mirFn.IsFallible {
+				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: fallibleOkValue(ctx.retType, "")}
+			} else {
+				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: ""}
+			}
 		} else {
 			return MIRFunction{}, fmt.Errorf("missing return")
 		}
@@ -264,21 +274,21 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 		}
 		switch s := stmt.(type) {
 		case ast.LetStmt:
-			v, t, err := c.lowerExpr(s.Value)
+			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
 			c.locals[s.Name] = t
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
 		case ast.VarStmt:
-			v, t, err := c.lowerExpr(s.Value)
+			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
 			c.locals[s.Name] = t
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
 		case ast.AssignStmt:
-			v, _, err := c.lowerExpr(s.Value)
+			v, _, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
@@ -287,17 +297,17 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
 		case ast.IndexAssignStmt:
-			idx, _, err := c.lowerExpr(s.Index)
+			idx, _, _, err := c.lowerExpr(s.Index)
 			if err != nil {
 				return err
 			}
-			val, _, err := c.lowerExpr(s.Value)
+			val, _, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", s.Target, idx), Value: val})
 		case ast.ExprStmt:
-			v, _, err := c.lowerExpr(s.Value)
+			v, _, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
@@ -307,11 +317,19 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				c.blocks[c.cur].Terminator = MIRReturn{}
 				continue
 			}
-			v, _, err := c.lowerExpr(s.Value)
+			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
-			c.blocks[c.cur].Terminator = MIRReturn{Value: v}
+			if c.fn.IsFallible {
+				if t == "Error" {
+					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, v)}
+				} else {
+					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleOkValue(c.retType, v)}
+				}
+			} else {
+				c.blocks[c.cur].Terminator = MIRReturn{Value: v}
+			}
 		case ast.IfStmt:
 			if err := c.lowerIfStmt(s); err != nil {
 				return err
@@ -321,7 +339,9 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 		case ast.WhileStmt:
 			return unsupported("while")
 		case ast.MatchStmt:
-			return unsupported("match")
+			if err := c.lowerMatchStmt(s); err != nil {
+				return err
+			}
 		case ast.GotoStmt:
 			return unsupported("flow/goto")
 		case ast.SuspendStmt:
@@ -343,8 +363,28 @@ func unsupported(feature string) error {
 	return fmt.Errorf("compiled mode does not yet support %s", feature)
 }
 
+func fallibleType(t string) string {
+	return "Fallible[" + t + "]"
+}
+
+func isFallibleType(t string) bool {
+	return strings.HasPrefix(t, "Fallible[") && strings.HasSuffix(t, "]")
+}
+
+func fallibleValueType(t string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(t, "Fallible["), "]")
+}
+
+func fallibleOkValue(retType, v string) string {
+	return fmt.Sprintf("__oct_ok(%s,%s)", retType, v)
+}
+
+func fallibleErrValue(retType, errVal string) string {
+	return fmt.Sprintf("__oct_err(%s,%s)", retType, errVal)
+}
+
 func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
-	cond, _, err := c.lowerExpr(s.Condition)
+	cond, _, _, err := c.lowerExpr(s.Condition)
 	if err != nil {
 		return err
 	}
@@ -385,6 +425,106 @@ func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
 	return nil
 }
 
+func (c *lowerCtx) lowerMatchStmt(s ast.MatchStmt) error {
+	subject, valType, fallible, err := c.lowerExpr(s.Subject)
+	if err != nil {
+		return err
+	}
+	if !fallible {
+		return fmt.Errorf("match requires fallible expression")
+	}
+	okID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", okID)})
+	errID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: subject + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+
+	c.cur = okID
+	c.locals[s.OkName] = valType
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.OkName, Value: subject + ".Value"})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: s.OkName})
+	if err := c.lowerBlock(s.OkBody); err != nil {
+		return err
+	}
+	okFallsThrough := c.blocks[c.cur].Terminator == nil
+
+	c.cur = errID
+	c.locals[s.ErrName] = "Error"
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.ErrName, Value: subject + ".Err"})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: s.ErrName})
+	if err := c.lowerBlock(s.ErrBody); err != nil {
+		return err
+	}
+	errFallsThrough := c.blocks[c.cur].Terminator == nil
+
+	if !okFallsThrough && !errFallsThrough {
+		c.cur = okID
+		return nil
+	}
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+	if okFallsThrough {
+		c.blocks[okID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	}
+	if errFallsThrough {
+		c.blocks[errID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	}
+	c.cur = mergeID
+	return nil
+}
+
+func (c *lowerCtx) lowerPropagateExpr(e ast.PropagateExpr) (string, string, bool, error) {
+	inner, valueType, fallible, err := c.lowerExpr(e.Inner)
+	if err != nil {
+		return "", "", false, err
+	}
+	if !fallible {
+		return "", "", false, fmt.Errorf("operator '?' requires fallible expression")
+	}
+	out := c.temp(valueType)
+	okID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", okID)})
+	errID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: inner + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.cur = okID
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: inner + ".Value"})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	c.cur = errID
+	c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, inner+".Err")}
+	c.cur = mergeID
+	return out, valueType, false, nil
+}
+
+func (c *lowerCtx) lowerUnwrapExpr(e ast.UnwrapExpr) (string, string, bool, error) {
+	inner, valueType, fallible, err := c.lowerExpr(e.Inner)
+	if err != nil {
+		return "", "", false, err
+	}
+	if !fallible {
+		return "", "", false, fmt.Errorf("operator '!' requires fallible expression")
+	}
+	out := c.temp(valueType)
+	okID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", okID)})
+	errID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: inner + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.cur = okID
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: inner + ".Value"})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	c.cur = errID
+	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("\"unwrap failed: \" + %s.Err", inner)}
+	c.cur = mergeID
+	return out, valueType, false, nil
+}
+
 func (c *lowerCtx) temp(t string) string {
 	name := fmt.Sprintf("_t%d", c.tempID)
 	c.tempID++
@@ -392,33 +532,33 @@ func (c *lowerCtx) temp(t string) string {
 	return name
 }
 
-func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, error) {
+func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
-		return e.Value, "Int", nil
+		return e.Value, "Int", false, nil
 	case ast.FloatLiteral:
-		return e.Value, "Float", nil
+		return e.Value, "Float", false, nil
 	case ast.BoolLiteral:
 		if e.Value {
-			return "true", "Bool", nil
+			return "true", "Bool", false, nil
 		}
-		return "false", "Bool", nil
+		return "false", "Bool", false, nil
 	case ast.StringLiteralExpr:
-		return fmt.Sprintf("%q", e.Value), "String", nil
+		return fmt.Sprintf("%q", e.Value), "String", false, nil
 	case ast.IdentifierExpr:
 		t, ok := c.locals[e.Name]
 		if !ok {
-			return "", "", fmt.Errorf("unknown identifier '%s'", e.Name)
+			return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
-		return e.Name, t, nil
+		return e.Name, t, false, nil
 	case ast.BinaryExpr:
-		l, lt, err := c.lowerExpr(e.Left)
+		l, lt, _, err := c.lowerExpr(e.Left)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
-		r, _, err := c.lowerExpr(e.Right)
+		r, _, _, err := c.lowerExpr(e.Right)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		ret := lt
 		switch e.Operator {
@@ -434,11 +574,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, error) {
 			op = "||"
 		}
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s %s %s)", l, op, r)})
-		return tmp, ret, nil
+		return tmp, ret, false, nil
 	case ast.UnaryExpr:
-		v, t, err := c.lowerExpr(e.Operand)
+		v, t, _, err := c.lowerExpr(e.Operand)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		tmp := c.temp(t)
 		op := e.Operator
@@ -446,30 +586,44 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, error) {
 			op = "!"
 		}
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s%s)", op, v)})
-		return tmp, t, nil
+		return tmp, t, false, nil
 	case ast.CallExpr:
-		callee, ret, builtin, err := c.resolveCall(e.Callee)
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "error" {
+			if len(e.Arguments) != 1 {
+				return "", "", false, fmt.Errorf("error() expects one argument")
+			}
+			v, _, _, err := c.lowerExpr(e.Arguments[0])
+			if err != nil {
+				return "", "", false, err
+			}
+			return v, "Error", false, nil
+		}
+		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		args := make([]string, 0, len(e.Arguments))
 		for _, a := range e.Arguments {
-			v, _, err := c.lowerExpr(a)
+			v, _, _, err := c.lowerExpr(a)
 			if err != nil {
-				return "", "", err
+				return "", "", false, err
 			}
 			args = append(args, v)
 		}
-		tmp := c.temp(ret)
+		localType := ret
+		if fallible {
+			localType = fallibleType(ret)
+		}
+		tmp := c.temp(localType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: args, Builtin: builtin, RetType: ret})
-		return tmp, ret, nil
+		return tmp, ret, fallible, nil
 	case ast.ArrayLiteralExpr:
 		vals := []string{}
 		typeName := "Int"
 		for i, el := range e.Elements {
-			v, t, err := c.lowerExpr(el)
+			v, t, _, err := c.lowerExpr(el)
 			if err != nil {
-				return "", "", err
+				return "", "", false, err
 			}
 			vals = append(vals, v)
 			if i == 0 {
@@ -478,38 +632,38 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, error) {
 		}
 		tmp := c.temp(typeName + "[]")
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
-		return tmp, typeName + "[]", nil
+		return tmp, typeName + "[]", false, nil
 	case ast.FieldAccessExpr:
-		t, _, err := c.lowerExpr(e.Target)
+		t, _, _, err := c.lowerExpr(e.Target)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		tmp := c.temp("Int")
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s.%s", t, e.Field)})
-		return tmp, "Int", nil
+		return tmp, "Int", false, nil
 	case ast.IndexExpr:
-		target, targetType, err := c.lowerExpr(e.Target)
+		target, targetType, _, err := c.lowerExpr(e.Target)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		if len(e.Indices) != 1 {
-			return "", "", fmt.Errorf("compiled mode only supports single-dimension indexing")
+			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
 		}
-		idx, _, err := c.lowerExpr(e.Indices[0])
+		idx, _, _, err := c.lowerExpr(e.Indices[0])
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		elemType := strings.TrimSuffix(targetType, "[]")
 		tmp := c.temp(elemType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s]", target, idx)})
-		return tmp, elemType, nil
+		return tmp, elemType, false, nil
 	case ast.RecordLiteralExpr:
 		vals := []string{}
 		names := []string{}
 		for _, f := range e.Fields {
-			v, _, err := c.lowerExpr(f.Value)
+			v, _, _, err := c.lowerExpr(f.Value)
 			if err != nil {
-				return "", "", err
+				return "", "", false, err
 			}
 			vals = append(vals, v)
 			names = append(names, f.Name)
@@ -517,42 +671,42 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, error) {
 		typeName := c.pkg.Name + "." + e.TypeName
 		tmp := c.temp(typeName)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
-		return tmp, typeName, nil
+		return tmp, typeName, false, nil
 	case ast.EnumValueExpr:
-		return fmt.Sprintf("%s_%s", e.EnumName, e.Variant), e.EnumName, nil
+		return fmt.Sprintf("%s_%s", e.EnumName, e.Variant), e.EnumName, false, nil
 	case ast.IfExpr:
 		return c.lowerIfExpr(e)
 	case ast.SwitchExpr:
-		return "", "", unsupported("switch expression")
+		return "", "", false, unsupported("switch expression")
 	case ast.RangeExpr:
-		return "", "", unsupported("range")
+		return "", "", false, unsupported("range")
 	case ast.PropagateExpr:
-		return "", "", unsupported("fallible propagation")
+		return c.lowerPropagateExpr(e)
 	case ast.UnwrapExpr:
-		return "", "", unsupported("fallible unwrap")
+		return c.lowerUnwrapExpr(e)
 	case ast.BatchExpr:
-		return "", "", unsupported("batch")
+		return "", "", false, unsupported("batch")
 	case ast.UtilityWhenExpr:
-		return "", "", unsupported("utility when")
+		return "", "", false, unsupported("utility when")
 	case ast.ParenExpr:
 		return c.lowerExpr(e.Inner)
 	default:
-		return "", "", fmt.Errorf("unsupported expression %T", e)
+		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
 }
 
-func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, error) {
-	cond, _, err := c.lowerExpr(e.Condition)
+func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
+	cond, _, _, err := c.lowerExpr(e.Condition)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
-	thenVal, thenType, err := c.lowerExpr(e.ThenExpr)
+	thenVal, thenType, _, err := c.lowerExpr(e.ThenExpr)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
-	elseVal, _, err := c.lowerExpr(e.ElseExpr)
+	elseVal, _, _, err := c.lowerExpr(e.ElseExpr)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	out := c.temp(thenType)
 	thenID := len(c.blocks)
@@ -569,44 +723,44 @@ func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, error) {
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: elseVal})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	c.cur = mergeID
-	return out, thenType, nil
+	return out, thenType, false, nil
 }
 
-func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, error) {
+func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
 		if x.Name == "Len" {
-			return "Len", "Int", true, nil
+			return "Len", "Int", true, false, nil
 		}
 		if x.Name == "Append" {
-			return "Append", "Int[]", true, nil
+			return "Append", "Int[]", true, false, nil
 		}
 		if x.Name == "Print" {
-			return "Print", "Int", true, nil
+			return "Print", "Int", true, false, nil
 		}
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {
-				return c.pkg.Name + "." + x.Name, typeRefStringForPackage(c.pkg.Name, fn.ReturnType), false, nil
+				return c.pkg.Name + "." + x.Name, typeRefStringForPackage(c.pkg.Name, fn.ReturnType), false, fn.IsFallible, nil
 			}
 		}
-		return "", "", false, fmt.Errorf("unknown function '%s'", x.Name)
+		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
 	case ast.FieldAccessExpr:
 		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
 		if !ok {
-			return "", "", false, fmt.Errorf("unsupported call target")
+			return "", "", false, false, fmt.Errorf("unsupported call target")
 		}
 		importPkg, ok := c.program.Packages[pkgIdent.Name]
 		if !ok {
-			return "", "", false, fmt.Errorf("unknown package '%s'", pkgIdent.Name)
+			return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgIdent.Name)
 		}
 		for _, fn := range importPkg.Functions {
 			if fn.Name == x.Field {
-				return pkgIdent.Name + "." + x.Field, typeRefStringForPackage(pkgIdent.Name, fn.ReturnType), false, nil
+				return pkgIdent.Name + "." + x.Field, typeRefStringForPackage(pkgIdent.Name, fn.ReturnType), false, fn.IsFallible, nil
 			}
 		}
-		return "", "", false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
+		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:
-		return "", "", false, fmt.Errorf("unsupported callee %T", callee)
+		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
 	}
 }
 
@@ -651,7 +805,11 @@ func dumpMIR(m MIRModule) string {
 			}
 			fmt.Fprintf(&b, "%s:%s", p.Name, p.Type)
 		}
-		fmt.Fprintf(&b, ") -> %s\n", fn.Return)
+		fmt.Fprintf(&b, ") -> %s", fn.Return)
+		if fn.IsFallible {
+			fmt.Fprintf(&b, " ! %s", fn.ErrorType)
+		}
+		b.WriteString("\n")
 		for _, bb := range fn.Blocks {
 			fmt.Fprintf(&b, "  %s:\n", bb.Label)
 			for _, s := range bb.Statements {
@@ -673,6 +831,8 @@ func dumpMIR(m MIRModule) string {
 				fmt.Fprintf(&b, "    jump %s\n", t.Target)
 			case MIRBranch:
 				fmt.Fprintf(&b, "    branch %s ? %s : %s\n", t.Cond, t.TrueTarget, t.FalseTarget)
+			case MIRFail:
+				fmt.Fprintf(&b, "    fail %s\n", t.Value)
 			}
 		}
 	}
@@ -683,6 +843,25 @@ func emitGo(m MIRModule) (string, error) {
 	var b strings.Builder
 	b.WriteString("package main\n\n")
 	b.WriteString("import \"fmt\"\n\n")
+	resultTypes := map[string]struct{}{}
+	for _, fn := range m.Functions {
+		if fn.IsFallible {
+			resultTypes[fn.Return] = struct{}{}
+		}
+		for _, local := range fn.Locals {
+			if isFallibleType(local.Type) {
+				resultTypes[fallibleValueType(local.Type)] = struct{}{}
+			}
+		}
+	}
+	resultNames := make([]string, 0, len(resultTypes))
+	for t := range resultTypes {
+		resultNames = append(resultNames, t)
+	}
+	sort.Strings(resultNames)
+	for _, t := range resultNames {
+		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), goType(t))
+	}
 	for _, r := range m.Records {
 		fmt.Fprintf(&b, "type %s_%s struct {\n", r.Package, r.Name)
 		for _, f := range r.Fields {
@@ -706,6 +885,9 @@ func emitGo(m MIRModule) (string, error) {
 			fmt.Fprintf(&b, "%s %s", p.Name, goType(p.Type))
 		}
 		returnType := goType(fn.Return)
+		if fn.IsFallible {
+			returnType = goResultTypeName(fn.Return)
+		}
 		if returnType == "" {
 			b.WriteString(") {\n")
 		} else {
@@ -737,8 +919,24 @@ func emitGo(m MIRModule) (string, error) {
 		b.WriteString("\t\t}\n\t}\n}\n\n")
 	}
 	b.WriteString("func main() {\n")
+	entryReturn := ""
+	entryFallible := false
+	for _, fn := range m.Functions {
+		if fn.Package == m.EntryPackage && fn.Name == m.EntryFunc {
+			entryReturn = fn.Return
+			entryFallible = fn.IsFallible
+			break
+		}
+	}
 	b.WriteString("\tresult := fn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
-	b.WriteString("\tfmt.Println(result)\n")
+	if entryFallible {
+		b.WriteString("\tif result.IsErr { panic(\"oct error: \" + result.Err) }\n")
+		if entryReturn != "Void" {
+			b.WriteString("\tfmt.Println(result.Value)\n")
+		}
+	} else if entryReturn != "Void" {
+		b.WriteString("\tfmt.Println(result)\n")
+	}
 	b.WriteString("}\n")
 	return b.String(), nil
 }
@@ -780,11 +978,13 @@ func goTerminator(t MIRTerminator, labels map[string]int) (string, error) {
 		if term.Value == "" {
 			return "return", nil
 		}
-		return "return " + term.Value, nil
+		return "return " + goReturnExpr(term.Value), nil
 	case MIRJump:
 		return fmt.Sprintf("pc = %d; continue", labels[term.Target]), nil
 	case MIRBranch:
 		return fmt.Sprintf("if %s { pc = %d } else { pc = %d }; continue", term.Cond, labels[term.TrueTarget], labels[term.FalseTarget]), nil
+	case MIRFail:
+		return "panic(" + term.Value + ")", nil
 	default:
 		return "", fmt.Errorf("unsupported MIR terminator %T", t)
 	}
@@ -800,8 +1000,13 @@ func goType(t string) string {
 		return "bool"
 	case "String":
 		return "string"
+	case "Error":
+		return "string"
 	case "Void":
 		return ""
+	}
+	if isFallibleType(t) {
+		return goResultTypeName(fallibleValueType(t))
 	}
 	if strings.HasSuffix(t, "[]") {
 		return "[]" + goType(strings.TrimSuffix(t, "[]"))
@@ -810,4 +1015,37 @@ func goType(t string) string {
 		return strings.ReplaceAll(t, ".", "_")
 	}
 	return t
+}
+
+func goResultTypeName(valueType string) string {
+	s := strings.NewReplacer(".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "[]", "Slice").Replace(valueType)
+	s = strings.ReplaceAll(s, "__", "_")
+	return "octResult_" + s
+}
+
+func goReturnExpr(expr string) string {
+	if strings.HasPrefix(expr, "__oct_ok(") {
+		payload := strings.TrimSuffix(strings.TrimPrefix(expr, "__oct_ok("), ")")
+		parts := strings.SplitN(payload, ",", 2)
+		if len(parts) != 2 {
+			return expr
+		}
+		retType := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if value == "" {
+			return fmt.Sprintf("%s{}", goResultTypeName(retType))
+		}
+		return fmt.Sprintf("%s{Value: %s}", goResultTypeName(retType), value)
+	}
+	if strings.HasPrefix(expr, "__oct_err(") {
+		payload := strings.TrimSuffix(strings.TrimPrefix(expr, "__oct_err("), ")")
+		parts := strings.SplitN(payload, ",", 2)
+		if len(parts) != 2 {
+			return expr
+		}
+		retType := strings.TrimSpace(parts[0])
+		errExpr := strings.TrimSpace(parts[1])
+		return fmt.Sprintf("%s{Err: %s, IsErr: true}", goResultTypeName(retType), errExpr)
+	}
+	return expr
 }

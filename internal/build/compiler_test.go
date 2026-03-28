@@ -155,3 +155,143 @@ fn main() -> Int {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCompileAndRunFalliblePropagationAndMatch(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Parse(x: Int) -> Int ! Error {
+    if x > 0 {
+        return x + 10
+    }
+    return error("bad input")
+}
+
+fn Chain(x: Int) -> Int ! Error {
+    let value = Parse(x)?
+    return value + 1
+}
+
+fn main() -> Int {
+    match Chain(5) {
+        ok(v) => { return v }
+        err(e) => { return 0 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "16" {
+		t.Fatalf("expected 16, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunFallibleMatchErrBranch(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Parse(x: Int) -> Int ! Error {
+    if x > 0 {
+        return x
+    }
+    return error("bad input")
+}
+
+fn main() -> Int {
+    match Parse(0) {
+        ok(v) => { return v }
+        err(e) => { return 42 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "42" {
+		t.Fatalf("expected 42, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunFallibleUnwrap(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Parse(x: Int) -> Int ! Error {
+    if x > 0 {
+        return x
+    }
+    return error("bad input")
+}
+
+fn main() -> Int {
+    let value = Parse(5)!
+    return value + 2
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "7" {
+		t.Fatalf("expected 7, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFallibleUnwrapFailureIsFatal(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Parse(x: Int) -> Int ! Error {
+    if x > 0 {
+        return x
+    }
+    return error("bad input")
+}
+
+fn main() -> Int {
+    return Parse(0)!
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected fatal unwrap failure, got success output %q", strings.TrimSpace(string(out)))
+	}
+	if !strings.Contains(string(out), "unwrap failed: bad input") {
+		t.Fatalf("expected unwrap failure message, got %q", string(out))
+	}
+}
