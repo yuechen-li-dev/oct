@@ -97,6 +97,26 @@ fn Main() -> Int {
 
 ---
 
+
+## Prometheus P2 SGEMM Vertical Slice
+
+P2 adds one narrow, correctness-gated Prometheus SGEMM scaffolding path:
+
+* fixed operation: row-major `float32` `C = A × B`
+* explicit backend selection only: `cpu` or `prometheus` (no hidden auto-dispatch)
+* explicit visible outcomes: `ok`, `fallback(<reason>)`, `error(<stage>,<code>)`
+* fallback is only allowed when Prometheus is unavailable before execution starts
+* post-dispatch Prometheus failures surface as errors (no silent CPU reroute)
+* machine-readable `.octagon` reporting for each run
+
+CLI entrypoint for the vertical slice:
+
+* `oct prometheus-sgemm <cpu|prometheus> [--octagon-out <file.octagon>]`
+
+P2 intent is architecture and correctness proof, **not** performance claims.
+It intentionally does not add autotuning, async/streams, persistent device residency, mixed precision, or a generalized tensor runtime.
+
+---
 ## Iteration Model
 
 * `for` is used for structured counted iteration over integer progressions:
