@@ -1835,6 +1835,44 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: *flowType.ValueType.FlowResult, Fallible: true}, nil
 	}
+	if callee == "Complete" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Complete' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Complete' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Complete' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+	}
+	if callee == "StateHistory" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'StateHistory' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'StateHistory' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'StateHistory' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString, IsArray: true}}, nil
+	}
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}

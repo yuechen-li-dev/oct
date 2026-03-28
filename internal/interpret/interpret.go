@@ -91,6 +91,7 @@ type FlowRuntimeInstance struct {
 	InstructionIndex int
 	Completed        bool
 	Result           Value
+	StateHistory     []string
 }
 
 func (v Value) String() string {
@@ -358,10 +359,11 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 		rootEnv.define(parameter.Name, arguments[index], false)
 	}
 	return &FlowRuntimeInstance{
-		Decl:     flow,
-		Package:  pkgName,
-		RootEnv:  rootEnv,
-		StateEnv: nil,
+		Decl:         flow,
+		Package:      pkgName,
+		RootEnv:      rootEnv,
+		StateEnv:     nil,
+		StateHistory: nil,
 	}
 }
 
@@ -388,6 +390,7 @@ func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
 		instance.CurrentState = instance.Decl.EntryState
 		instance.InstructionIndex = 0
 		instance.StateEnv = newEnvironment(instance.RootEnv)
+		instance.StateHistory = append(instance.StateHistory, instance.CurrentState)
 	}
 	for {
 		state, ok := findFlowState(instance.Decl, instance.CurrentState)
@@ -411,6 +414,7 @@ func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
 			instance.CurrentState = signal.target
 			instance.InstructionIndex = 0
 			instance.StateEnv = newEnvironment(instance.RootEnv)
+			instance.StateHistory = append(instance.StateHistory, instance.CurrentState)
 		case flowSignalReturn:
 			instance.Completed = true
 			instance.CurrentState = ""
@@ -1380,6 +1384,44 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: argument.value.Flow.Result}, nil
 	}
+	if callee == "Complete" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Complete does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Complete expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Complete expects FlowInstance argument")
+		}
+		return evalResult{value: Value{Kind: ValueBool, Bool: argument.value.Flow.Completed}}, nil
+	}
+	if callee == "StateHistory" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StateHistory does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StateHistory expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StateHistory expects FlowInstance argument")
+		}
+		return evalResult{value: flowStateHistoryValue(argument.value.Flow)}, nil
+	}
 	if len(typeArguments) != 0 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 	}
@@ -1568,6 +1610,14 @@ func numericValueAsFloat(value Value, functionName string) (float64, error) {
 
 func isNumericValue(value Value) bool {
 	return value.Kind == ValueInt || value.Kind == ValueFloat
+}
+
+func flowStateHistoryValue(instance *FlowRuntimeInstance) Value {
+	history := make([]Value, 0, len(instance.StateHistory))
+	for _, state := range instance.StateHistory {
+		history = append(history, Value{Kind: ValueString, Text: state})
+	}
+	return Value{Kind: ValueArray, Array: history}
 }
 
 func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {

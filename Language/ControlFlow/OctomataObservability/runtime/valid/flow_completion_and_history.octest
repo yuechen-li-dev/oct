@@ -1,0 +1,141 @@
+package MainValid
+
+flow TwoStep() -> Int {
+    state Start {
+        suspend
+        return 7
+    }
+}
+
+flow MultiStage() -> Int {
+    state Start {
+        goto Middle
+    }
+
+    state Middle {
+        suspend
+        goto Finish
+    }
+
+    state Finish {
+        return 3
+    }
+}
+
+flow GuardedRoute(high: Bool, medium: Bool) -> Int {
+    state Decide {
+        when {
+            case high -> goto High
+            case medium -> goto Medium
+            else -> goto Low
+        }
+    }
+
+    state High {
+        return 10
+    }
+
+    state Medium {
+        return 5
+    }
+
+    state Low {
+        suspend
+        return 1
+    }
+}
+
+[Fact]
+fn CompletionAndHistoryForSimpleSuspendFlow() -> Void {
+    let f = TwoStep()
+
+    Assert.False(Complete(f), "new flow should start incomplete")
+
+    Step(f)
+    Assert.False(Complete(f), "flow should remain incomplete after first suspend")
+
+    let historyAfterSuspend = StateHistory(f)
+    Assert.Equal("Start", historyAfterSuspend[0], "state history should record initial entry state")
+
+    Step(f)
+    Assert.True(Complete(f), "flow should report complete after return")
+
+    let historyAfterCompletion = StateHistory(f)
+    Assert.Equal("Start", historyAfterCompletion[0], "completed flow should keep deterministic entry history")
+
+    match Result(f) {
+        ok(v) => { Assert.Equal(7, v, "simple flow should return final value") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}
+
+[Fact]
+fn MultiStateProgressionAppearsInHistory() -> Void {
+    let f = MultiStage()
+
+    Step(f)
+    Assert.Equal("Middle", Active(f), "first step should land in Middle after Start goto")
+    Assert.False(Complete(f), "flow should still be incomplete after first suspend")
+
+    let historyAfterFirstStep = StateHistory(f)
+    Assert.Equal("Start", historyAfterFirstStep[0], "history should include Start entry")
+    Assert.Equal("Middle", historyAfterFirstStep[1], "history should include Middle entry from goto")
+
+    Step(f)
+    Assert.True(Complete(f), "second step should complete flow")
+
+    let finalHistory = StateHistory(f)
+    Assert.Equal("Finish", finalHistory[2], "history should include Finish entry before return")
+}
+
+[Fact]
+fn DeterministicRunsProduceSameHistory() -> Void {
+    let first = MultiStage()
+    let second = MultiStage()
+
+    Step(first)
+    Step(second)
+    Step(first)
+    Step(second)
+
+    let firstHistory = StateHistory(first)
+    let secondHistory = StateHistory(second)
+
+    Assert.Equal(firstHistory[0], secondHistory[0], "deterministic runs should share first entry")
+    Assert.Equal(firstHistory[1], secondHistory[1], "deterministic runs should share second entry")
+    Assert.Equal(firstHistory[2], secondHistory[2], "deterministic runs should share third entry")
+    Assert.Equal("Finish", firstHistory[2], "deterministic history should include terminal state entry")
+}
+
+[Fact]
+fn WhenDrivenTransitionIsVisibleInHistory() -> Void {
+    let f = GuardedRoute(false, true)
+
+    Step(f)
+    Assert.True(Complete(f), "medium branch should complete in one step")
+
+    let history = StateHistory(f)
+    Assert.Equal("Decide", history[0], "history should begin with decision state")
+    Assert.Equal("Medium", history[1], "history should expose when-selected branch target")
+
+    match Result(f) {
+        ok(v) => { Assert.Equal(5, v, "medium branch should return expected value") }
+        err(e) => { Assert.True(false, "Result should succeed after medium branch completion") }
+    }
+}
+
+[Fact]
+fn SuspendHeavyStateRemainsUnderstandable() -> Void {
+    let f = GuardedRoute(false, false)
+
+    Step(f)
+    Assert.False(Complete(f), "else branch should suspend in Low on first step")
+    Assert.Equal("Low", Active(f), "first step should suspend in Low")
+
+    let historyAfterSuspend = StateHistory(f)
+    Assert.Equal("Decide", historyAfterSuspend[0], "history should include decision entry even on suspend-heavy path")
+    Assert.Equal("Low", historyAfterSuspend[1], "history should include suspended state entry")
+
+    Step(f)
+    Assert.True(Complete(f), "second step should complete from Low")
+}
