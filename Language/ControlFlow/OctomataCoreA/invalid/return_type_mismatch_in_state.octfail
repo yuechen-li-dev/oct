@@ -1,0 +1,13 @@
+expect error: "function BadReturn: function expects Int, but return is Bool"
+
+package Main
+
+flow BadReturn() -> Int {
+    state Start {
+        return true
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

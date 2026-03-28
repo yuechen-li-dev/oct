@@ -1,0 +1,10 @@
+expect error: "flow Empty: must declare at least one state"
+
+package Main
+
+flow Empty() -> Int {
+}
+
+fn Main() -> Int {
+    return 0
+}

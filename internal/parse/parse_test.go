@@ -485,7 +485,7 @@ func TestBuildFileRejectsNestedIndexAssignmentTarget(t *testing.T) {
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {
-	assertParseErrorContains(t, "let x = 1", "expected 'record', 'enum', or 'fn' at top level")
+	assertParseErrorContains(t, "let x = 1", "expected 'record', 'enum', 'fn', or 'flow' at top level")
 }
 
 func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {
@@ -695,4 +695,28 @@ func TestBuildFileParsesM16VectorMatrixSyntax(t *testing.T) {
 	if len(right.Indices) != 1 {
 		t.Fatalf("expected vector index to have 1 index, got %d", len(right.Indices))
 	}
+}
+
+func TestBuildFileParsesFlowStateGotoSuspend(t *testing.T) {
+	file := parseSource(t, "flow Patrol(input: Int) -> Int { state Search { if input == 0 { goto Track } suspend } state Track { return input } }")
+	if len(file.Flows) != 1 {
+		t.Fatalf("expected one flow, got %d", len(file.Flows))
+	}
+	flow := file.Flows[0]
+	if flow.Name != "Patrol" {
+		t.Fatalf("expected flow Patrol, got %q", flow.Name)
+	}
+	if flow.EntryState != "Search" {
+		t.Fatalf("expected entry state Search, got %q", flow.EntryState)
+	}
+	if len(flow.States) != 2 {
+		t.Fatalf("expected two states, got %d", len(flow.States))
+	}
+	if _, ok := flow.States[0].Body.Statements[1].(ast.SuspendStmt); !ok {
+		t.Fatalf("expected suspend statement in Search state, got %T", flow.States[0].Body.Statements[1])
+	}
+}
+
+func TestBuildFileRejectsMalformedFlowState(t *testing.T) {
+	assertParseErrorContains(t, "flow Patrol() -> Int { let x = 1 }", "expected 'state' declaration inside flow")
 }

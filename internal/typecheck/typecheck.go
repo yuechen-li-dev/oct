@@ -91,6 +91,9 @@ type functionContext struct {
 	returnType Type
 	isFallible bool
 	isTestFile bool
+	inFlow     bool
+	inState    bool
+	states     map[string]struct{}
 }
 
 func Check(file ast.File) error {
@@ -99,6 +102,7 @@ func Check(file ast.File) error {
 		functionTypes: make(map[string]functionSignature),
 		records:       make(map[string]recordInfo),
 		enums:         make(map[string]enumInfo),
+		flows:         make(map[string]flowSignature),
 		typeNames:     make(map[string]struct{}),
 	}
 	return checker.checkFile(file)
@@ -107,12 +111,13 @@ func Check(file ast.File) error {
 func CheckProgram(program project.Program) error {
 	packageCheckers := make(map[string]checker, len(program.Packages))
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := checker{
 			functions:                    make(map[string]functionSignature),
 			functionTypes:                make(map[string]functionSignature),
 			records:                      make(map[string]recordInfo),
 			enums:                        make(map[string]enumInfo),
+			flows:                        make(map[string]flowSignature),
 			typeNames:                    make(map[string]struct{}),
 			allowUnresolvedImportedTypes: true,
 		}
@@ -137,7 +142,7 @@ func CheckProgram(program project.Program) error {
 		}
 		chk.importedPackages = imports
 		chk.allowUnresolvedImportedTypes = false
-		file := ast.File{Package: name, Imports: program.Packages[name].Imports, Records: program.Packages[name].Records, Enums: program.Packages[name].Enums, Functions: program.Packages[name].Functions}
+		file := ast.File{Package: name, Imports: program.Packages[name].Imports, Records: program.Packages[name].Records, Enums: program.Packages[name].Enums, Functions: program.Packages[name].Functions, Flows: program.Packages[name].Flows}
 		if err := chk.rebindRecordTypes(file); err != nil {
 			return err
 		}
@@ -145,7 +150,7 @@ func CheckProgram(program project.Program) error {
 	}
 
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := packageCheckers[name]
 		if err := chk.registerFunctionSignatures(file); err != nil {
 			return err
@@ -154,7 +159,7 @@ func CheckProgram(program project.Program) error {
 	}
 
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions}
+		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := packageCheckers[name]
 		if err := chk.checkPackageFunctions(file); err != nil {
 			return err
@@ -185,6 +190,7 @@ type checker struct {
 	functionTypes                map[string]functionSignature
 	records                      map[string]recordInfo
 	enums                        map[string]enumInfo
+	flows                        map[string]flowSignature
 	typeNames                    map[string]struct{}
 	importedPackages             map[string]packageSymbols
 	allowUnresolvedImportedTypes bool
@@ -203,6 +209,11 @@ type recordInfo struct {
 
 type enumInfo struct {
 	variants map[string]struct{}
+}
+
+type flowSignature struct {
+	parameters []Type
+	returnType Type
 }
 
 type scope struct {
@@ -268,6 +279,16 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 		}
 		c.functions[function.Name] = functionSignature{}
 	}
+	for _, flow := range file.Flows {
+		if builtin.IsName(flow.Name) {
+			return fmt.Errorf("flow %s: cannot redeclare built-in function", flow.Name)
+		}
+		if _, exists := c.functions[flow.Name]; exists {
+			return fmt.Errorf("duplicate flow: %s", flow.Name)
+		}
+		c.functions[flow.Name] = functionSignature{}
+		c.flows[flow.Name] = flowSignature{}
+	}
 
 	return nil
 }
@@ -280,12 +301,25 @@ func (c checker) registerFunctionSignatures(file ast.File) error {
 		}
 		c.functions[function.Name] = signature
 	}
+	for _, flow := range file.Flows {
+		signature, err := c.resolveFlowSignature(flow)
+		if err != nil {
+			return fmt.Errorf("flow %s: %w", flow.Name, err)
+		}
+		c.flows[flow.Name] = signature
+		c.functions[flow.Name] = functionSignature{parameters: signature.parameters, returnType: signature.returnType}
+	}
 	return nil
 }
 
 func (c checker) checkPackageFunctions(file ast.File) error {
 	for _, function := range file.Functions {
 		if err := c.checkFunction(function); err != nil {
+			return err
+		}
+	}
+	for _, flow := range file.Flows {
+		if err := c.checkFlow(flow); err != nil {
 			return err
 		}
 	}
@@ -358,6 +392,22 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 	return functionSignature{parameters: parameters, returnType: returnType, isFallible: function.IsFallible}, nil
 }
 
+func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) {
+	returnType, err := c.resolveReturnType(flow.ReturnType)
+	if err != nil {
+		return flowSignature{}, err
+	}
+	parameters := make([]Type, 0, len(flow.Parameters))
+	for _, parameter := range flow.Parameters {
+		parameterType, err := c.resolveNonReturnType(parameter.Type)
+		if err != nil {
+			return flowSignature{}, fmt.Errorf("parameter %s: %w", parameter.Name, err)
+		}
+		parameters = append(parameters, parameterType)
+	}
+	return flowSignature{parameters: parameters, returnType: returnType}, nil
+}
+
 func (c checker) checkFunction(function ast.FunctionDecl) error {
 	signature := c.functions[function.Name]
 	if function.IsTheory {
@@ -393,6 +443,38 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		return fmt.Errorf("function %s: missing return statement", function.Name)
 	}
 
+	return nil
+}
+
+func (c checker) checkFlow(flow ast.FlowDecl) error {
+	signature := c.flows[flow.Name]
+	if len(flow.States) == 0 {
+		return fmt.Errorf("flow %s: must declare at least one state", flow.Name)
+	}
+	if flow.EntryState == "" || flow.EntryState != flow.States[0].Name {
+		return fmt.Errorf("flow %s: entry state must be the first declared state", flow.Name)
+	}
+
+	flowScope := newScope(nil)
+	for i, parameter := range flow.Parameters {
+		flowScope.define(parameter.Name, signature.parameters[i], false)
+	}
+	stateSet := make(map[string]struct{}, len(flow.States))
+	for _, state := range flow.States {
+		if _, exists := stateSet[state.Name]; exists {
+			return fmt.Errorf("flow %s: duplicate state '%s'", flow.Name, state.Name)
+		}
+		stateSet[state.Name] = struct{}{}
+	}
+
+	ctx := functionContext{name: flow.Name, returnType: signature.returnType, inFlow: true, states: stateSet}
+	for _, state := range flow.States {
+		stateCtx := ctx
+		stateCtx.inState = true
+		if _, err := c.checkBlock(flowScope, state.Body, stateCtx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -645,6 +727,19 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		_, err = c.checkBlock(scope, node.Body, ctx)
 		if err != nil {
 			return false, err
+		}
+		return false, nil
+	case ast.GotoStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: goto is only valid inside flow state bodies", ctx.name)
+		}
+		if _, ok := ctx.states[node.Target]; !ok {
+			return false, fmt.Errorf("flow %s: goto target '%s' does not exist", ctx.name, node.Target)
+		}
+		return false, nil
+	case ast.SuspendStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: suspend is only valid inside flow state bodies", ctx.name)
 		}
 		return false, nil
 	default:

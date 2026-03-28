@@ -521,3 +521,26 @@ func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[0] }", "matrix indexing requires exactly 2 indices, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
 }
+
+func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
+	validPrograms := []string{
+		"flow Idle() -> Void { state Start { suspend } } fn Main() -> Int { return 0 }",
+		"flow Patrol(input: Int) -> Int { state Search { if input > 0 { goto Track } suspend } state Track { if input == 0 { goto Search } return input } } fn Main() -> Int { return 0 }",
+		"flow Compute(x: Int) -> Int { state Start { let y = x + 1 if y > 0 { return y } suspend } } fn Main() -> Int { return 0 }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
+	assertTypeErrorContains(t, "flow Empty() -> Int { } fn Main() -> Int { return 0 }", "flow Empty: must declare at least one state")
+	assertTypeErrorContains(t, "flow Dup() -> Int { state S { suspend } state S { return 1 } } fn Main() -> Int { return 0 }", "flow Dup: duplicate state 'S'")
+	assertTypeErrorContains(t, "flow Missing() -> Int { state S { goto T } } fn Main() -> Int { return 0 }", "flow Missing: goto target 'T' does not exist")
+	assertTypeErrorContains(t, "fn Main() -> Int { goto S return 0 }", "function Main: goto is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "fn Main() -> Int { suspend return 0 }", "function Main: suspend is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "flow BadReturn() -> Int { state S { return true } } fn Main() -> Int { return 0 }", "function BadReturn: function expects Int, but return is Bool")
+}

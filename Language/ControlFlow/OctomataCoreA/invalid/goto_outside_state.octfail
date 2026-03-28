@@ -1,0 +1,8 @@
+expect error: "function Main: goto is only valid inside flow state bodies"
+
+package Main
+
+fn Main() -> Int {
+    goto Start
+    return 0
+}

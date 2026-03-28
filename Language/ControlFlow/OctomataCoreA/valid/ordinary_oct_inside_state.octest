@@ -1,0 +1,24 @@
+package MainValid
+
+record Box {
+    Value: Int
+}
+
+flow Compute(xs: Int[]) -> Int {
+    state Start {
+        var sum = 0
+        for i in 0..Len(xs) {
+            sum = sum + xs[i]
+        }
+        let b = Box { Value: sum }
+        if b.Value > 0 {
+            return b.Value
+        }
+        suspend
+    }
+}
+
+[Fact]
+fn OrdinaryOctInsideState() -> Void {
+    Assert.Equal(1, 1, "ordinary Oct statements remain valid in state bodies")
+}

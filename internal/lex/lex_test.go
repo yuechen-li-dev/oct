@@ -241,6 +241,39 @@ func TestAnalyzeTokenizesComparisonOperators(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesFlowStateGotoSuspend(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "flow Patrol() -> Void { state Search { goto Track suspend } state Track { suspend } }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFlow,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordState,
+		Identifier,
+		LeftBrace,
+		KeywordGoto,
+		Identifier,
+		KeywordSuspend,
+		RightBrace,
+		KeywordState,
+		Identifier,
+		LeftBrace,
+		KeywordSuspend,
+		RightBrace,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeTokenizesLogicalOperators(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Bool { return not false and true or false }"}
 

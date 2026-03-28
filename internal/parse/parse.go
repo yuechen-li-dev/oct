@@ -220,8 +220,17 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				return ast.File{}, p.errorAtCurrent("[InlineData] must apply to a [Theory] function")
 			}
 			file.Functions = append(file.Functions, function)
+		case lex.KeywordFlow:
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
+				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
+			}
+			flow, err := p.parseFlowDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			file.Flows = append(file.Flows, flow)
 		default:
-			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', or 'fn' at top level")
+			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', 'fn', or 'flow' at top level")
 		}
 	}
 	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
@@ -404,6 +413,68 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 	return function, nil
 }
 
+func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
+	if _, err := p.expect(lex.KeywordFlow, "expected 'flow' at top level"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected flow name")
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftParen, "expected '(' after flow name"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	parameters, err := p.parseParameters()
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.Arrow, "expected '->' before return type"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	returnType, err := p.parseTypeRef()
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' after flow signature"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	states := make([]ast.StateDecl, 0)
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return ast.FlowDecl{}, p.errorAtCurrent("expected '}' to close flow declaration")
+		}
+		stateDecl, err := p.parseStateDecl()
+		if err != nil {
+			return ast.FlowDecl{}, err
+		}
+		states = append(states, stateDecl)
+	}
+	p.advance()
+	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType, States: states}
+	if len(states) > 0 {
+		flow.EntryState = states[0].Name
+	}
+	return flow, nil
+}
+
+func (p *parser) parseStateDecl() (ast.StateDecl, error) {
+	if _, err := p.expect(lex.KeywordState, "expected 'state' declaration inside flow"); err != nil {
+		return ast.StateDecl{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected state name")
+	if err != nil {
+		return ast.StateDecl{}, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return ast.StateDecl{}, err
+	}
+	return ast.StateDecl{Name: name.Lexeme, Body: body}, nil
+}
+
 func (p *parser) parseParameters() ([]ast.Parameter, error) {
 	if p.current().Kind == lex.RightParen {
 		return nil, nil
@@ -565,6 +636,10 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseIfStmt()
 	case lex.KeywordWhile:
 		return p.parseWhileStmt()
+	case lex.KeywordGoto:
+		return p.parseGotoStmt()
+	case lex.KeywordSuspend:
+		return p.parseSuspendStmt()
 	default:
 		if p.current().Kind == lex.Identifier {
 			if stmt, handled, err := p.tryParseIdentifierLeadingAssignment(); err != nil {
@@ -578,6 +653,20 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		}
 		return nil, p.errorAtCurrent("expected statement")
 	}
+}
+
+func (p *parser) parseGotoStmt() (ast.Stmt, error) {
+	p.advance()
+	target, err := p.expect(lex.Identifier, "expected state name after 'goto'")
+	if err != nil {
+		return nil, err
+	}
+	return ast.GotoStmt{Target: target.Lexeme}, nil
+}
+
+func (p *parser) parseSuspendStmt() (ast.Stmt, error) {
+	p.advance()
+	return ast.SuspendStmt{}, nil
 }
 
 func (p *parser) parseLetStmt() (ast.Stmt, error) {

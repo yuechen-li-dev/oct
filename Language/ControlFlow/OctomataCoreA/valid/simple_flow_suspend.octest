@@ -1,0 +1,12 @@
+package MainValid
+
+flow Idle() -> Void {
+    state Start {
+        suspend
+    }
+}
+
+[Fact]
+fn SimpleFlowSuspend() -> Void {
+    Assert.Equal(1, 1, "single-state flow with suspend parses and typechecks")
+}
