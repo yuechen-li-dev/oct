@@ -752,45 +752,147 @@ fn main() -> Int {
 	}
 }
 
-func TestCompileFlowStillRejectsDeferredOctomataFeatures(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-	}{
-		{
-			name: "remember",
-			src: `package Main
-flow F() -> Int { state A { remember goto B } state B { return 1 } }
-fn main() -> Int { return 0 }`,
-		},
-		{
-			name: "resume",
-			src: `package Main
-flow F() -> Int { state A { resume } }
-fn main() -> Int { return 0 }`,
-		},
-		{
-			name: "resume-target-builtin",
-			src: `package Main
-flow F() -> Int { state A { return 1 } }
-fn main() -> String { let f = F() return ResumeTarget(f) }`,
-		},
+func TestCompileAndRunFlowRememberResumeAndResumeTarget(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow RememberThenSuspend() -> Int {
+    state Patrol {
+        goto Guard
+    }
+
+    state Guard {
+        suspend
+        remember
+        goto Investigate
+    }
+
+    state Investigate {
+        suspend
+        resume
+    }
+}
+
+flow OverwritePath() -> Int {
+    state Start {
+        remember
+        goto Mid
+    }
+
+    state Mid {
+        suspend
+        remember
+        goto End
+    }
+
+    state End {
+        suspend
+        resume
+    }
+}
+
+fn main() -> Int ! Error {
+    let a = RememberThenSuspend()
+    Step(a)
+    if Active(a) != "Guard" {
+        return error("first step should pause in Guard")
+    }
+    if ResumeTarget(a) != "" {
+        return error("resume slot should start empty")
+    }
+    Step(a)
+    if Active(a) != "Investigate" {
+        return error("second step should divert to Investigate")
+    }
+    if ResumeTarget(a) != "Guard" {
+        return error("remember should capture Guard")
+    }
+    Step(a)
+    if Active(a) != "Guard" {
+        return error("resume should return to Guard")
+    }
+    if ResumeTarget(a) != "" {
+        return error("successful resume should clear slot")
+    }
+    let h1 = StateHistory(a)
+    if h1[0] != "Patrol" or h1[1] != "Guard" or h1[2] != "Investigate" or h1[3] != "Guard" {
+        return error("history should show deterministic diversion and resume")
+    }
+
+    let b = OverwritePath()
+    Step(b)
+    if Active(b) != "Mid" {
+        return error("first overwrite step should pause in Mid")
+    }
+    Step(b)
+    if Active(b) != "End" {
+        return error("second step should be in End")
+    }
+    if ResumeTarget(b) != "Mid" {
+        return error("second remember should overwrite Start target")
+    }
+    Step(b)
+    if Active(b) != "Mid" {
+        return error("resume should return to overwritten Mid target")
+    }
+    if ResumeTarget(b) != "" {
+        return error("overwrite flow should clear slot after resume")
+    }
+    let h2 = StateHistory(b)
+    if h2[0] != "Start" or h2[1] != "Mid" or h2[2] != "End" or h2[3] != "Mid" {
+        return error("overwrite flow history should remain deterministic")
+    }
+
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			mainPath := filepath.Join(root, "main.oct")
-			if err := os.WriteFile(mainPath, []byte(tc.src), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, err := Compile(mainPath)
-			if err == nil {
-				t.Fatal("expected compile to fail")
-			}
-			if !strings.Contains(err.Error(), "compiled mode does not yet support") {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "0" {
+		t.Fatalf("expected 0, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFlowResumeEmptySlotFailsDeterministically(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow Broken() -> Int {
+    state Start {
+        resume
+    }
+}
+
+fn main() -> Int {
+    let f = Broken()
+    Step(f)
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected runtime failure, got success output %q", strings.TrimSpace(string(out)))
+	}
+	if !strings.Contains(string(out), "runtime error: resume called with empty resume slot") {
+		t.Fatalf("expected deterministic empty-slot resume failure, got %q", string(out))
 	}
 }
 
@@ -835,6 +937,52 @@ fn main() -> Int {
 	}
 	if strings.Contains(text, "shim") {
 		t.Fatalf("MIR dump should not reference shim paths, got:\n%s", text)
+	}
+}
+
+func TestCompileFlowRememberResumeMIRDump(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow Machine() -> Int {
+    state A {
+        remember
+        goto B
+    }
+
+    state B {
+        resume
+    }
+}
+
+fn main() -> String {
+    let f = Machine()
+    Step(f)
+    return ResumeTarget(f)
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "remember") {
+		t.Fatalf("expected remember in MIR dump, got:\n%s", text)
+	}
+	if !strings.Contains(text, "resume") {
+		t.Fatalf("expected resume in MIR dump, got:\n%s", text)
+	}
+	if !strings.Contains(text, "call ResumeTarget") {
+		t.Fatalf("expected ResumeTarget lowering in MIR dump, got:\n%s", text)
 	}
 }
 
