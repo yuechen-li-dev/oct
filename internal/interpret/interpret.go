@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"oct/internal/ast"
 	"oct/internal/builtin"
@@ -318,6 +320,48 @@ func (e *environment) assign(name string, value Value) bool {
 		return true
 	}
 	return false
+}
+
+func snapshotEnvironment(env *environment) *environment {
+	snapshot := newEnvironment(nil)
+	chain := make([]*environment, 0)
+	for current := env; current != nil; current = current.parent {
+		chain = append(chain, current)
+	}
+	for idx := len(chain) - 1; idx >= 0; idx-- {
+		for name, bindingValue := range chain[idx].values {
+			snapshot.values[name] = binding{value: cloneValue(bindingValue.value), mutable: bindingValue.mutable}
+		}
+	}
+	return snapshot
+}
+
+func cloneValue(value Value) Value {
+	copied := value
+	switch value.Kind {
+	case ValueArray:
+		copied.Array = make([]Value, len(value.Array))
+		for index := range value.Array {
+			copied.Array[index] = cloneValue(value.Array[index])
+		}
+	case ValueVector:
+		copied.Vector = make([]Value, len(value.Vector))
+		for index := range value.Vector {
+			copied.Vector[index] = cloneValue(value.Vector[index])
+		}
+	case ValueMatrix:
+		copied.Matrix.Elements = make([]Value, len(value.Matrix.Elements))
+		for index := range value.Matrix.Elements {
+			copied.Matrix.Elements[index] = cloneValue(value.Matrix.Elements[index])
+		}
+	case ValueRecord:
+		copied.Record.FieldOrder = append([]string(nil), value.Record.FieldOrder...)
+		copied.Record.Fields = make(map[string]Value, len(value.Record.Fields))
+		for key, fieldValue := range value.Record.Fields {
+			copied.Record.Fields[key] = cloneValue(fieldValue)
+		}
+	}
+	return copied
 }
 
 func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
@@ -1016,9 +1060,104 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return i.evalSwitchExpr(env, pkgName, node)
 	case ast.IfExpr:
 		return i.evalIfExpr(env, pkgName, node)
+	case ast.BatchExpr:
+		return i.evalBatchExpr(env, pkgName, node)
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported expression %T", expr)
 	}
+}
+
+func (i interpreter) evalBatchExpr(env *environment, pkgName string, expr ast.BatchExpr) (evalResult, error) {
+	input, err := i.evalExpr(env, pkgName, expr.Input)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if input.hasError {
+		return evalResult{hasError: true, errorVal: input.errorVal}, nil
+	}
+	if input.value.Kind != ValueArray {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: batch input must be array, got %s", input.value.Kind)
+	}
+
+	items := input.value.Array
+	if len(items) == 0 {
+		return evalResult{value: Value{Kind: ValueArray, Array: []Value{}}}, nil
+	}
+
+	type batchItemResult struct {
+		index    int
+		value    Value
+		hasError bool
+		errorVal Value
+		err      error
+	}
+
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount < 1 {
+		workerCount = 1
+	}
+	if workerCount > len(items) {
+		workerCount = len(items)
+	}
+
+	jobs := make(chan int, len(items))
+	results := make(chan batchItemResult, len(items))
+	var wg sync.WaitGroup
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				itemEnv := snapshotEnvironment(env)
+				itemEnv.define(expr.ItemName, items[index], false)
+				outcome, execErr := i.executeBlock(itemEnv, pkgName, expr.Body)
+				if execErr != nil {
+					results <- batchItemResult{index: index, err: execErr}
+					continue
+				}
+				if !outcome.returned {
+					results <- batchItemResult{index: index, err: fmt.Errorf("runtime invariant violation: batch body must return exactly one value per item")}
+					continue
+				}
+				if outcome.value.Kind == ValueError {
+					results <- batchItemResult{index: index, hasError: true, errorVal: outcome.value}
+					continue
+				}
+				results <- batchItemResult{index: index, value: cloneValue(outcome.value)}
+			}
+		}()
+	}
+
+	for idx := range items {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	output := make([]Value, len(items))
+	var firstError error
+	var firstErrorVal Value
+	hasErrorValue := false
+	for result := range results {
+		if firstError == nil && result.err != nil {
+			firstError = result.err
+			continue
+		}
+		if firstError == nil && result.hasError {
+			hasErrorValue = true
+			firstErrorVal = result.errorVal
+			continue
+		}
+		output[result.index] = result.value
+	}
+	if firstError != nil {
+		return evalResult{}, firstError
+	}
+	if hasErrorValue {
+		return evalResult{hasError: true, errorVal: firstErrorVal}, nil
+	}
+	return evalResult{value: Value{Kind: ValueArray, Array: output}}, nil
 }
 
 func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExpr) (evalResult, error) {

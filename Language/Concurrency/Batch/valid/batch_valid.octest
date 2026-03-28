@@ -1,0 +1,101 @@
+package BatchValid
+
+fn Trial(n: Int) -> Int {
+    return n * n + 3
+}
+
+fn MaybeSample(n: Int) -> Int ! Error {
+    if n == 3 {
+        return error("sample failed")
+    }
+    return n + 10
+}
+
+[Fact]
+fn BatchParameterSweep() -> Void {
+    let results = batch [1, 2, 3, 4] as x {
+        return x * x
+    }
+    Assert.Equal(4, Len(results), "batch supports parameter sweep shape")
+    Assert.Equal(1, results[0], "first result matches input order")
+    Assert.Equal(4, results[1], "second result matches input order")
+    Assert.Equal(9, results[2], "third result matches input order")
+    Assert.Equal(16, results[3], "fourth result matches input order")
+}
+
+[Fact]
+fn BatchMonteCarloStyleTrials() -> Void {
+    let seeds = [4, 5, 6]
+    let trials = batch seeds as seed {
+        return Trial(seed)
+    }
+    Assert.Equal(3, Len(trials), "batch supports repeated trial workloads")
+    Assert.Equal(19, trials[0], "first trial output")
+    Assert.Equal(28, trials[1], "second trial output")
+    Assert.Equal(39, trials[2], "third trial output")
+}
+
+[Fact]
+fn BatchIndependentSampleProcessing() -> Void {
+    let samples = [10.0, 12.0, 14.0]
+    let centered = batch samples as sample {
+        let baseline = 9.0
+        return sample - baseline
+    }
+    Assert.Equal(3, Len(centered), "batch supports independent sample transforms")
+    Assert.Equal(1.0, centered[0], "first centered sample")
+    Assert.Equal(3.0, centered[1], "second centered sample")
+    Assert.Equal(5.0, centered[2], "third centered sample")
+}
+
+[Fact]
+fn BatchPreservesInputOrder() -> Void {
+    let values = [8, 3, 7]
+    let ordered = batch values as v {
+        return v * 10
+    }
+    Assert.Equal(80, ordered[0], "first output index aligns with input")
+    Assert.Equal(30, ordered[1], "second output index aligns with input")
+    Assert.Equal(70, ordered[2], "third output index aligns with input")
+}
+
+[Fact]
+fn BatchSingleElementWorks() -> Void {
+    let values = [9]
+    let ordered = batch values as v {
+        return v * 2
+    }
+    Assert.Equal(1, Len(ordered), "single item batch returns one mapped value")
+    Assert.Equal(18, ordered[0], "single item batch value is correct")
+}
+
+[Fact]
+fn BatchRepeatedRunsAreDeterministicallyOrdered() -> Void {
+    let input = [2, 4, 6]
+    let first = batch input as value {
+        return value + 1
+    }
+    let second = batch input as value {
+        return value + 1
+    }
+    Assert.Equal(Len(first), Len(second), "same input should keep same ordered output across runs")
+    Assert.Equal(first[0], second[0], "deterministic first element")
+    Assert.Equal(first[1], second[1], "deterministic second element")
+    Assert.Equal(first[2], second[2], "deterministic third element")
+}
+
+[Fact]
+fn BatchItemFailureFailsWholeBatchAndNoPartialOutputIsExposed() -> Void {
+    match CollectWithPossibleFailure() {
+        ok(value) => { Assert.True(false, "expected batch failure to fail whole expression") }
+        err(e) => { return }
+    }
+}
+
+fn CollectWithPossibleFailure() -> Int[] ! Error {
+    let values = [1, 2, 3, 4]
+    let results = batch values as item {
+        return MaybeSample(item)?
+    }
+    return results
+}

@@ -271,6 +271,27 @@ func TestBuildFileParsesIfExpression(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesBatchExpression(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int[] { return batch [1, 2, 3] as item { let next = item + 1 return next } }")
+	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+	}
+	batchExpr, ok := returnStmt.Value.(ast.BatchExpr)
+	if !ok {
+		t.Fatalf("expected batch expression, got %T", returnStmt.Value)
+	}
+	if batchExpr.ItemName != "item" {
+		t.Fatalf("expected item binding name 'item', got %q", batchExpr.ItemName)
+	}
+	if len(batchExpr.Body.Statements) != 2 {
+		t.Fatalf("expected 2 statements in batch body, got %d", len(batchExpr.Body.Statements))
+	}
+	if _, ok := batchExpr.Body.Statements[1].(ast.ReturnStmt); !ok {
+		t.Fatalf("expected batch body to end in return, got %T", batchExpr.Body.Statements[1])
+	}
+}
+
 func TestBuildFileRejectsIfExpressionWithoutElse(t *testing.T) {
 	lexed, err := lex.Analyze(source.File{Path: "example.oct", Text: "package Main\nfn Main() -> Int { return if true { 1 } }"})
 	if err != nil {

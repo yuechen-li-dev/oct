@@ -943,7 +943,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordNot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordNot:
 		return true
 	default:
 		return false
@@ -1203,6 +1203,8 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseSwitchExpr()
 	case lex.KeywordIf:
 		return p.parseIfExpr()
+	case lex.KeywordBatch:
+		return p.parseBatchExpr()
 	case lex.IntLiteral:
 		p.advance()
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
@@ -1250,6 +1252,26 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseBatchExpr() (ast.Expr, error) {
+	p.advance()
+	input, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.KeywordAs, "expected 'as' after batch input expression"); err != nil {
+		return nil, err
+	}
+	itemName, err := p.expect(lex.Identifier, "expected item binding name after 'as'")
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return ast.BatchExpr{Input: input, ItemName: itemName.Lexeme, Body: body}, nil
 }
 
 func (p *parser) parseIfExpr() (ast.Expr, error) {

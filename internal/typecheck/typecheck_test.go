@@ -95,6 +95,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			name: "Len on string",
 			src:  `fn Main() -> Int { return Len("abc") }`,
 		},
+		{
+			name: "batch expression over array",
+			src:  "fn Main() -> Int[] { return batch [1, 2, 3] as item { let next = item + 1 return next } }",
+		},
 	}
 
 	for _, test := range tests {
@@ -180,6 +184,12 @@ func TestCheckRejectsInvalidRanges(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0..10 step 1.0 { return i } return 0 }", "function Main: for i: range step must be Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1..10 step 0 { return i } return 0 }", "function Main: for i: range step must be positive, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 1..10 step (0 - 1) { return i } return 0 }", "function Main: for i: range step must be positive, got -1")
+}
+
+func TestCheckRejectsInvalidBatchExpressions(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return batch 7 as item { return item } }", "function Main: batch input must be an array, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return batch [1, 2] as item { let x = item + 1 } }", "function Main: batch body must end with 'return <expr>'")
+	assertTypeErrorContains(t, "fn Main() -> Int[] { return batch [1, 2] as item { if item > 0 { return item } return item + 1 } }", "function Main: batch body must have exactly one return statement at the end")
 }
 
 func TestCheckRejectsLoopVariableOutsideLoop(t *testing.T) {

@@ -1,0 +1,9 @@
+expect error: "batch input must be an array"
+
+package Main
+
+fn Main() -> Int[] {
+    return batch 5 as item {
+        return item
+    }
+}
