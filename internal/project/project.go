@@ -209,6 +209,9 @@ func (b *builder) loadAllPackagesInRoot() error {
 		if !entry.IsDir() {
 			continue
 		}
+		if isMilestoneDir(entry.Name()) {
+			continue
+		}
 		dir := filepath.Join(b.root, entry.Name())
 		files, err := loadPackageFiles(dir, b.includeTests)
 		if err != nil {
@@ -235,6 +238,24 @@ func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 	var files []string
 	for _, entry := range entries {
 		if entry.IsDir() {
+			if !isMilestoneDir(entry.Name()) {
+				continue
+			}
+			milestoneDir := filepath.Join(directory, entry.Name())
+			milestoneEntries, err := os.ReadDir(milestoneDir)
+			if err != nil {
+				return nil, fmt.Errorf("read milestone directory %s: %w", milestoneDir, err)
+			}
+			for _, milestoneEntry := range milestoneEntries {
+				if milestoneEntry.IsDir() || milestoneEntry.Name() == "manifest.oct" {
+					continue
+				}
+				ext := filepath.Ext(milestoneEntry.Name())
+				if ext != ".oct" && (!includeTests || ext != ".octest") {
+					continue
+				}
+				files = append(files, filepath.Join(milestoneDir, milestoneEntry.Name()))
+			}
 			continue
 		}
 		if entry.Name() == "manifest.oct" {
@@ -256,6 +277,13 @@ func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func isMilestoneDir(name string) bool {
+	if len(name) < 2 || name[0] != 'M' {
+		return false
+	}
+	return (name[1] >= '0' && name[1] <= '9') || name[1] == 'x'
 }
 
 func (b *builder) validateManifest(packageName string, directory string) error {

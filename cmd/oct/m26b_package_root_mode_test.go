@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,5 +75,28 @@ func TestM26bDirectPackageRootManifestValidationStillStrict(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "manifest function returned invalid package metadata") {
 		t.Fatalf("expected manifest metadata error, got %q", stderr)
+	}
+}
+
+func TestM66PackageRootLoadsMilestoneFiles(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "MilestonePkg", "manifest.oct", manifestSource("MilestonePkg", "milestone layout package"))
+	milestoneDir := filepath.Join(root, "MilestonePkg", "M0")
+	if err := os.MkdirAll(milestoneDir, 0o755); err != nil {
+		t.Fatalf("mkdir milestone: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(milestoneDir, "probe.oct"), []byte("package MilestonePkg\nfn One() -> Int { return 1 }\n"), 0o644); err != nil {
+		t.Fatalf("write milestone source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(milestoneDir, "probe.octest"), []byte("package MilestonePkg\n[Fact]\nfn Roundtrip() -> Void { return }\n"), 0o644); err != nil {
+		t.Fatalf("write milestone test: %v", err)
+	}
+
+	stdout, stderr, err := executeCLI("test", filepath.Join(root, "MilestonePkg"))
+	if err != nil {
+		t.Fatalf("oct test failed for milestone package layout: %v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	if !strings.Contains(stdout, "PASS MilestonePkg.Roundtrip") {
+		t.Fatalf("expected milestone package test output, got %q", stdout)
 	}
 }
