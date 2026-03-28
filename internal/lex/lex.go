@@ -36,6 +36,7 @@ const (
 	KeywordState   TokenKind = "KeywordState"
 	KeywordGoto    TokenKind = "KeywordGoto"
 	KeywordSuspend TokenKind = "KeywordSuspend"
+	KeywordWhen    TokenKind = "KeywordWhen"
 	KeywordSwitch  TokenKind = "KeywordSwitch"
 	KeywordCase    TokenKind = "KeywordCase"
 	KeywordAnd     TokenKind = "KeywordAnd"
@@ -413,6 +414,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordGoto
 	case "suspend":
 		return KeywordSuspend
+	case "when":
+		return KeywordWhen
 	case "switch":
 		return KeywordSwitch
 	case "case":

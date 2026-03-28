@@ -1,0 +1,21 @@
+package MainValid
+
+flow ElseFallback(input: Int) -> Int {
+    state Start {
+        when {
+            case input > 0 -> return 1
+            case input < 0 -> return 0 - 1
+            else -> return 7
+        }
+    }
+}
+
+[Fact]
+fn ElseRunsWhenNoCaseMatches() -> Void {
+    let f = ElseFallback(0)
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(7, value, "else should execute when no case matches") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

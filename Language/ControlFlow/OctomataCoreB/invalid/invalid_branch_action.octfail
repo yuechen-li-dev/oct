@@ -1,0 +1,16 @@
+expect error: "expected 'goto', 'suspend', or 'return' in when branch"
+
+package MainInvalid
+
+flow BadAction(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> let x = 1
+            else -> return 0
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

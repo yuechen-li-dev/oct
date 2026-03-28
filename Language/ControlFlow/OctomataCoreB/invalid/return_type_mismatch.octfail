@@ -1,0 +1,16 @@
+expect error: "function ReturnMismatch: function expects Int, but return is Bool"
+
+package MainInvalid
+
+flow ReturnMismatch(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> return true
+            else -> return 0
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

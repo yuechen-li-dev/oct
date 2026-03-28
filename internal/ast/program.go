@@ -179,6 +179,38 @@ type SuspendStmt struct{}
 
 func (SuspendStmt) stmtNode() {}
 
+type WhenStmt struct {
+	Cases []WhenCase
+	Else  WhenAction
+}
+
+func (WhenStmt) stmtNode() {}
+
+type WhenCase struct {
+	Condition Expr
+	Action    WhenAction
+}
+
+type WhenAction interface {
+	whenActionNode()
+}
+
+type WhenGotoAction struct {
+	Target string
+}
+
+func (WhenGotoAction) whenActionNode() {}
+
+type WhenSuspendAction struct{}
+
+func (WhenSuspendAction) whenActionNode() {}
+
+type WhenReturnAction struct {
+	Value Expr
+}
+
+func (WhenReturnAction) whenActionNode() {}
+
 type Expr interface {
 	exprNode()
 }

@@ -728,6 +728,23 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		}
 		armEnv.define(node.OkName, subject.value, false)
 		return i.executeFlowBlock(armEnv, pkgName, node.OkBody)
+	case ast.WhenStmt:
+		for _, whenCase := range node.Cases {
+			condition, err := i.evalExpr(env, pkgName, whenCase.Condition)
+			if err != nil {
+				return flowSignal{}, err
+			}
+			if condition.hasError {
+				return flowSignal{kind: flowSignalReturn, value: condition.errorVal}, nil
+			}
+			if condition.value.Kind != ValueBool {
+				return flowSignal{}, fmt.Errorf("runtime invariant violation: when case condition must be Bool, got %s", condition.value.Kind)
+			}
+			if condition.value.Bool {
+				return i.executeWhenAction(env, pkgName, whenCase.Action)
+			}
+		}
+		return i.executeWhenAction(env, pkgName, node.Else)
 	default:
 		result, err := i.executeStmt(env, pkgName, stmt)
 		if err != nil {
@@ -737,6 +754,19 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 			return flowSignal{kind: flowSignalReturn, value: result.value}, nil
 		}
 		return flowSignal{}, nil
+	}
+}
+
+func (i interpreter) executeWhenAction(env *environment, pkgName string, action ast.WhenAction) (flowSignal, error) {
+	switch node := action.(type) {
+	case ast.WhenGotoAction:
+		return flowSignal{kind: flowSignalGoto, target: node.Target}, nil
+	case ast.WhenSuspendAction:
+		return flowSignal{kind: flowSignalSuspend}, nil
+	case ast.WhenReturnAction:
+		return i.executeFlowStmt(env, pkgName, ast.ReturnStmt{Value: node.Value})
+	default:
+		return flowSignal{}, fmt.Errorf("runtime invariant violation: unsupported when action %T", action)
 	}
 }
 

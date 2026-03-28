@@ -1,0 +1,15 @@
+expect error: "function MissingElse: when requires else branch"
+
+package MainInvalid
+
+flow MissingElse(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> return 1
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

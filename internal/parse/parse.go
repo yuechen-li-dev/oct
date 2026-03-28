@@ -640,6 +640,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseGotoStmt()
 	case lex.KeywordSuspend:
 		return p.parseSuspendStmt()
+	case lex.KeywordWhen:
+		return p.parseWhenStmt()
 	default:
 		if p.current().Kind == lex.Identifier {
 			if stmt, handled, err := p.tryParseIdentifierLeadingAssignment(); err != nil {
@@ -652,6 +654,83 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 			return p.parseExprStmt()
 		}
 		return nil, p.errorAtCurrent("expected statement")
+	}
+}
+
+func (p *parser) parseWhenStmt() (ast.Stmt, error) {
+	p.advance()
+	if _, err := p.expect(lex.LeftBrace, "expected '{' after 'when'"); err != nil {
+		return nil, err
+	}
+
+	cases := make([]ast.WhenCase, 0)
+	var elseAction ast.WhenAction
+	hasElse := false
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, p.errorAtCurrent("expected '}' to close when")
+		}
+		switch p.current().Kind {
+		case lex.KeywordCase:
+			if hasElse {
+				return nil, p.errorAtCurrent("case arms must come before else arm")
+			}
+			p.advance()
+			condition, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.Arrow, "expected '->' after case condition"); err != nil {
+				return nil, err
+			}
+			action, err := p.parseWhenAction()
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, ast.WhenCase{Condition: condition, Action: action})
+		case lex.KeywordElse:
+			if hasElse {
+				return nil, p.errorAtCurrent("when can only have one else arm")
+			}
+			p.advance()
+			if _, err := p.expect(lex.Arrow, "expected '->' after else"); err != nil {
+				return nil, err
+			}
+			action, err := p.parseWhenAction()
+			if err != nil {
+				return nil, err
+			}
+			elseAction = action
+			hasElse = true
+		default:
+			return nil, p.errorAtCurrent("expected 'case' or 'else' in when")
+		}
+	}
+	p.advance()
+	return ast.WhenStmt{Cases: cases, Else: elseAction}, nil
+}
+
+func (p *parser) parseWhenAction() (ast.WhenAction, error) {
+	switch p.current().Kind {
+	case lex.KeywordGoto:
+		p.advance()
+		target, err := p.expect(lex.Identifier, "expected state name after 'goto'")
+		if err != nil {
+			return nil, err
+		}
+		return ast.WhenGotoAction{Target: target.Lexeme}, nil
+	case lex.KeywordSuspend:
+		p.advance()
+		return ast.WhenSuspendAction{}, nil
+	case lex.KeywordReturn:
+		p.advance()
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		return ast.WhenReturnAction{Value: value}, nil
+	default:
+		return nil, p.errorAtCurrent("expected 'goto', 'suspend', or 'return' in when branch")
 	}
 }
 

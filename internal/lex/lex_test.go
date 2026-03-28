@@ -241,8 +241,8 @@ func TestAnalyzeTokenizesComparisonOperators(t *testing.T) {
 	)
 }
 
-func TestAnalyzeTokenizesFlowStateGotoSuspend(t *testing.T) {
-	file := source.File{Path: "example.oct", Text: "flow Patrol() -> Void { state Search { goto Track suspend } state Track { suspend } }"}
+func TestAnalyzeTokenizesFlowStateGotoSuspendWhen(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "flow Patrol() -> Void { state Search { when { case true -> goto Track else -> suspend } } state Track { suspend } }"}
 
 	result, err := Analyze(file)
 	if err != nil {
@@ -260,9 +260,17 @@ func TestAnalyzeTokenizesFlowStateGotoSuspend(t *testing.T) {
 		KeywordState,
 		Identifier,
 		LeftBrace,
+		KeywordWhen,
+		LeftBrace,
+		KeywordCase,
+		KeywordTrue,
+		Arrow,
 		KeywordGoto,
 		Identifier,
+		KeywordElse,
+		Arrow,
 		KeywordSuspend,
+		RightBrace,
 		RightBrace,
 		KeywordState,
 		Identifier,

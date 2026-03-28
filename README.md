@@ -165,10 +165,36 @@ M41b decisions:
 
 Still explicitly out of scope:
 
-* `when`
 * stack HFSM transitions (`push` / `pop` / `replace`)
 * scheduler / concurrency
 * automatic stepping
+
+## Octomata Core B (M43 `when` Guard Readability)
+
+M43 adds a narrow readability primitive for guard-heavy state logic:
+
+* `when { ... }` is valid only inside `state` bodies.
+* Cases are ordered and deterministic:
+  * `case <BoolExpr> -> <action>`
+  * first `true` case wins
+  * `else -> <action>` is mandatory
+* M43 branch actions are intentionally narrow and single-action only:
+  * `goto StateName`
+  * `suspend`
+  * `return expr`
+
+Semantics:
+
+* `when` is an ordered guarded choice (equivalent to `if / else if / else`).
+* There is no scoring, utility arbitration, or tie-breaking system.
+* Runtime execution stays within the Core A stepping model: evaluate in source order and execute exactly one chosen action.
+
+Still explicitly out of scope:
+
+* utility scoring / policy systems
+* stack HFSM transitions (`push` / `pop` / `replace`)
+* scheduler / concurrency
+* arbitrary branch statement blocks inside `when`
 
 ---
 

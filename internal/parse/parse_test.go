@@ -717,6 +717,26 @@ func TestBuildFileParsesFlowStateGotoSuspend(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesWhenInFlowState(t *testing.T) {
+	file := parseSource(t, "flow Patrol(input: Int) -> Int { state Search { when { case input == 0 -> goto Track case input < 0 -> return 0 else -> suspend } } state Track { return input } }")
+	whenStmt, ok := file.Flows[0].States[0].Body.Statements[0].(ast.WhenStmt)
+	if !ok {
+		t.Fatalf("expected when statement, got %T", file.Flows[0].States[0].Body.Statements[0])
+	}
+	if len(whenStmt.Cases) != 2 {
+		t.Fatalf("expected two when cases, got %d", len(whenStmt.Cases))
+	}
+	if _, ok := whenStmt.Cases[0].Action.(ast.WhenGotoAction); !ok {
+		t.Fatalf("expected first when action goto, got %T", whenStmt.Cases[0].Action)
+	}
+	if _, ok := whenStmt.Cases[1].Action.(ast.WhenReturnAction); !ok {
+		t.Fatalf("expected second when action return, got %T", whenStmt.Cases[1].Action)
+	}
+	if _, ok := whenStmt.Else.(ast.WhenSuspendAction); !ok {
+		t.Fatalf("expected else action suspend, got %T", whenStmt.Else)
+	}
+}
+
 func TestBuildFileRejectsMalformedFlowState(t *testing.T) {
 	assertParseErrorContains(t, "flow Patrol() -> Int { let x = 1 }", "expected 'state' declaration inside flow")
 }

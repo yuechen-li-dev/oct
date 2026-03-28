@@ -1,0 +1,19 @@
+package MainValid
+
+flow Simple(input: Bool) -> Int {
+    state Start {
+        when {
+            case input -> goto Done
+            else -> suspend
+        }
+    }
+
+    state Done {
+        return 1
+    }
+}
+
+[Fact]
+fn SimpleGuardedGotoCompiles() -> Void {
+    Assert.Equal(1, 1, "when guarded goto is accepted")
+}
