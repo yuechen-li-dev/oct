@@ -1,0 +1,25 @@
+package MainValid
+
+flow GameController(enemyVisible: Bool, lowHealth: Bool) -> Int {
+    state Decide {
+        let mode = when policy {
+            hysteresis: 5
+            min_commit: 2
+        } {
+            case 2 when lowHealth score 90
+            case 1 when enemyVisible score 70
+            else 0
+        }
+        return mode
+    }
+}
+
+[Fact]
+fn GameShapedControllerCompilesAndRuns() -> Void {
+    let f = GameController(true, false)
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "combat mode should be selected") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

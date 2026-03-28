@@ -25,9 +25,10 @@ func BuildFile(result lex.Result) (ast.File, error) {
 }
 
 type parser struct {
-	sourcePath string
-	tokens     []lex.Token
-	position   int
+	sourcePath            string
+	tokens                []lex.Token
+	position              int
+	nextUtilityWhenSiteID int
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
@@ -943,7 +944,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordNot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordNot:
 		return true
 	default:
 		return false
@@ -1205,6 +1206,8 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseIfExpr()
 	case lex.KeywordBatch:
 		return p.parseBatchExpr()
+	case lex.KeywordWhen:
+		return p.parseUtilityWhenExpr()
 	case lex.IntLiteral:
 		p.advance()
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
@@ -1272,6 +1275,136 @@ func (p *parser) parseBatchExpr() (ast.Expr, error) {
 		return nil, err
 	}
 	return ast.BatchExpr{Input: input, ItemName: itemName.Lexeme, Body: body}, nil
+}
+
+func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
+	p.advance()
+	policyToken, err := p.expect(lex.Identifier, "expected 'policy' after 'when'")
+	if err != nil {
+		return nil, err
+	}
+	if policyToken.Lexeme != "policy" {
+		return nil, p.errorAtToken(policyToken, "expected 'policy' after 'when'")
+	}
+	policy, err := p.parseUtilityWhenPolicy()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when cases"); err != nil {
+		return nil, err
+	}
+
+	cases := make([]ast.UtilityWhenCase, 0)
+	var elseValue ast.Expr
+	hasElse := false
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, p.errorAtCurrent("expected '}' to close utility when")
+		}
+		switch p.current().Kind {
+		case lex.KeywordCase:
+			if hasElse {
+				return nil, p.errorAtCurrent("case arms must come before else arm")
+			}
+			p.advance()
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.KeywordWhen, "expected 'when' after utility case value"); err != nil {
+				return nil, err
+			}
+			condition, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			scoreToken, err := p.expect(lex.Identifier, "expected 'score' after utility case condition")
+			if err != nil {
+				return nil, err
+			}
+			if scoreToken.Lexeme != "score" {
+				return nil, p.errorAtToken(scoreToken, "expected 'score' after utility case condition")
+			}
+			score, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, ast.UtilityWhenCase{Value: value, Condition: condition, Score: score})
+		case lex.KeywordElse:
+			if hasElse {
+				return nil, p.errorAtCurrent("utility when can only have one else arm")
+			}
+			p.advance()
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			elseValue = value
+			hasElse = true
+		default:
+			return nil, p.errorAtCurrent("expected 'case' or 'else' in utility when")
+		}
+	}
+	p.advance()
+	if !hasElse {
+		return nil, p.errorAtCurrent("utility when requires else arm")
+	}
+	siteID := p.nextUtilityWhenSiteID
+	p.nextUtilityWhenSiteID++
+	return ast.UtilityWhenExpr{
+		SiteID: siteID,
+		Policy: policy,
+		Cases:  cases,
+		Else:   elseValue,
+	}, nil
+}
+
+func (p *parser) parseUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when policy"); err != nil {
+		return ast.UtilityWhenPolicy{}, err
+	}
+	var (
+		hysteresis ast.Expr
+		minCommit  ast.Expr
+	)
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return ast.UtilityWhenPolicy{}, p.errorAtCurrent("expected '}' to close utility when policy")
+		}
+		field, err := p.expect(lex.Identifier, "expected utility policy field name")
+		if err != nil {
+			return ast.UtilityWhenPolicy{}, err
+		}
+		if _, err := p.expect(lex.Colon, "expected ':' after utility policy field name"); err != nil {
+			return ast.UtilityWhenPolicy{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return ast.UtilityWhenPolicy{}, err
+		}
+		switch field.Lexeme {
+		case "hysteresis":
+			if hysteresis != nil {
+				return ast.UtilityWhenPolicy{}, p.errorAtToken(field, "duplicate utility policy field 'hysteresis'")
+			}
+			hysteresis = value
+		case "min_commit":
+			if minCommit != nil {
+				return ast.UtilityWhenPolicy{}, p.errorAtToken(field, "duplicate utility policy field 'min_commit'")
+			}
+			minCommit = value
+		default:
+			return ast.UtilityWhenPolicy{}, p.errorAtToken(field, fmt.Sprintf("unsupported utility policy field '%s'", field.Lexeme))
+		}
+	}
+	p.advance()
+	if hysteresis == nil {
+		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'hysteresis'")
+	}
+	if minCommit == nil {
+		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
+	}
+	return ast.UtilityWhenPolicy{Hysteresis: hysteresis, MinCommit: minCommit}, nil
 }
 
 func (p *parser) parseIfExpr() (ast.Expr, error) {

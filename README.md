@@ -246,6 +246,45 @@ Still explicitly out of scope:
 * scheduler / concurrency
 * arbitrary branch statement blocks inside `when`
 
+## Octomata Utility `when` (M54 deterministic utility choice)
+
+M54 adds a narrow, value-producing utility form of `when` for state-local tactical choice:
+
+```oct
+let next = when policy {
+    hysteresis: 8
+    min_commit: 3
+} {
+    case A when condA score 10
+    case B when condB score 8
+    else C
+}
+```
+
+Scope and semantics:
+
+* utility `when` is valid only inside `flow state` bodies
+* each `case` has:
+  * a result value
+  * a `Bool` guard (`when ...`)
+  * an `Int` score (`score ...`)
+* `else` is required
+* highest score wins among currently valid cases
+* score ties resolve by source order (first wins), deterministically
+* policy is explicit and local:
+  * `hysteresis`: current choice is kept unless challenger score is strictly greater than `current + hysteresis`
+  * `min_commit`: once chosen, a value is kept for at least N site evaluations while still valid
+* utility memory is flow-instance-local and utility-site-local (no global/shared policy objects)
+
+M54 intentionally does **not** add:
+
+* blackboards
+* event buses
+* stochastic choice
+* fuzzy utility systems
+* behavior trees
+* global policy frameworks
+
 ## Octomata Observability Polish (M45)
 
 M45 adds a small, read-only observability surface for `FlowInstance<T>`:

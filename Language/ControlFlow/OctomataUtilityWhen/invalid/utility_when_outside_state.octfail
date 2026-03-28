@@ -1,0 +1,13 @@
+expect error: "function Main: utility when is only valid inside flow state bodies"
+
+package MainInvalid
+
+fn Main() -> Int {
+    return when policy {
+        hysteresis: 1
+        min_commit: 1
+    } {
+        case 1 when true score 1
+        else 0
+    }
+}

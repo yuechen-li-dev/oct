@@ -538,6 +538,7 @@ func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
 		"flow Patrol(input: Int) -> Int { state Search { if input > 0 { goto Track } suspend } state Track { if input == 0 { goto Search } return input } } fn Main() -> Int { return 0 }",
 		"flow Compute(x: Int) -> Int { state Start { let y = x + 1 if y > 0 { return y } suspend } } fn Main() -> Int { return 0 }",
 		"flow Guarded(input: Int) -> Int { state Start { when { case input > 1 -> goto Next case input == 1 -> return 1 else -> suspend } } state Next { return input } } fn Main() -> Int { return 0 }",
+		"flow Utility(flag: Bool) -> Int { state S { let x = when policy { hysteresis: 2 min_commit: 1 } { case 7 when flag score 100 else 3 } return x } } fn Main() -> Int { return 0 }",
 	}
 	for _, src := range validPrograms {
 		file := parseSource(t, src)
@@ -559,4 +560,9 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "flow BadCond(input: Int) -> Int { state S { when { case input -> return 1 else -> return 0 } } } fn Main() -> Int { return 0 }", "function BadCond: when case condition must be Bool, got Int")
 	assertTypeErrorContains(t, "flow BadGoto(input: Bool) -> Int { state S { when { case input -> goto Missing else -> return 0 } } } fn Main() -> Int { return 0 }", "flow BadGoto: goto target 'Missing' does not exist")
 	assertTypeErrorContains(t, "flow BadWhenReturn(input: Bool) -> Int { state S { when { case input -> return true else -> return 0 } } } fn Main() -> Int { return 0 }", "function BadWhenReturn: function expects Int, but return is Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { return when policy { hysteresis: 1 min_commit: 1 } { case 1 when true score 1 else 0 } }", "function Main: utility when is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "flow BadUtilityCond(x: Int) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when x score 1 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityCond: let y: utility when case condition must be Bool")
+	assertTypeErrorContains(t, "flow BadUtilityScore(flag: Bool) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 1.5 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityScore: let y: utility when case score must be Int")
+	assertTypeErrorContains(t, "flow BadUtilityPolicy(flag: Bool) -> Int { state S { let y = when policy { hysteresis: true min_commit: 1 } { case 1 when flag score 1 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityPolicy: let y: utility when policy hysteresis must be Int")
+	assertTypeErrorContains(t, "flow BadUtilityResult(flag: Bool) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 1 else false } return y } } fn Main() -> Int { return 0 }", "function BadUtilityResult: let y: utility when result arms must have matching types")
 }

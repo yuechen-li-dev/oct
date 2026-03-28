@@ -1,0 +1,25 @@
+package MainValid
+
+flow IndustrialController(tempHigh: Bool, pressureHigh: Bool) -> Int {
+    state Decide {
+        let command = when policy {
+            hysteresis: 6
+            min_commit: 3
+        } {
+            case 2 when pressureHigh score 95
+            case 1 when tempHigh score 80
+            else 0
+        }
+        return command
+    }
+}
+
+[Fact]
+fn IndustrialExampleCompilesAndRuns() -> Void {
+    let f = IndustrialController(true, false)
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "cooling command should be selected") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

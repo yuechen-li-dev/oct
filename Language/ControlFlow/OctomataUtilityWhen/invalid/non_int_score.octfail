@@ -1,0 +1,20 @@
+expect error: "function BadScore: let next: utility when case score must be Int"
+
+package MainInvalid
+
+flow BadScore(flag: Bool) -> Int {
+    state S {
+        let next = when policy {
+            hysteresis: 1
+            min_commit: 1
+        } {
+            case 1 when flag score 1.5
+            else 0
+        }
+        return next
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

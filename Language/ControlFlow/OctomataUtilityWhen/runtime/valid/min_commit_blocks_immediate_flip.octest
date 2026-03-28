@@ -1,0 +1,32 @@
+package MainValid
+
+flow MinCommitBlocks() -> Int {
+    state Decide {
+        var t = 0
+        var last = 0
+        while true {
+            last = when policy {
+                hysteresis: 0
+                min_commit: 3
+            } {
+                case 1 when true score 60
+                case 2 when t > 0 score 90
+                else 0
+            }
+            if t == 1 {
+                return last
+            }
+            t = t + 1
+        }
+    }
+}
+
+[Fact]
+fn MinCommitPreventsImmediateFlip() -> Void {
+    let f = MinCommitBlocks()
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "min_commit should keep initial choice early") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

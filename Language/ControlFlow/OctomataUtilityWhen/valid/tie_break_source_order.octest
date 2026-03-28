@@ -1,0 +1,25 @@
+package MainValid
+
+flow TieBreak() -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 1
+        } {
+            case 10 when true score 50
+            case 20 when true score 50
+            else 30
+        }
+        return next
+    }
+}
+
+[Fact]
+fn TieBreakBySourceOrder() -> Void {
+    let f = TieBreak()
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(10, value, "equal scores should pick first case") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

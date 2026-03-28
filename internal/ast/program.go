@@ -351,6 +351,26 @@ type IfExpr struct {
 
 func (IfExpr) exprNode() {}
 
+type UtilityWhenPolicy struct {
+	Hysteresis Expr
+	MinCommit  Expr
+}
+
+type UtilityWhenCase struct {
+	Value     Expr
+	Condition Expr
+	Score     Expr
+}
+
+type UtilityWhenExpr struct {
+	SiteID int
+	Policy UtilityWhenPolicy
+	Cases  []UtilityWhenCase
+	Else   Expr
+}
+
+func (UtilityWhenExpr) exprNode() {}
+
 type BatchExpr struct {
 	Input    Expr
 	ItemName string

@@ -1062,9 +1062,100 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return c.checkIfExpr(scope, node, ctx)
 	case ast.BatchExpr:
 		return c.checkBatchExpr(scope, node, ctx)
+	case ast.UtilityWhenExpr:
+		return c.checkUtilityWhenExpr(scope, node, ctx)
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
+}
+
+func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
+	if !ctx.inState {
+		return ExprType{}, fmt.Errorf("utility when is only valid inside flow state bodies")
+	}
+
+	hysteresisType, err := c.checkExpr(scope, expr.Policy.Hysteresis, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis: %w", err)
+	}
+	if hysteresisType.Fallible {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis: fallible expression must be handled explicitly")
+	}
+	if hysteresisType.ValueType != (Type{Base: BaseTypeInt}) {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis must be Int")
+	}
+
+	minCommitType, err := c.checkExpr(scope, expr.Policy.MinCommit, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit: %w", err)
+	}
+	if minCommitType.Fallible {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit: fallible expression must be handled explicitly")
+	}
+	if minCommitType.ValueType != (Type{Base: BaseTypeInt}) {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit must be Int")
+	}
+
+	if expr.Else == nil {
+		return ExprType{}, fmt.Errorf("utility when requires else arm")
+	}
+
+	var resultType Type
+	hasResultType := false
+	for idx, whenCase := range expr.Cases {
+		conditionType, err := c.checkExpr(scope, whenCase.Condition, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("utility when case %d condition: %w", idx+1, err)
+		}
+		if conditionType.Fallible {
+			return ExprType{}, fmt.Errorf("utility when case %d condition: fallible expression must be handled explicitly", idx+1)
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("utility when case condition must be Bool")
+		}
+
+		scoreType, err := c.checkExpr(scope, whenCase.Score, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("utility when case %d score: %w", idx+1, err)
+		}
+		if scoreType.Fallible {
+			return ExprType{}, fmt.Errorf("utility when case %d score: fallible expression must be handled explicitly", idx+1)
+		}
+		if scoreType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("utility when case score must be Int")
+		}
+
+		valueType, err := c.checkExpr(scope, whenCase.Value, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("utility when case %d value: %w", idx+1, err)
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("utility when case %d value: fallible expression must be handled explicitly", idx+1)
+		}
+		if !hasResultType {
+			resultType = valueType.ValueType
+			hasResultType = true
+			continue
+		}
+		if valueType.ValueType != resultType {
+			return ExprType{}, fmt.Errorf("utility when result arms must have matching types")
+		}
+	}
+
+	elseType, err := c.checkExpr(scope, expr.Else, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("utility when else: %w", err)
+	}
+	if elseType.Fallible {
+		return ExprType{}, fmt.Errorf("utility when else: fallible expression must be handled explicitly")
+	}
+	if !hasResultType {
+		return ExprType{ValueType: elseType.ValueType}, nil
+	}
+	if elseType.ValueType != resultType {
+		return ExprType{}, fmt.Errorf("utility when result arms must have matching types")
+	}
+	return ExprType{ValueType: resultType}, nil
 }
 
 func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionContext) (ExprType, error) {

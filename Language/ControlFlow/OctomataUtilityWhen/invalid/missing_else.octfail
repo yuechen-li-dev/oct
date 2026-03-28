@@ -1,0 +1,19 @@
+expect error: "utility when requires else arm"
+
+package MainInvalid
+
+flow MissingElse(flag: Bool) -> Int {
+    state S {
+        let next = when policy {
+            hysteresis: 1
+            min_commit: 1
+        } {
+            case 1 when flag score 1
+        }
+        return next
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

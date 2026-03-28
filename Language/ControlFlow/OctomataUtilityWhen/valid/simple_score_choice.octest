@@ -1,0 +1,26 @@
+package MainValid
+
+flow Tactical(faulted: Bool, tempHigh: Bool, tempNominal: Bool) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 8
+            min_commit: 3
+        } {
+            case 3 when faulted score 100
+            case 2 when tempHigh score 60
+            case 1 when tempNominal score 55
+            else 0
+        }
+        return next
+    }
+}
+
+[Fact]
+fn SimpleScoreChoice() -> Void {
+    let f = Tactical(false, true, true)
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "highest score should win") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
