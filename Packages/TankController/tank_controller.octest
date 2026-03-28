@@ -1,0 +1,97 @@
+package TankController
+
+[Fact]
+fn TankControllerRunsThroughFillSettleDrainPath() -> Void {
+    let script = TankInputs {
+        LevelLow: true
+        LevelHigh: true
+        PressureOk: true
+        EmergencyStop: false
+        TimeoutReached: false
+        PumpAvailable: true
+        ValveAvailable: true
+        DrainCommand: true
+    }
+
+    let f = TankCycle(script)
+
+    Step(f)
+    Assert.Equal("Settling", Active(f), "first step should pass Idle and Filling then suspend in Settling")
+
+    Step(f)
+    Assert.Equal("Draining", Active(f), "second step should resume Settling and suspend in Draining")
+
+    Step(f)
+    Assert.Equal("", Active(f), "third step should complete from Draining")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == TankOutcome.CompletedDrain, "completed path should produce CompletedDrain") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}
+
+[Fact]
+fn TankControllerTakesFaultPathOnEmergencyStop() -> Void {
+    let script = TankInputs {
+        LevelLow: true
+        LevelHigh: false
+        PressureOk: true
+        EmergencyStop: true
+        TimeoutReached: false
+        PumpAvailable: true
+        ValveAvailable: true
+        DrainCommand: false
+    }
+
+    let f = TankCycle(script)
+
+    Step(f)
+    Assert.Equal("Fault", Active(f), "first step should transition directly to Fault and suspend")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should complete fault handling")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == TankOutcome.Faulted, "fault path should return Faulted") }
+        err(e) => { Assert.True(false, "Result should be available after fault completion") }
+    }
+}
+
+[Fact]
+fn TankControllerSteppingIsDeterministicForSameInputs() -> Void {
+    let script = TankInputs {
+        LevelLow: true
+        LevelHigh: true
+        PressureOk: true
+        EmergencyStop: false
+        TimeoutReached: false
+        PumpAvailable: true
+        ValveAvailable: true
+        DrainCommand: true
+    }
+
+    let first = TankCycle(script)
+    let second = TankCycle(script)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "first step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "second step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "third step active states should match")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.True(v1 == v2, "completed results should match for same inputs") }
+                err(e) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "first result should be available") }
+    }
+}

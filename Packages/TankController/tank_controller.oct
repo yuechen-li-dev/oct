@@ -1,0 +1,82 @@
+package TankController
+
+record TankInputs {
+    LevelLow: Bool
+    LevelHigh: Bool
+    PressureOk: Bool
+    EmergencyStop: Bool
+    TimeoutReached: Bool
+    PumpAvailable: Bool
+    ValveAvailable: Bool
+    DrainCommand: Bool
+}
+
+enum TankOutcome {
+    Stable
+    CompletedDrain
+    Faulted
+}
+
+flow TankCycle(input: TankInputs) -> TankOutcome {
+    state Idle {
+        if input.EmergencyStop {
+            goto Fault
+        }
+
+        if input.LevelLow and input.PumpAvailable and input.ValveAvailable {
+            goto Filling
+        }
+
+        suspend
+        goto Idle
+    }
+
+    state Filling {
+        if input.EmergencyStop {
+            goto Fault
+        }
+
+        if input.PressureOk == false {
+            goto Fault
+        }
+
+        if input.TimeoutReached {
+            goto Fault
+        }
+
+        if input.LevelHigh {
+            goto Settling
+        }
+
+        suspend
+        goto Filling
+    }
+
+    state Settling {
+        suspend
+
+        if input.EmergencyStop {
+            goto Fault
+        }
+
+        if input.DrainCommand {
+            goto Draining
+        }
+
+        return TankOutcome.Stable
+    }
+
+    state Draining {
+        if input.EmergencyStop {
+            goto Fault
+        }
+
+        suspend
+        return TankOutcome.CompletedDrain
+    }
+
+    state Fault {
+        suspend
+        return TankOutcome.Faulted
+    }
+}

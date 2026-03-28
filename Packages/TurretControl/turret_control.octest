@@ -1,0 +1,51 @@
+package TurretControl
+
+[Fact]
+fn TurretProgressesFromSearchToEngageAndCompletes() -> Void {
+    let script = TurretInputs {
+        TargetVisible: true
+        TargetInRange: true
+        Overheated: false
+        CooldownReady: false
+        AmmoAvailable: true
+    }
+
+    let f = TurretCycle(script)
+
+    Step(f)
+    Assert.Equal("Engage", Active(f), "first step should advance through Search and Track into Engage")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step resumes Engage and completes")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == TurretOutcome.Fired, "turret should report Fired") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}
+
+[Fact]
+fn TurretCanSuspendIndefinitelyInSearch() -> Void {
+    let script = TurretInputs {
+        TargetVisible: false
+        TargetInRange: false
+        Overheated: false
+        CooldownReady: false
+        AmmoAvailable: true
+    }
+
+    let f = TurretCycle(script)
+
+    Step(f)
+    Assert.Equal("Search", Active(f), "first step should suspend in Search when no target exists")
+
+    Step(f)
+    Assert.Equal("Search", Active(f), "second step should resume and suspend in Search again")
+
+    var sawExpectedIncompleteError = false
+    match Result(f) {
+        ok(value) => { Assert.True(false, "Result should fail for long-running controller") }
+        err(e) => { sawExpectedIncompleteError = true }
+    }
+    Assert.True(sawExpectedIncompleteError, "incomplete Search loop should keep Result unavailable")
+}
