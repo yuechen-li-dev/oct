@@ -1,0 +1,158 @@
+package ReactorCycleCoreB
+
+[Fact]
+fn ReactorCompletesStandbyFillHeatHoldDrainPath() -> Void {
+    let script = ReactorInputs {
+        EmergencyStop: false
+        SensorFault: false
+        FeedAvailable: true
+        AgitatorHealthy: true
+        LevelReady: true
+        PressureSafe: true
+        TemperatureReady: true
+        HoldComplete: true
+        DrainPermitted: true
+    }
+
+    let f = ReactorBatch(script)
+
+    Step(f)
+    Assert.Equal("Hold", Active(f), "first step should pass Standby, Fill, and Heat into Hold")
+
+    Step(f)
+    Assert.Equal("Drain", Active(f), "second step should resume Hold and suspend in Drain")
+
+    Step(f)
+    Assert.Equal("", Active(f), "third step should resume Drain and complete")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == ReactorOutcome.CompletedBatch, "drain path should complete batch") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}
+
+[Fact]
+fn ReactorWhenElseFallbackKeepsControllerInStandby() -> Void {
+    let script = ReactorInputs {
+        EmergencyStop: false
+        SensorFault: false
+        FeedAvailable: false
+        AgitatorHealthy: true
+        LevelReady: false
+        PressureSafe: true
+        TemperatureReady: false
+        HoldComplete: false
+        DrainPermitted: false
+    }
+
+    let f = ReactorBatch(script)
+
+    Step(f)
+    Assert.Equal("Standby", Active(f), "standby else branch should suspend and retain Standby")
+
+    Step(f)
+    Assert.Equal("Standby", Active(f), "same inputs should keep long-running controller stable")
+
+    var sawExpectedIncompleteError = false
+    match Result(f) {
+        ok(value) => { Assert.True(false, "Result should remain unavailable while controller is stable-running") }
+        err(e) => { sawExpectedIncompleteError = true }
+    }
+    Assert.True(sawExpectedIncompleteError, "stable-running standby should not have a final result")
+}
+
+[Fact]
+fn ReactorWhenFirstTrueCaseWinsForSafetyFaultInHeat() -> Void {
+    let script = ReactorInputs {
+        EmergencyStop: false
+        SensorFault: false
+        FeedAvailable: true
+        AgitatorHealthy: true
+        LevelReady: true
+        PressureSafe: false
+        TemperatureReady: true
+        HoldComplete: true
+        DrainPermitted: true
+    }
+
+    let f = ReactorBatch(script)
+
+    Step(f)
+    Assert.Equal("Fault", Active(f), "Heat should choose pressure fault before temperature-ready drain branch")
+
+    Step(f)
+    Assert.Equal("", Active(f), "fault state should complete on second step")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == ReactorOutcome.Faulted, "first-match ordering should enforce safety fault") }
+        err(e) => { Assert.True(false, "Result should be available after fault completion") }
+    }
+}
+
+[Fact]
+fn ReactorDeterministicForIdenticalScripts() -> Void {
+    let script = ReactorInputs {
+        EmergencyStop: false
+        SensorFault: false
+        FeedAvailable: true
+        AgitatorHealthy: true
+        LevelReady: true
+        PressureSafe: true
+        TemperatureReady: true
+        HoldComplete: true
+        DrainPermitted: true
+    }
+
+    let first = ReactorBatch(script)
+    let second = ReactorBatch(script)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "first step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "second step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "third step active states should match")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.True(v1 == v2, "results should match for identical scripts") }
+                err(e) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "first result should be available") }
+    }
+}
+
+[Fact]
+fn ReactorSafetyPathFaultsFromStandbyEmergencyStop() -> Void {
+    let script = ReactorInputs {
+        EmergencyStop: true
+        SensorFault: false
+        FeedAvailable: true
+        AgitatorHealthy: true
+        LevelReady: true
+        PressureSafe: true
+        TemperatureReady: true
+        HoldComplete: true
+        DrainPermitted: true
+    }
+
+    let f = ReactorBatch(script)
+
+    Step(f)
+    Assert.Equal("Fault", Active(f), "emergency stop should immediately branch to Fault")
+
+    Step(f)
+    Assert.Equal("", Active(f), "fault state should complete on second step")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == ReactorOutcome.Faulted, "emergency stop path should return Faulted") }
+        err(e) => { Assert.True(false, "Result should be available after fault completion") }
+    }
+}

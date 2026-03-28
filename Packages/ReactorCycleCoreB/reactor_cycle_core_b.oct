@@ -1,0 +1,74 @@
+package ReactorCycleCoreB
+
+record ReactorInputs {
+    EmergencyStop: Bool
+    SensorFault: Bool
+    FeedAvailable: Bool
+    AgitatorHealthy: Bool
+    LevelReady: Bool
+    PressureSafe: Bool
+    TemperatureReady: Bool
+    HoldComplete: Bool
+    DrainPermitted: Bool
+}
+
+enum ReactorOutcome {
+    CompletedBatch
+    StableHold
+    Faulted
+}
+
+flow ReactorBatch(input: ReactorInputs) -> ReactorOutcome {
+    state Standby {
+        when {
+            case input.EmergencyStop or input.SensorFault -> goto Fault
+            case input.FeedAvailable and input.AgitatorHealthy -> goto Fill
+            else -> suspend
+        }
+
+        goto Standby
+    }
+
+    state Fill {
+        when {
+            case input.EmergencyStop -> goto Fault
+            case input.PressureSafe == false -> goto Fault
+            case input.LevelReady -> goto Heat
+            else -> suspend
+        }
+
+        goto Fill
+    }
+
+    state Heat {
+        when {
+            case input.EmergencyStop -> goto Fault
+            case input.PressureSafe == false -> goto Fault
+            case input.TemperatureReady and input.DrainPermitted -> goto Hold
+            case input.TemperatureReady -> goto Hold
+            else -> suspend
+        }
+
+        goto Heat
+    }
+
+    state Hold {
+        suspend
+
+        when {
+            case input.EmergencyStop or input.SensorFault -> goto Fault
+            case input.HoldComplete and input.DrainPermitted -> goto Drain
+            else -> return ReactorOutcome.StableHold
+        }
+    }
+
+    state Drain {
+        suspend
+        return ReactorOutcome.CompletedBatch
+    }
+
+    state Fault {
+        suspend
+        return ReactorOutcome.Faulted
+    }
+}

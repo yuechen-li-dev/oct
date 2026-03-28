@@ -1,0 +1,71 @@
+package SquadTacticsCoreB
+
+record TacticsInputs {
+    EnemyVisible: Bool
+    EnemyInRange: Bool
+    CriticalDamage: Bool
+    AmmoReady: Bool
+    CoverAvailable: Bool
+    RegroupOrder: Bool
+}
+
+enum TacticsOutcome {
+    Holding
+    TargetNeutralized
+    ForcedFallback
+}
+
+flow SquadCycle(input: TacticsInputs) -> TacticsOutcome {
+    state Idle {
+        when {
+            case input.CriticalDamage -> goto Recover
+            case input.EnemyVisible and input.AmmoReady -> goto Alert
+            case input.EnemyVisible -> goto Chase
+            else -> suspend
+        }
+
+        goto Idle
+    }
+
+    state Alert {
+        when {
+            case input.CriticalDamage -> goto Recover
+            case input.EnemyVisible == false -> goto Idle
+            case input.EnemyInRange and input.AmmoReady -> goto Attack
+            case input.CoverAvailable and input.EnemyVisible -> goto Chase
+            else -> suspend
+        }
+
+        goto Alert
+    }
+
+    state Chase {
+        when {
+            case input.CriticalDamage -> goto Recover
+            case input.EnemyVisible == false -> goto Idle
+            case input.EnemyInRange and input.AmmoReady -> goto Attack
+            else -> suspend
+        }
+
+        goto Chase
+    }
+
+    state Attack {
+        when {
+            case input.CriticalDamage -> goto Recover
+            case input.EnemyInRange and input.AmmoReady -> suspend
+            else -> goto Chase
+        }
+
+        return TacticsOutcome.TargetNeutralized
+    }
+
+    state Recover {
+        suspend
+
+        when {
+            case input.RegroupOrder -> goto Idle
+            else -> return TacticsOutcome.ForcedFallback
+        }
+    }
+}
