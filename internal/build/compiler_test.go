@@ -799,3 +799,41 @@ fn main() -> String { let f = F() return ResumeTarget(f) }`,
 		})
 	}
 }
+
+func TestCompileFlowDecisionDoesNotUseSpecialCaseShimPath(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow Machine(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> return 1
+            else -> return 0
+        }
+    }
+}
+
+fn main() -> Int {
+    let f = Machine(true)
+    Step(f)
+    match Result(f) {
+        ok(v) => { return v }
+        err(e) => { return 0 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Compile(mainPath)
+	if err == nil {
+		t.Fatal("expected compile to fail")
+	}
+	if !strings.Contains(err.Error(), "compiled mode does not yet support Octomata flow/state runtime in compiled mode (M64)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), "go build generated program") {
+		t.Fatalf("expected normal lowering rejection, got shim-like build error: %v", err)
+	}
+}
