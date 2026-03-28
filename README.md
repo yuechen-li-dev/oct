@@ -60,17 +60,16 @@ Current compiled subset is intentionally small:
   * `match ok/err`
   * `!` unwrap (fatal on `err`)
 
-Compiled mode now supports the Octomata **core machine** (M64a):
+Compiled mode now supports the Octomata **core machine + decisions + resume slot** (M64a/M64b/M64c):
 
 * `flow` / `state`
 * `goto`, `suspend`, `return`
-* flow instantiation plus `Step`, `Active`, `Result`, `Complete`, and `StateHistory`
+* ordered `when` and utility `when` (deterministic site-local utility memory)
+* `remember` / `resume` single-slot interruption
+* flow instantiation plus `Step`, `Active`, `Result`, `Complete`, `StateHistory`, and `ResumeTarget`
 
 Compiled mode still fails clearly (by design) for deferred features such as:
 
-* ordered `when` and utility `when`
-* `remember` / `resume`
-* `ResumeTarget(...)`
 * advanced `.octagon` features beyond the current representable typed subset
 * advanced concurrency beyond structured `batch` (channels, futures/tasks, scheduler controls, reductions, non-array/generalized parallelism)
 
@@ -112,7 +111,7 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 ### Built-ins and Runtime Utilities
 
 * Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
-* Octomata runtime built-ins include: `Step`, `Active`, `Result`, `Complete`, and `StateHistory`.
+* Octomata runtime built-ins include: `Step`, `Active`, `Result`, `Complete`, `StateHistory`, and `ResumeTarget`.
 * `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
 * In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
 * `Sin` and `Cos` require dimensionless input.
@@ -361,6 +360,8 @@ M57 also includes minimal observability:
 * `ResumeTarget(instance) -> String`
   * returns remembered target name when present
   * returns `""` when the slot is empty
+
+Compiled mode preserves the same semantics: one slot only, overwrite-on-remember, clear-on-successful-resume, and deterministic empty-slot failure on `resume`.
 
 M57 does **not** add:
 

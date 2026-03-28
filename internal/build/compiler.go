@@ -64,6 +64,14 @@ type MIRFlowSuspend struct{}
 
 func (MIRFlowSuspend) mirFlowStmt() {}
 
+type MIRFlowRemember struct{}
+
+func (MIRFlowRemember) mirFlowStmt() {}
+
+type MIRFlowResume struct{}
+
+func (MIRFlowResume) mirFlowStmt() {}
+
 type MIRFlowReturn struct {
 	Value MIRFlowExpr
 }
@@ -1039,9 +1047,6 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	case ast.IdentifierExpr:
 		switch x.Name {
 		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget":
-			if x.Name == "ResumeTarget" {
-				return "", "", false, false, unsupported("Octomata flow runtime builtin " + x.Name)
-			}
 			switch x.Name {
 			case "Step":
 				return "Step", "Int", true, false, nil
@@ -1053,6 +1058,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return "Complete", "Bool", true, false, nil
 			case "StateHistory":
 				return "StateHistory", "String[]", true, false, nil
+			case "ResumeTarget":
+				return "ResumeTarget", "String", true, false, nil
 			}
 		}
 		if x.Name == "Len" {
@@ -1177,6 +1184,10 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string) (MIRFlowStm
 		return MIRFlowGoto{Target: s.Target}, nil
 	case ast.SuspendStmt:
 		return MIRFlowSuspend{}, nil
+	case ast.RememberStmt:
+		return MIRFlowRemember{}, nil
+	case ast.ResumeStmt:
+		return MIRFlowResume{}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return MIRFlowReturn{}, nil
@@ -1421,6 +1432,10 @@ func dumpFlowStmt(stmt MIRFlowStmt) string {
 		return "goto " + s.Target
 	case MIRFlowSuspend:
 		return "suspend"
+	case MIRFlowRemember:
+		return "remember"
+	case MIRFlowResume:
+		return "resume"
 	case MIRFlowReturn:
 		if s.Value == nil {
 			return "return"
@@ -1579,7 +1594,7 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "type __octFlowInstance_%s interface {\n", goSafeName(t))
 		b.WriteString("\t__octStep()\n\t__octActive() string\n\t__octComplete() bool\n")
 		fmt.Fprintf(&b, "\t__octResult() (%s, bool)\n", goFlowResultType(t))
-		b.WriteString("\t__octStateHistory() []string\n}\n\n")
+		b.WriteString("\t__octStateHistory() []string\n\t__octResumeTarget() string\n}\n\n")
 		fmt.Fprintf(&b, "type __octResultFlow_%s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goSafeName(t), goFlowResultType(t))
 	}
 	for _, flow := range m.Flows {
@@ -2304,6 +2319,7 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	fmt.Fprintf(b, "type %s struct {\n", structName)
 	b.WriteString("\tstarted bool\n\tcompleted bool\n\tcurrentState int\n\tinstruction int\n")
 	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n\thistory []string\n", goFlowResultType(resultType))
+	b.WriteString("\thasResumeTarget bool\n\tresumeTarget int\n")
 	if flowHasUtilityWhen(flow) {
 		b.WriteString("\tutilitySites map[int]__octUtilitySiteState\n")
 	}
@@ -2338,6 +2354,14 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	b.WriteString("\treturn f.result, f.hasResult\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octStateHistory() []string {\n", structName)
 	b.WriteString("\tout := make([]string, len(f.history))\n\tcopy(out, f.history)\n\treturn out\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octStateName(id int) string {\n", structName)
+	b.WriteString("\tswitch id {\n")
+	for idx, state := range flow.States {
+		fmt.Fprintf(b, "\tcase %d: return %q\n", idx, state.Name)
+	}
+	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octResumeTarget() string {\n", structName)
+	b.WriteString("\tif !f.hasResumeTarget { return \"\" }\n\treturn f.__octStateName(f.resumeTarget)\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octStep() {\n", structName)
 	b.WriteString("\tif f.completed { return }\n")
 	entryID := 0
@@ -2385,6 +2409,10 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
+	case MIRFlowRemember:
+		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState\nf.instruction++\ncontinue", nil
+	case MIRFlowResume:
+		return "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0\nf.history = append(f.history, f.__octStateName(__resumeTarget))\ncontinue", nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
@@ -2579,6 +2607,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = %s.__octComplete()", st.Target, st.Args[0]), nil
 			case "StateHistory":
 				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
+			case "ResumeTarget":
+				return fmt.Sprintf("%s = %s.__octResumeTarget()", st.Target, st.Args[0]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
