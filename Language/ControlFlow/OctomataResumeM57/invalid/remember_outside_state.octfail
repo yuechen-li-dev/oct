@@ -1,0 +1,8 @@
+expect error: "function Main: remember is only valid inside flow state bodies"
+
+package MainInvalid
+
+fn Main() -> Int {
+    remember
+    return 1
+}

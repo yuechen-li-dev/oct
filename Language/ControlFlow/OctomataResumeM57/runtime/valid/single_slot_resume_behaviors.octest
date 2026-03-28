@@ -1,0 +1,148 @@
+package MainValid
+
+flow ResumeAfterDiversion() -> Int {
+    state Patrol {
+        suspend
+        remember
+        goto InvestigateNoise
+    }
+
+    state InvestigateNoise {
+        suspend
+        resume
+    }
+}
+
+flow ResumeOverwriteWinsLatest() -> Int {
+    state Engage {
+        remember
+        goto Reload
+    }
+
+    state Reload {
+        remember
+        goto CheckNoise
+    }
+
+    state CheckNoise {
+        suspend
+        resume
+    }
+}
+
+flow ResumeDeterminismProbe() -> Int {
+    state Hold {
+        suspend
+        remember
+        goto Inspect
+    }
+
+    state Inspect {
+        suspend
+        resume
+    }
+}
+
+flow ExplicitRestartPreferred() -> Int {
+    state Operate {
+        suspend
+        goto Fault
+    }
+
+    state Fault {
+        goto RecoverInit
+    }
+
+    state RecoverInit {
+        return 7
+    }
+}
+
+[Fact]
+fn ResumeSurvivesSuspendAndRestoresPriorState() -> Void {
+    let f = ResumeAfterDiversion()
+
+    Step(f)
+    Assert.Equal("Patrol", Active(f), "first step should suspend in Patrol")
+    Assert.Equal("", ResumeTarget(f), "slot should be empty before remember")
+
+    Step(f)
+    Assert.Equal("InvestigateNoise", Active(f), "second step should remember Patrol and divert")
+    Assert.Equal("Patrol", ResumeTarget(f), "slot should hold remembered Patrol state")
+
+    Step(f)
+    Assert.Equal("InvestigateNoise", Active(f), "third step should suspend inside diversion state")
+
+    Step(f)
+    Assert.Equal("Patrol", Active(f), "resume should restore Patrol after diversion")
+    Assert.Equal("", ResumeTarget(f), "successful resume should clear slot")
+
+    let history = StateHistory(f)
+    Assert.Equal(4, Len(history), "history should include entry/diversion/resume transitions")
+    Assert.Equal("Patrol", history[0], "entry state recorded first")
+    Assert.Equal("InvestigateNoise", history[1], "diversion state should be recorded")
+    Assert.Equal("Patrol", history[2], "resume target should be recorded")
+    Assert.Equal("InvestigateNoise", history[3], "post-resume diversion should be recorded after re-remember")
+}
+
+[Fact]
+fn RememberOverwriteUsesLatestStateOnly() -> Void {
+    let f = ResumeOverwriteWinsLatest()
+
+    Step(f)
+    Assert.Equal("CheckNoise", Active(f), "flow should enter CheckNoise after two remembers")
+    Assert.Equal("Reload", ResumeTarget(f), "latest remember should overwrite older Engage target")
+
+    Step(f)
+    Assert.Equal("Reload", Active(f), "resume should return to most recent remembered state")
+
+    let history = StateHistory(f)
+    Assert.Equal("Engage", history[0], "history should start at entry")
+    Assert.Equal("Reload", history[1], "first diversion should record Reload")
+    Assert.Equal("CheckNoise", history[2], "second diversion should record CheckNoise")
+    Assert.Equal("Reload", history[3], "resume should restore latest remembered state")
+}
+
+[Fact]
+fn RepeatedRunsRemainDeterministic() -> Void {
+    let first = ResumeDeterminismProbe()
+    let second = ResumeDeterminismProbe()
+
+    Step(first)
+    Step(second)
+    Step(first)
+    Step(second)
+    Step(first)
+    Step(second)
+
+    Assert.Equal(Active(first), Active(second), "active state should match after identical stepping")
+    Assert.Equal(ResumeTarget(first), ResumeTarget(second), "resume slot state should match across runs")
+
+    let firstHistory = StateHistory(first)
+    let secondHistory = StateHistory(second)
+    Assert.Equal(Len(firstHistory), Len(secondHistory), "history lengths should match")
+    Assert.Equal(firstHistory[0], secondHistory[0], "history should begin identically")
+    Assert.Equal(firstHistory[1], secondHistory[1], "history second transition should match")
+    Assert.Equal(firstHistory[2], secondHistory[2], "history third transition should match")
+}
+
+[Fact]
+fn ExplicitRestartCanStillBeClearerThanResume() -> Void {
+    let f = ExplicitRestartPreferred()
+
+    Step(f)
+    Assert.Equal("Operate", Active(f), "operate should suspend first")
+
+    Step(f)
+    Assert.Equal("", Active(f), "fault handling should restart explicitly and complete")
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(7, value, "explicit restart should produce deterministic recovery result") }
+        err(e) => { Assert.True(false, "Result should succeed after explicit restart flow completes") }
+    }
+
+    let history = StateHistory(f)
+    Assert.Equal("Operate", history[0], "explicit restart case should start in Operate")
+    Assert.Equal("Fault", history[1], "fault transition should be explicit")
+    Assert.Equal("RecoverInit", history[2], "restart target should be explicit, not resumed")
+}

@@ -285,6 +285,42 @@ M54 intentionally does **not** add:
 * behavior trees
 * global policy frameworks
 
+## Octomata Single-Slot Resume (M57)
+
+M57 adds a narrow interruption/resume primitive for flow states:
+
+```oct
+remember
+goto InvestigateNoise
+
+...
+
+resume
+```
+
+Semantics are intentionally bounded and explicit:
+
+* each `FlowInstance<T>` has exactly one resume slot
+* `remember` (state-only) stores the current state name in that slot
+* `resume` (state-only) transitions to the remembered state
+* if the slot is empty, `resume` fails deterministically
+* successful `resume` clears the slot
+* `remember` overwrites any existing slot target
+* slot lifetime is flow-instance-local and survives `suspend`/`Step`
+
+M57 also includes minimal observability:
+
+* `ResumeTarget(instance) -> String`
+  * returns remembered target name when present
+  * returns `""` when the slot is empty
+
+M57 does **not** add:
+
+* stack control (`push` / `pop` / `replace`)
+* arbitrary-depth nested context
+* `waitUntil`/blocking wait semantics
+* coroutine/async scheduler behavior
+
 ## Octomata Observability Polish (M45)
 
 M45 adds a small, read-only observability surface for `FlowInstance<T>`:

@@ -749,6 +749,16 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: suspend is only valid inside flow state bodies", ctx.name)
 		}
 		return false, nil
+	case ast.RememberStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: remember is only valid inside flow state bodies", ctx.name)
+		}
+		return false, nil
+	case ast.ResumeStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: resume is only valid inside flow state bodies", ctx.name)
+		}
+		return false, nil
 	case ast.WhenStmt:
 		if !ctx.inState {
 			return false, fmt.Errorf("function %s: when is only valid inside flow state bodies", ctx.name)
@@ -2048,6 +2058,25 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'StateHistory' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString, IsArray: true}}, nil
+	}
+	if callee == "ResumeTarget" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'ResumeTarget' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'ResumeTarget' expects 1 arguments, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'ResumeTarget' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)

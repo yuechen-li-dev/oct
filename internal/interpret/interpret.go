@@ -90,6 +90,8 @@ type FlowRuntimeInstance struct {
 	RootEnv          *environment
 	StateEnv         *environment
 	CurrentState     string
+	HasResumeTarget  bool
+	ResumeTarget     string
 	InstructionIndex int
 	Completed        bool
 	Result           Value
@@ -701,6 +703,26 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		return flowSignal{kind: flowSignalGoto, target: node.Target}, nil
 	case ast.SuspendStmt:
 		return flowSignal{kind: flowSignalSuspend}, nil
+	case ast.RememberStmt:
+		instance, err := flowInstanceFromEnv(env)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		instance.HasResumeTarget = true
+		instance.ResumeTarget = instance.CurrentState
+		return flowSignal{}, nil
+	case ast.ResumeStmt:
+		instance, err := flowInstanceFromEnv(env)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if !instance.HasResumeTarget {
+			return flowSignal{}, fmt.Errorf("runtime error: resume called with empty resume slot")
+		}
+		target := instance.ResumeTarget
+		instance.HasResumeTarget = false
+		instance.ResumeTarget = ""
+		return flowSignal{kind: flowSignalGoto, target: target}, nil
 	case ast.ReturnStmt:
 		if node.Value == nil {
 			return flowSignal{kind: flowSignalReturn}, nil
@@ -816,6 +838,17 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		}
 		return flowSignal{}, nil
 	}
+}
+
+func flowInstanceFromEnv(env *environment) (*FlowRuntimeInstance, error) {
+	bindingValue, ok := env.lookup(flowInstanceBindingName)
+	if !ok {
+		return nil, fmt.Errorf("runtime invariant violation: flow instance binding is missing")
+	}
+	if bindingValue.value.Kind != ValueFlow || bindingValue.value.Flow == nil {
+		return nil, fmt.Errorf("runtime invariant violation: flow instance binding is invalid")
+	}
+	return bindingValue.value.Flow, nil
 }
 
 func (i interpreter) executeWhenAction(env *environment, pkgName string, action ast.WhenAction) (flowSignal, error) {
@@ -1705,6 +1738,29 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: StateHistory expects FlowInstance argument")
 		}
 		return evalResult{value: flowStateHistoryValue(argument.value.Flow)}, nil
+	}
+	if callee == "ResumeTarget" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: ResumeTarget does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: ResumeTarget expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: ResumeTarget expects FlowInstance argument")
+		}
+		target := ""
+		if argument.value.Flow.HasResumeTarget {
+			target = argument.value.Flow.ResumeTarget
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: target}}, nil
 	}
 	if len(typeArguments) != 0 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)

@@ -1,0 +1,18 @@
+package MainValid
+
+flow SurfaceProbe() -> Void {
+    state Idle {
+        remember
+        goto Diversion
+    }
+
+    state Diversion {
+        resume
+    }
+}
+
+[Fact]
+fn RememberResumeSurfaceParses() -> Void {
+    let f = SurfaceProbe()
+    Assert.Equal("", Active(f), "flow should start inactive before first step")
+}
