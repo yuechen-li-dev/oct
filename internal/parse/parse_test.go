@@ -112,6 +112,19 @@ func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesCallTypeArguments(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int ! Error { return LoadOctagon[Int[]](\"x.octagon\")? }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	propagate := ret.Value.(ast.PropagateExpr)
+	call := propagate.Inner.(ast.CallExpr)
+	if len(call.TypeArguments) != 1 {
+		t.Fatalf("expected one type argument, got %d", len(call.TypeArguments))
+	}
+	if call.TypeArguments[0].Name != "Int" || !call.TypeArguments[0].IsArray {
+		t.Fatalf("expected Int[] type argument, got %+v", call.TypeArguments[0])
+	}
+}
+
 func TestBuildFileParsesFatalUnwrapAndStrings(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { let x = Fail()! return x }")
 

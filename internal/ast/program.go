@@ -212,8 +212,9 @@ type IdentifierExpr struct {
 func (IdentifierExpr) exprNode() {}
 
 type CallExpr struct {
-	Callee    Expr
-	Arguments []Expr
+	Callee        Expr
+	TypeArguments []TypeRef
+	Arguments     []Expr
 }
 
 func (CallExpr) exprNode() {}

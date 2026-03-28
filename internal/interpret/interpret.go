@@ -12,6 +12,7 @@ import (
 	"oct/internal/ast"
 	"oct/internal/builtin"
 	"oct/internal/dimension"
+	"oct/internal/octagon"
 	"oct/internal/project"
 )
 
@@ -856,6 +857,9 @@ func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject
 func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
 	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
 	if hasDirectName && calleeName == "error" {
+		if len(expr.TypeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: error() does not accept type arguments")
+		}
 		if len(expr.Arguments) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: error() expects 1 argument")
 		}
@@ -872,9 +876,12 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
 	if hasDirectName && builtin.IsName(calleeName) {
-		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.Arguments)
+		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.TypeArguments, expr.Arguments)
 	}
 	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
+		if len(expr.TypeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Assert functions do not accept type arguments")
+		}
 		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments)
 	}
 
@@ -1016,8 +1023,11 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 	return value
 }
 
-func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, callee string, typeArguments []ast.TypeRef, argumentExprs []ast.Expr) (evalResult, error) {
 	if callee == "PlotLine" || callee == "PlotScatter" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
+		}
 		value, err := i.evalPlotBuiltinCallExpr(env, pkgName, callee, argumentExprs)
 		if err != nil {
 			return evalResult{}, err
@@ -1025,10 +1035,22 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		return evalResult{value: value}, nil
 	}
 	if callee == "WriteOctagon" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: WriteOctagon does not accept type arguments")
+		}
 		return i.evalWriteOctagonBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
+	if callee == "LoadOctagon" {
+		return i.evalLoadOctagonBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
+	}
 	if callee == "Append" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Append does not accept type arguments")
+		}
 		return i.evalAppendBuiltinCallExpr(env, pkgName, argumentExprs)
+	}
+	if len(typeArguments) != 0 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 	}
 
 	if len(argumentExprs) != 1 {
@@ -1104,6 +1126,35 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", callee)
 	}
+}
+
+func (i interpreter) evalLoadOctagonBuiltinCallExpr(env *environment, pkgName string, typeArguments []ast.TypeRef, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(typeArguments) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: LoadOctagon expects 1 type argument")
+	}
+	if len(argumentExprs) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: LoadOctagon expects 1 argument")
+	}
+	pathValue, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if pathValue.hasError {
+		return evalResult{hasError: true, errorVal: pathValue.errorVal}, nil
+	}
+	if pathValue.value.Kind != ValueString {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: LoadOctagon expects String path argument")
+	}
+
+	rawValue, err := octagon.Load(pathValue.value.Text)
+	if err != nil {
+		return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: fmt.Sprintf("LoadOctagon %s: %v", pathValue.value.Text, err)}}}, nil
+	}
+	typedValue, err := i.materializeOctagonValue(pkgName, typeArguments[0], rawValue)
+	if err != nil {
+		return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: fmt.Sprintf("LoadOctagon %s: %v", pathValue.value.Text, err)}}}, nil
+	}
+	return evalResult{value: typedValue}, nil
 }
 
 func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {

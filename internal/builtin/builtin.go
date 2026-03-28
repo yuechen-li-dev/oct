@@ -9,6 +9,7 @@ var names = map[string]struct{}{
 	"Cos":          {},
 	"Print":        {},
 	"WriteOctagon": {},
+	"LoadOctagon":  {},
 	"PlotLine":     {},
 	"PlotScatter":  {},
 }

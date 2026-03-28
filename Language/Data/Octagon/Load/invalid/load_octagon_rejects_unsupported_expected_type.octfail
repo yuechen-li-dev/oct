@@ -1,0 +1,7 @@
+expect error: "function 'LoadOctagon' type argument expects .octagon-representable type, got Vector<Int>"
+
+package OctagonLoadInvalid
+
+fn Main() -> Vector<Int> ! Error {
+    return LoadOctagon[Vector<Int>]("Language/Data/Octagon/valid/array_of_scalars.octagon")?
+}

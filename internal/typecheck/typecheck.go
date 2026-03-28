@@ -1290,12 +1290,18 @@ func hasAllEnumVariantsCovered(info enumInfo, seen map[string]struct{}) bool {
 func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
 	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
 	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
+		if len(expr.TypeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
+		}
 		if !ctx.isTestFile {
 			return ExprType{}, fmt.Errorf("Assert is only available in .octest files")
 		}
 		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
 	}
 	if hasDirectName && calleeName == "error" {
+		if len(expr.TypeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'error' does not accept type arguments")
+		}
 		if len(expr.Arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
 		}
@@ -1305,7 +1311,13 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
 	if hasDirectName && builtin.IsName(calleeName) {
-		return c.checkBuiltinCallExpr(scope, calleeName, expr.Arguments, ctx)
+		return c.checkBuiltinCallExpr(scope, calleeName, expr.TypeArguments, expr.Arguments, ctx)
+	}
+	if len(expr.TypeArguments) > 0 {
+		if hasDirectName {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
+		}
+		return ExprType{}, fmt.Errorf("call target does not accept type arguments")
 	}
 
 	if hasDirectName {
@@ -1543,15 +1555,30 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 	return valueType
 }
 
-func (c checker) checkBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	if callee == "PlotLine" || callee == "PlotScatter" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
 		return c.checkPlotBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
 	if callee == "WriteOctagon" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'WriteOctagon' does not accept type arguments")
+		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "LoadOctagon" {
+		return c.checkLoadOctagonBuiltinCallExpr(scope, callee, typeArguments, arguments, ctx)
+	}
 	if callee == "Append" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
+		}
 		return c.checkAppendBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if len(typeArguments) > 0 {
+		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}
 
 	if len(arguments) != 1 {
@@ -1609,6 +1636,39 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, arguments []a
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
+}
+
+func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(typeArguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 type argument, got %d", callee, len(typeArguments))
+	}
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+
+	expectedType, err := c.resolveNonReturnType(typeArguments[0])
+	if err != nil {
+		return ExprType{}, err
+	}
+	if !isOctagonRepresentableType(expectedType) {
+		return ExprType{}, fmt.Errorf("function 'LoadOctagon' type argument expects .octagon-representable type, got %s", expectedType)
+	}
+
+	pathType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if pathType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if pathType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function 'LoadOctagon' argument 1 expects String, got %s", pathType.ValueType)
+	}
+	if pathLiteral, ok := arguments[0].(ast.StringLiteralExpr); ok && !strings.HasSuffix(pathLiteral.Value, ".octagon") {
+		return ExprType{}, fmt.Errorf("LoadOctagon path must end with .octagon")
+	}
+
+	return ExprType{ValueType: expectedType, Fallible: true}, nil
 }
 
 func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
