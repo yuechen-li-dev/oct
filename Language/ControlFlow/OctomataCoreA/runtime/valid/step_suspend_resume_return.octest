@@ -1,0 +1,28 @@
+package MainValid
+
+flow Countdown(start: Int) -> Int {
+    state Run {
+        if start > 0 {
+            suspend
+        }
+        return start
+    }
+}
+
+[Fact]
+fn StepSuspendResumeReturn() -> Void {
+    let f = Countdown(2)
+
+    Assert.Equal("", Active(f), "active state is empty before first step")
+
+    Step(f)
+    Assert.Equal("Run", Active(f), "first step enters Run and suspends")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step returns and clears active state")
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "completed flow returns final value") }
+        err(e) => { Assert.True(false, "Result should succeed after completion") }
+    }
+}

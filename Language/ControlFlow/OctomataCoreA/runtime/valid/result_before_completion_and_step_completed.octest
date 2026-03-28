@@ -1,0 +1,34 @@
+package MainValid
+
+flow OneSuspend() -> Int {
+    state Start {
+        suspend
+        return 7
+    }
+}
+
+[Fact]
+fn ResultBeforeCompletionIsErrorAndStepCompletedIsNoop() -> Void {
+    let f = OneSuspend()
+    var sawPreCompletionError = false
+
+    match Result(f) {
+        ok(value) => { Assert.True(false, "Result should fail before completion") }
+        err(e) => { sawPreCompletionError = true }
+    }
+    Assert.True(sawPreCompletionError, "Result returns error before completion")
+
+    Step(f)
+    Assert.Equal("Start", Active(f), "flow suspended in Start")
+
+    Step(f)
+    Assert.Equal("", Active(f), "flow completed after second step")
+
+    Step(f)
+    Assert.Equal("", Active(f), "stepping completed flow is a no-op")
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(7, value, "completed flow keeps result") }
+        err(e) => { Assert.True(false, "Result should remain available") }
+    }
+}

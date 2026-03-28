@@ -1,0 +1,10 @@
+expect error: "function 'Result' argument 1 expects FlowInstance<T>, got String"
+
+package MainInvalid
+
+fn Main() -> Void {
+    match Result("x") {
+        ok(value) => { return }
+        err(e) => { return }
+    }
+}

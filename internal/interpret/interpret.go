@@ -30,6 +30,7 @@ const (
 	ValueVector ValueKind = "Vector"
 	ValueMatrix ValueKind = "Matrix"
 	ValueFunc   ValueKind = "Function"
+	ValueFlow   ValueKind = "FlowInstance"
 )
 
 type Value struct {
@@ -47,6 +48,7 @@ type Value struct {
 	Record    RecordValue
 	Enum      EnumValue
 	Function  FunctionValue
+	Flow      *FlowRuntimeInstance
 }
 
 type ErrorValue struct {
@@ -78,6 +80,17 @@ type MatrixValue struct {
 
 type FunctionValue struct {
 	Key string
+}
+
+type FlowRuntimeInstance struct {
+	Decl             ast.FlowDecl
+	Package          string
+	RootEnv          *environment
+	StateEnv         *environment
+	CurrentState     string
+	InstructionIndex int
+	Completed        bool
+	Result           Value
 }
 
 func (v Value) String() string {
@@ -126,6 +139,11 @@ func (v Value) String() string {
 		return fmt.Sprintf("%s.%s", v.Enum.TypeName, v.Enum.Variant)
 	case ValueFunc:
 		return v.Function.Key
+	case ValueFlow:
+		if v.Flow == nil {
+			return "FlowInstance<invalid>"
+		}
+		return fmt.Sprintf("FlowInstance<%s>", v.Flow.Decl.ReturnType.Name)
 	default:
 		return "<invalid>"
 	}
@@ -135,7 +153,9 @@ type interpreter struct {
 	functions      map[string]ast.FunctionDecl
 	records        map[string]ast.RecordDecl
 	enums          map[string]ast.EnumDecl
+	flows          map[string]ast.FlowDecl
 	functionSource map[string]string
+	flowSource     map[string]string
 	stdout         io.Writer
 }
 
@@ -171,7 +191,9 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
 		enums:          make(map[string]ast.EnumDecl),
+		flows:          make(map[string]ast.FlowDecl),
 		functionSource: make(map[string]string),
+		flowSource:     make(map[string]string),
 		stdout:         stdout,
 	}
 	for pkgName, pkg := range program.Packages {
@@ -185,6 +207,11 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 			key := pkgName + "." + function.Name
 			interpreter.functions[key] = function
 			interpreter.functionSource[key] = pkgName
+		}
+		for _, flow := range pkg.Flows {
+			key := pkgName + "." + flow.Name
+			interpreter.flows[key] = flow
+			interpreter.flowSource[key] = pkgName
 		}
 	}
 
@@ -232,7 +259,9 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
 		enums:          make(map[string]ast.EnumDecl),
+		flows:          make(map[string]ast.FlowDecl),
 		functionSource: make(map[string]string),
+		flowSource:     make(map[string]string),
 		stdout:         stdout,
 	}
 	for currentPkg, pkg := range program.Packages {
@@ -246,6 +275,11 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 			key := currentPkg + "." + function.Name
 			interp.functions[key] = function
 			interp.functionSource[key] = currentPkg
+		}
+		for _, flow := range pkg.Flows {
+			key := currentPkg + "." + flow.Name
+			interp.flows[key] = flow
+			interp.flowSource[key] = currentPkg
 		}
 	}
 	return interp
@@ -316,6 +350,83 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 		return callResult{hasError: true, errorVal: result.value}, nil
 	}
 	return callResult{value: result.value}, nil
+}
+
+func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, arguments []Value) *FlowRuntimeInstance {
+	rootEnv := newEnvironment(nil)
+	for index, parameter := range flow.Parameters {
+		rootEnv.define(parameter.Name, arguments[index], false)
+	}
+	return &FlowRuntimeInstance{
+		Decl:     flow,
+		Package:  pkgName,
+		RootEnv:  rootEnv,
+		StateEnv: nil,
+	}
+}
+
+type flowSignalKind int
+
+const (
+	flowSignalNone flowSignalKind = iota
+	flowSignalSuspend
+	flowSignalGoto
+	flowSignalReturn
+)
+
+type flowSignal struct {
+	kind   flowSignalKind
+	target string
+	value  Value
+}
+
+func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
+	if instance.Completed {
+		return nil
+	}
+	if instance.CurrentState == "" {
+		instance.CurrentState = instance.Decl.EntryState
+		instance.InstructionIndex = 0
+		instance.StateEnv = newEnvironment(instance.RootEnv)
+	}
+	for {
+		state, ok := findFlowState(instance.Decl, instance.CurrentState)
+		if !ok {
+			return fmt.Errorf("runtime invariant violation: unknown flow state %s", instance.CurrentState)
+		}
+		if instance.InstructionIndex >= len(state.Body.Statements) {
+			return fmt.Errorf("runtime invariant violation: flow state %s exited without suspend or return", state.Name)
+		}
+		signal, err := i.executeFlowStmt(instance.StateEnv, instance.Package, state.Body.Statements[instance.InstructionIndex])
+		if err != nil {
+			return err
+		}
+		switch signal.kind {
+		case flowSignalNone:
+			instance.InstructionIndex++
+		case flowSignalSuspend:
+			instance.InstructionIndex++
+			return nil
+		case flowSignalGoto:
+			instance.CurrentState = signal.target
+			instance.InstructionIndex = 0
+			instance.StateEnv = newEnvironment(instance.RootEnv)
+		case flowSignalReturn:
+			instance.Completed = true
+			instance.CurrentState = ""
+			instance.Result = signal.value
+			return nil
+		}
+	}
+}
+
+func findFlowState(flow ast.FlowDecl, name string) (ast.StateDecl, bool) {
+	for _, state := range flow.States {
+		if state.Name == name {
+			return state, true
+		}
+	}
+	return ast.StateDecl{}, false
 }
 
 func (i interpreter) executeBlock(parent *environment, pkgName string, block ast.Block) (stmtResult, error) {
@@ -506,6 +617,126 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
+	}
+}
+
+func (i interpreter) executeFlowBlock(parent *environment, pkgName string, block ast.Block) (flowSignal, error) {
+	blockEnv := newEnvironment(parent)
+	for _, statement := range block.Statements {
+		signal, err := i.executeFlowStmt(blockEnv, pkgName, statement)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if signal.kind != flowSignalNone {
+			return signal, nil
+		}
+	}
+	return flowSignal{}, nil
+}
+
+func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.Stmt) (flowSignal, error) {
+	switch node := stmt.(type) {
+	case ast.GotoStmt:
+		return flowSignal{kind: flowSignalGoto, target: node.Target}, nil
+	case ast.SuspendStmt:
+		return flowSignal{kind: flowSignalSuspend}, nil
+	case ast.ReturnStmt:
+		if node.Value == nil {
+			return flowSignal{kind: flowSignalReturn}, nil
+		}
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if value.hasError {
+			return flowSignal{kind: flowSignalReturn, value: value.errorVal}, nil
+		}
+		return flowSignal{kind: flowSignalReturn, value: value.value}, nil
+	case ast.IfStmt:
+		condition, err := i.evalExpr(env, pkgName, node.Condition)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if condition.hasError {
+			return flowSignal{kind: flowSignalReturn, value: condition.errorVal}, nil
+		}
+		if condition.value.Kind != ValueBool {
+			return flowSignal{}, fmt.Errorf("runtime invariant violation: if condition must be Bool, got %s", condition.value.Kind)
+		}
+		if condition.value.Bool {
+			return i.executeFlowBlock(env, pkgName, node.ThenBody)
+		}
+		if node.ElseBody != nil {
+			return i.executeFlowBlock(env, pkgName, *node.ElseBody)
+		}
+		return flowSignal{}, nil
+	case ast.WhileStmt:
+		for {
+			condition, err := i.evalExpr(env, pkgName, node.Condition)
+			if err != nil {
+				return flowSignal{}, err
+			}
+			if condition.hasError {
+				return flowSignal{kind: flowSignalReturn, value: condition.errorVal}, nil
+			}
+			if condition.value.Kind != ValueBool {
+				return flowSignal{}, fmt.Errorf("runtime invariant violation: while condition must be Bool, got %s", condition.value.Kind)
+			}
+			if !condition.value.Bool {
+				return flowSignal{}, nil
+			}
+			signal, err := i.executeFlowBlock(env, pkgName, node.Body)
+			if err != nil {
+				return flowSignal{}, err
+			}
+			if signal.kind != flowSignalNone {
+				return signal, nil
+			}
+		}
+	case ast.ForStmt:
+		rangeValue, err := i.evalExpr(env, pkgName, node.Range)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if rangeValue.hasError {
+			return flowSignal{kind: flowSignalReturn, value: rangeValue.errorVal}, nil
+		}
+		if rangeValue.value.Kind != ValueRange {
+			return flowSignal{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
+		}
+		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
+			iterationEnv := newEnvironment(env)
+			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
+			signal, err := i.executeFlowBlock(iterationEnv, pkgName, node.Body)
+			if err != nil {
+				return flowSignal{}, err
+			}
+			if signal.kind != flowSignalNone {
+				return signal, nil
+			}
+		}
+		return flowSignal{}, nil
+	case ast.MatchStmt:
+		subject, err := i.evalExpr(env, pkgName, node.Subject)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		armEnv := newEnvironment(env)
+		if subject.hasError {
+			armEnv.define(node.ErrName, subject.errorVal, false)
+			return i.executeFlowBlock(armEnv, pkgName, node.ErrBody)
+		}
+		armEnv.define(node.OkName, subject.value, false)
+		return i.executeFlowBlock(armEnv, pkgName, node.OkBody)
+	default:
+		result, err := i.executeStmt(env, pkgName, stmt)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if result.returned {
+			return flowSignal{kind: flowSignalReturn, value: result.value}, nil
+		}
+		return flowSignal{}, nil
 	}
 }
 
@@ -904,9 +1135,6 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 		functionKey = calleeValue.value.Function.Key
 	}
 	function, ok := i.functions[functionKey]
-	if !ok {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
-	}
 
 	arguments := make([]Value, 0, len(expr.Arguments))
 	for _, argumentExpr := range expr.Arguments {
@@ -918,6 +1146,17 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
 		}
 		arguments = append(arguments, argument.value)
+	}
+	if flowDecl, isFlow := i.flows[functionKey]; isFlow {
+		targetPkg := pkgName
+		if dot := strings.Index(functionKey, "."); dot >= 0 {
+			targetPkg = functionKey[:dot]
+		}
+		instance := i.instantiateFlow(flowDecl, targetPkg, arguments)
+		return evalResult{value: Value{Kind: ValueFlow, Flow: instance}}, nil
+	}
+	if !ok {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}
 
 	targetPkg := pkgName
@@ -1047,6 +1286,69 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Append does not accept type arguments")
 		}
 		return i.evalAppendBuiltinCallExpr(env, pkgName, argumentExprs)
+	}
+	if callee == "Step" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Step does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Step expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Step expects FlowInstance argument")
+		}
+		if err := i.stepFlow(argument.value.Flow); err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{}}, nil
+	}
+	if callee == "Active" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Active does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Active expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Active expects FlowInstance argument")
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: argument.value.Flow.CurrentState}}, nil
+	}
+	if callee == "Result" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Result does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Result expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Result expects FlowInstance argument")
+		}
+		if !argument.value.Flow.Completed {
+			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "Result() called before flow completion"}}}, nil
+		}
+		return evalResult{value: argument.value.Flow.Result}, nil
 	}
 	if len(typeArguments) != 0 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
@@ -1825,6 +2127,12 @@ func valueTypeName(value Value) string {
 			element = valueTypeName(value.Matrix.Elements[0])
 		}
 		return "Matrix<" + element + ">"
+	}
+	if value.Kind == ValueFlow {
+		if value.Flow == nil {
+			return "FlowInstance<invalid>"
+		}
+		return fmt.Sprintf("FlowInstance<%s>", value.Flow.Decl.ReturnType.Name)
 	}
 	base := string(value.Kind)
 	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {

@@ -1,0 +1,7 @@
+expect error: "function 'Step' argument 1 expects FlowInstance<T>, got Int"
+
+package MainInvalid
+
+fn Main() -> Void {
+    Step(1)
+}

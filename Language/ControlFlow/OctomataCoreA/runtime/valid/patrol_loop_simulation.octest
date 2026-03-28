@@ -1,0 +1,28 @@
+package MainValid
+
+flow PatrolLoop(limit: Int) -> Int {
+    state Search {
+        goto Track
+    }
+
+    state Track {
+        suspend
+        return limit
+    }
+}
+
+[Fact]
+fn PatrolRuntimeProgression() -> Void {
+    let f = PatrolLoop(2)
+
+    Step(f)
+    Assert.Equal("Track", Active(f), "first step transitions into Track and suspends")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step resumes Track and returns")
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "result captured after multi-state progression") }
+        err(e) => { Assert.True(false, "Result should succeed once completed") }
+    }
+}
