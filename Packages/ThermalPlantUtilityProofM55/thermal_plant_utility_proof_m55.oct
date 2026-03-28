@@ -1,0 +1,155 @@
+package ThermalPlantUtilityProofM55
+
+record ThermalInputs {
+    FeedReady: Bool
+    SafetyTrip: Bool
+    HeatDemand: Int
+    CoolDemand: Int
+}
+
+enum ThermalOutcome {
+    CompletedWindow
+    Tripped
+}
+
+flow ThermalPlantUtilityController(input: ThermalInputs) -> ThermalOutcome {
+    state Boot {
+        when {
+            case input.SafetyTrip -> goto Fault
+            case input.FeedReady -> goto Control
+            else -> suspend
+        }
+
+        goto Boot
+    }
+
+    state Control {
+        let mode = when policy {
+            hysteresis: 10
+            min_commit: 2
+        } {
+            case 3 when input.SafetyTrip score 1000
+            case 2 when input.CoolDemand > 0 score input.CoolDemand
+            case 1 when input.HeatDemand > 0 score input.HeatDemand
+            else 0
+        }
+
+        when {
+            case mode == 3 -> goto Fault
+            case mode == 2 -> goto Cool
+            case mode == 1 -> goto Heat
+            else -> goto Hold
+        }
+
+        goto Hold
+    }
+
+    state Heat {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Cool {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Hold {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Fault {
+        suspend
+        return ThermalOutcome.Tripped
+    }
+}
+
+flow ThermalPlantOrderedController(input: ThermalInputs) -> ThermalOutcome {
+    state Boot {
+        when {
+            case input.SafetyTrip -> goto Fault
+            case input.FeedReady -> goto Control
+            else -> suspend
+        }
+
+        goto Boot
+    }
+
+    state Control {
+        when {
+            case input.SafetyTrip -> goto Fault
+            case input.HeatDemand > 0 -> goto Heat
+            case input.CoolDemand > 0 -> goto Cool
+            else -> goto Hold
+        }
+
+        goto Hold
+    }
+
+    state Heat {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Cool {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Hold {
+        suspend
+        return ThermalOutcome.CompletedWindow
+    }
+
+    state Fault {
+        suspend
+        return ThermalOutcome.Tripped
+    }
+}
+
+flow ThermalUtilityMinCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 6
+                min_commit: 3
+            } {
+                case 1 when true score 80
+                case 2 when t > 0 score 84
+                else 0
+            }
+
+            if t == 1 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}
+
+flow ThermalUtilitySwitchAfterCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 6
+                min_commit: 3
+            } {
+                case 1 when true score 80
+                case 2 when t > 0 score 94
+                else 0
+            }
+
+            if t == 3 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}

@@ -1,0 +1,129 @@
+package ThermalPlantUtilityProofM55
+
+[Fact]
+fn ThermalUtilityProgressesAcrossModesAndCompletes() -> Void {
+    let input = ThermalInputs {
+        FeedReady: true
+        SafetyTrip: false
+        HeatDemand: 55
+        CoolDemand: 96
+    }
+
+    let f = ThermalPlantUtilityController(input)
+
+    Step(f)
+    Assert.Equal("Cool", Active(f), "first step should progress Boot->Control->Cool")
+
+    let history = StateHistory(f)
+    Assert.Equal("Boot", history[0], "history should include Boot")
+    Assert.Equal("Control", history[1], "history should include utility decision state")
+    Assert.Equal("Cool", history[2], "history should include selected cooling state")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should complete cooling action")
+    Assert.True(Complete(f), "controller should report completion")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == ThermalOutcome.CompletedWindow, "normal thermal window should complete") }
+        err(e) => { Assert.True(false, "result should be available after completion") }
+    }
+}
+
+[Fact]
+fn ThermalUtilityBeatsOrderedWhenCoolingUrgencyDominates() -> Void {
+    let input = ThermalInputs {
+        FeedReady: true
+        SafetyTrip: false
+        HeatDemand: 55
+        CoolDemand: 96
+    }
+
+    let utilityFlow = ThermalPlantUtilityController(input)
+    let orderedFlow = ThermalPlantOrderedController(input)
+
+    Step(utilityFlow)
+    Step(orderedFlow)
+
+    Assert.Equal("Cool", Active(utilityFlow), "utility score should choose cooling under higher urgency")
+    Assert.Equal("Heat", Active(orderedFlow), "ordered guard order keeps heat ahead of cooling")
+}
+
+[Fact]
+fn ThermalUtilityDeterministicForIdenticalInputs() -> Void {
+    let input = ThermalInputs {
+        FeedReady: true
+        SafetyTrip: false
+        HeatDemand: 55
+        CoolDemand: 96
+    }
+
+    let first = ThermalPlantUtilityController(input)
+    let second = ThermalPlantUtilityController(input)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "first-step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "second-step completion should match")
+
+    let firstHistory = StateHistory(first)
+    let secondHistory = StateHistory(second)
+    Assert.Equal(firstHistory[2], secondHistory[2], "selected mode should match across deterministic runs")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.True(v1 == v2, "deterministic runs should return same outcome") }
+                err(e) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "first result should be available") }
+    }
+}
+
+[Fact]
+fn ThermalUtilityMinCommitPreventsPrematureModeFlip() -> Void {
+    let f = ThermalUtilityMinCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "small challenger lead should be blocked before min_commit horizon") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
+
+[Fact]
+fn ThermalUtilitySwitchesAfterCommitWithClearMargin() -> Void {
+    let f = ThermalUtilitySwitchAfterCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "clear margin after commit horizon should allow switch") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
+
+[Fact]
+fn ThermalSafetyTripPreemptsControl() -> Void {
+    let input = ThermalInputs {
+        FeedReady: true
+        SafetyTrip: true
+        HeatDemand: 55
+        CoolDemand: 96
+    }
+
+    let f = ThermalPlantUtilityController(input)
+
+    Step(f)
+    Assert.Equal("Fault", Active(f), "safety trip should preempt all normal control modes")
+
+    Step(f)
+    Assert.Equal("", Active(f), "fault state should complete on resume")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == ThermalOutcome.Tripped, "trip path should return Tripped") }
+        err(e) => { Assert.True(false, "result should be available after trip") }
+    }
+}

@@ -1,0 +1,169 @@
+package SquadUtilityProofM55
+
+record SquadInputs {
+    EnemyVisible: Bool
+    RetreatOrder: Bool
+    AmmoLow: Bool
+    CloseThreat: Int
+    FlankThreat: Int
+}
+
+enum SquadOutcome {
+    CompletedEngagement
+    ForcedRetreat
+}
+
+flow SquadUtilityController(input: SquadInputs) -> SquadOutcome {
+    state Patrol {
+        when {
+            case input.RetreatOrder -> goto Retreat
+            case input.EnemyVisible -> goto Assess
+            else -> suspend
+        }
+
+        goto Patrol
+    }
+
+    state Assess {
+        let decision = when policy {
+            hysteresis: 8
+            min_commit: 2
+        } {
+            case 4 when input.RetreatOrder score 120
+            case 3 when input.AmmoLow score 95
+            case 2 when input.FlankThreat > 0 score input.FlankThreat
+            case 1 when input.CloseThreat > 0 score input.CloseThreat
+            else 0
+        }
+
+        when {
+            case decision == 4 -> goto Retreat
+            case decision == 3 -> goto Reload
+            case decision == 2 -> goto EngageFlank
+            case decision == 1 -> goto EngageClose
+            else -> goto Hold
+        }
+
+        goto Hold
+    }
+
+    state EngageClose {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state EngageFlank {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Reload {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Hold {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Retreat {
+        suspend
+        return SquadOutcome.ForcedRetreat
+    }
+}
+
+flow SquadOrderedController(input: SquadInputs) -> SquadOutcome {
+    state Patrol {
+        when {
+            case input.RetreatOrder -> goto Retreat
+            case input.EnemyVisible -> goto Assess
+            else -> suspend
+        }
+
+        goto Patrol
+    }
+
+    state Assess {
+        when {
+            case input.RetreatOrder -> goto Retreat
+            case input.AmmoLow -> goto Reload
+            case input.CloseThreat > 0 -> goto EngageClose
+            case input.FlankThreat > 0 -> goto EngageFlank
+            else -> goto Hold
+        }
+
+        goto Hold
+    }
+
+    state EngageClose {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state EngageFlank {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Reload {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Hold {
+        suspend
+        return SquadOutcome.CompletedEngagement
+    }
+
+    state Retreat {
+        suspend
+        return SquadOutcome.ForcedRetreat
+    }
+}
+
+flow SquadUtilityMinCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 8
+                min_commit: 3
+            } {
+                case 1 when true score 60
+                case 2 when t > 0 score 65
+                else 0
+            }
+
+            if t == 1 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}
+
+flow SquadUtilitySwitchAfterCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 8
+                min_commit: 3
+            } {
+                case 1 when true score 60
+                case 2 when t > 0 score 72
+                else 0
+            }
+
+            if t == 3 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}

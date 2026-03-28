@@ -1,0 +1,124 @@
+package SquadUtilityProofM55
+
+[Fact]
+fn SquadUtilityProgressesAcrossStatesAndCompletes() -> Void {
+    let input = SquadInputs {
+        EnemyVisible: true
+        RetreatOrder: false
+        AmmoLow: false
+        CloseThreat: 55
+        FlankThreat: 90
+    }
+
+    let f = SquadUtilityController(input)
+
+    Step(f)
+    Assert.Equal("EngageFlank", Active(f), "first step should progress Patrol->Assess->EngageFlank")
+
+    let history = StateHistory(f)
+    Assert.Equal("Patrol", history[0], "history should include Patrol entry")
+    Assert.Equal("Assess", history[1], "history should include utility decision state")
+    Assert.Equal("EngageFlank", history[2], "history should include selected action state")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should resume selected action and complete")
+    Assert.True(Complete(f), "controller should report completion")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == SquadOutcome.CompletedEngagement, "engagement path should complete") }
+        err(e) => { Assert.True(false, "result should be available after completion") }
+    }
+}
+
+[Fact]
+fn SquadUtilityBeatsOrderedWhenFlankScoreDominates() -> Void {
+    let input = SquadInputs {
+        EnemyVisible: true
+        RetreatOrder: false
+        AmmoLow: false
+        CloseThreat: 55
+        FlankThreat: 90
+    }
+
+    let utilityFlow = SquadUtilityController(input)
+    let orderedFlow = SquadOrderedController(input)
+
+    Step(utilityFlow)
+    Step(orderedFlow)
+
+    Assert.Equal("EngageFlank", Active(utilityFlow), "utility scoring should choose higher flank threat")
+    Assert.Equal("EngageClose", Active(orderedFlow), "ordered-first guards stay biased to close threat")
+}
+
+[Fact]
+fn SquadUtilityTieBreakIsDeterministicBySourceOrder() -> Void {
+    let input = SquadInputs {
+        EnemyVisible: true
+        RetreatOrder: false
+        AmmoLow: false
+        CloseThreat: 70
+        FlankThreat: 70
+    }
+
+    let f = SquadUtilityController(input)
+    Step(f)
+    Assert.Equal("EngageFlank", Active(f), "equal scores should pick first source-order utility case")
+}
+
+[Fact]
+fn SquadUtilityDeterministicForIdenticalInputs() -> Void {
+    let input = SquadInputs {
+        EnemyVisible: true
+        RetreatOrder: false
+        AmmoLow: false
+        CloseThreat: 55
+        FlankThreat: 90
+    }
+
+    let first = SquadUtilityController(input)
+    let second = SquadUtilityController(input)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "first-step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "second-step completion should match")
+
+    let firstHistory = StateHistory(first)
+    let secondHistory = StateHistory(second)
+    Assert.Equal(firstHistory[2], secondHistory[2], "state histories should match at action selection")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.True(v1 == v2, "deterministic flows should return same outcome") }
+                err(e) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "first result should be available") }
+    }
+}
+
+[Fact]
+fn SquadUtilityMinCommitPreventsPrematureSwitch() -> Void {
+    let f = SquadUtilityMinCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "small challenger lead should be blocked before min_commit horizon") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
+
+[Fact]
+fn SquadUtilityCanSwitchAfterCommitAndClearMargin() -> Void {
+    let f = SquadUtilitySwitchAfterCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "clear margin after commit horizon should allow switch") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
