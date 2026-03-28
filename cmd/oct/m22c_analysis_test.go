@@ -110,7 +110,7 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 
 func TestM22cAnalysisUsesDirectArrayAssignment(t *testing.T) {
 	// M22cr proof note: this package now populates arrays with x[i]/y[i]/z[i] assignment.
-	analysisPath := filepath.Join("..", "..", "Libraries", "Analysis", "analysis.oct")
+	analysisPath := filepath.Join("..", "..", "Libraries", "Analysis", "Analysis.Core.oct")
 	contents, err := os.ReadFile(analysisPath)
 	if err != nil {
 		t.Fatalf("read analysis source: %v", err)
