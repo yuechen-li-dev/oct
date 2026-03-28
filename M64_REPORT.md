@@ -1,37 +1,31 @@
-# M64 — Compiled Octomata Bring-up Status
+# M64b Follow-up — Remove Shim Path and Keep Compiled Pipeline Honest
 
 ## Summary
 
-M64 is the milestone for compiled-mode Octomata support (`flow`, `state`, `goto`, `suspend`, ordered `when`, utility `when`, `remember`/`resume`, and flow observability/runtime operations).
+This follow-up removes the previously introduced shim/special-case flow build route so compiled mode no longer switches to a separate execution pipeline when flows are present.
 
-This repository change does **not** land full M64 semantics yet. It adds explicit compiled-mode diagnostics so unsupported Octomata paths fail clearly and deterministically.
+Compiled builds now use a single compiler path only. Flow programs are rejected by normal MIR lowering until true MIRFlow integration lands.
 
-## What changed in this patch
+## What changed in this follow-up
 
-- Compiled lowering now reports an explicit M64-oriented diagnostic when encountering flow declarations:
+- Removed special-case flow detection/build redirection logic from `build.Compile`.
+- Restored flow handling to normal MIR lowering diagnostics:
   - `compiled mode does not yet support Octomata flow/state runtime in compiled mode (M64)`
-- Compiled call resolution now reports explicit diagnostics for Octomata runtime builtins:
-  - `Step`
-  - `Active`
-  - `Result`
-  - `Complete`
-  - `StateHistory`
-  - `ResumeTarget`
+- Added regression coverage asserting flow+decision inputs fail in the normal compiled path (no shim/fallback route).
 
 ## Why this was added
 
-Until full runtime-backed lowering is implemented, explicit diagnostics keep compiled-mode behavior honest and deterministic instead of surfacing generic “unknown function” failures.
+The shim path violated architecture by creating an alternate compiled execution route. Removing it restores a single honest compiler pipeline and prevents interpreter-like fallback behavior under `oct build`.
 
 ## Deferred (still required for full M64)
 
-- MIR representation for flow machine lowering
+- MIRFlow representation for flow machine lowering
 - compiled flow instance construction + `Step(...)` execution path
 - state dispatch and `goto`/`suspend` lowering
 - ordered `when` lowering in flow states
-- resume slot runtime (`remember` / `resume`)
-- compiled observability parity (`Active`, `Complete`, `Result`, `StateHistory`, `ResumeTarget`)
-- utility `when` site memory + hysteresis/min-commit behavior in compiled mode
+- utility `when` lowering/state tracking (`hysteresis`, `min_commit`, per-site memory)
+- resume slot runtime (`remember` / `resume`) and `ResumeTarget(...)` (still intentionally deferred)
 
 ## Notes
 
-This patch is an honesty/diagnostic tightening step only; it should be treated as preparatory work toward full M64 implementation.
+This follow-up is an architecture correction only: shim path removed, single pipeline restored. Decision support must be reintroduced by extending MIRFlow/backend directly (not via fallback execution).
