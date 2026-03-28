@@ -29,7 +29,7 @@ fn Main() -> Int {
 
 ## What Oct Is Right Now
 
-### Compiled Mode Bring-up (M60)
+### Compiled Mode Bring-up (M60/M61)
 
 `oct build` now runs a real first-step compiled path for a narrow subset:
 
@@ -45,6 +45,12 @@ Current compiled subset is intentionally small:
 * arrays, records, enums
 * ordinary function calls across packages
 * direct builtins: `Len`, `Append`, `Print`
+* explicit fallible/error model:
+  * fallible signatures (`-> T ! Error`)
+  * `error("...")`
+  * `?` propagation
+  * `match ok/err`
+  * `!` unwrap (fatal on `err`)
 
 Compiled mode currently fails clearly (by design) for deferred features such as:
 
@@ -55,6 +61,7 @@ Compiled mode currently fails clearly (by design) for deferred features such as:
 * `.octagon`-specific runtime paths
 
 For bring-up inspection, set `OCT_MIR_DUMP=1` when running `oct build` to write a textual MIR dump next to the produced artifact.
+Fallibility is lowered as explicit result-value control flow in MIR/Go generation (not hidden exceptions).
 
 ### Language Core
 

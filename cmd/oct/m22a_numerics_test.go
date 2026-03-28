@@ -165,8 +165,8 @@ func TestM22aPackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStdout != "" {
 		t.Fatalf("expected empty build stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "compiled mode does not yet support match") {
-		t.Fatalf("expected unsupported match diagnostic, got %q", buildStderr)
+	if !strings.Contains(buildStderr, "compiled mode does not yet support switch expression") {
+		t.Fatalf("expected unsupported switch diagnostic, got %q", buildStderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
