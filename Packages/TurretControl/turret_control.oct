@@ -1,0 +1,66 @@
+package TurretControl
+
+record TurretInputs {
+    TargetVisible: Bool
+    TargetInRange: Bool
+    Overheated: Bool
+    CooldownReady: Bool
+    AmmoAvailable: Bool
+}
+
+enum TurretOutcome {
+    HoldPattern
+    Fired
+    SafeShutdown
+}
+
+flow TurretCycle(input: TurretInputs) -> TurretOutcome {
+    state Search {
+        if input.Overheated {
+            goto Recover
+        }
+
+        if input.TargetVisible {
+            goto Track
+        }
+
+        suspend
+        goto Search
+    }
+
+    state Track {
+        if input.Overheated {
+            goto Recover
+        }
+
+        if input.TargetVisible == false {
+            goto Search
+        }
+
+        if input.TargetInRange and input.AmmoAvailable {
+            goto Engage
+        }
+
+        suspend
+        goto Track
+    }
+
+    state Engage {
+        if input.Overheated {
+            goto Recover
+        }
+
+        suspend
+        return TurretOutcome.Fired
+    }
+
+    state Recover {
+        suspend
+
+        if input.CooldownReady {
+            goto Search
+        }
+
+        return TurretOutcome.SafeShutdown
+    }
+}
