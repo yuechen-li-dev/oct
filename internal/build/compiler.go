@@ -598,6 +598,33 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			return v, "Error", false, nil
 		}
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "WriteOctagon" {
+			args := make([]string, 0, len(e.Arguments))
+			for _, a := range e.Arguments {
+				v, _, _, err := c.lowerExpr(a)
+				if err != nil {
+					return "", "", false, err
+				}
+				args = append(args, v)
+			}
+			tmp := c.temp("Int")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: args, Builtin: true, RetType: "Int"})
+			return tmp, "Int", false, nil
+		}
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "LoadOctagon" {
+			args := make([]string, 0, len(e.Arguments))
+			for _, a := range e.Arguments {
+				v, _, _, err := c.lowerExpr(a)
+				if err != nil {
+					return "", "", false, err
+				}
+				args = append(args, v)
+			}
+			ret := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
+			tmp := c.temp(fallibleType(ret))
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "LoadOctagon", Args: args, Builtin: true, RetType: ret})
+			return tmp, ret, true, nil
+		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
 			return "", "", false, err
@@ -634,13 +661,17 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
 		return tmp, typeName + "[]", false, nil
 	case ast.FieldAccessExpr:
-		t, _, _, err := c.lowerExpr(e.Target)
+		t, targetType, _, err := c.lowerExpr(e.Target)
 		if err != nil {
 			return "", "", false, err
 		}
-		tmp := c.temp("Int")
+		fieldType := "Int"
+		if resolvedType, ok := c.lookupRecordFieldType(targetType, e.Field); ok {
+			fieldType = resolvedType
+		}
+		tmp := c.temp(fieldType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s.%s", t, e.Field)})
-		return tmp, "Int", false, nil
+		return tmp, fieldType, false, nil
 	case ast.IndexExpr:
 		target, targetType, _, err := c.lowerExpr(e.Target)
 		if err != nil {
@@ -693,6 +724,31 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	default:
 		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
+}
+
+func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, bool) {
+	pkgName := c.pkg.Name
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName = parts[0]
+		typeName = parts[1]
+	}
+	pkg, ok := c.program.Packages[pkgName]
+	if !ok {
+		return "", false
+	}
+	for _, record := range pkg.Records {
+		if record.Name != typeName {
+			continue
+		}
+		for _, field := range record.Fields {
+			if field.Name == fieldName {
+				return typeRefStringForPackage(pkgName, field.Type), true
+			}
+		}
+	}
+	return "", false
 }
 
 func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
@@ -841,12 +897,25 @@ func dumpMIR(m MIRModule) string {
 
 func emitGo(m MIRModule) (string, error) {
 	var b strings.Builder
-	b.WriteString("package main\n\n")
-	b.WriteString("import \"fmt\"\n\n")
+	usedBuiltins := map[string]bool{}
+	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
 	for _, fn := range m.Functions {
 		if fn.IsFallible {
 			resultTypes[fn.Return] = struct{}{}
+		}
+		for _, bb := range fn.Blocks {
+			for _, st := range bb.Statements {
+				call, ok := st.(MIRCall)
+				if !ok || !call.Builtin {
+					continue
+				}
+				usedBuiltins[call.Callee] = true
+				if call.Callee == "LoadOctagon" {
+					loadTypes[call.RetType] = struct{}{}
+					resultTypes[call.RetType] = struct{}{}
+				}
+			}
 		}
 		for _, local := range fn.Locals {
 			if isFallibleType(local.Type) {
@@ -854,6 +923,28 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
+	importSet := map[string]struct{}{"fmt": {}}
+	if usedBuiltins["WriteOctagon"] {
+		for _, pkg := range []string{"os", "reflect", "strconv", "strings"} {
+			importSet[pkg] = struct{}{}
+		}
+	}
+	if usedBuiltins["LoadOctagon"] {
+		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8"} {
+			importSet[pkg] = struct{}{}
+		}
+	}
+	imports := make([]string, 0, len(importSet))
+	for pkg := range importSet {
+		imports = append(imports, pkg)
+	}
+	sort.Strings(imports)
+	b.WriteString("package main\n\n")
+	b.WriteString("import (\n")
+	for _, name := range imports {
+		fmt.Fprintf(&b, "\t%q\n", name)
+	}
+	b.WriteString(")\n\n")
 	resultNames := make([]string, 0, len(resultTypes))
 	for t := range resultTypes {
 		resultNames = append(resultNames, t)
@@ -875,6 +966,59 @@ func emitGo(m MIRModule) (string, error) {
 			fmt.Fprintf(&b, "\t%s_%s %s_%s = %d\n", e.Name, v, e.Package, e.Name, i)
 		}
 		b.WriteString(")\n\n")
+	}
+	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
+		b.WriteString("type __octParsedKind int\n\n")
+		b.WriteString("const (\n")
+		b.WriteString("\t__octParsedInt __octParsedKind = iota\n\t__octParsedFloat\n\t__octParsedBool\n\t__octParsedString\n\t__octParsedArray\n\t__octParsedRecord\n\t__octParsedEnum\n)\n\n")
+		b.WriteString("type __octParsedValue struct {\n\tKind __octParsedKind\n\tInt int\n\tFloat float64\n\tBool bool\n\tText string\n\tArray []__octParsedValue\n\tRecordType string\n\tRecordFields map[string]__octParsedValue\n\tEnumType string\n\tEnumVariant string\n}\n\n")
+		b.WriteString("type __octRecordMeta struct {\n\tFullName string\n\tShortName string\n\tFields []string\n}\n\n")
+		b.WriteString("type __octEnumMeta struct {\n\tFullName string\n\tShortName string\n\tVariants []string\n}\n\n")
+		b.WriteString("var __octRecordMetaByGoType = map[string]__octRecordMeta{\n")
+		for _, r := range m.Records {
+			fmt.Fprintf(&b, "\t%q: {FullName: %q, ShortName: %q, Fields: []string{", "main."+r.Package+"_"+r.Name, r.Package+"."+r.Name, r.Name)
+			for i, f := range r.Fields {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%q", f.Name)
+			}
+			b.WriteString("}},\n")
+		}
+		b.WriteString("}\n\n")
+		b.WriteString("var __octEnumMetaByGoType = map[string]__octEnumMeta{\n")
+		for _, e := range m.Enums {
+			fmt.Fprintf(&b, "\t%q: {FullName: %q, ShortName: %q, Variants: []string{", "main."+e.Package+"_"+e.Name, e.Package+"."+e.Name, e.Name)
+			for i, v := range e.Variants {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%q", v)
+			}
+			b.WriteString("}},\n")
+		}
+		b.WriteString("}\n\n")
+		b.WriteString(__octSharedOctagonHelpers)
+		if usedBuiltins["WriteOctagon"] {
+			b.WriteString(__octWriteHelpers)
+		}
+		if usedBuiltins["LoadOctagon"] {
+			b.WriteString(__octLoadHelpers)
+			loadTypeNames := make([]string, 0, len(loadTypes))
+			for t := range loadTypes {
+				loadTypeNames = append(loadTypeNames, t)
+			}
+			sort.Strings(loadTypeNames)
+			for _, t := range loadTypeNames {
+				fmt.Fprintf(&b, "func __octLoadOctagon_%s(path string) %s {\n", goSafeName(t), goResultTypeName(t))
+				fmt.Fprintf(&b, "\tv, err := __octLoadOctagonTyped(path, reflect.TypeOf((*%s)(nil)).Elem(), %q)\n", goType(t), t)
+				b.WriteString("\tif err != nil {\n")
+				fmt.Fprintf(&b, "\t\treturn %s{Err: err.Error(), IsErr: true}\n", goResultTypeName(t))
+				b.WriteString("\t}\n")
+				fmt.Fprintf(&b, "\treturn %s{Value: v.(%s)}\n", goResultTypeName(t), goType(t))
+				b.WriteString("}\n\n")
+			}
+		}
 	}
 	for _, fn := range m.Functions {
 		fmt.Fprintf(&b, "func fn_%s_%s(", fn.Package, fn.Name)
@@ -941,6 +1085,416 @@ func emitGo(m MIRModule) (string, error) {
 	return b.String(), nil
 }
 
+const __octSharedOctagonHelpers = `
+func __octTypeKey(t reflect.Type) string {
+	if t.Name() == "" {
+		return t.String()
+	}
+	if t.PkgPath() == "" {
+		return t.Name()
+	}
+	return t.PkgPath() + "." + t.Name()
+}
+`
+
+const __octWriteHelpers = `
+func __octWriteOctagon(path string, value any) {
+	if !strings.HasSuffix(path, ".octagon") {
+		panic("WriteOctagon path must end with .octagon")
+	}
+	rendered, err := __octSerialize(reflect.ValueOf(value))
+	if err != nil {
+		panic(fmt.Sprintf("WriteOctagon cannot serialize value: %v", err))
+	}
+	if err := os.WriteFile(path, []byte(rendered+"\n"), 0o644); err != nil {
+		panic(fmt.Sprintf("WriteOctagon write %s: %v", path, err))
+	}
+}
+
+func __octSerialize(v reflect.Value) (string, error) {
+	if !v.IsValid() {
+		return "", fmt.Errorf("invalid value")
+	}
+	if v.Kind() == reflect.Interface {
+		return __octSerialize(v.Elem())
+	}
+	if meta, ok := __octEnumMetaByGoType[__octTypeKey(v.Type())]; ok {
+		idx := int(v.Int())
+		if idx < 0 || idx >= len(meta.Variants) {
+			return "", fmt.Errorf("enum %s variant index %d out of range", meta.ShortName, idx)
+		}
+		return meta.ShortName + "." + meta.Variants[idx], nil
+	}
+	switch v.Kind() {
+	case reflect.Int:
+		return strconv.FormatInt(v.Int(), 10), nil
+	case reflect.Float64:
+		return strconv.FormatFloat(v.Float(), 'g', -1, 64), nil
+	case reflect.Bool:
+		return strconv.FormatBool(v.Bool()), nil
+	case reflect.String:
+		return strconv.Quote(v.String()), nil
+	case reflect.Slice:
+		parts := make([]string, 0, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			part, err := __octSerialize(v.Index(i))
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, part)
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
+	case reflect.Struct:
+		meta, ok := __octRecordMetaByGoType[__octTypeKey(v.Type())]
+		if !ok {
+			return "", fmt.Errorf("record type %q is not representable in .octagon output", v.Type().String())
+		}
+		fields := make([]string, 0, len(meta.Fields))
+		for _, field := range meta.Fields {
+			value, err := __octSerialize(v.FieldByName(field))
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("%s: %s", field, value))
+		}
+		return fmt.Sprintf("%s { %s }", meta.ShortName, strings.Join(fields, " ")), nil
+	default:
+		return "", fmt.Errorf("value kind %s is not representable in .octagon output", v.Kind().String())
+	}
+}
+`
+
+const __octLoadHelpers = `
+type __octParser struct {
+	input string
+	pos int
+}
+
+func __octLoadOctagonTyped(path string, target reflect.Type, expectedType string) (any, error) {
+	if !strings.HasSuffix(path, ".octagon") {
+		return nil, errors.New("LoadOctagon path must end with .octagon")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("LoadOctagon %s: %v", path, err)
+	}
+	value, err := (__octParser{input: string(data)}).parse()
+	if err != nil {
+		return nil, fmt.Errorf("LoadOctagon %s: %v", path, err)
+	}
+	out, err := __octMaterialize(value, target, expectedType)
+	if err != nil {
+		return nil, fmt.Errorf("LoadOctagon %s: %v", path, err)
+	}
+	return out.Interface(), nil
+}
+
+func (p __octParser) parse() (__octParsedValue, error) {
+	p.skipWS()
+	v, err := p.parseValue()
+	if err != nil {
+		return __octParsedValue{}, err
+	}
+	p.skipWS()
+	if p.pos != len(p.input) {
+		return __octParsedValue{}, fmt.Errorf("expected end of file after top-level value")
+	}
+	return v, nil
+}
+
+func (p *__octParser) parseValue() (__octParsedValue, error) {
+	p.skipWS()
+	if p.pos >= len(p.input) {
+		return __octParsedValue{}, fmt.Errorf("expected expression")
+	}
+	switch p.input[p.pos] {
+	case '"':
+		s, err := p.parseString()
+		if err != nil {
+			return __octParsedValue{}, err
+		}
+		return __octParsedValue{Kind: __octParsedString, Text: s}, nil
+	case '[':
+		return p.parseArray()
+	}
+	r, _ := utf8.DecodeRuneInString(p.input[p.pos:])
+	if r == '-' || unicode.IsDigit(r) {
+		return p.parseNumber()
+	}
+	id, err := p.parseIdentifier()
+	if err != nil {
+		return __octParsedValue{}, err
+	}
+	switch id {
+	case "true":
+		return __octParsedValue{Kind: __octParsedBool, Bool: true}, nil
+	case "false":
+		return __octParsedValue{Kind: __octParsedBool, Bool: false}, nil
+	}
+	p.skipWS()
+	if p.pos < len(p.input) && p.input[p.pos] == '{' {
+		return p.parseRecord(id)
+	}
+	if dot := strings.LastIndex(id, "."); dot > 0 && dot < len(id)-1 {
+		return __octParsedValue{Kind: __octParsedEnum, EnumType: id[:dot], EnumVariant: id[dot+1:]}, nil
+	}
+	return __octParsedValue{}, fmt.Errorf("expected expression")
+}
+
+func (p *__octParser) parseArray() (__octParsedValue, error) {
+	p.pos++
+	items := []__octParsedValue{}
+	for {
+		p.skipWS()
+		if p.pos < len(p.input) && p.input[p.pos] == ']' {
+			p.pos++
+			return __octParsedValue{Kind: __octParsedArray, Array: items}, nil
+		}
+		v, err := p.parseValue()
+		if err != nil {
+			return __octParsedValue{}, err
+		}
+		items = append(items, v)
+		p.skipWS()
+		if p.pos < len(p.input) && p.input[p.pos] == ',' {
+			p.pos++
+			continue
+		}
+		if p.pos < len(p.input) && p.input[p.pos] == ']' {
+			p.pos++
+			return __octParsedValue{Kind: __octParsedArray, Array: items}, nil
+		}
+		return __octParsedValue{}, fmt.Errorf("expected ',' or ']'")
+	}
+}
+
+func (p *__octParser) parseRecord(name string) (__octParsedValue, error) {
+	p.pos++
+	fields := map[string]__octParsedValue{}
+	for {
+		p.skipWS()
+		if p.pos < len(p.input) && p.input[p.pos] == '}' {
+			p.pos++
+			return __octParsedValue{Kind: __octParsedRecord, RecordType: name, RecordFields: fields}, nil
+		}
+		field, err := p.parseIdentifier()
+		if err != nil {
+			return __octParsedValue{}, err
+		}
+		p.skipWS()
+		if p.pos >= len(p.input) || p.input[p.pos] != ':' {
+			return __octParsedValue{}, fmt.Errorf("expected ':'")
+		}
+		p.pos++
+		value, err := p.parseValue()
+		if err != nil {
+			return __octParsedValue{}, err
+		}
+		fields[field] = value
+	}
+}
+
+func (p *__octParser) parseNumber() (__octParsedValue, error) {
+	start := p.pos
+	if p.input[p.pos] == '-' {
+		p.pos++
+	}
+	dot := false
+	exp := false
+	for p.pos < len(p.input) {
+		ch := p.input[p.pos]
+		if ch >= '0' && ch <= '9' {
+			p.pos++
+			continue
+		}
+		if ch == '.' {
+			dot = true
+			p.pos++
+			continue
+		}
+		if ch == 'e' || ch == 'E' {
+			exp = true
+			p.pos++
+			if p.pos < len(p.input) && (p.input[p.pos] == '+' || p.input[p.pos] == '-') {
+				p.pos++
+			}
+			continue
+		}
+		break
+	}
+	num := p.input[start:p.pos]
+	if dot || exp {
+		v, err := strconv.ParseFloat(num, 64)
+		if err != nil {
+			return __octParsedValue{}, fmt.Errorf("invalid Float literal %q", num)
+		}
+		return __octParsedValue{Kind: __octParsedFloat, Float: v}, nil
+	}
+	v, err := strconv.Atoi(num)
+	if err != nil {
+		return __octParsedValue{}, fmt.Errorf("invalid Int literal %q", num)
+	}
+	return __octParsedValue{Kind: __octParsedInt, Int: v}, nil
+}
+
+func (p *__octParser) parseIdentifier() (string, error) {
+	p.skipWS()
+	start := p.pos
+	for p.pos < len(p.input) {
+		r, width := utf8.DecodeRuneInString(p.input[p.pos:])
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '.' {
+			p.pos += width
+			continue
+		}
+		break
+	}
+	if start == p.pos {
+		return "", fmt.Errorf("expected identifier")
+	}
+	return p.input[start:p.pos], nil
+}
+
+func (p *__octParser) parseString() (string, error) {
+	start := p.pos
+	p.pos++
+	escape := false
+	for p.pos < len(p.input) {
+		ch := p.input[p.pos]
+		if escape {
+			escape = false
+			p.pos++
+			continue
+		}
+		if ch == '\\' {
+			escape = true
+			p.pos++
+			continue
+		}
+		if ch == '"' {
+			p.pos++
+			return strconv.Unquote(p.input[start:p.pos])
+		}
+		p.pos++
+	}
+	return "", fmt.Errorf("unterminated string literal")
+}
+
+func (p *__octParser) skipWS() {
+	for p.pos < len(p.input) {
+		r, width := utf8.DecodeRuneInString(p.input[p.pos:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		p.pos += width
+	}
+}
+
+func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType string) (reflect.Value, error) {
+	if meta, ok := __octEnumMetaByGoType[__octTypeKey(target)]; ok {
+		if value.Kind != __octParsedEnum {
+			return reflect.Value{}, fmt.Errorf("expected %s, got non-enum value", expectedType)
+		}
+		if value.EnumType != meta.ShortName && value.EnumType != meta.FullName {
+			return reflect.Value{}, fmt.Errorf("expected enum %s, got %s", expectedType, value.EnumType)
+		}
+		for i, v := range meta.Variants {
+			if v == value.EnumVariant {
+				out := reflect.New(target).Elem()
+				out.SetInt(int64(i))
+				return out, nil
+			}
+		}
+		return reflect.Value{}, fmt.Errorf("enum %s has no variant %s", expectedType, value.EnumVariant)
+	}
+	switch target.Kind() {
+	case reflect.Int:
+		if value.Kind != __octParsedInt {
+			return reflect.Value{}, fmt.Errorf("expected %s, got non-int value", expectedType)
+		}
+		out := reflect.New(target).Elem()
+		out.SetInt(int64(value.Int))
+		return out, nil
+	case reflect.Float64:
+		if value.Kind != __octParsedFloat {
+			return reflect.Value{}, fmt.Errorf("expected %s, got non-float value", expectedType)
+		}
+		out := reflect.New(target).Elem()
+		out.SetFloat(value.Float)
+		return out, nil
+	case reflect.Bool:
+		if value.Kind != __octParsedBool {
+			return reflect.Value{}, fmt.Errorf("expected Bool, got non-bool value")
+		}
+		out := reflect.New(target).Elem()
+		out.SetBool(value.Bool)
+		return out, nil
+	case reflect.String:
+		if value.Kind != __octParsedString {
+			return reflect.Value{}, fmt.Errorf("expected String, got non-string value")
+		}
+		out := reflect.New(target).Elem()
+		out.SetString(value.Text)
+		return out, nil
+	case reflect.Slice:
+		if value.Kind != __octParsedArray {
+			return reflect.Value{}, fmt.Errorf("expected %s, got non-array value", expectedType)
+		}
+		out := reflect.MakeSlice(target, 0, len(value.Array))
+		for i, item := range value.Array {
+			element, err := __octMaterialize(item, target.Elem(), target.Elem().String())
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("array element %d mismatch: %w", i, err)
+			}
+			out = reflect.Append(out, element)
+		}
+		return out, nil
+	case reflect.Struct:
+		meta, ok := __octRecordMetaByGoType[__octTypeKey(target)]
+		if !ok {
+			return reflect.Value{}, fmt.Errorf("unsupported expected type %s", expectedType)
+		}
+		if value.Kind != __octParsedRecord {
+			return reflect.Value{}, fmt.Errorf("expected %s, got non-record value", expectedType)
+		}
+		if value.RecordType != meta.ShortName && value.RecordType != meta.FullName {
+			return reflect.Value{}, fmt.Errorf("expected record %s, got %s", expectedType, value.RecordType)
+		}
+		out := reflect.New(target).Elem()
+		for _, field := range meta.Fields {
+			fieldValue, ok := value.RecordFields[field]
+			if !ok {
+				return reflect.Value{}, fmt.Errorf("record %s missing field %s", expectedType, field)
+			}
+			materialized, err := __octMaterialize(fieldValue, out.FieldByName(field).Type(), out.FieldByName(field).Type().String())
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("record field %s mismatch: %w", field, err)
+			}
+			out.FieldByName(field).Set(materialized)
+		}
+		keys := make([]string, 0, len(value.RecordFields))
+		for k := range value.RecordFields {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			found := false
+			for _, field := range meta.Fields {
+				if k == field {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return reflect.Value{}, fmt.Errorf("record %s has unexpected field %s", expectedType, k)
+			}
+		}
+		return out, nil
+	default:
+		return reflect.Value{}, fmt.Errorf("unsupported expected type %s", expectedType)
+	}
+}
+`
+
 func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
@@ -962,6 +1516,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
+			case "WriteOctagon":
+				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
+			case "LoadOctagon":
+				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), st.Args[0]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
@@ -1018,9 +1576,15 @@ func goType(t string) string {
 }
 
 func goResultTypeName(valueType string) string {
-	s := strings.NewReplacer(".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "[]", "Slice").Replace(valueType)
-	s = strings.ReplaceAll(s, "__", "_")
-	return "octResult_" + s
+	return "octResult_" + goSafeName(valueType)
+}
+
+func goSafeName(valueType string) string {
+	s := strings.NewReplacer(".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "[]", "Slice", "<", "_", ">", "").Replace(valueType)
+	for strings.Contains(s, "__") {
+		s = strings.ReplaceAll(s, "__", "_")
+	}
+	return strings.Trim(s, "_")
 }
 
 func goReturnExpr(expr string) string {

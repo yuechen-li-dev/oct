@@ -1,12 +1,14 @@
 package build
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"oct/internal/octagon"
 	"oct/internal/project"
 	"oct/internal/typecheck"
 )
@@ -293,5 +295,200 @@ fn main() -> Int {
 	}
 	if !strings.Contains(string(out), "unwrap failed: bad input") {
 		t.Fatalf("expected unwrap failure message, got %q", string(out))
+	}
+}
+
+func TestCompileAndRunWriteOctagonSuccess(t *testing.T) {
+	root := t.TempDir()
+	outPath := filepath.Join(root, "compiled-write.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record Payload {
+    Name: String
+    Count: Int
+}
+
+fn main() -> Int {
+    let payload = Payload {
+        Name: "run"
+        Count: 3
+    }
+    WriteOctagon(%q, payload)
+    return 0
+}
+`, outPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if out, err := exec.Command(result.ArtifactPath).CombinedOutput(); err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	body, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "Payload { Name: \"run\" Count: 3 }" {
+		t.Fatalf("unexpected .octagon body: %q", string(body))
+	}
+	if _, err := octagon.Load(outPath); err != nil {
+		t.Fatalf("expected written .octagon to be loadable, got %v", err)
+	}
+}
+
+func TestCompileAndRunLoadOctagonSuccessAndFallibleIntegration(t *testing.T) {
+	root := t.TempDir()
+	inPath := filepath.Join(root, "input.octagon")
+	if err := os.WriteFile(inPath, []byte("Payload { Name: \"run\" Count: 7 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record Payload {
+    Name: String
+    Count: Int
+}
+
+fn LoadCount(path: String) -> Int ! Error {
+    let payload = LoadOctagon[Payload](path)?
+    return payload.Count
+}
+
+fn main() -> Int {
+    match LoadCount(%q) {
+        ok(v) => { return v }
+        err(e) => { return 0 }
+    }
+}
+`, inPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "7" {
+		t.Fatalf("expected 7, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunOctagonRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	artifactPath := filepath.Join(root, "roundtrip.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record Payload {
+    Name: String
+    Samples: Int[]
+}
+
+fn main() -> Int ! Error {
+    let payload = Payload {
+        Name: "trial"
+        Samples: [1, 2, 3]
+    }
+    WriteOctagon(%q, payload)
+    let loaded = LoadOctagon[Payload](%q)?
+    return loaded.Samples[2]
+}
+`, artifactPath, artifactPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "3" {
+		t.Fatalf("expected 3, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunLoadOctagonFailureReturnsErr(t *testing.T) {
+	root := t.TempDir()
+	inPath := filepath.Join(root, "bad.octagon")
+	if err := os.WriteFile(inPath, []byte("7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record Payload {
+    Name: String
+    Count: Int
+}
+
+fn main() -> Int {
+    match LoadOctagon[Payload](%q) {
+        ok(v) => { return 0 }
+        err(e) => { return 1 }
+    }
+}
+`, inPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected err-branch result 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestMIRDumpShowsExplicitOctagonRuntimeCalls(t *testing.T) {
+	root := t.TempDir()
+	artifactPath := filepath.Join(root, "roundtrip.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record Payload {
+    Count: Int
+}
+
+fn main() -> Int ! Error {
+    WriteOctagon(%q, Payload { Count: 1 })
+    let loaded = LoadOctagon[Payload](%q)?
+    return loaded.Count
+}
+`, artifactPath, artifactPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "call WriteOctagon(") {
+		t.Fatalf("expected WriteOctagon runtime call in MIR, got:\n%s", text)
+	}
+	if !strings.Contains(text, "call LoadOctagon(") {
+		t.Fatalf("expected LoadOctagon runtime call in MIR, got:\n%s", text)
 	}
 }
