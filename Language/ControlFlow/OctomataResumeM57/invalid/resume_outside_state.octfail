@@ -1,0 +1,8 @@
+expect error: "function Main: resume is only valid inside flow state bodies"
+
+package MainInvalid
+
+fn Main() -> Int {
+    resume
+    return 1
+}

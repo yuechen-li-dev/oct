@@ -539,6 +539,7 @@ func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
 		"flow Compute(x: Int) -> Int { state Start { let y = x + 1 if y > 0 { return y } suspend } } fn Main() -> Int { return 0 }",
 		"flow Guarded(input: Int) -> Int { state Start { when { case input > 1 -> goto Next case input == 1 -> return 1 else -> suspend } } state Next { return input } } fn Main() -> Int { return 0 }",
 		"flow Utility(flag: Bool) -> Int { state S { let x = when policy { hysteresis: 2 min_commit: 1 } { case 7 when flag score 100 else 3 } return x } } fn Main() -> Int { return 0 }",
+		"flow Remembered(flag: Bool) -> Int { state A { remember goto B } state B { if flag { resume } return 3 } } fn Main() -> Int { return 0 }",
 	}
 	for _, src := range validPrograms {
 		file := parseSource(t, src)
@@ -554,6 +555,8 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "flow Missing() -> Int { state S { goto T } } fn Main() -> Int { return 0 }", "flow Missing: goto target 'T' does not exist")
 	assertTypeErrorContains(t, "fn Main() -> Int { goto S return 0 }", "function Main: goto is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "fn Main() -> Int { suspend return 0 }", "function Main: suspend is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "fn Main() -> Int { remember return 0 }", "function Main: remember is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "fn Main() -> Int { resume return 0 }", "function Main: resume is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "flow BadReturn() -> Int { state S { return true } } fn Main() -> Int { return 0 }", "function BadReturn: function expects Int, but return is Bool")
 	assertTypeErrorContains(t, "fn Main() -> Int { when { case true -> return 1 else -> return 2 } }", "function Main: when is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "flow MissingElse(input: Bool) -> Int { state S { when { case input -> return 1 } } } fn Main() -> Int { return 0 }", "function MissingElse: when requires else branch")

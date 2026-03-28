@@ -179,6 +179,14 @@ type SuspendStmt struct{}
 
 func (SuspendStmt) stmtNode() {}
 
+type RememberStmt struct{}
+
+func (RememberStmt) stmtNode() {}
+
+type ResumeStmt struct{}
+
+func (ResumeStmt) stmtNode() {}
+
 type WhenStmt struct {
 	Cases []WhenCase
 	Else  WhenAction

@@ -1,0 +1,7 @@
+expect error: "function 'ResumeTarget' argument 1 expects FlowInstance<T>, got Int"
+
+package MainInvalid
+
+fn Main() -> String {
+    return ResumeTarget(1)
+}

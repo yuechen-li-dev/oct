@@ -758,6 +758,28 @@ func TestBuildFileParsesWhenInFlowState(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesRememberResumeInFlowState(t *testing.T) {
+	file := parseSource(t, "flow Patrol(input: Int) -> Int { state Search { remember goto Track } state Track { if input > 0 { resume } return input } }")
+	if len(file.Flows) != 1 {
+		t.Fatalf("expected one flow, got %d", len(file.Flows))
+	}
+	searchStatements := file.Flows[0].States[0].Body.Statements
+	if _, ok := searchStatements[0].(ast.RememberStmt); !ok {
+		t.Fatalf("expected remember statement in Search state, got %T", searchStatements[0])
+	}
+	if _, ok := searchStatements[1].(ast.GotoStmt); !ok {
+		t.Fatalf("expected goto statement in Search state, got %T", searchStatements[1])
+	}
+
+	trackIf, ok := file.Flows[0].States[1].Body.Statements[0].(ast.IfStmt)
+	if !ok {
+		t.Fatalf("expected if statement in Track state, got %T", file.Flows[0].States[1].Body.Statements[0])
+	}
+	if _, ok := trackIf.ThenBody.Statements[0].(ast.ResumeStmt); !ok {
+		t.Fatalf("expected resume statement in Track if branch, got %T", trackIf.ThenBody.Statements[0])
+	}
+}
+
 func TestBuildFileParsesUtilityWhenExpressionInState(t *testing.T) {
 	file := parseSource(t, "flow Patrol(threat: Bool, flank: Bool) -> Int { state Search { let next = when policy { hysteresis: 3 min_commit: 2 } { case 1 when threat score 100 case 2 when flank score 80 else 0 } return next } }")
 	letStmt, ok := file.Flows[0].States[0].Body.Statements[0].(ast.LetStmt)

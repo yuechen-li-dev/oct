@@ -641,6 +641,10 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseGotoStmt()
 	case lex.KeywordSuspend:
 		return p.parseSuspendStmt()
+	case lex.KeywordRemember:
+		return p.parseRememberStmt()
+	case lex.KeywordResume:
+		return p.parseResumeStmt()
 	case lex.KeywordWhen:
 		return p.parseWhenStmt()
 	default:
@@ -747,6 +751,16 @@ func (p *parser) parseGotoStmt() (ast.Stmt, error) {
 func (p *parser) parseSuspendStmt() (ast.Stmt, error) {
 	p.advance()
 	return ast.SuspendStmt{}, nil
+}
+
+func (p *parser) parseRememberStmt() (ast.Stmt, error) {
+	p.advance()
+	return ast.RememberStmt{}, nil
+}
+
+func (p *parser) parseResumeStmt() (ast.Stmt, error) {
+	p.advance()
+	return ast.ResumeStmt{}, nil
 }
 
 func (p *parser) parseLetStmt() (ast.Stmt, error) {
