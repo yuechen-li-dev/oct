@@ -45,6 +45,9 @@ Current compiled subset is intentionally small:
 * arrays, records, enums
 * ordinary function calls across packages
 * direct builtins: `Len`, `Append`, `Print`
+* runtime-backed `.octagon` data paths:
+  * `WriteOctagon(path, value)` for representable values
+  * `LoadOctagon[T](path)` as typed fallible load (`T ! Error`)
 * explicit fallible/error model:
   * fallible signatures (`-> T ! Error`)
   * `error("...")`
@@ -58,7 +61,7 @@ Compiled mode currently fails clearly (by design) for deferred features such as:
 * Octomata (`flow/state/...`)
 * utility `when`
 * `remember` / `resume`
-* `.octagon`-specific runtime paths
+* advanced `.octagon` features beyond the current representable typed subset
 
 For bring-up inspection, set `OCT_MIR_DUMP=1` when running `oct build` to write a textual MIR dump next to the produced artifact.
 Fallibility is lowered as explicit result-value control flow in MIR/Go generation (not hidden exceptions).
