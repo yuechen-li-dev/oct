@@ -79,6 +79,8 @@ fn Main() -> Int {
 * `[Benchmark]` enables explicit benchmark workloads via `oct bench`.
 * Artifact and benchmark functions are `fn() -> Void` and are not executed by `oct test`.
 * Benchmark execution currently runs once per function (no warmup/statistics yet).
+* `oct bench <path> --octagon-out <file.octagon>` optionally exports a single typed `.octagon` report containing benchmark case names and `DurationNs` measurements.
+* Benchmark `.octagon` export is intentionally narrow reporting only: no statistical analysis, no historical tracking, and not a full benchmarking framework.
 
 ### `.oct` vs `.octagon`
 

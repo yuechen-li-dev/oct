@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 
@@ -1218,12 +1217,8 @@ func (i interpreter) evalWriteOctagonBuiltinCallExpr(env *environment, pkgName s
 		return evalResult{hasError: true, errorVal: contentValue.errorVal}, nil
 	}
 
-	rendered, err := serializeOctagonValue(contentValue.value)
-	if err != nil {
-		return evalResult{}, fmt.Errorf("runtime error: WriteOctagon cannot serialize value: %w", err)
-	}
-	if err := os.WriteFile(pathValue.value.Text, []byte(rendered+"\n"), 0o644); err != nil {
-		return evalResult{}, fmt.Errorf("runtime error: WriteOctagon write %s: %w", pathValue.value.Text, err)
+	if err := WriteOctagon(pathValue.value.Text, contentValue.value); err != nil {
+		return evalResult{}, fmt.Errorf("runtime error: %w", err)
 	}
 	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
 }
