@@ -1,0 +1,22 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "SquadUtilityProofM55"
+        Version: "0.1.0"
+        Description: "M55 game-shaped Octomata utility proof with hysteresis/min_commit stability"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
