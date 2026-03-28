@@ -63,7 +63,7 @@ fn Main() -> Int {
 
 ### Built-ins and Runtime Utilities
 
-* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
 * `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
 * In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
 * `Sin` and `Cos` require dimensionless input.
@@ -87,6 +87,8 @@ fn Main() -> Int {
 * `.octagon` allows scalar literals (`Int`, `Float`, `Bool`, `String`), dimensioned numeric literals (for example `5m`, `9.81m/s^2`), arrays, record literals, enum values (`Enum.Variant`), and nested combinations of these forms.
 * `.octagon` rejects executable constructs: `package`, `import`, `fn`, `let`/`var`, control flow, function calls, mutation/assignment, and computed expressions such as `1 + 2`.
 * `.octagon` is not a manifest replacement and not a scripting/config language.
+* `.octagon` emission is explicit via `WriteOctagon(path, value)` (for example in `[Artifact] fn() -> Void` workflows).
+* `WriteOctagon` is write-only in v0: no `.octagon` import/load/deserialization surface and no general file I/O API.
 
 ---
 

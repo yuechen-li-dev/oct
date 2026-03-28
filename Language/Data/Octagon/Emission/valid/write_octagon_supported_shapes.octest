@@ -1,0 +1,22 @@
+package OctagonEmissionValid
+
+enum Mode {
+    Auto
+    Manual
+}
+
+record Payload {
+    Name: String
+    Enabled: Bool
+    Samples: Float<m/s^2>[]
+    Mode: Mode
+}
+
+fn Emit(path: String) -> Int {
+    return WriteOctagon(path, Payload {
+        Name: "calibration"
+        Enabled: true
+        Samples: [9.81m/s^2, 1.23m/s^2]
+        Mode: Mode.Auto
+    })
+}

@@ -1,0 +1,7 @@
+expect error: "function 'WriteOctagon' argument 2 expects .octagon-representable value, got Vector<Int>"
+
+package OctagonEmissionInvalid
+
+fn Main() -> Int {
+    return WriteOctagon("artifact.octagon", vector[1, 2, 3])
+}

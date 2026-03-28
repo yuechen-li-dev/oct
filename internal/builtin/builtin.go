@@ -1,15 +1,16 @@
 package builtin
 
 var names = map[string]struct{}{
-	"Len":         {},
-	"Append":      {},
-	"Abs":         {},
-	"Sqrt":        {},
-	"Sin":         {},
-	"Cos":         {},
-	"Print":       {},
-	"PlotLine":    {},
-	"PlotScatter": {},
+	"Len":          {},
+	"Append":       {},
+	"Abs":          {},
+	"Sqrt":         {},
+	"Sin":          {},
+	"Cos":          {},
+	"Print":        {},
+	"WriteOctagon": {},
+	"PlotLine":     {},
+	"PlotScatter":  {},
 }
 
 func IsName(name string) bool {
