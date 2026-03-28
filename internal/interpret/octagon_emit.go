@@ -2,10 +2,25 @@ package interpret
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+func WriteOctagon(path string, value Value) error {
+	if !strings.HasSuffix(path, ".octagon") {
+		return fmt.Errorf("WriteOctagon path must end with .octagon")
+	}
+	rendered, err := serializeOctagonValue(value)
+	if err != nil {
+		return fmt.Errorf("WriteOctagon cannot serialize value: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(rendered+"\n"), 0o644); err != nil {
+		return fmt.Errorf("WriteOctagon write %s: %w", path, err)
+	}
+	return nil
+}
 
 func serializeOctagonValue(value Value) (string, error) {
 	switch value.Kind {
