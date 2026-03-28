@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -670,21 +671,21 @@ fn Main() -> Int {
 }
 
 func TestBuildCommandHandlesM7Builtins(t *testing.T) {
-	t.Run("valid program builds", func(t *testing.T) {
+	t.Run("unsupported builtin in compiled mode fails deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m7_valid.oct", "fn Main() -> Float {\n    return Sqrt(4)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err != nil {
-			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
 		}
-		artifactPath := sourcePath + ".octbin"
-		if _, err := os.Stat(artifactPath); err != nil {
-			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
-			t.Fatalf("expected build success output, got %q", stdout)
+		want := "build failed: function Main.Main: unknown function 'Sqrt'"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if stderr != "" {
-			t.Fatalf("expected empty stderr, got %q", stderr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
 
@@ -708,21 +709,21 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 }
 
 func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
-	t.Run("valid program builds", func(t *testing.T) {
+	t.Run("unsupported while in compiled mode fails deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m12_valid_build.oct", "fn Main() -> Int {\n    while false {\n        return 1\n    }\n    return Print(1)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err != nil {
-			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
 		}
-		artifactPath := sourcePath + ".octbin"
-		if _, err := os.Stat(artifactPath); err != nil {
-			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
-			t.Fatalf("expected build success output, got %q", stdout)
+		want := "build failed: function Main.Main: compiled mode does not yet support while"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if stderr != "" {
-			t.Fatalf("expected empty stderr, got %q", stderr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
 
@@ -829,21 +830,21 @@ func TestRunCommandHandlesM10PlotBuiltins(t *testing.T) {
 }
 
 func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
-	t.Run("valid plotting program builds", func(t *testing.T) {
+	t.Run("unsupported plot builtin in compiled mode fails deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m10_valid_build.oct", "fn Main() -> Int {\n    return PlotLine([0.0], [1.0], \"plot.png\")\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err != nil {
-			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+		if err == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", stdout)
 		}
-		artifactPath := sourcePath + ".octbin"
-		if _, err := os.Stat(artifactPath); err != nil {
-			t.Fatalf("expected artifact %s: %v", artifactPath, err)
+		if stdout != "" {
+			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
-			t.Fatalf("expected build success output, got %q", stdout)
+		want := "build failed: function Main.Main: unknown function 'PlotLine'"
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if stderr != "" {
-			t.Fatalf("expected empty stderr, got %q", stderr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
 
@@ -875,13 +876,23 @@ func TestBuildCommandSucceedsAfterTypeCheck(t *testing.T) {
 	}
 
 	artifactPath := sourcePath + ".octbin"
-	artifact, err := os.ReadFile(artifactPath)
+	info, err := os.Stat(artifactPath)
 	if err != nil {
-		t.Fatalf("read artifact: %v", err)
+		t.Fatalf("expected artifact at %s: %v", artifactPath, err)
 	}
-
-	if string(artifact) != "oct m0 placeholder artifact\n" {
-		t.Fatalf("unexpected artifact body %q", artifact)
+	if info.Size() == 0 {
+		t.Fatalf("expected non-empty artifact at %s", artifactPath)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("expected executable artifact mode, got %v", info.Mode())
+	}
+	cmd := exec.Command(artifactPath)
+	runOut, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("expected built artifact to run successfully: %v; output=%q", runErr, string(runOut))
+	}
+	if string(runOut) != "0\n" {
+		t.Fatalf("expected artifact output %q, got %q", "0\\n", string(runOut))
 	}
 	if !strings.Contains(stdout, "build succeeded: "+artifactPath) {
 		t.Fatalf("expected build success output, got %q", stdout)
@@ -1209,14 +1220,17 @@ func TestM14ComparisonsRunAndBuild(t *testing.T) {
 		}
 
 		buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
-		if buildErr != nil {
-			t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", buildErr, buildStdout, buildStderr)
+		if buildErr == nil {
+			t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
 		}
-		if !strings.Contains(buildStdout, "build succeeded: "+sourcePath+".octbin") {
-			t.Fatalf("expected build success output, got %q", buildStdout)
+		if buildStdout != "" {
+			t.Fatalf("expected empty build stdout, got %q", buildStdout)
 		}
-		if buildStderr != "" {
-			t.Fatalf("expected empty build stderr, got %q", buildStderr)
+		if !strings.Contains(buildStderr, "build failed: function Main.Main: compiled mode does not yet support while") {
+			t.Fatalf("expected unsupported while diagnostic, got %q", buildStderr)
+		}
+		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
 
