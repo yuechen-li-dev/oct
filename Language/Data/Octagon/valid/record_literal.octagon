@@ -1,0 +1,5 @@
+SimulationConfig {
+    Name: "Cantilever"
+    Dt: 0.001s
+    Steps: 1000
+}
