@@ -41,8 +41,115 @@ type MIREnum struct {
 }
 
 type MIRFlow struct {
-	Package string
-	Decl    ast.FlowDecl
+	Package    string
+	Name       string
+	Parameters []MIRField
+	Return     string
+	EntryState string
+	States     []MIRFlowState
+}
+
+type MIRFlowState struct {
+	Name       string
+	Statements []MIRFlowStmt
+}
+
+type MIRFlowStmt interface{ mirFlowStmt() }
+
+type MIRFlowGoto struct{ Target string }
+
+func (MIRFlowGoto) mirFlowStmt() {}
+
+type MIRFlowSuspend struct{}
+
+func (MIRFlowSuspend) mirFlowStmt() {}
+
+type MIRFlowReturn struct {
+	Value MIRFlowExpr
+}
+
+func (MIRFlowReturn) mirFlowStmt() {}
+
+type MIRFlowIf struct {
+	Condition MIRFlowExpr
+	Then      []MIRFlowStmt
+	Else      []MIRFlowStmt
+}
+
+func (MIRFlowIf) mirFlowStmt() {}
+
+type MIRFlowWhen struct {
+	Cases []MIRFlowWhenCase
+	Else  MIRFlowWhenAction
+}
+
+func (MIRFlowWhen) mirFlowStmt() {}
+
+type MIRFlowWhenCase struct {
+	Condition MIRFlowExpr
+	Action    MIRFlowWhenAction
+}
+
+type MIRFlowWhenAction interface{ mirFlowWhenAction() }
+
+type MIRFlowWhenGoto struct{ Target string }
+
+func (MIRFlowWhenGoto) mirFlowWhenAction() {}
+
+type MIRFlowWhenSuspend struct{}
+
+func (MIRFlowWhenSuspend) mirFlowWhenAction() {}
+
+type MIRFlowWhenReturn struct {
+	Value MIRFlowExpr
+}
+
+func (MIRFlowWhenReturn) mirFlowWhenAction() {}
+
+type MIRFlowExpr interface{ mirFlowExpr() }
+
+type MIRFlowLiteralExpr struct {
+	Value string
+}
+
+func (MIRFlowLiteralExpr) mirFlowExpr() {}
+
+type MIRFlowIdentifierExpr struct {
+	Name string
+}
+
+func (MIRFlowIdentifierExpr) mirFlowExpr() {}
+
+type MIRFlowBinaryExpr struct {
+	Left     MIRFlowExpr
+	Operator string
+	Right    MIRFlowExpr
+}
+
+func (MIRFlowBinaryExpr) mirFlowExpr() {}
+
+type MIRFlowUnaryExpr struct {
+	Operator string
+	Operand  MIRFlowExpr
+}
+
+func (MIRFlowUnaryExpr) mirFlowExpr() {}
+
+type MIRFlowUtilityWhenExpr struct {
+	SiteID     int
+	ResultType string
+	Hysteresis MIRFlowExpr
+	MinCommit  MIRFlowExpr
+	Cases      []MIRFlowUtilityCase
+	Else       MIRFlowExpr
+}
+
+func (MIRFlowUtilityWhenExpr) mirFlowExpr() {}
+
+type MIRFlowUtilityCase struct {
+	Value     MIRFlowExpr
+	Condition MIRFlowExpr
+	Score     MIRFlowExpr
 }
 
 type MIRField struct {
@@ -229,7 +336,11 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: append([]string{}, e.Variants...)})
 		}
 		for _, flow := range pkg.Flows {
-			module.Flows = append(module.Flows, MIRFlow{Package: pkgName, Decl: flow})
+			mirFlow, err := lowerFlow(pkgName, flow, pkg)
+			if err != nil {
+				return MIRModule{}, fmt.Errorf("flow %s.%s: %w", pkgName, flow.Name, err)
+			}
+			module.Flows = append(module.Flows, mirFlow)
 		}
 		for _, fn := range pkg.Functions {
 			if fn.IsTestFile || fn.IsTheory || fn.IsFact || fn.IsArtifact || fn.IsBenchmark {
@@ -1024,13 +1135,239 @@ func parseFlowInstanceType(t string) (string, bool) {
 	return strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), true
 }
 
+func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
+	env := map[string]string{}
+	for _, p := range flow.Parameters {
+		env[p.Name] = typeRefStringForPackage(pkgName, p.Type)
+	}
+	out := MIRFlow{
+		Package:    pkgName,
+		Name:       flow.Name,
+		Return:     typeRefStringForPackage(pkgName, flow.ReturnType),
+		EntryState: flow.EntryState,
+	}
+	for _, p := range flow.Parameters {
+		out.Parameters = append(out.Parameters, MIRField{Name: p.Name, Type: typeRefStringForPackage(pkgName, p.Type)})
+	}
+	for _, st := range flow.States {
+		lowered, err := lowerFlowBlock(st.Body, env, pkg.Name)
+		if err != nil {
+			return MIRFlow{}, fmt.Errorf("state %s: %w", st.Name, err)
+		}
+		out.States = append(out.States, MIRFlowState{Name: st.Name, Statements: lowered})
+	}
+	return out, nil
+}
+
+func lowerFlowBlock(block ast.Block, env map[string]string, pkg string) ([]MIRFlowStmt, error) {
+	out := make([]MIRFlowStmt, 0, len(block.Statements))
+	for _, stmt := range block.Statements {
+		s, err := lowerFlowStmt(stmt, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string) (MIRFlowStmt, error) {
+	switch s := stmt.(type) {
+	case ast.GotoStmt:
+		return MIRFlowGoto{Target: s.Target}, nil
+	case ast.SuspendStmt:
+		return MIRFlowSuspend{}, nil
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return MIRFlowReturn{}, nil
+		}
+		v, err := lowerFlowExpr(s.Value, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowReturn{Value: v}, nil
+	case ast.IfStmt:
+		cond, err := lowerFlowExpr(s.Condition, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		thenBody, err := lowerFlowBlock(s.ThenBody, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		var elseBody []MIRFlowStmt
+		if s.ElseBody != nil {
+			elseBody, err = lowerFlowBlock(*s.ElseBody, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return MIRFlowIf{Condition: cond, Then: thenBody, Else: elseBody}, nil
+	case ast.WhenStmt:
+		cases := make([]MIRFlowWhenCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			cond, err := lowerFlowExpr(c.Condition, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+			action, err := lowerFlowWhenAction(c.Action, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, MIRFlowWhenCase{Condition: cond, Action: action})
+		}
+		elseAction, err := lowerFlowWhenAction(s.Else, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowWhen{Cases: cases, Else: elseAction}, nil
+	default:
+		return nil, unsupported(fmt.Sprintf("flow statement %T", stmt))
+	}
+}
+
+func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, pkg string) (MIRFlowWhenAction, error) {
+	switch a := action.(type) {
+	case ast.WhenGotoAction:
+		return MIRFlowWhenGoto{Target: a.Target}, nil
+	case ast.WhenSuspendAction:
+		return MIRFlowWhenSuspend{}, nil
+	case ast.WhenReturnAction:
+		v, err := lowerFlowExpr(a.Value, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowWhenReturn{Value: v}, nil
+	default:
+		return nil, unsupported(fmt.Sprintf("flow when action %T", action))
+	}
+}
+
+func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string) (MIRFlowExpr, error) {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		return MIRFlowLiteralExpr{Value: e.Value}, nil
+	case ast.FloatLiteral:
+		return MIRFlowLiteralExpr{Value: e.Value}, nil
+	case ast.BoolLiteral:
+		if e.Value {
+			return MIRFlowLiteralExpr{Value: "true"}, nil
+		}
+		return MIRFlowLiteralExpr{Value: "false"}, nil
+	case ast.StringLiteralExpr:
+		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%q", e.Value)}, nil
+	case ast.IdentifierExpr:
+		if _, ok := env[e.Name]; !ok {
+			return nil, fmt.Errorf("unknown identifier '%s'", e.Name)
+		}
+		return MIRFlowIdentifierExpr{Name: e.Name}, nil
+	case ast.BinaryExpr:
+		l, err := lowerFlowExpr(e.Left, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		r, err := lowerFlowExpr(e.Right, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowBinaryExpr{Left: l, Operator: e.Operator, Right: r}, nil
+	case ast.UnaryExpr:
+		v, err := lowerFlowExpr(e.Operand, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowUnaryExpr{Operator: e.Operator, Operand: v}, nil
+	case ast.UtilityWhenExpr:
+		resultType, err := inferFlowExprType(e.Else, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		h, err := lowerFlowExpr(e.Policy.Hysteresis, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		m, err := lowerFlowExpr(e.Policy.MinCommit, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		cases := make([]MIRFlowUtilityCase, 0, len(e.Cases))
+		for _, c := range e.Cases {
+			val, err := lowerFlowExpr(c.Value, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+			cond, err := lowerFlowExpr(c.Condition, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+			score, err := lowerFlowExpr(c.Score, env, pkg)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, MIRFlowUtilityCase{Value: val, Condition: cond, Score: score})
+		}
+		elseExpr, err := lowerFlowExpr(e.Else, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowUtilityWhenExpr{
+			SiteID:     e.SiteID,
+			ResultType: resultType,
+			Hysteresis: h,
+			MinCommit:  m,
+			Cases:      cases,
+			Else:       elseExpr,
+		}, nil
+	default:
+		return nil, unsupported(fmt.Sprintf("flow expression %T", expr))
+	}
+}
+
+func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string) (string, error) {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		return "Int", nil
+	case ast.FloatLiteral:
+		return "Float", nil
+	case ast.BoolLiteral:
+		return "Bool", nil
+	case ast.StringLiteralExpr:
+		return "String", nil
+	case ast.IdentifierExpr:
+		t, ok := env[e.Name]
+		if !ok {
+			return "", fmt.Errorf("unknown identifier '%s'", e.Name)
+		}
+		return t, nil
+	case ast.UnaryExpr:
+		if e.Operator == "not" {
+			return "Bool", nil
+		}
+		return inferFlowExprType(e.Operand, env, pkg)
+	case ast.BinaryExpr:
+		switch e.Operator {
+		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
+			return "Bool", nil
+		default:
+			return inferFlowExprType(e.Left, env, pkg)
+		}
+	case ast.UtilityWhenExpr:
+		return inferFlowExprType(e.Else, env, pkg)
+	default:
+		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
+	}
+}
+
 func dumpMIR(m MIRModule) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "module entry=%s\n", m.EntryPackage)
 	for _, flow := range m.Flows {
-		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Decl.Name, typeRefStringForPackage(flow.Package, flow.Decl.ReturnType))
-		for idx, state := range flow.Decl.States {
+		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Name, flow.Return)
+		for idx, state := range flow.States {
 			fmt.Fprintf(&b, "  state[%d] %s\n", idx, state.Name)
+			for _, stmt := range state.Statements {
+				fmt.Fprintf(&b, "    %s\n", dumpFlowStmt(stmt))
+			}
 		}
 	}
 	for _, fn := range m.Functions {
@@ -1078,14 +1415,72 @@ func dumpMIR(m MIRModule) string {
 	return b.String()
 }
 
+func dumpFlowStmt(stmt MIRFlowStmt) string {
+	switch s := stmt.(type) {
+	case MIRFlowGoto:
+		return "goto " + s.Target
+	case MIRFlowSuspend:
+		return "suspend"
+	case MIRFlowReturn:
+		if s.Value == nil {
+			return "return"
+		}
+		return "return " + dumpFlowExpr(s.Value)
+	case MIRFlowIf:
+		return fmt.Sprintf("if %s { ... }", dumpFlowExpr(s.Condition))
+	case MIRFlowWhen:
+		parts := make([]string, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			parts = append(parts, fmt.Sprintf("case %s -> %s", dumpFlowExpr(c.Condition), dumpFlowWhenAction(c.Action)))
+		}
+		return "when { " + strings.Join(parts, "; ") + "; else -> " + dumpFlowWhenAction(s.Else) + " }"
+	default:
+		return fmt.Sprintf("unsupported-flow-stmt(%T)", stmt)
+	}
+}
+
+func dumpFlowWhenAction(action MIRFlowWhenAction) string {
+	switch a := action.(type) {
+	case MIRFlowWhenGoto:
+		return "goto " + a.Target
+	case MIRFlowWhenSuspend:
+		return "suspend"
+	case MIRFlowWhenReturn:
+		return "return " + dumpFlowExpr(a.Value)
+	default:
+		return fmt.Sprintf("unsupported-flow-action(%T)", action)
+	}
+}
+
+func dumpFlowExpr(expr MIRFlowExpr) string {
+	switch e := expr.(type) {
+	case MIRFlowLiteralExpr:
+		return e.Value
+	case MIRFlowIdentifierExpr:
+		return e.Name
+	case MIRFlowBinaryExpr:
+		return fmt.Sprintf("(%s %s %s)", dumpFlowExpr(e.Left), e.Operator, dumpFlowExpr(e.Right))
+	case MIRFlowUnaryExpr:
+		return fmt.Sprintf("(%s%s)", e.Operator, dumpFlowExpr(e.Operand))
+	case MIRFlowUtilityWhenExpr:
+		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
+	default:
+		return fmt.Sprintf("unsupported-flow-expr(%T)", expr)
+	}
+}
+
 func emitGo(m MIRModule) (string, error) {
 	var b strings.Builder
 	usedBuiltins := map[string]bool{}
 	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
+	needsUtilityHelpers := false
 	for _, flow := range m.Flows {
-		flowResultTypes[typeRefStringForPackage(flow.Package, flow.Decl.ReturnType)] = struct{}{}
+		flowResultTypes[flow.Return] = struct{}{}
+		if flowHasUtilityWhen(flow) {
+			needsUtilityHelpers = true
+		}
 	}
 	for _, fn := range m.Functions {
 		if fn.IsFallible {
@@ -1118,6 +1513,9 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	importSet := map[string]struct{}{"fmt": {}}
+	if needsUtilityHelpers {
+		importSet["reflect"] = struct{}{}
+	}
 	if usedBuiltins["BatchMap"] {
 		for _, pkg := range []string{"runtime", "sync"} {
 			importSet[pkg] = struct{}{}
@@ -1188,6 +1586,9 @@ func emitGo(m MIRModule) (string, error) {
 		if err := emitGoFlow(&b, flow); err != nil {
 			return "", err
 		}
+	}
+	if needsUtilityHelpers {
+		b.WriteString(__octUtilityHelpers)
 	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
@@ -1777,32 +2178,158 @@ func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(
 }
 `
 
+const __octUtilityHelpers = `
+type __octUtilitySiteState struct {
+	HasCurrent bool
+	Current any
+	Score int
+	CommitAge int
+}
+
+type __octUtilCandidate[T any] struct {
+	Valid bool
+	Value T
+	Score int
+}
+
+func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
+	valid := make([]__octUtilCandidate[T], 0, len(candidates))
+	for _, c := range candidates {
+		if c.Valid {
+			valid = append(valid, c)
+		}
+	}
+	next := __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
+	if len(valid) > 0 {
+		next = valid[0]
+		for _, c := range valid[1:] {
+			if c.Score > next.Score {
+				next = c
+			}
+		}
+	}
+	site := sites[siteID]
+	if site.HasCurrent {
+		currentStillValid := false
+		for _, c := range valid {
+			if reflect.DeepEqual(c.Value, site.Current) {
+				currentStillValid = true
+				break
+			}
+		}
+		if currentStillValid {
+			commitActive := site.CommitAge < minCommit
+			hysteresisBlocks := next.Score <= site.Score+hysteresis
+			if commitActive || hysteresisBlocks {
+				next = __octUtilCandidate[T]{Valid: true, Value: site.Current.(T), Score: site.Score}
+			}
+		}
+	}
+	if !site.HasCurrent || !reflect.DeepEqual(site.Current, next.Value) {
+		sites[siteID] = __octUtilitySiteState{HasCurrent: true, Current: next.Value, Score: next.Score, CommitAge: 1}
+	} else {
+		site.Score = next.Score
+		site.CommitAge++
+		sites[siteID] = site
+	}
+	return next.Value
+}
+`
+
+func flowHasUtilityWhen(flow MIRFlow) bool {
+	for _, state := range flow.States {
+		for _, stmt := range state.Statements {
+			if flowStmtHasUtility(stmt) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func flowStmtHasUtility(stmt MIRFlowStmt) bool {
+	switch s := stmt.(type) {
+	case MIRFlowReturn:
+		return flowExprHasUtility(s.Value)
+	case MIRFlowIf:
+		if flowExprHasUtility(s.Condition) {
+			return true
+		}
+		for _, st := range s.Then {
+			if flowStmtHasUtility(st) {
+				return true
+			}
+		}
+		for _, st := range s.Else {
+			if flowStmtHasUtility(st) {
+				return true
+			}
+		}
+	case MIRFlowWhen:
+		for _, c := range s.Cases {
+			if flowExprHasUtility(c.Condition) || flowWhenActionHasUtility(c.Action) {
+				return true
+			}
+		}
+		return flowWhenActionHasUtility(s.Else)
+	}
+	return false
+}
+
+func flowWhenActionHasUtility(action MIRFlowWhenAction) bool {
+	switch a := action.(type) {
+	case MIRFlowWhenReturn:
+		return flowExprHasUtility(a.Value)
+	default:
+		return false
+	}
+}
+
+func flowExprHasUtility(expr MIRFlowExpr) bool {
+	switch e := expr.(type) {
+	case MIRFlowBinaryExpr:
+		return flowExprHasUtility(e.Left) || flowExprHasUtility(e.Right)
+	case MIRFlowUnaryExpr:
+		return flowExprHasUtility(e.Operand)
+	case MIRFlowUtilityWhenExpr:
+		return true
+	default:
+		return false
+	}
+}
+
 func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
-	structName := "__octFlow_" + flow.Package + "_" + flow.Decl.Name
-	resultType := typeRefStringForPackage(flow.Package, flow.Decl.ReturnType)
+	structName := "__octFlow_" + flow.Package + "_" + flow.Name
+	resultType := flow.Return
 	fmt.Fprintf(b, "type %s struct {\n", structName)
 	b.WriteString("\tstarted bool\n\tcompleted bool\n\tcurrentState int\n\tinstruction int\n")
 	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n\thistory []string\n", goFlowResultType(resultType))
-	for _, p := range flow.Decl.Parameters {
-		fmt.Fprintf(b, "\t%s %s\n", p.Name, goType(typeRefStringForPackage(flow.Package, p.Type)))
+	if flowHasUtilityWhen(flow) {
+		b.WriteString("\tutilitySites map[int]__octUtilitySiteState\n")
+	}
+	for _, p := range flow.Parameters {
+		fmt.Fprintf(b, "\t%s %s\n", p.Name, goType(p.Type))
 	}
 	b.WriteString("}\n\n")
-	fmt.Fprintf(b, "func fn_%s_%s(", flow.Package, flow.Decl.Name)
-	for i, p := range flow.Decl.Parameters {
+	fmt.Fprintf(b, "func fn_%s_%s(", flow.Package, flow.Name)
+	for i, p := range flow.Parameters {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		fmt.Fprintf(b, "%s %s", p.Name, goType(typeRefStringForPackage(flow.Package, p.Type)))
+		fmt.Fprintf(b, "%s %s", p.Name, goType(p.Type))
 	}
 	fmt.Fprintf(b, ") %s {\n", goType(flowInstanceTypeString(resultType)))
 	fmt.Fprintf(b, "\tf := &%s{}\n", structName)
-	for _, p := range flow.Decl.Parameters {
+	if flowHasUtilityWhen(flow) {
+		b.WriteString("\tf.utilitySites = map[int]__octUtilitySiteState{}\n")
+	}
+	for _, p := range flow.Parameters {
 		fmt.Fprintf(b, "\tf.%s = %s\n", p.Name, p.Name)
 	}
 	b.WriteString("\treturn f\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octActive() string {\n", structName)
 	b.WriteString("\tif !f.started || f.completed { return \"\" }\n\tswitch f.currentState {\n")
-	for idx, state := range flow.Decl.States {
+	for idx, state := range flow.States {
 		fmt.Fprintf(b, "\tcase %d: return %q\n", idx, state.Name)
 	}
 	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
@@ -1814,25 +2341,25 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	fmt.Fprintf(b, "func (f *%s) __octStep() {\n", structName)
 	b.WriteString("\tif f.completed { return }\n")
 	entryID := 0
-	for idx, st := range flow.Decl.States {
-		if st.Name == flow.Decl.EntryState {
+	for idx, st := range flow.States {
+		if st.Name == flow.EntryState {
 			entryID = idx
 			break
 		}
 	}
-	fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q) }\n", entryID, flow.Decl.EntryState)
+	fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q) }\n", entryID, flow.EntryState)
 	b.WriteString("\tfor {\n\t\tswitch f.currentState {\n")
 	stateIDs := map[string]int{}
-	for idx, state := range flow.Decl.States {
+	for idx, state := range flow.States {
 		stateIDs[state.Name] = idx
 	}
-	for idx, state := range flow.Decl.States {
+	for idx, state := range flow.States {
 		fmt.Fprintf(b, "\t\tcase %d:\n\t\t\tswitch f.instruction {\n", idx)
-		for stmtIdx, stmt := range state.Body.Statements {
+		for stmtIdx, stmt := range state.Statements {
 			fmt.Fprintf(b, "\t\t\tcase %d:\n", stmtIdx)
 			src, err := emitGoFlowStmt(stmt, flow.Package, stateIDs, resultType)
 			if err != nil {
-				return fmt.Errorf("flow %s.%s state %s: %w", flow.Package, flow.Decl.Name, state.Name, err)
+				return fmt.Errorf("flow %s.%s state %s: %w", flow.Package, flow.Name, state.Name, err)
 			}
 			for _, line := range strings.Split(src, "\n") {
 				if strings.TrimSpace(line) == "" {
@@ -1848,17 +2375,17 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	return nil
 }
 
-func emitGoFlowStmt(stmt ast.Stmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
 	switch s := stmt.(type) {
-	case ast.GotoStmt:
+	case MIRFlowGoto:
 		target, ok := stateIDs[s.Target]
 		if !ok {
 			return "", fmt.Errorf("unknown goto target %s", s.Target)
 		}
 		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
-	case ast.SuspendStmt:
+	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
-	case ast.ReturnStmt:
+	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
 				return "f.result = __octVoid{}\nf.completed = true\nf.hasResult = true\nf.currentState = -1\nreturn", nil
@@ -1870,18 +2397,18 @@ func emitGoFlowStmt(stmt ast.Stmt, pkg string, stateIDs map[string]int, resultTy
 			return "", err
 		}
 		return fmt.Sprintf("f.result = %s\nf.hasResult = true\nf.completed = true\nf.currentState = -1\nreturn", v), nil
-	case ast.IfStmt:
+	case MIRFlowIf:
 		cond, err := emitGoFlowExpr(s.Condition, pkg)
 		if err != nil {
 			return "", err
 		}
-		thenSrc, err := emitGoFlowBlock(s.ThenBody, pkg, stateIDs, resultType)
+		thenSrc, err := emitGoFlowBlock(s.Then, pkg, stateIDs, resultType)
 		if err != nil {
 			return "", err
 		}
 		out := "if " + cond + " {\n" + thenSrc + "\n}"
-		if s.ElseBody != nil {
-			elseSrc, err := emitGoFlowBlock(*s.ElseBody, pkg, stateIDs, resultType)
+		if len(s.Else) > 0 {
+			elseSrc, err := emitGoFlowBlock(s.Else, pkg, stateIDs, resultType)
 			if err != nil {
 				return "", err
 			}
@@ -1889,14 +2416,54 @@ func emitGoFlowStmt(stmt ast.Stmt, pkg string, stateIDs map[string]int, resultTy
 		}
 		out += "\nf.instruction++\ncontinue"
 		return out, nil
+	case MIRFlowWhen:
+		lines := []string{}
+		for _, c := range s.Cases {
+			cond, err := emitGoFlowExpr(c.Condition, pkg)
+			if err != nil {
+				return "", err
+			}
+			action, err := emitGoFlowWhenAction(c.Action, pkg, stateIDs, resultType)
+			if err != nil {
+				return "", err
+			}
+			lines = append(lines, fmt.Sprintf("if %s {\n%s\n}", cond, action))
+		}
+		elseAction, err := emitGoFlowWhenAction(s.Else, pkg, stateIDs, resultType)
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, elseAction)
+		return strings.Join(lines, "\n"), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow statement %T", stmt))
 	}
 }
 
-func emitGoFlowBlock(block ast.Block, pkg string, stateIDs map[string]int, resultType string) (string, error) {
-	parts := make([]string, 0, len(block.Statements))
-	for _, st := range block.Statements {
+func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	switch a := action.(type) {
+	case MIRFlowWhenGoto:
+		target, ok := stateIDs[a.Target]
+		if !ok {
+			return "", fmt.Errorf("unknown goto target %s", a.Target)
+		}
+		return fmt.Sprintf("f.currentState = %d\nf.instruction = 0\nf.history = append(f.history, %q)\ncontinue", target, a.Target), nil
+	case MIRFlowWhenSuspend:
+		return "f.instruction++\nreturn", nil
+	case MIRFlowWhenReturn:
+		v, err := emitGoFlowExpr(a.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("f.result = %s\nf.hasResult = true\nf.completed = true\nf.currentState = -1\nreturn", v), nil
+	default:
+		return "", unsupported(fmt.Sprintf("flow when action %T", action))
+	}
+}
+
+func emitGoFlowBlock(block []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	parts := make([]string, 0, len(block))
+	for _, st := range block {
 		src, err := emitGoFlowStmt(st, pkg, stateIDs, resultType)
 		if err != nil {
 			return "", err
@@ -1906,22 +2473,13 @@ func emitGoFlowBlock(block ast.Block, pkg string, stateIDs map[string]int, resul
 	return strings.Join(parts, "\n"), nil
 }
 
-func emitGoFlowExpr(expr ast.Expr, pkg string) (string, error) {
+func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	switch e := expr.(type) {
-	case ast.IntegerLiteral:
+	case MIRFlowLiteralExpr:
 		return e.Value, nil
-	case ast.FloatLiteral:
-		return e.Value, nil
-	case ast.BoolLiteral:
-		if e.Value {
-			return "true", nil
-		}
-		return "false", nil
-	case ast.StringLiteralExpr:
-		return fmt.Sprintf("%q", e.Value), nil
-	case ast.IdentifierExpr:
+	case MIRFlowIdentifierExpr:
 		return "f." + e.Name, nil
-	case ast.BinaryExpr:
+	case MIRFlowBinaryExpr:
 		l, err := emitGoFlowExpr(e.Left, pkg)
 		if err != nil {
 			return "", err
@@ -1938,7 +2496,7 @@ func emitGoFlowExpr(expr ast.Expr, pkg string) (string, error) {
 			op = "||"
 		}
 		return fmt.Sprintf("(%s %s %s)", l, op, r), nil
-	case ast.UnaryExpr:
+	case MIRFlowUnaryExpr:
 		v, err := emitGoFlowExpr(e.Operand, pkg)
 		if err != nil {
 			return "", err
@@ -1948,6 +2506,38 @@ func emitGoFlowExpr(expr ast.Expr, pkg string) (string, error) {
 			op = "!"
 		}
 		return fmt.Sprintf("(%s%s)", op, v), nil
+	case MIRFlowUtilityWhenExpr:
+		h, err := emitGoFlowExpr(e.Hysteresis, pkg)
+		if err != nil {
+			return "", err
+		}
+		m, err := emitGoFlowExpr(e.MinCommit, pkg)
+		if err != nil {
+			return "", err
+		}
+		elseExpr, err := emitGoFlowExpr(e.Else, pkg)
+		if err != nil {
+			return "", err
+		}
+		cases := make([]string, 0, len(e.Cases))
+		valueType := goType(e.ResultType)
+		for _, c := range e.Cases {
+			v, err := emitGoFlowExpr(c.Value, pkg)
+			if err != nil {
+				return "", err
+			}
+			cond, err := emitGoFlowExpr(c.Condition, pkg)
+			if err != nil {
+				return "", err
+			}
+			score, err := emitGoFlowExpr(c.Score, pkg)
+			if err != nil {
+				return "", err
+			}
+			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
+		}
+		return fmt.Sprintf("__octUtilSelect[%s](f.utilitySites, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
+			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}

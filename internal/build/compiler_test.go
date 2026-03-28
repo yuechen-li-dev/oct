@@ -758,12 +758,6 @@ func TestCompileFlowStillRejectsDeferredOctomataFeatures(t *testing.T) {
 		src  string
 	}{
 		{
-			name: "ordered-when",
-			src: `package Main
-flow F() -> Int { state S { when { case true -> return 1 else -> return 0 } } }
-fn main() -> Int { return 0 }`,
-		},
-		{
 			name: "remember",
 			src: `package Main
 flow F() -> Int { state A { remember goto B } state B { return 1 } }
@@ -826,14 +820,72 @@ fn main() -> Int {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Compile(mainPath)
-	if err == nil {
-		t.Fatal("expected compile to fail")
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
 	}
-	if !strings.Contains(err.Error(), "compiled mode does not yet support Octomata flow/state runtime in compiled mode (M64)") {
-		t.Fatalf("unexpected error: %v", err)
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
 	}
-	if strings.Contains(err.Error(), "go build generated program") {
-		t.Fatalf("expected normal lowering rejection, got shim-like build error: %v", err)
+	text := string(data)
+	if !strings.Contains(text, "when { case flag -> return 1; else -> return 0 }") {
+		t.Fatalf("expected lowered ordered when in MIR dump, got:\n%s", text)
+	}
+	if strings.Contains(text, "shim") {
+		t.Fatalf("MIR dump should not reference shim paths, got:\n%s", text)
+	}
+}
+
+func TestCompileFlowUtilityWhenUsesMIRAndRuntimeState(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+flow Machine(high: Bool, mid: Bool) -> Int {
+    state Start {
+        return when policy {
+            hysteresis: 8
+            min_commit: 2
+        } {
+            case 1 when high score 100
+            case 2 when mid score 95
+            else 3
+        }
+    }
+}
+
+fn main() -> Int {
+    let f = Machine(true, true)
+    Step(f)
+    match Result(f) {
+        ok(v) => { return v }
+        err(e) => { return 0 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "utility_when[site=") {
+		t.Fatalf("expected lowered utility when in MIR dump, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
 	}
 }
