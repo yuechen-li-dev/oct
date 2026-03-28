@@ -527,6 +527,7 @@ func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
 		"flow Idle() -> Void { state Start { suspend } } fn Main() -> Int { return 0 }",
 		"flow Patrol(input: Int) -> Int { state Search { if input > 0 { goto Track } suspend } state Track { if input == 0 { goto Search } return input } } fn Main() -> Int { return 0 }",
 		"flow Compute(x: Int) -> Int { state Start { let y = x + 1 if y > 0 { return y } suspend } } fn Main() -> Int { return 0 }",
+		"flow Guarded(input: Int) -> Int { state Start { when { case input > 1 -> goto Next case input == 1 -> return 1 else -> suspend } } state Next { return input } } fn Main() -> Int { return 0 }",
 	}
 	for _, src := range validPrograms {
 		file := parseSource(t, src)
@@ -543,4 +544,9 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { goto S return 0 }", "function Main: goto is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "fn Main() -> Int { suspend return 0 }", "function Main: suspend is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "flow BadReturn() -> Int { state S { return true } } fn Main() -> Int { return 0 }", "function BadReturn: function expects Int, but return is Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { when { case true -> return 1 else -> return 2 } }", "function Main: when is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "flow MissingElse(input: Bool) -> Int { state S { when { case input -> return 1 } } } fn Main() -> Int { return 0 }", "function MissingElse: when requires else branch")
+	assertTypeErrorContains(t, "flow BadCond(input: Int) -> Int { state S { when { case input -> return 1 else -> return 0 } } } fn Main() -> Int { return 0 }", "function BadCond: when case condition must be Bool, got Int")
+	assertTypeErrorContains(t, "flow BadGoto(input: Bool) -> Int { state S { when { case input -> goto Missing else -> return 0 } } } fn Main() -> Int { return 0 }", "flow BadGoto: goto target 'Missing' does not exist")
+	assertTypeErrorContains(t, "flow BadWhenReturn(input: Bool) -> Int { state S { when { case input -> return true else -> return 0 } } } fn Main() -> Int { return 0 }", "function BadWhenReturn: function expects Int, but return is Bool")
 }

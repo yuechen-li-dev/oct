@@ -1,0 +1,40 @@
+package MainValid
+
+record TurretInputs {
+    TargetVisible: Bool
+    LowBattery: Bool
+    Locked: Bool
+}
+
+enum TurretOutcome {
+    Hold
+    Fire
+    Recover
+}
+
+flow TurretCycle(input: TurretInputs) -> TurretOutcome {
+    state Search {
+        when {
+            case input.LowBattery -> goto RecoverState
+            case input.TargetVisible -> goto Track
+            else -> suspend
+        }
+    }
+
+    state Track {
+        when {
+            case input.LowBattery -> goto RecoverState
+            case input.Locked -> return TurretOutcome.Fire
+            else -> goto Search
+        }
+    }
+
+    state RecoverState {
+        return TurretOutcome.Recover
+    }
+}
+
+[Fact]
+fn GameShapedWhenCompiles() -> Void {
+    Assert.Equal(1, 1, "game-shaped controller can use when readability")
+}

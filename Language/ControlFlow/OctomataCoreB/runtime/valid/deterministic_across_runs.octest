@@ -1,0 +1,38 @@
+package MainValid
+
+flow Deterministic(input: Bool) -> Int {
+    state Start {
+        when {
+            case input -> goto Finish
+            else -> suspend
+        }
+    }
+
+    state Finish {
+        return 9
+    }
+}
+
+[Fact]
+fn DeterministicAcrossRepeatedRuns() -> Void {
+    let first = Deterministic(true)
+    let second = Deterministic(true)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "active state after first step should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "active state after second step should match")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.Equal(v1, v2, "final result should match across repeated runs") }
+                err(e2) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e1) => { Assert.True(false, "first result should be available") }
+    }
+}

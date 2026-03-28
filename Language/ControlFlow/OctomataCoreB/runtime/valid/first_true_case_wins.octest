@@ -1,0 +1,21 @@
+package MainValid
+
+flow Prioritized() -> Int {
+    state Start {
+        when {
+            case true -> return 1
+            case true -> return 2
+            else -> return 3
+        }
+    }
+}
+
+[Fact]
+fn FirstTrueCaseWins() -> Void {
+    let f = Prioritized()
+    Step(f)
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "first true case should win") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}

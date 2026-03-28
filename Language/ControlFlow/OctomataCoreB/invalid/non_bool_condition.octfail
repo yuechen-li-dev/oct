@@ -1,0 +1,16 @@
+expect error: "function BadCondition: when case condition must be Bool, got Int"
+
+package MainInvalid
+
+flow BadCondition(value: Int) -> Int {
+    state Start {
+        when {
+            case value -> return 1
+            else -> return 0
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

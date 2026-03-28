@@ -1,0 +1,15 @@
+package MainValid
+
+flow IdleUntilDone(done: Bool) -> Int {
+    state Start {
+        when {
+            case done -> return 1
+            else -> suspend
+        }
+    }
+}
+
+[Fact]
+fn ElseSuspendCompiles() -> Void {
+    Assert.Equal(1, 1, "when else suspend is accepted")
+}

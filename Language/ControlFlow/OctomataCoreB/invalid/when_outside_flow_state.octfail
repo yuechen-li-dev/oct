@@ -1,0 +1,10 @@
+expect error: "function Main: when is only valid inside flow state bodies"
+
+package MainInvalid
+
+fn Main() -> Int {
+    when {
+        case true -> return 1
+        else -> return 0
+    }
+}

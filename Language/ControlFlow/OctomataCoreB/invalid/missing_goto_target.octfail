@@ -1,0 +1,16 @@
+expect error: "flow MissingTarget: goto target 'Never' does not exist"
+
+package MainInvalid
+
+flow MissingTarget(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> goto Never
+            else -> return 0
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

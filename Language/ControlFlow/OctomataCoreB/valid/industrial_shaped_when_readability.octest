@@ -1,0 +1,36 @@
+package MainValid
+
+record TankInputs {
+    Fault: Bool
+    RequestFill: Bool
+    Full: Bool
+}
+
+enum TankOutcome {
+    Waiting
+    Filled
+    Faulted
+}
+
+flow TankCycle(input: TankInputs) -> TankOutcome {
+    state Idle {
+        when {
+            case input.Fault -> return TankOutcome.Faulted
+            case input.RequestFill -> goto Filling
+            else -> suspend
+        }
+    }
+
+    state Filling {
+        when {
+            case input.Fault -> return TankOutcome.Faulted
+            case input.Full -> return TankOutcome.Filled
+            else -> suspend
+        }
+    }
+}
+
+[Fact]
+fn IndustrialWhenCompiles() -> Void {
+    Assert.Equal(1, 1, "industrial controller can use when readability")
+}

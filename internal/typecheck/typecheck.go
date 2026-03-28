@@ -749,8 +749,58 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: suspend is only valid inside flow state bodies", ctx.name)
 		}
 		return false, nil
+	case ast.WhenStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: when is only valid inside flow state bodies", ctx.name)
+		}
+		if node.Else == nil {
+			return false, fmt.Errorf("function %s: when requires else branch", ctx.name)
+		}
+		caseReturns := make([]bool, 0, len(node.Cases))
+		for _, whenCase := range node.Cases {
+			conditionType, err := c.checkExpr(scope, whenCase.Condition, ctx)
+			if err != nil {
+				return false, fmt.Errorf("function %s: when case condition: %w", ctx.name, err)
+			}
+			if conditionType.Fallible {
+				return false, fmt.Errorf("function %s: when case condition: fallible expression must be handled explicitly", ctx.name)
+			}
+			if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+				return false, fmt.Errorf("function %s: when case condition must be Bool, got %s", ctx.name, conditionType.ValueType)
+			}
+			returned, err := c.checkWhenAction(scope, whenCase.Action, ctx)
+			if err != nil {
+				return false, err
+			}
+			caseReturns = append(caseReturns, returned)
+		}
+		elseReturned, err := c.checkWhenAction(scope, node.Else, ctx)
+		if err != nil {
+			return false, err
+		}
+		allReturned := elseReturned
+		for _, caseReturned := range caseReturns {
+			allReturned = allReturned && caseReturned
+		}
+		return allReturned, nil
 	default:
 		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
+	}
+}
+
+func (c checker) checkWhenAction(scope *scope, action ast.WhenAction, ctx functionContext) (bool, error) {
+	switch node := action.(type) {
+	case ast.WhenGotoAction:
+		if _, ok := ctx.states[node.Target]; !ok {
+			return false, fmt.Errorf("flow %s: goto target '%s' does not exist", ctx.name, node.Target)
+		}
+		return false, nil
+	case ast.WhenSuspendAction:
+		return false, nil
+	case ast.WhenReturnAction:
+		return c.checkStmt(scope, ast.ReturnStmt{Value: node.Value}, ctx)
+	default:
+		return false, fmt.Errorf("function %s: when branch action must be goto, suspend, or return", ctx.name)
 	}
 }
 
