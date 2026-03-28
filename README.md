@@ -74,10 +74,19 @@ fn Main() -> Int {
 
 * `.octest` is the native valid-program test format (`[Fact]`, `[Theory]`, `Assert`).
 * `.octfail` is the native expected-failure format for invalid contracts discovered by `oct test`.
+* `.octagon` is the native structured-data format (one top-level value, non-executable subset).
 * `[Artifact]` enables explicit artifact generation via `oct artifact`.
 * `[Benchmark]` enables explicit benchmark workloads via `oct bench`.
 * Artifact and benchmark functions are `fn() -> Void` and are not executed by `oct test`.
 * Benchmark execution currently runs once per function (no warmup/statistics yet).
+
+### `.oct` vs `.octagon`
+
+* Use `.oct` for executable/source concerns: packages, imports, declarations, tests, manifests, and language contracts.
+* Use `.octagon` for structured data only: exactly one top-level value.
+* `.octagon` allows scalar literals (`Int`, `Float`, `Bool`, `String`), dimensioned numeric literals (for example `5m`, `9.81m/s^2`), arrays, record literals, enum values (`Enum.Variant`), and nested combinations of these forms.
+* `.octagon` rejects executable constructs: `package`, `import`, `fn`, `let`/`var`, control flow, function calls, mutation/assignment, and computed expressions such as `1 + 2`.
+* `.octagon` is not a manifest replacement and not a scripting/config language.
 
 ---
 

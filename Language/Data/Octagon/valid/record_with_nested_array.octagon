@@ -1,0 +1,4 @@
+SimulationConfig {
+    Name: "Run A"
+    Samples: [0m, 0.1m, 0.2m]
+}

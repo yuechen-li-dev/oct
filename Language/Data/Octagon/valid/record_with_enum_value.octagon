@@ -1,0 +1,4 @@
+SimulationConfig {
+    Solver: SolverMode.Explicit
+    Name: "Run A"
+}
