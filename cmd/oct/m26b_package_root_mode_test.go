@@ -14,12 +14,12 @@ func TestM26bDirectPackageRootTestCommand(t *testing.T) {
 	}{
 		{
 			name:       "numerics package root",
-			packageDir: filepath.Join("..", "..", "Packages", "Numerics"),
+			packageDir: filepath.Join("..", "..", "Libraries", "Numerics"),
 			want:       "PASS Numerics.BisectionConvergesForSqrt2",
 		},
 		{
 			name:       "mechanics package root",
-			packageDir: filepath.Join("..", "..", "Packages", "Mechanics"),
+			packageDir: filepath.Join("..", "..", "Libraries", "Mechanics"),
 			want:       "PASS Mechanics.AddForceAndMagnitudePreserveUnits",
 		},
 	}
@@ -38,7 +38,7 @@ func TestM26bDirectPackageRootTestCommand(t *testing.T) {
 }
 
 func TestM26bDirectPackageRootBenchCommand(t *testing.T) {
-	stdout, stderr, err := executeCLI("bench", filepath.Join("..", "..", "Packages", "Signal"))
+	stdout, stderr, err := executeCLI("bench", filepath.Join("..", "..", "Libraries", "Signal"))
 	if err != nil {
 		t.Fatalf("oct bench failed: %v stderr=%q stdout=%q", err, stderr, stdout)
 	}

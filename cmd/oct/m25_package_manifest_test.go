@@ -72,11 +72,11 @@ func TestM25InvalidManifestShapeRejected(t *testing.T) {
 
 func TestM25ProofPackagesRemainRunnable(t *testing.T) {
 	testRoot := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Numerics"), filepath.Join(testRoot, "Numerics"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Numerics"), filepath.Join(testRoot, "Numerics"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(testRoot, "Main"))
 
 	benchRoot := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Signal"), filepath.Join(benchRoot, "Signal"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Signal"), filepath.Join(benchRoot, "Signal"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m24i", "valid", "Main"), filepath.Join(benchRoot, "Main"))
 
 	cases := []struct {

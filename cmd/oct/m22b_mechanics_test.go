@@ -83,14 +83,14 @@ func TestM22bBuildFailureDoesNotEmitArtifact(t *testing.T) {
 func setupM22bMechanicsFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Mechanics"), filepath.Join(root, "Mechanics"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Mechanics"), filepath.Join(root, "Mechanics"))
 	return root
 }
 
 func setupM22bFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Packages", "Mechanics"), filepath.Join(root, "Mechanics"))
+	copyDir(t, filepath.Join("..", "..", "Libraries", "Mechanics"), filepath.Join(root, "Mechanics"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m22b", "valid", "Main"), filepath.Join(root, "Main"))
 	return root
 }
