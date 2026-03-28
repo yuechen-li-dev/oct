@@ -1,0 +1,146 @@
+package CollectionIterationPostAppend
+
+fn Sum(xs: Int[]) -> Int {
+    var total = 0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn Max(xs: Float[]) -> Float {
+    var best = xs[0]
+    for i in 1..Len(xs) {
+        if xs[i] > best {
+            best = xs[i]
+        }
+    }
+    return best
+}
+
+fn CountPositive(xs: Int[]) -> Int {
+    var count = 0
+    for i in 0..Len(xs) {
+        if xs[i] > 0 {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn AllPositive(xs: Int[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] <= 0 {
+            return false
+        }
+    }
+    return true
+}
+
+fn AddIndex(xs: Int[]) -> Int[] {
+    var out = [xs[0] + 0]
+    for i in 1..Len(xs) {
+        out = Append(out, xs[i] + i)
+    }
+    return out
+}
+
+fn DiffAdjacent(xs: Float[]) -> Float[] {
+    var out = [xs[1] - xs[0]]
+    for i in 2..Len(xs) {
+        out = Append(out, xs[i] - xs[i - 1])
+    }
+    return out
+}
+
+fn FindFirstGreaterThan(xs: Int[], threshold: Int) -> Int {
+    for i in 0..Len(xs) {
+        if xs[i] > threshold {
+            return i
+        }
+    }
+    return 0 - 1
+}
+
+fn KeepPositive(xs: Int[]) -> Int[] {
+    var out = [xs[0]]
+    var first = true
+    for i in 0..Len(xs) {
+        if xs[i] > 0 {
+            if first {
+                out[0] = xs[i]
+                first = false
+            } else {
+                out = Append(out, xs[i])
+            }
+        }
+    }
+    return out
+}
+
+fn SquareAll(xs: Float[]) -> Float[] {
+    var out = [xs[0] * xs[0]]
+    for i in 1..Len(xs) {
+        out = Append(out, xs[i] * xs[i])
+    }
+    return out
+}
+
+fn KeepAbove(xs: Float[], t: Float) -> Float[] {
+    var out = [xs[0]]
+    var first = true
+    for i in 0..Len(xs) {
+        if xs[i] > t {
+            if first {
+                out[0] = xs[i]
+                first = false
+            } else {
+                out = Append(out, xs[i])
+            }
+        }
+    }
+    return out
+}
+
+
+[Fact]
+fn A_ValueOrientedTraversalPostAppend() -> Void {
+    Assert.Equal(10, Sum([1, 2, 3, 4]), "sum")
+    Assert.Near(8.0, Max([4.5, 8.0, 3.0, 2.0]), 0.0001, "max")
+    Assert.Equal(2, CountPositive([0 - 2, 1, 0, 4]), "count positive")
+    Assert.True(AllPositive([1, 2, 3, 4]), "all positive")
+}
+
+[Fact]
+fn B_IndexSensitiveTraversalPostAppend() -> Void {
+    let indexed = AddIndex([2, 2, 2, 2])
+    Assert.Equal(2, indexed[0], "add index 0")
+    Assert.Equal(5, indexed[3], "add index 3")
+
+    let diffs = DiffAdjacent([10.0, 13.0, 18.0, 20.0])
+    Assert.Near(3.0, diffs[0], 0.0001, "diff 0")
+    Assert.Near(5.0, diffs[1], 0.0001, "diff 1")
+    Assert.Near(2.0, diffs[2], 0.0001, "diff 2")
+
+    Assert.Equal(2, FindFirstGreaterThan([1, 4, 8, 3], 5), "first index above threshold")
+    Assert.Equal(0 - 1, FindFirstGreaterThan([1, 2, 3, 4], 10), "not found")
+}
+
+[Fact]
+fn C_FilterBuildPostAppend() -> Void {
+    let keptInts = KeepPositive([0 - 3, 1, 0, 4])
+    Assert.Equal(2, Len(keptInts), "kept ints count")
+    Assert.Equal(1, keptInts[0], "kept ints first")
+    Assert.Equal(4, keptInts[1], "kept ints second")
+
+    let squares = SquareAll([1.5, 2.0, 0.0, 3.0])
+    Assert.Equal(4, Len(squares), "square count")
+    Assert.Near(2.25, squares[0], 0.0001, "square first")
+    Assert.Near(9.0, squares[3], 0.0001, "square last")
+
+    let keptFloats = KeepAbove([1.0, 3.5, 2.5, 9.0], 3.0)
+    Assert.Equal(2, Len(keptFloats), "kept floats count")
+    Assert.Near(3.5, keptFloats[0], 0.0001, "kept float first")
+    Assert.Near(9.0, keptFloats[1], 0.0001, "kept float second")
+}
+
