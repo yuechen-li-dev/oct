@@ -351,6 +351,14 @@ type IfExpr struct {
 
 func (IfExpr) exprNode() {}
 
+type BatchExpr struct {
+	Input    Expr
+	ItemName string
+	Body     Block
+}
+
+func (BatchExpr) exprNode() {}
+
 type RecordLiteralExpr struct {
 	TypeName string
 	Fields   []RecordLiteralField

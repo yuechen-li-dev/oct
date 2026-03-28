@@ -1,0 +1,9 @@
+expect error: "batch body must end with 'return <expr>'"
+
+package Main
+
+fn Main() -> Int[] {
+    return batch [1, 2, 3] as item {
+        let x = item + 1
+    }
+}

@@ -1,0 +1,12 @@
+expect error: "batch body must have exactly one return statement at the end"
+
+package Main
+
+fn Main() -> Int[] {
+    return batch [1, 2, 3] as item {
+        if item > 1 {
+            return item
+        }
+        return item + 1
+    }
+}

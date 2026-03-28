@@ -108,6 +108,35 @@ fn Main() -> Int {
 * `while` is used for state-driven looping (convergence, retry, sentinel patterns).
 * Style: prefer `for` for counted/indexed iteration; use `while` when control is state-driven.
 
+## Structured Batch/Map CPU Parallelism (M50)
+
+M50 adds a narrow, first-step concurrency construct for independent CPU workloads:
+
+```oct
+results = batch inputs as item {
+    return Transform(item)
+}
+```
+
+Semantics are intentionally strict and explicit:
+
+* `batch` is an expression (`arrays in -> arrays out`).
+* input expression is evaluated once.
+* each item runs in an isolated per-item scope.
+* body must end with `return <expr>` (one result per input item).
+* output order is preserved exactly (`output[i]` comes from `input[i]`).
+* leaving the expression implies an implicit join.
+* if any item fails, the whole batch expression fails (no partial output value is produced).
+
+M50 does **not** add:
+
+* channels
+* tasks/futures
+* `async/await`
+* shared mutable parallelism
+* partial result streaming
+* scheduler tuning APIs
+
 ---
 
 ## Octomata Core A (M41a Static Surface)

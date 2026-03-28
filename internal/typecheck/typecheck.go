@@ -1060,9 +1060,94 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return c.checkSwitchExpr(scope, node, ctx)
 	case ast.IfExpr:
 		return c.checkIfExpr(scope, node, ctx)
+	case ast.BatchExpr:
+		return c.checkBatchExpr(scope, node, ctx)
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
+}
+
+func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionContext) (ExprType, error) {
+	inputType, err := c.checkExpr(scope, expr.Input, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("batch input: %w", err)
+	}
+	if inputType.Fallible {
+		return ExprType{}, fmt.Errorf("batch input: fallible expression must be handled explicitly")
+	}
+	if !inputType.ValueType.IsArray {
+		return ExprType{}, fmt.Errorf("batch input must be an array, got %s", inputType.ValueType)
+	}
+
+	if len(expr.Body.Statements) == 0 {
+		return ExprType{}, fmt.Errorf("batch body must end with 'return <expr>'")
+	}
+	for idx, statement := range expr.Body.Statements[:len(expr.Body.Statements)-1] {
+		if containsReturnStmt(statement) {
+			return ExprType{}, fmt.Errorf("batch body must have exactly one return statement at the end (found early return at statement %d)", idx+1)
+		}
+	}
+
+	returnStmt, ok := expr.Body.Statements[len(expr.Body.Statements)-1].(ast.ReturnStmt)
+	if !ok || returnStmt.Value == nil {
+		return ExprType{}, fmt.Errorf("batch body must end with 'return <expr>'")
+	}
+
+	itemType := inputType.ValueType
+	itemType.IsArray = false
+	batchScope := newScope(scope)
+	batchScope.define(expr.ItemName, itemType, false)
+
+	bodyStatements := expr.Body.Statements[:len(expr.Body.Statements)-1]
+	for _, statement := range bodyStatements {
+		if _, err := c.checkStmt(batchScope, statement, ctx); err != nil {
+			return ExprType{}, err
+		}
+	}
+
+	resultType, err := c.checkExpr(batchScope, returnStmt.Value, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("batch return: %w", err)
+	}
+	if resultType.Fallible {
+		return ExprType{}, fmt.Errorf("batch return: return value must not be fallible; handle it with '?', '!', or match")
+	}
+	if resultType.ValueType.Base == BaseTypeVoid {
+		return ExprType{}, fmt.Errorf("batch return: Void result cannot be used as a value")
+	}
+
+	outputType := resultType.ValueType
+	outputType.IsArray = true
+	return ExprType{ValueType: outputType}, nil
+}
+
+func containsReturnStmt(stmt ast.Stmt) bool {
+	switch node := stmt.(type) {
+	case ast.ReturnStmt:
+		return true
+	case ast.IfStmt:
+		if containsReturnInBlock(node.ThenBody) {
+			return true
+		}
+		return node.ElseBody != nil && containsReturnInBlock(*node.ElseBody)
+	case ast.ForStmt:
+		return containsReturnInBlock(node.Body)
+	case ast.WhileStmt:
+		return containsReturnInBlock(node.Body)
+	case ast.MatchStmt:
+		return containsReturnInBlock(node.OkBody) || containsReturnInBlock(node.ErrBody)
+	default:
+		return false
+	}
+}
+
+func containsReturnInBlock(block ast.Block) bool {
+	for _, statement := range block.Statements {
+		if containsReturnStmt(statement) {
+			return true
+		}
+	}
+	return false
 }
 
 func staticIntegerValue(expr ast.Expr) (int64, bool) {

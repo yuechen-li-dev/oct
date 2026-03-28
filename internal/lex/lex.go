@@ -25,6 +25,7 @@ const (
 	KeywordReturn  TokenKind = "KeywordReturn"
 	KeywordFor     TokenKind = "KeywordFor"
 	KeywordIn      TokenKind = "KeywordIn"
+	KeywordAs      TokenKind = "KeywordAs"
 	KeywordStep    TokenKind = "KeywordStep"
 	KeywordTrue    TokenKind = "KeywordTrue"
 	KeywordFalse   TokenKind = "KeywordFalse"
@@ -38,6 +39,7 @@ const (
 	KeywordSuspend TokenKind = "KeywordSuspend"
 	KeywordWhen    TokenKind = "KeywordWhen"
 	KeywordSwitch  TokenKind = "KeywordSwitch"
+	KeywordBatch   TokenKind = "KeywordBatch"
 	KeywordCase    TokenKind = "KeywordCase"
 	KeywordAnd     TokenKind = "KeywordAnd"
 	KeywordOr      TokenKind = "KeywordOr"
@@ -392,6 +394,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordFor
 	case "in":
 		return KeywordIn
+	case "as":
+		return KeywordAs
 	case "step":
 		return KeywordStep
 	case "true":
@@ -418,6 +422,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordWhen
 	case "switch":
 		return KeywordSwitch
+	case "batch":
+		return KeywordBatch
 	case "case":
 		return KeywordCase
 	case "and":
