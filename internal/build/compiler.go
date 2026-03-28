@@ -223,7 +223,7 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: append([]string{}, e.Variants...)})
 		}
 		if len(pkg.Flows) > 0 {
-			return MIRModule{}, unsupported("flow")
+			return MIRModule{}, unsupported("Octomata flow/state runtime in compiled mode (M64)")
 		}
 		for _, fn := range pkg.Functions {
 			if fn.IsTestFile || fn.IsTheory || fn.IsFact || fn.IsArtifact || fn.IsBenchmark {
@@ -904,6 +904,10 @@ func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
+		switch x.Name {
+		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget":
+			return "", "", false, false, unsupported("Octomata flow runtime builtin " + x.Name)
+		}
 		if x.Name == "Len" {
 			return "Len", "Int", true, false, nil
 		}
