@@ -1,0 +1,128 @@
+package SquadTacticsCoreB
+
+[Fact]
+fn SquadCompletesAttackPathAcrossMultipleStates() -> Void {
+    let script = TacticsInputs {
+        EnemyVisible: true
+        EnemyInRange: true
+        CriticalDamage: false
+        AmmoReady: true
+        CoverAvailable: true
+        RegroupOrder: false
+    }
+
+    let f = SquadCycle(script)
+
+    Step(f)
+    Assert.Equal("Attack", Active(f), "first step should move through Idle and Alert into Attack")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should resume Attack and complete")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == TacticsOutcome.TargetNeutralized, "attack path should return TargetNeutralized") }
+        err(e) => { Assert.True(false, "Result should be available after completion") }
+    }
+}
+
+[Fact]
+fn SquadWhenUsesElseFallbackToHoldPosition() -> Void {
+    let script = TacticsInputs {
+        EnemyVisible: false
+        EnemyInRange: false
+        CriticalDamage: false
+        AmmoReady: true
+        CoverAvailable: false
+        RegroupOrder: false
+    }
+
+    let f = SquadCycle(script)
+
+    Step(f)
+    Assert.Equal("Idle", Active(f), "Idle else branch should suspend and keep controller in Idle")
+
+    Step(f)
+    Assert.Equal("Idle", Active(f), "repeated steps with same input should stay in Idle")
+
+    var sawExpectedIncompleteError = false
+    match Result(f) {
+        ok(value) => { Assert.True(false, "Result should be unavailable for intentionally long-running hold") }
+        err(e) => { sawExpectedIncompleteError = true }
+    }
+    Assert.True(sawExpectedIncompleteError, "long-running hold state should keep Result unavailable")
+}
+
+[Fact]
+fn SquadWhenFirstTrueCaseWinsInAlertOrdering() -> Void {
+    let script = TacticsInputs {
+        EnemyVisible: true
+        EnemyInRange: true
+        CriticalDamage: false
+        AmmoReady: true
+        CoverAvailable: true
+        RegroupOrder: false
+    }
+
+    let f = SquadCycle(script)
+
+    Step(f)
+    Assert.Equal("Attack", Active(f), "Alert should choose EnemyInRange branch before CoverAvailable branch")
+}
+
+[Fact]
+fn SquadDeterministicForIdenticalInputs() -> Void {
+    let script = TacticsInputs {
+        EnemyVisible: true
+        EnemyInRange: true
+        CriticalDamage: false
+        AmmoReady: true
+        CoverAvailable: true
+        RegroupOrder: false
+    }
+
+    let first = SquadCycle(script)
+    let second = SquadCycle(script)
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "first step active states should match")
+
+    Step(first)
+    Step(second)
+    Assert.Equal(Active(first), Active(second), "second step active states should match")
+
+    match Result(first) {
+        ok(v1) => {
+            match Result(second) {
+                ok(v2) => { Assert.True(v1 == v2, "results should match for identical scripts") }
+                err(e) => { Assert.True(false, "second result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "first result should be available") }
+    }
+}
+
+[Fact]
+fn SquadSafetyRecoveryPathCompletesWithFallback() -> Void {
+    let script = TacticsInputs {
+        EnemyVisible: true
+        EnemyInRange: false
+        CriticalDamage: true
+        AmmoReady: true
+        CoverAvailable: true
+        RegroupOrder: false
+    }
+
+    let f = SquadCycle(script)
+
+    Step(f)
+    Assert.Equal("Recover", Active(f), "critical damage should move immediately into Recover")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should complete recovery fallback")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == TacticsOutcome.ForcedFallback, "recovery without regroup should return ForcedFallback") }
+        err(e) => { Assert.True(false, "Result should be available after fallback completion") }
+    }
+}
