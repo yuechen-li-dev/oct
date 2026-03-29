@@ -1,0 +1,23 @@
+package RF
+
+fn BoltzmannConstantWattsPerHzKelvin() -> Float<kg*m^2/s^3> {
+    return 0.00000000000000000000001380649kg*m^2/s^3
+}
+
+fn ThermalNoisePower(bandwidthHz: Float, temperatureKelvin: Float) -> Float<kg*m^2/s^3> {
+    if bandwidthHz <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if temperatureKelvin <= 0 {
+        return 0kg*m^2/s^3
+    }
+
+    return BoltzmannConstantWattsPerHzKelvin() * temperatureKelvin * bandwidthHz
+}
+
+fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
+    if noiseFigureLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return ThermalNoisePower(bandwidthHz, temperatureKelvin) * noiseFigureLinear
+}

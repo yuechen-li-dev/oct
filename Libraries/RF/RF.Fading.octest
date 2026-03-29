@@ -1,0 +1,57 @@
+package RF
+
+[Fact]
+fn NoisePowerForTargetSNRScalesAsExpected() -> Void {
+    let noise = NoisePowerForTargetSNR(10.0kg*m^2/s^3, 5.0)
+    Assert.Near(2.0, noise / (1.0kg*m^2/s^3), 0.000001, "noise power should be signal/snr")
+}
+
+[Fact]
+fn AwgnHelpersPreserveShapeAndComposeAdditively() -> Void {
+    let signal = [1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3, 4.0kg*m^2/s^3]
+    let noise = [0.1kg*m^2/s^3, 0.0kg*m^2/s^3 - 0.2kg*m^2/s^3, 0.05kg*m^2/s^3, 0.0kg*m^2/s^3]
+
+    let combined = ApplyAwgnSamples(signal, noise)
+    Assert.Equal(Len(signal), Len(combined), "awgn helper should preserve fixed sample shape")
+    Assert.Near(1.1, combined[0] / (1.0kg*m^2/s^3), 0.000001, "first sample add")
+    Assert.Near(1.8, combined[1] / (1.0kg*m^2/s^3), 0.000001, "second sample add")
+
+    let scalar = ApplyAdditiveNoise(3.0kg*m^2/s^3, 0.0kg*m^2/s^3 - 0.5kg*m^2/s^3)
+    Assert.Near(2.5, scalar / (1.0kg*m^2/s^3), 0.000001, "scalar additive noise")
+}
+
+[Fact]
+fn RayleighHelpersHaveExpectedAmplitudeAndGain() -> Void {
+    let component = Sqrt(0.5)
+    let gain = RayleighPowerGainFromComponents(component, component)
+    Assert.Near(1.0, gain, 0.000001, "equal normalized components yield unit mean-power gain sample")
+
+    let amplitude = RayleighAmplitudeFromComponents(0.6, 0.8)
+    Assert.Near(1.0, amplitude, 0.000001, "amplitude should be sqrt(i^2 + q^2)")
+
+    let faded = ApplyRayleighFading(2.0kg*m^2/s^3, 0.6, 0.8)
+    Assert.Near(2.0, faded / (1.0kg*m^2/s^3), 0.000001, "faded power scales with gain")
+}
+
+[Fact]
+fn RayleighSeriesAppliesElementwise() -> Void {
+    let samples = [1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3, 4.0kg*m^2/s^3]
+    let i = [1.0, 0.5, 0.0, 1.0]
+    let q = [0.0, 0.5, 1.0, 1.0]
+
+    let out = ApplyRayleighFadingSeries(samples, i, q)
+    Assert.Equal(4, Len(out), "rayleigh series should preserve shape")
+    Assert.Near(1.0, out[0] / (1.0kg*m^2/s^3), 0.000001, "gain 1")
+    Assert.Near(1.0, out[1] / (1.0kg*m^2/s^3), 0.000001, "gain 0.5")
+    Assert.Near(3.0, out[2] / (1.0kg*m^2/s^3), 0.000001, "gain 1")
+    Assert.Near(8.0, out[3] / (1.0kg*m^2/s^3), 0.000001, "gain 2")
+}
+
+[Fact]
+fn InvalidFadingInputsReturnSentinelShape() -> Void {
+    let awgn = ApplyAwgnSamples([1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3, 4.0kg*m^2/s^3], [0.0kg*m^2/s^3])
+    Assert.Equal(1, Len(awgn), "mismatched awgn arrays return sentinel shape")
+
+    let rayleigh = ApplyRayleighFadingSeries([1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3, 4.0kg*m^2/s^3], [1.0], [1.0])
+    Assert.Equal(1, Len(rayleigh), "mismatched rayleigh arrays return sentinel shape")
+}

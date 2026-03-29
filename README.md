@@ -555,8 +555,23 @@ Concept areas include:
 * `Signal`
 * `Structures`
 * `Physics`
+* `RF`
 
 These demonstrate real Oct usage across scientific and numerical domains.
+
+
+### RF M0 scope
+
+`Libraries/RF` adds a narrow, first-principles channel core:
+
+* deterministic propagation helpers (free-space and log-distance path loss, linear-domain)
+* thermal noise helpers (`kTB` with optional linear noise figure scaling)
+* link-budget composition helpers (received power, SNR, and minimal linear↔dB conversion)
+* modest stochastic primitives (AWGN composition helpers and Rayleigh scalar coefficient/gain helpers)
+
+RF M0 keeps physics and composition in linear-domain units (`m`, `1/s`, `kg*m^2/s^3`) and avoids standards-specific profiles or framework abstractions.
+
+Deferred beyond M0: Rician fading, log-normal shadowing, tapped-delay-line multipath, Doppler/coherence helpers, MIMO models, and standards-bound channel profiles.
 
 ---
 

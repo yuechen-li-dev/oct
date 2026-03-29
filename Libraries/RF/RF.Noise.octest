@@ -1,0 +1,28 @@
+package RF
+
+[Fact]
+fn ThermalNoiseIncreasesWithBandwidthAndTemperature() -> Void {
+    let narrow = ThermalNoisePower(1000000, 290.0)
+    let wide = ThermalNoisePower(2000000, 290.0)
+    Assert.True(wide > narrow, "noise power should increase with bandwidth")
+
+    let cold = ThermalNoisePower(1000000, 200.0)
+    let hot = ThermalNoisePower(1000000, 400.0)
+    Assert.True(hot > cold, "noise power should increase with temperature")
+}
+
+[Fact]
+fn ThermalNoiseSanityAndNoiseFigureComposition() -> Void {
+    let baseNoise = ThermalNoisePower(1000000, 290.0)
+    Assert.Near(0.00000000000000400388, baseNoise / (1kg*m^2/s^3), 0.000000000000000001, "kTB sanity for 1 MHz at 290 K")
+
+    let nfNoise = ThermalNoisePowerWithNoiseFigure(1000000, 290.0, 2.0)
+    Assert.Near(2.0, nfNoise / baseNoise, 0.000001, "noise figure should scale linear noise")
+}
+
+[Fact]
+fn InvalidNoiseInputsReturnZero() -> Void {
+    Assert.Near(0.0, ThermalNoisePower(0, 290.0) / (1kg*m^2/s^3), 0.000001, "zero bandwidth invalid")
+    Assert.Near(0.0, ThermalNoisePower(1000000, 0.0) / (1kg*m^2/s^3), 0.000001, "zero temperature invalid")
+    Assert.Near(0.0, ThermalNoisePowerWithNoiseFigure(1000000, 290.0, 0.0) / (1kg*m^2/s^3), 0.000001, "zero noise figure invalid")
+}

@@ -1,0 +1,32 @@
+package RF
+
+[Fact]
+fn ReceivedPowerComposesFromInputs() -> Void {
+    let received = ReceivedPower(1kg*m^2/s^3, 2.0, 3.0, 12.0, 2.0)
+    Assert.Near(0.25, received / (1kg*m^2/s^3), 0.000001, "received power should follow gain/loss composition")
+}
+
+[Fact]
+fn SNRComposesFromReceivedAndNoise() -> Void {
+    let snr = SNRLinear(0.01kg*m^2/s^3, 0.002kg*m^2/s^3)
+    Assert.Near(5.0, snr, 0.000001, "snr linear should be received/noise")
+
+    let snrDb = SNRDb(0.01kg*m^2/s^3, 0.002kg*m^2/s^3)
+    Assert.Near(6.989700043, snrDb, 0.000001, "snr db should be 10log10(linear)")
+}
+
+[Fact]
+fn DbLinearHelpersRoundTrip() -> Void {
+    let linear = DbToLinear(10.0)
+    Assert.Near(10.0, linear, 0.000001, "10 dB is 10x linear")
+
+    let db = LinearToDb(100.0)
+    Assert.Near(20.0, db, 0.000001, "100x linear is 20 dB")
+}
+
+[Fact]
+fn InvalidLinkBudgetInputsReturnZero() -> Void {
+    Assert.Near(0.0, ReceivedPower(1kg*m^2/s^3, 1.0, 1.0, 0.0, 1.0) / (1kg*m^2/s^3), 0.000001, "zero path loss invalid")
+    Assert.Near(0.0, SNRLinear(1kg*m^2/s^3, 0.0kg*m^2/s^3), 0.000001, "zero noise invalid")
+    Assert.Near(0.0, LinearToDb(0.0), 0.000001, "non-positive linear value invalid for dB")
+}

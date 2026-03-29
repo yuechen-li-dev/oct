@@ -1,0 +1,33 @@
+package RF
+
+fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: Float, pathLossLinear: Float, systemLossLinear: Float) -> Float<kg*m^2/s^3> {
+    if pathLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if systemLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return txPower * txGainLinear * rxGainLinear / pathLossLinear / systemLossLinear
+}
+
+fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
+    if noisePower <= 0kg*m^2/s^3 {
+        return 0.0
+    }
+    return receivedPower / noisePower
+}
+
+fn LinearToDb(valueLinear: Float) -> Float {
+    if valueLinear <= 0 {
+        return 0.0
+    }
+    return 10.0 * Log10(valueLinear)
+}
+
+fn DbToLinear(valueDb: Float) -> Float {
+    return Exp(Ln(10) * valueDb / 10.0)
+}
+
+fn SNRDb(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
+    return LinearToDb(SNRLinear(receivedPower, noisePower))
+}
