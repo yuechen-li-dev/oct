@@ -55,3 +55,65 @@ fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Floa
     }
     return out
 }
+
+
+fn ShadowingLinearFromDb(shadowingDb: Float) -> Float {
+    return DbToLinear(shadowingDb)
+}
+
+fn ShadowingLinearFromDbSeries(shadowingDb: Float[]) -> Float[] {
+    if Len(shadowingDb) == 0 {
+        return [0.0]
+    }
+
+    var out = [ShadowingLinearFromDb(shadowingDb[0])]
+    for i in 1 .. Len(shadowingDb) {
+        out = Append(out, ShadowingLinearFromDb(shadowingDb[i]))
+    }
+    return out
+}
+
+fn ApplyShadowingToPathLoss(pathLossLinear: Float, shadowingDb: Float) -> Float {
+    if pathLossLinear <= 0 {
+        return 0.0
+    }
+    return pathLossLinear * ShadowingLinearFromDb(shadowingDb)
+}
+
+fn ApplyShadowingToPathLossSeries(pathLossLinear: Float[], shadowingDb: Float[]) -> Float[] {
+    if Len(pathLossLinear) != Len(shadowingDb) {
+        return [0.0]
+    }
+    if Len(pathLossLinear) == 0 {
+        return [0.0]
+    }
+
+    var out = [ApplyShadowingToPathLoss(pathLossLinear[0], shadowingDb[0])]
+    for i in 1 .. Len(pathLossLinear) {
+        out = Append(out, ApplyShadowingToPathLoss(pathLossLinear[i], shadowingDb[i]))
+    }
+    return out
+}
+
+fn ApplyShadowingToReceivedPower(receivedPower: Float<kg*m^2/s^3>, shadowingDb: Float) -> Float<kg*m^2/s^3> {
+    let shadowingLinear = ShadowingLinearFromDb(shadowingDb)
+    if shadowingLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return receivedPower / shadowingLinear
+}
+
+fn ApplyShadowingToReceivedPowerSeries(receivedPower: Float<kg*m^2/s^3>[], shadowingDb: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(receivedPower) != Len(shadowingDb) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(receivedPower) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    var out = [ApplyShadowingToReceivedPower(receivedPower[0], shadowingDb[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, ApplyShadowingToReceivedPower(receivedPower[i], shadowingDb[i]))
+    }
+    return out
+}

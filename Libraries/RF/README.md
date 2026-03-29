@@ -1,27 +1,61 @@
-# RF Library (M0a)
+# RF Library (M1)
 
-RF M0a keeps the deterministic M0 math intact and improves sequence ergonomics.
+RF M1 keeps the deterministic M0/M0a math and sequence ergonomics, and adds modest channel-realism helpers:
 
-## Elementwise sequence semantics
+- Rician fading
+- Log-normal shadowing (dB offsets mapped to linear factors)
+- Tapped-delay-line (TDL) multipath helpers
 
-RF helpers remain scalar-first, with explicit `...Series` variants for arrays.
+## Design boundaries
 
-- Series helpers preserve input shape for valid inputs.
-- Operations are elementwise and deterministic.
-- Mismatched sequence shapes return deterministic sentinel arrays (`[0.0]` or `[0kg*m^2/s^3]`).
+RF remains first-principles and standards-agnostic:
 
-## Sequence-focused helpers
+- scalar-first helpers with explicit `...Series` variants
+- deterministic, pure, reproducible helper surfaces
+- no hidden state and no random-number subsystem
+- no giant channel/simulator object framework
 
-- Path loss: `FreeSpacePathLossLinearSeries`, `LogDistancePathLossLinearSeries`
-- Noise: `ThermalNoisePowerSeries`, `ThermalNoisePowerWithNoiseFigureSeries`
-- AWGN: `ApplyAwgnSamples`
-- Rayleigh: `RayleighPowerGainSeries`, `ApplyPowerGainSeries`, `ApplyRayleighFadingSeries`
-- Link budget/SNR: `SNRLinearSeries`, `SNRDbSeries`
+## Sequence semantics
 
-## Determinism
+Series helpers preserve shape for valid inputs and stay elementwise.
+Invalid shape/parameter combinations return deterministic sentinel arrays (`[0.0]`, `[0]`, or `[0kg*m^2/s^3]`).
 
-All helpers are pure and reproducible:
+## M1 additions
 
-- no randomness
-- no hidden state
-- no implicit reshaping/broadcast rules
+### Rician fading
+
+- `RicianPowerGainFromComponents`
+- `RicianAmplitudeFromComponents`
+- `ApplyRicianFading`
+- `RicianPowerGainSeries`
+- `ApplyRicianFadingSeries`
+
+Rician helpers use explicit K-factor and externally supplied scatter components, preserving deterministic tests.
+
+### Log-normal shadowing
+
+- `ShadowingLinearFromDb`
+- `ShadowingLinearFromDbSeries`
+- `ApplyShadowingToPathLoss`
+- `ApplyShadowingToPathLossSeries`
+- `ApplyShadowingToReceivedPower`
+- `ApplyShadowingToReceivedPowerSeries`
+
+Shadowing is expressed as explicit dB offsets so callers can supply deterministic or externally generated variation.
+
+### Tapped-delay-line multipath
+
+- `ApplyTappedDelayLinePowerSeries`
+- `MaxDelaySamples`
+
+TDL helpers model per-tap delay and power gain with deterministic convolution-style application.
+
+## Deferred by design
+
+Still intentionally out of scope:
+
+- Doppler/time variation
+- coherence-time/coherence-bandwidth metrics
+- MIMO channel models
+- standards-specific channel profiles
+- packet/protocol or full wireless simulation frameworks

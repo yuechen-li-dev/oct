@@ -81,3 +81,50 @@ fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], qua
     }
     return ApplyPowerGainSeries(samples, gain)
 }
+
+
+fn RicianPowerGainFromComponents(kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float {
+    if kFactorLinear < 0 {
+        return 0.0
+    }
+
+    let normalization = Sqrt(kFactorLinear + 1.0)
+    let losInPhase = Sqrt(kFactorLinear) / normalization
+    let scatterInPhaseNormalized = scatterInPhase / normalization
+    let scatterQuadratureNormalized = scatterQuadrature / normalization
+
+    let combinedInPhase = losInPhase + scatterInPhaseNormalized
+    return RayleighPowerGainFromComponents(combinedInPhase, scatterQuadratureNormalized)
+}
+
+fn RicianAmplitudeFromComponents(kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float {
+    return Sqrt(RicianPowerGainFromComponents(kFactorLinear, scatterInPhase, scatterQuadrature))
+}
+
+fn ApplyRicianFading(sample: Float<kg*m^2/s^3>, kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float<kg*m^2/s^3> {
+    return ApplyPowerGain(sample, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase, scatterQuadrature))
+}
+
+fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float[] {
+    if Len(scatterInPhase) != Len(scatterQuadrature) {
+        return [0.0]
+    }
+    if Len(scatterInPhase) == 0 {
+        return [0.0]
+    }
+
+    var out = [RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[0], scatterQuadrature[0])]
+    for i in 1 .. Len(scatterInPhase) {
+        out = Append(out, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[i], scatterQuadrature[i]))
+    }
+
+    return out
+}
+
+fn ApplyRicianFadingSeries(samples: Float<kg*m^2/s^3>[], kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float<kg*m^2/s^3>[] {
+    let gain = RicianPowerGainSeries(kFactorLinear, scatterInPhase, scatterQuadrature)
+    if Len(samples) != Len(gain) {
+        return [0.0kg*m^2/s^3]
+    }
+    return ApplyPowerGainSeries(samples, gain)
+}

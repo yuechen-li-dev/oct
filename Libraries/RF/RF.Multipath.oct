@@ -1,0 +1,69 @@
+package RF
+
+fn MaxDelaySamples(delaySamples: Int[]) -> Int {
+    if Len(delaySamples) == 0 {
+        return 0
+    }
+
+    var maxDelay = delaySamples[0]
+    for i in 1 .. Len(delaySamples) {
+        if delaySamples[i] > maxDelay {
+            maxDelay = delaySamples[i]
+        }
+    }
+    return maxDelay
+}
+
+fn TapContributionAt(samples: Float<kg*m^2/s^3>[], delaySamples: Int, powerGain: Float, outIndex: Int) -> Float<kg*m^2/s^3> {
+    if outIndex < delaySamples {
+        return 0.0kg*m^2/s^3
+    }
+
+    let sampleIndex = outIndex - delaySamples
+    if sampleIndex >= Len(samples) {
+        return 0.0kg*m^2/s^3
+    }
+
+    return ApplyPowerGain(samples[sampleIndex], powerGain)
+}
+
+fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: Int[], powerGain: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(delaySamples) != Len(powerGain) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(delaySamples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+
+    for i in 0 .. Len(delaySamples) {
+        if delaySamples[i] < 0 {
+            return [0.0kg*m^2/s^3]
+        }
+        if powerGain[i] < 0 {
+            return [0.0kg*m^2/s^3]
+        }
+    }
+
+    let outLen = Len(samples) + MaxDelaySamples(delaySamples)
+    var out = [0.0kg*m^2/s^3]
+    for _ in 1 .. outLen {
+        out = Append(out, 0.0kg*m^2/s^3)
+    }
+
+    for tap in 0 .. Len(delaySamples) {
+        let delay = delaySamples[tap]
+        let gain = powerGain[tap]
+
+        var contribution = [TapContributionAt(samples, delay, gain, 0)]
+        for i in 1 .. outLen {
+            contribution = Append(contribution, TapContributionAt(samples, delay, gain, i))
+        }
+
+        out = ApplyAwgnSamples(out, contribution)
+    }
+
+    return out
+}
