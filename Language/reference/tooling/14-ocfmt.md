@@ -2,20 +2,30 @@
 
 ## Overview
 
-`oct fmt` is Oct's canonical formatter. It produces a single normalized source shape. Formatting is deterministic and idempotent. No formatter profile system is supported.
+`oct fmt` is Oct's canonical formatter.
+It produces one normalized source form.
+Formatting is deterministic and idempotent.
+Formatter profiles are not supported.
 
-## Commands
+## Rules
 
-- `oct fmt <file-or-directory>`
-
-## Behavior
-
+- Command form is `oct fmt <file-or-directory>`.
 - Formatting rules are non-configurable.
-- Running formatter twice produces no further changes.
+- Running the formatter twice produces no further changes.
 - Canonical spacing and indentation are enforced.
 - Declaration-adjacent comments are preserved.
+- Formatter output is the committed style.
 
-## Notes
+## Examples
 
-- Use formatter output as the committed style.
-- Do not maintain alternate local style variants.
+Valid:
+
+```text
+oct fmt Language/reference
+```
+
+Invalid:
+
+```text
+oct fmt --profile team-style Language/reference
+```

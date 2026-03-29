@@ -2,18 +2,21 @@
 
 ## Overview
 
-Oct error handling is explicit and typed. Fallibility is declared in function signatures. Fallible results must be handled at use sites. Handling is done with `?`, `!`, or `match`.
+Error handling is explicit and typed.
+Function fallibility is declared in function signatures.
+Every fallible expression must be handled.
+Handling forms are `?`, `!`, and `match`.
 
 ## Rules
 
-- Only `! Error` marks a function as fallible.
-- A fallible expression cannot be ignored.
+- A function is fallible only when its return type includes `! Error`.
+- Fallible expressions cannot be ignored.
 - `?` propagates `err` to the current fallible function.
-- `?` is invalid in infallible functions.
+- `?` is invalid in an infallible function.
 - `?` requires a fallible expression.
 - `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression.
-- `match` must provide both `ok` and `err` arms.
-- `!` unwrap handles a fallible expression explicitly and is permitted where explicit handling is required.
+- Fallible `match` must include both `ok` and `err` arms.
+- `!` unwrap is explicit handling for a fallible expression.
 - Returning a fallible value from an infallible function is invalid.
 
 ## Examples

@@ -2,20 +2,29 @@
 
 ## Overview
 
-`oct pkg` manages Oct package workflows. Packages use explicit manifests and explicit dependency declarations. Package structure and commands are deterministic.
+`oct pkg` manages Oct package workflows.
+Package manifests and dependency declarations are explicit.
+Package commands define package state transitions.
 
-## Commands
+## Rules
 
-- `oct pkg` subcommands operate on package manifests and package dependency state.
-
-## Behavior
-
-- Package manifests are explicit records in source.
+- `oct pkg` subcommands operate on package manifests and dependency state.
+- Package manifests are explicit source records.
 - Dependency identity is explicit by package name and version requirement.
-- Package resolution and sync behavior are command-driven, not implicit.
-- Package boundaries are explicit via `package` and `import` declarations.
+- Package resolution and sync are command-driven.
+- Package boundaries are explicit through `package` and `import` declarations.
+- Package operations should be treated as reproducible build inputs.
 
-## Notes
+## Examples
 
-- Keep package metadata and imports consistent.
-- Treat package operations as reproducible build inputs.
+Valid:
+
+```text
+oct pkg <subcommand>
+```
+
+Invalid:
+
+```text
+# expecting imports to resolve without manifest or dependency updates
+```

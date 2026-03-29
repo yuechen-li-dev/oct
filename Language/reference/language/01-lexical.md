@@ -2,19 +2,22 @@
 
 ## Overview
 
-Oct source is tokenized from Unicode text. Identifiers, literals, keywords, and punctuation form the lexical surface. Whitespace separates tokens but is otherwise insignificant. `//` starts a line comment.
+Oct source is tokenized from Unicode text.
+Identifiers, literals, keywords, and punctuation define the lexical surface.
+Whitespace separates tokens.
+`//` starts a line comment.
 
 ## Rules
 
-- Identifier start: `_` or any Unicode letter.
-- Identifier continuation: identifier start characters or Unicode digits.
-- Keywords are reserved and are not identifiers.
+- Identifier start is `_` or any Unicode letter.
+- Identifier continuation is identifier-start characters or Unicode digits.
+- Keywords are reserved and cannot be used as identifiers.
 - Integer literals are base-10 digits.
-- Float literals support decimal form and scientific notation (`1.0`, `1e3`, `2.5E-2`).
+- Float literals support decimal and scientific notation (`1.0`, `1e3`, `2.5E-2`).
 - String literals use double quotes and cannot span lines.
 - Bool literals are `true` and `false`.
-- Dimension suffixes attach to numeric literals (for example `5m`, `2.5s`, `90deg`).
-- `//` comments run to end of line.
+- Dimension suffixes attach to numeric literals (`5m`, `2.5s`, `90deg`).
+- `//` comments continue to end of line.
 
 ## Examples
 

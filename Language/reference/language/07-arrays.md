@@ -2,20 +2,23 @@
 
 ## Overview
 
-Arrays are homogeneous, one-dimensional values. Array literals, indexing, element assignment, and array arithmetic are supported. Types are exact, including dimensions and named types. Array values are used directly in loops and batch expressions.
+Arrays are one-dimensional homogeneous values.
+Array literals, indexing, assignment, and element-wise arithmetic are supported.
+Type matching is exact, including dimensions and nominal names.
 
 ## Rules
 
-- Array literal form: `[a, b, c]`.
+- Array literal form is `[a, b, c]`.
 - All array literal elements must have one exact type.
-- Array type form: `T[]`.
-- Indexing form: `xs[i]`, where `i` is `Int`.
-- Indexed assignment requires mutable array binding (`var`).
-- Indexed assignment value must match element type exactly.
+- Array type form is `T[]`.
+- Indexing form is `xs[i]`.
+- Index expressions must have type `Int`.
+- Indexed assignment requires a mutable array binding (`var`).
+- Indexed assignment values must match the element type exactly.
 - `Append(xs, value)` requires `xs` to be an array.
-- `Append` value type must match array element type exactly.
-- Element-wise arithmetic requires arrays of same element type.
-- Element-wise arithmetic requires equal runtime length.
+- `Append` values must match the array element type exactly.
+- Element-wise arithmetic requires arrays with the same element type.
+- Element-wise arithmetic requires equal runtime lengths.
 
 ## Examples
 

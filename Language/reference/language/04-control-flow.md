@@ -2,22 +2,26 @@
 
 ## Overview
 
-Oct control flow is explicit and type-checked. `if`, `switch`, `for`, and `while` cover core branching and looping. `switch` is expression-oriented. Branch conditions never use implicit coercion.
+Control flow is explicit and type-checked.
+`if`, `switch`, `for`, and `while` provide branching and looping.
+`switch` is expression-oriented.
+Conditions never use implicit coercion.
 
 ## Rules
 
-- `if` condition must be `Bool`.
-- `if` expression requires `else` and matching branch result types.
-- Subject `switch` matches strict case types against one subject value.
-- Condition `switch` (`switch { ... }`) requires Bool `case` conditions.
+- `if` conditions must be `Bool`.
+- `if` expressions require `else`.
+- `if` expression branches must produce one result type.
+- Subject `switch` compares one subject value against strict case types.
+- Condition `switch` (`switch { ... }`) requires `Bool` case conditions.
 - Condition `switch` requires an `else` arm.
 - `switch` arms must produce one result type.
-- Enum `switch` has no fallthrough.
-- `for i in start..end` uses inclusive start and exclusive end.
+- `switch` does not fall through.
+- `for i in start..end` uses inclusive start and exclusive end bounds.
 - `for` bounds must be `Int`.
-- `step` is optional, must be `Int`, and must be positive.
-- `while` condition must be `Bool`.
-- No implicit conditions are allowed in any control-flow form.
+- `step` is optional.
+- `step` must be `Int` and greater than zero.
+- `while` conditions must be `Bool`.
 
 ## Examples
 

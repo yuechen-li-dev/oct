@@ -2,17 +2,20 @@
 
 ## Overview
 
-Oct uses static, explicit types. Primitive, array, record, and enum types are first-class. Type identity is exact, including dimensions on numeric types. No structural equivalence is applied for records or enums.
+Oct uses static, explicit types.
+Primitive, array, record, and enum types are first-class.
+Type identity is exact, including numeric dimensions.
+Record and enum identity is nominal.
 
 ## Rules
 
-- Primitive types: `Int`, `Float`, `Bool`, `String`, `Void`, `Error`.
+- Primitive types are `Int`, `Float`, `Bool`, `String`, `Void`, and `Error`.
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`).
 - Arrays are one-dimensional and homogeneous (`T[]`).
-- Record identity is nominal by record name.
-- Enum identity is nominal by enum name.
-- Two records with matching fields are still different types if names differ.
-- Two enums with matching variants are still different types if names differ.
+- Record identity is defined by record name.
+- Enum identity is defined by enum name.
+- Two records with matching fields are different types when names differ.
+- Two enums with matching variants are different types when names differ.
 - Array element type must match exactly, including dimensions and nominal names.
 - `Void` is valid only as a function return type.
 

@@ -2,19 +2,22 @@
 
 ## Overview
 
-Functions are declared with explicit parameter and return types. Calls are checked for arity and argument types. Return behavior is explicit. Function fallibility is part of the signature.
+Function signatures are explicit.
+Parameter and return types are required.
+Calls are checked for arity and argument types.
+Fallibility is part of the function signature.
 
 ## Rules
 
-- Declaration form: `fn Name(params) -> ReturnType { ... }`.
-- Fallible declaration form: `fn Name(...) -> T ! Error { ... }`.
-- Parameter types are required.
-- Return type is required.
-- Non-`Void` functions must return a value on all paths.
-- `Void` functions return with `return` or by reaching end of body.
-- Calls must pass exactly the declared number of arguments.
-- Each argument type must match the declared parameter type.
-- Built-in function names cannot be redeclared.
+- Declaration form is `fn Name(params) -> ReturnType { ... }`.
+- Fallible declaration form is `fn Name(...) -> T ! Error { ... }`.
+- Every parameter has an explicit type.
+- Every function has an explicit return type.
+- Non-`Void` functions must return a value on every path.
+- `Void` functions may return with `return` or by reaching the end of the body.
+- Calls must provide exactly the declared number of arguments.
+- Each argument type must match the corresponding parameter type.
+- Builtin names cannot be redeclared.
 
 ## Examples
 

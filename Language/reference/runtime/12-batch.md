@@ -2,17 +2,20 @@
 
 ## Overview
 
-`batch` is Oct's structured data-parallel mapping construct over arrays. Each input item maps to one output item. Output ordering matches input ordering. Batch semantics are deterministic and explicit.
+`batch` is Oct's structured data-parallel mapping construct for arrays.
+Each input item maps to one output item.
+Output order matches input order.
+Batch semantics are explicit and deterministic.
 
 ## Rules
 
 - Input must be an array.
-- Syntax: `batch <array> as <item> { ... return <expr> }`.
+- Syntax is `batch <array> as <item> { ... return <expr> }`.
 - Body must end with exactly one `return <expr>`.
-- Body return type defines output element type.
+- Body return type defines the output element type.
 - Output length equals input length.
 - Output index order matches input index order.
-- Item failures fail the whole batch expression.
+- Item failures fail the entire batch expression.
 - No partial output is exposed on failure.
 - Batch has an implicit join at expression completion.
 

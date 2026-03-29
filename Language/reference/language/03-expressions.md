@@ -2,22 +2,26 @@
 
 ## Overview
 
-Expressions are statically typed and evaluated deterministically. Operators are defined only for specific operand types. Boolean logic is explicit. Numeric dimensions participate in expression typing.
+Expressions are statically typed.
+Evaluation order is deterministic.
+Operators are defined only for specific operand types.
+Dimensions participate in expression typing.
 
 ## Rules
 
-- No implicit conversions are performed.
-- No truthiness exists. Conditions must be `Bool`.
-- Arithmetic operators: `+`, `-`, `*`, `/`.
-- Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`.
-- Logical operators: `and`, `or`, `not`.
-- `+` on `String` is string concatenation.
+- Implicit conversion is not allowed.
+- Truthiness is not allowed. Conditions must be `Bool`.
+- Arithmetic operators are `+`, `-`, `*`, `/`.
+- Comparison operators are `==`, `!=`, `<`, `<=`, `>`, `>=`.
+- Logical operators are `and`, `or`, `not`.
+- `+` on `String` performs concatenation.
 - Array arithmetic is element-wise for matching numeric array types.
-- Array arithmetic requires equal element types and equal lengths at runtime.
-- Addition and subtraction require matching dimensions.
-- Multiplication and division compose dimensions.
+- Array arithmetic requires equal element types.
+- Array arithmetic requires equal runtime lengths.
+- `+` and `-` require matching dimensions.
+- `*` and `/` compose dimensions.
 - Comparisons require compatible operand types.
-- Ordered comparison is not defined for `Bool`, `String`, records, enums, or arrays.
+- Ordered comparison is undefined for `Bool`, `String`, records, enums, and arrays.
 
 ## Examples
 
