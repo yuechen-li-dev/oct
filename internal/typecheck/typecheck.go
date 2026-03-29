@@ -2088,6 +2088,27 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	}
+	if callee == "Atan2" {
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for idx, argument := range arguments {
+			argumentType, err := c.checkExpr(scope, argument, ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argumentType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if !isNumericScalar(argumentType.ValueType) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
+			}
+			if !argumentType.ValueType.Dimension.IsDimensionless() {
+				return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	}
 
 	if len(arguments) != 1 {
 		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
@@ -2149,7 +2170,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
-	case "Atan", "Exp", "Ln", "Log10":
+	case "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh":
 		if !isNumericScalar(argumentType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
 		}

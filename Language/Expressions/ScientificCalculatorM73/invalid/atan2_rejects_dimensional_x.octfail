@@ -1,0 +1,7 @@
+expect error: "Atan2 requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Atan2(1, 1s)
+}

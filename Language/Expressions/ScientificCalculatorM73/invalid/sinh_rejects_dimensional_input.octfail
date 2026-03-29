@@ -1,0 +1,7 @@
+expect error: "Sinh requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Sinh(3m)
+}

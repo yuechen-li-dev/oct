@@ -1,0 +1,7 @@
+expect error: "Cosh requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Cosh(2kg)
+}

@@ -1,0 +1,7 @@
+expect error: "Tanh requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Tanh(5A)
+}
