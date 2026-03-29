@@ -14,6 +14,29 @@ fn FreeSpacePathLossIncreasesWithDistanceAndFrequency() -> Void {
 }
 
 [Fact]
+fn PathLossSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
+    let distance = [1m]
+    let fspl1 = FreeSpacePathLossLinearSeries(distance, 2400000000)
+    Assert.Equal(1, Len(fspl1), "length-1 fspl shape")
+    Assert.Near(FreeSpacePathLossLinear(1m, 2400000000), fspl1[0], 0.000001, "length-1 fspl equals scalar")
+
+    var distances = [1m]
+    for _ in 1 .. 100 {
+        distances = Append(distances, 1m)
+    }
+
+    let fsplLarge = FreeSpacePathLossLinearSeries(distances, 2400000000)
+    Assert.Equal(Len(distances), Len(fsplLarge), "large fspl shape matches input")
+    let fsplLast = Len(fsplLarge) - 1
+    Assert.Near(fsplLarge[0], fsplLarge[fsplLast], 0.000001, "constant distance maps elementwise")
+
+    let logSeries = LogDistancePathLossLinearSeries([1m, 2m, 4m], 1m, 10.0, 2.0)
+    Assert.Near(10.0, logSeries[0], 0.000001, "log-distance first element")
+    Assert.Near(40.0, logSeries[1], 0.00001, "log-distance second element")
+    Assert.Near(160.0, logSeries[2], 0.00001, "log-distance third element")
+}
+
+[Fact]
 fn FreeSpacePathLossSanityAtOneMeterTwoPointFourGHz() -> Void {
     let fspl = FreeSpacePathLossLinear(1m, 2400000000)
     Assert.Near(10117.0, fspl, 50.0, "1 m, 2.4 GHz FSPL linear sanity")

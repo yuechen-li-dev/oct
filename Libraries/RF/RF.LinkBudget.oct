@@ -17,6 +17,21 @@ fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) ->
     return receivedPower / noisePower
 }
 
+fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
+    if Len(receivedPower) != Len(noisePower) {
+        return [0.0]
+    }
+    if Len(receivedPower) == 0 {
+        return [0.0]
+    }
+
+    var out = [SNRLinear(receivedPower[0], noisePower[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
+    }
+    return out
+}
+
 fn LinearToDb(valueLinear: Float) -> Float {
     if valueLinear <= 0 {
         return 0.0
@@ -30,4 +45,19 @@ fn DbToLinear(valueDb: Float) -> Float {
 
 fn SNRDb(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
     return LinearToDb(SNRLinear(receivedPower, noisePower))
+}
+
+fn SNRDbSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
+    if Len(receivedPower) != Len(noisePower) {
+        return [0.0]
+    }
+    if Len(receivedPower) == 0 {
+        return [0.0]
+    }
+
+    var out = [SNRDb(receivedPower[0], noisePower[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, SNRDb(receivedPower[i], noisePower[i]))
+    }
+    return out
 }

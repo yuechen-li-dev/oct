@@ -17,6 +17,18 @@ fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
     return geometricTerm * geometricTerm
 }
 
+fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Float[] {
+    if Len(distance) == 0 {
+        return [0.0]
+    }
+
+    var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
+    for i in 1 .. Len(distance) {
+        out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
+    }
+    return out
+}
+
 fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float {
     if distance <= 0m {
         return 0.0
@@ -30,4 +42,16 @@ fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, re
 
     let distanceRatio = distance / referenceDistance
     return referencePathLossLinear * Exp(pathLossExponent * Ln(distanceRatio))
+}
+
+fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float[] {
+    if Len(distance) == 0 {
+        return [0.0]
+    }
+
+    var out = [LogDistancePathLossLinear(distance[0], referenceDistance, referencePathLossLinear, pathLossExponent)]
+    for i in 1 .. Len(distance) {
+        out = Append(out, LogDistancePathLossLinear(distance[i], referenceDistance, referencePathLossLinear, pathLossExponent))
+    }
+    return out
 }

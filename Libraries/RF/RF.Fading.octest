@@ -12,12 +12,32 @@ fn AwgnHelpersPreserveShapeAndComposeAdditively() -> Void {
     let noise = [0.1kg*m^2/s^3, 0.0kg*m^2/s^3 - 0.2kg*m^2/s^3, 0.05kg*m^2/s^3, 0.0kg*m^2/s^3]
 
     let combined = ApplyAwgnSamples(signal, noise)
-    Assert.Equal(Len(signal), Len(combined), "awgn helper should preserve fixed sample shape")
+    Assert.Equal(Len(signal), Len(combined), "awgn helper should preserve sample shape")
     Assert.Near(1.1, combined[0] / (1.0kg*m^2/s^3), 0.000001, "first sample add")
     Assert.Near(1.8, combined[1] / (1.0kg*m^2/s^3), 0.000001, "second sample add")
 
     let scalar = ApplyAdditiveNoise(3.0kg*m^2/s^3, 0.0kg*m^2/s^3 - 0.5kg*m^2/s^3)
     Assert.Near(2.5, scalar / (1.0kg*m^2/s^3), 0.000001, "scalar additive noise")
+}
+
+[Fact]
+fn AwgnHelpersGeneralizeAcrossSequenceLengths() -> Void {
+    let len1 = ApplyAwgnSamples([2.0kg*m^2/s^3], [0.5kg*m^2/s^3])
+    Assert.Equal(1, Len(len1), "length-1 awgn shape")
+    Assert.Near(2.5, len1[0] / (1.0kg*m^2/s^3), 0.000001, "length-1 awgn value")
+
+    var signal = [1.0kg*m^2/s^3]
+    var noise = [0.01kg*m^2/s^3]
+    for _ in 1 .. 100 {
+        signal = Append(signal, 1.0kg*m^2/s^3)
+        noise = Append(noise, 0.01kg*m^2/s^3)
+    }
+
+    let large = ApplyAwgnSamples(signal, noise)
+    Assert.Equal(Len(signal), Len(large), "large awgn shape matches input")
+    let largeLast = Len(large) - 1
+    Assert.Near(1.01, large[0] / (1.0kg*m^2/s^3), 0.000001, "first large awgn sample")
+    Assert.Near(1.01, large[largeLast] / (1.0kg*m^2/s^3), 0.000001, "last large awgn sample")
 }
 
 [Fact]
@@ -45,6 +65,31 @@ fn RayleighSeriesAppliesElementwise() -> Void {
     Assert.Near(1.0, out[1] / (1.0kg*m^2/s^3), 0.000001, "gain 0.5")
     Assert.Near(3.0, out[2] / (1.0kg*m^2/s^3), 0.000001, "gain 1")
     Assert.Near(8.0, out[3] / (1.0kg*m^2/s^3), 0.000001, "gain 2")
+}
+
+[Fact]
+fn RayleighPowerGainAndSeriesGeneralizeAcrossLengths() -> Void {
+    let scalar = ApplyPowerGain(2.0kg*m^2/s^3, 0.25)
+    Assert.Near(0.5, scalar / (1.0kg*m^2/s^3), 0.000001, "scalar gain apply")
+
+    let gain = RayleighPowerGainSeries([1.0], [1.0])
+    Assert.Equal(1, Len(gain), "single-element gain length")
+    Assert.Near(2.0, gain[0], 0.000001, "single-element gain value")
+
+    var samples = [1.0kg*m^2/s^3]
+    var i = [1.0]
+    var q = [0.0]
+    for _ in 1 .. 10 {
+        samples = Append(samples, 1.0kg*m^2/s^3)
+        i = Append(i, 0.6)
+        q = Append(q, 0.8)
+    }
+
+    let out = ApplyRayleighFadingSeries(samples, i, q)
+    Assert.Equal(Len(samples), Len(out), "rayleigh shape matches input")
+    let outLast = Len(out) - 1
+    Assert.Near(1.0, out[0] / (1.0kg*m^2/s^3), 0.000001, "first gain is one")
+    Assert.Near(1.0, out[outLast] / (1.0kg*m^2/s^3), 0.000001, "last gain is one")
 }
 
 [Fact]

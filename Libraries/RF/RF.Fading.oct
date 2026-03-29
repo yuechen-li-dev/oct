@@ -11,18 +11,21 @@ fn ApplyAdditiveNoise(signal: Float<kg*m^2/s^3>, noise: Float<kg*m^2/s^3>) -> Fl
     return signal + noise
 }
 
+fn ApplyPowerGain(sample: Float<kg*m^2/s^3>, gain: Float) -> Float<kg*m^2/s^3> {
+    return sample * gain
+}
+
 fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
     if Len(signal) != Len(noise) {
         return [0.0kg*m^2/s^3]
     }
-
-    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
-    if Len(signal) != Len(out) {
-        return out
+    if Len(signal) == 0 {
+        return [0.0kg*m^2/s^3]
     }
 
-    for i in 0 .. Len(signal) {
-        out[i] = signal[i] + noise[i]
+    var out = [ApplyAdditiveNoise(signal[0], noise[0])]
+    for i in 1 .. Len(signal) {
+        out = Append(out, ApplyAdditiveNoise(signal[i], noise[i]))
     }
 
     return out
@@ -37,25 +40,44 @@ fn RayleighAmplitudeFromComponents(inPhase: Float, quadrature: Float) -> Float {
 }
 
 fn ApplyRayleighFading(sample: Float<kg*m^2/s^3>, inPhase: Float, quadrature: Float) -> Float<kg*m^2/s^3> {
-    return sample * RayleighPowerGainFromComponents(inPhase, quadrature)
+    return ApplyPowerGain(sample, RayleighPowerGainFromComponents(inPhase, quadrature))
 }
 
-fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], quadrature: Float[]) -> Float<kg*m^2/s^3>[] {
-    if Len(samples) != Len(inPhase) {
-        return [0.0kg*m^2/s^3]
+fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
+    if Len(inPhase) != Len(quadrature) {
+        return [0.0]
     }
-    if Len(samples) != Len(quadrature) {
-        return [0.0kg*m^2/s^3]
-    }
-
-    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
-    if Len(samples) != Len(out) {
-        return out
+    if Len(inPhase) == 0 {
+        return [0.0]
     }
 
-    for i in 0 .. Len(samples) {
-        out[i] = ApplyRayleighFading(samples[i], inPhase[i], quadrature[i])
+    var out = [RayleighPowerGainFromComponents(inPhase[0], quadrature[0])]
+    for i in 1 .. Len(inPhase) {
+        out = Append(out, RayleighPowerGainFromComponents(inPhase[i], quadrature[i]))
     }
 
     return out
+}
+
+fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) != Len(gain) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(samples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+
+    var out = [ApplyPowerGain(samples[0], gain[0])]
+    for i in 1 .. Len(samples) {
+        out = Append(out, ApplyPowerGain(samples[i], gain[i]))
+    }
+    return out
+}
+
+fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], quadrature: Float[]) -> Float<kg*m^2/s^3>[] {
+    let gain = RayleighPowerGainSeries(inPhase, quadrature)
+    if Len(samples) != Len(gain) {
+        return [0.0kg*m^2/s^3]
+    }
+    return ApplyPowerGainSeries(samples, gain)
 }

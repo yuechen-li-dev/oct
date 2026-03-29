@@ -15,9 +15,42 @@ fn ThermalNoisePower(bandwidthHz: Float, temperatureKelvin: Float) -> Float<kg*m
     return BoltzmannConstantWattsPerHzKelvin() * temperatureKelvin * bandwidthHz
 }
 
+fn ThermalNoisePowerSeries(bandwidthHz: Float[], temperatureKelvin: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(bandwidthHz) != Len(temperatureKelvin) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    var out = [ThermalNoisePower(bandwidthHz[0], temperatureKelvin[0])]
+    for i in 1 .. Len(bandwidthHz) {
+        out = Append(out, ThermalNoisePower(bandwidthHz[i], temperatureKelvin[i]))
+    }
+    return out
+}
+
 fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
     if noiseFigureLinear <= 0 {
         return 0kg*m^2/s^3
     }
     return ThermalNoisePower(bandwidthHz, temperatureKelvin) * noiseFigureLinear
+}
+
+fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvin: Float[], noiseFigureLinear: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(bandwidthHz) != Len(temperatureKelvin) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) != Len(noiseFigureLinear) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
+    for i in 1 .. Len(bandwidthHz) {
+        out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
+    }
+    return out
 }

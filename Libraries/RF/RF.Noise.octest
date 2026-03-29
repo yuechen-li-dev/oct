@@ -21,6 +21,27 @@ fn ThermalNoiseSanityAndNoiseFigureComposition() -> Void {
 }
 
 [Fact]
+fn ThermalNoiseSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
+    let single = ThermalNoisePowerSeries([1000000], [290.0])
+    Assert.Equal(1, Len(single), "length-1 thermal noise shape")
+    Assert.Near(ThermalNoisePower(1000000, 290.0) / (1kg*m^2/s^3), single[0] / (1kg*m^2/s^3), 0.000000000000000001, "length-1 equals scalar")
+
+    var bandwidth = [1000000.0]
+    var temperature = [290.0]
+    var figure = [2.0]
+    for _ in 1 .. 10 {
+        bandwidth = Append(bandwidth, 1000000.0)
+        temperature = Append(temperature, 290.0)
+        figure = Append(figure, 2.0)
+    }
+
+    let series = ThermalNoisePowerWithNoiseFigureSeries(bandwidth, temperature, figure)
+    Assert.Equal(Len(bandwidth), Len(series), "noise figure shape matches input")
+    let seriesLast = Len(series) - 1
+    Assert.Near(series[0] / (1kg*m^2/s^3), series[seriesLast] / (1kg*m^2/s^3), 0.000000000000000001, "constant inputs map elementwise")
+}
+
+[Fact]
 fn InvalidNoiseInputsReturnZero() -> Void {
     Assert.Near(0.0, ThermalNoisePower(0, 290.0) / (1kg*m^2/s^3), 0.000001, "zero bandwidth invalid")
     Assert.Near(0.0, ThermalNoisePower(1000000, 0.0) / (1kg*m^2/s^3), 0.000001, "zero temperature invalid")
