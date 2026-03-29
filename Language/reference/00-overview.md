@@ -2,20 +2,30 @@
 
 ## Overview
 
-Oct is a programming language and toolchain implemented in Go, with language behavior expressed through Oct tests and contracts in this repository.
-
-This reference covers three first-class parts of the Oct system: language, runtime, and tooling.
-
-The implementation and test corpus in this repository remain the behavioral ground truth while this human-readable reference is filled in.
+Oct is a statically typed language implemented in Go. The language contract is expressed by `.octest` and `.octfail` suites in `Language/`. This reference restates current behavior in a human-readable form. If this text conflicts with implementation or tests, implementation and tests win.
 
 ## Rules
 
-- TODO
+- `Language/` test suites are the executable contract for language behavior.
+- Go implementation under `cmd/` and `internal/` is the runtime and checker authority.
+- This reference does not add features.
+- This reference does not relax type rules.
+- This reference does not define future behavior.
 
 ## Examples
 
 Valid:
-TODO
+
+```oct
+fn Main() -> Int {
+    return 42
+}
+```
 
 Invalid:
-TODO
+
+```oct
+fn Main() -> Int {
+    return true
+}
+```
