@@ -1,0 +1,68 @@
+package RfAwgnRayleighProbe
+
+[Fact]
+fn DeterministicReceivedPowerDropsWithDistance() -> Void {
+    let baseline = BuildDeterministicBaseline()
+
+    let fspl = baseline.FreeSpaceReceivedPower
+    Assert.True(fspl[1] < fspl[0], "free-space received power should drop with distance")
+    Assert.True(fspl[2] < fspl[1], "free-space received power should keep dropping")
+    Assert.True(fspl[3] < fspl[2], "free-space received power should be monotonic")
+
+    let logDistance = baseline.LogDistanceReceivedPower
+    Assert.True(logDistance[1] < logDistance[0], "log-distance received power should drop with distance")
+    Assert.True(logDistance[2] < logDistance[1], "log-distance should keep dropping")
+    Assert.True(logDistance[3] < logDistance[2], "log-distance should be monotonic")
+}
+
+[Fact]
+fn LogDistanceModelDivergesFromFreeSpaceAtLongRange() -> Void {
+    let baseline = BuildDeterministicBaseline()
+    let fspl = baseline.FreeSpaceReceivedPower
+    let logDistance = baseline.LogDistanceReceivedPower
+
+    Assert.True(logDistance[0] < fspl[0], "log-distance with n=3 should already attenuate more than free-space at 10 m")
+    Assert.True(logDistance[2] < fspl[2], "log-distance with n=3 should attenuate more than free-space at 100 m")
+    Assert.True(logDistance[3] < fspl[3], "log-distance with n=3 should attenuate more than free-space at 300 m")
+}
+
+[Fact]
+fn WiderBandwidthRaisesNoiseAndReducesSnr() -> Void {
+    let baseline = BuildDeterministicBaseline()
+    let noise = baseline.NoiseByBandwidth
+    let snr = baseline.SnrByBandwidth
+
+    Assert.True(noise[1] > noise[0], "noise should increase when bandwidth increases")
+    Assert.True(noise[2] > noise[1], "noise should continue increasing with bandwidth")
+
+    Assert.True(snr[1] < snr[0], "snr should decrease when bandwidth increases")
+    Assert.True(snr[2] < snr[1], "snr should continue decreasing with bandwidth")
+}
+
+[Fact]
+fn AwgnProbeProducesDeterministicSampleChanges() -> Void {
+    let probe = BuildChannelProbe()
+
+    Assert.Equal(4, Len(probe.BaselineSamples), "baseline series should have fixed length")
+    Assert.Equal(4, Len(probe.AwgnSamples), "awgn series should preserve sample shape")
+
+    Assert.Near(1.10, probe.AwgnSamples[0] / probe.BaselineSamples[0], 0.000001, "first AWGN sample should increase by 10%")
+    Assert.Near(0.80, probe.AwgnSamples[1] / probe.BaselineSamples[1], 0.000001, "second AWGN sample should drop by 20%")
+    Assert.Near(1.05, probe.AwgnSamples[2] / probe.BaselineSamples[2], 0.000001, "third AWGN sample should increase by 5%")
+
+    Assert.True(probe.AwgnSamples[0] != probe.BaselineSamples[0], "awgn should alter at least one sample")
+}
+
+[Fact]
+fn RayleighProbeProducesFadingDistinctFromDeterministicBaseline() -> Void {
+    let probe = BuildChannelProbe()
+
+    Assert.Equal(4, Len(probe.RayleighSamples), "rayleigh series should preserve sample shape")
+
+    Assert.Near(1.00, probe.RayleighSamples[0] / probe.BaselineSamples[0], 0.000001, "first rayleigh gain should be unity")
+    Assert.Near(0.50, probe.RayleighSamples[1] / probe.BaselineSamples[1], 0.000001, "second rayleigh gain should attenuate")
+    Assert.Near(2.00, probe.RayleighSamples[3] / probe.BaselineSamples[3], 0.000001, "fourth rayleigh gain should amplify")
+
+    Assert.True(probe.RayleighSamples[1] < probe.BaselineSamples[1], "rayleigh should cause attenuation on one sample")
+    Assert.True(probe.RayleighSamples[3] > probe.BaselineSamples[3], "rayleigh should cause amplification on one sample")
+}
