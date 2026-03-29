@@ -1,0 +1,100 @@
+package MechanicsShaftDesignProbe
+import Mechanics
+
+[Fact]
+fn SectionBaselineIsHandCheckableAndStressTrendIsSensible() -> Void {
+    let probe = BuildShaftDesignProbe()
+    let section = probe.Section
+
+    Assert.Near(0.000804247719, section.Area / 1m^2, 0.000000001, "solid circular shaft area hand-check")
+    Assert.Near(0.000000051471854, section.SecondMomentOfArea / 1m^4, 0.000000000001, "solid circular shaft second moment hand-check")
+    Assert.Near(2.0, section.PolarMomentOfArea / section.SecondMomentOfArea, 0.000001, "solid shaft should satisfy J = 2I")
+
+    let lowerMomentStress = Mechanics.ShaftBendingStress(200kg*m^2/s^2, section.Diameter)
+    Assert.True(section.BendingStress > lowerMomentStress, "higher bending moment should produce higher bending stress")
+
+    let largerDiameterStress = Mechanics.ShaftBendingStress(section.BendingMoment, 0.036m)
+    Assert.True(largerDiameterStress < section.BendingStress, "larger diameter should reduce bending stress")
+}
+
+[Fact]
+fn StaticShaftCheckIsCompactAndRespondsToLoad() -> Void {
+    let probe = BuildShaftDesignProbe()
+    let section = probe.Section
+    let staticCheck = probe.Static
+
+    Assert.True(staticCheck.BendingStressWithKt > section.BendingStress, "Kt should increase surface bending stress")
+    Assert.True(staticCheck.TorsionalShearStressWithKts > section.TorsionalShearStress, "Kts should increase surface torsional shear stress")
+    Assert.True(staticCheck.EquivalentStress > staticCheck.BendingStressWithKt, "combined equivalent stress should exceed concentrated normal component")
+    Assert.True(staticCheck.YieldFactorOfSafety > 1.0, "baseline static shaft case should exceed yield with FoS above unity")
+
+    let lowerStaticFos = Mechanics.ShaftCombinedStaticYieldFactorOfSafety(
+        staticCheck.YieldStrength,
+        section.BendingMoment * 1.3,
+        section.Torque * 1.3,
+        section.Diameter,
+        staticCheck.Kt,
+        staticCheck.Kts
+    )
+    Assert.True(lowerStaticFos < staticCheck.YieldFactorOfSafety, "higher combined loading should reduce static FoS")
+}
+
+[Fact]
+fn FatiguePipelineComposesNotchAndEnduranceModifiers() -> Void {
+    let probe = BuildShaftDesignProbe()
+    let section = probe.Section
+    let fatigue = probe.Fatigue
+    let criteria = probe.Criteria
+
+    Assert.True(fatigue.Kf > 1.0, "fatigue bending concentration should exceed unity")
+    Assert.True(fatigue.Kfs > 1.0, "fatigue torsion concentration should exceed unity")
+    Assert.True(fatigue.Kf < fatigue.Kt, "fatigue bending concentration should remain below theoretical Kt")
+    Assert.True(fatigue.Kfs < fatigue.Kts, "fatigue torsion concentration should remain below theoretical Kts")
+
+    Assert.True(fatigue.DesignEnduranceLimit < fatigue.UnmodifiedEnduranceLimit, "modified endurance should be reduced from unmodified value")
+    Assert.True(fatigue.AlternatingEquivalentStress > 0kg/m/s^2, "alternating equivalent stress should be positive")
+    Assert.True(fatigue.MeanEquivalentStress > 0kg/m/s^2, "mean equivalent stress should be positive")
+
+    let sigmaAIdeal = Mechanics.ShaftFatigueBendingAlternatingStress(fatigue.MaxBendingMoment, fatigue.MinBendingMoment, section.Diameter, 1.0)
+    let sigmaMIdeal = Mechanics.ShaftFatigueBendingMeanStress(fatigue.MaxBendingMoment, fatigue.MinBendingMoment, section.Diameter, 1.0)
+    let tauAIdeal = Mechanics.ShaftFatigueTorsionAlternatingShearStress(fatigue.MaxTorque, fatigue.MinTorque, section.Diameter, 1.0)
+    let tauMIdeal = Mechanics.ShaftFatigueTorsionMeanShearStress(fatigue.MaxTorque, fatigue.MinTorque, section.Diameter, 1.0)
+
+    let alternatingIdeal = Mechanics.ShaftEquivalentAlternatingStress(sigmaAIdeal, tauAIdeal)
+    let meanIdeal = Mechanics.ShaftEquivalentMeanStress(sigmaMIdeal, tauMIdeal)
+
+    let idealGoodman = Mechanics.ShaftGoodmanFactorOfSafety(alternatingIdeal, meanIdeal, fatigue.UnmodifiedEnduranceLimit, probe.UltimateStrength)
+    let modifiedGoodman = criteria.GoodmanFactorOfSafety
+
+    Assert.True(modifiedGoodman < idealGoodman, "notch and endurance modifications should reduce fatigue Goodman FoS")
+}
+
+[Fact]
+fn CriteriaComparisonShowsExpectedConservatismOrdering() -> Void {
+    let probe = BuildShaftDesignProbe()
+    let criteria = probe.Criteria
+
+    Assert.True(criteria.GerberFactorOfSafety > criteria.GoodmanFactorOfSafety, "Gerber should be least conservative")
+    Assert.True(criteria.GoodmanFactorOfSafety > criteria.SoderbergFactorOfSafety, "Soderberg should be most conservative")
+    Assert.True(criteria.SoderbergFactorOfSafety > 1.0, "selected shaft case should retain positive fatigue margin")
+}
+
+[Fact]
+fn EndToEndProbePipelineRemainsDeterministic() -> Void {
+    let probe = BuildShaftDesignProbe()
+
+    let section = probe.Section
+    let staticCheck = probe.Static
+    let fatigue = probe.Fatigue
+    let criteria = probe.Criteria
+
+    let rebuiltStatic = BuildShaftStaticCheck(section, probe.YieldStrength)
+    let rebuiltFatigue = BuildShaftFatigueSetup(section, probe.UltimateStrength)
+    let rebuiltCriteria = BuildShaftCriterionComparison(rebuiltFatigue, probe.UltimateStrength, probe.YieldStrength)
+
+    Assert.Near(rebuiltStatic.EquivalentStress / 1kg/m/s^2, staticCheck.EquivalentStress / 1kg/m/s^2, 0.000001, "static equivalent stress should be deterministic")
+    Assert.Near(rebuiltFatigue.DesignEnduranceLimit / 1kg/m/s^2, fatigue.DesignEnduranceLimit / 1kg/m/s^2, 0.000001, "design endurance should be deterministic")
+    Assert.Near(rebuiltCriteria.GoodmanFactorOfSafety, criteria.GoodmanFactorOfSafety, 0.000001, "Goodman FoS should be deterministic")
+    Assert.Near(rebuiltCriteria.GerberFactorOfSafety, criteria.GerberFactorOfSafety, 0.000001, "Gerber FoS should be deterministic")
+    Assert.Near(rebuiltCriteria.SoderbergFactorOfSafety, criteria.SoderbergFactorOfSafety, 0.000001, "Soderberg FoS should be deterministic")
+}

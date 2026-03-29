@@ -1,0 +1,128 @@
+package Mechanics
+
+// Mechanics M2 assumptions:
+// - solid circular shaft geometry only
+// - critical section only
+// - outer-surface stress only
+// - deterministic load inputs
+// - no life accumulation or variable-amplitude fatigue modeling
+
+fn ShaftAreaSolidCircular(diameter: Float<m>) -> Float<m^2> {
+    if diameter <= 0m {
+        return 0m^2
+    }
+    return Pi() * diameter * diameter / 4.0
+}
+
+fn ShaftSecondMomentAreaSolidCircular(diameter: Float<m>) -> Float<m^4> {
+    if diameter <= 0m {
+        return 0m^4
+    }
+    return Pi() * diameter * diameter * diameter * diameter / 64.0
+}
+
+fn ShaftPolarMomentAreaSolidCircular(diameter: Float<m>) -> Float<m^4> {
+    if diameter <= 0m {
+        return 0m^4
+    }
+    return Pi() * diameter * diameter * diameter * diameter / 32.0
+}
+
+fn ShaftBendingStress(moment: Float<kg*m^2/s^2>, diameter: Float<m>) -> Float<kg/m/s^2> {
+    if diameter <= 0m {
+        return 0kg/m/s^2
+    }
+    let c = 0.5 * diameter
+    let i = ShaftSecondMomentAreaSolidCircular(diameter)
+    return BendingStress(moment, c, i)
+}
+
+fn ShaftTorsionalShearStress(torque: Float<kg*m^2/s^2>, diameter: Float<m>) -> Float<kg/m/s^2> {
+    if diameter <= 0m {
+        return 0kg/m/s^2
+    }
+    let r = 0.5 * diameter
+    let j = ShaftPolarMomentAreaSolidCircular(diameter)
+    return TorsionalShearStress(torque, r, j)
+}
+
+fn ShaftStaticBendingStressWithKt(moment: Float<kg*m^2/s^2>, diameter: Float<m>, stressConcentrationFactor: Float) -> Float<kg/m/s^2> {
+    if stressConcentrationFactor < 1.0 {
+        return 0kg/m/s^2
+    }
+    return stressConcentrationFactor * ShaftBendingStress(moment, diameter)
+}
+
+fn ShaftStaticTorsionalShearStressWithKts(torque: Float<kg*m^2/s^2>, diameter: Float<m>, shearStressConcentrationFactor: Float) -> Float<kg/m/s^2> {
+    if shearStressConcentrationFactor < 1.0 {
+        return 0kg/m/s^2
+    }
+    return shearStressConcentrationFactor * ShaftTorsionalShearStress(torque, diameter)
+}
+
+fn ShaftCombinedStaticEquivalentStress(moment: Float<kg*m^2/s^2>, torque: Float<kg*m^2/s^2>, diameter: Float<m>, kt: Float, kts: Float) -> Float<kg/m/s^2> {
+    let sigma = ShaftStaticBendingStressWithKt(moment, diameter, kt)
+    let tau = ShaftStaticTorsionalShearStressWithKts(torque, diameter, kts)
+    return VonMisesPlaneStress(sigma, 0kg/m/s^2, tau)
+}
+
+fn ShaftCombinedStaticYieldFactorOfSafety(yieldStrength: Float<kg/m/s^2>, moment: Float<kg*m^2/s^2>, torque: Float<kg*m^2/s^2>, diameter: Float<m>, kt: Float, kts: Float) -> Float {
+    let equivalent = ShaftCombinedStaticEquivalentStress(moment, torque, diameter, kt, kts)
+    return YieldFactorOfSafety(yieldStrength, equivalent)
+}
+
+fn ShaftFatigueBendingAlternatingStress(maxMoment: Float<kg*m^2/s^2>, minMoment: Float<kg*m^2/s^2>, diameter: Float<m>, kf: Float) -> Float<kg/m/s^2> {
+    if kf < 1.0 {
+        return 0kg/m/s^2
+    }
+    let maxNominal = ShaftBendingStress(maxMoment, diameter)
+    let minNominal = ShaftBendingStress(minMoment, diameter)
+    return kf * AlternatingStress(maxNominal, minNominal)
+}
+
+fn ShaftFatigueBendingMeanStress(maxMoment: Float<kg*m^2/s^2>, minMoment: Float<kg*m^2/s^2>, diameter: Float<m>, kt: Float) -> Float<kg/m/s^2> {
+    if kt < 1.0 {
+        return 0kg/m/s^2
+    }
+    let maxNominal = ShaftBendingStress(maxMoment, diameter)
+    let minNominal = ShaftBendingStress(minMoment, diameter)
+    return kt * MeanStress(maxNominal, minNominal)
+}
+
+fn ShaftFatigueTorsionAlternatingShearStress(maxTorque: Float<kg*m^2/s^2>, minTorque: Float<kg*m^2/s^2>, diameter: Float<m>, kfs: Float) -> Float<kg/m/s^2> {
+    if kfs < 1.0 {
+        return 0kg/m/s^2
+    }
+    let maxNominal = ShaftTorsionalShearStress(maxTorque, diameter)
+    let minNominal = ShaftTorsionalShearStress(minTorque, diameter)
+    return kfs * AlternatingStress(maxNominal, minNominal)
+}
+
+fn ShaftFatigueTorsionMeanShearStress(maxTorque: Float<kg*m^2/s^2>, minTorque: Float<kg*m^2/s^2>, diameter: Float<m>, kts: Float) -> Float<kg/m/s^2> {
+    if kts < 1.0 {
+        return 0kg/m/s^2
+    }
+    let maxNominal = ShaftTorsionalShearStress(maxTorque, diameter)
+    let minNominal = ShaftTorsionalShearStress(minTorque, diameter)
+    return kts * MeanStress(maxNominal, minNominal)
+}
+
+fn ShaftEquivalentAlternatingStress(bendingAlternatingStress: Float<kg/m/s^2>, torsionAlternatingShearStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    return VonMisesPlaneStress(bendingAlternatingStress, 0kg/m/s^2, torsionAlternatingShearStress)
+}
+
+fn ShaftEquivalentMeanStress(bendingMeanStress: Float<kg/m/s^2>, torsionMeanShearStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    return VonMisesPlaneStress(bendingMeanStress, 0kg/m/s^2, torsionMeanShearStress)
+}
+
+fn ShaftGoodmanFactorOfSafety(alternatingEquivalentStress: Float<kg/m/s^2>, meanEquivalentStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    return GoodmanFactorOfSafety(alternatingEquivalentStress, meanEquivalentStress, enduranceLimit, ultimateStrength)
+}
+
+fn ShaftGerberFactorOfSafety(alternatingEquivalentStress: Float<kg/m/s^2>, meanEquivalentStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    return GerberFactorOfSafety(alternatingEquivalentStress, meanEquivalentStress, enduranceLimit, ultimateStrength)
+}
+
+fn ShaftSoderbergFactorOfSafety(alternatingEquivalentStress: Float<kg/m/s^2>, meanEquivalentStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> Float {
+    return SoderbergFactorOfSafety(alternatingEquivalentStress, meanEquivalentStress, enduranceLimit, yieldStrength)
+}

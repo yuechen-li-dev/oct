@@ -1,0 +1,181 @@
+package MechanicsShaftDesignProbe
+import Mechanics
+
+record ShaftSectionBaseline {
+    Diameter: Float<m>
+    Area: Float<m^2>
+    SecondMomentOfArea: Float<m^4>
+    PolarMomentOfArea: Float<m^4>
+    BendingMoment: Float<kg*m^2/s^2>
+    Torque: Float<kg*m^2/s^2>
+    BendingStress: Float<kg/m/s^2>
+    TorsionalShearStress: Float<kg/m/s^2>
+}
+
+record ShaftStaticCheck {
+    Kt: Float
+    Kts: Float
+    BendingStressWithKt: Float<kg/m/s^2>
+    TorsionalShearStressWithKts: Float<kg/m/s^2>
+    EquivalentStress: Float<kg/m/s^2>
+    YieldStrength: Float<kg/m/s^2>
+    YieldFactorOfSafety: Float
+}
+
+record ShaftFatigueSetup {
+    MaxBendingMoment: Float<kg*m^2/s^2>
+    MinBendingMoment: Float<kg*m^2/s^2>
+    MaxTorque: Float<kg*m^2/s^2>
+    MinTorque: Float<kg*m^2/s^2>
+    NotchRadius: Float<m>
+    PetersonLengthBending: Float<m>
+    PetersonLengthTorsion: Float<m>
+    NotchSensitivityBending: Float
+    NotchSensitivityTorsion: Float
+    Kt: Float
+    Kts: Float
+    Kf: Float
+    Kfs: Float
+    SurfaceFactor: Float
+    SizeFactor: Float
+    LoadFactor: Float
+    TemperatureFactor: Float
+    ReliabilityFactor: Float
+    UnmodifiedEnduranceLimit: Float<kg/m/s^2>
+    DesignEnduranceLimit: Float<kg/m/s^2>
+    AlternatingEquivalentStress: Float<kg/m/s^2>
+    MeanEquivalentStress: Float<kg/m/s^2>
+}
+
+record ShaftCriterionComparison {
+    GoodmanFactorOfSafety: Float
+    GerberFactorOfSafety: Float
+    SoderbergFactorOfSafety: Float
+}
+
+record ShaftDesignProbe {
+    Section: ShaftSectionBaseline
+    Static: ShaftStaticCheck
+    Fatigue: ShaftFatigueSetup
+    Criteria: ShaftCriterionComparison
+    UltimateStrength: Float<kg/m/s^2>
+    YieldStrength: Float<kg/m/s^2>
+}
+
+fn BuildShaftSectionBaseline() -> ShaftSectionBaseline {
+    let diameter = 0.032m
+    let bendingMoment = 280kg*m^2/s^2
+    let torque = 160kg*m^2/s^2
+
+    return ShaftSectionBaseline {
+        Diameter: diameter
+        Area: Mechanics.ShaftAreaSolidCircular(diameter)
+        SecondMomentOfArea: Mechanics.ShaftSecondMomentAreaSolidCircular(diameter)
+        PolarMomentOfArea: Mechanics.ShaftPolarMomentAreaSolidCircular(diameter)
+        BendingMoment: bendingMoment
+        Torque: torque
+        BendingStress: Mechanics.ShaftBendingStress(bendingMoment, diameter)
+        TorsionalShearStress: Mechanics.ShaftTorsionalShearStress(torque, diameter)
+    }
+}
+
+fn BuildShaftStaticCheck(section: ShaftSectionBaseline, yieldStrength: Float<kg/m/s^2>) -> ShaftStaticCheck {
+    let kt = 1.65
+    let kts = 1.40
+
+    return ShaftStaticCheck {
+        Kt: kt
+        Kts: kts
+        BendingStressWithKt: Mechanics.ShaftStaticBendingStressWithKt(section.BendingMoment, section.Diameter, kt)
+        TorsionalShearStressWithKts: Mechanics.ShaftStaticTorsionalShearStressWithKts(section.Torque, section.Diameter, kts)
+        EquivalentStress: Mechanics.ShaftCombinedStaticEquivalentStress(section.BendingMoment, section.Torque, section.Diameter, kt, kts)
+        YieldStrength: yieldStrength
+        YieldFactorOfSafety: Mechanics.ShaftCombinedStaticYieldFactorOfSafety(yieldStrength, section.BendingMoment, section.Torque, section.Diameter, kt, kts)
+    }
+}
+
+fn BuildShaftFatigueSetup(section: ShaftSectionBaseline, ultimateStrength: Float<kg/m/s^2>) -> ShaftFatigueSetup {
+    let maxBendingMoment = 300kg*m^2/s^2
+    let minBendingMoment = 60kg*m^2/s^2
+    let maxTorque = 180kg*m^2/s^2
+    let minTorque = 50kg*m^2/s^2
+
+    let notchRadius = 0.0015m
+    let petersonLengthBending = 0.00022m
+    let petersonLengthTorsion = 0.00017m
+
+    let qBending = Mechanics.NotchSensitivity(petersonLengthBending, notchRadius)
+    let qTorsion = Mechanics.NotchSensitivity(petersonLengthTorsion, notchRadius)
+
+    let kt = 1.65
+    let kts = 1.40
+
+    let kf = Mechanics.FatigueStressConcentrationFactor(kt, qBending)
+    let kfs = Mechanics.FatigueShearStressConcentrationFactor(kts, qTorsion)
+
+    let sigmaA = Mechanics.ShaftFatigueBendingAlternatingStress(maxBendingMoment, minBendingMoment, section.Diameter, kf)
+    let sigmaM = Mechanics.ShaftFatigueBendingMeanStress(maxBendingMoment, minBendingMoment, section.Diameter, kt)
+    let tauA = Mechanics.ShaftFatigueTorsionAlternatingShearStress(maxTorque, minTorque, section.Diameter, kfs)
+    let tauM = Mechanics.ShaftFatigueTorsionMeanShearStress(maxTorque, minTorque, section.Diameter, kts)
+
+    let surfaceFactor = Mechanics.SurfaceFactorFromUltimateStrength(ultimateStrength, 4.51, 0.0 - 0.265)
+    let sizeFactor = Mechanics.SizeFactorFromDiameter(section.Diameter, 0.00762m, 0.0 - 0.107)
+    let loadFactor = Mechanics.LoadFactorBending()
+    let temperatureFactor = Mechanics.TemperatureFactorDirect(0.96)
+    let reliabilityFactor = Mechanics.ReliabilityFactorFromPercent(99.0)
+
+    let unmodifiedEndurance = 290000000kg/m/s^2
+    let designEndurance = Mechanics.DesignEnduranceLimit(unmodifiedEndurance, surfaceFactor, sizeFactor, loadFactor, temperatureFactor, reliabilityFactor)
+
+    return ShaftFatigueSetup {
+        MaxBendingMoment: maxBendingMoment
+        MinBendingMoment: minBendingMoment
+        MaxTorque: maxTorque
+        MinTorque: minTorque
+        NotchRadius: notchRadius
+        PetersonLengthBending: petersonLengthBending
+        PetersonLengthTorsion: petersonLengthTorsion
+        NotchSensitivityBending: qBending
+        NotchSensitivityTorsion: qTorsion
+        Kt: kt
+        Kts: kts
+        Kf: kf
+        Kfs: kfs
+        SurfaceFactor: surfaceFactor
+        SizeFactor: sizeFactor
+        LoadFactor: loadFactor
+        TemperatureFactor: temperatureFactor
+        ReliabilityFactor: reliabilityFactor
+        UnmodifiedEnduranceLimit: unmodifiedEndurance
+        DesignEnduranceLimit: designEndurance
+        AlternatingEquivalentStress: Mechanics.ShaftEquivalentAlternatingStress(sigmaA, tauA)
+        MeanEquivalentStress: Mechanics.ShaftEquivalentMeanStress(sigmaM, tauM)
+    }
+}
+
+fn BuildShaftCriterionComparison(fatigue: ShaftFatigueSetup, ultimateStrength: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> ShaftCriterionComparison {
+    return ShaftCriterionComparison {
+        GoodmanFactorOfSafety: Mechanics.ShaftGoodmanFactorOfSafety(fatigue.AlternatingEquivalentStress, fatigue.MeanEquivalentStress, fatigue.DesignEnduranceLimit, ultimateStrength)
+        GerberFactorOfSafety: Mechanics.ShaftGerberFactorOfSafety(fatigue.AlternatingEquivalentStress, fatigue.MeanEquivalentStress, fatigue.DesignEnduranceLimit, ultimateStrength)
+        SoderbergFactorOfSafety: Mechanics.ShaftSoderbergFactorOfSafety(fatigue.AlternatingEquivalentStress, fatigue.MeanEquivalentStress, fatigue.DesignEnduranceLimit, yieldStrength)
+    }
+}
+
+fn BuildShaftDesignProbe() -> ShaftDesignProbe {
+    let ultimateStrength = 690000000kg/m/s^2
+    let yieldStrength = 490000000kg/m/s^2
+
+    let section = BuildShaftSectionBaseline()
+    let staticCheck = BuildShaftStaticCheck(section, yieldStrength)
+    let fatigueSetup = BuildShaftFatigueSetup(section, ultimateStrength)
+    let criteria = BuildShaftCriterionComparison(fatigueSetup, ultimateStrength, yieldStrength)
+
+    return ShaftDesignProbe {
+        Section: section
+        Static: staticCheck
+        Fatigue: fatigueSetup
+        Criteria: criteria
+        UltimateStrength: ultimateStrength
+        YieldStrength: yieldStrength
+    }
+}

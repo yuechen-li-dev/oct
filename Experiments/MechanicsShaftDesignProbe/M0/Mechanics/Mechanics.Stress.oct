@@ -1,0 +1,29 @@
+package Mechanics
+
+fn NormalStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> {
+    if area <= 0m^2 {
+        return 0kg/m/s^2
+    }
+    return force / area
+}
+
+fn ShearStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> {
+    if area <= 0m^2 {
+        return 0kg/m/s^2
+    }
+    return force / area
+}
+
+fn BendingStress(moment: Float<kg*m^2/s^2>, outerFiberDistance: Float<m>, secondMomentOfArea: Float<m^4>) -> Float<kg/m/s^2> {
+    if secondMomentOfArea <= 0m^4 {
+        return 0kg/m/s^2
+    }
+    return moment * outerFiberDistance / secondMomentOfArea
+}
+
+fn TorsionalShearStress(torque: Float<kg*m^2/s^2>, radius: Float<m>, polarMomentOfArea: Float<m^4>) -> Float<kg/m/s^2> {
+    if polarMomentOfArea <= 0m^4 {
+        return 0kg/m/s^2
+    }
+    return torque * radius / polarMomentOfArea
+}

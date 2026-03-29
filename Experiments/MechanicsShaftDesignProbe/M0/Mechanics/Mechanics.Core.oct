@@ -1,0 +1,61 @@
+package Mechanics
+
+enum Axis {
+    Horizontal
+    Vertical
+}
+
+record Vec2Force {
+    X: Float<kg*m/s^2>
+    Y: Float<kg*m/s^2>
+}
+
+record Displacement2 {
+    X: Float<m>
+    Y: Float<m>
+}
+
+record Stiffness2 {
+    K: Matrix<Float<kg/s^2>>
+}
+
+record EquilibriumReport {
+    Resultant: Vec2Force
+    Balanced: Bool
+}
+
+fn AddForce(a: Vec2Force, b: Vec2Force) -> Vec2Force {
+    return Vec2Force {
+        X: a.X + b.X
+        Y: a.Y + b.Y
+    }
+}
+
+fn MagnitudeSquared(force: Vec2Force) -> Float<kg^2*m^2/s^4> {
+    return force.X * force.X + force.Y * force.Y
+}
+
+fn ResultantReport(applied: Vec2Force, reaction: Vec2Force, toleranceSquared: Float<kg^2*m^2/s^4>) -> EquilibriumReport {
+    let resultant = AddForce(applied, reaction)
+    let nearlyZero = MagnitudeSquared(resultant) <= toleranceSquared
+    return EquilibriumReport {
+        Resultant: resultant
+        Balanced: nearlyZero
+    }
+}
+
+fn DominantAxis(force: Vec2Force) -> Axis {
+    if Abs(force.X) >= Abs(force.Y) {
+        return Axis.Horizontal
+    }
+    return Axis.Vertical
+}
+
+fn InternalForce(stiffness: Stiffness2, displacement: Displacement2) -> Vec2Force {
+    let d = vector[displacement.X, displacement.Y]
+    let f = stiffness.K @ d
+    return Vec2Force {
+        X: f[0]
+        Y: f[1]
+    }
+}
