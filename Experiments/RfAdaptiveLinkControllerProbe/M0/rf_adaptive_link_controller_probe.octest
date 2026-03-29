@@ -1,0 +1,106 @@
+package RfAdaptiveLinkControllerProbe
+
+fn BuildControllerProbeTrace() -> RfConditionTrace {
+    return RfConditionTrace {
+        DistanceMeters: [18m, 30m, 42m, 54m, 66m, 78m, 90m]
+        ShadowingDb: [0.0, 2.0, 2.4, 2.2, 2.5, 6.0, 6.2]
+        PathLossLinear: [1.0, 1.2, 1.4, 1.5, 1.6, 2.2, 2.4]
+        ReceivedPower: [1.0kg*m^2/s^3, 0.9kg*m^2/s^3, 0.8kg*m^2/s^3, 0.78kg*m^2/s^3, 0.76kg*m^2/s^3, 0.45kg*m^2/s^3, 0.42kg*m^2/s^3]
+        NoisePower: [0.01kg*m^2/s^3, 0.01kg*m^2/s^3, 0.01kg*m^2/s^3, 0.01kg*m^2/s^3, 0.01kg*m^2/s^3, 0.01kg*m^2/s^3, 0.01kg*m^2/s^3]
+        SnrLinear: [100.0, 90.0, 80.0, 78.0, 76.0, 45.0, 42.0]
+        QualityScore: [90, 66, 58, 66, 58, 22, 22]
+    }
+}
+
+[Fact]
+fn RfTraceBuildIsDeterministicAndMonotonic() -> Void {
+    let traceA = BuildRfConditionTrace()
+    let traceB = BuildRfConditionTrace()
+
+    Assert.Equal(12, Len(traceA.DistanceMeters), "trace should use a non-trivial simulation horizon")
+    Assert.Equal(Len(traceA.DistanceMeters), Len(traceA.PathLossLinear), "path-loss shape should align with distance schedule")
+    Assert.Equal(Len(traceA.DistanceMeters), Len(traceA.ReceivedPower), "received-power shape should align with distance schedule")
+
+    for i in 0 .. Len(traceA.DistanceMeters) {
+        Assert.Near(traceA.PathLossLinear[i], traceB.PathLossLinear[i], 0.0000001, "deterministic path-loss build should repeat exactly")
+    }
+
+    for i in 1 .. Len(traceA.DistanceMeters) {
+        Assert.True(traceA.PathLossLinear[i] > traceA.PathLossLinear[i - 1], "path loss should increase with distance in this setup")
+    }
+}
+
+[Fact]
+fn StepClassifierMapsHealthyWatchRecover() -> Void {
+    let healthy = ClassifyLinkStep(90)
+    let watch = ClassifyLinkStep(58)
+    let recover = ClassifyLinkStep(22)
+
+    Step(healthy)
+    Step(healthy)
+    Step(watch)
+    Step(watch)
+    Step(recover)
+    Step(recover)
+
+    match Result(healthy) {
+        ok(value) => { Assert.True(value == LinkState.Healthy, "high quality should classify as Healthy") }
+        err(e) => { Assert.True(false, "healthy classifier result should be available") }
+    }
+
+    match Result(watch) {
+        ok(value) => { Assert.True(value == LinkState.Watch, "mid quality should classify as Watch") }
+        err(e) => { Assert.True(false, "watch classifier result should be available") }
+    }
+
+    match Result(recover) {
+        ok(value) => { Assert.True(value == LinkState.Recover, "low quality should classify as Recover") }
+        err(e) => { Assert.True(false, "recover classifier result should be available") }
+    }
+}
+
+[Fact]
+fn AdaptiveControllerRunsOnRfBuiltTrace() -> Void {
+    let trace = BuildRfConditionTrace()
+    let f = RunAdaptiveLinkController(trace)
+
+    for _ in 0 .. Len(trace.QualityScore) {
+        Step(f)
+    }
+
+    Assert.True(Complete(f), "controller should complete after one step per RF sample")
+    let history = StateHistory(f)
+    Assert.Equal("Run", history[0], "history should begin in Run")
+
+    match Result(f) {
+        ok(modes) => { Assert.True(Len(modes) > 0, "controller should return non-empty mode sequence") }
+        err(e) => { Assert.True(false, "result should be available once flow completes") }
+    }
+}
+
+[Fact]
+fn UtilityPolicyReducesFlappingVersusNaiveThresholding() -> Void {
+    let trace = BuildControllerProbeTrace()
+    let adaptive = RunAdaptiveLinkController(trace)
+    let naive = RunNaiveController(trace)
+
+    for _ in 0 .. Len(trace.QualityScore) {
+        Step(adaptive)
+        Step(naive)
+    }
+
+    match Result(adaptive) {
+        ok(adaptiveModes) => {
+            match Result(naive) {
+                ok(naiveModes) => {
+                    let adaptiveTransitions = CountStateTransitions(adaptiveModes)
+                    let naiveTransitions = CountStateTransitions(naiveModes)
+
+                    Assert.True(adaptiveTransitions <= naiveTransitions, "hysteresis/min_commit controller should not flap more than naive thresholds")
+                }
+                err(e) => { Assert.True(false, "naive result should be available") }
+            }
+        }
+        err(e) => { Assert.True(false, "adaptive result should be available") }
+    }
+}

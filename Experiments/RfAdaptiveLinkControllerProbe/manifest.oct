@@ -1,0 +1,25 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "RfAdaptiveLinkControllerProbe"
+        Version: "0.1.0"
+        Description: "Deterministic RF + Octomata adaptive link-controller integration probe"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "RF" VersionRequirement: "0.2.3" }
+        ]
+    }
+}

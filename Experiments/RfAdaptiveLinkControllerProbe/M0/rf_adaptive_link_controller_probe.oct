@@ -1,0 +1,366 @@
+package RfAdaptiveLinkControllerProbe
+
+
+fn SpeedOfLightMetersPerSecond() -> Float {
+    return 299792458.0
+}
+
+fn LinearFloatSeries(start: Float, end: Float, count: Int) -> Float[] {
+    if count <= 0 {
+        return [0.0]
+    }
+    if count == 1 {
+        return [start]
+    }
+
+    let delta = (end - start) / (count - 1)
+    var out = [start]
+    for i in 1 .. count {
+        out = Append(out, start + delta * i)
+    }
+    return out
+}
+
+fn ConcatFloatSeries(left: Float[], right: Float[]) -> Float[] {
+    if Len(left) == 0 {
+        return [0.0]
+    }
+    if Len(right) == 0 {
+        return [0.0]
+    }
+
+    var out = [left[0]]
+    for i in 1 .. Len(left) {
+        out = Append(out, left[i])
+    }
+    for i in 0 .. Len(right) {
+        out = Append(out, right[i])
+    }
+    return out
+}
+
+fn ConstantFloatSeries(value: Float, count: Int) -> Float[] {
+    if count <= 0 {
+        return [0.0]
+    }
+    var out = [value]
+    for _ in 1 .. count {
+        out = Append(out, value)
+    }
+    return out
+}
+
+fn LinearDistanceSeries(start: Float<m>, end: Float<m>, count: Int) -> Float<m>[] {
+    if count <= 0 {
+        return [0.0m]
+    }
+    if count == 1 {
+        return [start]
+    }
+
+    let delta = (end - start) / (count - 1)
+    var out = [start]
+    for i in 1 .. count {
+        out = Append(out, start + delta * i)
+    }
+    return out
+}
+
+fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if frequencyHz <= 0 {
+        return 0.0
+    }
+    let wavelengthMeters = SpeedOfLightMetersPerSecond() / frequencyHz
+    let geometricTerm = 4.0 * Pi() * (distance / 1m) / wavelengthMeters
+    return geometricTerm * geometricTerm
+}
+
+fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Float[] {
+    if Len(distance) == 0 {
+        return [0.0]
+    }
+    var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
+    for i in 1 .. Len(distance) {
+        out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
+    }
+    return out
+}
+
+fn DbToLinear(valueDb: Float) -> Float {
+    return Exp(Ln(10) * valueDb / 10.0)
+}
+
+fn ApplyShadowingToPathLoss(pathLossLinear: Float, shadowingDb: Float) -> Float {
+    if pathLossLinear <= 0 {
+        return 0.0
+    }
+    return pathLossLinear * DbToLinear(shadowingDb)
+}
+
+fn ApplyShadowingToPathLossSeries(pathLossLinear: Float[], shadowingDb: Float[]) -> Float[] {
+    if Len(pathLossLinear) != Len(shadowingDb) {
+        return [0.0]
+    }
+    if Len(pathLossLinear) == 0 {
+        return [0.0]
+    }
+    var out = [ApplyShadowingToPathLoss(pathLossLinear[0], shadowingDb[0])]
+    for i in 1 .. Len(pathLossLinear) {
+        out = Append(out, ApplyShadowingToPathLoss(pathLossLinear[i], shadowingDb[i]))
+    }
+    return out
+}
+
+fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: Float, pathLossLinear: Float, systemLossLinear: Float) -> Float<kg*m^2/s^3> {
+    if pathLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if systemLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return txPower * txGainLinear * rxGainLinear / pathLossLinear / systemLossLinear
+}
+
+fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
+    if bandwidthHz <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if temperatureKelvin <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if noiseFigureLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    let boltzmann = 0.00000000000000000000001380649kg*m^2/s^3
+    return boltzmann * temperatureKelvin * bandwidthHz * noiseFigureLinear
+}
+
+fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvin: Float[], noiseFigureLinear: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(bandwidthHz) != Len(temperatureKelvin) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) != Len(noiseFigureLinear) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) == 0 {
+        return [0kg*m^2/s^3]
+    }
+    var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
+    for i in 1 .. Len(bandwidthHz) {
+        out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
+    }
+    return out
+}
+
+fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
+    if noisePower <= 0kg*m^2/s^3 {
+        return 0.0
+    }
+    return receivedPower / noisePower
+}
+
+fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
+    if Len(receivedPower) != Len(noisePower) {
+        return [0.0]
+    }
+    if Len(receivedPower) == 0 {
+        return [0.0]
+    }
+    var out = [SNRLinear(receivedPower[0], noisePower[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
+    }
+    return out
+}
+
+fn LinearToDb(valueLinear: Float) -> Float {
+    if valueLinear <= 0 {
+        return 0.0
+    }
+    return 10.0 * Log10(valueLinear)
+}
+
+enum LinkState {
+    Healthy
+    Watch
+    Recover
+}
+
+record RfConditionTrace {
+    DistanceMeters: Float<m>[]
+    ShadowingDb: Float[]
+    PathLossLinear: Float[]
+    ReceivedPower: Float<kg*m^2/s^3>[]
+    NoisePower: Float<kg*m^2/s^3>[]
+    SnrLinear: Float[]
+    QualityScore: Int[]
+}
+
+fn BuildShadowingDbSequence() -> Float[] {
+    let mild = LinearFloatSeries(0.0 - 1.0, 1.0, 4)
+    let marginal = [2.4, 2.8, 2.5, 2.9]
+    let poor = [6.0, 6.4, 6.8, 6.2]
+    return ConcatFloatSeries(ConcatFloatSeries(mild, marginal), poor)
+}
+
+fn BuildReceivedPowerSeries(pathLossLinear: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(pathLossLinear) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    let txPower = 0.08kg*m^2/s^3
+    let txGain = 1.8
+    let rxGain = 1.4
+    let systemLoss = 1.3
+
+    var out = [ReceivedPower(txPower, txGain, rxGain, pathLossLinear[0], systemLoss)]
+    for i in 1 .. Len(pathLossLinear) {
+        out = Append(out, ReceivedPower(txPower, txGain, rxGain, pathLossLinear[i], systemLoss))
+    }
+    return out
+}
+
+fn ScoreFromSnrLinear(snrLinear: Float) -> Int {
+    let snrDb = LinearToDb(snrLinear)
+    if snrDb >= 16.0 {
+        return 90
+    }
+    if snrDb >= 11.0 {
+        return 66
+    }
+    if snrDb >= 8.0 {
+        return 58
+    }
+    if snrDb >= 5.0 {
+        return 42
+    }
+    return 22
+}
+
+fn BuildQualityScores(snrLinear: Float[]) -> Int[] {
+    if Len(snrLinear) == 0 {
+        return [0]
+    }
+
+    var out = [ScoreFromSnrLinear(snrLinear[0])]
+    for i in 1 .. Len(snrLinear) {
+        out = Append(out, ScoreFromSnrLinear(snrLinear[i]))
+    }
+
+    return out
+}
+
+fn BuildRfConditionTrace() -> RfConditionTrace {
+    let distance = [18m, 30m, 42m, 54m, 66m, 78m, 90m, 102m, 114m, 126m, 138m, 150m]
+    let pathLoss = FreeSpacePathLossLinearSeries(distance, 2400000000.0)
+    let shadowingDb = BuildShadowingDbSequence()
+    let pathLossWithShadowing = ApplyShadowingToPathLossSeries(pathLoss, shadowingDb)
+
+    let received = BuildReceivedPowerSeries(pathLossWithShadowing)
+
+    let bandwidth = ConstantFloatSeries(5000000.0, Len(distance))
+    let temperature = ConstantFloatSeries(290.0, Len(distance))
+    let noiseFigure = ConstantFloatSeries(2.0, Len(distance))
+    let noise = ThermalNoisePowerWithNoiseFigureSeries(bandwidth, temperature, noiseFigure)
+    let snr = SNRLinearSeries(received, noise)
+
+    return RfConditionTrace {
+        DistanceMeters: distance
+        ShadowingDb: shadowingDb
+        PathLossLinear: pathLossWithShadowing
+        ReceivedPower: received
+        NoisePower: noise
+        SnrLinear: snr
+        QualityScore: BuildQualityScores(snr)
+    }
+}
+
+flow ClassifyLinkStep(qualityScore: Int) -> LinkState {
+    state Decide {
+        when {
+            case qualityScore >= 70 -> goto Healthy
+            case qualityScore >= 45 -> goto Watch
+            else -> goto Recover
+        }
+
+        goto Recover
+    }
+
+    state Healthy {
+        suspend
+        return LinkState.Healthy
+    }
+
+    state Watch {
+        suspend
+        return LinkState.Watch
+    }
+
+    state Recover {
+        suspend
+        return LinkState.Recover
+    }
+}
+
+flow RunAdaptiveLinkController(trace: RfConditionTrace) -> Int[] {
+    state Run {
+        var i = 0
+        var current = 0
+        var modes = [0]
+
+        while i < Len(trace.QualityScore) {
+            current = when policy {
+                hysteresis: 9
+                min_commit: 2
+            } {
+                case 2 when trace.QualityScore[i] < 40 score 110 - trace.QualityScore[i]
+                case 1 when trace.QualityScore[i] < 70 score 85 - Abs(trace.QualityScore[i] - 56)
+                case 0 when trace.QualityScore[i] >= 58 score trace.QualityScore[i]
+                else current
+            }
+
+            modes = Append(modes, current)
+            i = i + 1
+            suspend
+        }
+
+        return modes
+    }
+}
+
+flow RunNaiveController(trace: RfConditionTrace) -> Int[] {
+    state Run {
+        var i = 0
+        var modes = [0]
+
+        while i < Len(trace.QualityScore) {
+            let next = switch {
+                case trace.QualityScore[i] >= 70 => 0
+                case trace.QualityScore[i] >= 45 => 1
+                else => 2
+            }
+            modes = Append(modes, next)
+            i = i + 1
+            suspend
+        }
+
+        return modes
+    }
+}
+
+fn CountStateTransitions(history: Int[]) -> Int {
+    if Len(history) <= 1 {
+        return 0
+    }
+
+    var transitions = 0
+    for i in 1 .. Len(history) {
+        if history[i] != history[i - 1] {
+            transitions = transitions + 1
+        }
+    }
+    return transitions
+}
