@@ -1,0 +1,82 @@
+package RF
+
+[Fact]
+fn IdentityMimoChannelPreservesTransmitVector() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 2, [1.0, 0.0, 0.0, 1.0])
+    let tx = [2.0, 0.0 - 3.0]
+
+    let rx = ApplyMimoChannel(channel, tx)
+    Assert.Equal(2, Len(rx), "identity channel should preserve vector length")
+    Assert.Near(2.0, rx[0], 0.000001, "identity channel should preserve first stream")
+    Assert.Near(0.0 - 3.0, rx[1], 0.000001, "identity channel should preserve second stream")
+}
+
+[Fact]
+fn DiagonalMimoChannelScalesStreamsIndependently() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 2, [2.0, 0.0, 0.0, 0.5])
+    let tx = [3.0, 4.0]
+
+    let rx = ApplyMimoChannel(channel, tx)
+    Assert.Near(6.0, rx[0], 0.000001, "first stream should be scaled by first diagonal term")
+    Assert.Near(2.0, rx[1], 0.000001, "second stream should be scaled by second diagonal term")
+}
+
+[Fact]
+fn OffDiagonalTermsIntroduceDeterministicCoupling() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 2, [1.0, 0.25, 0.5, 1.0])
+    let tx = [4.0, 2.0]
+
+    let rx = ApplyMimoChannel(channel, tx)
+    Assert.Near(4.5, rx[0], 0.000001, "first receive stream should include coupled contribution")
+    Assert.Near(4.0, rx[1], 0.000001, "second receive stream should include coupled contribution")
+}
+
+[Fact]
+fn RectangularMimoChannelSupportsSmallNonSquareCases() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 3, [1.0, 0.0, 2.0, 0.5, 1.0, 0.0 - 1.0])
+    let tx = [1.0, 2.0, 3.0]
+
+    let rx = ApplyMimoChannel(channel, tx)
+    Assert.Equal(2, Len(rx), "2x3 channel should produce two receive streams")
+    Assert.Near(7.0, rx[0], 0.000001, "rectangular first row mix")
+    Assert.Near(0.0 - 0.5, rx[1], 0.000001, "rectangular second row mix")
+}
+
+[Fact]
+fn ShapeMismatchReturnsDeterministicSentinelWithoutReshape() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 2, [1.0, 0.0, 0.0, 1.0])
+
+    let tooShort = ApplyMimoChannel(channel, [1.0])
+    Assert.Equal(1, Len(tooShort), "shape mismatch should return sentinel length")
+    Assert.Equal(0.0, tooShort[0], "shape mismatch should return sentinel value")
+
+    let tooLong = ApplyMimoChannel(channel, [1.0, 2.0, 3.0])
+    Assert.Equal(1, Len(tooLong), "extra transmit entries should not be silently ignored")
+    Assert.Equal(0.0, tooLong[0], "no hidden reshape for extra transmit entries")
+
+    let invalidShape = MimoChannelFromRowMajor(2, 2, [1.0, 0.0, 1.0])
+    let invalidResult = ApplyMimoChannel(invalidShape, [1.0, 2.0])
+    Assert.Equal(1, Len(invalidResult), "invalid matrix shape should fail deterministically")
+    Assert.Equal(0.0, invalidResult[0], "invalid matrix shape should map to sentinel")
+}
+
+[Fact]
+fn GainAndPowerSummariesAreHandCheckable() -> Void {
+    let channel = MimoChannelFromRowMajor(2, 2, [1.0, 2.0, 0.0 - 1.0, 0.5])
+    let tx = [2.0, 1.0]
+
+    let rowGain = RowPowerGainSeries(channel)
+    Assert.Near(5.0, rowGain[0], 0.000001, "first row gain is sum of squared coefficients")
+    Assert.Near(1.25, rowGain[1], 0.000001, "second row gain is sum of squared coefficients")
+
+    let columnGain = ColumnPowerGainSeries(channel)
+    Assert.Near(2.0, columnGain[0], 0.000001, "first column gain is sum of squared coefficients")
+    Assert.Near(4.25, columnGain[1], 0.000001, "second column gain is sum of squared coefficients")
+
+    let totalGain = TotalChannelPowerGain(channel)
+    Assert.Near(6.25, totalGain, 0.000001, "total channel gain is sum of row gains")
+
+    let receivePower = ReceivedStreamPowerSeries(channel, tx)
+    Assert.Near(16.0, receivePower[0], 0.000001, "first receive stream power from deterministic mix")
+    Assert.Near(2.25, receivePower[1], 0.000001, "second receive stream power from deterministic mix")
+}

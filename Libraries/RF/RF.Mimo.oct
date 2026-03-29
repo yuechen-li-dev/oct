@@ -1,0 +1,147 @@
+package RF
+
+record MimoChannel {
+    RowCount: Int
+    ColumnCount: Int
+    CoefficientsRowMajor: Float[]
+}
+
+fn MimoChannelFromRowMajor(rowCount: Int, columnCount: Int, coefficientsRowMajor: Float[]) -> MimoChannel {
+    return MimoChannel {
+        RowCount: rowCount
+        ColumnCount: columnCount
+        CoefficientsRowMajor: coefficientsRowMajor
+    }
+}
+
+fn IsValidMimoChannel(channel: MimoChannel) -> Bool {
+    if channel.RowCount <= 0 {
+        return false
+    }
+    if channel.ColumnCount <= 0 {
+        return false
+    }
+
+    return Len(channel.CoefficientsRowMajor) == channel.RowCount * channel.ColumnCount
+}
+
+fn MimoCoefficientAt(channel: MimoChannel, row: Int, column: Int) -> Float {
+    if IsValidMimoChannel(channel) == false {
+        return 0.0
+    }
+    if row < 0 {
+        return 0.0
+    }
+    if column < 0 {
+        return 0.0
+    }
+    if row >= channel.RowCount {
+        return 0.0
+    }
+    if column >= channel.ColumnCount {
+        return 0.0
+    }
+
+    let index = row * channel.ColumnCount + column
+    return channel.CoefficientsRowMajor[index]
+}
+
+fn ApplyMimoChannel(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
+    if IsValidMimoChannel(channel) == false {
+        return [0.0]
+    }
+    if Len(transmitVector) != channel.ColumnCount {
+        return [0.0]
+    }
+
+    var received = [0.0]
+    for row in 0 .. channel.RowCount {
+        var mixed = 0.0
+        for column in 0 .. channel.ColumnCount {
+            mixed = mixed + MimoCoefficientAt(channel, row, column) * transmitVector[column]
+        }
+
+        if row == 0 {
+            received = [mixed]
+        } else {
+            received = Append(received, mixed)
+        }
+    }
+
+    return received
+}
+
+fn ReceivedStreamPowerSeries(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
+    if IsValidMimoChannel(channel) == false {
+        return [0.0]
+    }
+    if Len(transmitVector) != channel.ColumnCount {
+        return [0.0]
+    }
+
+    let received = ApplyMimoChannel(channel, transmitVector)
+    var out = [received[0] * received[0]]
+    for i in 1 .. Len(received) {
+        out = Append(out, received[i] * received[i])
+    }
+    return out
+}
+
+fn RowPowerGainSeries(channel: MimoChannel) -> Float[] {
+    if IsValidMimoChannel(channel) == false {
+        return [0.0]
+    }
+
+    var out = [0.0]
+    for row in 0 .. channel.RowCount {
+        var rowGain = 0.0
+        for column in 0 .. channel.ColumnCount {
+            let coefficient = MimoCoefficientAt(channel, row, column)
+            rowGain = rowGain + coefficient * coefficient
+        }
+
+        if row == 0 {
+            out = [rowGain]
+        } else {
+            out = Append(out, rowGain)
+        }
+    }
+
+    return out
+}
+
+fn ColumnPowerGainSeries(channel: MimoChannel) -> Float[] {
+    if IsValidMimoChannel(channel) == false {
+        return [0.0]
+    }
+
+    var out = [0.0]
+    for column in 0 .. channel.ColumnCount {
+        var columnGain = 0.0
+        for row in 0 .. channel.RowCount {
+            let coefficient = MimoCoefficientAt(channel, row, column)
+            columnGain = columnGain + coefficient * coefficient
+        }
+
+        if column == 0 {
+            out = [columnGain]
+        } else {
+            out = Append(out, columnGain)
+        }
+    }
+
+    return out
+}
+
+fn TotalChannelPowerGain(channel: MimoChannel) -> Float {
+    if IsValidMimoChannel(channel) == false {
+        return 0.0
+    }
+
+    let rowGain = RowPowerGainSeries(channel)
+    var total = rowGain[0]
+    for i in 1 .. Len(rowGain) {
+        total = total + rowGain[i]
+    }
+    return total
+}

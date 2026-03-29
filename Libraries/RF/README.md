@@ -1,6 +1,6 @@
-# RF Library (M2b)
+# RF Library (M2c)
 
-RF M2b keeps the deterministic M0/M0a/M1 RF math and channel helpers, retains M2a sequence ergonomics, and adds time-variation reasoning helpers:
+RF M2c keeps the deterministic M0/M0a/M1 RF math and channel helpers, retains M2a sequence ergonomics, keeps M2b Doppler/coherence reasoning, and adds a small deterministic MIMO channel layer:
 
 - constant deterministic series
 - linear deterministic ramps for scalar and distance sweeps
@@ -107,12 +107,32 @@ Both are approximation-based and intentionally explicit:
 
 This helper provides deterministic phase progression from Doppler shift and time without introducing a stochastic time-varying channel simulator.
 
+
+
+## M2c additions
+
+### Simple deterministic MIMO helpers
+
+- `MimoChannel` and `MimoChannelFromRowMajor`
+- `ApplyMimoChannel` for explicit `y = Hx` application
+- `ReceivedStreamPowerSeries` for per-receive-stream power under a given input
+- `RowPowerGainSeries`, `ColumnPowerGainSeries`, and `TotalChannelPowerGain` for small coupling/gain inspection
+
+MIMO helpers are intentionally narrow:
+
+- deterministic only (no random channel generation)
+- shape-explicit (row-major coefficients with strict matrix/vector compatibility checks)
+- no hidden transpose, reshape, padding, or broadcasting
+- no beamforming, precoding/decoding, estimation, scheduler, or standards layers
+
 ## Deferred by design
 
 Still intentionally out of scope:
 
 - full time-varying stochastic fading/channel processes
-- MIMO channel models
+- stochastic or standards-specific MIMO channel models
+- beamforming and precoding/decoding frameworks
+- channel-estimation and multi-user antenna-stack frameworks
 - standards-specific mobility/channel profiles
 - packet/protocol or full wireless simulation frameworks
 - random-number sequence generators or stochastic input builder layers
