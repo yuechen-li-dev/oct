@@ -89,6 +89,25 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
   * `// ...` for ordinary line comments.
   * `/// ...` for documentation comments bound to declarations.
 
+### Canonical Formatter (M75)
+
+Oct now provides one canonical formatter mode via `oct fmt <path-or-file>`.
+
+Formatter policy:
+
+* single canonical committed source shape (no configuration)
+* deterministic spacing/indentation and stable diff-friendly layout
+* idempotent output (formatting formatted code yields no changes)
+* preserves ordinary comments (`//`) and doc comments (`///`) with declaration adjacency
+
+Intentionally deferred:
+
+* alternate formatter profiles (for example `en-human`)
+* localization/view-mode formatting
+* semantic display rewrites (numeric notation changes, unit collapse/rewrite, literal compression)
+
+---
+
 ### Documentation Comments (M74)
 
 `///` doc comments are an Oct-native, lightweight source documentation surface for future tooling and current readability.

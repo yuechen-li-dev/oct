@@ -8,6 +8,7 @@ import (
 
 	"oct/internal/build"
 	"oct/internal/exprun"
+	"oct/internal/ocfmt"
 	"oct/internal/pkgmgr"
 	"oct/internal/prometheus"
 	"oct/internal/run"
@@ -46,6 +47,15 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
+	case "fmt":
+		if len(args) != 2 {
+			return writeUsage(stderr)
+		}
+		path := args[1]
+		if err := ocfmt.FormatPath(path); err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return nil
 	case "test":
 		if len(args) != 2 {
 			return writeUsage(stderr)
@@ -239,7 +249,7 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err
 }
 
