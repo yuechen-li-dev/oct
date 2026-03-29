@@ -1,0 +1,84 @@
+package ExternalDslComparisonMx69
+
+[Fact]
+fn PhaseABasicParityReachesExpectedState() -> Void {
+    let f = MatterParityMachine(ParityInput {
+        Melt: true
+        Freeze: false
+        Vaporize: true
+        Condense: false
+    })
+
+    Step(f)
+    Assert.Equal("Gas", Active(f), "single event set should traverse Solid->Liquid->Gas and suspend")
+
+    let history = StateHistory(f)
+    Assert.Equal("Solid", history[0], "history should include initial state entry")
+    Assert.Equal("Liquid", history[1], "history should include intermediate transition")
+    Assert.Equal("Gas", history[2], "history should include final suspended state")
+}
+
+[Fact]
+fn PhaseBNativeUtilityControllerChoosesHigherScoreAndCompletes() -> Void {
+    let f = MatterNativeController(NativeInput {
+        HeatDemand: 60
+        CoolDemand: 92
+    })
+
+    Step(f)
+    Assert.Equal("Cool", Active(f), "utility when should select the stronger cooling demand")
+    Assert.True(Complete(f) == false, "selection step should suspend in chosen mode before completion")
+
+    Step(f)
+    Assert.Equal("", Active(f), "second step should resume selected mode and complete")
+    Assert.True(Complete(f), "controller should report completion")
+
+    match Result(f) {
+        ok(value) => { Assert.True(value == NativeOutcome.CoolMode, "cooling should be selected for stronger score") }
+        err(e) => { Assert.True(false, "result should be available after completion") }
+    }
+}
+
+[Fact]
+fn PhaseBNativeUtilityMinCommitBlocksEarlyFlip() -> Void {
+    let f = MatterUtilityMinCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(1, value, "small challenger lead should be blocked before min_commit horizon") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
+
+[Fact]
+fn PhaseBNativeUtilitySwitchesAfterCommitWindow() -> Void {
+    let f = MatterUtilitySwitchAfterCommitProbe()
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { Assert.Equal(2, value, "larger lead should switch after min_commit horizon expires") }
+        err(e) => { Assert.True(false, "result should be available") }
+    }
+}
+
+[Fact]
+fn PhaseBInterruptionRememberResumeIsObservable() -> Void {
+    let f = MatterServiceInterruptionDemo()
+
+    Step(f)
+    Assert.Equal("Heat", Active(f), "first step should suspend in active mode")
+    Assert.Equal("", ResumeTarget(f), "resume slot should be empty before remember")
+
+    Step(f)
+    Assert.Equal("ServicePause", Active(f), "second step should remember Heat and divert")
+    Assert.Equal("Heat", ResumeTarget(f), "resume slot should hold remembered Heat state")
+
+    Step(f)
+    Assert.Equal("Heat", Active(f), "third step should resume to remembered state")
+    Assert.Equal("", ResumeTarget(f), "successful resume should clear slot")
+
+    let history = StateHistory(f)
+    Assert.Equal("Heat", history[0], "history should begin with Heat")
+    Assert.Equal("ServicePause", history[1], "history should include diversion")
+    Assert.Equal("Heat", history[2], "history should record resumed target")
+}
