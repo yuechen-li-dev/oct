@@ -1,0 +1,108 @@
+package RfDopplerCoherenceProbe
+
+[Fact]
+fn DopplerBaselineShowsExpectedVelocityAndCarrierTrends() -> Void {
+    let baseline = BuildDopplerBaseline()
+
+    Assert.Equal(16, Len(baseline.VelocitiesMetersPerSecond), "velocity sweep should stay modest but non-trivial")
+    Assert.Equal(Len(baseline.VelocitiesMetersPerSecond), Len(baseline.DopplerByVelocityHz), "velocity doppler output should preserve shape")
+    Assert.Equal(8, Len(baseline.CarrierSweepHz), "carrier sweep should remain compact")
+    Assert.Equal(Len(baseline.CarrierSweepHz), Len(baseline.DopplerByCarrierHz), "carrier doppler output should preserve shape")
+
+    Assert.Equal(0.0, baseline.DopplerByVelocityHz[0], "zero velocity should produce zero doppler shift")
+
+    for i in 1 .. Len(baseline.DopplerByVelocityHz) {
+        Assert.True(Abs(baseline.DopplerByVelocityHz[i]) > Abs(baseline.DopplerByVelocityHz[i - 1]), "doppler magnitude should rise with speed")
+    }
+
+    for i in 1 .. Len(baseline.DopplerByCarrierHz) {
+        Assert.True(Abs(baseline.DopplerByCarrierHz[i]) > Abs(baseline.DopplerByCarrierHz[i - 1]), "doppler magnitude should rise with carrier frequency")
+    }
+
+    let scalarCheck = DopplerShiftHz(2400000000.0, baseline.VelocitiesMetersPerSecond[9])
+    Assert.Near(scalarCheck, baseline.DopplerByVelocityHz[9], 0.000001, "series helper should match scalar doppler calculation")
+}
+
+[Fact]
+fn CoherenceTimeProbeShowsInverseTrendAndFormulaOrdering() -> Void {
+    let baseline = BuildDopplerBaseline()
+    let probe = BuildCoherenceTimeProbe(baseline.DopplerByVelocityHz)
+
+    Assert.Equal(Len(probe.MaxDopplerHz), Len(probe.JakesSeconds), "jakes coherence-time output should preserve shape")
+    Assert.Equal(Len(probe.MaxDopplerHz), Len(probe.HalfCycleSeconds), "half-cycle coherence-time output should preserve shape")
+
+    for i in 1 .. Len(probe.MaxDopplerHz) {
+        Assert.True(probe.MaxDopplerHz[i] >= probe.MaxDopplerHz[i - 1], "max doppler should be non-decreasing over the chosen sweep")
+    }
+
+    for i in 2 .. Len(probe.MaxDopplerHz) {
+        Assert.True(probe.JakesSeconds[i] <= probe.JakesSeconds[i - 1], "jakes coherence time should drop as doppler rises once doppler is positive")
+        Assert.True(probe.HalfCycleSeconds[i] <= probe.HalfCycleSeconds[i - 1], "half-cycle coherence time should drop as doppler rises once doppler is positive")
+    }
+
+    for i in 1 .. Len(probe.MaxDopplerHz) {
+        Assert.True(probe.HalfCycleSeconds[i] > probe.JakesSeconds[i], "half-cycle estimate should exceed jakes estimate for positive doppler")
+    }
+
+    Assert.Equal(0.0, probe.JakesSeconds[0], "zero doppler maps to deterministic coherence-time sentinel")
+    Assert.Equal(0.0, probe.HalfCycleSeconds[0], "zero doppler maps to deterministic coherence-time sentinel")
+}
+
+[Fact]
+fn CoherenceBandwidthProbeShowsInverseTrendAndPredictableFormulaDifference() -> Void {
+    let probe = BuildCoherenceBandwidthProbe()
+
+    Assert.Equal(8, Len(probe.RmsDelaySpreadSeconds), "delay-spread sweep should remain compact and readable")
+    Assert.Equal(Len(probe.RmsDelaySpreadSeconds), Len(probe.WideSenseHz), "wide-sense coherence-bandwidth output should preserve shape")
+    Assert.Equal(Len(probe.RmsDelaySpreadSeconds), Len(probe.StrictHz), "strict coherence-bandwidth output should preserve shape")
+
+    for i in 1 .. Len(probe.RmsDelaySpreadSeconds) {
+        Assert.True(probe.RmsDelaySpreadSeconds[i] > probe.RmsDelaySpreadSeconds[i - 1], "delay spread sweep should increase")
+        Assert.True(probe.WideSenseHz[i] < probe.WideSenseHz[i - 1], "wide-sense coherence bandwidth should drop as delay spread rises")
+        Assert.True(probe.StrictHz[i] < probe.StrictHz[i - 1], "strict coherence bandwidth should drop as delay spread rises")
+        Assert.True(probe.WideSenseHz[i] > probe.StrictHz[i], "wide-sense estimate should exceed strict estimate for identical delay spread")
+    }
+}
+
+[Fact]
+fn DopplerPhaseProbeIsDeterministicAndFasterAtHigherDoppler() -> Void {
+    let phase = BuildDopplerPhaseProbe()
+
+    Assert.Equal(8, Len(phase.TimeSeconds), "time sweep should be compact")
+    Assert.Equal(Len(phase.TimeSeconds), Len(phase.LowDopplerPhaseRadians), "low-doppler phase output should preserve shape")
+    Assert.Equal(Len(phase.TimeSeconds), Len(phase.HighDopplerPhaseRadians), "high-doppler phase output should preserve shape")
+
+    Assert.Equal(0.0, phase.LowDopplerPhaseRadians[0], "phase should start at zero for zero time")
+    Assert.Equal(0.0, phase.HighDopplerPhaseRadians[0], "phase should start at zero for zero time")
+
+    for i in 1 .. Len(phase.TimeSeconds) {
+        Assert.True(phase.LowDopplerPhaseRadians[i] > phase.LowDopplerPhaseRadians[i - 1], "low-doppler phase should evolve deterministically over time")
+        Assert.True(phase.HighDopplerPhaseRadians[i] > phase.HighDopplerPhaseRadians[i - 1], "high-doppler phase should evolve deterministically over time")
+
+        let lowDelta = phase.LowDopplerPhaseRadians[i] - phase.LowDopplerPhaseRadians[i - 1]
+        let highDelta = phase.HighDopplerPhaseRadians[i] - phase.HighDopplerPhaseRadians[i - 1]
+        Assert.True(highDelta > lowDelta, "higher doppler should produce faster phase evolution per time step")
+    }
+}
+
+[Fact]
+fn CompositionProbeKeepsSeriesConsistentAcrossStages() -> Void {
+    let artifacts = BuildProbeArtifacts()
+    let doppler = artifacts.Doppler
+    let coherenceTime = artifacts.CoherenceTime
+    let coherenceBandwidth = artifacts.CoherenceBandwidth
+    let phase = artifacts.Phase
+
+    Assert.Equal(Len(doppler.DopplerByVelocityHz), Len(coherenceTime.MaxDopplerHz), "coherence-time doppler input should preserve the doppler-series shape")
+    Assert.Equal(8, Len(coherenceBandwidth.RmsDelaySpreadSeconds), "coherence-bandwidth stage should keep planned sweep length")
+    Assert.Equal(8, Len(phase.TimeSeconds), "phase stage should keep planned sweep length")
+
+    let scalarPhase = DopplerPhaseRadians(80.0, phase.TimeSeconds[3])
+    Assert.Near(scalarPhase, phase.HighDopplerPhaseRadians[3], 0.000001, "phase series should match scalar helper")
+
+    let scalarStrictBw = CoherenceBandwidthHzFromRmsDelaySpreadStrict(coherenceBandwidth.RmsDelaySpreadSeconds[4])
+    Assert.Near(scalarStrictBw, coherenceBandwidth.StrictHz[4], 0.000001, "coherence-bandwidth series should match scalar helper")
+
+    let scalarJakes = CoherenceTimeSecondsFromMaxDopplerJakes(coherenceTime.MaxDopplerHz[10])
+    Assert.Near(scalarJakes, coherenceTime.JakesSeconds[10], 0.000001, "coherence-time series should match scalar helper")
+}
