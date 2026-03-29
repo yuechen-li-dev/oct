@@ -1,0 +1,143 @@
+package MechanicsFatigueDesignProbe
+import Mechanics
+
+record StressCase {
+    Area: Float<m^2>
+    OuterFiberDistance: Float<m>
+    SecondMomentOfArea: Float<m^4>
+    AxialForceMax: Float<kg*m/s^2>
+    AxialForceMin: Float<kg*m/s^2>
+    BendingMomentMax: Float<kg*m^2/s^2>
+    BendingMomentMin: Float<kg*m^2/s^2>
+    SigmaAxialMax: Float<kg/m/s^2>
+    SigmaAxialMin: Float<kg/m/s^2>
+    SigmaBendingMax: Float<kg/m/s^2>
+    SigmaBendingMin: Float<kg/m/s^2>
+    SigmaCombinedMax: Float<kg/m/s^2>
+    SigmaCombinedMin: Float<kg/m/s^2>
+}
+
+record FatigueDecomposition {
+    MeanStress: Float<kg/m/s^2>
+    AlternatingStress: Float<kg/m/s^2>
+}
+
+record EnduranceCase {
+    UnmodifiedEnduranceLimit: Float<kg/m/s^2>
+    SurfaceFactor: Float
+    SizeFactor: Float
+    LoadFactor: Float
+    TemperatureFactor: Float
+    ReliabilityFactor: Float
+    ModifierProduct: Float
+    DesignEnduranceLimit: Float<kg/m/s^2>
+}
+
+record CriterionComparison {
+    GoodmanFactorOfSafety: Float
+    GerberFactorOfSafety: Float
+    SoderbergFactorOfSafety: Float
+}
+
+record FatigueDesignProbe {
+    Stress: StressCase
+    Fatigue: FatigueDecomposition
+    Endurance: EnduranceCase
+    Criteria: CriterionComparison
+    UltimateStrength: Float<kg/m/s^2>
+    YieldStrength: Float<kg/m/s^2>
+}
+
+fn BuildStressCase() -> StressCase {
+    let area = 0.0008m^2
+    let outerFiberDistance = 0.012m
+    let secondMomentOfArea = 0.00000024m^4
+
+    let axialForceMax = 42000kg*m/s^2
+    let axialForceMin = 18000kg*m/s^2
+    let bendingMomentMax = 950kg*m^2/s^2
+    let bendingMomentMin = 250kg*m^2/s^2
+
+    let sigmaAxialMax = Mechanics.NormalStress(axialForceMax, area)
+    let sigmaAxialMin = Mechanics.NormalStress(axialForceMin, area)
+    let sigmaBendingMax = Mechanics.BendingStress(bendingMomentMax, outerFiberDistance, secondMomentOfArea)
+    let sigmaBendingMin = Mechanics.BendingStress(bendingMomentMin, outerFiberDistance, secondMomentOfArea)
+
+    return StressCase {
+        Area: area
+        OuterFiberDistance: outerFiberDistance
+        SecondMomentOfArea: secondMomentOfArea
+        AxialForceMax: axialForceMax
+        AxialForceMin: axialForceMin
+        BendingMomentMax: bendingMomentMax
+        BendingMomentMin: bendingMomentMin
+        SigmaAxialMax: sigmaAxialMax
+        SigmaAxialMin: sigmaAxialMin
+        SigmaBendingMax: sigmaBendingMax
+        SigmaBendingMin: sigmaBendingMin
+        SigmaCombinedMax: sigmaAxialMax + sigmaBendingMax
+        SigmaCombinedMin: sigmaAxialMin + sigmaBendingMin
+    }
+}
+
+fn BuildFatigueDecomposition(stress: StressCase) -> FatigueDecomposition {
+    return FatigueDecomposition {
+        MeanStress: Mechanics.MeanStress(stress.SigmaCombinedMax, stress.SigmaCombinedMin)
+        AlternatingStress: Mechanics.AlternatingStress(stress.SigmaCombinedMax, stress.SigmaCombinedMin)
+    }
+}
+
+fn BuildEnduranceCase(ultimateStrength: Float<kg/m/s^2>) -> EnduranceCase {
+    let unmodifiedEndurance = 310000000kg/m/s^2
+
+    let surfaceFactor = Mechanics.SurfaceFactorFromUltimateStrength(ultimateStrength, 4.51, 0.0 - 0.265)
+    let sizeFactor = Mechanics.SizeFactorFromDiameter(0.024m, 0.00762m, 0.0 - 0.107)
+    let loadFactor = Mechanics.LoadFactorBending()
+    let temperatureFactor = Mechanics.TemperatureFactorDirect(0.975)
+    let reliabilityFactor = Mechanics.ReliabilityFactorFromPercent(99.0)
+
+    let modifierProduct = Mechanics.EnduranceModifierProduct(surfaceFactor, sizeFactor, loadFactor, temperatureFactor, reliabilityFactor)
+    let designEndurance = Mechanics.DesignEnduranceLimit(unmodifiedEndurance, surfaceFactor, sizeFactor, loadFactor, temperatureFactor, reliabilityFactor)
+
+    return EnduranceCase {
+        UnmodifiedEnduranceLimit: unmodifiedEndurance
+        SurfaceFactor: surfaceFactor
+        SizeFactor: sizeFactor
+        LoadFactor: loadFactor
+        TemperatureFactor: temperatureFactor
+        ReliabilityFactor: reliabilityFactor
+        ModifierProduct: modifierProduct
+        DesignEnduranceLimit: designEndurance
+    }
+}
+
+fn BuildCriterionComparison(fatigue: FatigueDecomposition, endurance: EnduranceCase, ultimateStrength: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> CriterionComparison {
+    let alternatingStress = fatigue.AlternatingStress
+    let meanStress = fatigue.MeanStress
+    let designEndurance = endurance.DesignEnduranceLimit
+
+    return CriterionComparison {
+        GoodmanFactorOfSafety: Mechanics.GoodmanFactorOfSafety(alternatingStress, meanStress, designEndurance, ultimateStrength)
+        GerberFactorOfSafety: Mechanics.GerberFactorOfSafety(alternatingStress, meanStress, designEndurance, ultimateStrength)
+        SoderbergFactorOfSafety: Mechanics.SoderbergFactorOfSafety(alternatingStress, meanStress, designEndurance, yieldStrength)
+    }
+}
+
+fn BuildFatigueDesignProbe() -> FatigueDesignProbe {
+    let ultimateStrength = 620000000kg/m/s^2
+    let yieldStrength = 450000000kg/m/s^2
+
+    let stress = BuildStressCase()
+    let fatigue = BuildFatigueDecomposition(stress)
+    let endurance = BuildEnduranceCase(ultimateStrength)
+    let criteria = BuildCriterionComparison(fatigue, endurance, ultimateStrength, yieldStrength)
+
+    return FatigueDesignProbe {
+        Stress: stress
+        Fatigue: fatigue
+        Endurance: endurance
+        Criteria: criteria
+        UltimateStrength: ultimateStrength
+        YieldStrength: yieldStrength
+    }
+}
