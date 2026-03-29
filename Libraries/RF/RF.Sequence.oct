@@ -1,5 +1,7 @@
 package RF
 
+/// Creates a constant float series of requested length.
+/// Remarks: Returns [0.0] when count is non-positive.
 fn ConstantFloatSeries(value: Float, count: Int) -> Float[] {
     if count <= 0 {
         return [0.0]
@@ -12,6 +14,8 @@ fn ConstantFloatSeries(value: Float, count: Int) -> Float[] {
     return out
 }
 
+/// Creates a constant distance series of requested length.
+/// Remarks: Returns [0.0m] when count is non-positive.
 fn ConstantDistanceSeries(value: Float<m>, count: Int) -> Float<m>[] {
     if count <= 0 {
         return [0.0m]
@@ -24,6 +28,8 @@ fn ConstantDistanceSeries(value: Float<m>, count: Int) -> Float<m>[] {
     return out
 }
 
+/// Creates a linearly spaced float series including both endpoints.
+/// Remarks: Returns [0.0] when count is non-positive.
 fn LinearFloatSeries(start: Float, end: Float, count: Int) -> Float[] {
     if count <= 0 {
         return [0.0]
@@ -40,6 +46,8 @@ fn LinearFloatSeries(start: Float, end: Float, count: Int) -> Float[] {
     return out
 }
 
+/// Creates a linearly spaced distance series including both endpoints.
+/// Remarks: Returns [0.0m] when count is non-positive.
 fn LinearDistanceSeries(start: Float<m>, end: Float<m>, count: Int) -> Float<m>[] {
     if count <= 0 {
         return [0.0m]
@@ -56,6 +64,8 @@ fn LinearDistanceSeries(start: Float<m>, end: Float<m>, count: Int) -> Float<m>[
     return out
 }
 
+/// Concatenates two non-empty float series.
+/// Remarks: Returns [0.0] when either side is empty.
 fn ConcatFloatSeries(left: Float[], right: Float[]) -> Float[] {
     if Len(left) == 0 {
         return [0.0]

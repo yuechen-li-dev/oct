@@ -1,13 +1,17 @@
 package Mechanics
 
+/// Computes mean stress for a stress cycle.
 fn MeanStress(maxStress: Float<kg/m/s^2>, minStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     return 0.5 * (maxStress + minStress)
 }
 
+/// Computes alternating stress amplitude for a stress cycle.
 fn AlternatingStress(maxStress: Float<kg/m/s^2>, minStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     return 0.5 * Abs(maxStress - minStress)
 }
 
+/// Computes Goodman utilization for combined mean and alternating stress.
+/// Remarks: Linear interaction model between endurance and ultimate strengths.
 fn GoodmanUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
     if enduranceLimit <= 0kg/m/s^2 {
         return 0
@@ -18,6 +22,7 @@ fn GoodmanUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m
     return alternatingStress / enduranceLimit + meanStress / ultimateStrength
 }
 
+/// Returns fatigue factor of safety from Goodman utilization.
 fn GoodmanFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
     let utilization = GoodmanUtilization(alternatingStress, meanStress, enduranceLimit, ultimateStrength)
     if utilization <= 0 {
@@ -26,6 +31,8 @@ fn GoodmanFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<k
     return 1.0 / utilization
 }
 
+/// Computes Gerber utilization with parabolic mean-stress correction.
+/// Remarks: Typically less conservative than Goodman near high mean stress.
 fn GerberUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
     if enduranceLimit <= 0kg/m/s^2 {
         return 0
@@ -37,6 +44,7 @@ fn GerberUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/
     return alternatingStress / enduranceLimit + meanRatio * meanRatio
 }
 
+/// Returns fatigue factor of safety from Gerber utilization.
 fn GerberFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
     let utilization = GerberUtilization(alternatingStress, meanStress, enduranceLimit, ultimateStrength)
     if utilization <= 0 {
@@ -45,6 +53,8 @@ fn GerberFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg
     return 1.0 / utilization
 }
 
+/// Computes Soderberg utilization using yield-strength mean-stress limit.
+/// Remarks: More conservative than Goodman and Gerber for ductile materials.
 fn SoderbergUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> Float {
     if enduranceLimit <= 0kg/m/s^2 {
         return 0
@@ -55,6 +65,7 @@ fn SoderbergUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg
     return alternatingStress / enduranceLimit + meanStress / yieldStrength
 }
 
+/// Returns fatigue factor of safety from Soderberg utilization.
 fn SoderbergFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> Float {
     let utilization = SoderbergUtilization(alternatingStress, meanStress, enduranceLimit, yieldStrength)
     if utilization <= 0 {

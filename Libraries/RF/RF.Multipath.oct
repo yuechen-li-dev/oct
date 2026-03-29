@@ -1,5 +1,7 @@
 package RF
 
+/// Returns the largest delay tap index in samples.
+/// Remarks: Returns 0 for empty input.
 fn MaxDelaySamples(delaySamples: Int[]) -> Int {
     if Len(delaySamples) == 0 {
         return 0
@@ -14,6 +16,10 @@ fn MaxDelaySamples(delaySamples: Int[]) -> Int {
     return maxDelay
 }
 
+/// Evaluates one tap contribution at a specific output index.
+/// Param delaySamples: Integer delay of this tap.
+/// Param powerGain: Linear tap gain applied to sample power.
+/// Remarks: Returns zero when tap does not overlap the output index.
 fn TapContributionAt(samples: Float<kg*m^2/s^3>[], delaySamples: Int, powerGain: Float, outIndex: Int) -> Float<kg*m^2/s^3> {
     if outIndex < delaySamples {
         return 0.0kg*m^2/s^3
@@ -27,6 +33,11 @@ fn TapContributionAt(samples: Float<kg*m^2/s^3>[], delaySamples: Int, powerGain:
     return ApplyPowerGain(samples[sampleIndex], powerGain)
 }
 
+/// Applies a deterministic tapped-delay-line power model to a sample series.
+/// Param samples: Input power samples.
+/// Param delaySamples: Per-tap integer delays.
+/// Param powerGain: Per-tap linear gains.
+/// Remarks: Negative delays/gains and shape mismatches return [0 power].
 fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: Int[], powerGain: Float[]) -> Float<kg*m^2/s^3>[] {
     if Len(samples) == 0 {
         return [0.0kg*m^2/s^3]

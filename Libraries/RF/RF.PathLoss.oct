@@ -1,9 +1,17 @@
 package RF
 
+/// Returns the physical speed of light used by RF propagation helpers.
+/// Units: m/s.
 fn SpeedOfLightMetersPerSecond() -> Float {
     return 299792458.0
 }
 
+/// Computes free-space path loss factor from Friis geometry in linear scale.
+/// Param distance: Line-of-sight propagation distance.
+/// Param frequencyHz: Carrier frequency.
+/// Returns: Dimensionless path-loss multiplier >= 0.
+/// Units: Distance in m, frequency in Hz.
+/// Remarks: Returns 0 when distance or frequency is non-positive.
 fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
     if distance <= 0m {
         return 0.0
@@ -17,6 +25,10 @@ fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
     return geometricTerm * geometricTerm
 }
 
+/// Maps FreeSpacePathLossLinear across a distance series.
+/// Param distance: Distance samples evaluated independently.
+/// Param frequencyHz: Shared carrier frequency.
+/// Remarks: Returns [0.0] for empty input.
 fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Float[] {
     if Len(distance) == 0 {
         return [0.0]
@@ -29,6 +41,12 @@ fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Fl
     return out
 }
 
+/// Computes log-distance path loss from a calibrated reference point.
+/// Param distance: Evaluation distance.
+/// Param referenceDistance: Calibration distance d0.
+/// Param referencePathLossLinear: Path-loss factor at d0.
+/// Param pathLossExponent: Environment exponent n.
+/// Remarks: Returns 0 when any required positive input is invalid.
 fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float {
     if distance <= 0m {
         return 0.0
@@ -44,6 +62,9 @@ fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, re
     return referencePathLossLinear * Exp(pathLossExponent * Ln(distanceRatio))
 }
 
+/// Maps LogDistancePathLossLinear across a distance series.
+/// Param distance: Distance samples evaluated independently.
+/// Remarks: Returns [0.0] for empty input.
 fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float[] {
     if Len(distance) == 0 {
         return [0.0]
@@ -56,11 +77,13 @@ fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Floa
     return out
 }
 
-
+/// Converts log-normal shadowing offset from dB to linear multiplier.
 fn ShadowingLinearFromDb(shadowingDb: Float) -> Float {
     return DbToLinear(shadowingDb)
 }
 
+/// Maps ShadowingLinearFromDb across dB offsets.
+/// Remarks: Returns [0.0] for empty input.
 fn ShadowingLinearFromDbSeries(shadowingDb: Float[]) -> Float[] {
     if Len(shadowingDb) == 0 {
         return [0.0]
@@ -73,6 +96,10 @@ fn ShadowingLinearFromDbSeries(shadowingDb: Float[]) -> Float[] {
     return out
 }
 
+/// Applies a shadowing offset to path-loss factor in linear domain.
+/// Param pathLossLinear: Baseline path-loss multiplier.
+/// Param shadowingDb: Additional attenuation/amplification in dB.
+/// Remarks: Returns 0 when baseline path loss is non-positive.
 fn ApplyShadowingToPathLoss(pathLossLinear: Float, shadowingDb: Float) -> Float {
     if pathLossLinear <= 0 {
         return 0.0
@@ -80,6 +107,8 @@ fn ApplyShadowingToPathLoss(pathLossLinear: Float, shadowingDb: Float) -> Float 
     return pathLossLinear * ShadowingLinearFromDb(shadowingDb)
 }
 
+/// Applies per-sample shadowing to per-sample path-loss factors.
+/// Remarks: Returns [0.0] when lengths mismatch or input is empty.
 fn ApplyShadowingToPathLossSeries(pathLossLinear: Float[], shadowingDb: Float[]) -> Float[] {
     if Len(pathLossLinear) != Len(shadowingDb) {
         return [0.0]
@@ -95,6 +124,10 @@ fn ApplyShadowingToPathLossSeries(pathLossLinear: Float[], shadowingDb: Float[])
     return out
 }
 
+/// Applies a shadowing loss factor to received power.
+/// Param receivedPower: Baseline received power.
+/// Param shadowingDb: Shadowing offset in dB, converted to linear before division.
+/// Remarks: Returns zero power when converted shadowing factor is non-positive.
 fn ApplyShadowingToReceivedPower(receivedPower: Float<kg*m^2/s^3>, shadowingDb: Float) -> Float<kg*m^2/s^3> {
     let shadowingLinear = ShadowingLinearFromDb(shadowingDb)
     if shadowingLinear <= 0 {
@@ -103,6 +136,8 @@ fn ApplyShadowingToReceivedPower(receivedPower: Float<kg*m^2/s^3>, shadowingDb: 
     return receivedPower / shadowingLinear
 }
 
+/// Applies ApplyShadowingToReceivedPower sample-by-sample.
+/// Remarks: Returns [0 power] when lengths mismatch or input is empty.
 fn ApplyShadowingToReceivedPowerSeries(receivedPower: Float<kg*m^2/s^3>[], shadowingDb: Float[]) -> Float<kg*m^2/s^3>[] {
     if Len(receivedPower) != Len(shadowingDb) {
         return [0kg*m^2/s^3]

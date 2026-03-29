@@ -1,10 +1,13 @@
 package Mechanics
 
+/// Computes von Mises equivalent stress for plane-stress state.
+/// Remarks: Assumes sigma_z = 0.
 fn VonMisesPlaneStress(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     let term = normalX * normalX - normalX * normalY + normalY * normalY + 3.0 * shearXY * shearXY
     return Sqrt(term)
 }
 
+/// Computes 3D von Mises equivalent stress from principal stresses.
 fn VonMisesFromPrincipal(sigma1: Float<kg/m/s^2>, sigma2: Float<kg/m/s^2>, sigma3: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     let d12 = sigma1 - sigma2
     let d23 = sigma2 - sigma3
@@ -12,18 +15,22 @@ fn VonMisesFromPrincipal(sigma1: Float<kg/m/s^2>, sigma2: Float<kg/m/s^2>, sigma
     return Sqrt(0.5 * (d12 * d12 + d23 * d23 + d31 * d31))
 }
 
+/// Returns major in-plane principal stress from 2D stress components.
 fn PrincipalStressMaxPlane(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     let center = 0.5 * (normalX + normalY)
     let radius = Sqrt(0.25 * (normalX - normalY) * (normalX - normalY) + shearXY * shearXY)
     return center + radius
 }
 
+/// Returns minor in-plane principal stress from 2D stress components.
 fn PrincipalStressMinPlane(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     let center = 0.5 * (normalX + normalY)
     let radius = Sqrt(0.25 * (normalX - normalY) * (normalX - normalY) + shearXY * shearXY)
     return center - radius
 }
 
+/// Computes allowable-to-actual stress ratio.
+/// Remarks: Returns 0 sentinel when actual stress is non-positive.
 fn FactorOfSafety(allowableStress: Float<kg/m/s^2>, actualStress: Float<kg/m/s^2>) -> Float {
     if actualStress <= 0kg/m/s^2 {
         return 0
@@ -31,10 +38,12 @@ fn FactorOfSafety(allowableStress: Float<kg/m/s^2>, actualStress: Float<kg/m/s^2
     return allowableStress / actualStress
 }
 
+/// Computes yield safety factor using equivalent stress criterion output.
 fn YieldFactorOfSafety(yieldStrength: Float<kg/m/s^2>, equivalentStress: Float<kg/m/s^2>) -> Float {
     return FactorOfSafety(yieldStrength, equivalentStress)
 }
 
+/// Computes maximum shear stress according to Tresca from principal stresses.
 fn MaximumShearStressTresca(sigma1: Float<kg/m/s^2>, sigma2: Float<kg/m/s^2>, sigma3: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
     let d12 = Abs(sigma1 - sigma2)
     let d23 = Abs(sigma2 - sigma3)

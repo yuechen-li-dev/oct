@@ -1,11 +1,16 @@
 package RF
 
+/// Dense real-valued narrowband MIMO channel matrix in row-major storage.
 record MimoChannel {
+    /// Number of receive rows.
     RowCount: Int
+    /// Number of transmit columns.
     ColumnCount: Int
+    /// Flattened channel coefficients ordered by row then column.
     CoefficientsRowMajor: Float[]
 }
 
+/// Builds a MimoChannel from explicit dimensions and row-major coefficients.
 fn MimoChannelFromRowMajor(rowCount: Int, columnCount: Int, coefficientsRowMajor: Float[]) -> MimoChannel {
     return MimoChannel {
         RowCount: rowCount
@@ -14,6 +19,7 @@ fn MimoChannelFromRowMajor(rowCount: Int, columnCount: Int, coefficientsRowMajor
     }
 }
 
+/// Validates positive dimensions and exact coefficient count consistency.
 fn IsValidMimoChannel(channel: MimoChannel) -> Bool {
     if channel.RowCount <= 0 {
         return false
@@ -25,6 +31,7 @@ fn IsValidMimoChannel(channel: MimoChannel) -> Bool {
     return Len(channel.CoefficientsRowMajor) == channel.RowCount * channel.ColumnCount
 }
 
+/// Returns one channel coefficient or 0 for invalid channel or out-of-range index.
 fn MimoCoefficientAt(channel: MimoChannel, row: Int, column: Int) -> Float {
     if IsValidMimoChannel(channel) == false {
         return 0.0
@@ -46,6 +53,8 @@ fn MimoCoefficientAt(channel: MimoChannel, row: Int, column: Int) -> Float {
     return channel.CoefficientsRowMajor[index]
 }
 
+/// Multiplies channel matrix by transmit vector to produce receive vector.
+/// Remarks: Deterministic linear narrowband model with no noise term.
 fn ApplyMimoChannel(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
     if IsValidMimoChannel(channel) == false {
         return [0.0]
@@ -71,6 +80,7 @@ fn ApplyMimoChannel(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
     return received
 }
 
+/// Returns per-receive-stream power proxy as squared receive amplitudes.
 fn ReceivedStreamPowerSeries(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
     if IsValidMimoChannel(channel) == false {
         return [0.0]
@@ -87,6 +97,7 @@ fn ReceivedStreamPowerSeries(channel: MimoChannel, transmitVector: Float[]) -> F
     return out
 }
 
+/// Returns row-wise sum of squared coefficients (receive-side gain per row).
 fn RowPowerGainSeries(channel: MimoChannel) -> Float[] {
     if IsValidMimoChannel(channel) == false {
         return [0.0]
@@ -110,6 +121,7 @@ fn RowPowerGainSeries(channel: MimoChannel) -> Float[] {
     return out
 }
 
+/// Returns column-wise sum of squared coefficients (transmit coupling per column).
 fn ColumnPowerGainSeries(channel: MimoChannel) -> Float[] {
     if IsValidMimoChannel(channel) == false {
         return [0.0]
@@ -133,6 +145,7 @@ fn ColumnPowerGainSeries(channel: MimoChannel) -> Float[] {
     return out
 }
 
+/// Returns total channel squared-gain sum across all coefficients.
 fn TotalChannelPowerGain(channel: MimoChannel) -> Float {
     if IsValidMimoChannel(channel) == false {
         return 0.0

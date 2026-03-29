@@ -1,29 +1,40 @@
 package Mechanics
 
+/// Preferred axis classification used by 2D force helpers.
 enum Axis {
     Horizontal
     Vertical
 }
 
+/// Planar force vector in Cartesian components.
 record Vec2Force {
+    /// Force component along X.
     X: Float<kg*m/s^2>
+    /// Force component along Y.
     Y: Float<kg*m/s^2>
 }
 
+/// Planar displacement vector in Cartesian coordinates.
 record Displacement2 {
     X: Float<m>
     Y: Float<m>
 }
 
+/// 2x2 stiffness representation for linear static force-displacement mapping.
 record Stiffness2 {
+    /// Stiffness matrix mapping displacement vector to internal force vector.
     K: Matrix<Float<kg/s^2>>
 }
 
+/// Static equilibrium check outcome for paired applied and reaction forces.
 record EquilibriumReport {
+    /// Resultant force vector after summation.
     Resultant: Vec2Force
+    /// True when resultant magnitude squared is within tolerance.
     Balanced: Bool
 }
 
+/// Adds two planar force vectors component-wise.
 fn AddForce(a: Vec2Force, b: Vec2Force) -> Vec2Force {
     return Vec2Force {
         X: a.X + b.X
@@ -31,10 +42,13 @@ fn AddForce(a: Vec2Force, b: Vec2Force) -> Vec2Force {
     }
 }
 
+/// Returns squared force magnitude to avoid square-root cost.
 fn MagnitudeSquared(force: Vec2Force) -> Float<kg^2*m^2/s^4> {
     return force.X * force.X + force.Y * force.Y
 }
 
+/// Produces resultant and balanced flag for a static force pair.
+/// Param toleranceSquared: Acceptable squared residual bound.
 fn ResultantReport(applied: Vec2Force, reaction: Vec2Force, toleranceSquared: Float<kg^2*m^2/s^4>) -> EquilibriumReport {
     let resultant = AddForce(applied, reaction)
     let nearlyZero = MagnitudeSquared(resultant) <= toleranceSquared
@@ -44,6 +58,8 @@ fn ResultantReport(applied: Vec2Force, reaction: Vec2Force, toleranceSquared: Fl
     }
 }
 
+/// Returns axis of dominant absolute component in a planar force.
+/// Remarks: Ties resolve to Horizontal.
 fn DominantAxis(force: Vec2Force) -> Axis {
     if Abs(force.X) >= Abs(force.Y) {
         return Axis.Horizontal
@@ -51,6 +67,8 @@ fn DominantAxis(force: Vec2Force) -> Axis {
     return Axis.Vertical
 }
 
+/// Computes internal force from linear stiffness matrix and displacement vector.
+/// Remarks: Assumes small-displacement linear elasticity.
 fn InternalForce(stiffness: Stiffness2, displacement: Displacement2) -> Vec2Force {
     let d = vector[displacement.X, displacement.Y]
     let f = stiffness.K @ d

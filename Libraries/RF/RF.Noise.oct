@@ -1,9 +1,16 @@
 package RF
 
+/// Returns the Boltzmann constant used by thermal noise calculations.
+/// Units: W/(Hz·K), represented in base SI units.
 fn BoltzmannConstantWattsPerHzKelvin() -> Float<kg*m^2/s^3> {
     return 0.00000000000000000000001380649kg*m^2/s^3
 }
 
+/// Computes available thermal noise power using kTB.
+/// Param bandwidthHz: Receiver noise-equivalent bandwidth.
+/// Param temperatureKelvin: Physical noise temperature.
+/// Units: Bandwidth in Hz, temperature in K, output in W.
+/// Remarks: Returns zero when bandwidth or temperature is non-positive.
 fn ThermalNoisePower(bandwidthHz: Float, temperatureKelvin: Float) -> Float<kg*m^2/s^3> {
     if bandwidthHz <= 0 {
         return 0kg*m^2/s^3
@@ -15,6 +22,8 @@ fn ThermalNoisePower(bandwidthHz: Float, temperatureKelvin: Float) -> Float<kg*m
     return BoltzmannConstantWattsPerHzKelvin() * temperatureKelvin * bandwidthHz
 }
 
+/// Computes thermal noise power for paired bandwidth and temperature series.
+/// Remarks: Returns [0 power] when lengths mismatch or input is empty.
 fn ThermalNoisePowerSeries(bandwidthHz: Float[], temperatureKelvin: Float[]) -> Float<kg*m^2/s^3>[] {
     if Len(bandwidthHz) != Len(temperatureKelvin) {
         return [0kg*m^2/s^3]
@@ -30,6 +39,9 @@ fn ThermalNoisePowerSeries(bandwidthHz: Float[], temperatureKelvin: Float[]) -> 
     return out
 }
 
+/// Applies receiver noise figure to ideal kTB noise power.
+/// Param noiseFigureLinear: Dimensionless linear noise factor F.
+/// Remarks: Returns zero when noise figure is non-positive.
 fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
     if noiseFigureLinear <= 0 {
         return 0kg*m^2/s^3
@@ -37,6 +49,8 @@ fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float
     return ThermalNoisePower(bandwidthHz, temperatureKelvin) * noiseFigureLinear
 }
 
+/// Computes ThermalNoisePowerWithNoiseFigure for paired input series.
+/// Remarks: Returns [0 power] when lengths mismatch or input is empty.
 fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvin: Float[], noiseFigureLinear: Float[]) -> Float<kg*m^2/s^3>[] {
     if Len(bandwidthHz) != Len(temperatureKelvin) {
         return [0kg*m^2/s^3]

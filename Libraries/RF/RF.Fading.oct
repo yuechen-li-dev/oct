@@ -1,5 +1,7 @@
 package RF
 
+/// Computes noise power needed to realize a target linear SNR at fixed signal power.
+/// Remarks: Returns zero when target SNR is non-positive.
 fn NoisePowerForTargetSNR(signalPower: Float<kg*m^2/s^3>, snrLinear: Float) -> Float<kg*m^2/s^3> {
     if snrLinear <= 0 {
         return 0.0kg*m^2/s^3
@@ -7,14 +9,18 @@ fn NoisePowerForTargetSNR(signalPower: Float<kg*m^2/s^3>, snrLinear: Float) -> F
     return signalPower / snrLinear
 }
 
+/// Adds signal and additive noise power samples.
 fn ApplyAdditiveNoise(signal: Float<kg*m^2/s^3>, noise: Float<kg*m^2/s^3>) -> Float<kg*m^2/s^3> {
     return signal + noise
 }
 
+/// Applies a linear power gain to a sample.
 fn ApplyPowerGain(sample: Float<kg*m^2/s^3>, gain: Float) -> Float<kg*m^2/s^3> {
     return sample * gain
 }
 
+/// Adds two equal-length sample series element-wise.
+/// Remarks: Returns [0 power] when lengths mismatch or input is empty.
 fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
     if Len(signal) != Len(noise) {
         return [0.0kg*m^2/s^3]
@@ -31,18 +37,23 @@ fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> 
     return out
 }
 
+/// Returns Rayleigh power gain |h|^2 from I/Q Gaussian components.
 fn RayleighPowerGainFromComponents(inPhase: Float, quadrature: Float) -> Float {
     return inPhase * inPhase + quadrature * quadrature
 }
 
+/// Returns Rayleigh amplitude |h| from I/Q components.
 fn RayleighAmplitudeFromComponents(inPhase: Float, quadrature: Float) -> Float {
     return Sqrt(RayleighPowerGainFromComponents(inPhase, quadrature))
 }
 
+/// Applies a Rayleigh fading power gain to a sample.
 fn ApplyRayleighFading(sample: Float<kg*m^2/s^3>, inPhase: Float, quadrature: Float) -> Float<kg*m^2/s^3> {
     return ApplyPowerGain(sample, RayleighPowerGainFromComponents(inPhase, quadrature))
 }
 
+/// Computes Rayleigh power-gain sequence from paired I/Q component sequences.
+/// Remarks: Returns [0.0] when lengths mismatch or input is empty.
 fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
     if Len(inPhase) != Len(quadrature) {
         return [0.0]
@@ -59,6 +70,8 @@ fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
     return out
 }
 
+/// Applies element-wise linear gains to a power sample sequence.
+/// Remarks: Returns [0 power] when lengths mismatch or input is empty.
 fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg*m^2/s^3>[] {
     if Len(samples) != Len(gain) {
         return [0.0kg*m^2/s^3]
@@ -74,6 +87,8 @@ fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg
     return out
 }
 
+/// Applies Rayleigh fading to each sample using paired I/Q component series.
+/// Remarks: Returns [0 power] when derived gain length mismatches sample length.
 fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], quadrature: Float[]) -> Float<kg*m^2/s^3>[] {
     let gain = RayleighPowerGainSeries(inPhase, quadrature)
     if Len(samples) != Len(gain) {
@@ -82,7 +97,9 @@ fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], qua
     return ApplyPowerGainSeries(samples, gain)
 }
 
-
+/// Returns Rician power gain from K-factor and scatter I/Q components.
+/// Param kFactorLinear: LOS-to-scatter power ratio K.
+/// Remarks: Uses unit-average-power normalization of LOS and scatter terms.
 fn RicianPowerGainFromComponents(kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float {
     if kFactorLinear < 0 {
         return 0.0
@@ -97,14 +114,18 @@ fn RicianPowerGainFromComponents(kFactorLinear: Float, scatterInPhase: Float, sc
     return RayleighPowerGainFromComponents(combinedInPhase, scatterQuadratureNormalized)
 }
 
+/// Returns Rician amplitude |h| from K-factor and scatter components.
 fn RicianAmplitudeFromComponents(kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float {
     return Sqrt(RicianPowerGainFromComponents(kFactorLinear, scatterInPhase, scatterQuadrature))
 }
 
+/// Applies Rician fading power gain to one sample.
 fn ApplyRicianFading(sample: Float<kg*m^2/s^3>, kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float<kg*m^2/s^3> {
     return ApplyPowerGain(sample, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase, scatterQuadrature))
 }
 
+/// Computes a Rician power-gain sequence for fixed K-factor and scatter series.
+/// Remarks: Returns [0.0] when lengths mismatch or input is empty.
 fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float[] {
     if Len(scatterInPhase) != Len(scatterQuadrature) {
         return [0.0]
@@ -121,6 +142,8 @@ fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQ
     return out
 }
 
+/// Applies Rician fading to each sample using a fixed K-factor.
+/// Remarks: Returns [0 power] when derived gain length mismatches sample length.
 fn ApplyRicianFadingSeries(samples: Float<kg*m^2/s^3>[], kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float<kg*m^2/s^3>[] {
     let gain = RicianPowerGainSeries(kFactorLinear, scatterInPhase, scatterQuadrature)
     if Len(samples) != Len(gain) {
