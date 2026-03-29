@@ -23,6 +23,13 @@ Conditions never use implicit coercion.
 - `step` must be `Int` and greater than zero.
 - `while` conditions must be `Bool`.
 
+### Decision ladder policy
+
+- Nested `else { if ... }` decision ladders are rejected.
+- This is the nested decision-ladder rule.
+- The replacement form is condition-switch (`switch { case ... else ... }`).
+- Ordinary nested local `if` blocks are still valid when they are not decision ladders.
+
 ## Examples
 
 Valid:
@@ -41,8 +48,14 @@ Invalid:
 
 ```oct
 fn Main() -> Int {
-    return switch {
-        case true => 1
+    if true {
+        return 1
+    } else {
+        if false {
+            return 2
+        } else {
+            return 3
+        }
     }
 }
 ```

@@ -6,9 +6,9 @@ Start with [00-overview.md](./00-overview.md).
 
 ## Sections
 
-- Language: syntax, types, expressions, control flow, errors, arrays, units, builtins, global rules.
+- Language: syntax, types, expressions, control flow, functions, data forms, and global rules.
 - Runtime: Octomata and batch execution contracts.
-- Tooling: testing, formatting, package workflows.
+- Tooling: testing, formatting, package workflows, and octagon artifacts.
 
 ## Language
 
@@ -22,6 +22,12 @@ Start with [00-overview.md](./00-overview.md).
 - [08 Units](./language/08-units.md)
 - [09 Builtins](./language/09-builtins.md)
 - [10 Rules](./language/10-rules.md)
+- [11 Records](./language/11-records.md)
+- [12 Enums](./language/12-enums.md)
+- [13 Packages](./language/13-packages.md)
+- [14 Variables](./language/14-variables.md)
+- [15 Function Values](./language/15-function-values.md)
+- [16 Vectors and Matrices](./language/16-vectors-and-matrices.md)
 
 ## Runtime
 
@@ -33,3 +39,4 @@ Start with [00-overview.md](./00-overview.md).
 - [13 octest](./tooling/13-octest.md)
 - [14 ocfmt](./tooling/14-ocfmt.md)
 - [15 oct pkg](./tooling/15-oct-pkg.md)
+- [16 octagon](./tooling/16-octagon.md)

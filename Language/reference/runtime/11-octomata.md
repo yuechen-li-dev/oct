@@ -3,48 +3,73 @@
 ## Overview
 
 Octomata is Oct's explicit flow-state runtime model.
-Flows advance through explicit steps and explicit state transitions.
-Runtime observation is exposed by builtins such as `Step`, `Active`, `Complete`, and `Result`.
-Behavior is deterministic for identical inputs.
+Flows run through declared states and explicit transitions.
+Runtime observation uses flow builtins.
+Execution is deterministic for identical inputs.
 
 ## Rules
 
-- Flows execute through explicit runtime steps.
-- State transitions are explicit (`goto`, `suspend`, `resume`, `return`).
-- Hidden transition fallthrough is not allowed.
-- `Result(flow)` is valid only for flow instances.
+- Flow declaration form is `flow Name(params) -> ReturnType { state ... }`.
+- A flow must declare at least one `state`.
+- State declaration form is `state Name { ... }`.
+- `goto StateName` transitions to a declared state.
+- `suspend` yields control without completing the flow.
+- `return value` completes the flow with the declared return type.
+- `when` inside a state uses ordered guards: first true `case` action wins.
+- Flow `when` requires `else`.
+- Flow `when` actions are only `goto`, `suspend`, or `return`.
+- Utility form `when policy { hysteresis: Int min_commit: Int } { ... }` is valid only inside flow state bodies.
+- `remember` stores the current state as a resume target.
+- `resume` jumps to the remembered target.
+- Resume storage is a single slot.
+- A later `remember` overwrites the existing slot value.
+- Successful `resume` clears the slot.
+- `resume` with an empty slot is a runtime error.
+- `Step(flow)` advances one scheduling step.
+- `Active(flow)` returns the active state name or `""` when inactive/completed-before-step.
 - `Complete(flow)` reports completion status.
-- Scheduler decisions are deterministic for a fixed program and input.
-- `when` clauses and tie handling preserve deterministic selection.
+- `Result(flow)` is available only after completion.
+- `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
+- Builtins `Step`, `Active`, `Complete`, `Result`, and `ResumeTarget` require a flow instance argument.
+
+See also [12 Batch](./12-batch.md) for array-parallel execution constructs.
 
 ## Examples
 
 Valid:
 
 ```oct
-flow Counter() -> Int {
+flow Patrol(flag: Bool) -> Int {
     state Start {
-        return 1
+        when {
+            case flag -> goto Track
+            else -> suspend
+        }
+    }
+
+    state Track {
+        remember
+        suspend
+        resume
     }
 }
 
 fn Main() -> Int {
-    let f = Counter()
+    let f = Patrol(true)
     Step(f)
-    match Result(f) {
-        ok(v) => { return v }
-        err(e) => { return 0 }
+    if Complete(f) {
+        return 0
     }
+    return Len(Active(f))
 }
 ```
 
 Invalid:
 
 ```oct
-fn Main() -> Int {
-    match Result("x") {
-        ok(v) => { return v }
-        err(e) => { return 0 }
+flow Broken() -> Int {
+    state Start {
+        resume
     }
 }
 ```
