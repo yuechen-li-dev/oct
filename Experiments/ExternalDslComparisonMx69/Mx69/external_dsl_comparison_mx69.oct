@@ -1,0 +1,148 @@
+package ExternalDslComparisonMx69
+
+record ParityInput {
+    Melt: Bool
+    Freeze: Bool
+    Vaporize: Bool
+    Condense: Bool
+}
+
+enum ParityOutcome {
+    Stable
+}
+
+flow MatterParityMachine(input: ParityInput) -> ParityOutcome {
+    state Solid {
+        when {
+            case input.Melt -> goto Liquid
+            else -> suspend
+        }
+
+        goto Solid
+    }
+
+    state Liquid {
+        when {
+            case input.Vaporize -> goto Gas
+            case input.Freeze -> goto Solid
+            else -> suspend
+        }
+
+        goto Liquid
+    }
+
+    state Gas {
+        when {
+            case input.Condense -> goto Liquid
+            else -> suspend
+        }
+
+        goto Gas
+    }
+}
+
+record NativeInput {
+    HeatDemand: Int
+    CoolDemand: Int
+}
+
+enum NativeOutcome {
+    HeatMode
+    CoolMode
+    HoldMode
+}
+
+flow MatterNativeController(input: NativeInput) -> NativeOutcome {
+    state Decide {
+        let mode = when policy {
+            hysteresis: 6
+            min_commit: 2
+        } {
+            case 1 when input.HeatDemand > 0 score input.HeatDemand
+            case 2 when input.CoolDemand > 0 score input.CoolDemand
+            else 0
+        }
+
+        when {
+            case mode == 1 -> goto Heat
+            case mode == 2 -> goto Cool
+            else -> goto Hold
+        }
+
+        goto Hold
+    }
+
+    state Heat {
+        suspend
+        return NativeOutcome.HeatMode
+    }
+
+    state Cool {
+        suspend
+        return NativeOutcome.CoolMode
+    }
+
+    state Hold {
+        suspend
+        return NativeOutcome.HoldMode
+    }
+}
+
+flow MatterUtilityMinCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 5
+                min_commit: 3
+            } {
+                case 1 when true score 70
+                case 2 when t > 0 score 73
+                else 0
+            }
+
+            if t == 1 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}
+
+flow MatterUtilitySwitchAfterCommitProbe() -> Int {
+    state Decide {
+        var t = 0
+        var choice = 0
+        while true {
+            choice = when policy {
+                hysteresis: 5
+                min_commit: 3
+            } {
+                case 1 when true score 70
+                case 2 when t > 0 score 79
+                else 0
+            }
+
+            if t == 3 {
+                return choice
+            }
+
+            t = t + 1
+        }
+    }
+}
+
+flow MatterServiceInterruptionDemo() -> Int {
+    state Heat {
+        suspend
+        remember
+        goto ServicePause
+    }
+
+    state ServicePause {
+        suspend
+        resume
+    }
+}
