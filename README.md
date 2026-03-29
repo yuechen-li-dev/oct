@@ -455,11 +455,24 @@ Demo/integration programs live in a `Main/` package.
 Current tooling validates manifest presence and structure.
 Dependencies are metadata only in v0.
 
+M71a adds a minimal Git-first package acquisition CLI:
+
+* `oct pkg get <git-url>` fetches a package source repo into a shared local cache.
+* `oct pkg list` shows cached package entries (source URL, cache key/path, and manifest identity when available).
+* Repeated `oct pkg get` for the same source is a cache hit and reuses the existing cached repo.
+* Fetched repositories are validated to contain `manifest.oct`.
+
+M71a scope is intentionally narrow:
+
+* no dependency resolution or sync
+* no lockfile generation
+* no registry behavior
+* no install/lifecycle hooks or environment mutation
+
 Not included in v0:
 
 * No registry / publish / install flows
 * No dependency resolution or lockfiles
-* No remote fetching
 * No build/feature metadata in manifests
 
 ---
