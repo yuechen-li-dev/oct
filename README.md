@@ -106,6 +106,25 @@ Intentionally deferred:
 * localization/view-mode formatting
 * semantic display rewrites (numeric notation changes, unit collapse/rewrite, literal compression)
 
+### VSCode Extension Foundation (M76a)
+
+A minimal VSCode extension baseline now lives at:
+
+* `tools/vscode-oct/`
+
+M76a scope is intentionally narrow:
+
+* file association (`.oct`, `.octest`, `.octfail`, `.octagon`)
+* TextMate syntax highlighting
+* language configuration (comments/brackets/autopairs)
+* canonical formatting integration through `oct fmt`
+* run/test/format command and basic task wiring
+
+Intentionally deferred:
+
+* LSP/hover/intelligent completion/refactors
+* alternate source views (`en-human`, localized/semantic display transforms)
+
 ---
 
 ### Documentation Comments (M74)
