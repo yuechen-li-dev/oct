@@ -1,0 +1,63 @@
+package Mechanics
+
+[Fact]
+fn NormalStressMonotonicAndHandCheck() -> Void {
+    let lowForce = NormalStress(1000kg*m/s^2, 0.01m^2)
+    let highForce = NormalStress(2000kg*m/s^2, 0.01m^2)
+    Assert.True(highForce > lowForce, "normal stress should increase with force")
+
+    let largeArea = NormalStress(1000kg*m/s^2, 0.02m^2)
+    Assert.True(largeArea < lowForce, "normal stress should decrease with area")
+
+    Assert.Near(100000.0, lowForce / 1kg/m/s^2, 0.001, "normal stress hand-check")
+}
+
+[Fact]
+fn ShearStressMonotonicAndHandCheck() -> Void {
+    let lowForce = ShearStress(600kg*m/s^2, 0.006m^2)
+    let highForce = ShearStress(1200kg*m/s^2, 0.006m^2)
+    Assert.True(highForce > lowForce, "shear stress should increase with force")
+
+    let largeArea = ShearStress(600kg*m/s^2, 0.012m^2)
+    Assert.True(largeArea < lowForce, "shear stress should decrease with area")
+
+    Assert.Near(100000.0, lowForce / 1kg/m/s^2, 0.001, "shear stress hand-check")
+}
+
+[Fact]
+fn BendingStressScalesWithMomentAndGeometry() -> Void {
+    let base = BendingStress(120kg*m^2/s^2, 0.02m, 0.0000002m^4)
+    let doubledMoment = BendingStress(240kg*m^2/s^2, 0.02m, 0.0000002m^4)
+    Assert.True(doubledMoment > base, "bending stress should increase with bending moment")
+
+    let doubledDistance = BendingStress(120kg*m^2/s^2, 0.04m, 0.0000002m^4)
+    Assert.Near(2.0, doubledDistance / base, 0.000001, "bending stress should scale linearly with outer fiber distance")
+
+    let doubledInertia = BendingStress(120kg*m^2/s^2, 0.02m, 0.0000004m^4)
+    Assert.Near(0.5, doubledInertia / base, 0.000001, "bending stress should scale inversely with second moment")
+
+    Assert.Near(12000000.0, base / 1kg/m/s^2, 0.001, "bending stress hand-check")
+}
+
+[Fact]
+fn TorsionalShearStressScalesWithTorqueAndGeometry() -> Void {
+    let base = TorsionalShearStress(80kg*m^2/s^2, 0.03m, 0.00000024m^4)
+    let doubledTorque = TorsionalShearStress(160kg*m^2/s^2, 0.03m, 0.00000024m^4)
+    Assert.True(doubledTorque > base, "torsional shear stress should increase with torque")
+
+    let doubledRadius = TorsionalShearStress(80kg*m^2/s^2, 0.06m, 0.00000024m^4)
+    Assert.Near(2.0, doubledRadius / base, 0.000001, "torsional shear should scale linearly with radius")
+
+    let doubledPolarMoment = TorsionalShearStress(80kg*m^2/s^2, 0.03m, 0.00000048m^4)
+    Assert.Near(0.5, doubledPolarMoment / base, 0.000001, "torsional shear should scale inversely with polar moment")
+
+    Assert.Near(10000000.0, base / 1kg/m/s^2, 0.001, "torsional shear stress hand-check")
+}
+
+[Fact]
+fn InvalidStressGeometryReturnsZero() -> Void {
+    Assert.Near(0.0, NormalStress(1000kg*m/s^2, 0m^2) / 1kg/m/s^2, 0.000001, "normal stress invalid area")
+    Assert.Near(0.0, ShearStress(1000kg*m/s^2, 0m^2) / 1kg/m/s^2, 0.000001, "shear stress invalid area")
+    Assert.Near(0.0, BendingStress(10kg*m^2/s^2, 0.01m, 0m^4) / 1kg/m/s^2, 0.000001, "bending invalid inertia")
+    Assert.Near(0.0, TorsionalShearStress(10kg*m^2/s^2, 0.01m, 0m^4) / 1kg/m/s^2, 0.000001, "torsion invalid polar moment")
+}
