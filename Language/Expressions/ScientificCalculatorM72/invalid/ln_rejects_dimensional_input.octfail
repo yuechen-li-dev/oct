@@ -1,0 +1,7 @@
+expect error: "Ln requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Ln(2m)
+}

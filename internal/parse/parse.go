@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -1224,6 +1225,15 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseUtilityWhenExpr()
 	case lex.IntLiteral:
 		p.advance()
+		if p.current().Kind == lex.Identifier && p.current().Lexeme == "deg" && tokensAdjacent(token, p.current()) {
+			p.advance()
+			intValue, err := strconv.ParseInt(token.Lexeme, 10, 64)
+			if err != nil {
+				return nil, p.errorAtToken(token, "invalid integer literal")
+			}
+			radians := float64(intValue) * math.Pi / 180.0
+			return ast.FloatLiteral{Value: strconv.FormatFloat(radians, 'g', -1, 64), Dimension: dimension.Zero(), HasUnit: false}, nil
+		}
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
 		if err != nil {
 			return nil, err
@@ -1231,6 +1241,15 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.IntegerLiteral{Value: token.Lexeme, Dimension: dim, HasUnit: hasUnit}, nil
 	case lex.FloatLiteral:
 		p.advance()
+		if p.current().Kind == lex.Identifier && p.current().Lexeme == "deg" && tokensAdjacent(token, p.current()) {
+			p.advance()
+			floatValue, err := strconv.ParseFloat(token.Lexeme, 64)
+			if err != nil {
+				return nil, p.errorAtToken(token, "invalid float literal")
+			}
+			radians := floatValue * math.Pi / 180.0
+			return ast.FloatLiteral{Value: strconv.FormatFloat(radians, 'g', -1, 64), Dimension: dimension.Zero(), HasUnit: false}, nil
+		}
 		dim, hasUnit, err := p.parseLiteralUnitSuffix(token)
 		if err != nil {
 			return nil, err

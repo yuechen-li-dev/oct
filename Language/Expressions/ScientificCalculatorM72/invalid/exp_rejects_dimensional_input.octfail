@@ -1,0 +1,7 @@
+expect error: "Exp requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Exp(5s)
+}

@@ -1780,6 +1780,16 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 	}
 
+	if callee == "Pi" || callee == "E" {
+		if len(argumentExprs) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 0 arguments", callee)
+		}
+		if callee == "Pi" {
+			return evalResult{value: Value{Kind: ValueFloat, Float: math.Pi}}, nil
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.E}}, nil
+	}
+
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
 	}
@@ -1850,6 +1860,81 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, err
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Cos(value)}}, nil
+	case "Tan":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Tan requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Tan")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Tan(value)}}, nil
+	case "Asin":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Asin requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Asin")
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value < -1 || value > 1 {
+			return evalResult{}, fmt.Errorf("runtime error: Asin expects input in [-1, 1], got %s", argument.value.String())
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Asin(value)}}, nil
+	case "Acos":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Acos requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Acos")
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value < -1 || value > 1 {
+			return evalResult{}, fmt.Errorf("runtime error: Acos expects input in [-1, 1], got %s", argument.value.String())
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Acos(value)}}, nil
+	case "Atan":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Atan requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Atan")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Atan(value)}}, nil
+	case "Exp":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Exp requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Exp")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Exp(value)}}, nil
+	case "Ln":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Ln requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Ln")
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value <= 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Ln expects positive input, got %s", argument.value.String())
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Log(value)}}, nil
+	case "Log10":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Log10 requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Log10")
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value <= 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Log10 expects positive input, got %s", argument.value.String())
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Log10(value)}}, nil
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", callee)
 	}

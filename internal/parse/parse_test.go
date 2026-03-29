@@ -697,6 +697,22 @@ func TestBuildFileRejectsMalformedUnitSuffix(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int<m> { return 1m/ }", "expected expression")
 }
 
+func TestBuildFileParsesDegreeLiteralAsDimensionlessRadians(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Float { return 180deg }")
+	fn := file.Functions[0]
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	literal, ok := ret.Value.(ast.FloatLiteral)
+	if !ok {
+		t.Fatalf("expected FloatLiteral, got %T", ret.Value)
+	}
+	if literal.Dimension.String() != "" {
+		t.Fatalf("expected dimensionless literal, got %q", literal.Dimension.String())
+	}
+	if literal.Value != "3.141592653589793" {
+		t.Fatalf("expected radian value, got %q", literal.Value)
+	}
+}
+
 func TestBuildFileParsesM16VectorMatrixSyntax(t *testing.T) {
 	file := parseSource(t, "fn Main(v: Vector<Int>, m: Matrix<Float<m>>) -> Int { return m[0, 0] + v[0] }")
 	fn := file.Functions[0]
