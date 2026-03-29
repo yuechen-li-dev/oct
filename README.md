@@ -451,6 +451,9 @@ Demo/integration programs live in a `Main/` package.
 * `record PackageManifest { Name, Version, Description, Dependencies }`
 * `record Dependency { Name, VersionRequirement }` (M71a/M71b)
 * `record Dependency { Name, VersionRequirement, Source }` when using `oct pkg sync`
+* optional manifest metadata used by experiment execution:
+  * `PackageManifest.Kind` (e.g. `"Experiment"`)
+  * `PackageManifest.EntryMilestone` (e.g. `"M1"`)
 * `fn Manifest() -> PackageManifest`
 
 Current tooling validates manifest presence and structure.
@@ -476,7 +479,17 @@ M71c adds first-pass dependency materialization for a project:
 * Each dependency source is fetched via the shared package cache layer (`oct pkg get` behavior) and reuses cache hits deterministically.
 * Output reports each dependency as `fetched` or `cache hit`, then prints `sync complete`.
 
-M71a/M71b/M71c scope is intentionally narrow:
+M71d adds Git-native experiment acquisition + execution:
+
+* `oct exp run <git-url>` fetches/caches an experiment repository via the same shared Git cache.
+* The fetched repository must be runnable as an experiment (`manifest.oct` + `REPORT.md` + runnable milestone structure).
+* Direct dependencies from the fetched `manifest.oct` are synchronized before execution (same direct-only model as `oct pkg sync`).
+* Entry selection is explicit and deterministic:
+  * if `PackageManifest.EntryMilestone` is set, that canonical milestone is executed directly;
+  * otherwise, canonical experiment-root execution is used (`M...` only, `Mx...` excluded by default).
+* Output reports fetch/cache status, dependency sync summary, and selected execution entry.
+
+M71a/M71b/M71c/M71d scope is intentionally narrow:
 
 * no version solver
 * no dependency graph conflict resolution
@@ -484,6 +497,8 @@ M71a/M71b/M71c scope is intentionally narrow:
 * no registry behavior
 * no install/lifecycle hooks or environment mutation
 * no vendoring/publishing flows
+* no report rendering
+* no remote/cloud execution
 
 Not included in v0:
 

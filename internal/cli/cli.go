@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"oct/internal/build"
+	"oct/internal/exprun"
 	"oct/internal/pkgmgr"
 	"oct/internal/prometheus"
 	"oct/internal/run"
@@ -23,6 +24,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	switch command {
 	case "pkg":
 		return executePkg(args[1:], stdout, stderr)
+	case "exp":
+		return executeExp(args[1:], stdout, stderr)
 	case "run":
 		if len(args) != 2 {
 			return writeUsage(stderr)
@@ -208,6 +211,25 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 }
 
+func executeExp(args []string, stdout io.Writer, stderr io.Writer) error {
+	if len(args) < 1 {
+		return reportCommandError(stderr, "exp", fmt.Errorf("usage: oct exp run <git-url>"))
+	}
+	switch args[0] {
+	case "run":
+		if len(args) != 2 {
+			return reportCommandError(stderr, "exp run", fmt.Errorf("usage: oct exp run <git-url>"))
+		}
+		_, err := exprun.RunFromGit(args[1], stdout)
+		if err != nil {
+			return reportCommandError(stderr, "exp run", err)
+		}
+		return nil
+	default:
+		return reportCommandError(stderr, "exp", fmt.Errorf("usage: oct exp run <git-url>"))
+	}
+}
+
 func reportCommandError(stderr io.Writer, command string, err error) error {
 	_, writeErr := fmt.Fprintf(stderr, "%s failed: %v\n", command, err)
 	if writeErr != nil {
@@ -217,7 +239,7 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err
 }
 

@@ -11,10 +11,12 @@ import (
 )
 
 type ManifestMetadata struct {
-	Name         string
-	Version      string
-	Description  string
-	Dependencies []DependencyMetadata
+	Name           string
+	Version        string
+	Description    string
+	Kind           string
+	EntryMilestone string
+	Dependencies   []DependencyMetadata
 }
 
 type DependencyMetadata struct {
@@ -48,7 +50,10 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 		"Version":      {Name: "String"},
 		"Description":  {Name: "String"},
 		"Dependencies": {Name: "Dependency", IsArray: true},
-	}, nil); err != nil {
+	}, map[string]ast.TypeRef{
+		"Kind":           {Name: "String"},
+		"EntryMilestone": {Name: "String"},
+	}); err != nil {
 		return ManifestMetadata{}, err
 	}
 	if err := requireRecordShape(file, "Dependency", map[string]ast.TypeRef{
@@ -162,6 +167,14 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 	if err != nil {
 		return ManifestMetadata{}, err
 	}
+	kind, err := optionalStringField(fieldValues, "Kind")
+	if err != nil {
+		return ManifestMetadata{}, err
+	}
+	entryMilestone, err := optionalStringField(fieldValues, "EntryMilestone")
+	if err != nil {
+		return ManifestMetadata{}, err
+	}
 	depsExpr, ok := fieldValues["Dependencies"].(ast.ArrayLiteralExpr)
 	if !ok {
 		return ManifestMetadata{}, fmt.Errorf("manifest field 'Dependencies' must be a Dependency[] literal")
@@ -198,10 +211,17 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		}
 		deps = append(deps, DependencyMetadata{Name: depName, VersionRequirement: depReq, Source: depSource})
 	}
-	if len(fieldValues) != 4 {
+	if len(fieldValues) < 4 || len(fieldValues) > 6 {
 		return ManifestMetadata{}, fmt.Errorf("manifest return literal has unsupported fields")
 	}
-	return ManifestMetadata{Name: name, Version: version, Description: description, Dependencies: deps}, nil
+	return ManifestMetadata{
+		Name:           name,
+		Version:        version,
+		Description:    description,
+		Kind:           kind,
+		EntryMilestone: entryMilestone,
+		Dependencies:   deps,
+	}, nil
 }
 
 func stringField(fields map[string]ast.Expr, fieldName string) (string, error) {
