@@ -560,9 +560,9 @@ Concept areas include:
 These demonstrate real Oct usage across scientific and numerical domains.
 
 
-### Mechanics M0 / M0a scope
+### Mechanics M0 / M0a / M1 scope
 
-`Libraries/Mechanics` now includes a narrow static stress/failure core plus baseline fatigue relations:
+`Libraries/Mechanics` now includes a narrow static stress/failure core, baseline fatigue relations, and an endurance-limit modifier core:
 
 * normal and direct shear stress helpers (`force / area`)
 * bending and torsional shear helpers (`M*c/I`, `T*r/J`)
@@ -571,10 +571,11 @@ These demonstrate real Oct usage across scientific and numerical domains.
 * optional compact principal-stress and Tresca maximum-shear helpers
 * fatigue mean-stress and alternating-stress helpers from stress extrema
 * baseline fatigue criteria helpers: Goodman, Gerber, and Soderberg (utilization and factor-of-safety forms)
+* endurance-limit modifier helpers: surface factor, size factor, load factor, temperature factor, reliability factor, and explicit modifier composition into design endurance limit
 
-The mechanics helpers are written to be unit-aware (force, area, moment/torque, length, section properties, stress units, and strength inputs). Baseline fatigue relations are explicit algebraic formulas and do not include endurance-limit modifier systems.
+The mechanics helpers are unit-aware and explicit by construction (force, area, moment/torque, length, section properties, stress units, and strength inputs). M1 uses small composable modifier functions rather than workflow objects or material databases, so modified endurance limits can plug directly into Goodman/Gerber/Soderberg checks.
 
-Deferred beyond M0a: Marin/endurance-limit modifiers (surface, size, reliability, etc.), fatigue strength reduction factors, notch sensitivity, material databases, shaft workflow automation, and spring/gear/bearing/bolt or full fatigue design frameworks.
+Deferred beyond M1: notch sensitivity, fatigue stress concentration factors, material data tables, shaft-fatigue workflows, and broader spring/gear/bearing/bolt or full fatigue design frameworks.
 
 ---
 
