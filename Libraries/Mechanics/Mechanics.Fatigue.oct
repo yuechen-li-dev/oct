@@ -1,0 +1,64 @@
+package Mechanics
+
+fn MeanStress(maxStress: Float<kg/m/s^2>, minStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    return 0.5 * (maxStress + minStress)
+}
+
+fn AlternatingStress(maxStress: Float<kg/m/s^2>, minStress: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    return 0.5 * Abs(maxStress - minStress)
+}
+
+fn GoodmanUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    if enduranceLimit <= 0kg/m/s^2 {
+        return 0
+    }
+    if ultimateStrength <= 0kg/m/s^2 {
+        return 0
+    }
+    return alternatingStress / enduranceLimit + meanStress / ultimateStrength
+}
+
+fn GoodmanFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    let utilization = GoodmanUtilization(alternatingStress, meanStress, enduranceLimit, ultimateStrength)
+    if utilization <= 0 {
+        return 0
+    }
+    return 1.0 / utilization
+}
+
+fn GerberUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    if enduranceLimit <= 0kg/m/s^2 {
+        return 0
+    }
+    if ultimateStrength <= 0kg/m/s^2 {
+        return 0
+    }
+    let meanRatio = meanStress / ultimateStrength
+    return alternatingStress / enduranceLimit + meanRatio * meanRatio
+}
+
+fn GerberFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, ultimateStrength: Float<kg/m/s^2>) -> Float {
+    let utilization = GerberUtilization(alternatingStress, meanStress, enduranceLimit, ultimateStrength)
+    if utilization <= 0 {
+        return 0
+    }
+    return 1.0 / utilization
+}
+
+fn SoderbergUtilization(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> Float {
+    if enduranceLimit <= 0kg/m/s^2 {
+        return 0
+    }
+    if yieldStrength <= 0kg/m/s^2 {
+        return 0
+    }
+    return alternatingStress / enduranceLimit + meanStress / yieldStrength
+}
+
+fn SoderbergFactorOfSafety(alternatingStress: Float<kg/m/s^2>, meanStress: Float<kg/m/s^2>, enduranceLimit: Float<kg/m/s^2>, yieldStrength: Float<kg/m/s^2>) -> Float {
+    let utilization = SoderbergUtilization(alternatingStress, meanStress, enduranceLimit, yieldStrength)
+    if utilization <= 0 {
+        return 0
+    }
+    return 1.0 / utilization
+}
