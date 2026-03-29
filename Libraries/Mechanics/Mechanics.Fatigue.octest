@@ -1,0 +1,101 @@
+package Mechanics
+
+[Fact]
+fn MeanAndAlternatingStressSymmetryAndConstantLoad() -> Void {
+    let maxStress = 180000000.0kg/m/s^2
+    let minStress = 20000000.0kg/m/s^2
+
+    let meanForward = MeanStress(maxStress, minStress)
+    let meanReverse = MeanStress(minStress, maxStress)
+    Assert.Near(meanForward / 1kg/m/s^2, meanReverse / 1kg/m/s^2, 0.000001, "mean stress symmetry")
+    Assert.Near(100000000.0, meanForward / 1kg/m/s^2, 0.1, "mean stress hand-check")
+
+    let altForward = AlternatingStress(maxStress, minStress)
+    let altReverse = AlternatingStress(minStress, maxStress)
+    Assert.Near(altForward / 1kg/m/s^2, altReverse / 1kg/m/s^2, 0.000001, "alternating stress symmetry")
+    Assert.Near(80000000.0, altForward / 1kg/m/s^2, 0.1, "alternating stress hand-check")
+
+    let constantAlt = AlternatingStress(75000000.0kg/m/s^2, 75000000.0kg/m/s^2)
+    Assert.Near(0.0, constantAlt / 1kg/m/s^2, 0.000001, "constant loading should have zero alternating stress")
+}
+
+[Fact]
+fn GoodmanFactorOfSafetyDecreasesWithAlternatingAndMeanStress() -> Void {
+    let endurance = 300000000.0kg/m/s^2
+    let sut = 600000000.0kg/m/s^2
+
+    let baseline = GoodmanFactorOfSafety(80000000.0kg/m/s^2, 60000000.0kg/m/s^2, endurance, sut)
+    let higherAlternating = GoodmanFactorOfSafety(120000000.0kg/m/s^2, 60000000.0kg/m/s^2, endurance, sut)
+    let higherMean = GoodmanFactorOfSafety(80000000.0kg/m/s^2, 120000000.0kg/m/s^2, endurance, sut)
+
+    Assert.True(higherAlternating < baseline, "higher alternating stress should reduce Goodman safety factor")
+    Assert.True(higherMean < baseline, "higher mean stress should reduce Goodman safety factor")
+
+    Assert.Near(2.727272727, baseline, 0.000001, "Goodman hand-check")
+}
+
+[Fact]
+fn GerberIsLessConservativeThanGoodmanAndSmoothWithMeanStress() -> Void {
+    let endurance = 300000000.0kg/m/s^2
+    let sut = 600000000.0kg/m/s^2
+    let alternating = 80000000.0kg/m/s^2
+
+    let lowMean = GerberFactorOfSafety(alternating, 60000000.0kg/m/s^2, endurance, sut)
+    let midMean = GerberFactorOfSafety(alternating, 120000000.0kg/m/s^2, endurance, sut)
+    let highMean = GerberFactorOfSafety(alternating, 180000000.0kg/m/s^2, endurance, sut)
+
+    Assert.True(lowMean > midMean, "Gerber safety factor should decrease as mean stress increases")
+    Assert.True(midMean > highMean, "Gerber safety factor should decrease smoothly as mean stress increases")
+
+    let goodmanAtMidMean = GoodmanFactorOfSafety(alternating, 120000000.0kg/m/s^2, endurance, sut)
+    Assert.True(midMean > goodmanAtMidMean, "Gerber should be less conservative than Goodman")
+
+    Assert.Near(3.260869565, midMean, 0.000001, "Gerber hand-check")
+}
+
+[Fact]
+fn SoderbergUsesYieldAndIsMoreConservativeThanGoodman() -> Void {
+    let endurance = 300000000.0kg/m/s^2
+    let sut = 600000000.0kg/m/s^2
+    let sy = 360000000.0kg/m/s^2
+    let alternating = 80000000.0kg/m/s^2
+    let mean = 120000000.0kg/m/s^2
+
+    let soderberg = SoderbergFactorOfSafety(alternating, mean, endurance, sy)
+    let goodman = GoodmanFactorOfSafety(alternating, mean, endurance, sut)
+
+    Assert.True(soderberg < goodman, "Soderberg should be more conservative than Goodman")
+    Assert.Near(1.666666667, soderberg, 0.000001, "Soderberg hand-check")
+}
+
+[Fact]
+fn FatigueOrderingForSameInputsIsGerberThenGoodmanThenSoderberg() -> Void {
+    let endurance = 300000000.0kg/m/s^2
+    let sut = 600000000.0kg/m/s^2
+    let sy = 360000000.0kg/m/s^2
+    let alternating = 90000000.0kg/m/s^2
+    let mean = 150000000.0kg/m/s^2
+
+    let gerber = GerberFactorOfSafety(alternating, mean, endurance, sut)
+    let goodman = GoodmanFactorOfSafety(alternating, mean, endurance, sut)
+    let soderberg = SoderbergFactorOfSafety(alternating, mean, endurance, sy)
+
+    Assert.True(gerber > goodman, "Gerber should be least conservative")
+    Assert.True(goodman > soderberg, "Goodman should be between Gerber and Soderberg")
+}
+
+[Fact]
+fn InvalidStrengthInputsReturnZeroSafetyFactor() -> Void {
+    let alternating = 80000000.0kg/m/s^2
+    let mean = 60000000.0kg/m/s^2
+
+    let goodmanInvalidEndurance = GoodmanFactorOfSafety(alternating, mean, 0.0kg/m/s^2, 600000000.0kg/m/s^2)
+    let goodmanInvalidSut = GoodmanFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
+    let gerberInvalidSut = GerberFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
+    let soderbergInvalidYield = SoderbergFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
+
+    Assert.Near(0.0, goodmanInvalidEndurance, 0.000001, "Goodman invalid endurance guard")
+    Assert.Near(0.0, goodmanInvalidSut, 0.000001, "Goodman invalid ultimate guard")
+    Assert.Near(0.0, gerberInvalidSut, 0.000001, "Gerber invalid ultimate guard")
+    Assert.Near(0.0, soderbergInvalidYield, 0.000001, "Soderberg invalid yield guard")
+}

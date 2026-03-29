@@ -560,19 +560,21 @@ Concept areas include:
 These demonstrate real Oct usage across scientific and numerical domains.
 
 
-### Mechanics M0 scope
+### Mechanics M0 / M0a scope
 
-`Libraries/Mechanics` now includes a narrow static stress/failure core:
+`Libraries/Mechanics` now includes a narrow static stress/failure core plus baseline fatigue relations:
 
 * normal and direct shear stress helpers (`force / area`)
 * bending and torsional shear helpers (`M*c/I`, `T*r/J`)
 * von Mises equivalent stress (plane-stress and principal-stress forms)
 * basic factor-of-safety helpers (`allowable / actual`)
 * optional compact principal-stress and Tresca maximum-shear helpers
+* fatigue mean-stress and alternating-stress helpers from stress extrema
+* baseline fatigue criteria helpers: Goodman, Gerber, and Soderberg (utilization and factor-of-safety forms)
 
-The mechanics helpers are written to be unit-aware (force, area, moment/torque, length, section properties, and stress units) and return guarded values for invalid geometric denominators where practical.
+The mechanics helpers are written to be unit-aware (force, area, moment/torque, length, section properties, stress units, and strength inputs). Baseline fatigue relations are explicit algebraic formulas and do not include endurance-limit modifier systems.
 
-Deferred beyond M0: fatigue relations, endurance-limit/Marin-factor modeling, shaft workflow automation, and spring/gear/bearing/bolt frameworks or materials-database integration.
+Deferred beyond M0a: Marin/endurance-limit modifiers (surface, size, reliability, etc.), fatigue strength reduction factors, notch sensitivity, material databases, shaft workflow automation, and spring/gear/bearing/bolt or full fatigue design frameworks.
 
 ---
 
