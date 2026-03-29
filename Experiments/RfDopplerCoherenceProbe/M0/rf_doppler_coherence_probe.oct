@@ -1,0 +1,248 @@
+package RfDopplerCoherenceProbe
+
+fn SpeedOfLightMetersPerSecond() -> Float {
+    return 299792458.0
+}
+
+fn DopplerShiftHz(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float) -> Float {
+    return DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond, SpeedOfLightMetersPerSecond())
+}
+
+fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float, propagationSpeedMetersPerSecond: Float) -> Float {
+    if carrierFrequencyHz <= 0 {
+        return 0.0
+    }
+    if propagationSpeedMetersPerSecond <= 0 {
+        return 0.0
+    }
+    return carrierFrequencyHz * relativeRadialVelocityMetersPerSecond / propagationSpeedMetersPerSecond
+}
+
+fn MaxDopplerShiftHz(carrierFrequencyHz: Float, speedMetersPerSecond: Float) -> Float {
+    return Abs(DopplerShiftHz(carrierFrequencyHz, Abs(speedMetersPerSecond)))
+}
+
+fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float) -> Float {
+    if maxDopplerHz <= 0 {
+        return 0.0
+    }
+    return 0.423 / maxDopplerHz
+}
+
+fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
+    if maxDopplerHz <= 0 {
+        return 0.0
+    }
+    return 1.0 / (2.0 * maxDopplerHz)
+}
+
+fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float) -> Float {
+    if rmsDelaySpreadSeconds <= 0 {
+        return 0.0
+    }
+    return 1.0 / (5.0 * rmsDelaySpreadSeconds)
+}
+
+fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) -> Float {
+    if rmsDelaySpreadSeconds <= 0 {
+        return 0.0
+    }
+    return 1.0 / (50.0 * rmsDelaySpreadSeconds)
+}
+
+fn DopplerPhaseRadians(dopplerShiftHz: Float, timeSeconds: Float) -> Float {
+    return 2.0 * Pi() * dopplerShiftHz * timeSeconds
+}
+
+record DopplerBaseline {
+    VelocitiesMetersPerSecond: Float[]
+    DopplerByVelocityHz: Float[]
+    CarrierSweepHz: Float[]
+    DopplerByCarrierHz: Float[]
+}
+
+record CoherenceTimeProbe {
+    MaxDopplerHz: Float[]
+    JakesSeconds: Float[]
+    HalfCycleSeconds: Float[]
+}
+
+record CoherenceBandwidthProbe {
+    RmsDelaySpreadSeconds: Float[]
+    WideSenseHz: Float[]
+    StrictHz: Float[]
+}
+
+record DopplerPhaseProbe {
+    TimeSeconds: Float[]
+    LowDopplerPhaseRadians: Float[]
+    HighDopplerPhaseRadians: Float[]
+}
+
+record ProbeArtifacts {
+    Doppler: DopplerBaseline
+    CoherenceTime: CoherenceTimeProbe
+    CoherenceBandwidth: CoherenceBandwidthProbe
+    Phase: DopplerPhaseProbe
+}
+
+fn BuildVelocitySweep16MetersPerSecond() -> Float[] {
+    var out = [0.0]
+    for i in 1 .. 16 {
+        out = Append(out, 5.0 * i)
+    }
+    return out
+}
+
+fn BuildCarrierSweep8Hz() -> Float[] {
+    return [700000000.0, 900000000.0, 1400000000.0, 1800000000.0, 2400000000.0, 3000000000.0, 3600000000.0, 4200000000.0]
+}
+
+fn BuildDelaySpreadSweep8Seconds() -> Float[] {
+    return [0.00000005, 0.0000001, 0.0000002, 0.0000004, 0.0000008, 0.0000012, 0.0000016, 0.000002]
+}
+
+fn BuildTimeSweep8Seconds(stepSeconds: Float) -> Float[] {
+    var out = [0.0]
+    for i in 1 .. 8 {
+        out = Append(out, stepSeconds * i)
+    }
+    return out
+}
+
+fn DopplerShiftSeries(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float[]) -> Float[] {
+    if Len(relativeRadialVelocityMetersPerSecond) == 0 {
+        return [0.0]
+    }
+
+    var out = [DopplerShiftHz(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond[0])]
+    for i in 1 .. Len(relativeRadialVelocityMetersPerSecond) {
+        out = Append(out, DopplerShiftHz(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond[i]))
+    }
+    return out
+}
+
+fn DopplerShiftByCarrierSeries(carrierFrequencyHz: Float[], speedMetersPerSecond: Float) -> Float[] {
+    if Len(carrierFrequencyHz) == 0 {
+        return [0.0]
+    }
+
+    var out = [DopplerShiftHz(carrierFrequencyHz[0], speedMetersPerSecond)]
+    for i in 1 .. Len(carrierFrequencyHz) {
+        out = Append(out, DopplerShiftHz(carrierFrequencyHz[i], speedMetersPerSecond))
+    }
+    return out
+}
+
+fn CoherenceTimeJakesSeries(maxDopplerHz: Float[]) -> Float[] {
+    if Len(maxDopplerHz) == 0 {
+        return [0.0]
+    }
+
+    var out = [CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz[0])]
+    for i in 1 .. Len(maxDopplerHz) {
+        out = Append(out, CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz[i]))
+    }
+    return out
+}
+
+fn CoherenceTimeHalfCycleSeries(maxDopplerHz: Float[]) -> Float[] {
+    if Len(maxDopplerHz) == 0 {
+        return [0.0]
+    }
+
+    var out = [CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz[0])]
+    for i in 1 .. Len(maxDopplerHz) {
+        out = Append(out, CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz[i]))
+    }
+    return out
+}
+
+fn CoherenceBandwidthWideSenseSeries(rmsDelaySpreadSeconds: Float[]) -> Float[] {
+    if Len(rmsDelaySpreadSeconds) == 0 {
+        return [0.0]
+    }
+
+    var out = [CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds[0])]
+    for i in 1 .. Len(rmsDelaySpreadSeconds) {
+        out = Append(out, CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds[i]))
+    }
+    return out
+}
+
+fn CoherenceBandwidthStrictSeries(rmsDelaySpreadSeconds: Float[]) -> Float[] {
+    if Len(rmsDelaySpreadSeconds) == 0 {
+        return [0.0]
+    }
+
+    var out = [CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds[0])]
+    for i in 1 .. Len(rmsDelaySpreadSeconds) {
+        out = Append(out, CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds[i]))
+    }
+    return out
+}
+
+fn DopplerPhaseSeries(dopplerShiftHz: Float, timeSeconds: Float[]) -> Float[] {
+    if Len(timeSeconds) == 0 {
+        return [0.0]
+    }
+
+    var out = [DopplerPhaseRadians(dopplerShiftHz, timeSeconds[0])]
+    for i in 1 .. Len(timeSeconds) {
+        out = Append(out, DopplerPhaseRadians(dopplerShiftHz, timeSeconds[i]))
+    }
+    return out
+}
+
+fn BuildDopplerBaseline() -> DopplerBaseline {
+    let velocities = BuildVelocitySweep16MetersPerSecond()
+    let carrierSweep = BuildCarrierSweep8Hz()
+
+    return DopplerBaseline {
+        VelocitiesMetersPerSecond: velocities
+        DopplerByVelocityHz: DopplerShiftSeries(2400000000.0, velocities)
+        CarrierSweepHz: carrierSweep
+        DopplerByCarrierHz: DopplerShiftByCarrierSeries(carrierSweep, 25.0)
+    }
+}
+
+fn BuildCoherenceTimeProbe(maxDopplerHz: Float[]) -> CoherenceTimeProbe {
+    return CoherenceTimeProbe {
+        MaxDopplerHz: maxDopplerHz
+        JakesSeconds: CoherenceTimeJakesSeries(maxDopplerHz)
+        HalfCycleSeconds: CoherenceTimeHalfCycleSeries(maxDopplerHz)
+    }
+}
+
+fn BuildCoherenceBandwidthProbe() -> CoherenceBandwidthProbe {
+    let delaySpread = BuildDelaySpreadSweep8Seconds()
+
+    return CoherenceBandwidthProbe {
+        RmsDelaySpreadSeconds: delaySpread
+        WideSenseHz: CoherenceBandwidthWideSenseSeries(delaySpread)
+        StrictHz: CoherenceBandwidthStrictSeries(delaySpread)
+    }
+}
+
+fn BuildDopplerPhaseProbe() -> DopplerPhaseProbe {
+    let time = BuildTimeSweep8Seconds(0.002)
+    let lowDoppler = 20.0
+    let highDoppler = 80.0
+
+    return DopplerPhaseProbe {
+        TimeSeconds: time
+        LowDopplerPhaseRadians: DopplerPhaseSeries(lowDoppler, time)
+        HighDopplerPhaseRadians: DopplerPhaseSeries(highDoppler, time)
+    }
+}
+
+fn BuildProbeArtifacts() -> ProbeArtifacts {
+    let doppler = BuildDopplerBaseline()
+
+    return ProbeArtifacts {
+        Doppler: doppler
+        CoherenceTime: BuildCoherenceTimeProbe(doppler.DopplerByVelocityHz)
+        CoherenceBandwidth: BuildCoherenceBandwidthProbe()
+        Phase: BuildDopplerPhaseProbe()
+    }
+}
