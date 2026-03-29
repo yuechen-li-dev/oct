@@ -179,8 +179,32 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			}
 		}
 		return nil
+	case "sync":
+		if len(args) != 1 {
+			return reportCommandError(stderr, "pkg sync", fmt.Errorf("usage: oct pkg sync"))
+		}
+		result, err := manager.Sync(".")
+		if err != nil {
+			return reportCommandError(stderr, "pkg sync", err)
+		}
+		_, err = fmt.Fprintf(stdout, "sync project: %s\nmanifest: %s\ndependencies: %d\n", result.ProjectPath, result.ManifestPath, len(result.Dependencies))
+		if err != nil {
+			return err
+		}
+		for _, dep := range result.Dependencies {
+			status := "fetched"
+			if dep.GetResult.Hit {
+				status = "cache hit"
+			}
+			_, err = fmt.Fprintf(stdout, "- %s (%s) [%s]\n  source: %s\n  cache: %s\n", dep.Name, dep.VersionRequirement, status, dep.Source, dep.GetResult.Path)
+			if err != nil {
+				return err
+			}
+		}
+		_, err = fmt.Fprintln(stdout, "sync complete")
+		return err
 	default:
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync>"))
 	}
 }
 
@@ -193,7 +217,7 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list> [args]")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]")
 	return err
 }
 

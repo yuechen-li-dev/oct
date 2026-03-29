@@ -47,6 +47,19 @@ type Entry struct {
 	FetchedAt    string               `json:"fetched_at"`
 }
 
+type SyncDependencyResult struct {
+	Name               string
+	VersionRequirement string
+	Source             string
+	GetResult          GetResult
+}
+
+type SyncResult struct {
+	ProjectPath  string
+	ManifestPath string
+	Dependencies []SyncDependencyResult
+}
+
 type index struct {
 	Entries map[string]Entry `json:"entries"`
 }
@@ -138,6 +151,71 @@ func (m *Manager) List() ([]Entry, error) {
 
 func (m *Manager) CacheDir() string {
 	return m.cacheDir
+}
+
+func (m *Manager) Sync(projectRoot string) (SyncResult, error) {
+	if projectRoot == "" {
+		projectRoot = "."
+	}
+	absRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("resolve project root: %w", err)
+	}
+	manifestPath := filepath.Join(absRoot, manifestFileName)
+	if _, err := os.Stat(manifestPath); err != nil {
+		if os.IsNotExist(err) {
+			return SyncResult{}, fmt.Errorf("project manifest not found: %s", manifestPath)
+		}
+		return SyncResult{}, fmt.Errorf("read project manifest %s: %w", manifestPath, err)
+	}
+	manifest, err := loadManifestMetadata(manifestPath)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	if err := validateSyncDependencies(manifest.Dependencies); err != nil {
+		return SyncResult{}, err
+	}
+	result := SyncResult{
+		ProjectPath:  absRoot,
+		ManifestPath: manifestPath,
+		Dependencies: make([]SyncDependencyResult, 0, len(manifest.Dependencies)),
+	}
+	for _, dep := range manifest.Dependencies {
+		getResult, err := m.Get(dep.Source)
+		if err != nil {
+			return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+		}
+		result.Dependencies = append(result.Dependencies, SyncDependencyResult{
+			Name:               dep.Name,
+			VersionRequirement: dep.VersionRequirement,
+			Source:             dep.Source,
+			GetResult:          getResult,
+		})
+	}
+	return result, nil
+}
+
+func validateSyncDependencies(deps []DependencyMetadata) error {
+	seen := map[string]DependencyMetadata{}
+	for idx, dep := range deps {
+		if strings.TrimSpace(dep.Name) == "" {
+			return fmt.Errorf("dependency at index %d has empty Name", idx)
+		}
+		if strings.TrimSpace(dep.VersionRequirement) == "" {
+			return fmt.Errorf("dependency %q has empty VersionRequirement", dep.Name)
+		}
+		if strings.TrimSpace(dep.Source) == "" {
+			return fmt.Errorf("dependency %q missing fetchable source metadata (Dependency.Source)", dep.Name)
+		}
+		if prior, ok := seen[dep.Name]; ok {
+			if prior.VersionRequirement != dep.VersionRequirement || prior.Source != dep.Source {
+				return fmt.Errorf("dependency %q declared more than once with conflicting metadata", dep.Name)
+			}
+			return fmt.Errorf("dependency %q declared more than once", dep.Name)
+		}
+		seen[dep.Name] = dep
+	}
+	return nil
 }
 
 func (m *Manager) ensureCacheLayout() error {

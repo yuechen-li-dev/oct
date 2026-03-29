@@ -23,6 +23,7 @@ func TestLoadManifestMetadataExtractsIdentityAndDependencies(t *testing.T) {
 		"record Dependency {",
 		"    Name: String",
 		"    VersionRequirement: String",
+		"    Source: String",
 		"}",
 		"",
 		"fn Manifest() -> PackageManifest {",
@@ -31,8 +32,8 @@ func TestLoadManifestMetadataExtractsIdentityAndDependencies(t *testing.T) {
 		"        Version: \"0.1.0\"",
 		"        Description: \"demo package\"",
 		"        Dependencies: [",
-		"            Dependency { Name: \"Signal\" VersionRequirement: \"^1.2.0\" },",
-		"            Dependency { Name: \"Numerics\" VersionRequirement: \"~0.4\" }",
+		"            Dependency { Name: \"Signal\" VersionRequirement: \"^1.2.0\" Source: \"file:///tmp/signal\" },",
+		"            Dependency { Name: \"Numerics\" VersionRequirement: \"~0.4\" Source: \"file:///tmp/numerics\" }",
 		"        ]",
 		"    }",
 		"}",
@@ -52,8 +53,8 @@ func TestLoadManifestMetadataExtractsIdentityAndDependencies(t *testing.T) {
 		t.Fatalf("expected description, got %q", metadata.Description)
 	}
 	expectedDeps := []DependencyMetadata{
-		{Name: "Signal", VersionRequirement: "^1.2.0"},
-		{Name: "Numerics", VersionRequirement: "~0.4"},
+		{Name: "Signal", VersionRequirement: "^1.2.0", Source: "file:///tmp/signal"},
+		{Name: "Numerics", VersionRequirement: "~0.4", Source: "file:///tmp/numerics"},
 	}
 	if !reflect.DeepEqual(metadata.Dependencies, expectedDeps) {
 		t.Fatalf("unexpected dependencies: got %#v want %#v", metadata.Dependencies, expectedDeps)

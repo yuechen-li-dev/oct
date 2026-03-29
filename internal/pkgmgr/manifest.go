@@ -20,6 +20,7 @@ type ManifestMetadata struct {
 type DependencyMetadata struct {
 	Name               string `json:"name"`
 	VersionRequirement string `json:"version_requirement"`
+	Source             string `json:"source,omitempty"`
 }
 
 func loadManifestMetadata(path string) (ManifestMetadata, error) {
@@ -47,12 +48,14 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 		"Version":      {Name: "String"},
 		"Description":  {Name: "String"},
 		"Dependencies": {Name: "Dependency", IsArray: true},
-	}); err != nil {
+	}, nil); err != nil {
 		return ManifestMetadata{}, err
 	}
 	if err := requireRecordShape(file, "Dependency", map[string]ast.TypeRef{
 		"Name":               {Name: "String"},
 		"VersionRequirement": {Name: "String"},
+	}, map[string]ast.TypeRef{
+		"Source": {Name: "String"},
 	}); err != nil {
 		return ManifestMetadata{}, err
 	}
@@ -63,21 +66,39 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	return extractManifestReturn(manifestFn)
 }
 
-func requireRecordShape(file ast.File, recordName string, required map[string]ast.TypeRef) error {
+func requireRecordShape(file ast.File, recordName string, required map[string]ast.TypeRef, optional map[string]ast.TypeRef) error {
 	record, ok := findRecord(file, recordName)
 	if !ok {
 		return fmt.Errorf("manifest.oct must define record %s", recordName)
 	}
-	if len(record.Fields) != len(required) {
-		return fmt.Errorf("manifest.oct record %s must define exactly %d fields", recordName, len(required))
+	minFields := len(required)
+	maxFields := len(required) + len(optional)
+	if len(record.Fields) < minFields || len(record.Fields) > maxFields {
+		if len(optional) == 0 {
+			return fmt.Errorf("manifest.oct record %s must define exactly %d fields", recordName, minFields)
+		}
+		return fmt.Errorf("manifest.oct record %s must define %d-%d fields", recordName, minFields, maxFields)
 	}
+	seen := map[string]bool{}
 	for _, field := range record.Fields {
 		requiredType, ok := required[field.Name]
 		if !ok {
+			requiredType, ok = optional[field.Name]
+		}
+		if !ok {
 			return fmt.Errorf("manifest.oct record %s contains unsupported field '%s'", recordName, field.Name)
 		}
+		if seen[field.Name] {
+			return fmt.Errorf("manifest.oct record %s contains duplicate field '%s'", recordName, field.Name)
+		}
+		seen[field.Name] = true
 		if field.Type.Name != requiredType.Name || field.Type.Package != "" || field.Type.IsArray != requiredType.IsArray {
 			return fmt.Errorf("manifest.oct record %s field '%s' must be %s", recordName, field.Name, typeLabel(requiredType))
+		}
+	}
+	for field := range required {
+		if !seen[field] {
+			return fmt.Errorf("manifest.oct record %s missing required field '%s'", recordName, field)
 		}
 	}
 	return nil
@@ -163,7 +184,11 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		if err != nil {
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d: %w", idx, err)
 		}
-		if len(depFields) != 2 {
+		depSource, err := optionalStringField(depFields, "Source")
+		if err != nil {
+			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d: %w", idx, err)
+		}
+		if len(depFields) != 2 && len(depFields) != 3 {
 			keys := make([]string, 0, len(depFields))
 			for key := range depFields {
 				keys = append(keys, key)
@@ -171,7 +196,7 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 			sort.Strings(keys)
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d has unsupported fields", idx)
 		}
-		deps = append(deps, DependencyMetadata{Name: depName, VersionRequirement: depReq})
+		deps = append(deps, DependencyMetadata{Name: depName, VersionRequirement: depReq, Source: depSource})
 	}
 	if len(fieldValues) != 4 {
 		return ManifestMetadata{}, fmt.Errorf("manifest return literal has unsupported fields")
@@ -183,6 +208,18 @@ func stringField(fields map[string]ast.Expr, fieldName string) (string, error) {
 	expr, ok := fields[fieldName]
 	if !ok {
 		return "", fmt.Errorf("manifest field '%s' is required", fieldName)
+	}
+	str, ok := expr.(ast.StringLiteralExpr)
+	if !ok {
+		return "", fmt.Errorf("manifest field '%s' must be a string literal", fieldName)
+	}
+	return str.Value, nil
+}
+
+func optionalStringField(fields map[string]ast.Expr, fieldName string) (string, error) {
+	expr, ok := fields[fieldName]
+	if !ok {
+		return "", nil
 	}
 	str, ok := expr.(ast.StringLiteralExpr)
 	if !ok {
