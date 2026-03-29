@@ -1,0 +1,21 @@
+package MainValid
+
+[Fact]
+fn ScientificPhase1Builtins() -> Void {
+    Assert.Near(1.0, Tan(45deg), 0.000001, "tan degree input")
+    Assert.Near(Pi() / 2, Asin(1), 0.000001, "asin result is radians")
+    Assert.Near(0.0, Acos(1), 0.000001, "acos of one")
+    Assert.Near(Pi() / 4, Atan(1), 0.000001, "atan one")
+
+    Assert.Near(2.718281828459045, Exp(1), 0.000001, "exp one")
+    Assert.Near(1.0, Ln(E()), 0.000001, "ln e")
+    Assert.Near(3.0, Log10(1000), 0.000001, "log10 1000")
+
+    Assert.Near(1.0, Sin(Pi() / 2), 0.000001, "sin pi over two")
+    Assert.Near(0.0 - 1.0, Cos(Pi()), 0.000001, "cos pi")
+    Assert.Near(1.0, Sin(90deg), 0.000001, "sin degrees")
+    Assert.Near(0.0 - 1.0, Cos(180deg), 0.000001, "cos degrees")
+
+    let identity = Pi() + E() - E()
+    Assert.Near(Pi(), identity, 0.000001, "constants are regular expressions")
+}

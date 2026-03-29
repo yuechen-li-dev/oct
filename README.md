@@ -101,6 +101,7 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 
 * SI base dimensions are supported on numeric types (`Int`, `Float`): `m`, `kg`, `s`, `A`, `K`, `mol`, `cd`.
 * Dimensioned literals are supported (e.g., `5m`, `2.5s`) with derived dimensions (`m/s`, `m^2`).
+* Trigonometric built-ins accept radians as dimensionless values; degrees are explicit with `deg` literal suffix (for example, `Sin(90deg)`), with no global DEG/RAD mode.
 * Dimensions are part of type identity; mismatches are type errors.
 * Addition/subtraction require matching dimensions.
 * Multiplication/division compose dimensions.
@@ -110,11 +111,13 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 
 ### Built-ins and Runtime Utilities
 
-* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan`, `Exp`, `Ln`, `Log10`, `Pi()`, `E()`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
 * Octomata runtime built-ins include: `Step`, `Active`, `Result`, `Complete`, `StateHistory`, and `ResumeTarget`.
 * `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
 * In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
-* `Sin` and `Cos` require dimensionless input.
+* `Sin`, `Cos`, and `Tan` accept dimensionless radians and explicit degree literals (`deg`).
+* `Asin`, `Acos`, and `Atan` return radians (dimensionless `Float`).
+* `Exp`, `Ln`, and `Log10` require dimensionless input; `Ln`/`Log10` require strictly positive inputs.
 
 ---
 

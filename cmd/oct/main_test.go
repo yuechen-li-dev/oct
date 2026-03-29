@@ -1189,6 +1189,74 @@ func TestRunCommandRejectsInvalidDimensions(t *testing.T) {
 			source:      "fn Main() -> Float {\n    return Sin(1m)\n}\n",
 			wantMessage: "function Main: Sin requires dimensionless input",
 		},
+		{
+			name:        "ln requires dimensionless input",
+			source:      "fn Main() -> Float {\n    return Ln(2m)\n}\n",
+			wantMessage: "function Main: Ln requires dimensionless input",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err == nil {
+				t.Fatalf("expected run command to fail\nstdout:%s\nstderr:%s", stdout, stderr)
+			}
+			if !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("expected error to contain %q, got %q", test.wantMessage, err.Error())
+			}
+		})
+	}
+}
+
+func TestRunCommandSupportsM72Builtins(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "tan degrees", source: "fn Main() -> Float {\n    return Tan(45deg)\n}\n", want: "1\n"},
+		{name: "asin one", source: "fn Main() -> Float {\n    return Asin(1)\n}\n", want: "1.5707963267948966\n"},
+		{name: "acos one", source: "fn Main() -> Float {\n    return Acos(1)\n}\n", want: "0\n"},
+		{name: "atan one", source: "fn Main() -> Float {\n    return Atan(1)\n}\n", want: "0.7853981633974483\n"},
+		{name: "exp one", source: "fn Main() -> Float {\n    return Exp(1)\n}\n", want: "2.718281828459045\n"},
+		{name: "ln e", source: "fn Main() -> Float {\n    return Ln(E())\n}\n", want: "1\n"},
+		{name: "log10", source: "fn Main() -> Float {\n    return Log10(1000)\n}\n", want: "3\n"},
+		{name: "pi", source: "fn Main() -> Float {\n    return Pi()\n}\n", want: "3.141592653589793\n"},
+		{name: "sin pi half", source: "fn Main() -> Float {\n    return Sin(Pi() / 2)\n}\n", want: "1\n"},
+		{name: "cos 180deg", source: "fn Main() -> Float {\n    return Cos(180deg)\n}\n", want: "-1\n"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+}
+
+func TestRunCommandRejectsInvalidM72Domains(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{name: "asin out of range", source: "fn Main() -> Float {\n    return Asin(2)\n}\n", wantMessage: "runtime error: Asin expects input in [-1, 1], got 2"},
+		{name: "acos out of range", source: "fn Main() -> Float {\n    return Acos(0 - 2)\n}\n", wantMessage: "runtime error: Acos expects input in [-1, 1], got -2"},
+		{name: "ln zero", source: "fn Main() -> Float {\n    return Ln(0)\n}\n", wantMessage: "runtime error: Ln expects positive input, got 0"},
+		{name: "ln negative", source: "fn Main() -> Float {\n    return Ln(0 - 1)\n}\n", wantMessage: "runtime error: Ln expects positive input, got -1"},
+		{name: "log10 zero", source: "fn Main() -> Float {\n    return Log10(0)\n}\n", wantMessage: "runtime error: Log10 expects positive input, got 0"},
+		{name: "log10 negative", source: "fn Main() -> Float {\n    return Log10(0 - 10)\n}\n", wantMessage: "runtime error: Log10 expects positive input, got -10"},
 	}
 
 	for _, test := range tests {

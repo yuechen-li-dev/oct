@@ -2082,6 +2082,13 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}
 
+	if callee == "Pi" || callee == "E" {
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	}
+
 	if len(arguments) != 1 {
 		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
 	}
@@ -2126,7 +2133,23 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("Sqrt requires even dimension exponents")
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: argumentType.ValueType.Dimension.Sqrt()}}, nil
-	case "Sin", "Cos":
+	case "Sin", "Cos", "Tan":
+		if !isNumericScalar(argumentType.ValueType) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
+		}
+		if !argumentType.ValueType.Dimension.IsDimensionless() {
+			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	case "Asin", "Acos":
+		if !isNumericScalar(argumentType.ValueType) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
+		}
+		if !argumentType.ValueType.Dimension.IsDimensionless() {
+			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	case "Atan", "Exp", "Ln", "Log10":
 		if !isNumericScalar(argumentType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
 		}

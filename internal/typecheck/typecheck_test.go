@@ -234,6 +234,16 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> Float { return Sqrt(2.25) }",
 		"fn Main() -> Float { return Sin(0) }",
 		"fn Main() -> Float { return Cos(0) }",
+		"fn Main() -> Float { return Tan(0) }",
+		"fn Main() -> Float { return Asin(1) }",
+		"fn Main() -> Float { return Acos(1) }",
+		"fn Main() -> Float { return Atan(1) }",
+		"fn Main() -> Float { return Exp(1) }",
+		"fn Main() -> Float { return Ln(1) }",
+		"fn Main() -> Float { return Log10(1000) }",
+		"fn Main() -> Float { return Sin(90deg) }",
+		"fn Main() -> Float { return Pi() }",
+		"fn Main() -> Float { return E() }",
 		"fn Main() -> Int[] { var xs = [1, 2] xs = Append(xs, 3) return xs }",
 		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
 		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
@@ -278,6 +288,7 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Pi(1) }", "function Main: function 'Pi' expects 0 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len() }", "function Main: function 'Len' expects 1 arguments, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1, 2) }", "function Main: function 'Sin' expects 1 arguments, got 2")
 	assertTypeErrorContains(t, "fn Main() -> Int[] { return Append(1, 2) }", "function Main: Append requires array as first argument")
@@ -380,6 +391,8 @@ func TestCheckRejectsInvalidM8Dimensions(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int<m> { return 1 + 2m }", "function Main: cannot add dimensionless and m")
 	assertTypeErrorContains(t, "fn Speed(distance: Float<m>, time: Float<s>) -> Float<m/s> { return distance / time } fn Main() -> Float<m/s> { return Speed(10s, 2m) }", "function Main: function 'Speed' argument 1 expects Float<m>, got Int<s>")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1m) }", "function Main: Sin requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Ln(2m) }", "function Main: Ln requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Exp(5s) }", "function Main: Exp requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(4m) }", "function Main: Sqrt requires even dimension exponents")
 	assertTypeErrorContains(t, "fn Main() -> Int<m>[] { return [1m, 2s] }", "function Main: array literal elements must all have the same type; found Int<m> and Int<s>")
 	assertTypeErrorContains(t, "fn Main() -> Bool<m> { return true }", "function Main: invalid dimension-qualified type syntax: Bool<m>")

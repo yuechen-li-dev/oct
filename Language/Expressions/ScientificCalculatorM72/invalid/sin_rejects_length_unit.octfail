@@ -1,0 +1,7 @@
+expect error: "Sin requires dimensionless input"
+
+package Main
+
+fn Main() -> Float {
+    return Sin(3m)
+}
