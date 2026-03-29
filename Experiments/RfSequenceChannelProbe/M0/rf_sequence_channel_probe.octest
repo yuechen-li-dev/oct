@@ -1,0 +1,85 @@
+package RfSequenceChannelProbe
+
+[Fact]
+fn BaselineSeriesUseLongerSequenceLength() -> Void {
+    let baseline = BuildSequenceBaseline()
+
+    Assert.Equal(16, Len(baseline.Distances), "distance sweep should use non-trivial sequence length")
+    Assert.True(Len(baseline.Distances) > 4, "sequence probe should exceed original four-sample pressure")
+
+    Assert.Equal(Len(baseline.Distances), Len(baseline.FreeSpacePathLoss), "free-space path-loss series length should match distance sweep")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.LogDistancePathLoss), "log-distance path-loss series length should match distance sweep")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.FreeSpaceReceivedPower), "received-power series length should match distance sweep")
+
+    Assert.Equal(16, Len(baseline.BandwidthsHz), "bandwidth sweep should use non-trivial sequence length")
+    Assert.Equal(Len(baseline.BandwidthsHz), Len(baseline.NoiseByBandwidth), "noise series length should match bandwidth sweep")
+    Assert.Equal(Len(baseline.BandwidthsHz), Len(baseline.SnrLinear), "snr series length should match bandwidth sweep")
+}
+
+[Fact]
+fn BaselineSeriesShowExpectedMonotonicTrends() -> Void {
+    let baseline = BuildSequenceBaseline()
+
+    for i in 1 .. Len(baseline.Distances) {
+        Assert.True(baseline.FreeSpacePathLoss[i] > baseline.FreeSpacePathLoss[i - 1], "free-space path loss should increase with distance")
+        Assert.True(baseline.LogDistancePathLoss[i] > baseline.LogDistancePathLoss[i - 1], "log-distance path loss should increase with distance")
+        Assert.True(baseline.FreeSpaceReceivedPower[i] < baseline.FreeSpaceReceivedPower[i - 1], "received power should drop with distance")
+    }
+
+    for i in 1 .. Len(baseline.BandwidthsHz) {
+        Assert.True(baseline.NoiseByBandwidth[i] > baseline.NoiseByBandwidth[i - 1], "noise should increase across this rising bandwidth/noise-figure schedule")
+        Assert.True(baseline.SnrLinear[i] < baseline.SnrLinear[i - 1], "snr should decrease as effective noise rises")
+    }
+}
+
+[Fact]
+fn ScalarAndSeriesPathLossAndSnrStayConsistent() -> Void {
+    let baseline = BuildSequenceBaseline()
+
+    let index = 7
+    let fsplScalar = FreeSpacePathLossScalar(baseline.Distances[index], 2400000000.0)
+    Assert.Near(fsplScalar, baseline.FreeSpacePathLoss[index], 0.000001, "series free-space element should match scalar helper")
+
+    let noiseScalar = NoiseWithFigureScalar(baseline.BandwidthsHz[index], 290.0, BuildNoiseFigureSeries16()[index])
+    Assert.Near(noiseScalar / (1.0kg*m^2/s^3), baseline.NoiseByBandwidth[index] / (1.0kg*m^2/s^3), 0.000001, "series noise element should match scalar helper")
+
+    let snrScalar = SnrScalar(baseline.FreeSpaceReceivedPower[index], baseline.NoiseByBandwidth[index])
+    Assert.Near(snrScalar, baseline.SnrLinear[index], 0.000001, "series snr element should match scalar helper")
+}
+
+[Fact]
+fn AwgnProbePreservesShapeAndAppliesDeterministicElementwiseDeltas() -> Void {
+    let probe = BuildSequenceChannelProbe()
+    let factors = BuildAwgnScaleFactors16()
+
+    Assert.Equal(16, Len(probe.BaselineSignal), "baseline signal should use long sequence")
+    Assert.Equal(Len(probe.BaselineSignal), Len(probe.AwgnNoise), "awgn noise shape should match baseline")
+    Assert.Equal(Len(probe.BaselineSignal), Len(probe.AwgnSignal), "awgn output shape should match baseline")
+
+    Assert.Near(1.0 + factors[0], probe.AwgnSignal[0] / probe.BaselineSignal[0], 0.000001, "first awgn sample should follow deterministic scale")
+    Assert.Near(1.0 + factors[9], probe.AwgnSignal[9] / probe.BaselineSignal[9], 0.000001, "middle awgn sample should follow deterministic scale")
+    Assert.Near(1.0 + factors[15], probe.AwgnSignal[15] / probe.BaselineSignal[15], 0.000001, "last awgn sample should follow deterministic scale")
+
+    Assert.True(probe.AwgnSignal[0] != probe.BaselineSignal[0], "awgn should alter at least one early sample")
+    Assert.True(probe.AwgnSignal[10] != probe.BaselineSignal[10], "awgn should alter at least one later sample")
+}
+
+[Fact]
+fn RayleighProbePreservesShapeAndComposesWithGainHelpers() -> Void {
+    let probe = BuildSequenceChannelProbe()
+
+    Assert.Equal(16, Len(probe.RayleighInPhase), "rayleigh in-phase sequence should be long")
+    Assert.Equal(16, Len(probe.RayleighQuadrature), "rayleigh quadrature sequence should be long")
+    Assert.Equal(16, Len(probe.RayleighGain), "rayleigh gain sequence should be long")
+    Assert.Equal(16, Len(probe.RayleighSignalViaHelper), "rayleigh helper output should preserve shape")
+    Assert.Equal(16, Len(probe.RayleighSignalViaGain), "power-gain output should preserve shape")
+
+    for i in 0 .. Len(probe.BaselineSignal) {
+        Assert.Near(probe.RayleighSignalViaHelper[i] / (1.0kg*m^2/s^3), probe.RayleighSignalViaGain[i] / (1.0kg*m^2/s^3), 0.000001, "rayleigh helper and explicit gain composition should agree elementwise")
+    }
+
+    Assert.True(probe.RayleighGain[4] < 1.0, "rayleigh sequence should include attenuation")
+    Assert.True(probe.RayleighGain[14] > 1.0, "rayleigh sequence should include amplification")
+    Assert.True(probe.RayleighSignalViaHelper[4] < probe.BaselineSignal[4], "attenuation sample should drop below baseline")
+    Assert.True(probe.RayleighSignalViaHelper[14] > probe.BaselineSignal[14], "amplification sample should exceed baseline")
+}
