@@ -1,0 +1,33 @@
+package RF
+
+fn SpeedOfLightMetersPerSecond() -> Float {
+    return 299792458.0
+}
+
+fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if frequencyHz <= 0 {
+        return 0.0
+    }
+
+    let wavelengthMeters = SpeedOfLightMetersPerSecond() / frequencyHz
+    let geometricTerm = 4.0 * Pi() * (distance / 1m) / wavelengthMeters
+    return geometricTerm * geometricTerm
+}
+
+fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if referenceDistance <= 0m {
+        return 0.0
+    }
+    if referencePathLossLinear <= 0 {
+        return 0.0
+    }
+
+    let distanceRatio = distance / referenceDistance
+    return referencePathLossLinear * Exp(pathLossExponent * Ln(distanceRatio))
+}

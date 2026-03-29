@@ -1,0 +1,61 @@
+package RF
+
+fn NoisePowerForTargetSNR(signalPower: Float<kg*m^2/s^3>, snrLinear: Float) -> Float<kg*m^2/s^3> {
+    if snrLinear <= 0 {
+        return 0.0kg*m^2/s^3
+    }
+    return signalPower / snrLinear
+}
+
+fn ApplyAdditiveNoise(signal: Float<kg*m^2/s^3>, noise: Float<kg*m^2/s^3>) -> Float<kg*m^2/s^3> {
+    return signal + noise
+}
+
+fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
+    if Len(signal) != Len(noise) {
+        return [0.0kg*m^2/s^3]
+    }
+
+    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
+    if Len(signal) != Len(out) {
+        return out
+    }
+
+    for i in 0 .. Len(signal) {
+        out[i] = signal[i] + noise[i]
+    }
+
+    return out
+}
+
+fn RayleighPowerGainFromComponents(inPhase: Float, quadrature: Float) -> Float {
+    return inPhase * inPhase + quadrature * quadrature
+}
+
+fn RayleighAmplitudeFromComponents(inPhase: Float, quadrature: Float) -> Float {
+    return Sqrt(RayleighPowerGainFromComponents(inPhase, quadrature))
+}
+
+fn ApplyRayleighFading(sample: Float<kg*m^2/s^3>, inPhase: Float, quadrature: Float) -> Float<kg*m^2/s^3> {
+    return sample * RayleighPowerGainFromComponents(inPhase, quadrature)
+}
+
+fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], quadrature: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) != Len(inPhase) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(samples) != Len(quadrature) {
+        return [0.0kg*m^2/s^3]
+    }
+
+    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
+    if Len(samples) != Len(out) {
+        return out
+    }
+
+    for i in 0 .. Len(samples) {
+        out[i] = ApplyRayleighFading(samples[i], inPhase[i], quadrature[i])
+    }
+
+    return out
+}

@@ -1,0 +1,39 @@
+package RF
+
+[Fact]
+fn FreeSpacePathLossIncreasesWithDistanceAndFrequency() -> Void {
+    let f = 2400000000
+
+    let nearLoss = FreeSpacePathLossLinear(1m, f)
+    let farLoss = FreeSpacePathLossLinear(10m, f)
+    Assert.True(farLoss > nearLoss, "fspl should increase with distance")
+
+    let lowFreqLoss = FreeSpacePathLossLinear(10m, 900000000)
+    let highFreqLoss = FreeSpacePathLossLinear(10m, 2400000000)
+    Assert.True(highFreqLoss > lowFreqLoss, "fspl should increase with frequency")
+}
+
+[Fact]
+fn FreeSpacePathLossSanityAtOneMeterTwoPointFourGHz() -> Void {
+    let fspl = FreeSpacePathLossLinear(1m, 2400000000)
+    Assert.Near(10117.0, fspl, 50.0, "1 m, 2.4 GHz FSPL linear sanity")
+}
+
+[Fact]
+fn LogDistancePathLossHasExpectedGrowthAndReference() -> Void {
+    let reference = 100.0
+    let sameDistance = LogDistancePathLossLinear(1m, 1m, reference, 2.0)
+    Assert.Near(reference, sameDistance, 0.0001, "reference distance should preserve baseline")
+
+    let n2 = LogDistancePathLossLinear(10m, 1m, reference, 2.0)
+    let n3 = LogDistancePathLossLinear(10m, 1m, reference, 3.0)
+    Assert.True(n2 > reference, "path loss should increase with distance")
+    Assert.True(n3 > n2, "larger exponent should grow path loss faster")
+}
+
+[Fact]
+fn InvalidPathLossInputsReturnZero() -> Void {
+    Assert.Equal(0.0, FreeSpacePathLossLinear(0m, 1000000000), "zero distance is invalid")
+    Assert.Equal(0.0, FreeSpacePathLossLinear(1m, 0), "zero frequency is invalid")
+    Assert.Equal(0.0, LogDistancePathLossLinear(1m, 0m, 100.0, 2.0), "zero reference distance is invalid")
+}
