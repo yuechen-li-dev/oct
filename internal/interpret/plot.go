@@ -95,6 +95,7 @@ func toPlotData(functionName string, value Value, label string) ([]float64, erro
 }
 
 func writePlot(functionName string, xs []float64, ys []float64, outputPath string) error {
+	outputPath = attributedOutputPath(outputPath)
 	p := plot.New()
 	p.X.Label.Text = "x"
 	p.Y.Label.Text = "y"

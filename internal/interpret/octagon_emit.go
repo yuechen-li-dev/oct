@@ -12,6 +12,7 @@ func WriteOctagon(path string, value Value) error {
 	if !strings.HasSuffix(path, ".octagon") {
 		return fmt.Errorf("WriteOctagon path must end with .octagon")
 	}
+	path = attributedOutputPath(path)
 	rendered, err := serializeOctagonValue(value)
 	if err != nil {
 		return fmt.Errorf("WriteOctagon cannot serialize value: %w", err)

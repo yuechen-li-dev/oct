@@ -128,6 +128,8 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 * Artifact and benchmark functions are `fn() -> Void` and are not executed by `oct test`.
 * Benchmark execution currently runs once per function (no warmup/statistics yet).
 * `oct bench <path> --octagon-out <file.octagon>` optionally exports a single typed `.octagon` report containing benchmark case names and `DurationNs` measurements.
+* For experiment-root execution (`oct artifact Experiments/<Name>` / `oct bench Experiments/<Name>`), artifact-like outputs are milestone-attributed by filename prefixing (`M2.results.octagon`, `M2.plot.png`, `M2.bench.octagon`) to avoid cross-milestone collisions.
+* Direct milestone execution keeps single-root behavior (`oct artifact Experiments/<Name>/M2`, `oct bench Experiments/<Name>/Mx1`) and does not rewrite output filenames.
 * Benchmark `.octagon` export is intentionally narrow reporting only: no statistical analysis, no historical tracking, and not a full benchmarking framework.
 
 ### `.oct` vs `.octagon`
@@ -482,6 +484,8 @@ Execution behavior for experiment roots:
 * `oct bench Experiments/<Name>`
 
 These commands discover canonical milestones (`M<number>` or `M<number><letter>`) in deterministic order and exclude auxiliary milestones (`Mx<number>` / `Mx<number><letter>`) by default. Direct milestone targeting still runs exactly the selected milestone, including `Mx...` when explicitly addressed.
+
+When `artifact`/`bench` run at experiment root, output files emitted during milestone execution are attributed with the milestone prefix to preserve provenance and avoid filename collisions across milestones.
 
 Concept areas include:
 

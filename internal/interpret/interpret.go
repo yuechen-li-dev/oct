@@ -172,6 +172,10 @@ type interpreter struct {
 	stdout         io.Writer
 }
 
+type ExecuteOptions struct {
+	OutputPathPrefix string
+}
+
 type environment struct {
 	parent *environment
 	values map[string]binding
@@ -244,10 +248,20 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 }
 
 func ExecuteFunction(program project.Program, pkgName string, functionName string, stdout io.Writer) error {
-	return ExecuteFunctionWithArgs(program, pkgName, functionName, nil, stdout)
+	return ExecuteFunctionWithArgsAndOptions(program, pkgName, functionName, nil, stdout, ExecuteOptions{})
 }
 
 func ExecuteFunctionWithArgs(program project.Program, pkgName string, functionName string, arguments []Value, stdout io.Writer) error {
+	return ExecuteFunctionWithArgsAndOptions(program, pkgName, functionName, arguments, stdout, ExecuteOptions{})
+}
+
+func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, functionName string, arguments []Value, stdout io.Writer, options ExecuteOptions) error {
+	clearPrefix := func() {}
+	if options.OutputPathPrefix != "" {
+		clearPrefix = SetOutputPathPrefix(options.OutputPathPrefix)
+	}
+	defer clearPrefix()
+
 	interpreter := newInterpreter(program, stdout)
 	key := pkgName + "." + functionName
 	function, ok := interpreter.functions[key]

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"oct/internal/interpret"
 )
 
 type milestoneKind int
@@ -40,7 +42,11 @@ func executeForPathOrExperiment(path string, stdout io.Writer, command string, s
 	failed := make([]string, 0)
 	for _, milestone := range milestones {
 		_, _ = fmt.Fprintf(stdout, "MILESTONE %s (%s)\n", milestone.Name, command)
-		if err := single(milestone.Path, stdout); err != nil {
+		clearPrefix := interpret.SetOutputPathPrefix(milestone.Name)
+		logger := &milestoneLogWriter{target: stdout, milestone: milestone.Name, atStartOfNewLine: true}
+		err := single(milestone.Path, logger)
+		clearPrefix()
+		if err != nil {
 			failed = append(failed, milestone.Name)
 			_, _ = fmt.Fprintf(stdout, "MILESTONE FAIL %s (%s): %v\n", milestone.Name, command, err)
 			continue
@@ -51,6 +57,37 @@ func executeForPathOrExperiment(path string, stdout io.Writer, command string, s
 		return fmt.Errorf("%d milestone(s) failed: %s", len(failed), strings.Join(failed, ", "))
 	}
 	return nil
+}
+
+type milestoneLogWriter struct {
+	target           io.Writer
+	milestone        string
+	atStartOfNewLine bool
+}
+
+func (w *milestoneLogWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	prefix := []byte("[" + w.milestone + "] ")
+	decorated := make([]byte, 0, len(p)+len(prefix)*2)
+	atStart := w.atStartOfNewLine
+	for _, b := range p {
+		if atStart {
+			decorated = append(decorated, prefix...)
+			atStart = false
+		}
+		decorated = append(decorated, b)
+		if b == '\n' {
+			atStart = true
+		}
+	}
+	_, err := w.target.Write(decorated)
+	if err != nil {
+		return 0, err
+	}
+	w.atStartOfNewLine = atStart
+	return len(p), nil
 }
 
 func discoverCanonicalExperimentMilestones(path string) ([]milestoneRef, bool, error) {
