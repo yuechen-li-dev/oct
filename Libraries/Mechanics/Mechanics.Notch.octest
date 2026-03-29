@@ -1,0 +1,100 @@
+package Mechanics
+
+[Fact]
+fn NotchSensitivityFollowsPetersonRadiusTrendAndBounds() -> Void {
+    let a = 0.00025m
+
+    let smallRadius = NotchSensitivity(a, 0.00025m)
+    let mediumRadius = NotchSensitivity(a, 0.00100m)
+    let largeRadius = NotchSensitivity(a, 0.00500m)
+
+    Assert.True(smallRadius < mediumRadius, "larger notch radius should increase sensitivity")
+    Assert.True(mediumRadius < largeRadius, "trend should remain monotonic")
+
+    Assert.True(smallRadius > 0.0, "sensitivity should remain positive for valid inputs")
+    Assert.True(largeRadius < 1.0, "finite radius should keep sensitivity below unity")
+
+    Assert.Near(0.5, smallRadius, 0.000001, "Peterson hand-check at rho = a")
+    Assert.Near(0.8, mediumRadius, 0.000001, "Peterson hand-check at rho = 4a")
+}
+
+[Fact]
+fn FatigueStressConcentrationRecoversLimitingAndInterpolatedBehavior() -> Void {
+    let kt = 2.4
+
+    let q0 = FatigueStressConcentrationFactor(kt, 0.0)
+    let q1 = FatigueStressConcentrationFactor(kt, 1.0)
+    let qHalf = FatigueStressConcentrationFactor(kt, 0.5)
+
+    Assert.Near(1.0, q0, 0.000001, "q=0 should collapse to no fatigue notch amplification")
+    Assert.Near(kt, q1, 0.000001, "q=1 should recover theoretical concentration")
+    Assert.Near(1.7, qHalf, 0.000001, "intermediate q should linearly interpolate")
+
+    Assert.True(q0 < qHalf, "intermediate q should increase fatigue concentration")
+    Assert.True(qHalf < q1, "fatigue concentration should approach Kt as q approaches unity")
+}
+
+[Fact]
+fn FatigueShearConcentrationMatchesParallelLimitingBehavior() -> Void {
+    let kts = 1.8
+
+    let q0 = FatigueShearStressConcentrationFactor(kts, 0.0)
+    let q1 = FatigueShearStressConcentrationFactor(kts, 1.0)
+    let qQuarter = FatigueShearStressConcentrationFactor(kts, 0.25)
+
+    Assert.Near(1.0, q0, 0.000001, "q=0 should collapse to unity shear fatigue concentration")
+    Assert.Near(kts, q1, 0.000001, "q=1 should recover theoretical shear concentration")
+    Assert.Near(1.2, qQuarter, 0.000001, "intermediate q should interpolate in shear relation")
+}
+
+[Fact]
+fn NotchFatigueFactorComposesWithFatigueCriteria() -> Void {
+    let maxNominal = 220000000.0kg/m/s^2
+    let minNominal = 20000000.0kg/m/s^2
+
+    let alternatingNominal = AlternatingStress(maxNominal, minNominal)
+    let meanNominal = MeanStress(maxNominal, minNominal)
+
+    let endurance = 280000000.0kg/m/s^2
+    let sut = 640000000.0kg/m/s^2
+    let sy = 420000000.0kg/m/s^2
+
+    let baselineGoodman = GoodmanFactorOfSafety(alternatingNominal, meanNominal, endurance, sut)
+    let baselineGerber = GerberFactorOfSafety(alternatingNominal, meanNominal, endurance, sut)
+    let baselineSoderberg = SoderbergFactorOfSafety(alternatingNominal, meanNominal, endurance, sy)
+
+    let q = NotchSensitivity(0.0002m, 0.0008m)
+    let kf = FatigueStressConcentrationFactor(2.1, q)
+
+    let alternatingNotched = alternatingNominal * kf
+    let meanNotched = meanNominal * kf
+
+    let notchedGoodman = GoodmanFactorOfSafety(alternatingNotched, meanNotched, endurance, sut)
+    let notchedGerber = GerberFactorOfSafety(alternatingNotched, meanNotched, endurance, sut)
+    let notchedSoderberg = SoderbergFactorOfSafety(alternatingNotched, meanNotched, endurance, sy)
+
+    Assert.True(kf > 1.0, "valid notch inputs should produce fatigue amplification")
+
+    Assert.True(notchedGoodman < baselineGoodman, "fatigue notch concentration should reduce Goodman safety factor")
+    Assert.True(notchedGerber < baselineGerber, "fatigue notch concentration should reduce Gerber safety factor")
+    Assert.True(notchedSoderberg < baselineSoderberg, "fatigue notch concentration should reduce Soderberg safety factor")
+}
+
+[Fact]
+fn InvalidNotchInputsReturnZero() -> Void {
+    let badRadius = NotchSensitivity(0.0002m, 0.0m)
+    let badMaterialLength = NotchSensitivity(0.0m - 0.0002m, 0.001m)
+
+    let badKt = FatigueStressConcentrationFactor(0.9, 0.5)
+    let badQNegative = FatigueStressConcentrationFactor(2.0, 0.0 - 0.2)
+    let badQHigh = FatigueStressConcentrationFactor(2.0, 1.2)
+
+    let badKts = FatigueShearStressConcentrationFactor(0.95, 0.5)
+
+    Assert.Near(0.0, badRadius, 0.000001, "invalid notch radius guard")
+    Assert.Near(0.0, badMaterialLength, 0.000001, "invalid material parameter guard")
+    Assert.Near(0.0, badKt, 0.000001, "invalid theoretical stress concentration guard")
+    Assert.Near(0.0, badQNegative, 0.000001, "invalid notch sensitivity lower-bound guard")
+    Assert.Near(0.0, badQHigh, 0.000001, "invalid notch sensitivity upper-bound guard")
+    Assert.Near(0.0, badKts, 0.000001, "invalid theoretical shear concentration guard")
+}

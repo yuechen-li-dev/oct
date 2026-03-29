@@ -560,9 +560,9 @@ Concept areas include:
 These demonstrate real Oct usage across scientific and numerical domains.
 
 
-### Mechanics M0 / M0a / M1 scope
+### Mechanics M0 / M0a / M1 / M1a scope
 
-`Libraries/Mechanics` now includes a narrow static stress/failure core, baseline fatigue relations, and an endurance-limit modifier core:
+`Libraries/Mechanics` now includes a narrow static stress/failure core, baseline fatigue relations, endurance-limit modifiers, and a notch-fatigue concentration bridge:
 
 * normal and direct shear stress helpers (`force / area`)
 * bending and torsional shear helpers (`M*c/I`, `T*r/J`)
@@ -572,10 +572,12 @@ These demonstrate real Oct usage across scientific and numerical domains.
 * fatigue mean-stress and alternating-stress helpers from stress extrema
 * baseline fatigue criteria helpers: Goodman, Gerber, and Soderberg (utilization and factor-of-safety forms)
 * endurance-limit modifier helpers: surface factor, size factor, load factor, temperature factor, reliability factor, and explicit modifier composition into design endurance limit
+* notch sensitivity helper using explicit Peterson-style parameterization (`q = rho / (rho + a)`) with unit-aware length inputs
+* fatigue concentration helpers that bridge theoretical/static concentration to fatigue-effective concentration (`Kf = 1 + q*(Kt - 1)`, plus shear counterpart)
 
-The mechanics helpers are unit-aware and explicit by construction (force, area, moment/torque, length, section properties, stress units, and strength inputs). M1 uses small composable modifier functions rather than workflow objects or material databases, so modified endurance limits can plug directly into Goodman/Gerber/Soderberg checks.
+The mechanics helpers are unit-aware and explicit by construction (force, area, moment/torque, length, section properties, stress units, and strength inputs). M1/M1a use small composable formula helpers rather than workflow objects, catalogs, or material databases, so concentration-adjusted stresses and modified endurance limits plug directly into Goodman/Gerber/Soderberg checks.
 
-Deferred beyond M1: notch sensitivity, fatigue stress concentration factors, material data tables, shaft-fatigue workflows, and broader spring/gear/bearing/bolt or full fatigue design frameworks.
+Deferred beyond M1a: shaft fatigue workflows, full stress concentration catalog data, materials databases, fatigue life/cycle-counting systems, and fracture/crack-growth topics (plus broader spring/gear/bearing/bolt frameworks).
 
 ---
 
