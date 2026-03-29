@@ -1,6 +1,6 @@
-# RF Library (M2a)
+# RF Library (M2b)
 
-RF M2a keeps the deterministic M0/M0a/M1 RF math and channel helpers, and adds deterministic sequence builders for experiment inputs:
+RF M2b keeps the deterministic M0/M0a/M1 RF math and channel helpers, retains M2a sequence ergonomics, and adds time-variation reasoning helpers:
 
 - constant deterministic series
 - linear deterministic ramps for scalar and distance sweeps
@@ -70,13 +70,49 @@ Design intent is intentionally narrow:
 - explicit lengths and endpoints
 - small composable surface that feeds existing RF `...Series` helpers
 
+
+## M2b additions
+
+### Doppler shift helpers
+
+- `DopplerShiftHz`
+- `DopplerShiftHzWithPropagationSpeed`
+- `MaxDopplerShiftHz`
+
+These helpers provide deterministic mobility-to-frequency-shift reasoning from carrier frequency, radial velocity, and (optionally) propagation speed.
+
+### Coherence-time helpers
+
+- `CoherenceTimeSecondsFromMaxDopplerJakes`
+- `CoherenceTimeSecondsFromMaxDopplerHalfCycle`
+
+Both are approximation-based and intentionally explicit:
+
+- Jakes-style approximation: `0.423 / f_d,max`
+- half-cycle approximation: `1 / (2 f_d,max)`
+
+### Coherence-bandwidth helpers
+
+- `CoherenceBandwidthHzFromRmsDelaySpreadWideSense`
+- `CoherenceBandwidthHzFromRmsDelaySpreadStrict`
+
+Both are approximation-based and intentionally explicit:
+
+- wide-sense approximation: `1 / (5 tau_rms)`
+- strict approximation: `1 / (50 tau_rms)`
+
+### Minimal deterministic time-variation helper
+
+- `DopplerPhaseRadians`
+
+This helper provides deterministic phase progression from Doppler shift and time without introducing a stochastic time-varying channel simulator.
+
 ## Deferred by design
 
 Still intentionally out of scope:
 
-- Doppler/time variation
-- coherence-time/coherence-bandwidth metrics
+- full time-varying stochastic fading/channel processes
 - MIMO channel models
-- standards-specific channel profiles
+- standards-specific mobility/channel profiles
 - packet/protocol or full wireless simulation frameworks
 - random-number sequence generators or stochastic input builder layers
