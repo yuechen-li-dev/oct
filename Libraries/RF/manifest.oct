@@ -15,8 +15,8 @@ record Dependency {
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "RF"
-        Version: "0.1.0"
-        Description: "First-principles RF channel core helpers"
+        Version: "0.2.0"
+        Description: "First-principles RF channel helpers with fading, shadowing, and multipath primitives"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

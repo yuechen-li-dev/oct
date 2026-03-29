@@ -1,0 +1,41 @@
+package RF
+
+[Fact]
+fn TappedDelayLineAppliesTapDelaysAndGains() -> Void {
+    let samples = [1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3]
+    let delays = [0, 1]
+    let gains = [1.0, 0.5]
+
+    let out = ApplyTappedDelayLinePowerSeries(samples, delays, gains)
+    Assert.Equal(4, Len(out), "output length should be input length plus max delay")
+    Assert.Near(1.0, out[0] / (1.0kg*m^2/s^3), 0.000001, "sample 0")
+    Assert.Near(2.5, out[1] / (1.0kg*m^2/s^3), 0.000001, "sample 1")
+    Assert.Near(4.0, out[2] / (1.0kg*m^2/s^3), 0.000001, "sample 2")
+    Assert.Near(1.5, out[3] / (1.0kg*m^2/s^3), 0.000001, "tail from delayed tap")
+}
+
+[Fact]
+fn TapOrderingDoesNotChangeDeterministicResult() -> Void {
+    let samples = [1.0kg*m^2/s^3, 2.0kg*m^2/s^3]
+
+    let ordered = ApplyTappedDelayLinePowerSeries(samples, [0, 1], [1.0, 0.5])
+    let reversed = ApplyTappedDelayLinePowerSeries(samples, [1, 0], [0.5, 1.0])
+
+    Assert.Equal(Len(ordered), Len(reversed), "reordering taps should preserve shape")
+    Assert.Near(ordered[0] / (1.0kg*m^2/s^3), reversed[0] / (1.0kg*m^2/s^3), 0.000001, "tap order invariance sample 0")
+    Assert.Near(ordered[1] / (1.0kg*m^2/s^3), reversed[1] / (1.0kg*m^2/s^3), 0.000001, "tap order invariance sample 1")
+    Assert.Near(ordered[2] / (1.0kg*m^2/s^3), reversed[2] / (1.0kg*m^2/s^3), 0.000001, "tap order invariance sample 2")
+}
+
+[Fact]
+fn InvalidTappedDelayLineInputsReturnSentinelShape() -> Void {
+    let mismatched = ApplyTappedDelayLinePowerSeries([1.0kg*m^2/s^3], [0], [1.0, 0.5])
+    Assert.Equal(1, Len(mismatched), "mismatched delay/gain arrays are invalid")
+
+    let negativeDelay = ApplyTappedDelayLinePowerSeries([1.0kg*m^2/s^3], [0 - 1], [1.0])
+    Assert.Equal(1, Len(negativeDelay), "negative delays are invalid")
+
+    let negativeGain = ApplyTappedDelayLinePowerSeries([1.0kg*m^2/s^3], [0], [0.0 - 0.1])
+    Assert.Equal(1, Len(negativeGain), "negative power gains are invalid")
+
+}

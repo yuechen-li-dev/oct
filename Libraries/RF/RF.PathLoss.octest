@@ -60,3 +60,46 @@ fn InvalidPathLossInputsReturnZero() -> Void {
     Assert.Equal(0.0, FreeSpacePathLossLinear(1m, 0), "zero frequency is invalid")
     Assert.Equal(0.0, LogDistancePathLossLinear(1m, 0m, 100.0, 2.0), "zero reference distance is invalid")
 }
+
+[Fact]
+fn ShadowingComposesWithPathLossAndReceivedPower() -> Void {
+    let baseLoss = 100.0
+    let plusThreeDbLoss = ApplyShadowingToPathLoss(baseLoss, 3.0)
+    Assert.True(plusThreeDbLoss > baseLoss, "+3 dB shadowing should increase path loss")
+
+    let minusThreeDbLoss = ApplyShadowingToPathLoss(baseLoss, 0.0 - 3.0)
+    Assert.True(minusThreeDbLoss < baseLoss, "-3 dB shadowing should decrease path loss")
+
+    let rx = 1.0kg*m^2/s^3
+    let rxPlusThreeDb = ApplyShadowingToReceivedPower(rx, 3.0)
+    let rxMinusThreeDb = ApplyShadowingToReceivedPower(rx, 0.0 - 3.0)
+    Assert.True(rxPlusThreeDb < rx, "+3 dB shadowing should reduce received power")
+    Assert.True(rxMinusThreeDb > rx, "-3 dB shadowing should increase received power")
+}
+
+[Fact]
+fn ShadowingSeriesHelpersPreserveShapeAndElementwiseBehavior() -> Void {
+    let shadowingDb = [0.0, 3.0, 0.0 - 3.0]
+    let linear = ShadowingLinearFromDbSeries(shadowingDb)
+    Assert.Equal(3, Len(linear), "shadowing linear series shape")
+    Assert.Near(1.0, linear[0], 0.000001, "0 dB is unity")
+
+    let pathLossSeries = ApplyShadowingToPathLossSeries([100.0, 100.0, 100.0], shadowingDb)
+    Assert.Equal(3, Len(pathLossSeries), "path loss shadowing shape")
+    Assert.True(pathLossSeries[1] > pathLossSeries[0], "+3 dB path loss increases")
+    Assert.True(pathLossSeries[2] < pathLossSeries[0], "-3 dB path loss decreases")
+
+    let rxSeries = ApplyShadowingToReceivedPowerSeries([1.0kg*m^2/s^3, 1.0kg*m^2/s^3, 1.0kg*m^2/s^3], shadowingDb)
+    Assert.Equal(3, Len(rxSeries), "rx shadowing shape")
+    Assert.True(rxSeries[1] < rxSeries[0], "+3 dB reduces rx")
+    Assert.True(rxSeries[2] > rxSeries[0], "-3 dB raises rx")
+}
+
+[Fact]
+fn InvalidShadowingSeriesInputsReturnSentinelShape() -> Void {
+    let pathLoss = ApplyShadowingToPathLossSeries([100.0, 200.0], [3.0])
+    Assert.Equal(1, Len(pathLoss), "mismatched shadowing/path-loss arrays return sentinel")
+
+    let rx = ApplyShadowingToReceivedPowerSeries([1.0kg*m^2/s^3, 2.0kg*m^2/s^3], [3.0])
+    Assert.Equal(1, Len(rx), "mismatched shadowing/rx arrays return sentinel")
+}

@@ -100,3 +100,47 @@ fn InvalidFadingInputsReturnSentinelShape() -> Void {
     let rayleigh = ApplyRayleighFadingSeries([1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3, 4.0kg*m^2/s^3], [1.0], [1.0])
     Assert.Equal(1, Len(rayleigh), "mismatched rayleigh arrays return sentinel shape")
 }
+
+[Fact]
+fn RicianHelpersCaptureLosVsRayleighLikeBehavior() -> Void {
+    let rayleighLike = RicianPowerGainFromComponents(0.0, 1.0, 0.0)
+    Assert.Near(1.0, rayleighLike, 0.000001, "k=0 should reduce to Rayleigh-style gain from scattered components")
+
+    let losDominant = RicianPowerGainFromComponents(9.0, 0.0, 0.0)
+    Assert.Near(0.9, losDominant, 0.000001, "pure LOS component should be k/(k+1)")
+
+    let mixed = RicianPowerGainFromComponents(9.0, 1.0, 0.0)
+    Assert.True(mixed > rayleighLike, "large K with aligned scatter should show LOS-dominant behavior")
+
+    let amplitude = RicianAmplitudeFromComponents(3.0, 0.0, 0.0)
+    Assert.Near(Sqrt(0.75), amplitude, 0.000001, "amplitude is sqrt(power gain)")
+}
+
+[Fact]
+fn RicianSeriesHelpersComposeElementwise() -> Void {
+    let samples = [1.0kg*m^2/s^3, 2.0kg*m^2/s^3, 3.0kg*m^2/s^3]
+    let i = [0.0, 1.0, 0.0]
+    let q = [0.0, 0.0, 1.0]
+
+    let gain = RicianPowerGainSeries(1.0, i, q)
+    Assert.Equal(3, Len(gain), "rician gain series shape")
+    Assert.Near(0.5, gain[0], 0.000001, "los-only sample")
+
+    let out = ApplyRicianFadingSeries(samples, 1.0, i, q)
+    Assert.Equal(3, Len(out), "rician fade series shape")
+    Assert.Near(0.5, out[0] / (1.0kg*m^2/s^3), 0.000001, "first sample scaled")
+
+    let scalar = ApplyRicianFading(2.0kg*m^2/s^3, 1.0, 0.0, 0.0)
+    Assert.Near(1.0, scalar / (1.0kg*m^2/s^3), 0.000001, "scalar rician fading")
+}
+
+[Fact]
+fn InvalidRicianInputsReturnSentinelShape() -> Void {
+    let mismatchedGain = RicianPowerGainSeries(1.0, [0.0, 1.0], [0.0])
+    Assert.Equal(1, Len(mismatchedGain), "mismatched rician components return sentinel shape")
+
+    let mismatchedFading = ApplyRicianFadingSeries([1.0kg*m^2/s^3, 2.0kg*m^2/s^3], 1.0, [0.0], [0.0])
+    Assert.Equal(1, Len(mismatchedFading), "mismatched rician fading input returns sentinel shape")
+
+    Assert.Near(0.0, RicianPowerGainFromComponents(0.0 - 1.0, 1.0, 0.0), 0.000001, "negative K-factor is invalid")
+}
