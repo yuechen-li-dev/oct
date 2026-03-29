@@ -1,14 +1,14 @@
 # Oct Reference (v1)
 
-This directory is the human-readable reference for Oct v1.
+This directory is the official human-readable reference for Oct v1.
 
 Start with [00-overview.md](./00-overview.md).
 
 ## Sections
 
-- Language
-- Runtime
-- Tooling
+- Language: syntax, typing, expressions, control flow, errors, arrays, units, builtins, global rules.
+- Runtime: Octomata and batch execution contracts.
+- Tooling: testing, formatting, and package workflows.
 
 ## Language
 
