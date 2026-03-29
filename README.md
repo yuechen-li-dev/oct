@@ -469,6 +469,20 @@ Not included in v0:
 * `Experiments/` — authored proofs, controllers, simulations, and studies
 * `testdata/` — fixtures, demos, and synthetic inputs
 
+Experiment roots (`Experiments/<Name>`) are structured as:
+
+* `manifest.oct`
+* `REPORT.md`
+* milestone directories (`M...` canonical, `Mx...` auxiliary)
+
+Execution behavior for experiment roots:
+
+* `oct test Experiments/<Name>`
+* `oct artifact Experiments/<Name>`
+* `oct bench Experiments/<Name>`
+
+These commands discover canonical milestones (`M<number>` or `M<number><letter>`) in deterministic order and exclude auxiliary milestones (`Mx<number>` / `Mx<number><letter>`) by default. Direct milestone targeting still runs exactly the selected milestone, including `Mx...` when explicitly addressed.
+
 Concept areas include:
 
 * `Language/ControlFlow/...`

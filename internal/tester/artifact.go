@@ -17,6 +17,10 @@ type artifactCase struct {
 }
 
 func ExecuteArtifacts(path string, stdout io.Writer) error {
+	return executeForPathOrExperiment(path, stdout, "artifact", executeArtifactsSingleRoot)
+}
+
+func executeArtifactsSingleRoot(path string, stdout io.Writer) error {
 	program, err := project.LoadForTest(path)
 	if err != nil {
 		return err

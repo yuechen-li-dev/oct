@@ -24,6 +24,10 @@ type testCase struct {
 }
 
 func Execute(path string, stdout io.Writer) error {
+	return executeForPathOrExperiment(path, stdout, "test", executeTestsSingleRoot)
+}
+
+func executeTestsSingleRoot(path string, stdout io.Writer) error {
 	var tests []testCase
 	octFailCases, err := discoverOctFailCases(path)
 	if err != nil {

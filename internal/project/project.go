@@ -283,7 +283,24 @@ func isMilestoneDir(name string) bool {
 	if len(name) < 2 || name[0] != 'M' {
 		return false
 	}
-	return (name[1] >= '0' && name[1] <= '9') || name[1] == 'x'
+	offset := 1
+	if len(name) >= 3 && name[1] == 'x' {
+		offset = 2
+	}
+	if offset >= len(name) {
+		return false
+	}
+	idx := offset
+	for idx < len(name) && name[idx] >= '0' && name[idx] <= '9' {
+		idx++
+	}
+	if idx == offset {
+		return false
+	}
+	if idx == len(name) {
+		return true
+	}
+	return idx+1 == len(name) && name[idx] >= 'a' && name[idx] <= 'z'
 }
 
 func (b *builder) validateManifest(packageName string, directory string) error {
