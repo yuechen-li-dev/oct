@@ -28,6 +28,9 @@ func TestM71aPkgGetFetchesIntoSharedCache(t *testing.T) {
 	if !strings.Contains(stdout, "package: DemoPkg@0.1.0") {
 		t.Fatalf("expected package identity in output, got %q", stdout)
 	}
+	if !strings.Contains(stdout, "dependencies: 1") {
+		t.Fatalf("expected dependency count in output, got %q", stdout)
+	}
 	if _, err := os.Stat(filepath.Join(cacheDir, "index.json")); err != nil {
 		t.Fatalf("expected cache index: %v", err)
 	}
@@ -98,6 +101,9 @@ func TestM71aPkgListShowsCachedEntries(t *testing.T) {
 	if !strings.Contains(stdout, source) {
 		t.Fatalf("expected source URL in list output, got %q", stdout)
 	}
+	if !strings.Contains(stdout, "deps: 1") {
+		t.Fatalf("expected dependency count in list output, got %q", stdout)
+	}
 }
 
 func TestM71aPkgGetRejectsBadSource(t *testing.T) {
@@ -108,6 +114,42 @@ func TestM71aPkgGetRejectsBadSource(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "invalid package source URL") {
 		t.Fatalf("expected invalid source error, got %q", stderr)
+	}
+}
+
+func TestM71aPkgGetRejectsMalformedManifestShape(t *testing.T) {
+	requireGit(t)
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	source := createGitRepoWithManifest(t, strings.Join([]string{
+		"package Manifest",
+		"",
+		"record PackageManifest {",
+		"    Name: String",
+		"    Version: String",
+		"    Description: String",
+		"    Dependencies: Dependency[]",
+		"}",
+		"",
+		"record Dependency {",
+		"    Name: String",
+		"    VersionRequirement: String",
+		"}",
+		"",
+		"fn Manifest() -> PackageManifest {",
+		"    return PackageManifest {",
+		"        Name: \"DemoPkg\"",
+		"        Version: \"0.1.0\"",
+		"        Description: \"demo package\"",
+		"        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: 3 }]",
+		"    }",
+		"}",
+	}, "\n")+"\n")
+	stdout, stderr, err := executeCLIArgs("pkg", "get", source)
+	if err == nil {
+		t.Fatalf("expected failure, stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "manifest dependency at index 0") {
+		t.Fatalf("expected malformed dependency error, got %q", stderr)
 	}
 }
 
@@ -155,13 +197,11 @@ func createGitRepo(t *testing.T, withManifest bool) string {
 			"        Name: \"DemoPkg\"",
 			"        Version: \"0.1.0\"",
 			"        Description: \"demo package\"",
-			"        Dependencies: []",
+			"        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"^1.0.0\" }]",
 			"    }",
 			"}",
 		}, "\n") + "\n"
-		if err := os.WriteFile(filepath.Join(repoDir, "manifest.oct"), []byte(manifest), 0o644); err != nil {
-			t.Fatalf("write manifest: %v", err)
-		}
+		writeRepoManifest(t, repoDir, manifest)
 	}
 	if err := os.WriteFile(filepath.Join(repoDir, "main.oct"), []byte("package Demo\n"), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
@@ -169,6 +209,31 @@ func createGitRepo(t *testing.T, withManifest bool) string {
 	runCmd(t, repoDir, "git", "add", ".")
 	runCmd(t, repoDir, "git", "commit", "-m", "init")
 	return "file://" + repoDir
+}
+
+func createGitRepoWithManifest(t *testing.T, manifest string) string {
+	t.Helper()
+	repoDir := filepath.Join(t.TempDir(), "remote")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runCmd(t, repoDir, "git", "init")
+	runCmd(t, repoDir, "git", "config", "user.name", "oct-test")
+	runCmd(t, repoDir, "git", "config", "user.email", "oct-test@example.com")
+	writeRepoManifest(t, repoDir, manifest)
+	if err := os.WriteFile(filepath.Join(repoDir, "main.oct"), []byte("package Demo\n"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	runCmd(t, repoDir, "git", "add", ".")
+	runCmd(t, repoDir, "git", "commit", "-m", "init")
+	return "file://" + repoDir
+}
+
+func writeRepoManifest(t *testing.T, repoDir string, manifest string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repoDir, "manifest.oct"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
 }
 
 func runCmd(t *testing.T, dir string, name string, args ...string) {

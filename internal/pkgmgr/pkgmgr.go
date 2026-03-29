@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -34,16 +33,18 @@ type GetResult struct {
 	Name     string
 	Version  string
 	Head     string
+	Manifest ManifestMetadata
 }
 
 type Entry struct {
-	Source    string `json:"source"`
-	CacheKey  string `json:"cache_key"`
-	Path      string `json:"path"`
-	Name      string `json:"name,omitempty"`
-	Version   string `json:"version,omitempty"`
-	Head      string `json:"head,omitempty"`
-	FetchedAt string `json:"fetched_at"`
+	Source       string               `json:"source"`
+	CacheKey     string               `json:"cache_key"`
+	Path         string               `json:"path"`
+	Name         string               `json:"name,omitempty"`
+	Version      string               `json:"version,omitempty"`
+	Dependencies []DependencyMetadata `json:"dependencies,omitempty"`
+	Head         string               `json:"head,omitempty"`
+	FetchedAt    string               `json:"fetched_at"`
 }
 
 type index struct {
@@ -98,7 +99,17 @@ func (m *Manager) Get(source string) (GetResult, error) {
 		result.Hit = true
 	}
 
-	result.Name, result.Version = readManifestIdentity(filepath.Join(repoPath, manifestFileName))
+	manifestPath := filepath.Join(repoPath, manifestFileName)
+	metadata, err := loadManifestMetadata(manifestPath)
+	if err != nil {
+		if !result.Hit {
+			_ = os.RemoveAll(repoPath)
+		}
+		return GetResult{}, err
+	}
+	result.Manifest = metadata
+	result.Name = metadata.Name
+	result.Version = metadata.Version
 	result.Head, _ = gitHead(repoPath)
 
 	if err := m.writeIndexEntry(result); err != nil {
@@ -174,13 +185,14 @@ func (m *Manager) writeIndexEntry(result GetResult) error {
 		return err
 	}
 	idx.Entries[result.CacheKey] = Entry{
-		Source:    result.Source,
-		CacheKey:  result.CacheKey,
-		Path:      result.Path,
-		Name:      result.Name,
-		Version:   result.Version,
-		Head:      result.Head,
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:       result.Source,
+		CacheKey:     result.CacheKey,
+		Path:         result.Path,
+		Name:         result.Name,
+		Version:      result.Version,
+		Dependencies: append([]DependencyMetadata(nil), result.Manifest.Dependencies...),
+		Head:         result.Head,
+		FetchedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 	return writeIndex(m.indexPath(), idx)
 }
@@ -257,25 +269,4 @@ func gitHead(repoPath string) (string, error) {
 		return "", fmt.Errorf("read git HEAD: %s", strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-var (
-	nameLine    = regexp.MustCompile(`(?m)\bName\s*:\s*"([^"]+)"`)
-	versionLine = regexp.MustCompile(`(?m)\bVersion\s*:\s*"([^"]+)"`)
-)
-
-func readManifestIdentity(path string) (string, string) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return "", ""
-	}
-	name := ""
-	version := ""
-	if m := nameLine.FindSubmatch(body); len(m) == 2 {
-		name = string(m[1])
-	}
-	if m := versionLine.FindSubmatch(body); len(m) == 2 {
-		version = string(m[1])
-	}
-	return name, version
 }
