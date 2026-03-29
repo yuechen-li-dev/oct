@@ -1,0 +1,80 @@
+package RF
+
+[Fact]
+fn ConstantSeriesBuildsDeterministicRepeatedValues() -> Void {
+    let gain = ConstantFloatSeries(0.5, 4)
+    Assert.Equal(4, Len(gain), "constant float series length")
+    Assert.Near(0.5, gain[0], 0.000001, "constant float first value")
+    Assert.Near(0.5, gain[3], 0.000001, "constant float last value")
+
+    let lengthOne = ConstantFloatSeries(3.0, 1)
+    Assert.Equal(1, Len(lengthOne), "length-1 constant float series")
+    Assert.Near(3.0, lengthOne[0], 0.000001, "length-1 constant float value")
+
+    let distance = ConstantDistanceSeries(10.0m, 3)
+    Assert.Equal(3, Len(distance), "constant distance series length")
+    Assert.Near(10.0, distance[0] / 1m, 0.000001, "constant distance first value")
+    Assert.Near(10.0, distance[2] / 1m, 0.000001, "constant distance last value")
+}
+
+[Fact]
+fn LinearSeriesBuildsEndpointsAndMonotonicIntermediates() -> Void {
+    let sweep = LinearFloatSeries(1.0, 4.0, 4)
+    Assert.Equal(4, Len(sweep), "linear float series length")
+    Assert.Near(1.0, sweep[0], 0.000001, "linear float start")
+    Assert.Near(4.0, sweep[3], 0.000001, "linear float end")
+    Assert.Near(2.0, sweep[1], 0.000001, "linear float midpoint 1")
+    Assert.Near(3.0, sweep[2], 0.000001, "linear float midpoint 2")
+    Assert.True(sweep[1] > sweep[0], "linear float monotonic 0->1")
+    Assert.True(sweep[2] > sweep[1], "linear float monotonic 1->2")
+
+    let singleton = LinearFloatSeries(7.0, 100.0, 1)
+    Assert.Equal(1, Len(singleton), "linear float singleton length")
+    Assert.Near(7.0, singleton[0], 0.000001, "linear float singleton keeps start")
+
+    let distanceSweep = LinearDistanceSeries(1.0m, 4.0m, 4)
+    Assert.Equal(4, Len(distanceSweep), "linear distance series length")
+    Assert.Near(1.0, distanceSweep[0] / 1m, 0.000001, "linear distance start")
+    Assert.Near(4.0, distanceSweep[3] / 1m, 0.000001, "linear distance end")
+    Assert.Near(2.0, distanceSweep[1] / 1m, 0.000001, "linear distance midpoint")
+}
+
+[Fact]
+fn ConcatSeriesSupportsPiecewisePatternsWithoutShapeSurprises() -> Void {
+    let losFriendly = ConstantFloatSeries(0.0, 3)
+    let degraded = ConstantFloatSeries(6.0, 2)
+
+    let piecewiseShadowing = ConcatFloatSeries(losFriendly, degraded)
+    Assert.Equal(5, Len(piecewiseShadowing), "concat preserves piecewise length")
+    Assert.Near(0.0, piecewiseShadowing[0], 0.000001, "piecewise first region value")
+    Assert.Near(0.0, piecewiseShadowing[2], 0.000001, "piecewise first region boundary")
+    Assert.Near(6.0, piecewiseShadowing[3], 0.000001, "piecewise second region start")
+    Assert.Near(6.0, piecewiseShadowing[4], 0.000001, "piecewise second region end")
+}
+
+[Fact]
+fn SequenceBuildersReduceRfExperimentInputVerbosity() -> Void {
+    let distanceSweep = LinearDistanceSeries(1.0m, 5.0m, 5)
+    let baseLoss = FreeSpacePathLossLinearSeries(distanceSweep, 2400000000)
+
+    let calmShadowing = ConstantFloatSeries(0.0, 3)
+    let obstructedShadowing = ConstantFloatSeries(6.0, 2)
+    let shadowingDb = ConcatFloatSeries(calmShadowing, obstructedShadowing)
+
+    let shadowedLoss = ApplyShadowingToPathLossSeries(baseLoss, shadowingDb)
+    Assert.Equal(5, Len(shadowedLoss), "shadowed loss shape follows builder output")
+    Assert.Near(baseLoss[0], shadowedLoss[0], 0.000001, "0 dB region preserves base path loss")
+    Assert.Near(baseLoss[2], shadowedLoss[2], 0.000001, "0 dB region preserves base path loss at boundary")
+    Assert.True(shadowedLoss[3] > baseLoss[3], "+6 dB piece increases path loss")
+    Assert.True(shadowedLoss[4] > baseLoss[4], "+6 dB piece increases path loss in tail")
+}
+
+[Fact]
+fn InvalidSequenceBuilderInputsReturnSentinelShape() -> Void {
+    let constantInvalid = ConstantFloatSeries(1.0, 0)
+    Assert.Equal(1, Len(constantInvalid), "invalid constant series input returns sentinel")
+
+    let linearInvalid = LinearFloatSeries(0.0, 1.0, 0)
+    Assert.Equal(1, Len(linearInvalid), "invalid linear series input returns sentinel")
+
+}

@@ -1,0 +1,77 @@
+package RF
+
+fn ConstantFloatSeries(value: Float, count: Int) -> Float[] {
+    if count <= 0 {
+        return [0.0]
+    }
+
+    var out = [value]
+    for _ in 1 .. count {
+        out = Append(out, value)
+    }
+    return out
+}
+
+fn ConstantDistanceSeries(value: Float<m>, count: Int) -> Float<m>[] {
+    if count <= 0 {
+        return [0.0m]
+    }
+
+    var out = [value]
+    for _ in 1 .. count {
+        out = Append(out, value)
+    }
+    return out
+}
+
+fn LinearFloatSeries(start: Float, end: Float, count: Int) -> Float[] {
+    if count <= 0 {
+        return [0.0]
+    }
+    if count == 1 {
+        return [start]
+    }
+
+    let delta = (end - start) / (count - 1)
+    var out = [start]
+    for i in 1 .. count {
+        out = Append(out, start + delta * i)
+    }
+    return out
+}
+
+fn LinearDistanceSeries(start: Float<m>, end: Float<m>, count: Int) -> Float<m>[] {
+    if count <= 0 {
+        return [0.0m]
+    }
+    if count == 1 {
+        return [start]
+    }
+
+    let delta = (end - start) / (count - 1)
+    var out = [start]
+    for i in 1 .. count {
+        out = Append(out, start + delta * i)
+    }
+    return out
+}
+
+fn ConcatFloatSeries(left: Float[], right: Float[]) -> Float[] {
+    if Len(left) == 0 {
+        return [0.0]
+    }
+    if Len(right) == 0 {
+        return [0.0]
+    }
+
+    var out = [left[0]]
+    for i in 1 .. Len(left) {
+        out = Append(out, left[i])
+    }
+
+    for i in 0 .. Len(right) {
+        out = Append(out, right[i])
+    }
+
+    return out
+}

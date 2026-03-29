@@ -1,10 +1,10 @@
-# RF Library (M1)
+# RF Library (M2a)
 
-RF M1 keeps the deterministic M0/M0a math and sequence ergonomics, and adds modest channel-realism helpers:
+RF M2a keeps the deterministic M0/M0a/M1 RF math and channel helpers, and adds deterministic sequence builders for experiment inputs:
 
-- Rician fading
-- Log-normal shadowing (dB offsets mapped to linear factors)
-- Tapped-delay-line (TDL) multipath helpers
+- constant deterministic series
+- linear deterministic ramps for scalar and distance sweeps
+- explicit piecewise construction through deterministic concatenation
 
 ## Design boundaries
 
@@ -14,6 +14,7 @@ RF remains first-principles and standards-agnostic:
 - deterministic, pure, reproducible helper surfaces
 - no hidden state and no random-number subsystem
 - no giant channel/simulator object framework
+- no generic time-series utility framework
 
 ## Sequence semantics
 
@@ -50,6 +51,25 @@ Shadowing is expressed as explicit dB offsets so callers can supply deterministi
 
 TDL helpers model per-tap delay and power gain with deterministic convolution-style application.
 
+
+## M2a additions
+
+### Deterministic sequence builders
+
+- `ConstantFloatSeries`
+- `ConstantDistanceSeries`
+- `LinearFloatSeries`
+- `LinearDistanceSeries`
+- `ConcatFloatSeries`
+
+These helpers reduce hand-written array verbosity when building deterministic RF experiment inputs (shadowing offsets, gain patterns, scatter trends, and distance sweeps).
+
+Design intent is intentionally narrow:
+
+- deterministic only (no RNG, no hidden state)
+- explicit lengths and endpoints
+- small composable surface that feeds existing RF `...Series` helpers
+
 ## Deferred by design
 
 Still intentionally out of scope:
@@ -59,3 +79,4 @@ Still intentionally out of scope:
 - MIMO channel models
 - standards-specific channel profiles
 - packet/protocol or full wireless simulation frameworks
+- random-number sequence generators or stochastic input builder layers
