@@ -19,7 +19,8 @@
     "onCommand:oct.formatCurrent",
     "onCommand:oct.runWorkspace",
     "onCommand:oct.testWorkspace",
-    "onCommand:oct.formatWorkspace"
+    "onCommand:oct.formatWorkspace",
+    "onCommand:oct.toggleEnHuman"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -76,6 +77,11 @@
         "command": "oct.formatWorkspace",
         "title": "Oct: Format Workspace",
         "category": "Oct"
+      },
+      {
+        "command": "oct.toggleEnHuman",
+        "title": "Oct: Toggle en-human View",
+        "category": "Oct"
       }
     ],
     "menus": {
@@ -101,6 +107,11 @@
           "type": "string",
           "default": "go run ./cmd/oct",
           "description": "CLI invocation used by the extension. In this repo, the reliable default is 'go run ./cmd/oct'."
+        },
+        "oct.enHuman.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the editor-only en-human reading view. Source text, formatting, git, build, and test remain canonical en-llm."
         }
       }
     }
