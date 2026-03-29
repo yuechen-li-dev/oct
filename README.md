@@ -560,9 +560,9 @@ Concept areas include:
 These demonstrate real Oct usage across scientific and numerical domains.
 
 
-### Mechanics M0 / M0a / M1 / M1a scope
+### Mechanics M0 / M0a / M1 / M1a / M2 scope
 
-`Libraries/Mechanics` now includes a narrow static stress/failure core, baseline fatigue relations, endurance-limit modifiers, and a notch-fatigue concentration bridge:
+`Libraries/Mechanics` now includes a narrow static stress/failure core, baseline fatigue relations, endurance-limit modifiers, a notch-fatigue concentration bridge, and a critical-section shaft core:
 
 * normal and direct shear stress helpers (`force / area`)
 * bending and torsional shear helpers (`M*c/I`, `T*r/J`)
@@ -574,10 +574,16 @@ These demonstrate real Oct usage across scientific and numerical domains.
 * endurance-limit modifier helpers: surface factor, size factor, load factor, temperature factor, reliability factor, and explicit modifier composition into design endurance limit
 * notch sensitivity helper using explicit Peterson-style parameterization (`q = rho / (rho + a)`) with unit-aware length inputs
 * fatigue concentration helpers that bridge theoretical/static concentration to fatigue-effective concentration (`Kf = 1 + q*(Kt - 1)`, plus shear counterpart)
+* solid circular shaft section-property helpers (area, second moment, polar moment)
+* solid circular shaft outer-surface stress helpers for bending and torsion
+* combined static shaft-section reasoning under bending + torsion using explicit `Kt`/`Kts` concentration factors
+* combined fatigue shaft-section composition helpers using explicit `Kf`/`Kfs` (alternating) and `Kt`/`Kts` (mean) with equivalent-stress construction for Goodman/Gerber/Soderberg checks
 
 The mechanics helpers are unit-aware and explicit by construction (force, area, moment/torque, length, section properties, stress units, and strength inputs). M1/M1a use small composable formula helpers rather than workflow objects, catalogs, or material databases, so concentration-adjusted stresses and modified endurance limits plug directly into Goodman/Gerber/Soderberg checks.
 
-Deferred beyond M1a: shaft fatigue workflows, full stress concentration catalog data, materials databases, fatigue life/cycle-counting systems, and fracture/crack-growth topics (plus broader spring/gear/bearing/bolt frameworks).
+M2 shaft scope is intentionally narrow: solid circular shafts only, critical section only, outer-surface stress only, deterministic load inputs only, and no life accumulation model.
+
+Deferred beyond M2: hollow shafts, shaft deflection, critical speed/whirling, bearing integration, keys/keyways, stepped-shaft catalogs, full shaft workflow/sizing automation, full stress concentration catalog data, materials databases, fatigue life/cycle-counting systems, and fracture/crack-growth topics (plus broader spring/gear/bearing/bolt frameworks).
 
 ---
 

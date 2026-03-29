@@ -15,8 +15,8 @@ record Dependency {
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Mechanics"
-        Version: "0.5.0"
-        Description: "Mechanics stress, failure, fatigue relations, endurance-limit modifiers, and notch fatigue concentration core"
+        Version: "0.6.0"
+        Description: "Mechanics stress, failure, fatigue, endurance-limit modifiers, notch fatigue concentration, and solid circular shaft critical-section core"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
