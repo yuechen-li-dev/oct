@@ -1,0 +1,213 @@
+package RfAwgnRayleighProbe
+
+fn SpeedOfLightMetersPerSecond() -> Float {
+    return 299792458.0
+}
+
+fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if frequencyHz <= 0 {
+        return 0.0
+    }
+
+    let wavelengthMeters = SpeedOfLightMetersPerSecond() / frequencyHz
+    let geometricTerm = 4.0 * Pi() * (distance / 1m) / wavelengthMeters
+    return geometricTerm * geometricTerm
+}
+
+fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, referencePathLossLinear: Float, pathLossExponent: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if referenceDistance <= 0m {
+        return 0.0
+    }
+    if referencePathLossLinear <= 0 {
+        return 0.0
+    }
+
+    let distanceRatio = distance / referenceDistance
+    return referencePathLossLinear * Exp(pathLossExponent * Ln(distanceRatio))
+}
+
+fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
+    if bandwidthHz <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if temperatureKelvin <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if noiseFigureLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+
+    let boltzmann = 0.00000000000000000000001380649kg*m^2/s^3
+    return boltzmann * temperatureKelvin * bandwidthHz * noiseFigureLinear
+}
+
+fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: Float, pathLossLinear: Float, systemLossLinear: Float) -> Float<kg*m^2/s^3> {
+    if pathLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if systemLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return txPower * txGainLinear * rxGainLinear / pathLossLinear / systemLossLinear
+}
+
+fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
+    if noisePower <= 0kg*m^2/s^3 {
+        return 0.0
+    }
+    return receivedPower / noisePower
+}
+
+fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
+    if Len(signal) != Len(noise) {
+        return [0.0kg*m^2/s^3]
+    }
+    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
+    if Len(signal) != Len(out) {
+        return out
+    }
+    for i in 0 .. Len(signal) {
+        out[i] = signal[i] + noise[i]
+    }
+    return out
+}
+
+fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], quadrature: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) != Len(inPhase) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(samples) != Len(quadrature) {
+        return [0.0kg*m^2/s^3]
+    }
+    var out = [0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3, 0.0kg*m^2/s^3]
+    if Len(samples) != Len(out) {
+        return out
+    }
+    for i in 0 .. Len(samples) {
+        out[i] = samples[i] * (inPhase[i] * inPhase[i] + quadrature[i] * quadrature[i])
+    }
+    return out
+}
+
+record DeterministicBaseline {
+    Distances: Float<m>[]
+    FreeSpaceReceivedPower: Float<kg*m^2/s^3>[]
+    LogDistanceReceivedPower: Float<kg*m^2/s^3>[]
+    NoiseByBandwidth: Float<kg*m^2/s^3>[]
+    SnrByBandwidth: Float[]
+}
+
+record ChannelProbe {
+    BaselineSamples: Float<kg*m^2/s^3>[]
+    AwgnNoiseSamples: Float<kg*m^2/s^3>[]
+    AwgnSamples: Float<kg*m^2/s^3>[]
+    RayleighInPhase: Float[]
+    RayleighQuadrature: Float[]
+    RayleighSamples: Float<kg*m^2/s^3>[]
+}
+
+fn ProbeDistances() -> Float<m>[] {
+    return [10m, 30m, 100m, 300m]
+}
+
+fn ProbeBandwidthsHz() -> Float[] {
+    return [100000.0, 1000000.0, 10000000.0]
+}
+
+fn BuildDeterministicBaseline() -> DeterministicBaseline {
+    let txPower = 1.0kg*m^2/s^3
+    let txGain = 1.0
+    let rxGain = 1.0
+    let systemLoss = 1.0
+    let frequencyHz = 2400000000.0
+
+    let distances = ProbeDistances()
+
+    let fsplAt1m = FreeSpacePathLossLinear(1m, frequencyHz)
+    let logDistanceExponent = 3.0
+
+    let fsplLoss = [
+        FreeSpacePathLossLinear(distances[0], frequencyHz),
+        FreeSpacePathLossLinear(distances[1], frequencyHz),
+        FreeSpacePathLossLinear(distances[2], frequencyHz),
+        FreeSpacePathLossLinear(distances[3], frequencyHz)
+    ]
+
+    let logLoss = [
+        LogDistancePathLossLinear(distances[0], 1m, fsplAt1m, logDistanceExponent),
+        LogDistancePathLossLinear(distances[1], 1m, fsplAt1m, logDistanceExponent),
+        LogDistancePathLossLinear(distances[2], 1m, fsplAt1m, logDistanceExponent),
+        LogDistancePathLossLinear(distances[3], 1m, fsplAt1m, logDistanceExponent)
+    ]
+
+    let fsplReceived = [
+        ReceivedPower(txPower, txGain, rxGain, fsplLoss[0], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, fsplLoss[1], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, fsplLoss[2], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, fsplLoss[3], systemLoss)
+    ]
+
+    let logReceived = [
+        ReceivedPower(txPower, txGain, rxGain, logLoss[0], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, logLoss[1], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, logLoss[2], systemLoss),
+        ReceivedPower(txPower, txGain, rxGain, logLoss[3], systemLoss)
+    ]
+
+    let bandwidths = ProbeBandwidthsHz()
+    let temperatureKelvin = 290.0
+    let noiseFigureLinear = 2.0
+
+    let noiseByBandwidth = [
+        ThermalNoisePowerWithNoiseFigure(bandwidths[0], temperatureKelvin, noiseFigureLinear),
+        ThermalNoisePowerWithNoiseFigure(bandwidths[1], temperatureKelvin, noiseFigureLinear),
+        ThermalNoisePowerWithNoiseFigure(bandwidths[2], temperatureKelvin, noiseFigureLinear)
+    ]
+
+    let receivedAt100m = fsplReceived[2]
+    let snrByBandwidth = [
+        SNRLinear(receivedAt100m, noiseByBandwidth[0]),
+        SNRLinear(receivedAt100m, noiseByBandwidth[1]),
+        SNRLinear(receivedAt100m, noiseByBandwidth[2])
+    ]
+
+    return DeterministicBaseline {
+        Distances: distances
+        FreeSpaceReceivedPower: fsplReceived
+        LogDistanceReceivedPower: logReceived
+        NoiseByBandwidth: noiseByBandwidth
+        SnrByBandwidth: snrByBandwidth
+    }
+}
+
+fn BuildChannelProbe() -> ChannelProbe {
+    let baseline = BuildDeterministicBaseline().FreeSpaceReceivedPower
+
+    let awgnNoise = [
+        0.10 * baseline[0],
+        0.0kg*m^2/s^3 - 0.20 * baseline[1],
+        0.05 * baseline[2],
+        0.0kg*m^2/s^3 - 0.10 * baseline[3]
+    ]
+
+    let awgnSamples = ApplyAwgnSamples(baseline, awgnNoise)
+
+    let inPhase = [1.0, 0.5, 1.0, 1.0]
+    let quadrature = [0.0, 0.5, 0.0, 1.0]
+    let rayleighSamples = ApplyRayleighFadingSeries(baseline, inPhase, quadrature)
+
+    return ChannelProbe {
+        BaselineSamples: baseline
+        AwgnNoiseSamples: awgnNoise
+        AwgnSamples: awgnSamples
+        RayleighInPhase: inPhase
+        RayleighQuadrature: quadrature
+        RayleighSamples: rayleighSamples
+    }
+}

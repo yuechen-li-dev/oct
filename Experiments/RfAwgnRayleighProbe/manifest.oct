@@ -1,0 +1,25 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "RfAwgnRayleighProbe"
+        Version: "0.1.0"
+        Description: "Deterministic RF link-budget probe with AWGN and Rayleigh comparisons"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "RF" VersionRequirement: "0.1.0" }
+        ]
+    }
+}
