@@ -134,6 +134,10 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 				return err
 			}
 		}
+		_, err = fmt.Fprintf(stdout, "dependencies: %d\n", len(result.Manifest.Dependencies))
+		if err != nil {
+			return err
+		}
 		if result.Head != "" {
 			_, err = fmt.Fprintf(stdout, "head: %s\n", result.Head)
 			if err != nil {
@@ -169,7 +173,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			if len(head) > 12 {
 				head = head[:12]
 			}
-			_, err = fmt.Fprintf(stdout, "- %s\n  source: %s\n  key: %s\n  head: %s\n  path: %s\n", identity, entry.Source, entry.CacheKey, head, entry.Path)
+			_, err = fmt.Fprintf(stdout, "- %s\n  source: %s\n  key: %s\n  head: %s\n  deps: %d\n  path: %s\n", identity, entry.Source, entry.CacheKey, head, len(entry.Dependencies), entry.Path)
 			if err != nil {
 				return err
 			}

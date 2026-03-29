@@ -462,7 +462,14 @@ M71a adds a minimal Git-first package acquisition CLI:
 * Repeated `oct pkg get` for the same source is a cache hit and reuses the existing cached repo.
 * Fetched repositories are validated to contain `manifest.oct`.
 
-M71a scope is intentionally narrow:
+M71b extends this with manifest metadata interpretation:
+
+* `manifest.oct` is parsed with Oct's existing language frontend and validated against the current manifest shape.
+* Package metadata is extracted structurally (`Name`, `Version`, `Description`, and `Dependencies` entries).
+* Dependency declarations are interpreted as structured entries (`Name`, `VersionRequirement`) and stored with cached package metadata.
+* `oct pkg get` / `oct pkg list` now report dependency counts from parsed manifest metadata.
+
+M71a/M71b scope is intentionally narrow:
 
 * no dependency resolution or sync
 * no lockfile generation
