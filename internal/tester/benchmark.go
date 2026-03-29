@@ -31,6 +31,12 @@ type benchmarkCase struct {
 }
 
 func ExecuteBenchmarks(path string, stdout io.Writer, options BenchmarkOptions) error {
+	return executeForPathOrExperiment(path, stdout, "bench", func(singlePath string, singleStdout io.Writer) error {
+		return executeBenchmarksSingleRoot(singlePath, singleStdout, options)
+	})
+}
+
+func executeBenchmarksSingleRoot(path string, stdout io.Writer, options BenchmarkOptions) error {
 	program, err := project.LoadForTest(path)
 	if err != nil {
 		return err
