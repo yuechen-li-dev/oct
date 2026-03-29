@@ -16,6 +16,25 @@ fn SNRComposesFromReceivedAndNoise() -> Void {
 }
 
 [Fact]
+fn SNRSeriesGeneralizesShapeAndMatchesScalar() -> Void {
+    let linear = SNRLinearSeries([0.01kg*m^2/s^3], [0.002kg*m^2/s^3])
+    Assert.Equal(1, Len(linear), "length-1 snr shape")
+    Assert.Near(SNRLinear(0.01kg*m^2/s^3, 0.002kg*m^2/s^3), linear[0], 0.000001, "length-1 snr equals scalar")
+
+    var rx = [0.01kg*m^2/s^3]
+    var noise = [0.002kg*m^2/s^3]
+    for _ in 1 .. 10 {
+        rx = Append(rx, 0.01kg*m^2/s^3)
+        noise = Append(noise, 0.002kg*m^2/s^3)
+    }
+
+    let db = SNRDbSeries(rx, noise)
+    Assert.Equal(Len(rx), Len(db), "snr db shape matches input")
+    let dbLast = Len(db) - 1
+    Assert.Near(db[0], db[dbLast], 0.000001, "constant inputs map elementwise")
+}
+
+[Fact]
 fn DbLinearHelpersRoundTrip() -> Void {
     let linear = DbToLinear(10.0)
     Assert.Near(10.0, linear, 0.000001, "10 dB is 10x linear")
