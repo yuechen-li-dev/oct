@@ -1,0 +1,451 @@
+package RfMultipathRicianProbe
+
+fn SpeedOfLightMetersPerSecond() -> Float {
+    return 299792458.0
+}
+
+fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
+    if distance <= 0m {
+        return 0.0
+    }
+    if frequencyHz <= 0 {
+        return 0.0
+    }
+
+    let wavelengthMeters = SpeedOfLightMetersPerSecond() / frequencyHz
+    let geometricTerm = 4.0 * Pi() * (distance / 1m) / wavelengthMeters
+    return geometricTerm * geometricTerm
+}
+
+fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Float[] {
+    if Len(distance) == 0 {
+        return [0.0]
+    }
+
+    var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
+    for i in 1 .. Len(distance) {
+        out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
+    }
+    return out
+}
+
+fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: Float, pathLossLinear: Float, systemLossLinear: Float) -> Float<kg*m^2/s^3> {
+    if pathLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if systemLossLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return txPower * txGainLinear * rxGainLinear / pathLossLinear / systemLossLinear
+}
+
+fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
+    if noisePower <= 0kg*m^2/s^3 {
+        return 0.0
+    }
+    return receivedPower / noisePower
+}
+
+fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
+    if Len(receivedPower) != Len(noisePower) {
+        return [0.0]
+    }
+    if Len(receivedPower) == 0 {
+        return [0.0]
+    }
+
+    var out = [SNRLinear(receivedPower[0], noisePower[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
+    }
+    return out
+}
+
+fn ThermalNoisePowerWithNoiseFigure(bandwidthHz: Float, temperatureKelvin: Float, noiseFigureLinear: Float) -> Float<kg*m^2/s^3> {
+    if bandwidthHz <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if temperatureKelvin <= 0 {
+        return 0kg*m^2/s^3
+    }
+    if noiseFigureLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+
+    let boltzmann = 0.00000000000000000000001380649kg*m^2/s^3
+    return boltzmann * temperatureKelvin * bandwidthHz * noiseFigureLinear
+}
+
+fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvin: Float[], noiseFigureLinear: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(bandwidthHz) != Len(temperatureKelvin) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) != Len(noiseFigureLinear) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(bandwidthHz) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
+    for i in 1 .. Len(bandwidthHz) {
+        out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
+    }
+    return out
+}
+
+fn DbToLinear(valueDb: Float) -> Float {
+    return Exp(Ln(10) * valueDb / 10.0)
+}
+
+fn ApplyShadowingToReceivedPower(receivedPower: Float<kg*m^2/s^3>, shadowingDb: Float) -> Float<kg*m^2/s^3> {
+    let shadowingLinear = DbToLinear(shadowingDb)
+    if shadowingLinear <= 0 {
+        return 0kg*m^2/s^3
+    }
+    return receivedPower / shadowingLinear
+}
+
+fn ApplyShadowingToReceivedPowerSeries(receivedPower: Float<kg*m^2/s^3>[], shadowingDb: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(receivedPower) != Len(shadowingDb) {
+        return [0kg*m^2/s^3]
+    }
+    if Len(receivedPower) == 0 {
+        return [0kg*m^2/s^3]
+    }
+
+    var out = [ApplyShadowingToReceivedPower(receivedPower[0], shadowingDb[0])]
+    for i in 1 .. Len(receivedPower) {
+        out = Append(out, ApplyShadowingToReceivedPower(receivedPower[i], shadowingDb[i]))
+    }
+    return out
+}
+
+fn RayleighPowerGainFromComponents(inPhase: Float, quadrature: Float) -> Float {
+    return inPhase * inPhase + quadrature * quadrature
+}
+
+fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
+    if Len(inPhase) != Len(quadrature) {
+        return [0.0]
+    }
+    if Len(inPhase) == 0 {
+        return [0.0]
+    }
+
+    var out = [RayleighPowerGainFromComponents(inPhase[0], quadrature[0])]
+    for i in 1 .. Len(inPhase) {
+        out = Append(out, RayleighPowerGainFromComponents(inPhase[i], quadrature[i]))
+    }
+    return out
+}
+
+fn RicianPowerGainFromComponents(kFactorLinear: Float, scatterInPhase: Float, scatterQuadrature: Float) -> Float {
+    if kFactorLinear < 0 {
+        return 0.0
+    }
+
+    let normalization = Sqrt(kFactorLinear + 1.0)
+    let losInPhase = Sqrt(kFactorLinear) / normalization
+    let scatterInPhaseNormalized = scatterInPhase / normalization
+    let scatterQuadratureNormalized = scatterQuadrature / normalization
+
+    let combinedInPhase = losInPhase + scatterInPhaseNormalized
+    return RayleighPowerGainFromComponents(combinedInPhase, scatterQuadratureNormalized)
+}
+
+fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float[] {
+    if Len(scatterInPhase) != Len(scatterQuadrature) {
+        return [0.0]
+    }
+    if Len(scatterInPhase) == 0 {
+        return [0.0]
+    }
+
+    var out = [RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[0], scatterQuadrature[0])]
+    for i in 1 .. Len(scatterInPhase) {
+        out = Append(out, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[i], scatterQuadrature[i]))
+    }
+
+    return out
+}
+
+fn ApplyPowerGain(sample: Float<kg*m^2/s^3>, gain: Float) -> Float<kg*m^2/s^3> {
+    return sample * gain
+}
+
+fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) != Len(gain) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(samples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+
+    var out = [ApplyPowerGain(samples[0], gain[0])]
+    for i in 1 .. Len(samples) {
+        out = Append(out, ApplyPowerGain(samples[i], gain[i]))
+    }
+    return out
+}
+
+fn ApplyRicianFadingSeries(samples: Float<kg*m^2/s^3>[], kFactorLinear: Float, scatterInPhase: Float[], scatterQuadrature: Float[]) -> Float<kg*m^2/s^3>[] {
+    let gain = RicianPowerGainSeries(kFactorLinear, scatterInPhase, scatterQuadrature)
+    if Len(samples) != Len(gain) {
+        return [0.0kg*m^2/s^3]
+    }
+    return ApplyPowerGainSeries(samples, gain)
+}
+
+fn ApplyAdditiveNoise(signal: Float<kg*m^2/s^3>, noise: Float<kg*m^2/s^3>) -> Float<kg*m^2/s^3> {
+    return signal + noise
+}
+
+fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
+    if Len(signal) != Len(noise) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(signal) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+
+    var out = [ApplyAdditiveNoise(signal[0], noise[0])]
+    for i in 1 .. Len(signal) {
+        out = Append(out, ApplyAdditiveNoise(signal[i], noise[i]))
+    }
+
+    return out
+}
+
+fn MaxDelaySamples(delaySamples: Int[]) -> Int {
+    if Len(delaySamples) == 0 {
+        return 0
+    }
+
+    var maxDelay = delaySamples[0]
+    for i in 1 .. Len(delaySamples) {
+        if delaySamples[i] > maxDelay {
+            maxDelay = delaySamples[i]
+        }
+    }
+    return maxDelay
+}
+
+fn TapContributionAt(samples: Float<kg*m^2/s^3>[], delaySamples: Int, powerGain: Float, outIndex: Int) -> Float<kg*m^2/s^3> {
+    if outIndex < delaySamples {
+        return 0.0kg*m^2/s^3
+    }
+
+    let sampleIndex = outIndex - delaySamples
+    if sampleIndex >= Len(samples) {
+        return 0.0kg*m^2/s^3
+    }
+
+    return ApplyPowerGain(samples[sampleIndex], powerGain)
+}
+
+fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: Int[], powerGain: Float[]) -> Float<kg*m^2/s^3>[] {
+    if Len(samples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(delaySamples) != Len(powerGain) {
+        return [0.0kg*m^2/s^3]
+    }
+    if Len(delaySamples) == 0 {
+        return [0.0kg*m^2/s^3]
+    }
+
+    let outLen = Len(samples) + MaxDelaySamples(delaySamples)
+    var out = [0.0kg*m^2/s^3]
+    for _ in 1 .. outLen {
+        out = Append(out, 0.0kg*m^2/s^3)
+    }
+
+    for tap in 0 .. Len(delaySamples) {
+        let delay = delaySamples[tap]
+        let gain = powerGain[tap]
+
+        var contribution = [TapContributionAt(samples, delay, gain, 0)]
+        for i in 1 .. outLen {
+            contribution = Append(contribution, TapContributionAt(samples, delay, gain, i))
+        }
+
+        out = ApplyAwgnSamples(out, contribution)
+    }
+
+    return out
+}
+
+record BaselineChannel {
+    Distances: Float<m>[]
+    PathLossLinear: Float[]
+    ReceivedPower: Float<kg*m^2/s^3>[]
+    NoisePower: Float<kg*m^2/s^3>[]
+    SnrLinear: Float[]
+}
+
+record ShadowingChannel {
+    ShadowingDb: Float[]
+    ShadowedReceivedPower: Float<kg*m^2/s^3>[]
+}
+
+record RicianChannel {
+    ScatterInPhase: Float[]
+    ScatterQuadrature: Float[]
+    HighKPowerGain: Float[]
+    LowKPowerGain: Float[]
+    HighKReceivedPower: Float<kg*m^2/s^3>[]
+    LowKReceivedPower: Float<kg*m^2/s^3>[]
+}
+
+record MultipathChannel {
+    TapDelaySamples: Int[]
+    TapPowerGain: Float[]
+    MultipathReceivedPower: Float<kg*m^2/s^3>[]
+}
+
+record FullPipeline {
+    Baseline: BaselineChannel
+    Shadowing: ShadowingChannel
+    Rician: RicianChannel
+    Multipath: MultipathChannel
+}
+
+fn BuildDistanceSweep16() -> Float<m>[] {
+    return [
+        20m, 30m, 40m, 50m,
+        60m, 70m, 80m, 90m,
+        100m, 110m, 120m, 130m,
+        140m, 150m, 160m, 170m
+    ]
+}
+
+fn BuildConstantFloatSeries16(value: Float) -> Float[] {
+    var out = [value]
+    for _ in 1 .. 16 {
+        out = Append(out, value)
+    }
+    return out
+}
+
+fn BuildShadowingDbSeries16() -> Float[] {
+    return [
+        0.0, 1.5, 0.0 - 2.0, 3.0,
+        0.0 - 1.0, 2.5, 0.0 - 0.5, 1.0,
+        0.0 - 3.0, 2.0, 0.5, 0.0 - 1.5,
+        1.8, 0.0 - 2.2, 0.7, 0.0
+    ]
+}
+
+fn BuildScatterInPhase16() -> Float[] {
+    return [
+        0.30, 0.0 - 0.20, 0.10, 0.0 - 0.40,
+        0.25, 0.0 - 0.15, 0.35, 0.0 - 0.30,
+        0.20, 0.0 - 0.10, 0.40, 0.0 - 0.25,
+        0.15, 0.0 - 0.35, 0.05, 0.0 - 0.05
+    ]
+}
+
+fn BuildScatterQuadrature16() -> Float[] {
+    return [
+        0.10, 0.20, 0.0 - 0.30, 0.15,
+        0.0 - 0.25, 0.35, 0.0 - 0.10, 0.30,
+        0.0 - 0.20, 0.25, 0.0 - 0.35, 0.05,
+        0.0 - 0.15, 0.40, 0.0 - 0.05, 0.20
+    ]
+}
+
+fn BuildBaselineChannel() -> BaselineChannel {
+    let txPower = 1.5kg*m^2/s^3
+    let txGain = 1.2
+    let rxGain = 1.1
+    let systemLoss = 1.0
+    let frequencyHz = 3500000000.0
+
+    let distances = BuildDistanceSweep16()
+    let pathLoss = FreeSpacePathLossLinearSeries(distances, frequencyHz)
+
+    var received = [ReceivedPower(txPower, txGain, rxGain, pathLoss[0], systemLoss)]
+    for i in 1 .. Len(pathLoss) {
+        received = Append(received, ReceivedPower(txPower, txGain, rxGain, pathLoss[i], systemLoss))
+    }
+
+    let bandwidthHz = BuildConstantFloatSeries16(5000000.0)
+    let temperatureKelvin = BuildConstantFloatSeries16(290.0)
+    let noiseFigure = BuildConstantFloatSeries16(2.0)
+    let noise = ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz, temperatureKelvin, noiseFigure)
+    let snr = SNRLinearSeries(received, noise)
+
+    return BaselineChannel {
+        Distances: distances
+        PathLossLinear: pathLoss
+        ReceivedPower: received
+        NoisePower: noise
+        SnrLinear: snr
+    }
+}
+
+fn BuildShadowingChannel(baseline: BaselineChannel) -> ShadowingChannel {
+    let shadowingDb = BuildShadowingDbSeries16()
+    let shadowed = ApplyShadowingToReceivedPowerSeries(baseline.ReceivedPower, shadowingDb)
+    return ShadowingChannel {
+        ShadowingDb: shadowingDb
+        ShadowedReceivedPower: shadowed
+    }
+}
+
+fn BuildRicianChannel(inputPower: Float<kg*m^2/s^3>[]) -> RicianChannel {
+    let scatterInPhase = BuildScatterInPhase16()
+    let scatterQuadrature = BuildScatterQuadrature16()
+
+    let highK = 12.0
+    let lowK = 0.1
+
+    let highKGain = RicianPowerGainSeries(highK, scatterInPhase, scatterQuadrature)
+    let lowKGain = RicianPowerGainSeries(lowK, scatterInPhase, scatterQuadrature)
+    let highKPower = ApplyRicianFadingSeries(inputPower, highK, scatterInPhase, scatterQuadrature)
+    let lowKPower = ApplyRicianFadingSeries(inputPower, lowK, scatterInPhase, scatterQuadrature)
+
+    return RicianChannel {
+        ScatterInPhase: scatterInPhase
+        ScatterQuadrature: scatterQuadrature
+        HighKPowerGain: highKGain
+        LowKPowerGain: lowKGain
+        HighKReceivedPower: highKPower
+        LowKReceivedPower: lowKPower
+    }
+}
+
+fn BuildMultipathChannel(inputPower: Float<kg*m^2/s^3>[]) -> MultipathChannel {
+    let delay = [0, 1, 3]
+    let gain = [1.0, 0.35, 0.20]
+    let out = ApplyTappedDelayLinePowerSeries(inputPower, delay, gain)
+
+    return MultipathChannel {
+        TapDelaySamples: delay
+        TapPowerGain: gain
+        MultipathReceivedPower: out
+    }
+}
+
+fn BuildTappedDelayLineToyInput() -> Float<kg*m^2/s^3>[] {
+    return [10.0kg*m^2/s^3, 20.0kg*m^2/s^3, 30.0kg*m^2/s^3, 40.0kg*m^2/s^3]
+}
+
+fn BuildToyMultipathOutput() -> Float<kg*m^2/s^3>[] {
+    return ApplyTappedDelayLinePowerSeries(BuildTappedDelayLineToyInput(), [0, 1, 3], [1.0, 0.5, 0.25])
+}
+
+fn BuildFullPipeline() -> FullPipeline {
+    let baseline = BuildBaselineChannel()
+    let shadowing = BuildShadowingChannel(baseline)
+    let rician = BuildRicianChannel(shadowing.ShadowedReceivedPower)
+    let multipath = BuildMultipathChannel(rician.HighKReceivedPower)
+
+    return FullPipeline {
+        Baseline: baseline
+        Shadowing: shadowing
+        Rician: rician
+        Multipath: multipath
+    }
+}

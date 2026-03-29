@@ -1,0 +1,97 @@
+package RfMultipathRicianProbe
+[Fact]
+fn BaselineShowsMonotonicPathLossAndShapePreservation() -> Void {
+    let baseline = BuildBaselineChannel()
+
+    Assert.Equal(16, Len(baseline.Distances), "baseline sequence should be non-trivial")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.PathLossLinear), "path-loss shape should match distance shape")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.ReceivedPower), "received-power shape should match distance shape")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.NoisePower), "noise shape should match distance shape")
+    Assert.Equal(Len(baseline.Distances), Len(baseline.SnrLinear), "snr shape should match distance shape")
+
+    for i in 1 .. Len(baseline.PathLossLinear) {
+        Assert.True(baseline.PathLossLinear[i] > baseline.PathLossLinear[i - 1], "path loss should increase with distance")
+        Assert.True(baseline.ReceivedPower[i] < baseline.ReceivedPower[i - 1], "received power should drop with distance")
+    }
+}
+
+[Fact]
+fn ShadowingAppliesPositiveAndNegativeOffsetsElementwise() -> Void {
+    let baseline = BuildBaselineChannel()
+    let shadowing = BuildShadowingChannel(baseline)
+
+    Assert.Equal(Len(baseline.ReceivedPower), Len(shadowing.ShadowedReceivedPower), "shadowing output should preserve shape")
+
+    Assert.True(shadowing.ShadowingDb[1] > 0.0, "index 1 should have positive shadowing")
+    Assert.True(shadowing.ShadowedReceivedPower[1] < baseline.ReceivedPower[1], "positive shadowing dB should reduce received power")
+
+    Assert.True(shadowing.ShadowingDb[2] < 0.0, "index 2 should have negative shadowing")
+    Assert.True(shadowing.ShadowedReceivedPower[2] > baseline.ReceivedPower[2], "negative shadowing dB should raise received power")
+
+    let expected = baseline.ReceivedPower[3] / DbToLinear(shadowing.ShadowingDb[3])
+    Assert.Near(expected / (1.0kg*m^2/s^3), shadowing.ShadowedReceivedPower[3] / (1.0kg*m^2/s^3), 0.000001, "shadowing should match deterministic composition")
+}
+
+[Fact]
+fn RicianHighKAndLowKProduceDifferentGainBehavior() -> Void {
+    let baseline = BuildBaselineChannel()
+    let shadowing = BuildShadowingChannel(baseline)
+    let rician = BuildRicianChannel(shadowing.ShadowedReceivedPower)
+
+    Assert.Equal(Len(shadowing.ShadowedReceivedPower), Len(rician.HighKPowerGain), "high-K gain shape should match input")
+    Assert.Equal(Len(shadowing.ShadowedReceivedPower), Len(rician.LowKPowerGain), "low-K gain shape should match input")
+
+    Assert.True(rician.HighKPowerGain[0] > 0.8, "high-K should stay near LOS-dominant region")
+    Assert.True(rician.LowKPowerGain[0] < rician.HighKPowerGain[0], "same scatter sample should attenuate more under low-K")
+
+    let rayleighLike = RayleighPowerGainSeries(rician.ScatterInPhase, rician.ScatterQuadrature)
+
+    var lowKDistance = 0.0
+    var highKDistance = 0.0
+    for i in 0 .. Len(rayleighLike) {
+        lowKDistance = lowKDistance + Abs(rician.LowKPowerGain[i] - rayleighLike[i])
+        highKDistance = highKDistance + Abs(rician.HighKPowerGain[i] - rayleighLike[i])
+    }
+    Assert.True(lowKDistance < highKDistance, "low-K should be closer to Rayleigh-like gain than high-K over the sequence")
+
+    Assert.True(rician.HighKReceivedPower[6] != shadowing.ShadowedReceivedPower[6], "Rician should alter elementwise power")
+}
+
+[Fact]
+fn TappedDelayLineRespectsDelayAndTapContribution() -> Void {
+    let toyOut = BuildToyMultipathOutput()
+
+    Assert.Equal(7, Len(toyOut), "toy TDL output should include max delay extension")
+
+    Assert.Near(10.0, toyOut[0] / (1.0kg*m^2/s^3), 0.000001, "y[0] should only include direct path")
+    Assert.Near(25.0, toyOut[1] / (1.0kg*m^2/s^3), 0.000001, "y[1] should include delayed contribution from x[0]")
+    Assert.Near(40.0, toyOut[2] / (1.0kg*m^2/s^3), 0.000001, "y[2] should include delayed contribution from x[1]")
+    Assert.Near(57.5, toyOut[3] / (1.0kg*m^2/s^3), 0.000001, "y[3] should include contributions from taps 0,1,3")
+    Assert.Near(25.0, toyOut[4] / (1.0kg*m^2/s^3), 0.000001, "y[4] should retain trailing delayed energy")
+
+    Assert.True(toyOut[3] > toyOut[2], "constructive addition should raise one sample")
+    Assert.True(toyOut[5] < toyOut[4], "delay spread should reshape the sequence tail")
+}
+
+[Fact]
+fn FullPipelineCompositionIsDeterministicAndOrderPreserving() -> Void {
+    let pipeline = BuildFullPipeline()
+    let baseline = pipeline.Baseline
+    let shadowing = pipeline.Shadowing
+    let rician = pipeline.Rician
+    let multipath = pipeline.Multipath
+
+    Assert.Equal(16, Len(baseline.ReceivedPower), "baseline should remain length 16")
+    Assert.Equal(16, Len(shadowing.ShadowedReceivedPower), "shadowing should preserve shape")
+    Assert.Equal(16, Len(rician.HighKReceivedPower), "Rician should preserve shape")
+    Assert.Equal(19, Len(multipath.MultipathReceivedPower), "TDL should extend output by max delay")
+
+    let directShadowed = BuildShadowingChannel(baseline)
+    Assert.Near(directShadowed.ShadowedReceivedPower[7] / (1.0kg*m^2/s^3), shadowing.ShadowedReceivedPower[7] / (1.0kg*m^2/s^3), 0.000001, "pipeline shadowing stage should match direct call")
+
+    let directRician = BuildRicianChannel(shadowing.ShadowedReceivedPower)
+    Assert.Near(directRician.HighKReceivedPower[7] / (1.0kg*m^2/s^3), rician.HighKReceivedPower[7] / (1.0kg*m^2/s^3), 0.000001, "pipeline Rician stage should match direct call")
+
+    let directMultipath = BuildMultipathChannel(rician.HighKReceivedPower)
+    Assert.Near(directMultipath.MultipathReceivedPower[10] / (1.0kg*m^2/s^3), multipath.MultipathReceivedPower[10] / (1.0kg*m^2/s^3), 0.000001, "pipeline multipath stage should match direct call")
+}
