@@ -41,7 +41,7 @@ fn main() {
 ✅ Correct:
 
 * Place code in `.octest` or `.octfail`
-* Execute via `oct test` or CLI integration
+* Execute tests via `go run ./cmd/oct test ...` (preferred in this environment), or `oct test ...` when the oct binary is available.
 
 #### Exception (narrow and explicit)
 
