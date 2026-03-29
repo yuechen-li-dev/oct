@@ -1,0 +1,138 @@
+package Mechanics
+
+[Fact]
+fn ShaftSectionPropertiesMatchHandChecksAndIncreaseWithDiameter() -> Void {
+    let dSmall = 0.02m
+    let dLarge = 0.04m
+
+    let areaSmall = ShaftAreaSolidCircular(dSmall)
+    let areaLarge = ShaftAreaSolidCircular(dLarge)
+    Assert.True(areaLarge > areaSmall, "shaft area should increase with diameter")
+    Assert.Near(0.000314159265, areaSmall / 1m^2, 0.000000001, "solid circular area hand-check")
+
+    let iSmall = ShaftSecondMomentAreaSolidCircular(dSmall)
+    let iLarge = ShaftSecondMomentAreaSolidCircular(dLarge)
+    Assert.True(iLarge > iSmall, "shaft second moment should increase with diameter")
+    Assert.Near(0.000000007853982, iSmall / 1m^4, 0.000000000001, "solid circular second moment hand-check")
+
+    let jSmall = ShaftPolarMomentAreaSolidCircular(dSmall)
+    let jLarge = ShaftPolarMomentAreaSolidCircular(dLarge)
+    Assert.True(jLarge > jSmall, "shaft polar moment should increase with diameter")
+    Assert.Near(0.000000015707963, jSmall / 1m^4, 0.000000000001, "solid circular polar moment hand-check")
+
+    Assert.Near(2.0, jSmall / iSmall, 0.000001, "solid shaft should satisfy J = 2I")
+}
+
+[Fact]
+fn ShaftBendingStressMonotonicAndHandCheck() -> Void {
+    let diameter = 0.03m
+
+    let lowMoment = ShaftBendingStress(100kg*m^2/s^2, diameter)
+    let highMoment = ShaftBendingStress(200kg*m^2/s^2, diameter)
+    Assert.True(highMoment > lowMoment, "shaft bending stress should increase with bending moment")
+
+    let largerDiameter = ShaftBendingStress(100kg*m^2/s^2, 0.04m)
+    Assert.True(largerDiameter < lowMoment, "shaft bending stress should decrease with increasing diameter")
+
+    Assert.Near(37725616.14, lowMoment / 1kg/m/s^2, 0.1, "shaft bending stress hand-check")
+}
+
+[Fact]
+fn ShaftTorsionalShearStressMonotonicAndHandCheck() -> Void {
+    let diameter = 0.03m
+
+    let lowTorque = ShaftTorsionalShearStress(60kg*m^2/s^2, diameter)
+    let highTorque = ShaftTorsionalShearStress(120kg*m^2/s^2, diameter)
+    Assert.True(highTorque > lowTorque, "shaft torsional shear should increase with torque")
+
+    let largerDiameter = ShaftTorsionalShearStress(60kg*m^2/s^2, 0.04m)
+    Assert.True(largerDiameter < lowTorque, "shaft torsional shear should decrease with increasing diameter")
+
+    Assert.Near(11317684.84, lowTorque / 1kg/m/s^2, 0.1, "shaft torsional shear hand-check")
+}
+
+[Fact]
+fn ShaftCombinedStaticBehaviorTracksLoadAndConcentration() -> Void {
+    let sy = 420000000.0kg/m/s^2
+    let diameter = 0.025m
+
+    let baseline = ShaftCombinedStaticYieldFactorOfSafety(sy, 180kg*m^2/s^2, 90kg*m^2/s^2, diameter, 1.0, 1.0)
+    let higherLoad = ShaftCombinedStaticYieldFactorOfSafety(sy, 240kg*m^2/s^2, 120kg*m^2/s^2, diameter, 1.0, 1.0)
+    Assert.True(higherLoad < baseline, "combined static safety should decrease as load increases")
+
+    let concentrated = ShaftCombinedStaticYieldFactorOfSafety(sy, 180kg*m^2/s^2, 90kg*m^2/s^2, diameter, 1.7, 1.4)
+    Assert.True(concentrated < baseline, "Kt and Kts should reduce static shaft safety")
+
+    let equivalent = ShaftCombinedStaticEquivalentStress(180kg*m^2/s^2, 90kg*m^2/s^2, diameter, 1.0, 1.0)
+    Assert.Near(127870214.55, equivalent / 1kg/m/s^2, 1.0, "combined von Mises stress hand-check")
+}
+
+[Fact]
+fn ShaftFatigueCompositionRespondsToKfKfsAndEnduranceModifiers() -> Void {
+    let diameter = 0.030m
+
+    let maxMoment = 180kg*m^2/s^2
+    let minMoment = 20kg*m^2/s^2
+    let maxTorque = 120kg*m^2/s^2
+    let minTorque = 40kg*m^2/s^2
+
+    let sigmaA0 = ShaftFatigueBendingAlternatingStress(maxMoment, minMoment, diameter, 1.0)
+    let sigmaM0 = ShaftFatigueBendingMeanStress(maxMoment, minMoment, diameter, 1.0)
+    let tauA0 = ShaftFatigueTorsionAlternatingShearStress(maxTorque, minTorque, diameter, 1.0)
+    let tauM0 = ShaftFatigueTorsionMeanShearStress(maxTorque, minTorque, diameter, 1.0)
+
+    let altEq0 = ShaftEquivalentAlternatingStress(sigmaA0, tauA0)
+    let meanEq0 = ShaftEquivalentMeanStress(sigmaM0, tauM0)
+
+    let kf = 1.6
+    let kfs = 1.3
+    let kt = 1.4
+    let kts = 1.2
+
+    let sigmaA1 = ShaftFatigueBendingAlternatingStress(maxMoment, minMoment, diameter, kf)
+    let sigmaM1 = ShaftFatigueBendingMeanStress(maxMoment, minMoment, diameter, kt)
+    let tauA1 = ShaftFatigueTorsionAlternatingShearStress(maxTorque, minTorque, diameter, kfs)
+    let tauM1 = ShaftFatigueTorsionMeanShearStress(maxTorque, minTorque, diameter, kts)
+
+    let altEq1 = ShaftEquivalentAlternatingStress(sigmaA1, tauA1)
+    let meanEq1 = ShaftEquivalentMeanStress(sigmaM1, tauM1)
+
+    Assert.True(altEq1 > altEq0, "Kf and Kfs should increase equivalent alternating stress")
+    Assert.True(meanEq1 > meanEq0, "Kt and Kts should increase equivalent mean stress")
+
+    let sePrime = 260000000.0kg/m/s^2
+    let sut = 620000000.0kg/m/s^2
+    let sy = 420000000.0kg/m/s^2
+
+    let ka = SurfaceFactorFromUltimateStrength(sut, 4.51, 0.0 - 0.265)
+    let kb = SizeFactorFromDiameter(diameter, 0.00762m, 0.0 - 0.107)
+    let kc = LoadFactorBending()
+    let kd = TemperatureFactorDirect(0.95)
+    let ke = ReliabilityFactorFromPercent(95.0)
+    let se = DesignEnduranceLimit(sePrime, ka, kb, kc, kd, ke)
+
+    let goodmanBaseline = ShaftGoodmanFactorOfSafety(altEq0, meanEq0, sePrime, sut)
+    let goodmanModified = ShaftGoodmanFactorOfSafety(altEq1, meanEq1, se, sut)
+    Assert.True(goodmanModified < goodmanBaseline, "concentration factors plus endurance modifiers should reduce Goodman safety")
+
+    let gerberModified = ShaftGerberFactorOfSafety(altEq1, meanEq1, se, sut)
+    let soderbergModified = ShaftSoderbergFactorOfSafety(altEq1, meanEq1, se, sy)
+    Assert.True(gerberModified > goodmanModified, "Gerber should remain less conservative than Goodman")
+    Assert.True(goodmanModified > soderbergModified, "Soderberg should remain most conservative in this case")
+}
+
+[Fact]
+fn ShaftInvalidInputsReturnZeroForGuardedHelpers() -> Void {
+    Assert.Near(0.0, ShaftAreaSolidCircular(0m) / 1m^2, 0.000000001, "invalid diameter area guard")
+    Assert.Near(0.0, ShaftSecondMomentAreaSolidCircular(0m) / 1m^4, 0.000000001, "invalid diameter inertia guard")
+    Assert.Near(0.0, ShaftPolarMomentAreaSolidCircular(0m) / 1m^4, 0.000000001, "invalid diameter polar moment guard")
+
+    Assert.Near(0.0, ShaftBendingStress(100kg*m^2/s^2, 0m) / 1kg/m/s^2, 0.000001, "invalid diameter shaft bending guard")
+    Assert.Near(0.0, ShaftTorsionalShearStress(100kg*m^2/s^2, 0m) / 1kg/m/s^2, 0.000001, "invalid diameter shaft torsion guard")
+
+    Assert.Near(0.0, ShaftStaticBendingStressWithKt(100kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kt guard")
+    Assert.Near(0.0, ShaftStaticTorsionalShearStressWithKts(100kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kts guard")
+
+    Assert.Near(0.0, ShaftFatigueBendingAlternatingStress(100kg*m^2/s^2, 0kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kf guard")
+    Assert.Near(0.0, ShaftFatigueTorsionAlternatingShearStress(100kg*m^2/s^2, 0kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kfs guard")
+}
