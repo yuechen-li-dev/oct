@@ -560,6 +560,22 @@ Concept areas include:
 These demonstrate real Oct usage across scientific and numerical domains.
 
 
+### Mechanics M0 scope
+
+`Libraries/Mechanics` now includes a narrow static stress/failure core:
+
+* normal and direct shear stress helpers (`force / area`)
+* bending and torsional shear helpers (`M*c/I`, `T*r/J`)
+* von Mises equivalent stress (plane-stress and principal-stress forms)
+* basic factor-of-safety helpers (`allowable / actual`)
+* optional compact principal-stress and Tresca maximum-shear helpers
+
+The mechanics helpers are written to be unit-aware (force, area, moment/torque, length, section properties, and stress units) and return guarded values for invalid geometric denominators where practical.
+
+Deferred beyond M0: fatigue relations, endurance-limit/Marin-factor modeling, shaft workflow automation, and spring/gear/bearing/bolt frameworks or materials-database integration.
+
+---
+
 ### RF M0 scope
 
 `Libraries/RF` adds a narrow, first-principles channel core:
