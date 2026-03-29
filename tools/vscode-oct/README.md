@@ -1,9 +1,10 @@
-# Oct VSCode Extension (M76b `en-human` View v1)
+# Oct VSCode Extension (M76c `en-human` View v2)
 
-This directory contains the Oct VSCode extension baseline plus **M76b**:
+This directory contains the Oct VSCode extension baseline plus **M76c**:
 
 - canonical editing/formatting/run/test behavior from M76a
-- a new **editor-only** `en-human` reading layer
+- `en-human` view transforms from M76b
+- repeated-literal compression and doc-aware hover enrichment from M76c
 
 `en-human` is **not** a source format. It is only a VSCode presentation layer.
 
@@ -22,11 +23,11 @@ When `en-human` is enabled, the extension adds visual overlays for readability w
 
 ---
 
-## What M76b adds
+## What M76c adds
 
-M76b implements three deterministic view transforms.
+M76c keeps M76b transforms and adds two conservative display-only capabilities.
 
-### 1) Unit typography (display-only)
+### 1) Unit typography (display-only, from M76b)
 
 Examples:
 
@@ -41,7 +42,7 @@ Rules:
 - no unit meaning changes
 - canonical text unchanged
 
-### 2) Derived-unit collapse (exact whitelist only)
+### 2) Derived-unit collapse (exact whitelist only, from M76b)
 
 Exact canonical matches are collapsed in-view to standard SI symbols:
 
@@ -57,7 +58,7 @@ Rules:
 - exact-match only (no aggressive algebra)
 - unsupported expressions remain uncollapsed
 
-### 3) Scientific notation display (display-only)
+### 3) Scientific notation display (display-only, from M76b)
 
 Numeric literals with attached unit symbols are shown in scientific notation when magnitude is:
 
@@ -76,6 +77,49 @@ Rules:
 - sign preserved
 - canonical text unchanged
 
+### 4) Repeated-literal compression (new in M76c)
+
+Array literals with **exact repeated numeric scalar tokens** are compressed in the display layer only.
+
+Example:
+
+- canonical: `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]`
+- displayed: `[0.0 × 6]`
+
+Supported scope (intentionally narrow):
+
+- applies only to array literals (`[...]`)
+- applies only when every element is the same numeric scalar token
+- minimum run length is `4`
+- no inference for ramps, alternation, matrices, or nested structure
+
+Unsupported examples (stay uncompressed):
+
+- `[0.0, 0.0, 0.0]` (below threshold)
+- `[1, 2, 3, 4]` (not identical)
+- `[0.0, 0.0m, 0.0, 0.0]` (non-numeric scalar token present)
+
+### 5) Doc-aware hover enrichment (new in M76c)
+
+When `en-human` is enabled, hover can render nearby `///` docs as structured sections for declarations.
+
+Current supported resolution scope:
+
+- declarations in the current file with directly attached `///` blocks
+- declaration kinds: `fn`, `flow`, `record`, `enum`
+- symbol-name hover fallback by exact name in the current file
+
+Structured sections shown when present:
+
+- Summary
+- Parameters (`Param <name>: ...`)
+- Returns
+- Units
+- Remarks
+- Example
+
+This is intentionally lightweight and **not** a symbol server/LSP system.
+
 ---
 
 ## Trust / explanation aid
@@ -85,6 +129,8 @@ Rules:
 - transform kind
 - displayed `en-human` form
 - canonical source form
+- (for repeated compression) exact literal token + repeat count
+- (for docs) structured separation of summary/fields
 
 This keeps transforms easy to verify and mentally reversible.
 
@@ -114,13 +160,13 @@ Turning the view off restores ordinary canonical presentation.
 
 ---
 
-## Deferred (intentionally out of M76b)
+## Deferred (intentionally out of M76c)
 
-- repeated-literal compression
-- repeated zero-array compression
-- doc hover enrichment beyond trust overlays
 - localization views (`zh-CN-human`, etc.)
-- LSP/server architecture
+- general sequence compression (ramps/alternating/matrix recognition)
+- source rewriting or alternate source syntax
+- cross-file symbol indexing/navigation intelligence
+- full LSP/server architecture
 - semantic code actions/refactors
 - parser/compiler/source-format changes
 
@@ -140,129 +186,137 @@ Turning the view off restores ordinary canonical presentation.
 
 ---
 
-## Validation Evidence (M76b)
+## Validation Evidence (M76c)
 
 Validation run date: **2026-03-29**.
 
-Environment used: VSCode Extension Development Host launched against this repo (`tools/vscode-oct`) and exercised on a real `.oct` file containing M76b transform candidates.
+Environment used: **VSCode Extension Development Host** launched from `tools/vscode-oct` (F5 flow), with `oct.enHuman.enabled` toggled during the session while editing a real `.oct` scratch file in the host window.
 
-Validation file used during the run (canonical source):
+Validation scratch file (canonical source used during the run):
 
-- `m^2`
-- `kg*m/s^2`
-- `kg/(m*s^2)`
-- `2500000Pa`
-- `0.000001s`
-- `8m/s` (unsupported collapse case)
+```oct
+/// Computes normal stress from force and area.
+/// Param force: Applied force.
+/// Param area: Cross-section.
+/// Returns: Stress value.
+/// Units: force [N], area [m^2], result [Pa].
+/// Remarks: Linear-elastic assumption.
+/// Example: NormalStress(100, 2).
+fn NormalStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> {
+  return force / area
+}
 
-### 1) Toggle behavior
+let repeated = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+let below = [1.0, 1.0, 1.0]
+let mixed = [1.0, 1.0, 2.0, 1.0]
+let nonNumeric = [\"x\", \"x\", \"x\", \"x\"]
+```
 
-Observed sequence:
+### 1) Repeated-literal compression (supported case)
 
-1. Set `oct.enHuman.enabled = false`.
-   - Editor showed canonical text only.
-2. Ran **Oct: Toggle en-human View** to enable.
-   - Overlays appeared immediately (no save/reopen required).
-3. Ran **Oct: Toggle en-human View** again to disable.
-   - Overlays disappeared immediately.
+- canonical source text: `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]`
+- observed rendered view text: `[0.0 × 6]`
+- threshold behavior observed: run length `6` compressed (minimum `4`)
+- display-only confirmed: underlying editable/source text remained the canonical list
 
-Observed result:
+### 2) Below-threshold case (no compression)
 
-- refresh is immediate on toggle.
-- no stale decorations remained after toggling off.
+- canonical source text: `[1.0, 1.0, 1.0]`
+- observed rendered view text: unchanged `[1.0, 1.0, 1.0]`
+- confirmation: no compression occurred below threshold
 
-### 2) Canonical source safety (save + format)
+### 3) Unsupported case (no compression)
 
-With `en-human` enabled:
+Observed two unsupported examples:
 
-- saved the file.
-- ran **Format Document**.
-- re-read file contents from disk.
+- mixed values canonical: `[1.0, 1.0, 2.0, 1.0]` → rendered unchanged
+- non-numeric literals canonical: `["x", "x", "x", "x"]` → rendered unchanged
 
-Observed result:
+Confirmation: no incorrect compression occurred for non-exact / non-numeric cases.
 
-- on-disk text remained canonical `en-llm`.
-- no `en-human` display forms (e.g. `·`, superscript digits, collapsed unit symbols replacing canonical expressions) were written into source.
-- no source mutation into `en-human` occurred.
+### 4) Canonical source safety
 
-### 3) Unit typography case
+Using the same file with compressed and non-compressed lines:
 
-Case A:
+1. enabled `en-human`
+2. saved the file
+3. ran **Format Document**
+4. inspected file on disk
 
-- canonical source: `m^2`
-- observed rendered view: `m²`
-- classification: typography-only transform
+Observed:
 
-Case B:
+- file remained canonical `en-llm`
+- no `[value × N]` text appeared in source on disk
+- formatting continued to operate correctly on canonical text
 
-- canonical source: `kg*m/s^2`
-- observed rendered view: `kg·m/s²`
-- classification: typography-only rendering when derived collapse is not the selected presentation in that span
+### 5) Hover trust for compression
 
-### 4) Derived-unit collapse case
+Hovering the compressed span showed:
 
-Supported whitelist case used:
+- transform label: `Oct en-human (repeated literal compression)`
+- display-only value: `[0.0 × 6]`
+- canonical source list (full list form)
+- exact literal token (`0.0`)
+- repeat count (`6`)
 
-- canonical source: `kg*m/s^2`
-- observed rendered view: `N`
+Trust result: hover made the canonical value/count explicit and clearly indicated display-only behavior.
 
-Hover trust text on transformed span showed:
+### 6) Doc-aware hover (real example)
 
-- transform kind (`Oct en-human (derived unit)`)
-- display form (`N`)
-- canonical source (`kg*m/s^2`)
+Hovered `NormalStress` in the same file (with attached `///` docs).
 
-### 5) Scientific-notation display case
+- summary present: ✔
+- parameters present: ✔ (`force`, `area`)
+- returns present: ✔
+- units present: ✔
+- remarks present: ✔
+- example present: ✔
 
-Validated both threshold directions:
+Overall readability: concise and useful; sections were clearly separated and easy to scan.
 
-- canonical: `2500000Pa` → rendered: `2.5e6Pa` (large-magnitude case)
-- canonical: `0.000001s` → rendered: `1e-6s` (small-magnitude case)
+Unsupported-scope check:
 
-Observed threshold behavior matched policy:
+- hovering an unrelated identifier without an attached in-file `///` declaration produced no special doc block (graceful fallback to normal hover behavior).
 
-- convert when `abs(x) >= 1e4`
-- convert when `0 < abs(x) < 1e-3`
+### 7) Editing safety
 
-### 6) Unsupported / non-collapsing case
+On the compressed-array line:
 
-Case used:
+1. placed cursor inside the canonical array
+2. changed one literal (`0.0` → `3.0`) to break exact repetition
+3. saved file
 
-- canonical source: `8m/s`
-- observed rendered view: remains `8m/s` (no derived-unit collapse)
+Observed:
 
-Observed result:
+- cursor/edit behavior remained normal (no cursor jumps or blocked edits)
+- canonical edit applied exactly where typed
+- decoration refreshed immediately (compression removed once repetition was broken)
+- no editing confusion observed
 
-- no unwanted collapse for unsupported/non-whitelisted unit expressions.
+### 8) Toggle behavior
 
-### 7) Hover trust text
+Executed OFF → ON → OFF:
 
-On transformed spans (derived-unit and scientific notation examples), hover clearly showed:
+- OFF: no `en-human` compression/overlays visible
+- ON: compression and other `en-human` overlays appeared
+- OFF: overlays disappeared cleanly
 
-- transform label (`Oct en-human (...)`)
-- displayed form
-- canonical source form
+Observed:
 
-Observed result:
+- compression appeared/disappeared correctly with toggle state
+- doc-aware hover appeared only when enabled
+- no stale decorations remained after disabling
 
-- enough context to answer “what am I seeing?” without ambiguity.
+### Existing M76b regressions check
 
-### 8) Editing safety
+Spot-checked previously shipped transforms during the same host session:
 
-On a transformed line:
+- `m^2` → `m²` (typography)
+- `kg*m/s^2` → `N` (derived-unit whitelist collapse)
+- `2500000Pa` → `2.5e6Pa` (scientific notation)
 
-- moved cursor into canonical unit text.
-- edited canonical expression.
-- saved.
-
-Observed result:
-
-- editor editing/selection behavior remained usable.
-- source stayed canonical after edit.
-- decorations refreshed to match the new canonical text.
+Observed: no M76b regressions.
 
 ### Screenshot status
 
-Screenshots were not captured in this environment during this run.
-Validation evidence above is from direct Extension Development Host interaction and on-disk verification.
-
+Screenshot capture tooling was not available in this execution environment, so this section records precise observed host-session behavior textually.
