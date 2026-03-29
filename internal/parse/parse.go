@@ -30,9 +30,11 @@ type parser struct {
 	tokens                []lex.Token
 	position              int
 	nextUtilityWhenSiteID int
+	docByLine             map[int]ast.DocComment
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
+	p.docByLine = scanDocComments(src.Text)
 	file := ast.File{Source: src, IsTest: strings.HasSuffix(src.Path, ".octest")}
 	if _, err := p.expect(lex.KeywordPackage, "missing package declaration"); err != nil {
 		return ast.File{}, err
@@ -241,6 +243,90 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	return file, nil
 }
 
+func (p *parser) docCommentAtLine(line int) *ast.DocComment {
+	doc, ok := p.docByLine[line]
+	if !ok {
+		return nil
+	}
+	docCopy := doc
+	return &docCopy
+}
+
+func scanDocComments(src string) map[int]ast.DocComment {
+	lines := strings.Split(src, "\n")
+	attachments := make(map[int]ast.DocComment)
+	for i := 0; i < len(lines); {
+		trimmed := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(trimmed, "///") {
+			i++
+			continue
+		}
+
+		block := make([]string, 0, 4)
+		for i < len(lines) {
+			lineTrimmed := strings.TrimSpace(lines[i])
+			if !strings.HasPrefix(lineTrimmed, "///") {
+				break
+			}
+			block = append(block, strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "///")))
+			i++
+		}
+
+		if i >= len(lines) {
+			break
+		}
+		next := strings.TrimSpace(lines[i])
+		if next == "" || strings.HasPrefix(next, "//") {
+			continue
+		}
+		attachments[i+1] = ast.DocComment{
+			Lines:      block,
+			Structured: extractDocSections(block),
+		}
+	}
+	return attachments
+}
+
+func extractDocSections(lines []string) []ast.DocSection {
+	sections := make([]ast.DocSection, 0, len(lines))
+	for _, line := range lines {
+		section, ok := parseDocSection(line)
+		if !ok {
+			continue
+		}
+		sections = append(sections, section)
+	}
+	return sections
+}
+
+func parseDocSection(line string) (ast.DocSection, bool) {
+	keywords := []string{"Param ", "Returns:", "Units:", "Remarks:", "Example:"}
+	for _, keyword := range keywords {
+		if !strings.HasPrefix(line, keyword) {
+			continue
+		}
+		switch keyword {
+		case "Param ":
+			remainder := strings.TrimSpace(strings.TrimPrefix(line, "Param "))
+			colonIdx := strings.Index(remainder, ":")
+			if colonIdx < 0 {
+				return ast.DocSection{Keyword: "Param", Target: remainder}, true
+			}
+			return ast.DocSection{
+				Keyword: "Param",
+				Target:  strings.TrimSpace(remainder[:colonIdx]),
+				Text:    strings.TrimSpace(remainder[colonIdx+1:]),
+			}, true
+		default:
+			return ast.DocSection{
+				Keyword: strings.TrimSuffix(keyword, ":"),
+				Text:    strings.TrimSpace(strings.TrimPrefix(line, keyword)),
+			}, true
+		}
+	}
+	return ast.DocSection{}, false
+}
+
 type testAttribute struct {
 	kind   string
 	values []ast.Expr
@@ -303,7 +389,8 @@ func isInlineDataValueExpr(expr ast.Expr) bool {
 }
 
 func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
-	if _, err := p.expect(lex.KeywordRecord, "expected 'record'"); err != nil {
+	recordToken, err := p.expect(lex.KeywordRecord, "expected 'record'")
+	if err != nil {
 		return ast.RecordDecl{}, err
 	}
 	name, err := p.expect(lex.Identifier, "expected record name")
@@ -330,15 +417,24 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 		if err != nil {
 			return ast.RecordDecl{}, err
 		}
-		fields = append(fields, ast.RecordField{Name: fieldName.Lexeme, Type: fieldType})
+		fields = append(fields, ast.RecordField{
+			Name: fieldName.Lexeme,
+			Type: fieldType,
+			Doc:  p.docCommentAtLine(fieldName.Line),
+		})
 	}
 	p.advance()
 
-	return ast.RecordDecl{Name: name.Lexeme, Fields: fields}, nil
+	return ast.RecordDecl{
+		Name:   name.Lexeme,
+		Fields: fields,
+		Doc:    p.docCommentAtLine(recordToken.Line),
+	}, nil
 }
 
 func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
-	if _, err := p.expect(lex.KeywordEnum, "expected 'enum'"); err != nil {
+	enumToken, err := p.expect(lex.KeywordEnum, "expected 'enum'")
+	if err != nil {
 		return ast.EnumDecl{}, err
 	}
 	name, err := p.expect(lex.Identifier, "expected enum name")
@@ -362,11 +458,16 @@ func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
 	}
 	p.advance()
 
-	return ast.EnumDecl{Name: name.Lexeme, Variants: variants}, nil
+	return ast.EnumDecl{
+		Name:     name.Lexeme,
+		Variants: variants,
+		Doc:      p.docCommentAtLine(enumToken.Line),
+	}, nil
 }
 
 func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
-	if _, err := p.expect(lex.KeywordFn, "expected 'fn' at top level"); err != nil {
+	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn' at top level")
+	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
 
@@ -396,7 +497,13 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 		return ast.FunctionDecl{}, err
 	}
 
-	function := ast.FunctionDecl{Name: name.Lexeme, SourcePath: p.sourcePath, Parameters: parameters, ReturnType: returnType}
+	function := ast.FunctionDecl{
+		Name:       name.Lexeme,
+		Doc:        p.docCommentAtLine(fnToken.Line),
+		SourcePath: p.sourcePath,
+		Parameters: parameters,
+		ReturnType: returnType,
+	}
 	if p.match(lex.Bang) {
 		errorType, err := p.parseTypeRef()
 		if err != nil {

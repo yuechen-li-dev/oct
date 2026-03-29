@@ -16,23 +16,38 @@ type File struct {
 	Flows     []FlowDecl
 }
 
+type DocComment struct {
+	Lines      []string
+	Structured []DocSection
+}
+
+type DocSection struct {
+	Keyword string
+	Target  string
+	Text    string
+}
+
 type RecordDecl struct {
 	Name   string
+	Doc    *DocComment
 	Fields []RecordField
 }
 
 type RecordField struct {
 	Name string
 	Type TypeRef
+	Doc  *DocComment
 }
 
 type EnumDecl struct {
 	Name     string
+	Doc      *DocComment
 	Variants []string
 }
 
 type FunctionDecl struct {
 	Name        string
+	Doc         *DocComment
 	SourcePath  string
 	IsTestFile  bool
 	IsFact      bool

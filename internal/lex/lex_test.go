@@ -404,6 +404,29 @@ func TestAnalyzeSkipsCommentsAndWhitespace(t *testing.T) {
 	)
 }
 
+func TestAnalyzeSkipsDocCommentsAsComments(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "/// heading\nfn Main() -> Int { return 0 }\n"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordReturn,
+		IntLiteral,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeRejectsInvalidToken(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { return $ }"}
 

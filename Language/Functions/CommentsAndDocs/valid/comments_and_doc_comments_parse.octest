@@ -1,0 +1,17 @@
+package MainValid
+
+/// Computes a deterministic value.
+/// Param x: input integer.
+/// Returns: x plus one.
+fn PlusOne(x: Int) -> Int {
+    // comment in function body
+    return x + 1
+}
+
+[Fact]
+fn CommentsAndDocCommentsParse() -> Void {
+    // ordinary line comment
+    let base = 2
+    let result = PlusOne(base)
+    Assert.Equal(3, result, "comments and doc comments should parse and execute")
+}

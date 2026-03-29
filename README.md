@@ -85,6 +85,41 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 * Static base types: `Int`, `Float`, `Bool`, `String`, and built-in `Error`.
 * Native one-dimensional arrays: `Int[]`, `Float[]`, `Bool[]`, including arithmetic and indexing.
 * Non-capturing named function values are supported in a narrow surface via explicit function types (for example, `fn(Int) -> Int`), and only package-level named functions are valid function values.
+* Comments are first-class source syntax:
+  * `// ...` for ordinary line comments.
+  * `/// ...` for documentation comments bound to declarations.
+
+### Documentation Comments (M74)
+
+`///` doc comments are an Oct-native, lightweight source documentation surface for future tooling and current readability.
+
+Binding rules:
+
+* Consecutive `///` lines form one doc block.
+* A doc block binds to the next declaration only.
+* There must be no blank line between the block and the declaration.
+* `//` comments are never treated as doc comments.
+
+Current attachment targets:
+
+* `fn` declarations
+* `record` declarations
+* `enum` declarations
+* `record` fields
+
+Structured lines are optional plain text conventions (not a heavy schema). Supported keyword forms:
+
+* `Param <name>: ...`
+* `Returns: ...`
+* `Units: ...`
+* `Remarks: ...`
+* `Example: ...`
+
+Design intent:
+
+* keep docs readable in source now
+* preserve raw/structured doc metadata in AST for future hover/help tooling
+* avoid XML, decorators/annotations, and markdown rendering complexity
 
 ---
 

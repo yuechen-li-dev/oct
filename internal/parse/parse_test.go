@@ -608,6 +608,72 @@ func TestBuildFileParsesBenchmarkInOctest(t *testing.T) {
 	}
 }
 
+func TestBuildFileAttachesDocCommentsToFunction(t *testing.T) {
+	file := parseSource(t, "/// Computes answer.\n/// Returns: constant answer.\nfn Main() -> Int { return 42 }")
+	doc := file.Functions[0].Doc
+	if doc == nil {
+		t.Fatal("expected function doc comment")
+	}
+	if len(doc.Lines) != 2 || doc.Lines[0] != "Computes answer." {
+		t.Fatalf("unexpected doc lines: %+v", doc.Lines)
+	}
+	if len(doc.Structured) != 1 || doc.Structured[0].Keyword != "Returns" || doc.Structured[0].Text != "constant answer." {
+		t.Fatalf("unexpected structured doc sections: %+v", doc.Structured)
+	}
+}
+
+func TestBuildFileAttachesDocCommentsToRecordAndField(t *testing.T) {
+	file := parseSource(t, "/// Planar point.\nrecord Point {\n/// X-axis coordinate.\nX: Float<m>\n/// Y-axis coordinate.\nY: Float<m>\n}")
+	record := file.Records[0]
+	if record.Doc == nil || record.Doc.Lines[0] != "Planar point." {
+		t.Fatalf("expected record doc comment, got %+v", record.Doc)
+	}
+	if record.Fields[0].Doc == nil || record.Fields[0].Doc.Lines[0] != "X-axis coordinate." {
+		t.Fatalf("expected field doc on X, got %+v", record.Fields[0].Doc)
+	}
+	if record.Fields[1].Doc == nil || record.Fields[1].Doc.Lines[0] != "Y-axis coordinate." {
+		t.Fatalf("expected field doc on Y, got %+v", record.Fields[1].Doc)
+	}
+}
+
+func TestBuildFileAttachesDocCommentsToEnum(t *testing.T) {
+	file := parseSource(t, "/// Physical mode.\nenum Mode { Idle Active }")
+	if file.Enums[0].Doc == nil || file.Enums[0].Doc.Lines[0] != "Physical mode." {
+		t.Fatalf("expected enum doc comment, got %+v", file.Enums[0].Doc)
+	}
+}
+
+func TestBuildFileDocCommentRequiresNoBlankLineBeforeDeclaration(t *testing.T) {
+	file := parseSource(t, "/// Should not attach.\n\nfn Main() -> Int { return 0 }")
+	if file.Functions[0].Doc != nil {
+		t.Fatalf("expected nil function doc after blank line, got %+v", file.Functions[0].Doc)
+	}
+}
+
+func TestBuildFileTreatsOrdinaryCommentsAsNonDocComments(t *testing.T) {
+	file := parseSource(t, "// not docs\nfn Main() -> Int { return 0 }")
+	if file.Functions[0].Doc != nil {
+		t.Fatalf("expected nil doc comment for ordinary // comment, got %+v", file.Functions[0].Doc)
+	}
+}
+
+func TestBuildFileParsesStructuredDocCommentKeywords(t *testing.T) {
+	file := parseSource(t, "/// Computes stress.\n/// Param force: Applied force.\n/// Param area: Cross-section.\n/// Returns: Stress value.\n/// Units: force [N], area [m^2], result [Pa].\n/// Remarks: Linear-elastic only.\n/// Example: NormalStress(100, 2).\nfn NormalStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> { return force / area }")
+	doc := file.Functions[0].Doc
+	if doc == nil {
+		t.Fatal("expected function doc comment")
+	}
+	if len(doc.Structured) != 6 {
+		t.Fatalf("expected 6 structured sections, got %d (%+v)", len(doc.Structured), doc.Structured)
+	}
+	if doc.Structured[0].Keyword != "Param" || doc.Structured[0].Target != "force" || doc.Structured[0].Text != "Applied force." {
+		t.Fatalf("unexpected first structured section: %+v", doc.Structured[0])
+	}
+	if doc.Structured[5].Keyword != "Example" {
+		t.Fatalf("expected Example section, got %+v", doc.Structured[5])
+	}
+}
+
 func TestBuildFileRejectsInvalidBenchmarkUsage(t *testing.T) {
 	assertParseErrorContains(t, "package Main\n[Benchmark]\nfn Nope() -> Void { return }\n", "[Benchmark] is only valid in .octest files")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Benchmark]\nrecord R { X: Int }\n", "test attributes must apply to a function declaration")
