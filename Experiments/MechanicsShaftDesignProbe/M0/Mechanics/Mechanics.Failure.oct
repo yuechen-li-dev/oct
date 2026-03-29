@@ -1,0 +1,52 @@
+package Mechanics
+
+fn VonMisesPlaneStress(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    let term = normalX * normalX - normalX * normalY + normalY * normalY + 3.0 * shearXY * shearXY
+    return Sqrt(term)
+}
+
+fn VonMisesFromPrincipal(sigma1: Float<kg/m/s^2>, sigma2: Float<kg/m/s^2>, sigma3: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    let d12 = sigma1 - sigma2
+    let d23 = sigma2 - sigma3
+    let d31 = sigma3 - sigma1
+    return Sqrt(0.5 * (d12 * d12 + d23 * d23 + d31 * d31))
+}
+
+fn PrincipalStressMaxPlane(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    let center = 0.5 * (normalX + normalY)
+    let radius = Sqrt(0.25 * (normalX - normalY) * (normalX - normalY) + shearXY * shearXY)
+    return center + radius
+}
+
+fn PrincipalStressMinPlane(normalX: Float<kg/m/s^2>, normalY: Float<kg/m/s^2>, shearXY: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    let center = 0.5 * (normalX + normalY)
+    let radius = Sqrt(0.25 * (normalX - normalY) * (normalX - normalY) + shearXY * shearXY)
+    return center - radius
+}
+
+fn FactorOfSafety(allowableStress: Float<kg/m/s^2>, actualStress: Float<kg/m/s^2>) -> Float {
+    if actualStress <= 0kg/m/s^2 {
+        return 0
+    }
+    return allowableStress / actualStress
+}
+
+fn YieldFactorOfSafety(yieldStrength: Float<kg/m/s^2>, equivalentStress: Float<kg/m/s^2>) -> Float {
+    return FactorOfSafety(yieldStrength, equivalentStress)
+}
+
+fn MaximumShearStressTresca(sigma1: Float<kg/m/s^2>, sigma2: Float<kg/m/s^2>, sigma3: Float<kg/m/s^2>) -> Float<kg/m/s^2> {
+    let d12 = Abs(sigma1 - sigma2)
+    let d23 = Abs(sigma2 - sigma3)
+    let d31 = Abs(sigma3 - sigma1)
+
+    var maxDiff = d12
+    if d23 > maxDiff {
+        maxDiff = d23
+    }
+    if d31 > maxDiff {
+        maxDiff = d31
+    }
+
+    return 0.5 * maxDiff
+}
