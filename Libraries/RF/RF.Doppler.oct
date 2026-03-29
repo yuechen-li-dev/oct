@@ -1,0 +1,56 @@
+package RF
+
+fn DopplerShiftHz(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float) -> Float {
+    return DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond, SpeedOfLightMetersPerSecond())
+}
+
+fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float, propagationSpeedMetersPerSecond: Float) -> Float {
+    if carrierFrequencyHz <= 0 {
+        return 0.0
+    }
+    if propagationSpeedMetersPerSecond <= 0 {
+        return 0.0
+    }
+
+    return carrierFrequencyHz * relativeRadialVelocityMetersPerSecond / propagationSpeedMetersPerSecond
+}
+
+fn MaxDopplerShiftHz(carrierFrequencyHz: Float, speedMetersPerSecond: Float) -> Float {
+    return Abs(DopplerShiftHz(carrierFrequencyHz, Abs(speedMetersPerSecond)))
+}
+
+fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float) -> Float {
+    if maxDopplerHz <= 0 {
+        return 0.0
+    }
+
+    return 0.423 / maxDopplerHz
+}
+
+fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
+    if maxDopplerHz <= 0 {
+        return 0.0
+    }
+
+    return 1.0 / (2.0 * maxDopplerHz)
+}
+
+fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float) -> Float {
+    if rmsDelaySpreadSeconds <= 0 {
+        return 0.0
+    }
+
+    return 1.0 / (5.0 * rmsDelaySpreadSeconds)
+}
+
+fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) -> Float {
+    if rmsDelaySpreadSeconds <= 0 {
+        return 0.0
+    }
+
+    return 1.0 / (50.0 * rmsDelaySpreadSeconds)
+}
+
+fn DopplerPhaseRadians(dopplerShiftHz: Float, timeSeconds: Float) -> Float {
+    return 2.0 * Pi() * dopplerShiftHz * timeSeconds
+}
