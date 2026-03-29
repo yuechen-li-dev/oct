@@ -1,0 +1,108 @@
+{
+  "name": "oct-vscode",
+  "displayName": "Oct",
+  "description": "Foundation VSCode support for the Oct language (syntax, format, run, test).",
+  "version": "0.1.0",
+  "publisher": "oct",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "activationEvents": [
+    "onLanguage:oct",
+    "onCommand:oct.runCurrent",
+    "onCommand:oct.testCurrent",
+    "onCommand:oct.formatCurrent",
+    "onCommand:oct.runWorkspace",
+    "onCommand:oct.testWorkspace",
+    "onCommand:oct.formatWorkspace"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "oct",
+        "aliases": [
+          "Oct",
+          "oct"
+        ],
+        "extensions": [
+          ".oct",
+          ".octest",
+          ".octfail",
+          ".octagon"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "oct",
+        "scopeName": "source.oct",
+        "path": "./syntaxes/oct.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "oct.runCurrent",
+        "title": "Oct: Run Current File",
+        "category": "Oct"
+      },
+      {
+        "command": "oct.testCurrent",
+        "title": "Oct: Test Current File",
+        "category": "Oct"
+      },
+      {
+        "command": "oct.formatCurrent",
+        "title": "Oct: Format Current File",
+        "category": "Oct"
+      },
+      {
+        "command": "oct.runWorkspace",
+        "title": "Oct: Run Workspace",
+        "category": "Oct"
+      },
+      {
+        "command": "oct.testWorkspace",
+        "title": "Oct: Test Workspace",
+        "category": "Oct"
+      },
+      {
+        "command": "oct.formatWorkspace",
+        "title": "Oct: Format Workspace",
+        "category": "Oct"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "oct.runCurrent",
+          "when": "editorLangId == oct"
+        },
+        {
+          "command": "oct.testCurrent",
+          "when": "editorLangId == oct"
+        },
+        {
+          "command": "oct.formatCurrent",
+          "when": "editorLangId == oct"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Oct",
+      "properties": {
+        "oct.cli.command": {
+          "type": "string",
+          "default": "go run ./cmd/oct",
+          "description": "CLI invocation used by the extension. In this repo, the reliable default is 'go run ./cmd/oct'."
+        }
+      }
+    }
+  }
+}

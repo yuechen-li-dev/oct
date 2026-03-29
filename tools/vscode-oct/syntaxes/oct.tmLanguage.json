@@ -1,0 +1,126 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Oct",
+  "scopeName": "source.oct",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#declarations" },
+    { "include": "#numbers" },
+    { "include": "#units" },
+    { "include": "#enumValues" },
+    { "include": "#constants" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.oct",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.oct",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.oct",
+          "begin": "\\\"",
+          "end": "\\\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.oct",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.oct",
+          "match": "\\b(if|else|switch|case|for|in|step|while|return|match|ok|err|when|flow|state|goto|suspend|resume|batch|as|break|continue)\\b"
+        },
+        {
+          "name": "keyword.declaration.oct",
+          "match": "\\b(package|import|fn|record|enum|let|var)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.oct",
+          "match": "\\b(Int|Float|Bool|String|Void|Error)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "entity.name.function.oct",
+          "match": "\\bfn\\s+([A-Z][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.function.oct" }
+          }
+        },
+        {
+          "name": "entity.name.type.record.oct",
+          "match": "\\brecord\\s+([A-Z][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.oct" }
+          }
+        },
+        {
+          "name": "entity.name.type.enum.oct",
+          "match": "\\benum\\s+([A-Z][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.oct" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.oct",
+          "match": "\\b\\d+(?:_\\d+)*(?:\\.\\d+(?:_\\d+)*)?\\b"
+        }
+      ]
+    },
+    "units": {
+      "patterns": [
+        {
+          "name": "support.type.unit.oct",
+          "match": "(?<=\\b\\d(?:[\\d_]*)(?:\\.\\d(?:[\\d_]*))?)(?:deg|m|kg|s|A|K|mol|cd)(?:\\^(?:-?\\d+))?(?:/(?:deg|m|kg|s|A|K|mol|cd)(?:\\^(?:-?\\d+))?)*"
+        }
+      ]
+    },
+    "enumValues": {
+      "patterns": [
+        {
+          "name": "constant.other.enum-variant.oct",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.oct",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "keyword.operator.oct",
+          "match": "->|=>|==|!=|<=|>=|&&|\\|\\||\\+|-|\\*|/|%|=|!|\\?|\\.\\.|:"
+        }
+      ]
+    }
+  }
+}
