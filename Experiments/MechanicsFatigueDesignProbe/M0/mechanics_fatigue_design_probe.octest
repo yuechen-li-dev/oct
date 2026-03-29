@@ -1,0 +1,79 @@
+package MechanicsFatigueDesignProbe
+
+[Fact]
+fn StressBaselineIsMonotonicAndHandCheckable() -> Void {
+    let probe = BuildFatigueDesignProbe()
+    let stress = probe.Stress
+
+    Assert.True(stress.SigmaAxialMax > stress.SigmaAxialMin, "axial stress should rise with higher axial force")
+    Assert.True(stress.SigmaBendingMax > stress.SigmaBendingMin, "bending stress should rise with larger bending moment")
+    Assert.True(stress.SigmaCombinedMax > stress.SigmaCombinedMin, "combined stress should preserve loading ordering")
+
+    Assert.Near(52500000.0, stress.SigmaAxialMax / 1kg/m/s^2, 0.1, "axial max hand-check")
+    Assert.Near(47500000.0, stress.SigmaBendingMax / 1kg/m/s^2, 0.1, "bending max hand-check")
+    Assert.Near(100000000.0, stress.SigmaCombinedMax / 1kg/m/s^2, 0.1, "combined max hand-check")
+}
+
+[Fact]
+fn FatigueDecompositionMatchesMeanAndAlternatingRelationships() -> Void {
+    let probe = BuildFatigueDesignProbe()
+    let stress = probe.Stress
+    let fatigue = probe.Fatigue
+
+    let expectedMean = 0.5 * (stress.SigmaCombinedMax + stress.SigmaCombinedMin)
+    let expectedAlternating = 0.5 * (stress.SigmaCombinedMax - stress.SigmaCombinedMin)
+
+    Assert.Near(expectedMean / 1kg/m/s^2, fatigue.MeanStress / 1kg/m/s^2, 0.000001, "mean stress should match arithmetic mean")
+    Assert.Near(expectedAlternating / 1kg/m/s^2, fatigue.AlternatingStress / 1kg/m/s^2, 0.000001, "alternating stress should match half-range")
+
+    Assert.Near(67500000.0, fatigue.MeanStress / 1kg/m/s^2, 0.1, "mean stress hand-check")
+    Assert.Near(32500000.0, fatigue.AlternatingStress / 1kg/m/s^2, 0.1, "alternating stress hand-check")
+}
+
+[Fact]
+fn EnduranceModificationComposesDeterministically() -> Void {
+    let probe = BuildFatigueDesignProbe()
+    let endurance = probe.Endurance
+
+    Assert.True(endurance.SurfaceFactor > 0, "surface factor must remain positive")
+    Assert.True(endurance.SizeFactor > 0, "size factor must remain positive")
+    Assert.True(endurance.ModifierProduct < 1.0, "combined modifiers should reduce baseline endurance for this case")
+
+    let recomposed = endurance.UnmodifiedEnduranceLimit * endurance.ModifierProduct
+    Assert.Near(recomposed / 1kg/m/s^2, endurance.DesignEnduranceLimit / 1kg/m/s^2, 0.000001, "design endurance should equal baseline times modifier product")
+    Assert.True(endurance.DesignEnduranceLimit > 150000000kg/m/s^2, "design endurance should remain in a realistic reduced range")
+    Assert.True(endurance.DesignEnduranceLimit < endurance.UnmodifiedEnduranceLimit, "design endurance should be below baseline endurance")
+}
+
+[Fact]
+fn CriterionComparisonShowsExpectedOrderingAndPositiveSafety() -> Void {
+    let probe = BuildFatigueDesignProbe()
+    let criteria = probe.Criteria
+
+    Assert.True(criteria.GoodmanFactorOfSafety > 0, "Goodman safety factor should be positive")
+    Assert.True(criteria.GerberFactorOfSafety > 0, "Gerber safety factor should be positive")
+    Assert.True(criteria.SoderbergFactorOfSafety > 0, "Soderberg safety factor should be positive")
+
+    Assert.True(criteria.GerberFactorOfSafety > criteria.GoodmanFactorOfSafety, "Gerber should be least conservative for this shared load case")
+    Assert.True(criteria.GoodmanFactorOfSafety > criteria.SoderbergFactorOfSafety, "Goodman should sit between Gerber and Soderberg")
+
+    Assert.True(criteria.GoodmanFactorOfSafety > 2.0, "Goodman safety factor should be comfortably above unity for this case")
+    Assert.True(criteria.GerberFactorOfSafety > 2.0, "Gerber safety factor should be comfortably above unity for this case")
+    Assert.True(criteria.SoderbergFactorOfSafety > 2.0, "Soderberg safety factor should be comfortably above unity for this case")
+}
+
+[Fact]
+fn EndToEndPipelineIsConsistentAcrossStages() -> Void {
+    let probe = BuildFatigueDesignProbe()
+
+    let fatigue = probe.Fatigue
+    let endurance = probe.Endurance
+    let criteria = probe.Criteria
+    let manualCriteria = BuildCriterionComparison(fatigue, endurance, probe.UltimateStrength, probe.YieldStrength)
+
+    Assert.Near(manualCriteria.GoodmanFactorOfSafety, criteria.GoodmanFactorOfSafety, 0.000001, "criteria helper should match integrated pipeline for Goodman")
+    Assert.Near(manualCriteria.GerberFactorOfSafety, criteria.GerberFactorOfSafety, 0.000001, "criteria helper should match integrated pipeline for Gerber")
+    Assert.Near(manualCriteria.SoderbergFactorOfSafety, criteria.SoderbergFactorOfSafety, 0.000001, "criteria helper should match integrated pipeline for Soderberg")
+
+    Assert.True(fatigue.AlternatingStress < endurance.DesignEnduranceLimit, "alternating stress should remain below modified endurance limit in this scenario")
+}

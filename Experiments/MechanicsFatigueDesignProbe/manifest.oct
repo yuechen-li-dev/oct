@@ -1,0 +1,25 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "MechanicsFatigueDesignProbe"
+        Version: "0.1.0"
+        Description: "Compact deterministic fatigue-design probe using Mechanics M0, M0a, and M1"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Mechanics" VersionRequirement: "0.4.0" }
+        ]
+    }
+}
