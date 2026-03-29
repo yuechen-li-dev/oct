@@ -449,11 +449,11 @@ Demo/integration programs live in a `Main/` package.
 `manifest.oct` is standard Oct source and must expose:
 
 * `record PackageManifest { Name, Version, Description, Dependencies }`
-* `record Dependency { Name, VersionRequirement }`
+* `record Dependency { Name, VersionRequirement }` (M71a/M71b)
+* `record Dependency { Name, VersionRequirement, Source }` when using `oct pkg sync`
 * `fn Manifest() -> PackageManifest`
 
 Current tooling validates manifest presence and structure.
-Dependencies are metadata only in v0.
 
 M71a adds a minimal Git-first package acquisition CLI:
 
@@ -469,12 +469,21 @@ M71b extends this with manifest metadata interpretation:
 * Dependency declarations are interpreted as structured entries (`Name`, `VersionRequirement`) and stored with cached package metadata.
 * `oct pkg get` / `oct pkg list` now report dependency counts from parsed manifest metadata.
 
-M71a/M71b scope is intentionally narrow:
+M71c adds first-pass dependency materialization for a project:
 
-* no dependency resolution or sync
+* `oct pkg sync` reads `manifest.oct` from the current working directory.
+* It synchronizes direct dependencies only (`PackageManifest.Dependencies`), requiring each entry to provide `Dependency.Source` (Git URL).
+* Each dependency source is fetched via the shared package cache layer (`oct pkg get` behavior) and reuses cache hits deterministically.
+* Output reports each dependency as `fetched` or `cache hit`, then prints `sync complete`.
+
+M71a/M71b/M71c scope is intentionally narrow:
+
+* no version solver
+* no dependency graph conflict resolution
 * no lockfile generation
 * no registry behavior
 * no install/lifecycle hooks or environment mutation
+* no vendoring/publishing flows
 
 Not included in v0:
 
