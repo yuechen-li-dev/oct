@@ -1,10 +1,9 @@
 package Mechanics
 
-// Peterson-style notch sensitivity relation.
-// q = 1 / (1 + a / rho) = rho / (rho + a)
-// where:
-//   rho: notch root radius [m]
-//   a: empirical material length parameter [m]
+/// Computes Peterson notch sensitivity q from material length and root radius.
+/// Param petersonLength: Empirical material length parameter a.
+/// Param notchRadius: Notch root radius rho.
+/// Remarks: Clamped to [0,1] and returns 0 for invalid geometry.
 fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
     if petersonLength < 0m {
         return 0
@@ -23,8 +22,8 @@ fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
     return q
 }
 
-// Fatigue stress concentration from theoretical/static concentration.
-// Kf = 1 + q * (Kt - 1)
+/// Converts theoretical stress concentration Kt to fatigue concentration Kf.
+/// Remarks: Uses Kf = 1 + q*(Kt-1).
 fn FatigueStressConcentrationFactor(theoreticalStressConcentrationFactor: Float, notchSensitivity: Float) -> Float {
     if theoreticalStressConcentrationFactor < 1.0 {
         return 0
@@ -38,8 +37,8 @@ fn FatigueStressConcentrationFactor(theoreticalStressConcentrationFactor: Float,
     return 1.0 + notchSensitivity * (theoreticalStressConcentrationFactor - 1.0)
 }
 
-// Fatigue shear stress concentration from theoretical/static shear concentration.
-// Kfs = 1 + q * (Kts - 1)
+/// Converts theoretical shear concentration Kts to fatigue shear concentration Kfs.
+/// Remarks: Uses Kfs = 1 + q*(Kts-1).
 fn FatigueShearStressConcentrationFactor(theoreticalShearConcentrationFactor: Float, notchSensitivity: Float) -> Float {
     if theoreticalShearConcentrationFactor < 1.0 {
         return 0

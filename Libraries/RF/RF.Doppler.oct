@@ -1,9 +1,15 @@
 package RF
 
+/// Computes Doppler shift for line-of-sight radial motion in EM propagation.
+/// Param carrierFrequencyHz: Carrier center frequency.
+/// Param relativeRadialVelocityMetersPerSecond: Signed closing velocity component.
+/// Remarks: Uses speed of light from this package.
 fn DopplerShiftHz(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float) -> Float {
     return DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond, SpeedOfLightMetersPerSecond())
 }
 
+/// Computes Doppler shift using an explicit propagation speed.
+/// Remarks: Suitable for non-vacuum or non-RF wave-speed approximations.
 fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float, propagationSpeedMetersPerSecond: Float) -> Float {
     if carrierFrequencyHz <= 0 {
         return 0.0
@@ -15,10 +21,13 @@ fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float, relativeRadialV
     return carrierFrequencyHz * relativeRadialVelocityMetersPerSecond / propagationSpeedMetersPerSecond
 }
 
+/// Returns the maximum magnitude Doppler shift for a speed bound.
 fn MaxDopplerShiftHz(carrierFrequencyHz: Float, speedMetersPerSecond: Float) -> Float {
     return Abs(DopplerShiftHz(carrierFrequencyHz, Abs(speedMetersPerSecond)))
 }
 
+/// Approximates channel coherence time using the Jakes 0.423/fd relation.
+/// Remarks: Model assumes wide-sense stationary narrowband fading.
 fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float) -> Float {
     if maxDopplerHz <= 0 {
         return 0.0
@@ -27,6 +36,7 @@ fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float) -> Float {
     return 0.423 / maxDopplerHz
 }
 
+/// Approximates coherence time using a half-cycle Doppler heuristic.
 fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
     if maxDopplerHz <= 0 {
         return 0.0
@@ -35,6 +45,8 @@ fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
     return 1.0 / (2.0 * maxDopplerHz)
 }
 
+/// Estimates coherence bandwidth from RMS delay spread with loose selectivity criterion.
+/// Remarks: Uses Bc≈1/(5στ), common for ~0.5 correlation definitions.
 fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float) -> Float {
     if rmsDelaySpreadSeconds <= 0 {
         return 0.0
@@ -43,6 +55,8 @@ fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float)
     return 1.0 / (5.0 * rmsDelaySpreadSeconds)
 }
 
+/// Estimates coherence bandwidth from RMS delay spread with stricter selectivity criterion.
+/// Remarks: Uses Bc≈1/(50στ), representing higher frequency-correlation requirement.
 fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) -> Float {
     if rmsDelaySpreadSeconds <= 0 {
         return 0.0
@@ -51,6 +65,8 @@ fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) ->
     return 1.0 / (50.0 * rmsDelaySpreadSeconds)
 }
 
+/// Converts Doppler frequency offset and elapsed time to accumulated phase.
+/// Units: Hz·s -> radians.
 fn DopplerPhaseRadians(dopplerShiftHz: Float, timeSeconds: Float) -> Float {
     return 2.0 * Pi() * dopplerShiftHz * timeSeconds
 }

@@ -1,5 +1,12 @@
 package RF
 
+/// Computes received power from linear link-budget terms.
+/// Param txPower: Transmit power.
+/// Param txGainLinear: Transmit antenna gain.
+/// Param rxGainLinear: Receive antenna gain.
+/// Param pathLossLinear: End-to-end propagation loss factor.
+/// Param systemLossLinear: Additional implementation loss factor.
+/// Remarks: Returns zero when path or system loss is non-positive.
 fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: Float, pathLossLinear: Float, systemLossLinear: Float) -> Float<kg*m^2/s^3> {
     if pathLossLinear <= 0 {
         return 0kg*m^2/s^3
@@ -10,6 +17,8 @@ fn ReceivedPower(txPower: Float<kg*m^2/s^3>, txGainLinear: Float, rxGainLinear: 
     return txPower * txGainLinear * rxGainLinear / pathLossLinear / systemLossLinear
 }
 
+/// Computes linear SNR from received and noise power.
+/// Remarks: Returns 0 when noise power is non-positive.
 fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
     if noisePower <= 0kg*m^2/s^3 {
         return 0.0
@@ -17,6 +26,8 @@ fn SNRLinear(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) ->
     return receivedPower / noisePower
 }
 
+/// Computes SNRLinear sample-by-sample.
+/// Remarks: Returns [0.0] when lengths mismatch or input is empty.
 fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
     if Len(receivedPower) != Len(noisePower) {
         return [0.0]
@@ -32,6 +43,8 @@ fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/
     return out
 }
 
+/// Converts linear power ratio to decibels.
+/// Remarks: Returns 0 dB sentinel for non-positive input.
 fn LinearToDb(valueLinear: Float) -> Float {
     if valueLinear <= 0 {
         return 0.0
@@ -39,14 +52,18 @@ fn LinearToDb(valueLinear: Float) -> Float {
     return 10.0 * Log10(valueLinear)
 }
 
+/// Converts decibels to linear power ratio.
 fn DbToLinear(valueDb: Float) -> Float {
     return Exp(Ln(10) * valueDb / 10.0)
 }
 
+/// Computes SNR in decibels from received and noise power.
 fn SNRDb(receivedPower: Float<kg*m^2/s^3>, noisePower: Float<kg*m^2/s^3>) -> Float {
     return LinearToDb(SNRLinear(receivedPower, noisePower))
 }
 
+/// Computes SNRDb sample-by-sample.
+/// Remarks: Returns [0.0] when lengths mismatch or input is empty.
 fn SNRDbSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>[]) -> Float[] {
     if Len(receivedPower) != Len(noisePower) {
         return [0.0]
