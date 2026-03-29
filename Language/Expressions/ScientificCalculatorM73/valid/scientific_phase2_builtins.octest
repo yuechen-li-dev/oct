@@ -1,0 +1,15 @@
+package MainValid
+
+[Fact]
+fn ScientificPhase2Builtins() -> Void {
+    Assert.Near(Pi() / 4, Atan2(1, 1), 0.000001, "atan2 first quadrant")
+    Assert.Near(Pi(), Atan2(0, 0 - 1), 0.000001, "atan2 x-negative axis")
+    Assert.Near(3.0 * Pi() / 4, Atan2(1, 0 - 1), 0.000001, "atan2 second quadrant")
+
+    Assert.Near(0.0, Sinh(0), 0.000001, "sinh zero")
+    Assert.Near(1.0, Cosh(0), 0.000001, "cosh zero")
+    Assert.Near(0.0, Tanh(0), 0.000001, "tanh zero")
+
+    let composable = Atan2(Tanh(0) + 1, Cosh(0)) + Sinh(0)
+    Assert.Near(Pi() / 4, composable, 0.000001, "new builtins compose in expressions")
+}

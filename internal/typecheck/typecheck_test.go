@@ -238,7 +238,11 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> Float { return Asin(1) }",
 		"fn Main() -> Float { return Acos(1) }",
 		"fn Main() -> Float { return Atan(1) }",
+		"fn Main() -> Float { return Atan2(1, 1) }",
 		"fn Main() -> Float { return Exp(1) }",
+		"fn Main() -> Float { return Sinh(1) }",
+		"fn Main() -> Float { return Cosh(1) }",
+		"fn Main() -> Float { return Tanh(1) }",
 		"fn Main() -> Float { return Ln(1) }",
 		"fn Main() -> Float { return Log10(1000) }",
 		"fn Main() -> Float { return Sin(90deg) }",
@@ -289,6 +293,12 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Pi(1) }", "function Main: function 'Pi' expects 0 arguments, got 1")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1) }", "function Main: function 'Atan2' expects 2 arguments, got 1")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1m, 1) }", "function Main: Atan2 requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1, 1s) }", "function Main: Atan2 requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Sinh(3m) }", "function Main: Sinh requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Cosh(2kg) }", "function Main: Cosh requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Tanh(5A) }", "function Main: Tanh requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len() }", "function Main: function 'Len' expects 1 arguments, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sin(1, 2) }", "function Main: function 'Sin' expects 1 arguments, got 2")
 	assertTypeErrorContains(t, "fn Main() -> Int[] { return Append(1, 2) }", "function Main: Append requires array as first argument")

@@ -24,6 +24,7 @@ func TestRunCommandExecutesMainPrograms(t *testing.T) {
 		{filepath.Join("..", "..", "Language", "Expressions", "Arithmetic", "valid"), "PASS MainValid.ArithmeticPrecedence"},
 		{filepath.Join("..", "..", "Language", "Expressions", "Literals", "valid"), "PASS MainValid.IntLiteralReturn"},
 		{filepath.Join("..", "..", "Language", "Expressions", "Logical", "valid"), "PASS MainValid.LogicalAnd"},
+		{filepath.Join("..", "..", "Language", "Expressions", "ScientificCalculatorM73", "valid"), "PASS MainValid.ScientificPhase2Builtins"},
 		{filepath.Join("..", "..", "Language", "Types", "Arrays", "valid"), "PASS MainValid.ArrayIndexingValid"},
 	}
 	for _, tc := range validRoots {
@@ -62,6 +63,13 @@ func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
 			root: filepath.Join("..", "..", "Language", "Functions", "Calls", "invalid"),
 			passes: []string{
 				"PASS call_arity_mismatch.octfail",
+			},
+		},
+		{
+			root: filepath.Join("..", "..", "Language", "Expressions", "ScientificCalculatorM73", "invalid"),
+			passes: []string{
+				"PASS atan2_rejects_dimensional_y.octfail",
+				"PASS tanh_rejects_dimensional_input.octfail",
 			},
 		},
 	}
@@ -1220,7 +1228,14 @@ func TestRunCommandSupportsM72Builtins(t *testing.T) {
 		{name: "asin one", source: "fn Main() -> Float {\n    return Asin(1)\n}\n", want: "1.5707963267948966\n"},
 		{name: "acos one", source: "fn Main() -> Float {\n    return Acos(1)\n}\n", want: "0\n"},
 		{name: "atan one", source: "fn Main() -> Float {\n    return Atan(1)\n}\n", want: "0.7853981633974483\n"},
+		{name: "atan2 q1", source: "fn Main() -> Float {\n    return Atan2(1, 1)\n}\n", want: "0.7853981633974483\n"},
+		{name: "atan2 q2", source: "fn Main() -> Float {\n    return Atan2(1, 0 - 1)\n}\n", want: "2.356194490192345\n"},
+		{name: "atan2 pi", source: "fn Main() -> Float {\n    return Atan2(0, 0 - 1)\n}\n", want: "3.141592653589793\n"},
 		{name: "exp one", source: "fn Main() -> Float {\n    return Exp(1)\n}\n", want: "2.718281828459045\n"},
+		{name: "sinh zero", source: "fn Main() -> Float {\n    return Sinh(0)\n}\n", want: "0\n"},
+		{name: "cosh zero", source: "fn Main() -> Float {\n    return Cosh(0)\n}\n", want: "1\n"},
+		{name: "tanh zero", source: "fn Main() -> Float {\n    return Tanh(0)\n}\n", want: "0\n"},
+		{name: "m73 composability", source: "fn Main() -> Float {\n    return Atan2(Tanh(0) + 1, Cosh(0)) + Sinh(0)\n}\n", want: "0.7853981633974483\n"},
 		{name: "ln e", source: "fn Main() -> Float {\n    return Ln(E())\n}\n", want: "1\n"},
 		{name: "log10", source: "fn Main() -> Float {\n    return Log10(1000)\n}\n", want: "3\n"},
 		{name: "pi", source: "fn Main() -> Float {\n    return Pi()\n}\n", want: "3.141592653589793\n"},
@@ -1257,6 +1272,11 @@ func TestRunCommandRejectsInvalidM72Domains(t *testing.T) {
 		{name: "ln negative", source: "fn Main() -> Float {\n    return Ln(0 - 1)\n}\n", wantMessage: "runtime error: Ln expects positive input, got -1"},
 		{name: "log10 zero", source: "fn Main() -> Float {\n    return Log10(0)\n}\n", wantMessage: "runtime error: Log10 expects positive input, got 0"},
 		{name: "log10 negative", source: "fn Main() -> Float {\n    return Log10(0 - 10)\n}\n", wantMessage: "runtime error: Log10 expects positive input, got -10"},
+		{name: "atan2 dimensional y", source: "fn Main() -> Float {\n    return Atan2(1m, 1)\n}\n", wantMessage: "function Main: Atan2 requires dimensionless input"},
+		{name: "atan2 dimensional x", source: "fn Main() -> Float {\n    return Atan2(1, 1s)\n}\n", wantMessage: "function Main: Atan2 requires dimensionless input"},
+		{name: "sinh dimensional", source: "fn Main() -> Float {\n    return Sinh(3m)\n}\n", wantMessage: "function Main: Sinh requires dimensionless input"},
+		{name: "cosh dimensional", source: "fn Main() -> Float {\n    return Cosh(2kg)\n}\n", wantMessage: "function Main: Cosh requires dimensionless input"},
+		{name: "tanh dimensional", source: "fn Main() -> Float {\n    return Tanh(5A)\n}\n", wantMessage: "function Main: Tanh requires dimensionless input"},
 	}
 
 	for _, test := range tests {

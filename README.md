@@ -111,13 +111,16 @@ Fallibility is lowered as explicit result-value control flow in MIR/Go generatio
 
 ### Built-ins and Runtime Utilities
 
-* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan`, `Exp`, `Ln`, `Log10`, `Pi()`, `E()`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
+* Built-ins include: `Len`, `Append`, `Abs`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`, `Sinh`, `Cosh`, `Tanh`, `Exp`, `Ln`, `Log10`, `Pi()`, `E()`, `WriteOctagon`, `PlotLine`, `PlotScatter`, and `error("message")`.
 * Octomata runtime built-ins include: `Step`, `Active`, `Result`, `Complete`, `StateHistory`, and `ResumeTarget`.
 * `Append(xs, x)` appends one element to an array and returns a new array value (`xs` must be an array, and `x` must exactly match its element type).
 * In v0, `Append` is the intended primitive for explicit variable-length array construction (for example, `out = Append(out, value)`).
 * `Sin`, `Cos`, and `Tan` accept dimensionless radians and explicit degree literals (`deg`).
 * `Asin`, `Acos`, and `Atan` return radians (dimensionless `Float`).
+* `Atan2(y, x)` requires dimensionless scalar inputs and returns a dimensionless `Float` in radians.
+* `Sinh`, `Cosh`, and `Tanh` require dimensionless scalar input and return dimensionless `Float`.
 * `Exp`, `Ln`, and `Log10` require dimensionless input; `Ln`/`Log10` require strictly positive inputs.
+* Scientific math built-ins are intentionally limited to common scalar functions; inverse hyperbolics, sec/csc/cot, combinatorics, random helpers, complex-number math, and symbolic math remain deferred.
 
 ---
 

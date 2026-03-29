@@ -1789,6 +1789,37 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.E}}, nil
 	}
+	if callee == "Atan2" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		yArgument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if yArgument.hasError {
+			return evalResult{hasError: true, errorVal: yArgument.errorVal}, nil
+		}
+		xArgument, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if xArgument.hasError {
+			return evalResult{hasError: true, errorVal: xArgument.errorVal}, nil
+		}
+		if !yArgument.value.Dimension.IsDimensionless() || !xArgument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Atan2 requires dimensionless input")
+		}
+		yValue, err := numericValueAsFloat(yArgument.value, "Atan2")
+		if err != nil {
+			return evalResult{}, err
+		}
+		xValue, err := numericValueAsFloat(xArgument.value, "Atan2")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Atan2(yValue, xValue)}}, nil
+	}
 
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
@@ -1911,6 +1942,33 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, err
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Exp(value)}}, nil
+	case "Sinh":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Sinh requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Sinh")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Sinh(value)}}, nil
+	case "Cosh":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Cosh requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Cosh")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Cosh(value)}}, nil
+	case "Tanh":
+		if !argument.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Tanh requires dimensionless input")
+		}
+		value, err := numericValueAsFloat(argument.value, "Tanh")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Tanh(value)}}, nil
 	case "Ln":
 		if !argument.value.Dimension.IsDimensionless() {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Ln requires dimensionless input")
