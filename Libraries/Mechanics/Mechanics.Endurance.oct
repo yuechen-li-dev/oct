@@ -1,0 +1,120 @@
+package Mechanics
+
+fn EnduranceModifierProduct(surfaceFactor: Float, sizeFactor: Float, loadFactor: Float, temperatureFactor: Float, reliabilityFactor: Float) -> Float {
+    if surfaceFactor <= 0 {
+        return 0
+    }
+    if sizeFactor <= 0 {
+        return 0
+    }
+    if loadFactor <= 0 {
+        return 0
+    }
+    if temperatureFactor <= 0 {
+        return 0
+    }
+    if reliabilityFactor <= 0 {
+        return 0
+    }
+    return surfaceFactor * sizeFactor * loadFactor * temperatureFactor * reliabilityFactor
+}
+
+fn DesignEnduranceLimit(unmodifiedEnduranceLimit: Float<kg/m/s^2>, surfaceFactor: Float, sizeFactor: Float, loadFactor: Float, temperatureFactor: Float, reliabilityFactor: Float) -> Float<kg/m/s^2> {
+    if unmodifiedEnduranceLimit <= 0kg/m/s^2 {
+        return 0kg/m/s^2
+    }
+
+    let modifier = EnduranceModifierProduct(surfaceFactor, sizeFactor, loadFactor, temperatureFactor, reliabilityFactor)
+    return unmodifiedEnduranceLimit * modifier
+}
+
+fn SurfaceFactorFromUltimateStrength(ultimateStrength: Float<kg/m/s^2>, a: Float, b: Float) -> Float {
+    if ultimateStrength <= 0kg/m/s^2 {
+        return 0
+    }
+    if a <= 0 {
+        return 0
+    }
+
+    let sutMpa = ultimateStrength / 1000000kg/m/s^2
+    return a * Exp(b * Ln(sutMpa))
+}
+
+fn SizeFactorFromDiameter(diameter: Float<m>, referenceDiameter: Float<m>, exponent: Float) -> Float {
+    if diameter <= 0m {
+        return 0
+    }
+    if referenceDiameter <= 0m {
+        return 0
+    }
+
+    let ratio = diameter / referenceDiameter
+    return Exp(exponent * Ln(ratio))
+}
+
+fn LoadFactorDirect(loadFactor: Float) -> Float {
+    if loadFactor <= 0 {
+        return 0
+    }
+    return loadFactor
+}
+
+fn LoadFactorBending() -> Float {
+    return 1.0
+}
+
+fn LoadFactorAxial() -> Float {
+    return 0.85
+}
+
+fn LoadFactorTorsion() -> Float {
+    return 0.59
+}
+
+fn TemperatureFactorDirect(temperatureFactor: Float) -> Float {
+    if temperatureFactor <= 0 {
+        return 0
+    }
+    return temperatureFactor
+}
+
+fn ReliabilityFactorFromStandardScore(standardScore: Float) -> Float {
+    let factor = 1.0 - 0.08 * standardScore
+    if factor <= 0 {
+        return 0
+    }
+    return factor
+}
+
+fn ReliabilityFactorFromPercent(reliabilityPercent: Float) -> Float {
+    if reliabilityPercent < 0 {
+        return 0
+    }
+
+    if reliabilityPercent <= 50.0 {
+        return 1.0
+    }
+    if reliabilityPercent <= 90.0 {
+        return 0.897
+    }
+    if reliabilityPercent <= 95.0 {
+        return 0.868
+    }
+    if reliabilityPercent <= 99.0 {
+        return 0.814
+    }
+    if reliabilityPercent <= 99.9 {
+        return 0.753
+    }
+    if reliabilityPercent <= 99.99 {
+        return 0.702
+    }
+    if reliabilityPercent <= 99.999 {
+        return 0.659
+    }
+    if reliabilityPercent <= 99.9999 {
+        return 0.620
+    }
+
+    return 0.0
+}

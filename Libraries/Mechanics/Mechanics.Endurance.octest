@@ -1,0 +1,120 @@
+package Mechanics
+
+[Fact]
+fn EnduranceModifierCompositionMonotonicAndUnityBehavior() -> Void {
+    let baseline = 240000000.0kg/m/s^2
+
+    let unity = DesignEnduranceLimit(baseline, 1.0, 1.0, 1.0, 1.0, 1.0)
+    Assert.Near(baseline / 1kg/m/s^2, unity / 1kg/m/s^2, 0.001, "unity factors should preserve endurance limit")
+
+    let conservative = DesignEnduranceLimit(baseline, 0.85, 0.90, 0.85, 0.95, 0.868)
+    Assert.True(conservative < baseline, "combined factors below unity should reduce design endurance")
+    Assert.Near(128687076.0, conservative / 1kg/m/s^2, 0.1, "modifier product hand-check")
+
+    let lowerSurface = DesignEnduranceLimit(baseline, 0.75, 0.90, 0.85, 0.95, 0.868)
+    Assert.True(lowerSurface < conservative, "lower individual modifier should reduce design endurance monotonically")
+}
+
+[Fact]
+fn SurfaceFactorCoefficientFormMatchesHandCalculation() -> Void {
+    let sut = 900000000.0kg/m/s^2
+
+    let machined = SurfaceFactorFromUltimateStrength(sut, 4.51, 0.0 - 0.265)
+    Assert.Near(0.743536, machined, 0.0005, "surface factor coefficient form hand-check")
+
+    let rougher = SurfaceFactorFromUltimateStrength(sut, 57.7, 0.0 - 0.718)
+    Assert.True(rougher < machined, "rougher finish coefficients should produce lower surface factor")
+}
+
+[Fact]
+fn SizeFactorDecreasesAsDiameterIncreases() -> Void {
+    let referenceDiameter = 0.00762m
+
+    let small = SizeFactorFromDiameter(0.00762m, referenceDiameter, 0.0 - 0.107)
+    let medium = SizeFactorFromDiameter(0.01524m, referenceDiameter, 0.0 - 0.107)
+    let large = SizeFactorFromDiameter(0.03048m, referenceDiameter, 0.0 - 0.107)
+
+    Assert.Near(1.0, small, 0.000001, "reference diameter should give unity factor")
+    Assert.True(medium < small, "larger diameter should reduce size factor")
+    Assert.True(large < medium, "size factor trend should be monotonic")
+    Assert.Near(0.928523, medium, 0.0005, "size factor hand-check")
+}
+
+[Fact]
+fn LoadAndTemperatureFactorHelpersStayExplicit() -> Void {
+    let bending = LoadFactorBending()
+    let axial = LoadFactorAxial()
+    let torsion = LoadFactorTorsion()
+
+    Assert.Near(1.0, bending, 0.000001, "bending load factor expected value")
+    Assert.Near(0.85, axial, 0.000001, "axial load factor expected value")
+    Assert.Near(0.59, torsion, 0.000001, "torsion load factor expected value")
+
+    let kd = TemperatureFactorDirect(0.94)
+    Assert.Near(0.94, kd, 0.000001, "temperature factor pass-through")
+
+    let direct = LoadFactorDirect(0.82)
+    Assert.Near(0.82, direct, 0.000001, "direct load factor pass-through")
+}
+
+[Fact]
+fn ReliabilityFactorHelpersDecreaseWithHigherReliabilityRequirement() -> Void {
+    let fromZ50 = ReliabilityFactorFromStandardScore(0.0)
+    let fromZ90 = ReliabilityFactorFromStandardScore(1.2815516)
+    let fromZ99 = ReliabilityFactorFromStandardScore(2.3263479)
+
+    Assert.True(fromZ50 > fromZ90, "higher reliability target should reduce reliability factor")
+    Assert.True(fromZ90 > fromZ99, "reliability factor should decrease as z-score increases")
+    Assert.Near(0.897476, fromZ90, 0.0005, "z-score hand-check")
+
+    let table90 = ReliabilityFactorFromPercent(90.0)
+    let table95 = ReliabilityFactorFromPercent(95.0)
+    let table99 = ReliabilityFactorFromPercent(99.0)
+
+    Assert.True(table90 > table95, "table helper should follow expected trend")
+    Assert.True(table95 > table99, "table helper should follow expected trend")
+    Assert.Near(0.868, table95, 0.000001, "95 percent table value")
+}
+
+[Fact]
+fn EnduranceLimitModifiersComposeWithGoodmanFatigueCheck() -> Void {
+    let sePrime = 350000000.0kg/m/s^2
+    let sut = 700000000.0kg/m/s^2
+    let alternating = 120000000.0kg/m/s^2
+    let mean = 140000000.0kg/m/s^2
+
+    let unmodifiedFos = GoodmanFactorOfSafety(alternating, mean, sePrime, sut)
+
+    let ka = SurfaceFactorFromUltimateStrength(sut, 4.51, 0.0 - 0.265)
+    let kb = SizeFactorFromDiameter(0.020m, 0.00762m, 0.0 - 0.107)
+    let kc = LoadFactorBending()
+    let kd = TemperatureFactorDirect(0.97)
+    let ke = ReliabilityFactorFromPercent(95.0)
+    let se = DesignEnduranceLimit(sePrime, ka, kb, kc, kd, ke)
+
+    let modifiedFos = GoodmanFactorOfSafety(alternating, mean, se, sut)
+
+    Assert.True(se < sePrime, "modifier factors should reduce endurance limit")
+    Assert.True(modifiedFos < unmodifiedFos, "reduced endurance limit should reduce Goodman safety factor")
+}
+
+[Fact]
+fn InvalidInputsReturnZeroForGuardedHelpers() -> Void {
+    let badComposite = EnduranceModifierProduct(1.0, 0.0, 0.85, 0.95, 0.897)
+    Assert.Near(0.0, badComposite, 0.000001, "invalid modifier factor guard")
+
+    let badEndurance = DesignEnduranceLimit(0.0kg/m/s^2, 0.9, 0.9, 0.9, 0.9, 0.9)
+    Assert.Near(0.0, badEndurance / 1kg/m/s^2, 0.000001, "invalid baseline endurance guard")
+
+    let badSurface = SurfaceFactorFromUltimateStrength(0.0kg/m/s^2, 4.51, 0.0 - 0.265)
+    let badSize = SizeFactorFromDiameter(0.0m, 0.00762m, 0.0 - 0.107)
+    let badLoad = LoadFactorDirect(0.0)
+    let badTemp = TemperatureFactorDirect(0.0)
+    let badReliability = ReliabilityFactorFromPercent(150.0)
+
+    Assert.Near(0.0, badSurface, 0.000001, "invalid surface input guard")
+    Assert.Near(0.0, badSize, 0.000001, "invalid size input guard")
+    Assert.Near(0.0, badLoad, 0.000001, "invalid load factor guard")
+    Assert.Near(0.0, badTemp, 0.000001, "invalid temperature factor guard")
+    Assert.Near(0.0, badReliability, 0.000001, "invalid reliability percent guard")
+}
