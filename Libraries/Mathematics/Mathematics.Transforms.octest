@@ -1,0 +1,118 @@
+package Mathematics
+
+fn Vector(real: Float[], imag: Float[]) -> ComplexVector {
+    return ComplexVector { Real: real Imag: imag }
+}
+
+fn NearVectorAt(expected: ComplexVector, actual: ComplexVector, i: Int, tolerance: Float, message: String) -> Void {
+    Assert.Near(expected.Real[i], actual.Real[i], tolerance, message + " (real)")
+    Assert.Near(expected.Imag[i], actual.Imag[i], tolerance, message + " (imag)")
+}
+
+[Fact]
+fn FFTRejectsInvalidShapeAndLengthPolicy() -> Void {
+    match ValidateFFTLength(0) {
+        ok(v) => { Assert.True(false, "empty input must fail") }
+        err(e) => { }
+    }
+
+    match FFT(Vector([1.0, 2.0, 3.0], [0.0, 0.0, 0.0])) {
+        ok(v) => { Assert.True(false, "non-power-of-two length must fail") }
+        err(e) => { }
+    }
+
+    match FFT(Vector([1.0, 2.0], [0.0])) {
+        ok(v) => { Assert.True(false, "mismatched real/imag lengths must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn FFTLengthOneAndLengthPreservation() -> Void {
+    let unit = Vector([2.5], [0.0 - 1.5])
+    let spectrum = FFT(unit)!
+    Assert.Equal(1, Len(spectrum.Real), "FFT must preserve length")
+    Assert.Equal(1, Len(spectrum.Imag), "FFT imag length must preserve length")
+    NearVectorAt(unit, spectrum, 0, 0.000000001, "length-1 fft should be identity")
+
+    let vector = Vector([1.0, 3.0, 5.0, 7.0], [2.0, 4.0, 6.0, 8.0])
+    let transformed = FFT(vector)!
+    Assert.Equal(Len(vector.Real), Len(transformed.Real), "FFT output real length must match input")
+    Assert.Equal(Len(vector.Imag), Len(transformed.Imag), "FFT output imag length must match input")
+}
+
+[Fact]
+fn FFTMatchesImpulseAndConstantCases() -> Void {
+    let impulse = Vector([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0])
+    let impulseSpectrum = FFT(impulse)!
+
+    let expectedImpulseSpectrum = Vector([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0])
+    NearVectorAt(expectedImpulseSpectrum, impulseSpectrum, 0, 0.000001, "impulse bin 0")
+    NearVectorAt(expectedImpulseSpectrum, impulseSpectrum, 1, 0.000001, "impulse bin 1")
+    NearVectorAt(expectedImpulseSpectrum, impulseSpectrum, 2, 0.000001, "impulse bin 2")
+    NearVectorAt(expectedImpulseSpectrum, impulseSpectrum, 3, 0.000001, "impulse bin 3")
+
+    let constant = Vector([2.0, 2.0, 2.0, 2.0], [0.0, 0.0, 0.0, 0.0])
+    let constantSpectrum = FFT(constant)!
+    let expectedConstantSpectrum = Vector([8.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0])
+    NearVectorAt(expectedConstantSpectrum, constantSpectrum, 0, 0.000001, "constant dc bin")
+    NearVectorAt(expectedConstantSpectrum, constantSpectrum, 1, 0.000001, "constant bin 1")
+    NearVectorAt(expectedConstantSpectrum, constantSpectrum, 2, 0.000001, "constant bin 2")
+    NearVectorAt(expectedConstantSpectrum, constantSpectrum, 3, 0.000001, "constant bin 3")
+}
+
+[Fact]
+fn FFTConventionSignAndNormalizationAreLocked() -> Void {
+    let x = Vector([0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0])
+    let X = FFT(x)!
+
+    let expected = Vector([1.0, 0.0, 0.0 - 1.0, 0.0], [0.0, 0.0 - 1.0, 0.0, 1.0])
+    NearVectorAt(expected, X, 0, 0.000001, "k=0")
+    NearVectorAt(expected, X, 1, 0.000001, "k=1 uses negative exponential sign")
+    NearVectorAt(expected, X, 2, 0.000001, "k=2")
+    NearVectorAt(expected, X, 3, 0.000001, "k=3")
+
+    let recovered = IFFT(X)!
+    NearVectorAt(x, recovered, 0, 0.000001, "ifft reconstruction n=0")
+    NearVectorAt(x, recovered, 1, 0.000001, "ifft reconstruction n=1")
+    NearVectorAt(x, recovered, 2, 0.000001, "ifft reconstruction n=2")
+    NearVectorAt(x, recovered, 3, 0.000001, "ifft reconstruction n=3")
+}
+
+[Fact]
+fn IFFTRoundTripNonTrivialSequence() -> Void {
+    let signal = Vector(
+        [0.5, 1.0, 0.0 - 0.5, 0.25, 2.0, 0.0 - 1.5, 0.75, 0.0],
+        [0.0 - 0.25, 0.75, 0.5, 0.0 - 1.0, 0.0, 0.25, 1.25, 0.0 - 0.5]
+    )
+
+    let spectrum = FFT(signal)!
+    let reconstructed = IFFT(spectrum)!
+
+    var i = 0
+    while i < Len(signal.Real) {
+        NearVectorAt(signal, reconstructed, i, 0.000001, "ifft(fft(x)) ~= x")
+        i = i + 1
+    }
+}
+
+[Fact]
+fn FFTComposableFrequencyWorkflow() -> Void {
+    let signal = Vector([1.0, 0.0 - 1.0, 1.0, 0.0 - 1.0], [0.0, 0.0, 0.0, 0.0])
+
+    let spectrum = FFT(signal)!
+    let dominantMagnitude = Max(
+        Max(Hypot(spectrum.Real[0], spectrum.Imag[0]), Hypot(spectrum.Real[1], spectrum.Imag[1])),
+        Max(Hypot(spectrum.Real[2], spectrum.Imag[2]), Hypot(spectrum.Real[3], spectrum.Imag[3]))
+    )
+    Assert.True(dominantMagnitude > 2.0, "FFT spectrum should expose dominant bin magnitude")
+
+    let filtered = Vector(
+        [spectrum.Real[0], 0.0, spectrum.Real[2], 0.0],
+        [spectrum.Imag[0], 0.0, spectrum.Imag[2], 0.0]
+    )
+
+    let reconstructed = IFFT(filtered)!
+    Assert.Equal(4, Len(reconstructed.Real), "IFFT output length must be preserved after spectral edits")
+    Assert.True(Hypot(reconstructed.Real[0], reconstructed.Imag[0]) > 0.5, "frequency-domain edits should produce deterministic time-domain output")
+}

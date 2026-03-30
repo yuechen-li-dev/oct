@@ -1,8 +1,8 @@
-# Mathematics M0
+# Mathematics M1
 
 ## Surface
 
-`Libraries/Mathematics` provides a narrow foundational helper set:
+`Libraries/Mathematics` provides a narrow deterministic numerical surface:
 
 - `Min(left: Float, right: Float) -> Float`
 - `Max(left: Float, right: Float) -> Float`
@@ -16,8 +16,38 @@
 - `DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error`
 - `IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
 - `IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
+- `record ComplexVector { Real: Float[] Imag: Float[] }`
+- `FFT(x: ComplexVector) -> ComplexVector ! Error`
+- `IFFT(X: ComplexVector) -> ComplexVector ! Error`
 
-## Behavior
+## M1 transform conventions
+
+M1 adds a focused 1D complex transform layer.
+
+- Forward FFT (unnormalized):
+  - `X[k] = Σ x[n] * exp(-j*2πkn/N)`
+- Inverse FFT (normalized by `1/N`):
+  - `x[n] = (1/N) * Σ X[k] * exp(+j*2πkn/N)`
+
+This sign and normalization placement is fixed by tests.
+
+## Input policy
+
+For both `FFT` and `IFFT` in M1:
+
+- input length must be `> 0`
+- `Len(Real) == Len(Imag)`
+- input length must be a power of two
+- invalid shape/length returns `Error`
+- no silent padding, truncation, or zero-fill
+
+Implementation strategy is radix-2 Cooley-Tukey for power-of-two lengths only.
+
+## Implementation note
+
+The M1 transform remains fully complex-valued, but uses `ComplexVector` (`Float[]` real and imaginary lanes) because current Oct builtins do not provide `Len` over `Complex[]`.
+
+## Behavior notes
 
 - `Min` / `Max` return the lower/higher argument.
 - `Clamp` normalizes bounds with `Min`/`Max` first, then clamps.
@@ -34,10 +64,21 @@
 
 ## Dimension rules
 
-Mathematics M0 is conservative: all inputs are dimensionless `Float` except `Pow` exponent (`Int`) and `Sign` result (`Int`).
-Dimensioned arguments are rejected by type checking.
-Calculus M0 is scalar-only: differentiation and integration accept scalar `Float -> Float` functions and return scalar `Float` results.
+Mathematics M1 remains conservative:
+
+- scalar helpers and calculus stay scalar `Float`/`Int`
+- transforms are explicit complex lanes (`Float[]` real + `Float[]` imag)
+- no dimension-aware frequency-axis metadata is introduced in M1
 
 ## Non-goals
 
-Mathematics.Calculus M0 does not include symbolic calculus, automatic differentiation, adaptive quadrature, multidimensional integration, ODE solvers, or root finding.
+M1 intentionally does **not** include:
+
+- real-FFT specializations
+- multidimensional FFT
+- STFT or spectrogram frameworks
+- window functions
+- DCT/DST families
+- convolution helpers
+- PSD/filtering/resampling abstractions
+- wavelets
