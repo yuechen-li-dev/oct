@@ -29,6 +29,12 @@ func TestM74IOXlsxM0Wrapper(t *testing.T) {
 	if !strings.Contains(stdout, "PASS IO.XlsxRejectsInvalidWorkbookHandle") {
 		t.Fatalf("expected invalid-handle fact pass output, got %q", stdout)
 	}
+	if !strings.Contains(stdout, "PASS IO.XlsxRejectsInvalidSavePathExtension") {
+		t.Fatalf("expected invalid save path fact pass output, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "PASS IO.XlsxRejectsSaveWithInvalidWorkbookHandle") {
+		t.Fatalf("expected invalid handle save fact pass output, got %q", stdout)
+	}
 
 	info, statErr := os.Stat(outputPath)
 	if statErr != nil {
