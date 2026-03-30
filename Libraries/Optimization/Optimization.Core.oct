@@ -1,0 +1,141 @@
+package Optimization
+
+record OptimizationResult1D {
+    Point: Float
+    Value: Float
+    Iterations: Int
+    Converged: Bool
+}
+
+record OptimizationResult {
+    Point: Float
+    Value: Float
+    Iterations: Int
+    Converged: Bool
+}
+
+fn GoldenSectionSearch(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> OptimizationResult1D ! Error {
+    let ok = ValidateGoldenSectionInputs(a, b, tolerance, maxIterations)?
+
+    let phi = (1.0 + Sqrt(5.0)) / 2.0
+    let ratio = phi - 1.0
+
+    var left = a
+    var right = b
+    var c = right - ratio * (right - left)
+    var d = left + ratio * (right - left)
+    var fc = f(c)
+    var fd = f(d)
+    var iterations = 0
+
+    while iterations < maxIterations and (right - left) > tolerance {
+        if fc < fd {
+            right = d
+            d = c
+            fd = fc
+            c = right - ratio * (right - left)
+            fc = f(c)
+        } else {
+            left = c
+            c = d
+            fc = fd
+            d = left + ratio * (right - left)
+            fd = f(d)
+        }
+
+        iterations = iterations + 1
+    }
+
+    let point = (left + right) / 2.0
+    let value = f(point)
+
+    return OptimizationResult1D {
+        Point: point
+        Value: value
+        Iterations: iterations
+        Converged: (right - left) <= tolerance
+    }
+}
+
+fn GradientDescentStep(x: Float, gradient: Float, stepSize: Float) -> Float ! Error {
+    let ok = ValidateStepSize(stepSize)?
+    return x - stepSize * gradient
+}
+
+fn GradientDescentSolve(
+    f: fn(Float) -> Float,
+    grad: fn(Float) -> Float,
+    x0: Float,
+    stepSize: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> OptimizationResult ! Error {
+    let ok = ValidateGradientDescentInputs(stepSize, tolerance, maxIterations)?
+
+    var x = x0
+    var value = f(x)
+    var iterations = 0
+    var converged = false
+
+    while iterations < maxIterations and not converged {
+        let g = grad(x)
+        if Abs(g) <= tolerance {
+            converged = true
+        } else {
+            x = GradientDescentStep(x, g, stepSize)?
+            value = f(x)
+            iterations = iterations + 1
+        }
+    }
+
+    return OptimizationResult {
+        Point: x
+        Value: value
+        Iterations: iterations
+        Converged: converged
+    }
+}
+
+fn ValidateGoldenSectionInputs(a: Float, b: Float, tolerance: Float, maxIterations: Int) -> Bool ! Error {
+    if a >= b {
+        return error("golden section search requires a < b")
+    }
+
+    if tolerance <= 0.0 {
+        return error("golden section search requires tolerance > 0")
+    }
+
+    if maxIterations <= 0 {
+        return error("golden section search requires maxIterations > 0")
+    }
+
+    return true
+}
+
+fn ValidateStepSize(stepSize: Float) -> Bool ! Error {
+    if stepSize <= 0.0 {
+        return error("gradient descent requires stepSize > 0")
+    }
+
+    return true
+}
+
+fn ValidateGradientDescentInputs(stepSize: Float, tolerance: Float, maxIterations: Int) -> Bool ! Error {
+    let stepOk = ValidateStepSize(stepSize)?
+
+    if tolerance <= 0.0 {
+        return error("gradient descent requires tolerance > 0")
+    }
+
+    if maxIterations <= 0 {
+        return error("gradient descent requires maxIterations > 0")
+    }
+
+    return true
+}
