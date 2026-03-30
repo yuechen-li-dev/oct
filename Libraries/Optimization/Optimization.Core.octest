@@ -1,0 +1,94 @@
+package Optimization
+
+fn f(x: Float) -> Float {
+    let dx = x - 3.0
+    return dx * dx + 1.0
+}
+
+fn grad(x: Float) -> Float {
+    return 2.0 * (x - 3.0)
+}
+
+[Fact]
+fn GoldenSectionSearchFindsKnownMinimum() -> Void {
+    let result = GoldenSectionSearch(f, 0.0 - 5.0, 10.0, 0.000001, 200)!
+
+    Assert.True(result.Point >= (0.0 - 5.0) and result.Point <= 10.0, "point should remain inside search interval")
+    Assert.Near(3.0, result.Point, 0.001, "minimum should be near x=3")
+    Assert.Near(1.0, result.Value, 0.001, "minimum value should be near 1")
+    Assert.True(result.Converged, "search should converge on a convex interval")
+}
+
+[Fact]
+fn GoldenSectionSearchRejectsInvalidInputs() -> Void {
+    match GoldenSectionSearch(f, 1.0, 1.0, 0.000001, 100) {
+        ok(v) => { Assert.True(false, "a >= b must fail") }
+        err(e) => { }
+    }
+
+    match GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.0, 100) {
+        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.000001, 0) {
+        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn GradientDescentStepComputesSingleUpdate() -> Void {
+    let next = GradientDescentStep(5.0, 4.0, 0.25)!
+    Assert.Near(4.0, next, 0.000001, "step should apply x - alpha * gradient")
+}
+
+[Fact]
+fn GradientDescentSolveConvergesOnQuadratic() -> Void {
+    let result = GradientDescentSolve(f, grad, 10.0, 0.2, 0.000001, 200)!
+
+    Assert.Near(3.0, result.Point, 0.001, "gradient descent should converge near minimizer")
+    Assert.Near(1.0, result.Value, 0.001, "objective value should converge near minimum")
+    Assert.True(result.Converged, "gradient magnitude should reach tolerance")
+    Assert.True(result.Iterations > 0, "converged solve should perform at least one iteration")
+}
+
+[Fact]
+fn GradientDescentSolveSupportsMaxIterationStopping() -> Void {
+    let result = GradientDescentSolve(f, grad, 10.0, 0.01, 0.000000000001, 2)!
+
+    Assert.Equal(2, result.Iterations, "solver should stop at maxIterations when not converged")
+    Assert.True(not result.Converged, "solver should report non-convergence when limit is hit")
+}
+
+[Fact]
+fn GradientDescentRejectsInvalidInputs() -> Void {
+    match GradientDescentStep(1.0, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "stepSize <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match GradientDescentSolve(f, grad, 1.0, 0.0, 0.001, 10) {
+        ok(v) => { Assert.True(false, "stepSize <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match GradientDescentSolve(f, grad, 1.0, 0.1, 0.0, 10) {
+        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match GradientDescentSolve(f, grad, 1.0, 0.1, 0.001, 0) {
+        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn OptimizationResultsComposeInExpressionChain() -> Void {
+    let gs = GoldenSectionSearch(f, 0.0, 6.0, 0.000001, 200)!
+    let gd = GradientDescentSolve(f, grad, 6.0, 0.2, 0.000001, 200)!
+
+    let score = gs.Value + gd.Value + Abs(gs.Point - gd.Point)
+    Assert.True(score >= 2.0, "result fields should compose in deterministic expressions")
+}
