@@ -1,4 +1,4 @@
-# LinearAlgebra M0b
+# LinearAlgebra M1
 
 ## Representation
 
@@ -31,6 +31,11 @@ Index convention: `A[row * cols + col]`.
 - `Determinant(a: Float[], rows: Int, cols: Int) -> Float ! Error`
 - `SolveLinearSystem(a: Float[], rows: Int, cols: Int, b: Float[]) -> Float[] ! Error`
 - `Inverse(a: Float[], rows: Int, cols: Int) -> Float[] ! Error`
+- `LUFactorization`
+- `LUDecompose(a: Float[], rows: Int, cols: Int) -> LUFactorization ! Error`
+- `LUSolve(factorization: LUFactorization, b: Float[]) -> Float[] ! Error`
+- `LUDeterminant(factorization: LUFactorization) -> Float ! Error`
+- `LUInverse(factorization: LUFactorization) -> Float[] ! Error`
 
 ### Usage pattern reminder
 
@@ -53,6 +58,9 @@ No function reshapes data, infers dimensions, or silently truncates mismatched i
 - `MatScalarMul` validates `(rows, cols)` against data length before scaling.
 - `Determinant`, `SolveLinearSystem`, and `Inverse` require square matrices.
 - `SolveLinearSystem` requires `Len(b) == rows`.
+- `LUDecompose` requires square matrix data.
+- `LUSolve` requires `Len(b) == factorization.Rows`.
+- `LUFactorization` consumers validate explicit shape consistency for `L`, `U`, permutation length, and permutation uniqueness.
 
 ## Edge-case policy
 
@@ -62,22 +70,31 @@ No function reshapes data, infers dimensions, or silently truncates mismatched i
 - `1×1` vectors/matrices are valid.
 - Singular or effectively singular square systems are rejected for solving/inversion.
 
-### Singularity threshold (M0b)
+### Singularity threshold (M1)
 
-`Determinant`, `SolveLinearSystem`, and `Inverse` use deterministic partial pivoting with a fixed pivot threshold:
+`LUDecompose`, `LUSolve`, `LUDeterminant`, `LUInverse`, `SolveLinearSystem`, `Inverse`, and `Determinant` rely on deterministic partial pivoting with a fixed pivot threshold:
 
 - `epsilon = 1e-12`
-- if the selected pivot magnitude is `<= epsilon`, the system is treated as singular
+- if the selected pivot magnitude is `<= epsilon`, decomposition/solve/inverse reject as singular
+- `Determinant` returns `0.0` for singular/effectively singular matrices via LU decomposition failure handling
 
 No pseudoinverse fallback or partial solution is attempted.
 
 All functions are deterministic and implemented with explicit loops and validation.
 
+## LU scope and relationship to existing APIs
+
+- LU is the only explicit decomposition family in M1.
+- Scope remains dense square matrices with flat row-major storage.
+- `SolveLinearSystem` is now LU-based and delegates to `LUSolve`.
+- `Inverse` is now LU-based and delegates to `LUInverse`.
+- `Determinant` is computed from LU through `LUDeterminant` and preserves singular result behavior (`0.0`).
+
 ## Non-goals (still out of scope)
 
-M0b intentionally keeps scope dense/square/core and does **not** include decomposition APIs or advanced numerical methods:
+M1 intentionally keeps scope dense/square/core and does **not** include decomposition families beyond LU, or advanced numerical methods:
 
-- LU / QR / SVD / eigensolvers
+- QR / SVD / eigensolvers
 - least squares / pseudoinverse
 - sparse formats or alternate storage layouts
 - condition estimation or advanced stability tooling
