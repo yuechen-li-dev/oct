@@ -34,3 +34,26 @@ fn XlsxRejectsInvalidWorkbookHandle() -> Void {
         err(e) => {}
     }
 }
+
+[Fact]
+fn XlsxRejectsInvalidSavePathExtension() -> Void {
+    let workbook = CreateWorkbook()
+    let _a0 = AddSheet(workbook, "Data") !
+    match SaveWorkbook(workbook, "io_xlsx_m0.txt") {
+        ok(v) => {
+            Assert.True(false, "saving with a non-xlsx extension should fail")
+        }
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn XlsxRejectsSaveWithInvalidWorkbookHandle() -> Void {
+    let workbook = Workbook { Handle: 123456789 }
+    match SaveWorkbook(workbook, "io_xlsx_bad.xlsx") {
+        ok(v) => {
+            Assert.True(false, "saving with an invalid workbook handle should fail")
+        }
+        err(e) => {}
+    }
+}

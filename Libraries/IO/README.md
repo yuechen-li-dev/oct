@@ -31,3 +31,5 @@ M0 does **not** include formulas, styling, charting, pivot tables, workbook read
 ## Wrapper note
 
 `IO.Xlsx` demonstrates a thin Oct-shaped wrapper over an external Go XLSX backend, focused on immediate practical output.
+
+Runtime integration now uses the internal Bridge M0 wrapper substrate (maintainer-facing handle store + wrapper builtin dispatch), while keeping the Oct surface unchanged.
