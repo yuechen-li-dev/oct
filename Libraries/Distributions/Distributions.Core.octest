@@ -1,0 +1,102 @@
+package Distributions
+
+[Fact]
+fn NormalPdfAtMeanAndSymmetry() -> Void {
+    let sigma = 2.0
+    let mean = 3.0
+
+    let expectedAtMean = 1.0 / (sigma * Sqrt(2.0 * Pi()))
+    Assert.Near(expectedAtMean, NormalPdf(mean, mean, sigma)!, 0.000001, "normal pdf at mean")
+
+    let left = NormalPdf(mean - 1.5, mean, sigma)!
+    let right = NormalPdf(mean + 1.5, mean, sigma)!
+    Assert.Near(left, right, 0.000001, "normal pdf symmetry around mean")
+}
+
+[Fact]
+fn NormalPdfAndCdfRejectInvalidSigma() -> Void {
+    match NormalPdf(0.0, 0.0, 0.0) {
+        ok(v) => { Assert.True(false, "normal pdf sigma <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match NormalCdf(0.0, 0.0, 0.0 - 1.0) {
+        ok(v) => { Assert.True(false, "normal cdf sigma <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn NormalCdfCenterMonotonicAndTailSanity() -> Void {
+    let center = NormalCdf(0.0, 0.0, 1.0)!
+    Assert.Near(0.5, center, 0.000001, "normal cdf at mean should be 0.5")
+
+    let low = NormalCdf(0.0 - 1.0, 0.0, 1.0)!
+    let high = NormalCdf(1.0, 0.0, 1.0)!
+    Assert.True(low < center, "normal cdf should be monotonic (left < center)")
+    Assert.True(center < high, "normal cdf should be monotonic (center < right)")
+
+    let farLeft = NormalCdf(0.0 - 6.0, 0.0, 1.0)!
+    let farRight = NormalCdf(6.0, 0.0, 1.0)!
+    Assert.True(farLeft < 0.000001, "left tail should be near zero")
+    Assert.True(farRight > 0.999999, "right tail should be near one")
+}
+
+[Fact]
+fn UniformPdfCoversInsideBoundaryOutsideAndInvalidRange() -> Void {
+    Assert.Near(0.5, UniformPdf(3.0, 2.0, 4.0)!, 0.000001, "uniform pdf inside support")
+    Assert.Near(0.5, UniformPdf(2.0, 2.0, 4.0)!, 0.000001, "uniform pdf includes lower boundary")
+    Assert.Near(0.5, UniformPdf(4.0, 2.0, 4.0)!, 0.000001, "uniform pdf includes upper boundary")
+
+    Assert.Near(0.0, UniformPdf(1.9, 2.0, 4.0)!, 0.000001, "uniform pdf below support should be zero")
+    Assert.Near(0.0, UniformPdf(4.1, 2.0, 4.0)!, 0.000001, "uniform pdf above support should be zero")
+
+    match UniformPdf(0.0, 1.0, 1.0) {
+        ok(v) => { Assert.True(false, "uniform pdf a >= b must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn UniformCdfCoversDomainAndInvalidRange() -> Void {
+    Assert.Near(0.0, UniformCdf(1.9, 2.0, 4.0)!, 0.000001, "uniform cdf below support should be zero")
+    Assert.Near(0.0, UniformCdf(2.0, 2.0, 4.0)!, 0.000001, "uniform cdf at lower boundary")
+    Assert.Near(0.25, UniformCdf(2.5, 2.0, 4.0)!, 0.000001, "uniform cdf inside support is linear")
+    Assert.Near(1.0, UniformCdf(4.0, 2.0, 4.0)!, 0.000001, "uniform cdf at upper boundary")
+    Assert.Near(1.0, UniformCdf(4.1, 2.0, 4.0)!, 0.000001, "uniform cdf above support should be one")
+
+    match UniformCdf(0.0, 3.0, 2.0) {
+        ok(v) => { Assert.True(false, "uniform cdf a >= b must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn ExponentialFunctionsHandleSupportAndInvalidLambda() -> Void {
+    Assert.Near(2.0, ExponentialPdf(0.0, 2.0)!, 0.000001, "exponential pdf at x=0")
+    Assert.Near(2.0 * Exp(0.0 - 2.0), ExponentialPdf(1.0, 2.0)!, 0.000001, "exponential pdf for x>0")
+    Assert.Near(0.0, ExponentialPdf(0.0 - 0.1, 2.0)!, 0.000001, "exponential pdf for x<0 should be zero")
+
+    Assert.Near(0.0, ExponentialCdf(0.0 - 0.1, 2.0)!, 0.000001, "exponential cdf for x<0 should be zero")
+    Assert.Near(0.0, ExponentialCdf(0.0, 2.0)!, 0.000001, "exponential cdf at x=0")
+    Assert.Near(1.0 - Exp(0.0 - 2.0), ExponentialCdf(1.0, 2.0)!, 0.000001, "exponential cdf for x>0")
+
+    match ExponentialPdf(1.0, 0.0) {
+        ok(v) => { Assert.True(false, "exponential pdf lambda <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match ExponentialCdf(1.0, 0.0 - 1.0) {
+        ok(v) => { Assert.True(false, "exponential cdf lambda <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn DistributionWorkflowComposesInExpressionChain() -> Void {
+    let centered = NormalPdf(0.75, 0.0, 1.0)!
+    let gate = UniformCdf(0.75, 0.0, 1.0)!
+    let weighted = centered * gate + ExponentialCdf(0.75, 1.5)!
+
+    Assert.True(weighted > 0.0, "distribution evaluations should compose deterministically")
+}
