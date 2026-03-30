@@ -1,0 +1,77 @@
+package Thermofluids
+
+[Fact]
+fn ThermalEnergyAndInverseAreConsistent() -> Void {
+    let mass = 10kg
+    let cp = 4200m^2/s^2
+    let temperature = 300.0
+
+    let energy = ThermalEnergy(mass, cp, temperature)!
+    Assert.Near(12600000.0, energy / 1kg*m^2/s^2, 0.001, "thermal energy hand-check")
+
+    let recoveredTemperature = TemperatureFromEnergy(mass, cp, energy)!
+    Assert.Near(temperature / 1.0, recoveredTemperature / 1.0, 0.000001, "temperature inverse consistency")
+}
+
+[Fact]
+fn NewtonCoolingHeatFlowSignAndMagnitude() -> Void {
+    let qHotToAmbient = HeatFlowNewtonCooling(10kg/s^3, 2m^2, 330.0, 300.0)!
+    Assert.Near(600.0, qHotToAmbient / 1kg*m^2/s^3, 0.000001, "newton cooling hand-check")
+
+    let qAmbientToSurface = HeatFlowNewtonCooling(10kg/s^3, 2m^2, 290.0, 300.0)!
+    Assert.True(qAmbientToSurface < 0kg*m^2/s^3, "heat flow should flip sign when ambient is hotter")
+}
+
+[Fact]
+fn FirstOrderThermalStepMatchesExplicitRecurrence() -> Void {
+    let next = FirstOrderThermalStep(320.0, 300.0, 10.0s, 1.0s)!
+    Assert.Near(318.0, next / 1.0, 0.000001, "first-order step hand-check")
+}
+
+[Fact]
+fn ThermalInvalidSetupRejected() -> Void {
+    match ThermalEnergy(0kg, 4200m^2/s^2, 300.0) {
+        ok(v) => { Assert.True(false, "mass <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match ThermalEnergy(10kg, 0m^2/s^2, 300.0) {
+        ok(v) => { Assert.True(false, "cp <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match HeatFlowNewtonCooling(10kg/s^3, 0m^2, 320.0, 300.0) {
+        ok(v) => { Assert.True(false, "area <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match FirstOrderThermalStep(320.0, 300.0, 0.0s, 1.0s) {
+        ok(v) => { Assert.True(false, "tau <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match FirstOrderThermalStep(320.0, 300.0, 10.0s, 0.0s) {
+        ok(v) => { Assert.True(false, "dt <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn ThermalProcessWorkflowComposes() -> Void {
+    let mass = 2kg
+    let cp = 1000m^2/s^2
+    let area = 1m^2
+    let h = 5kg/s^3
+    let ambient = 300.0
+    let tau = 8.0s
+    let dt = 1.0s
+
+    let t0 = 340.0
+    let q0 = HeatFlowNewtonCooling(h, area, t0, ambient)!
+    let t1 = FirstOrderThermalStep(t0, ambient, tau, dt)!
+    let e1 = ThermalEnergy(mass, cp, t1)!
+
+    Assert.True(q0 > 0kg*m^2/s^3, "initial heat flow should be from surface to ambient")
+    Assert.True(t1 < t0, "first-order update should cool toward ambient")
+    Assert.True(e1 > 0kg*m^2/s^2, "composed thermal energy should remain positive")
+}

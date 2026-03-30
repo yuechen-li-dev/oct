@@ -1,0 +1,117 @@
+package Thermofluids
+
+fn TankAreaCylinder(radius: Float<m>) -> Float<m^2> ! Error {
+    let ok = ValidateRadius(radius)?
+    return Pi() * radius * radius
+}
+
+fn TankVolumeCylinder(radius: Float<m>, height: Float<m>) -> Float<m^3> ! Error {
+    let ok = ValidateRadius(radius)?
+    let okHeight = ValidateHeightNonNegative(height)?
+    return TankAreaCylinder(radius)? * height
+}
+
+fn TankLevelStep(
+    level: Float<m>,
+    inflow: Float<m^3/s>,
+    outflow: Float<m^3/s>,
+    area: Float<m^2>,
+    dt: Float<s>
+) -> Float<m> ! Error {
+    let okLevel = ValidateLevelNonNegative(level)?
+    let okArea = ValidateFluidArea(area)?
+    let okDt = ValidateDt(dt)?
+
+    let next = level + (dt / area) * (inflow - outflow)
+    if next < 0m {
+        return 0m
+    }
+
+    return next
+}
+
+fn OutflowTorricelli(
+    dischargeCoefficient: Float,
+    outletArea: Float<m^2>,
+    gravity: Float<m/s^2>,
+    level: Float<m>
+) -> Float<m^3/s> ! Error {
+    let okCd = ValidateDischargeCoefficient(dischargeCoefficient)?
+    let okOutlet = ValidateFluidArea(outletArea)?
+    let okGravity = ValidateGravity(gravity)?
+    let okLevel = ValidateLevelNonNegative(level)?
+
+    if level == 0m {
+        return 0m^3/s
+    }
+
+    return dischargeCoefficient * outletArea * Sqrt(2.0 * gravity * level)
+}
+
+fn ResidenceTime(volume: Float<m^3>, flowRate: Float<m^3/s>) -> Float<s> ! Error {
+    if volume < 0m^3 {
+        return error("fluid model requires volume >= 0")
+    }
+
+    if flowRate <= 0m^3/s {
+        return error("fluid model requires flowRate > 0")
+    }
+
+    return volume / flowRate
+}
+
+fn ValidateRadius(radius: Float<m>) -> Bool ! Error {
+    if radius <= 0m {
+        return error("fluid model requires radius > 0")
+    }
+
+    return true
+}
+
+fn ValidateHeightNonNegative(height: Float<m>) -> Bool ! Error {
+    if height < 0m {
+        return error("fluid model requires height >= 0")
+    }
+
+    return true
+}
+
+fn ValidateLevelNonNegative(level: Float<m>) -> Bool ! Error {
+    if level < 0m {
+        return error("fluid model requires level >= 0")
+    }
+
+    return true
+}
+
+fn ValidateFluidArea(area: Float<m^2>) -> Bool ! Error {
+    if area <= 0m^2 {
+        return error("fluid model requires area > 0")
+    }
+
+    return true
+}
+
+fn ValidateDt(dt: Float<s>) -> Bool ! Error {
+    if dt <= 0s {
+        return error("fluid model requires dt > 0")
+    }
+
+    return true
+}
+
+fn ValidateGravity(gravity: Float<m/s^2>) -> Bool ! Error {
+    if gravity <= 0m/s^2 {
+        return error("fluid model requires gravity > 0")
+    }
+
+    return true
+}
+
+fn ValidateDischargeCoefficient(dischargeCoefficient: Float) -> Bool ! Error {
+    if dischargeCoefficient < 0.0 {
+        return error("fluid model requires dischargeCoefficient >= 0")
+    }
+
+    return true
+}
