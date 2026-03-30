@@ -1,0 +1,82 @@
+package Physics
+
+/// Vacuum speed of light, c.
+/// Units: m/s.
+fn SpeedOfLight() -> Float<m/s> {
+    return 299792458m/s
+}
+
+/// Boltzmann constant, k_B.
+/// SI value is in J/K; temperature base unit is currently scalar in Oct,
+/// so this is represented as Joules in base SI units.
+fn BoltzmannConstant() -> Float<kg*m^2/s^2> {
+    return 0.00000000000000000000001380649kg*m^2/s^2
+}
+
+/// Planck constant, h.
+/// Units: J*s = kg*m^2/s.
+fn PlanckConstant() -> Float<kg*m^2/s> {
+    return 0.000000000000000000000000000000000662607015kg*m^2/s
+}
+
+/// Reduced Planck constant, ħ = h/(2π).
+fn ReducedPlanckConstant() -> Float<kg*m^2/s> {
+    return PlanckConstant() / (2.0 * Pi())
+}
+
+/// Elementary charge, e.
+/// SI value is in Coulombs (A*s); electric-current base unit is currently scalar in Oct,
+/// so this is represented as scalar seconds-equivalent magnitude.
+fn ElementaryCharge() -> Float {
+    return 0.0000000000000000001602176634
+}
+
+/// Avogadro constant, N_A.
+/// SI value is in 1/mol; amount base unit is currently scalar in Oct.
+fn AvogadroConstant() -> Float {
+    return 602214076000000000000000.0
+}
+
+/// Universal gas constant, R.
+/// SI value is in J/(mol*K); amount and temperature base units are currently scalar in Oct,
+/// so this is represented as Joules in base SI units.
+fn GasConstant() -> Float<kg*m^2/s^2> {
+    return 8.314462618kg*m^2/s^2
+}
+
+/// Stefan-Boltzmann constant, σ.
+/// SI value is in W/(m^2*K^4) which reduces to kg/(s^3*K^4);
+/// temperature base unit is currently scalar in Oct, so this is represented as kg/s^3.
+fn StefanBoltzmannConstant() -> Float<kg/s^3> {
+    return 0.00000005670374419kg/s^3
+}
+
+/// Vacuum permittivity, ε0.
+/// SI base dimensions involve electric current; represented as scalar until A is available.
+fn VacuumPermittivity() -> Float {
+    return 0.0000000000088541878128
+}
+
+/// Vacuum permeability, μ0.
+/// SI base dimensions involve electric current; represented as scalar until A is available.
+fn VacuumPermeability() -> Float {
+    return 0.00000125663706212
+}
+
+/// Standard gravity, g0.
+/// Units: m/s^2.
+fn StandardGravity() -> Float<m/s^2> {
+    return 9.80665m/s^2
+}
+
+/// Electron rest mass.
+/// Units: kg.
+fn ElectronMass() -> Float<kg> {
+    return 0.00000000000000000000000000000091093837015kg
+}
+
+/// Proton rest mass.
+/// Units: kg.
+fn ProtonMass() -> Float<kg> {
+    return 0.00000000000000000000000000167262192369kg
+}
