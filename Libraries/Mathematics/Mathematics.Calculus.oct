@@ -1,0 +1,81 @@
+package Mathematics
+
+fn DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    let ok = ValidateDerivativeStep(h)?
+    return (f(x + h) - f(x - h)) / (2.0 * h)
+}
+
+fn IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error {
+    let ok = ValidateIntegrationSegments(n)?
+
+    if a == b {
+        return 0.0
+    }
+
+    let dx = (b - a) / n
+    var sum = (f(a) + f(b)) / 2.0
+    var i = 1
+
+    while i < n {
+        let x = a + dx * i
+        sum = sum + f(x)
+        i = i + 1
+    }
+
+    return dx * sum
+}
+
+fn IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error {
+    let ok = ValidateSimpsonSegments(n)?
+
+    if a == b {
+        return 0.0
+    }
+
+    let dx = (b - a) / n
+    var oddSum = 0.0
+    var evenSum = 0.0
+    var i = 1
+
+    while i < n {
+        let x = a + dx * i
+        if IsEven(i) {
+            evenSum = evenSum + f(x)
+        } else {
+            oddSum = oddSum + f(x)
+        }
+        i = i + 1
+    }
+
+    return (dx / 3.0) * (f(a) + f(b) + 4.0 * oddSum + 2.0 * evenSum)
+}
+
+fn ValidateDerivativeStep(h: Float) -> Bool ! Error {
+    if h <= 0.0 {
+        return error("DifferentiateCentral requires h > 0")
+    }
+
+    return true
+}
+
+fn ValidateIntegrationSegments(n: Int) -> Bool ! Error {
+    if n <= 0 {
+        return error("integration requires n > 0")
+    }
+
+    return true
+}
+
+fn ValidateSimpsonSegments(n: Int) -> Bool ! Error {
+    let ok = ValidateIntegrationSegments(n)?
+
+    if not IsEven(n) {
+        return error("IntegrateSimpson requires even n")
+    }
+
+    return true
+}
+
+fn IsEven(value: Int) -> Bool {
+    return (value / 2) * 2 == value
+}
