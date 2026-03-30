@@ -577,7 +577,7 @@ func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
     return Len(1)
 }
 `,
-			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got Int",
+			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String or array type, got Int",
 		},
 		{
 			name: "abs wrong type",
@@ -706,7 +706,7 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main: function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got Int"
+		want := "build failed: function Main: function 'Len' argument 1 expects String or array type, got Int"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
