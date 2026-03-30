@@ -1,0 +1,49 @@
+package Octomata
+
+[Fact]
+fn PIDUpdateZeroErrorGivesZeroOutputWithZeroState() -> Void {
+    let result = PIDUpdate(2.0, 1.0, 0.5, 3.0, 3.0, 0.0, 0.0, 0.1)!
+
+    Assert.Near(0.0, result.Output, 0.000001, "zero error with zero state should produce zero output")
+    Assert.Near(0.0, result.IntegralState, 0.000001, "integral should remain zero")
+    Assert.Near(0.0, result.PreviousError, 0.000001, "previous error should be updated to zero")
+}
+
+[Fact]
+fn PIDUpdateProportionalResponseMatchesGainTimesError() -> Void {
+    let result = PIDUpdate(2.5, 0.0, 0.0, 5.0, 3.0, 0.0, 0.0, 0.2)!
+
+    Assert.Near(5.0, result.Output, 0.000001, "proportional-only output should be kp * error")
+    Assert.Near(2.0, result.PreviousError, 0.000001, "previous error should track current error")
+}
+
+[Fact]
+fn PIDUpdateIntegralAccumulatesAcrossRepeatedUpdates() -> Void {
+    let step1 = PIDUpdate(0.0, 2.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5)!
+    let step2 = PIDUpdate(0.0, 2.0, 0.0, 1.0, 0.0, step1.IntegralState, step1.PreviousError, 0.5)!
+
+    Assert.Near(0.5, step1.IntegralState, 0.000001, "integral after first step")
+    Assert.Near(1.0, step2.IntegralState, 0.000001, "integral after second step")
+    Assert.Near(2.0, step2.Output, 0.000001, "integral-only output should reflect accumulated state")
+}
+
+[Fact]
+fn PIDUpdateDerivativeRespondsToErrorChange() -> Void {
+    let result = PIDUpdate(0.0, 0.0, 3.0, 4.0, 2.0, 0.0, 1.0, 0.5)!
+
+    // error = 2.0, previousError = 1.0, derivative = (2 - 1) / 0.5 = 2.0, output = kd * derivative = 6.0
+    Assert.Near(6.0, result.Output, 0.000001, "derivative term should respond to error slope")
+}
+
+[Fact]
+fn PIDUpdateRejectsNonPositiveDt() -> Void {
+    match PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0) {
+        ok(v) => { Assert.True(false, "pid update must reject dt <= 0") }
+        err(e) => { }
+    }
+
+    match PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0 - 0.1) {
+        ok(v) => { Assert.True(false, "pid update must reject negative dt") }
+        err(e) => { }
+    }
+}

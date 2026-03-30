@@ -1,0 +1,42 @@
+package Octomata
+
+record PIDUpdateResult {
+    Output: Float
+    IntegralState: Float
+    PreviousError: Float
+}
+
+/// Performs one discrete-time PID update with explicit state.
+///
+/// Error signal: error = setpoint - measurement.
+/// Integral update: integralNext = integralState + error * dt.
+/// Derivative update: derivative = (error - previousError) / dt.
+///
+/// Inputs and outputs are dimensionless Float values in M0.
+/// Rejects dt <= 0.
+fn PIDUpdate(
+    kp: Float,
+    ki: Float,
+    kd: Float,
+    setpoint: Float,
+    measurement: Float,
+    integralState: Float,
+    previousError: Float,
+    dt: Float
+) -> PIDUpdateResult ! Error {
+    if dt <= 0.0 {
+        return error("pid update requires dt > 0")
+    }
+
+    let errorValue = setpoint - measurement
+    let integralNext = integralState + errorValue * dt
+    let derivative = (errorValue - previousError) / dt
+
+    let output = kp * errorValue + ki * integralNext + kd * derivative
+
+    return PIDUpdateResult {
+        Output: output
+        IntegralState: integralNext
+        PreviousError: errorValue
+    }
+}

@@ -1,0 +1,18 @@
+package Octomata
+
+/// Performs one discrete-time first-order low-pass update (exponential smoothing).
+///
+/// Recurrence: y[n] = y[n-1] + alpha * (x[n] - y[n-1]).
+/// Valid alpha range for M0: 0 <= alpha <= 1.
+/// Inputs and outputs are dimensionless Float values in M0.
+fn LowPassUpdate(alpha: Float, input: Float, previousOutput: Float) -> Float ! Error {
+    if alpha < 0.0 {
+        return error("low-pass update requires alpha >= 0")
+    }
+
+    if alpha > 1.0 {
+        return error("low-pass update requires alpha <= 1")
+    }
+
+    return previousOutput + alpha * (input - previousOutput)
+}
