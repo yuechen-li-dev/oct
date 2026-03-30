@@ -1,5 +1,14 @@
 package LinearAlgebra
 
+record LUFactorization {
+    L: Float[]
+    U: Float[]
+    Permutation: Int[]
+    SwapCount: Int
+    Rows: Int
+    Cols: Int
+}
+
 fn Dot(a: Float[], b: Float[]) -> Float ! Error {
     let vok = ValidateVector(a)?
     let wok = ValidateVector(b)?
@@ -272,89 +281,41 @@ fn MatScalarMul(A: Float[], rows: Int, cols: Int, s: Float) -> Float[] ! Error {
 
 fn Determinant(a: Float[], rows: Int, cols: Int) -> Float ! Error {
     let mok = ValidateSquareMatrixData(a, rows, cols)?
-    let epsilon = 0.000000000001
 
-    var work = [a[0]]
-    var wi = 1
-    while wi < Len(a) {
-        work = Append(work, a[wi])
-        wi = wi + 1
-    }
-
-    var sign = 1.0
-    var col = 0
-    while col < cols {
-        var pivotRow = col
-        var maxAbs = Abs(work[FlatIndex(col, col, cols)])
-
-        var r = col + 1
-        while r < rows {
-            let candidate = Abs(work[FlatIndex(r, col, cols)])
-            if candidate > maxAbs {
-                maxAbs = candidate
-                pivotRow = r
-            }
-            r = r + 1
+    match LUDecompose(a, rows, cols) {
+        ok(factorization) => {
+            return LUDeterminant(factorization)?
         }
-
-        if maxAbs <= epsilon {
+        err(e) => {
             return 0.0
         }
-
-        if pivotRow != col {
-            work = SwapRows(work, cols, col, pivotRow)
-            sign = 0.0 - sign
-        }
-
-        let pivot = work[FlatIndex(col, col, cols)]
-        var rr = col + 1
-        while rr < rows {
-            let factor = work[FlatIndex(rr, col, cols)] / pivot
-            work[FlatIndex(rr, col, cols)] = 0.0
-
-            var cc = col + 1
-            while cc < cols {
-                work[FlatIndex(rr, cc, cols)] = work[FlatIndex(rr, cc, cols)] - factor * work[FlatIndex(col, cc, cols)]
-                cc = cc + 1
-            }
-            rr = rr + 1
-        }
-
-        col = col + 1
     }
-
-    var det = sign
-    var i = 0
-    while i < rows {
-        det = det * work[FlatIndex(i, i, cols)]
-        i = i + 1
-    }
-    return det
 }
 
 fn SolveLinearSystem(a: Float[], rows: Int, cols: Int, b: Float[]) -> Float[] ! Error {
+    let factorization = LUDecompose(a, rows, cols)?
+    return LUSolve(factorization, b)?
+}
+
+fn Inverse(a: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    let factorization = LUDecompose(a, rows, cols)?
+    return LUInverse(factorization)?
+}
+
+fn LUDecompose(a: Float[], rows: Int, cols: Int) -> LUFactorization ! Error {
     let mok = ValidateSquareMatrixData(a, rows, cols)?
-    let vok = ValidateVector(b)?
-    let epsilon = 0.000000000001
+    let epsilon = PivotEpsilon()
 
-    if Len(b) != rows {
-        return error("solve requires RHS length to equal matrix rows")
+    var work = CopyFloatArray(a)
+
+    var permutation = [0]
+    var pi = 1
+    while pi < rows {
+        permutation = Append(permutation, pi)
+        pi = pi + 1
     }
 
-    var work = [a[0]]
-    var wi = 1
-    while wi < Len(a) {
-        work = Append(work, a[wi])
-        wi = wi + 1
-    }
-
-    var rhs = [b[0]]
-    var bi = 1
-    while bi < Len(b) {
-        rhs = Append(rhs, b[bi])
-        bi = bi + 1
-    }
-
+    var swapCount = 0
     var col = 0
     while col < cols {
         var pivotRow = col
@@ -371,87 +332,257 @@ fn SolveLinearSystem(a: Float[], rows: Int, cols: Int, b: Float[]) -> Float[] ! 
         }
 
         if maxAbs <= epsilon {
-            return error("solve requires a non-singular matrix")
+            return error("lu decomposition requires a non-singular matrix")
         }
 
         if pivotRow != col {
             work = SwapRows(work, cols, col, pivotRow)
-            let t = rhs[col]
-            rhs[col] = rhs[pivotRow]
-            rhs[pivotRow] = t
+            permutation = SwapIntEntries(permutation, col, pivotRow)
+            swapCount = swapCount + 1
         }
 
         let pivot = work[FlatIndex(col, col, cols)]
         var rr = col + 1
         while rr < rows {
             let factor = work[FlatIndex(rr, col, cols)] / pivot
-            work[FlatIndex(rr, col, cols)] = 0.0
+            work[FlatIndex(rr, col, cols)] = factor
 
             var cc = col + 1
             while cc < cols {
                 work[FlatIndex(rr, cc, cols)] = work[FlatIndex(rr, cc, cols)] - factor * work[FlatIndex(col, cc, cols)]
                 cc = cc + 1
             }
-            rhs[rr] = rhs[rr] - factor * rhs[col]
             rr = rr + 1
         }
 
         col = col + 1
     }
 
+    var l = Zeros(rows, cols)?
+    var u = Zeros(rows, cols)?
+
+    var row = 0
+    while row < rows {
+        var c = 0
+        while c < cols {
+            let idx = FlatIndex(row, c, cols)
+            l[idx] = 0.0
+            u[idx] = work[idx]
+
+            if c < row {
+                l[idx] = work[idx]
+                u[idx] = 0.0
+            }
+
+            if c == row {
+                l[idx] = 1.0
+                u[idx] = work[idx]
+            }
+
+            c = c + 1
+        }
+        row = row + 1
+    }
+
+    return LUFactorization {
+        L: l
+        U: u
+        Permutation: permutation
+        SwapCount: swapCount
+        Rows: rows
+        Cols: cols
+    }
+}
+
+fn LUSolve(factorization: LUFactorization, b: Float[]) -> Float[] ! Error {
+    let n = ValidateLUFactorization(factorization)?
+    let vok = ValidateVector(b)?
+
+    if Len(b) != n {
+        return error("lu solve requires RHS length to equal factorization rows")
+    }
+
+    var rhs = [b[factorization.Permutation[0]]]
+    var i = 1
+    while i < n {
+        rhs = Append(rhs, b[factorization.Permutation[i]])
+        i = i + 1
+    }
+
+    var y = [0.0]
+    var yi = 1
+    while yi < n {
+        y = Append(y, 0.0)
+        yi = yi + 1
+    }
+
+    var r = 0
+    while r < n {
+        var sum = rhs[r]
+        var c = 0
+        while c < r {
+            sum = sum - factorization.L[FlatIndex(r, c, n)] * y[c]
+            c = c + 1
+        }
+        y[r] = sum
+        r = r + 1
+    }
+
+    let epsilon = PivotEpsilon()
     var x = [0.0]
     var xi = 1
-    while xi < rows {
+    while xi < n {
         x = Append(x, 0.0)
         xi = xi + 1
     }
 
-    var i = rows - 1
-    while i >= 0 {
-        var sum = rhs[i]
-        var j = i + 1
-        while j < cols {
-            sum = sum - work[FlatIndex(i, j, cols)] * x[j]
-            j = j + 1
+    var row = n - 1
+    while row >= 0 {
+        var sum = y[row]
+        var col = row + 1
+        while col < n {
+            sum = sum - factorization.U[FlatIndex(row, col, n)] * x[col]
+            col = col + 1
         }
 
-        let pivot = work[FlatIndex(i, i, cols)]
+        let pivot = factorization.U[FlatIndex(row, row, n)]
         if Abs(pivot) <= epsilon {
-            return error("solve requires a non-singular matrix")
+            return error("lu solve requires a non-singular factorization")
         }
 
-        x[i] = sum / pivot
-        i = i - 1
+        x[row] = sum / pivot
+        row = row - 1
     }
 
     return x
 }
 
-fn Inverse(a: Float[], rows: Int, cols: Int) -> Float[] ! Error {
-    let mok = ValidateSquareMatrixData(a, rows, cols)?
+fn LUDeterminant(factorization: LUFactorization) -> Float ! Error {
+    let n = ValidateLUFactorization(factorization)?
 
-    var inv = Zeros(rows, cols)?
+    var sign = 1.0
+    var swap = 0
+    while swap < factorization.SwapCount {
+        sign = 0.0 - sign
+        swap = swap + 1
+    }
+
+    var det = sign
+    var i = 0
+    while i < n {
+        det = det * factorization.U[FlatIndex(i, i, n)]
+        i = i + 1
+    }
+
+    return det
+}
+
+fn LUInverse(factorization: LUFactorization) -> Float[] ! Error {
+    let n = ValidateLUFactorization(factorization)?
+
+    var inv = Zeros(n, n)?
 
     var c = 0
-    while c < cols {
+    while c < n {
         var e = [0.0]
-        var i = 1
-        while i < rows {
+        var ei = 1
+        while ei < n {
             e = Append(e, 0.0)
-            i = i + 1
+            ei = ei + 1
         }
         e[c] = 1.0
 
-        let column = SolveLinearSystem(a, rows, cols, e)?
+        let column = LUSolve(factorization, e)?
         var r = 0
-        while r < rows {
-            inv[FlatIndex(r, c, cols)] = column[r]
+        while r < n {
+            inv[FlatIndex(r, c, n)] = column[r]
             r = r + 1
         }
+
         c = c + 1
     }
 
     return inv
+}
+
+fn CopyFloatArray(a: Float[]) -> Float[] {
+    var out = [a[0]]
+    var i = 1
+    while i < Len(a) {
+        out = Append(out, a[i])
+        i = i + 1
+    }
+    return out
+}
+
+fn SwapIntEntries(values: Int[], i: Int, j: Int) -> Int[] {
+    var out = [values[0]]
+    var k = 1
+    while k < Len(values) {
+        out = Append(out, values[k])
+        k = k + 1
+    }
+
+    let t = out[i]
+    out[i] = out[j]
+    out[j] = t
+
+    return out
+}
+
+fn PivotEpsilon() -> Float {
+    return 0.000000000001
+}
+
+fn ValidateLUFactorization(factorization: LUFactorization) -> Int ! Error {
+    if factorization.Rows <= 0 or factorization.Cols <= 0 {
+        return error("lu factorization requires positive dimensions")
+    }
+
+    if factorization.Rows != factorization.Cols {
+        return error("lu factorization requires square dimensions")
+    }
+
+    let n = factorization.Rows
+    if Len(factorization.L) != n * n {
+        return error("lu factorization L length must equal rows * cols")
+    }
+
+    if Len(factorization.U) != n * n {
+        return error("lu factorization U length must equal rows * cols")
+    }
+
+    if Len(factorization.Permutation) != n {
+        return error("lu factorization permutation length must equal rows")
+    }
+
+    if factorization.SwapCount < 0 {
+        return error("lu factorization swap count must be >= 0")
+    }
+
+    var seen = [0]
+    var si = 1
+    while si < n {
+        seen = Append(seen, 0)
+        si = si + 1
+    }
+
+    var i = 0
+    while i < n {
+        let p = factorization.Permutation[i]
+        if p < 0 or p >= n {
+            return error("lu factorization permutation indices must be in range")
+        }
+
+        if seen[p] != 0 {
+            return error("lu factorization permutation must not repeat indices")
+        }
+
+        seen[p] = 1
+        i = i + 1
+    }
+
+    return n
 }
 
 fn SwapRows(a: Float[], cols: Int, rowA: Int, rowB: Int) -> Float[] {

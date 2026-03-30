@@ -300,3 +300,134 @@ fn M0bValidationRejectsInvalidDimensionsAndDataLengths() -> Void {
         err(e) => { }
     }
 }
+
+[Fact]
+fn LUDecomposeCovers2x2And3x3Matrices() -> Void {
+    let f2 = LUDecompose([4.0, 3.0, 6.0, 3.0], 2, 2)!
+    Assert.Equal(2, f2.Rows, "2x2 rows")
+    Assert.Equal(2, f2.Cols, "2x2 cols")
+    Assert.Equal(4, Len(f2.L), "2x2 L cell count")
+    Assert.Equal(4, Len(f2.U), "2x2 U cell count")
+    Assert.Equal(2, Len(f2.Permutation), "2x2 permutation size")
+
+    let f3 = LUDecompose([2.0, 1.0, 1.0, 4.0, 0.0 - 6.0, 0.0, 0.0 - 2.0, 7.0, 2.0], 3, 3)!
+    Assert.Equal(3, f3.Rows, "3x3 rows")
+    Assert.Equal(3, f3.Cols, "3x3 cols")
+    Assert.Equal(9, Len(f3.L), "3x3 L cell count")
+    Assert.Equal(9, Len(f3.U), "3x3 U cell count")
+}
+
+[Fact]
+fn LUDecomposeCoversPivotingAndRejections() -> Void {
+    let requiresPivot = [0.0, 2.0, 1.0, 3.0]
+    let f = LUDecompose(requiresPivot, 2, 2)!
+    Assert.Equal(1, f.Permutation[0], "pivoting should move row 1 to top")
+    Assert.Equal(0, f.Permutation[1], "pivoting should move row 0 to bottom")
+    Assert.Equal(1, f.SwapCount, "pivoting should record swap count")
+
+    match LUDecompose([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
+        ok(v) => { Assert.True(false, "lu decompose should reject non-square matrices") }
+        err(e) => { }
+    }
+
+    match LUDecompose([1.0, 2.0, 2.0, 4.0], 2, 2) {
+        ok(v) => { Assert.True(false, "lu decompose should reject singular matrices") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn LUSolveCoversKnownSystemMismatchAndSolveComposability() -> Void {
+    let A = [2.0, 1.0, 5.0, 7.0]
+    let factorization = LUDecompose(A, 2, 2)!
+    let x = LUSolve(factorization, [11.0, 13.0])!
+    Assert.Near(64.0 / 9.0, x[0], 0.000001, "lu solve 2x2 x0")
+    Assert.Near(0.0 - 29.0 / 9.0, x[1], 0.000001, "lu solve 2x2 x1")
+
+    match LUSolve(factorization, [11.0]) {
+        ok(v) => { Assert.True(false, "lu solve should reject RHS length mismatch") }
+        err(e) => { }
+    }
+
+    let direct = SolveLinearSystem(A, 2, 2, [11.0, 13.0])!
+    Assert.Near(direct[0], x[0], 0.000001, "lu solve should match direct solve x0")
+    Assert.Near(direct[1], x[1], 0.000001, "lu solve should match direct solve x1")
+}
+
+[Fact]
+fn LUDeterminantMatchesDeterminantAndHandlesSwapSign() -> Void {
+    let A = [6.0, 1.0, 1.0, 4.0, 0.0 - 2.0, 5.0, 2.0, 8.0, 7.0]
+    let f = LUDecompose(A, 3, 3)!
+    let luDet = LUDeterminant(f)!
+    let det = Determinant(A, 3, 3)!
+    Assert.Near(det, luDet, 0.000001, "lu determinant should match determinant")
+
+    let pivoted = LUDecompose([0.0, 2.0, 1.0, 3.0], 2, 2)!
+    let pivotedDet = LUDeterminant(pivoted)!
+    Assert.Near(0.0 - 2.0, pivotedDet, 0.000001, "lu determinant should account for odd row swap parity")
+}
+
+[Fact]
+fn LUInverseMatchesInverseAndMultipliesToIdentity() -> Void {
+    let A = [4.0, 7.0, 2.0, 6.0]
+    let factorization = LUDecompose(A, 2, 2)!
+    let luInv = LUInverse(factorization)!
+    let directInv = Inverse(A, 2, 2)!
+
+    Assert.Near(directInv[0], luInv[0], 0.000001, "lu inverse c00")
+    Assert.Near(directInv[1], luInv[1], 0.000001, "lu inverse c01")
+    Assert.Near(directInv[2], luInv[2], 0.000001, "lu inverse c10")
+    Assert.Near(directInv[3], luInv[3], 0.000001, "lu inverse c11")
+
+    let identity = MatMul(A, 2, 2, luInv, 2, 2)!
+    Assert.Near(1.0, identity[0], 0.000001, "A*LUInverse(A) c00")
+    Assert.Near(0.0, identity[1], 0.000001, "A*LUInverse(A) c01")
+    Assert.Near(0.0, identity[2], 0.000001, "A*LUInverse(A) c10")
+    Assert.Near(1.0, identity[3], 0.000001, "A*LUInverse(A) c11")
+}
+
+[Fact]
+fn LUFactorizationStructureAndPermutationAreSane() -> Void {
+    let A = [0.0, 2.0, 1.0, 3.0]
+    let f = LUDecompose(A, 2, 2)!
+
+    Assert.Near(1.0, f.L[0], 0.000001, "L(0,0) should be one")
+    Assert.Near(1.0, f.L[3], 0.000001, "L(1,1) should be one")
+    Assert.Near(0.0, f.L[1], 0.000001, "L upper-triangular entries should be zero")
+    Assert.Near(0.0, f.U[2], 0.000001, "U lower-triangular entries should be zero")
+
+    let b = [10.0, 20.0]
+    let rhsPermuted = [b[f.Permutation[0]], b[f.Permutation[1]]]
+    Assert.Near(20.0, rhsPermuted[0], 0.000001, "permutation first entry")
+    Assert.Near(10.0, rhsPermuted[1], 0.000001, "permutation second entry")
+}
+
+[Fact]
+fn LUWorkflowComposeWithLUSolveAndMatVecMul() -> Void {
+    let A = [4.0, 1.0, 2.0, 0.0, 3.0, 0.0 - 1.0, 1.0, 0.0, 2.0]
+    let b = [7.0, 2.0, 3.0]
+    let factorization = LUDecompose(A, 3, 3)!
+    let x = LUSolve(factorization, b)!
+    let y = MatVecMul(A, 3, 3, x)!
+
+    Assert.Near(b[0], y[0], 0.000001, "lu workflow reproduces b0")
+    Assert.Near(b[1], y[1], 0.000001, "lu workflow reproduces b1")
+    Assert.Near(b[2], y[2], 0.000001, "lu workflow reproduces b2")
+}
+
+[Fact]
+fn LUValidationRejectsInvalidFactorizationState() -> Void {
+    let invalid = LUFactorization {
+        L: [1.0, 0.0, 0.0, 1.0]
+        U: [1.0, 2.0, 0.0, 1.0]
+        Permutation: [0, 0]
+        SwapCount: 0
+        Rows: 2
+        Cols: 2
+    }
+
+    match LUSolve(invalid, [1.0, 2.0]) {
+        ok(v) => { Assert.True(false, "lu solve should reject invalid factorization permutation state") }
+        err(e) => { }
+    }
+}
