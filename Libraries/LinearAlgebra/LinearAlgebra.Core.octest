@@ -18,6 +18,37 @@ fn DotRejectsLengthMismatch() -> Void {
 }
 
 [Fact]
+fn MatVecMulSupportsValidAndRejectsMismatchedShape() -> Void {
+    let A = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    let y = MatVecMul(A, 2, 3, [10.0, 20.0, 30.0])!
+
+    Assert.Equal(2, Len(y), "matvec result length should equal rows")
+    Assert.Near(140.0, y[0], 0.000001, "matvec row 0")
+    Assert.Near(320.0, y[1], 0.000001, "matvec row 1")
+
+    match MatVecMul(A, 2, 3, [1.0, 2.0]) {
+        ok(v) => { Assert.True(false, "matvec should fail for vector length mismatch") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn VecMatMulSupportsValidAndRejectsMismatchedShape() -> Void {
+    let A = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    let y = VecMatMul([10.0, 20.0], A, 2, 3)!
+
+    Assert.Equal(3, Len(y), "vecmat result length should equal cols")
+    Assert.Near(90.0, y[0], 0.000001, "vecmat col 0")
+    Assert.Near(120.0, y[1], 0.000001, "vecmat col 1")
+    Assert.Near(150.0, y[2], 0.000001, "vecmat col 2")
+
+    match VecMatMul([1.0], A, 2, 3) {
+        ok(v) => { Assert.True(false, "vecmat should fail for vector length mismatch") }
+        err(e) => { }
+    }
+}
+
+[Fact]
 fn MatMulAndShapeMismatch() -> Void {
     let A = [1.0, 2.0, 3.0, 4.0]
     let B = [5.0, 6.0, 7.0, 8.0]
@@ -51,6 +82,27 @@ fn TransposeSupportsRectangularAndDoubleTranspose() -> Void {
 }
 
 [Fact]
+fn TraceSupportsSquareAndRejectsRectangular() -> Void {
+    let A = [1.0, 2.0, 3.0, 4.0]
+    Assert.Near(5.0, Trace(A, 2, 2)!, 0.000001, "trace should sum main diagonal")
+
+    match Trace([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
+        ok(v) => { Assert.True(false, "trace should reject non-square matrices") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn DiagonalSupportsRectangularMatrices() -> Void {
+    let A = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    let d = Diagonal(A, 2, 3)!
+
+    Assert.Equal(2, Len(d), "diagonal length should be min(rows, cols)")
+    Assert.Near(1.0, d[0], 0.000001, "diag[0]")
+    Assert.Near(5.0, d[1], 0.000001, "diag[1]")
+}
+
+[Fact]
 fn ConstructorsBuildExpectedMatrices() -> Void {
     let I = Identity(3)!
     Assert.Equal(9, Len(I), "identity cells")
@@ -66,6 +118,17 @@ fn ConstructorsBuildExpectedMatrices() -> Void {
     let O = Ones(2, 2)!
     Assert.Near(1.0, O[0], 0.000001, "ones value 0")
     Assert.Near(1.0, O[3], 0.000001, "ones value 3")
+}
+
+[Fact]
+fn MatScalarMulScalesEachElement() -> Void {
+    let A = [1.0, 0.0 - 2.0, 3.5, 0.5]
+    let scaled = MatScalarMul(A, 2, 2, 2.0)!
+
+    Assert.Near(2.0, scaled[0], 0.000001, "scaled 0")
+    Assert.Near(0.0 - 4.0, scaled[1], 0.000001, "scaled 1")
+    Assert.Near(7.0, scaled[2], 0.000001, "scaled 2")
+    Assert.Near(1.0, scaled[3], 0.000001, "scaled 3")
 }
 
 [Fact]
@@ -119,4 +182,14 @@ fn ComposablePipelineUsesTransposeMatMulAndNorm() -> Void {
     let firstRowNorm = Norm(firstRow)!
 
     Assert.Near(Sqrt(146.0), firstRowNorm, 0.000001, "pipeline should be deterministic and composable")
+}
+
+[Fact]
+fn ComposableIdentityMatVecAndDotPipeline() -> Void {
+    let I = Identity(3)!
+    let x = [2.0, 0.0 - 1.0, 4.0]
+    let y = MatVecMul(I, 3, 3, x)!
+    let score = Dot(y, x)!
+
+    Assert.Near(21.0, score, 0.000001, "identity should preserve vector in composition workflow")
 }
