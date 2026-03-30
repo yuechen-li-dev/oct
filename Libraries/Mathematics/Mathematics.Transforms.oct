@@ -1,22 +1,16 @@
 package Mathematics
 
-record ComplexVector {
-    Real: Float[]
-    Imag: Float[]
-}
-
 /// Computes the 1D discrete Fourier transform using radix-2 Cooley-Tukey.
 ///
 /// Convention (forward, unnormalized):
 /// X[k] = Sum_{n=0}^{N-1} x[n] * exp(-j*2*pi*k*n/N)
 ///
 /// Input policy (M1):
-/// - Len(x.Real) > 0
-/// - Len(x.Real) == Len(x.Imag)
-/// - Len(x.Real) is a power of two
+/// - Len(x) > 0
+/// - Len(x) is a power of two
 ///
 /// Rejects invalid input with Error.
-fn FFT(x: ComplexVector) -> ComplexVector ! Error {
+fn FFT(x: Complex[]) -> Complex[] ! Error {
     let transformed = FFTWithDirection(x, false)?
     return transformed
 }
@@ -27,33 +21,28 @@ fn FFT(x: ComplexVector) -> ComplexVector ! Error {
 /// x[n] = (1/N) * Sum_{k=0}^{N-1} X[k] * exp(+j*2*pi*k*n/N)
 ///
 /// Input policy (M1):
-/// - Len(X.Real) > 0
-/// - Len(X.Real) == Len(X.Imag)
-/// - Len(X.Real) is a power of two
+/// - Len(X) > 0
+/// - Len(X) is a power of two
 ///
 /// Rejects invalid input with Error.
-fn IFFT(X: ComplexVector) -> ComplexVector ! Error {
+fn IFFT(X: Complex[]) -> Complex[] ! Error {
     let reconstructed = FFTWithDirection(X, true)?
     return reconstructed
 }
 
-fn FFTWithDirection(valuesIn: ComplexVector, inverse: Bool) -> ComplexVector ! Error {
+fn FFTWithDirection(valuesIn: Complex[], inverse: Bool) -> Complex[] ! Error {
     let ok = ValidateFFTInput(valuesIn)?
 
-    let n = Len(valuesIn.Real)
-    var real = CopyFloatArray(valuesIn.Real)
-    var imag = CopyFloatArray(valuesIn.Imag)
+    let n = Len(valuesIn)
+    var values = CopyComplexArray(valuesIn)
 
     var i = 0
     while i < n {
         let j = ReverseBits(i, n)
         if j > i {
-            let tmpReal = real[i]
-            let tmpImag = imag[i]
-            real[i] = real[j]
-            imag[i] = imag[j]
-            real[j] = tmpReal
-            imag[j] = tmpImag
+            let tmp = values[i]
+            values[i] = values[j]
+            values[j] = tmp
         }
         i = i + 1
     }
@@ -73,23 +62,15 @@ fn FFTWithDirection(valuesIn: ComplexVector, inverse: Bool) -> ComplexVector ! E
             var j = 0
             while j < halfSpan {
                 let angle = phaseStep * j
-                let wReal = Cos(angle)
-                let wImag = Sin(angle)
+                let twiddle = Complex(Cos(angle), Sin(angle))
 
-                let oddReal = real[blockStart + j + halfSpan]
-                let oddImag = imag[blockStart + j + halfSpan]
+                let odd = values[blockStart + j + halfSpan]
+                let t = twiddle * odd
 
-                let tReal = wReal * oddReal - wImag * oddImag
-                let tImag = wReal * oddImag + wImag * oddReal
+                let even = values[blockStart + j]
 
-                let evenReal = real[blockStart + j]
-                let evenImag = imag[blockStart + j]
-
-                real[blockStart + j] = evenReal + tReal
-                imag[blockStart + j] = evenImag + tImag
-
-                real[blockStart + j + halfSpan] = evenReal - tReal
-                imag[blockStart + j + halfSpan] = evenImag - tImag
+                values[blockStart + j] = even + t
+                values[blockStart + j + halfSpan] = even - t
                 j = j + 1
             }
 
@@ -104,26 +85,20 @@ fn FFTWithDirection(valuesIn: ComplexVector, inverse: Bool) -> ComplexVector ! E
 
         var k = 0
         while k < n {
-            real[k] = real[k] * scale
-            imag[k] = imag[k] * scale
+            values[k] = values[k] * scale
             k = k + 1
         }
     }
 
-    return ComplexVector { Real: real Imag: imag }
+    return values
 }
 
-fn ValidateFFTInput(values: ComplexVector) -> Bool ! Error {
-    let nReal = Len(values.Real)
-    let nImag = Len(values.Imag)
+fn ValidateFFTInput(values: Complex[]) -> Bool ! Error {
+    let n = Len(values)
 
-    let nonEmpty = ValidateFFTLength(nReal)?
+    let nonEmpty = ValidateFFTLength(n)?
 
-    if nReal != nImag {
-        return error("FFT/IFFT require matching real/imag lengths")
-    }
-
-    if not IsPowerOfTwo(nReal) {
+    if not IsPowerOfTwo(n) {
         return error("FFT/IFFT require power-of-two input length")
     }
 
@@ -170,7 +145,7 @@ fn ReverseBits(index: Int, width: Int) -> Int {
     return reversed
 }
 
-fn CopyFloatArray(values: Float[]) -> Float[] {
+fn CopyComplexArray(values: Complex[]) -> Complex[] {
     var out = [values[0]]
 
     var i = 1

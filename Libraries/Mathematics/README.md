@@ -16,9 +16,8 @@
 - `DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error`
 - `IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
 - `IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
-- `record ComplexVector { Real: Float[] Imag: Float[] }`
-- `FFT(x: ComplexVector) -> ComplexVector ! Error`
-- `IFFT(X: ComplexVector) -> ComplexVector ! Error`
+- `FFT(x: Complex[]) -> Complex[] ! Error`
+- `IFFT(X: Complex[]) -> Complex[] ! Error`
 
 ## M1 transform conventions
 
@@ -36,7 +35,6 @@ This sign and normalization placement is fixed by tests.
 For both `FFT` and `IFFT` in M1:
 
 - input length must be `> 0`
-- `Len(Real) == Len(Imag)`
 - input length must be a power of two
 - invalid shape/length returns `Error`
 - no silent padding, truncation, or zero-fill
@@ -45,7 +43,7 @@ Implementation strategy is radix-2 Cooley-Tukey for power-of-two lengths only.
 
 ## Implementation note
 
-The M1 transform remains fully complex-valued, but uses `ComplexVector` (`Float[]` real and imaginary lanes) because current Oct builtins do not provide `Len` over `Complex[]`.
+Hotfix note: FFT/IFFT now operate directly on `Complex[]` after adding `Len(Complex[])` support in core builtins.
 
 ## Behavior notes
 
@@ -67,7 +65,7 @@ The M1 transform remains fully complex-valued, but uses `ComplexVector` (`Float[
 Mathematics M1 remains conservative:
 
 - scalar helpers and calculus stay scalar `Float`/`Int`
-- transforms are explicit complex lanes (`Float[]` real + `Float[]` imag)
+- transforms operate on direct `Complex[]` traces
 - no dimension-aware frequency-axis metadata is introduced in M1
 
 ## Non-goals

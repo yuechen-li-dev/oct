@@ -2188,13 +2188,13 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		}
 		if !argumentType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got %s", argumentType.ValueType)
 		}
 		switch argumentType.ValueType.Base {
-		case BaseTypeInt, BaseTypeFloat, BaseTypeBool:
+		case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeComplex:
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		default:
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], or Bool[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got %s", argumentType.ValueType)
 		}
 	case "Abs":
 		if isRealNumericScalar(argumentType.ValueType) {

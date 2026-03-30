@@ -49,6 +49,20 @@ fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
     }
 }
 
+
+[Fact]
+fn ValidateSParameters2PortRejectsMismatchedComplexTraceLengths() -> Void {
+    match ValidateSParameters2Port(SParameters2Port {
+        Frequencies: [1000000000.0, 2000000000.0]
+        S11: [Complex(0.1, 0.0)]
+        S21: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
+        S12: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
+        S22: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
+    }) {
+        ok(v) => { Assert.True(false, "mismatched trace lengths must fail") }
+        err(e) => { }
+    }
+}
 [Fact]
 fn MagnitudePhaseAndDbHelpersAreConsistent() -> Void {
     let z = Complex(3.0, 4.0)
