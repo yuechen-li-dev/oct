@@ -270,6 +270,218 @@ fn MatScalarMul(A: Float[], rows: Int, cols: Int, s: Float) -> Float[] ! Error {
     return out
 }
 
+fn Determinant(a: Float[], rows: Int, cols: Int) -> Float ! Error {
+    let mok = ValidateSquareMatrixData(a, rows, cols)?
+    let epsilon = 0.000000000001
+
+    var work = [a[0]]
+    var wi = 1
+    while wi < Len(a) {
+        work = Append(work, a[wi])
+        wi = wi + 1
+    }
+
+    var sign = 1.0
+    var col = 0
+    while col < cols {
+        var pivotRow = col
+        var maxAbs = Abs(work[FlatIndex(col, col, cols)])
+
+        var r = col + 1
+        while r < rows {
+            let candidate = Abs(work[FlatIndex(r, col, cols)])
+            if candidate > maxAbs {
+                maxAbs = candidate
+                pivotRow = r
+            }
+            r = r + 1
+        }
+
+        if maxAbs <= epsilon {
+            return 0.0
+        }
+
+        if pivotRow != col {
+            work = SwapRows(work, cols, col, pivotRow)
+            sign = 0.0 - sign
+        }
+
+        let pivot = work[FlatIndex(col, col, cols)]
+        var rr = col + 1
+        while rr < rows {
+            let factor = work[FlatIndex(rr, col, cols)] / pivot
+            work[FlatIndex(rr, col, cols)] = 0.0
+
+            var cc = col + 1
+            while cc < cols {
+                work[FlatIndex(rr, cc, cols)] = work[FlatIndex(rr, cc, cols)] - factor * work[FlatIndex(col, cc, cols)]
+                cc = cc + 1
+            }
+            rr = rr + 1
+        }
+
+        col = col + 1
+    }
+
+    var det = sign
+    var i = 0
+    while i < rows {
+        det = det * work[FlatIndex(i, i, cols)]
+        i = i + 1
+    }
+    return det
+}
+
+fn SolveLinearSystem(a: Float[], rows: Int, cols: Int, b: Float[]) -> Float[] ! Error {
+    let mok = ValidateSquareMatrixData(a, rows, cols)?
+    let vok = ValidateVector(b)?
+    let epsilon = 0.000000000001
+
+    if Len(b) != rows {
+        return error("solve requires RHS length to equal matrix rows")
+    }
+
+    var work = [a[0]]
+    var wi = 1
+    while wi < Len(a) {
+        work = Append(work, a[wi])
+        wi = wi + 1
+    }
+
+    var rhs = [b[0]]
+    var bi = 1
+    while bi < Len(b) {
+        rhs = Append(rhs, b[bi])
+        bi = bi + 1
+    }
+
+    var col = 0
+    while col < cols {
+        var pivotRow = col
+        var maxAbs = Abs(work[FlatIndex(col, col, cols)])
+
+        var r = col + 1
+        while r < rows {
+            let candidate = Abs(work[FlatIndex(r, col, cols)])
+            if candidate > maxAbs {
+                maxAbs = candidate
+                pivotRow = r
+            }
+            r = r + 1
+        }
+
+        if maxAbs <= epsilon {
+            return error("solve requires a non-singular matrix")
+        }
+
+        if pivotRow != col {
+            work = SwapRows(work, cols, col, pivotRow)
+            let t = rhs[col]
+            rhs[col] = rhs[pivotRow]
+            rhs[pivotRow] = t
+        }
+
+        let pivot = work[FlatIndex(col, col, cols)]
+        var rr = col + 1
+        while rr < rows {
+            let factor = work[FlatIndex(rr, col, cols)] / pivot
+            work[FlatIndex(rr, col, cols)] = 0.0
+
+            var cc = col + 1
+            while cc < cols {
+                work[FlatIndex(rr, cc, cols)] = work[FlatIndex(rr, cc, cols)] - factor * work[FlatIndex(col, cc, cols)]
+                cc = cc + 1
+            }
+            rhs[rr] = rhs[rr] - factor * rhs[col]
+            rr = rr + 1
+        }
+
+        col = col + 1
+    }
+
+    var x = [0.0]
+    var xi = 1
+    while xi < rows {
+        x = Append(x, 0.0)
+        xi = xi + 1
+    }
+
+    var i = rows - 1
+    while i >= 0 {
+        var sum = rhs[i]
+        var j = i + 1
+        while j < cols {
+            sum = sum - work[FlatIndex(i, j, cols)] * x[j]
+            j = j + 1
+        }
+
+        let pivot = work[FlatIndex(i, i, cols)]
+        if Abs(pivot) <= epsilon {
+            return error("solve requires a non-singular matrix")
+        }
+
+        x[i] = sum / pivot
+        i = i - 1
+    }
+
+    return x
+}
+
+fn Inverse(a: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    let mok = ValidateSquareMatrixData(a, rows, cols)?
+
+    var inv = Zeros(rows, cols)?
+
+    var c = 0
+    while c < cols {
+        var e = [0.0]
+        var i = 1
+        while i < rows {
+            e = Append(e, 0.0)
+            i = i + 1
+        }
+        e[c] = 1.0
+
+        let column = SolveLinearSystem(a, rows, cols, e)?
+        var r = 0
+        while r < rows {
+            inv[FlatIndex(r, c, cols)] = column[r]
+            r = r + 1
+        }
+        c = c + 1
+    }
+
+    return inv
+}
+
+fn SwapRows(a: Float[], cols: Int, rowA: Int, rowB: Int) -> Float[] {
+    var out = [a[0]]
+    var i = 1
+    while i < Len(a) {
+        out = Append(out, a[i])
+        i = i + 1
+    }
+
+    var c = 0
+    while c < cols {
+        let ia = FlatIndex(rowA, c, cols)
+        let ib = FlatIndex(rowB, c, cols)
+        let t = out[ia]
+        out[ia] = out[ib]
+        out[ib] = t
+        c = c + 1
+    }
+    return out
+}
+
+fn ValidateSquareMatrixData(a: Float[], rows: Int, cols: Int) -> Bool ! Error {
+    let ok = ValidateMatrixData(a, rows, cols)?
+    if rows != cols {
+        return error("operation requires a square matrix")
+    }
+    return true
+}
+
 fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
     return row * cols + col
 }
