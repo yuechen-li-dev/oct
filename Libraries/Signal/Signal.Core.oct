@@ -25,42 +25,91 @@ fn GenerateSignalValues() -> Float[] {
     return raw
 }
 
-fn MovingAverage(values: Float[], window: Int) -> Float[] {
-    var smoothed = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+/// Computes finite linear discrete convolution for dimensionless real sequences.
+/// - Inputs: non-empty Float[] x and h.
+/// - Output length: Len(x) + Len(h) - 1.
+/// - Output ordering: y[n] for n = 0..Len(y)-1 where y[n] = Sum_i x[i] * h[n - i].
+fn Convolve(x: Float[], h: Float[]) -> Float[] ! Error {
+    if Len(x) == 0 {
+        return error("convolution requires non-empty x")
+    }
 
-    if Len(values) != Len(smoothed) {
-        return smoothed
+    if Len(h) == 0 {
+        return error("convolution requires non-empty h")
+    }
+
+    let outputLength = Len(x) + Len(h) - 1
+    var out = ZeroSeries(outputLength)
+
+    for i in 0 .. Len(x) {
+        for j in 0 .. Len(h) {
+            out[i + j] = out[i + j] + x[i] * h[j]
+        }
+    }
+
+    return out
+}
+
+/// Computes finite discrete cross-correlation for dimensionless real sequences.
+/// Convention:
+/// - Returns rxy(k) for integer lag k in increasing order.
+/// - First output index corresponds to k = -(Len(y)-1).
+/// - Last output index corresponds to k = Len(x)-1.
+/// - rxy(k) = Sum_i x[i] * y[i-k] over valid indices.
+/// - Output length: Len(x) + Len(y) - 1.
+fn Correlate(x: Float[], y: Float[]) -> Float[] ! Error {
+    if Len(x) == 0 {
+        return error("correlation requires non-empty x")
+    }
+
+    if Len(y) == 0 {
+        return error("correlation requires non-empty y")
+    }
+
+    let reversedY = Reverse(y)
+    return Convolve(x, reversedY)?
+}
+
+/// Computes a valid-window simple moving average for a dimensionless real sequence.
+/// - Inputs: non-empty Float[] values and window with 1 <= window <= Len(values).
+/// - Output length: Len(values) - window + 1.
+/// - Policy: valid-window only (no padding, no edge extension).
+fn MovingAverage(values: Float[], window: Int) -> Float[] ! Error {
+    if Len(values) == 0 {
+        return error("moving average requires non-empty values")
     }
 
     if window <= 0 {
-        for copyIndex in 0 .. Len(values) {
-            smoothed[copyIndex] = values[copyIndex]
-        }
-        return smoothed
+        return error("moving average requires window > 0")
     }
 
-    for i in 0 .. Len(values) {
-        var start = i - window + 1
-        if start < 0 {
-            start = 0
-        }
+    if window > Len(values) {
+        return error("moving average requires window <= Len(values)")
+    }
 
+    let outputLength = Len(values) - window + 1
+    var smoothed = ZeroSeries(outputLength)
+
+    for i in 0 .. outputLength {
         var sum = 0.0
-        var count = 0
-        for j in start .. i + 1 {
+        for j in i .. i + window {
             sum = sum + values[j]
-            count = count + 1
         }
 
-        smoothed[i] = sum / count
+        smoothed[i] = sum / window
     }
 
     return smoothed
 }
 
-fn AnalyzeSignal(start: Float, delta: Float, window: Int) -> SignalAnalysisResult {
+/// Computes finite autocorrelation as Correlate(x, x) with the same lag ordering.
+fn AutoCorrelate(x: Float[]) -> Float[] ! Error {
+    return Correlate(x, x)?
+}
+
+fn AnalyzeSignal(start: Float, delta: Float, window: Int) -> SignalAnalysisResult ! Error {
     let raw = GenerateSignalValues()
-    let smoothed = MovingAverage(raw, window)
+    let smoothed = MovingAverage(raw, window)!
 
     var x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     for i in 0 .. Len(x) {
@@ -72,4 +121,22 @@ fn AnalyzeSignal(start: Float, delta: Float, window: Int) -> SignalAnalysisResul
         Raw: raw
         Smoothed: smoothed
     }
+}
+
+fn Reverse(values: Float[]) -> Float[] {
+    var out = [values[Len(values) - 1]]
+    for i in 1 .. Len(values) {
+        out = Append(out, values[Len(values) - 1 - i])
+    }
+
+    return out
+}
+
+fn ZeroSeries(count: Int) -> Float[] {
+    var out = [0.0]
+    for _ in 1 .. count {
+        out = Append(out, 0.0)
+    }
+
+    return out
 }
