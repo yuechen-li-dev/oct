@@ -1,0 +1,82 @@
+package Interpolation
+
+[Fact]
+fn LerpHandlesBoundariesAndMidpoint() -> Void {
+    Assert.Near(10.0, Lerp(10.0, 20.0, 0.0), 0.000001, "t=0 should return a")
+    Assert.Near(20.0, Lerp(10.0, 20.0, 1.0), 0.000001, "t=1 should return b")
+    Assert.Near(15.0, Lerp(10.0, 20.0, 0.5), 0.000001, "t=0.5 should return midpoint")
+}
+
+[Fact]
+fn LinearInterpolateBasicCasesAndSlope() -> Void {
+    Assert.Near(5.0, LinearInterpolate(0.0, 0.0, 10.0, 10.0, 5.0)!, 0.000001, "midpoint interpolation")
+    Assert.Near(7.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 3.0)!, 0.000001, "nontrivial slope interpolation")
+    Assert.Near(11.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 5.0)!, 0.000001, "exact upper knot")
+}
+
+[Fact]
+fn LinearInterpolateRejectsDegenerateInterval() -> Void {
+    match LinearInterpolate(1.0, 2.0, 1.0, 3.0, 1.0) {
+        ok(v) => { Assert.True(false, "x0 == x1 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn PiecewiseLinearSupportsInteriorAndKnotQueries() -> Void {
+    let xs = [0.0, 1.0, 3.0, 4.0]
+    let ys = [0.0, 2.0, 6.0, 10.0]
+
+    Assert.Near(0.0, PiecewiseLinear(xs, ys, 0.0)!, 0.000001, "exact first knot")
+    Assert.Near(6.0, PiecewiseLinear(xs, ys, 3.0)!, 0.000001, "exact interior knot")
+    Assert.Near(4.0, PiecewiseLinear(xs, ys, 2.0)!, 0.000001, "interior interpolation")
+    Assert.Near(10.0, PiecewiseLinear(xs, ys, 4.0)!, 0.000001, "exact last knot")
+}
+
+[Fact]
+fn PiecewiseLinearRejectsOutOfRangeAndInvalidInputs() -> Void {
+    let xs = [0.0, 1.0, 2.0]
+    let ys = [0.0, 10.0, 20.0]
+
+    match PiecewiseLinear(xs, ys, 0.0 - 0.1) {
+        ok(v) => { Assert.True(false, "out-of-range lower query must fail") }
+        err(e) => { }
+    }
+
+    match PiecewiseLinear(xs, ys, 2.1) {
+        ok(v) => { Assert.True(false, "out-of-range upper query must fail") }
+        err(e) => { }
+    }
+
+    match PiecewiseLinear([0.0, 1.0], [0.0], 0.5) {
+        ok(v) => { Assert.True(false, "mismatched lengths must fail") }
+        err(e) => { }
+    }
+
+    match PiecewiseLinear([0.0, 2.0, 1.0], [0.0, 1.0, 2.0], 1.5) {
+        ok(v) => { Assert.True(false, "unsorted xs must fail") }
+        err(e) => { }
+    }
+
+    match PiecewiseLinear([0.0, 1.0, 1.0], [0.0, 1.0, 2.0], 1.0) {
+        ok(v) => { Assert.True(false, "duplicate xs must fail") }
+        err(e) => { }
+    }
+
+    match PiecewiseLinear([0.0], [1.0], 0.0) {
+        ok(v) => { Assert.True(false, "too-short input must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn PiecewiseWorkflowComposableInExpressionChain() -> Void {
+    let xs = [0.0, 2.0, 5.0]
+    let ys = [0.0, 4.0, 10.0]
+
+    let position = PiecewiseLinear(xs, ys, 3.5)!
+    let normalized = position / LinearInterpolate(0.0, 1.0, 5.0, 1.0, 3.5)!
+
+    Assert.Near(7.0, position, 0.000001, "piecewise interpolation should return expected point")
+    Assert.Near(7.0, normalized, 0.000001, "interpolation results should compose deterministically")
+}

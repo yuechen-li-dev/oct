@@ -1,0 +1,65 @@
+package Interpolation
+
+fn Lerp(a: Float, b: Float, t: Float) -> Float {
+    return a + (b - a) * t
+}
+
+fn LinearInterpolate(x0: Float, y0: Float, x1: Float, y1: Float, x: Float) -> Float ! Error {
+    if x0 == x1 {
+        return error("linear interpolation requires x0 != x1")
+    }
+
+    let t = (x - x0) / (x1 - x0)
+    return Lerp(y0, y1, t)
+}
+
+fn PiecewiseLinear(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
+    let ok = ValidatePiecewiseInputs(xs, ys)?
+
+    if x < xs[0] or x > xs[Len(xs) - 1] {
+        return error("piecewise linear query x is out of range")
+    }
+
+    if x == xs[Len(xs) - 1] {
+        return ys[Len(ys) - 1]
+    }
+
+    var i = 0
+    while i < Len(xs) - 1 {
+        if x == xs[i] {
+            return ys[i]
+        }
+
+        if x > xs[i] and x < xs[i + 1] {
+            return LinearInterpolate(xs[i], ys[i], xs[i + 1], ys[i + 1], x)?
+        }
+
+        i = i + 1
+    }
+
+    return ys[Len(ys) - 1]
+}
+
+fn ValidatePiecewiseInputs(xs: Float[], ys: Float[]) -> Bool ! Error {
+    if Len(xs) == 0 or Len(ys) == 0 {
+        return error("piecewise linear requires non-empty xs and ys")
+    }
+
+    if Len(xs) != Len(ys) {
+        return error("piecewise linear requires xs and ys to have same length")
+    }
+
+    if Len(xs) < 2 {
+        return error("piecewise linear requires at least two points")
+    }
+
+    var i = 0
+    while i < Len(xs) - 1 {
+        if xs[i] >= xs[i + 1] {
+            return error("piecewise linear xs must be strictly increasing")
+        }
+        i = i + 1
+    }
+
+    return true
+}
