@@ -99,6 +99,7 @@ Formatter policy:
 * deterministic spacing/indentation and stable diff-friendly layout
 * idempotent output (formatting formatted code yields no changes)
 * preserves ordinary comments (`//`) and doc comments (`///`) with declaration adjacency
+* file-type-aware parsing when formatting paths: `.oct`, `.octest`, and `.octfail`
 
 Intentionally deferred:
 

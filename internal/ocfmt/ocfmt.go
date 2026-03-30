@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"oct/internal/lex"
@@ -43,7 +44,18 @@ func FormatPath(path string) error {
 }
 
 func FormatSource(src string) (string, error) {
-	lexed, err := lex.Analyze(source.File{Path: "<format>.oct", Text: src})
+	return formatSourceWithPath("<format>.oct", src)
+}
+
+func formatSourceWithPath(path string, src string) (string, error) {
+	if strings.EqualFold(filepath.Ext(path), ".octfail") {
+		return formatOctFailSource(src)
+	}
+	return formatRegularSource(path, src)
+}
+
+func formatRegularSource(path string, src string) (string, error) {
+	lexed, err := lex.Analyze(source.File{Path: path, Text: src})
 	if err != nil {
 		return "", err
 	}
@@ -63,11 +75,48 @@ func formatFile(path string) error {
 	if err != nil {
 		return err
 	}
-	formatted, err := FormatSource(string(bytes))
+	formatted, err := formatSourceWithPath(path, string(bytes))
 	if err != nil {
 		return fmt.Errorf("format %s: %w", path, err)
 	}
 	return os.WriteFile(path, []byte(formatted), 0o644)
+}
+
+var octFailHeaderPattern = regexp.MustCompile(`^expect error:\s*"(.*)"\s*$`)
+
+func formatOctFailSource(src string) (string, error) {
+	lines := strings.Split(src, "\n")
+	headerIndex := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		headerIndex = i
+		break
+	}
+	if headerIndex == -1 {
+		return "", fmt.Errorf("missing expectation header")
+	}
+
+	header := strings.TrimSpace(lines[headerIndex])
+	if !octFailHeaderPattern.MatchString(header) {
+		return "", fmt.Errorf("malformed expectation header")
+	}
+
+	formattedSource, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"))
+	if err != nil {
+		return "", err
+	}
+
+	var b strings.Builder
+	for i := 0; i < headerIndex; i++ {
+		b.WriteString(lines[i])
+		b.WriteByte('\n')
+	}
+	b.WriteString(header)
+	b.WriteByte('\n')
+	b.WriteString(formattedSource)
+	return b.String(), nil
 }
 
 func normalize(src string) string {
