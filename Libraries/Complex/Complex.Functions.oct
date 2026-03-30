@@ -1,0 +1,70 @@
+package Complex
+
+/// Complex sine for z = x + i y:
+/// sin(z) = sin(x)cosh(y) + i*cos(x)sinh(y)
+fn ComplexSin(z: Complex) -> Complex {
+    let x = Real(z)
+    let y = Imag(z)
+
+    let realPart = Sin(x) * Cosh(y)
+    let imagPart = Cos(x) * Sinh(y)
+    return Complex(realPart, imagPart)
+}
+
+/// Complex cosine for z = x + i y:
+/// cos(z) = cos(x)cosh(y) - i*sin(x)sinh(y)
+fn ComplexCos(z: Complex) -> Complex {
+    let x = Real(z)
+    let y = Imag(z)
+
+    let realPart = Cos(x) * Cosh(y)
+    let imagPart = (0.0 - 1.0) * Sin(x) * Sinh(y)
+    return Complex(realPart, imagPart)
+}
+
+/// Complex tangent defined as tan(z) = sin(z) / cos(z).
+/// Returns Error when cosine magnitude is near zero, because tan is singular.
+fn ComplexTan(z: Complex) -> Complex ! Error {
+    let numerator = ComplexSin(z)
+    let denominator = ComplexCos(z)
+
+    if Abs(denominator) <= 0.000000000001 {
+        return error("complex tangent undefined when ComplexCos(z) magnitude is near zero")
+    }
+
+    return numerator / denominator
+}
+
+/// Hyperbolic complex sine for z = x + i y:
+/// sinh(z) = sinh(x)cos(y) + i*cosh(x)sin(y)
+fn ComplexSinh(z: Complex) -> Complex {
+    let x = Real(z)
+    let y = Imag(z)
+
+    let realPart = Sinh(x) * Cos(y)
+    let imagPart = Cosh(x) * Sin(y)
+    return Complex(realPart, imagPart)
+}
+
+/// Hyperbolic complex cosine for z = x + i y:
+/// cosh(z) = cosh(x)cos(y) + i*sinh(x)sin(y)
+fn ComplexCosh(z: Complex) -> Complex {
+    let x = Real(z)
+    let y = Imag(z)
+
+    let realPart = Cosh(x) * Cos(y)
+    let imagPart = Sinh(x) * Sin(y)
+    return Complex(realPart, imagPart)
+}
+
+/// Hyperbolic complex tangent defined as tanh(z) = sinh(z) / cosh(z).
+fn ComplexTanh(z: Complex) -> Complex ! Error {
+    let numerator = ComplexSinh(z)
+    let denominator = ComplexCosh(z)
+
+    if Abs(denominator) <= 0.000000000001 {
+        return error("complex hyperbolic tangent undefined when ComplexCosh(z) magnitude is near zero")
+    }
+
+    return numerator / denominator
+}

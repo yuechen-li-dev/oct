@@ -1,0 +1,114 @@
+package Complex
+
+[Fact]
+fn ComplexTrigIdentityAtZero() -> Void {
+    let sinZero = ComplexSin(Complex(0.0, 0.0))
+    let cosZero = ComplexCos(Complex(0.0, 0.0))
+    let tanZero = ComplexTan(Complex(0.0, 0.0))!
+
+    Assert.Near(0.0, Real(sinZero), 0.000001, "ComplexSin(0) real")
+    Assert.Near(0.0, Imag(sinZero), 0.000001, "ComplexSin(0) imag")
+
+    Assert.Near(1.0, Real(cosZero), 0.000001, "ComplexCos(0) real")
+    Assert.Near(0.0, Imag(cosZero), 0.000001, "ComplexCos(0) imag")
+
+    Assert.Near(0.0, Real(tanZero), 0.000001, "ComplexTan(0) real")
+    Assert.Near(0.0, Imag(tanZero), 0.000001, "ComplexTan(0) imag")
+}
+
+[Theory]
+[InlineData(0.25)]
+[InlineData(0.6)]
+[InlineData(0.4)]
+fn PurelyRealInputMatchesScalarTrig(x: Float) -> Void {
+    let z = Complex(x, 0.0)
+
+    let sz = ComplexSin(z)
+    Assert.Near(Sin(x), Real(sz), 0.000001, "real-part sin consistency")
+    Assert.Near(0.0, Imag(sz), 0.000001, "imag part should be zero for real sine input")
+
+    let cz = ComplexCos(z)
+    Assert.Near(Cos(x), Real(cz), 0.000001, "real-part cos consistency")
+    Assert.Near(0.0, Imag(cz), 0.000001, "imag part should be zero for real cosine input")
+
+    let tz = ComplexTan(z)!
+    Assert.Near(Tan(x), Real(tz), 0.000001, "real-part tan consistency")
+    Assert.Near(0.0, Imag(tz), 0.000001, "imag part should be zero for real tangent input")
+}
+
+[Fact]
+fn PurelyImaginaryInputMatchesHandCheckableValues() -> Void {
+    let z = Complex(0.0, 1.0)
+
+    let sz = ComplexSin(z)
+    Assert.Near(0.0, Real(sz), 0.000001, "sin(i) real should be zero")
+    Assert.Near(Sinh(1.0), Imag(sz), 0.000001, "sin(i) imag should be sinh(1)")
+
+    let cz = ComplexCos(z)
+    Assert.Near(Cosh(1.0), Real(cz), 0.000001, "cos(i) real should be cosh(1)")
+    Assert.Near(0.0, Imag(cz), 0.000001, "cos(i) imag should be zero")
+}
+
+[Fact]
+fn EulerConsistencyMatchesExponentialFormulas() -> Void {
+    let z = Complex(0.4, 0.0 - 0.7)
+    let i = I()
+
+    let sinFromExp = (Exp(i * z) - Exp((0.0 - 1.0) * i * z)) / (2.0 * i)
+    let cosFromExp = (Exp(i * z) + Exp((0.0 - 1.0) * i * z)) / 2.0
+
+    let sinDirect = ComplexSin(z)
+    let cosDirect = ComplexCos(z)
+
+    Assert.Near(Real(sinFromExp), Real(sinDirect), 0.000001, "sin real from exp identity")
+    Assert.Near(Imag(sinFromExp), Imag(sinDirect), 0.000001, "sin imag from exp identity")
+
+    Assert.Near(Real(cosFromExp), Real(cosDirect), 0.000001, "cos real from exp identity")
+    Assert.Near(Imag(cosFromExp), Imag(cosDirect), 0.000001, "cos imag from exp identity")
+}
+
+[Fact]
+fn ComplexTanSurfacesSingularityNearOddHalfPiOnRealAxis() -> Void {
+    let z = Complex(Pi() / 2, 0.0)
+
+    match ComplexTan(z) {
+        ok(v) => {
+            Assert.True(false, "ComplexTan should reject singular input near pi/2")
+        }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn ComplexTrigComposableWithCoreHelpers() -> Void {
+    let z = Complex(0.8, 0.0 - 0.35)
+    let sinz = ComplexSin(z)
+    let cosz = ComplexCos(z)
+    let tanz = ComplexTan(z)!
+
+    let reconstructed = tanz * cosz
+    Assert.Near(Real(sinz), Real(reconstructed), 0.000001, "tan*cos reconstructs sin real")
+    Assert.Near(Imag(sinz), Imag(reconstructed), 0.000001, "tan*cos reconstructs sin imag")
+
+    let mag = Abs(sinz)
+    let phase = Arg(sinz)
+    let roundTrip = ComplexPolar(mag, phase)
+    Assert.Near(Real(sinz), Real(roundTrip), 0.000001, "polar round-trip real")
+    Assert.Near(Imag(sinz), Imag(roundTrip), 0.000001, "polar round-trip imag")
+}
+
+[Fact]
+fn ComplexHyperbolicIdentityAtZero() -> Void {
+    let sinhZero = ComplexSinh(Complex(0.0, 0.0))
+    let coshZero = ComplexCosh(Complex(0.0, 0.0))
+    let tanhZero = ComplexTanh(Complex(0.0, 0.0))!
+
+    Assert.Near(0.0, Real(sinhZero), 0.000001, "ComplexSinh(0) real")
+    Assert.Near(0.0, Imag(sinhZero), 0.000001, "ComplexSinh(0) imag")
+
+    Assert.Near(1.0, Real(coshZero), 0.000001, "ComplexCosh(0) real")
+    Assert.Near(0.0, Imag(coshZero), 0.000001, "ComplexCosh(0) imag")
+
+    Assert.Near(0.0, Real(tanhZero), 0.000001, "ComplexTanh(0) real")
+    Assert.Near(0.0, Imag(tanhZero), 0.000001, "ComplexTanh(0) imag")
+}
