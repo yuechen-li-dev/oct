@@ -1,41 +1,41 @@
-# ClrOct (Scaffold)
+# ClrOct Bootstrap (M0)
 
-ClrOct is an **escape hatch backend path** for Oct targeting CLR-oriented implementation exploration.
+ClrOct is an **escape hatch backend path** for Oct on the CLR.
 
 ## Status
 
-Scaffold only. No backend implementation logic is introduced here yet.
+This directory now contains an **octest-first bootstrap proof**, not a backend implementation.
 
-## Why This Exists
+- A real .NET 10 solution exists under `Backends/ClrOct/`.
+- A tiny hosted octest harness exists in C#.
+- Deterministic Fact/Assert pass-fail behavior is demonstrated through the CLR test host.
 
-- Provide a clearly named location for CLR backend exploration.
-- Make backend experimentation explicit without overloading GoOct internals.
-- Preserve architectural clarity: GoOct remains the reference backend.
+## What This Is
 
-## What ClrOct Is Meant to Prove
+- A scaffold proving ClrOct can be a real backend track.
+- A minimal hosted test model shaped like Oct's `octest` semantics.
+- An explicit first step before backend internals.
 
-- Feasibility of a CLR backend path for Oct.
-- Practical backend portability while preserving one language contract corpus.
-- Incremental backend bring-up strategy against existing Oct language tests.
+## What This Is Not
 
-## What ClrOct Is Not
+- Not MIR lowering.
+- Not parser/frontend work.
+- Not package loading.
+- Not runtime/backend parity with GoOct.
 
-- Not a replacement for GoOct in current milestones.
-- Not a compiler architecture rewrite.
-- Not a place to redefine language semantics.
+GoOct remains the reference backend.
 
-## Bootstrap Strategy: Octest-First
+## Bootstrap Direction
 
-ClrOct bootstrap is expected to be contract-driven:
+This milestone is deliberately **octest-first, not arithmetic-first**:
 
-1. Reuse `Language/` `.octest` and `.octfail` as canonical semantics.
-2. Implement backend stages incrementally.
-3. Validate backend progress by increasing language corpus pass coverage.
+1. Host minimal Fact/Assert test semantics on CLR.
+2. Keep behavior deterministic and inspectable.
+3. Expand only after bootstrap proof quality is established.
 
-## Directory Intent
+## Layout
 
-- `docs/` — ClrOct-specific planning and design notes.
-- `src/` — future backend implementation source.
-- `tests/` — backend-specific non-semantic integration checks.
-
-Language semantics remain owned by `Language/`.
+- `ClrOct.sln` — .NET 10 solution root.
+- `src/ClrOct.Octest/` — minimal hosted octest harness types.
+- `tests/ClrOct.Octest.Tests/` — CLR-hosted tests proving pass/fail semantics.
+- `docs/` — concise milestone documentation.

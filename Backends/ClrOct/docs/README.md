@@ -1,5 +1,5 @@
 # ClrOct Docs
 
-Planning/design notes for the ClrOct backend path.
+ClrOct docs for bootstrap milestones.
 
-Status: scaffold-only.
+- See `bootstrap-m0.md` for the current scope and non-goals.
