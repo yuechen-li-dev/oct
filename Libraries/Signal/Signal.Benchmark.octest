@@ -3,6 +3,6 @@ package Signal
 [Benchmark]
 fn MovingAverageSmall() -> Void {
     let values = GenerateSignalValues()
-    let _ = MovingAverage(values, 3)
+    let _ = MovingAverage(values, 3)!
     return
 }

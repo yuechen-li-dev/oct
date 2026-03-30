@@ -2,11 +2,11 @@ package Signal
 
 [Fact]
 fn AnalyzeSignalReturnsConsistentShapes() -> Void {
-    let result = AnalyzeSignal(0.0, 0.5, 3)
+    let result = AnalyzeSignal(0.0, 0.5, 3)!
 
     Assert.Equal(12, Len(result.Raw), "raw should contain 12 samples")
     Assert.Equal(Len(result.Raw), Len(result.X), "x axis length should match raw samples")
-    Assert.Equal(Len(result.Raw), Len(result.Smoothed), "smoothed length should match raw samples")
+    Assert.Equal(10, Len(result.Smoothed), "smoothed length should use valid-window policy")
     Assert.Near(0.0, result.X[0], 0.0001, "x should start at the provided start value")
     Assert.Near(1.5, result.X[3], 0.0001, "x should advance by delta")
 }
@@ -18,4 +18,107 @@ fn AnalyzeSignalReturnsConsistentShapes() -> Void {
 fn GeneratedSignalContainsKnownSamples(index: Int, expected: Float) -> Void {
     let raw = GenerateSignalValues()
     Assert.Near(expected, raw[index], 0.0001, "raw sample mismatch")
+}
+
+[Fact]
+fn ConvolveMatchesHandComputedValuesAndLength() -> Void {
+    let actual = Convolve([1.0, 2.0, 3.0], [0.5, 1.0])!
+
+    Assert.Equal(4, Len(actual), "convolution output length should be Len(x)+Len(h)-1")
+    Assert.Near(0.5, actual[0], 0.000001, "convolution sample 0")
+    Assert.Near(2.0, actual[1], 0.000001, "convolution sample 1")
+    Assert.Near(3.5, actual[2], 0.000001, "convolution sample 2")
+    Assert.Near(3.0, actual[3], 0.000001, "convolution sample 3")
+}
+
+[Fact]
+fn ConvolveWithIdentityLikeKernelReturnsInput() -> Void {
+    let x = [2.0, 0.0 - 1.5, 4.25]
+    let actual = Convolve(x, [1.0])!
+
+    Assert.Equal(Len(x), Len(actual), "identity kernel should preserve length")
+    for i in 0 .. Len(x) {
+        Assert.Near(x[i], actual[i], 0.000001, "identity kernel should preserve samples")
+    }
+}
+
+
+[Fact]
+fn CorrelateUsesIncreasingLagOrderAndKnownValues() -> Void {
+    let actual = Correlate([1.0, 2.0], [3.0, 4.0])!
+
+    Assert.Equal(3, Len(actual), "correlation output length should be Len(x)+Len(y)-1")
+    // Lag ordering is k=-1,0,1.
+    Assert.Near(4.0, actual[0], 0.000001, "k=-1")
+    Assert.Near(11.0, actual[1], 0.000001, "k=0")
+    Assert.Near(6.0, actual[2], 0.000001, "k=1")
+}
+
+[Fact]
+fn CorrelateSelfCorrelationHasExpectedCenterPeak() -> Void {
+    let x = [1.0, 2.0, 3.0]
+    let r = Correlate(x, x)!
+
+    Assert.Equal(5, Len(r), "self correlation output length")
+    Assert.Near(14.0, r[2], 0.000001, "center lag should equal sum of squares")
+}
+
+
+[Fact]
+fn MovingAverageUsesValidWindowOnlyPolicy() -> Void {
+    let values = [1.0, 2.0, 3.0, 4.0]
+    let actual = MovingAverage(values, 2)!
+
+    Assert.Equal(3, Len(actual), "valid-window policy should emit Len(x)-window+1 samples")
+    Assert.Near(1.5, actual[0], 0.000001, "moving average sample 0")
+    Assert.Near(2.5, actual[1], 0.000001, "moving average sample 1")
+    Assert.Near(3.5, actual[2], 0.000001, "moving average sample 2")
+}
+
+[Fact]
+fn MovingAverageCoversWindowEdgeCasesAndValidation() -> Void {
+    let values = [2.0, 4.0, 6.0]
+
+    let windowOne = MovingAverage(values, 1)!
+    Assert.Equal(3, Len(windowOne), "window=1 should preserve length")
+    Assert.Near(2.0, windowOne[0], 0.000001, "window=1 sample 0")
+    Assert.Near(4.0, windowOne[1], 0.000001, "window=1 sample 1")
+    Assert.Near(6.0, windowOne[2], 0.000001, "window=1 sample 2")
+
+    let fullWindow = MovingAverage(values, Len(values))!
+    Assert.Equal(1, Len(fullWindow), "window=Len(x) should return one value")
+    Assert.Near(4.0, fullWindow[0], 0.000001, "window=Len(x) should average all samples")
+
+    match MovingAverage(values, 0) {
+        ok(v) => { Assert.True(false, "moving average must reject non-positive window") }
+        err(e) => { }
+    }
+
+    match MovingAverage(values, 4) {
+        ok(v) => { Assert.True(false, "moving average must reject window > Len(values)") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn AutoCorrelateWrapsCorrelate() -> Void {
+    let viaWrapper = AutoCorrelate([1.0, 0.0 - 1.0, 2.0])!
+    let direct = Correlate([1.0, 0.0 - 1.0, 2.0], [1.0, 0.0 - 1.0, 2.0])!
+
+    Assert.Equal(Len(direct), Len(viaWrapper), "autocorrelation length should match direct correlation")
+    for i in 0 .. Len(direct) {
+        Assert.Near(direct[i], viaWrapper[i], 0.000001, "autocorrelation wrapper should match direct output")
+    }
+}
+
+[Fact]
+fn SignalOperationsComposeDeterministically() -> Void {
+    let x = [1.0, 3.0, 2.0, 5.0]
+    let smoothed = MovingAverage(x, 2)!
+    let kernel = [1.0, 0.0 - 0.5]
+    let convolved = Convolve(smoothed, kernel)!
+    let score = Correlate(convolved, [1.0, 0.0, 1.0])!
+
+    Assert.Equal(6, Len(score), "composed workflow length should be deterministic")
+    Assert.True(score[2] > score[0], "composed workflow should produce meaningful lag structure")
 }
