@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -891,7 +892,7 @@ func TestBuildCommandSucceedsAfterTypeCheck(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatalf("expected non-empty artifact at %s", artifactPath)
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Fatalf("expected executable artifact mode, got %v", info.Mode())
 	}
 	cmd := exec.Command(artifactPath)

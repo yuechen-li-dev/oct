@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -208,7 +209,7 @@ func createGitRepo(t *testing.T, withManifest bool) string {
 	}
 	runCmd(t, repoDir, "git", "add", ".")
 	runCmd(t, repoDir, "git", "commit", "-m", "init")
-	return "file://" + repoDir
+	return localRepoSourceURL(t, repoDir)
 }
 
 func createGitRepoWithManifest(t *testing.T, manifest string) string {
@@ -226,7 +227,16 @@ func createGitRepoWithManifest(t *testing.T, manifest string) string {
 	}
 	runCmd(t, repoDir, "git", "add", ".")
 	runCmd(t, repoDir, "git", "commit", "-m", "init")
-	return "file://" + repoDir
+	return localRepoSourceURL(t, repoDir)
+}
+
+func localRepoSourceURL(t *testing.T, repoDir string) string {
+	t.Helper()
+	path := filepath.ToSlash(repoDir)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
 }
 
 func writeRepoManifest(t *testing.T, repoDir string, manifest string) {

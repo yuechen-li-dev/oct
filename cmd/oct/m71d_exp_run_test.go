@@ -262,7 +262,7 @@ func createExperimentGitRepo(t *testing.T, spec experimentRepoSpec) string {
 	}
 	runCmd(t, repoDir, "git", "add", ".")
 	runCmd(t, repoDir, "git", "commit", "-m", "init")
-	return "file://" + repoDir
+	return localRepoSourceURL(t, repoDir)
 }
 
 func milestoneFactSource(factName string) string {
