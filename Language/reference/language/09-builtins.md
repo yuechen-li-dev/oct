@@ -13,6 +13,9 @@ Calls are checked statically for arity and type constraints.
   - Requires exactly one argument.
   - Prints the value and returns a status code `Int`.
 - `Len(x: String | Int[] | Float[] | Bool[]) -> Int`.
+- `Append(xs: T[], value: T) -> T[]`.
+  - First argument must be an array.
+  - Value type must exactly match the array element type.
 - `Abs(x: Int | Int<D>) -> Int | Int<D>`.
 - `Abs(x: Float | Float<D>) -> Float | Float<D>`.
 - `Sqrt(x: Int | Float | Int<D> | Float<D>) -> Float<sqrt(D)>`.
@@ -21,6 +24,36 @@ Calls are checked statically for arity and type constraints.
   - Input must be dimensionless or an explicit degree literal.
 - `Cos(x: Int | Float) -> Float`.
   - Input must be dimensionless or an explicit degree literal.
+- `Tan(x: Int | Float) -> Float`.
+  - Input must be dimensionless or an explicit degree literal.
+- `Asin(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+  - Runtime input domain is `[-1, 1]`.
+- `Acos(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+  - Runtime input domain is `[-1, 1]`.
+- `Atan(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+- `Atan2(y: Int | Float, x: Int | Float) -> Float`.
+  - Both inputs must be dimensionless.
+- `Exp(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+- `Ln(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+  - Runtime input domain is positive values only.
+- `Log10(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+  - Runtime input domain is positive values only.
+- `Sinh(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+- `Cosh(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+- `Tanh(x: Int | Float) -> Float`.
+  - Input must be dimensionless.
+- `Pi() -> Float`.
+  - Requires zero arguments.
+- `E() -> Float`.
+  - Requires zero arguments.
 - `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
 - `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
@@ -32,16 +65,18 @@ Valid:
 
 ```oct
 fn Main() -> Int {
-    let xs = [0, 1, 2]
-    let ys = [0, 1, 4]
-    return PlotScatter(xs, ys, "scatter.png")
+    let theta = Pi() / 4
+    let xs = [1, 2]
+    let ys = Append(xs, 3)
+    Print(Atan2(1, 1) + Tan(theta))
+    return Len(ys)
 }
 ```
 
 Invalid:
 
 ```oct
-fn Main() -> Int {
-    return Len(1)
+fn Main() -> Float {
+    return Ln(0)
 }
 ```

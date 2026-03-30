@@ -30,7 +30,8 @@ Execution is deterministic for identical inputs.
 - `Complete(flow)` reports completion status.
 - `Result(flow)` is available only after completion.
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
-- Builtins `Step`, `Active`, `Complete`, `Result`, and `ResumeTarget` require a flow instance argument.
+- `StateHistory(flow)` returns state-entry history as `String[]`.
+- Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, and `StateHistory` require a flow instance argument.
 
 See also [12 Batch](./12-batch.md) for array-parallel execution constructs.
 
@@ -39,28 +40,38 @@ See also [12 Batch](./12-batch.md) for array-parallel execution constructs.
 Valid:
 
 ```oct
-flow Patrol(flag: Bool) -> Int {
+flow Ordered(flagA: Bool, flagB: Bool) -> Int {
     state Start {
         when {
-            case flag -> goto Track
+            case flagA -> goto A
+            case flagB -> goto B
+            else -> return 0
+        }
+    }
+
+    state A { return 1 }
+    state B { return 2 }
+}
+
+flow Policy(signal: Float) -> Int {
+    state Start {
+        when policy { hysteresis: 2 min_commit: 1 } {
+            case signal > 0.5 -> goto High
             else -> suspend
         }
     }
 
-    state Track {
-        remember
-        suspend
-        resume
-    }
+    state High { return 1 }
 }
 
 fn Main() -> Int {
-    let f = Patrol(true)
+    let f = Ordered(true, true)
     Step(f)
-    if Complete(f) {
+    let history = StateHistory(f)
+    if Len(history) > 0 {
         return 0
     }
-    return Len(Active(f))
+    return 1
 }
 ```
 
