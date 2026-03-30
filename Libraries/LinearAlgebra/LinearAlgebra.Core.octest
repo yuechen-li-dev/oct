@@ -193,3 +193,110 @@ fn ComposableIdentityMatVecAndDotPipeline() -> Void {
 
     Assert.Near(21.0, score, 0.000001, "identity should preserve vector in composition workflow")
 }
+
+[Fact]
+fn DeterminantCoversCoreCasesAndSquareValidation() -> Void {
+    Assert.Near(7.0, Determinant([7.0], 1, 1)!, 0.000001, "det 1x1")
+
+    let det2 = Determinant([1.0, 2.0, 3.0, 4.0], 2, 2)!
+    Assert.Near(0.0 - 2.0, det2, 0.000001, "det 2x2")
+
+    let det3 = Determinant([6.0, 1.0, 1.0, 4.0, 0.0 - 2.0, 5.0, 2.0, 8.0, 7.0], 3, 3)!
+    Assert.Near(0.0 - 306.0, det3, 0.000001, "det 3x3")
+
+    match Determinant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
+        ok(v) => { Assert.True(false, "determinant should reject non-square matrices") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn SolveLinearSystemCovers2x2And3x3Cases() -> Void {
+    let x2 = SolveLinearSystem([2.0, 1.0, 5.0, 7.0], 2, 2, [11.0, 13.0])!
+    Assert.Near(64.0 / 9.0, x2[0], 0.000001, "solve 2x2 x0")
+    Assert.Near(0.0 - 29.0 / 9.0, x2[1], 0.000001, "solve 2x2 x1")
+
+    let x3 = SolveLinearSystem([3.0, 2.0, 0.0, 1.0, 0.0 - 1.0, 0.0, 0.0, 5.0, 1.0], 3, 3, [2.0, 4.0, 0.0 - 1.0])!
+    Assert.Near(2.0, x3[0], 0.000001, "solve 3x3 x0")
+    Assert.Near(0.0 - 2.0, x3[1], 0.000001, "solve 3x3 x1")
+    Assert.Near(9.0, x3[2], 0.000001, "solve 3x3 x2")
+}
+
+[Fact]
+fn SolveLinearSystemRejectsSingularAndShapeMismatch() -> Void {
+    match SolveLinearSystem([1.0, 2.0, 2.0, 4.0], 2, 2, [3.0, 6.0]) {
+        ok(v) => { Assert.True(false, "solve should reject singular systems") }
+        err(e) => { }
+    }
+
+    match SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0]) {
+        ok(v) => { Assert.True(false, "solve should reject RHS length mismatch") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn InverseCoversExplicitAndIdentityCompositionCases() -> Void {
+    let inv2 = Inverse([4.0, 7.0, 2.0, 6.0], 2, 2)!
+    Assert.Near(0.6, inv2[0], 0.000001, "inverse 2x2 c00")
+    Assert.Near(0.0 - 0.7, inv2[1], 0.000001, "inverse 2x2 c01")
+    Assert.Near(0.0 - 0.2, inv2[2], 0.000001, "inverse 2x2 c10")
+    Assert.Near(0.4, inv2[3], 0.000001, "inverse 2x2 c11")
+
+    let A = [3.0, 1.0, 2.0, 1.0, 4.0, 0.0, 2.0, 0.0, 5.0]
+    let invA = Inverse(A, 3, 3)!
+    let product = MatMul(A, 3, 3, invA, 3, 3)!
+    Assert.Near(1.0, product[0], 0.000001, "A*invA identity c00")
+    Assert.Near(0.0, product[1], 0.000001, "A*invA identity c01")
+    Assert.Near(0.0, product[3], 0.000001, "A*invA identity c10")
+    Assert.Near(1.0, product[4], 0.000001, "A*invA identity c11")
+    Assert.Near(1.0, product[8], 0.000001, "A*invA identity c22")
+}
+
+[Fact]
+fn InverseRejectsSingularAndNonSquare() -> Void {
+    match Inverse([1.0, 2.0, 2.0, 4.0], 2, 2) {
+        ok(v) => { Assert.True(false, "inverse should reject singular matrices") }
+        err(e) => { }
+    }
+
+    match Inverse([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
+        ok(v) => { Assert.True(false, "inverse should reject non-square matrices") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn SolveAndMatVecMulComposeToReproduceRhs() -> Void {
+    let A = [4.0, 1.0, 2.0, 0.0, 3.0, 0.0 - 1.0, 1.0, 0.0, 2.0]
+    let b = [7.0, 2.0, 3.0]
+    let x = SolveLinearSystem(A, 3, 3, b)!
+    let y = MatVecMul(A, 3, 3, x)!
+
+    Assert.Near(b[0], y[0], 0.000001, "Ax reproduces b0")
+    Assert.Near(b[1], y[1], 0.000001, "Ax reproduces b1")
+    Assert.Near(b[2], y[2], 0.000001, "Ax reproduces b2")
+}
+
+[Fact]
+fn M0bValidationRejectsInvalidDimensionsAndDataLengths() -> Void {
+    match Determinant([1.0], 0, 1) {
+        ok(v) => { Assert.True(false, "determinant should reject invalid dimensions") }
+        err(e) => { }
+    }
+
+    match Determinant([1.0, 2.0, 3.0], 2, 2) {
+        ok(v) => { Assert.True(false, "determinant should reject invalid matrix data length") }
+        err(e) => { }
+    }
+
+    match SolveLinearSystem([1.0, 2.0, 3.0], 2, 2, [1.0, 2.0]) {
+        ok(v) => { Assert.True(false, "solve should reject invalid matrix data length") }
+        err(e) => { }
+    }
+
+    match SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0, 2.0, 3.0]) {
+        ok(v) => { Assert.True(false, "solve should reject RHS length mismatch") }
+        err(e) => { }
+    }
+}
