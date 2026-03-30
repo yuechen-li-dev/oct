@@ -1,0 +1,5 @@
+package UI
+
+fn Button(label: String, event: String) -> UI {
+    return UIButton(label, event)
+}

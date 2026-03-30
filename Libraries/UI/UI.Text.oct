@@ -1,0 +1,5 @@
+package UI
+
+fn Text(content: String) -> UI {
+    return UIText(content)
+}

@@ -43,6 +43,16 @@ var names = map[string]struct{}{
 	"Complete":           {},
 	"StateHistory":       {},
 	"ResumeTarget":       {},
+	"UIText":             {},
+	"UIButton":           {},
+	"UIColumn":           {},
+	"UIRow":              {},
+	"UIMount":            {},
+	"UIPatch":            {},
+	"UIUnmount":          {},
+	"UIEmit":             {},
+	"UIDrainEvents":      {},
+	"UISignature":        {},
 }
 
 func IsName(name string) bool {
