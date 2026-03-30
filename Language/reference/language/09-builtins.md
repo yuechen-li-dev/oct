@@ -12,7 +12,7 @@ Calls are checked statically for arity and type constraints.
 - `Print(x: AnySupportedValue) -> Int`
   - Requires exactly one argument.
   - Prints the value and returns a status code `Int`.
-- `Len(x: String | Int[] | Float[] | Bool[]) -> Int`.
+- `Len(x: String | Int[] | Float[] | Bool[] | Complex[]) -> Int`.
 - `Append(xs: T[], value: T) -> T[]`.
   - First argument must be an array.
   - Value type must exactly match the array element type.

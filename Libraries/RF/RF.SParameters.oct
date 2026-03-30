@@ -12,13 +12,14 @@ record SParameters2Port {
 
 /// Validates 2-port S-parameter table shape and frequency monotonicity.
 /// Rejects empty frequencies and non-monotonic frequency axes.
-/// Note: Complex[] length introspection is currently unavailable in Oct builtins,
-/// so trace-length consistency must be upheld by callers in M0.
 fn ValidateSParameters2Port(data: SParameters2Port) -> Bool ! Error {
     let n = Len(data.Frequencies)
 
     if n == 0 {
         return error("s-parameters require non-empty frequencies")
+    }
+    if Len(data.S11) != n or Len(data.S21) != n or Len(data.S12) != n or Len(data.S22) != n {
+        return error("s-parameters require all trace lengths to match frequencies")
     }
     var i = 0
     while i < n - 1 {

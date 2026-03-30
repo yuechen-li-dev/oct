@@ -1,0 +1,26 @@
+package MainValid
+
+fn SumReal(values: Complex[]) -> Float {
+    var total = 0.0
+    var i = 0
+    while i < Len(values) {
+        total = total + Real(values[i])
+        i = i + 1
+    }
+    return total
+}
+
+[Fact]
+fn ComplexArrayLenHotfixErgonomics() -> Void {
+    let values = [Complex(1.5, 0.5), Complex(2.5, 1.5), Complex(3.5, 2.5)]
+
+    Assert.Equal(3, Len(values), "len should accept complex arrays")
+    Assert.Near(2.5, Real(values[1]), 0.000001, "indexing should remain stable")
+
+    let copy = Append(values, Complex(4.5, 3.5))
+    Assert.Equal(4, Len(copy), "append should preserve complex array shape")
+    Assert.Near(4.5, Real(copy[3]), 0.000001, "appended complex value should be accessible")
+
+    let total = SumReal(copy)
+    Assert.Near(12.0, total, 0.000001, "complex arrays should pass through function boundaries")
+}
