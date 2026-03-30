@@ -5,6 +5,28 @@ Oct v0 focuses on a small, explicit core: native arrays, explicit error handling
 
 ---
 
+## Start Here (Current Truth)
+
+For current architecture and repository guidance, read:
+
+- `docs/ARCHITECTURE.md`
+- `docs/REPO_LAYOUT.md`
+- `docs/BACKENDS.md`
+- `docs/TESTING.md`
+- `docs/LLM_LAB.md`
+
+Historical milestone reports (for example `M*_REPORT.md`, `P*_REPORT.md`) remain in the repo as historical records, but `docs/` is the primary source of current-truth documentation.
+
+## Repository Layout at a Glance
+
+- `Language/` — language contracts/reference semantic corpus.
+- `Libraries/` — reusable Oct package ecosystem.
+- `cmd/` + `internal/` — **GoOct** reference backend implementation.
+- `Backends/ClrOct/` — **ClrOct** backend scaffold (escape hatch path, no implementation yet).
+- `Examples/` — polished examples.
+- `Experiments/` — exploratory/lab artifacts.
+- `tools/` — tooling/support.
+
 ## What Makes Oct Different
 
 - **Units as types:** SI dimensions are native and participate directly in type checking.
