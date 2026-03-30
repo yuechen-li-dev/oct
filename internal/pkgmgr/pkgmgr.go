@@ -295,6 +295,9 @@ func normalizeSource(source string) (string, error) {
 	if source == "" {
 		return "", fmt.Errorf("invalid package source URL: source is empty")
 	}
+	if normalizedFileSource, ok := normalizeWindowsFileSource(source); ok {
+		source = normalizedFileSource
+	}
 	u, err := url.Parse(source)
 	if err != nil {
 		return "", fmt.Errorf("invalid package source URL: %w", err)
@@ -307,7 +310,54 @@ func normalizeSource(source string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid package source URL: unsupported scheme %q", u.Scheme)
 	}
+	if u.Scheme == "file" {
+		return normalizeFileURL(u), nil
+	}
 	return source, nil
+}
+
+func normalizeWindowsFileSource(source string) (string, bool) {
+	const filePrefix = "file://"
+	if !strings.HasPrefix(strings.ToLower(source), filePrefix) {
+		return "", false
+	}
+	pathPart := source[len(filePrefix):]
+	if len(pathPart) < 3 {
+		return "", false
+	}
+	if !isWindowsDrivePath(pathPart) {
+		return "", false
+	}
+	return fileURLFromPath(pathPart), true
+}
+
+func isWindowsDrivePath(path string) bool {
+	drive := path[0]
+	if !((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')) {
+		return false
+	}
+	if path[1] != ':' {
+		return false
+	}
+	return path[2] == '\\' || path[2] == '/'
+}
+
+func normalizeFileURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	if u.Host != "" && isWindowsDrivePath(u.Host+u.Path) {
+		return fileURLFromPath(u.Host + u.Path)
+	}
+	return u.String()
+}
+
+func fileURLFromPath(path string) string {
+	slashed := strings.ReplaceAll(filepath.ToSlash(path), "\\", "/")
+	if isWindowsDrivePath(path) && !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	return (&url.URL{Scheme: "file", Path: slashed}).String()
 }
 
 func cacheKey(source string) string {
