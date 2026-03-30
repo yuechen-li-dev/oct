@@ -1,0 +1,63 @@
+package Thermofluids
+
+fn ThermalEnergy(mass: Float<kg>, cp: Float<m^2/s^2>, temperature: Float) -> Float<kg*m^2/s^2> ! Error {
+    let ok = ValidateThermalMassCp(mass, cp)?
+    return mass * cp * temperature
+}
+
+fn TemperatureFromEnergy(mass: Float<kg>, cp: Float<m^2/s^2>, energy: Float<kg*m^2/s^2>) -> Float ! Error {
+    let ok = ValidateThermalMassCp(mass, cp)?
+    return energy / (mass * cp)
+}
+
+fn HeatFlowNewtonCooling(
+    h: Float<kg/s^3>,
+    area: Float<m^2>,
+    surfaceTemperature: Float,
+    ambientTemperature: Float
+) -> Float<kg*m^2/s^3> ! Error {
+    let ok = ValidateThermalArea(area)?
+    return h * area * (surfaceTemperature - ambientTemperature)
+}
+
+fn FirstOrderThermalStep(
+    temperature: Float,
+    ambientTemperature: Float,
+    tau: Float<s>,
+    dt: Float<s>
+) -> Float ! Error {
+    let ok = ValidateTauDt(tau, dt)?
+    return temperature + (dt / tau) * (ambientTemperature - temperature)
+}
+
+fn ValidateThermalMassCp(mass: Float<kg>, cp: Float<m^2/s^2>) -> Bool ! Error {
+    if mass <= 0kg {
+        return error("thermal model requires mass > 0")
+    }
+
+    if cp <= 0m^2/s^2 {
+        return error("thermal model requires cp > 0")
+    }
+
+    return true
+}
+
+fn ValidateThermalArea(area: Float<m^2>) -> Bool ! Error {
+    if area <= 0m^2 {
+        return error("thermal model requires area > 0")
+    }
+
+    return true
+}
+
+fn ValidateTauDt(tau: Float<s>, dt: Float<s>) -> Bool ! Error {
+    if tau <= 0s {
+        return error("thermal model requires tau > 0")
+    }
+
+    if dt <= 0s {
+        return error("thermal model requires dt > 0")
+    }
+
+    return true
+}

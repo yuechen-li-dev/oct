@@ -1,0 +1,106 @@
+package Thermofluids
+
+[Fact]
+fn CylindricalGeometryHandChecks() -> Void {
+    let r = 2m
+    let h = 3m
+
+    let area = TankAreaCylinder(r)!
+    let volume = TankVolumeCylinder(r, h)!
+
+    Assert.Near(Pi() * 4.0, area / 1m^2, 0.000001, "cylinder area hand-check")
+    Assert.Near(Pi() * 12.0, volume / 1m^3, 0.000001, "cylinder volume hand-check")
+}
+
+[Fact]
+fn TankLevelStepHandCheckAndClampPolicy() -> Void {
+    let next = TankLevelStep(1m, 0.2m^3/s, 0.1m^3/s, 2m^2, 10s)!
+    Assert.Near(1.5, next / 1m, 0.000001, "tank level explicit balance hand-check")
+
+    let clamped = TankLevelStep(0.1m, 0m^3/s, 1m^3/s, 1m^2, 1s)!
+    Assert.Near(0.0, clamped / 1m, 0.000001, "negative next level is clamped to zero")
+}
+
+[Fact]
+fn OutflowTorricelliSanity() -> Void {
+    let q = OutflowTorricelli(0.6, 0.01m^2, 9.81m/s^2, 1m)!
+    Assert.Near(0.0265766809, q / 1m^3/s, 0.000001, "torricelli hand-check")
+
+    let qZero = OutflowTorricelli(0.6, 0.01m^2, 9.81m/s^2, 0m)!
+    Assert.Near(0.0, qZero / 1m^3/s, 0.000001, "zero level should return zero outflow")
+}
+
+[Fact]
+fn ResidenceTimeHandCheck() -> Void {
+    let tau = ResidenceTime(4m^3, 0.5m^3/s)!
+    Assert.Near(8.0, tau / 1s, 0.000001, "residence time hand-check")
+}
+
+[Fact]
+fn FluidInvalidSetupRejected() -> Void {
+    match TankAreaCylinder(0m) {
+        ok(v) => { Assert.True(false, "radius <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match TankVolumeCylinder(1m, 0m - 1m) {
+        ok(v) => { Assert.True(false, "height < 0 must fail") }
+        err(e) => { }
+    }
+
+    match TankLevelStep(0m - 0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 1s) {
+        ok(v) => { Assert.True(false, "level < 0 must fail") }
+        err(e) => { }
+    }
+
+    match TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 0m^2, 1s) {
+        ok(v) => { Assert.True(false, "area <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 0s) {
+        ok(v) => { Assert.True(false, "dt <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match OutflowTorricelli(0.6, 0m^2, 9.81m/s^2, 1m) {
+        ok(v) => { Assert.True(false, "outletArea <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match OutflowTorricelli(0.6, 0.01m^2, 0m/s^2, 1m) {
+        ok(v) => { Assert.True(false, "gravity <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match OutflowTorricelli(0.6, 0.01m^2, 9.81m/s^2, 0m - 1m) {
+        ok(v) => { Assert.True(false, "level < 0 must fail") }
+        err(e) => { }
+    }
+
+    match OutflowTorricelli(0.0 - 0.1, 0.01m^2, 9.81m/s^2, 1m) {
+        ok(v) => { Assert.True(false, "dischargeCoefficient < 0 must fail") }
+        err(e) => { }
+    }
+
+    match ResidenceTime(4m^3, 0m^3/s) {
+        ok(v) => { Assert.True(false, "flowRate <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn FluidProcessWorkflowComposes() -> Void {
+    let area = TankAreaCylinder(0.5m)!
+    let level0 = 1m
+    let qIn = 0.02m^3/s
+    let qOut = OutflowTorricelli(0.62, 0.001m^2, 9.81m/s^2, level0)!
+
+    let level1 = TankLevelStep(level0, qIn, qOut, area, 1s)!
+    let volume1 = area * level1
+    let tau1 = ResidenceTime(volume1, qIn)!
+
+    Assert.True(qOut >= 0m^3/s, "outflow should be non-negative")
+    Assert.True(level1 >= 0m, "level should remain physically valid")
+    Assert.True(tau1 > 0s, "residence time should be positive with positive flow")
+}
