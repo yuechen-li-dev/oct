@@ -1,0 +1,92 @@
+package Deployment
+
+record GiteaInstanceConfig {
+    RootDirectory: String
+    DataDirectory: String
+    RepositoryRoot: String
+    OctRepositoryDirectory: String
+    HttpPort: Int
+    SshPort: Int
+    Domain: String
+    AppName: String
+}
+
+fn CreateGiteaInstanceConfig(rootDirectory: String, dataDirectory: String, repositoryRoot: String, octRepositoryDirectory: String, httpPort: Int, sshPort: Int, domain: String, appName: String) -> GiteaInstanceConfig {
+    return GiteaInstanceConfig {
+        RootDirectory: rootDirectory
+        DataDirectory: dataDirectory
+        RepositoryRoot: repositoryRoot
+        OctRepositoryDirectory: octRepositoryDirectory
+        HttpPort: httpPort
+        SshPort: sshPort
+        Domain: domain
+        AppName: appName
+    }
+}
+
+fn ValidateGiteaInstanceConfig(config: GiteaInstanceConfig) -> Bool ! Error {
+    if Len(config.RootDirectory) == 0 {
+        return error("root directory must be non-empty")
+    }
+    if Len(config.DataDirectory) == 0 {
+        return error("data directory must be non-empty")
+    }
+    if Len(config.RepositoryRoot) == 0 {
+        return error("repository root must be non-empty")
+    }
+    if Len(config.OctRepositoryDirectory) == 0 {
+        return error("oct repository directory must be non-empty")
+    }
+    if config.HttpPort <= 0 or config.HttpPort > 65535 {
+        return error("http port must be in range 1..65535")
+    }
+    if config.SshPort <= 0 or config.SshPort > 65535 {
+        return error("ssh port must be in range 1..65535")
+    }
+    if Len(config.Domain) == 0 {
+        return error("domain must be non-empty")
+    }
+    if Len(config.AppName) == 0 {
+        return error("app name must be non-empty")
+    }
+
+    return true
+}
+
+fn GiteaAppIniText(config: GiteaInstanceConfig) -> String ! Error {
+    let _valid = ValidateGiteaInstanceConfig(config)?
+
+    return "[server]\n" +
+        "DOMAIN = " + config.Domain + "\n" +
+        "ROOT_URL = http://" + config.Domain + "/\n\n" +
+        "[repository]\n" +
+        "ROOT = " + config.RepositoryRoot + "\n\n" +
+        "[database]\n" +
+        "DB_TYPE = sqlite3\n" +
+        "PATH = " + config.DataDirectory + "/gitea.db\n\n" +
+        "[security]\n" +
+        "INSTALL_LOCK = true\n\n" +
+        "[service]\n" +
+        "DISABLE_REGISTRATION = true\n\n" +
+        "[oct_lab]\n" +
+        "APP_NAME = " + config.AppName + "\n" +
+        "ROOT_DIRECTORY = " + config.RootDirectory + "\n" +
+        "HTTP_PORT = configured via GiteaInstanceConfig.HttpPort\n" +
+        "SSH_PORT = configured via GiteaInstanceConfig.SshPort\n"
+}
+
+fn OctLabCloneCommand(config: GiteaInstanceConfig, repoUrl: String) -> String ! Error {
+    let _valid = ValidateGiteaInstanceConfig(config)?
+
+    if Len(repoUrl) == 0 {
+        return error("repository url must be non-empty")
+    }
+
+    return "git clone " + repoUrl + " " + config.OctRepositoryDirectory
+}
+
+fn OctLabDirectoryPlan(config: GiteaInstanceConfig) -> String[] ! Error {
+    let _valid = ValidateGiteaInstanceConfig(config)?
+
+    return [config.RootDirectory, config.DataDirectory, config.RepositoryRoot, config.RootDirectory + "/conf", config.RootDirectory + "/log", config.RootDirectory + "/tmp", config.OctRepositoryDirectory]
+}
