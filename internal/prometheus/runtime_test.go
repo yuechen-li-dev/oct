@@ -49,6 +49,27 @@ func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
 	}
 }
 
+func TestRunSGEMMPrometheusDefaultStubFallsBackUntilRuntimeReady(t *testing.T) {
+	t.Setenv("PROMETHEUS_STUB_RUNTIME_READY", "")
+	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "")
+	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "")
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 4, N: 4, K: 4},
+		A:       deterministicMatrix(4, 4),
+		B:       deterministicMatrix(4, 4),
+	})
+	if err != nil {
+		t.Fatalf("expected fallback, got err=%v", err)
+	}
+	if run.Status.Kind != RunStatusFallback || run.Status.FallbackReason != "prometheus_unavailable" {
+		t.Fatalf("expected fallback(prometheus_unavailable), got %s", run.Status.String())
+	}
+	if run.UsedBackend != BackendCPU {
+		t.Fatalf("expected cpu fallback backend, got %s", run.UsedBackend)
+	}
+}
+
 func TestRunSGEMMPrometheusSubmitFailureReturnsExplicitErrorWithoutFallback(t *testing.T) {
 	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "1")
 	run, err := RunSGEMM(SGEMMRequest{

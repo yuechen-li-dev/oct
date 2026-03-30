@@ -40,6 +40,23 @@ func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
 	}
 }
 
+func TestM52PrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *testing.T) {
+	t.Setenv("PROMETHEUS_STUB_RUNTIME_READY", "")
+	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "")
+	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected fallback success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "status=fallback(prometheus_unavailable)") {
+		t.Fatalf("expected explicit fallback status, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "backend_requested=prometheus backend_used=cpu") {
+		t.Fatalf("expected explicit backend distinction, got %q", stdout.String())
+	}
+}
+
 func TestM52PrometheusSgemmPrometheusSubmitFailureNoHiddenFallback(t *testing.T) {
 	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "1")
 	var stdout bytes.Buffer
