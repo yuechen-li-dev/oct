@@ -15,6 +15,13 @@ int prometheus_runtime_create(prometheus_runtime** out_runtime) {
     *out_runtime = nullptr;
     return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
   }
+  const char* force_submit_failure = std::getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
+  const char* stub_ready = std::getenv("PROMETHEUS_STUB_RUNTIME_READY");
+  if ((stub_ready == nullptr || stub_ready[0] != '1') &&
+      (force_submit_failure == nullptr || force_submit_failure[0] != '1')) {
+    *out_runtime = nullptr;
+    return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
+  }
   *out_runtime = new prometheus_runtime{1};
   return PROMETHEUS_NATIVE_OK;
 }
