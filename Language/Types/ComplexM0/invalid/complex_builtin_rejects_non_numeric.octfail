@@ -1,0 +1,7 @@
+expect error: "function 'Complex' argument 1 expects Int or Float, got Bool"
+
+package Main
+
+fn Main() -> Complex {
+    return Complex(true, 1.0)
+}

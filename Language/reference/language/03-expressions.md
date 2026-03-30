@@ -21,7 +21,10 @@ Dimensions participate in expression typing.
 - `+` and `-` require matching dimensions.
 - `*` and `/` compose dimensions.
 - Comparisons require compatible operand types.
-- Ordered comparison is undefined for `Bool`, `String`, records, enums, and arrays.
+- Ordered comparison is undefined for `Bool`, `String`, `Complex`, records, enums, and arrays.
+- Complex arithmetic supports `+`, `-`, `*`, `/` for `Complex` operands.
+- Real numeric scalars (`Int`/`Float`) promote to `Complex` only for `+`, `-`, `*`, `/` when paired with `Complex`.
+- Complex comparison supports equality only (`==`, `!=`).
 
 ## Examples
 

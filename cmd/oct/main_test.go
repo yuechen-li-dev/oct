@@ -585,7 +585,7 @@ func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
     return Abs(true)
 }
 `,
-			wantMessage: "run failed: function Main: function 'Abs' argument 1 expects Int or Float, got Bool",
+			wantMessage: "run failed: function Main: function 'Abs' argument 1 expects Int, Float, or Complex, got Bool",
 		},
 		{
 			name: "sqrt wrong type",

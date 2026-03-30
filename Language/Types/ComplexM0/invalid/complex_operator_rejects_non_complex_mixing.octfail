@@ -1,0 +1,7 @@
+expect error: "operator "+" not defined for Complex and Bool"
+
+package Main
+
+fn Main() -> Complex {
+    return Complex(1.0, 2.0) + true
+}

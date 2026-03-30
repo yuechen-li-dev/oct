@@ -3,6 +3,11 @@ package builtin
 var names = map[string]struct{}{
 	"Len":          {},
 	"Append":       {},
+	"Complex":      {},
+	"I":            {},
+	"Real":         {},
+	"Imag":         {},
+	"Conj":         {},
 	"Abs":          {},
 	"Sqrt":         {},
 	"Sin":          {},

@@ -18,6 +18,13 @@ Calls are checked statically for arity and type constraints.
   - Value type must exactly match the array element type.
 - `Abs(x: Int | Int<D>) -> Int | Int<D>`.
 - `Abs(x: Float | Float<D>) -> Float | Float<D>`.
+- `Abs(z: Complex) -> Float`.
+- `Complex(re: Int | Float, im: Int | Float) -> Complex`.
+  - Both arguments must be dimensionless.
+- `I() -> Complex`.
+- `Real(z: Complex) -> Float`.
+- `Imag(z: Complex) -> Float`.
+- `Conj(z: Complex) -> Complex`.
 - `Sqrt(x: Int | Float | Int<D> | Float<D>) -> Float<sqrt(D)>`.
   - Requires even dimension exponents for dimensioned input.
 - `Sin(x: Int | Float) -> Float`.
