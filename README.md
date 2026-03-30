@@ -596,6 +596,12 @@ Not included in v0:
 * `Experiments/` — authored proofs, controllers, simulations, and studies
 * `testdata/` — fixtures, demos, and synthetic inputs
 
+## CI Baseline Workflow
+
+GitHub Actions now includes a baseline CI workflow at `.github/workflows/ci.yml` that runs on `push` and `pull_request`, builds the Oct binary, runs the standard Go test suite, and uploads the built binary as a downloadable workflow artifact.
+
+This CI artifact flow is a convenience binary factory for development and validation, and is intentionally separate from any future release workflow.
+
 Experiment roots (`Experiments/<Name>`) are structured as:
 
 * `manifest.oct`
