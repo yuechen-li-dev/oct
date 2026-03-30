@@ -1,0 +1,7 @@
+expect error: "array literal elements must all have the same type"
+
+package StatisticsInvalid
+
+fn Main() -> Float[] {
+    return [1.0, "two", 3.0]
+}

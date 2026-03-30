@@ -1,0 +1,121 @@
+package Statistics
+
+fn Mean(xs: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("mean requires at least one value")
+    }
+
+    var sum = 0.0
+    for i in 0 .. n {
+        sum = sum + xs[i]
+    }
+
+    return sum / n
+}
+
+fn Variance(xs: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("variance requires at least one value")
+    }
+
+    let mean = Mean(xs)?
+    var accum = 0.0
+    for i in 0 .. n {
+        let d = xs[i] - mean
+        accum = accum + d * d
+    }
+
+    // Statistics M0 uses population variance: sum((x - mean)^2) / n
+    return accum / n
+}
+
+fn StandardDeviation(xs: Float[]) -> Float ! Error {
+    let variance = Variance(xs)?
+    return Sqrt(variance)
+}
+
+fn Median(xs: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("median requires at least one value")
+    }
+
+    let sorted = SortedCopy(xs)
+    let half = n / 2
+    if half * 2 != n {
+        return sorted[half]
+    }
+
+    let hi = half
+    let lo = hi - 1
+    return (sorted[lo] + sorted[hi]) / 2.0
+}
+
+fn Percentile(xs: Float[], p: Float) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("percentile requires at least one value")
+    }
+
+    if p < 0.0 or p > 100.0 {
+        return error("percentile p must be in [0, 100]")
+    }
+
+    let sorted = SortedCopy(xs)
+    if n == 1 {
+        return sorted[0]
+    }
+
+    let rank = (p / 100.0) * (n - 1)
+    var lower = 0
+    while lower + 1 <= rank {
+        lower = lower + 1
+    }
+
+    var upper = lower
+    if upper < n - 1 and upper < rank {
+        upper = upper + 1
+    }
+
+    if lower == upper {
+        return sorted[lower]
+    }
+
+    let weight = rank - lower
+    let lo = sorted[lower]
+    let hi = sorted[upper]
+    return lo + (hi - lo) * weight
+}
+
+fn SortedCopy(xs: Float[]) -> Float[] {
+    let n = Len(xs)
+    if n == 0 {
+        return xs
+    }
+
+    var out = [xs[0]]
+    var i = 1
+    while i < n {
+        out = Append(out, xs[i])
+        i = i + 1
+    }
+
+    // Deterministic insertion sort ascending.
+    var k = 1
+    while k < n {
+        let value = out[k]
+        var j = k
+
+        while j > 0 and out[j - 1] > value {
+            out[j] = out[j - 1]
+            j = j - 1
+        }
+
+        out[j] = value
+        k = k + 1
+    }
+
+    return out
+}
