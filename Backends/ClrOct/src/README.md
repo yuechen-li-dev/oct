@@ -1,5 +1,7 @@
 # ClrOct Source
 
-Placeholder for future ClrOct backend implementation source.
+Contains bootstrap-only CLR source projects.
 
-Status: scaffold-only.
+Current project:
+
+- `ClrOct.Octest` — minimal hosted octest harness (Fact representation, Assert helpers, deterministic run result model).

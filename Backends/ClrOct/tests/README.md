@@ -1,5 +1,7 @@
 # ClrOct Tests
 
-Placeholder for future ClrOct backend-specific integration tests.
+Contains bootstrap-only CLR test projects.
 
-Status: scaffold-only.
+Current project:
+
+- `ClrOct.Octest.Tests` — verifies deterministic pass/fail behavior of the hosted octest harness.
