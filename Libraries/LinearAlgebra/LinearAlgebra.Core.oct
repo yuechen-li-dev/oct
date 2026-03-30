@@ -1,0 +1,196 @@
+package LinearAlgebra
+
+fn Dot(a: Float[], b: Float[]) -> Float ! Error {
+    let vok = ValidateVector(a)?
+    let wok = ValidateVector(b)?
+
+    if Len(a) != Len(b) {
+        return error("dot requires vectors with same length")
+    }
+
+    var sum = 0.0
+    for i in 0 .. Len(a) {
+        sum = sum + a[i] * b[i]
+    }
+    return sum
+}
+
+fn Norm(a: Float[]) -> Float ! Error {
+    let vok = ValidateVector(a)?
+
+    var sumSquares = 0.0
+    for i in 0 .. Len(a) {
+        sumSquares = sumSquares + a[i] * a[i]
+    }
+
+    return Sqrt(sumSquares)
+}
+
+fn MatMul(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let aok = ValidateMatrixData(A, aRows, aCols)?
+    let bok = ValidateMatrixData(B, bRows, bCols)?
+
+    if aCols != bRows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    var out = [0.0]
+    var i = 1
+    while i < aRows * bCols {
+        out = Append(out, 0.0)
+        i = i + 1
+    }
+
+    var r = 0
+    while r < aRows {
+        var c = 0
+        while c < bCols {
+            var sum = 0.0
+            var k = 0
+            while k < aCols {
+                sum = sum + A[FlatIndex(r, k, aCols)] * B[FlatIndex(k, c, bCols)]
+                k = k + 1
+            }
+            out[FlatIndex(r, c, bCols)] = sum
+            c = c + 1
+        }
+        r = r + 1
+    }
+
+    return out
+}
+
+fn Transpose(A: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    let mok = ValidateMatrixData(A, rows, cols)?
+
+    var out = [0.0]
+    var i = 1
+    while i < rows * cols {
+        out = Append(out, 0.0)
+        i = i + 1
+    }
+
+    var r = 0
+    while r < rows {
+        var c = 0
+        while c < cols {
+            out[FlatIndex(c, r, rows)] = A[FlatIndex(r, c, cols)]
+            c = c + 1
+        }
+        r = r + 1
+    }
+
+    return out
+}
+
+fn Identity(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("identity requires n > 0")
+    }
+
+    var out = Zeros(n, n)?
+
+    var i = 0
+    while i < n {
+        out[FlatIndex(i, i, n)] = 1.0
+        i = i + 1
+    }
+
+    return out
+}
+
+fn Zeros(m: Int, n: Int) -> Float[] ! Error {
+    if m <= 0 or n <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+
+    var out = [0.0]
+    var i = 1
+    while i < m * n {
+        out = Append(out, 0.0)
+        i = i + 1
+    }
+
+    return out
+}
+
+fn Ones(m: Int, n: Int) -> Float[] ! Error {
+    if m <= 0 or n <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+
+    var out = [1.0]
+    var i = 1
+    while i < m * n {
+        out = Append(out, 1.0)
+        i = i + 1
+    }
+
+    return out
+}
+
+fn Add(A: Float[], B: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    let mok = ValidateMatrixData(A, rows, cols)?
+    let nok = ValidateMatrixData(B, rows, cols)?
+
+    var out = [A[0] + B[0]]
+    var i = 1
+    while i < Len(A) {
+        out = Append(out, A[i] + B[i])
+        i = i + 1
+    }
+
+    return out
+}
+
+fn Sub(A: Float[], B: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    let mok = ValidateMatrixData(A, rows, cols)?
+    let nok = ValidateMatrixData(B, rows, cols)?
+
+    var out = [A[0] - B[0]]
+    var i = 1
+    while i < Len(A) {
+        out = Append(out, A[i] - B[i])
+        i = i + 1
+    }
+
+    return out
+}
+
+fn Scale(A: Float[], rows: Int, cols: Int, k: Float) -> Float[] ! Error {
+    let mok = ValidateMatrixData(A, rows, cols)?
+
+    var out = [A[0] * k]
+    var i = 1
+    while i < Len(A) {
+        out = Append(out, A[i] * k)
+        i = i + 1
+    }
+
+    return out
+}
+
+fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
+    return row * cols + col
+}
+
+fn ValidateVector(a: Float[]) -> Bool ! Error {
+    if Len(a) == 0 {
+        return error("vector must be non-empty")
+    }
+    return true
+}
+
+
+fn ValidateMatrixData(A: Float[], rows: Int, cols: Int) -> Bool ! Error {
+    if rows <= 0 or cols <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+    if Len(A) == 0 {
+        return error("matrix data must be non-empty")
+    }
+    if Len(A) != rows * cols {
+        return error("matrix data length must equal rows * cols")
+    }
+    return true
+}
