@@ -1,0 +1,55 @@
+package Simulation
+
+record SimulationStepResult {
+    Time: Float
+    State: Float
+    Output: Float
+}
+
+record SimulationTrace {
+    Times: Float[]
+    States: Float[]
+    Outputs: Float[]
+}
+
+fn ValidateFixedStepSetup(dt: Float, steps: Int) -> Bool ! Error {
+    if dt <= 0.0 {
+        return error("simulation requires dt > 0")
+    }
+
+    if steps <= 0 {
+        return error("simulation requires steps > 0")
+    }
+
+    return true
+}
+
+fn InitializeTrace(initialTime: Float, initialState: Float, initialOutput: Float) -> SimulationTrace {
+    return SimulationTrace {
+        Times: [initialTime]
+        States: [initialState]
+        Outputs: [initialOutput]
+    }
+}
+
+fn AppendStep(trace: SimulationTrace, stepResult: SimulationStepResult) -> SimulationTrace ! Error {
+    let valid = ValidateTraceShape(trace)?
+
+    return SimulationTrace {
+        Times: Append(trace.Times, stepResult.Time)
+        States: Append(trace.States, stepResult.State)
+        Outputs: Append(trace.Outputs, stepResult.Output)
+    }
+}
+
+fn ValidateTraceShape(trace: SimulationTrace) -> Bool ! Error {
+    let nTimes = Len(trace.Times)
+    let nStates = Len(trace.States)
+    let nOutputs = Len(trace.Outputs)
+
+    if nTimes != nStates or nStates != nOutputs {
+        return error("simulation trace arrays must have matching lengths")
+    }
+
+    return true
+}

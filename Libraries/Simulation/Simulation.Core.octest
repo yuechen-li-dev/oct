@@ -1,0 +1,147 @@
+package Simulation
+
+[Fact]
+fn InitializeTraceCreatesSingleSample() -> Void {
+    let trace = InitializeTrace(0.0, 4.0, 2.0)
+
+    Assert.Equal(1, Len(trace.Times), "initialize trace should include one time sample")
+    Assert.Equal(1, Len(trace.States), "initialize trace should include one state sample")
+    Assert.Equal(1, Len(trace.Outputs), "initialize trace should include one output sample")
+    Assert.Near(0.0, trace.Times[0], 0.000001, "initial time should be captured")
+    Assert.Near(4.0, trace.States[0], 0.000001, "initial state should be captured")
+    Assert.Near(2.0, trace.Outputs[0], 0.000001, "initial output should be captured")
+}
+
+[Fact]
+fn AppendStepExtendsAllTraceArraysInLockstep() -> Void {
+    let base = InitializeTrace(0.0, 1.5, 1.5)
+    let stepResult = SimulationStepResult {
+        Time: 0.1
+        State: 1.2
+        Output: 1.2
+    }
+
+    let extended = AppendStep(base, stepResult)!
+
+    Assert.Equal(2, Len(extended.Times), "append should increase time length")
+    Assert.Equal(2, Len(extended.States), "append should increase state length")
+    Assert.Equal(2, Len(extended.Outputs), "append should increase output length")
+    Assert.Near(0.1, extended.Times[1], 0.000001, "appended time should match step")
+    Assert.Near(1.2, extended.States[1], 0.000001, "appended state should match step")
+    Assert.Near(1.2, extended.Outputs[1], 0.000001, "appended output should match step")
+}
+
+[Fact]
+fn ValidateFixedStepSetupRejectsInvalidInputs() -> Void {
+    match ValidateFixedStepSetup(0.0, 4) {
+        ok(v) => { Assert.True(false, "dt <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match ValidateFixedStepSetup(0.1, 0) {
+        ok(v) => { Assert.True(false, "steps <= 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn AppendStepRejectsMismatchedTraceShape() -> Void {
+    let bad = SimulationTrace {
+        Times: [0.0]
+        States: [0.0, 1.0]
+        Outputs: [0.0]
+    }
+
+    let stepResult = SimulationStepResult {
+        Time: 0.1
+        State: 0.9
+        Output: 0.9
+    }
+
+    match AppendStep(bad, stepResult) {
+        ok(v) => { Assert.True(false, "mismatched trace arrays must fail") }
+        err(e) => { }
+    }
+}
+
+flow ScalarDecayThreeStepFlow() -> Int {
+    state Init {
+        goto Step1
+    }
+
+    state Step1 {
+        suspend
+        goto Step2
+    }
+
+    state Step2 {
+        suspend
+        goto Step3
+    }
+
+    state Step3 {
+        suspend
+        return 3
+    }
+}
+
+fn ScalarDecayThreeStepTrace(initialState: Float, decay: Float, dt: Float) -> SimulationTrace ! Error {
+    let ok = ValidateFixedStepSetup(dt, 3)?
+
+    let x1 = initialState + dt * (0.0 - decay * initialState)
+    let x2 = x1 + dt * (0.0 - decay * x1)
+    let x3 = x2 + dt * (0.0 - decay * x2)
+
+    let start = InitializeTrace(0.0, initialState, initialState)
+    let after1 = AppendStep(start, SimulationStepResult { Time: dt State: x1 Output: x1 })?
+    let after2 = AppendStep(after1, SimulationStepResult { Time: 2.0 * dt State: x2 Output: x2 })?
+    let after3 = AppendStep(after2, SimulationStepResult { Time: 3.0 * dt State: x3 Output: x3 })?
+    return after3
+}
+
+[Fact]
+fn CanonicalOctomataFlowDrivesDeterministicThreeStepSimulation() -> Void {
+    let dt = 0.1
+    let simFlow = ScalarDecayThreeStepFlow()
+
+    Assert.Equal("", Active(simFlow), "flow should be inactive before first step")
+
+    Step(simFlow)
+    Assert.Equal("Step1", Active(simFlow), "first step should enter Step1 and suspend")
+
+    Step(simFlow)
+    Assert.Equal("Step2", Active(simFlow), "second step should enter Step2 and suspend")
+
+    Step(simFlow)
+    Assert.Equal("Step3", Active(simFlow), "third step should enter Step3 and suspend")
+
+    Step(simFlow)
+    Assert.Equal("", Active(simFlow), "fourth step should complete flow")
+
+    match Result(simFlow) {
+        ok(count) => {
+            Assert.Equal(3, count, "flow should deterministically execute three simulation steps")
+
+            let trace = ScalarDecayThreeStepTrace(10.0, 1.0, dt)!
+            Assert.Equal(count + 1, Len(trace.Times), "trace should contain initial sample plus three steps")
+            Assert.Near(0.0, trace.Times[0], 0.000001, "time starts at zero")
+            Assert.Near(0.1, trace.Times[1], 0.000001, "time step 1")
+            Assert.Near(0.2, trace.Times[2], 0.000001, "time step 2")
+            Assert.Near(0.3, trace.Times[3], 0.000001, "time step 3")
+            Assert.True(trace.States[0] > trace.States[1], "state should decay on step 1")
+            Assert.True(trace.States[1] > trace.States[2], "state should decay on step 2")
+            Assert.True(trace.States[2] > trace.States[3], "state should decay on step 3")
+        }
+        err(e) => { Assert.True(false, "flow result should be available") }
+    }
+}
+
+[Fact]
+fn TraceComposesWithOrdinaryExpressionChainAfterRun() -> Void {
+    let trace = ScalarDecayThreeStepTrace(5.0, 0.5, 0.2)!
+
+    let finalIndex = Len(trace.Outputs) - 1
+    let metric = trace.Outputs[0] - trace.Outputs[finalIndex] + trace.Times[finalIndex]
+
+    Assert.True(metric > 0.0, "trace values should compose in deterministic expressions")
+}
