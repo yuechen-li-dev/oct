@@ -1,0 +1,61 @@
+package Geometry
+
+[Fact]
+fn Distance2DHandCheck() -> Void {
+    let d = Distance2D(0m, 0m, 3m, 4m)
+    Assert.Near(5.0, d / 1m, 0.000001, "2D distance should satisfy 3-4-5 relation")
+}
+
+[Fact]
+fn PlanarAreaAndCircumferenceHandChecks() -> Void {
+    let circleArea = CircleArea(2m) !
+    let circleCirc = CircleCircumference(2m) !
+    let rectArea = RectangleArea(3m, 4m) !
+    let triArea = TriangleArea(6m, 4m) !
+
+    Assert.Near(Pi() * 4.0, circleArea / 1m ^ 2, 0.000001, "circle area hand-check")
+    Assert.Near(4.0 * Pi(), circleCirc / 1m, 0.000001, "circle circumference hand-check")
+    Assert.True(rectArea == 12m ^ 2, "rectangle area hand-check")
+    Assert.Near(12.0, triArea / 1m ^ 2, 0.000001, "triangle area hand-check")
+}
+
+[Fact]
+fn PlanarZeroDimensionPolicy() -> Void {
+    Assert.Near(0.0, CircleArea(0m) !/ 1m ^ 2, 0.000001, "zero radius circle area should be zero")
+    Assert.Near(0.0, CircleCircumference(0m) !/ 1m, 0.000001, "zero radius circumference should be zero")
+    Assert.Near(0.0, RectangleArea(0m, 5m) !/ 1m ^ 2, 0.000001, "zero width rectangle area should be zero")
+    Assert.Near(0.0, TriangleArea(7m, 0m) !/ 1m ^ 2, 0.000001, "zero height triangle area should be zero")
+}
+
+[Fact]
+fn PlanarNegativeDimensionsRejected() -> Void {
+    match CircleArea(0m - 1m) {
+        ok(v) => {Assert.True(false, "negative radius must fail")}
+        err(e) => {}
+    }
+
+    match CircleCircumference(0m - 1m) {
+        ok(v) => {Assert.True(false, "negative radius must fail")}
+        err(e) => {}
+    }
+
+    match RectangleArea(0m - 1m, 2m) {
+        ok(v) => {Assert.True(false, "negative width must fail")}
+        err(e) => {}
+    }
+
+    match TriangleArea(3m, 0m - 1m) {
+        ok(v) => {Assert.True(false, "negative height must fail")}
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn PlanarComposabilityChain() -> Void {
+    let d = Distance2D(1m, 2m, 4m, 6m)
+    let sweptArea = CircleArea(d) !
+    let scaled = sweptArea / 2.0
+
+    Assert.Near(5.0, d / 1m, 0.000001, "distance in chain should remain correct")
+    Assert.True(scaled > 0m ^ 2, "derived area expression should remain physically meaningful")
+}
