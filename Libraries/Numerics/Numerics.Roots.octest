@@ -1,0 +1,96 @@
+package Numerics
+
+fn f(x: Float) -> Float {
+    return x * x - 2.0
+}
+
+fn df(x: Float) -> Float {
+    return 2.0 * x
+}
+
+fn g(x: Float) -> Float {
+    return x * x * x + 1.0
+}
+
+fn dg(x: Float) -> Float {
+    return 3.0 * x * x
+}
+
+[Fact]
+fn BisectionRootFindsKnownRootFromValidBracket() -> Void {
+    let result = BisectionRoot(f, 1.0, 2.0, 0.000001, 100)!
+
+    Assert.True(result.Root >= 1.0 and result.Root <= 2.0, "root should stay inside original bracket")
+    Assert.Near(1.414213562, result.Root, 0.0001, "root should be near sqrt(2)")
+    Assert.True(Abs(result.Value) <= 0.000001 or result.Converged, "bisection may converge by residual or interval width policy")
+    Assert.True(result.Converged, "bisection should converge on a proper sign-change bracket")
+    Assert.True(result.Iterations > 0, "converged run should perform at least one iteration")
+}
+
+[Fact]
+fn BisectionRootRejectsInvalidInputsAndNonBracketingIntervals() -> Void {
+    match BisectionRoot(f, 2.0, 1.0, 0.000001, 50) {
+        ok(v) => { Assert.True(false, "a >= b must fail") }
+        err(e) => { }
+    }
+
+    match BisectionRoot(f, 1.0, 2.0, 0.0, 50) {
+        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match BisectionRoot(f, 1.0, 2.0, 0.000001, 0) {
+        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match BisectionRoot(f, 2.0, 3.0, 0.000001, 50) {
+        ok(v) => { Assert.True(false, "non-bracketing interval must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn BisectionRootSupportsDeterministicMaxIterationStopping() -> Void {
+    let result = BisectionRoot(f, 1.0, 2.0, 0.000000000000000001, 2)!
+
+    Assert.Equal(2, result.Iterations, "solver should stop exactly at maxIterations")
+    Assert.True(not result.Converged, "solver should report non-convergence when tolerance is unmet")
+}
+
+[Fact]
+fn NewtonRootFindsKnownRootWithDerivative() -> Void {
+    let result = NewtonRoot(f, df, 1.5, 0.000001, 20)!
+
+    Assert.Near(1.414213562, result.Root, 0.0001, "newton root should converge near sqrt(2)")
+    Assert.True(Abs(result.Value) <= 0.000001, "function value should satisfy tolerance")
+    Assert.True(result.Converged, "newton root should converge for smooth scalar inputs")
+    Assert.True(result.Iterations > 0, "converged newton solve should perform at least one iteration")
+}
+
+[Fact]
+fn NewtonRootRejectsInvalidInputsAndUnsafeDerivative() -> Void {
+    match NewtonRoot(f, df, 1.0, 0.0, 20) {
+        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match NewtonRoot(f, df, 1.0, 0.000001, 0) {
+        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
+        err(e) => { }
+    }
+
+    match NewtonRoot(g, dg, 0.0, 0.000001, 20) {
+        ok(v) => { Assert.True(false, "near-zero derivative step must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn RootResultsComposeInDeterministicExpressionChain() -> Void {
+    let bis = BisectionRoot(f, 1.0, 2.0, 0.000001, 100)!
+    let newton = NewtonRoot(f, df, 1.5, 0.000001, 20)!
+
+    let score = Abs(bis.Root - newton.Root) + Abs(bis.Value) + Abs(newton.Value)
+    Assert.True(score < 0.001, "root result fields should compose in deterministic expressions")
+}

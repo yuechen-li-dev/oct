@@ -1,0 +1,147 @@
+package Numerics
+
+record RootResult {
+    Root: Float
+    Value: Float
+    Iterations: Int
+    Converged: Bool
+}
+
+fn BisectionRoot(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> RootResult ! Error {
+    let ok = ValidateBisectionInputs(a, b, tolerance, maxIterations)?
+
+    let fa = f(a)
+    let fb = f(b)
+
+    if fa == 0.0 {
+        return RootResult {
+            Root: a
+            Value: fa
+            Iterations: 0
+            Converged: true
+        }
+    }
+
+    if fb == 0.0 {
+        return RootResult {
+            Root: b
+            Value: fb
+            Iterations: 0
+            Converged: true
+        }
+    }
+
+    if fa * fb > 0.0 {
+        return error("bisection root requires f(a) and f(b) to have opposite signs")
+    }
+
+    var left = a
+    var right = b
+    var fLeft = fa
+    var root = (left + right) / 2.0
+    var value = f(root)
+    var iterations = 0
+    var converged = false
+
+    while iterations < maxIterations and not converged {
+        root = (left + right) / 2.0
+        value = f(root)
+        iterations = iterations + 1
+
+        if Abs(value) <= tolerance or ((right - left) / 2.0) <= tolerance {
+            converged = true
+        }
+
+        if not converged and fLeft * value < 0.0 {
+            right = root
+        }
+
+        if not converged and fLeft * value >= 0.0 {
+            left = root
+            fLeft = value
+        }
+    }
+
+    return RootResult {
+        Root: root
+        Value: value
+        Iterations: iterations
+        Converged: converged
+    }
+}
+
+fn NewtonRoot(
+    f: fn(Float) -> Float,
+    df: fn(Float) -> Float,
+    x0: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> RootResult ! Error {
+    let ok = ValidateNewtonInputs(tolerance, maxIterations)?
+
+    var x = x0
+    var value = f(x)
+    var iterations = 0
+    var converged = Abs(value) <= tolerance
+
+    while iterations < maxIterations and not converged {
+        let slope = df(x)
+        if Abs(slope) <= NewtonDerivativeMinAbs() {
+            return error("newton root derivative magnitude is too small for a safe update")
+        }
+
+        let delta = value / slope
+        x = x - delta
+        value = f(x)
+        iterations = iterations + 1
+
+        if Abs(value) <= tolerance or Abs(delta) <= tolerance {
+            converged = true
+        }
+    }
+
+    return RootResult {
+        Root: x
+        Value: value
+        Iterations: iterations
+        Converged: converged
+    }
+}
+
+fn ValidateBisectionInputs(a: Float, b: Float, tolerance: Float, maxIterations: Int) -> Bool ! Error {
+    if a >= b {
+        return error("bisection root requires a < b")
+    }
+
+    if tolerance <= 0.0 {
+        return error("bisection root requires tolerance > 0")
+    }
+
+    if maxIterations <= 0 {
+        return error("bisection root requires maxIterations > 0")
+    }
+
+    return true
+}
+
+fn ValidateNewtonInputs(tolerance: Float, maxIterations: Int) -> Bool ! Error {
+    if tolerance <= 0.0 {
+        return error("newton root requires tolerance > 0")
+    }
+
+    if maxIterations <= 0 {
+        return error("newton root requires maxIterations > 0")
+    }
+
+    return true
+}
+
+fn NewtonDerivativeMinAbs() -> Float {
+    return 0.000000000001
+}
