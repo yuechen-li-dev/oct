@@ -21,10 +21,14 @@ Calls are checked statically for arity and type constraints.
 - `Abs(z: Complex) -> Float`.
 - `Complex(re: Int | Float, im: Int | Float) -> Complex`.
   - Both arguments must be dimensionless.
+- `ComplexPolar(r: Int | Float, theta: Int | Float) -> Complex`.
+  - Both arguments must be dimensionless.
 - `I() -> Complex`.
 - `Real(z: Complex) -> Float`.
 - `Imag(z: Complex) -> Float`.
 - `Conj(z: Complex) -> Complex`.
+- `Arg(z: Complex) -> Float`.
+  - Returns principal argument in radians with range `[-Pi(), Pi()]`.
 - `Sqrt(x: Int | Float | Int<D> | Float<D>) -> Float<sqrt(D)>`.
   - Requires even dimension exponents for dimensioned input.
 - `Sin(x: Int | Float) -> Float`.
@@ -45,9 +49,12 @@ Calls are checked statically for arity and type constraints.
   - Both inputs must be dimensionless.
 - `Exp(x: Int | Float) -> Float`.
   - Input must be dimensionless.
+- `Exp(z: Complex) -> Complex`.
 - `Ln(x: Int | Float) -> Float`.
   - Input must be dimensionless.
   - Runtime input domain is positive values only.
+- `Ln(z: Complex) -> Complex`.
+  - Uses principal logarithm with `Im(Ln(z)) = Arg(z)` in `[-Pi(), Pi()]`.
 - `Log10(x: Int | Float) -> Float`.
   - Input must be dimensionless.
   - Runtime input domain is positive values only.

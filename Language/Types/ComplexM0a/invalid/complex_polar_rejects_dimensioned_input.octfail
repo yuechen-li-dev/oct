@@ -1,0 +1,7 @@
+expect error: "ComplexPolar requires dimensionless input"
+
+package Main
+
+fn Main() -> Complex {
+    return ComplexPolar(2m, 0.5)
+}

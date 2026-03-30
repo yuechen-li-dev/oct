@@ -2116,6 +2116,27 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeComplex}}, nil
 	}
+	if callee == "ComplexPolar" {
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for idx, argument := range arguments {
+			argumentType, err := c.checkExpr(scope, argument, ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argumentType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if !isRealNumericScalar(argumentType.ValueType) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
+			}
+			if !argumentType.ValueType.Dimension.IsDimensionless() {
+				return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeComplex}}, nil
+	}
 	if callee == "Atan2" {
 		if len(arguments) != 2 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
@@ -2177,7 +2198,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 		}
 		return ExprType{}, fmt.Errorf("function 'Abs' argument 1 expects Int, Float, or Complex, got %s", argumentType.ValueType)
-	case "Real", "Imag":
+	case "Real", "Imag", "Arg":
 		if !isComplexScalar(argumentType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Complex, got %s", callee, argumentType.ValueType)
 		}
@@ -2211,7 +2232,18 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
-	case "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh":
+	case "Exp", "Ln":
+		if isComplexScalar(argumentType.ValueType) {
+			return ExprType{ValueType: Type{Base: BaseTypeComplex}}, nil
+		}
+		if !isRealNumericScalar(argumentType.ValueType) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, Float, or Complex, got %s", callee, argumentType.ValueType)
+		}
+		if !argumentType.ValueType.Dimension.IsDimensionless() {
+			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	case "Atan", "Log10", "Sinh", "Cosh", "Tanh":
 		if !isRealNumericScalar(argumentType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int or Float, got %s", callee, argumentType.ValueType)
 		}

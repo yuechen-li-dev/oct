@@ -1833,6 +1833,37 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueComplex, Complex: complex(reValue, imValue)}}, nil
 	}
+	if callee == "ComplexPolar" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		rResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rResult.hasError {
+			return evalResult{hasError: true, errorVal: rResult.errorVal}, nil
+		}
+		thetaResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if thetaResult.hasError {
+			return evalResult{hasError: true, errorVal: thetaResult.errorVal}, nil
+		}
+		if !rResult.value.Dimension.IsDimensionless() || !thetaResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: ComplexPolar requires dimensionless input")
+		}
+		rValue, err := numericValueAsFloat(rResult.value, "ComplexPolar")
+		if err != nil {
+			return evalResult{}, err
+		}
+		thetaValue, err := numericValueAsFloat(thetaResult.value, "ComplexPolar")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Rect(rValue, thetaValue)}}, nil
+	}
 	if callee == "Atan2" {
 		if len(argumentExprs) != 2 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
@@ -1917,6 +1948,11 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Imag expects Complex, got %s", argument.value.Kind)
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: imag(argument.value.Complex)}}, nil
+	case "Arg":
+		if argument.value.Kind != ValueComplex {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Arg expects Complex, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Atan2(imag(argument.value.Complex), real(argument.value.Complex))}}, nil
 	case "Conj":
 		if argument.value.Kind != ValueComplex {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Conj expects Complex, got %s", argument.value.Kind)
@@ -1995,6 +2031,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Atan(value)}}, nil
 	case "Exp":
+		if argument.value.Kind == ValueComplex {
+			return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Exp(argument.value.Complex)}}, nil
+		}
 		if !argument.value.Dimension.IsDimensionless() {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Exp requires dimensionless input")
 		}
@@ -2031,6 +2070,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Tanh(value)}}, nil
 	case "Ln":
+		if argument.value.Kind == ValueComplex {
+			return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Log(argument.value.Complex)}}, nil
+		}
 		if !argument.value.Dimension.IsDimensionless() {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Ln requires dimensionless input")
 		}
