@@ -1,0 +1,7 @@
+expect error: "operator "<" not defined for Complex and Complex"
+
+package Main
+
+fn Main() -> Bool {
+    return Complex(1.0, 2.0) < Complex(1.0, 3.0)
+}

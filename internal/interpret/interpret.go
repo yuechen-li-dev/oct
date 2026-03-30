@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/cmplx"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,19 +21,20 @@ import (
 type ValueKind string
 
 const (
-	ValueInt    ValueKind = "Int"
-	ValueFloat  ValueKind = "Float"
-	ValueBool   ValueKind = "Bool"
-	ValueArray  ValueKind = "Array"
-	ValueRange  ValueKind = "Range"
-	ValueString ValueKind = "String"
-	ValueError  ValueKind = "Error"
-	ValueRecord ValueKind = "Record"
-	ValueEnum   ValueKind = "Enum"
-	ValueVector ValueKind = "Vector"
-	ValueMatrix ValueKind = "Matrix"
-	ValueFunc   ValueKind = "Function"
-	ValueFlow   ValueKind = "FlowInstance"
+	ValueInt     ValueKind = "Int"
+	ValueFloat   ValueKind = "Float"
+	ValueComplex ValueKind = "Complex"
+	ValueBool    ValueKind = "Bool"
+	ValueArray   ValueKind = "Array"
+	ValueRange   ValueKind = "Range"
+	ValueString  ValueKind = "String"
+	ValueError   ValueKind = "Error"
+	ValueRecord  ValueKind = "Record"
+	ValueEnum    ValueKind = "Enum"
+	ValueVector  ValueKind = "Vector"
+	ValueMatrix  ValueKind = "Matrix"
+	ValueFunc    ValueKind = "Function"
+	ValueFlow    ValueKind = "FlowInstance"
 )
 
 type Value struct {
@@ -40,6 +42,7 @@ type Value struct {
 	Dimension dimension.Dimension
 	Int       int64
 	Float     float64
+	Complex   complex128
 	Bool      bool
 	Text      string
 	Array     []Value
@@ -112,6 +115,8 @@ func (v Value) String() string {
 		return strconv.FormatInt(v.Int, 10) + formatUnitSuffix(v.Dimension)
 	case ValueFloat:
 		return strconv.FormatFloat(v.Float, 'g', -1, 64) + formatUnitSuffix(v.Dimension)
+	case ValueComplex:
+		return fmt.Sprintf("Complex{Re:%g, Im:%g}", real(v.Complex), imag(v.Complex))
 	case ValueBool:
 		return strconv.FormatBool(v.Bool)
 	case ValueString:
@@ -1591,6 +1596,8 @@ func valuesEqual(left Value, right Value) bool {
 		return left.Int == right.Int
 	case ValueFloat:
 		return left.Float == right.Float
+	case ValueComplex:
+		return left.Complex == right.Complex
 	case ValueString:
 		return left.Text == right.Text
 	case ValueEnum:
@@ -1789,6 +1796,43 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.E}}, nil
 	}
+	if callee == "I" {
+		if len(argumentExprs) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 0 arguments", callee)
+		}
+		return evalResult{value: Value{Kind: ValueComplex, Complex: complex(0, 1)}}, nil
+	}
+	if callee == "Complex" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		reResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if reResult.hasError {
+			return evalResult{hasError: true, errorVal: reResult.errorVal}, nil
+		}
+		imResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if imResult.hasError {
+			return evalResult{hasError: true, errorVal: imResult.errorVal}, nil
+		}
+		if !reResult.value.Dimension.IsDimensionless() || !imResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Complex requires dimensionless input")
+		}
+		reValue, err := numericValueAsFloat(reResult.value, "Complex")
+		if err != nil {
+			return evalResult{}, err
+		}
+		imValue, err := numericValueAsFloat(imResult.value, "Complex")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueComplex, Complex: complex(reValue, imValue)}}, nil
+	}
 	if callee == "Atan2" {
 		if len(argumentExprs) != 2 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
@@ -1858,9 +1902,26 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{value: Value{Kind: ValueInt, Int: value, Dimension: argument.value.Dimension}}, nil
 		case ValueFloat:
 			return evalResult{value: Value{Kind: ValueFloat, Float: math.Abs(argument.value.Float), Dimension: argument.value.Dimension}}, nil
+		case ValueComplex:
+			return evalResult{value: Value{Kind: ValueFloat, Float: cmplx.Abs(argument.value.Complex)}}, nil
 		default:
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Abs expects Int or Float, got %s", argument.value.Kind)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Abs expects Int, Float, or Complex, got %s", argument.value.Kind)
 		}
+	case "Real":
+		if argument.value.Kind != ValueComplex {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Real expects Complex, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: real(argument.value.Complex)}}, nil
+	case "Imag":
+		if argument.value.Kind != ValueComplex {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Imag expects Complex, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: imag(argument.value.Complex)}}, nil
+	case "Conj":
+		if argument.value.Kind != ValueComplex {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Conj expects Complex, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Conj(argument.value.Complex)}}, nil
 	case "Sqrt":
 		if !argument.value.Dimension.CanSqrt() {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Sqrt requires even dimension exponents")
@@ -2106,7 +2167,7 @@ func numericValueAsFloat(value Value, functionName string) (float64, error) {
 }
 
 func isNumericValue(value Value) bool {
-	return value.Kind == ValueInt || value.Kind == ValueFloat
+	return value.Kind == ValueInt || value.Kind == ValueFloat || value.Kind == ValueComplex
 }
 
 func flowStateHistoryValue(instance *FlowRuntimeInstance) Value {
@@ -2376,6 +2437,9 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if left.Kind == ValueBool || right.Kind == ValueBool {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
+	if left.Kind == ValueComplex || right.Kind == ValueComplex {
+		return evalComplexBinaryExpr(operator, left, right)
+	}
 
 	if operator == "/" && isZero(right) {
 		return Value{}, errors.New("runtime error: division by zero")
@@ -2589,6 +2653,32 @@ func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) 
 	}
 }
 
+func evalComplexBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	leftComplex, err := asComplex(left)
+	if err != nil {
+		return Value{}, err
+	}
+	rightComplex, err := asComplex(right)
+	if err != nil {
+		return Value{}, err
+	}
+	if operator == "/" && rightComplex == 0 {
+		return Value{}, errors.New("runtime error: division by zero")
+	}
+	switch operator {
+	case "+":
+		return Value{Kind: ValueComplex, Complex: leftComplex + rightComplex}, nil
+	case "-":
+		return Value{Kind: ValueComplex, Complex: leftComplex - rightComplex}, nil
+	case "*":
+		return Value{Kind: ValueComplex, Complex: leftComplex * rightComplex}, nil
+	case "/":
+		return Value{Kind: ValueComplex, Complex: leftComplex / rightComplex}, nil
+	default:
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+}
+
 func evalComparisonExpr(operator string, left Value, right Value) (Value, error) {
 	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
@@ -2602,6 +2692,13 @@ func evalComparisonExpr(operator string, left Value, right Value) (Value, error)
 		return Value{Kind: ValueBool, Bool: compareFloat(operator, leftFloat, rightFloat)}, nil
 	}
 	if isEqualityOperator(operator) {
+		if left.Kind == ValueComplex && right.Kind == ValueComplex {
+			equal := left.Complex == right.Complex
+			if operator == "!=" {
+				equal = !equal
+			}
+			return Value{Kind: ValueBool, Bool: equal}, nil
+		}
 		if left.Kind == ValueBool && right.Kind == ValueBool {
 			equal := left.Bool == right.Bool
 			if operator == "!=" {
@@ -2657,6 +2754,19 @@ func asFloat(value Value) (float64, error) {
 		return value.Float, nil
 	default:
 		return 0, fmt.Errorf("runtime invariant violation: expected numeric value, got %s", value.Kind)
+	}
+}
+
+func asComplex(value Value) (complex128, error) {
+	switch value.Kind {
+	case ValueInt:
+		return complex(float64(value.Int), 0), nil
+	case ValueFloat:
+		return complex(value.Float, 0), nil
+	case ValueComplex:
+		return value.Complex, nil
+	default:
+		return 0, fmt.Errorf("runtime invariant violation: expected Int, Float, or Complex, got %s", value.Kind)
 	}
 }
 
@@ -2726,6 +2836,8 @@ func sameValueType(left Value, right Value) bool {
 	switch left.Kind {
 	case ValueInt, ValueFloat:
 		return left.Dimension == right.Dimension
+	case ValueComplex:
+		return true
 	case ValueRecord:
 		return left.Record.TypeName == right.Record.TypeName
 	case ValueEnum:

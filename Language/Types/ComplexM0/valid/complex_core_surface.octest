@@ -1,0 +1,40 @@
+package MainValid
+
+[Fact]
+fn ComplexCoreSurface() -> Void {
+    let z = Complex(3, 4)
+    Assert.Equal(3.0, Real(z), "real part")
+    Assert.Equal(4.0, Imag(z), "imag part")
+    Assert.Equal(5.0, Abs(z), "magnitude")
+
+    let unit = I()
+    Assert.Equal(0.0, Real(unit), "imaginary unit real component")
+    Assert.Equal(1.0, Imag(unit), "imaginary unit imaginary component")
+
+    let sum = z + Conj(z)
+    Assert.Equal(6.0, Real(sum), "sum real")
+    Assert.Equal(0.0, Imag(sum), "sum imaginary")
+
+    let diff = z - 2.0
+    Assert.Equal(1.0, Real(diff), "difference real")
+    Assert.Equal(4.0, Imag(diff), "difference imaginary")
+
+    let mixed = 2.0 * I()
+    Assert.Equal(0.0, Real(mixed), "mixed multiplication real")
+    Assert.Equal(2.0, Imag(mixed), "mixed multiplication imaginary")
+
+    let product = Complex(1.0, 2.0) * Complex(3.0, 4.0)
+    Assert.Equal(0.0 - 5.0, Real(product), "product real")
+    Assert.Equal(10.0, Imag(product), "product imaginary")
+
+    let quotient = Complex(1.0, 2.0) / Complex(3.0, 4.0)
+    Assert.Near(0.44, Real(quotient), 0.000001, "quotient real")
+    Assert.Near(0.08, Imag(quotient), 0.000001, "quotient imaginary")
+
+    Assert.True(Complex(3.0, 4.0) == Complex(3.0, 4.0), "exact equality")
+    Assert.True(Complex(3.0, 4.0) != Complex(3.0, 4.1), "inequality when components differ")
+
+    let xs = [Complex(1.0, 1.0), Complex(2.0, 0.0 - 1.0)]
+    Assert.Equal(1.0, Real(xs[0]), "complex array element real")
+    Assert.Equal(0.0 - 1.0, Imag(xs[1]), "complex array element imaginary")
+}
