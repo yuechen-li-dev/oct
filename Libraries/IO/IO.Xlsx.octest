@@ -1,0 +1,36 @@
+package IO
+
+[Fact]
+fn XlsxWriteMiniWorkflow() -> Void {
+    let workbook = CreateWorkbook()
+    let _a0 = AddSheet(workbook, "Results") !
+    let _a1 = SetCellString(workbook, "Results", "A1", "Metric") !
+    let _a2 = SetCellString(workbook, "Results", "B1", "Value") !
+    let _a3 = SetCellString(workbook, "Results", "A2", "Gain") !
+    let _a4 = SetCellFloat(workbook, "Results", "B2", 42.5) !
+    let _a5 = SetCellString(workbook, "Results", "A3", "Loss") !
+    let _a6 = SetCellFloat(workbook, "Results", "B3", 3.25) !
+    let _a7 = SaveWorkbook(workbook, "io_xlsx_m0.xlsx") !
+}
+
+[Fact]
+fn XlsxRejectsMissingSheetWrites() -> Void {
+    let workbook = CreateWorkbook()
+    match SetCellString(workbook, "Missing", "A1", "x") {
+        ok(v) => {
+            Assert.True(false, "writing to a missing sheet should fail")
+        }
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn XlsxRejectsInvalidWorkbookHandle() -> Void {
+    let workbook = Workbook { Handle: 987654321 }
+    match AddSheet(workbook, "Data") {
+        ok(v) => {
+            Assert.True(false, "invalid workbook handle should fail")
+        }
+        err(e) => {}
+    }
+}
