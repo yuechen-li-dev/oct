@@ -631,6 +631,7 @@ Concept areas include:
 * `Structures`
 * `Physics`
 * `RF`
+* `DifferentialEquations`
 
 These demonstrate real Oct usage across scientific and numerical domains.
 
