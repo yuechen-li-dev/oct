@@ -1956,6 +1956,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	if callee == "LoadOctagon" {
 		return c.checkLoadOctagonBuiltinCallExpr(scope, callee, typeArguments, arguments, ctx)
 	}
+	if callee == "XlsxCreateWorkbook" || callee == "XlsxAddSheet" || callee == "XlsxSetCellString" || callee == "XlsxSetCellFloat" || callee == "XlsxSaveWorkbook" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkXlsxBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "Append" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
@@ -2251,6 +2257,122 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	default:
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+	}
+}
+
+func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	intType := Type{Base: BaseTypeInt}
+	stringType := Type{Base: BaseTypeString}
+	floatType := Type{Base: BaseTypeFloat}
+	switch callee {
+	case "XlsxCreateWorkbook":
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		return ExprType{ValueType: intType}, nil
+	case "XlsxAddSheet":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		workbookType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if workbookType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if workbookType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
+		}
+		sheetType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if sheetType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if sheetType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, sheetType.ValueType)
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "XlsxSetCellString", "XlsxSetCellFloat":
+		if len(arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", callee, len(arguments))
+		}
+		workbookType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if workbookType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if workbookType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
+		}
+		sheetType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if sheetType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if sheetType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, sheetType.ValueType)
+		}
+		cellType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if cellType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if cellType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, cellType.ValueType)
+		}
+		valueType, err := c.checkExpr(scope, arguments[3], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if callee == "XlsxSetCellString" && valueType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", callee, valueType.ValueType)
+		}
+		if callee == "XlsxSetCellFloat" && valueType.ValueType != floatType && valueType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects Int or Float, got %s", callee, valueType.ValueType)
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "XlsxSaveWorkbook":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		workbookType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if workbookType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if workbookType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
+		}
+		pathType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if pathType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if pathType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, pathType.ValueType)
+		}
+		if pathLiteral, ok := arguments[1].(ast.StringLiteralExpr); ok && !strings.HasSuffix(pathLiteral.Value, ".xlsx") {
+			return ExprType{}, fmt.Errorf("XlsxSaveWorkbook path must end with .xlsx")
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}

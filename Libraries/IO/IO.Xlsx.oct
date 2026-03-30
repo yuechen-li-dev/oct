@@ -1,0 +1,25 @@
+package IO
+
+record Workbook {
+    Handle: Int
+}
+
+fn CreateWorkbook() -> Workbook {
+    return Workbook { Handle: XlsxCreateWorkbook() }
+}
+
+fn AddSheet(workbook: Workbook, name: String) -> Int ! Error {
+    return XlsxAddSheet(workbook.Handle, name)?
+}
+
+fn SetCellString(workbook: Workbook, sheet: String, cell: String, value: String) -> Int ! Error {
+    return XlsxSetCellString(workbook.Handle, sheet, cell, value)?
+}
+
+fn SetCellFloat(workbook: Workbook, sheet: String, cell: String, value: Float) -> Int ! Error {
+    return XlsxSetCellFloat(workbook.Handle, sheet, cell, value)?
+}
+
+fn SaveWorkbook(workbook: Workbook, path: String) -> Int ! Error {
+    return XlsxSaveWorkbook(workbook.Handle, path)?
+}
