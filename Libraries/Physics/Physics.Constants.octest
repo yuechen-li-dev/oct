@@ -1,0 +1,58 @@
+package Physics
+
+[Fact]
+fn PhysicalConstantsCallableSurface() -> Void {
+    let _c = SpeedOfLight()
+    let _kb = BoltzmannConstant()
+    let _h = PlanckConstant()
+    let _hbar = ReducedPlanckConstant()
+    let _e = ElementaryCharge()
+    let _na = AvogadroConstant()
+    let _r = GasConstant()
+    let _sigma = StefanBoltzmannConstant()
+    let _eps0 = VacuumPermittivity()
+    let _mu0 = VacuumPermeability()
+}
+
+[Fact]
+fn UnitSanityForCoreConstants() -> Void {
+    let travel = SpeedOfLight() * 2.0s
+    Assert.Near(599584916.0, travel / 1m, 0.000001, "c*t should produce length")
+
+    let thermalEnergy = BoltzmannConstant() * 300.0
+    Assert.True(thermalEnergy > 0kg*m^2/s^2, "k_B*T should produce energy-like units")
+
+    let gasEnergy = GasConstant() * 300.0
+    Assert.True(gasEnergy > 0kg*m^2/s^2, "R*T should produce energy-like units")
+
+    let photonEnergy = PlanckConstant() * 1000000000.0 / 1s
+    Assert.True(photonEnergy > 0kg*m^2/s^2, "h*f should produce energy")
+}
+
+[Fact]
+fn ValueSanityForRepresentativeConstants() -> Void {
+    let oneSecondDistance = SpeedOfLight() * 1.0s
+    Assert.Near(299792458.0, oneSecondDistance / 1m, 0.001, "speed of light SI value")
+    Assert.Near(1.380649e-23, BoltzmannConstant() / (1kg*m^2/s^2), 1e-30, "Boltzmann constant SI magnitude")
+    Assert.Near(6.62607015e-34, PlanckConstant() / (1kg*m^2/s), 1e-41, "Planck constant SI magnitude")
+    Assert.Near(8.314462618, GasConstant() / (1kg*m^2/s^2), 1e-9, "gas constant SI magnitude")
+}
+
+[Fact]
+fn ReducedPlanckMatchesDerivedRelation() -> Void {
+    let expected = PlanckConstant() / (2.0 * Pi())
+    Assert.Near(expected / (1kg*m^2/s), ReducedPlanckConstant() / (1kg*m^2/s), 1e-45, "hbar should equal h/(2*pi)")
+}
+
+[Fact]
+fn ConstantsComposeInWorkflow() -> Void {
+    let frequency = 2.4e9 / 1s
+    let photonEnergy = PlanckConstant() * frequency
+    let equivalentTemperature = photonEnergy / BoltzmannConstant()
+
+    Assert.True(photonEnergy > 0kg*m^2/s^2, "photon energy should be positive")
+    Assert.True(equivalentTemperature > 0.0, "equivalent temperature should be positive")
+
+    let thermalScale = GasConstant() / AvogadroConstant()
+    Assert.Near(thermalScale / (1kg*m^2/s^2), BoltzmannConstant() / (1kg*m^2/s^2), 1e-30, "R / N_A should recover k_B magnitude")
+}
