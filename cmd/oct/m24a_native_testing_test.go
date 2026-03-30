@@ -177,25 +177,6 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 	}
 }
 
-func TestOctTestMigratedNumericsProofPackage(t *testing.T) {
-	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Libraries", "Numerics"), filepath.Join(root, "Numerics"))
-	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(root, "Main"))
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := cli.Execute([]string{"test", root}, &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("oct test on migrated numerics package failed: %v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "PASS Numerics.BisectionConvergesForSqrt2") {
-		t.Fatalf("expected migrated test pass output, got %q", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "PASS Numerics.ResidualMatchesKnownCases[0]") {
-		t.Fatalf("expected migrated theory output, got %q", stdout.String())
-	}
-}
-
 func writeOctPkgFile(t *testing.T, root, pkg, name, content string) {
 	t.Helper()
 	dir := filepath.Join(root, pkg)

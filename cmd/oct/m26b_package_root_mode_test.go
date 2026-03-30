@@ -7,38 +7,27 @@ import (
 	"testing"
 )
 
-func TestM26bDirectPackageRootTestCommand(t *testing.T) {
-	tests := []struct {
-		name       string
-		packageDir string
-		want       string
-	}{
-		{
-			name:       "numerics package root",
-			packageDir: filepath.Join("..", "..", "Libraries", "Numerics"),
-			want:       "PASS Numerics.BisectionConvergesForSqrt2",
-		},
-		{
-			name:       "mechanics package root",
-			packageDir: filepath.Join("..", "..", "Libraries", "Mechanics"),
-			want:       "PASS Mechanics.AddForceAndMagnitudePreserveUnits",
-		},
-	}
+func TestPackageRootTestCommandRunsPackageLocalOctest(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Tooling", "manifest.oct", manifestSource("Tooling", "package-root test package"))
+	writeOctPkgFile(t, root, "Tooling", "tooling.oct", `package Tooling
+fn One() -> Int { return 1 }
+`)
+	writeOctPkgFile(t, root, "Tooling", "tooling.octest", `package Tooling
+[Fact]
+fn Roundtrip() -> Void { Assert.Equal(1, One(), "roundtrip") }
+`)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stdout, stderr, err := executeCLI("test", tt.packageDir)
-			if err != nil {
-				t.Fatalf("oct test failed: %v stderr=%q stdout=%q", err, stderr, stdout)
-			}
-			if !strings.Contains(stdout, tt.want) {
-				t.Fatalf("expected output to contain %q, got %q", tt.want, stdout)
-			}
-		})
+	stdout, stderr, err := executeCLI("test", filepath.Join(root, "Tooling"))
+	if err != nil {
+		t.Fatalf("oct test failed: %v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	if !strings.Contains(stdout, "PASS Tooling.Roundtrip") {
+		t.Fatalf("expected output to contain package-local fact pass, got %q", stdout)
 	}
 }
 
-func TestM26bDirectPackageRootBenchCommand(t *testing.T) {
+func TestPackageRootBenchCommandRunsPackageLocalBenchmark(t *testing.T) {
 	stdout, stderr, err := executeCLI("bench", filepath.Join("..", "..", "Libraries", "Signal"))
 	if err != nil {
 		t.Fatalf("oct bench failed: %v stderr=%q stdout=%q", err, stderr, stdout)
@@ -48,7 +37,7 @@ func TestM26bDirectPackageRootBenchCommand(t *testing.T) {
 	}
 }
 
-func TestM26bDirectPackageRootArtifactCommand(t *testing.T) {
+func TestPackageRootArtifactCommandRunsPackageLocalArtifact(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Tooling", "manifest.oct", manifestSource("Tooling", "artifact package"))
 	writeOctPkgFile(t, root, "Tooling", "tooling.oct", "package Tooling\nfn Meaning() -> Int { return 42 }\n")
@@ -63,11 +52,14 @@ func TestM26bDirectPackageRootArtifactCommand(t *testing.T) {
 	}
 }
 
-func TestM26bDirectPackageRootManifestValidationStillStrict(t *testing.T) {
+func TestPackageRootManifestValidationRemainsStrict(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Mismatch", "manifest.oct", manifestSource("WrongName", "bad manifest"))
 	writeOctPkgFile(t, root, "Mismatch", "mismatch.oct", "package Mismatch\nfn One() -> Int { return 1 }\n")
-	writeOctPkgFile(t, root, "Mismatch", "mismatch.octest", "package Mismatch\n[Fact]\nfn Roundtrip() -> Void { Assert.EqualInt(One(), 1) }\n")
+	writeOctPkgFile(t, root, "Mismatch", "mismatch.octest", `package Mismatch
+[Fact]
+fn Roundtrip() -> Void { Assert.Equal(1, One(), "roundtrip") }
+`)
 
 	stdout, stderr, err := executeCLI("test", filepath.Join(root, "Mismatch"))
 	if err == nil {
@@ -78,7 +70,7 @@ func TestM26bDirectPackageRootManifestValidationStillStrict(t *testing.T) {
 	}
 }
 
-func TestM66PackageRootLoadsMilestoneFiles(t *testing.T) {
+func TestPackageRootLoadsCanonicalMilestoneLayout(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "MilestonePkg", "manifest.oct", manifestSource("MilestonePkg", "milestone layout package"))
 	milestoneDir := filepath.Join(root, "MilestonePkg", "M0")

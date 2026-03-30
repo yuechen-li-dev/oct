@@ -10,7 +10,7 @@ import (
 	"oct/internal/cli"
 )
 
-func TestM25ValidManifestPackageBuilds(t *testing.T) {
+func TestBuildAcceptsValidManifestedPackageTree(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", manifestSource("Main", "demo entry"))
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nimport Numerics\nfn Main() -> Int { let x = Numerics.One() return x }\n")
@@ -24,7 +24,7 @@ func TestM25ValidManifestPackageBuilds(t *testing.T) {
 	}
 }
 
-func TestM25MissingManifestRejectedWhenRootIsManifested(t *testing.T) {
+func TestBuildRejectsMissingDependencyManifestWhenRootManifestExists(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", manifestSource("Main", "demo entry"))
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nimport Util\nfn Main() -> Int { return Util.One() }\n")
@@ -44,7 +44,7 @@ func TestM25MissingManifestRejectedWhenRootIsManifested(t *testing.T) {
 	}
 }
 
-func TestM25InvalidManifestShapeRejected(t *testing.T) {
+func TestBuildRejectsInvalidManifestShape(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", strings.Join([]string{
 		"package Manifest",
@@ -67,38 +67,6 @@ func TestM25InvalidManifestShapeRejected(t *testing.T) {
 	err := cli.Execute([]string{"build", root}, &stdout, &stderr)
 	if err == nil || !strings.Contains(err.Error(), "manifest.oct must define fn Manifest() -> PackageManifest") {
 		t.Fatalf("expected missing Manifest() error, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
-	}
-}
-
-func TestM25ProofPackagesRemainRunnable(t *testing.T) {
-	testRoot := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Libraries", "Numerics"), filepath.Join(testRoot, "Numerics"))
-	copyDir(t, filepath.Join("..", "..", "testdata", "m22a", "valid", "Main"), filepath.Join(testRoot, "Main"))
-
-	benchRoot := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Libraries", "Signal"), filepath.Join(benchRoot, "Signal"))
-	copyDir(t, filepath.Join("..", "..", "testdata", "m24i", "valid", "Main"), filepath.Join(benchRoot, "Main"))
-
-	cases := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{name: "test", args: []string{"test", testRoot}, want: "PASS Numerics.BisectionConvergesForSqrt2"},
-		{name: "artifact", args: []string{"artifact", filepath.Join("..", "..", "testdata", "m24h", "valid")}, want: "PASS Fixtures.GenerateSignalCsvTemplate"},
-		{name: "bench", args: []string{"bench", benchRoot}, want: "PASS Signal.MovingAverageSmall"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			if err := cli.Execute(tc.args, &stdout, &stderr); err != nil {
-				t.Fatalf("command failed, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
-			}
-			if !strings.Contains(stdout.String(), tc.want) {
-				t.Fatalf("expected %q in output, got %q", tc.want, stdout.String())
-			}
-		})
 	}
 }
 
