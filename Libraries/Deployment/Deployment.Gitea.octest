@@ -1,0 +1,161 @@
+package Deployment
+
+[Fact]
+fn GiteaConfigCreationAndValidationPassesForValidInput() -> Void {
+    let config = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        2222,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    let valid = ValidateGiteaInstanceConfig(config) !
+    Assert.True(valid, "valid gitea instance config should pass validation")
+}
+
+[Fact]
+fn GiteaConfigValidationRejectsInvalidPortsAndMissingValues() -> Void {
+    let invalidPort = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        0,
+        22,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    match ValidateGiteaInstanceConfig(invalidPort) {
+        ok(v) => { Assert.True(false, "invalid http port should fail") }
+        err(e) => {}
+    }
+
+    let missingDomain = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        22,
+        "",
+        "OctLab"
+    )
+
+    match ValidateGiteaInstanceConfig(missingDomain) {
+        ok(v) => { Assert.True(false, "missing domain should fail") }
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn GiteaAppIniTextIsDeterministicAndContainsExpectedFields() -> Void {
+    let config = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        2222,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    let first = GiteaAppIniText(config) !
+    let second = GiteaAppIniText(config) !
+
+    let expected = "[server]\n" +
+        "DOMAIN = git.oct.local\n" +
+        "ROOT_URL = http://git.oct.local/\n\n" +
+        "[repository]\n" +
+        "ROOT = /srv/gitea/repos\n\n" +
+        "[database]\n" +
+        "DB_TYPE = sqlite3\n" +
+        "PATH = /srv/gitea/data/gitea.db\n\n" +
+        "[security]\n" +
+        "INSTALL_LOCK = true\n\n" +
+        "[service]\n" +
+        "DISABLE_REGISTRATION = true\n\n" +
+        "[oct_lab]\n" +
+        "APP_NAME = OctLab\n" +
+        "ROOT_DIRECTORY = /srv/gitea\n" +
+        "HTTP_PORT = configured via GiteaInstanceConfig.HttpPort\n" +
+        "SSH_PORT = configured via GiteaInstanceConfig.SshPort\n"
+
+    Assert.Equal(expected, first, "app.ini text should include expected deterministic fields")
+    Assert.Equal(first, second, "app.ini text generation should be deterministic")
+}
+
+[Fact]
+fn OctLabCloneCommandIncludesRepoAndTargetDirectory() -> Void {
+    let config = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        2222,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    let command = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git") !
+    Assert.Equal("git clone https://github.com/oct-lang/oct.git /srv/gitea/repos/oct", command, "clone command should be explicit and readable")
+
+    match OctLabCloneCommand(config, "") {
+        ok(v) => { Assert.True(false, "empty repo url should fail") }
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn OctLabDirectoryPlanIsDeterministicAndOrdered() -> Void {
+    let config = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        2222,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    let plan = OctLabDirectoryPlan(config) !
+    let expected = ["/srv/gitea", "/srv/gitea/data", "/srv/gitea/repos", "/srv/gitea/conf", "/srv/gitea/log", "/srv/gitea/tmp", "/srv/gitea/repos/oct"]
+
+    Assert.Equal(expected[0], plan[0], "directory plan first element")
+    Assert.Equal(expected[1], plan[1], "directory plan second element")
+    Assert.Equal(expected[2], plan[2], "directory plan third element")
+    Assert.Equal(expected[3], plan[3], "directory plan fourth element")
+    Assert.Equal(expected[4], plan[4], "directory plan fifth element")
+    Assert.Equal(expected[5], plan[5], "directory plan sixth element")
+    Assert.Equal(expected[6], plan[6], "directory plan seventh element")
+}
+
+[Fact]
+fn DeploymentGiteaComposableBootstrapWorkflow() -> Void {
+    let config = CreateGiteaInstanceConfig(
+        "/srv/gitea",
+        "/srv/gitea/data",
+        "/srv/gitea/repos",
+        "/srv/gitea/repos/oct",
+        3000,
+        2222,
+        "git.oct.local",
+        "OctLab"
+    )
+
+    let _valid = ValidateGiteaInstanceConfig(config) !
+    let iniText = GiteaAppIniText(config) !
+    let cloneCommand = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git") !
+    let directories = OctLabDirectoryPlan(config) !
+
+    Assert.True(Len(iniText) > 0, "app.ini text should be generated")
+    Assert.True(Len(cloneCommand) > 0, "clone command should be generated")
+    Assert.Equal("/srv/gitea", directories[0], "directory plan should be generated")
+}
