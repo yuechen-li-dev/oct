@@ -136,3 +136,19 @@ Still intentionally out of scope:
 - standards-specific mobility/channel profiles
 - packet/protocol or full wireless simulation frameworks
 - random-number sequence generators or stochastic input builder layers
+
+
+## M0 S-parameters additions
+
+### Deterministic 2-port S-parameter core
+
+- `SParameters2Port` with direct fields: `Frequencies`, `S11`, `S21`, `S12`, `S22`
+- `ValidateSParameters2Port` for non-empty and strictly increasing frequency axes (Complex[] length introspection is currently unavailable, so trace-length consistency is caller-maintained in M0)
+- `MagnitudeDb`, `PhaseRadians`, `PhaseDegrees` for small complex-trace inspection
+- `InterpolateS11`, `InterpolateS21`, `InterpolateS12`, `InterpolateS22`
+  - exact-knot queries return the stored sample
+  - in-range non-knot queries linearly interpolate real/imag parts separately
+  - out-of-range queries reject with `Error` (no clamping/extrapolation)
+- `ReturnLossDbFromS11` and `InsertionLossDbFromS21` use explicit convention `-20*log10(|Sij|)`
+
+Scope is intentionally narrow and 2-port only for M0: no Touchstone I/O, no N-port framework, no cascading/de-embedding, and no impedance-renormalization surfaces.
