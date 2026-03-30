@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test-artifact:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary_name: oct
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: oct.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build oct binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -o dist/${{ matrix.binary_name }} ./cmd/oct
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oct-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ matrix.binary_name }}
+          if-no-files-found: error
+          retention-days: 14
