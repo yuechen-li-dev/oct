@@ -1,0 +1,59 @@
+package Mathematics
+
+[Fact]
+fn MinAndMaxScalarCases() -> Void {
+    Assert.Equal(2.0, Min(2.0, 5.0), "min scalar")
+    Assert.Equal(5.0, Max(2.0, 5.0), "max scalar")
+    Assert.Equal(2.0, Min(5.0, 2.0), "min commuted")
+    Assert.Equal(5.0, Max(5.0, 2.0), "max commuted")
+}
+
+[Fact]
+fn ClampCoversRangeAndBoundOrdering() -> Void {
+    Assert.Equal(0.0, Clamp(0.0 - 4.0, 0.0, 10.0), "below lower clamps to lower")
+    Assert.Equal(10.0, Clamp(11.0, 0.0, 10.0), "above upper clamps to upper")
+    Assert.Equal(4.5, Clamp(4.5, 0.0, 10.0), "in-range is unchanged")
+
+    Assert.Equal(0.0, Clamp(0.0 - 4.0, 10.0, 0.0), "reversed bounds still clamp to normalized lower")
+    Assert.Equal(10.0, Clamp(11.0, 10.0, 0.0), "reversed bounds still clamp to normalized upper")
+    Assert.Equal(4.5, Clamp(4.5, 10.0, 0.0), "reversed bounds keep in-range value")
+}
+
+[Fact]
+fn FloorCeilRoundCoreBehavior() -> Void {
+    Assert.Equal(3.0, Floor(3.9), "floor positive")
+    Assert.Equal(0.0 - 4.0, Floor(0.0 - 3.1), "floor negative")
+
+    Assert.Equal(4.0, Ceil(3.1), "ceil positive")
+    Assert.Equal(0.0 - 3.0, Ceil(0.0 - 3.9), "ceil negative")
+
+    Assert.Equal(3.0, Round(2.6), "round positive nearest")
+    Assert.Equal(0.0 - 3.0, Round(0.0 - 2.6), "round negative nearest")
+    Assert.Equal(3.0, Round(2.5), "round half away from zero positive")
+    Assert.Equal(0.0 - 3.0, Round(0.0 - 2.5), "round half away from zero negative")
+}
+
+[Fact]
+fn PowSignAndHypotCoreBehavior() -> Void {
+    Assert.Equal(8.0, Pow(2.0, 3), "pow positive exponent")
+    Assert.Near(0.125, Pow(2.0, 0 - 3), 0.000001, "pow negative exponent")
+    Assert.Equal(1.0, Pow(5.0, 0), "pow zero exponent")
+    Assert.Equal(0.0, Pow(0.0, 0 - 1), "pow zero to negative exponent is sentinel zero")
+
+    Assert.Equal(0, Sign(0.0), "sign zero")
+    Assert.Equal(1, Sign(3.2), "sign positive")
+    Assert.Equal(0 - 1, Sign(0.0 - 3.2), "sign negative")
+
+    Assert.Near(5.0, Hypot(3.0, 4.0), 0.000001, "hypot pythagorean")
+}
+
+[Fact]
+fn ComposableExpressionHelpers() -> Void {
+    let bounded = Clamp(Round(Pow(2.0, 4) / 3.0), 0.0, 10.0)
+    let score = Max(0.0, bounded - 1.0)
+    Assert.Equal(4.0, score, "helpers compose in ordinary expressions")
+
+    let radius = Hypot(3.0, 4.0)
+    let trend = Sign(radius - 6.0)
+    Assert.Equal(0 - 1, trend, "helpers compose in classification-style workflows")
+}

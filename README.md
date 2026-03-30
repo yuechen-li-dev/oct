@@ -194,6 +194,7 @@ Design intent:
 * `Sinh`, `Cosh`, and `Tanh` require dimensionless scalar input and return dimensionless `Float`.
 * `Exp`, `Ln`, and `Log10` require dimensionless input; `Ln`/`Log10` require strictly positive inputs.
 * Scientific math built-ins are intentionally limited to common scalar functions; inverse hyperbolics, sec/csc/cot, combinatorics, random helpers, complex-number math, and symbolic math remain deferred.
+* `Libraries/Mathematics` adds package-level foundational numerical helpers (`Min`, `Max`, `Clamp`, `Floor`, `Ceil`, `Round`, `Pow`, `Sign`, `Hypot`) for downstream library composition.
 
 ---
 

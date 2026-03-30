@@ -1,0 +1,102 @@
+package Mathematics
+
+fn Min(left: Float, right: Float) -> Float {
+    if left <= right {
+        return left
+    }
+    return right
+}
+
+fn Max(left: Float, right: Float) -> Float {
+    if left >= right {
+        return left
+    }
+    return right
+}
+
+fn Clamp(value: Float, lower: Float, upper: Float) -> Float {
+    let lo = Min(lower, upper)
+    let hi = Max(lower, upper)
+
+    if value < lo {
+        return lo
+    }
+    if value > hi {
+        return hi
+    }
+    return value
+}
+
+fn Floor(value: Float) -> Float {
+    var whole = 0.0
+    if value >= 0.0 {
+        while whole + 1.0 <= value {
+            whole = whole + 1.0
+        }
+        return whole
+    }
+
+    while whole > value {
+        whole = whole - 1.0
+    }
+    return whole
+}
+
+fn Ceil(value: Float) -> Float {
+    var whole = 0.0
+    if value <= 0.0 {
+        while whole - 1.0 >= value {
+            whole = whole - 1.0
+        }
+        return whole
+    }
+
+    while whole < value {
+        whole = whole + 1.0
+    }
+    return whole
+}
+
+fn Round(value: Float) -> Float {
+    if value >= 0.0 {
+        return Floor(value + 0.5)
+    }
+    return Ceil(value - 0.5)
+}
+
+fn Pow(base: Float, exponent: Int) -> Float {
+    if exponent == 0 {
+        return 1.0
+    }
+
+    let exponentMagnitude = Abs(exponent)
+    var product = 1.0
+    var i = 0
+    while i < exponentMagnitude {
+        product = product * base
+        i = i + 1
+    }
+
+    if exponent < 0 {
+        if base == 0.0 {
+            return 0.0
+        }
+        return 1.0 / product
+    }
+
+    return product
+}
+
+fn Sign(value: Float) -> Int {
+    if value > 0.0 {
+        return 1
+    }
+    if value < 0.0 {
+        return 0 - 1
+    }
+    return 0
+}
+
+fn Hypot(x: Float, y: Float) -> Float {
+    return Sqrt(x * x + y * y)
+}
