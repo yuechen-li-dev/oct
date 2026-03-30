@@ -37,6 +37,7 @@ const (
 	ValueMatrix  ValueKind = "Matrix"
 	ValueFunc    ValueKind = "Function"
 	ValueFlow    ValueKind = "FlowInstance"
+	ValueUI      ValueKind = "UI"
 )
 
 type Value struct {
@@ -56,6 +57,7 @@ type Value struct {
 	Enum      EnumValue
 	Function  FunctionValue
 	Flow      *FlowRuntimeInstance
+	UI        *uiNode
 }
 
 type ErrorValue struct {
@@ -164,6 +166,11 @@ func (v Value) String() string {
 			return "FlowInstance<invalid>"
 		}
 		return fmt.Sprintf("FlowInstance<%s>", v.Flow.Decl.ReturnType.Name)
+	case ValueUI:
+		if v.UI == nil {
+			return "UI<invalid>"
+		}
+		return "UI<" + uiSignature(v.UI) + ">"
 	default:
 		return "<invalid>"
 	}
@@ -178,6 +185,7 @@ type interpreter struct {
 	flowSource     map[string]string
 	stdout         io.Writer
 	workbooks      wrapperHandleStore[*xlsxWorkbook]
+	uiMounts       wrapperHandleStore[*uiMount]
 	wrappers       wrapperBuiltinRegistry
 }
 
@@ -226,6 +234,7 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		flowSource:     make(map[string]string),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
+		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins()),
 	}
 	for pkgName, pkg := range program.Packages {
@@ -306,6 +315,7 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		flowSource:     make(map[string]string),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
+		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins()),
 	}
 	for currentPkg, pkg := range program.Packages {
@@ -1670,6 +1680,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 		}
 		return i.wrappers.eval(&i, env, pkgName, callee, argumentExprs)
+	}
+	if callee == "UIText" || callee == "UIButton" || callee == "UIColumn" || callee == "UIRow" || callee == "UIMount" || callee == "UIPatch" || callee == "UIUnmount" || callee == "UIEmit" || callee == "UIDrainEvents" || callee == "UISignature" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
+		}
+		return i.evalUIBuiltinCallExpr(env, pkgName, callee, argumentExprs)
 	}
 	if callee == "Append" {
 		if len(typeArguments) != 0 {

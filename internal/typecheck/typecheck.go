@@ -24,6 +24,7 @@ const (
 	BaseTypeString  BaseType = "String"
 	BaseTypeError   BaseType = "Error"
 	BaseTypeVoid    BaseType = "Void"
+	BaseTypeUI      BaseType = "UI"
 )
 
 type Type struct {
@@ -264,7 +265,7 @@ func (c checker) checkFile(file ast.File) error {
 }
 
 func (c checker) registerPackageDeclarations(file ast.File) error {
-	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid)} {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
 
@@ -2085,6 +2086,199 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
+	if callee == "UIText" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIText' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UIText' expects 1 arguments, got %d", len(arguments))
+		}
+		contentType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if contentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if contentType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'UIText' argument 1 expects String, got %s", contentType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "UIButton" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIButton' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'UIButton' expects 2 arguments, got %d", len(arguments))
+		}
+		for idx := range arguments {
+			argType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if argType.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function 'UIButton' argument %d expects String, got %s", idx+1, argType.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "UIColumn" || callee == "UIRow" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		childrenType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if childrenType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if childrenType.ValueType != (Type{Base: BaseTypeUI, IsArray: true}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "UIMount" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIMount' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UIMount' expects 1 arguments, got %d", len(arguments))
+		}
+		rootType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rootType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+			return ExprType{}, fmt.Errorf("function 'UIMount' argument 1 expects UI, got %s", rootType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
+	if callee == "UIPatch" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIPatch' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'UIPatch' expects 2 arguments, got %d", len(arguments))
+		}
+		mountType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if mountType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIPatch' argument 1 expects Int, got %s", mountType.ValueType)
+		}
+		rootType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rootType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+			return ExprType{}, fmt.Errorf("function 'UIPatch' argument 2 expects UI, got %s", rootType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
+	if callee == "UIUnmount" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIUnmount' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UIUnmount' expects 1 arguments, got %d", len(arguments))
+		}
+		mountType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if mountType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIUnmount' argument 1 expects Int, got %s", mountType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
+	if callee == "UIEmit" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIEmit' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'UIEmit' expects 2 arguments, got %d", len(arguments))
+		}
+		mountType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if mountType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIEmit' argument 1 expects Int, got %s", mountType.ValueType)
+		}
+		eventType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if eventType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if eventType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'UIEmit' argument 2 expects String, got %s", eventType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+	}
+	if callee == "UIDrainEvents" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' expects 1 arguments, got %d", len(arguments))
+		}
+		mountType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if mountType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' argument 1 expects Int, got %s", mountType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString, IsArray: true}}, nil
+	}
+	if callee == "UISignature" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UISignature' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UISignature' expects 1 arguments, got %d", len(arguments))
+		}
+		rootType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rootType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+			return ExprType{}, fmt.Errorf("function 'UISignature' argument 1 expects UI, got %s", rootType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}
@@ -2188,13 +2382,13 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		}
 		if !argumentType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String or array type, got %s", argumentType.ValueType)
 		}
 		switch argumentType.ValueType.Base {
-		case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeComplex:
+		case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeComplex, BaseTypeString, BaseTypeUI:
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		default:
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Int[], Float[], Bool[], or Complex[], got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String or array type, got %s", argumentType.ValueType)
 		}
 	case "Abs":
 		if isRealNumericScalar(argumentType.ValueType) {
@@ -2842,7 +3036,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 
 func resolveBaseType(name string) (BaseType, error) {
 	switch BaseType(name) {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeError, BaseTypeVoid:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeError, BaseTypeVoid, BaseTypeUI:
 		return BaseType(name), nil
 	default:
 		return "", fmt.Errorf("unknown type: %s", name)

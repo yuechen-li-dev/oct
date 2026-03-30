@@ -1,0 +1,37 @@
+package UI
+
+record Mount {
+    Handle: Int
+}
+
+fn Column(children: UI[]) -> UI {
+    return UIColumn(children)
+}
+
+fn Row(children: UI[]) -> UI {
+    return UIRow(children)
+}
+
+fn MountUI(root: UI) -> Mount {
+    return Mount { Handle: UIMount(root) }
+}
+
+fn PatchUI(mount: Mount, next: UI) -> Int {
+    return UIPatch(mount.Handle, next)
+}
+
+fn UnmountUI(mount: Mount) -> Int {
+    return UIUnmount(mount.Handle)
+}
+
+fn Emit(mount: Mount, event: String) -> Int ! Error {
+    return UIEmit(mount.Handle, event)?
+}
+
+fn DrainEvents(mount: Mount) -> String[] {
+    return UIDrainEvents(mount.Handle)
+}
+
+fn Signature(node: UI) -> String {
+    return UISignature(node)
+}

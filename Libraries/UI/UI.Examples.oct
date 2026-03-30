@@ -1,0 +1,69 @@
+package UI
+
+record CounterState {
+    Count: Int
+}
+
+fn CounterInit() -> CounterState {
+    return CounterState { Count: 0 }
+}
+
+fn CounterView(model: CounterState) -> UI {
+    let status = Text("count=" + ToString(model.Count))
+    return Column([
+        status,
+        Row([
+            Button("increment", "counter.increment"),
+            Button("decrement", "counter.decrement")
+        ])
+    ])
+}
+
+fn CounterUpdate(model: CounterState, event: String) -> CounterState {
+    if event == "counter.increment" {
+        return CounterState { Count: model.Count + 1 }
+    }
+
+    if event == "counter.decrement" {
+        return CounterState { Count: model.Count - 1 }
+    }
+
+    return model
+}
+
+fn ToString(value: Int) -> String {
+    if value == 0 {
+        return "0"
+    }
+    if value == 1 {
+        return "1"
+    }
+    if value == 2 {
+        return "2"
+    }
+    if value == 3 {
+        return "3"
+    }
+    if value == 4 {
+        return "4"
+    }
+    if value == 5 {
+        return "5"
+    }
+    if value == 6 {
+        return "6"
+    }
+    if value == 7 {
+        return "7"
+    }
+    if value == 8 {
+        return "8"
+    }
+    if value == 9 {
+        return "9"
+    }
+    if value < 0 {
+        return "neg"
+    }
+    return "many"
+}
