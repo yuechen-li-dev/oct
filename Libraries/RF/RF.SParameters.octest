@@ -1,0 +1,110 @@
+package RF
+
+fn SampleSParameters2Port() -> SParameters2Port {
+    return SParameters2Port {
+        Frequencies: [1000000000.0, 2000000000.0, 3000000000.0]
+        S11: [Complex(0.1, 0.2), Complex(0.2, 0.4), Complex(0.3, 0.6)]
+        S21: [Complex(0.8, 0.1), Complex(0.6, 0.3), Complex(0.4, 0.5)]
+        S12: [Complex(0.05, 0.01), Complex(0.04, 0.02), Complex(0.03, 0.03)]
+        S22: [Complex(0.2, 0.0 - 0.1), Complex(0.1, 0.0), Complex(0.0 - 0.1, 0.1)]
+    }
+}
+
+[Fact]
+fn ValidateSParameters2PortAcceptsValidDataset() -> Void {
+    let data = SampleSParameters2Port()
+    Assert.True(ValidateSParameters2Port(data)!, "valid 2-port s-parameter data should pass")
+}
+
+[Fact]
+fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
+    Assert.True(ValidateSParameters2Port(SParameters2Port {
+        Frequencies: [1000000000.0]
+        S11: [Complex(0.1, 0.0)]
+        S21: [Complex(0.1, 0.0)]
+        S12: [Complex(0.1, 0.0)]
+        S22: [Complex(0.1, 0.0)]
+    })!, "single-sample dataset should be valid")
+
+    match ValidateSParameters2Port(SParameters2Port {
+        Frequencies: [1000000000.0, 900000000.0]
+        S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S22: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+    }) {
+        ok(v) => { Assert.True(false, "unsorted frequencies must fail") }
+        err(e) => { }
+    }
+
+    match ValidateSParameters2Port(SParameters2Port {
+        Frequencies: [1000000000.0, 1000000000.0]
+        S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+        S22: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
+    }) {
+        ok(v) => { Assert.True(false, "duplicate frequencies must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn MagnitudePhaseAndDbHelpersAreConsistent() -> Void {
+    let z = Complex(3.0, 4.0)
+
+    Assert.Near(13.979400087, MagnitudeDb(z), 0.000001, "20log10(|3+j4|) should match")
+    Assert.Near(Arg(z), PhaseRadians(z), 0.000001, "phase radians should be arg")
+    Assert.Near(PhaseRadians(z) * 180.0 / Pi(), PhaseDegrees(z), 0.000001, "degree/radian conversion")
+}
+
+[Fact]
+fn InterpolationSupportsKnotsInteriorAndOutOfRangeRejection() -> Void {
+    let data = SampleSParameters2Port()
+
+    let knot = InterpolateS11(data, 2000000000.0)!
+    Assert.Near(0.2, Real(knot), 0.000001, "exact knot real part")
+    Assert.Near(0.4, Imag(knot), 0.000001, "exact knot imag part")
+
+    let interior = InterpolateS11(data, 1500000000.0)!
+    Assert.Near(0.15, Real(interior), 0.000001, "interior linear interpolation real")
+    Assert.Near(0.3, Imag(interior), 0.000001, "interior linear interpolation imag")
+
+    let s21Interior = InterpolateS21(data, 2500000000.0)!
+    Assert.Near(0.5, Real(s21Interior), 0.000001, "s21 real interpolation should be separate")
+    Assert.Near(0.4, Imag(s21Interior), 0.000001, "s21 imag interpolation should be separate")
+
+    match InterpolateS11(data, 900000000.0) {
+        ok(v) => { Assert.True(false, "below-range query must fail") }
+        err(e) => { }
+    }
+
+    match InterpolateS21(data, 3100000000.0) {
+        ok(v) => { Assert.True(false, "above-range query must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn ReturnLossAndInsertionLossConventionsAreExplicit() -> Void {
+    let s11 = Complex(0.1, 0.0)
+    let s21 = Complex(0.5, 0.0)
+
+    Assert.Near(20.0, ReturnLossDbFromS11(s11), 0.000001, "return loss uses -20log10(|s11|)")
+    Assert.Near(6.020599913, InsertionLossDbFromS21(s21), 0.000001, "insertion loss uses -20log10(|s21|)")
+}
+
+[Fact]
+fn SParameterWorkflowComposesDeterministically() -> Void {
+    let data = SampleSParameters2Port()
+    let validated = ValidateSParameters2Port(data)!
+
+    let s11At1p5GHz = InterpolateS11(data, 1500000000.0)!
+    let phaseDeg = PhaseDegrees(s11At1p5GHz)
+    let returnLoss = ReturnLossDbFromS11(s11At1p5GHz)
+
+    Assert.True(validated, "validation should succeed for composability workflow")
+    Assert.True(phaseDeg > 0.0, "phase should remain usable in ordinary expressions")
+    Assert.True(returnLoss > 0.0, "return loss should remain usable in ordinary expressions")
+    Assert.Near(returnLoss + MagnitudeDb(s11At1p5GHz), 0.0, 0.000001, "return loss sign convention should be locked")
+}

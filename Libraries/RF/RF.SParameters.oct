@@ -1,0 +1,114 @@
+package RF
+
+/// Deterministic tabulated 2-port S-parameter data over frequency.
+/// Frequencies are represented as scalar Float values (typically Hz).
+record SParameters2Port {
+    Frequencies: Float[]
+    S11: Complex[]
+    S21: Complex[]
+    S12: Complex[]
+    S22: Complex[]
+}
+
+/// Validates 2-port S-parameter table shape and frequency monotonicity.
+/// Rejects empty frequencies and non-monotonic frequency axes.
+/// Note: Complex[] length introspection is currently unavailable in Oct builtins,
+/// so trace-length consistency must be upheld by callers in M0.
+fn ValidateSParameters2Port(data: SParameters2Port) -> Bool ! Error {
+    let n = Len(data.Frequencies)
+
+    if n == 0 {
+        return error("s-parameters require non-empty frequencies")
+    }
+    var i = 0
+    while i < n - 1 {
+        if data.Frequencies[i] >= data.Frequencies[i + 1] {
+            return error("s-parameter frequencies must be strictly increasing")
+        }
+        i = i + 1
+    }
+
+    return true
+}
+
+/// Returns the magnitude of a complex value in decibels using 20*log10(|z|).
+fn MagnitudeDb(z: Complex) -> Float {
+    return 20.0 * Log10(Abs(z))
+}
+
+/// Returns principal-value phase in radians.
+fn PhaseRadians(z: Complex) -> Float {
+    return Arg(z)
+}
+
+/// Returns principal-value phase in degrees.
+fn PhaseDegrees(z: Complex) -> Float {
+    return Arg(z) * 180.0 / Pi()
+}
+
+/// Return loss in dB from S11 using RL = -20*log10(|S11|).
+fn ReturnLossDbFromS11(s11: Complex) -> Float {
+    return 0.0 - MagnitudeDb(s11)
+}
+
+/// Insertion loss in dB from S21 using IL = -20*log10(|S21|).
+fn InsertionLossDbFromS21(s21: Complex) -> Float {
+    return 0.0 - MagnitudeDb(s21)
+}
+
+fn InterpolateTraceAtFrequency(frequencies: Float[], trace: Complex[], f: Float) -> Complex ! Error {
+    let n = Len(frequencies)
+    if f < frequencies[0] or f > frequencies[n - 1] {
+        return error("interpolation frequency is out of range")
+    }
+
+    if f == frequencies[n - 1] {
+        return trace[n - 1]
+    }
+
+    var i = 0
+    while i < n - 1 {
+        if f == frequencies[i] {
+            return trace[i]
+        }
+
+        if f > frequencies[i] and f < frequencies[i + 1] {
+            let t = (f - frequencies[i]) / (frequencies[i + 1] - frequencies[i])
+            let real = Real(trace[i]) + (Real(trace[i + 1]) - Real(trace[i])) * t
+            let imag = Imag(trace[i]) + (Imag(trace[i + 1]) - Imag(trace[i])) * t
+            return Complex(real, imag)
+        }
+
+        i = i + 1
+    }
+
+    return trace[n - 1]
+}
+
+/// Interpolates S11 at frequency f using linear interpolation on real and imaginary parts.
+/// Rejects out-of-range queries and invalid datasets.
+fn InterpolateS11(data: SParameters2Port, f: Float) -> Complex ! Error {
+    let ok = ValidateSParameters2Port(data)?
+    return InterpolateTraceAtFrequency(data.Frequencies, data.S11, f)?
+}
+
+/// Interpolates S21 at frequency f using linear interpolation on real and imaginary parts.
+/// Rejects out-of-range queries and invalid datasets.
+fn InterpolateS21(data: SParameters2Port, f: Float) -> Complex ! Error {
+    let ok = ValidateSParameters2Port(data)?
+    return InterpolateTraceAtFrequency(data.Frequencies, data.S21, f)?
+}
+
+/// Interpolates S12 at frequency f using linear interpolation on real and imaginary parts.
+/// Rejects out-of-range queries and invalid datasets.
+fn InterpolateS12(data: SParameters2Port, f: Float) -> Complex ! Error {
+    let ok = ValidateSParameters2Port(data)?
+    return InterpolateTraceAtFrequency(data.Frequencies, data.S12, f)?
+}
+
+/// Interpolates S22 at frequency f using linear interpolation on real and imaginary parts.
+/// Rejects out-of-range queries and invalid datasets.
+fn InterpolateS22(data: SParameters2Port, f: Float) -> Complex ! Error {
+    let ok = ValidateSParameters2Port(data)?
+    return InterpolateTraceAtFrequency(data.Frequencies, data.S22, f)?
+}
