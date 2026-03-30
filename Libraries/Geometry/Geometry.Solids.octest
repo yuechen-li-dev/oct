@@ -1,0 +1,62 @@
+package Geometry
+
+[Fact]
+fn SolidHandChecks() -> Void {
+    let cylinderV = CylinderVolume(2m, 3m) !
+    let cylinderA = CylinderSurfaceArea(2m, 3m) !
+    let sphereV = SphereVolume(2m) !
+    let sphereA = SphereSurfaceArea(2m) !
+    let coneV = ConeVolume(2m, 3m) !
+
+    Assert.Near(Pi() * 12.0, cylinderV / 1m ^ 3, 0.000001, "cylinder volume hand-check")
+    Assert.Near(20.0 * Pi(), cylinderA / 1m ^ 2, 0.000001, "cylinder surface area hand-check")
+    Assert.Near((32.0 / 3.0) * Pi(), sphereV / 1m ^ 3, 0.000001, "sphere volume hand-check")
+    Assert.Near(16.0 * Pi(), sphereA / 1m ^ 2, 0.000001, "sphere area hand-check")
+    Assert.Near(4.0 * Pi(), coneV / 1m ^ 3, 0.000001, "cone volume hand-check")
+}
+
+[Fact]
+fn SolidZeroDimensionPolicy() -> Void {
+    Assert.Near(0.0, CylinderVolume(0m, 5m) !/ 1m ^ 3, 0.000001, "zero radius cylinder volume should be zero")
+    Assert.Near(8.0 * Pi(), CylinderSurfaceArea(2m, 0m) !/ 1m ^ 2, 0.000001, "zero height cylinder area should reduce to two circular ends")
+    Assert.Near(0.0, SphereVolume(0m) !/ 1m ^ 3, 0.000001, "zero radius sphere volume should be zero")
+    Assert.Near(0.0, SphereSurfaceArea(0m) !/ 1m ^ 2, 0.000001, "zero radius sphere surface area should be zero")
+    Assert.Near(0.0, ConeVolume(2m, 0m) !/ 1m ^ 3, 0.000001, "zero height cone volume should be zero")
+}
+
+[Fact]
+fn SolidNegativeDimensionsRejected() -> Void {
+    match CylinderVolume(0m - 1m, 2m) {
+        ok(v) => {Assert.True(false, "negative radius must fail")}
+        err(e) => {}
+    }
+
+    match CylinderSurfaceArea(2m, 0m - 1m) {
+        ok(v) => {Assert.True(false, "negative height must fail")}
+        err(e) => {}
+    }
+
+    match SphereVolume(0m - 1m) {
+        ok(v) => {Assert.True(false, "negative radius must fail")}
+        err(e) => {}
+    }
+
+    match SphereSurfaceArea(0m - 1m) {
+        ok(v) => {Assert.True(false, "negative radius must fail")}
+        err(e) => {}
+    }
+
+    match ConeVolume(2m, 0m - 1m) {
+        ok(v) => {Assert.True(false, "negative height must fail")}
+        err(e) => {}
+    }
+}
+
+[Fact]
+fn SolidsComposabilityResidenceStyle() -> Void {
+    let v = CylinderVolume(1m, 2m) !
+    let q = 0.5m ^ 3 / s
+    let tau = v / q
+
+    Assert.Near(4.0 * Pi(), tau / 1s, 0.000001, "volume-based residence-style time chain")
+}

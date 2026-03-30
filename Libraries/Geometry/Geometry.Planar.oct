@@ -1,0 +1,61 @@
+package Geometry
+
+fn Distance2D(x1: Float < m >, y1: Float < m >, x2: Float < m >, y2: Float < m >) -> Float < m > {
+    let dx = x2 - x1
+    let dy = y2 - y1
+    return Sqrt(dx * dx + dy * dy)
+}
+
+fn CircleArea(radius: Float < m >) -> Float < m ^ 2 >! Error {
+    let ok = ValidateNonNegativeRadius(radius) ?
+    return Pi() * radius * radius
+}
+
+fn CircleCircumference(radius: Float < m >) -> Float < m >! Error {
+    let ok = ValidateNonNegativeRadius(radius) ?
+    return 2.0 * Pi() * radius
+}
+
+fn RectangleArea(width: Float < m >, height: Float < m >) -> Float < m ^ 2 >! Error {
+    let okWidth = ValidateNonNegativeWidth(width) ?
+    let okHeight = ValidateNonNegativeHeight(height) ?
+    return width * height
+}
+
+fn TriangleArea(base: Float < m >, height: Float < m >) -> Float < m ^ 2 >! Error {
+    let okBase = ValidateNonNegativeBase(base) ?
+    let okHeight = ValidateNonNegativeHeight(height) ?
+    return 0.5 * base * height
+}
+
+fn ValidateNonNegativeRadius(radius: Float < m >) -> Bool ! Error {
+    if radius < 0m {
+        return error("geometry requires radius >= 0")
+    }
+
+    return true
+}
+
+fn ValidateNonNegativeWidth(width: Float < m >) -> Bool ! Error {
+    if width < 0m {
+        return error("geometry requires width >= 0")
+    }
+
+    return true
+}
+
+fn ValidateNonNegativeHeight(height: Float < m >) -> Bool ! Error {
+    if height < 0m {
+        return error("geometry requires height >= 0")
+    }
+
+    return true
+}
+
+fn ValidateNonNegativeBase(base: Float < m >) -> Bool ! Error {
+    if base < 0m {
+        return error("geometry requires base >= 0")
+    }
+
+    return true
+}

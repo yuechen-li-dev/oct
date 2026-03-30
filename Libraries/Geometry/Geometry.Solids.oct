@@ -1,0 +1,45 @@
+package Geometry
+
+fn CylinderVolume(radius: Float < m >, height: Float < m >) -> Float < m ^ 3 >! Error {
+    let okRadius = ValidateNonNegativeSolidRadius(radius) ?
+    let okHeight = ValidateNonNegativeSolidHeight(height) ?
+    return Pi() * radius * radius * height
+}
+
+fn CylinderSurfaceArea(radius: Float < m >, height: Float < m >) -> Float < m ^ 2 >! Error {
+    let okRadius = ValidateNonNegativeSolidRadius(radius) ?
+    let okHeight = ValidateNonNegativeSolidHeight(height) ?
+    return 2.0 * Pi() * radius *(radius + height)
+}
+
+fn SphereVolume(radius: Float < m >) -> Float < m ^ 3 >! Error {
+    let okRadius = ValidateNonNegativeSolidRadius(radius) ?
+    return(4.0 / 3.0) * Pi() * radius * radius * radius
+}
+
+fn SphereSurfaceArea(radius: Float < m >) -> Float < m ^ 2 >! Error {
+    let okRadius = ValidateNonNegativeSolidRadius(radius) ?
+    return 4.0 * Pi() * radius * radius
+}
+
+fn ConeVolume(radius: Float < m >, height: Float < m >) -> Float < m ^ 3 >! Error {
+    let okRadius = ValidateNonNegativeSolidRadius(radius) ?
+    let okHeight = ValidateNonNegativeSolidHeight(height) ?
+    return(1.0 / 3.0) * Pi() * radius * radius * height
+}
+
+fn ValidateNonNegativeSolidRadius(radius: Float < m >) -> Bool ! Error {
+    if radius < 0m {
+        return error("geometry requires radius >= 0")
+    }
+
+    return true
+}
+
+fn ValidateNonNegativeSolidHeight(height: Float < m >) -> Bool ! Error {
+    if height < 0m {
+        return error("geometry requires height >= 0")
+    }
+
+    return true
+}
