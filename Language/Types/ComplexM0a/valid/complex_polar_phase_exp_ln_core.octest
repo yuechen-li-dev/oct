@@ -1,0 +1,33 @@
+package MainValid
+
+[Fact]
+fn ComplexPolarPhaseExpLnCore() -> Void {
+    Assert.Near(0.0, Arg(Complex(2.0, 0.0)), 0.000001, "arg positive real axis")
+    Assert.Near(Pi() / 2, Arg(Complex(0.0, 2.0)), 0.000001, "arg positive imaginary axis")
+    Assert.Near(Pi(), Arg(Complex(0.0 - 2.0, 0.0)), 0.000001, "arg negative real axis")
+    Assert.Near(3.0 * Pi() / 4, Arg(Complex(0.0 - 1.0, 1.0)), 0.000001, "arg quadrant II")
+
+    let z = ComplexPolar(5.0, Atan2(4.0, 3.0))
+    Assert.Near(3.0, Real(z), 0.000001, "polar real reconstruction")
+    Assert.Near(4.0, Imag(z), 0.000001, "polar imag reconstruction")
+
+    let roundTrip = ComplexPolar(Abs(Complex(3.0, 4.0)), Arg(Complex(3.0, 4.0)))
+    Assert.Near(3.0, Real(roundTrip), 0.000001, "polar abs/arg round-trip real")
+    Assert.Near(4.0, Imag(roundTrip), 0.000001, "polar abs/arg round-trip imag")
+
+    let expZero = Exp(Complex(0.0, 0.0))
+    Assert.Near(1.0, Real(expZero), 0.000001, "exp zero real")
+    Assert.Near(0.0, Imag(expZero), 0.000001, "exp zero imag")
+
+    let euler = Exp(I() * Pi())
+    Assert.Near(0.0 - 1.0, Real(euler), 0.000001, "exp(i*pi) real")
+    Assert.Near(0.0, Imag(euler), 0.000001, "exp(i*pi) imag")
+
+    let lnOne = Ln(Complex(1.0, 0.0))
+    Assert.Near(0.0, Real(lnOne), 0.000001, "ln one real")
+    Assert.Near(0.0, Imag(lnOne), 0.000001, "ln one imag")
+
+    let lnNegativeOne = Ln(Complex(0.0 - 1.0, 0.0))
+    Assert.Near(0.0, Real(lnNegativeOne), 0.000001, "ln(-1) principal real")
+    Assert.Near(Pi(), Imag(lnNegativeOne), 0.000001, "ln(-1) principal imag")
+}

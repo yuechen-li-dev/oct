@@ -10,7 +10,7 @@ Record and enum identity is nominal.
 ## Rules
 
 - Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `Void`, and `Error`.
-- Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0.
+- Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are one-dimensional and homogeneous (`T[]`).
 - Record identity is defined by record name.
 - Enum identity is defined by enum name.
