@@ -1,0 +1,57 @@
+package Octomata
+
+[Fact]
+fn LowPassUpdateFollowsDeterministicRecurrence() -> Void {
+    let y0 = 0.0
+    let y1 = LowPassUpdate(0.25, 8.0, y0)!
+    let y2 = LowPassUpdate(0.25, 8.0, y1)!
+    let y3 = LowPassUpdate(0.25, 8.0, y2)!
+
+    Assert.Near(2.0, y1, 0.000001, "first low-pass step")
+    Assert.Near(3.5, y2, 0.000001, "second low-pass step")
+    Assert.Near(4.625, y3, 0.000001, "third low-pass step")
+}
+
+[Fact]
+fn LowPassUpdateSupportsAlphaBoundaryValues() -> Void {
+    let hold = LowPassUpdate(0.0, 10.0, 3.0)!
+    let passthrough = LowPassUpdate(1.0, 10.0, 3.0)!
+
+    Assert.Near(3.0, hold, 0.000001, "alpha=0 should keep previous output")
+    Assert.Near(10.0, passthrough, 0.000001, "alpha=1 should take current input")
+}
+
+[Fact]
+fn LowPassUpdateRejectsInvalidAlpha() -> Void {
+    match LowPassUpdate(0.0 - 0.1, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "low-pass update must reject alpha < 0") }
+        err(e) => { }
+    }
+
+    match LowPassUpdate(1.1, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "low-pass update must reject alpha > 1") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn FilterAndPIDComposeWithExplicitState() -> Void {
+    let setpoint = 1.0
+    let rawMeasurement = 0.4
+    let filteredMeasurement = LowPassUpdate(0.5, rawMeasurement, 0.0)!
+
+    let pid = PIDUpdate(
+        2.0,
+        0.5,
+        0.1,
+        setpoint,
+        filteredMeasurement,
+        0.0,
+        0.0,
+        0.2
+    )!
+
+    Assert.True(filteredMeasurement > 0.0, "filtered value should move toward raw measurement")
+    Assert.True(pid.Output > 0.0, "controller output should be positive when measurement is below setpoint")
+    Assert.Near(setpoint - filteredMeasurement, pid.PreviousError, 0.000001, "pid state should expose new error")
+}
