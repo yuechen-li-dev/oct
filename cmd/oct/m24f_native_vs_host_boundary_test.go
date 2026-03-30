@@ -32,24 +32,24 @@ func TestM24fConditionSwitchInvalidFixturesRunAsNativeOctFail(t *testing.T) {
 	}
 }
 
-func TestM24fBoundaryPolicyDocumentedInReadme(t *testing.T) {
-	readme := filepath.Join("..", "..", "README.md")
-	data, err := os.ReadFile(readme)
+func TestM24fBoundaryPolicyDocumentedInTestingDoc(t *testing.T) {
+	testingDoc := filepath.Join("..", "..", "docs", "TESTING.md")
+	data, err := os.ReadFile(testingDoc)
 	if err != nil {
-		t.Fatalf("read %s: %v", readme, err)
+		t.Fatalf("read %s: %v", testingDoc, err)
 	}
 	text := string(data)
 
 	required := []string{
-		"## M24f native-vs-host test boundary formalization",
-		"### What belongs in `.octest`",
-		"### What remains in Go tests",
-		"### Decision rule for new tests",
-		"### Demo vs test separation",
+		"## Semantic Contracts",
+		"## Implementation and Integration Tests",
+		"## Test Placement Rules",
+		"Go-side tests should validate implementation and integration boundaries",
+		"These contracts live under `Language/` and are the canonical source for language behavior.",
 	}
 	for _, needle := range required {
 		if !strings.Contains(text, needle) {
-			t.Fatalf("README is missing boundary section %q", needle)
+			t.Fatalf("docs/TESTING.md is missing boundary section %q", needle)
 		}
 	}
 }
