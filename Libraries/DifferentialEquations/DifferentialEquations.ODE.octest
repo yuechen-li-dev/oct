@@ -1,0 +1,109 @@
+package DifferentialEquations
+
+fn DerivativeIdentity(t: Float, y: Float) -> Float {
+    return y
+}
+
+[Fact]
+fn EulerStepMatchesExplicitFormula() -> Void {
+    let next = EulerStep(DerivativeIdentity, 0.0, 4.0, 0.25)!
+    Assert.Near(5.0, next, 0.000001, "euler step should compute y + dt * f(t,y)")
+}
+
+[Fact]
+fn RK4StepImprovesAccuracyOnExponentialGrowth() -> Void {
+    let dt = 0.1
+    let exact = Exp(dt)
+
+    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)!
+    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)!
+
+    let eulerError = Abs(exact - euler)
+    let rk4Error = Abs(exact - rk4)
+
+    Assert.True(rk4Error < eulerError, "rk4 step should be more accurate than euler step for y'=y")
+}
+
+[Fact]
+fn EulerAndRK4SolveReturnExpectedShapeAndBoundaries() -> Void {
+    let steps = 5
+    let dt = 0.2
+    let t0 = 1.5
+    let y0 = 3.0
+
+    let euler = EulerSolve(DerivativeIdentity, t0, y0, dt, steps)!
+    let rk4 = RK4Solve(DerivativeIdentity, t0, y0, dt, steps)!
+
+    Assert.Equal(steps + 1, Len(euler.Times), "euler times length should include initial condition")
+    Assert.Equal(steps + 1, Len(euler.Values), "euler values length should include initial condition")
+    Assert.Equal(steps + 1, Len(rk4.Times), "rk4 times length should include initial condition")
+    Assert.Equal(steps + 1, Len(rk4.Values), "rk4 values length should include initial condition")
+
+    Assert.Near(t0, euler.Times[0], 0.000001, "first euler time should match initial time")
+    Assert.Near(y0, euler.Values[0], 0.000001, "first euler value should match initial value")
+    Assert.Near(t0 + dt * steps, euler.Times[steps], 0.000001, "last euler time should match final step")
+    var expectedEuler = y0
+    var i = 0
+    while i < steps {
+        expectedEuler = expectedEuler * (1.0 + dt)
+        i = i + 1
+    }
+
+    Assert.Near(expectedEuler, euler.Values[steps], 0.000001, "euler y'=y should match explicit discrete recurrence")
+
+    Assert.Near(t0, rk4.Times[0], 0.000001, "first rk4 time should match initial time")
+    Assert.Near(y0, rk4.Values[0], 0.000001, "first rk4 value should match initial value")
+    Assert.Near(t0 + dt * steps, rk4.Times[steps], 0.000001, "last rk4 time should match final step")
+}
+
+[Fact]
+fn RK4SolveBeatsEulerOnSameGridForYPrimeEqualsY() -> Void {
+    let dt = 0.2
+    let steps = 10
+    let exact = Exp(dt * steps)
+
+    let euler = EulerSolve(DerivativeIdentity, 0.0, 1.0, dt, steps)!
+    let rk4 = RK4Solve(DerivativeIdentity, 0.0, 1.0, dt, steps)!
+
+    let eulerLast = euler.Values[steps]
+    let rk4Last = rk4.Values[steps]
+
+    let eulerError = Abs(exact - eulerLast)
+    let rk4Error = Abs(exact - rk4Last)
+
+    Assert.True(eulerLast > 1.0, "euler should move in positive direction for y'=y with positive dt")
+    Assert.True(rk4Error < eulerError, "rk4 solve should be more accurate than euler solve on same dt and steps")
+}
+
+[Fact]
+fn StepAndSolveRejectInvalidDtAndSteps() -> Void {
+    match EulerStep(DerivativeIdentity, 0.0, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "euler step with dt=0 must fail") }
+        err(e) => { }
+    }
+
+    match RK4Step(DerivativeIdentity, 0.0, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "rk4 step with dt=0 must fail") }
+        err(e) => { }
+    }
+
+    match EulerSolve(DerivativeIdentity, 0.0, 1.0, 0.0, 1) {
+        ok(v) => { Assert.True(false, "euler solve with dt=0 must fail") }
+        err(e) => { }
+    }
+
+    match RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.1, 0) {
+        ok(v) => { Assert.True(false, "rk4 solve with steps<=0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn SolverOutputComposesInExpressionChain() -> Void {
+    let solution = RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.25, 4)!
+    let finalValue = solution.Values[Len(solution.Values) - 1]
+    let normalized = finalValue / solution.Times[Len(solution.Times) - 1]
+
+    Assert.True(finalValue > 0.0, "rk4 output should compose with arithmetic expressions")
+    Assert.True(normalized > 0.0, "solver output should remain deterministic in expression chains")
+}
