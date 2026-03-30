@@ -1,0 +1,87 @@
+package Mathematics
+
+fn f(x: Float) -> Float {
+    return x * x * x
+}
+
+[Fact]
+fn DifferentiateCentralPolynomialCase() -> Void {
+    let cubicPrimeAt2 = DifferentiateCentral(f, 2.0, 0.0001)!
+    Assert.Near(12.0, cubicPrimeAt2, 0.001, "central difference approximates derivative of x^3 at x=2")
+}
+
+[Fact]
+fn DifferentiateCentralRejectsNonPositiveStep() -> Void {
+    match DifferentiateCentral(f, 1.0, 0.0) {
+        ok(v) => { Assert.True(false, "h = 0 must fail") }
+        err(e) => { }
+    }
+
+    match DifferentiateCentral(f, 1.0, 0.0 - 0.1) {
+        ok(v) => { Assert.True(false, "h < 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn IntegrateTrapezoidalCoversCoreAndBoundPolicy() -> Void {
+    let forward = IntegrateTrapezoidal(f, 0.0, 1.0, 2000)!
+    Assert.Near(0.25, forward, 0.001, "trapezoidal should approximate integral of x^3 on [0,1]")
+
+    let zeroWidth = IntegrateTrapezoidal(f, 2.5, 2.5, 16)!
+    Assert.Equal(0.0, zeroWidth, "a == b must return 0")
+
+    let reversed = IntegrateTrapezoidal(f, 1.0, 0.0, 2000)!
+    Assert.Near(0.0 - forward, reversed, 0.000001, "a > b should return signed negative of reversed interval")
+}
+
+[Fact]
+fn IntegrateTrapezoidalRejectsInvalidSegments() -> Void {
+    match IntegrateTrapezoidal(f, 0.0, 1.0, 0) {
+        ok(v) => { Assert.True(false, "n = 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn IntegrateSimpsonCoreValidationAndBoundPolicy() -> Void {
+    let forward = IntegrateSimpson(f, 0.0, 1.0, 200)!
+    Assert.Near(0.25, forward, 0.000001, "simpson should approximate integral of x^3 on [0,1]")
+
+    let zeroWidth = IntegrateSimpson(f, 2.5, 2.5, 20)!
+    Assert.Equal(0.0, zeroWidth, "a == b must return 0")
+
+    let reversed = IntegrateSimpson(f, 1.0, 0.0, 200)!
+    Assert.Near(0.0 - forward, reversed, 0.000001, "a > b should return signed negative of reversed interval")
+
+    match IntegrateSimpson(f, 0.0, 1.0, 3) {
+        ok(v) => { Assert.True(false, "odd n must fail") }
+        err(e) => { }
+    }
+
+    match IntegrateSimpson(f, 0.0, 1.0, 0) {
+        ok(v) => { Assert.True(false, "n = 0 must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn SimpsonIsMoreAccurateThanTrapezoidalForSmoothFunction() -> Void {
+    let truth = 0.25
+    let trap = IntegrateTrapezoidal(f, 0.0, 1.0, 10)!
+    let simp = IntegrateSimpson(f, 0.0, 1.0, 10)!
+
+    let trapError = Abs(trap - truth)
+    let simpsonError = Abs(simp - truth)
+
+    Assert.True(simpsonError < trapError, "simpson should be more accurate than trapezoidal for x^3 with same partitions")
+}
+
+[Fact]
+fn CalculusHelpersComposeWithOrdinaryExpressions() -> Void {
+    let slopeAt1 = DifferentiateCentral(f, 1.0, 0.0001)!
+    let area = IntegrateSimpson(f, 0.0, 1.0, 100)!
+    let bounded = Clamp(slopeAt1 + area, 0.0, 10.0)
+
+    Assert.True(bounded > 3.0, "derivative and integral outputs should compose in deterministic scalar workflows")
+}
