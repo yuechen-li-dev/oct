@@ -40,3 +40,5 @@ Start with [00-overview.md](./00-overview.md).
 - [14 ocfmt](./tooling/14-ocfmt.md)
 - [15 oct pkg](./tooling/15-oct-pkg.md)
 - [16 octagon](./tooling/16-octagon.md)
+- [17 CLI](./tooling/17-cli.md)
+- [18 VSCode en-human view](./tooling/18-vscode.md)

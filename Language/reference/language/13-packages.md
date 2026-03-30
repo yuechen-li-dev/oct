@@ -10,7 +10,7 @@ Package loading is directory-based.
 
 - Package declaration form is `package Name`.
 - Import form is `import Name`.
-- Imported package members are referenced with qualification (`Name.Symbol()`).
+- Imported package members are referenced with qualification (`Name.Symbol()` / `Name.Type.Member`).
 - One directory corresponds to one package name.
 - Source files in one package directory must declare the same package name.
 - Imports resolve as sibling directories under the package root (`<root>/<ImportName>`).
@@ -26,10 +26,20 @@ Valid:
 ```oct
 package Main
 
-import Geometry
+import Physics
+
+record SolveConfig {
+    Method: Physics.Method
+}
 
 fn Main() -> Int {
-    return Geometry.Distance(3, 4)
+    let cfg = SolveConfig {
+        Method: Physics.Method.Euler
+    }
+    if cfg.Method == Physics.Method.Euler {
+        return 0
+    }
+    return 1
 }
 ```
 

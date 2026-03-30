@@ -10,7 +10,8 @@ Conditions never use implicit coercion.
 ## Rules
 
 - `if` conditions must be `Bool`.
-- `if` expressions require `else`.
+- `if` statement form may omit `else`.
+- `if` expression form requires `else`.
 - `if` expression branches must produce one result type.
 - Subject `switch` compares one subject value against strict case types.
 - Condition `switch` (`switch { ... }`) requires `Bool` case conditions.
@@ -36,11 +37,14 @@ Valid:
 
 ```oct
 fn Main() -> Int {
-    var sum = 0
-    for i in 0..10 step 2 {
-        sum = sum + i
+    var total = 0
+
+    if true {
+        total = 1
     }
-    return sum
+
+    let pick = if total > 0 { 10 } else { 20 }
+    return pick
 }
 ```
 
