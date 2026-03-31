@@ -18,29 +18,67 @@ fn ControlPanelM2LoopRemainsStateDriven() -> Void {
 
     var model = Init()
     model = Update(model, eventsAfterPowerOn[0])
+    Assert.True(model.PowerOn, "PowerOn should set power")
+
     let patchAfterPowerOn = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterPowerOn, "rerender after power on should patch")
 
-    let emitStart = Emit(mounted, StartEvent()) !
-    Assert.Equal(0, emitStart, "Start emit should succeed")
+    let emitStep = Emit(mounted, StepEvent()) !
+    Assert.Equal(0, emitStep, "Step emit should succeed")
 
-    let eventsAfterStart = DrainEvents(mounted)
-    Assert.Equal(1, Len(eventsAfterStart), "Start should enqueue exactly one event")
+    let eventsAfterStep = DrainEvents(mounted)
+    Assert.Equal(1, Len(eventsAfterStep), "Step should enqueue exactly one event")
 
-    model = Update(model, eventsAfterStart[0])
-    let patchAfterStart = PatchUI(mounted, View(model))
-    Assert.Equal(0, patchAfterStart, "rerender after start should patch")
+    model = Update(model, eventsAfterStep[0])
+    Assert.Equal("step", model.Mode, "Step should set step mode")
 
-    let emitSetpointIncrement = Emit(mounted, SetpointIncrementEvent()) !
-    Assert.Equal(0, emitSetpointIncrement, "Setpoint increment emit should succeed")
+    let patchAfterStep = PatchUI(mounted, View(model))
+    Assert.Equal(0, patchAfterStep, "rerender after step should patch")
 
-    let eventsAfterSetpointIncrement = DrainEvents(mounted)
-    Assert.Equal(1, Len(eventsAfterSetpointIncrement), "Setpoint increment should enqueue one event")
+    let emitTempInc = Emit(mounted, TemperatureIncrementEvent()) !
+    Assert.Equal(0, emitTempInc, "temperature increment emit should succeed")
 
-    model = Update(model, eventsAfterSetpointIncrement[0])
-    let patchAfterSetpointIncrement = PatchUI(mounted, View(model))
-    Assert.Equal(0, patchAfterSetpointIncrement, "rerender after setpoint update should patch")
+    let tempEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(tempEvents), "temperature increment should enqueue one event")
+
+    model = Update(model, tempEvents[0])
+    Assert.Near(24.5, model.Temperature, 0.000001, "temperature should increment by 0.5")
+
+    let patchAfterTemp = PatchUI(mounted, View(model))
+    Assert.Equal(0, patchAfterTemp, "rerender after temp update should patch")
 
     let unmounted = UnmountUI(mounted)
     Assert.Equal(0, unmounted, "unmount should succeed")
+}
+
+[Fact]
+fn AlarmAndDisabledButtonsBehavePredictably() -> Void {
+    let mounted = MountUI(View(Init()))
+    match Emit(mounted, ClearAlarmEvent()) {
+        ok(v) => {
+            Assert.True(false, "disabled Clear Alarm should be rejected when alarm is clear")
+        }
+        err(e) => {}
+    }
+    Assert.Equal(0, Len(DrainEvents(mounted)), "disabled Clear Alarm should not enqueue events")
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+
+    var model = Init()
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+    model = Update(model, TemperatureIncrementEvent())
+
+    Assert.True(model.AlarmActive, "alarm should activate once temperature crosses threshold")
+
+    let cleared = Update(model, ClearAlarmEvent())
+    Assert.True(cleared.AlarmActive, "clear alarm should not bypass active threshold conditions")
 }
