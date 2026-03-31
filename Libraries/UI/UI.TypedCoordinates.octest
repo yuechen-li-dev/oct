@@ -1,0 +1,33 @@
+package UI
+
+[Fact]
+fn AbsoluteBoxAcceptsPixelConstants() -> Void {
+    let cardX = 320.0 px
+    let cardY = 158.0 px
+    let cardW = 232.0 px
+    let cardH = 120.0 px
+
+    let ui = Canvas([
+        Place(AbsoluteBox(cardX, cardY, cardW, cardH), Text("pixel-box"))
+    ])
+
+    let mounted = MountUI(ui)
+    Assert.Equal(0, PatchUI(mounted, ui), "absolute typed placement should patch cleanly")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn AnchoredBoxAcceptsUIConstants() -> Void {
+    let left = 0.01 ui
+    let top = 0.08 ui
+    let right = 1.10 ui
+    let bottom = 1.25 ui
+
+    let ui = Canvas([
+        Place(AnchoredBox(left, top, right, bottom), Text("anchored-box"))
+    ])
+
+    let mounted = MountUI(ui)
+    Assert.Equal(0, PatchUI(mounted, ui), "anchored typed placement should patch cleanly")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}

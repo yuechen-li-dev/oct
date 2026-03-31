@@ -1,0 +1,11 @@
+expect error: "function 'AbsoluteBox' argument 1 expects Float<px>, got Float<ui>"
+
+package UI
+
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> Int {
+    return 0
+}
+
+fn Main() -> Int {
+    return AbsoluteBox(0.2 ui, 20.0 px, 120.0 px, 30.0 px)
+}

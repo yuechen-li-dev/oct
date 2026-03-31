@@ -1909,8 +1909,13 @@ const (
 )
 
 func (p *parser) parseLiteralUnitSuffix(numberToken lex.Token) (dimension.Dimension, bool, error) {
-	if p.current().Kind != lex.Identifier || !tokensAdjacent(numberToken, p.current()) {
+	if p.current().Kind != lex.Identifier {
 		return dimension.Zero(), false, nil
+	}
+	if !tokensAdjacent(numberToken, p.current()) {
+		if _, ok := dimension.FromBaseName(p.current().Lexeme); !ok {
+			return dimension.Zero(), false, nil
+		}
 	}
 	dim, err := p.parseDimensionSpec()
 	if err != nil {

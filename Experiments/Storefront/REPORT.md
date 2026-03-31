@@ -92,3 +92,71 @@ For this M0 probe: **yes, plausibly**. A realistic storefront-like composition w
 ## Recommendation
 
 **Continue broader website-style UI experiments** with the current primitives, while targeting one focused ergonomics pass on repeated interaction wiring (author-level conventions first, runtime changes only if multiple experiments repeat the same pain).
+
+---
+
+# Storefront M1 Report (Typed Coordinates Probe)
+
+## What changed in M1
+
+M1 keeps the same Northline storefront structure as M0 (header/nav, announcement, hero, filter rail, product grid, support band, footer), but migrates layout coordinates to explicit typed domains:
+
+- `ui` for macro anchored regions (`HeaderTop`, `HeroBottom`, `FooterTop`, etc.)
+- `px` for dense absolute card placement (`CardX0`, `CardY1`, `CardWidth`, `CardHeight`)
+
+`AbsoluteBox` and `AnchoredBox` signatures now encode those domains directly, so the page source makes coordinate intent visible at call sites.
+
+## Did `px` / `ui` improve readability?
+
+Yes, materially.
+
+- Region constants now read as normalized anchors by construction (`0.14 ui`), which makes the page flow easier to scan.
+- Card constants now read as fixed-position layout values by construction (`570 px`), which clarifies local dense-grid editing.
+- Mixed-domain mistakes are no longer “just numbers”; they are type errors.
+
+For this storefront shape, typed coordinates reduced mental bookkeeping during edits because the number itself and the domain are co-located in the source.
+
+## Did box-native layout become more explicit and safer?
+
+Yes.
+
+- `AnchoredBox` takes only `ui`.
+- `AbsoluteBox` takes only `px`.
+- Cross-space misuse fails at type-check time rather than relying on author discipline.
+
+This made the hybrid layout contract explicit without introducing any new layout primitive.
+
+## Did local edits feel easier?
+
+Yes, especially in four edit zones:
+
+1. **Card grid spacing** — card offsets/sizes are all `px`, so spacing tweaks stay in a single unit vocabulary.
+2. **Filter rail width and macro section boundaries** — anchors remain `ui`, making proportional region edits straightforward.
+3. **Support/footer spacing** — vertical strip edits remain in `ui`, matching page-band intent.
+4. **Hero/header strip bounds** — top/bottom anchors are typed, so accidental pixel edits are prevented.
+
+## Did repeated card/grid layout benefit?
+
+Yes. Repeated absolute card placement became clearer because every coordinate and size constant is visibly in `px`, and the same typed constants are reused across all card slots.
+
+## Is hybrid layout still the right default?
+
+Yes. M1 still validates:
+
+- anchored macro regions for page sections,
+- row/column for local grouping,
+- absolute placement for dense repeated cards.
+
+Typed coordinates strengthened this model rather than replacing it.
+
+## Biggest friction point after M1
+
+The biggest friction point is still **event-token wiring verbosity** for repeated product interactions. Coordinates are now significantly clearer; repetitive `SelectX`/`AddX` token plumbing is still the dominant authoring friction.
+
+## Recommendation after M1
+
+Adopt typed coordinates (`px`, `ui`) as a real Machina UI feature in their current narrow form.
+
+- Keep scope limited to coordinate domain separation.
+- Do not expand into CSS-style unit families in the next pass.
+- Consider later hardening (such as optional `ui` range policy) only if experiments show concrete value.

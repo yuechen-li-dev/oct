@@ -6,14 +6,14 @@ record Mount {
 
 record UIBox {
     Kind: String
-    X: Float
-    Y: Float
-    Width: Float
-    Height: Float
-    Left: Float
-    Top: Float
-    Right: Float
-    Bottom: Float
+    X: Float<px>
+    Y: Float<px>
+    Width: Float<px>
+    Height: Float<px>
+    Left: Float<ui>
+    Top: Float<ui>
+    Right: Float<ui>
+    Bottom: Float<ui>
 }
 
 fn Column(children: UI[]) -> UI {
@@ -28,27 +28,27 @@ fn Canvas(children: UI[]) -> UI {
     return UICanvas(children)
 }
 
-fn AbsoluteBox(x: Float, y: Float, width: Float, height: Float) -> UIBox {
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
     return UIBox {
         Kind: "absolute"
         X: x
         Y: y
         Width: width
         Height: height
-        Left: 0.0
-        Top: 0.0
-        Right: 0.0
-        Bottom: 0.0
+        Left: 0.0 ui
+        Top: 0.0 ui
+        Right: 0.0 ui
+        Bottom: 0.0 ui
     }
 }
 
-fn AnchoredBox(left: Float, top: Float, right: Float, bottom: Float) -> UIBox {
+fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
     return UIBox {
         Kind: "anchored"
-        X: 0.0
-        Y: 0.0
-        Width: 0.0
-        Height: 0.0
+        X: 0.0 px
+        Y: 0.0 px
+        Width: 0.0 px
+        Height: 0.0 px
         Left: left
         Top: top
         Right: right
