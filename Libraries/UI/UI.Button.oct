@@ -1,5 +1,5 @@
 package UI
 
-fn Button(label: String, event: String) -> UI {
-    return UIButton(label, event)
+fn Button(label: String, event: String, enabled: Bool) -> UI {
+    return UIButton(label, event, enabled)
 }

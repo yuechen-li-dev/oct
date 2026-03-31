@@ -2,33 +2,57 @@ package UI
 
 record CounterState {
     Count: Int
+    Voltage: Float
 }
 
 fn CounterInit() -> CounterState {
-    return CounterState { Count: 0 }
+    return CounterState {
+        Count: 0
+        Voltage: 0.0
+    }
 }
 
 fn CounterView(model: CounterState) -> UI {
     let status = Text("count=" + ToString(model.Count))
+    let voltage = Text("voltage=" + FormatFloat(model.Voltage, 2))
+    let canDecrement = model.Count > 0
     return Column([
         status,
+        voltage,
         Row([
-            Button("increment", "counter.increment"),
-            Button("decrement", "counter.decrement")
+            Button("increment", CounterIncrementEvent(), true),
+            Button("decrement", CounterDecrementEvent(), canDecrement)
         ])
     ])
 }
 
 fn CounterUpdate(model: CounterState, event: String) -> CounterState {
-    if event == "counter.increment" {
-        return CounterState { Count: model.Count + 1 }
+    if event == CounterIncrementEvent() {
+        return CounterState {
+            Count: model.Count + 1
+            Voltage: model.Voltage + 0.25
+        }
     }
 
-    if event == "counter.decrement" {
-        return CounterState { Count: model.Count - 1 }
+    if event == CounterDecrementEvent() {
+        if model.Count > 0 {
+            return CounterState {
+                Count: model.Count - 1
+                Voltage: model.Voltage - 0.25
+            }
+        }
+        return model
     }
 
     return model
+}
+
+fn CounterIncrementEvent() -> String {
+    return "counter.increment"
+}
+
+fn CounterDecrementEvent() -> String {
+    return "counter.decrement"
 }
 
 fn ToString(value: Int) -> String {

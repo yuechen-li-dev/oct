@@ -2109,22 +2109,69 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UIButton' does not accept type arguments")
 		}
-		if len(arguments) != 2 {
-			return ExprType{}, fmt.Errorf("function 'UIButton' expects 2 arguments, got %d", len(arguments))
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'UIButton' expects 3 arguments, got %d", len(arguments))
 		}
-		for idx := range arguments {
-			argType, err := c.checkExpr(scope, arguments[idx], ctx)
-			if err != nil {
-				return ExprType{}, err
-			}
-			if argType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
-			}
-			if argType.ValueType != (Type{Base: BaseTypeString}) {
-				return ExprType{}, fmt.Errorf("function 'UIButton' argument %d expects String, got %s", idx+1, argType.ValueType)
-			}
+		labelType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if labelType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if labelType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'UIButton' argument 1 expects String, got %s", labelType.ValueType)
+		}
+		eventType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if eventType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if eventType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'UIButton' argument 2 expects String, got %s", eventType.ValueType)
+		}
+		enabledType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if enabledType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if enabledType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("function 'UIButton' argument 3 expects Bool, got %s", enabledType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "FormatFloat" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'FormatFloat' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'FormatFloat' expects 2 arguments, got %d", len(arguments))
+		}
+		valueType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+			return ExprType{}, fmt.Errorf("function 'FormatFloat' argument 1 expects Float, got %s", valueType.ValueType)
+		}
+		precisionType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if precisionType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if precisionType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'FormatFloat' argument 2 expects Int, got %s", precisionType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
 	if callee == "UIColumn" || callee == "UIRow" {
 		if len(typeArguments) > 0 {

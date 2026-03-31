@@ -7,7 +7,7 @@ func TestUISignatureIsDeterministic(t *testing.T) {
 		Kind: uiNodeColumn,
 		Children: []*uiNode{
 			{Kind: uiNodeText, Text: "count:0"},
-			{Kind: uiNodeRow, Children: []*uiNode{{Kind: uiNodeButton, Label: "+", Event: "inc"}, {Kind: uiNodeButton, Label: "-", Event: "dec"}}},
+			{Kind: uiNodeRow, Children: []*uiNode{{Kind: uiNodeButton, Label: "+", Event: "inc", Enabled: true}, {Kind: uiNodeButton, Label: "-", Event: "dec", Enabled: false}}},
 		},
 	}
 
@@ -23,7 +23,8 @@ func TestUIEventDiscovery(t *testing.T) {
 		Kind: uiNodeColumn,
 		Children: []*uiNode{
 			{Kind: uiNodeText, Text: "hello"},
-			{Kind: uiNodeButton, Label: "go", Event: "go"},
+			{Kind: uiNodeButton, Label: "go", Event: "go", Enabled: true},
+			{Kind: uiNodeButton, Label: "stop", Event: "stop", Enabled: false},
 		},
 	}
 
@@ -31,6 +32,6 @@ func TestUIEventDiscovery(t *testing.T) {
 		t.Fatal("expected event token to be discoverable")
 	}
 	if uiTreeContainsEvent(tree, "stop") {
-		t.Fatal("unexpected missing token discovered")
+		t.Fatal("disabled event token should not be discoverable")
 	}
 }

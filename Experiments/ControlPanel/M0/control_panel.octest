@@ -10,12 +10,12 @@ fn ControlPanelViewRendersFromState() -> Void {
 fn ExplicitEventFlowDrivesStateAndRerender() -> Void {
     let mounted = MountUI(View(Init()))
 
-    let emitPowerOn = Emit(mounted, "panel.power.on") !
+    let emitPowerOn = Emit(mounted, PowerOnEvent()) !
     Assert.Equal(0, emitPowerOn, "power-on event should emit")
 
     let eventsAfterPowerOn = DrainEvents(mounted)
     Assert.Equal(1, Len(eventsAfterPowerOn), "one event should be queued")
-    Assert.Equal("panel.power.on", eventsAfterPowerOn[0], "token should remain explicit")
+    Assert.Equal(PowerOnEvent(), eventsAfterPowerOn[0], "token should remain explicit")
 
     var model = Update(Init(), eventsAfterPowerOn[0])
     Assert.True(model.PowerOn, "power should become on")
@@ -23,7 +23,7 @@ fn ExplicitEventFlowDrivesStateAndRerender() -> Void {
     let patchAfterPowerOn = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterPowerOn, "rerender after power on should patch")
 
-    let emitStart = Emit(mounted, "panel.mode.start") !
+    let emitStart = Emit(mounted, StartEvent()) !
     Assert.Equal(0, emitStart, "start event should emit")
 
     let eventsAfterStart = DrainEvents(mounted)
@@ -35,7 +35,7 @@ fn ExplicitEventFlowDrivesStateAndRerender() -> Void {
     let patchAfterStart = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterStart, "rerender after start should patch")
 
-    let emitSetpointIncrement = Emit(mounted, "panel.setpoint.increment") !
+    let emitSetpointIncrement = Emit(mounted, SetpointIncrementEvent()) !
     Assert.Equal(0, emitSetpointIncrement, "setpoint increment event should emit")
 
     let eventsAfterSetpointIncrement = DrainEvents(mounted)
@@ -47,7 +47,7 @@ fn ExplicitEventFlowDrivesStateAndRerender() -> Void {
     let patchAfterSetpointIncrement = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterSetpointIncrement, "rerender after setpoint update should patch")
 
-    let emitPowerOff = Emit(mounted, "panel.power.off") !
+    let emitPowerOff = Emit(mounted, PowerOffEvent()) !
     Assert.Equal(0, emitPowerOff, "power-off event should emit")
 
     let eventsAfterPowerOff = DrainEvents(mounted)
@@ -62,15 +62,21 @@ fn ExplicitEventFlowDrivesStateAndRerender() -> Void {
 }
 
 [Fact]
-fn StartIsIgnoredWhenPowerIsOffAndResetReturnsInitialState() -> Void {
-    let initial = Init()
-    let afterBlockedStart = Update(initial, "panel.mode.start")
-    Assert.Equal("paused", afterBlockedStart.Mode, "start should be blocked when power is off")
-    Assert.Near(0.0, afterBlockedStart.Output, 0.000001, "output should remain zero when blocked")
+fn StartIsDisabledWhenPowerIsOffAndResetReturnsInitialState() -> Void {
+    let mounted = MountUI(View(Init()))
+    match Emit(mounted, StartEvent()) {
+        ok(v) => {
+            Assert.True(false, "disabled Start should be rejected by the runtime bridge")
+        }
+        err(e) => {}
+    }
+    Assert.Equal(0, Len(DrainEvents(mounted)), "disabled Start should not enqueue events")
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
 
-    let afterPowerOn = Update(afterBlockedStart, "panel.power.on")
-    let afterStart = Update(afterPowerOn, "panel.mode.start")
-    let afterReset = Update(afterStart, "panel.reset")
+    let initial = Init()
+    let afterPowerOn = Update(initial, PowerOnEvent())
+    let afterStart = Update(afterPowerOn, StartEvent())
+    let afterReset = Update(afterStart, ResetEvent())
 
     Assert.True(afterReset.PowerOn == false, "reset should restore power off")
     Assert.Equal("paused", afterReset.Mode, "reset should restore paused mode")

@@ -49,3 +49,35 @@ fn Main() -> Void {
 		t.Fatalf("expected deterministic empty-slot resume error, got %q", err.Error())
 	}
 }
+
+func TestExecuteMainFormatFloatRejectsNegativePrecision(t *testing.T) {
+	t.Helper()
+
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "main.oct")
+	source := `package Main
+
+fn Main() -> String {
+    return FormatFloat(1.234, 0 - 1)
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	program, err := project.Load(dir)
+	if err != nil {
+		t.Fatalf("load program: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck program: %v", err)
+	}
+
+	_, err = ExecuteMain(program, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("expected ExecuteMain to fail")
+	}
+	if !strings.Contains(err.Error(), "FormatFloat precision must be >= 0") {
+		t.Fatalf("expected negative precision error, got %q", err.Error())
+	}
+}

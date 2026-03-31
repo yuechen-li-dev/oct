@@ -1929,6 +1929,32 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Atan2(yValue, xValue)}}, nil
 	}
+	if callee == "FormatFloat" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		valueResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if valueResult.hasError {
+			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+		}
+		precisionResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if precisionResult.hasError {
+			return evalResult{hasError: true, errorVal: precisionResult.errorVal}, nil
+		}
+		if valueResult.value.Kind != ValueFloat || precisionResult.value.Kind != ValueInt {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: FormatFloat expects (Float, Int)")
+		}
+		if precisionResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: FormatFloat precision must be >= 0, got %d", precisionResult.value.Int)
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatFloat(valueResult.value.Float, 'f', int(precisionResult.value.Int), 64)}}, nil
+	}
 
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
