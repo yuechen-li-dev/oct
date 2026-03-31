@@ -1,0 +1,220 @@
+package SignalLabM8
+
+[Fact]
+fn SignalLabM8ViewRendersFromInitialState() -> Void {
+    let ui = View(Init())
+    Assert.True(Len(Signature(ui)) > 0, "SignalLab M8 view should produce an opaque UI signature")
+}
+
+[Fact]
+fn SignalLabM8StartPauseResumeStopTransitionsRemainValid() -> Void {
+    var model = Init()
+    Assert.True(model.ControlMode == ControlIdle(), "Init should start idle")
+
+    model = Update(model, StartEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Start should transition to running")
+
+    model = Update(model, PauseEvent())
+    Assert.True(model.ControlMode == ControlPaused(), "Pause should transition to paused")
+
+    model = Update(model, ResumeEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Resume should return to running")
+
+    model = Update(model, StopEvent())
+    Assert.True(model.ControlMode == ControlIdle(), "Stop should return to idle")
+}
+
+[Fact]
+fn SignalLabM8InspectUsesSuspendRememberResume() -> Void {
+    let f = InspectResumeProbe()
+    Step(f)
+    Assert.Equal("Running", Active(f), "first step should suspend running state")
+
+    Step(f)
+    Assert.Equal("Inspect", Active(f), "second step should remember running and divert to inspect")
+    Assert.Equal("Running", ResumeTarget(f), "resume target should hold remembered running state")
+
+    Step(f)
+    Assert.Equal("Running", Active(f), "third step should resume back to running")
+    Assert.Equal("", ResumeTarget(f), "resume slot should clear after successful resume")
+}
+
+[Fact]
+fn SignalLabM8UtilityPoliciesDriveDisplayAndAlert() -> Void {
+    var model = Init()
+    var board = model.Board
+    Assert.True(board.DisplayMode == DisplayTrend(), "initial empty model should prefer trend display")
+
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    board = model.Board
+    Assert.True(board.DisplayMode == DisplayNoiseFocus() or board.DisplayMode == DisplayFault(), "utility when should move display away from plain trend under competing pressure")
+    Assert.True(board.AlertStatus == AlertWatch() or board.AlertStatus == AlertFault(), "utility when should raise alert level under noisy pressure")
+}
+
+[Fact]
+fn SignalLabM8FaultLatchAndAckFlow() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    var board = model.Board
+    Assert.True(board.FaultLatched, "noise-heavy progression should latch fault")
+    Assert.True(model.ControlMode == ControlFault(), "fault should push control into fault hold state")
+    Assert.True(board.DisplayMode == DisplayFault(), "fault should dominate display policy")
+
+    model = Update(model, AckFaultEvent())
+    board = model.Board
+    Assert.True(board.FaultLatched == false, "ack should clear latched fault")
+    Assert.True(model.ControlMode == ControlRunning(), "ack should resume remembered running mode")
+}
+
+[Fact]
+fn SignalLabM8HistoryStillCapsAtSixSamples() -> Void {
+    var model = Init()
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.True(model.HistoryCount == 6, "History should cap at six samples")
+    Assert.Near(model.Value, model.History0, 0.000001, "Latest sample should stay in slot zero")
+}
+
+[Fact]
+fn SignalLabM8EventUpdateViewPatchLoopRemainsValid() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitStart = Emit(mounted, StartEvent()) !
+    Assert.Equal(0, emitStart, "Start emit should succeed")
+
+    let startEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(startEvents), "Start should enqueue one event")
+
+    var model = Init()
+    model = Update(model, startEvents[0])
+    Assert.True(model.ControlMode == ControlRunning(), "Model should be running after start")
+
+    let startPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, startPatch, "Patch after start should succeed")
+
+    let emitStep = Emit(mounted, StepEvent()) !
+    Assert.Equal(0, emitStep, "Step emit should succeed")
+
+    let stepEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stepEvents), "Step should enqueue one event")
+
+    model = Update(model, stepEvents[0])
+    Assert.True(model.HistoryCount == 1, "Step should update plot history")
+
+    let stepPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, stepPatch, "Patch after step should succeed")
+
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
+
+[Fact]
+fn SignalLabM8BoardCarriesBehaviorLocalMemory() -> Void {
+    var model = Init()
+    var board = model.Board
+    Assert.Equal(DisplayTrend(), board.DisplayMode, "initial board display should be trend")
+    Assert.Equal(AlertNormal(), board.AlertStatus, "initial board alert should be normal")
+
+    model = Update(model, StartEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    board = model.Board
+    Assert.True(board.FaultLatched, "board should latch fault under sustained noisy pressure")
+    Assert.Equal(DisplayFault(), board.DisplayMode, "board display should prioritize fault")
+    Assert.Equal(AlertFault(), board.AlertStatus, "board alert should escalate to fault")
+    Assert.True(board.JustTriggered == false, "just-triggered marker should settle after edge frame")
+    Assert.True(board.AlertSeverity >= 3, "fault should map to highest severity")
+    Assert.Equal(OverlayFault(), board.DisplayOverlay, "fault should force fault overlay")
+}
+
+[Fact]
+fn SignalLabM8AckUsesBoardResumeMemory() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, AckFaultEvent())
+
+    let board = model.Board
+    Assert.True(board.FaultLatched == false, "ack should clear board latch")
+    Assert.Equal(ControlRunning(), model.ControlMode, "ack should restore board fault-resume mode")
+}
+
+[Fact]
+fn SignalLabM8CooldownAndTransientFlagsAreBoardLocal() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+
+    var board = model.Board
+    Assert.True(board.JustTriggered, "first fault edge should set just-triggered")
+    Assert.True(board.CooldownActive, "first fault edge should activate cooldown memory")
+    Assert.True(board.CooldownTicks >= 2, "cooldown should initialize with non-zero ticks")
+
+    model = Update(model, StepEvent())
+    board = model.Board
+    Assert.True(board.JustTriggered == false, "later frames should clear just-triggered")
+    Assert.True(board.CooldownTicks <= 2, "cooldown ticks should decay under repeated reevaluation")
+}
+
+[Fact]
+fn SignalLabM8FaultResumePrefersPausedMemoryWhenFaultRaisedFromPause() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, PauseEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.Equal(ControlFault(), model.ControlMode, "fault should still preempt paused path")
+    let boardBeforeAck = model.Board
+    Assert.Equal(ControlPaused(), boardBeforeAck.ResumeModeFault, "fault resume memory should preserve paused target")
+
+    model = Update(model, AckFaultEvent())
+    Assert.Equal(ControlPaused(), model.ControlMode, "ack should resume paused target when fault originated from paused")
+}
+
+[Fact]
+fn SignalLabM8InspectResumeMemoryIsTrackedSeparatelyFromFaultResume() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, InspectEvent())
+    var board = model.Board
+    Assert.Equal(ControlRunning(), board.ResumeModeInspect, "inspect resume memory should record running source")
+
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    board = model.Board
+    Assert.Equal(ControlRunning(), board.ResumeModeFault, "fault resume memory should be tracked independently")
+}

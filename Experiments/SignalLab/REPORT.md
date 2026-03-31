@@ -648,3 +648,63 @@ Do **not** expand board breadth further right now.
 Next step should be **refining seam/integration discipline and tightening board field admission rules**, not adding board categories.
 
 If pressure continues to rise, restrict board usage further (narrower “behavior contract memory” only) before considering shape growth.
+
+## M8 findings
+
+### What board-owned fields were removed from outer app state?
+
+M8 removed three mirrored behavior-local fields from `SignalState`:
+
+- `DisplayMode`
+- `AlertStatus`
+- `FaultLatched`
+
+These fields now live only on `SignalBoard` and are no longer copied into outer state during reevaluation.
+
+### What explicit projection seam was introduced?
+
+M8 introduced one narrow UI projection seam:
+
+- `ProjectReadout(model: SignalState) -> ViewReadout`
+
+`ViewReadout` carries only the board-owned values the view needs (`DisplayMode`, `AlertStatus`, `FaultLatched`) and `View` consumes that projection instead of directly mirroring or recomputing these values.
+
+### Did seam collapse materially reduce duplication?
+
+Yes, moderately.
+
+- `WithBoardFields` was removed entirely.
+- `WithDisplayMode`, `WithAlertStatus`, and `WithFaultLatched` were removed.
+- All remaining `With*` constructors no longer need to carry those three mirrored fields.
+
+This reduced both update-path wiring and constructor churn without introducing new language/runtime features.
+
+### What became cleaner?
+
+- Ownership is clearer: board policy fields are owned by `SignalBoard` only.
+- `ReevaluateBehavior` is simpler (`UpdateBoardPolicy` then `WithBoard`).
+- `NextControlMode` fault input now reads from the board source of truth directly.
+- UI readout intent is explicit at one seam (`ProjectReadout`) instead of dispersed mirror access.
+
+### What became more awkward?
+
+- Some tests and call sites now explicitly dereference `model.Board.*` when asserting policy behavior.
+- Projection seam introduces a small extra record/function pair, which is additional structure for a small app.
+
+### After seam cleanup, what boilerplate still remains?
+
+Significant immutable-record boilerplate remains in data lanes:
+
+- `WithControlMode`, `WithBoard`, `WithNoiseEnabled`, `WithSelectedSignal`, `WithTime`, `WithValue`, `WithTickCount`, `WithHistory`
+- step/recompute/history flows still require chained immutable updates
+
+So the main remaining pressure is record-copy for numeric/data fields, not board mirror maintenance.
+
+### Is `with` now clearly justified, or is more seam cleanup still needed?
+
+M8 makes the pressure signal cleaner:
+
+- seam cleanup removed artificial duplication due to dual ownership
+- remaining verbosity is largely intrinsic immutable record update cost
+
+Recommendation after M8: a `with`-style record update feature is now **better justified** than before, because seam discipline has already removed a clear architectural source of noise.
