@@ -748,25 +748,31 @@ fn IsEvenTick(tickCount: Int) -> Bool {
 }
 
 fn ControlModeLabel(mode: String) -> String {
-    if mode == ControlIdle() { return "Idle" }
-    if mode == ControlRunning() { return "Running" }
-    if mode == ControlPaused() { return "Paused" }
-    if mode == ControlInspect() { return "Inspect" }
-    return "Fault"
+    return switch {
+        case mode == ControlIdle() => "Idle"
+        case mode == ControlRunning() => "Running"
+        case mode == ControlPaused() => "Paused"
+        case mode == ControlInspect() => "Inspect"
+        else => "Fault"
+    }
 }
 
 fn DisplayModeLabel(mode: String) -> String {
-    if mode == DisplayTrend() { return "Trend" }
-    if mode == DisplayInspect() { return "Inspect" }
-    if mode == DisplayFault() { return "Fault" }
-    return "NoiseFocus"
+    return switch {
+        case mode == DisplayTrend() => "Trend"
+        case mode == DisplayInspect() => "Inspect"
+        case mode == DisplayFault() => "Fault"
+        else => "NoiseFocus"
+    }
 }
 
 fn AlertLabel(status: String) -> String {
-    if status == AlertNormal() { return "Normal" }
-    if status == AlertWatch() { return "Watch" }
-    if status == AlertInspecting() { return "Inspecting" }
-    return "Fault"
+    return switch {
+        case status == AlertNormal() => "Normal"
+        case status == AlertWatch() => "Watch"
+        case status == AlertInspecting() => "Inspecting"
+        else => "Fault"
+    }
 }
 
 fn IsRunning(mode: String) -> Bool { return mode == ControlRunning() }
