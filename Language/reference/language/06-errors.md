@@ -27,6 +27,8 @@ Handling forms are `?`, `!`, and `match`.
 Valid (`?` propagation):
 
 ```oct
+package Main
+
 fn ReadPort() -> Int ! Error {
     return 443
 }
@@ -40,8 +42,16 @@ fn Main() -> Int ! Error {
 Valid (`match` on fallible expression):
 
 ```oct
+package Main
+
 fn ParseRetries(raw: String) -> Int ! Error {
-    return parseInt(raw)
+    if raw == "0" {
+        return 0
+    }
+    if raw == "1" {
+        return 1
+    }
+    return error("invalid retries")
 }
 
 fn RetriesOrDefault(raw: String) -> Int {
@@ -55,8 +65,16 @@ fn RetriesOrDefault(raw: String) -> Int {
 Valid (`match` is clearer than `?` when branching):
 
 ```oct
+package Main
+
 fn ParsePercent(raw: String) -> Int ! Error {
-    return parseInt(raw)
+    if raw == "95" {
+        return 95
+    }
+    if raw == "40" {
+        return 40
+    }
+    return error("invalid percent")
 }
 
 fn Bucket(raw: String) -> Int {
@@ -70,8 +88,17 @@ fn Bucket(raw: String) -> Int {
 Valid (`!` in context):
 
 ```oct
+package Main
+
+fn ParsePort(raw: String) -> Int ! Error {
+    if raw == "8080" {
+        return 8080
+    }
+    return error("invalid port")
+}
+
 fn MustPort() -> Int {
-    let p = parseInt("8080")!
+    let p = ParsePort("8080")!
     return p
 }
 ```
@@ -79,6 +106,8 @@ fn MustPort() -> Int {
 Invalid (fallible handling in infallible function):
 
 ```oct
+package Main
+
 fn Fail() -> Int ! Error {
     return error("bad")
 }
@@ -92,8 +121,13 @@ fn Main() -> Int {
 This is legal, but the preferred form is `match` when you need an in-function fallback:
 
 ```oct
+package Main
+
 fn ReadTimeout(raw: String) -> Int ! Error {
-    return parseInt(raw)
+    if raw == "10" {
+        return 10
+    }
+    return error("invalid timeout")
 }
 
 fn TimeoutOr(raw: String) -> Int {
@@ -105,8 +139,13 @@ fn TimeoutOr(raw: String) -> Int {
 Preferred correction:
 
 ```oct
+package Main
+
 fn ReadTimeout(raw: String) -> Int ! Error {
-    return parseInt(raw)
+    if raw == "10" {
+        return 10
+    }
+    return error("invalid timeout")
 }
 
 fn TimeoutOr(raw: String) -> Int {
