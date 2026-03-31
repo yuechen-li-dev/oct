@@ -1,0 +1,11 @@
+expect error: "function 'AnchoredBox' argument 1 expects Float<ui>, got Float<px>"
+
+package UI
+
+fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> Int {
+    return 0
+}
+
+fn Main() -> Int {
+    return AnchoredBox(16.0 px, 0.1 ui, 0.9 ui, 0.5 ui)
+}

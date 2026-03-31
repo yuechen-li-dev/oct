@@ -15,10 +15,12 @@ const (
 	Temperature
 	Amount
 	LuminousIntensity
+	Pixel
+	UI
 	baseCount
 )
 
-var baseNames = [...]string{"m", "kg", "s", "A", "K", "mol", "cd"}
+var baseNames = [...]string{"m", "kg", "s", "A", "K", "mol", "cd", "px", "ui"}
 
 type Dimension struct {
 	Exponents [baseCount]int

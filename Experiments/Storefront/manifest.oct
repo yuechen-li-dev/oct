@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Storefront"
         Version: "0.1.0"
-        Description: "Storefront M0 headless UI composition stress test for website-style layout and repeated card patterns"
+        Description: "Storefront M0/M1 headless UI composition probe for website-style layout and typed coordinate authoring"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

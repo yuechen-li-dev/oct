@@ -454,10 +454,6 @@ func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argum
 	if err != nil || errResult != nil {
 		return nil, errResult, err
 	}
-	if left < 0 || top < 0 || right > 1 || bottom > 1 {
-		errEval := wrapperErrorResult("UIPlaceAnchored", fmt.Errorf("anchored box values must be within [0,1]"))
-		return nil, &errEval, nil
-	}
 	if right < left || bottom < top {
 		errEval := wrapperErrorResult("UIPlaceAnchored", fmt.Errorf("anchored box requires Right >= Left and Bottom >= Top"))
 		return nil, &errEval, nil

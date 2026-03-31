@@ -777,6 +777,19 @@ func TestBuildFileParsesDimensionQualifiedTypesAndLiterals(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesSpaceSeparatedUnitSuffixes(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Float<px> { return 320 px }")
+	fn := file.Functions[0]
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	literal, ok := ret.Value.(ast.IntegerLiteral)
+	if !ok {
+		t.Fatalf("expected IntegerLiteral, got %T", ret.Value)
+	}
+	if got := literal.Dimension.String(); got != "px" {
+		t.Fatalf("expected literal dimension px, got %q", got)
+	}
+}
+
 func TestBuildFileRejectsUnknownUnitInType(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int<foo> { return 1 }", "unknown base unit: foo")
 }

@@ -13,6 +13,11 @@ import (
 
 const decisionLadderIfElseDiagnostic = "nested decision-ladder `if/else` is not allowed in Oct by design. Use a condition-switch expression instead:\nlet value = switch {\n    case cond1 => value1\n    case cond2 => value2\n    else => defaultValue\n}"
 
+var (
+	uiPixelDimension  = mustDimension("px")
+	uiAnchorDimension = mustDimension("ui")
+)
+
 type BaseType string
 
 const (
@@ -39,6 +44,14 @@ type Type struct {
 	IsFlowInstance    bool
 	FlowResultType    string
 	FlowResult        *Type
+}
+
+func mustDimension(name string) dimension.Dimension {
+	dim, ok := dimension.FromBaseName(name)
+	if !ok {
+		panic(fmt.Sprintf("unknown built-in dimension %q", name))
+	}
+	return dim
 }
 
 func (t Type) String() string {
@@ -2239,8 +2252,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			if valueType.Fallible {
 				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 			}
-			if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
-				return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument %d expects Float, got %s", idx+1, valueType.ValueType)
+			if valueType.ValueType != (Type{Base: BaseTypeFloat, Dimension: uiPixelDimension}) && valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+				return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument %d expects Float<px>, got %s", idx+1, valueType.ValueType)
 			}
 		}
 		childType, err := c.checkExpr(scope, arguments[4], ctx)
@@ -2270,8 +2283,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			if valueType.Fallible {
 				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 			}
-			if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
-				return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument %d expects Float, got %s", idx+1, valueType.ValueType)
+			if valueType.ValueType != (Type{Base: BaseTypeFloat, Dimension: uiAnchorDimension}) && valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+				return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument %d expects Float<ui>, got %s", idx+1, valueType.ValueType)
 			}
 		}
 		childType, err := c.checkExpr(scope, arguments[4], ctx)

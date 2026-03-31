@@ -3,7 +3,7 @@ package UI
 [Fact]
 fn AbsoluteBoxPlacementProducesInspectableSignature() -> Void {
     let ui = Canvas([
-        Place(AbsoluteBox(10.0, 20.0, 100.0, 40.0), Text("absolute"))
+        Place(AbsoluteBox(10.0 px, 20.0 px, 100.0 px, 40.0 px), Text("absolute"))
     ])
 
     let mounted = MountUI(ui)
@@ -15,7 +15,7 @@ fn AbsoluteBoxPlacementProducesInspectableSignature() -> Void {
 [Fact]
 fn AnchoredBoxPlacementProducesInspectableSignature() -> Void {
     let ui = Canvas([
-        Place(AnchoredBox(0.25, 0.10, 0.75, 0.60), Text("anchored"))
+        Place(AnchoredBox(0.25 ui, 0.10 ui, 0.75 ui, 0.60 ui), Text("anchored"))
     ])
 
     let mounted = MountUI(ui)
@@ -26,7 +26,7 @@ fn AnchoredBoxPlacementProducesInspectableSignature() -> Void {
 [Fact]
 fn MixedBoxAndNonBoxChildrenRemainCompatible() -> Void {
     let ui = Canvas([
-        Place(AbsoluteBox(20.0, 20.0, 120.0, 30.0), Button("Go", "evt.go", true)),
+        Place(AbsoluteBox(20.0 px, 20.0 px, 120.0 px, 30.0 px), Button("Go", "evt.go", true)),
         Text("legacy child")
     ])
 
@@ -41,11 +41,11 @@ fn MixedBoxAndNonBoxChildrenRemainCompatible() -> Void {
 [Fact]
 fn BoxPatchUpdatesAreAccepted() -> Void {
     let mounted = MountUI(Canvas([
-        Place(AbsoluteBox(20.0, 20.0, 80.0, 30.0), Button("Move", "evt.move", true))
+        Place(AbsoluteBox(20.0 px, 20.0 px, 80.0 px, 30.0 px), Button("Move", "evt.move", true))
     ]))
 
     let patched = PatchUI(mounted, Canvas([
-        Place(AbsoluteBox(15.0, 20.0, 80.0, 30.0), Button("Move", "evt.move", true))
+        Place(AbsoluteBox(15.0 px, 20.0 px, 80.0 px, 30.0 px), Button("Move", "evt.move", true))
     ]))
     Assert.Equal(0, patched, "patch should succeed when absolute box coordinates change")
 

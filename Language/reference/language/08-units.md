@@ -9,7 +9,7 @@ Unit behavior is explicit and deterministic.
 
 ## Rules
 
-- Base units are `m`, `kg`, `s`, `A`, `K`, `mol`, and `cd`.
+- Base units are `m`, `kg`, `s`, `A`, `K`, `mol`, `cd`, `px`, and `ui`.
 - `deg` is accepted for angle literals used with trigonometric builtins.
 - Only `Int` and `Float` may be dimension-qualified.
 - Dimensions are part of type identity.
