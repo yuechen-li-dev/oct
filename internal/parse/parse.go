@@ -1082,7 +1082,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordNot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordNot, lex.Minus:
 		return true
 	default:
 		return false
@@ -1172,6 +1172,13 @@ func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
 }
 
 func (p *parser) parsePrefixExpr() (ast.Expr, error) {
+	if p.match(lex.Minus) {
+		operand, err := p.parsePrefixExpr()
+		if err != nil {
+			return nil, err
+		}
+		return ast.UnaryExpr{Operator: "-", Operand: operand}, nil
+	}
 	if p.match(lex.KeywordNot) {
 		operand, err := p.parseBinaryExpr(precedenceComparison)
 		if err != nil {

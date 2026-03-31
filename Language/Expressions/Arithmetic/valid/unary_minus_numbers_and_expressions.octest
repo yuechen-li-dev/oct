@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn UnaryMinusOnScalarsAndExpressions() -> Void {
+    Assert.Equal(-1, -1, "negative int literal")
+    Assert.Equal(-0.25, -0.25, "negative float literal")
+    Assert.Equal(-3, -(1 + 2), "negated grouped expression")
+    let value = 4
+    Assert.Equal(-4, -value, "negated identifier")
+}

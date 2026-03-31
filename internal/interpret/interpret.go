@@ -1162,6 +1162,15 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				return evalResult{}, fmt.Errorf("runtime invariant violation: operator 'not' requires Bool operand")
 			}
 			return evalResult{value: Value{Kind: ValueBool, Bool: !operand.value.Bool}}, nil
+		case "-":
+			switch operand.value.Kind {
+			case ValueInt:
+				return evalResult{value: Value{Kind: ValueInt, Int: -operand.value.Int, Dimension: operand.value.Dimension}}, nil
+			case ValueFloat:
+				return evalResult{value: Value{Kind: ValueFloat, Float: -operand.value.Float, Dimension: operand.value.Dimension}}, nil
+			default:
+				return evalResult{}, fmt.Errorf("runtime invariant violation: operator '-' requires Int or Float operand")
+			}
 		default:
 			return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported unary operator %q", node.Operator)
 		}
@@ -2000,6 +2009,28 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime error: FormatFloat precision must be >= 0, got %d", precisionResult.value.Int)
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatFloat(valueResult.value.Float, 'f', int(precisionResult.value.Int), 64)}}, nil
+	}
+	if callee == "ToString" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		valueResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if valueResult.hasError {
+			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+		}
+		switch valueResult.value.Kind {
+		case ValueInt:
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatInt(valueResult.value.Int, 10)}}, nil
+		case ValueFloat:
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatFloat(valueResult.value.Float, 'g', -1, 64)}}, nil
+		case ValueBool:
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatBool(valueResult.value.Bool)}}, nil
+		default:
+			return evalResult{}, fmt.Errorf("runtime invariant violation: ToString expects Int, Float, or Bool")
+		}
 	}
 
 	if len(argumentExprs) != 1 {

@@ -71,6 +71,9 @@ Calls are checked statically for arity and type constraints.
 - `FormatFloat(value: Float, precision: Int) -> String`.
   - Preferred when rendering display text from floating-point values.
   - Use this when UI/status strings need fixed precision.
+- `ToString(value: Int | Float | Bool) -> String`.
+  - Plain explicit conversion for common scalar display paths.
+  - Does not apply formatting policy beyond standard value rendering.
 - `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
 - `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
@@ -81,11 +84,11 @@ Calls are checked statically for arity and type constraints.
 - `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`.
   - Argument order is `expected`, then `actual`, then tolerance/message.
 
-### Int-to-String guidance
+### Conversion vs formatting guidance
 
-There is currently no direct `Int -> String` formatting builtin in the core surface.
-Use `FormatFloat` for float display formatting.
-Avoid assuming implicit conversion from `Int` to `String`.
+Use `ToString(x)` for explicit plain conversion (`Int`, `Float`, `Bool`).
+Use `FormatFloat(x, precision)` when you need fixed float formatting.
+No implicit conversion is performed in concatenation or other expressions.
 
 ## Examples
 
@@ -98,8 +101,10 @@ fn Main() -> Int {
     let theta = Pi() / 4
     let xs = [1, 2]
     let ys = Append(xs, 3)
-    let label = "theta=" + FormatFloat(theta, 3)
+    let label = "theta=" + ToString(theta)
+    let precise = "theta_fixed=" + FormatFloat(theta, 3)
     Print(label)
+    Print(precise)
     Print(Atan2(1, 1) + Tan(theta))
     return Len(ys)
 }

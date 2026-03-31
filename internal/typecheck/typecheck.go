@@ -1052,6 +1052,11 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 				return ExprType{}, fmt.Errorf("operator 'not' requires Bool operand")
 			}
 			return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+		case "-":
+			if !isRealNumericScalar(operandType.ValueType) {
+				return ExprType{}, fmt.Errorf("operator '-' requires Int or Float operand")
+			}
+			return ExprType{ValueType: operandType.ValueType}, nil
 		default:
 			return ExprType{}, fmt.Errorf("unsupported unary operator %q", node.Operator)
 		}
@@ -2217,6 +2222,27 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'FormatFloat' argument 2 expects Int, got %s", precisionType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "ToString" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'ToString' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'ToString' expects 1 arguments, got %d", len(arguments))
+		}
+		valueType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		switch valueType.ValueType {
+		case Type{Base: BaseTypeInt}, Type{Base: BaseTypeFloat}, Type{Base: BaseTypeBool}:
+			return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+		default:
+			return ExprType{}, fmt.Errorf("function 'ToString' argument 1 expects Int, Float, or Bool, got %s", valueType.ValueType)
+		}
 	}
 	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {

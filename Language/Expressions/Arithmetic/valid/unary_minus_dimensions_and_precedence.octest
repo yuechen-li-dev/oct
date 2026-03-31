@@ -1,0 +1,8 @@
+package MainValid
+
+[Fact]
+fn UnaryMinusSupportsDimensionsAndPrecedence() -> Void {
+    let distance = 3m
+    Assert.Equal(-3m, -distance, "dimensioned unary minus")
+    Assert.Equal(-2, -1 * 2, "unary minus binds before multiplication")
+}

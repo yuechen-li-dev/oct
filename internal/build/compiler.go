@@ -2687,6 +2687,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
+			case "ToString":
+				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "WriteOctagon":
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":

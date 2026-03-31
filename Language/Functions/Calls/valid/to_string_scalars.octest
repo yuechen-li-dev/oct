@@ -1,0 +1,8 @@
+package MainValid
+
+[Fact]
+fn ToStringConvertsSupportedScalars() -> Void {
+    Assert.Equal("42", ToString(42), "int conversion")
+    Assert.Equal("3.5", ToString(3.5), "float conversion")
+    Assert.Equal("true", ToString(true), "bool conversion")
+}

@@ -256,6 +256,36 @@ func TestBuildFileParsesNotAfterComparisons(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesUnaryMinusLiteral(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { return -1 }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.UnaryExpr)
+	if !ok {
+		t.Fatalf("expected UnaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "-" {
+		t.Fatalf("expected unary operator '-', got %q", expr.Operator)
+	}
+	if _, ok := expr.Operand.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer literal operand, got %T", expr.Operand)
+	}
+}
+
+func TestBuildFileUnaryMinusBindsTighterThanMultiplication(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { return -1 * 2 }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected BinaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "*" {
+		t.Fatalf("expected top-level '*', got %q", expr.Operator)
+	}
+	if _, ok := expr.Left.(ast.UnaryExpr); !ok {
+		t.Fatalf("expected unary minus on left operand, got %T", expr.Left)
+	}
+}
+
 func TestBuildFileParsesMultipleFunctions(t *testing.T) {
 	file := parseSource(t, "fn One() -> Int { return 1 } fn Two() -> Bool { return true }")
 
