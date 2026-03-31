@@ -1,0 +1,215 @@
+package ControlPanel
+
+record Mount {
+    Handle: Int
+}
+
+record PanelState {
+    PowerOn: Bool
+    Mode: String
+    Setpoint: Float
+    Output: Float
+}
+
+fn Text(content: String) -> UI {
+    return UIText(content)
+}
+
+fn Button(label: String, event: String) -> UI {
+    return UIButton(label, event)
+}
+
+fn Column(children: UI[]) -> UI {
+    return UIColumn(children)
+}
+
+fn Row(children: UI[]) -> UI {
+    return UIRow(children)
+}
+
+fn MountUI(root: UI) -> Mount {
+    return Mount { Handle: UIMount(root) }
+}
+
+fn PatchUI(mount: Mount, next: UI) -> Int {
+    return UIPatch(mount.Handle, next)
+}
+
+fn UnmountUI(mount: Mount) -> Int {
+    return UIUnmount(mount.Handle)
+}
+
+fn Emit(mount: Mount, event: String) -> Int ! Error {
+    return UIEmit(mount.Handle, event)?
+}
+
+fn DrainEvents(mount: Mount) -> String[] {
+    return UIDrainEvents(mount.Handle)
+}
+
+fn Signature(node: UI) -> String {
+    return UISignature(node)
+}
+
+fn Init() -> PanelState {
+    let initial = PanelState {
+        PowerOn: false
+        Mode: "paused"
+        Setpoint: 1.0
+        Output: 0.0
+    }
+    return Recompute(initial)
+}
+
+fn View(model: PanelState) -> UI {
+    return Column([
+        Text("Power: " + PowerLabel(model.PowerOn)),
+        Text("Mode: " + model.Mode),
+        Text("Setpoint: " + DecimalLabel(model.Setpoint)),
+        Text("Output: " + DecimalLabel(model.Output)),
+        Row([
+            Button("Power On", "panel.power.on"),
+            Button("Power Off", "panel.power.off")
+        ]),
+        Row([
+            Button("Start", "panel.mode.start"),
+            Button("Pause", "panel.mode.pause"),
+            Button("Reset", "panel.reset")
+        ]),
+        Row([
+            Button("Setpoint +", "panel.setpoint.increment"),
+            Button("Setpoint -", "panel.setpoint.decrement")
+        ])
+    ])
+}
+
+fn Update(model: PanelState, event: String) -> PanelState {
+    if event == "panel.power.on" {
+        return Recompute(PanelState {
+            PowerOn: true
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+        })
+    }
+
+    if event == "panel.power.off" {
+        return Recompute(PanelState {
+            PowerOn: false
+            Mode: "paused"
+            Setpoint: model.Setpoint
+            Output: 0.0
+        })
+    }
+
+    if event == "panel.mode.start" {
+        if model.PowerOn {
+            return Recompute(PanelState {
+                PowerOn: model.PowerOn
+                Mode: "running"
+                Setpoint: model.Setpoint
+                Output: model.Output
+            })
+        }
+        return model
+    }
+
+    if event == "panel.mode.pause" {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: "paused"
+            Setpoint: model.Setpoint
+            Output: model.Output
+        })
+    }
+
+    if event == "panel.reset" {
+        return Init()
+    }
+
+    if event == "panel.setpoint.increment" {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint + 0.5
+            Output: model.Output
+        })
+    }
+
+    if event == "panel.setpoint.decrement" {
+        var next = model.Setpoint - 0.5
+        if next < 0.0 {
+            next = 0.0
+        }
+
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: next
+            Output: model.Output
+        })
+    }
+
+    return model
+}
+
+fn Recompute(model: PanelState) -> PanelState {
+    if model.PowerOn and model.Mode == "running" {
+        return PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Setpoint * 0.8
+        }
+    }
+
+    return PanelState {
+        PowerOn: model.PowerOn
+        Mode: model.Mode
+        Setpoint: model.Setpoint
+        Output: 0.0
+    }
+}
+
+fn PowerLabel(powerOn: Bool) -> String {
+    if powerOn {
+        return "On"
+    }
+
+    return "Off"
+}
+
+fn DecimalLabel(value: Float) -> String {
+    if value == 0.0 {
+        return "0.0"
+    }
+    if value == 0.4 {
+        return "0.4"
+    }
+    if value == 0.8 {
+        return "0.8"
+    }
+    if value == 1.0 {
+        return "1.0"
+    }
+    if value == 1.2 {
+        return "1.2"
+    }
+    if value == 1.5 {
+        return "1.5"
+    }
+    if value == 1.6 {
+        return "1.6"
+    }
+    if value == 2.0 {
+        return "2.0"
+    }
+    if value == 2.4 {
+        return "2.4"
+    }
+    if value == 3.0 {
+        return "3.0"
+    }
+
+    return "many"
+}

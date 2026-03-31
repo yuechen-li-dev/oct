@@ -1,0 +1,22 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ControlPanel"
+        Version: "0.1.0"
+        Description: "UI M0 friction probe for explicit event/state control-panel authoring"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
