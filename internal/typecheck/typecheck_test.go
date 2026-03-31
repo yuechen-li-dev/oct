@@ -257,6 +257,13 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> String { return ToString(1) }",
 		"fn Main() -> String { return ToString(1.5) }",
 		"fn Main() -> String { return ToString(true) }",
+		"fn Main() -> Bool { return Contains(\"storefront\", \"front\") }",
+		"fn Main() -> Bool { return StartsWith(\"status: ok\", \"status\") }",
+		"fn Main() -> Bool { return EndsWith(\"status: ok\", \"ok\") }",
+		"fn Main() -> String { return Trim(\"  ready  \") }",
+		"fn Main() -> String { return Lower(\"MiXeD\") }",
+		"fn Main() -> String { return Upper(\"MiXeD\") }",
+		"fn Main() -> String { return Join([\"desk\", \"gear\", \"sale\"], \" / \") }",
 		"fn Main() -> Int[] { var xs = [1, 2] xs = Append(xs, 3) return xs }",
 		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
 		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
@@ -309,6 +316,11 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> String { return FormatFloat(1.5, 2.0) }", "function Main: function 'FormatFloat' argument 2 expects Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> Bool { return -true }", "function Main: operator '-' requires Int or Float operand")
 	assertTypeErrorContains(t, "fn Main() -> String { return ToString(\"x\") }", "function Main: function 'ToString' argument 1 expects Int, Float, or Bool, got String")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return Contains(1, \"x\") }", "function Main: function 'Contains' argument 1 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Bool { return StartsWith(\"x\", 1) }", "function Main: function 'StartsWith' argument 2 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> String { return Trim(1) }", "function Main: function 'Trim' argument 1 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> String { return Join([1, 2], \",\") }", "function Main: function 'Join' argument 1 expects String[], got Int[]")
+	assertTypeErrorContains(t, "fn Main() -> String { return Join([\"x\"], 1) }", "function Main: function 'Join' argument 2 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sinh(3m) }", "function Main: Sinh requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cosh(2kg) }", "function Main: Cosh requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Tanh(5A) }", "function Main: Tanh requires dimensionless input")

@@ -1,0 +1,7 @@
+expect error: "function 'Contains' expects 2 arguments, got 1"
+
+package Main
+
+fn Main() -> Bool {
+    return Contains("abc")
+}

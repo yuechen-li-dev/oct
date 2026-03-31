@@ -58,6 +58,13 @@ var names = map[string]struct{}{
 	"UISignature":        {},
 	"FormatFloat":        {},
 	"ToString":           {},
+	"Contains":           {},
+	"StartsWith":         {},
+	"EndsWith":           {},
+	"Trim":               {},
+	"Lower":              {},
+	"Upper":              {},
+	"Join":               {},
 }
 
 func IsName(name string) bool {

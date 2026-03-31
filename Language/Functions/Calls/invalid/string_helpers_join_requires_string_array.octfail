@@ -1,0 +1,7 @@
+expect error: "function 'Join' argument 1 expects String[], got Int[]"
+
+package Main
+
+fn Main() -> String {
+    return Join([1, 2], ",")
+}

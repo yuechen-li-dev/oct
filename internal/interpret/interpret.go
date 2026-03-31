@@ -2032,6 +2032,89 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: ToString expects Int, Float, or Bool")
 		}
 	}
+	if callee == "Contains" || callee == "StartsWith" || callee == "EndsWith" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		textResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if textResult.hasError {
+			return evalResult{hasError: true, errorVal: textResult.errorVal}, nil
+		}
+		partResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if partResult.hasError {
+			return evalResult{hasError: true, errorVal: partResult.errorVal}, nil
+		}
+		if textResult.value.Kind != ValueString || partResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects (String, String)", callee)
+		}
+		switch callee {
+		case "Contains":
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.Contains(textResult.value.Text, partResult.value.Text)}}, nil
+		case "StartsWith":
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.HasPrefix(textResult.value.Text, partResult.value.Text)}}, nil
+		default:
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.HasSuffix(textResult.value.Text, partResult.value.Text)}}, nil
+		}
+	}
+	if callee == "Trim" || callee == "Lower" || callee == "Upper" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		textResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if textResult.hasError {
+			return evalResult{hasError: true, errorVal: textResult.errorVal}, nil
+		}
+		if textResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String argument", callee)
+		}
+		switch callee {
+		case "Trim":
+			return evalResult{value: Value{Kind: ValueString, Text: strings.TrimSpace(textResult.value.Text)}}, nil
+		case "Lower":
+			return evalResult{value: Value{Kind: ValueString, Text: strings.ToLower(textResult.value.Text)}}, nil
+		default:
+			return evalResult{value: Value{Kind: ValueString, Text: strings.ToUpper(textResult.value.Text)}}, nil
+		}
+	}
+	if callee == "Join" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Join expects 2 arguments")
+		}
+		partsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if partsResult.hasError {
+			return evalResult{hasError: true, errorVal: partsResult.errorVal}, nil
+		}
+		sepResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if sepResult.hasError {
+			return evalResult{hasError: true, errorVal: sepResult.errorVal}, nil
+		}
+		if partsResult.value.Kind != ValueArray || sepResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Join expects (String[], String)")
+		}
+		parts := make([]string, 0, len(partsResult.value.Array))
+		for _, value := range partsResult.value.Array {
+			if value.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: Join expects String[] as first argument")
+			}
+			parts = append(parts, value.Text)
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: strings.Join(parts, sepResult.value.Text)}}, nil
+	}
 
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
