@@ -1,0 +1,55 @@
+package UI
+
+[Fact]
+fn AbsoluteBoxPlacementProducesInspectableSignature() -> Void {
+    let ui = Canvas([
+        Place(AbsoluteBox(10.0, 20.0, 100.0, 40.0), Text("absolute"))
+    ])
+
+    let mounted = MountUI(ui)
+    let patched = PatchUI(mounted, ui)
+    Assert.Equal(0, patched, "absolute placement should patch cleanly")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn AnchoredBoxPlacementProducesInspectableSignature() -> Void {
+    let ui = Canvas([
+        Place(AnchoredBox(0.25, 0.10, 0.75, 0.60), Text("anchored"))
+    ])
+
+    let mounted = MountUI(ui)
+    Assert.Equal(0, PatchUI(mounted, ui), "anchored placement should patch cleanly")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn MixedBoxAndNonBoxChildrenRemainCompatible() -> Void {
+    let ui = Canvas([
+        Place(AbsoluteBox(20.0, 20.0, 120.0, 30.0), Button("Go", "evt.go", true)),
+        Text("legacy child")
+    ])
+
+    let mounted = MountUI(ui)
+    let emitted = Emit(mounted, "evt.go") !
+    Assert.Equal(0, emitted, "event dispatch should still work with mixed children")
+    let events = DrainEvents(mounted)
+    Assert.Equal(1, Len(events), "exactly one event should be queued")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn BoxPatchUpdatesAreAccepted() -> Void {
+    let mounted = MountUI(Canvas([
+        Place(AbsoluteBox(20.0, 20.0, 80.0, 30.0), Button("Move", "evt.move", true))
+    ]))
+
+    let patched = PatchUI(mounted, Canvas([
+        Place(AbsoluteBox(15.0, 20.0, 80.0, 30.0), Button("Move", "evt.move", true))
+    ]))
+    Assert.Equal(0, patched, "patch should succeed when absolute box coordinates change")
+
+    let emitted = Emit(mounted, "evt.move") !
+    Assert.Equal(0, emitted, "event dispatch should survive box patch")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}

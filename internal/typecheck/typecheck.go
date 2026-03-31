@@ -2173,7 +2173,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
-	if callee == "UIColumn" || callee == "UIRow" {
+	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -2189,6 +2189,68 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		if childrenType.ValueType != (Type{Base: BaseTypeUI, IsArray: true}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "UIPlaceAbsolute" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' does not accept type arguments")
+		}
+		if len(arguments) != 5 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' expects 5 arguments, got %d", len(arguments))
+		}
+		for idx := 0; idx < 4; idx++ {
+			valueType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if valueType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+				return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument %d expects Float, got %s", idx+1, valueType.ValueType)
+			}
+		}
+		childType, err := c.checkExpr(scope, arguments[4], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if childType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if childType.ValueType != (Type{Base: BaseTypeUI}) {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 5 expects UI, got %s", childType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+	if callee == "UIPlaceAnchored" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' does not accept type arguments")
+		}
+		if len(arguments) != 5 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' expects 5 arguments, got %d", len(arguments))
+		}
+		for idx := 0; idx < 4; idx++ {
+			valueType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if valueType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+				return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument %d expects Float, got %s", idx+1, valueType.ValueType)
+			}
+		}
+		childType, err := c.checkExpr(scope, arguments[4], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if childType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if childType.ValueType != (Type{Base: BaseTypeUI}) {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 5 expects UI, got %s", childType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}

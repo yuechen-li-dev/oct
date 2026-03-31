@@ -1,0 +1,248 @@
+package ControlPanelM2
+
+record Mount {
+    Handle: Int
+}
+
+record UIBox {
+    Kind: String
+    X: Float
+    Y: Float
+    Width: Float
+    Height: Float
+    Left: Float
+    Top: Float
+    Right: Float
+    Bottom: Float
+}
+
+record PanelState {
+    PowerOn: Bool
+    Mode: String
+    Setpoint: Float
+    Output: Float
+}
+
+fn Text(content: String) -> UI {
+    return UIText(content)
+}
+
+fn Button(label: String, event: String, enabled: Bool) -> UI {
+    return UIButton(label, event, enabled)
+}
+
+fn Canvas(children: UI[]) -> UI {
+    return UICanvas(children)
+}
+
+fn AbsoluteBox(x: Float, y: Float, width: Float, height: Float) -> UIBox {
+    return UIBox {
+        Kind: "absolute"
+        X: x
+        Y: y
+        Width: width
+        Height: height
+        Left: 0.0
+        Top: 0.0
+        Right: 0.0
+        Bottom: 0.0
+    }
+}
+
+fn AnchoredBox(left: Float, top: Float, right: Float, bottom: Float) -> UIBox {
+    return UIBox {
+        Kind: "anchored"
+        X: 0.0
+        Y: 0.0
+        Width: 0.0
+        Height: 0.0
+        Left: left
+        Top: top
+        Right: right
+        Bottom: bottom
+    }
+}
+
+fn Place(box: UIBox, child: UI) -> UI {
+    if box.Kind == "absolute" {
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+    }
+
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+}
+
+fn MountUI(root: UI) -> Mount {
+    return Mount { Handle: UIMount(root) }
+}
+
+fn PatchUI(mount: Mount, next: UI) -> Int {
+    return UIPatch(mount.Handle, next)
+}
+
+fn UnmountUI(mount: Mount) -> Int {
+    return UIUnmount(mount.Handle)
+}
+
+fn Emit(mount: Mount, event: String) -> Int ! Error {
+    return UIEmit(mount.Handle, event)?
+}
+
+fn DrainEvents(mount: Mount) -> String[] {
+    return UIDrainEvents(mount.Handle)
+}
+
+fn Signature(node: UI) -> String {
+    return UISignature(node)
+}
+
+fn Init() -> PanelState {
+    let initial = PanelState {
+        PowerOn: false
+        Mode: "paused"
+        Setpoint: 1.0
+        Output: 0.0
+    }
+    return Recompute(initial)
+}
+
+fn View(model: PanelState) -> UI {
+    let startEnabled = model.PowerOn and model.Mode != "running"
+    return Canvas([
+        Place(AnchoredBox(0.02, 0.02, 0.98, 0.12), Text("Control Panel M2")),
+        Place(AbsoluteBox(20.0, 120.0, 320.0, 20.0), Text("Power: " + PowerLabel(model.PowerOn))),
+        Place(AbsoluteBox(20.0, 150.0, 320.0, 20.0), Text("Mode: " + model.Mode)),
+        Place(AbsoluteBox(20.0, 180.0, 320.0, 20.0), Text("Setpoint: " + FormatFloat(model.Setpoint, 1))),
+        Place(AbsoluteBox(20.0, 210.0, 320.0, 20.0), Text("Output: " + FormatFloat(model.Output, 1))),
+        Place(AbsoluteBox(20.0, 260.0, 120.0, 28.0), Button("Power On", PowerOnEvent(), model.PowerOn == false)),
+        Place(AbsoluteBox(150.0, 260.0, 120.0, 28.0), Button("Power Off", PowerOffEvent(), model.PowerOn)),
+        Place(AbsoluteBox(20.0, 300.0, 120.0, 28.0), Button("Start", StartEvent(), startEnabled)),
+        Place(AbsoluteBox(150.0, 300.0, 120.0, 28.0), Button("Pause", PauseEvent(), model.Mode == "running")),
+        Place(AbsoluteBox(280.0, 300.0, 120.0, 28.0), Button("Reset", ResetEvent(), true)),
+        Place(AbsoluteBox(20.0, 340.0, 120.0, 28.0), Button("Setpoint +", SetpointIncrementEvent(), true)),
+        Place(AbsoluteBox(150.0, 340.0, 120.0, 28.0), Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0))
+    ])
+}
+
+fn Update(model: PanelState, event: String) -> PanelState {
+    if event == PowerOnEvent() {
+        return Recompute(PanelState {
+            PowerOn: true
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+        })
+    }
+
+    if event == PowerOffEvent() {
+        return Recompute(PanelState {
+            PowerOn: false
+            Mode: "paused"
+            Setpoint: model.Setpoint
+            Output: 0.0
+        })
+    }
+
+    if event == StartEvent() {
+        if model.PowerOn {
+            return Recompute(PanelState {
+                PowerOn: model.PowerOn
+                Mode: "running"
+                Setpoint: model.Setpoint
+                Output: model.Output
+            })
+        }
+        return model
+    }
+
+    if event == PauseEvent() {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: "paused"
+            Setpoint: model.Setpoint
+            Output: model.Output
+        })
+    }
+
+    if event == ResetEvent() {
+        return Init()
+    }
+
+    if event == SetpointIncrementEvent() {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint + 0.5
+            Output: model.Output
+        })
+    }
+
+    if event == SetpointDecrementEvent() {
+        var next = model.Setpoint - 0.5
+        if next < 0.0 {
+            next = 0.0
+        }
+
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: next
+            Output: model.Output
+        })
+    }
+
+    return model
+}
+
+fn Recompute(model: PanelState) -> PanelState {
+    if model.PowerOn and model.Mode == "running" {
+        return PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Setpoint * 0.8
+        }
+    }
+
+    return PanelState {
+        PowerOn: model.PowerOn
+        Mode: model.Mode
+        Setpoint: model.Setpoint
+        Output: 0.0
+    }
+}
+
+fn PowerLabel(powerOn: Bool) -> String {
+    if powerOn {
+        return "On"
+    }
+
+    return "Off"
+}
+
+fn PowerOnEvent() -> String {
+    return "panel.power.on"
+}
+
+fn PowerOffEvent() -> String {
+    return "panel.power.off"
+}
+
+fn StartEvent() -> String {
+    return "panel.mode.start"
+}
+
+fn PauseEvent() -> String {
+    return "panel.mode.pause"
+}
+
+fn ResetEvent() -> String {
+    return "panel.reset"
+}
+
+fn SetpointIncrementEvent() -> String {
+    return "panel.setpoint.increment"
+}
+
+fn SetpointDecrementEvent() -> String {
+    return "panel.setpoint.decrement"
+}
