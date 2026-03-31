@@ -805,3 +805,63 @@ Rationale:
 - keeps explicit field updates and strict checking
 - does not force blackboard or mutability model expansion
 - produces immediate clarity/boilerplate wins in SignalLab without architectural regression
+
+## M9a findings
+
+### Decision surface chosen
+
+M9a targeted **alert surfacing priority** under noisy near-threshold input, because this was a concrete jitter-prone decision in prior milestones (rapid Watch/Normal flips when values hover around a threshold).
+
+### Baseline vs controlled comparison
+
+M9a keeps the same decision surface and runs two variants side-by-side inside the board:
+
+- **Baseline**: direct threshold (`value <= -0.20` under noisy noise-signal mode).
+- **Controlled**: same signal passed through tiny control memory before alert decision.
+
+The app-facing `AlertStatus` now uses the controlled variant (except fault override), while baseline is retained as an internal comparator for measured chatter.
+
+### Control primitives used
+
+Two explicit tiny primitives were used:
+
+1. **Low-pass filter** on raw pressure (`filtered = prev*0.60 + raw*0.40`)
+2. **Leaky accumulator** (`leaky = prev*0.70 + filtered`)
+
+No framework, PID subsystem, or generalized control layer was added.
+
+### Where memory lived
+
+Control memory was stored in the existing **board**:
+
+- `AlertSignalRaw`
+- `AlertSignalFiltered`
+- `AlertSignalLeaky`
+- baseline/controlled status and switch counters
+
+No new state architecture was introduced.
+
+### What improved
+
+On an explicit near-threshold pressure sequence, the baseline flips multiple times while the controlled variant flips less. This reduced alert chatter and made policy behavior steadier without hiding logic behind a large abstraction.
+
+### What got worse
+
+- Source complexity increased modestly: there are now dual tracks (baseline and controlled) plus counters for comparison.
+- For this narrow gain, extra fields are required on the board, which is honest but not free.
+
+### Was it clearer or more obscure?
+
+Mostly still clear. The control math is small and explicit, but readability would degrade quickly if many more primitives were layered in without discipline.
+
+### Board as memory location
+
+Yes. The board felt like the right place for this behavior-local control memory; it stayed close to policy and remained deterministic.
+
+### Recommendation
+
+**Promising but narrow**:
+
+- Keep this as an application-level technique by default.
+- A future tiny Octomata control-primitive layer is only justified if multiple experiments show the same pattern with similar small primitives.
+- Do not expand toward generic control-theory infrastructure from this result alone.
