@@ -76,3 +76,64 @@ This pass intentionally started from the denser hybrid layout style (anchored bo
 ## Scope guardrails preserved
 
 No hooks, effects, local component state, style/theme system, or layout/constraint framework were introduced. State remains external, events remain explicit tokens, UI functions remain pure, and the same mount/patch/unmount runtime flow was kept.
+
+## M3 coordinate hygiene pass (ControlPanel/M2 in place)
+
+This pass kept the existing hybrid layout model and only refined how coordinates are authored in `View`.
+
+### What changed
+
+- Added a visible local constants block in `View` for:
+  - anchored macro-region boundaries (`HeaderTop`, `MainTop`, `CommandAreaRight`, `DiagnosticsLeft`, etc.)
+  - control-cluster origin and spacing (`ControlOriginX/Y`, `ControlRowSpacing`, `ControlColumnSpacing`)
+  - shared control sizes (`ControlButtonWidth`, `ControlButtonHeight`)
+  - diagnostics label cluster origin/line spacing (`DiagnosticsOriginX/Y`, `DiagnosticsLineSpacing`)
+- Rewrote absolute control placement to use origin + offset arithmetic rather than repeated literals.
+- Normalized obvious nearby drift in the command button grid by using one shared left-column origin and one shared column spacing.
+
+### Before vs after patterns (concrete)
+
+- Before: repeated hand-entered button coordinates (`22/24`, `156/158`, `242/276`) across adjacent controls.
+- After: one base position (`ControlOriginX`, `ControlOriginY`) plus `ControlRowSpacing` and `ControlColumnSpacing`.
+- Before: diagnostics labels repeated x/width/height with literal y values.
+- After: one diagnostics origin plus `DiagnosticsLineSpacing` for the second line.
+- Before: anchored values were inline, making cross-region relationships harder to scan.
+- After: key anchor boundaries are named once and reused in placement lines.
+
+### Did this reduce coordinate drift?
+
+- Yes. Nearby-but-inconsistent numbers were removed from the clustered control area and replaced with shared spacing expressions.
+- Future small alignment tweaks now happen by changing one constant instead of touching multiple literals.
+
+### Is layout easier to scan/read now?
+
+- Yes. Visual intent reads as “region constants, then placements” and control groups read as coordinate patterns instead of a list of unrelated numbers.
+- The mental parse load is lower because repeated values have names tied to intent (origin, spacing, size).
+
+### Was edit locality preserved?
+
+- Yes. Edit locality remained intact:
+  - micro moves in a cluster are still one-line changes (or one-constant changes)
+  - macro-region edits still touch only the corresponding anchor constants/placements
+- No runtime loop, state model, event model, or mount/patch flow changes were required.
+
+### Did constants improve or hurt clarity?
+
+- Improved clarity in this file.
+- The constant set stayed lightweight and local (simple `let` bindings), so there was no additional abstraction burden.
+- The pass did not introduce a new coordinate system; it only made the existing one explicit.
+
+### Emerging best-practice pattern
+
+- Keep hybrid layout (anchored macro regions + local row/column/absolute usage).
+- At the top of `View`, define small named coordinate groups by intent:
+  - region anchors
+  - cluster origins
+  - spacing increments
+  - shared sizes
+- Express nearby controls as `origin + offset` arithmetic for consistency and low-touch edits.
+
+### Further abstraction needed?
+
+- Not yet. This pass recovered readability and reduced drift without runtime features or new layout primitives.
+- Recommendation: continue with this authoring convention; only consider stronger abstractions if future panels show repeated patterns that cannot stay readable with local constants.

@@ -124,15 +124,42 @@ fn View(model: PanelState) -> UI {
     let pauseEnabled = model.Mode == "running"
     let stepEnabled = model.PowerOn and model.Mode != "running"
     let alarmLabel = AlarmLabel(model.AlarmActive)
+    let HeaderTop = 0.01
+    let HeaderBottom = 0.08
+    let MainTop = 0.10
+    let CommandAreaRight = 0.35
+    let DiagnosticsLeft = 0.37
+    let MainBottom = 0.58
+    let TrendTop = 0.59
+    let TrendRight = 0.97
+    let TrendBottom = 0.88
+    let AlarmLeft = 0.73
+    let AlarmTop = 0.58
+    let AlarmBottom = 0.65
+
+    let ControlOriginX = 22.0
+    let ControlOriginY = 208.0
+    let ControlRowSpacing = 34.0
+    let ControlColumnSpacing = 134.0
+    let ControlButtonWidth = 130.0
+    let ControlButtonHeight = 28.0
+    let ResetOffsetX = 272.0
+    let ResetButtonHeight = 30.0
+
+    let DiagnosticsOriginX = 486.0
+    let DiagnosticsOriginY = 253.0
+    let DiagnosticsLineSpacing = 26.0
+    let DiagnosticsLabelWidth = 220.0
+    let DiagnosticsLabelHeight = 22.0
 
     return Canvas([
-        Place(AnchoredBox(0.01, 0.01, 0.99, 0.08), Row([
+        Place(AnchoredBox(0.01, HeaderTop, 0.99, HeaderBottom), Row([
             Text("ControlPanel M2 · Edit Stress Pass"),
             Text("Power: " + PowerLabel(model.PowerOn)),
             Text("Mode: " + model.Mode),
             Text("Alarm: " + alarmLabel)
         ])),
-        Place(AnchoredBox(0.01, 0.10, 0.35, 0.58), Column([
+        Place(AnchoredBox(0.01, MainTop, CommandAreaRight, MainBottom), Column([
             Text("Command Area"),
             Row([
                 Button("Power On", PowerOnEvent(), model.PowerOn == false),
@@ -144,24 +171,24 @@ fn View(model: PanelState) -> UI {
                 Button("Step", StepEvent(), stepEnabled)
             ])
         ])),
-        Place(AnchoredBox(0.37, 0.10, 0.99, 0.56), Column([
+        Place(AnchoredBox(DiagnosticsLeft, MainTop, 0.99, 0.56), Column([
             Text("Diagnostics"),
             Text("Setpoint: " + FormatFloat(model.Setpoint, 1)),
             Text("Output: " + FormatFloat(model.Output, 1)),
             Text("Temperature: " + FormatFloat(model.Temperature, 1) + " C"),
             Text("Pressure: " + FormatFloat(model.Pressure, 2) + " bar")
         ])),
-        Place(AnchoredBox(0.01, 0.59, 0.97, 0.88), Text("Trend/Inspector Placeholder")),
-        Place(AbsoluteBox(22.0, 208.0, 130.0, 28.0), Button("Setpoint +", SetpointIncrementEvent(), true)),
-        Place(AbsoluteBox(156.0, 208.0, 130.0, 28.0), Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0)),
-        Place(AbsoluteBox(24.0, 242.0, 130.0, 28.0), Button("Temp +", TemperatureIncrementEvent(), true)),
-        Place(AbsoluteBox(158.0, 242.0, 130.0, 28.0), Button("Temp -", TemperatureDecrementEvent(), model.Temperature > 0.0)),
-        Place(AbsoluteBox(24.0, 276.0, 130.0, 28.0), Button("Press +", PressureIncrementEvent(), true)),
-        Place(AbsoluteBox(158.0, 276.0, 130.0, 28.0), Button("Press -", PressureDecrementEvent(), model.Pressure > 0.5)),
-        Place(AbsoluteBox(294.0, 208.0, 130.0, 30.0), Button("Reset", ResetEvent(), true)),
-        Place(AbsoluteBox(486.0, 253.0, 220.0, 22.0), Text("Live queue depth: 3")),
-        Place(AbsoluteBox(486.0, 279.0, 220.0, 22.0), Text("Last cycle: 14 ms")),
-        Place(AnchoredBox(0.73, 0.58, 0.99, 0.65), Button("Clear Alarm", ClearAlarmEvent(), model.AlarmActive))
+        Place(AnchoredBox(0.01, TrendTop, TrendRight, TrendBottom), Text("Trend/Inspector Placeholder")),
+        Place(AbsoluteBox(ControlOriginX, ControlOriginY, ControlButtonWidth, ControlButtonHeight), Button("Setpoint +", SetpointIncrementEvent(), true)),
+        Place(AbsoluteBox(ControlOriginX + ControlColumnSpacing, ControlOriginY, ControlButtonWidth, ControlButtonHeight), Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0)),
+        Place(AbsoluteBox(ControlOriginX, ControlOriginY + ControlRowSpacing, ControlButtonWidth, ControlButtonHeight), Button("Temp +", TemperatureIncrementEvent(), true)),
+        Place(AbsoluteBox(ControlOriginX + ControlColumnSpacing, ControlOriginY + ControlRowSpacing, ControlButtonWidth, ControlButtonHeight), Button("Temp -", TemperatureDecrementEvent(), model.Temperature > 0.0)),
+        Place(AbsoluteBox(ControlOriginX, ControlOriginY + (ControlRowSpacing * 2.0), ControlButtonWidth, ControlButtonHeight), Button("Press +", PressureIncrementEvent(), true)),
+        Place(AbsoluteBox(ControlOriginX + ControlColumnSpacing, ControlOriginY + (ControlRowSpacing * 2.0), ControlButtonWidth, ControlButtonHeight), Button("Press -", PressureDecrementEvent(), model.Pressure > 0.5)),
+        Place(AbsoluteBox(ControlOriginX + ResetOffsetX, ControlOriginY, ControlButtonWidth, ResetButtonHeight), Button("Reset", ResetEvent(), true)),
+        Place(AbsoluteBox(DiagnosticsOriginX, DiagnosticsOriginY, DiagnosticsLabelWidth, DiagnosticsLabelHeight), Text("Live queue depth: 3")),
+        Place(AbsoluteBox(DiagnosticsOriginX, DiagnosticsOriginY + DiagnosticsLineSpacing, DiagnosticsLabelWidth, DiagnosticsLabelHeight), Text("Last cycle: 14 ms")),
+        Place(AnchoredBox(AlarmLeft, AlarmTop, 0.99, AlarmBottom), Button("Clear Alarm", ClearAlarmEvent(), model.AlarmActive))
     ])
 }
 
