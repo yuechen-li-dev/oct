@@ -24,6 +24,10 @@ func WriteOctagon(path string, value Value) error {
 }
 
 func serializeOctagonValue(value Value) (string, error) {
+	return serializeOctagonValueAtDepth(value, 0)
+}
+
+func serializeOctagonValueAtDepth(value Value, depth int) (string, error) {
 	switch value.Kind {
 	case ValueInt:
 		return strconv.FormatInt(value.Int, 10) + formatUnitSuffix(value.Dimension), nil
@@ -36,7 +40,7 @@ func serializeOctagonValue(value Value) (string, error) {
 	case ValueArray:
 		parts := make([]string, 0, len(value.Array))
 		for _, element := range value.Array {
-			rendered, err := serializeOctagonValue(element)
+			rendered, err := serializeOctagonValueAtDepth(element, depth)
 			if err != nil {
 				return "", err
 			}
@@ -54,13 +58,17 @@ func serializeOctagonValue(value Value) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("record %q missing field %q", value.Record.TypeName, fieldName)
 			}
-			rendered, err := serializeOctagonValue(fieldValue)
+			rendered, err := serializeOctagonValueAtDepth(fieldValue, depth+1)
 			if err != nil {
 				return "", err
 			}
-			fields = append(fields, fmt.Sprintf("%s: %s", fieldName, rendered))
+			fieldRendered := rendered
+			if octagonNeedsFieldParens(fieldValue) {
+				fieldRendered = "(" + rendered + ")"
+			}
+			fields = append(fields, fmt.Sprintf("%s%s: %s", octagonIndent(depth+1), fieldName, fieldRendered))
 		}
-		return fmt.Sprintf("%s { %s }", value.Record.TypeName, strings.Join(fields, " ")), nil
+		return fmt.Sprintf("%s {\n%s\n%s}", value.Record.TypeName, strings.Join(fields, "\n"), octagonIndent(depth)), nil
 	case ValueEnum:
 		if strings.Contains(value.Enum.TypeName, ".") {
 			return "", fmt.Errorf("enum type %q is not representable in .octagon output", value.Enum.TypeName)
@@ -69,6 +77,14 @@ func serializeOctagonValue(value Value) (string, error) {
 	default:
 		return "", fmt.Errorf("value kind %s is not representable in .octagon output", value.Kind)
 	}
+}
+
+func octagonIndent(depth int) string {
+	return strings.Repeat("    ", depth)
+}
+
+func octagonNeedsFieldParens(value Value) bool {
+	return value.Kind == ValueInt || value.Kind == ValueFloat
 }
 
 func recordFieldOrder(record RecordValue) []string {

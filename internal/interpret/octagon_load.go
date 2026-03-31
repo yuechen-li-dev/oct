@@ -8,6 +8,7 @@ import (
 )
 
 func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
+	expr = unwrapParenExpr(expr)
 	if expectedType.Function != nil || expectedType.VectorOf != nil || expectedType.MatrixOf != nil {
 		return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
 	}
@@ -147,6 +148,16 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	}
 
 	return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
+}
+
+func unwrapParenExpr(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = paren.Inner
+	}
 }
 
 func expectedTypeName(typeRef ast.TypeRef) string {

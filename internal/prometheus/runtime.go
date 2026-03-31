@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"oct/internal/interpret"
@@ -108,6 +109,12 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		return result, nil
 	}
 
+	if prometheusForceSubmitFailure() {
+		result.UsedBackend = BackendPrometheus
+		result.Status = ErrorStatus(StageSubmit, 3)
+		return result, fmt.Errorf("prometheus execution failed stage=%s code=%d", result.Status.ErrorStage, result.Status.ErrorCode)
+	}
+
 	rt, err := newNativeRuntime()
 	if err != nil {
 		if errors.Is(err, errNativeUnavailable) {
@@ -144,6 +151,10 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		return result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
 	}
 	return result, nil
+}
+
+func prometheusForceSubmitFailure() bool {
+	return os.Getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE") == "1"
 }
 
 func deterministicMatrix(rows, cols int) []float32 {
