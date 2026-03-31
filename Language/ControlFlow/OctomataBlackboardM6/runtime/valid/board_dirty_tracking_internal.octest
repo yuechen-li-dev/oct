@@ -1,0 +1,28 @@
+package MainValid
+
+record Board {
+    DisplayMode: String
+    AlertStatus: String
+}
+
+flow TouchBoard(board: Board) -> Board {
+    state Start {
+        board.DisplayMode = "Fault"
+        board.AlertStatus = "Fault"
+        return board
+    }
+}
+
+[Fact]
+fn BoardFlowReturnsMutatedBoardFields() -> Void {
+    let f = TouchBoard(Board { DisplayMode: "Trend" AlertStatus: "Normal" })
+    Step(f)
+
+    match Result(f) {
+        ok(value) => {
+            Assert.Equal("Fault", value.DisplayMode, "board display should be mutable only in flow")
+            Assert.Equal("Fault", value.AlertStatus, "board alert should be mutable only in flow")
+        }
+        err(e) => { Assert.True(false, "TouchBoard should complete successfully") }
+    }
+}

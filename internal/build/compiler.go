@@ -72,6 +72,14 @@ type MIRFlowResume struct{}
 
 func (MIRFlowResume) mirFlowStmt() {}
 
+type MIRFlowFieldAssign struct {
+	Target string
+	Field  string
+	Value  MIRFlowExpr
+}
+
+func (MIRFlowFieldAssign) mirFlowStmt() {}
+
 type MIRFlowReturn struct {
 	Value MIRFlowExpr
 }
@@ -1188,6 +1196,12 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string) (MIRFlowStm
 		return MIRFlowRemember{}, nil
 	case ast.ResumeStmt:
 		return MIRFlowResume{}, nil
+	case ast.FieldAssignStmt:
+		v, err := lowerFlowExpr(s.Value, env, pkg)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowFieldAssign{Target: s.Target, Field: s.Field, Value: v}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return MIRFlowReturn{}, nil
@@ -1436,6 +1450,8 @@ func dumpFlowStmt(stmt MIRFlowStmt) string {
 		return "remember"
 	case MIRFlowResume:
 		return "resume"
+	case MIRFlowFieldAssign:
+		return fmt.Sprintf("%s.%s = %s", s.Target, s.Field, dumpFlowExpr(s.Value))
 	case MIRFlowReturn:
 		if s.Value == nil {
 			return "return"
@@ -2413,6 +2429,12 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState\nf.instruction++\ncontinue", nil
 	case MIRFlowResume:
 		return "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0\nf.history = append(f.history, f.__octStateName(__resumeTarget))\ncontinue", nil
+	case MIRFlowFieldAssign:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("f.%s.%s = %s\nf.instruction++\ncontinue", s.Target, s.Field, v), nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {

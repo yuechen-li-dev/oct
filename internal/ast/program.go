@@ -139,6 +139,14 @@ type IndexAssignStmt struct {
 
 func (IndexAssignStmt) stmtNode() {}
 
+type FieldAssignStmt struct {
+	Target string
+	Field  string
+	Value  Expr
+}
+
+func (FieldAssignStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Value Expr
 }

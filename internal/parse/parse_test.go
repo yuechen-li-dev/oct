@@ -497,8 +497,18 @@ func TestBuildFileRejectsMalformedReturnExpression(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { return 1 + }", "expected expression")
 }
 
-func TestBuildFileRejectsFieldAssignment(t *testing.T) {
-	assertParseErrorContains(t, "record Point { X: Int }\nfn Main() -> Int { let p = Point { X: 1 } p.X = 2 return 0 }", "expected statement")
+func TestBuildFileParsesFieldAssignment(t *testing.T) {
+	file := parseSource(t, "record Point { X: Int }\nfn Main() -> Int { var board = Point { X: 1 } board.X = 2 return board.X }")
+	assignStmt, ok := file.Functions[0].Body.Statements[1].(ast.FieldAssignStmt)
+	if !ok {
+		t.Fatalf("expected FieldAssignStmt, got %T", file.Functions[0].Body.Statements[1])
+	}
+	if assignStmt.Target != "board" {
+		t.Fatalf("expected assignment target board, got %q", assignStmt.Target)
+	}
+	if assignStmt.Field != "X" {
+		t.Fatalf("expected assignment field X, got %q", assignStmt.Field)
+	}
 }
 
 func TestBuildFileRejectsNestedIndexAssignmentTarget(t *testing.T) {

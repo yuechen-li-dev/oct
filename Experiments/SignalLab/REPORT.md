@@ -479,3 +479,76 @@ The emerging default architecture from SignalLab is therefore a split model: Oct
 M5 further narrows the missing behavior-local working-state category toward a constrained, flow-owned typed blackboard record rather than general mutable locals or key/value slot frameworks.
 
 Forward-looking guidance: future nontrivial interactive Oct apps should likely start from this split when control-state transitions are meaningful, while validating the pattern against at least one structurally different app before promoting it to broader doctrine.
+
+## M6 findings
+
+### What exact board shape was implemented?
+
+M6 implemented a **fixed-shape typed flow board**:
+
+- `SignalBoard { DisplayMode, AlertStatus, FaultLatched, ResumeMode }`
+- one board snapshot is carried per SignalLab flow invocation and fed back into app state
+- field writes use direct syntax (`board.Field = ...`) inside flow state bodies only
+
+No dynamic slots, no key APIs, no framework wrapper methods were added.
+
+### Which fields moved into the board?
+
+Moved into `SignalBoard`:
+
+- `DisplayMode`
+- `AlertStatus`
+- `FaultLatched`
+- `ResumeMode`
+
+Kept in ordinary records/data lanes:
+
+- `Time`
+- `Value`
+- `TickCount`
+- `SelectedSignal`
+- `NoiseEnabled`
+- history buffer payload fields
+
+### Did board improve behavior-local clarity?
+
+Partially yes.
+
+- Fault/display/alert policy writes now sit in flow-local policy paths instead of reducer-side helper churn.
+- Resume intent memory has an explicit home (`board.ResumeMode`) instead of ad-hoc cross-branch threading.
+
+### Did board stay constrained enough?
+
+Yes in this implementation:
+
+- writes are restricted to flow state contexts
+- only `board.<field> = <expr>` mutation is accepted
+- non-board field mutation and non-flow use are rejected
+
+This kept board from becoming generic mutable app state.
+
+### Dirty tracking status
+
+Included internally.
+
+- runtime marks board fields dirty on board-field writes
+- no public API was added for dirty inspection in M6
+- behavior is internal-only and narrow
+
+### What became cleaner vs riskier?
+
+Cleaner:
+
+- behavior-local fault/display/alert updates are easier to read in flow form
+- less reducer-level helper noise for those fields
+
+Riskier/awkward:
+
+- explicit board handoff between reducer state and flow calls adds seam plumbing
+- mixed model (board + mirrored UI-facing fields) introduces potential drift if discipline slips
+
+### Did Candidate B survive first implementation?
+
+**Yes, with caveats.**
+
+The typed, flow-local board model is viable and useful, but it is only safe when constraints stay strict (flow-only writes, fixed shape, no dynamic access). It feels like a real missing piece for behavior-local working memory, not a blanket mutability model.

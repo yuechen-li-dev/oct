@@ -1,0 +1,55 @@
+package MainValid
+
+record Board {
+    AlertStatus: String
+    FaultLatched: Bool
+    ResumeMode: String
+}
+
+flow BoardLifecycle(board: Board, event: String) -> Board {
+    state Running {
+        when {
+            case event == "fault" -> goto FaultHold
+            case event == "ack" -> goto Resume
+            else -> return board
+        }
+    }
+
+    state FaultHold {
+        board.FaultLatched = true
+        board.AlertStatus = "Fault"
+        board.ResumeMode = "Running"
+        suspend
+
+        when {
+            case event == "ack" -> goto Resume
+            else -> return board
+        }
+    }
+
+    state Resume {
+        board.FaultLatched = false
+        board.AlertStatus = "Normal"
+        return board
+    }
+}
+
+[Fact]
+fn BoardFieldReadWriteIsFlowLocalAndPersistsAcrossSuspend() -> Void {
+    let initial = Board { AlertStatus: "Normal" FaultLatched: false ResumeMode: "Idle" }
+    let fault = BoardLifecycle(initial, "fault")
+
+    Step(fault)
+    Assert.Equal("FaultHold", Active(fault), "fault path should suspend in hold state")
+    Assert.Equal("", ResumeTarget(fault), "board writes should not interfere with resume slot")
+
+    let ack = BoardLifecycle(initial, "ack")
+    Step(ack)
+    match Result(ack) {
+        ok(value) => {
+            Assert.True(value.FaultLatched == false, "ack path should clear latch")
+            Assert.Equal("Normal", value.AlertStatus, "ack path should normalize alert")
+        }
+        err(e) => { Assert.True(false, "ack path should return board") }
+    }
+}

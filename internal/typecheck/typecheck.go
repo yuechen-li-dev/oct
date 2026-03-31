@@ -613,6 +613,36 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assigned value type does not match array element type", ctx.name)
 		}
 		return false, nil
+	case ast.FieldAssignStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: board field assignment is only valid inside flow state bodies", ctx.name)
+		}
+		if node.Target != "board" {
+			return false, fmt.Errorf("function %s: only board field assignment is supported", ctx.name)
+		}
+		target, ok := scope.lookup(node.Target)
+		if !ok {
+			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Target)
+		}
+		recordDecl, ok := c.lookupRecord(target.valueType.Name)
+		if !ok || target.valueType.IsArray || target.valueType.Base != "" {
+			return false, fmt.Errorf("function %s: board field assignment requires board to be a record type, got %s", ctx.name, target.valueType)
+		}
+		fieldType, ok := recordDecl.fields[node.Field]
+		if !ok {
+			return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
+		}
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: assignment to %s.%s: %w", ctx.name, node.Target, node.Field, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: assignment to %s.%s: fallible expression must be handled explicitly", ctx.name, node.Target, node.Field)
+		}
+		if !isAssignable(valueType.ValueType, fieldType) {
+			return false, fmt.Errorf("function %s: assignment to %s.%s: expected %s, got %s", ctx.name, node.Target, node.Field, fieldType, valueType.ValueType)
+		}
+		return false, nil
 	case ast.ReturnStmt:
 		if node.Value == nil {
 			if ctx.returnType.Base != BaseTypeVoid {
