@@ -1814,7 +1814,7 @@ func __octWriteOctagon(path string, value any) {
 	if !strings.HasSuffix(path, ".octagon") {
 		panic("WriteOctagon path must end with .octagon")
 	}
-	rendered, err := __octSerialize(reflect.ValueOf(value))
+	rendered, err := __octSerialize(reflect.ValueOf(value), 0)
 	if err != nil {
 		panic(fmt.Sprintf("WriteOctagon cannot serialize value: %v", err))
 	}
@@ -1823,12 +1823,12 @@ func __octWriteOctagon(path string, value any) {
 	}
 }
 
-func __octSerialize(v reflect.Value) (string, error) {
+func __octSerialize(v reflect.Value, depth int) (string, error) {
 	if !v.IsValid() {
 		return "", fmt.Errorf("invalid value")
 	}
 	if v.Kind() == reflect.Interface {
-		return __octSerialize(v.Elem())
+		return __octSerialize(v.Elem(), depth)
 	}
 	if meta, ok := __octEnumMetaByGoType[__octTypeKey(v.Type())]; ok {
 		idx := int(v.Int())
@@ -1849,7 +1849,7 @@ func __octSerialize(v reflect.Value) (string, error) {
 	case reflect.Slice:
 		parts := make([]string, 0, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			part, err := __octSerialize(v.Index(i))
+			part, err := __octSerialize(v.Index(i), depth)
 			if err != nil {
 				return "", err
 			}
@@ -1863,16 +1863,34 @@ func __octSerialize(v reflect.Value) (string, error) {
 		}
 		fields := make([]string, 0, len(meta.Fields))
 		for _, field := range meta.Fields {
-			value, err := __octSerialize(v.FieldByName(field))
+			fieldValue := v.FieldByName(field)
+			value, err := __octSerialize(fieldValue, depth+1)
 			if err != nil {
 				return "", err
 			}
-			fields = append(fields, fmt.Sprintf("%s: %s", field, value))
+			if __octNeedsFieldParens(fieldValue) {
+				value = "(" + value + ")"
+			}
+			fields = append(fields, fmt.Sprintf("%s%s: %s", __octIndent(depth+1), field, value))
 		}
-		return fmt.Sprintf("%s { %s }", meta.ShortName, strings.Join(fields, " ")), nil
+		return fmt.Sprintf("%s {\n%s\n%s}", meta.ShortName, strings.Join(fields, "\n"), __octIndent(depth)), nil
 	default:
 		return "", fmt.Errorf("value kind %s is not representable in .octagon output", v.Kind().String())
 	}
+}
+
+func __octIndent(depth int) string {
+	return strings.Repeat("    ", depth)
+}
+
+func __octNeedsFieldParens(v reflect.Value) bool {
+	for v.Kind() == reflect.Interface {
+		if !v.IsValid() || v.IsNil() {
+			return false
+		}
+		v = v.Elem()
+	}
+	return v.Kind() == reflect.Int || v.Kind() == reflect.Float64
 }
 `
 

@@ -156,7 +156,8 @@ func assertBenchmarkRunShape(t *testing.T, expr ast.Expr, wantNames []string) {
 		t.Fatalf("expected BenchmarkRun with only Cases field, got %#v", run.Fields)
 	}
 
-	cases, ok := run.Fields[0].Value.(ast.ArrayLiteralExpr)
+	casesExpr := unwrapOctagonParenExpr(run.Fields[0].Value)
+	cases, ok := casesExpr.(ast.ArrayLiteralExpr)
 	if !ok {
 		t.Fatalf("expected Cases array, got %T", run.Fields[0].Value)
 	}
@@ -175,15 +176,25 @@ func assertBenchmarkRunShape(t *testing.T, expr ast.Expr, wantNames []string) {
 		if len(item.Fields) != 2 || item.Fields[0].Name != "Name" || item.Fields[1].Name != "DurationNs" {
 			t.Fatalf("expected Name/DurationNs fields, got %#v", item.Fields)
 		}
-		nameExpr, ok := item.Fields[0].Value.(ast.StringLiteralExpr)
+		nameExpr, ok := unwrapOctagonParenExpr(item.Fields[0].Value).(ast.StringLiteralExpr)
 		if !ok {
 			t.Fatalf("expected Name string field, got %T", item.Fields[0].Value)
 		}
 		if nameExpr.Value != wantNames[i] {
 			t.Fatalf("expected case name %q at index %d, got %q", wantNames[i], i, nameExpr.Value)
 		}
-		if _, ok := item.Fields[1].Value.(ast.IntegerLiteral); !ok {
+		if _, ok := unwrapOctagonParenExpr(item.Fields[1].Value).(ast.IntegerLiteral); !ok {
 			t.Fatalf("expected DurationNs int field, got %T", item.Fields[1].Value)
 		}
+	}
+}
+
+func unwrapOctagonParenExpr(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = paren.Inner
 	}
 }

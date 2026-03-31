@@ -453,7 +453,7 @@ fn main() -> Int {
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
-	if strings.TrimSpace(string(body)) != "Payload { Name: \"run\" Count: 3 }" {
+	if strings.TrimSpace(string(body)) != "Payload {\n    Name: \"run\"\n    Count: (3)\n}" {
 		t.Fatalf("unexpected .octagon body: %q", string(body))
 	}
 	if _, err := octagon.Load(outPath); err != nil {

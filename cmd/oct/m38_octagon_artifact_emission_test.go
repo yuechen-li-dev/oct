@@ -69,7 +69,7 @@ func TestOctArtifactWriteOctagonEmitsDeterministicValidOutput(t *testing.T) {
 		t.Fatalf("expected deterministic .octagon emission, got first=%q second=%q", firstBody, secondBody)
 	}
 
-	expected := "SimulationConfig { Name: \"Run A\" Enabled: true Samples: [9.81m/s^2, 1.23m/s^2] }\n"
+	expected := "SimulationConfig {\n    Name: \"Run A\"\n    Enabled: true\n    Samples: [9.81m/s^2, 1.23m/s^2]\n}\n"
 	if string(firstBody) != expected {
 		t.Fatalf("unexpected .octagon artifact body\nwant: %q\ngot:  %q", expected, firstBody)
 	}
