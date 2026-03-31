@@ -552,3 +552,99 @@ Riskier/awkward:
 **Yes, with caveats.**
 
 The typed, flow-local board model is viable and useful, but it is only safe when constraints stay strict (flow-only writes, fixed shape, no dynamic access). It feels like a real missing piece for behavior-local working memory, not a blanket mutability model.
+
+## M7 findings
+
+### What additional responsibilities moved into the board?
+
+M7 deliberately overloaded the same single flow-local board with more behavior-local memory than M6:
+
+- richer display behavior metadata (`DisplayOverlay`)
+- expanded alert memory (`AlertSeverity`, `AlertLatched`)
+- split interruption targets (`ResumeModeInspect`, `ResumeModeFault`) while keeping one board
+- policy/hysteresis-adjacent commit memory (`CooldownTicks`, `CooldownActive`, `JustTriggered`)
+- UI-facing behavior digest (`BehaviorSummary`)
+
+This was done without introducing new APIs/syntax/runtime features, and without dynamic keys.
+
+### What explicitly stayed in records (and why)?
+
+Data lanes stayed out of board and remained immutable record fields:
+
+- `Time`, `Value`, `TickCount`
+- `SelectedSignal`, `NoiseEnabled`
+- sample history payload/buffer slots
+
+Reason: these are numeric pipeline/state payload concerns, not behavior-local arbitration memory. Moving them into board would blur the behavioral boundary and collapse into generic mutable app state.
+
+### Clarity impact
+
+Mixed result:
+
+- Improved: control/policy edge-memory intent is local and explicit in flow policy paths.
+- Worse: board shape became much wider and harder to scan; “what matters for this transition?” is no longer obvious at a glance.
+
+M7 shows that board clarity degrades once too many adjacent concerns are packed into one object, even if each field is technically behavior-local.
+
+### Boilerplate impact
+
+Board reduced some reducer-side helper churn for behavioral flags, but introduced board-field bookkeeping noise:
+
+- initialize/reset touchpoints expanded
+- policy flow writes expanded
+- handoff synchronization burden increased
+
+Net: boilerplate shifted, not eliminated.
+
+### Centralization risk
+
+Yes, visible in M7.
+
+The board started to trend toward a local “god object” for anything behavioral, including fields that are only weakly coupled. This did not fully collapse architecture, but the pressure signal is real: once many categories accumulate, review and ownership boundaries get fuzzy.
+
+### Seam plumbing pressure
+
+Increased and now noticeable:
+
+- every reevaluation path carries a larger board snapshot
+- event-to-policy handoff became a key seam (`ReevaluateBehavior(..., event)`)
+- reset/ack/resume paths now require broader board synchronization discipline
+
+Still acceptable at this app size, but this is now a limiting factor.
+
+### Boundary integrity (board vs records)
+
+Still intact in M7 because numeric lanes were kept out by rule.  
+However, pressure at the boundary increased: the temptation to move “just one more derived datum” into board is now high once board already contains many fields.
+
+### Dirty tracking value under heavier board usage
+
+Dirty tracking became more justified conceptually (many fields mutate transiently), but still mostly invisible in author workflow because no public inspection surface exists. M7 increases potential value, but not practical payoff yet.
+
+### One-board-per-flow viability
+
+One board remains viable but is now near its readability limit for this domain.
+
+- No hard requirement for multiple boards emerged.
+- Clear pressure emerged for sub-grouping or tighter board scope constraints.
+
+### Refined boundary after pressure probe
+
+**Board is good for:**
+
+- interruption/resume intent memory
+- policy commit edges and short-lived behavioral flags
+- derived behavior summaries that are tightly coupled to control arbitration
+
+**Board is bad for:**
+
+- numeric data lanes and plot payload
+- broad UI presentation state that is not directly tied to behavior contracts
+- accumulating heterogeneous concerns “because it is convenient”
+
+### Direct recommendation for next step
+
+Do **not** expand board breadth further right now.  
+Next step should be **refining seam/integration discipline and tightening board field admission rules**, not adding board categories.
+
+If pressure continues to rise, restrict board usage further (narrower “behavior contract memory” only) before considering shape growth.
