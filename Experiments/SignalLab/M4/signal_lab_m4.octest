@@ -1,0 +1,121 @@
+package SignalLabM4
+
+[Fact]
+fn SignalLabM4ViewRendersFromInitialState() -> Void {
+    let ui = View(Init())
+    Assert.True(Len(Signature(ui)) > 0, "SignalLab M4 view should produce an opaque UI signature")
+}
+
+[Fact]
+fn SignalLabM4StartPauseResumeStopTransitionsRemainValid() -> Void {
+    var model = Init()
+    Assert.True(model.ControlMode == ControlIdle(), "Init should start idle")
+
+    model = Update(model, StartEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Start should transition to running")
+
+    model = Update(model, PauseEvent())
+    Assert.True(model.ControlMode == ControlPaused(), "Pause should transition to paused")
+
+    model = Update(model, ResumeEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Resume should return to running")
+
+    model = Update(model, StopEvent())
+    Assert.True(model.ControlMode == ControlIdle(), "Stop should return to idle")
+}
+
+[Fact]
+fn SignalLabM4InspectUsesSuspendRememberResume() -> Void {
+    let f = InspectResumeProbe()
+    Step(f)
+    Assert.Equal("Running", Active(f), "first step should suspend running state")
+
+    Step(f)
+    Assert.Equal("Inspect", Active(f), "second step should remember running and divert to inspect")
+    Assert.Equal("Running", ResumeTarget(f), "resume target should hold remembered running state")
+
+    Step(f)
+    Assert.Equal("Running", Active(f), "third step should resume back to running")
+    Assert.Equal("", ResumeTarget(f), "resume slot should clear after successful resume")
+}
+
+[Fact]
+fn SignalLabM4UtilityPoliciesDriveDisplayAndAlert() -> Void {
+    var model = Init()
+    Assert.True(model.DisplayMode == DisplayTrend(), "initial empty model should prefer trend display")
+
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.True(model.DisplayMode == DisplayNoiseFocus() or model.DisplayMode == DisplayFault(), "utility when should move display away from plain trend under competing pressure")
+    Assert.True(model.AlertStatus == AlertWatch() or model.AlertStatus == AlertFault(), "utility when should raise alert level under noisy pressure")
+}
+
+[Fact]
+fn SignalLabM4FaultLatchAndAckFlow() -> Void {
+    var model = Init()
+    model = Update(model, StartEvent())
+    model = Update(model, ToggleNoiseEvent())
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.True(model.FaultLatched, "noise-heavy progression should latch fault")
+    Assert.True(model.ControlMode == ControlFault(), "fault should push control into fault hold state")
+    Assert.True(model.DisplayMode == DisplayFault(), "fault should dominate display policy")
+
+    model = Update(model, AckFaultEvent())
+    Assert.True(model.FaultLatched == false, "ack should clear latched fault")
+    Assert.True(model.ControlMode == ControlRunning(), "ack should resume remembered running mode")
+}
+
+[Fact]
+fn SignalLabM4HistoryStillCapsAtSixSamples() -> Void {
+    var model = Init()
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.True(model.HistoryCount == 6, "History should cap at six samples")
+    Assert.Near(model.Value, model.History0, 0.000001, "Latest sample should stay in slot zero")
+}
+
+[Fact]
+fn SignalLabM4EventUpdateViewPatchLoopRemainsValid() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitStart = Emit(mounted, StartEvent()) !
+    Assert.Equal(0, emitStart, "Start emit should succeed")
+
+    let startEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(startEvents), "Start should enqueue one event")
+
+    var model = Init()
+    model = Update(model, startEvents[0])
+    Assert.True(model.ControlMode == ControlRunning(), "Model should be running after start")
+
+    let startPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, startPatch, "Patch after start should succeed")
+
+    let emitStep = Emit(mounted, StepEvent()) !
+    Assert.Equal(0, emitStep, "Step emit should succeed")
+
+    let stepEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stepEvents), "Step should enqueue one event")
+
+    model = Update(model, stepEvents[0])
+    Assert.True(model.HistoryCount == 1, "Step should update plot history")
+
+    let stepPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, stepPatch, "Patch after step should succeed")
+
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}

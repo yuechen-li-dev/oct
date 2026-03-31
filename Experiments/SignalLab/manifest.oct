@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "SignalLab"
         Version: "0.1.0"
-        Description: "SignalLab M0-M3 UI-backed application experiment for layout, helper conventions, and control-state expression probes"
+        Description: "SignalLab M0-M4 UI-backed application experiment for layout, helper conventions, control-state expression probes, and Octomata boundary pressure probes"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
