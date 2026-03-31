@@ -104,6 +104,7 @@ type FlowRuntimeInstance struct {
 	Result           Value
 	StateHistory     []string
 	UtilityWhenSites map[int]utilityWhenSiteState
+	DirtyBoardFields map[string]struct{}
 }
 
 type utilityWhenSiteState struct {
@@ -373,6 +374,19 @@ func (e *environment) assign(name string, value Value) bool {
 	return false
 }
 
+func assignBindingValue(env *environment, name string, value Value) bool {
+	for current := env; current != nil; current = current.parent {
+		bindingValue, ok := current.values[name]
+		if !ok {
+			continue
+		}
+		bindingValue.value = value
+		current.values[name] = bindingValue
+		return true
+	}
+	return false
+}
+
 func snapshotEnvironment(env *environment) *environment {
 	snapshot := newEnvironment(nil)
 	chain := make([]*environment, 0)
@@ -460,6 +474,7 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 		StateEnv:         nil,
 		StateHistory:     nil,
 		UtilityWhenSites: make(map[int]utilityWhenSiteState),
+		DirtyBoardFields: make(map[string]struct{}),
 	}
 }
 
@@ -619,6 +634,35 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		updated.Array[index.value.Int] = value.value
 		if !env.assign(node.Target, updated) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
+		}
+		return stmtResult{}, nil
+	case ast.FieldAssignStmt:
+		targetBinding, ok := env.lookup(node.Target)
+		if !ok {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Target)
+		}
+		if targetBinding.value.Kind != ValueRecord {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: field assignment requires record target")
+		}
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		updated := targetBinding.value
+		if _, exists := updated.Record.Fields[node.Field]; !exists {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: record type '%s' has no field '%s'", updated.Record.TypeName, node.Field)
+		}
+		updated.Record.Fields[node.Field] = value.value
+		if !assignBindingValue(env, node.Target, updated) {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Target)
+		}
+		if node.Target == "board" {
+			if instance, flowErr := flowInstanceFromEnv(env); flowErr == nil {
+				instance.DirtyBoardFields[node.Field] = struct{}{}
+			}
 		}
 		return stmtResult{}, nil
 	case ast.ReturnStmt:

@@ -1,0 +1,13 @@
+expect error: "function Main: board field assignment is only valid inside flow state bodies"
+
+package MainInvalid
+
+record Board {
+    FaultLatched: Bool
+}
+
+fn Main() -> Int {
+    let board = Board { FaultLatched: false }
+    board.FaultLatched = true
+    return 0
+}

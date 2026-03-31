@@ -1,0 +1,15 @@
+expect error: "function Sample: only board field assignment is supported"
+
+package MainInvalid
+
+record Board {
+    FaultLatched: Bool
+}
+
+flow Sample(board: Board) -> Int {
+    state Start {
+        let snapshot = board
+        snapshot.FaultLatched = true
+        return 1
+    }
+}

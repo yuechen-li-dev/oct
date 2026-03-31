@@ -933,6 +933,22 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		return ast.AssignStmt{Name: name.Lexeme, Value: value}, true, nil
 	}
 
+	if p.match(lex.Dot) {
+		field, err := p.expect(lex.Identifier, "expected field name after '.'")
+		if err != nil {
+			return nil, false, err
+		}
+		if !p.match(lex.Assign) {
+			p.position = savedPosition
+			return nil, false, nil
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, false, err
+		}
+		return ast.FieldAssignStmt{Target: name.Lexeme, Field: field.Lexeme, Value: value}, true, nil
+	}
+
 	if !p.match(lex.LeftBracket) {
 		p.position = savedPosition
 		return nil, false, nil
