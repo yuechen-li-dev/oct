@@ -14,6 +14,7 @@ Dimensions participate in expression typing.
 - Arithmetic operators are `+`, `-`, `*`, `/`.
 - Comparison operators are `==`, `!=`, `<`, `<=`, `>`, `>=`.
 - Logical operators are `and`, `or`, `not`.
+- Unary numeric negation is `-expr` for `Int`/`Float` expressions.
 - `+` on `String` performs concatenation.
 - Array arithmetic is element-wise for matching numeric array types.
 - Array arithmetic requires equal element types.
@@ -25,6 +26,8 @@ Dimensions participate in expression typing.
 - Complex arithmetic supports `+`, `-`, `*`, `/` for `Complex` operands.
 - Real numeric scalars (`Int`/`Float`) promote to `Complex` only for `+`, `-`, `*`, `/` when paired with `Complex`.
 - Complex comparison supports equality only (`==`, `!=`).
+- Unary `-` negates an `Int`/`Float` expression and preserves type and dimension.
+- Unary `-` is distinct from binary subtraction and binds to its immediate operand.
 
 ## Examples
 
@@ -37,6 +40,18 @@ fn Main() -> Int<m/s> {
     let d = 10m
     let t = 2s
     return d / t
+}
+```
+
+Unary minus examples:
+
+```oct
+package Main
+
+fn Main() -> Float {
+    let a = 1.5
+    let b = 0.25
+    return -(a + b)
 }
 ```
 

@@ -1,0 +1,7 @@
+expect error: "function 'ToString' argument 1 expects Int, Float, or Bool, got String"
+
+package Main
+
+fn Main() -> String {
+    return ToString("already string")
+}

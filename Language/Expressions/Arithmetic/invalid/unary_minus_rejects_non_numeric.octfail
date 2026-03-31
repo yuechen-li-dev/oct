@@ -1,0 +1,7 @@
+expect error: "operator '-' requires Int or Float operand"
+
+package Main
+
+fn Main() -> Bool {
+    return -true
+}

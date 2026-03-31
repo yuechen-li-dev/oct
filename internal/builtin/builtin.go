@@ -57,6 +57,7 @@ var names = map[string]struct{}{
 	"UIDrainEvents":      {},
 	"UISignature":        {},
 	"FormatFloat":        {},
+	"ToString":           {},
 }
 
 func IsName(name string) bool {
