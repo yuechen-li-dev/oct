@@ -59,3 +59,55 @@ M1 should focus on:
 - adding a minimal plot area implementation on top of the current model,
 - evaluating whether the same coordinate hygiene conventions still scale,
 - introducing only author-level helper conventions (not runtime features) for repeated control/readout patterns.
+
+## M1 findings
+
+### Did the current runtime/layout model remain sufficient?
+
+Yes. M1 adds a richer surface (controls + readouts + mini plot region + sample history) while preserving the M0 architecture exactly:
+
+- explicit external state,
+- explicit event tokens,
+- pure `Update(state, event) -> state`,
+- pure `View(state) -> UI`,
+- unchanged mount/emit/drain/update/patch loop.
+
+No runtime API changes were required.
+
+### Did the plot/display area fit naturally into the current UI system?
+
+Yes. A minimal plot-like readout was implemented as an anchored display region with textual marker lines derived from bounded history state. This fit naturally into existing `AnchoredBox + Column + Text` composition, with no new rendering primitives.
+
+### Did author-level helper conventions reduce duplication meaningfully?
+
+Yes, at modest but real scale. Three helpers reduced repeated boilerplate:
+
+- `LabeledValue(label, valueText)` for repeated readout rows,
+- `SignalSelectButton(label, token, selected, enabled)` for mutually exclusive signal selection controls,
+- `ReadoutBox(title, lines)` for stable readout grouping.
+
+The helpers kept event wiring explicit while reducing copy-paste of label/event/enable patterns.
+
+### Which helper patterns felt worth keeping?
+
+Most useful in practice:
+
+1. `SignalSelectButton` (highest value): centralizes selected/disabled behavior and makes intent obvious.
+2. `LabeledValue`: lowers repetitive readout row construction.
+3. `ReadoutBox`: helpful for structure, but lower leverage than the first two.
+
+### Was any new runtime/widget feature actually justified?
+
+Not yet. M1 did not justify runtime or widget expansion. Existing primitives were sufficient for this app growth step.
+
+### What is now the single biggest pain point in building a richer app?
+
+Manual record-copy updates are now the dominant cost. Because state is explicit and immutable, each event branch repeats full record reconstruction, including history fields. This is correct and transparent, but verbose as state shape grows.
+
+## Updated recommendation
+
+Proceed with one more app-level growth step before runtime changes.
+
+- Continue validating richer app behavior in M2 with current runtime/layout.
+- Prefer additional author-level helper conventions (especially for repetitive update/record wiring and grouped controls) before introducing new primitives.
+- Revisit runtime changes only if multiple experiments converge on the same hard blocker.
