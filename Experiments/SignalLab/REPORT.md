@@ -291,3 +291,15 @@ For interactive apps with meaningful mode logic and competing decisions: **yes, 
 For numeric/data-heavy parts: **no, records should remain primary**.
 
 Net recommendation after M4: use an Octomata-first behavioral core with explicit record data lanes, not an all-Octomata everything model.
+
+## Preliminary Conclusion
+
+From M0 through M4, SignalLab indicates that the current UI runtime model is sufficient for this class of app. The hybrid layout approach remains the working default: `AnchoredBox` for macro regions, `Row`/`Column` for local grouping, and `AbsoluteBox` for precision touch-ups. Coordinate hygiene plus author-level UI helpers reduced practical friction without requiring runtime changes.
+
+For state ergonomics, explicit immutable record state remains workable for data-heavy lanes at current scale. Author-level helper conventions reduced update noise enough to keep reducers readable, so this experiment alone does not yet justify language-level record-update features.
+
+For control behavior, Octomata showed clear value as a behavioral contract surface. It materially improved clarity for mode progression, interruption and fault handling, and prioritization/arbitration logic. At the same time, M4 reinforces that Octomata should not be treated as a universal replacement for all state.
+
+The emerging default architecture from SignalLab is therefore a split model: Octomata for behavior/control progression, interruption, and policy decisions; ordinary records for numeric state, history buffers, and deterministic data pipelines. This is a preliminary conclusion from SignalLab, not a universal rule.
+
+Forward-looking guidance: future nontrivial interactive Oct apps should likely start from this split when control-state transitions are meaningful, while validating the pattern against at least one structurally different app before promoting it to broader doctrine.
