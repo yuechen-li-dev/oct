@@ -162,3 +162,69 @@ The biggest remaining pain is maintaining many near-identical helper constructor
 For current SignalLab scale, this can stay author-level for now.
 
 M2 evidence suggests explicit immutable state remains workable with disciplined helper conventions, and immediate language/runtime changes are not yet justified. A language-level record update feature should only be reconsidered if multiple larger experiments show helper maintenance cost becoming dominant.
+
+## M3 findings
+
+### What control-state structure moved into Octomata?
+
+M3 moved control-mode transitions out of plain helper branching into an explicit Octomata flow:
+
+- `ControlModeTransition(current, event) -> String`
+- states: `Idle`, `Running`, `Paused`
+- transition selection uses `when` in each state with explicit guard ordering.
+
+`Update` now delegates start/stop/pause/resume mode changes through `NextControlMode`, which steps the flow and applies the returned control mode.
+
+### What remained ordinary record state?
+
+The experiment kept numeric/display/application data in explicit immutable record fields:
+
+- `Time`
+- `Value`
+- `TickCount`
+- `SelectedSignal`
+- `NoiseEnabled`
+- `HistoryCount` + history slots
+
+Step/recompute/history logic remained regular record-based state transformation.
+
+### Did Octomata reduce complexity?
+
+Partially.
+
+- It made allowed control transitions materially clearer by concentrating them in one flow surface (`Idle/Running/Paused`) instead of scattering mode expectations across event branches.
+- It reduced boolean-centric intent branching in `Update` for control events.
+
+But total code volume did not drop dramatically because record-copy helpers still dominate data updates.
+
+### Did readability of control transitions improve?
+
+Yes.
+
+The allowed transition graph is now explicit and reviewable in one place. It is easier to answer questions like “can paused resume?” or “what events are ignored in idle?” without scanning the whole reducer.
+
+### Did update verbosity reduce enough to matter?
+
+Moderately.
+
+`Update` became cleaner for control events, but data-path verbosity is still primarily governed by explicit record updates and history management. So the gain is meaningful for control logic, not a broad verbosity solution.
+
+### What became more awkward?
+
+- A small adapter (`NextControlMode`) is needed to instantiate/step/read a flow result for each control event.
+- The flow is excellent for control semantics but does not help with dense numeric/history record-copy boilerplate.
+
+### Is this a better model than M2 helper-only reducer style?
+
+For apps with non-trivial control modes, yes.
+
+M3 suggests a hybrid split is cleaner than helper-only reducer style:
+
+- Octomata for control-state progression/contracts.
+- Records for numeric/data state.
+
+### Should future interactive apps prefer this split?
+
+Recommendation: **Yes, prefer the hybrid split by default when control-state transitions are a meaningful part of behavior.**
+
+If an app has very shallow control state, helper-only style remains acceptable. But once mode transitions matter, Octomata provides clearer control contracts with low architectural disruption.

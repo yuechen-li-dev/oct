@@ -1,0 +1,731 @@
+package SignalLabM3
+
+record Mount {
+    Handle: Int
+}
+
+record UIBox {
+    Kind: String
+    X: Float
+    Y: Float
+    Width: Float
+    Height: Float
+    Left: Float
+    Top: Float
+    Right: Float
+    Bottom: Float
+}
+
+record SignalState {
+    ControlMode: String
+    Time: Float
+    Value: Float
+    NoiseEnabled: Bool
+    SelectedSignal: String
+    TickCount: Int
+    HistoryCount: Int
+    History0: Float
+    History1: Float
+    History2: Float
+    History3: Float
+    History4: Float
+    History5: Float
+}
+
+fn Text(content: String) -> UI {
+    return UIText(content)
+}
+
+fn Button(label: String, event: String, enabled: Bool) -> UI {
+    return UIButton(label, event, enabled)
+}
+
+fn Row(children: UI[]) -> UI {
+    return UIRow(children)
+}
+
+fn Column(children: UI[]) -> UI {
+    return UIColumn(children)
+}
+
+fn Canvas(children: UI[]) -> UI {
+    return UICanvas(children)
+}
+
+fn AbsoluteBox(x: Float, y: Float, width: Float, height: Float) -> UIBox {
+    return UIBox {
+        Kind: "absolute"
+        X: x
+        Y: y
+        Width: width
+        Height: height
+        Left: 0.0
+        Top: 0.0
+        Right: 0.0
+        Bottom: 0.0
+    }
+}
+
+fn AnchoredBox(left: Float, top: Float, right: Float, bottom: Float) -> UIBox {
+    return UIBox {
+        Kind: "anchored"
+        X: 0.0
+        Y: 0.0
+        Width: 0.0
+        Height: 0.0
+        Left: left
+        Top: top
+        Right: right
+        Bottom: bottom
+    }
+}
+
+fn Place(box: UIBox, child: UI) -> UI {
+    if box.Kind == "absolute" {
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+    }
+
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+}
+
+fn MountUI(root: UI) -> Mount {
+    return Mount { Handle: UIMount(root) }
+}
+
+fn PatchUI(mount: Mount, next: UI) -> Int {
+    return UIPatch(mount.Handle, next)
+}
+
+fn UnmountUI(mount: Mount) -> Int {
+    return UIUnmount(mount.Handle)
+}
+
+fn Emit(mount: Mount, event: String) -> Int ! Error {
+    return UIEmit(mount.Handle, event)?
+}
+
+fn DrainEvents(mount: Mount) -> String[] {
+    return UIDrainEvents(mount.Handle)
+}
+
+fn Signature(node: UI) -> String {
+    return UISignature(node)
+}
+
+fn LabeledValue(label: String, valueText: String) -> UI {
+    return Row([Text(label + ":"), Text(valueText)])
+}
+
+fn ReadoutBox(title: String, lines: UI[]) -> UI {
+    return Column([
+        Text(title),
+        lines[0],
+        lines[1],
+        lines[2],
+        lines[3]
+    ])
+}
+
+fn SignalSelectButton(label: String, token: String, selected: Bool, enabled: Bool) -> UI {
+    let prefix = "[ ] "
+    if selected {
+        return Button("[*] " + label, token, false)
+    }
+
+    return Button(prefix + label, token, enabled)
+}
+
+fn Init() -> SignalState {
+    let initial = SignalState {
+        ControlMode: ControlIdle()
+        Time: 0.0
+        Value: 0.0
+        NoiseEnabled: false
+        SelectedSignal: SignalSine()
+        TickCount: 0
+        HistoryCount: 0
+        History0: 0.0
+        History1: 0.0
+        History2: 0.0
+        History3: 0.0
+        History4: 0.0
+        History5: 0.0
+    }
+
+    return Recompute(initial)
+}
+
+fn View(model: SignalState) -> UI {
+    let HeaderTop = 0.01
+    let HeaderBottom = 0.08
+    let ControlsTop = 0.10
+    let ControlsRight = 0.56
+    let ControlsBottom = 0.52
+    let ReadoutLeft = 0.58
+    let ReadoutBottom = 0.52
+    let DisplayTop = 0.55
+    let DisplayBottom = 0.93
+
+    let ActionClusterX = 24.0
+    let ActionClusterY = 214.0
+    let ClusterColumnSpacing = 130.0
+    let ClusterRowSpacing = 36.0
+    let PrimaryButtonWidth = 124.0
+    let PrimaryButtonHeight = 30.0
+
+    let SignalClusterX = ActionClusterX
+    let SignalClusterY = ActionClusterY + (ClusterRowSpacing * 2.0)
+    let SignalButtonWidth = 118.0
+
+    let ReadoutX = 740.0
+    let ReadoutY = 220.0
+    let ReadoutLineSpacing = 27.0
+    let ReadoutWidth = 300.0
+    let ReadoutHeight = 22.0
+
+    return Canvas([
+        Place(AnchoredBox(0.01, HeaderTop, 0.99, HeaderBottom), Row([
+            Text("SignalLab M3"),
+            Text("Signal: " + SignalLabel(model.SelectedSignal)),
+            Text("Mode: " + ControlModeLabel(model.ControlMode)),
+            Text("Samples in buffer" )
+        ])),
+        Place(AnchoredBox(0.01, ControlsTop, ControlsRight, ControlsBottom), Column([
+            Text("Control Panel"),
+            Row([
+                Button("Start", StartEvent(), IsRunning(model.ControlMode) == false),
+                Button("Stop", StopEvent(), IsRunning(model.ControlMode)),
+                Button("Step", StepEvent(), true)
+            ]),
+            Row([
+                Button("Reset", ResetEvent(), true),
+                Button("Noise: " + NoiseToggleLabel(model.NoiseEnabled), ToggleNoiseEvent(), true)
+            ]),
+            Row([
+                SignalSelectButton("Sine", SelectSignalSineEvent(), model.SelectedSignal == SignalSine(), true),
+                SignalSelectButton("Square", SelectSignalSquareEvent(), model.SelectedSignal == SignalSquare(), true),
+                SignalSelectButton("Noise", SelectSignalNoiseEvent(), model.SelectedSignal == SignalNoise(), true)
+            ])
+        ])),
+        Place(AnchoredBox(ReadoutLeft, ControlsTop, 0.99, ReadoutBottom), ReadoutBox("Readouts", [
+            LabeledValue("Time", FormatFloat(model.Time, 2)),
+            LabeledValue("Value", FormatFloat(model.Value, 4)),
+            LabeledValue("Noise", NoiseStateLabel(model.NoiseEnabled)),
+            LabeledValue("Signal", SignalLabel(model.SelectedSignal))
+        ])),
+        Place(AnchoredBox(0.01, DisplayTop, 0.99, DisplayBottom), PlotArea(model)),
+
+        Place(AbsoluteBox(ActionClusterX, ActionClusterY, PrimaryButtonWidth, PrimaryButtonHeight), Button("Start", StartEvent(), IsRunning(model.ControlMode) == false)),
+        Place(AbsoluteBox(ActionClusterX + ClusterColumnSpacing, ActionClusterY, PrimaryButtonWidth, PrimaryButtonHeight), Button("Stop", StopEvent(), IsRunning(model.ControlMode))),
+        Place(AbsoluteBox(ActionClusterX + (ClusterColumnSpacing * 2.0), ActionClusterY, PrimaryButtonWidth, PrimaryButtonHeight), Button("Step", StepEvent(), true)),
+        Place(AbsoluteBox(ActionClusterX, ActionClusterY + ClusterRowSpacing, PrimaryButtonWidth, PrimaryButtonHeight), Button("Reset", ResetEvent(), true)),
+        Place(AbsoluteBox(ActionClusterX + ClusterColumnSpacing, ActionClusterY + ClusterRowSpacing, PrimaryButtonWidth, PrimaryButtonHeight), Button("Noise: " + NoiseToggleLabel(model.NoiseEnabled), ToggleNoiseEvent(), true)),
+
+        Place(AbsoluteBox(SignalClusterX, SignalClusterY, SignalButtonWidth, PrimaryButtonHeight), SignalSelectButton("Sine", SelectSignalSineEvent(), model.SelectedSignal == SignalSine(), true)),
+        Place(AbsoluteBox(SignalClusterX + SignalButtonWidth + 10.0, SignalClusterY, SignalButtonWidth, PrimaryButtonHeight), SignalSelectButton("Square", SelectSignalSquareEvent(), model.SelectedSignal == SignalSquare(), true)),
+        Place(AbsoluteBox(SignalClusterX + ((SignalButtonWidth + 10.0) * 2.0), SignalClusterY, SignalButtonWidth, PrimaryButtonHeight), SignalSelectButton("Noise", SelectSignalNoiseEvent(), model.SelectedSignal == SignalNoise(), true)),
+
+        Place(AbsoluteBox(ReadoutX, ReadoutY, ReadoutWidth, ReadoutHeight), Text("Mode " + ControlModeLabel(model.ControlMode))),
+        Place(AbsoluteBox(ReadoutX, ReadoutY + ReadoutLineSpacing, ReadoutWidth, ReadoutHeight), Text("t=" + FormatFloat(model.Time, 2) + "  v=" + FormatFloat(model.Value, 4))),
+        Place(AbsoluteBox(ReadoutX, ReadoutY + (ReadoutLineSpacing * 2.0), ReadoutWidth, ReadoutHeight), Text("Noise " + NoiseStateLabel(model.NoiseEnabled))),
+        Place(AbsoluteBox(ReadoutX, ReadoutY + (ReadoutLineSpacing * 3.0), ReadoutWidth, ReadoutHeight), Text("plot " + LatestSampleText(model)))
+    ])
+}
+
+fn PlotArea(model: SignalState) -> UI {
+    return Column([
+        Text("Display / Mini Plot (oldest -> newest)"),
+        PlotSampleLine(model, 5),
+        PlotSampleLine(model, 4),
+        PlotSampleLine(model, 3),
+        PlotSampleLine(model, 2),
+        PlotSampleLine(model, 1),
+        PlotSampleLine(model, 0)
+    ])
+}
+
+fn PlotSampleLine(model: SignalState, slot: Int) -> UI {
+    if HasHistorySlot(model, slot) == false {
+        return Text("slot | .... | --")
+    }
+
+    let v = HistorySlotValue(model, slot)
+    return Text("slot | " + MarkerForValue(v) + " | " + FormatFloat(v, 4))
+}
+
+fn Update(model: SignalState, event: String) -> SignalState {
+    if event == StartEvent() {
+        return Recompute(WithControlMode(model, NextControlMode(model.ControlMode, StartEvent())))
+    }
+
+    if event == StopEvent() {
+        return Recompute(WithControlMode(model, NextControlMode(model.ControlMode, StopEvent())))
+    }
+
+    if event == PauseEvent() {
+        return Recompute(WithControlMode(model, NextControlMode(model.ControlMode, PauseEvent())))
+    }
+
+    if event == ResumeEvent() {
+        return Recompute(WithControlMode(model, NextControlMode(model.ControlMode, ResumeEvent())))
+    }
+
+    if event == StepEvent() {
+        let stepped = AdvanceOne(model)
+        let recomputed = Recompute(stepped)
+        return RecordSample(recomputed)
+    }
+
+    if event == ResetEvent() {
+        return Init()
+    }
+
+    if event == ToggleNoiseEvent() {
+        return Recompute(WithNoiseEnabled(model, model.NoiseEnabled == false))
+    }
+
+    if event == SelectSignalSineEvent() {
+        return Recompute(WithSelectedSignal(model, SignalSine()))
+    }
+
+    if event == SelectSignalSquareEvent() {
+        return Recompute(WithSelectedSignal(model, SignalSquare()))
+    }
+
+    if event == SelectSignalNoiseEvent() {
+        return Recompute(WithSelectedSignal(model, SignalNoise()))
+    }
+
+    return model
+}
+
+fn RecordSample(model: SignalState) -> SignalState {
+    let nextCount = model.HistoryCount + 1
+    if nextCount > 6 {
+        let shifted = WithHistory(model, 6, model.Value, model.History0, model.History1, model.History2)
+        return shifted
+    }
+
+    return WithHistory(model, nextCount, model.Value, model.History0, model.History1, model.History2)
+}
+
+fn AdvanceOne(model: SignalState) -> SignalState {
+    let next = WithTime(model, model.Time + 0.25)
+    return WithTickCount(next, model.TickCount + 1)
+}
+
+fn Recompute(model: SignalState) -> SignalState {
+    let base = ComputeBaseSignal(model.SelectedSignal, model.Time, model.TickCount)
+    let noise = ComputeNoiseOffset(model.NoiseEnabled, model.TickCount)
+    return WithValue(model, base + noise)
+}
+
+fn WithControlMode(model: SignalState, mode: String) -> SignalState {
+    return SignalState {
+        ControlMode: mode
+        Time: model.Time
+        Value: model.Value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: model.TickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithNoiseEnabled(model: SignalState, enabled: Bool) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: model.Time
+        Value: model.Value
+        NoiseEnabled: enabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: model.TickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithSelectedSignal(model: SignalState, signal: String) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: model.Time
+        Value: model.Value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: signal
+        TickCount: model.TickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithTime(model: SignalState, time: Float) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: time
+        Value: model.Value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: model.TickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithValue(model: SignalState, value: Float) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: model.Time
+        Value: value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: model.TickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithTickCount(model: SignalState, tickCount: Int) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: model.Time
+        Value: model.Value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: tickCount
+        HistoryCount: model.HistoryCount
+        History0: model.History0
+        History1: model.History1
+        History2: model.History2
+        History3: model.History3
+        History4: model.History4
+        History5: model.History5
+    }
+}
+
+fn WithHistory(model: SignalState, count: Int, h0: Float, h1: Float, h2: Float, h3: Float) -> SignalState {
+    return SignalState {
+        ControlMode: model.ControlMode
+        Time: model.Time
+        Value: model.Value
+        NoiseEnabled: model.NoiseEnabled
+        SelectedSignal: model.SelectedSignal
+        TickCount: model.TickCount
+        HistoryCount: count
+        History0: h0
+        History1: h1
+        History2: h2
+        History3: h3
+        History4: model.History3
+        History5: model.History4
+    }
+}
+
+fn HasHistorySlot(model: SignalState, slot: Int) -> Bool {
+    return model.HistoryCount > slot
+}
+
+fn HistorySlotValue(model: SignalState, slot: Int) -> Float {
+    if slot == 0 {
+        return model.History0
+    }
+
+    if slot == 1 {
+        return model.History1
+    }
+
+    if slot == 2 {
+        return model.History2
+    }
+
+    if slot == 3 {
+        return model.History3
+    }
+
+    if slot == 4 {
+        return model.History4
+    }
+
+    return model.History5
+}
+
+fn LatestSampleText(model: SignalState) -> String {
+    if model.HistoryCount == 0 {
+        return "empty"
+    }
+
+    return MarkerForValue(model.History0)
+}
+
+fn MarkerForValue(value: Float) -> String {
+    if value <= 0.0 - 0.50 {
+        return "<<--"
+    }
+
+    if value <= 0.0 - 0.20 {
+        return "<-.-"
+    }
+
+    if value < 0.20 {
+        return "--o-"
+    }
+
+    if value < 0.50 {
+        return "-.->"
+    }
+
+    return "-->>"
+}
+
+fn ComputeBaseSignal(signal: String, time: Float, tickCount: Int) -> Float {
+    if signal == SignalSine() {
+        return time
+    }
+
+    if signal == SignalSquare() {
+        if IsEvenTick(tickCount) {
+            return 1.0
+        }
+
+        return 0.0 - 1.0
+    }
+
+    return NoisePatternFromTick(tickCount)
+}
+
+fn ComputeNoiseOffset(noiseEnabled: Bool, tickCount: Int) -> Float {
+    if noiseEnabled == false {
+        return 0.0
+    }
+
+    if tickCount == 0 or tickCount == 5 or tickCount == 10 {
+        return 0.0 - 0.06
+    }
+
+    if tickCount == 1 or tickCount == 6 or tickCount == 11 {
+        return 0.0 - 0.03
+    }
+
+    if tickCount == 2 or tickCount == 7 or tickCount == 12 {
+        return 0.0
+    }
+
+    if tickCount == 3 or tickCount == 8 or tickCount == 13 {
+        return 0.03
+    }
+
+    return 0.06
+}
+
+fn NoisePatternFromTick(tickCount: Int) -> Float {
+    if tickCount == 0 or tickCount == 7 or tickCount == 14 {
+        return 0.0 - 0.6
+    }
+
+    if tickCount == 1 or tickCount == 8 or tickCount == 15 {
+        return 0.0 - 0.4
+    }
+
+    if tickCount == 2 or tickCount == 9 or tickCount == 16 {
+        return 0.0 - 0.2
+    }
+
+    if tickCount == 3 or tickCount == 10 or tickCount == 17 {
+        return 0.0
+    }
+
+    if tickCount == 4 or tickCount == 11 or tickCount == 18 {
+        return 0.2
+    }
+
+    if tickCount == 5 or tickCount == 12 or tickCount == 19 {
+        return 0.4
+    }
+
+    return 0.6
+}
+
+fn IsEvenTick(tickCount: Int) -> Bool {
+    if tickCount == 0 or tickCount == 2 or tickCount == 4 or tickCount == 6 or tickCount == 8 or tickCount == 10 {
+        return true
+    }
+
+    return false
+}
+
+fn SignalLabel(signal: String) -> String {
+    if signal == SignalSine() {
+        return "Sine"
+    }
+
+    if signal == SignalSquare() {
+        return "Square"
+    }
+
+    return "Noise"
+}
+
+fn ControlModeLabel(mode: String) -> String {
+    if mode == ControlIdle() {
+        return "Idle"
+    }
+
+    if mode == ControlRunning() {
+        return "Running"
+    }
+
+    return "Paused"
+}
+
+fn IsRunning(mode: String) -> Bool {
+    return mode == ControlRunning()
+}
+
+fn NoiseStateLabel(enabled: Bool) -> String {
+    if enabled {
+        return "On"
+    }
+
+    return "Off"
+}
+
+fn NoiseToggleLabel(enabled: Bool) -> String {
+    if enabled {
+        return "Disable"
+    }
+
+    return "Enable"
+}
+
+flow ControlModeTransition(current: String, event: String) -> String {
+    state ResolveCurrent {
+        when {
+            case current == ControlIdle() -> goto Idle
+            case current == ControlRunning() -> goto Running
+            else -> goto Paused
+        }
+    }
+
+    state Idle {
+        when {
+            case event == StartEvent() -> goto Running
+            case event == PauseEvent() -> goto Paused
+            else -> return ControlIdle()
+        }
+    }
+
+    state Running {
+        when {
+            case event == StopEvent() -> goto Idle
+            case event == PauseEvent() -> goto Paused
+            else -> return ControlRunning()
+        }
+    }
+
+    state Paused {
+        when {
+            case event == ResumeEvent() -> goto Running
+            case event == StopEvent() -> goto Idle
+            else -> return ControlPaused()
+        }
+    }
+}
+
+fn NextControlMode(current: String, event: String) -> String {
+    let f = ControlModeTransition(current, event)
+    Step(f)
+
+    match Result(f) {
+        ok(value) => { return value }
+        err(e) => { return current }
+    }
+}
+
+fn ControlIdle() -> String {
+    return "control.idle"
+}
+
+fn ControlRunning() -> String {
+    return "control.running"
+}
+
+fn ControlPaused() -> String {
+    return "control.paused"
+}
+
+fn SignalSine() -> String {
+    return "signal.sine"
+}
+
+fn SignalSquare() -> String {
+    return "signal.square"
+}
+
+fn SignalNoise() -> String {
+    return "signal.noise"
+}
+
+fn StartEvent() -> String {
+    return "signal.start"
+}
+
+fn StopEvent() -> String {
+    return "signal.stop"
+}
+
+fn StepEvent() -> String {
+    return "signal.step"
+}
+
+fn ResetEvent() -> String {
+    return "signal.reset"
+}
+
+fn ToggleNoiseEvent() -> String {
+    return "signal.noise.toggle"
+}
+
+fn PauseEvent() -> String {
+    return "signal.pause"
+}
+
+fn ResumeEvent() -> String {
+    return "signal.resume"
+}
+
+fn SelectSignalSineEvent() -> String {
+    return "signal.select.sine"
+}
+
+fn SelectSignalSquareEvent() -> String {
+    return "signal.select.square"
+}
+
+fn SelectSignalNoiseEvent() -> String {
+    return "signal.select.noise"
+}
