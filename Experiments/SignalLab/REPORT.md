@@ -111,3 +111,54 @@ Proceed with one more app-level growth step before runtime changes.
 - Continue validating richer app behavior in M2 with current runtime/layout.
 - Prefer additional author-level helper conventions (especially for repetitive update/record wiring and grouped controls) before introducing new primitives.
 - Revisit runtime changes only if multiple experiments converge on the same hard blocker.
+
+## M2 findings
+
+### What helper/state patterns were tried?
+
+M2 kept the same state shape as M1 and introduced explicit author-level state-copy helpers:
+
+- `WithRunning(model, value)`
+- `WithNoiseEnabled(model, enabled)`
+- `WithSelectedSignal(model, signal)`
+- `WithTime(model, time)`
+- `WithValue(model, value)`
+- `WithTickCount(model, tickCount)`
+- `WithHistory(model, count, h0, h1, h2, h3)`
+
+`Update` now composes these helpers instead of repeating full record literals per event branch.
+
+### Did they reduce Update verbosity?
+
+Yes, materially inside `Update`. Event branches now read as intent-first transformations:
+
+- start/stop: `Recompute(WithRunning(...))`
+- toggle/select: `Recompute(WithNoiseEnabled(...))`, `Recompute(WithSelectedSignal(...))`
+- step: unchanged high-level flow (`AdvanceOne -> Recompute -> RecordSample`) but `AdvanceOne` now uses helpers.
+
+This removed repeated field-by-field reconstruction from the `Update` branches.
+
+### Did readability improve?
+
+Yes for event handling. The event logic is shorter and clearer because each branch names exactly which field changes.
+
+Tradeoff: boilerplate did not disappear; it moved into helper definitions. This is acceptable for the probe because:
+
+- boilerplate is centralized,
+- naming carries intent,
+- behavior remains explicit and pure,
+- update flow is easier to scan quickly.
+
+### Were helpers alone enough, or was state reshaping needed?
+
+Helpers alone were enough for this milestone. No state reshaping was required to make `Update` readable at current app size.
+
+### What is now the single biggest pain point?
+
+The biggest remaining pain is maintaining many near-identical helper constructors as state fields grow. `Update` is cleaner, but helper maintenance still has record-copy drift risk.
+
+### Is a language feature now justified, or can this stay author-level for now?
+
+For current SignalLab scale, this can stay author-level for now.
+
+M2 evidence suggests explicit immutable state remains workable with disciplined helper conventions, and immediate language/runtime changes are not yet justified. A language-level record update feature should only be reconsidered if multiple larger experiments show helper maintenance cost becoming dominant.
