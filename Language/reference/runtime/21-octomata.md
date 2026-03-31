@@ -23,6 +23,7 @@ Octomata and records are complementary:
 - Flow `when` actions are only `goto`, `suspend`, or `return`.
 - `board { Field: Type ... }` declares flow-local board memory with a fixed field shape.
 - Board fields must be declared up front and are not dynamically extensible.
+- Board fields are default-initialized from their declared type (for example: `Bool` -> `false`, `Int` -> `0`, `Float` -> `0.0`, `String` -> `""`).
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - `remember` stores the current state as a resume target.
@@ -58,6 +59,8 @@ Prefer ordinary functions + records when behavior progression is not the core pr
 ### Use Octomata here (behavior progression)
 
 ```oct
+package Main
+
 flow MotorControl(overheat: Bool, ack: Bool) -> String {
     state Run {
         when {
@@ -80,6 +83,8 @@ flow MotorControl(overheat: Bool, ack: Bool) -> String {
 ### Records/ordinary control are enough here (data pipeline)
 
 ```oct
+package Main
+
 record Sample {
     Value: Float
     Bias: Float
@@ -109,6 +114,8 @@ Use records for:
 Use Octomata states + transitions for behavior progression only.
 
 ```oct
+package Main
+
 record Telemetry {
     TempC: Float
     Pressure: Float
@@ -137,6 +144,8 @@ Declare board shape inside the flow with `board { ... }` before states.
 Board shape is fixed for the flow instance and fields are declared up front.
 
 ```oct
+package Main
+
 flow PumpLoop() -> Int {
     board {
         FaultLatched: Bool
@@ -170,6 +179,8 @@ Avoid blackboards for:
 Preferred blackboard shape is typed, fixed-shape, constrained, and explicit.
 
 ```oct
+package Main
+
 record Telemetry {
     TempC: Float
     Pressure: Float
@@ -215,10 +226,12 @@ Use guard `when` when transitions/actions depend on explicit conditions and you 
 Prefer guard `when` over scattering equivalent branching across helpers when the logic is truly behavioral.
 
 ```oct
+package Main
+
 flow DoorControl(openCmd: Bool, closeCmd: Bool, blocked: Bool) -> String {
     state Closed {
         when {
-            case openCmd && !blocked -> goto Opening
+            case openCmd and blocked == false -> goto Opening
             else -> return "closed"
         }
     }
@@ -252,6 +265,8 @@ Avoid utility `when` when one guard transition is enough.
 Guard `when` is simpler and should be preferred for single-condition transitions.
 
 ```oct
+package Main
+
 flow AlertChannel(fault: Bool, mode: Int) -> Int {
     state Decide {
         let channel = when policy {
@@ -267,6 +282,9 @@ flow AlertChannel(fault: Bool, mode: Int) -> Int {
     }
 }
 ```
+
+In utility `when`, the `else` arm is the default selected value when no case qualifies as the winner.
+It is not a statement-style `return`; it is the fallback candidate in the selection set.
 
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
@@ -285,27 +303,39 @@ Contrast: if you only need `case tempHigh -> goto Alarm else -> goto Normal`, a 
 Without them (unstable near threshold):
 
 ```oct
+package Main
+
 // Tick 1 picks "cool"; Tick 2 tiny score wobble picks "heat"; Tick 3 flips back.
-when policy {
-    hysteresis: 0
-    min_commit: 1
-} {
-    case 1 when nearHot score 50
-    case 2 when nearCold score 50
-    else 0
+flow UnstableChoice(nearHot: Bool, nearCold: Bool) -> Int {
+    state Decide {
+        return when policy {
+            hysteresis: 0
+            min_commit: 1
+        } {
+            case 1 when nearHot score 50
+            case 2 when nearCold score 50
+            else 0
+        }
+    }
 }
 ```
 
 With them (stable arbitration):
 
 ```oct
-when policy {
-    hysteresis: 3
-    min_commit: 4
-} {
-    case 1 when nearHot score 70
-    case 2 when nearCold score 75
-    else 0
+package Main
+
+flow StableChoice(nearHot: Bool, nearCold: Bool) -> Int {
+    state Decide {
+        return when policy {
+            hysteresis: 3
+            min_commit: 4
+        } {
+            case 1 when nearHot score 70
+            case 2 when nearCold score 75
+            else 0
+        }
+    }
 }
 ```
 
@@ -322,6 +352,8 @@ Do not use `with` to replace blackboard-owned behavior memory.
 `with` is correct for record updates:
 
 ```oct
+package Main
+
 record LoopData {
     Samples: Int
     AvgTempC: Float
@@ -338,6 +370,8 @@ fn PushSample(d: LoopData, sampleAvg: Float) -> LoopData {
 Board field update is correct for control memory:
 
 ```oct
+package Main
+
 flow AckLoop(ack: Bool) -> String {
     board {
         FaultLatched: Bool
