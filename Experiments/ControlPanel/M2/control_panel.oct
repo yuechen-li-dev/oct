@@ -21,6 +21,9 @@ record PanelState {
     Mode: String
     Setpoint: Float
     Output: Float
+    Temperature: Float
+    Pressure: Float
+    AlarmActive: Bool
 }
 
 fn Text(content: String) -> UI {
@@ -29,6 +32,14 @@ fn Text(content: String) -> UI {
 
 fn Button(label: String, event: String, enabled: Bool) -> UI {
     return UIButton(label, event, enabled)
+}
+
+fn Row(children: UI[]) -> UI {
+    return UIRow(children)
+}
+
+fn Column(children: UI[]) -> UI {
+    return UIColumn(children)
 }
 
 fn Canvas(children: UI[]) -> UI {
@@ -101,25 +112,56 @@ fn Init() -> PanelState {
         Mode: "paused"
         Setpoint: 1.0
         Output: 0.0
+        Temperature: 24.0
+        Pressure: 1.0
+        AlarmActive: false
     }
     return Recompute(initial)
 }
 
 fn View(model: PanelState) -> UI {
     let startEnabled = model.PowerOn and model.Mode != "running"
+    let pauseEnabled = model.Mode == "running"
+    let stepEnabled = model.PowerOn and model.Mode != "running"
+    let alarmLabel = AlarmLabel(model.AlarmActive)
+
     return Canvas([
-        Place(AnchoredBox(0.02, 0.02, 0.98, 0.12), Text("Control Panel M2")),
-        Place(AbsoluteBox(20.0, 120.0, 320.0, 20.0), Text("Power: " + PowerLabel(model.PowerOn))),
-        Place(AbsoluteBox(20.0, 150.0, 320.0, 20.0), Text("Mode: " + model.Mode)),
-        Place(AbsoluteBox(20.0, 180.0, 320.0, 20.0), Text("Setpoint: " + FormatFloat(model.Setpoint, 1))),
-        Place(AbsoluteBox(20.0, 210.0, 320.0, 20.0), Text("Output: " + FormatFloat(model.Output, 1))),
-        Place(AbsoluteBox(20.0, 260.0, 120.0, 28.0), Button("Power On", PowerOnEvent(), model.PowerOn == false)),
-        Place(AbsoluteBox(150.0, 260.0, 120.0, 28.0), Button("Power Off", PowerOffEvent(), model.PowerOn)),
-        Place(AbsoluteBox(20.0, 300.0, 120.0, 28.0), Button("Start", StartEvent(), startEnabled)),
-        Place(AbsoluteBox(150.0, 300.0, 120.0, 28.0), Button("Pause", PauseEvent(), model.Mode == "running")),
-        Place(AbsoluteBox(280.0, 300.0, 120.0, 28.0), Button("Reset", ResetEvent(), true)),
-        Place(AbsoluteBox(20.0, 340.0, 120.0, 28.0), Button("Setpoint +", SetpointIncrementEvent(), true)),
-        Place(AbsoluteBox(150.0, 340.0, 120.0, 28.0), Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0))
+        Place(AnchoredBox(0.01, 0.01, 0.99, 0.08), Row([
+            Text("ControlPanel M2 · Edit Stress Pass"),
+            Text("Power: " + PowerLabel(model.PowerOn)),
+            Text("Mode: " + model.Mode),
+            Text("Alarm: " + alarmLabel)
+        ])),
+        Place(AnchoredBox(0.01, 0.10, 0.35, 0.58), Column([
+            Text("Command Area"),
+            Row([
+                Button("Power On", PowerOnEvent(), model.PowerOn == false),
+                Button("Power Off", PowerOffEvent(), model.PowerOn)
+            ]),
+            Row([
+                Button("Start", StartEvent(), startEnabled),
+                Button("Pause", PauseEvent(), pauseEnabled),
+                Button("Step", StepEvent(), stepEnabled)
+            ])
+        ])),
+        Place(AnchoredBox(0.37, 0.10, 0.99, 0.56), Column([
+            Text("Diagnostics"),
+            Text("Setpoint: " + FormatFloat(model.Setpoint, 1)),
+            Text("Output: " + FormatFloat(model.Output, 1)),
+            Text("Temperature: " + FormatFloat(model.Temperature, 1) + " C"),
+            Text("Pressure: " + FormatFloat(model.Pressure, 2) + " bar")
+        ])),
+        Place(AnchoredBox(0.01, 0.59, 0.97, 0.88), Text("Trend/Inspector Placeholder")),
+        Place(AbsoluteBox(22.0, 208.0, 130.0, 28.0), Button("Setpoint +", SetpointIncrementEvent(), true)),
+        Place(AbsoluteBox(156.0, 208.0, 130.0, 28.0), Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0)),
+        Place(AbsoluteBox(24.0, 242.0, 130.0, 28.0), Button("Temp +", TemperatureIncrementEvent(), true)),
+        Place(AbsoluteBox(158.0, 242.0, 130.0, 28.0), Button("Temp -", TemperatureDecrementEvent(), model.Temperature > 0.0)),
+        Place(AbsoluteBox(24.0, 276.0, 130.0, 28.0), Button("Press +", PressureIncrementEvent(), true)),
+        Place(AbsoluteBox(158.0, 276.0, 130.0, 28.0), Button("Press -", PressureDecrementEvent(), model.Pressure > 0.5)),
+        Place(AbsoluteBox(294.0, 208.0, 130.0, 30.0), Button("Reset", ResetEvent(), true)),
+        Place(AbsoluteBox(486.0, 253.0, 220.0, 22.0), Text("Live queue depth: 3")),
+        Place(AbsoluteBox(486.0, 279.0, 220.0, 22.0), Text("Last cycle: 14 ms")),
+        Place(AnchoredBox(0.73, 0.58, 0.99, 0.65), Button("Clear Alarm", ClearAlarmEvent(), model.AlarmActive))
     ])
 }
 
@@ -130,6 +172,9 @@ fn Update(model: PanelState, event: String) -> PanelState {
             Mode: model.Mode
             Setpoint: model.Setpoint
             Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
         })
     }
 
@@ -139,6 +184,9 @@ fn Update(model: PanelState, event: String) -> PanelState {
             Mode: "paused"
             Setpoint: model.Setpoint
             Output: 0.0
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: false
         })
     }
 
@@ -149,6 +197,9 @@ fn Update(model: PanelState, event: String) -> PanelState {
                 Mode: "running"
                 Setpoint: model.Setpoint
                 Output: model.Output
+                Temperature: model.Temperature
+                Pressure: model.Pressure
+                AlarmActive: model.AlarmActive
             })
         }
         return model
@@ -160,7 +211,26 @@ fn Update(model: PanelState, event: String) -> PanelState {
             Mode: "paused"
             Setpoint: model.Setpoint
             Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
         })
+    }
+
+    if event == StepEvent() {
+        if model.PowerOn and model.Mode != "running" {
+            return Recompute(PanelState {
+                PowerOn: model.PowerOn
+                Mode: "step"
+                Setpoint: model.Setpoint
+                Output: model.Output
+                Temperature: model.Temperature
+                Pressure: model.Pressure
+                AlarmActive: model.AlarmActive
+            })
+        }
+
+        return model
     }
 
     if event == ResetEvent() {
@@ -173,6 +243,9 @@ fn Update(model: PanelState, event: String) -> PanelState {
             Mode: model.Mode
             Setpoint: model.Setpoint + 0.5
             Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
         })
     }
 
@@ -187,6 +260,83 @@ fn Update(model: PanelState, event: String) -> PanelState {
             Mode: model.Mode
             Setpoint: next
             Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
+        })
+    }
+
+    if event == TemperatureIncrementEvent() {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+            Temperature: model.Temperature + 0.5
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
+        })
+    }
+
+    if event == TemperatureDecrementEvent() {
+        var next = model.Temperature - 0.5
+        if next < 0.0 {
+            next = 0.0
+        }
+
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+            Temperature: next
+            Pressure: model.Pressure
+            AlarmActive: model.AlarmActive
+        })
+    }
+
+    if event == PressureIncrementEvent() {
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure + 0.05
+            AlarmActive: model.AlarmActive
+        })
+    }
+
+    if event == PressureDecrementEvent() {
+        var next = model.Pressure - 0.05
+        if next < 0.5 {
+            next = 0.5
+        }
+
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+            Temperature: model.Temperature
+            Pressure: next
+            AlarmActive: model.AlarmActive
+        })
+    }
+
+    if event == ClearAlarmEvent() {
+        if model.AlarmActive == false {
+            return model
+        }
+
+        return Recompute(PanelState {
+            PowerOn: model.PowerOn
+            Mode: model.Mode
+            Setpoint: model.Setpoint
+            Output: model.Output
+            Temperature: model.Temperature
+            Pressure: model.Pressure
+            AlarmActive: false
         })
     }
 
@@ -194,21 +344,34 @@ fn Update(model: PanelState, event: String) -> PanelState {
 }
 
 fn Recompute(model: PanelState) -> PanelState {
-    if model.PowerOn and model.Mode == "running" {
-        return PanelState {
-            PowerOn: model.PowerOn
-            Mode: model.Mode
-            Setpoint: model.Setpoint
-            Output: model.Setpoint * 0.8
-        }
-    }
+    let output = ComputeOutput(model.PowerOn, model.Mode, model.Setpoint)
+    let alarm = model.Temperature >= 30.0 or model.Pressure >= 1.6
 
     return PanelState {
         PowerOn: model.PowerOn
         Mode: model.Mode
         Setpoint: model.Setpoint
-        Output: 0.0
+        Output: output
+        Temperature: model.Temperature
+        Pressure: model.Pressure
+        AlarmActive: alarm
     }
+}
+
+fn ComputeOutput(powerOn: Bool, mode: String, setpoint: Float) -> Float {
+    if powerOn == false {
+        return 0.0
+    }
+
+    if mode == "running" {
+        return setpoint * 0.8
+    }
+
+    if mode == "step" {
+        return setpoint * 0.4
+    }
+
+    return 0.0
 }
 
 fn PowerLabel(powerOn: Bool) -> String {
@@ -217,6 +380,14 @@ fn PowerLabel(powerOn: Bool) -> String {
     }
 
     return "Off"
+}
+
+fn AlarmLabel(alarmActive: Bool) -> String {
+    if alarmActive {
+        return "Active"
+    }
+
+    return "Clear"
 }
 
 fn PowerOnEvent() -> String {
@@ -235,6 +406,10 @@ fn PauseEvent() -> String {
     return "panel.mode.pause"
 }
 
+fn StepEvent() -> String {
+    return "panel.mode.step"
+}
+
 fn ResetEvent() -> String {
     return "panel.reset"
 }
@@ -245,4 +420,24 @@ fn SetpointIncrementEvent() -> String {
 
 fn SetpointDecrementEvent() -> String {
     return "panel.setpoint.decrement"
+}
+
+fn TemperatureIncrementEvent() -> String {
+    return "panel.temperature.increment"
+}
+
+fn TemperatureDecrementEvent() -> String {
+    return "panel.temperature.decrement"
+}
+
+fn PressureIncrementEvent() -> String {
+    return "panel.pressure.increment"
+}
+
+fn PressureDecrementEvent() -> String {
+    return "panel.pressure.decrement"
+}
+
+fn ClearAlarmEvent() -> String {
+    return "panel.alarm.clear"
 }

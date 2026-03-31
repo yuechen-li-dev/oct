@@ -19,34 +19,59 @@
 - `Button` now includes explicit `enabled: Bool`; disabled controls are rejected by runtime event emission and do not enqueue events.
 - The event/state/rerender architecture is unchanged: explicit emit -> drain -> update -> patch.
 
-## M1 box-native friction test (UI M2 foundation)
+## M2 edit-stress pass (hybrid layout)
 
-Concrete authoring findings from the denser panel in `M1/`:
+This pass intentionally started from the denser hybrid layout style (anchored box regions for macro placement + local `Row`/`Column` grouping for nearby controls) and then applied a sequence of small and medium edits.
 
-- **What became easier with box-native layout:**
-  - Major region placement was direct: top strip, left command region, right diagnostics region, and a large lower placeholder were each one `Place(AnchoredBox(...), ...)` line.
-  - Several precision edits were trivial coordinate tweaks (for example, nudging the setpoint buttons and diagnostics readouts by changing one `AbsoluteBox(x, y, ...)` value).
-  - Adding a new explicit control required only one new `Place(AbsoluteBox(...), Button(...))` line; no row reflow side-effects.
+### Edit sequence applied
 
-- **“Move this button 2 px left” style edits:**
-  - Yes, this is now straightforward: update `x` from `158.0` to `156.0` in one place.
-  - Similar micro-edits (“down 3 px”, “10 px wider”) are single-number diffs and did not require restructuring siblings.
+- Moved one button 2 px left (`Setpoint +` x: `24.0 -> 22.0`).
+- Moved one label 3 px down (`Live queue depth` y: `250-ish -> 253.0`).
+- Widened a panel slightly by anchor change (command area right anchor `0.37 -> 0.35`; diagnostics left anchor `0.39 -> 0.37`).
+- Made one button slightly taller (`Reset` height `28.0 -> 30.0`).
+- Shifted one control cluster horizontally (queue/cycle labels moved from x `480.0 -> 486.0`).
+- Added one new control in an existing area (`Step` button inside the run-controls row).
+- Re-anchored one element/region (`Clear Alarm` moved from bottom-right footer to diagnostics-adjacent anchored placement).
+- Made one small region resize more predictably (trend placeholder stretched to `right=0.97` and kept anchored in the lower band).
 
-- **What remained awkward:**
-  - Dense absolute controls require manually scanning for overlaps; there is no snap/alignment aid.
-  - Repeated numeric constants can drift without naming conventions (for example, multiple `24.0/158.0/480.0` values).
+### How local were the edits?
 
-- **Anchored boxes intuition:**
-  - Anchored regions were intuitive for stable frame sections and predictable resize behavior.
-  - Anchoring a bottom-right control (`Clear Alarm`) was easy and more robust than hard-coded bottom coordinates.
+- Most edits were one-line or one-expression changes in `View` and stayed local to one `Place(...)` call.
+- The new `Step` control was local to the existing run-controls `Row` and required one extra button plus one event branch in `Update`.
+- Approximate locality: the visual churn is concentrated inside the `View` function; no runtime loop, mount/patch/unmount surface, or state ownership model changes were needed.
 
-- **Hybrid vs pure box-native:**
-  - Hybrid was better in this pass: anchored/absolute boxes handled macro placement, while local `Row`/`Column` inside regions reduced noise for button clusters and readout stacks.
-  - Pure box-native everywhere would have increased coordinate bookkeeping for small grouped controls.
+### Did “move this button 2 px left” stay trivial?
 
-- **Recommended next UI step:**
-  - Keep the current box-native direction and standardize a **hybrid authoring convention** (box-native for regions + Row/Column for local grouping).
-  - Next probe should test maintainability by applying a scripted set of micro layout edits (nudge, resize, re-anchor) and measuring lines touched and accidental regressions.
+- Yes. The micro-position edits were single-number diffs.
+- No sibling reflow surprises occurred for absolute items.
+- No unrelated command/state logic was touched for coordinate-only changes.
+
+### Were unrelated siblings/regions disturbed?
+
+- Mostly no for anchored macro regions and absolute controls.
+- One deliberate widening edit required paired anchor updates (command + diagnostics) to keep the split balanced, but this remained local to those two region lines.
+
+### Did repeated coordinate editing become annoying?
+
+- Mildly, yes. Repeated hand-editing of nearby `x/y` literals is still prone to coordinate drift and inconsistent spacing (`22/24`, `156/158`, `486`).
+- The pain is manageable at this scale, but the drift pattern is now visible.
+
+### Is hybrid still better than pure box-native?
+
+- Yes, for this panel size.
+- Macro placement stayed clear with anchored/absolute boxes, while local grouping avoided excessive coordinate bookkeeping for button clusters.
+- A pure box-native rewrite would increase raw coordinate noise for local control groups without clear payoff.
+
+### Missing helper abstraction now justified?
+
+- A tiny helper convention for repeated coordinates or cluster offsets now looks justified (for example, named constants for cluster origin/row spacing) to reduce drift and improve scanability.
+- This can remain author-level convention; no new runtime/layout feature is required yet.
+
+### Recommended next step
+
+- Keep hybrid as the default authoring model.
+- Next pass should add lightweight coordinate hygiene only (naming and small shared offsets), then repeat a micro-edit batch to verify that line-touch count stays low.
+- Do not introduce a new layout engine, grid system, or hooks/effects in the next step.
 
 ## Scope guardrails preserved
 
