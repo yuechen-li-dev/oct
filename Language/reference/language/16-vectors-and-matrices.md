@@ -26,6 +26,8 @@ They have dedicated literal, indexing, and arithmetic forms.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Vector<Int> {
     let m = matrix[[1, 2] [3, 4]]
     let v = vector[10, 20]
@@ -36,6 +38,8 @@ fn Main() -> Vector<Int> {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     let m = matrix[[1, 2] [3, 4]]
     return m[0]

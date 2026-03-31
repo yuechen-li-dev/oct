@@ -92,6 +92,8 @@ Avoid assuming implicit conversion from `Int` to `String`.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     let theta = Pi() / 4
     let xs = [1, 2]
@@ -106,6 +108,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Float {
     return Ln(0)
 }

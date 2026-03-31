@@ -24,6 +24,8 @@ Batch semantics are explicit and deterministic.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int[] {
     let xs = [1, 2, 3]
     return batch xs as item {
@@ -35,6 +37,8 @@ fn Main() -> Int[] {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int[] {
     return batch 5 as item {
         return item

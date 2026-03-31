@@ -31,6 +31,8 @@ Dimensions participate in expression typing.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int<m/s> {
     let d = 10m
     let t = 2s
@@ -41,6 +43,8 @@ fn Main() -> Int<m/s> {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     if 1 { return 1 }
     return 0

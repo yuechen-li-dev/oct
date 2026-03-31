@@ -31,6 +31,8 @@ See also [31 octest](./31-octest.md) for artifact and benchmark workflows.
 Valid `.octagon` content:
 
 ```oct
+package Main
+
 SimulationConfig {
     Name: "Cantilever"
     Dt: 0.001s
@@ -41,6 +43,8 @@ SimulationConfig {
 Valid usage:
 
 ```oct
+package Main
+
 fn Main() -> Int ! Error {
     let cfg = LoadOctagon[SimulationConfig]("config.octagon")?
     return WriteOctagon("copy.octagon", cfg)
@@ -50,5 +54,7 @@ fn Main() -> Int ! Error {
 Invalid `.octagon` content:
 
 ```oct
+package Main
+
 let x = 1
 ```
