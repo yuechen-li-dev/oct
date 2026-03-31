@@ -1,3 +1,43 @@
+# SignalLab: An Experimental Evaluation of Octomata and Blackboard-Based Behavioral Control in Oct
+
+## 1. Overview
+SignalLab is a staged application experiment used to evaluate whether Oct can sustain a behavior-heavy, UI-backed system without runtime special cases. The project was designed to pressure-test three concerns together: Octomata as the primary control model, blackboard-mediated coordination, and day-to-day language ergonomics under immutable state.
+
+The validation target was practical viability, not novelty: can control flow remain explicit, can data movement stay disciplined, and can code remain maintainable as milestones increase complexity from M0 through M9a.
+
+## 2. Architecture Summary
+SignalLab uses Octomata for control orchestration, combining hierarchical state flow structure with utility-style arbitration where multiple intents compete. Control policy is expressed in behavior logic, while application data remains in immutable records.
+
+The blackboard is intentionally scoped to behavior-local policy memory (for interruption, arbitration, and coordination hints), not a general storage substrate for all app state. Core data travels through record-based immutable lanes, preserving explicit update paths.
+
+M8 introduced a projection seam that removed mirrored fields and reduced representational duplication between behavior and display surfaces. Across milestones, the architecture remained separated by concern: behavior policy (Octomata + board), durable data (records), and view projection (UI/readout composition).
+
+## 3. Key Language Features Validated
+- Immutable records as the primary state model for deterministic updates.
+- The `with` record-update expression (M9), which reduced structural copy boilerplate while preserving immutable semantics.
+- Switch expressions for clearer decision mapping in label and mode-selection surfaces.
+- Typing/error discipline remained sufficient for the experiment’s control/data boundaries without requiring ad hoc runtime exceptions.
+
+## 4. Experiment Findings (High-Level)
+- **M6–M7:** Blackboard integration proved viable for behavioral coordination, but also exposed pressure toward board-width growth and centralization if admission boundaries are loose.
+- **M8:** Projection seam cleanup (including removal of mirrored fields) reduced artificial duplication and improved separation between policy and presentation concerns.
+- **M9:** `with` materially improved maintainability by removing repetitive immutable reconstruction patterns, making record-centric state updates viable at larger surface area.
+- **M9a:** Control-style signal shaping (low-pass filtering plus leaky accumulation) reduced decision chatter and mode thrash in this app, but the technique is narrow and should remain application-level until replicated elsewhere.
+
+## 5. Final Conclusions
+- Octomata is viable as a primary behavioral control model for this class of application.
+- Blackboard is effective when constrained to policy/interruption memory rather than general-purpose state.
+- Immutable records are workable at scale when paired with language support such as `with`.
+- Over-centralization is still a concrete risk if board scope is allowed to grow indiscriminately.
+- Control-theoretic shaping techniques are promising, but not yet candidates for core language features.
+
+## 6. Future Directions
+- Replicate M9a-style control shaping in additional applications before considering any standardization.
+- Tighten board admission criteria to keep policy memory narrow and avoid accidental state centralization.
+- Extract small reusable patterns where justified, while avoiding subsystem-scale abstractions.
+
+---
+
 # SignalLab Report
 
 ## M0 findings

@@ -579,27 +579,19 @@ fn IsEvenTick(tickCount: Int) -> Bool {
 }
 
 fn SignalLabel(signal: String) -> String {
-    if signal == SignalSine() {
-        return "Sine"
+    return switch {
+        case signal == SignalSine() => "Sine"
+        case signal == SignalSquare() => "Square"
+        else => "Noise"
     }
-
-    if signal == SignalSquare() {
-        return "Square"
-    }
-
-    return "Noise"
 }
 
 fn ControlModeLabel(mode: String) -> String {
-    if mode == ControlIdle() {
-        return "Idle"
+    return switch {
+        case mode == ControlIdle() => "Idle"
+        case mode == ControlRunning() => "Running"
+        else => "Paused"
     }
-
-    if mode == ControlRunning() {
-        return "Running"
-    }
-
-    return "Paused"
 }
 
 fn IsRunning(mode: String) -> Bool {
