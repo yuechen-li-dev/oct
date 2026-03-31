@@ -1134,6 +1134,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "Print" {
 			return "Print", "Int", true, false, nil
 		}
+		if x.Name == "ToString" {
+			return "ToString", "String", true, false, nil
+		}
+		if x.Name == "Contains" || x.Name == "StartsWith" || x.Name == "EndsWith" {
+			return x.Name, "Bool", true, false, nil
+		}
+		if x.Name == "Trim" || x.Name == "Lower" || x.Name == "Upper" || x.Name == "Join" {
+			return x.Name, "String", true, false, nil
+		}
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {
 				return c.pkg.Name + "." + x.Name, typeRefStringForPackage(c.pkg.Name, fn.ReturnType), false, fn.IsFallible, nil
@@ -1616,6 +1625,9 @@ func emitGo(m MIRModule) (string, error) {
 		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8"} {
 			importSet[pkg] = struct{}{}
 		}
+	}
+	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
+		importSet["strings"] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
 	for pkg := range importSet {
@@ -2689,6 +2701,20 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
+			case "Contains":
+				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StartsWith":
+				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "EndsWith":
+				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "Trim":
+				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, st.Args[0]), nil
+			case "Lower":
+				return fmt.Sprintf("%s = strings.ToLower(%s)", st.Target, st.Args[0]), nil
+			case "Upper":
+				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, st.Args[0]), nil
+			case "Join":
+				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "WriteOctagon":
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":

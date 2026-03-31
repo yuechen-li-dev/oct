@@ -74,6 +74,20 @@ Calls are checked statically for arity and type constraints.
 - `ToString(value: Int | Float | Bool) -> String`.
   - Plain explicit conversion for common scalar display paths.
   - Does not apply formatting policy beyond standard value rendering.
+- `Contains(s: String, part: String) -> Bool`.
+  - Returns true when `part` occurs in `s`.
+- `StartsWith(s: String, prefix: String) -> Bool`.
+  - Returns true when `s` begins with `prefix`.
+- `EndsWith(s: String, suffix: String) -> Bool`.
+  - Returns true when `s` ends with `suffix`.
+- `Trim(s: String) -> String`.
+  - Removes leading and trailing whitespace.
+- `Lower(s: String) -> String`.
+  - Lowercases text for lightweight UI normalization.
+- `Upper(s: String) -> String`.
+  - Uppercases text for lightweight UI normalization.
+- `Join(parts: String[], sep: String) -> String`.
+  - Concatenates `parts` with `sep` inserted between elements.
 - `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
 - `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
@@ -90,6 +104,16 @@ Use `ToString(x)` for explicit plain conversion (`Int`, `Float`, `Bool`).
 Use `FormatFloat(x, precision)` when you need fixed float formatting.
 No implicit conversion is performed in concatenation or other expressions.
 
+### String helper examples
+
+- `Contains("storefront", "front")` -> `true`
+- `StartsWith("status: ok", "status")` -> `true`
+- `EndsWith("status: ok", "ok")` -> `true`
+- `Trim("  ready  ")` -> `"ready"`
+- `Lower("MiXeD")` -> `"mixed"`
+- `Upper("MiXeD")` -> `"MIXED"`
+- `Join(["desk", "gear", "sale"], " / ")` -> `"desk / gear / sale"`
+
 ## Examples
 
 Valid:
@@ -103,6 +127,11 @@ fn Main() -> Int {
     let ys = Append(xs, 3)
     let label = "theta=" + ToString(theta)
     let precise = "theta_fixed=" + FormatFloat(theta, 3)
+    let canonical = Lower(Trim("  READY  "))
+    let slug = Join(["desk", "gear", "sale"], " / ")
+    Print(ToString(Contains(slug, "gear")))
+    Print(ToString(StartsWith(canonical, "rea")))
+    Print(ToString(EndsWith(canonical, "dy")))
     Print(label)
     Print(precise)
     Print(Atan2(1, 1) + Tan(theta))

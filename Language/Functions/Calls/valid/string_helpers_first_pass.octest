@@ -1,0 +1,27 @@
+package MainValid
+
+[Fact]
+fn ContainsStartsWithEndsWithCoverMatchAndNoMatch() -> Void {
+    Assert.True(Contains("storefront", "front"), "Contains detects matching substring")
+    Assert.False(Contains("storefront", "back"), "Contains returns false for no match")
+    Assert.True(StartsWith("status: ok", "status"), "StartsWith detects matching prefix")
+    Assert.False(StartsWith("status: ok", "ok"), "StartsWith returns false for non-prefix")
+    Assert.True(EndsWith("status: ok", "ok"), "EndsWith detects matching suffix")
+    Assert.False(EndsWith("status: ok", "status"), "EndsWith returns false for non-suffix")
+}
+
+[Fact]
+fn TrimLowerUpperCoverExpectedNormalization() -> Void {
+    Assert.Equal("hello", Trim("  hello  "), "Trim removes leading and trailing whitespace")
+    Assert.Equal("mixed case", Lower("MiXeD cAsE"), "Lower normalizes to lowercase")
+    Assert.Equal("MIXED CASE", Upper("MiXeD cAsE"), "Upper normalizes to uppercase")
+}
+
+[Fact]
+fn JoinHandlesEmptySingleAndMultiElementArrays() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal("", Join(UIDrainEvents(mount), " / "), "Join returns empty string for empty array")
+    let _closed = UIUnmount(mount)
+    Assert.Equal("desk", Join(["desk"], " / "), "Join leaves single-element arrays unchanged")
+    Assert.Equal("desk / gear / sale", Join(["desk", "gear", "sale"], " / "), "Join inserts separator between elements")
+}
