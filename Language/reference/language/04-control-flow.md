@@ -34,6 +34,8 @@ Conditions never use implicit coercion.
 Preferred when selecting between multiple outcomes:
 
 ```oct
+package Main
+
 fn ShippingTier(weight: Int) -> Int {
     return switch {
         case weight < 1 => 1
@@ -46,6 +48,8 @@ fn ShippingTier(weight: Int) -> Int {
 Avoid this shape when expressing the same decision ladder:
 
 ```oct
+package Main
+
 fn ShippingTier(weight: Int) -> Int {
     if weight < 1 {
         return 1
@@ -62,6 +66,8 @@ fn ShippingTier(weight: Int) -> Int {
 Use local `if` blocks when they are not a ladder:
 
 ```oct
+package Main
+
 fn ClampNonNegative(v: Int) -> Int {
     if v < 0 {
         return 0
@@ -79,6 +85,8 @@ Using `while` to manually emulate a `for` loop is legal, but discouraged when th
 Preferred (`for` for known-range / step iteration):
 
 ```oct
+package Main
+
 fn SumEvenUnder(limit: Int) -> Int {
     var sum = 0
     for i in 0..limit step 2 {
@@ -91,6 +99,8 @@ fn SumEvenUnder(limit: Int) -> Int {
 Legal but discouraged (`while` emulating `for`; preferred form is `for`):
 
 ```oct
+package Main
+
 fn SumEvenUnder(limit: Int) -> Int {
     var sum = 0
     var i = 0
@@ -105,6 +115,8 @@ fn SumEvenUnder(limit: Int) -> Int {
 Preferred (`while` for condition-driven loops):
 
 ```oct
+package Main
+
 fn CountdownUntilZero(n: Int) -> Int {
     var current = n
     while current > 0 {
@@ -119,6 +131,8 @@ fn CountdownUntilZero(n: Int) -> Int {
 Valid (subject switch expression):
 
 ```oct
+package Main
+
 fn RetryBudget(code: Int) -> Int {
     return switch code {
         case 408 => 3
@@ -131,6 +145,8 @@ fn RetryBudget(code: Int) -> Int {
 Valid (condition switch expression):
 
 ```oct
+package Main
+
 fn Segment(age: Int) -> Int {
     return switch {
         case age < 13 => 0
@@ -143,6 +159,8 @@ fn Segment(age: Int) -> Int {
 Valid (`for ... step`):
 
 ```oct
+package Main
+
 fn SumEvenUnder(limit: Int) -> Int {
     var sum = 0
     for i in 0..limit step 2 {
@@ -155,6 +173,8 @@ fn SumEvenUnder(limit: Int) -> Int {
 Valid (`while`):
 
 ```oct
+package Main
+
 fn CountdownStart(n: Int) -> Int {
     var current = n
     while current > 0 {
@@ -167,6 +187,8 @@ fn CountdownStart(n: Int) -> Int {
 Invalid (nested decision ladder):
 
 ```oct
+package Main
+
 fn Main() -> Int {
     if true {
         return 1

@@ -24,6 +24,8 @@ Fallibility is part of the function signature.
 Valid:
 
 ```oct
+package Main
+
 fn Add(x: Int, y: Int) -> Int {
     return x + y
 }
@@ -36,6 +38,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn Add(x: Int, y: Int) -> Int {
     return x + y
 }

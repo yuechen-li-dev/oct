@@ -33,6 +33,8 @@ Choose one path based on what you are trying to do:
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     return 42
 }
@@ -41,6 +43,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     return true
 }

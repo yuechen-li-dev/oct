@@ -25,6 +25,8 @@ Use `var` only when reassignment is required.
 Preferred (`let` default):
 
 ```oct
+package Main
+
 fn Main() -> Int {
     let base = 40
     let offset = 2
@@ -35,6 +37,8 @@ fn Main() -> Int {
 Use `var` when reassignment is needed:
 
 ```oct
+package Main
+
 fn NextPowerOfTwo(n: Int) -> Int {
     var v = 1
     while v < n {
@@ -47,6 +51,8 @@ fn NextPowerOfTwo(n: Int) -> Int {
 Side-by-side contrast:
 
 ```oct
+package Main
+
 fn LetVsVar(limit: Int) -> Int {
     let start = 1
 
@@ -62,6 +68,8 @@ fn LetVsVar(limit: Int) -> Int {
 Valid (whole-value and array mutation):
 
 ```oct
+package Main
+
 record Point { X: Int Y: Int }
 
 fn Main() -> Int {
@@ -77,6 +85,8 @@ fn Main() -> Int {
 Invalid (`let` reassignment):
 
 ```oct
+package Main
+
 fn Main() -> Int {
     let x = 1
     x = 2

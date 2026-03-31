@@ -16,6 +16,7 @@ Field access is explicit.
 - Record update form is `value with { Field: value ... }`.
 - Record update requires at least one field and returns a new value of the same record type.
 - Record update field names must exist on the source record type.
+- Record update field values must match declared field types exactly (including dimensions and nominal types).
 - Record update is immutable (it does not mutate the source value).
 - Record update evaluates the source expression once.
 - Field access form is `value.Field`.
@@ -27,6 +28,8 @@ Field access is explicit.
 Single-field `with` update:
 
 ```oct
+package Main
+
 record Point {
     X: Int
     Y: Int
@@ -41,6 +44,8 @@ fn MoveX(point: Point) -> Point {
 Multi-field `with` update:
 
 ```oct
+package Main
+
 record SampleState {
     Time: Float
     Value: Float
@@ -63,6 +68,8 @@ Avoid this when you need behavior-local mutable control memory in flows; use `bo
 Valid:
 
 ```oct
+package Main
+
 record Point {
     X: Int
     Y: Int
@@ -78,6 +85,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 record Point {
     X: Int
     Y: Int

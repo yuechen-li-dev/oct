@@ -24,6 +24,8 @@ Whitespace separates tokens.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Bool {
     let _x1 = 1e3
     let name = "ok"
@@ -34,6 +36,8 @@ fn Main() -> Bool {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> String {
     return "unterminated
 }

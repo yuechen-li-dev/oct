@@ -25,6 +25,8 @@ They are normative for reading and writing Oct code.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     if true {
         return 1
@@ -36,6 +38,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     if 1 {
         return 1

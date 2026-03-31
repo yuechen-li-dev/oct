@@ -25,6 +25,8 @@ Type matching is exact, including dimensions and nominal names.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     var xs = [1, 2]
     xs = Append(xs, 3)
@@ -35,6 +37,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int<m>[] {
     var xs = [1m, 2m]
     return Append(xs, 3s)

@@ -10,7 +10,9 @@ Record and enum identity is nominal.
 ## Rules
 
 - Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `UI`, `Void`, and `Error`.
-- `UI` is the value type returned by UI-building builtins; it represents declarative UI composition values (not browser objects and not ad-hoc records).
+- `UI` is an opaque builtin type for declarative UI composition.
+- `UI` values are produced/consumed by UI library functions.
+- `UI` is not a browser object and not a normal record you can reshape with fields.
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are one-dimensional and homogeneous (`T[]`).
 - Record identity is defined by record name.
@@ -25,6 +27,8 @@ Record and enum identity is nominal.
 Valid:
 
 ```oct
+package Main
+
 record Point { X: Int Y: Int }
 enum Mode { Fast Slow }
 
@@ -39,6 +43,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 record A { X: Int }
 record B { X: Int }
 

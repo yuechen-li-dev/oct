@@ -21,6 +21,8 @@ Enum switching is explicit and checked for coverage.
 Valid:
 
 ```oct
+package Main
+
 enum Mode {
     Fast
     Safe
@@ -37,6 +39,8 @@ fn Weight(m: Mode) -> Int {
 Invalid:
 
 ```oct
+package Main
+
 enum Mode {
     Fast
     Safe

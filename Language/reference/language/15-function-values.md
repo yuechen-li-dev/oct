@@ -21,6 +21,8 @@ Function values are passed by function name.
 Valid:
 
 ```oct
+package Main
+
 fn Double(x: Int) -> Int {
     return x * 2
 }
@@ -37,6 +39,8 @@ fn Main() -> Int {
 Invalid:
 
 ```oct
+package Main
+
 fn ApplyOne(x: Int, f: fn(Int) -> Int) -> Int {
     return f(x)
 }

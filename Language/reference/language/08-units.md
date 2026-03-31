@@ -29,6 +29,8 @@ Unit behavior is explicit and deterministic.
 Valid:
 
 ```oct
+package Main
+
 fn Main() -> Float<m> {
     return Sqrt(4m^2)
 }
@@ -37,6 +39,8 @@ fn Main() -> Float<m> {
 Invalid:
 
 ```oct
+package Main
+
 fn Main() -> Int {
     return 1m + 2s
 }
