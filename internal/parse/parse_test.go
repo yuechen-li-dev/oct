@@ -73,6 +73,18 @@ func TestBuildFileParsesPackageQualifiedRecordLiteral(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesRecordUpdateExpr(t *testing.T) {
+	file := parseSource(t, "record Model { Value: Int Flag: Bool }\nfn Main() -> Model { let m = Model { Value: 1 Flag: false } return m with { Value: 2 Flag: true } }")
+	ret := file.Functions[0].Body.Statements[1].(ast.ReturnStmt)
+	update, ok := ret.Value.(ast.RecordUpdateExpr)
+	if !ok {
+		t.Fatalf("expected RecordUpdateExpr, got %T", ret.Value)
+	}
+	if len(update.Fields) != 2 || update.Fields[0].Name != "Value" || update.Fields[1].Name != "Flag" {
+		t.Fatalf("unexpected update fields: %#v", update.Fields)
+	}
+}
+
 func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int ! Error { let x = Safe()? match Safe() { ok(value) => { return value } err(e) => { return error(\"bad\") } } }")
 

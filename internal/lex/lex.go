@@ -50,6 +50,7 @@ const (
 	KeywordEnum     TokenKind = "KeywordEnum"
 	KeywordPackage  TokenKind = "KeywordPackage"
 	KeywordImport   TokenKind = "KeywordImport"
+	KeywordWith     TokenKind = "KeywordWith"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -446,6 +447,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordPackage
 	case "import":
 		return KeywordImport
+	case "with":
+		return KeywordWith
 	default:
 		return Identifier
 	}

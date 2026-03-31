@@ -1,0 +1,12 @@
+expect error: "record update requires at least one field"
+
+package Main
+
+record Model {
+    Value: Int
+}
+
+fn Main() -> Model {
+    let model = Model { Value: 1 }
+    return model with { }
+}

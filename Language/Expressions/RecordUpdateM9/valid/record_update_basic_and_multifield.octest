@@ -1,0 +1,30 @@
+package Main
+
+record Model {
+    Running: Bool
+    Time: Float
+    Tick: Int
+}
+
+fn Base() -> Model {
+    return Model { Running: false Time: 1.0 Tick: 2 }
+}
+
+[Fact]
+fn RecordUpdateSupportsSingleField() -> Void {
+    let base = Base()
+    let next = base with { Running: true }
+    Assert.True(base.Running == false, "source should remain immutable")
+    Assert.True(next.Running, "updated field should be replaced")
+    Assert.Equal(base.Time, next.Time, "unspecified fields should be preserved")
+    Assert.Equal(base.Tick, next.Tick, "unspecified fields should be preserved")
+}
+
+[Fact]
+fn RecordUpdateSupportsMultiField() -> Void {
+    let base = Base()
+    let next = base with { Time: 3.5 Tick: 9 }
+    Assert.Equal(false, next.Running, "unchanged field should remain")
+    Assert.Equal(3.5, next.Time, "time should update")
+    Assert.Equal(9, next.Tick, "tick should update")
+}

@@ -1,0 +1,12 @@
+expect error: "field 'Value' on type 'Model' expects Int, got Bool"
+
+package Main
+
+record Model {
+    Value: Int
+}
+
+fn Main() -> Model {
+    let model = Model { Value: 1 }
+    return model with { Value: true }
+}

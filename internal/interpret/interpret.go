@@ -999,6 +999,8 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return i.evalCallExpr(env, pkgName, node)
 	case ast.RecordLiteralExpr:
 		return i.evalRecordLiteralExpr(env, pkgName, node)
+	case ast.RecordUpdateExpr:
+		return i.evalRecordUpdateExpr(env, pkgName, node)
 	case ast.EnumValueExpr:
 		enumDecl, enumTypeName, ok := i.lookupEnumDecl(pkgName, node.EnumName)
 		if !ok {
@@ -2691,6 +2693,36 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 		fieldOrder = append(fieldOrder, field.Name)
 	}
 	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: resolvedTypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
+}
+
+func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr ast.RecordUpdateExpr) (evalResult, error) {
+	source, err := i.evalExpr(env, pkgName, expr.Source)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if source.hasError {
+		return evalResult{hasError: true, errorVal: source.errorVal}, nil
+	}
+	if source.value.Kind != ValueRecord {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: record update requires record value, got %s", valueTypeName(source.value))
+	}
+
+	fields := make(map[string]Value, len(source.value.Record.Fields))
+	for name, value := range source.value.Record.Fields {
+		fields[name] = value
+	}
+	for _, field := range expr.Fields {
+		value, err := i.evalExpr(env, pkgName, field.Value)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if value.hasError {
+			return evalResult{hasError: true, errorVal: value.errorVal}, nil
+		}
+		fields[field.Name] = value.value
+	}
+
+	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: source.value.Record.TypeName, Fields: fields}}}, nil
 }
 
 func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (ast.RecordDecl, string, bool) {
