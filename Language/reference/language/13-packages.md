@@ -17,7 +17,7 @@ Package loading is directory-based.
 - `manifest.oct` is package metadata, not a regular source file.
 - When manifest mode is active for a root, every loaded package directory must include `manifest.oct`.
 - When manifest mode is not active, `manifest.oct` is optional.
-- Package dependency metadata is declared by `fn Manifest() -> PackageManifest`. See [15 oct pkg](../tooling/15-oct-pkg.md).
+- Package dependency metadata is declared by `fn Manifest() -> PackageManifest`. See [33 oct pkg](../tooling/33-oct-pkg.md).
 
 ## Examples
 

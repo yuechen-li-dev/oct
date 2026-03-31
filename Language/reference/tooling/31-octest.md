@@ -29,9 +29,9 @@
 - `.octfail` requires one header line: `expect error: "<non-empty substring>"`.
 - `.octfail` passes when compilation fails and the error contains the declared substring.
 - `.octfail` fails on missing rejection, malformed header, or mismatch.
-- `Assert.True`, `Assert.False`, `Assert.Equal`, and `Assert.Near` are the supported assert builtins.
+- `Assert.True(condition: Bool, message: String) -> Void`, `Assert.False(condition: Bool, message: String) -> Void`, `Assert.Equal(expected: T, actual: T, message: String) -> Void`, and `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void` are the supported assert builtins.
 
-See also [16 octagon](./16-octagon.md) for benchmark artifact output via `--octagon-out`.
+See also [34 octagon](./34-octagon.md) for benchmark artifact output via `--octagon-out`.
 
 ## Examples
 

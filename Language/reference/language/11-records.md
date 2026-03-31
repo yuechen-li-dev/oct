@@ -16,9 +16,47 @@ Field access is explicit.
 - Record update form is `value with { Field: value ... }`.
 - Record update requires at least one field and returns a new value of the same record type.
 - Record update field names must exist on the source record type.
+- Record update is immutable (it does not mutate the source value).
+- Record update evaluates the source expression once.
 - Field access form is `value.Field`.
 - Record values are whole-value mutable only (rebind the record, not individual fields).
 - Record identity is nominal by record name. See [02 Types](./02-types.md).
+
+## `with` examples
+
+Single-field `with` update:
+
+```oct
+record Point {
+    X: Int
+    Y: Int
+}
+
+fn MoveX(point: Point) -> Point {
+    let next = point with { X: 3 }
+    return next
+}
+```
+
+Multi-field `with` update:
+
+```oct
+record SampleState {
+    Time: Float
+    Value: Float
+}
+
+fn Advance(state: SampleState, nextValue: Float) -> SampleState {
+    let next = state with {
+        Time: state.Time + 1.0
+        Value: nextValue
+    }
+    return next
+}
+```
+
+Use this when you want immutable record updates while preserving nominal type identity.
+Avoid this when you need behavior-local mutable control memory in flows; use `board` for that.
 
 ## Examples
 

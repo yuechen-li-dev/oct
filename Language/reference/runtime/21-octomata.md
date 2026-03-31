@@ -21,7 +21,10 @@ Octomata and records are complementary:
 - Guard form `when { case ... else ... }` inside a state uses ordered guards: first true `case` action wins.
 - Flow `when` requires `else`.
 - Flow `when` actions are only `goto`, `suspend`, or `return`.
-- Utility form `when policy { hysteresis: Int min_commit: Int } { ... }` is valid only inside flow state bodies.
+- `board { Field: Type ... }` declares flow-local board memory with a fixed field shape.
+- Board fields must be declared up front and are not dynamically extensible.
+- Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
+- Utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - `remember` stores the current state as a resume target.
 - `resume` jumps to the remembered target.
 - Resume storage is a single slot.
@@ -128,6 +131,29 @@ flow CoolingController(t: Telemetry, trip: Float) -> String {
 
 A blackboard is behavior-local working memory owned by control flow.
 
+### Board declaration and write scope
+
+Declare board shape inside the flow with `board { ... }` before states.
+Board shape is fixed for the flow instance and fields are declared up front.
+
+```oct
+flow PumpLoop() -> Int {
+    board {
+        FaultLatched: Bool
+        ResumeTarget: Int
+    }
+
+    state Tick {
+        board.ResumeTarget = 2
+        return board.ResumeTarget
+    }
+}
+```
+
+Use board memory for behavior-local latches, resume targets, cooldown/commit memory, and policy edge memory.
+Avoid using boards as generic mutable application state or as a dumping ground for numeric data lanes.
+
+
 Use blackboards when control logic needs local memory such as:
 
 - interruption/resume targets
@@ -226,17 +252,24 @@ Avoid utility `when` when one guard transition is enough.
 Guard `when` is simpler and should be preferred for single-condition transitions.
 
 ```oct
-flow AlertChannel(tempHigh: Bool, pressureHigh: Bool, commsLost: Bool) -> String {
+flow AlertChannel(fault: Bool, mode: Int) -> Int {
     state Decide {
-        when policy { hysteresis: 2 min_commit: 3 } {
-            case commsLost -> return "critical/comms"
-            case tempHigh -> return "warning/temp"
-            case pressureHigh -> return "warning/pressure"
-            else -> return "normal"
+        let channel = when policy {
+            hysteresis: 2
+            min_commit: 3
+        } {
+            case 3 when fault score 120
+            case 2 when mode == 2 score 85
+            case 1 when mode == 1 score 70
+            else 0
         }
+        return channel
     }
 }
 ```
+
+Use this when multiple valid choices compete and you need explicit arbitration.
+Avoid this when a single guard decides the branch; guard `when` is the simpler form.
 
 Contrast: if you only need `case tempHigh -> goto Alarm else -> goto Normal`, a guard `when` is enough.
 
@@ -254,19 +287,25 @@ Without them (unstable near threshold):
 ```oct
 // Tick 1 picks "cool"; Tick 2 tiny score wobble picks "heat"; Tick 3 flips back.
 when policy {
-    case nearHot -> return "cool"
-    case nearCold -> return "heat"
-    else -> return "hold"
+    hysteresis: 0
+    min_commit: 1
+} {
+    case 1 when nearHot score 50
+    case 2 when nearCold score 50
+    else 0
 }
 ```
 
 With them (stable arbitration):
 
 ```oct
-when policy { hysteresis: 3 min_commit: 4 } {
-    case nearHot -> return "cool"
-    case nearCold -> return "heat"
-    else -> return "hold"
+when policy {
+    hysteresis: 3
+    min_commit: 4
+} {
+    case 1 when nearHot score 70
+    case 2 when nearCold score 75
+    else 0
 }
 ```
 
@@ -317,4 +356,4 @@ flow AckLoop(ack: Bool) -> String {
 
 Use `with` and blackboards together, but for different jobs.
 
-See also [12 Batch](./12-batch.md) for array-parallel execution constructs.
+See also [22 Batch](./22-batch.md) for array-parallel execution constructs.

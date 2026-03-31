@@ -68,10 +68,24 @@ Calls are checked statically for arity and type constraints.
   - Requires zero arguments.
 - `E() -> Float`.
   - Requires zero arguments.
+- `FormatFloat(value: Float, precision: Int) -> String`.
+  - Preferred when rendering display text from floating-point values.
+  - Use this when UI/status strings need fixed precision.
 - `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
 - `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
+- `Assert.True(condition: Bool, message: String) -> Void`.
+- `Assert.False(condition: Bool, message: String) -> Void`.
+- `Assert.Equal(expected: T, actual: T, message: String) -> Void`.
+- `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`.
+  - Argument order is `expected`, then `actual`, then tolerance/message.
+
+### Int-to-String guidance
+
+There is currently no direct `Int -> String` formatting builtin in the core surface.
+Use `FormatFloat` for float display formatting.
+Avoid assuming implicit conversion from `Int` to `String`.
 
 ## Examples
 
@@ -82,6 +96,8 @@ fn Main() -> Int {
     let theta = Pi() / 4
     let xs = [1, 2]
     let ys = Append(xs, 3)
+    let label = "theta=" + FormatFloat(theta, 3)
+    Print(label)
     Print(Atan2(1, 1) + Tan(theta))
     return Len(ys)
 }

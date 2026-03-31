@@ -31,14 +31,14 @@ Start with [00-overview.md](./00-overview.md).
 
 ## Runtime
 
-- [11 Octomata](./runtime/11-octomata.md)
-- [12 Batch](./runtime/12-batch.md)
+- [21 Octomata](./runtime/21-octomata.md)
+- [22 Batch](./runtime/22-batch.md)
 
 ## Tooling
 
-- [13 octest](./tooling/13-octest.md)
-- [14 ocfmt](./tooling/14-ocfmt.md)
-- [15 oct pkg](./tooling/15-oct-pkg.md)
-- [16 octagon](./tooling/16-octagon.md)
-- [17 CLI](./tooling/17-cli.md)
-- [18 VSCode en-human view](./tooling/18-vscode.md)
+- [31 octest](./tooling/31-octest.md)
+- [32 ocfmt](./tooling/32-ocfmt.md)
+- [33 oct pkg](./tooling/33-oct-pkg.md)
+- [34 octagon](./tooling/34-octagon.md)
+- [35 CLI](./tooling/35-cli.md)
+- [36 VSCode en-human view](./tooling/36-vscode.md)

@@ -24,7 +24,7 @@ Load and write are explicit through builtins.
 - Load rejects array element type mismatches.
 - Load rejects dimension mismatches.
 
-See also [13 octest](./13-octest.md) for artifact and benchmark workflows.
+See also [31 octest](./31-octest.md) for artifact and benchmark workflows.
 
 ## Examples
 

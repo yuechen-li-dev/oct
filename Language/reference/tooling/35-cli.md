@@ -21,7 +21,7 @@
 - `oct pkg sync` syncs direct manifest dependencies for the current directory.
 - `oct exp run <git-url>` clones and runs an experimental remote package entry workflow.
 
-See also [13 octest](./13-octest.md), [14 ocfmt](./14-ocfmt.md), and [15 oct pkg](./15-oct-pkg.md).
+See also [31 octest](./31-octest.md), [32 ocfmt](./32-ocfmt.md), and [33 oct pkg](./33-oct-pkg.md).
 
 ## Examples
 
