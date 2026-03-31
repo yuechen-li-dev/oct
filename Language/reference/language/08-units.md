@@ -10,6 +10,8 @@ Unit behavior is explicit and deterministic.
 ## Rules
 
 - Base units are `m`, `kg`, `s`, `A`, `K`, `mol`, `cd`, `px`, and `ui`.
+- `px` is the absolute placement/sizing unit used by Machina UI absolute layout builtins.
+- `ui` is the normalized anchored coordinate unit used by Machina UI anchored layout builtins.
 - `deg` is accepted for angle literals used with trigonometric builtins.
 - Only `Int` and `Float` may be dimension-qualified.
 - Dimensions are part of type identity.

@@ -9,7 +9,8 @@ Record and enum identity is nominal.
 
 ## Rules
 
-- Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `Void`, and `Error`.
+- Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `UI`, `Void`, and `Error`.
+- `UI` is the value type returned by UI-building builtins; it represents declarative UI composition values (not browser objects and not ad-hoc records).
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are one-dimensional and homogeneous (`T[]`).
 - Record identity is defined by record name.
