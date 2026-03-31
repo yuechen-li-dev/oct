@@ -292,14 +292,190 @@ For numeric/data-heavy parts: **no, records should remain primary**.
 
 Net recommendation after M4: use an Octomata-first behavioral core with explicit record data lanes, not an all-Octomata everything model.
 
+## M5 findings
+
+### What candidate blackboard shapes were compared?
+
+M5 compared four narrow blackboard candidates against the exact M4 behavior-local awkward set:
+
+1. **Flow-local mutable bindings** (machine-local mutable vars inside states)
+2. **Special flow blackboard record** (explicit typed board attached to a flow)
+3. **Typed slot/key model** (typed keys with get/set by slot)
+4. **Specialized flow context object** (method-shaped context API; optional control)
+
+### What concrete M4 pressure points were used?
+
+All candidates were forced through the same behavior-local responsibilities that felt awkward in M4 record-heavy style:
+
+- `ControlMode`
+- `DisplayMode`
+- `AlertStatus`
+- `FaultLatched`
+- interruption/resume machine memory (`Inspect`/`FaultHold` return target)
+- policy/arbitration working outputs and commitment memory
+
+Numeric/data-lane state (`Time`, sampled values, history payload) was intentionally held constant as immutable record state and treated as out-of-scope for the blackboard.
+
+### Candidate A — Flow-local mutable bindings
+
+**How it handled M4 responsibilities:**
+
+- easy direct writes for `FaultLatched`, `DisplayMode`, `AlertStatus`
+- interruption/resume memory can be stored in mutable locals
+- policy counters can be incremented naturally
+
+Pseudo shape:
+
+```oct
+state Running {
+  mut FaultLatched: Bool = false
+  mut DisplayMode: String = "Scope"
+  mut AlertStatus: String = "Nominal"
+  mut ResumeMode: String = "Running"
+
+  when EventFaultTrip => {
+    FaultLatched = true
+    ResumeMode = current_state_name()
+    goto FaultHold
+  }
+}
+```
+
+Evaluation:
+
+- **Readability:** locally concise, globally risky (mutation surface is diffuse).
+- **Boilerplate reduction:** high.
+- **Explicitness:** medium-low; ownership boundaries blur quickly.
+- **Abuse risk:** **very high** (becomes “mutable soup” by default).
+- **Behavior vs data separation:** weak; encourages mutation patterns that can bleed into data-lanes conceptually.
+- **Fit with Oct philosophy:** poor due to weak constraints.
+- **Testability/reviewability:** degrades as mutable locals proliferate.
+
+Verdict: **Rejected.** Convenient, but dangerously broad.
+
+### Candidate B — Special flow blackboard record
+
+**How it handled M4 responsibilities:**
+
+- all awkward behavior-local fields become explicit board fields
+- interruption/resume memory stored in `board.ResumeMode`
+- policy/arbitration working memory stays with behavior owner (the flow)
+- writes are explicit and searchable (`board.Field = ...`)
+
+Pseudo shape:
+
+```oct
+record ControlBoard {
+  FaultLatched: Bool
+  DisplayMode: String
+  AlertStatus: String
+  ResumeMode: String
+  PolicyCommitCount: Int
+}
+
+flow ControlDirector(board: ControlBoard) {
+  state Running {
+    when EventFaultTrip => {
+      board.FaultLatched = true
+      board.AlertStatus = "Fault"
+      board.ResumeMode = "Running"
+      suspend "FaultHold"
+    }
+  }
+}
+```
+
+Evaluation:
+
+- **Readability:** high; intent is explicit and scoped.
+- **Boilerplate reduction:** meaningful (removes repeated immutable record copy churn for behavior-local scratch state).
+- **Explicitness:** high; reads/writes and ownership are obvious.
+- **Abuse risk:** medium-low if constrained to flow scope.
+- **Behavior vs data separation:** strong; board is behavior-local by construction.
+- **Fit with Oct philosophy:** strong (explicit, typed, constrained, reviewable).
+- **Testability/reviewability:** strong; board fields form clear correctness surface.
+
+Verdict: **Preferred.** Best balance of ergonomics and guardrails.
+
+### Candidate C — Typed slot/key model
+
+**How it handled M4 responsibilities:**
+
+- pressure points map to slots (`FaultLatched`, `DisplayMode`, etc.)
+- interruption/resume and policy counters become keyed entries
+
+Pseudo shape:
+
+```oct
+board.set(FaultLatched, true)
+board.set(AlertStatus, "Fault")
+board.set(ResumeMode, current_state_name())
+```
+
+Evaluation:
+
+- **Readability:** medium; semantics are less visible than named fields.
+- **Boilerplate reduction:** medium.
+- **Explicitness:** medium; type-safe keys help but indirection hurts scanability.
+- **Abuse risk:** medium-high (slot growth and cross-cutting key usage invite framework sprawl).
+- **Behavior vs data separation:** medium; technically possible but socially easier to erode.
+- **Fit with Oct philosophy:** mixed; more framework-like than language-direct.
+- **Testability/reviewability:** medium-low for larger machines due to key indirection.
+
+Verdict: **Rejected.** Too indirect and framework-ish for Oct’s clarity goals.
+
+### Candidate D — Specialized flow context object (optional)
+
+**How it handled M4 responsibilities:**
+
+- provides narrow behavior APIs (`latch_fault`, `capture_resume_mode`)
+- can constrain writes tightly, but hides state changes behind methods
+
+Evaluation:
+
+- **Readability:** mixed; operations read nicely, but underlying state mutations become opaque.
+- **Boilerplate reduction:** medium.
+- **Explicitness:** medium-low (indirection through methods).
+- **Abuse risk:** low-medium.
+- **Behavior vs data separation:** strong.
+- **Fit with Oct philosophy:** mixed; drifts toward framework surface rather than direct language model.
+- **Testability/reviewability:** mixed; requires jumping between API and behavior code.
+
+Verdict: **Not selected.** Safer than A/C, but less explicit and too API-mediated.
+
+### Narrowing outcome and provisional recommendation
+
+M5 materially narrows the space: **use an explicit, typed, flow-owned blackboard record model** (Candidate B).
+
+Provisional blackboard shape for Octomata:
+
+- one fixed-shape typed board per flow instance
+- board access only inside flow/state transition contexts
+- explicit field reads/writes (no string keys, no dynamic slot registration)
+- explicit boundary handoff between reducer/app record and flow board
+- preserve the M4 split: board for behavior-local working memory, immutable records for numeric/data lanes
+
+### Open questions before any implementation
+
+1. How boundary synchronization should work between reducer record state and flow board snapshots.
+2. Whether utility-policy commitment/hysteresis memory should be visible board fields or private flow internals.
+3. Initialization/reset lifecycle rules for board fields across start/stop/fault-clear cycles.
+4. Preferred testing style for board-dependent behavior without overcoupling tests to incidental internals.
+
+### M5 non-goal confirmation
+
+No runtime changes were added. No language feature/syntax changes were added. No blackboard implementation was added. M5 remained a design/refactor thought experiment only.
+
 ## Preliminary Conclusion
 
-From M0 through M4, SignalLab indicates that the current UI runtime model is sufficient for this class of app. The hybrid layout approach remains the working default: `AnchoredBox` for macro regions, `Row`/`Column` for local grouping, and `AbsoluteBox` for precision touch-ups. Coordinate hygiene plus author-level UI helpers reduced practical friction without requiring runtime changes.
+From M0 through M5, SignalLab indicates that the current UI runtime model is sufficient for this class of app. The hybrid layout approach remains the working default: `AnchoredBox` for macro regions, `Row`/`Column` for local grouping, and `AbsoluteBox` for precision touch-ups. Coordinate hygiene plus author-level UI helpers reduced practical friction without requiring runtime changes.
 
 For state ergonomics, explicit immutable record state remains workable for data-heavy lanes at current scale. Author-level helper conventions reduced update noise enough to keep reducers readable, so this experiment alone does not yet justify language-level record-update features.
 
 For control behavior, Octomata showed clear value as a behavioral contract surface. It materially improved clarity for mode progression, interruption and fault handling, and prioritization/arbitration logic. At the same time, M4 reinforces that Octomata should not be treated as a universal replacement for all state.
 
 The emerging default architecture from SignalLab is therefore a split model: Octomata for behavior/control progression, interruption, and policy decisions; ordinary records for numeric state, history buffers, and deterministic data pipelines. This is a preliminary conclusion from SignalLab, not a universal rule.
+
+M5 further narrows the missing behavior-local working-state category toward a constrained, flow-owned typed blackboard record rather than general mutable locals or key/value slot frameworks.
 
 Forward-looking guidance: future nontrivial interactive Oct apps should likely start from this split when control-state transitions are meaningful, while validating the pattern against at least one structurally different app before promoting it to broader doctrine.
