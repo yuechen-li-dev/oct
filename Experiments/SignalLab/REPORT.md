@@ -708,3 +708,100 @@ M8 makes the pressure signal cleaner:
 - remaining verbosity is largely intrinsic immutable record update cost
 
 Recommendation after M8: a `with`-style record update feature is now **better justified** than before, because seam discipline has already removed a clear architectural source of noise.
+
+## M9 findings
+
+### Implemented `with` shape
+
+M9 implemented a narrow immutable record update expression:
+
+- `sourceExpr with { Field: value ... }`
+
+Semantics:
+
+- evaluates `sourceExpr` exactly once
+- requires `sourceExpr` to be a record value
+- validates updated field names against that record type
+- typechecks each updated value against the declared field type (including dimensions)
+- returns a **new** record of the **same nominal type**
+- copies unspecified fields from source as-is
+
+This is not mutation and does not add dynamic patch objects.
+
+### Zero-field decision
+
+`with {}` is rejected in M9 as useless/no-op sugar.
+
+### SignalLab helper families replaced
+
+M9 removed the record-copy helper family from `SignalLab` M9 state updates:
+
+- removed `WithControlMode`
+- removed `WithBoard`
+- removed `WithNoiseEnabled`
+- removed `WithSelectedSignal`
+- removed `WithTime`
+- removed `WithValue`
+- removed `WithTickCount`
+- removed `WithHistory`
+
+Call sites now update directly with explicit field lists, e.g.:
+
+- `model with { NoiseEnabled: model.NoiseEnabled == false }`
+- `model with { SelectedSignal: SignalSine() }`
+- `model with { Time: model.Time + 0.25 TickCount: model.TickCount + 1 }`
+- `model with { HistoryCount: nextCount ... }`
+
+### Boilerplate/readability outcome
+
+Material improvement.
+
+- repetitive full-record reconstruction helpers disappeared
+- update intent is now local at call sites
+- multi-field updates read as one coherent state transition instead of helper chaining
+
+Net: this removes the remaining “immutable-copy ceremony” that dominated M8’s data-lane updates.
+
+### Edge-case behavior observed
+
+Covered by language tests:
+
+- basic valid update
+- multi-field valid update
+- unknown field rejection
+- type mismatch rejection
+- non-record source rejection
+- source evaluated once
+- chaining (`x with {..} with {..}`) works
+- empty update rejected
+
+Nested field-path sugar (e.g. `Child.X`) remains unsupported in M9 by design.
+
+### Boundary interaction (records vs board)
+
+No new board bypass was introduced.
+
+- `with` updates ordinary immutable records only
+- board ownership rules and flow-only board mutation remain unchanged
+- M9 usage stayed in the existing record-update lanes and did not blur board boundaries
+
+### Remaining ergonomics pain after `with`
+
+Main remaining friction is not immutable record copying anymore. Remaining pain points are:
+
+- some long update sets are still verbose when many fields must move together (explicitness cost)
+- no nested-path update sugar (intentional for narrowness)
+
+These are acceptable tradeoffs for a first feature shape.
+
+### Recommendation
+
+**Adopt `with` as a real language feature** with the M9 narrow shape.
+
+Rationale:
+
+- solves a concrete, isolated ergonomics problem
+- preserves immutability and nominal typing
+- keeps explicit field updates and strict checking
+- does not force blackboard or mutability model expansion
+- produces immediate clarity/boilerplate wins in SignalLab without architectural regression

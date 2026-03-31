@@ -422,6 +422,13 @@ type RecordLiteralField struct {
 	Value Expr
 }
 
+type RecordUpdateExpr struct {
+	Source Expr
+	Fields []RecordLiteralField
+}
+
+func (RecordUpdateExpr) exprNode() {}
+
 type EnumValueExpr struct {
 	EnumName string
 	Variant  string

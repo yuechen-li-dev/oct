@@ -13,6 +13,9 @@ Field access is explicit.
 - Record construction form is `Name { Field: value ... }`.
 - Record construction requires all declared fields.
 - Record construction uses field names; construction order is independent of declaration order.
+- Record update form is `value with { Field: value ... }`.
+- Record update requires at least one field and returns a new value of the same record type.
+- Record update field names must exist on the source record type.
 - Field access form is `value.Field`.
 - Record values are whole-value mutable only (rebind the record, not individual fields).
 - Record identity is nominal by record name. See [02 Types](./02-types.md).

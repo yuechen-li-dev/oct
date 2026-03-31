@@ -1,0 +1,14 @@
+package Main
+
+record Pair {
+    A: Int
+    B: Int
+}
+
+[Fact]
+fn RecordUpdateCanChain() -> Void {
+    let base = Pair { A: 1 B: 2 }
+    let next = base with { A: 3 } with { B: 4 }
+    Assert.Equal(3, next.A, "first update should apply")
+    Assert.Equal(4, next.B, "second update should apply")
+}

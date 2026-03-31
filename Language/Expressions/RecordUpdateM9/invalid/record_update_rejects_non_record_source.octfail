@@ -1,0 +1,7 @@
+expect error: "record update source must be a record value, got Int"
+
+package Main
+
+fn Main() -> Int {
+    return 1 with { Value: 2 }
+}

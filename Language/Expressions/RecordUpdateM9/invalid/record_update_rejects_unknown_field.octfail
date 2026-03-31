@@ -1,0 +1,12 @@
+expect error: "type 'Model' has no field 'Missing'"
+
+package Main
+
+record Model {
+    Value: Int
+}
+
+fn Main() -> Model {
+    let model = Model { Value: 1 }
+    return model with { Missing: 2 }
+}

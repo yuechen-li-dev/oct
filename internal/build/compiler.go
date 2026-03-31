@@ -871,6 +871,36 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		tmp := c.temp(typeName)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
 		return tmp, typeName, false, nil
+	case ast.RecordUpdateExpr:
+		source, sourceType, _, err := c.lowerExpr(e.Source)
+		if err != nil {
+			return "", "", false, err
+		}
+		fieldTypes, ok := c.lookupRecordFields(sourceType)
+		if !ok {
+			return "", "", false, fmt.Errorf("record update requires record source")
+		}
+		overrides := make(map[string]string, len(e.Fields))
+		for _, field := range e.Fields {
+			value, _, _, err := c.lowerExpr(field.Value)
+			if err != nil {
+				return "", "", false, err
+			}
+			overrides[field.Name] = value
+		}
+		names := make([]string, 0, len(fieldTypes))
+		values := make([]string, 0, len(fieldTypes))
+		for _, field := range fieldTypes {
+			names = append(names, field.Name)
+			if override, exists := overrides[field.Name]; exists {
+				values = append(values, override)
+				continue
+			}
+			values = append(values, fmt.Sprintf("%s.%s", source, field.Name))
+		}
+		tmp := c.temp(sourceType)
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: sourceType, FieldNames: names, FieldVals: values})
+		return tmp, sourceType, false, nil
 	case ast.EnumValueExpr:
 		return fmt.Sprintf("%s_%s", e.EnumName, e.Variant), e.EnumName, false, nil
 	case ast.IfExpr:
@@ -1017,6 +1047,31 @@ func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, 
 		}
 	}
 	return "", false
+}
+
+func (c *lowerCtx) lookupRecordFields(recordType string) ([]MIRField, bool) {
+	pkgName := c.pkg.Name
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName = parts[0]
+		typeName = parts[1]
+	}
+	pkg, ok := c.program.Packages[pkgName]
+	if !ok {
+		return nil, false
+	}
+	for _, record := range pkg.Records {
+		if record.Name != typeName {
+			continue
+		}
+		fields := make([]MIRField, 0, len(record.Fields))
+		for _, field := range record.Fields {
+			fields = append(fields, MIRField{Name: field.Name, Type: typeRefStringForPackage(pkgName, field.Type)})
+		}
+		return fields, true
+	}
+	return nil, false
 }
 
 func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {

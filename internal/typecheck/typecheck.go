@@ -897,6 +897,8 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return c.checkCallExpr(scope, node, ctx)
 	case ast.RecordLiteralExpr:
 		return c.checkRecordLiteralExpr(scope, node, ctx)
+	case ast.RecordUpdateExpr:
+		return c.checkRecordUpdateExpr(scope, node, ctx)
 	case ast.EnumValueExpr:
 		enumDecl, ok := c.lookupEnum(node.EnumName)
 		if !ok {
@@ -3033,6 +3035,40 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 		}
 	}
 	return ExprType{ValueType: Type{Name: expr.TypeName}}, nil
+}
+
+func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, ctx functionContext) (ExprType, error) {
+	sourceType, err := c.checkExpr(scope, expr.Source, ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if sourceType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if sourceType.ValueType.Base != "" || sourceType.ValueType.Name == "" || sourceType.ValueType.IsArray {
+		return ExprType{}, fmt.Errorf("record update source must be a record value, got %s", sourceType.ValueType)
+	}
+	recordDecl, ok := c.lookupRecord(sourceType.ValueType.Name)
+	if !ok {
+		return ExprType{}, fmt.Errorf("unknown record type: %s", sourceType.ValueType.Name)
+	}
+	for _, field := range expr.Fields {
+		fieldType, exists := recordDecl.fields[field.Name]
+		if !exists {
+			return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", sourceType.ValueType.Name, field.Name)
+		}
+		valueType, err := c.checkExpr(scope, field.Value, ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isAssignable(valueType.ValueType, fieldType) {
+			return ExprType{}, fmt.Errorf("field '%s' on type '%s' expects %s, got %s", field.Name, sourceType.ValueType.Name, fieldType, valueType.ValueType)
+		}
+	}
+	return sourceType, nil
 }
 
 func (c checker) resolveReturnType(typeRef ast.TypeRef) (Type, error) {

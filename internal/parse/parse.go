@@ -1215,6 +1215,12 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
+		case p.match(lex.KeywordWith):
+			fields, err := p.parseRecordLiteralFields("record update", true)
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.RecordUpdateExpr{Source: expr, Fields: fields}
 		case p.match(lex.Dot):
 			field, err := p.expect(lex.Identifier, "expected field name after '.'")
 			if err != nil {
@@ -1605,20 +1611,28 @@ func (p *parser) looksLikeRecordLiteral() bool {
 }
 
 func (p *parser) parseRecordLiteralExpr(typeName string) (ast.Expr, error) {
-	if _, err := p.expect(lex.LeftBrace, "expected '{' to start record literal"); err != nil {
+	fields, err := p.parseRecordLiteralFields("record literal", false)
+	if err != nil {
+		return nil, err
+	}
+	return ast.RecordLiteralExpr{TypeName: typeName, Fields: fields}, nil
+}
+
+func (p *parser) parseRecordLiteralFields(context string, requireAtLeastOne bool) ([]ast.RecordLiteralField, error) {
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start "+context); err != nil {
 		return nil, err
 	}
 
 	var fields []ast.RecordLiteralField
 	for p.current().Kind != lex.RightBrace {
 		if p.current().Kind == lex.EOF {
-			return nil, p.errorAtCurrent("expected '}' to close record literal")
+			return nil, p.errorAtCurrent("expected '}' to close " + context)
 		}
-		name, err := p.expect(lex.Identifier, "expected record literal field name")
+		name, err := p.expect(lex.Identifier, "expected "+context+" field name")
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.expect(lex.Colon, "expected ':' after record literal field name"); err != nil {
+		if _, err := p.expect(lex.Colon, "expected ':' after "+context+" field name"); err != nil {
 			return nil, err
 		}
 		value, err := p.parseExpression()
@@ -1628,8 +1642,10 @@ func (p *parser) parseRecordLiteralExpr(typeName string) (ast.Expr, error) {
 		fields = append(fields, ast.RecordLiteralField{Name: name.Lexeme, Value: value})
 	}
 	p.advance()
-
-	return ast.RecordLiteralExpr{TypeName: typeName, Fields: fields}, nil
+	if requireAtLeastOne && len(fields) == 0 {
+		return nil, p.errorAtCurrent(context + " requires at least one field")
+	}
+	return fields, nil
 }
 
 func (p *parser) parseSwitchExpr() (ast.Expr, error) {
