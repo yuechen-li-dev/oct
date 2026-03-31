@@ -1,0 +1,162 @@
+package SignalLabM3
+
+[Fact]
+fn SignalLabM3ViewRendersFromInitialState() -> Void {
+    let ui = View(Init())
+    Assert.True(Len(Signature(ui)) > 0, "SignalLab M3 view should produce an opaque UI signature")
+}
+
+[Fact]
+fn SignalLabM3StartAndStopToggleRunning() -> Void {
+    var model = Init()
+    Assert.True(model.ControlMode == ControlIdle(), "Init should start idle")
+
+    model = Update(model, StartEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Start should set running mode")
+
+    model = Update(model, StopEvent())
+    Assert.True(model.ControlMode == ControlIdle(), "Stop should clear running mode back to idle")
+}
+
+[Fact]
+fn SignalLabM3StepAdvancesTimeAndRecordsHistory() -> Void {
+    let before = Init()
+    let after = Update(before, StepEvent())
+
+    Assert.Near(0.25, after.Time, 0.000001, "Step should advance time by fixed delta")
+    Assert.True(after.TickCount == 1, "Step should increment tick count")
+    Assert.Near(0.25, after.Value, 0.000001, "Sine signal should match time for this deterministic model")
+
+    Assert.True(after.HistoryCount == 1, "First step should add one sample")
+    Assert.Near(after.Value, after.History0, 0.000001, "Latest history should match recomputed value")
+
+    let second = Update(after, StepEvent())
+    Assert.True(second.HistoryCount == 2, "Second step should append deterministic history")
+    Assert.Near(second.Value, second.History0, 0.000001, "Newest slot should track latest value")
+    Assert.Near(after.Value, second.History1, 0.000001, "Older slot should shift backward")
+}
+
+[Fact]
+fn SignalLabM3HistoryCapsAtSixSamples() -> Void {
+    var model = Init()
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+
+    Assert.True(model.HistoryCount == 6, "History should cap at six samples")
+    Assert.Near(model.Value, model.History0, 0.000001, "Latest sample should always be in slot zero")
+}
+
+[Fact]
+fn SignalLabM3ResetClearsTimeValueAndHistory() -> Void {
+    var model = Init()
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    Assert.True(model.HistoryCount > 0, "precondition: history should have samples")
+
+    let reset = Update(model, ResetEvent())
+    Assert.Near(0.0, reset.Time, 0.000001, "Reset should clear time")
+    Assert.Near(0.0, reset.Value, 0.000001, "Reset should clear value")
+    Assert.True(reset.TickCount == 0, "Reset should clear tick count")
+    Assert.True(reset.HistoryCount == 0, "Reset should clear history count")
+}
+
+[Fact]
+fn SignalLabM3PlotReadoutUpdatesDeterministically() -> Void {
+    var model = Init()
+    Assert.Equal("empty", LatestSampleText(model), "Empty history should show empty plot readout")
+
+    model = Update(model, StepEvent())
+    Assert.Equal("-.->", LatestSampleText(model), "First deterministic sample should map to expected marker")
+
+    model = Update(model, SelectSignalNoiseEvent())
+    model = Update(model, StepEvent())
+    Assert.True(LatestSampleText(model) == "<-.-" or LatestSampleText(model) == "--o-", "Marker mapping should remain deterministic for noise signal")
+}
+
+
+[Fact]
+fn SignalLabM3ControlFlowSupportsPauseAndResumeTransitions() -> Void {
+    var model = Init()
+    Assert.True(model.ControlMode == ControlIdle(), "Init should start idle")
+
+    model = Update(model, PauseEvent())
+    Assert.True(model.ControlMode == ControlPaused(), "Pause event should allow idle to enter paused")
+
+    model = Update(model, ResumeEvent())
+    Assert.True(model.ControlMode == ControlRunning(), "Resume should move paused to running")
+
+    model = Update(model, StopEvent())
+    Assert.True(model.ControlMode == ControlIdle(), "Stop from running should return to idle")
+}
+
+[Fact]
+fn SignalLabM3DisabledButtonsDoNotEmitEvents() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    match Emit(mounted, StopEvent()) {
+        ok(v) => {
+            Assert.True(false, "Stop should be disabled while not running")
+        }
+        err(e) => {}
+    }
+
+    match Emit(mounted, SelectSignalSineEvent()) {
+        ok(v) => {
+            Assert.True(false, "Sine select should be disabled while already selected")
+        }
+        err(e) => {}
+    }
+
+    Assert.Equal(0, Len(DrainEvents(mounted)), "Disabled controls should not enqueue events")
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
+
+[Fact]
+fn SignalLabM3EventUpdateViewPatchLoopRemainsValid() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitStart = Emit(mounted, StartEvent()) !
+    Assert.Equal(0, emitStart, "Start emit should succeed")
+
+    let startEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(startEvents), "Start should enqueue one event")
+
+    var model = Init()
+    model = Update(model, startEvents[0])
+    Assert.True(model.ControlMode == ControlRunning(), "Model should be running after start")
+
+    let startPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, startPatch, "Patch after start should succeed")
+
+    let emitStep = Emit(mounted, StepEvent()) !
+    Assert.Equal(0, emitStep, "Step emit should succeed")
+
+    let stepEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stepEvents), "Step should enqueue one event")
+
+    model = Update(model, stepEvents[0])
+    Assert.Near(0.25, model.Time, 0.000001, "Step while running should advance time")
+    Assert.True(model.HistoryCount == 1, "Step should also update plot history")
+
+    let tickPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, tickPatch, "Patch after tick should succeed")
+
+    let emitStop = Emit(mounted, StopEvent()) !
+    Assert.Equal(0, emitStop, "Stop emit should succeed")
+
+    let stopEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stopEvents), "Stop should enqueue one event")
+
+    model = Update(model, stopEvents[0])
+    Assert.True(model.ControlMode == ControlIdle(), "Model should stop after stop event")
+
+    let stopPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, stopPatch, "Patch after stop should succeed")
+
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
