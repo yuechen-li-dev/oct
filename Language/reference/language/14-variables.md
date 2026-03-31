@@ -6,6 +6,9 @@ Oct bindings are explicit: immutable `let`, mutable `var`.
 Assignment is type-checked and exact.
 Mutation for structured values is whole-value oriented.
 
+`let` is the default.
+Use `var` only when reassignment is required.
+
 ## Rules
 
 - `let` creates an immutable binding.
@@ -19,15 +22,49 @@ Mutation for structured values is whole-value oriented.
 
 ## Examples
 
-Valid:
+Preferred (`let` default):
+
+```oct
+fn Main() -> Int {
+    let base = 40
+    let offset = 2
+    return base + offset
+}
+```
+
+Use `var` when reassignment is needed:
+
+```oct
+fn NextPowerOfTwo(n: Int) -> Int {
+    var v = 1
+    while v < n {
+        v = v * 2
+    }
+    return v
+}
+```
+
+Side-by-side contrast:
+
+```oct
+fn LetVsVar(limit: Int) -> Int {
+    let start = 1
+
+    var running = start
+    while running < limit {
+        running = running + 1
+    }
+
+    return running
+}
+```
+
+Valid (whole-value and array mutation):
 
 ```oct
 record Point { X: Int Y: Int }
 
 fn Main() -> Int {
-    var d = 1m
-    d = 2m
-
     var p = Point { X: 1 Y: 2 }
     p = Point { X: 3 Y: p.Y }
 
@@ -37,7 +74,7 @@ fn Main() -> Int {
 }
 ```
 
-Invalid:
+Invalid (`let` reassignment):
 
 ```oct
 fn Main() -> Int {
