@@ -248,6 +248,7 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> Float { return Sin(90deg) }",
 		"fn Main() -> Float { return Pi() }",
 		"fn Main() -> Float { return E() }",
+		"fn Main() -> String { return FormatFloat(1.25, 2) }",
 		"fn Main() -> Int[] { var xs = [1, 2] xs = Append(xs, 3) return xs }",
 		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
 		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
@@ -296,6 +297,8 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1) }", "function Main: function 'Atan2' expects 2 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1m, 1) }", "function Main: Atan2 requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1, 1s) }", "function Main: Atan2 requires dimensionless input")
+	assertTypeErrorContains(t, "fn Main() -> String { return FormatFloat(1, 2) }", "function Main: function 'FormatFloat' argument 1 expects Float, got Int")
+	assertTypeErrorContains(t, "fn Main() -> String { return FormatFloat(1.5, 2.0) }", "function Main: function 'FormatFloat' argument 2 expects Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sinh(3m) }", "function Main: Sinh requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cosh(2kg) }", "function Main: Cosh requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Tanh(5A) }", "function Main: Tanh requires dimensionless input")
@@ -308,6 +311,8 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(1, 2) }", "function Main: function 'WriteOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"artifact.octagon\", vector[1, 2]) }", "function Main: function 'WriteOctagon' argument 2 expects .octagon-representable value, got Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"a.octagon\") }", "function Main: function 'WriteOctagon' expects 2 arguments, got 1")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\") }", "function Main: function 'UIButton' expects 3 arguments, got 2")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\", \"yes\") }", "function Main: function 'UIButton' argument 3 expects Bool, got String")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")

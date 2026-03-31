@@ -21,6 +21,7 @@ type uiNode struct {
 	Text     string
 	Label    string
 	Event    string
+	Enabled  bool
 	Children []*uiNode
 }
 
@@ -37,7 +38,7 @@ func cloneUI(node *uiNode) *uiNode {
 	for _, child := range node.Children {
 		children = append(children, cloneUI(child))
 	}
-	return &uiNode{Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Children: children}
+	return &uiNode{Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: children}
 }
 
 func uiSignature(node *uiNode) string {
@@ -48,7 +49,7 @@ func uiSignature(node *uiNode) string {
 	case uiNodeText:
 		return "Text(" + node.Text + ")"
 	case uiNodeButton:
-		return "Button(" + node.Label + "->" + node.Event + ")"
+		return "Button(" + node.Label + "->" + node.Event + ",enabled=" + fmt.Sprintf("%t", node.Enabled) + ")"
 	case uiNodeColumn, uiNodeRow:
 		parts := make([]string, 0, len(node.Children))
 		for _, child := range node.Children {
@@ -64,7 +65,7 @@ func uiTreeContainsEvent(node *uiNode, token string) bool {
 	if node == nil {
 		return false
 	}
-	if node.Kind == uiNodeButton && node.Event == token {
+	if node.Kind == uiNodeButton && node.Enabled && node.Event == token {
 		return true
 	}
 	for _, child := range node.Children {
@@ -93,8 +94,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		}
 		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: uiNodeText, Text: content.value.Text}}}, nil
 	case "UIButton":
-		if len(argumentExprs) != 2 {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects 2 arguments")
+		if len(argumentExprs) != 3 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects 3 arguments")
 		}
 		label, err := i.evalExpr(env, pkgName, argumentExprs[0])
 		if err != nil {
@@ -110,10 +111,17 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if event.hasError {
 			return evalResult{hasError: true, errorVal: event.errorVal}, nil
 		}
-		if label.value.Kind != ValueString || event.value.Kind != ValueString {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects String label/event")
+		enabled, err := i.evalExpr(env, pkgName, argumentExprs[2])
+		if err != nil {
+			return evalResult{}, err
 		}
-		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: uiNodeButton, Label: label.value.Text, Event: event.value.Text}}}, nil
+		if enabled.hasError {
+			return evalResult{hasError: true, errorVal: enabled.errorVal}, nil
+		}
+		if label.value.Kind != ValueString || event.value.Kind != ValueString || enabled.value.Kind != ValueBool {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects (String, String, Bool)")
+		}
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: uiNodeButton, Label: label.value.Text, Event: event.value.Text, Enabled: enabled.value.Bool}}}, nil
 	case "UIColumn", "UIRow":
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)

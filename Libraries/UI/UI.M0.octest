@@ -3,21 +3,30 @@ package UI
 [Fact]
 fn WidgetConstructorsReturnUI() -> Void {
     let text = Text("hello")
-    let button = Button("ok", "app.ok")
-    let column = Column([text, button])
+    let button = Button("ok", "app.ok", true)
+    let disabledButton = Button("disabled", "app.disabled", false)
+    let column = Column([text, button, disabledButton])
     let row = Row([text, button])
 
     Assert.True(Len(Signature(text)) > 0, "Text must produce an opaque UI value")
     Assert.True(Len(Signature(button)) > 0, "Button must produce an opaque UI value")
+    Assert.True(Len(Signature(disabledButton)) > 0, "disabled Button must produce an opaque UI value")
     Assert.True(Len(Signature(column)) > 0, "Column must produce an opaque UI value")
     Assert.True(Len(Signature(row)) > 0, "Row must produce an opaque UI value")
 }
 
 [Fact]
+fn FormatFloatUsesDeterministicFixedPrecision() -> Void {
+    Assert.Equal("1.23", FormatFloat(1.234, 2), "rounding should respect requested precision")
+    Assert.Equal("1.20", FormatFloat(1.2, 2), "trailing zeros should be explicit")
+    Assert.Equal("0", FormatFloat(0.49, 0), "zero precision should be fixed-point")
+}
+
+[Fact]
 fn CounterViewIsPureStateToUI() -> Void {
-    let before = CounterView(CounterState { Count: 1 })
-    let again = CounterView(CounterState { Count: 1 })
-    let after = CounterView(CounterState { Count: 2 })
+    let before = CounterView(CounterState { Count: 1 Voltage: 0.25 })
+    let again = CounterView(CounterState { Count: 1 Voltage: 0.25 })
+    let after = CounterView(CounterState { Count: 2 Voltage: 0.50 })
 
     Assert.Equal(Signature(before), Signature(again), "same state should render same UI signature")
     Assert.True(Signature(before) != Signature(after), "different state should render different UI signature")
@@ -25,8 +34,8 @@ fn CounterViewIsPureStateToUI() -> Void {
 
 [Fact]
 fn MountPatchUnmountLifecycleWorks() -> Void {
-    let mounted = MountUI(CounterView(CounterState { Count: 0 }))
-    let patched = PatchUI(mounted, CounterView(CounterState { Count: 2 }))
+    let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
+    let patched = PatchUI(mounted, CounterView(CounterState { Count: 2 Voltage: 0.5 }))
     let unmounted = UnmountUI(mounted)
 
     Assert.Equal(0, patched, "patch should succeed")
@@ -35,15 +44,15 @@ fn MountPatchUnmountLifecycleWorks() -> Void {
 
 [Fact]
 fn ExplicitEventTokensDriveStateTransition() -> Void {
-    let mounted = MountUI(CounterView(CounterState { Count: 0 }))
-    let emitted = Emit(mounted, "counter.increment") !
+    let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
+    let emitted = Emit(mounted, CounterIncrementEvent()) !
     Assert.Equal(0, emitted, "event emission should succeed")
 
     let events = DrainEvents(mounted)
     Assert.Equal(1, Len(events), "exactly one event should be queued")
-    Assert.Equal("counter.increment", events[0], "button event token should be preserved")
+    Assert.Equal(CounterIncrementEvent(), events[0], "button event token should be preserved")
 
-    let next = CounterUpdate(CounterState { Count: 0 }, events[0])
+    let next = CounterUpdate(CounterState { Count: 0 Voltage: 0.0 }, events[0])
     Assert.Equal(1, next.Count, "application state must update explicitly from event token")
 
     let patch = PatchUI(mounted, CounterView(next))
@@ -57,8 +66,40 @@ fn ExplicitEventTokensDriveStateTransition() -> Void {
 }
 
 [Fact]
+fn DisabledButtonPreventsEventEmission() -> Void {
+    let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
+
+    match Emit(mounted, CounterDecrementEvent()) {
+        ok(v) => {
+            Assert.True(false, "disabled decrement button should not emit")
+        }
+        err(e) => {}
+    }
+
+    Assert.Equal(0, Len(DrainEvents(mounted)), "disabled emission should not enqueue events")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn EnabledButtonStillEmitsAfterRerender() -> Void {
+    let mounted = MountUI(CounterView(CounterState { Count: 1 Voltage: 0.25 }))
+    let emitted = Emit(mounted, CounterDecrementEvent()) !
+    Assert.Equal(0, emitted, "enabled decrement should emit")
+
+    let events = DrainEvents(mounted)
+    Assert.Equal(1, Len(events), "enabled decrement should enqueue exactly one event")
+    Assert.Equal(CounterDecrementEvent(), events[0], "decrement event should stay explicit")
+
+    let next = CounterUpdate(CounterState { Count: 1 Voltage: 0.25 }, events[0])
+    Assert.Equal(0, next.Count, "decrement should reduce count")
+
+    Assert.Equal(0, PatchUI(mounted, CounterView(next)), "rerender with disabled decrement should still patch")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
 fn UnknownEventTokenIsRejectedByRuntimeBridge() -> Void {
-    let mounted = MountUI(CounterView(CounterState { Count: 0 }))
+    let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
     match Emit(mounted, "counter.unknown") {
         ok(v) => {
             Assert.True(false, "runtime bridge must reject unknown event token")

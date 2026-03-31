@@ -15,8 +15,8 @@ fn Text(content: String) -> UI {
     return UIText(content)
 }
 
-fn Button(label: String, event: String) -> UI {
-    return UIButton(label, event)
+fn Button(label: String, event: String, enabled: Bool) -> UI {
+    return UIButton(label, event, enabled)
 }
 
 fn Column(children: UI[]) -> UI {
@@ -62,29 +62,30 @@ fn Init() -> PanelState {
 }
 
 fn View(model: PanelState) -> UI {
+    let startEnabled = model.PowerOn and model.Mode != "running"
     return Column([
         Text("Power: " + PowerLabel(model.PowerOn)),
         Text("Mode: " + model.Mode),
-        Text("Setpoint: " + DecimalLabel(model.Setpoint)),
-        Text("Output: " + DecimalLabel(model.Output)),
+        Text("Setpoint: " + FormatFloat(model.Setpoint, 1)),
+        Text("Output: " + FormatFloat(model.Output, 1)),
         Row([
-            Button("Power On", "panel.power.on"),
-            Button("Power Off", "panel.power.off")
+            Button("Power On", PowerOnEvent(), model.PowerOn == false),
+            Button("Power Off", PowerOffEvent(), model.PowerOn)
         ]),
         Row([
-            Button("Start", "panel.mode.start"),
-            Button("Pause", "panel.mode.pause"),
-            Button("Reset", "panel.reset")
+            Button("Start", StartEvent(), startEnabled),
+            Button("Pause", PauseEvent(), model.Mode == "running"),
+            Button("Reset", ResetEvent(), true)
         ]),
         Row([
-            Button("Setpoint +", "panel.setpoint.increment"),
-            Button("Setpoint -", "panel.setpoint.decrement")
+            Button("Setpoint +", SetpointIncrementEvent(), true),
+            Button("Setpoint -", SetpointDecrementEvent(), model.Setpoint > 0.0)
         ])
     ])
 }
 
 fn Update(model: PanelState, event: String) -> PanelState {
-    if event == "panel.power.on" {
+    if event == PowerOnEvent() {
         return Recompute(PanelState {
             PowerOn: true
             Mode: model.Mode
@@ -93,7 +94,7 @@ fn Update(model: PanelState, event: String) -> PanelState {
         })
     }
 
-    if event == "panel.power.off" {
+    if event == PowerOffEvent() {
         return Recompute(PanelState {
             PowerOn: false
             Mode: "paused"
@@ -102,7 +103,7 @@ fn Update(model: PanelState, event: String) -> PanelState {
         })
     }
 
-    if event == "panel.mode.start" {
+    if event == StartEvent() {
         if model.PowerOn {
             return Recompute(PanelState {
                 PowerOn: model.PowerOn
@@ -114,7 +115,7 @@ fn Update(model: PanelState, event: String) -> PanelState {
         return model
     }
 
-    if event == "panel.mode.pause" {
+    if event == PauseEvent() {
         return Recompute(PanelState {
             PowerOn: model.PowerOn
             Mode: "paused"
@@ -123,11 +124,11 @@ fn Update(model: PanelState, event: String) -> PanelState {
         })
     }
 
-    if event == "panel.reset" {
+    if event == ResetEvent() {
         return Init()
     }
 
-    if event == "panel.setpoint.increment" {
+    if event == SetpointIncrementEvent() {
         return Recompute(PanelState {
             PowerOn: model.PowerOn
             Mode: model.Mode
@@ -136,7 +137,7 @@ fn Update(model: PanelState, event: String) -> PanelState {
         })
     }
 
-    if event == "panel.setpoint.decrement" {
+    if event == SetpointDecrementEvent() {
         var next = model.Setpoint - 0.5
         if next < 0.0 {
             next = 0.0
@@ -179,37 +180,30 @@ fn PowerLabel(powerOn: Bool) -> String {
     return "Off"
 }
 
-fn DecimalLabel(value: Float) -> String {
-    if value == 0.0 {
-        return "0.0"
-    }
-    if value == 0.4 {
-        return "0.4"
-    }
-    if value == 0.8 {
-        return "0.8"
-    }
-    if value == 1.0 {
-        return "1.0"
-    }
-    if value == 1.2 {
-        return "1.2"
-    }
-    if value == 1.5 {
-        return "1.5"
-    }
-    if value == 1.6 {
-        return "1.6"
-    }
-    if value == 2.0 {
-        return "2.0"
-    }
-    if value == 2.4 {
-        return "2.4"
-    }
-    if value == 3.0 {
-        return "3.0"
-    }
+fn PowerOnEvent() -> String {
+    return "panel.power.on"
+}
 
-    return "many"
+fn PowerOffEvent() -> String {
+    return "panel.power.off"
+}
+
+fn StartEvent() -> String {
+    return "panel.mode.start"
+}
+
+fn PauseEvent() -> String {
+    return "panel.mode.pause"
+}
+
+fn ResetEvent() -> String {
+    return "panel.reset"
+}
+
+fn SetpointIncrementEvent() -> String {
+    return "panel.setpoint.increment"
+}
+
+fn SetpointDecrementEvent() -> String {
+    return "panel.setpoint.decrement"
 }

@@ -8,7 +8,7 @@
 
 - `UI` (first-class opaque type)
 - `Text(content: String) -> UI`
-- `Button(label: String, event: String) -> UI`
+- `Button(label: String, event: String, enabled: Bool) -> UI`
 - `Row(children: UI[]) -> UI`
 - `Column(children: UI[]) -> UI`
 
@@ -18,6 +18,7 @@
 - Runtime and reconciler (`mount` / `patch` / `unmount`) are implemented in Go internals.
 - State is external to components (`state -> UI`).
 - Events are explicit tokens (`String`) bridged through runtime dispatch.
+- `FormatFloat(value: Float, precision: Int) -> String` is available for fixed-precision numeric labels.
 
 ## Non-goals (M0)
 
