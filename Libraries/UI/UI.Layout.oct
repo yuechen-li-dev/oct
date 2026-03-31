@@ -4,12 +4,64 @@ record Mount {
     Handle: Int
 }
 
+record UIBox {
+    Kind: String
+    X: Float
+    Y: Float
+    Width: Float
+    Height: Float
+    Left: Float
+    Top: Float
+    Right: Float
+    Bottom: Float
+}
+
 fn Column(children: UI[]) -> UI {
     return UIColumn(children)
 }
 
 fn Row(children: UI[]) -> UI {
     return UIRow(children)
+}
+
+fn Canvas(children: UI[]) -> UI {
+    return UICanvas(children)
+}
+
+fn AbsoluteBox(x: Float, y: Float, width: Float, height: Float) -> UIBox {
+    return UIBox {
+        Kind: "absolute"
+        X: x
+        Y: y
+        Width: width
+        Height: height
+        Left: 0.0
+        Top: 0.0
+        Right: 0.0
+        Bottom: 0.0
+    }
+}
+
+fn AnchoredBox(left: Float, top: Float, right: Float, bottom: Float) -> UIBox {
+    return UIBox {
+        Kind: "anchored"
+        X: 0.0
+        Y: 0.0
+        Width: 0.0
+        Height: 0.0
+        Left: left
+        Top: top
+        Right: right
+        Bottom: bottom
+    }
+}
+
+fn Place(box: UIBox, child: UI) -> UI {
+    if box.Kind == "absolute" {
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+    }
+
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
 }
 
 fn MountUI(root: UI) -> Mount {

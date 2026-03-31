@@ -313,6 +313,8 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"a.octagon\") }", "function Main: function 'WriteOctagon' expects 2 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\") }", "function Main: function 'UIButton' expects 3 arguments, got 2")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\", \"yes\") }", "function Main: function 'UIButton' argument 3 expects Bool, got String")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.0, 0.0, 10.0, Text(\"x\")) } fn Text(content: String) -> UI { return UIText(content) }", "function Main: function 'UIPlaceAbsolute' expects 5 arguments, got 4")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(0.0, 0.0, 1.0, 1.0, \"x\") }", "function Main: function 'UIPlaceAnchored' argument 5 expects UI, got String")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")

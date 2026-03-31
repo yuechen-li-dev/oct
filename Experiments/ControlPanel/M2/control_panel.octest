@@ -1,0 +1,46 @@
+package ControlPanelM2
+
+[Fact]
+fn ControlPanelM2ViewRendersFromState() -> Void {
+    let ui = View(Init())
+    Assert.True(Len(Signature(ui)) > 0, "control panel M2 view should produce an opaque UI")
+}
+
+[Fact]
+fn ControlPanelM2LoopRemainsStateDriven() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitPowerOn = Emit(mounted, PowerOnEvent()) !
+    Assert.Equal(0, emitPowerOn, "PowerOn emit should succeed")
+
+    let eventsAfterPowerOn = DrainEvents(mounted)
+    Assert.Equal(1, Len(eventsAfterPowerOn), "PowerOn should enqueue exactly one event")
+
+    var model = Init()
+    model = Update(model, eventsAfterPowerOn[0])
+    let patchAfterPowerOn = PatchUI(mounted, View(model))
+    Assert.Equal(0, patchAfterPowerOn, "rerender after power on should patch")
+
+    let emitStart = Emit(mounted, StartEvent()) !
+    Assert.Equal(0, emitStart, "Start emit should succeed")
+
+    let eventsAfterStart = DrainEvents(mounted)
+    Assert.Equal(1, Len(eventsAfterStart), "Start should enqueue exactly one event")
+
+    model = Update(model, eventsAfterStart[0])
+    let patchAfterStart = PatchUI(mounted, View(model))
+    Assert.Equal(0, patchAfterStart, "rerender after start should patch")
+
+    let emitSetpointIncrement = Emit(mounted, SetpointIncrementEvent()) !
+    Assert.Equal(0, emitSetpointIncrement, "Setpoint increment emit should succeed")
+
+    let eventsAfterSetpointIncrement = DrainEvents(mounted)
+    Assert.Equal(1, Len(eventsAfterSetpointIncrement), "Setpoint increment should enqueue one event")
+
+    model = Update(model, eventsAfterSetpointIncrement[0])
+    let patchAfterSetpointIncrement = PatchUI(mounted, View(model))
+    Assert.Equal(0, patchAfterSetpointIncrement, "rerender after setpoint update should patch")
+
+    let unmounted = UnmountUI(mounted)
+    Assert.Equal(0, unmounted, "unmount should succeed")
+}
