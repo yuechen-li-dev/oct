@@ -228,3 +228,66 @@ M3 suggests a hybrid split is cleaner than helper-only reducer style:
 Recommendation: **Yes, prefer the hybrid split by default when control-state transitions are a meaningful part of behavior.**
 
 If an app has very shallow control state, helper-only style remains acceptable. But once mode transitions matter, Octomata provides clearer control contracts with low architectural disruption.
+
+## M4 findings
+
+### What parts were pushed into Octomata?
+
+M4 intentionally moved far beyond M3’s control-mode-only flow. Octomata now owns:
+
+- control progression plus interruption routing (`Idle`, `Running`, `Paused`, `Inspect`, `FaultHold`) via `ControlDirector`
+- temporary interruption semantics (`Inspect`) using `suspend` + `remember` + `resume`
+- fault hold and acknowledgement restoration path (`FaultHold`) using `suspend` + conditional `resume`
+- display-mode arbitration via utility policy (`DisplayPolicy`)
+- surfaced alert arbitration via utility policy (`AlertPolicy`)
+
+The reducer still dispatches explicit events, but mode/display/alert decisions are now flow-driven rather than direct if/else field assignment.
+
+### Which Octomata features were actually exercised?
+
+M4 directly uses all required pressure features:
+
+- `flow`
+- `state`
+- ordered `when`
+- `utility when` with `hysteresis` and `min_commit`
+- `suspend`
+- `remember`
+- `resume`
+
+This was not decorative use: interruption and utility selection both affect live control mode and UI-facing derived state.
+
+### What became dramatically clearer?
+
+- The temporary interruption model became explicit: “remember current mode, detour, then resume” is represented directly instead of manually threading previous mode through record fields.
+- Fault acknowledgement behavior became easier to reason about as a flow path than as ad-hoc reducer conditionals.
+- Display/alert priority conflicts are now written as explicit scored policy instead of nested branching.
+
+### What became worse?
+
+- Integrating flow lifecycle into a one-event reducer required step orchestration (`Step` calls to completion), which is ceremony-heavy.
+- Because app data still lives in immutable records, boilerplate `With*` helpers remain substantial.
+- Using utility policies for presentation choices is powerful but can feel over-engineered for small UIs.
+
+### Did this go beyond M3 in a genuinely useful way?
+
+Yes. M3 proved Octomata for control transitions; M4 demonstrates Octomata can own broader behavioral surfaces (interruptions + policy arbitration) while keeping explicit UI/update architecture intact.
+
+However, the gain is uneven: control/fault/interruption logic improved more than numeric/data handling.
+
+### Where is the real line between Octomata and records?
+
+Practical boundary from M4:
+
+- **Octomata-owned**: mode transitions, interruption semantics, conflict-priority decisions, acknowledgment/resumption behavior.
+- **Record-owned**: sampled numeric values, history buffers, raw readout payloads, deterministic signal generation.
+
+Trying to push low-level numeric/sample storage into Octomata did not look promising; keeping it in records remains cleaner.
+
+### Is Octomata now strong enough to be primary behavior model?
+
+For interactive apps with meaningful mode logic and competing decisions: **yes, Octomata can be the primary behavior model**.
+
+For numeric/data-heavy parts: **no, records should remain primary**.
+
+Net recommendation after M4: use an Octomata-first behavioral core with explicit record data lanes, not an all-Octomata everything model.
