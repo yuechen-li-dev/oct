@@ -1,0 +1,22 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "SignalLab"
+        Version: "0.1.0"
+        Description: "SignalLab M0 UI-backed application experiment for hybrid layout and coordinate hygiene validation"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

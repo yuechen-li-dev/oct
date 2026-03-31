@@ -1,0 +1,125 @@
+package SignalLabM0
+
+[Fact]
+fn SignalLabM0ViewRendersFromInitialState() -> Void {
+    let ui = View(Init())
+    Assert.True(Len(Signature(ui)) > 0, "SignalLab view should produce an opaque UI signature")
+}
+
+[Fact]
+fn SignalLabM0StartAndStopToggleRunning() -> Void {
+    var model = Init()
+    Assert.True(model.Running == false, "Init should start stopped")
+
+    model = Update(model, StartEvent())
+    Assert.True(model.Running, "Start should set running")
+
+    model = Update(model, StopEvent())
+    Assert.True(model.Running == false, "Stop should clear running")
+}
+
+[Fact]
+fn SignalLabM0StepAdvancesTimeAndValueDeterministically() -> Void {
+    let before = Init()
+    let after = Update(before, StepEvent())
+
+    Assert.Near(0.25, after.Time, 0.000001, "Step should advance time by fixed delta")
+    Assert.True(after.TickCount == 1, "Step should increment tick count")
+    Assert.Near(0.25, after.Value, 0.000001, "Sine signal should match time for this deterministic model")
+
+    let second = Update(after, StepEvent())
+    Assert.Near(0.50, second.Time, 0.000001, "Second step should continue deterministic time advance")
+    Assert.Near(0.50, second.Value, 0.000001, "Second step value should remain deterministic")
+}
+
+[Fact]
+fn SignalLabM0ResetClearsTimeAndValue() -> Void {
+    var model = Init()
+    model = Update(model, StepEvent())
+    model = Update(model, StepEvent())
+    Assert.True(model.Time > 0.0, "precondition: state should have moved")
+
+    let reset = Update(model, ResetEvent())
+    Assert.Near(0.0, reset.Time, 0.000001, "Reset should clear time")
+    Assert.Near(0.0, reset.Value, 0.000001, "Reset should clear value")
+    Assert.True(reset.TickCount == 0, "Reset should clear tick count")
+}
+
+[Fact]
+fn SignalLabM0NoiseToggleAffectsValueDeterministically() -> Void {
+    let cleanInit = Init()
+    let noisyInit = Update(cleanInit, ToggleNoiseEvent())
+
+    let cleanStep = Update(cleanInit, StepEvent())
+    let noisyStep = Update(noisyInit, StepEvent())
+
+    Assert.True(noisyStep.NoiseEnabled, "Noise toggle should persist enabled")
+    Assert.Near(cleanStep.Time, noisyStep.Time, 0.000001, "Noise toggle should not change step timing")
+    Assert.True(cleanStep.Value != noisyStep.Value, "Noise enabled path should produce different deterministic value")
+}
+
+[Fact]
+fn SignalLabM0DisabledButtonsDoNotEmitEvents() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    match Emit(mounted, StopEvent()) {
+        ok(v) => {
+            Assert.True(false, "Stop should be disabled while not running")
+        }
+        err(e) => {}
+    }
+
+    match Emit(mounted, SelectSignalSineEvent()) {
+        ok(v) => {
+            Assert.True(false, "Sine select should be disabled while already selected")
+        }
+        err(e) => {}
+    }
+
+    Assert.Equal(0, Len(DrainEvents(mounted)), "Disabled controls should not enqueue events")
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
+
+[Fact]
+fn SignalLabM0EventUpdateViewPatchLoopRemainsValid() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitStart = Emit(mounted, StartEvent()) !
+    Assert.Equal(0, emitStart, "Start emit should succeed")
+
+    let startEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(startEvents), "Start should enqueue one event")
+
+    var model = Init()
+    model = Update(model, startEvents[0])
+    Assert.True(model.Running, "Model should be running after start")
+
+    let startPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, startPatch, "Patch after start should succeed")
+
+    let emitStep = Emit(mounted, StepEvent()) !
+    Assert.Equal(0, emitStep, "Step emit should succeed")
+
+    let stepEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stepEvents), "Step should enqueue one event")
+
+    model = Update(model, stepEvents[0])
+    Assert.Near(0.25, model.Time, 0.000001, "Step while running should advance time")
+
+    let tickPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, tickPatch, "Patch after tick should succeed")
+
+    let emitStop = Emit(mounted, StopEvent()) !
+    Assert.Equal(0, emitStop, "Stop emit should succeed")
+
+    let stopEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(stopEvents), "Stop should enqueue one event")
+
+    model = Update(model, stopEvents[0])
+    Assert.True(model.Running == false, "Model should stop after stop event")
+
+    let stopPatch = PatchUI(mounted, View(model))
+    Assert.Equal(0, stopPatch, "Patch after stop should succeed")
+
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
