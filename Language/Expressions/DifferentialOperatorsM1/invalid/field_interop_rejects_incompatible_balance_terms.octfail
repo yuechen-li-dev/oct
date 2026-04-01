@@ -1,0 +1,9 @@
+expect error: "operator "+" not defined for Vector<Float> and Matrix<Float>"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let sigma = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let m = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let _ = Div(sigma) + m
+}

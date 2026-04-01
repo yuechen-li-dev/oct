@@ -40,6 +40,7 @@ const (
 	ValueUI      ValueKind = "UI"
 	ValueIndex   ValueKind = "Index"
 	ValueDiffOp  ValueKind = "DiffOp"
+	ValueFieldOp ValueKind = "FieldOp"
 )
 
 type Value struct {
@@ -61,11 +62,18 @@ type Value struct {
 	Flow      *FlowRuntimeInstance
 	UI        *uiNode
 	DiffOp    DifferentialOpValue
+	FieldOp   FieldOpValue
 }
 
 type DifferentialOpValue struct {
 	Operator string
 	Operand  *Value
+}
+
+type FieldOpValue struct {
+	Operator string
+	Left     *Value
+	Right    *Value
 }
 
 type ErrorValue struct {
@@ -187,6 +195,11 @@ func (v Value) String() string {
 			return v.DiffOp.Operator + "(<invalid>)"
 		}
 		return v.DiffOp.Operator + "(" + v.DiffOp.Operand.String() + ")"
+	case ValueFieldOp:
+		if v.FieldOp.Left == nil || v.FieldOp.Right == nil {
+			return "FieldOp(<invalid>)"
+		}
+		return "(" + v.FieldOp.Left.String() + " " + v.FieldOp.Operator + " " + v.FieldOp.Right.String() + ")"
 	default:
 		return "<invalid>"
 	}
@@ -445,6 +458,20 @@ func cloneValue(value Value) Value {
 		copied.Record.Fields = make(map[string]Value, len(value.Record.Fields))
 		for key, fieldValue := range value.Record.Fields {
 			copied.Record.Fields[key] = cloneValue(fieldValue)
+		}
+	case ValueDiffOp:
+		if value.DiffOp.Operand != nil {
+			operandCopy := cloneValue(*value.DiffOp.Operand)
+			copied.DiffOp.Operand = &operandCopy
+		}
+	case ValueFieldOp:
+		if value.FieldOp.Left != nil {
+			leftCopy := cloneValue(*value.FieldOp.Left)
+			copied.FieldOp.Left = &leftCopy
+		}
+		if value.FieldOp.Right != nil {
+			rightCopy := cloneValue(*value.FieldOp.Right)
+			copied.FieldOp.Right = &rightCopy
 		}
 	}
 	return copied
@@ -1117,6 +1144,18 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				return evalResult{}, fmt.Errorf("runtime error: index [%d, %d] out of bounds for matrix of shape %dx%d", r, c, target.value.Matrix.Rows, target.value.Matrix.Cols)
 			}
 			return evalResult{value: target.value.Matrix.Elements[int(r)*target.value.Matrix.Cols+int(c)]}, nil
+		case ValueDiffOp, ValueFieldOp:
+			if !allIntIndices {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: representational field expression indexing requires Int indices")
+			}
+			if len(indices) == 0 || len(indices) > 2 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: representational field expression indexing requires 1 or 2 indices, got %d", len(indices))
+			}
+			projected, err := buildFieldProjection(target.value, indices)
+			if err != nil {
+				return evalResult{}, err
+			}
+			return evalResult{value: projected}, nil
 		default:
 			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index value of kind %s", target.value.Kind)
 		}
@@ -1768,6 +1807,20 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 		for index := range value.Matrix.Elements {
 			value.Matrix.Elements[index] = qualifyCrossPackageValue(value.Matrix.Elements[index], pkgName)
 		}
+	case ValueDiffOp:
+		if value.DiffOp.Operand != nil {
+			operand := qualifyCrossPackageValue(*value.DiffOp.Operand, pkgName)
+			value.DiffOp.Operand = &operand
+		}
+	case ValueFieldOp:
+		if value.FieldOp.Left != nil {
+			left := qualifyCrossPackageValue(*value.FieldOp.Left, pkgName)
+			value.FieldOp.Left = &left
+		}
+		if value.FieldOp.Right != nil {
+			right := qualifyCrossPackageValue(*value.FieldOp.Right, pkgName)
+			value.FieldOp.Right = &right
+		}
 	}
 	return value
 }
@@ -2313,6 +2366,23 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		operandCopy := operand.value
 		return evalResult{value: Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{Operator: "Div", Operand: &operandCopy}}}, nil
+	}
+	if callee == "SymGrad" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: SymGrad expects 1 argument")
+		}
+		operand, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if operand.hasError {
+			return evalResult{hasError: true, errorVal: operand.errorVal}, nil
+		}
+		if operand.value.Kind != ValueVector {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: SymGrad expects numeric Vector argument")
+		}
+		operandCopy := operand.value
+		return evalResult{value: Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{Operator: "SymGrad", Operand: &operandCopy}}}, nil
 	}
 	if callee == "Idx" {
 		if len(argumentExprs) != 1 {
@@ -3126,6 +3196,9 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if isComparisonOperator(operator) {
 		return evalComparisonExpr(operator, left, right)
 	}
+	if isRepresentationalFieldValue(left) || isRepresentationalFieldValue(right) {
+		return evalRepresentationalFieldBinaryExpr(operator, left, right)
+	}
 	if left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix {
 		return evalLinearBinaryExpr(operator, left, right)
 	}
@@ -3181,6 +3254,49 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported operator %q", operator)
 	}
+}
+
+func isRepresentationalFieldValue(value Value) bool {
+	return value.Kind == ValueDiffOp || value.Kind == ValueFieldOp
+}
+
+func evalRepresentationalFieldBinaryExpr(operator string, left Value, right Value) (Value, error) {
+	if !isLinearElementwiseOperator(operator) {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+	if right.Kind == ValueArray || right.Kind == ValueRecord || right.Kind == ValueEnum || right.Kind == ValueError || right.Kind == ValueRange || right.Kind == ValueString || right.Kind == ValueBool {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+	if left.Kind == ValueArray || left.Kind == ValueRecord || left.Kind == ValueEnum || left.Kind == ValueError || left.Kind == ValueRange || left.Kind == ValueString || left.Kind == ValueBool {
+		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
+	}
+	leftCopy := cloneValue(left)
+	rightCopy := cloneValue(right)
+	return Value{Kind: ValueFieldOp, FieldOp: FieldOpValue{Operator: operator, Left: &leftCopy, Right: &rightCopy}}, nil
+}
+
+func buildFieldProjection(target Value, indices []int64) (Value, error) {
+	labels := make([]string, 0, len(indices))
+	for _, index := range indices {
+		labels = append(labels, strconv.FormatInt(index, 10))
+	}
+	indexVector := Value{Kind: ValueVector, Vector: make([]Value, len(labels))}
+	for i := range labels {
+		indexVector.Vector[i] = Value{Kind: ValueString, Text: labels[i]}
+	}
+	indexVectorCopy := cloneValue(indexVector)
+	targetCopy := cloneValue(target)
+	return Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{
+		Operator: "Project",
+		Operand: &Value{
+			Kind: ValueFieldOp,
+			FieldOp: FieldOpValue{
+				Operator: ",",
+				Left:     &targetCopy,
+				Right:    &indexVectorCopy,
+			},
+		},
+	}}, nil
 }
 
 func evalLinearBinaryExpr(operator string, left Value, right Value) (Value, error) {
@@ -3524,6 +3640,9 @@ func valueTypeName(value Value) string {
 			return "FlowInstance<invalid>"
 		}
 		return fmt.Sprintf("FlowInstance<%s>", value.Flow.Decl.ReturnType.Name)
+	}
+	if value.Kind == ValueFieldOp {
+		return "FieldOp"
 	}
 	base := string(value.Kind)
 	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {

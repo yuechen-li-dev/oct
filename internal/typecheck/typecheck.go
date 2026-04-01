@@ -2524,6 +2524,25 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension}}, nil
 	}
+	if callee == "SymGrad" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'SymGrad' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'SymGrad' expects 1 arguments, got %d", len(arguments))
+		}
+		operandType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if operandType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray || !operandType.ValueType.IsVector {
+			return ExprType{}, fmt.Errorf("function 'SymGrad' argument 1 expects numeric Vector, got %s", operandType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension, IsMatrix: true}}, nil
+	}
 	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)

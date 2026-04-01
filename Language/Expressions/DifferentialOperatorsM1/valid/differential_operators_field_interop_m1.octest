@@ -1,0 +1,21 @@
+package MainValid
+
+[Fact]
+fn DifferentialOperatorsM1FieldInteropSurface() -> Void {
+    let u = vector[0.1, -0.05]
+    let gradU = Grad(u)
+
+    // Narrow tensor-like interoperability over representational Grad(...).
+    let _ = gradU[0, 1]
+
+    // Tiny helper remains representational and composes with Div(...).
+    let eps = SymGrad(u)
+    let _ = Div(eps)
+
+    let sigma = matrix[[120.0, 5.0] [5.0, 100.0]]
+    let b = vector[3.0, -2.0]
+
+    // Strong-form residual shape is now directly composable.
+    let r = Div(sigma) + b
+    let _ = r
+}
