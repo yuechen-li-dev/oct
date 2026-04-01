@@ -1,0 +1,37 @@
+package Mechanics
+
+[Fact]
+fn RightCauchyGreen2DMatchesTextbookFTimesF() -> Void {
+    let F = matrix[[1.10, 0.20] [0.00, 0.95]]
+    let C = RightCauchyGreen2D(F)
+
+    Assert.Near(1.21, C[0, 0], 0.000001, "C00")
+    Assert.Near(0.22, C[0, 1], 0.000001, "C01")
+    Assert.Near(0.22, C[1, 0], 0.000001, "C10")
+    Assert.Near(0.9425, C[1, 1], 0.000001, "C11")
+}
+
+[Fact]
+fn SmallStrain2DAndTraceExposeVolumetricPart() -> Void {
+    let gradU = matrix[[0.02, 0.03] [0.01, -0.01]]
+    let eps = SmallStrain2D(gradU)
+
+    Assert.Near(0.02, eps[0, 0], 0.000001, "eps00")
+    Assert.Near(0.02, eps[0, 1], 0.000001, "eps01")
+    Assert.Near(0.02, eps[1, 0], 0.000001, "eps10")
+    Assert.Near(0.0 - 0.01, eps[1, 1], 0.000001, "eps11")
+
+    let i1 = FirstInvariantI1(eps)
+    Assert.Near(0.01, i1, 0.000001, "trace(eps)")
+}
+
+[Fact]
+fn LinearIsotropicStress2DMatchesLambdaMuSkeleton() -> Void {
+    let eps = matrix[[0.01, 0.02] [0.02, 0.0 - 0.005]]
+    let sigma = LinearIsotropicStress2D(eps, 100.0, 50.0)
+
+    Assert.Near(1.5, sigma[0, 0], 0.000001, "sigma00")
+    Assert.Near(2.0, sigma[0, 1], 0.000001, "sigma01")
+    Assert.Near(2.0, sigma[1, 0], 0.000001, "sigma10")
+    Assert.Near(0.0, sigma[1, 1], 0.000001, "sigma11")
+}
