@@ -1,3 +1,65 @@
+# Storefront Experiment — Short Paper
+
+## Abstract
+The Storefront experiment evaluated whether Machina UI could author and maintain a realistic storefront-style surface, not just control-panel interfaces. Across milestones M0 through M7, the experiment validated that explicit composition, deterministic state transitions, and table-first representation can scale to website-like pages without introducing new runtime subsystems. The close-out result is a stable authoring model for storefront-class UI source.
+
+## Motivation
+After SignalLab, Storefront was selected to stress a different UI shape: a content-heavy, website-style page with repeated cards, filters, sections, and navigation-like interactions. The objective was to pressure Machina UI on four fronts at once: layout expression, interaction wiring, data modeling, and source organization. It was explicitly intended to move beyond control-panel-only surfaces and test whether the same model remained readable under broader page structure.
+
+## Method
+The experiment progressed incrementally through focused milestones:
+
+- **M0:** establish basic storefront viability with existing primitives.
+- **M1:** introduce typed coordinates (`px` / `ui`) for layout domain clarity.
+- **M2:** consolidate repeated interaction wiring into canonical event families.
+- **M3:** separate composition concerns from behavior concerns.
+- **M4:** make slot-level data explicit.
+- **M5:** represent catalog/grid truth in table-shaped data.
+- **M6:** use dispatch tables for simple exact-key transitions.
+- **M6a:** express exact-key pure mappings as tables rather than branching.
+- **M7:** stabilize top-level source organization via a lightweight parts list.
+
+Each milestone was constrained to authoring and representation changes unless runtime change was strictly necessary.
+
+## Key Findings
+- Machina UI layout generalized beyond control panels into storefront-like page structure.
+- Typed coordinates (`px` / `ui`) materially improved layout readability and edit safety.
+- String-based event transport remained acceptable once canonical event families were adopted.
+- Composition and behavior should be separated, but kept nearby in the same source unit.
+- Table-shaped truth should be represented as tables.
+- Storefront catalogs are naturally table data.
+- Storefront placement is naturally grid-shaped and benefits from explicit placement tables.
+- Simple exact-key transitions should use dispatch tables.
+- Exact-key pure mappings should be data, not branching logic.
+- Larger Machina UI files benefit from a lightweight top-level parts list.
+
+## Canonical Machina UI Authoring Structure
+The experiment converged on a consistent top-level structure for larger surfaces:
+
+- **Data:** canonical table-shaped facts (catalogs, labels, static maps).
+- **Placement:** explicit geometry/slot/grid placement tables.
+- **Dispatch:** exact-key transition and resolver tables.
+- **Behavior:** procedural update logic, family matching, and derived transitions.
+- **Composition:** UI builders that assemble sections/cards and emit events.
+- **Surface:** final assembled `View` returned from composition.
+
+This structure keeps representation explicit while preserving deterministic behavior and local editability.
+
+## Boundaries / Non-Conclusions
+The Storefront experiment did **not** conclude that Machina UI needs:
+
+- a runtime router,
+- a typed event runtime,
+- automatic layout or grid inference,
+- a framework DSL.
+
+It also did not support moving procedural logic into data indiscriminately: procedural/dynamic logic should remain code, and Octomata should remain the mechanism for real behavioral progression rather than trivial keyed mappings.
+
+## Conclusion
+From M0 to M7, Storefront provided sufficient evidence to stabilize a canonical Machina UI authoring model for storefront-like pages: explicit data and placement, table-oriented dispatch for exact-key cases, procedural behavior where needed, and clear composition-to-surface assembly.
+
+---
+
 # Storefront M0 Report
 
 ## Fictional brand/concept chosen
