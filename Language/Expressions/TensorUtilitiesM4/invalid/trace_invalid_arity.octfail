@@ -1,0 +1,8 @@
+expect error: "function 'Trace' expects 1 arguments, got 2"
+
+package Main
+
+fn Main() -> Void {
+    let a = matrix[[1, 2] [3, 4]]
+    let _ = Trace(a, a)
+}

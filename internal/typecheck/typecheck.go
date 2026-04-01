@@ -2458,6 +2458,25 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: resultScalar.Base, Dimension: resultScalar.Dimension, IsMatrix: true}}, nil
 	}
+	if callee == "Trace" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Trace' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Trace' expects 1 arguments, got %d", len(arguments))
+		}
+		matrixType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if matrixType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !matrixType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function 'Trace' argument 1 expects Matrix, got %s", matrixType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: matrixType.ValueType.Base, Dimension: matrixType.ValueType.Dimension}}, nil
+	}
 	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
