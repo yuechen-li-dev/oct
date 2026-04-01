@@ -1,0 +1,27 @@
+package MainValid
+
+[Fact]
+fn ContinuumM4DivAcceptsRepresentationalConstitutiveFieldForm() -> Void {
+    let u = vector[0.12, -0.03]
+    let mu = 35.0
+
+    let eps = SymGrad(u)
+
+    // Representational constitutive matrix-like field-form composition.
+    let sigma = (2.0 * mu) * eps
+
+    // M4 seam closure: Div now accepts this FieldOp output directly.
+    let divSigma = Div(sigma)
+    let _ = divSigma
+}
+
+[Fact]
+fn ContinuumM4InlineConstitutiveStrongFormSliceIsDirect() -> Void {
+    let u = vector[0.11, -0.04]
+    let mu = 28.0
+    let b = vector[0.0, -9.81]
+
+    // Direct inline constitutive + balance chain stays representational.
+    let r = Div((2.0 * mu) * SymGrad(u)) + b
+    let _ = r
+}

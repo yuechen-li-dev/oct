@@ -1,0 +1,13 @@
+expect error: "operator "+" not defined for Vector<Float> and Matrix<Float>"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[0.06, -0.01]
+    let mu = 20.0
+
+    let badBodyForce = matrix[[0.0, 0.0] [0.0, -9.81]]
+
+    // Divergence is vector-valued; matrix body-force term must remain illegal.
+    let _ = Div((2.0 * mu) * SymGrad(u)) + badBodyForce
+}

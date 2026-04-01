@@ -1,0 +1,12 @@
+expect error: "function 'Div' argument 1 expects numeric Vector or Matrix, got Float"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[0.09, -0.02]
+    let eps = SymGrad(u)
+
+    // Scalar constitutive-like expression is not divergence-compatible.
+    let scalarLike = 2.0 * Trace(eps)
+    let _ = Div(scalarLike)
+}
