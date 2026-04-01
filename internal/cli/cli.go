@@ -79,11 +79,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return writeUsage(stderr)
 		}
 		path := args[1]
-		octagonOut, err := parseBenchOctagonOut(args[2:])
+		options, err := parseBenchOptions(path, args[2:])
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
-		if err := tester.ExecuteBenchmarks(path, stdout, tester.BenchmarkOptions{OctagonOutPath: octagonOut}); err != nil {
+		if err := tester.ExecuteBenchmarks(path, stdout, options); err != nil {
 			return reportCommandError(stderr, command, err)
 		}
 		return nil
@@ -251,6 +251,33 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 func writeUsage(stderr io.Writer) error {
 	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err
+}
+
+func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, error) {
+	options := tester.BenchmarkOptions{}
+	for i := 0; i < len(args); i += 2 {
+		if i+1 >= len(args) {
+			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>]")
+		}
+		flag := args[i]
+		value := args[i+1]
+		switch flag {
+		case "--octagon-out":
+			if !strings.HasSuffix(value, ".octagon") {
+				return tester.BenchmarkOptions{}, fmt.Errorf("bench --octagon-out path must end with .octagon")
+			}
+			options.OctagonOutPath = value
+		case "--profile":
+			if value != "cpu" {
+				return tester.BenchmarkOptions{}, fmt.Errorf("bench --profile must be 'cpu'")
+			}
+			options.ProfileMode = value
+			options.ProfileOutPath = tester.DefaultCPUProfilePath(path)
+		default:
+			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>]")
+		}
+	}
+	return options, nil
 }
 
 func parseBenchOctagonOut(args []string) (string, error) {

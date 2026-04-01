@@ -3,6 +3,9 @@ package tester
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime/pprof"
 	"sort"
 	"time"
 
@@ -13,6 +16,8 @@ import (
 
 type BenchmarkOptions struct {
 	OctagonOutPath string
+	ProfileMode    string
+	ProfileOutPath string
 }
 
 type BenchmarkRun struct {
@@ -71,6 +76,13 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 
 	failed := 0
 	run := BenchmarkRun{Cases: make([]BenchmarkCaseResult, 0, len(benchmarks))}
+	stopProfile, err := startBenchmarkProfile(path, options)
+	if err != nil {
+		return err
+	}
+	if stopProfile != nil {
+		defer stopProfile()
+	}
 	for _, benchmark := range benchmarks {
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, benchmark.filePath))
@@ -96,6 +108,44 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		}
 	}
 	return nil
+}
+
+func DefaultCPUProfilePath(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		dir := filepath.Dir(path)
+		base := filepath.Base(path)
+		return filepath.Join(dir, base+".bench.cpu.pprof")
+	}
+	return filepath.Join(path, "bench.cpu.pprof")
+}
+
+func startBenchmarkProfile(path string, options BenchmarkOptions) (func(), error) {
+	if options.ProfileMode == "" {
+		return nil, nil
+	}
+	if options.ProfileMode != "cpu" {
+		return nil, fmt.Errorf("unsupported benchmark profile mode: %s", options.ProfileMode)
+	}
+	profilePath := options.ProfileOutPath
+	if profilePath == "" {
+		profilePath = DefaultCPUProfilePath(path)
+	}
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
+		return nil, err
+	}
+	file, err := os.Create(profilePath)
+	if err != nil {
+		return nil, err
+	}
+	if err := pprof.StartCPUProfile(file); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return func() {
+		pprof.StopCPUProfile()
+		_ = file.Close()
+	}, nil
 }
 
 func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
