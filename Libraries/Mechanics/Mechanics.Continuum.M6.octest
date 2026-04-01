@@ -1,0 +1,36 @@
+package Mechanics
+
+[Fact]
+fn YoungPoissonBridgeMatchesLaméPathForPlaneStrain() -> Void {
+    let gradU = matrix[[0.02, 0.01] [0.00, -0.01]]
+    let eps = SmallStrain2D(gradU)
+
+    let E = 210.0
+    let nu = 0.30
+
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let mu = MuFromYoungPoisson(E, nu)
+
+    let sigmaFromBridge = LinearIsotropicStressPlaneStrain2DFromYoungPoisson(eps, E, nu)
+    let sigmaFromLame = LinearIsotropicStressPlaneStrain2D(eps, lambda, mu)
+
+    Assert.Near(sigmaFromLame[0, 0], sigmaFromBridge[0, 0], 0.000001, "bridge should match explicit Lamé plane strain path")
+    Assert.Near(sigmaFromLame[1, 1], sigmaFromBridge[1, 1], 0.000001, "bridge should match explicit Lamé plane strain path")
+}
+
+[Fact]
+fn YoungPoissonBridgeKeepsPlaneStressAndPlaneStrainExplicitInStrongFormSlices() -> Void {
+    let u = vector[0.11, -0.04]
+    let E = 210.0
+    let nu = 0.29
+    let b = vector[0.0, -9.81]
+
+    let sigmaPlaneStress = LinearIsotropicStressPlaneStress2DFromYoungPoisson(SymGrad(u), E, nu)
+    let sigmaPlaneStrain = LinearIsotropicStressPlaneStrain2DFromYoungPoisson(SymGrad(u), E, nu)
+
+    let rPlaneStress = Div(sigmaPlaneStress) + b
+    let rPlaneStrain = Div(sigmaPlaneStrain) + b
+
+    let _ = rPlaneStress
+    let _ = rPlaneStrain
+}

@@ -1,0 +1,57 @@
+package MainValid
+
+fn MuFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return E / (2.0 * (1.0 + nu))
+}
+
+fn LameLambdaFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return (E * nu) / ((1.0 + nu) * (1.0 - (2.0 * nu)))
+}
+
+fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
+    return (2.0 * mu * lambda) / (lambda + (2.0 * mu))
+}
+
+fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let volumetric = Trace(strain)
+
+    return (lambda * volumetric) * identity + (2.0 * mu) * strain
+}
+
+fn PlaneStrainStress2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, LameLambdaFromYoungPoisson(E, nu), MuFromYoungPoisson(E, nu))
+}
+
+fn PlaneStressStress2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let mu = MuFromYoungPoisson(E, nu)
+
+    return LinearIsotropicStress2D(strain, PlaneStressLambda2D(lambda, mu), mu)
+}
+
+[Fact]
+fn ContinuumM6YoungPoissonBridgeKeepsAssumptionsExplicit() -> Void {
+    let u = vector[0.12, -0.03]
+    let eps = SymGrad(u)
+
+    let E = 210.0
+    let nu = 0.3
+
+    let sigmaPlaneStrain = PlaneStrainStress2DFromYoungPoisson(eps, E, nu)
+    let sigmaPlaneStress = PlaneStressStress2DFromYoungPoisson(eps, E, nu)
+
+    let _ = sigmaPlaneStrain
+    let _ = sigmaPlaneStress
+}
+
+[Fact]
+fn ContinuumM6YoungPoissonBridgeComposesWithStrongFormResidualShape() -> Void {
+    let u = vector[0.11, -0.04]
+    let E = 210.0
+    let nu = 0.29
+    let b = vector[0.0, -9.81]
+
+    let r = Div(PlaneStressStress2DFromYoungPoisson(SymGrad(u), E, nu)) + b
+    let _ = r
+}
