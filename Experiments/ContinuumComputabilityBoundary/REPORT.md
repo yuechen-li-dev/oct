@@ -8,6 +8,8 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 ## Milestones
 - M0: problem-specification boundary probe
 - M1: computational lowering probe (finite sites, no mesh/no solver)
+- M2: site-local constraint residual relation (no coupling, no solve)
+- M3: minimal site-to-site coupling probe (explicit pairs, no mesh/no solve)
 
 ## M0
 
@@ -260,3 +262,72 @@ The next blocked capability is **site-to-site coupling** (for example, any equil
 
 ### Recommendation for next pass
 Run one more narrow pass focused only on the first coupling relation (not a solver). At that point, decide if minimal explicit topology is unavoidable. Do not jump to FEM/FV/FD infrastructure yet.
+
+## M3
+
+### Coupling relation chosen
+M3 introduces exactly one site-to-site relation: **pairwise difference coupling** over explicit site pairs:
+
+- for each listed pair `(i, j)`
+- `Δux_ij = ux[j] - ux[i]`
+- `Δuy_ij = uy[j] - uy[i]`
+
+This is evaluated by `EvaluateSiteCoupling(lowered, pairs)` and returned as typed per-pair outputs (`SiteCouplingResult2D`).
+
+### Why this is minimal
+This is the smallest honest interaction step beyond M2:
+
+- coupling exists between different sites
+- no solve or global assembly is performed
+- no method commitment (no FE shape functions, no FDM stencil assumptions, no FVM control volumes)
+
+It upgrades capability from site-local residual checks (M2) to explicit site-to-site interaction while keeping all global commitments out of scope.
+
+### Coupling structure introduced
+M3 adds `SitePairRelation2D`:
+
+- `I: Int[]`
+- `J: Int[]`
+- `Weight: Float[]`
+
+Pairs are explicit and finite for the tiny carrier:
+
+- `(0,1), (1,3), (0,2), (2,3)`
+- all weights are `1.0`
+
+No neighbor graph, element ownership, adjacency table, or hidden mesh construction is introduced.
+
+### Topology pressure outcome
+**Did defining pairs require topology?**
+No for this pass: explicit pair listing is sufficient to compute coupling deltas.
+
+**Did pair selection feel arbitrary?**
+Yes, intentionally. This is the pressure signal M3 is meant to expose.
+
+**Did correctness depend on structured neighbor selection?**
+Only weakly in M3 (deterministic relation evaluation works either way), but physical fidelity and operator consistency clearly begin to depend on principled pair selection.
+
+**Does this naturally push toward nearest-neighbor/connectivity/partitioning?**
+Yes. Once pair selection must be principled rather than hand-listed, the design is pressured toward minimal topology.
+
+### Boundary after M3
+**Now possible**
+
+- site-to-site interaction exists
+- typed coupling residual-like quantities exist per pair
+- deterministic coupling evaluation can run over finite site unknown slots
+
+**Still impossible**
+
+- no consistent global operator
+- no physical correctness guarantee
+- no solve
+- no continuum-consistent discretization
+
+### Next missing piece decision
+M3 indicates the immediate next choice is:
+
+- **A) better pair selection (still topology-free)** as one more constrained probe, or
+- **B) minimal topology commitment** if principled neighbor definition is required for correctness expectations
+
+Current recommendation: attempt one narrow A-pass first, and if pair policy cannot be justified without hidden structure, make B explicit.
