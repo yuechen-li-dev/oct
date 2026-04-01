@@ -1,0 +1,12 @@
+expect error: "EinAdd requires matching free-index order on both terms"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+
+    let gradU = matrix[[1, 2] [3, 4]]
+    let _ = gradU[i, j] + gradU[k, j]
+}

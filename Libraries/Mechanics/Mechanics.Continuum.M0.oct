@@ -1,0 +1,40 @@
+package Mechanics
+
+/// Minimal continuum-kinematics helper: right Cauchy-Green tensor C = F^T F.
+fn RightCauchyGreen2D(F: Matrix<Float>) -> Matrix<Float> {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+
+    return F[k, i] * F[k, j]
+}
+
+/// Minimal small-strain kinematics helper: eps = 0.5 * (gradU + gradU^T).
+fn SmallStrain2D(gradU: Matrix<Float>) -> Matrix<Float> {
+    return matrix[[
+        gradU[0, 0],
+        0.5 * (gradU[0, 1] + gradU[1, 0])
+    ] [
+        0.5 * (gradU[1, 0] + gradU[0, 1]),
+        gradU[1, 1]
+    ]]
+}
+
+/// First invariant I1 for a second-order tensor via explicit trace.
+fn FirstInvariantI1(tensor: Matrix<Float>) -> Float {
+    return Trace(tensor)
+}
+
+/// Small-strain isotropic linear-elastic skeleton:
+/// sigma = lambda * tr(eps) * I + 2 * mu * eps.
+fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+
+    let volumetric = FirstInvariantI1(strain)
+    let lambdaVolIdentity = matrix[[lambda * volumetric, 0.0] [0.0, lambda * volumetric]]
+    let twoMuIdentity = matrix[[2.0 * mu, 0.0] [0.0, 2.0 * mu]]
+
+    return lambdaVolIdentity[i, j] + twoMuIdentity[i, k] * strain[k, j]
+}
