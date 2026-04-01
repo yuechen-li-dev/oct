@@ -583,3 +583,66 @@ Adopt this dispatch-table pattern as a canonical behavior-authoring style for **
 - keep procedural logic outside tables.
 
 Do **not** generalize this into a runtime router, typed event system, or generic dispatch DSL at this stage.
+
+---
+
+# Storefront M6a Report (Pure Mapping Cleanup)
+
+## What changed in M6a
+
+M6a is a narrow cleanup on top of M6. It keeps M6 structure and behavior intact, while converting the remaining obvious exact-key pure value ladders into table-shaped data + tiny deterministic lookup code.
+
+Converted in M6a:
+
+- `CategoryLabel(...)` from `if key == ...` branches to `CategoryLabelMapping()` + `ResolveLabelMapping(...)`
+- `SortLabel(...)` from `if key == ...` branches to `SortLabelMapping()` + `ResolveLabelMapping(...)`
+
+Not converted in M6a:
+
+- dynamic event families (`InspectEvent(productId)`, `AddToCartEvent(productId)`) because they are procedural string construction, not exact-key mapping tables
+- boolean toggle behavior in `Update(...)` because it is transition logic (`not model.X`), not pure mapping
+
+## Event constant families: kept or changed?
+
+The nav/category/sort/featured event constant families were **kept as functions** in M6a.
+
+Reasoning:
+
+- they remain readable at the UI emission surface (`Button(..., NavShopEvent(), ...)`, etc.)
+- they are already consumed by dispatch-table constructors, so call-site intent stays explicit
+- converting them now would mostly rename/relocate constants rather than materially reducing complexity
+
+For this narrow pass, keeping them preserved local readability without introducing additional indirection.
+
+## Readability and locality impact
+
+- **Readability improved** for pure labels: category/sort display mappings now read as explicit data tables rather than branch logic.
+- **Locality stayed stable**: label mappings and resolver are kept adjacent to the behavior/composition helpers that use them.
+- no generic mapping framework or cross-file abstraction was introduced.
+
+## Logic vs data boundary after M6a
+
+M6a makes the boundary clearer:
+
+- exact-key pure label mappings -> table data (`CategoryLabelMapping`, `SortLabelMapping`)
+- exact-key event transitions -> dispatch tables (`NavDispatchTable`, etc.)
+- dynamic/procedural behavior -> code (toggle inversion, family event construction/matching)
+
+## Behavioral equivalence and test updates
+
+M6a keeps storefront behavior equivalent to M6 for affected surfaces.
+
+Added focused coverage:
+
+- label mapping canonical values
+- unknown-key fallback stability for category/sort labels
+
+Existing interaction, dispatch, and catalog/grid determinism tests remain in place.
+
+## Does this strengthen the “mappings are data” rule?
+
+Yes. For exact-key pure mappings, M6a shows the rule cleanly: these are better represented as explicit data tables with tiny lookup helpers than as branch ladders.
+
+## Next biggest authoring pain after M6a
+
+After dispatch + pure mapping cleanup, the largest remaining friction is repeated catalog presentation wiring (card slot traversal/index plumbing), not key-mapping logic.
