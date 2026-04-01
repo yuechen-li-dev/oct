@@ -182,3 +182,81 @@ Run M2 as a **minimal operator-definition pass**:
 - keep solve out-of-scope unless/until a concrete global algebra object is introduced
 
 Do not jump directly to full FEM/FV/FD stacks.
+
+## M2
+
+### Discrete relation chosen
+M2 introduces a **site-scoped constraint residual relation**:
+
+- attachment object: `SiteConstraintAttachment2D`
+- evaluation object: `SiteConstraintResidual2D`
+- evaluator: `EvaluateConstraintResidualAtSites(...)`
+
+This relation maps a constrained site unknown slot to a residual-like mismatch:
+
+- `uxResidual[i] = ux[i] - prescribedUx[i]` when `ux` is constrained at site `i`
+- `uyResidual[i] = uy[i] - prescribedUy[i]` when `uy` is constrained at site `i`
+
+No solve, assembly, or neighborhood coupling is introduced.
+
+### Why this is the smallest honest relation
+It is strictly downstream from `LoweredProblem2D` and uses only:
+
+- explicit finite sites (`FiniteSites2D`)
+- explicit site unknown slots (`SiteUnknowns2D`)
+- explicit per-site constraint masks/values
+
+It introduces one computable relation (`unknown - prescribed`) without introducing site-to-site stencils, elements, or adjacency.
+
+### Objects introduced
+- `SiteConstraintAttachment2D`
+  - `IsUxConstrained: Bool[]`
+  - `IsUyConstrained: Bool[]`
+  - `PrescribedUx: Float[]`
+  - `PrescribedUy: Float[]`
+- `SiteConstraintResidual2D`
+  - `UxResidual: Float[]`
+  - `UyResidual: Float[]`
+  - `ActiveUx: Bool[]`
+  - `ActiveUy: Bool[]`
+- `DiscreteRelationBoundaryReport`
+
+Helper functions:
+- `AttachCantileverConstraintToSites(lowered)`
+- `EvaluateConstraintResidualAtSites(lowered, attachment)`
+- `LowerWithSiteUnknowns(lowered, ux, uy)`
+- `ProbeDiscreteRelationBoundary(lowered)`
+
+### Capability unlocked
+M2 unlocks one concrete computational concept:
+
+- a typed **site-level residual-like value** for displacement constraints can be evaluated directly from a candidate site unknown state.
+
+This is enough to computationally detect a constrained-slot mismatch without solving the continuum problem.
+
+### Did this require topology?
+No.
+
+The relation is purely site-local and did not require:
+
+- adjacency tables
+- element ownership
+- face/edge/cell connectivity
+- hidden neighbor maps
+
+### What remains impossible after M2
+Still impossible (and intentionally out of scope):
+
+- global coupling/equilibrium enforcement
+- solve for `u`
+- matrix/global assembly
+- continuous field reconstruction
+- operator application that fundamentally needs neighborhood interaction
+
+### Topology pressure outcome
+M2 succeeds without topology for a local constraint residual relation.
+
+The next blocked capability is **site-to-site coupling** (for example, any equilibrium-style interaction). If the next pass targets that capability, it must introduce the first explicit coupling commitment and then test whether topology is truly required.
+
+### Recommendation for next pass
+Run one more narrow pass focused only on the first coupling relation (not a solver). At that point, decide if minimal explicit topology is unavoidable. Do not jump to FEM/FV/FD infrastructure yet.
