@@ -1,26 +1,33 @@
-# UI M0
+# Machina UI (Machine Native User Interface) for Oct
 
-## Purpose
+Machina UI is the UI system first implemented in Oct. It is intentionally machine-native and explicit: source should read as authored layout and composition, not as hidden browser-style layout side effects.
 
-`Libraries/UI` provides a tiny declarative UI layer for Oct applications.
+The design goal is predictable rendering and deterministic behavior with clear boundaries between representation data, transition wiring, and procedural updates.
 
-## M0 surface
+## Canonical Machina UI File Structure
 
-- `UI` (first-class opaque type)
-- `Text(content: String) -> UI`
-- `Button(label: String, event: String, enabled: Bool) -> UI`
-- `Row(children: UI[]) -> UI`
-- `Column(children: UI[]) -> UI`
+- **Data**  
+  Catalogs, label maps, and other pure data tables that represent canonical facts.
 
-## Architecture
+- **Placement**  
+  Slot/grid tables and explicit geometry values used to place UI deterministically.
 
-- Components are ordinary Oct functions returning `UI`.
-- Runtime and reconciler (`mount` / `patch` / `unmount`) are implemented in Go internals.
-- State is external to components (`state -> UI`).
-- Events are explicit tokens (`String`) bridged through runtime dispatch.
-- `FormatFloat(value: Float, precision: Int) -> String` is available for fixed-precision numeric labels.
+- **Dispatch**  
+  Exact-key transition tables and small resolvers for direct key-to-result lookups.
 
-## Non-goals (M0)
+- **Behavior**  
+  Procedural update logic, event-family matching, and derived transitions that are not pure table lookup.
 
-Not a full frontend framework. M0 intentionally excludes hooks, effects, local component state,
-routing, forms abstractions, styling/theming, and browser-shaped public DOM APIs.
+- **Composition**  
+  Section builders, card builders, and local UI helpers that assemble UI and emit events.
+
+- **Surface**  
+  The final assembled `View` (or equivalent top-level UI value).
+
+## Representation Rules
+
+- Exact-key pure mappings should be tables.
+- Exact-key simple transitions should be dispatch tables.
+- Placement should remain explicit and deterministic.
+- Procedural/dynamic logic should remain code.
+- Composition emits events; behavior defines meaning.
