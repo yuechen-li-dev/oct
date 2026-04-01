@@ -346,3 +346,98 @@ Run an M4 **pair-selection policy probe**:
 - compare at least two explicit pair policies (e.g., hand-listed vs distance-threshold)
 - measure effect on balance accumulation structure
 - decide if minimal explicit topology is now unavoidable
+
+## M4
+
+### Probe framing
+M4 is a topology-commitment probe that compares three interaction carriers:
+
+- **M2 point-only sites** (no transfer semantics),
+- **M3 directed pairwise flux** (explicit transfer, but pair-policy-dependent), and
+- **M4 deterministic Cartesian lattice flux** (explicit transfer, deterministic local structure).
+
+This pass does not introduce FEM/FV/FDM, mesh/tessellation, global assembly, or solves.
+
+### Lattice representation introduced
+M4 introduces `Lattice2D`:
+
+- `OriginX`, `OriginY`
+- `Dx`, `Dy`
+- `Nx`, `Ny`
+
+and embedding mask `LatticeMask2D`:
+
+- `IsActive`
+- `IsBoundary`
+
+The lattice is built deterministically from fixed spacing and extents, then the body is embedded onto lattice sites with no pair-list policy step.
+
+### How pair-selection arbitrariness is removed
+M3 used explicit finite pair lists (`I`, `J`) and therefore required a hand-authored (or otherwise policy-chosen) pair inclusion decision.
+
+M4 removes this by deriving interaction structure exclusively from Cartesian offsets:
+
+- `(i, j) -> (i+1, j)`
+- `(i, j) -> (i, j+1)`
+
+restricted to active sites. This makes neighborhood generation deterministic from lattice + mask.
+
+### Flux carrier on lattice
+M4 keeps directed transfer semantics from M3, but relocates storage from arbitrary pair rows to deterministic edge slots:
+
+- `FluxRight[idx]` for +x transfer from site `idx`
+- `FluxUp[idx]` for +y transfer from site `idx`
+
+This remains a transfer carrier, not a finite-volume method or mesh operator.
+
+### Balance-style computation enabled
+`AccumulateLatticeFluxBalance(lattice, mask, flux)` computes per site:
+
+- `IncomingAmount`
+- `OutgoingAmount`
+- `NetAmount`
+- `NetVectorX`
+- `NetVectorY`
+
+using only deterministic right/up adjacency and directed edge amounts.
+
+### Explicit comparison (M2 vs M3 vs M4)
+- **M2 point-only**: minimal unknown-slot representation, no transfer semantics.
+- **M3 pair-flux**: transfer semantics unlocked, but physical interpretation can vary with pair policy.
+- **M4 lattice-flux**: transfer semantics preserved and structure becomes deterministic from topology parameters.
+
+Least-arbitrary carrier in this probe: **M4 lattice-flux**.
+
+### Is topology now committed?
+Yes.
+
+A Cartesian lattice with deterministic neighbor offsets is already an explicit topology commitment. It is the first unavoidable topology step in this probe, because interaction structure is no longer policy-defined per pair and is now encoded by a fixed neighborhood relation.
+
+### Is this more honest than mesh/tessellation at this stage?
+Yes.
+
+For this stage, the lattice is a smaller and cleaner topology commitment than full mesh/tessellation:
+
+- no element shapes
+- no basis functions
+- no unstructured connectivity machinery
+- no solver stack
+
+Yet interaction structure is explicit, deterministic, and computable.
+
+### Next boundary
+The next boundary is topology flexibility:
+
+- curved boundaries,
+- anisotropy/non-axis-aligned structure,
+- heterogeneous local connectivity needs.
+
+These pressures may require a topology carrier beyond Cartesian offsets.
+
+### Recommendation for M5
+Run an M5 **topology-flexibility probe**:
+
+- keep directed flux carriers,
+- compare Cartesian lattice against one minimally more flexible topology representation,
+- keep no-solver/no-mesh constraints,
+- determine the smallest justified extension beyond deterministic Cartesian adjacency.
