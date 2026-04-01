@@ -160,3 +160,79 @@ Adopt typed coordinates (`px`, `ui`) as a real Machina UI feature in their curre
 - Keep scope limited to coordinate domain separation.
 - Do not expand into CSS-style unit families in the next pass.
 - Consider later hardening (such as optional `ui` range policy) only if experiments show concrete value.
+
+---
+
+# Storefront M2 Report (Event Family Probe)
+
+## What changed in M2
+
+M2 keeps M1’s layout model intact (AnchoredBox/AbsoluteBox + Row/Column + typed coordinates), but replaces per-product interaction token helpers with canonical event families:
+
+- `InspectEvent(productId)`
+- `AddToCartEvent(productId)`
+
+Product identity is now centralized in `CatalogProductIds()` plus `ProductById(...)`, and repeated card rendering plus event matching both resolve against that same source.
+
+## Bespoke event-token patterns removed
+
+Removed the bespoke per-product interaction helpers from M1, including:
+
+- `SelectHarborBoardEvent`, `SelectLinenNotebookEvent`, `SelectCableDockEvent`, ...
+- `AddHarborBoardEvent`, `AddLinenNotebookEvent`, `AddCableDockEvent`, ...
+
+This eliminated one event constructor per product/action combination and replaced it with one constructor per action family.
+
+## Event family + matching pattern introduced
+
+M2 uses explicit string families with shared prefixes:
+
+- inspect family: `storefront.inspect.<product-id>`
+- add-to-cart family: `storefront.cart.add.<product-id>`
+
+Matching is handled by a small author-level helper:
+
+- `MatchCatalogEvent(event, prefix) -> productId | ""`
+
+`Update(...)` remains explicit and deterministic:
+
+1. handle nav/filter/sort/featured events directly as before
+2. resolve inspect family against catalog and set `SelectedProduct`
+3. resolve add family against catalog and increment `CartCount`
+4. otherwise return unchanged model
+
+No runtime transport changes were required; events remain plain strings.
+
+## Did product identity become more centralized?
+
+Yes. M1 spread identity across:
+
+- dedicated product constructor functions
+- dedicated per-product inspect/add event helpers
+- mirrored update branches
+
+M2 centralizes identity in `CatalogProductIds()` and `ProductById(...)`, and uses `product.Id` as the shared key for:
+
+- repeated card wiring (`InspectEvent(product.Id)`, `AddToCartEvent(product.Id)`)
+- update matching (`MatchCatalogEvent(...)`)
+- selected-product state
+
+## Did update branching become materially cleaner?
+
+Yes. The repeated 12-branch per-product event ladder (6 inspect + 6 add) is replaced by two family resolution steps. Control flow is still local and readable in `Update(...)`, but significantly less repetitive.
+
+## Is string transport still acceptable after this pass?
+
+For this storefront probe: yes.
+
+The main friction from M0/M1 was not string transport alone; it was missing author-level conventions on top of string transport. With canonical families + catalog identity, the repeated wiring cost drops substantially while preserving explicitness.
+
+## Remaining interaction ergonomics pain
+
+The next pain point is manual catalog indexing in repeated absolute placements and in catalog matching checks. This is still explicit and deterministic, but somewhat verbose because this probe intentionally avoids introducing a broader abstraction/framework layer.
+
+## Is a deeper event-system change justified yet?
+
+Not yet for this scenario.
+
+M2 suggests that a canonical authoring pattern on top of string events resolves most of the prior pain without runtime redesign. A typed event runtime should be considered only if future experiments show substantial additional failure modes that families + centralized identity cannot address.
