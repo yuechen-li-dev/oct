@@ -1,0 +1,7 @@
+package MainValid
+
+[Fact]
+fn FloatFromIntExplicitConversion() -> Void {
+    let count = 3
+    Assert.Equal(1.5, Float(count) / 2.0, "explicit int-to-float conversion")
+}

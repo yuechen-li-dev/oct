@@ -1,0 +1,7 @@
+expect error: "undefined variable: Int"
+
+package Main
+
+fn Main() -> Int {
+    return Int(1.5)
+}
