@@ -10,6 +10,8 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 - M1: computational lowering probe (finite sites, no mesh/no solver)
 - M2: site-local constraint residual relation (no coupling, no solve)
 - M3: minimal site-to-site coupling probe (explicit pairs, no mesh/no solve)
+- M4: deterministic Cartesian lattice coupling probe
+- M5: localized deterministic refinement patch probe (single-level coarse–fine split)
 
 ## M0
 
@@ -441,3 +443,54 @@ Run an M5 **topology-flexibility probe**:
 - compare Cartesian lattice against one minimally more flexible topology representation,
 - keep no-solver/no-mesh constraints,
 - determine the smallest justified extension beyond deterministic Cartesian adjacency.
+
+## M5
+
+### What refinement mechanism was introduced?
+M5 introduces a **single-level localized refinement patch** represented by `RefinementPatch2D`:
+
+- anchored parent cell indices: `ParentI`, `ParentJ`
+- fixed refinement factor: `RefineFactor = 2`
+- fixed local patch extent: `LocalNx = 2`, `LocalNy = 2`
+- deterministic fine spacing: `DxFine = base.Dx / 2`, `DyFine = base.Dy / 2`
+
+No recursion, quadtree, mesh object, or generalized topology graph is added.
+
+### How is it anchored to the base lattice?
+The patch is attached explicitly via `RefinedLattice2D`:
+
+- `Base: Lattice2D`
+- `Mask: LatticeMask2D`
+- `Patch: RefinementPatch2D` (single patch for this milestone)
+
+`AttachPatchToLattice(base, mask, patch)` returns a new refined object without mutating the base lattice. The anchor is purely index-based (`ParentI`, `ParentJ`) and deterministic.
+
+### Exact coarse–fine flux rule used
+M5 uses an explicit **conservative split rule** across coarse–fine interfaces:
+
+- for each coarse edge adjacent to the refined parent cell,
+- split the coarse edge amount equally into two fine-edge contributions (`amount/2 + amount/2`),
+- ensure reverse conservation check: `sum(fine contributions) == coarse amount`.
+
+This is implemented with direct index maps for right/up interface edges, with no interpolation and no hidden neighbor discovery.
+
+### Did this require general topology?
+No.
+
+M5 retains deterministic Cartesian indexing plus one explicit local patch record. It does not introduce adjacency graphs, element ownership, basis functions, or solver-level topology machinery.
+
+### Does refinement preserve deterministic structure?
+Yes.
+
+Given the same base lattice and parent cell index, patch construction is identical. Coarse–fine routing is fixed by explicit interface index rules and deterministic split math.
+
+### Where does this approach begin to break?
+The single-level fixed-rule patch begins to strain when requirements include:
+
+- multiple/overlapping patches,
+- non-binary refinement factors,
+- anisotropic split rules,
+- curved or non-axis-aligned interfaces,
+- richer interface transfer rules beyond equal deterministic splitting.
+
+At that point, additional interface bookkeeping may be required; this milestone intentionally stops before any general mesh/topology system.

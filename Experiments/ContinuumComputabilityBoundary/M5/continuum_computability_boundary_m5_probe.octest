@@ -1,0 +1,82 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM5BuildsDeterministicPatchConstruction() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let base = BuildLattice(problem)
+    let patchA = BuildRefinementPatch2D(base, 1, 0, 2)
+    let patchB = BuildRefinementPatch2D(base, 1, 0, 2)
+
+    Assert.Equal(patchA.ParentI, patchB.ParentI, "deterministic parent i")
+    Assert.Equal(patchA.ParentJ, patchB.ParentJ, "deterministic parent j")
+    Assert.Equal(2, patchA.RefineFactor, "refine factor fixed to 2")
+    Assert.Equal(2, patchA.LocalNx, "local nx")
+    Assert.Equal(2, patchA.LocalNy, "local ny")
+    Assert.Near(0.25, patchA.DxFine, 0.0001, "fine dx")
+    Assert.Near(0.25, patchA.DyFine, 0.0001, "fine dy")
+}
+
+[Fact]
+fn ContinuumBoundaryM5EmbedsSinglePatchWithoutMutatingBase() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let base = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, base)
+    let patch = BuildRefinementPatch2D(base, 1, 0, 2)
+
+    let refined = AttachPatchToLattice(base, mask, patch)
+
+    Assert.Equal(5, base.Nx, "base nx remains unchanged")
+    Assert.Equal(3, base.Ny, "base ny remains unchanged")
+    let attachedPatch = refined.Patch
+    let attachedMask = refined.Mask
+    Assert.Equal(1, attachedPatch.ParentI, "attached parent i")
+    Assert.Equal(true, attachedMask.IsActive[LatticeIndex(base, 4, 2)], "mask outside patch remains unchanged")
+}
+
+[Fact]
+fn ContinuumBoundaryM5ConservesFluxAcrossCoarseFineInterface() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let base = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, base)
+    let patch = BuildRefinementPatch2D(base, 1, 0, 2)
+    let refined = AttachPatchToLattice(base, mask, patch)
+    let flux = BuildRefinedFlux2D(BuildLatticeFluxStructure(base, mask), patch)
+
+    let sums = CoarseFineSplitSums(refined, flux)
+
+    Assert.Near(sums[0], sums[1], 0.0001, "coarse-fine interface conservation")
+    Assert.Near(4.3, sums[0], 0.0001, "expected interface coarse sum")
+}
+
+[Fact]
+fn ContinuumBoundaryM5AccumulatesBalancesForBasePatchAndInterface() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let base = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, base)
+    let patch = BuildRefinementPatch2D(base, 1, 0, 2)
+    let refined = AttachPatchToLattice(base, mask, patch)
+    let flux = BuildRefinedFlux2D(BuildLatticeFluxStructure(base, mask), patch)
+
+    let balance = AccumulateRefinedFluxBalance(refined, flux)
+
+    Assert.Near(1.8, balance.BaseOutgoingAmount[LatticeIndex(base, 0, 0)], 0.0001, "base-only region outgoing")
+    Assert.Near(1.0, balance.PatchIncomingAmount[PatchIndex(2, 0, 0)], 0.0001, "patch region incoming")
+    Assert.Near(2.0, balance.BaseOutgoingAmount[LatticeIndex(base, 1, 0)], 0.0001, "interface source outgoing")
+    Assert.Near(-0.75, balance.PatchNetAmount[PatchIndex(2, 1, 0)], 0.0001, "interface+internal patch net")
+}
+
+[Fact]
+fn ContinuumBoundaryM5HasNoTopologyLeakage() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let base = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, base)
+    let patch = BuildRefinementPatch2D(base, 1, 0, 2)
+    let refined = AttachPatchToLattice(base, mask, patch)
+    let report = ProbeRefinementBoundary(refined)
+
+    let attachedMask = refined.Mask
+    Assert.Equal(15, Len(attachedMask.IsActive), "only lattice-mask indexing is used")
+    Assert.Equal(false, report.NeededGeneralTopology, "no general topology structure required")
+    Assert.Equal(true, report.DeterministicPreserved, "deterministic structure preserved")
+    Assert.True(Contains(report.CoarseFineFluxRule, "split equally"), "explicit conservative split rule")
+}
