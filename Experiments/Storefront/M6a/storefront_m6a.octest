@@ -1,0 +1,145 @@
+package StorefrontM6a
+
+[Fact]
+fn StorefrontM6aViewRendersDeterministically() -> Void {
+    let first = Signature(View(Init()))
+    let second = Signature(View(Init()))
+
+    Assert.True(Len(first) > 0, "view should produce opaque UI signature")
+    Assert.Equal(first, second, "same state should render same signature")
+}
+
+[Fact]
+fn StorefrontM6aSelectionAndCartFlowWorks() -> Void {
+    let mounted = MountUI(View(Init()))
+
+    let emitCategory = Emit(mounted, CategoryDeskEvent()) !
+    Assert.Equal(0, emitCategory, "category event should emit")
+    let categoryEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(categoryEvents), "category click should enqueue one event")
+
+    var model = Init()
+    model = Update(model, categoryEvents[0])
+    Assert.Equal("desk", model.SelectedCategory, "category state should update")
+
+    let emitSelect = Emit(mounted, InspectEvent("harbor-board")) !
+    Assert.Equal(0, emitSelect, "product inspect event should emit")
+    let selectEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(selectEvents), "inspect click should enqueue one event")
+
+    model = Update(model, selectEvents[0])
+    Assert.Equal("harbor-board", model.SelectedProduct, "selected product should update")
+
+    let emitAdd = Emit(mounted, AddToCartEvent("harbor-board")) !
+    Assert.Equal(0, emitAdd, "add-to-cart should emit")
+    let addEvents = DrainEvents(mounted)
+    Assert.Equal(1, Len(addEvents), "add click should enqueue one event")
+
+    model = Update(model, addEvents[0])
+    Assert.Near(1.0, model.CartCount, 0.000001, "cart count should increase")
+
+    let patched = PatchUI(mounted, View(model))
+    Assert.Equal(0, patched, "patch with updated model should succeed")
+
+    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+}
+
+[Fact]
+fn StorefrontM6aEventFamiliesArePredictable() -> Void {
+    Assert.Equal("storefront.inspect.harbor-board", InspectEvent("harbor-board"), "inspect family should produce canonical event")
+    Assert.Equal("storefront.cart.add.harbor-board", AddToCartEvent("harbor-board"), "add family should produce canonical event")
+    Assert.Equal("harbor-board", MatchCatalogEvent(InspectEvent("harbor-board"), InspectPrefix()), "inspect match should resolve known product")
+    Assert.Equal("harbor-board", MatchCatalogEvent(AddToCartEvent("harbor-board"), AddToCartPrefix()), "add match should resolve known product")
+    Assert.Equal("", MatchCatalogEvent(InspectEvent("missing-product"), InspectPrefix()), "unknown product should not match catalog")
+}
+
+[Fact]
+fn StorefrontM6aCatalogDrivenInteractionsStayDeterministic() -> Void {
+    var model = Init()
+
+    model = Update(model, InspectEvent("steel-ruler"))
+    Assert.Equal("steel-ruler", model.SelectedProduct, "inspect should resolve selected product from catalog")
+
+    model = Update(model, AddToCartEvent("steel-ruler"))
+    model = Update(model, AddToCartEvent("steel-ruler"))
+    Assert.Near(2.0, model.CartCount, 0.000001, "repeated add events should increment cart deterministically")
+
+    model = Update(model, AddToCartEvent("not-in-catalog"))
+    Assert.Near(2.0, model.CartCount, 0.000001, "unknown ids should not mutate cart count")
+}
+
+[Fact]
+fn StorefrontM6aFilterAndFeaturedTogglesArePredictable() -> Void {
+    var model = Init()
+
+    model = Update(model, ToggleNewEvent())
+    model = Update(model, ToggleInStockEvent())
+    model = Update(model, ToggleBestSellerEvent())
+    model = Update(model, SortPriceEvent())
+    model = Update(model, FeaturedCableLabEvent())
+
+    Assert.True(model.NewOnly, "new filter should toggle on")
+    Assert.True(model.InStockOnly, "in-stock filter should toggle on")
+    Assert.True(model.BestSellerOnly, "best-seller filter should toggle on")
+    Assert.Equal("price", model.SortBy, "sort should update")
+    Assert.Equal("Cable Lab", model.FeaturedTab, "featured tab should switch")
+
+    let signature = Signature(View(model))
+    Assert.True(Len(signature) > 0, "view should still render after toggles")
+}
+
+[Fact]
+fn StorefrontM6aCatalogAndGridStayExplicit() -> Void {
+    let catalog = CatalogTable()
+    Assert.Equal(6, Len(catalog.Ids), "catalog should expose six product rows")
+    Assert.Equal("harbor-board", catalog.Ids[0], "first catalog row should be harbor board")
+    Assert.Equal("steel-ruler", catalog.Ids[5], "last catalog row should be steel ruler")
+
+    let grid = ProductGrid()
+    Assert.Equal(2, Len(grid.RowStarts), "grid should expose two storefront rows")
+    Assert.Equal(3, grid.RowLengths[0], "each grid row should keep three explicit columns")
+    Assert.Equal("harbor-board", grid.ProductIds[grid.RowStarts[0]], "grid row 0 col 0 should map to harbor board")
+    Assert.Equal("steel-ruler", grid.ProductIds[grid.RowStarts[1] + 2], "grid row 1 col 2 should map to steel ruler")
+
+    Assert.Equal(320.0, grid.ColumnX[0] / (1.0 px), "first column x should stay explicit")
+    Assert.Equal(820.0, grid.ColumnX[2] / (1.0 px), "last column x should stay explicit")
+    Assert.Equal(236.0, grid.RowY[0] / (1.0 px), "first row y should stay explicit")
+    Assert.Equal(408.0, grid.RowY[1] / (1.0 px), "second row y should stay explicit")
+}
+
+
+[Fact]
+fn StorefrontM6aDispatchTablesAreDeterministicAndNoMatchIsStable() -> Void {
+    Assert.Equal("Shop", ResolveDispatch(NavShopEvent(), NavDispatchTable()), "nav dispatch should resolve canonical value")
+    Assert.Equal("", ResolveDispatch("storefront.nav.unknown", NavDispatchTable()), "unknown nav event should not resolve")
+
+    let model = Init()
+    let unchanged = Update(model, "storefront.unknown.event")
+
+    Assert.Equal(model.SelectedNav, unchanged.SelectedNav, "unknown event should leave nav unchanged")
+    Assert.Equal(model.SelectedCategory, unchanged.SelectedCategory, "unknown event should leave category unchanged")
+    Assert.Near(model.CartCount, unchanged.CartCount, 0.000001, "unknown event should leave cart unchanged")
+}
+
+[Fact]
+fn StorefrontM6aPureLabelMappingsStayDeterministic() -> Void {
+    Assert.Equal("All", CategoryLabel("all"), "category label table should resolve all")
+    Assert.Equal("Desk Gear", CategoryLabel("desk"), "category label table should resolve desk")
+    Assert.Equal("Stationery", CategoryLabel("paper"), "category label table should resolve paper")
+    Assert.Equal("Cable", CategoryLabel("cable"), "category label table should resolve cable")
+    Assert.Equal("unknown-category", CategoryLabel("unknown-category"), "unknown category should keep fallback behavior")
+
+    Assert.Equal("Featured", SortLabel("featured"), "sort label table should resolve featured")
+    Assert.Equal("Price low-high", SortLabel("price"), "sort label table should resolve price")
+    Assert.Equal("Newest", SortLabel("newest"), "sort label table should resolve newest")
+    Assert.Equal("unknown-sort", SortLabel("unknown-sort"), "unknown sort should keep fallback behavior")
+}
+
+[Fact]
+fn StorefrontM6aProductLookupUsesCatalogTable() -> Void {
+    let ruler = ProductById("steel-ruler")
+    Assert.Equal("Marked Steel Ruler", ruler.Title, "lookup should resolve fields from catalog table")
+
+    let missing = ProductById("missing-product")
+    Assert.Equal("", missing.Id, "unknown product should return explicit missing marker")
+}

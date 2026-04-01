@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Storefront"
         Version: "0.1.0"
-        Description: "Storefront M0-M6 headless UI probes for composition, typed coordinates, event families, separation, explicit slot/grid and catalog data tables, and direct dispatch-table behavior modeling"
+        Description: "Storefront M0-M6a headless UI probes for composition, typed coordinates, event families, separation, explicit slot/grid and catalog data tables, direct dispatch-table behavior modeling, and pure mapping-table cleanup"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
