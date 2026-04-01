@@ -1,0 +1,148 @@
+package ContinuumComputabilityBoundary
+
+record ContinuumProblem2D {
+    BodyWidth: Float
+    BodyHeight: Float
+    Query: String
+}
+
+record FiniteSites2D {
+    X: Float[]
+    Y: Float[]
+}
+
+record SiteUnknowns2D {
+    Ux: Float[]
+    Uy: Float[]
+    IsSolved: Bool[]
+}
+
+record LoweredProblem2D {
+    Source: ContinuumProblem2D
+    Sites: FiniteSites2D
+    Unknowns: SiteUnknowns2D
+    QueryTarget: String
+}
+
+record SitePairRelation2D {
+    I: Int[]
+    J: Int[]
+    Weight: Float[]
+}
+
+record SiteCouplingResult2D {
+    PairDeltaUx: Float[]
+    PairDeltaUy: Float[]
+    PairI: Int[]
+    PairJ: Int[]
+}
+
+record CouplingBoundaryReport {
+    CouplingRelationChosen: String
+    WhyMinimal: String
+    PairDefinition: String
+    PairDefinitionRequiredTopology: Bool
+    CapabilityUnlocked: String
+    StillImpossible: String
+    IsTopologyRequiredNow: Bool
+    NextMissingPiece: String
+}
+
+fn TinyCantileverProblem(query: String) -> ContinuumProblem2D {
+    return ContinuumProblem2D {
+        BodyWidth: 2.0
+        BodyHeight: 1.0
+        Query: query
+    }
+}
+
+fn TinyBodySites(problem: ContinuumProblem2D) -> FiniteSites2D {
+    return FiniteSites2D {
+        X: [0.5 * problem.BodyWidth, 0.5 * problem.BodyWidth, 1.0 * problem.BodyWidth, 1.0 * problem.BodyWidth]
+        Y: [0.5 * problem.BodyHeight, 1.0 * problem.BodyHeight, 0.5 * problem.BodyHeight, 1.0 * problem.BodyHeight]
+    }
+}
+
+fn AttachUnknownsToSites(sites: FiniteSites2D) -> SiteUnknowns2D {
+    let _ = sites
+
+    return SiteUnknowns2D {
+        Ux: [0.0, 0.0, 0.0, 0.0]
+        Uy: [0.0, 0.0, 0.0, 0.0]
+        IsSolved: [false, false, false, false]
+    }
+}
+
+fn LowerContinuumProblem2D(problem: ContinuumProblem2D) -> LoweredProblem2D {
+    let sites = TinyBodySites(problem)
+    let unknowns = AttachUnknownsToSites(sites)
+
+    return LoweredProblem2D {
+        Source: problem
+        Sites: sites
+        Unknowns: unknowns
+        QueryTarget: "SiteUnknownDisplacement"
+    }
+}
+
+fn LowerWithSiteUnknowns(lowered: LoweredProblem2D, ux: Float[], uy: Float[]) -> LoweredProblem2D {
+    return LoweredProblem2D {
+        Source: lowered.Source
+        Sites: lowered.Sites
+        Unknowns: SiteUnknowns2D {
+            Ux: ux
+            Uy: uy
+            IsSolved: [false, false, false, false]
+        }
+        QueryTarget: lowered.QueryTarget
+    }
+}
+
+fn BuildMinimalSitePairs(sites: FiniteSites2D) -> SitePairRelation2D {
+    let _ = sites
+
+    return SitePairRelation2D {
+        I: [0, 1, 0, 2]
+        J: [1, 3, 2, 3]
+        Weight: [1.0, 1.0, 1.0, 1.0]
+    }
+}
+
+fn EvaluateSiteCoupling(lowered: LoweredProblem2D, pairs: SitePairRelation2D) -> SiteCouplingResult2D {
+    let unknowns = lowered.Unknowns
+
+    var pairDeltaUx = [0.0, 0.0, 0.0, 0.0]
+    var pairDeltaUy = [0.0, 0.0, 0.0, 0.0]
+
+    for p in 0..Len(pairs.I) {
+        let i = pairs.I[p]
+        let j = pairs.J[p]
+        let w = pairs.Weight[p]
+
+        pairDeltaUx[p] = w * (unknowns.Ux[j] - unknowns.Ux[i])
+        pairDeltaUy[p] = w * (unknowns.Uy[j] - unknowns.Uy[i])
+    }
+
+    return SiteCouplingResult2D {
+        PairDeltaUx: pairDeltaUx
+        PairDeltaUy: pairDeltaUy
+        PairI: pairs.I
+        PairJ: pairs.J
+    }
+}
+
+fn ProbeCouplingBoundary(lowered: LoweredProblem2D, pairs: SitePairRelation2D) -> CouplingBoundaryReport {
+    let _ = lowered
+    let _ = pairs
+
+    return CouplingBoundaryReport {
+        CouplingRelationChosen: "PairwiseDifferenceDeltaUij"
+        WhyMinimal: "Each pair computes only Δu_ij = u[j] - u[i], introducing interaction without any solve, assembly, or method-specific shape/stencil logic."
+        PairDefinition: "Pairs are explicit finite index lists (I,J) = {(0,1), (1,3), (0,2), (2,3)} with unit weights; no mesh connectivity is inferred."
+        PairDefinitionRequiredTopology: false
+        CapabilityUnlocked: "Site-to-site interaction is now computable as typed per-pair coupling deltas over finite unknown slots."
+        StillImpossible: "No consistent global operator, no physical correctness guarantee, no solve, and no continuum-consistent discretization are available."
+        IsTopologyRequiredNow: false
+        NextMissingPiece: "A) better pair-selection policy can still be attempted topology-free; pressure toward B) minimal topology appears when pair choice needs principled neighborhood correctness."
+    }
+}
