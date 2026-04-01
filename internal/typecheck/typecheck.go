@@ -2223,6 +2223,25 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
+	if callee == "Float" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Float' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Float' expects 1 arguments, got %d", len(arguments))
+		}
+		valueType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if valueType.ValueType.Base != BaseTypeInt || valueType.ValueType.Name != "" || valueType.ValueType.IsArray || valueType.ValueType.IsVector || valueType.ValueType.IsMatrix || valueType.ValueType.IsFunction || valueType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Float' argument 1 expects Int, got %s", valueType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: valueType.ValueType.Dimension}}, nil
+	}
 	if callee == "ToString" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'ToString' does not accept type arguments")

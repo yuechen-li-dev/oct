@@ -1,0 +1,7 @@
+package MainValid
+
+[Fact]
+fn FloatFromIntDimensionPreservesUnit() -> Void {
+    let distance = 3m
+    Assert.Equal(1.5m, Float(distance) / 2.0, "explicit conversion preserves dimension")
+}

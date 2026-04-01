@@ -1,0 +1,7 @@
+expect error: "function 'FormatFloat' argument 1 expects Float, got Int"
+
+package Main
+
+fn Main() -> String {
+    return FormatFloat(1, 2)
+}

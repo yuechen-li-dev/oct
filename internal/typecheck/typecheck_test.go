@@ -252,6 +252,8 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"fn Main() -> Float { return Pi() }",
 		"fn Main() -> Float { return E() }",
 		"fn Main() -> String { return FormatFloat(1.25, 2) }",
+		"fn Main() -> Float { return Float(3) }",
+		"fn Main() -> Float<m> { return Float(3m) }",
 		"fn Main() -> Int { return -1 }",
 		"fn Main() -> Float<m> { let x = 2m return -x }",
 		"fn Main() -> String { return ToString(1) }",
@@ -314,6 +316,8 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Float { return Atan2(1, 1s) }", "function Main: Atan2 requires dimensionless input")
 	assertTypeErrorContains(t, "fn Main() -> String { return FormatFloat(1, 2) }", "function Main: function 'FormatFloat' argument 1 expects Float, got Int")
 	assertTypeErrorContains(t, "fn Main() -> String { return FormatFloat(1.5, 2.0) }", "function Main: function 'FormatFloat' argument 2 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Float(1.5) }", "function Main: function 'Float' argument 1 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Float { return Float(true) }", "function Main: function 'Float' argument 1 expects Int, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Bool { return -true }", "function Main: operator '-' requires Int or Float operand")
 	assertTypeErrorContains(t, "fn Main() -> String { return ToString(\"x\") }", "function Main: function 'ToString' argument 1 expects Int, Float, or Bool, got String")
 	assertTypeErrorContains(t, "fn Main() -> Bool { return Contains(1, \"x\") }", "function Main: function 'Contains' argument 1 expects String, got Int")

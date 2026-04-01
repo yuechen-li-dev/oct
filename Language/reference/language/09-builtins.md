@@ -71,6 +71,10 @@ Calls are checked statically for arity and type constraints.
 - `FormatFloat(value: Float, precision: Int) -> String`.
   - Preferred when rendering display text from floating-point values.
   - Use this when UI/status strings need fixed precision.
+- `Float(value: Int) -> Float`.
+  - Explicit numeric widening conversion.
+  - Converts `Int` (including dimensioned `Int<D>`) to `Float` (`Float<D>`).
+  - `Float -> Int` conversion is intentionally not provided in the current language.
 - `ToString(value: Int | Float | Bool) -> String`.
   - Plain explicit conversion for common scalar display paths.
   - Does not apply formatting policy beyond standard value rendering.
@@ -102,7 +106,13 @@ Calls are checked statically for arity and type constraints.
 
 Use `ToString(x)` for explicit plain conversion (`Int`, `Float`, `Bool`).
 Use `FormatFloat(x, precision)` when you need fixed float formatting.
+Use `Float(x)` for explicit `Int -> Float` conversion only.
+`Float -> Int` is intentionally unavailable in this version.
 No implicit conversion is performed in concatenation or other expressions.
+
+Examples:
+- `Float(3)` -> `3.0`
+- `Float(3m) / 2.0` -> `1.5m`
 
 ### String helper examples
 

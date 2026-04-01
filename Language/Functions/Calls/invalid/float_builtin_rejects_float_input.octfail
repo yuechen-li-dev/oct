@@ -1,0 +1,7 @@
+expect error: "function 'Float' argument 1 expects Int, got Float"
+
+package Main
+
+fn Main() -> Float {
+    return Float(1.5)
+}

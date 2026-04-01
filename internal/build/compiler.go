@@ -1137,6 +1137,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "ToString" {
 			return "ToString", "String", true, false, nil
 		}
+		if x.Name == "Float" {
+			return "Float", "Float", true, false, nil
+		}
 		if x.Name == "Contains" || x.Name == "StartsWith" || x.Name == "EndsWith" {
 			return x.Name, "Bool", true, false, nil
 		}
@@ -2701,6 +2704,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
+			case "Float":
+				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
 			case "Contains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "StartsWith":

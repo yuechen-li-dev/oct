@@ -714,6 +714,32 @@ fn main() -> Int ! Error {
 	}
 }
 
+func TestCompileAndRunFloatBuiltinConvertsInt(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Float {
+    let count = 3
+    return Float(count) / 2.0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1.5" {
+		t.Fatalf("expected 1.5, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileFlowResultBeforeCompletionFails(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")

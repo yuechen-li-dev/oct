@@ -2032,6 +2032,22 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: ToString expects Int, Float, or Bool")
 		}
 	}
+	if callee == "Float" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		valueResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if valueResult.hasError {
+			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+		}
+		if valueResult.value.Kind != ValueInt {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Float expects Int")
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: float64(valueResult.value.Int), Dimension: valueResult.value.Dimension}}, nil
+	}
 	if callee == "Contains" || callee == "StartsWith" || callee == "EndsWith" {
 		if len(argumentExprs) != 2 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
