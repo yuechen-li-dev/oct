@@ -2365,7 +2365,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if operand.hasError {
 			return evalResult{hasError: true, errorVal: operand.errorVal}, nil
 		}
-		if operand.value.Kind != ValueVector && operand.value.Kind != ValueMatrix && operand.value.Kind != ValueDiffOp {
+		if !(operand.value.Kind == ValueVector || operand.value.Kind == ValueMatrix || isRepresentationalFieldValue(operand.value)) {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Div expects numeric Vector or Matrix argument")
 		}
 		operandCopy := operand.value
