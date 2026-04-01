@@ -202,3 +202,82 @@ func TestOctBenchWithoutProfileDoesNotEmitCPUArtifact(t *testing.T) {
 		t.Fatalf("expected no cpu profile artifact without --profile, stat err=%v", err)
 	}
 }
+
+func TestOctBenchFilterRunsOnlyMatchingBenchmarks(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{
+		"package Main",
+		"[Benchmark]",
+		"fn HotPathA() -> Void { return }",
+		"[Benchmark]",
+		"fn ColdPathB() -> Void { return }",
+		"[Benchmark]",
+		"fn HotPathC() -> Void { return }",
+	}, "\n")+"\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root, "--filter", "HotPath"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected filtered benchmark success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "RUN  Main.HotPathA") || !strings.Contains(output, "RUN  Main.HotPathC") {
+		t.Fatalf("expected matching benchmarks to run, got %q", output)
+	}
+	if strings.Contains(output, "RUN  Main.ColdPathB") {
+		t.Fatalf("expected non-matching benchmark to be skipped, got %q", output)
+	}
+	if !strings.Contains(output, "Result: 2 benchmark(s) passed, 0 failed") {
+		t.Fatalf("expected filtered summary counts, got %q", output)
+	}
+}
+
+func TestOctBenchFilterNoMatchFailsPredictably(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn HotPath() -> Void { return }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{"bench", root, "--filter", "NoSuchBench"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected no-match filter to fail")
+	}
+	if !strings.Contains(err.Error(), "no benchmarks matched filter \"NoSuchBench\"") {
+		t.Fatalf("expected no-match filter error, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+}
+
+func TestOctBenchFilterWithCPUProfileStillEmitsArtifact(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{
+		"package Main",
+		"[Benchmark]",
+		"fn HotPath() -> Void { let x = 1 + 1 Print(x) }",
+		"[Benchmark]",
+		"fn ColdPath() -> Void { let y = 2 + 2 Print(y) }",
+	}, "\n")+"\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root, "--filter", "HotPath", "--profile", "cpu"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected filtered benchmark profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "RUN  Main.HotPath") || strings.Contains(output, "RUN  Main.ColdPath") {
+		t.Fatalf("expected only filtered benchmark to run during profiling, got %q", output)
+	}
+
+	profilePath := filepath.Join(root, "bench.cpu.pprof")
+	info, err := os.Stat(profilePath)
+	if err != nil {
+		t.Fatalf("expected cpu profile artifact at %s: %v", profilePath, err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("expected non-empty cpu profile artifact at %s", profilePath)
+	}
+}

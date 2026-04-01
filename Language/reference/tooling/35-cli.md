@@ -15,6 +15,9 @@
 - `oct test <path>` runs `.octest` and `.octfail` suites.
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.
+- `oct bench <path> --filter <pattern>` runs only benchmarks whose qualified name (`Package.Function`) contains `<pattern>`.
+- `oct bench <path> --profile cpu` writes a deterministic CPU profile artifact for the benchmark run.
+- `oct bench <path> --profile cpu --filter <pattern>` profiles only the filtered benchmark subset.
 - `oct fmt <path>` formats one file or a directory tree in place.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
@@ -31,6 +34,8 @@ oct build App/main.oct
 oct test Language
 oct artifact Language
 oct bench Language --octagon-out bench.octagon
+oct bench Language --filter HotPath
+oct bench Language --filter Main.Fast --profile cpu
 oct fmt Language/reference
 oct pkg get https://example.com/repo.git
 oct pkg list

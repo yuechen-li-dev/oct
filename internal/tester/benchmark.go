@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"sort"
+	"strings"
 	"time"
 
 	"oct/internal/interpret"
@@ -18,6 +19,7 @@ type BenchmarkOptions struct {
 	OctagonOutPath string
 	ProfileMode    string
 	ProfileOutPath string
+	Filter         string
 }
 
 type BenchmarkRun struct {
@@ -72,6 +74,19 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 
 	if len(benchmarks) == 0 {
 		return fmt.Errorf("no [Benchmark] functions found")
+	}
+	if options.Filter != "" {
+		filtered := make([]benchmarkCase, 0, len(benchmarks))
+		for _, benchmark := range benchmarks {
+			qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
+			if strings.Contains(qualified, options.Filter) {
+				filtered = append(filtered, benchmark)
+			}
+		}
+		benchmarks = filtered
+		if len(benchmarks) == 0 {
+			return fmt.Errorf("no benchmarks matched filter %q", options.Filter)
+		}
 	}
 
 	failed := 0
