@@ -1,0 +1,512 @@
+package StorefrontM3
+
+record Mount {
+    Handle: Int
+}
+
+record UIBox {
+    Kind: String
+    X: Float<px>
+    Y: Float<px>
+    Width: Float<px>
+    Height: Float<px>
+    Left: Float<ui>
+    Top: Float<ui>
+    Right: Float<ui>
+    Bottom: Float<ui>
+}
+
+record Product {
+    Id: String
+    Title: String
+    Subtitle: String
+    Price: Float
+    Badge: String
+    Category: String
+}
+
+record StoreState {
+    SelectedNav: String
+    SelectedCategory: String
+    SortBy: String
+    NewOnly: Bool
+    InStockOnly: Bool
+    BestSellerOnly: Bool
+    FeaturedTab: String
+    SelectedProduct: String
+    CartCount: Float
+}
+
+fn Text(content: String) -> UI { return UIText(content) }
+fn Button(label: String, event: String, enabled: Bool) -> UI { return UIButton(label, event, enabled) }
+fn Row(children: UI[]) -> UI { return UIRow(children) }
+fn Column(children: UI[]) -> UI { return UIColumn(children) }
+fn Canvas(children: UI[]) -> UI { return UICanvas(children) }
+
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
+    return UIBox {
+        Kind: "absolute"
+        X: x
+        Y: y
+        Width: width
+        Height: height
+        Left: 0.0 ui
+        Top: 0.0 ui
+        Right: 0.0 ui
+        Bottom: 0.0 ui
+    }
+}
+
+fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
+    return UIBox {
+        Kind: "anchored"
+        X: 0.0 px
+        Y: 0.0 px
+        Width: 0.0 px
+        Height: 0.0 px
+        Left: left
+        Top: top
+        Right: right
+        Bottom: bottom
+    }
+}
+
+fn Place(box: UIBox, child: UI) -> UI {
+    if box.Kind == "absolute" {
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+    }
+
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+}
+
+fn MountUI(root: UI) -> Mount { return Mount { Handle: UIMount(root) } }
+fn PatchUI(mount: Mount, next: UI) -> Int { return UIPatch(mount.Handle, next) }
+fn UnmountUI(mount: Mount) -> Int { return UIUnmount(mount.Handle) }
+fn Emit(mount: Mount, event: String) -> Int ! Error { return UIEmit(mount.Handle, event)? }
+fn DrainEvents(mount: Mount) -> String[] { return UIDrainEvents(mount.Handle) }
+fn Signature(node: UI) -> String { return UISignature(node) }
+
+fn Init() -> StoreState {
+    return StoreState {
+        SelectedNav: "Shop"
+        SelectedCategory: "all"
+        SortBy: "featured"
+        NewOnly: false
+        InStockOnly: false
+        BestSellerOnly: false
+        FeaturedTab: "Desk Kits"
+        SelectedProduct: ""
+        CartCount: 0.0
+    }
+}
+
+fn CatalogProductIds() -> String[] {
+    return ["harbor-board", "linen-notebook", "cable-dock", "focus-timer", "cork-tray", "steel-ruler"]
+}
+
+fn ProductById(productId: String) -> Product {
+    if productId == "harbor-board" {
+        return Product {
+            Id: "harbor-board"
+            Title: "Harbor Board"
+            Subtitle: "Modular walnut desk riser with cable pass-through"
+            Price: 119.0
+            Badge: "Bestseller"
+            Category: "desk"
+        }
+    }
+    if productId == "linen-notebook" {
+        return Product {
+            Id: "linen-notebook"
+            Title: "Linen Grid Notebook"
+            Subtitle: "Lay-flat A5 notebook with 3 mm workflow grid"
+            Price: 28.0
+            Badge: "New"
+            Category: "paper"
+        }
+    }
+    if productId == "cable-dock" {
+        return Product {
+            Id: "cable-dock"
+            Title: "Cable Dock Trio"
+            Subtitle: "Weighted brass cable anchors for charging lines"
+            Price: 36.0
+            Badge: "In Stock"
+            Category: "cable"
+        }
+    }
+    if productId == "focus-timer" {
+        return Product {
+            Id: "focus-timer"
+            Title: "Focus Dial Timer"
+            Subtitle: "Analog 60-minute timer with silent hand sweep"
+            Price: 42.0
+            Badge: "Editor pick"
+            Category: "desk"
+        }
+    }
+    if productId == "cork-tray" {
+        return Product {
+            Id: "cork-tray"
+            Title: "Cork Catch Tray"
+            Subtitle: "Soft-edge tray for clips, nibs, and fasteners"
+            Price: 24.0
+            Badge: "Studio staple"
+            Category: "desk"
+        }
+    }
+    return Product {
+        Id: "steel-ruler"
+        Title: "Marked Steel Ruler"
+        Subtitle: "Etched centimeter/inch ruler for quick layout checks"
+        Price: 18.0
+        Badge: "Workshop"
+        Category: "paper"
+    }
+}
+
+fn InspectPrefix() -> String { return "storefront.inspect." }
+fn AddToCartPrefix() -> String { return "storefront.cart.add." }
+fn InspectEvent(productId: String) -> String { return InspectPrefix() + productId }
+fn AddToCartEvent(productId: String) -> String { return AddToCartPrefix() + productId }
+
+fn NavShopEvent() -> String { return "storefront.nav.shop" }
+fn NavBundlesEvent() -> String { return "storefront.nav.bundles" }
+fn NavJournalEvent() -> String { return "storefront.nav.journal" }
+fn NavSupportEvent() -> String { return "storefront.nav.support" }
+
+fn CategoryAllEvent() -> String { return "storefront.category.all" }
+fn CategoryDeskEvent() -> String { return "storefront.category.desk" }
+fn CategoryPaperEvent() -> String { return "storefront.category.paper" }
+fn CategoryCableEvent() -> String { return "storefront.category.cable" }
+
+fn ToggleNewEvent() -> String { return "storefront.filter.new" }
+fn ToggleInStockEvent() -> String { return "storefront.filter.instock" }
+fn ToggleBestSellerEvent() -> String { return "storefront.filter.bestseller" }
+
+fn SortFeaturedEvent() -> String { return "storefront.sort.featured" }
+fn SortPriceEvent() -> String { return "storefront.sort.price" }
+fn SortNewestEvent() -> String { return "storefront.sort.newest" }
+
+fn FeaturedDeskKitsEvent() -> String { return "storefront.featured.deskkits" }
+fn FeaturedNotebookSetsEvent() -> String { return "storefront.featured.notebooksets" }
+fn FeaturedCableLabEvent() -> String { return "storefront.featured.cablelab" }
+
+fn MatchCatalogEvent(event: String, prefix: String) -> String {
+    let productIds = CatalogProductIds()
+    if event == prefix + productIds[0] { return productIds[0] }
+    if event == prefix + productIds[1] { return productIds[1] }
+    if event == prefix + productIds[2] { return productIds[2] }
+    if event == prefix + productIds[3] { return productIds[3] }
+    if event == prefix + productIds[4] { return productIds[4] }
+    if event == prefix + productIds[5] { return productIds[5] }
+    return ""
+}
+
+fn WithNav(model: StoreState, value: String) -> StoreState {
+    return StoreState {
+        SelectedNav: value
+        SelectedCategory: model.SelectedCategory
+        SortBy: model.SortBy
+        NewOnly: model.NewOnly
+        InStockOnly: model.InStockOnly
+        BestSellerOnly: model.BestSellerOnly
+        FeaturedTab: model.FeaturedTab
+        SelectedProduct: model.SelectedProduct
+        CartCount: model.CartCount
+    }
+}
+
+fn WithCategory(model: StoreState, value: String) -> StoreState {
+    return StoreState {
+        SelectedNav: model.SelectedNav
+        SelectedCategory: value
+        SortBy: model.SortBy
+        NewOnly: model.NewOnly
+        InStockOnly: model.InStockOnly
+        BestSellerOnly: model.BestSellerOnly
+        FeaturedTab: model.FeaturedTab
+        SelectedProduct: model.SelectedProduct
+        CartCount: model.CartCount
+    }
+}
+
+fn WithCartCount(model: StoreState, value: Float) -> StoreState {
+    return StoreState {
+        SelectedNav: model.SelectedNav
+        SelectedCategory: model.SelectedCategory
+        SortBy: model.SortBy
+        NewOnly: model.NewOnly
+        InStockOnly: model.InStockOnly
+        BestSellerOnly: model.BestSellerOnly
+        FeaturedTab: model.FeaturedTab
+        SelectedProduct: model.SelectedProduct
+        CartCount: value
+    }
+}
+
+fn Update(model: StoreState, event: String) -> StoreState {
+    if event == NavShopEvent() { return WithNav(model, "Shop") }
+    if event == NavBundlesEvent() { return WithNav(model, "Bundles") }
+    if event == NavJournalEvent() { return WithNav(model, "Journal") }
+    if event == NavSupportEvent() { return WithNav(model, "Support") }
+
+    if event == CategoryAllEvent() { return WithCategory(model, "all") }
+    if event == CategoryDeskEvent() { return WithCategory(model, "desk") }
+    if event == CategoryPaperEvent() { return WithCategory(model, "paper") }
+    if event == CategoryCableEvent() { return WithCategory(model, "cable") }
+
+    if event == ToggleNewEvent() { return model with { NewOnly: not model.NewOnly } }
+    if event == ToggleInStockEvent() { return model with { InStockOnly: not model.InStockOnly } }
+    if event == ToggleBestSellerEvent() { return model with { BestSellerOnly: not model.BestSellerOnly } }
+
+    if event == SortFeaturedEvent() { return model with { SortBy: "featured" } }
+    if event == SortPriceEvent() { return model with { SortBy: "price" } }
+    if event == SortNewestEvent() { return model with { SortBy: "newest" } }
+
+    if event == FeaturedDeskKitsEvent() { return model with { FeaturedTab: "Desk Kits" } }
+    if event == FeaturedNotebookSetsEvent() { return model with { FeaturedTab: "Notebook Sets" } }
+    if event == FeaturedCableLabEvent() { return model with { FeaturedTab: "Cable Lab" } }
+
+    let inspectMatch = MatchCatalogEvent(event, InspectPrefix())
+    if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
+
+    let addMatch = MatchCatalogEvent(event, AddToCartPrefix())
+    if addMatch != "" { return WithCartCount(model, model.CartCount + 1.0) }
+
+    return model
+}
+
+fn CategoryVisible(selected: String, category: String) -> Bool {
+    if selected == "all" { return true }
+    return selected == category
+}
+
+fn ActiveFilterSummary(model: StoreState) -> String {
+    let newState = ToggleLabel(model.NewOnly)
+    let stockState = ToggleLabel(model.InStockOnly)
+    let bestState = ToggleLabel(model.BestSellerOnly)
+    return "new=" + newState + ", stock=" + stockState + ", best=" + bestState + ", sort=" + SortLabel(model.SortBy)
+}
+
+fn ToggleLabel(active: Bool) -> String {
+    if active { return "on" }
+    return "off"
+}
+
+fn SelectionLabel(selected: Bool) -> String {
+    if selected { return "selected" }
+    return "not selected"
+}
+
+fn CategoryLabel(category: String) -> String {
+    if category == "all" { return "All" }
+    if category == "desk" { return "Desk Gear" }
+    if category == "paper" { return "Stationery" }
+    if category == "cable" { return "Cable" }
+    return category
+}
+
+fn SortLabel(value: String) -> String {
+    if value == "featured" { return "Featured" }
+    if value == "price" { return "Price low-high" }
+    if value == "newest" { return "Newest" }
+    return value
+}
+
+fn SelectedProductLabel(value: String) -> String {
+    if value == "" { return "none" }
+    return value
+}
+
+fn NavItem(label: String, event: String, selected: Bool) -> UI {
+    return Button(label, event, not selected)
+}
+
+fn FilterChip(label: String, event: String, active: Bool) -> UI {
+    if active {
+        return Button("● " + label, event, true)
+    }
+
+    return Button("○ " + label, event, true)
+}
+
+fn PriceBadge(amount: Float) -> UI {
+    return Text("$" + FormatFloat(amount, 2))
+}
+
+fn SectionHeader(title: String, subtitle: String) -> UI {
+    return Column([
+        Text(title),
+        Text(subtitle)
+    ])
+}
+
+fn FeatureBlock(tag: String, title: String, body: String) -> UI {
+    return Column([
+        Text(tag),
+        Text(title),
+        Text(body)
+    ])
+}
+
+fn FooterColumn(title: String, links: String[]) -> UI {
+    return Column([
+        Text(title),
+        Text(links[0]),
+        Text(links[1]),
+        Text(links[2])
+    ])
+}
+
+fn HeaderBar(model: StoreState) -> UI {
+    return Row([
+        Text("Northline Supply Co."),
+        NavItem("Shop", NavShopEvent(), model.SelectedNav == "Shop"),
+        NavItem("Bundles", NavBundlesEvent(), model.SelectedNav == "Bundles"),
+        NavItem("Journal", NavJournalEvent(), model.SelectedNav == "Journal"),
+        NavItem("Support", NavSupportEvent(), model.SelectedNav == "Support"),
+        Text("Search: brass ruler, desk mat, cable dock"),
+        Text("Cart " + FormatFloat(model.CartCount, 0) + " items")
+    ])
+}
+
+fn AnnouncementStrip() -> UI {
+    return Row([
+        Text("Studio Dispatch: New modular desktop kits landed this week."),
+        Text("Ships from Portland within 48 hours.")
+    ])
+}
+
+fn HeroBlock(model: StoreState) -> UI {
+    return Column([
+        SectionHeader("Purpose-built tools for calm workspaces", "Northline curates desk hardware, notebooks, and cable order systems for focused daily use."),
+        Row([
+            FeatureBlock("Featured", "Desk Starter Grid", "Three-piece setup for cable control + writing flow."),
+            FeatureBlock("Collection", "Analog Workflow", "Timer, ruler, and grid notebook for tactile planning."),
+            FeatureBlock("Status", "Active category: " + CategoryLabel(model.SelectedCategory), "Sort: " + SortLabel(model.SortBy))
+        ])
+    ])
+}
+
+fn FilterRail(model: StoreState) -> UI {
+    return Column([
+        SectionHeader("Browse", "Choose category and list behavior."),
+        Text("Category"),
+        FilterChip("All", CategoryAllEvent(), model.SelectedCategory == "all"),
+        FilterChip("Desk Gear", CategoryDeskEvent(), model.SelectedCategory == "desk"),
+        FilterChip("Stationery", CategoryPaperEvent(), model.SelectedCategory == "paper"),
+        FilterChip("Cable", CategoryCableEvent(), model.SelectedCategory == "cable"),
+        Text("Flags"),
+        FilterChip("New arrivals", ToggleNewEvent(), model.NewOnly),
+        FilterChip("In stock", ToggleInStockEvent(), model.InStockOnly),
+        FilterChip("Best sellers", ToggleBestSellerEvent(), model.BestSellerOnly),
+        Text("Sort"),
+        FilterChip("Featured", SortFeaturedEvent(), model.SortBy == "featured"),
+        FilterChip("Price low-high", SortPriceEvent(), model.SortBy == "price"),
+        FilterChip("Newest", SortNewestEvent(), model.SortBy == "newest")
+    ])
+}
+
+fn ProductAreaHeader(model: StoreState) -> UI {
+    return Row([
+        SectionHeader("Catalog", "Selected: " + CategoryLabel(model.SelectedCategory) + " · " + ActiveFilterSummary(model)),
+        Button("Desk Kits", FeaturedDeskKitsEvent(), model.FeaturedTab != "Desk Kits"),
+        Button("Notebook Sets", FeaturedNotebookSetsEvent(), model.FeaturedTab != "Notebook Sets"),
+        Button("Cable Lab", FeaturedCableLabEvent(), model.FeaturedTab != "Cable Lab"),
+        Text("Featured strip: " + model.FeaturedTab)
+    ])
+}
+
+fn ProductCard(product: Product, model: StoreState) -> UI {
+    let selected = model.SelectedProduct == product.Id
+    let selectedLine = SelectionLabel(selected)
+
+    return Column([
+        Row([
+            Text("[Box Art: " + product.Category + "]"),
+            PriceBadge(product.Price)
+        ]),
+        Text(product.Title),
+        Text(product.Subtitle),
+        Text("Badge: " + product.Badge + " · " + selectedLine),
+        Row([
+            Button("Inspect", InspectEvent(product.Id), true),
+            Button("Add to cart", AddToCartEvent(product.Id), true)
+        ])
+    ])
+}
+
+fn ProductCardSlot(product: Product, model: StoreState) -> UI {
+    if CategoryVisible(model.SelectedCategory, product.Category) {
+        return ProductCard(product, model)
+    }
+
+    return Column([
+        Text("Filtered out"),
+        Text(product.Title),
+        Text("Category: " + CategoryLabel(product.Category))
+    ])
+}
+
+fn SupportBand(model: StoreState) -> UI {
+    return Row([
+        FeatureBlock("Why Northline", "Small-batch hardware", "Every item is field-tested in studio desks before release."),
+        FeatureBlock("Customer notes", "Cable Dock solved my daily tangle", "R. Kim, Seattle"),
+        FeatureBlock("Journal", "Five-minute reset routine", "How teams use analog timers with notebook blocks.")
+    ])
+}
+
+fn Footer(model: StoreState) -> UI {
+    return Row([
+        FooterColumn("Shop", ["Desk Gear", "Stationery", "Cable Management"]),
+        FooterColumn("Company", ["About", "Journal", "Wholesale"]),
+        FooterColumn("Help", ["Shipping", "Returns", "Contact"]),
+        Text("Selected product: " + SelectedProductLabel(model.SelectedProduct))
+    ])
+}
+
+fn View(model: StoreState) -> UI {
+    let HeaderTop = 0.01 ui
+    let HeaderBottom = 0.09 ui
+    let AnnouncementTop = 0.095 ui
+    let AnnouncementBottom = 0.13 ui
+    let HeroTop = 0.14 ui
+    let HeroBottom = 0.28 ui
+    let FiltersTop = 0.30 ui
+    let FiltersBottom = 0.78 ui
+    let GridTop = 0.30 ui
+    let GridBottom = 0.78 ui
+    let SupportTop = 0.80 ui
+    let SupportBottom = 0.91 ui
+    let FooterTop = 0.92 ui
+
+    let CardX0 = 320.0 px
+    let CardX1 = 570.0 px
+    let CardX2 = 820.0 px
+    let CardY0 = 236.0 px
+    let CardY1 = 408.0 px
+    let CardWidth = 232.0 px
+    let CardHeight = 158.0 px
+
+    let productIds = CatalogProductIds()
+
+    return Canvas([
+        Place(AnchoredBox(0.01 ui, HeaderTop, 0.99 ui, HeaderBottom), HeaderBar(model)),
+        Place(AnchoredBox(0.01 ui, AnnouncementTop, 0.99 ui, AnnouncementBottom), AnnouncementStrip()),
+        Place(AnchoredBox(0.01 ui, HeroTop, 0.99 ui, HeroBottom), HeroBlock(model)),
+        Place(AnchoredBox(0.01 ui, FiltersTop, 0.26 ui, FiltersBottom), FilterRail(model)),
+        Place(AnchoredBox(0.27 ui, GridTop, 0.99 ui, GridBottom), ProductAreaHeader(model)),
+
+        Place(AbsoluteBox(CardX0, CardY0, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[0]), model)),
+        Place(AbsoluteBox(CardX1, CardY0, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[1]), model)),
+        Place(AbsoluteBox(CardX2, CardY0, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[2]), model)),
+
+        Place(AbsoluteBox(CardX0, CardY1, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[3]), model)),
+        Place(AbsoluteBox(CardX1, CardY1, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[4]), model)),
+        Place(AbsoluteBox(CardX2, CardY1, CardWidth, CardHeight), ProductCardSlot(ProductById(productIds[5]), model)),
+
+        Place(AnchoredBox(0.27 ui, SupportTop, 0.99 ui, SupportBottom), SupportBand(model)),
+        Place(AnchoredBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui), Footer(model))
+    ])
+}
