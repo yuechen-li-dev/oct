@@ -406,3 +406,97 @@ Adopt **explicit slot data structures** (`SlotId` + `ProductId` + explicit geome
 - Keep it author-level only.
 - Preserve explicit geometry.
 - Avoid introducing inferred layout/runtime repeaters.
+
+---
+
+# Storefront M5 Report (Catalog/Grid Data Probe)
+
+## What changed in M5
+
+M5 preserves M4’s runtime, event families, and composition-vs-behavior structure, and changes only author-level data modeling:
+
+- Catalog moved from ad hoc branch-based construction to an explicit table:
+  - `CatalogTable() -> ProductCatalog`
+- Product lookup now scans the catalog table:
+  - `ProductById(productId)` loops `CatalogTable()` rows instead of a hand-written `if` ladder
+- Product placement moved from flattened slot lists to explicit row/column grid data:
+  - `ProductGrid() -> ProductPlacementGrid`
+  - `ProductIds: String[]` + `RowStarts: Int[]` + `RowLengths: Int[]` for explicit row/column assignment
+  - `ColumnX`, `RowY`, `CardWidth`, `CardHeight` for explicit deterministic geometry
+- Card expansion remains author-level and deterministic:
+  - `CardSlotPlacements(model, grid)` expands row/column + product id into concrete `Place(AbsoluteBox(...), ...)` nodes
+
+No auto-grid, runtime repeater, hidden layout inference, or data-binding system was introduced.
+
+## Catalog data structure introduced
+
+M5 uses `ProductCatalog` (parallel field arrays) as the canonical catalog table. Each row index carries:
+
+- `Id`
+- `Title`
+- `Subtitle`
+- `Price`
+- `Badge`
+- `Category`
+
+This makes the product declaration read like plain table data instead of control-flow code.
+
+## Placement/grid data structure introduced
+
+M5 uses an explicit placement record:
+
+- `ProductIds: String[]` with explicit row boundaries (`RowStarts`, `RowLengths`) for row/column product assignment
+- `ColumnX: Float<px>[]`
+- `RowY: Float<px>[]`
+- `CardWidth`, `CardHeight`
+
+This keeps arrangement inspectable as:
+- row 0: harbor-board, linen-notebook, cable-dock
+- row 1: focus-timer, cork-tray, steel-ruler
+
+while preserving explicit pixel geometry.
+
+## Did product data read more naturally as data?
+
+Yes. The catalog is now visibly table-shaped data (`ProductCatalog`) with one index-aligned row per product, which is easier to scan and review than an `if productId == ...` chain.
+
+## Did page arrangement become easier to sketch mentally?
+
+Yes. Arrangement is now directly row/column-shaped in source (flattened `ProductIds` plus explicit row boundaries) and still tied to explicit `ColumnX`/`RowY` geometry, so both logical order and concrete placement remain clear.
+
+## Repetition reduced
+
+M5 materially removes:
+
+- branch-heavy product lookup/definition ladder in `ProductById`
+- manual per-index event matching branches in `MatchCatalogEvent`
+- flattened product-assignment repetition by replacing one-dimensional slot product mapping with a row/column table
+
+Remaining repetition is mostly static copy/state-field boilerplate, not catalog/grid authoring.
+
+## Direct answers to required M5 questions
+
+1. **Does catalog data become clearer when modeled explicitly as data?**
+   - Yes; a table-shaped `ProductCatalog` is clearer and easier to scan than branch code.
+2. **Does a product-id grid/table make arrangement more mentally sketchable?**
+   - Yes; row/column IDs map directly to visible storefront rows.
+3. **Does this reduce repeated lookup/definition boilerplate materially?**
+   - Yes; lookup and event matching both moved from hand-expanded branches to small loops over explicit data.
+4. **Is the page still easy to reason about from source?**
+   - Yes; macro layout and card geometry remain explicit/deterministic.
+5. **Does this improve or hurt locality?**
+   - Improves locality for catalog and placement edits by centralizing each in one table-shaped block.
+6. **Is table/grid the right canonical direction for storefront-like UI data?**
+   - Yes, for fixed-card catalog pages where inspectability and determinism are required.
+7. **What is the next biggest pain point?**
+   - Repetitive state-copy/update boilerplate (`WithX` patterns and repeated state field carry-over) is now the dominant authoring friction.
+
+## Recommendation after M5
+
+Adopt **catalog table + placement grid tables** as a canonical Machina UI authoring style for storefront-like screens, with these guardrails:
+
+- keep placement explicit and deterministic (no inferred layout)
+- keep expansion helpers small and obvious
+- preserve composition/behavior separation from M3/M4
+
+This direction reduces authoring bulk and keeps sketchability intact.
