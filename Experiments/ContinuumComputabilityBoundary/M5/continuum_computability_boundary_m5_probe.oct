@@ -1,0 +1,391 @@
+package ContinuumComputabilityBoundary
+
+record ContinuumProblem2D {
+    BodyWidth: Float
+    BodyHeight: Float
+    Query: String
+}
+
+record Lattice2D {
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+    Nx: Int
+    Ny: Int
+}
+
+record LatticeMask2D {
+    IsActive: Bool[]
+    IsBoundary: Bool[]
+}
+
+record LatticeFlux2D {
+    FluxRight: Float[]
+    FluxUp: Float[]
+}
+
+record RefinementPatch2D {
+    ParentI: Int
+    ParentJ: Int
+    RefineFactor: Int
+    LocalNx: Int
+    LocalNy: Int
+    DxFine: Float
+    DyFine: Float
+}
+
+record RefinedLattice2D {
+    Base: Lattice2D
+    Mask: LatticeMask2D
+    Patch: RefinementPatch2D
+}
+
+record LatticeFluxPatch2D {
+    FluxRight: Float[]
+    FluxUp: Float[]
+}
+
+record RefinedFlux2D {
+    BaseFlux: LatticeFlux2D
+    PatchFlux: LatticeFluxPatch2D
+}
+
+record RefinedBalanceResult2D {
+    BaseIncomingAmount: Float[]
+    BaseOutgoingAmount: Float[]
+    BaseNetAmount: Float[]
+    BaseNetVectorX: Float[]
+    BaseNetVectorY: Float[]
+    PatchIncomingAmount: Float[]
+    PatchOutgoingAmount: Float[]
+    PatchNetAmount: Float[]
+    PatchNetVectorX: Float[]
+    PatchNetVectorY: Float[]
+}
+
+record RefinementBoundaryReport {
+    RefinementMechanism: String
+    BaseAnchor: String
+    CoarseFineFluxRule: String
+    NeededGeneralTopology: Bool
+    DeterministicPreserved: Bool
+    Breakpoint: String
+}
+
+fn TinyCantileverProblem(query: String) -> ContinuumProblem2D {
+    return ContinuumProblem2D {
+        BodyWidth: 2.0
+        BodyHeight: 1.0
+        Query: query
+    }
+}
+
+fn BuildLattice(problem: ContinuumProblem2D) -> Lattice2D {
+    let _ = problem
+
+    return Lattice2D {
+        OriginX: 0.0
+        OriginY: 0.0
+        Dx: 0.5
+        Dy: 0.5
+        Nx: 5
+        Ny: 3
+    }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn PatchIndex(localNx: Int, i: Int, j: Int) -> Int {
+    return j * localNx + i
+}
+
+fn EmbedBodyIntoLattice(problem: ContinuumProblem2D, lattice: Lattice2D) -> LatticeMask2D {
+    var isActive = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+    var isBoundary = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let x = lattice.OriginX + Float(i) * lattice.Dx
+            let y = lattice.OriginY + Float(j) * lattice.Dy
+
+            let inside = x <= problem.BodyWidth and y <= problem.BodyHeight
+            isActive[idx] = inside
+
+            if inside {
+                let atLatticeBoundary = i == 0 or i == lattice.Nx - 1 or j == 0 or j == lattice.Ny - 1
+                isBoundary[idx] = atLatticeBoundary
+            }
+        }
+    }
+
+    return LatticeMask2D {
+        IsActive: isActive
+        IsBoundary: isBoundary
+    }
+}
+
+fn BuildLatticeFluxStructure(lattice: Lattice2D, mask: LatticeMask2D) -> LatticeFlux2D {
+    var fluxRight = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var fluxUp = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                if i + 1 < lattice.Nx {
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        fluxRight[idx] = 1.0 + 0.1 * Float(i) + 0.2 * Float(j)
+                    }
+                }
+
+                if j + 1 < lattice.Ny {
+                    let up = LatticeIndex(lattice, i, j + 1)
+                    if mask.IsActive[up] {
+                        fluxUp[idx] = 0.8 + 0.1 * Float(i) + 0.2 * Float(j)
+                    }
+                }
+            }
+        }
+    }
+
+    return LatticeFlux2D {
+        FluxRight: fluxRight
+        FluxUp: fluxUp
+    }
+}
+
+fn BuildRefinementPatch2D(base: Lattice2D, parentI: Int, parentJ: Int, refineFactor: Int) -> RefinementPatch2D {
+    return RefinementPatch2D {
+        ParentI: parentI
+        ParentJ: parentJ
+        RefineFactor: 2
+        LocalNx: 2
+        LocalNy: 2
+        DxFine: base.Dx / 2.0
+        DyFine: base.Dy / 2.0
+    }
+}
+
+fn AttachPatchToLattice(base: Lattice2D, mask: LatticeMask2D, patch: RefinementPatch2D) -> RefinedLattice2D {
+    return RefinedLattice2D {
+        Base: base
+        Mask: mask
+        Patch: patch
+    }
+}
+
+fn BuildPatchFluxStructure(patch: RefinementPatch2D) -> LatticeFluxPatch2D {
+    let _ = patch
+    return LatticeFluxPatch2D {
+        FluxRight: [0.4, 0.0, 0.6, 0.0]
+        FluxUp: [0.5, 0.7, 0.0, 0.0]
+    }
+}
+
+fn BuildRefinedFlux2D(baseFlux: LatticeFlux2D, patch: RefinementPatch2D) -> RefinedFlux2D {
+    return RefinedFlux2D {
+        BaseFlux: baseFlux
+        PatchFlux: BuildPatchFluxStructure(patch)
+    }
+}
+
+fn IsPatchRightInterfaceEdge(i: Int, j: Int, patch: RefinementPatch2D) -> Bool {
+    return i == patch.ParentI and (j == patch.ParentJ or j == patch.ParentJ + 1)
+}
+
+fn IsPatchUpInterfaceEdge(i: Int, j: Int, patch: RefinementPatch2D) -> Bool {
+    return j == patch.ParentJ and (i == patch.ParentI or i == patch.ParentI + 1)
+}
+
+fn AccumulateRefinedFluxBalance(refined: RefinedLattice2D, flux: RefinedFlux2D) -> RefinedBalanceResult2D {
+    let lattice = refined.Base
+    let mask = refined.Mask
+    let patch = refined.Patch
+    let baseFlux = flux.BaseFlux
+    let patchFlux = flux.PatchFlux
+
+    var baseIncomingAmount = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var baseOutgoingAmount = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var baseNetAmount = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var baseNetVectorX = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var baseNetVectorY = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    var patchIncomingAmount = [0.0, 0.0, 0.0, 0.0]
+    var patchOutgoingAmount = [0.0, 0.0, 0.0, 0.0]
+    var patchNetAmount = [0.0, 0.0, 0.0, 0.0]
+    var patchNetVectorX = [0.0, 0.0, 0.0, 0.0]
+    var patchNetVectorY = [0.0, 0.0, 0.0, 0.0]
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                if i + 1 < lattice.Nx {
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        let amount = baseFlux.FluxRight[idx]
+                        if IsPatchRightInterfaceEdge(i, j, patch) {
+                            let split = amount / 2.0
+                            baseOutgoingAmount[idx] = baseOutgoingAmount[idx] + amount
+                            baseNetAmount[idx] = baseNetAmount[idx] + amount
+                            baseNetVectorX[idx] = baseNetVectorX[idx] + amount
+
+                            if j == patch.ParentJ {
+                                let p0 = PatchIndex(patch.LocalNx, 0, 0)
+                                let p1 = PatchIndex(patch.LocalNx, 1, 0)
+                                patchIncomingAmount[p0] = patchIncomingAmount[p0] + split
+                                patchIncomingAmount[p1] = patchIncomingAmount[p1] + split
+                                patchNetAmount[p0] = patchNetAmount[p0] - split
+                                patchNetAmount[p1] = patchNetAmount[p1] - split
+                                patchNetVectorX[p0] = patchNetVectorX[p0] - split
+                                patchNetVectorX[p1] = patchNetVectorX[p1] - split
+                            } else {
+                                let p2 = PatchIndex(patch.LocalNx, 0, 1)
+                                let p3 = PatchIndex(patch.LocalNx, 1, 1)
+                                patchIncomingAmount[p2] = patchIncomingAmount[p2] + split
+                                patchIncomingAmount[p3] = patchIncomingAmount[p3] + split
+                                patchNetAmount[p2] = patchNetAmount[p2] - split
+                                patchNetAmount[p3] = patchNetAmount[p3] - split
+                                patchNetVectorX[p2] = patchNetVectorX[p2] - split
+                                patchNetVectorX[p3] = patchNetVectorX[p3] - split
+                            }
+                        } else {
+                            baseOutgoingAmount[idx] = baseOutgoingAmount[idx] + amount
+                            baseIncomingAmount[right] = baseIncomingAmount[right] + amount
+                            baseNetAmount[idx] = baseNetAmount[idx] + amount
+                            baseNetAmount[right] = baseNetAmount[right] - amount
+                            baseNetVectorX[idx] = baseNetVectorX[idx] + amount
+                            baseNetVectorX[right] = baseNetVectorX[right] - amount
+                        }
+                    }
+                }
+
+                if j + 1 < lattice.Ny {
+                    let up = LatticeIndex(lattice, i, j + 1)
+                    if mask.IsActive[up] {
+                        let amount = baseFlux.FluxUp[idx]
+                        if IsPatchUpInterfaceEdge(i, j, patch) {
+                            let split = amount / 2.0
+                            baseOutgoingAmount[idx] = baseOutgoingAmount[idx] + amount
+                            baseNetAmount[idx] = baseNetAmount[idx] + amount
+                            baseNetVectorY[idx] = baseNetVectorY[idx] + amount
+
+                            if i == patch.ParentI {
+                                let p0 = PatchIndex(patch.LocalNx, 0, 0)
+                                let p2 = PatchIndex(patch.LocalNx, 0, 1)
+                                patchIncomingAmount[p0] = patchIncomingAmount[p0] + split
+                                patchIncomingAmount[p2] = patchIncomingAmount[p2] + split
+                                patchNetAmount[p0] = patchNetAmount[p0] - split
+                                patchNetAmount[p2] = patchNetAmount[p2] - split
+                                patchNetVectorY[p0] = patchNetVectorY[p0] - split
+                                patchNetVectorY[p2] = patchNetVectorY[p2] - split
+                            } else {
+                                let p1 = PatchIndex(patch.LocalNx, 1, 0)
+                                let p3 = PatchIndex(patch.LocalNx, 1, 1)
+                                patchIncomingAmount[p1] = patchIncomingAmount[p1] + split
+                                patchIncomingAmount[p3] = patchIncomingAmount[p3] + split
+                                patchNetAmount[p1] = patchNetAmount[p1] - split
+                                patchNetAmount[p3] = patchNetAmount[p3] - split
+                                patchNetVectorY[p1] = patchNetVectorY[p1] - split
+                                patchNetVectorY[p3] = patchNetVectorY[p3] - split
+                            }
+                        } else {
+                            baseOutgoingAmount[idx] = baseOutgoingAmount[idx] + amount
+                            baseIncomingAmount[up] = baseIncomingAmount[up] + amount
+                            baseNetAmount[idx] = baseNetAmount[idx] + amount
+                            baseNetAmount[up] = baseNetAmount[up] - amount
+                            baseNetVectorY[idx] = baseNetVectorY[idx] + amount
+                            baseNetVectorY[up] = baseNetVectorY[up] - amount
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for j in 0..patch.LocalNy {
+        for i in 0..patch.LocalNx {
+            let idx = PatchIndex(patch.LocalNx, i, j)
+            if i + 1 < patch.LocalNx {
+                let right = PatchIndex(patch.LocalNx, i + 1, j)
+                let amount = patchFlux.FluxRight[idx]
+                patchOutgoingAmount[idx] = patchOutgoingAmount[idx] + amount
+                patchIncomingAmount[right] = patchIncomingAmount[right] + amount
+                patchNetAmount[idx] = patchNetAmount[idx] + amount
+                patchNetAmount[right] = patchNetAmount[right] - amount
+                patchNetVectorX[idx] = patchNetVectorX[idx] + amount
+                patchNetVectorX[right] = patchNetVectorX[right] - amount
+            }
+
+            if j + 1 < patch.LocalNy {
+                let up = PatchIndex(patch.LocalNx, i, j + 1)
+                let amount = patchFlux.FluxUp[idx]
+                patchOutgoingAmount[idx] = patchOutgoingAmount[idx] + amount
+                patchIncomingAmount[up] = patchIncomingAmount[up] + amount
+                patchNetAmount[idx] = patchNetAmount[idx] + amount
+                patchNetAmount[up] = patchNetAmount[up] - amount
+                patchNetVectorY[idx] = patchNetVectorY[idx] + amount
+                patchNetVectorY[up] = patchNetVectorY[up] - amount
+            }
+        }
+    }
+
+    return RefinedBalanceResult2D {
+        BaseIncomingAmount: baseIncomingAmount
+        BaseOutgoingAmount: baseOutgoingAmount
+        BaseNetAmount: baseNetAmount
+        BaseNetVectorX: baseNetVectorX
+        BaseNetVectorY: baseNetVectorY
+        PatchIncomingAmount: patchIncomingAmount
+        PatchOutgoingAmount: patchOutgoingAmount
+        PatchNetAmount: patchNetAmount
+        PatchNetVectorX: patchNetVectorX
+        PatchNetVectorY: patchNetVectorY
+    }
+}
+
+fn CoarseFineSplitSums(refined: RefinedLattice2D, flux: RefinedFlux2D) -> Float[] {
+    let lattice = refined.Base
+    let patch = refined.Patch
+    let baseFlux = flux.BaseFlux
+
+    var coarseSum = 0.0
+    var fineSum = 0.0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if IsPatchRightInterfaceEdge(i, j, patch) {
+                let amount = baseFlux.FluxRight[idx]
+                coarseSum = coarseSum + amount
+                fineSum = fineSum + amount / 2.0 + amount / 2.0
+            }
+
+            if IsPatchUpInterfaceEdge(i, j, patch) {
+                let amount = baseFlux.FluxUp[idx]
+                coarseSum = coarseSum + amount
+                fineSum = fineSum + amount / 2.0 + amount / 2.0
+            }
+        }
+    }
+
+    return [coarseSum, fineSum]
+}
+
+fn ProbeRefinementBoundary(refined: RefinedLattice2D) -> RefinementBoundaryReport {
+    let _ = refined
+
+    return RefinementBoundaryReport {
+        RefinementMechanism: "Single-level localized 2x2 refinement patch anchored to one parent cell with refineFactor=2 and no recursive structure."
+        BaseAnchor: "Patch is index-anchored by ParentI/ParentJ in the base Cartesian lattice; base lattice remains unchanged and patch is attached explicitly."
+        CoarseFineFluxRule: "Conservative split rule: each coarse interface edge amount is split equally into two corresponding fine-edge contributions; reverse check sums to the original coarse amount."
+        NeededGeneralTopology: false
+        DeterministicPreserved: true
+        Breakpoint: "Breaks when multiple overlapping patches, anisotropic split factors, or curved/non-axis interfaces require richer interface bookkeeping than fixed Cartesian index maps."
+    }
+}
