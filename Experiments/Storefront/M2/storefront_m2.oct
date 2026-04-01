@@ -301,20 +301,20 @@ fn Update(model: StoreState, event: String) -> StoreState {
     if event == CategoryPaperEvent() { return WithCategory(model, "paper") }
     if event == CategoryCableEvent() { return WithCategory(model, "cable") }
 
-    if event == ToggleNewEvent() { return WithNewOnly(model, not model.NewOnly) }
-    if event == ToggleInStockEvent() { return WithInStockOnly(model, not model.InStockOnly) }
-    if event == ToggleBestSellerEvent() { return WithBestSellerOnly(model, not model.BestSellerOnly) }
+    if event == ToggleNewEvent() { return model with { NewOnly: not model.NewOnly } }
+    if event == ToggleInStockEvent() { return model with { InStockOnly: not model.InStockOnly } }
+    if event == ToggleBestSellerEvent() { return model with { BestSellerOnly: not model.BestSellerOnly } }
 
-    if event == SortFeaturedEvent() { return WithSort(model, "featured") }
-    if event == SortPriceEvent() { return WithSort(model, "price") }
-    if event == SortNewestEvent() { return WithSort(model, "newest") }
+    if event == SortFeaturedEvent() { return model with { SortBy: "featured" } }
+    if event == SortPriceEvent() { return model with { SortBy: "price" } }
+    if event == SortNewestEvent() { return model with { SortBy: "newest" } }
 
-    if event == FeaturedDeskKitsEvent() { return WithFeaturedTab(model, "Desk Kits") }
-    if event == FeaturedNotebookSetsEvent() { return WithFeaturedTab(model, "Notebook Sets") }
-    if event == FeaturedCableLabEvent() { return WithFeaturedTab(model, "Cable Lab") }
+    if event == FeaturedDeskKitsEvent() { return model with { FeaturedTab: "Desk Kits" } }
+    if event == FeaturedNotebookSetsEvent() { return model with { FeaturedTab: "Notebook Sets" } }
+    if event == FeaturedCableLabEvent() { return model with { FeaturedTab: "Cable Lab" } }
 
     let inspectMatch = MatchCatalogEvent(event, InspectPrefix())
-    if inspectMatch != "" { return WithSelectedProduct(model, inspectMatch) }
+    if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
 
     let addMatch = MatchCatalogEvent(event, AddToCartPrefix())
     if addMatch != "" { return WithCartCount(model, model.CartCount + 1.0) }
@@ -346,90 +346,6 @@ fn WithCategory(model: StoreState, value: String) -> StoreState {
         BestSellerOnly: model.BestSellerOnly
         FeaturedTab: model.FeaturedTab
         SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithSort(model: StoreState, value: String) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: value
-        NewOnly: model.NewOnly
-        InStockOnly: model.InStockOnly
-        BestSellerOnly: model.BestSellerOnly
-        FeaturedTab: model.FeaturedTab
-        SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithNewOnly(model: StoreState, value: Bool) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: model.SortBy
-        NewOnly: value
-        InStockOnly: model.InStockOnly
-        BestSellerOnly: model.BestSellerOnly
-        FeaturedTab: model.FeaturedTab
-        SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithInStockOnly(model: StoreState, value: Bool) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: model.SortBy
-        NewOnly: model.NewOnly
-        InStockOnly: value
-        BestSellerOnly: model.BestSellerOnly
-        FeaturedTab: model.FeaturedTab
-        SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithBestSellerOnly(model: StoreState, value: Bool) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: model.SortBy
-        NewOnly: model.NewOnly
-        InStockOnly: model.InStockOnly
-        BestSellerOnly: value
-        FeaturedTab: model.FeaturedTab
-        SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithFeaturedTab(model: StoreState, value: String) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: model.SortBy
-        NewOnly: model.NewOnly
-        InStockOnly: model.InStockOnly
-        BestSellerOnly: model.BestSellerOnly
-        FeaturedTab: value
-        SelectedProduct: model.SelectedProduct
-        CartCount: model.CartCount
-    }
-}
-
-fn WithSelectedProduct(model: StoreState, value: String) -> StoreState {
-    return StoreState {
-        SelectedNav: model.SelectedNav
-        SelectedCategory: model.SelectedCategory
-        SortBy: model.SortBy
-        NewOnly: model.NewOnly
-        InStockOnly: model.InStockOnly
-        BestSellerOnly: model.BestSellerOnly
-        FeaturedTab: model.FeaturedTab
-        SelectedProduct: value
         CartCount: model.CartCount
     }
 }
