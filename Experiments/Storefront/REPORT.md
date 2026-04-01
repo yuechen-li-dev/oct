@@ -500,3 +500,86 @@ Adopt **catalog table + placement grid tables** as a canonical Machina UI author
 - preserve composition/behavior separation from M3/M4
 
 This direction reduces authoring bulk and keeps sketchability intact.
+
+---
+
+# Storefront M6 Report (Dispatch Table Probe)
+
+## What changed in M6
+
+M6 preserves the M3–M5 authoring architecture (data tables, family events, explicit composition), but replaces direct exact-key event ladders with explicit dispatch tables for simple deterministic mappings:
+
+- nav event key -> selected nav value
+- category event key -> selected category value
+- sort event key -> sort value
+- featured event key -> featured tab label
+
+This is implemented with a small `EventValueDispatch` record plus family-scoped table constructors and a deterministic resolver:
+
+- `NavDispatchTable`, `CategoryDispatchTable`, `SortDispatchTable`, `FeaturedDispatchTable`
+- `ResolveDispatch(event, table) -> value | ""`
+
+`Update(...)` now performs table resolution for table-shaped transitions, while keeping procedural logic in code for:
+
+- toggle filters (`new`, `in stock`, `best seller`)
+- catalog event-family matching (`inspect`, `add-to-cart`)
+
+No runtime event model changes were introduced.
+
+## Which ladders were replaced
+
+Replaced keyed `if` ladders for:
+
+- nav selection
+- category selection
+- sort selection
+- featured-tab selection
+
+Kept as explicit code (not forced into tables):
+
+- filter toggles (boolean inversion logic)
+- inspect/add family resolution and cart increment behavior
+
+## Trivial `With*` helper removal
+
+M6 removes these micro update helpers:
+
+- `WithNav`
+- `WithCategory`
+- `WithCartCount`
+
+They are replaced by direct `model with { ... }` updates at the point of dispatch resolution.
+
+## Answers to required M6 questions
+
+1. **Are keyed ladders table-shaped?**
+   Yes, for nav/category/sort/featured they were direct key->value mappings.
+
+2. **Boilerplate reduction?**
+   Yes. Repeated ladders became compact table declarations plus one resolver path per family.
+
+3. **Reasoning clarity?**
+   Improved for simple mappings: each family is now a scan-friendly event/value table.
+
+4. **Locality impact?**
+   Improved slightly: table declarations, resolver, and `Update` remain adjacent in behavior scope.
+
+5. **Which paths belong in tables vs code?**
+   - Tables: exact-key to exact-value transitions.
+   - Code: toggles and catalog family matching (procedural/derived logic).
+
+6. **Can trivial helpers be removed cleanly?**
+   Yes, for these cases direct `with` updates were clearer and removed indirection.
+
+7. **Next biggest pain point after direct dispatch tables?**
+   The remaining verbosity is mostly repeated catalog-driven presentation wiring (card-slot assembly/index traversal), not event dispatch itself.
+
+## Recommendation
+
+Adopt this dispatch-table pattern as a canonical behavior-authoring style for **simple keyed UI transitions** in Machina UI code:
+
+- keep it narrow to direct key->value mappings,
+- keep resolver deterministic and local,
+- keep procedural logic outside tables.
+
+Do **not** generalize this into a runtime router, typed event system, or generic dispatch DSL at this stage.
