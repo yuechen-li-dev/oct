@@ -1,0 +1,8 @@
+package IfErrNotEqualNil
+
+/// Go compatibility wrapper for error handling.
+/// Equivalent to postfix ?.
+/// Provided for compatibility-oriented workflows.
+fn IfErrNotEqualNil(value: Int ! Error) -> Int ! Error {
+    return value?
+}
