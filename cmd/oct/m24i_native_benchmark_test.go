@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,5 +147,58 @@ func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "PASS Signal.MovingAverageSmall") {
 		t.Fatalf("expected real benchmark pass output, got %q", stdout.String())
+	}
+}
+
+func TestOctBenchCPUProfileEmitsDeterministicArtifact(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { let x = 1 + 1 Print(x) }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root, "--profile", "cpu"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected benchmark profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	profilePath := filepath.Join(root, "bench.cpu.pprof")
+	info, err := os.Stat(profilePath)
+	if err != nil {
+		t.Fatalf("expected cpu profile artifact at %s: %v", profilePath, err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("expected non-empty cpu profile artifact at %s", profilePath)
+	}
+}
+
+func TestOctBenchRejectsInvalidProfileMode(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { return }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{"bench", root, "--profile", "heap"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected invalid profile mode error")
+	}
+	if !strings.Contains(err.Error(), "bench --profile must be 'cpu'") {
+		t.Fatalf("expected invalid profile mode error, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+}
+
+func TestOctBenchWithoutProfileDoesNotEmitCPUArtifact(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { return }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected benchmark success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "bench.cpu.pprof")); !os.IsNotExist(err) {
+		t.Fatalf("expected no cpu profile artifact without --profile, stat err=%v", err)
 	}
 }
