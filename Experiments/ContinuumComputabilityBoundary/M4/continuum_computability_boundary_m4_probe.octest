@@ -1,0 +1,62 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM4BuildsDeterministicLatticeAndEmbedding() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+
+    Assert.Equal(5, lattice.Nx, "lattice nx")
+    Assert.Equal(3, lattice.Ny, "lattice ny")
+    Assert.Near(0.5, lattice.Dx, 0.0001, "lattice dx")
+    Assert.Near(0.5, lattice.Dy, 0.0001, "lattice dy")
+    Assert.Equal(15, Len(mask.IsActive), "mask length")
+    Assert.Equal(true, mask.IsActive[LatticeIndex(lattice, 0, 0)], "origin is active")
+    Assert.Equal(true, mask.IsBoundary[LatticeIndex(lattice, 4, 2)], "top-right site is boundary")
+}
+
+[Fact]
+fn ContinuumBoundaryM4BuildsFluxFromDeterministicAdjacencyOffsetsOnly() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let flux = BuildLatticeFluxStructure(lattice, mask)
+
+    Assert.Equal(15, Len(flux.FluxRight), "right flux slot count")
+    Assert.Equal(15, Len(flux.FluxUp), "up flux slot count")
+    Assert.Near(1.0, flux.FluxRight[LatticeIndex(lattice, 0, 0)], 0.0001, "right flux deterministic value at (0,0)")
+    Assert.Near(1.5, flux.FluxRight[LatticeIndex(lattice, 3, 1)], 0.0001, "right flux deterministic value at (3,1)")
+    Assert.Near(0.9, flux.FluxUp[LatticeIndex(lattice, 1, 0)], 0.0001, "up flux deterministic value at (1,0)")
+    Assert.Near(0.0, flux.FluxRight[LatticeIndex(lattice, 4, 2)], 0.0001, "no right edge at max i")
+}
+
+[Fact]
+fn ContinuumBoundaryM4AccumulatesBalanceFromLatticeFlux() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let flux = BuildLatticeFluxStructure(lattice, mask)
+
+    let balance = AccumulateLatticeFluxBalance(lattice, mask, flux)
+
+    Assert.Near(1.8, balance.OutgoingAmount[LatticeIndex(lattice, 0, 0)], 0.0001, "outgoing at (0,0)")
+    Assert.Near(2.1, balance.IncomingAmount[LatticeIndex(lattice, 1, 1)], 0.0001, "incoming at (1,1)")
+    Assert.Near(0.1, balance.NetVectorX[LatticeIndex(lattice, 1, 0)], 0.0001, "net vector x at (1,0)")
+    Assert.Near(-1.4, balance.NetVectorY[LatticeIndex(lattice, 4, 2)], 0.0001, "net vector y at (4,2)")
+}
+
+[Fact]
+fn ContinuumBoundaryM4ReportMakesTopologyCommitmentExplicit() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let flux = BuildLatticeFluxStructure(lattice, mask)
+
+    let report = ProbeLatticeBoundary(problem, lattice, mask, flux)
+
+    Assert.True(Contains(report.PairArbitrarinessRemoval, "fixed lattice offsets"), "pair policy removal explanation")
+    Assert.True(Contains(report.FluxOnLattice, "FluxRight"), "lattice flux representation")
+    Assert.Equal(true, report.IsTopologyCommittedNow, "topology commitment is explicit")
+    Assert.True(Contains(report.MeshComparison, "no elements"), "non-mesh scope is explicit")
+    Assert.True(Contains(report.RecommendationForM5, "topology-flexibility probe"), "next pass recommendation")
+}
