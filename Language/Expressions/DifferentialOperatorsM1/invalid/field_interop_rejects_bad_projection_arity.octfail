@@ -1,0 +1,8 @@
+expect error: "matrix indexing requires exactly 2 indices, got 3"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[1.0, 2.0]
+    let _ = Grad(u)[0, 1, 1]
+}

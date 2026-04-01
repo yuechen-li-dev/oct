@@ -1,0 +1,8 @@
+expect error: "function 'SymGrad' argument 1 expects numeric Vector, got Float"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let p = 1.0
+    let _ = SymGrad(p)
+}
