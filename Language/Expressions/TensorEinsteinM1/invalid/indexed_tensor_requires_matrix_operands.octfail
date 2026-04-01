@@ -1,0 +1,13 @@
+expect error: "vector indexing requires exactly 1 index, got 2"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let v = vector[1, 2]
+    let m = matrix[[1, 2] [3, 4]]
+
+    let _ = v[i, j] * m[j, i]
+}

@@ -220,6 +220,12 @@ type evalResult struct {
 	value    Value
 	hasError bool
 	errorVal Value
+	einTerm  *einsteinIndexedTerm
+}
+
+type einsteinIndexedTerm struct {
+	matrix Value
+	labels []string
 }
 
 type callResult struct {
@@ -1029,6 +1035,9 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{hasError: true, errorVal: target.errorVal}, nil
 		}
 		indices := make([]int64, 0, len(node.Indices))
+		indexLabels := make([]string, 0, len(node.Indices))
+		allIntIndices := true
+		allIndexIndices := true
 		for _, idxExpr := range node.Indices {
 			index, err := i.evalExpr(env, pkgName, idxExpr)
 			if err != nil {
@@ -1037,13 +1046,23 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			if index.hasError {
 				return evalResult{hasError: true, errorVal: index.errorVal}, nil
 			}
-			if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
-				return evalResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
+			if index.value.Kind == ValueInt && index.value.Dimension.IsDimensionless() {
+				indices = append(indices, index.value.Int)
+				allIndexIndices = false
+				continue
 			}
-			indices = append(indices, index.value.Int)
+			if index.value.Kind == ValueIndex {
+				indexLabels = append(indexLabels, index.value.Text)
+				allIntIndices = false
+				continue
+			}
+			return evalResult{}, fmt.Errorf("runtime invariant violation: index must be Int or Index, got %s", valueTypeName(index.value))
 		}
 		switch target.value.Kind {
 		case ValueArray:
+			if !allIntIndices {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: array indexing requires Int index")
+			}
 			if len(indices) != 1 {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: array indexing requires exactly 1 index, got %d", len(indices))
 			}
@@ -1052,6 +1071,9 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			}
 			return evalResult{value: target.value.Array[indices[0]]}, nil
 		case ValueVector:
+			if !allIntIndices {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires Int index")
+			}
 			if len(indices) != 1 {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires exactly 1 index, got %d", len(indices))
 			}
@@ -1060,6 +1082,18 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			}
 			return evalResult{value: target.value.Vector[indices[0]]}, nil
 		case ValueMatrix:
+			if allIndexIndices {
+				if len(indexLabels) != 2 {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: matrix Einstein term access requires exactly 2 indices, got %d", len(indexLabels))
+				}
+				if strings.TrimSpace(indexLabels[0]) == "" || strings.TrimSpace(indexLabels[1]) == "" {
+					return evalResult{}, fmt.Errorf("runtime error: Einstein indices must be non-empty")
+				}
+				return evalResult{einTerm: &einsteinIndexedTerm{matrix: target.value, labels: indexLabels}}, nil
+			}
+			if !allIntIndices {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: matrix indexing requires either Int,Int element access or Index,Index Einstein term access")
+			}
 			if len(indices) != 2 {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: matrix indexing requires exactly 2 indices, got %d", len(indices))
 			}
@@ -1145,6 +1179,13 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		}
 		if right.hasError {
 			return evalResult{hasError: true, errorVal: right.errorVal}, nil
+		}
+		if left.einTerm != nil || right.einTerm != nil {
+			result, err := evalEinsteinIndexedBinaryExpr(node.Operator, left, right)
+			if err != nil {
+				return evalResult{}, err
+			}
+			return evalResult{value: result}, nil
 		}
 		value, err := evalBinaryExpr(node.Operator, left.value, right.value)
 		if err != nil {
