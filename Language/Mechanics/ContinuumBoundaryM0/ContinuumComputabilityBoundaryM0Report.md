@@ -11,83 +11,91 @@ A minimal 2D small-strain solid mechanics problem was chosen:
 - constant body force `(0, -1000)`
 - one displacement constraint (left edge fixed)
 - governing relation intent: linear momentum balance
-- query intent: solve for `u`
+- query intents:
+  - `ResidualAtCandidateField`
+  - `SolveForField`
 
 This is a cantilever-like boundary-value statement, intentionally without any finite lowering.
 
-## What problem objects were introduced
+## Problem objects introduced
 
 Using ordinary Oct records/enums/arrays only:
 
-- root problem object: `ContinuumProblem`
-- support records: `Body`, `Material`, `Load`, `Constraint`
-- support enums: `BoundaryCategory`, `MissingCapability` (problem tags are explicit strings in `ContinuumProblem`)
-- probe result records/enums: `BoundaryProbeResult`, `BoundaryCategory`, `MissingCapability`
+- root problem object: `ContinuumProblem2D`
+- supporting records:
+  - `Body2D`
+  - `MaterialModel`
+  - `UnknownField2D`
+  - `Load2D`
+  - `Constraint2D`
+- probe result type: `BoundaryProbeResult`
+- explicit tags are represented as constrained strings in this M0 probe (`Assumption`, `LoadKind`, `ConstraintKind`, `GoverningRelation`, `Query`, `Category`, `Missing`) because enum-in-record fields are not currently supported in this layer.
 
-No parser, DSL, mesh, basis, assembly, or solver machinery was added.
+No parser, DSL, mesh, basis, assembly, solver, or numerical integration machinery was added.
 
 ## Layer split (explicit)
 
-### A) Representation layer (already present)
+### A) Representation layer
 
-The field-form mechanics substrate remains usable and direct:
+Still directly expressible in existing continuum substrate:
 
 - `SymGrad(u)`
-- isotropic constitutive mapping in `StressFromMaterial(...)`
-- `Div(stress) + body_force`
+- isotropic constitutive map `StressFromMaterial(...)`
+- strong-form residual slice `Div(stress) + bodyForce`
 
-This demonstrates that constitutive and strong-form operator composition is representable now.
+### B) Problem-specification layer
 
-### B) Problem specification layer (added explicitly here)
+Now made explicit as `ContinuumProblem2D`:
 
-`ContinuumProblem` is the typed carrier for:
-
-- body/domain extent
-- assumption/material
-- unknown field declaration
+- body/domain
+- material + assumption
+- unknown fields
 - loads
 - constraints
 - governing relation intent
 - query intent
 
-This confirms that a tiny real continuum problem can be stated honestly without discretizing.
+This demonstrates a real tiny continuum problem can be stated honestly without discretization.
 
-### C) Computational layer (not present)
+### C) Computational layer
 
-When query intent is `SolveForField`, the first hard stop is:
+Boundary appears only at the solve query:
 
-- no finite computational lowering exists to realize `u(x)` over the body.
+- `Query = "SolveForField"` requires finite computational lowering to realize field values over the body.
 
-The probe marks this explicitly as `BoundaryCategory.Computational` with `MissingCapability.MissingFiniteLowering`.
+The probe reports:
+
+- `Category = "Computational"`
+- `Missing = "MissingFiniteLowering"`
 
 ## Required questions answered
 
 1. **What is already expressible?**
-   Constitutive algebra, strong-form residual composition, and typed problem components are all expressible.
-2. **Is a structured problem-spec layer missing before discretization?**
-   It was missing as an explicit first-class object; this probe adds it using plain records plus explicit query/governing tags.
+   Constitutive algebra, strong-form residual composition, and typed model components.
+2. **Is a structured problem-specification layer missing before discretization?**
+   Yes; this pass adds it explicitly as `ContinuumProblem2D` using regular language structures.
 3. **First exact missing capability?**
-   Finite realization of the unknown field for `SolveForField` queries.
+   Finite lowering for `SolveForField` queries.
 4. **Boundary type?**
    Computational.
 5. **Is discretization actually next?**
-   Yes, after problem specification is explicit.
-6. **Honest role of discretization?**
-   Not to define physics; to lower the already-specified continuum problem into a finite computable form that can produce numerical answers to solve/query requests.
+   Only after explicit problem/query specification exists; then yes, as the realization layer.
+6. **If discretization is needed, what role should it play?**
+   Pure computational lowering of an already-specified continuum problem, not a replacement for model semantics.
 
 ## Blunt conclusion
 
-Discretization is **not** the next layer if the problem object is still implicit. Once a typed problem object exists, the next honest missing layer is computational lowering.
+The first missing layer after current field-form continuum mechanics is an explicit problem/query object.
 
-In this probe, that boundary is now explicit and localized: `SolveForField` cannot be crossed without finite approximation machinery.
+After that object exists, the first hard boundary is computational: numerical field realization is impossible without finite lowering. That is where discretization becomes honestly justified.
 
 ## Recommendation for next pass
 
-Run a narrowly scoped **Computational Lowering M1** pass that:
+Run a narrow **Computational Lowering M1** experiment that:
 
-- consumes `ContinuumProblem`
-- introduces the minimal finite representation needed to realize `u`
-- keeps constitutive/governing semantics in the continuum layer (no semantic duplication)
-- reports lowered artifacts and solved-query outputs separately from model specification
+- consumes `ContinuumProblem2D`
+- supports one tiny lowering path for one query (`SolveForField`)
+- keeps constitutive and governing semantics in the continuum/problem layer
+- emits solved outputs as a separate computational artifact
 
-Do not broaden into general FE infrastructure until this thin lowering seam is validated end-to-end.
+Do not broaden into general FE/FV/FD infrastructure yet.
