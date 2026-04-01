@@ -7,6 +7,7 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 
 ## Milestones
 - M0: problem-specification boundary probe
+- M1: computational lowering probe (finite sites, no mesh/no solver)
 
 ## M0
 
@@ -101,3 +102,83 @@ Run a narrow **Computational Lowering M1** experiment that:
 - emits solved outputs as a separate computational artifact
 
 Do not broaden into general FE/FV/FD infrastructure yet.
+
+## M1
+
+### Finite representation chosen
+M1 uses a **finite set of explicit 2D evaluation sites** inside the body (`FiniteSites2D`) as the minimal carrier.
+
+- sites are concrete positions `(x, y)`
+- no connectivity or adjacency is present
+- no element/face/cell ownership is present
+- no basis functions or quadrature are present
+
+For the tiny cantilever probe, four fixed interior sites are used.
+
+### Why this is the minimal honest lowering
+`SolveForField(u)` cannot even be stated computationally until there are finitely many locations where unknowns can live. A bare site set is the smallest step that:
+
+- is finite
+- is explicit
+- remains downstream from `ContinuumProblem2D`
+- does not force FE/FV/FD commitments
+
+Anything less (pure continuum only) cannot host computable unknown instances. Anything more (topology/connectivity/operators) over-commits before the seam is proven.
+
+### Lowered object introduced
+M1 adds:
+
+- `LoweredProblem2D`
+  - `Source: ContinuumProblem2D`
+  - `Sites: FiniteSites2D` (`X: Float[]`, `Y: Float[]`)
+  - `Unknowns: SiteUnknowns2D` (`Ux: Float[]`, `Uy: Float[]`, `IsSolved: Bool[]`)
+  - `QueryTarget: String`
+
+Lowering is explicit via `LowerContinuumProblem2D(problem)`.
+
+### What `u` becomes after lowering
+`u` becomes finite site-scoped unknown components:
+
+- per-site unknown components: `ux`, `uy`
+- representation: `SiteUnknowns2D` with one `Ux[i]`, `Uy[i]` pair per site index
+- `IsSolved[i]` remains `false` in M1 for every site
+
+These are placeholders for a future solve, not solved values.
+
+### One computational capability unlocked
+M1 defines exactly one computationally meaningful operation:
+
+- `AttachUnknownsToSites(sites)` → creates explicit unknown instances at every site.
+
+This makes the query target concrete (`"SiteUnknownDisplacement"`): the system can now point to *what would be solved for*.
+
+### Boundary after M1 (explicit)
+**Now possible**
+
+- finite computational carrier exists
+- unknowns are explicitly attached to finite sites
+- the continuum source problem is preserved and referenced downstream
+
+**Still impossible**
+
+- no discrete operator is defined
+- no residual/equilibrium system is built
+- no global consistency enforcement exists
+- no solve for `u` is possible
+- no continuous field reconstruction is possible
+
+The boundary is reported as: `MissingDiscreteOperatorWithoutTopology`.
+
+### Does M1 force mesh-based discretization yet?
+No.
+
+M1 proves mesh topology is not yet required to cross the first computability seam. The first seam only requires finite unknown placement, not elements/connectivity.
+
+### Recommendation for next pass
+Run M2 as a **minimal operator-definition pass**:
+
+- keep the same site carrier (still no mesh connectivity)
+- define one tiny discrete relation that can be evaluated at sites
+- keep solve out-of-scope unless/until a concrete global algebra object is introduced
+
+Do not jump directly to full FEM/FV/FD stacks.

@@ -1,0 +1,40 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM1LoweringBuildsExplicitFiniteSites() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lowered = LowerContinuumProblem2D(problem)
+    let sites = lowered.Sites
+    let source = lowered.Source
+
+    Assert.Equal(4, Len(sites.X), "finite site carrier size")
+    Assert.Equal(4, Len(sites.Y), "finite site carrier y size")
+    Assert.Equal(1.0, sites.X[0], "site 0 x")
+    Assert.Equal(0.5, sites.Y[0], "site 0 y")
+    Assert.Equal(2.0, sites.X[3], "site 3 x")
+    Assert.Equal(1.0, sites.Y[3], "site 3 y")
+    Assert.Equal("SolveForField", source.Query, "continuum source remains upstream truth")
+}
+
+[Fact]
+fn ContinuumBoundaryM1LoweringAttachesUnknownAtEverySite() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let sites = lowered.Sites
+    let unknowns = lowered.Unknowns
+
+    Assert.Equal(Len(sites.X), Len(unknowns.Ux), "one ux unknown per site")
+    Assert.Equal(Len(sites.Y), Len(unknowns.Uy), "one uy unknown per site")
+    Assert.Equal(0.0, unknowns.Ux[0], "ux placeholder at site 0")
+    Assert.Equal(0.0, unknowns.Uy[0], "uy placeholder at site 0")
+    Assert.Equal(false, unknowns.IsSolved[0], "lowering does not solve")
+    Assert.Equal("SiteUnknownDisplacement", lowered.QueryTarget, "query target is explicit after lowering")
+}
+
+[Fact]
+fn ContinuumBoundaryM1BoundaryIsExplicitAfterLowering() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let boundary = ProbeLoweringBoundary(lowered)
+
+    Assert.Equal("MissingDiscreteOperatorWithoutTopology", boundary.NextBoundary, "next boundary classification")
+    Assert.True(Contains(boundary.StillMissing, "no global solve"), "solve remains impossible")
+}
