@@ -1,4 +1,4 @@
-expect error: "EinAdd requires matching free-index order on both terms"
+expect error: "EinAdd requires matching free-index order on both terms (left=[i,j], right=[j,i])"
 
 package Main
 

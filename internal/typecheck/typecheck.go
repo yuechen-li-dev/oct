@@ -89,6 +89,8 @@ type ExprType struct {
 
 type einsteinTermType struct {
 	ScalarType Type
+	Labels     [2]string
+	HasLabels  bool
 }
 
 type functionSignature struct {
@@ -973,12 +975,17 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 				return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 			}
 			if allIndex {
+				labels, hasLabels := einsteinIndexNames(node)
 				return ExprType{
 					ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension, IsMatrix: true},
-					EinTerm:   &einsteinTermType{ScalarType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}},
+					EinTerm: &einsteinTermType{
+						ScalarType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension},
+						Labels:     labels,
+						HasLabels:  hasLabels,
+					},
 				}, nil
 			}
-			return ExprType{}, fmt.Errorf("matrix indexing requires either Int,Int element access or Index,Index Einstein term access")
+			return ExprType{}, fmt.Errorf("matrix indexing expects either [Int, Int] element access or [Index, Index] Einstein term access, got [%s, %s]", indexTypes[0], indexTypes[1])
 		default:
 			return ExprType{}, fmt.Errorf("cannot index non-indexable value of type %s", targetType.ValueType)
 		}
@@ -3517,47 +3524,71 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 func (c checker) checkEinsteinBinaryExpr(node ast.BinaryExpr, left ExprType, right ExprType) (ExprType, error) {
 	operator := node.Operator
 	if left.EinTerm == nil || right.EinTerm == nil {
-		return ExprType{}, fmt.Errorf("indexed tensor expressions must appear on both sides of '%s'", operator)
+		return ExprType{}, fmt.Errorf("indexed tensor expressions must appear on both sides of '%s' (left indexed=%t, right indexed=%t)", operator, left.EinTerm != nil, right.EinTerm != nil)
 	}
 	if operator != "*" && operator != "+" {
 		return ExprType{}, fmt.Errorf("indexed tensor expressions only support '+' and '*' in M1")
 	}
-	leftLabels, leftOK := einsteinIndexNames(node.Left)
-	rightLabels, rightOK := einsteinIndexNames(node.Right)
+	leftLabels, leftOK := left.EinTerm.Labels, left.EinTerm.HasLabels
+	rightLabels, rightOK := right.EinTerm.Labels, right.EinTerm.HasLabels
+	if !leftOK {
+		leftLabels, leftOK = einsteinIndexNames(node.Left)
+	}
+	if !rightOK {
+		rightLabels, rightOK = einsteinIndexNames(node.Right)
+	}
+	var resultLabels [2]string
+	var resultHasLabels bool
 	if leftOK && rightOK {
 		if operator == "+" {
 			if leftLabels[0] == leftLabels[1] || rightLabels[0] == rightLabels[1] {
-				return ExprType{}, fmt.Errorf("EinAdd requires distinct free indices per matrix term")
+				return ExprType{}, fmt.Errorf("EinAdd requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 			}
 			if leftLabels[0] != rightLabels[0] || leftLabels[1] != rightLabels[1] {
-				return ExprType{}, fmt.Errorf("EinAdd requires matching free-index order on both terms")
+				return ExprType{}, fmt.Errorf("EinAdd requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 			}
+			resultLabels = leftLabels
+			resultHasLabels = true
 		}
 		if operator == "*" {
 			ordered := []string{leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1]}
 			counts := map[string]int{}
+			free := make([]string, 0, 2)
 			freeCount := 0
 			for _, label := range ordered {
 				counts[label]++
 			}
-			for label, count := range counts {
+			for _, label := range ordered {
+				count := counts[label]
 				if count > 2 {
-					return ExprType{}, fmt.Errorf("index '%s' appears %d times; only 1 (free) or 2 (contracted) are allowed in M0", label, count)
+					return ExprType{}, fmt.Errorf("index '%s' appears %d times in [%s,%s]*[%s,%s]; only 1 (free) or 2 (contracted) are allowed in M0", label, count, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 				}
 				if count == 1 {
 					freeCount++
+					if len(free) == 0 || free[len(free)-1] != label {
+						free = append(free, label)
+					}
 				}
 			}
 			if freeCount != 2 {
-				return ExprType{}, fmt.Errorf("EinMul requires exactly 2 free indices in M0, got %d", freeCount)
+				return ExprType{}, fmt.Errorf("EinMul requires exactly 2 free indices in M0, got %d for [%s,%s]*[%s,%s]", freeCount, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 			}
+			resultLabels = [2]string{free[0], free[1]}
+			resultHasLabels = true
 		}
 	}
 	resultScalar, err := c.checkBinaryExpr(operator, left.EinTerm.ScalarType, right.EinTerm.ScalarType)
 	if err != nil {
 		return ExprType{}, err
 	}
-	return ExprType{ValueType: Type{Base: resultScalar.Base, Dimension: resultScalar.Dimension, IsMatrix: true}}, nil
+	return ExprType{
+		ValueType: Type{Base: resultScalar.Base, Dimension: resultScalar.Dimension, IsMatrix: true},
+		EinTerm: &einsteinTermType{
+			ScalarType: resultScalar,
+			Labels:     resultLabels,
+			HasLabels:  resultHasLabels,
+		},
+	}, nil
 }
 
 func einsteinIndexNames(expr ast.Expr) ([2]string, bool) {
