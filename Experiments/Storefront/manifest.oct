@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Storefront"
         Version: "0.1.0"
-        Description: "Storefront M0/M1 headless UI composition probe for website-style layout and typed coordinate authoring"
+        Description: "Storefront M0-M4 headless UI probes for composition, typed coordinates, event families, separation, and explicit slot data"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

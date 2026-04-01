@@ -319,13 +319,90 @@ Locality is slightly more structured than M2, not more fragmented.
 7. **Need stronger conventions or deeper support later?**
    - Stronger authoring conventions now (layer ordering + naming) look sufficient; deeper event/runtime changes are not yet justified by this probe.
 
-## Recommendation after M3
+---
 
-Adopt this separation pattern as a **canonical Machina UI authoring convention**:
+# Storefront M4 Report (Slot Data Probe)
 
-- keep composition and behavior as distinct adjacent layers,
-- keep event emission at the UI edge,
-- keep event meaning/transition logic centralized in behavior helpers,
-- preserve single-file or tightly-local organization by default.
+## What changed in M4
 
-Refine convention docs before considering deeper event/model system changes.
+M4 keeps M3’s data/event/behavior/composition separation and runtime model, and introduces an explicit slot data layer for repeated product-card placement:
+
+- `CardSlotTable` record with parallel arrays:
+  - `SlotIds` (inspectable identity like `r0c0`)
+  - `ProductIds` (catalog keys)
+  - explicit geometry arrays (`X`, `Y`, `Width`, `Height`)
+- `CardSlots() -> CardSlotTable` as the single explicit slot map.
+- `CardSlotPlacements(model, slots) -> UI[]` to convert slot data into concrete `Place(AbsoluteBox(...), ...)` nodes.
+
+No auto-layout, inferred grid, or runtime repeater was added.
+
+## Boilerplate reduced vs M3
+
+M3 repeated six near-identical placement lines in `View`, each manually pairing:
+
+- `AbsoluteBox(x, y, width, height)`
+- `ProductById(productIds[i])`
+- `ProductCardSlot(...)`
+
+M4 removes that repeated per-line indexing/wiring from `View` by:
+
+1. centralizing slot geometry + product mapping in `CardSlots()`,
+2. using one small author-level loop (`CardSlotPlacements`) for placement expansion.
+
+The repetition is reduced materially, and moved into a data table plus one deterministic expansion helper.
+
+## Did geometry remain explicit?
+
+Yes.
+
+Every slot still carries concrete coordinates and size in source:
+- `X`, `Y`, `Width`, `Height` values are listed explicitly in `CardSlotTable`.
+- There is no “place N cards somehow” behavior.
+- Grid placement remains author-declared and concrete.
+
+## Did sketchability hold?
+
+Yes, with a tradeoff that still favors readability:
+
+- M3 sketchability came from six explicit placement calls in `View`.
+- M4 sketchability comes from a compact slot table (`CardSlots`) where each index is inspectable (`SlotIds[i]`, `ProductIds[i]`, explicit geometry arrays).
+
+A reviewer can still quickly answer:
+- how many cards (6),
+- where they go (explicit px coordinates),
+- which product is in each slot (ProductId per row).
+
+## Locality impact
+
+Locality remains acceptable and in some paths improved:
+
+- Slot placement edits now happen in one local table (`CardSlots`) rather than scattered placement lines.
+- Composition/behavior separation from M3 remains intact.
+- `View` is shorter and easier to scan for macro regions.
+
+The only mild cost is one additional indirection (`CardSlots` + placement helper), but it stays adjacent and explicit.
+
+## Direct answers to required M4 questions
+
+1. **Does slot data materially reduce repeated indexing/placement boilerplate?**
+   - Yes; repeated placement/index lines are replaced by one slot table + one expansion helper.
+2. **Does the page remain mentally sketchable from source?**
+   - Yes; slot rows preserve explicit geometry and product mapping.
+3. **Are arrays/records helping, or just moving repetition elsewhere?**
+   - Helping; repetition is consolidated into a clearer data structure, not hidden in layout inference.
+4. **Is the code easier to scan?**
+   - Yes; `View` now emphasizes macro structure while slot specifics live in one compact list.
+5. **Does locality remain acceptable?**
+   - Yes; slot edits are centralized, and behavior/composition layering remains nearby.
+6. **Does this suggest a canonical explicit-slot-data pattern?**
+   - Yes; for dense repeated placements, a slot table (`SlotIds` + `ProductIds` + explicit coordinate arrays) is a strong author-level default.
+7. **Next biggest pain point after this pass?**
+   - Repetition inside catalog product declarations and static section copy (not slot placement) is now the dominant authoring bulk.
+
+## Recommendation after M4
+
+Adopt **explicit slot data structures** (`SlotId` + `ProductId` + explicit geometry data) as a canonical Machina UI authoring pattern for repeated fixed-card layouts.
+
+- Keep it author-level only.
+- Preserve explicit geometry.
+- Avoid introducing inferred layout/runtime repeaters.
