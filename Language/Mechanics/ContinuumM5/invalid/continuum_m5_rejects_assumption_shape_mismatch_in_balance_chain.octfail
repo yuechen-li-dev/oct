@@ -1,0 +1,30 @@
+expect error: "operator "+" not defined for Matrix<Float> and Vector<Float>"
+
+package MainInvalid
+
+fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
+    return (2.0 * mu * lambda) / (lambda + (2.0 * mu))
+}
+
+
+fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let volumetric = Trace(strain)
+
+    return (lambda * volumetric) * identity + (2.0 * mu) * strain
+}
+
+fn PlaneStressStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, PlaneStressLambda2D(lambda, mu), mu)
+}
+
+fn Main() -> Void {
+    let u = vector[0.06, -0.01]
+    let lambda = 100.0
+    let mu = 50.0
+    let b = vector[0.0, -9.81]
+
+    // Stress is matrix-valued; body-force term is vector-valued.
+    // Mixing them directly must remain illegal.
+    let _ = PlaneStressStress2D(SymGrad(u), lambda, mu) + b
+}

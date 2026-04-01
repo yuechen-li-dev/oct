@@ -27,14 +27,26 @@ fn FirstInvariantI1(tensor: Matrix<Float>) -> Float {
 
 /// Small-strain isotropic linear-elastic skeleton:
 /// sigma = lambda * tr(eps) * I + 2 * mu * eps.
+/// In 2D continuum usage this corresponds to a plane-strain constitutive slice.
 fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
-    let i = Idx("i")
-    let j = Idx("j")
-    let k = Idx("k")
-
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
     let volumetric = FirstInvariantI1(strain)
-    let lambdaVolIdentity = matrix[[lambda * volumetric, 0.0] [0.0, lambda * volumetric]]
-    let twoMuIdentity = matrix[[2.0 * mu, 0.0] [0.0, 2.0 * mu]]
 
-    return lambdaVolIdentity[i, j] + twoMuIdentity[i, k] * strain[k, j]
+    return (lambda * volumetric) * identity + (2.0 * mu) * strain
+}
+
+/// Effective in-plane Lamé coefficient for isotropic plane stress,
+/// derived from 3D Lamé parameters by eliminating sigma_zz = 0.
+fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
+    return (2.0 * mu * lambda) / (lambda + (2.0 * mu))
+}
+
+/// Isotropic small-strain in-plane stress under plane strain assumption.
+fn LinearIsotropicStressPlaneStrain2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, lambda, mu)
+}
+
+/// Isotropic small-strain in-plane stress under plane stress assumption.
+fn LinearIsotropicStressPlaneStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, PlaneStressLambda2D(lambda, mu), mu)
 }

@@ -1,0 +1,28 @@
+package Mechanics
+
+[Fact]
+fn PlaneStressAndPlaneStrainProduceDistinctInPlaneStressWhenVolumetricPartExists() -> Void {
+    let gradU = matrix[[0.02, 0.01] [0.00, -0.01]]
+    let eps = SmallStrain2D(gradU)
+
+    let lambda = 120.0
+    let mu = 80.0
+
+    let sigmaPlaneStrain = LinearIsotropicStressPlaneStrain2D(eps, lambda, mu)
+    let sigmaPlaneStress = LinearIsotropicStressPlaneStress2D(eps, lambda, mu)
+
+    // Distinction is explicit and inspectable at the constitutive layer.
+    Assert.True(sigmaPlaneStrain[0, 0] != sigmaPlaneStress[0, 0], "plane strain/stress normal response should differ")
+}
+
+[Fact]
+fn PlaneStressConstitutivePathStaysFieldFormComposable() -> Void {
+    let u = vector[0.11, -0.04]
+    let lambda = 120.0
+    let mu = 80.0
+    let b = vector[0.0, -9.81]
+
+    let sigma = LinearIsotropicStressPlaneStress2D(SymGrad(u), lambda, mu)
+    let r = Div(sigma) + b
+    let _ = r
+}
