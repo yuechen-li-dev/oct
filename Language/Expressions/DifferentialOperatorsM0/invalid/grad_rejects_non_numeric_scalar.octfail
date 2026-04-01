@@ -1,0 +1,8 @@
+expect error: "function 'Grad' argument 1 expects numeric Scalar or Vector, got String"
+
+package Main
+
+fn Main() -> Void {
+    let name = "bad"
+    let _ = Grad(name)
+}

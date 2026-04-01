@@ -1,0 +1,8 @@
+expect error: "function 'Div' argument 1 expects numeric Vector or Matrix, got Float"
+
+package Main
+
+fn Main() -> Void {
+    let pressure = 101325.0
+    let _ = Div(pressure)
+}

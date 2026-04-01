@@ -1,0 +1,14 @@
+package MainValid
+
+[Fact]
+fn DifferentialOperatorsM0StructuralSurface() -> Void {
+    let temperature = 300.0
+    let gradT = Grad(temperature)
+    let _ = Div(gradT)
+
+    let v = vector[2.0, -1.0]
+    let _ = Grad(v)
+
+    let sigma = matrix[[10.0, 2.0] [2.0, 8.0]]
+    let _ = Div(sigma)
+}
