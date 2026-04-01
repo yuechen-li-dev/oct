@@ -1,0 +1,40 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM0RepresentationAndProblemSpecificationAreExpressible() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+
+    Assert.Equal(2.0, problem.BodyWidth, "body width")
+    Assert.Equal(1.0, problem.BodyHeight, "body height")
+    Assert.Equal("Displacement", problem.UnknownFieldKind, "unknown kind")
+    Assert.Equal("BodyForce", problem.LoadKind, "load kind")
+    Assert.Equal("DisplacementFixed", problem.ConstraintKind, "constraint kind")
+    Assert.Equal("Left", problem.FixedEdge, "left edge fixed")
+    Assert.Equal("SolveForField", problem.Query, "query intent")
+}
+
+[Fact]
+fn ContinuumBoundaryM0ResidualFormExistsForCandidateField() -> Void {
+    let problem = TinyCantileverProblem("ResidualAtCandidateField")
+    let material = MaterialModel { E: problem.E Nu: problem.Nu Assumption: problem.Assumption }
+    let load = Load2D { Kind: problem.LoadKind Fx: problem.BodyForceFx Fy: problem.BodyForceFy }
+    let _ = Constraint2D { Kind: problem.ConstraintKind Edge: problem.FixedEdge Ux: problem.FixedUx Uy: problem.FixedUy }
+    let _ = Body2D { Width: problem.BodyWidth Height: problem.BodyHeight }
+
+    let uCandidate = vector[0.001, -0.0004]
+    let residual = Div(StressFromMaterial(SymGrad(uCandidate), material)) + vector[load.Fx, load.Fy]
+    let _ = residual
+
+    let boundary = ProbeComputability(problem)
+    Assert.Equal("None", boundary.Category, "residual query does not require finite lowering")
+    Assert.Equal("None", boundary.Missing, "no missing capability for residual formation")
+}
+
+[Fact]
+fn ContinuumBoundaryM0SolveQueryHitsComputabilityBoundary() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+
+    let boundary = ProbeComputability(problem)
+    Assert.Equal("Computational", boundary.Category, "boundary category")
+    Assert.Equal("MissingFiniteLowering", boundary.Missing, "first missing capability")
+}

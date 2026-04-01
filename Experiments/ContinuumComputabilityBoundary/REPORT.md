@@ -1,7 +1,16 @@
-# Continuum Computability Boundary M0 report
+# Continuum Computability Boundary
 
-## Tiny problem chosen
+## Overview
+This experiment determines whether discretization is actually needed yet for tiny continuum mechanics workflows, identifies the first missing layer after current continuum mechanics support, and distinguishes representation vs problem specification vs computation.
 
+This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` into its canonical experiment home under `Experiments/ContinuumComputabilityBoundary/M0/`.
+
+## Milestones
+- M0: problem-specification boundary probe
+
+## M0
+
+### Tiny problem chosen
 A minimal 2D small-strain solid mechanics problem was chosen:
 
 - rectangular 2D body (`Width = 2.0`, `Height = 1.0`)
@@ -17,8 +26,7 @@ A minimal 2D small-strain solid mechanics problem was chosen:
 
 This is a cantilever-like boundary-value statement, intentionally without any finite lowering.
 
-## Problem objects introduced
-
+### Problem objects introduced
 Using ordinary Oct records/enums/arrays only:
 
 - root problem object: `ContinuumProblem2D`
@@ -33,18 +41,16 @@ Using ordinary Oct records/enums/arrays only:
 
 No parser, DSL, mesh, basis, assembly, solver, or numerical integration machinery was added.
 
-## Layer split (explicit)
+### Layer split
 
-### A) Representation layer
-
+#### A) Representation layer
 Still directly expressible in existing continuum substrate:
 
 - `SymGrad(u)`
 - isotropic constitutive map `StressFromMaterial(...)`
 - strong-form residual slice `Div(stress) + bodyForce`
 
-### B) Problem-specification layer
-
+#### B) Problem-specification layer
 Now made explicit as `ContinuumProblem2D`:
 
 - body/domain
@@ -57,8 +63,7 @@ Now made explicit as `ContinuumProblem2D`:
 
 This demonstrates a real tiny continuum problem can be stated honestly without discretization.
 
-### C) Computational layer
-
+#### C) Computational layer
 Boundary appears only at the solve query:
 
 - `Query = "SolveForField"` requires finite computational lowering to realize field values over the body.
@@ -68,8 +73,7 @@ The probe reports:
 - `Category = "Computational"`
 - `Missing = "MissingFiniteLowering"`
 
-## Required questions answered
-
+### Required questions answered
 1. **What is already expressible?**
    Constitutive algebra, strong-form residual composition, and typed model components.
 2. **Is a structured problem-specification layer missing before discretization?**
@@ -83,14 +87,12 @@ The probe reports:
 6. **If discretization is needed, what role should it play?**
    Pure computational lowering of an already-specified continuum problem, not a replacement for model semantics.
 
-## Blunt conclusion
-
+### Blunt conclusion
 The first missing layer after current field-form continuum mechanics is an explicit problem/query object.
 
 After that object exists, the first hard boundary is computational: numerical field realization is impossible without finite lowering. That is where discretization becomes honestly justified.
 
-## Recommendation for next pass
-
+### Next-step recommendation
 Run a narrow **Computational Lowering M1** experiment that:
 
 - consumes `ContinuumProblem2D`
