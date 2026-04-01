@@ -2236,6 +2236,38 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: result}, nil
 	}
+	if callee == "Trace" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Trace expects 1 argument")
+		}
+		matrixResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if matrixResult.hasError {
+			return evalResult{hasError: true, errorVal: matrixResult.errorVal}, nil
+		}
+		if matrixResult.value.Kind != ValueMatrix {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Trace expects Matrix argument")
+		}
+		rows := matrixResult.value.Matrix.Rows
+		cols := matrixResult.value.Matrix.Cols
+		if rows != cols {
+			return evalResult{}, fmt.Errorf("runtime error: Trace requires square matrix, got %dx%d", rows, cols)
+		}
+		if rows == 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Trace requires non-empty matrix")
+		}
+		sum := matrixResult.value.Matrix.Elements[0]
+		for idx := 1; idx < rows; idx++ {
+			next := matrixResult.value.Matrix.Elements[idx*cols+idx]
+			sum, err = evalBinaryExpr("+", sum, next)
+			if err != nil {
+				return evalResult{}, err
+			}
+		}
+		return evalResult{value: sum}, nil
+	}
 	if callee == "Idx" {
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Idx expects 1 argument")
