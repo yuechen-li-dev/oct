@@ -26,6 +26,10 @@
 - `oct test` does not run `[Artifact]` or `[Benchmark]` functions.
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.
+- `oct bench <path> --filter <pattern>` runs only benchmarks whose qualified name (`Package.Function`) contains `<pattern>`.
+- `oct bench <path> --profile cpu` emits a deterministic `bench.cpu.pprof` profile artifact for the selected benchmark run.
+- `oct bench <path> --filter <pattern> --profile cpu` emits a CPU profile for only the filtered subset.
+- `oct bench` with `--filter` fails if no benchmark names match the provided pattern.
 - `.octfail` requires one header line: `expect error: "<non-empty substring>"`.
 - `.octfail` passes when compilation fails and the error contains the declared substring.
 - `.octfail` fails on missing rejection, malformed header, or mismatch.
@@ -52,6 +56,8 @@ fn Pair(a: Int, b: Int) -> Void {
 oct test Language
 oct artifact Language
 oct bench Language --octagon-out bench.octagon
+oct bench Language --filter MatrixMul
+oct bench Language --filter Signal.HotPath --profile cpu
 ```
 
 Invalid:

@@ -257,7 +257,7 @@ func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, err
 	options := tester.BenchmarkOptions{}
 	for i := 0; i < len(args); i += 2 {
 		if i+1 >= len(args) {
-			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>]")
+			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>] [--filter <pattern>]")
 		}
 		flag := args[i]
 		value := args[i+1]
@@ -273,8 +273,10 @@ func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, err
 			}
 			options.ProfileMode = value
 			options.ProfileOutPath = tester.DefaultCPUProfilePath(path)
+		case "--filter":
+			options.Filter = value
 		default:
-			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>]")
+			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>] [--filter <pattern>]")
 		}
 	}
 	return options, nil
