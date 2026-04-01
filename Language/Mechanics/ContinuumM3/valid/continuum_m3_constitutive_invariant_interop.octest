@@ -1,0 +1,32 @@
+package MainValid
+
+[Fact]
+fn ContinuumM3TraceAcceptsRepresentationalSymGrad() -> Void {
+    let u = vector[0.03, -0.02]
+    let eps = SymGrad(u)
+
+    // Invariant helper now composes directly over representational tensor-like strain output.
+    let volumetricStrain = Trace(eps)
+    let _ = volumetricStrain
+}
+
+[Fact]
+fn ContinuumM3ConstitutiveAndStrongFormSlicesRemainRepresentational() -> Void {
+    let u = vector[0.08, -0.01]
+    let eps = SymGrad(u)
+
+    // Constitutive flow remains direct and representational.
+    // Deviatoric linear slice: sigma = 2 * mu * eps.
+    let mu = 30.0
+    let sigma = (2.0 * mu) * eps
+    let _ = sigma[0, 0]
+
+    // Invariant path composes over the same representational strain-like object.
+    let trEps = Trace(eps)
+    let _ = trEps
+
+    // Strong-form shape remains representational and typed.
+    let b = vector[0.0, -9.81]
+    let r = Div(eps) + b
+    let _ = r
+}
