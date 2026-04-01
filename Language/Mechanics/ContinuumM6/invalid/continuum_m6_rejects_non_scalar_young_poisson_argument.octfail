@@ -1,0 +1,14 @@
+expect error: "function 'MuFromYoungPoisson' argument 2 expects Float, got Vector<Float>"
+
+package MainInvalid
+
+fn MuFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return E / (2.0 * (1.0 + nu))
+}
+
+fn Main() -> Void {
+    let E = 210.0
+    let nuBad = vector[0.3, 0.3]
+
+    let _ = MuFromYoungPoisson(E, nuBad)
+}
