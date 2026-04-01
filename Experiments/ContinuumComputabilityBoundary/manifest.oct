@@ -14,9 +14,9 @@ record Dependency {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "MainValid"
+        Name: "ContinuumComputabilityBoundary"
         Version: "0.1.0"
-        Description: "Continuum computability boundary M0 probe for 2D small-strain solids"
+        Description: "Continuum computability boundary experiment: M0 problem-specification boundary probe for 2D small-strain solids"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
