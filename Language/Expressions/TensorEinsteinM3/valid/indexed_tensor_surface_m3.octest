@@ -1,0 +1,41 @@
+package MainValid
+
+[Fact]
+fn IndexedEinsteinSupportsDeeperNestedContractions() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+    let m = Idx("m")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[2, 0] [1, 2]]
+    let c = matrix[[0, 1] [1, 0]]
+    let d = matrix[[1, 0] [0, 1]]
+
+    let result = (a[i, k] * b[k, m]) * (c[m, j] + d[m, j])
+
+    Assert.Equal(8, result[0, 0], "result00")
+    Assert.Equal(8, result[0, 1], "result01")
+    Assert.Equal(18, result[1, 0], "result10")
+    Assert.Equal(18, result[1, 1], "result11")
+}
+
+[Fact]
+fn IndexedEinsteinIntermediateWorkflowStaysUsable() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+
+    let stiffness = matrix[[4, 1] [2, 3]]
+    let strain = matrix[[1, 2] [0, 1]]
+    let correction = matrix[[1, 0] [0, 1]]
+
+    let stress = stiffness[i, k] * strain[k, j]
+    let stabilized = stress[i, j] + correction[i, j]
+    let post = stabilized[i, k] * correction[k, j]
+
+    Assert.Equal(5, post[0, 0], "post00")
+    Assert.Equal(9, post[0, 1], "post01")
+    Assert.Equal(2, post[1, 0], "post10")
+    Assert.Equal(8, post[1, 1], "post11")
+}

@@ -1089,6 +1089,9 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				if strings.TrimSpace(indexLabels[0]) == "" || strings.TrimSpace(indexLabels[1]) == "" {
 					return evalResult{}, fmt.Errorf("runtime error: Einstein indices must be non-empty")
 				}
+				if indexLabels[0] == indexLabels[1] {
+					return evalResult{}, fmt.Errorf("runtime error: trace-style contraction '[%s,%s]' is not supported in M3; use Trace(...) for now", indexLabels[0], indexLabels[1])
+				}
 				return evalResult{einTerm: &einsteinIndexedTerm{matrix: target.value, labels: indexLabels}}, nil
 			}
 			if !allIntIndices {

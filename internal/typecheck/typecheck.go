@@ -976,6 +976,9 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			}
 			if allIndex {
 				labels, hasLabels := einsteinIndexNames(node)
+				if hasLabels && labels[0] == labels[1] {
+					return ExprType{}, fmt.Errorf("trace-style contraction '[%s,%s]' is not supported in M3; use Trace(...) for now", labels[0], labels[1])
+				}
 				return ExprType{
 					ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension, IsMatrix: true},
 					EinTerm: &einsteinTermType{
