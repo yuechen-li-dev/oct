@@ -38,6 +38,7 @@ const (
 	ValueFunc    ValueKind = "Function"
 	ValueFlow    ValueKind = "FlowInstance"
 	ValueUI      ValueKind = "UI"
+	ValueIndex   ValueKind = "Index"
 )
 
 type Value struct {
@@ -172,6 +173,8 @@ func (v Value) String() string {
 			return "UI<invalid>"
 		}
 		return "UI<" + uiSignature(v.UI) + ">"
+	case ValueIndex:
+		return "Index(" + v.Text + ")"
 	default:
 		return "<invalid>"
 	}
@@ -2130,6 +2133,80 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			parts = append(parts, value.Text)
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: strings.Join(parts, sepResult.value.Text)}}, nil
+	}
+	if callee == "EinMul" || callee == "EinAdd" {
+		if len(argumentExprs) != 6 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 6 arguments", callee)
+		}
+		leftResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if leftResult.hasError {
+			return evalResult{hasError: true, errorVal: leftResult.errorVal}, nil
+		}
+		rightResult, err := i.evalExpr(env, pkgName, argumentExprs[3])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rightResult.hasError {
+			return evalResult{hasError: true, errorVal: rightResult.errorVal}, nil
+		}
+		if leftResult.value.Kind != ValueMatrix || rightResult.value.Kind != ValueMatrix {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects Matrix arguments in positions 1 and 4", callee)
+		}
+		leftLabels := make([]string, 2)
+		rightLabels := make([]string, 2)
+		for idx := 0; idx < 2; idx++ {
+			indexResult, err := i.evalExpr(env, pkgName, argumentExprs[idx+1])
+			if err != nil {
+				return evalResult{}, err
+			}
+			if indexResult.hasError {
+				return evalResult{hasError: true, errorVal: indexResult.errorVal}, nil
+			}
+			if indexResult.value.Kind != ValueIndex {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects Index arguments in positions 2,3,5,6", callee)
+			}
+			leftLabels[idx] = indexResult.value.Text
+		}
+		for idx := 0; idx < 2; idx++ {
+			indexResult, err := i.evalExpr(env, pkgName, argumentExprs[idx+4])
+			if err != nil {
+				return evalResult{}, err
+			}
+			if indexResult.hasError {
+				return evalResult{hasError: true, errorVal: indexResult.errorVal}, nil
+			}
+			if indexResult.value.Kind != ValueIndex {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects Index arguments in positions 2,3,5,6", callee)
+			}
+			rightLabels[idx] = indexResult.value.Text
+		}
+		result, err := evalEinsteinBinaryMatrices(callee, leftResult.value, leftLabels, rightResult.value, rightLabels)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: result}, nil
+	}
+	if callee == "Idx" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Idx expects 1 argument")
+		}
+		nameResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if nameResult.hasError {
+			return evalResult{hasError: true, errorVal: nameResult.errorVal}, nil
+		}
+		if nameResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Idx expects String argument")
+		}
+		if strings.TrimSpace(nameResult.value.Text) == "" {
+			return evalResult{}, fmt.Errorf("runtime error: Idx requires non-empty index name")
+		}
+		return evalResult{value: Value{Kind: ValueIndex, Text: nameResult.value.Text}}, nil
 	}
 
 	if len(argumentExprs) != 1 {

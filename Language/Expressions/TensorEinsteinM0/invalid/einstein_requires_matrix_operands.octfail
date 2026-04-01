@@ -1,0 +1,12 @@
+expect error: "function 'EinMul' argument 1 expects Matrix, got Int[]"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let bad = EinMul([1, 2], i, j, [3, 4], i, j)
+    Print(bad)
+    return
+}
