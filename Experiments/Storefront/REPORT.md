@@ -236,3 +236,96 @@ The next pain point is manual catalog indexing in repeated absolute placements a
 Not yet for this scenario.
 
 M2 suggests that a canonical authoring pattern on top of string events resolves most of the prior pain without runtime redesign. A typed event runtime should be considered only if future experiments show substantial additional failure modes that families + centralized identity cannot address.
+
+---
+
+# Storefront M3 Report (Composition vs Behavior Separation Probe)
+
+## What changed in M3
+
+M3 keeps M2 behavior and runtime transport intact, but reorganizes authoring into adjacent layers inside one local source file (`M3/storefront_m3.oct`) to split concerns without fragmenting edits:
+
+1. **Data/catalog layer**
+   - `CatalogProductIds`, `ProductById`, `Init`
+2. **Event family layer**
+   - canonical event constructors + prefixes (`InspectEvent`, `AddToCartEvent`, nav/filter/sort/featured tokens)
+3. **Behavior layer**
+   - event resolution and transitions (`MatchCatalogEvent`, `Update`, state writers like `WithNav`)
+4. **Composition layer**
+   - visual section helpers (`HeaderBar`, `FilterRail`, `ProductCard`, `Footer`, etc.)
+5. **Surface assembly layer**
+   - `View` composes page regions and card placement only
+
+No runtime redesign, no typed-event system, and no new routing framework were introduced.
+
+## How composition and behavior were separated
+
+Composition helpers now answer:
+- what appears on the screen,
+- where it is placed,
+- which event family each interactive element emits.
+
+Behavior helpers now answer:
+- what each event means,
+- how event families resolve against catalog identity,
+- which model fields change and which remain unchanged.
+
+`ProductCard` still emits `InspectEvent(product.Id)` / `AddToCartEvent(product.Id)` at the UI edge, while semantic meaning stays in `MatchCatalogEvent` + `Update`.
+
+## Did composition readability improve?
+
+Yes. The composition block can be read as a storefront sketch:
+- page sections and card slots are clustered in the view/composition region,
+- product card content and emitted families are visible without scanning transition logic,
+- reusable section helpers remain near the final `View`, preserving quick edit loops.
+
+This reduced the “everything soup” feeling compared to mixing transition branches and section composition in one continuous region.
+
+## Did behavior readability improve?
+
+Yes. `Update` and its behavior helpers are grouped with event family/data matching code, so event interpretation is readable as one flow:
+1. direct nav/filter/sort/featured transitions,
+2. inspect family resolution,
+3. add-to-cart family resolution,
+4. explicit unchanged fallback.
+
+This makes state transition simulation easier without reading layout code.
+
+## Was locality preserved?
+
+Yes, and still acceptable for component-style editing.
+
+M3 deliberately keeps the split in one nearby file so common edits remain local:
+- layout tweak: mostly composition/view region,
+- card interaction tweak: composition emission + adjacent behavior section,
+- catalog interaction tweak: nearby data + event matching helpers.
+
+Locality is slightly more structured than M2, not more fragmented.
+
+## Direct answers to required M3 questions
+
+1. **Does separating composition from behavior materially improve readability?**
+   - Yes; both sides are easier to scan independently.
+2. **Is the storefront easier to sketch mentally from composition code?**
+   - Yes; section/card structure is more legible without behavioral noise.
+3. **Is update logic easier to reason about from behavior code?**
+   - Yes; event meaning and transitions are clustered together.
+4. **Is locality preserved?**
+   - Yes; split remains adjacent and does not recreate disconnected HTML/CSS/JS fragmentation.
+5. **Does this reduce JSX-style “everything soup”?**
+   - Yes; event emission remains local, but interpretation is moved out of composition.
+6. **New biggest friction point after this split?**
+   - Manual repeated card slot placement/indexing in `View` remains verbose.
+7. **Need stronger conventions or deeper support later?**
+   - Stronger authoring conventions now (layer ordering + naming) look sufficient; deeper event/runtime changes are not yet justified by this probe.
+
+## Recommendation after M3
+
+Adopt this separation pattern as a **canonical Machina UI authoring convention**:
+
+- keep composition and behavior as distinct adjacent layers,
+- keep event emission at the UI edge,
+- keep event meaning/transition logic centralized in behavior helpers,
+- preserve single-file or tightly-local organization by default.
+
+Refine convention docs before considering deeper event/model system changes.
