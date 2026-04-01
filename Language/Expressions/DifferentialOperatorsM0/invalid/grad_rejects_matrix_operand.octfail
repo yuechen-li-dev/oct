@@ -1,0 +1,8 @@
+expect error: "function 'Grad' argument 1 expects numeric Scalar or Vector, got Matrix<Float>"
+
+package Main
+
+fn Main() -> Void {
+    let sigma = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let _ = Grad(sigma)
+}

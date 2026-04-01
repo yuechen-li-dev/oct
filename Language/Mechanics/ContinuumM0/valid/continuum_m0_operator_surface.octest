@@ -1,0 +1,12 @@
+package MainValid
+
+[Fact]
+fn ContinuumM0OperatorSurface() -> Void {
+    let u = vector[0.1, -0.05]
+    let gradU = Grad(u)
+
+    let sigma = matrix[[5.0, 1.0] [1.0, 3.0]]
+    let _ = Div(sigma)
+
+    let _ = Div(gradU)
+}

@@ -39,6 +39,7 @@ const (
 	ValueFlow    ValueKind = "FlowInstance"
 	ValueUI      ValueKind = "UI"
 	ValueIndex   ValueKind = "Index"
+	ValueDiffOp  ValueKind = "DiffOp"
 )
 
 type Value struct {
@@ -59,6 +60,12 @@ type Value struct {
 	Function  FunctionValue
 	Flow      *FlowRuntimeInstance
 	UI        *uiNode
+	DiffOp    DifferentialOpValue
+}
+
+type DifferentialOpValue struct {
+	Operator string
+	Operand  *Value
 }
 
 type ErrorValue struct {
@@ -175,6 +182,11 @@ func (v Value) String() string {
 		return "UI<" + uiSignature(v.UI) + ">"
 	case ValueIndex:
 		return "Index(" + v.Text + ")"
+	case ValueDiffOp:
+		if v.DiffOp.Operand == nil {
+			return v.DiffOp.Operator + "(<invalid>)"
+		}
+		return v.DiffOp.Operator + "(" + v.DiffOp.Operand.String() + ")"
 	default:
 		return "<invalid>"
 	}
@@ -2267,6 +2279,40 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			}
 		}
 		return evalResult{value: sum}, nil
+	}
+	if callee == "Grad" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Grad expects 1 argument")
+		}
+		operand, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if operand.hasError {
+			return evalResult{hasError: true, errorVal: operand.errorVal}, nil
+		}
+		if !(isNumericValue(operand.value) || operand.value.Kind == ValueVector) || operand.value.Kind == ValueArray || operand.value.Kind == ValueMatrix {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Grad expects numeric Scalar or Vector argument")
+		}
+		operandCopy := operand.value
+		return evalResult{value: Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{Operator: "Grad", Operand: &operandCopy}}}, nil
+	}
+	if callee == "Div" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Div expects 1 argument")
+		}
+		operand, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if operand.hasError {
+			return evalResult{hasError: true, errorVal: operand.errorVal}, nil
+		}
+		if operand.value.Kind != ValueVector && operand.value.Kind != ValueMatrix && operand.value.Kind != ValueDiffOp {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Div expects numeric Vector or Matrix argument")
+		}
+		operandCopy := operand.value
+		return evalResult{value: Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{Operator: "Div", Operand: &operandCopy}}}, nil
 	}
 	if callee == "Idx" {
 		if len(argumentExprs) != 1 {

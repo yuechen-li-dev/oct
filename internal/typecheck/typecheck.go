@@ -2477,6 +2477,53 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: matrixType.ValueType.Base, Dimension: matrixType.ValueType.Dimension}}, nil
 	}
+	if callee == "Grad" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Grad' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Grad' expects 1 arguments, got %d", len(arguments))
+		}
+		operandType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if operandType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray {
+			return ExprType{}, fmt.Errorf("function 'Grad' argument 1 expects numeric Scalar or Vector, got %s", operandType.ValueType)
+		}
+		if operandType.ValueType.IsVector {
+			return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension, IsMatrix: true}}, nil
+		}
+		if operandType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function 'Grad' argument 1 expects numeric Scalar or Vector, got %s", operandType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension, IsVector: true}}, nil
+	}
+	if callee == "Div" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Div' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Div' expects 1 arguments, got %d", len(arguments))
+		}
+		operandType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if operandType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray || (!operandType.ValueType.IsVector && !operandType.ValueType.IsMatrix) {
+			return ExprType{}, fmt.Errorf("function 'Div' argument 1 expects numeric Vector or Matrix, got %s", operandType.ValueType)
+		}
+		if operandType.ValueType.IsMatrix {
+			return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension, IsVector: true}}, nil
+		}
+		return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension}}, nil
+	}
 	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
