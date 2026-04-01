@@ -1,0 +1,31 @@
+package MainValid
+
+[Fact]
+fn ContinuumM2DisplacementToStressPathwayIsFieldForm() -> Void {
+    let u = vector[0.1, -0.05]
+
+    // Small-strain kinematics remains explicit and representational.
+    let eps = SymGrad(u)
+
+    // Narrow constitutive slice (lambda = 0): sigma = 2 * mu * eps.
+    let mu = 80.0
+    let twoMuI = matrix[[2.0 * mu, 0.0] [0.0, 2.0 * mu]]
+    let sigma = twoMuI * eps
+
+    // Projection remains available for tensor-level inspection without evaluation.
+    let _ = sigma[0, 0]
+}
+
+[Fact]
+fn ContinuumM2StrongFormBalanceSkeletonComposes() -> Void {
+    let u = vector[0.02, -0.01]
+    let eps = SymGrad(u)
+    let _ = eps
+
+    // Body-force-like source term for equilibrium residual shape.
+    let b = vector[0.0, -9.81]
+
+    // Strong-form balance relation remains typed and non-evaluative.
+    let r = Div(SymGrad(u)) + b
+    let _ = r
+}

@@ -1,0 +1,14 @@
+expect error: "operator "+" not defined for Vector<Float> and Matrix<Float>"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[0.05, -0.02]
+    let eps = SymGrad(u)
+
+    let _ = eps
+
+    // Balance-shaped relation must keep vector body-force compatibility.
+    let badBodyForce = matrix[[0.0, 0.0] [0.0, -9.81]]
+    let _ = Div(SymGrad(u)) + badBodyForce
+}
