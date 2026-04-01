@@ -1,0 +1,21 @@
+package MainValid
+
+[Fact]
+fn ContinuumM1FieldFormSurface() -> Void {
+    let u = vector[0.1, -0.05]
+    let gradU = Grad(u)
+    let _ = Div(gradU)
+
+    // Local constitutive step remains explicit in M1.
+    let sampledGradU = matrix[[0.02, 0.03] [0.01, -0.01]]
+    let eps = matrix[[
+        sampledGradU[0, 0],
+        0.5 * (sampledGradU[0, 1] + sampledGradU[1, 0])
+    ] [
+        0.5 * (sampledGradU[1, 0] + sampledGradU[0, 1]),
+        sampledGradU[1, 1]
+    ]]
+
+    let sigma = matrix[[120.0, 0.0] [0.0, 120.0]] + matrix[[160.0, 0.0] [0.0, 160.0]] * eps
+    let _ = Div(sigma)
+}
