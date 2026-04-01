@@ -1,0 +1,38 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM2ConstraintAttachmentIsExplicitlySiteScoped() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let attachment = AttachCantileverConstraintToSites(lowered)
+
+    Assert.Equal(4, Len(attachment.IsUxConstrained), "ux constraint slot count")
+    Assert.Equal(4, Len(attachment.IsUyConstrained), "uy constraint slot count")
+    Assert.Equal(true, attachment.IsUxConstrained[0], "site 0 ux constrained")
+    Assert.Equal(true, attachment.IsUyConstrained[1], "site 1 uy constrained")
+    Assert.Equal(false, attachment.IsUxConstrained[3], "site 3 ux unconstrained")
+    Assert.Equal(0.0, attachment.PrescribedUx[0], "site 0 prescribed ux")
+}
+
+[Fact]
+fn ContinuumBoundaryM2CanEvaluateConstraintResidualWithoutSolve() -> Void {
+    let base = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let trial = LowerWithSiteUnknowns(base, [0.1, 0.0, 0.0, 0.0], [0.0, 0.2, 0.0, 0.0])
+    let attachment = AttachCantileverConstraintToSites(trial)
+    let residual = EvaluateConstraintResidualAtSites(trial, attachment)
+
+    Assert.Near(0.1, residual.UxResidual[0], 0.0001, "constrained ux mismatch becomes residual")
+    Assert.Near(0.2, residual.UyResidual[1], 0.0001, "constrained uy mismatch becomes residual")
+    Assert.Near(0.0, residual.UxResidual[3], 0.0001, "unconstrained ux has no constraint residual")
+    Assert.Equal(true, residual.ActiveUx[0], "active ux slot reported")
+    Assert.Equal(false, residual.ActiveUy[3], "inactive uy slot reported")
+}
+
+[Fact]
+fn ContinuumBoundaryM2BoundaryReportKeepsTopologyPressureExplicit() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let boundary = ProbeDiscreteRelationBoundary(lowered)
+
+    Assert.Equal("SiteConstraintResidualWithoutTopology", boundary.RelationChosen, "relation classification")
+    Assert.Equal(false, boundary.RequiredTopology, "topology is not required for this relation")
+    Assert.True(Contains(boundary.RemainingBoundary, "No site-to-site coupling operator"), "coupling boundary remains explicit")
+}
