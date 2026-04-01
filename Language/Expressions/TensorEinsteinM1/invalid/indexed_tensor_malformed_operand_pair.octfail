@@ -1,0 +1,14 @@
+expect error: "indexed tensor expressions must appear on both sides of '+'"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+
+    let lhs = a[i, j] + b[i, j]
+    let _ = lhs + a[i, j]
+}

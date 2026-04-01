@@ -133,3 +133,17 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported Einstein op %s", op)
 	}
 }
+
+func evalEinsteinIndexedBinaryExpr(operator string, left evalResult, right evalResult) (Value, error) {
+	if left.einTerm == nil || right.einTerm == nil {
+		return Value{}, fmt.Errorf("runtime error: indexed tensor expressions must appear on both sides of '%s'", operator)
+	}
+	switch operator {
+	case "*":
+		return evalEinsteinBinaryMatrices("EinMul", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
+	case "+":
+		return evalEinsteinBinaryMatrices("EinAdd", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
+	default:
+		return Value{}, fmt.Errorf("runtime error: indexed tensor expressions only support '+' and '*' in M1")
+	}
+}

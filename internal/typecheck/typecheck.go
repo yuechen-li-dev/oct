@@ -84,6 +84,11 @@ func (t Type) String() string {
 type ExprType struct {
 	ValueType Type
 	Fallible  bool
+	EinTerm   *einsteinTermType
+}
+
+type einsteinTermType struct {
+	ScalarType Type
 }
 
 type functionSignature struct {
@@ -930,6 +935,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if targetType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
+		indexTypes := make([]Type, 0, len(node.Indices))
 		for _, idxExpr := range node.Indices {
 			indexType, err := c.checkExpr(scope, idxExpr, ctx)
 			if err != nil {
@@ -938,26 +944,41 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			if indexType.Fallible {
 				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 			}
-			if indexType.ValueType != (Type{Base: BaseTypeInt}) {
-				return ExprType{}, fmt.Errorf("index must be Int, got %s", indexType.ValueType)
-			}
+			indexTypes = append(indexTypes, indexType.ValueType)
 		}
 		switch {
 		case targetType.ValueType.IsArray:
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("array indexing requires exactly 1 index, got %d", len(node.Indices))
 			}
+			if indexTypes[0] != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("array indexing index must be Int, got %s", indexTypes[0])
+			}
 			return ExprType{ValueType: Type{Name: targetType.ValueType.Name, Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 		case targetType.ValueType.IsVector:
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("vector indexing requires exactly 1 index, got %d", len(node.Indices))
+			}
+			if indexTypes[0] != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("vector indexing index must be Int, got %s", indexTypes[0])
 			}
 			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
 		case targetType.ValueType.IsMatrix:
 			if len(node.Indices) != 2 {
 				return ExprType{}, fmt.Errorf("matrix indexing requires exactly 2 indices, got %d", len(node.Indices))
 			}
-			return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+			allInt := indexTypes[0] == (Type{Base: BaseTypeInt}) && indexTypes[1] == (Type{Base: BaseTypeInt})
+			allIndex := indexTypes[0] == (Type{Base: BaseTypeIndex}) && indexTypes[1] == (Type{Base: BaseTypeIndex})
+			if allInt {
+				return ExprType{ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+			}
+			if allIndex {
+				return ExprType{
+					ValueType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension, IsMatrix: true},
+					EinTerm:   &einsteinTermType{ScalarType: Type{Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}},
+				}, nil
+			}
+			return ExprType{}, fmt.Errorf("matrix indexing requires either Int,Int element access or Index,Index Einstein term access")
 		default:
 			return ExprType{}, fmt.Errorf("cannot index non-indexable value of type %s", targetType.ValueType)
 		}
@@ -1033,6 +1054,9 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		}
 		if rightType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if leftType.EinTerm != nil || rightType.EinTerm != nil {
+			return c.checkEinsteinBinaryExpr(node, leftType, rightType)
 		}
 		resultType, err := c.checkBinaryExpr(node.Operator, leftType.ValueType, rightType.ValueType)
 		if err != nil {
@@ -3488,6 +3512,68 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 	default:
 		return Type{}, fmt.Errorf("unsupported operator %q", operator)
 	}
+}
+
+func (c checker) checkEinsteinBinaryExpr(node ast.BinaryExpr, left ExprType, right ExprType) (ExprType, error) {
+	operator := node.Operator
+	if left.EinTerm == nil || right.EinTerm == nil {
+		return ExprType{}, fmt.Errorf("indexed tensor expressions must appear on both sides of '%s'", operator)
+	}
+	if operator != "*" && operator != "+" {
+		return ExprType{}, fmt.Errorf("indexed tensor expressions only support '+' and '*' in M1")
+	}
+	leftLabels, leftOK := einsteinIndexNames(node.Left)
+	rightLabels, rightOK := einsteinIndexNames(node.Right)
+	if leftOK && rightOK {
+		if operator == "+" {
+			if leftLabels[0] == leftLabels[1] || rightLabels[0] == rightLabels[1] {
+				return ExprType{}, fmt.Errorf("EinAdd requires distinct free indices per matrix term")
+			}
+			if leftLabels[0] != rightLabels[0] || leftLabels[1] != rightLabels[1] {
+				return ExprType{}, fmt.Errorf("EinAdd requires matching free-index order on both terms")
+			}
+		}
+		if operator == "*" {
+			ordered := []string{leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1]}
+			counts := map[string]int{}
+			freeCount := 0
+			for _, label := range ordered {
+				counts[label]++
+			}
+			for label, count := range counts {
+				if count > 2 {
+					return ExprType{}, fmt.Errorf("index '%s' appears %d times; only 1 (free) or 2 (contracted) are allowed in M0", label, count)
+				}
+				if count == 1 {
+					freeCount++
+				}
+			}
+			if freeCount != 2 {
+				return ExprType{}, fmt.Errorf("EinMul requires exactly 2 free indices in M0, got %d", freeCount)
+			}
+		}
+	}
+	resultScalar, err := c.checkBinaryExpr(operator, left.EinTerm.ScalarType, right.EinTerm.ScalarType)
+	if err != nil {
+		return ExprType{}, err
+	}
+	return ExprType{ValueType: Type{Base: resultScalar.Base, Dimension: resultScalar.Dimension, IsMatrix: true}}, nil
+}
+
+func einsteinIndexNames(expr ast.Expr) ([2]string, bool) {
+	indexExpr, ok := expr.(ast.IndexExpr)
+	if !ok || len(indexExpr.Indices) != 2 {
+		return [2]string{}, false
+	}
+	left, ok := indexExpr.Indices[0].(ast.IdentifierExpr)
+	if !ok {
+		return [2]string{}, false
+	}
+	right, ok := indexExpr.Indices[1].(ast.IdentifierExpr)
+	if !ok {
+		return [2]string{}, false
+	}
+	return [2]string{left.Name, right.Name}, true
 }
 
 func (c checker) checkLinearAlgebraBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {

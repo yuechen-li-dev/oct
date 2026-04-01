@@ -175,7 +175,7 @@ func TestCheckRejectsMixedTypeArrayLiteral(t *testing.T) {
 
 func TestCheckRejectsInvalidIndexing(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return 1[0] }", "function Main: cannot index non-indexable value of type Int")
-	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: index must be Int, got Bool")
+	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] return x[true] }", "function Main: array indexing index must be Int, got Bool")
 }
 
 func TestCheckRejectsInvalidRanges(t *testing.T) {
