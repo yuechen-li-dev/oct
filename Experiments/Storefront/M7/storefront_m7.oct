@@ -1,0 +1,572 @@
+package StorefrontM7
+
+
+record SourceParts {
+    FileKind: String
+    Data: String[]
+    Placement: String[]
+    Dispatch: String[]
+    Behavior: String[]
+    Composition: String[]
+    Surface: String[]
+}
+
+fn SourceStructure() -> SourceParts {
+    return SourceParts {
+        FileKind: "machina-ui-storefront"
+        Data: ["CatalogTable", "CategoryLabelMapping", "SortLabelMapping"]
+        Placement: ["ProductGrid", "CardSlotPlacements", "View"]
+        Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "ResolveDispatch", "MatchCatalogEvent"]
+        Behavior: ["Init", "Update", "ProductById", "CategoryVisible"]
+        Composition: ["HeaderBar", "HeroBlock", "FilterRail", "ProductAreaHeader", "ProductCard", "SupportBand", "Footer"]
+        Surface: ["View"]
+    }
+}
+
+record Mount {
+    Handle: Int
+}
+
+record UIBox {
+    Kind: String
+    X: Float<px>
+    Y: Float<px>
+    Width: Float<px>
+    Height: Float<px>
+    Left: Float<ui>
+    Top: Float<ui>
+    Right: Float<ui>
+    Bottom: Float<ui>
+}
+
+record Product {
+    Id: String
+    Title: String
+    Subtitle: String
+    Price: Float
+    Badge: String
+    Category: String
+}
+
+record ProductCatalog {
+    Ids: String[]
+    Titles: String[]
+    Subtitles: String[]
+    Prices: Float[]
+    Badges: String[]
+    Categories: String[]
+}
+
+record ProductPlacementGrid {
+    ProductIds: String[]
+    RowStarts: Int[]
+    RowLengths: Int[]
+    ColumnX: Float<px>[]
+    RowY: Float<px>[]
+    CardWidth: Float<px>
+    CardHeight: Float<px>
+}
+
+record StoreState {
+    SelectedNav: String
+    SelectedCategory: String
+    SortBy: String
+    NewOnly: Bool
+    InStockOnly: Bool
+    BestSellerOnly: Bool
+    FeaturedTab: String
+    SelectedProduct: String
+    CartCount: Float
+}
+
+record EventValueDispatch {
+    Events: String[]
+    Values: String[]
+}
+
+record KeyLabelMapping {
+    Keys: String[]
+    Labels: String[]
+}
+
+fn Text(content: String) -> UI { return UIText(content) }
+fn Button(label: String, event: String, enabled: Bool) -> UI { return UIButton(label, event, enabled) }
+fn Row(children: UI[]) -> UI { return UIRow(children) }
+fn Column(children: UI[]) -> UI { return UIColumn(children) }
+fn Canvas(children: UI[]) -> UI { return UICanvas(children) }
+
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
+    return UIBox {
+        Kind: "absolute"
+        X: x
+        Y: y
+        Width: width
+        Height: height
+        Left: 0.0 ui
+        Top: 0.0 ui
+        Right: 0.0 ui
+        Bottom: 0.0 ui
+    }
+}
+
+fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
+    return UIBox {
+        Kind: "anchored"
+        X: 0.0 px
+        Y: 0.0 px
+        Width: 0.0 px
+        Height: 0.0 px
+        Left: left
+        Top: top
+        Right: right
+        Bottom: bottom
+    }
+}
+
+fn Place(box: UIBox, child: UI) -> UI {
+    if box.Kind == "absolute" {
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+    }
+
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+}
+
+fn MountUI(root: UI) -> Mount { return Mount { Handle: UIMount(root) } }
+fn PatchUI(mount: Mount, next: UI) -> Int { return UIPatch(mount.Handle, next) }
+fn UnmountUI(mount: Mount) -> Int { return UIUnmount(mount.Handle) }
+fn Emit(mount: Mount, event: String) -> Int ! Error { return UIEmit(mount.Handle, event)? }
+fn DrainEvents(mount: Mount) -> String[] { return UIDrainEvents(mount.Handle) }
+fn Signature(node: UI) -> String { return UISignature(node) }
+
+fn Init() -> StoreState {
+    return StoreState {
+        SelectedNav: "Shop"
+        SelectedCategory: "all"
+        SortBy: "featured"
+        NewOnly: false
+        InStockOnly: false
+        BestSellerOnly: false
+        FeaturedTab: "Desk Kits"
+        SelectedProduct: ""
+        CartCount: 0.0
+    }
+}
+
+fn CatalogTable() -> ProductCatalog {
+    return ProductCatalog {
+        Ids: ["harbor-board", "linen-notebook", "cable-dock", "focus-timer", "cork-tray", "steel-ruler"]
+        Titles: ["Harbor Board", "Linen Grid Notebook", "Cable Dock Trio", "Focus Dial Timer", "Cork Catch Tray", "Marked Steel Ruler"]
+        Subtitles: [
+            "Modular walnut desk riser with cable pass-through",
+            "Lay-flat A5 notebook with 3 mm workflow grid",
+            "Weighted brass cable anchors for charging lines",
+            "Analog 60-minute timer with silent hand sweep",
+            "Soft-edge tray for clips, nibs, and fasteners",
+            "Etched centimeter/inch ruler for quick layout checks"
+        ]
+        Prices: [119.0, 28.0, 36.0, 42.0, 24.0, 18.0]
+        Badges: ["Bestseller", "New", "In Stock", "Editor pick", "Studio staple", "Workshop"]
+        Categories: ["desk", "paper", "cable", "desk", "desk", "paper"]
+    }
+}
+
+fn CatalogProductIds() -> String[] {
+    return CatalogTable().Ids
+}
+
+fn ProductById(productId: String) -> Product {
+    let catalog = CatalogTable()
+    for i in 0 .. Len(catalog.Ids) {
+        if catalog.Ids[i] == productId {
+            return Product {
+                Id: catalog.Ids[i]
+                Title: catalog.Titles[i]
+                Subtitle: catalog.Subtitles[i]
+                Price: catalog.Prices[i]
+                Badge: catalog.Badges[i]
+                Category: catalog.Categories[i]
+            }
+        }
+    }
+
+    return Product {
+        Id: ""
+        Title: "Unknown Product"
+        Subtitle: "No catalog entry for " + productId
+        Price: 0.0
+        Badge: "Missing"
+        Category: "all"
+    }
+}
+
+fn InspectPrefix() -> String { return "storefront.inspect." }
+fn AddToCartPrefix() -> String { return "storefront.cart.add." }
+fn InspectEvent(productId: String) -> String { return InspectPrefix() + productId }
+fn AddToCartEvent(productId: String) -> String { return AddToCartPrefix() + productId }
+
+fn NavShopEvent() -> String { return "storefront.nav.shop" }
+fn NavBundlesEvent() -> String { return "storefront.nav.bundles" }
+fn NavJournalEvent() -> String { return "storefront.nav.journal" }
+fn NavSupportEvent() -> String { return "storefront.nav.support" }
+
+fn CategoryAllEvent() -> String { return "storefront.category.all" }
+fn CategoryDeskEvent() -> String { return "storefront.category.desk" }
+fn CategoryPaperEvent() -> String { return "storefront.category.paper" }
+fn CategoryCableEvent() -> String { return "storefront.category.cable" }
+
+fn ToggleNewEvent() -> String { return "storefront.filter.new" }
+fn ToggleInStockEvent() -> String { return "storefront.filter.instock" }
+fn ToggleBestSellerEvent() -> String { return "storefront.filter.bestseller" }
+
+fn SortFeaturedEvent() -> String { return "storefront.sort.featured" }
+fn SortPriceEvent() -> String { return "storefront.sort.price" }
+fn SortNewestEvent() -> String { return "storefront.sort.newest" }
+
+fn FeaturedDeskKitsEvent() -> String { return "storefront.featured.deskkits" }
+fn FeaturedNotebookSetsEvent() -> String { return "storefront.featured.notebooksets" }
+fn FeaturedCableLabEvent() -> String { return "storefront.featured.cablelab" }
+
+fn MatchCatalogEvent(event: String, prefix: String) -> String {
+    let productIds = CatalogProductIds()
+    for i in 0 .. Len(productIds) {
+        if event == prefix + productIds[i] {
+            return productIds[i]
+        }
+    }
+    return ""
+}
+
+fn NavDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [NavShopEvent(), NavBundlesEvent(), NavJournalEvent(), NavSupportEvent()]
+        Values: ["Shop", "Bundles", "Journal", "Support"]
+    }
+}
+
+fn CategoryDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [CategoryAllEvent(), CategoryDeskEvent(), CategoryPaperEvent(), CategoryCableEvent()]
+        Values: ["all", "desk", "paper", "cable"]
+    }
+}
+
+fn SortDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [SortFeaturedEvent(), SortPriceEvent(), SortNewestEvent()]
+        Values: ["featured", "price", "newest"]
+    }
+}
+
+fn FeaturedDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [FeaturedDeskKitsEvent(), FeaturedNotebookSetsEvent(), FeaturedCableLabEvent()]
+        Values: ["Desk Kits", "Notebook Sets", "Cable Lab"]
+    }
+}
+
+fn ResolveDispatch(event: String, table: EventValueDispatch) -> String {
+    for i in 0 .. Len(table.Events) {
+        if event == table.Events[i] {
+            return table.Values[i]
+        }
+    }
+
+    return ""
+}
+
+fn Update(model: StoreState, event: String) -> StoreState {
+    let nav = ResolveDispatch(event, NavDispatchTable())
+    if nav != "" { return model with { SelectedNav: nav } }
+
+    let category = ResolveDispatch(event, CategoryDispatchTable())
+    if category != "" { return model with { SelectedCategory: category } }
+
+    if event == ToggleNewEvent() { return model with { NewOnly: not model.NewOnly } }
+    if event == ToggleInStockEvent() { return model with { InStockOnly: not model.InStockOnly } }
+    if event == ToggleBestSellerEvent() { return model with { BestSellerOnly: not model.BestSellerOnly } }
+
+    let sortBy = ResolveDispatch(event, SortDispatchTable())
+    if sortBy != "" { return model with { SortBy: sortBy } }
+
+    let featuredTab = ResolveDispatch(event, FeaturedDispatchTable())
+    if featuredTab != "" { return model with { FeaturedTab: featuredTab } }
+
+    let inspectMatch = MatchCatalogEvent(event, InspectPrefix())
+    if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
+
+    let addMatch = MatchCatalogEvent(event, AddToCartPrefix())
+    if addMatch != "" { return model with { CartCount: model.CartCount + 1.0 } }
+
+    return model
+}
+
+fn CategoryVisible(selected: String, category: String) -> Bool {
+    if selected == "all" { return true }
+    return selected == category
+}
+
+fn ActiveFilterSummary(model: StoreState) -> String {
+    let newState = ToggleLabel(model.NewOnly)
+    let stockState = ToggleLabel(model.InStockOnly)
+    let bestState = ToggleLabel(model.BestSellerOnly)
+    return "new=" + newState + ", stock=" + stockState + ", best=" + bestState + ", sort=" + SortLabel(model.SortBy)
+}
+
+fn ToggleLabel(active: Bool) -> String {
+    if active { return "on" }
+    return "off"
+}
+
+fn SelectionLabel(selected: Bool) -> String {
+    if selected { return "selected" }
+    return "not selected"
+}
+
+fn ResolveLabelMapping(key: String, mapping: KeyLabelMapping, fallback: String) -> String {
+    for i in 0 .. Len(mapping.Keys) {
+        if key == mapping.Keys[i] {
+            return mapping.Labels[i]
+        }
+    }
+
+    return fallback
+}
+
+fn CategoryLabelMapping() -> KeyLabelMapping {
+    return KeyLabelMapping {
+        Keys: ["all", "desk", "paper", "cable"]
+        Labels: ["All", "Desk Gear", "Stationery", "Cable"]
+    }
+}
+
+fn CategoryLabel(category: String) -> String {
+    return ResolveLabelMapping(category, CategoryLabelMapping(), category)
+}
+
+fn SortLabelMapping() -> KeyLabelMapping {
+    return KeyLabelMapping {
+        Keys: ["featured", "price", "newest"]
+        Labels: ["Featured", "Price low-high", "Newest"]
+    }
+}
+
+fn SortLabel(value: String) -> String {
+    return ResolveLabelMapping(value, SortLabelMapping(), value)
+}
+
+fn SelectedProductLabel(value: String) -> String {
+    if value == "" { return "none" }
+    return value
+}
+
+fn NavItem(label: String, event: String, selected: Bool) -> UI {
+    return Button(label, event, not selected)
+}
+
+fn FilterChip(label: String, event: String, active: Bool) -> UI {
+    if active {
+        return Button("● " + label, event, true)
+    }
+
+    return Button("○ " + label, event, true)
+}
+
+fn PriceBadge(amount: Float) -> UI {
+    return Text("$" + FormatFloat(amount, 2))
+}
+
+fn SectionHeader(title: String, subtitle: String) -> UI {
+    return Column([
+        Text(title),
+        Text(subtitle)
+    ])
+}
+
+fn FeatureBlock(tag: String, title: String, body: String) -> UI {
+    return Column([
+        Text(tag),
+        Text(title),
+        Text(body)
+    ])
+}
+
+fn FooterColumn(title: String, links: String[]) -> UI {
+    return Column([
+        Text(title),
+        Text(links[0]),
+        Text(links[1]),
+        Text(links[2])
+    ])
+}
+
+fn HeaderBar(model: StoreState) -> UI {
+    return Row([
+        Text("Northline Supply Co."),
+        NavItem("Shop", NavShopEvent(), model.SelectedNav == "Shop"),
+        NavItem("Bundles", NavBundlesEvent(), model.SelectedNav == "Bundles"),
+        NavItem("Journal", NavJournalEvent(), model.SelectedNav == "Journal"),
+        NavItem("Support", NavSupportEvent(), model.SelectedNav == "Support"),
+        Text("Search: brass ruler, desk mat, cable dock"),
+        Text("Cart " + FormatFloat(model.CartCount, 0) + " items")
+    ])
+}
+
+fn AnnouncementStrip() -> UI {
+    return Row([
+        Text("Studio Dispatch: New modular desktop kits landed this week."),
+        Text("Ships from Portland within 48 hours.")
+    ])
+}
+
+fn HeroBlock(model: StoreState) -> UI {
+    return Column([
+        SectionHeader("Purpose-built tools for calm workspaces", "Northline curates desk hardware, notebooks, and cable order systems for focused daily use."),
+        Row([
+            FeatureBlock("Featured", "Desk Starter Grid", "Three-piece setup for cable control + writing flow."),
+            FeatureBlock("Collection", "Analog Workflow", "Timer, ruler, and grid notebook for tactile planning."),
+            FeatureBlock("Status", "Active category: " + CategoryLabel(model.SelectedCategory), "Sort: " + SortLabel(model.SortBy))
+        ])
+    ])
+}
+
+fn FilterRail(model: StoreState) -> UI {
+    return Column([
+        SectionHeader("Browse", "Choose category and list behavior."),
+        Text("Category"),
+        FilterChip("All", CategoryAllEvent(), model.SelectedCategory == "all"),
+        FilterChip("Desk Gear", CategoryDeskEvent(), model.SelectedCategory == "desk"),
+        FilterChip("Stationery", CategoryPaperEvent(), model.SelectedCategory == "paper"),
+        FilterChip("Cable", CategoryCableEvent(), model.SelectedCategory == "cable"),
+        Text("Flags"),
+        FilterChip("New arrivals", ToggleNewEvent(), model.NewOnly),
+        FilterChip("In stock", ToggleInStockEvent(), model.InStockOnly),
+        FilterChip("Best sellers", ToggleBestSellerEvent(), model.BestSellerOnly),
+        Text("Sort"),
+        FilterChip("Featured", SortFeaturedEvent(), model.SortBy == "featured"),
+        FilterChip("Price low-high", SortPriceEvent(), model.SortBy == "price"),
+        FilterChip("Newest", SortNewestEvent(), model.SortBy == "newest")
+    ])
+}
+
+fn ProductAreaHeader(model: StoreState) -> UI {
+    return Row([
+        SectionHeader("Catalog", "Selected: " + CategoryLabel(model.SelectedCategory) + " · " + ActiveFilterSummary(model)),
+        Button("Desk Kits", FeaturedDeskKitsEvent(), model.FeaturedTab != "Desk Kits"),
+        Button("Notebook Sets", FeaturedNotebookSetsEvent(), model.FeaturedTab != "Notebook Sets"),
+        Button("Cable Lab", FeaturedCableLabEvent(), model.FeaturedTab != "Cable Lab"),
+        Text("Featured strip: " + model.FeaturedTab)
+    ])
+}
+
+fn ProductCard(product: Product, model: StoreState) -> UI {
+    let selected = model.SelectedProduct == product.Id
+    let selectedLine = SelectionLabel(selected)
+
+    return Column([
+        Row([
+            Text("[Box Art: " + product.Category + "]"),
+            PriceBadge(product.Price)
+        ]),
+        Text(product.Title),
+        Text(product.Subtitle),
+        Text("Badge: " + product.Badge + " · " + selectedLine),
+        Row([
+            Button("Inspect", InspectEvent(product.Id), true),
+            Button("Add to cart", AddToCartEvent(product.Id), true)
+        ])
+    ])
+}
+
+fn ProductCardSlot(product: Product, model: StoreState) -> UI {
+    if CategoryVisible(model.SelectedCategory, product.Category) {
+        return ProductCard(product, model)
+    }
+
+    return Column([
+        Text("Filtered out"),
+        Text(product.Title),
+        Text("Category: " + CategoryLabel(product.Category))
+    ])
+}
+
+fn SupportBand(model: StoreState) -> UI {
+    return Row([
+        FeatureBlock("Why Northline", "Small-batch hardware", "Every item is field-tested in studio desks before release."),
+        FeatureBlock("Customer notes", "Cable Dock solved my daily tangle", "R. Kim, Seattle"),
+        FeatureBlock("Journal", "Five-minute reset routine", "How teams use analog timers with notebook blocks.")
+    ])
+}
+
+fn Footer(model: StoreState) -> UI {
+    return Row([
+        FooterColumn("Shop", ["Desk Gear", "Stationery", "Cable Management"]),
+        FooterColumn("Company", ["About", "Journal", "Wholesale"]),
+        FooterColumn("Help", ["Shipping", "Returns", "Contact"]),
+        Text("Selected product: " + SelectedProductLabel(model.SelectedProduct))
+    ])
+}
+
+fn ProductGrid() -> ProductPlacementGrid {
+    return ProductPlacementGrid {
+        ProductIds: ["harbor-board", "linen-notebook", "cable-dock", "focus-timer", "cork-tray", "steel-ruler"]
+        RowStarts: [0, 3]
+        RowLengths: [3, 3]
+        ColumnX: [320.0 px, 570.0 px, 820.0 px]
+        RowY: [236.0 px, 408.0 px]
+        CardWidth: 232.0 px
+        CardHeight: 158.0 px
+    }
+}
+
+fn CardSlotPlacements(model: StoreState, grid: ProductPlacementGrid) -> UI[] {
+    let firstFrame = AbsoluteBox(grid.ColumnX[0], grid.RowY[0], grid.CardWidth, grid.CardHeight)
+    var out = [Place(firstFrame, ProductCardSlot(ProductById(grid.ProductIds[0]), model))]
+
+    for row in 0 .. Len(grid.RowStarts) {
+        for col in 0 .. grid.RowLengths[row] {
+            if row != 0 or col != 0 {
+                let frame = AbsoluteBox(grid.ColumnX[col], grid.RowY[row], grid.CardWidth, grid.CardHeight)
+                let productIndex = grid.RowStarts[row] + col
+                let productId = grid.ProductIds[productIndex]
+                let product = ProductById(productId)
+                out = Append(out, Place(frame, ProductCardSlot(product, model)))
+            }
+        }
+    }
+    return out
+}
+
+fn View(model: StoreState) -> UI {
+    let HeaderTop = 0.01 ui
+    let HeaderBottom = 0.09 ui
+    let AnnouncementTop = 0.095 ui
+    let AnnouncementBottom = 0.13 ui
+    let HeroTop = 0.14 ui
+    let HeroBottom = 0.28 ui
+    let FiltersTop = 0.30 ui
+    let FiltersBottom = 0.78 ui
+    let GridTop = 0.30 ui
+    let GridBottom = 0.78 ui
+    let SupportTop = 0.80 ui
+    let SupportBottom = 0.91 ui
+    let FooterTop = 0.92 ui
+
+    let grid = ProductGrid()
+    let cardPlacements = CardSlotPlacements(model, grid)
+
+    var nodes = [
+        Place(AnchoredBox(0.01 ui, HeaderTop, 0.99 ui, HeaderBottom), HeaderBar(model)),
+        Place(AnchoredBox(0.01 ui, AnnouncementTop, 0.99 ui, AnnouncementBottom), AnnouncementStrip()),
+        Place(AnchoredBox(0.01 ui, HeroTop, 0.99 ui, HeroBottom), HeroBlock(model)),
+        Place(AnchoredBox(0.01 ui, FiltersTop, 0.26 ui, FiltersBottom), FilterRail(model)),
+        Place(AnchoredBox(0.27 ui, GridTop, 0.99 ui, GridBottom), ProductAreaHeader(model)),
+        Place(AnchoredBox(0.27 ui, SupportTop, 0.99 ui, SupportBottom), SupportBand(model)),
+        Place(AnchoredBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui), Footer(model))
+    ]
+
+    for i in 0 .. Len(cardPlacements) {
+        nodes = Append(nodes, cardPlacements[i])
+    }
+
+    return Canvas(nodes)
+}

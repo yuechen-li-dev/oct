@@ -646,3 +646,76 @@ Yes. For exact-key pure mappings, M6a shows the rule cleanly: these are better r
 ## Next biggest authoring pain after M6a
 
 After dispatch + pure mapping cleanup, the largest remaining friction is repeated catalog presentation wiring (card slot traversal/index plumbing), not key-mapping logic.
+
+
+---
+
+# Storefront M7 Report (Machina UI File Structure Probe)
+
+## What changed in M7
+
+M7 preserves M6a runtime behavior and authoring doctrine, but adds an explicit top-level source-structure declaration:
+
+- `SourceParts` record
+- `SourceStructure()` constructor
+
+The declaration formalizes the stable file categories discovered across M3-M6a while keeping implementation code in place:
+
+- Data
+- Placement
+- Dispatch
+- Behavior
+- Composition
+- Surface
+
+Each category lists the canonical functions that own that concern in this file (for example `CatalogTable`, `ProductGrid`, `NavDispatchTable`, `Update`, composition builders, and final `View`).
+
+No layout runtime, event runtime, or state runtime changes were introduced.
+
+## Categories formalized
+
+M7 formalized this top-level parts list:
+
+1. **Data**: catalog + pure mapping tables
+2. **Placement**: explicit slot/grid and placement assembly
+3. **Dispatch**: keyed event-value transition tables + resolver helpers
+4. **Behavior**: procedural update and lookup logic
+5. **Composition**: section/card/footer builders
+6. **Surface**: final assembled `View`
+
+## Answers to required M7 questions
+
+1. **Does top-level declaration improve readability?**
+   Yes. A reviewer can scan `SourceStructure()` first and get the file architecture immediately.
+
+2. **Does it help reviewer/LLM navigation?**
+   Yes. It gives an up-front map for “where to edit” by concern.
+
+3. **Does it clarify where new code belongs?**
+   Yes. New table truth goes to Data/Dispatch, transition logic to Behavior, UI builders to Composition, and assembly to Surface.
+
+4. **Does it improve or worsen locality?**
+   Slight net improvement. The declaration is near the top and references existing functions without moving runtime logic away from use sites.
+
+5. **Truthful structure or ceremony?**
+   Truthful in this pass. The categories match pre-existing stable concepts rather than introducing synthetic framework layers.
+
+6. **Should Machina UI files have a canonical parts list convention?**
+   Yes, for large UI sources. A lightweight `SourceStructure()` convention is useful when files mix data tables, dispatch tables, behavior, and composition.
+
+7. **What pain remains after formalizing file shape?**
+   Repeated catalog presentation wiring (index/slot traversal) remains the largest authoring friction; structure declaration does not remove that procedural repetition.
+
+## Locality and drift check
+
+M7 keeps declaration and implementation in the same file and avoids introducing a second runtime representation. The declaration is a navigation map only; behavior remains fully defined by existing code paths.
+
+## Close-out recommendation
+
+Storefront now appears sufficiently stable to propose a canonical Machina UI authoring model:
+
+- keep M3-M6a doctrine (tables where table-shaped, dispatch tables for keyed transitions, explicit placement, procedural behavior as code)
+- add an optional/lightweight top-level `SourceStructure()` parts list for multi-section UI files
+- avoid expanding this into a framework DSL or metadata-heavy system
+
+This closes the Storefront experiment with a practical source-shape convention that improves human and LLM navigation while preserving runtime simplicity.
