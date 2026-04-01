@@ -66,6 +66,9 @@ var names = map[string]struct{}{
 	"Lower":              {},
 	"Upper":              {},
 	"Join":               {},
+	"Idx":                {},
+	"EinMul":             {},
+	"EinAdd":             {},
 }
 
 func IsName(name string) bool {

@@ -1,0 +1,14 @@
+expect error: "function 'EinMul' argument 3 expects Index, got Int"
+
+package Main
+
+fn Main() -> Void {
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let bad = EinMul(a, i, 0, b, j, i)
+    Print(bad)
+    return
+}

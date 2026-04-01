@@ -30,6 +30,7 @@ const (
 	BaseTypeError   BaseType = "Error"
 	BaseTypeVoid    BaseType = "Void"
 	BaseTypeUI      BaseType = "UI"
+	BaseTypeIndex   BaseType = "Index"
 )
 
 type Type struct {
@@ -278,7 +279,7 @@ func (c checker) checkFile(file ast.File) error {
 }
 
 func (c checker) registerPackageDeclarations(file ast.File) error {
-	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI)} {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
 
@@ -2339,6 +2340,89 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Join' argument 2 expects String, got %s", sepType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "Idx" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Idx' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Idx' expects 1 arguments, got %d", len(arguments))
+		}
+		nameType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if nameType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if nameType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'Idx' argument 1 expects String, got %s", nameType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeIndex}}, nil
+	}
+	if callee == "EinMul" || callee == "EinAdd" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 6 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 6 arguments, got %d", callee, len(arguments))
+		}
+		leftType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if leftType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		rightType, err := c.checkExpr(scope, arguments[3], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rightType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !leftType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Matrix, got %s", callee, leftType.ValueType)
+		}
+		if !rightType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects Matrix, got %s", callee, rightType.ValueType)
+		}
+		for idx := 1; idx <= 2; idx++ {
+			indexType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if indexType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if indexType.ValueType != (Type{Base: BaseTypeIndex}) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Index, got %s", callee, idx+1, indexType.ValueType)
+			}
+		}
+		for idx := 4; idx <= 5; idx++ {
+			indexType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if indexType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if indexType.ValueType != (Type{Base: BaseTypeIndex}) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Index, got %s", callee, idx+1, indexType.ValueType)
+			}
+		}
+
+		leftScalar := Type{Base: leftType.ValueType.Base, Dimension: leftType.ValueType.Dimension}
+		rightScalar := Type{Base: rightType.ValueType.Base, Dimension: rightType.ValueType.Dimension}
+		op := "*"
+		if callee == "EinAdd" {
+			op = "+"
+		}
+		resultScalar, err := c.checkBinaryExpr(op, leftScalar, rightScalar)
+		if err != nil {
+			return ExprType{}, err
+		}
+		return ExprType{ValueType: Type{Base: resultScalar.Base, Dimension: resultScalar.Dimension, IsMatrix: true}}, nil
 	}
 	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
 		if len(typeArguments) > 0 {

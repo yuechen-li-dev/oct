@@ -1,0 +1,47 @@
+package MainValid
+
+[Fact]
+fn EinsteinMatrixMultiplyContractsRepeatedIndex() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+
+    let c = EinMul(a, i, k, b, k, j)
+
+    Assert.Equal(19, c[0, 0], "c00")
+    Assert.Equal(22, c[0, 1], "c01")
+    Assert.Equal(43, c[1, 0], "c10")
+    Assert.Equal(50, c[1, 1], "c11")
+}
+
+[Fact]
+fn EinsteinFreeIndexNamesDoNotNeedCanonicalLetters() -> Void {
+    let p = Idx("p")
+    let q = Idx("q")
+    let s = Idx("s")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+
+    let c = EinMul(a, p, s, b, s, q)
+
+    Assert.Equal(19, c[0, 0], "c00")
+    Assert.Equal(50, c[1, 1], "c11")
+}
+
+[Fact]
+fn EinsteinAdditionRequiresMatchingFreeIndexStructure() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[10, 20] [30, 40]]
+
+    let c = EinAdd(a, i, j, b, i, j)
+
+    Assert.Equal(11, c[0, 0], "c00")
+    Assert.Equal(44, c[1, 1], "c11")
+}
