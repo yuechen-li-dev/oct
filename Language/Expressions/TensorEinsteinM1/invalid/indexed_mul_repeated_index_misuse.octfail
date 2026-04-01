@@ -1,4 +1,4 @@
-expect error: "index 'i' appears 3 times; only 1 (free) or 2 (contracted) are allowed in M0"
+expect error: "index 'i' appears 3 times in [i,i]*[i,j]; only 1 (free) or 2 (contracted) are allowed in M0"
 
 package Main
 

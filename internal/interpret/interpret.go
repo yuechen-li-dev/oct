@@ -1181,11 +1181,14 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{hasError: true, errorVal: right.errorVal}, nil
 		}
 		if left.einTerm != nil || right.einTerm != nil {
-			result, err := evalEinsteinIndexedBinaryExpr(node.Operator, left, right)
+			result, labels, err := evalEinsteinIndexedBinaryExpr(node.Operator, left, right)
 			if err != nil {
 				return evalResult{}, err
 			}
-			return evalResult{value: result}, nil
+			return evalResult{
+				value:   result,
+				einTerm: &einsteinIndexedTerm{matrix: result, labels: labels},
+			}, nil
 		}
 		value, err := evalBinaryExpr(node.Operator, left.value, right.value)
 		if err != nil {
@@ -2224,7 +2227,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			}
 			rightLabels[idx] = indexResult.value.Text
 		}
-		result, err := evalEinsteinBinaryMatrices(callee, leftResult.value, leftLabels, rightResult.value, rightLabels)
+		result, _, err := evalEinsteinBinaryMatrices(callee, leftResult.value, leftLabels, rightResult.value, rightLabels)
 		if err != nil {
 			return evalResult{}, err
 		}

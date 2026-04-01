@@ -2,13 +2,13 @@ package interpret
 
 import "fmt"
 
-func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, right Value, rightLabels []string) (Value, error) {
+func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, right Value, rightLabels []string) (Value, []string, error) {
 	if len(leftLabels) != 2 || len(rightLabels) != 2 {
-		return Value{}, fmt.Errorf("runtime invariant violation: Einstein matrix helpers require rank-2 labels")
+		return Value{}, nil, fmt.Errorf("runtime invariant violation: Einstein matrix helpers require rank-2 labels")
 	}
 	for _, label := range append(append([]string{}, leftLabels...), rightLabels...) {
 		if label == "" {
-			return Value{}, fmt.Errorf("runtime error: Einstein indices must be non-empty")
+			return Value{}, nil, fmt.Errorf("runtime error: Einstein indices must be non-empty")
 		}
 	}
 
@@ -19,7 +19,7 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 			dim = left.Matrix.Cols
 		}
 		if prev, ok := dimByLabel[label]; ok && prev != dim {
-			return Value{}, fmt.Errorf("runtime error: index '%s' has inconsistent extents", label)
+			return Value{}, nil, fmt.Errorf("runtime error: index '%s' has inconsistent extents", label)
 		}
 		dimByLabel[label] = dim
 	}
@@ -29,7 +29,7 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 			dim = right.Matrix.Cols
 		}
 		if prev, ok := dimByLabel[label]; ok && prev != dim {
-			return Value{}, fmt.Errorf("runtime error: index '%s' has inconsistent extents", label)
+			return Value{}, nil, fmt.Errorf("runtime error: index '%s' has inconsistent extents", label)
 		}
 		dimByLabel[label] = dim
 	}
@@ -51,14 +51,14 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 				contracted = append(contracted, label)
 			}
 		} else {
-			return Value{}, fmt.Errorf("runtime error: index '%s' appears %d times; only 1 (free) or 2 (contracted) are allowed in M0", label, counts[label])
+			return Value{}, nil, fmt.Errorf("runtime error: index '%s' appears %d times in [%s,%s]*[%s,%s]; only 1 (free) or 2 (contracted) are allowed in M0", label, counts[label], leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 	}
 
 	switch op {
 	case "EinMul":
 		if len(free) != 2 {
-			return Value{}, fmt.Errorf("runtime error: EinMul requires exactly 2 free indices in M0, got %d", len(free))
+			return Value{}, nil, fmt.Errorf("runtime error: EinMul requires exactly 2 free indices in M0, got %d for [%s,%s]*[%s,%s]", len(free), leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 		rows := dimByLabel[free[0]]
 		cols := dimByLabel[free[1]]
@@ -101,42 +101,42 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 					return nil
 				}
 				if err := loop(0); err != nil {
-					return Value{}, err
+					return Value{}, nil, err
 				}
 				if !accSet {
-					return Value{}, fmt.Errorf("runtime invariant violation: EinMul failed to accumulate contracted terms")
+					return Value{}, nil, fmt.Errorf("runtime invariant violation: EinMul failed to accumulate contracted terms")
 				}
 				result = append(result, acc)
 			}
 		}
-		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: result}}, nil
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: result}}, free, nil
 	case "EinAdd":
 		if leftLabels[0] == leftLabels[1] || rightLabels[0] == rightLabels[1] {
-			return Value{}, fmt.Errorf("runtime error: EinAdd requires distinct free indices per matrix term")
+			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 		if leftLabels[0] != rightLabels[0] || leftLabels[1] != rightLabels[1] {
-			return Value{}, fmt.Errorf("runtime error: EinAdd requires matching free-index order on both terms")
+			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 		if left.Matrix.Rows != right.Matrix.Rows || left.Matrix.Cols != right.Matrix.Cols {
-			return Value{}, fmt.Errorf("runtime error: EinAdd requires matching matrix shapes")
+			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires matching matrix shapes")
 		}
 		result := make([]Value, len(left.Matrix.Elements))
 		for idx := range left.Matrix.Elements {
 			sum, err := evalBinaryExpr("+", left.Matrix.Elements[idx], right.Matrix.Elements[idx])
 			if err != nil {
-				return Value{}, err
+				return Value{}, nil, err
 			}
 			result[idx] = sum
 		}
-		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: left.Matrix.Rows, Cols: left.Matrix.Cols, Elements: result}}, nil
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: left.Matrix.Rows, Cols: left.Matrix.Cols, Elements: result}}, append([]string{}, leftLabels...), nil
 	default:
-		return Value{}, fmt.Errorf("runtime invariant violation: unsupported Einstein op %s", op)
+		return Value{}, nil, fmt.Errorf("runtime invariant violation: unsupported Einstein op %s", op)
 	}
 }
 
-func evalEinsteinIndexedBinaryExpr(operator string, left evalResult, right evalResult) (Value, error) {
+func evalEinsteinIndexedBinaryExpr(operator string, left evalResult, right evalResult) (Value, []string, error) {
 	if left.einTerm == nil || right.einTerm == nil {
-		return Value{}, fmt.Errorf("runtime error: indexed tensor expressions must appear on both sides of '%s'", operator)
+		return Value{}, nil, fmt.Errorf("runtime error: indexed tensor expressions must appear on both sides of '%s' (left indexed=%t, right indexed=%t)", operator, left.einTerm != nil, right.einTerm != nil)
 	}
 	switch operator {
 	case "*":
@@ -144,6 +144,6 @@ func evalEinsteinIndexedBinaryExpr(operator string, left evalResult, right evalR
 	case "+":
 		return evalEinsteinBinaryMatrices("EinAdd", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
 	default:
-		return Value{}, fmt.Errorf("runtime error: indexed tensor expressions only support '+' and '*' in M1")
+		return Value{}, nil, fmt.Errorf("runtime error: indexed tensor expressions only support '+' and '*' in M1")
 	}
 }

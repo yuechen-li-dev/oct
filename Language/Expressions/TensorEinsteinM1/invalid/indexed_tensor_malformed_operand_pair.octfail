@@ -1,4 +1,4 @@
-expect error: "indexed tensor expressions must appear on both sides of '+'"
+expect error: "indexed tensor expressions must appear on both sides of '+' (left indexed=false, right indexed=true)"
 
 package Main
 
