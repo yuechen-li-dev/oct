@@ -2312,6 +2312,10 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if matrixResult.hasError {
 			return evalResult{hasError: true, errorVal: matrixResult.errorVal}, nil
 		}
+		if isRepresentationalFieldValue(matrixResult.value) {
+			operandCopy := cloneValue(matrixResult.value)
+			return evalResult{value: Value{Kind: ValueDiffOp, DiffOp: DifferentialOpValue{Operator: "Trace", Operand: &operandCopy}}}, nil
+		}
 		if matrixResult.value.Kind != ValueMatrix {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Trace expects Matrix argument")
 		}

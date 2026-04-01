@@ -1,0 +1,10 @@
+expect error: "function 'Trace' argument 1 expects Matrix, got Vector<Float>"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[0.07, -0.04]
+
+    // Div(SymGrad(u)) is vector-valued; tracing it must remain illegal.
+    let _ = Trace(Div(SymGrad(u)))
+}

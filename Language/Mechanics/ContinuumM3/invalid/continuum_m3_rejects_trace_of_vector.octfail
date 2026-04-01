@@ -1,0 +1,10 @@
+expect error: "function 'Trace' argument 1 expects Matrix, got Vector<Float>"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let u = vector[0.02, -0.03]
+
+    // Existing strictness remains: vectors are not accepted by Trace.
+    let _ = Trace(u)
+}
