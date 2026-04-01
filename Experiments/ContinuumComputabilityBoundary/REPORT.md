@@ -265,69 +265,84 @@ Run one more narrow pass focused only on the first coupling relation (not a solv
 
 ## M3
 
-### Coupling relation chosen
-M3 introduces exactly one site-to-site relation: **pairwise difference coupling** over explicit site pairs:
+### Probe framing
+M3 is a comparative lowering probe between:
 
-- for each listed pair `(i, j)`
-- `Δux_ij = ux[j] - ux[i]`
-- `Δuy_ij = uy[j] - uy[i]`
+- **point-only coupling over finite sites**, and
+- **directed pairwise flux-like transfer carriers**.
 
-This is evaluated by `EvaluateSiteCoupling(lowered, pairs)` and returned as typed per-pair outputs (`SiteCouplingResult2D`).
+It does not add a solver, mesh, FEM/FV/FDM, or hidden topology. The pass only asks whether a directed transfer primitive is a more honest first interaction bytecode for balance-shaped computation.
 
-### Why this is minimal
-This is the smallest honest interaction step beyond M2:
+### Flux-like carrier introduced (exact)
+M3 introduces `SiteFluxRelation2D` with explicit finite arrays:
 
-- coupling exists between different sites
-- no solve or global assembly is performed
-- no method commitment (no FE shape functions, no FDM stencil assumptions, no FVM control volumes)
+- `I: Int[]` (source site index)
+- `J: Int[]` (target site index)
+- `Dx: Float[]` (direction x)
+- `Dy: Float[]` (direction y)
+- `Amount: Float[]` (scalar transfer amount)
 
-It upgrades capability from site-local residual checks (M2) to explicit site-to-site interaction while keeping all global commitments out of scope.
+Interpretation used in this probe:
 
-### Coupling structure introduced
-M3 adds `SitePairRelation2D`:
+- each row is a **directed transfer** `i -> j`
+- `Amount[p]` is scalar transfer magnitude
+- `(Dx[p], Dy[p])` is the explicit transfer direction
+- outgoing contribution is added at `i`; incoming contribution is added at `j`
 
-- `I: Int[]`
-- `J: Int[]`
-- `Weight: Float[]`
+This remains a plain explicit pair list, not a topology system.
 
-Pairs are explicit and finite for the tiny carrier:
+### Balance-style computation unlocked
+M3 adds one accumulation function: `AccumulateDirectedFluxBalance(lowered, flux)`.
 
-- `(0,1), (1,3), (0,2), (2,3)`
-- all weights are `1.0`
+From only pair entries, it computes per-site:
 
-No neighbor graph, element ownership, adjacency table, or hidden mesh construction is introduced.
+- `IncomingAmount`
+- `OutgoingAmount`
+- `NetAmount = outgoing - incoming`
+- `NetVectorX`, `NetVectorY` from signed directed transfer vectors
 
-### Topology pressure outcome
-**Did defining pairs require topology?**
-No for this pass: explicit pair listing is sufficient to compute coupling deltas.
+This is the key new capability: **site-level balance-like quantities are directly computable from directed transfer carriers** without solve/assembly.
 
-**Did pair selection feel arbitrary?**
-Yes, intentionally. This is the pressure signal M3 is meant to expose.
+### Concrete comparison: point-only vs directed flux carrier
 
-**Did correctness depend on structured neighbor selection?**
-Only weakly in M3 (deterministic relation evaluation works either way), but physical fidelity and operator consistency clearly begin to depend on principled pair selection.
+#### What point-only site coupling can express
+- finite locations and unknown slots
+- candidate site values
+- local site residuals (as shown in M2)
 
-**Does this naturally push toward nearest-neighbor/connectivity/partitioning?**
-Yes. Once pair selection must be principled rather than hand-listed, the design is pressured toward minimal topology.
+#### What it cannot express honestly by itself
+- directed transfer meaning (`who -> whom`)
+- explicit transfer amount separate from unknown differences
+- incoming vs outgoing bookkeeping required by balance-style accumulation
 
-### Boundary after M3
-**Now possible**
+#### What directed flux carriers add
+- first-class direction, transfer amount, and source/target semantics
+- straightforward accumulation into balance-shaped site quantities
+- less arbitrary meaning than pure pairwise unknown differences when probing transfer-dominated relations
 
-- site-to-site interaction exists
-- typed coupling residual-like quantities exist per pair
-- deterministic coupling evaluation can run over finite site unknown slots
+### Topology requirement outcome
+M3 did **not** require topology to run this probe.
 
-**Still impossible**
+- Pair policy stayed explicit and finite.
+- No hidden adjacency graph, elements, cells, faces, or ownership machinery was introduced.
 
-- no consistent global operator
-- no physical correctness guarantee
-- no solve
-- no continuum-consistent discretization
+However, the next pressure is clear: principled pair/interface selection quality. If pair policy can no longer be justified manually, minimal topology becomes the next explicit boundary.
 
-### Next missing piece decision
-M3 indicates the immediate next choice is:
+### Required M3 answers
+1. **What exact flux-like carrier was introduced?** `SiteFluxRelation2D(I, J, Dx, Dy, Amount)`.
+2. **What does it encode that bare point sites do not?** Directed source/target transfer semantics, explicit transfer amount, and transfer orientation.
+3. **What balance-like quantity became computable?** Per-site incoming/outgoing/net scalar transfer and signed net transfer vectors.
+4. **Did it require topology?** No, not for this explicit pair-list probe.
+5. **Is it a more honest first interaction primitive than point-only coupling?** For balance/transfer-shaped relations in this experiment, yes.
+6. **What is the next boundary?** Pair/interface selection quality and whether that forces a minimal topology commitment.
 
-- **A) better pair selection (still topology-free)** as one more constrained probe, or
-- **B) minimal topology commitment** if principled neighbor definition is required for correctness expectations
+### Blunt conclusion
+For this experiment, directed flux-like pair carriers are a more honest first coupling primitive than point-only site coupling for balance-dominated interaction structure. This is not a solver claim and not a replacement for FEM/FV/FDM; it is a cleaner pre-topology interaction bytecode for the next probe.
 
-Current recommendation: attempt one narrow A-pass first, and if pair policy cannot be justified without hidden structure, make B explicit.
+### Recommendation for next pass
+Run an M4 **pair-selection policy probe**:
+
+- keep directed flux carriers
+- compare at least two explicit pair policies (e.g., hand-listed vs distance-threshold)
+- measure effect on balance accumulation structure
+- decide if minimal explicit topology is now unavoidable
