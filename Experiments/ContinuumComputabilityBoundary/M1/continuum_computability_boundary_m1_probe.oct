@@ -1,0 +1,78 @@
+package ContinuumComputabilityBoundary
+
+record ContinuumProblem2D {
+    BodyWidth: Float
+    BodyHeight: Float
+    Query: String
+}
+
+record FiniteSites2D {
+    X: Float[]
+    Y: Float[]
+}
+
+record SiteUnknowns2D {
+    Ux: Float[]
+    Uy: Float[]
+    IsSolved: Bool[]
+}
+
+record LoweredProblem2D {
+    Source: ContinuumProblem2D
+    Sites: FiniteSites2D
+    Unknowns: SiteUnknowns2D
+    QueryTarget: String
+}
+
+record LoweringBoundaryReport {
+    NowPossible: String
+    StillMissing: String
+    NextBoundary: String
+}
+
+fn TinyCantileverProblem(query: String) -> ContinuumProblem2D {
+    return ContinuumProblem2D {
+        BodyWidth: 2.0
+        BodyHeight: 1.0
+        Query: query
+    }
+}
+
+fn TinyBodySites(problem: ContinuumProblem2D) -> FiniteSites2D {
+    return FiniteSites2D {
+        X: [0.5 * problem.BodyWidth, 0.5 * problem.BodyWidth, 1.0 * problem.BodyWidth, 1.0 * problem.BodyWidth]
+        Y: [0.5 * problem.BodyHeight, 1.0 * problem.BodyHeight, 0.5 * problem.BodyHeight, 1.0 * problem.BodyHeight]
+    }
+}
+
+fn AttachUnknownsToSites(sites: FiniteSites2D) -> SiteUnknowns2D {
+    let _ = sites
+
+    return SiteUnknowns2D {
+        Ux: [0.0, 0.0, 0.0, 0.0]
+        Uy: [0.0, 0.0, 0.0, 0.0]
+        IsSolved: [false, false, false, false]
+    }
+}
+
+fn LowerContinuumProblem2D(problem: ContinuumProblem2D) -> LoweredProblem2D {
+    let sites = TinyBodySites(problem)
+    let unknowns = AttachUnknownsToSites(sites)
+
+    return LoweredProblem2D {
+        Source: problem
+        Sites: sites
+        Unknowns: unknowns
+        QueryTarget: "SiteUnknownDisplacement"
+    }
+}
+
+fn ProbeLoweringBoundary(lowered: LoweredProblem2D) -> LoweringBoundaryReport {
+    let _ = lowered
+
+    return LoweringBoundaryReport {
+        NowPossible: "Unknown displacement variables are explicitly attached to finite sites."
+        StillMissing: "No topology, no equations, and no global solve; field consistency and solved u are unavailable."
+        NextBoundary: "MissingDiscreteOperatorWithoutTopology"
+    }
+}
