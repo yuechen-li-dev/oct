@@ -1,0 +1,151 @@
+package MainValid
+
+enum BoundaryCategory {
+    Representational
+    Specification
+    Computational
+}
+
+enum MissingCapability {
+    None
+    MissingFiniteLowering
+}
+
+record Body {
+    Width: Float
+    Height: Float
+}
+
+record Material {
+    E: Float
+    Nu: Float
+    Assumption: String
+}
+
+record Load {
+    Fx: Float
+    Fy: Float
+}
+
+record Constraint {
+    Edge: String
+    Ux: Float
+    Uy: Float
+}
+
+record ContinuumProblem {
+    BodyWidth: Float
+    BodyHeight: Float
+    Assumption: String
+    E: Float
+    Nu: Float
+    UnknownFieldName: String
+    UnknownFieldKind: String
+    BodyForceFx: Float
+    BodyForceFy: Float
+    FixedEdge: String
+    FixedUx: Float
+    FixedUy: Float
+    GoverningRelation: String
+    Query: String
+}
+
+record BoundaryProbeResult {
+    Category: String
+    Missing: String
+    Why: String
+}
+
+fn MuFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return E / (2.0 * (1.0 + nu))
+}
+
+fn LameLambdaFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return (E * nu) / ((1.0 + nu) * (1.0 - (2.0 * nu)))
+}
+
+fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
+    return (2.0 * mu * lambda) / (lambda + (2.0 * mu))
+}
+
+fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    return ((lambda * Trace(strain)) * identity) + ((2.0 * mu) * strain)
+}
+
+fn StressFromMaterial(strain: Matrix<Float>, material: Material) -> Matrix<Float> {
+    let lambda = LameLambdaFromYoungPoisson(material.E, material.Nu)
+    let mu = MuFromYoungPoisson(material.E, material.Nu)
+
+    if material.Assumption == "PlaneStress" {
+        return LinearIsotropicStress2D(strain, PlaneStressLambda2D(lambda, mu), mu)
+    }
+
+    return LinearIsotropicStress2D(strain, lambda, mu)
+}
+
+fn ProbeComputability(problem: ContinuumProblem) -> BoundaryProbeResult {
+    if problem.Query == "SolveForField" {
+        return BoundaryProbeResult {
+            Category: "Computational"
+            Missing: "MissingFiniteLowering"
+            Why: "Problem is representable and specified, but solving for u over the body requires finite computational lowering."
+        }
+    }
+
+    return BoundaryProbeResult {
+        Category: "Representational"
+        Missing: "None"
+        Why: "Residual can be formed for a concrete candidate field using existing continuum operators."
+    }
+}
+
+fn TinyCantileverProblem(query: String) -> ContinuumProblem {
+    return ContinuumProblem {
+        BodyWidth: 2.0
+        BodyHeight: 1.0
+        Assumption: "PlaneStress"
+        E: 210000000000.0
+        Nu: 0.30
+        UnknownFieldName: "u"
+        UnknownFieldKind: "Displacement"
+        BodyForceFx: 0.0
+        BodyForceFy: -1000.0
+        FixedEdge: "Left"
+        FixedUx: 0.0
+        FixedUy: 0.0
+        GoverningRelation: "LinearMomentumBalance"
+        Query: query
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM0RepresentationAndProblemSpecificationAreExpressible() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let unknownFields = [problem.UnknownFieldName]
+    let constraints = [problem.FixedEdge]
+
+    Assert.Equal(2.0, problem.BodyWidth, "body width")
+    Assert.Equal(1.0, problem.BodyHeight, "body height")
+    Assert.Equal(1, Len(unknownFields), "one unknown field")
+    Assert.Equal("Displacement", problem.UnknownFieldKind, "unknown kind")
+    Assert.Equal("Left", constraints[0], "left edge fixed")
+    Assert.Equal("SolveForField", problem.Query, "query intent")
+}
+
+[Fact]
+fn ContinuumBoundaryM0ResidualFormExistsButSolveHitsComputabilityBoundary() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let material = Material { E: problem.E Nu: problem.Nu Assumption: problem.Assumption }
+    let load = Load { Fx: problem.BodyForceFx Fy: problem.BodyForceFy }
+    let _ = Constraint { Edge: problem.FixedEdge Ux: problem.FixedUx Uy: problem.FixedUy }
+    let _ = Body { Width: problem.BodyWidth Height: problem.BodyHeight }
+
+    let uCandidate = vector[0.001, -0.0004]
+    let residual = Div(StressFromMaterial(SymGrad(uCandidate), material)) + vector[load.Fx, load.Fy]
+    let _ = residual
+
+    let boundary = ProbeComputability(problem)
+    Assert.Equal("Computational", boundary.Category, "boundary category")
+    Assert.Equal("MissingFiniteLowering", boundary.Missing, "first missing capability")
+}
