@@ -24,28 +24,33 @@ record LoweredProblem2D {
     QueryTarget: String
 }
 
-record SitePairRelation2D {
+record SiteFluxRelation2D {
     I: Int[]
     J: Int[]
-    Weight: Float[]
+    Dx: Float[]
+    Dy: Float[]
+    Amount: Float[]
 }
 
-record SiteCouplingResult2D {
-    PairDeltaUx: Float[]
-    PairDeltaUy: Float[]
-    PairI: Int[]
-    PairJ: Int[]
+record SiteFluxBalance2D {
+    IncomingAmount: Float[]
+    OutgoingAmount: Float[]
+    NetAmount: Float[]
+    NetVectorX: Float[]
+    NetVectorY: Float[]
 }
 
 record CouplingBoundaryReport {
     CouplingRelationChosen: String
-    WhyMinimal: String
+    FluxLikeDefinition: String
+    PointOnlyWhatItCanExpress: String
+    FluxCarrierWhatItAdds: String
+    BalanceCapabilityUnlocked: String
     PairDefinition: String
     PairDefinitionRequiredTopology: Bool
-    CapabilityUnlocked: String
-    StillImpossible: String
     IsTopologyRequiredNow: Bool
     NextMissingPiece: String
+    Recommendation: String
 }
 
 fn TinyCantileverProblem(query: String) -> ContinuumProblem2D {
@@ -85,64 +90,69 @@ fn LowerContinuumProblem2D(problem: ContinuumProblem2D) -> LoweredProblem2D {
     }
 }
 
-fn LowerWithSiteUnknowns(lowered: LoweredProblem2D, ux: Float[], uy: Float[]) -> LoweredProblem2D {
-    return LoweredProblem2D {
-        Source: lowered.Source
-        Sites: lowered.Sites
-        Unknowns: SiteUnknowns2D {
-            Ux: ux
-            Uy: uy
-            IsSolved: [false, false, false, false]
-        }
-        QueryTarget: lowered.QueryTarget
-    }
-}
-
-fn BuildMinimalSitePairs(sites: FiniteSites2D) -> SitePairRelation2D {
+fn BuildDirectedFluxPairs(sites: FiniteSites2D) -> SiteFluxRelation2D {
     let _ = sites
 
-    return SitePairRelation2D {
+    return SiteFluxRelation2D {
         I: [0, 1, 0, 2]
         J: [1, 3, 2, 3]
-        Weight: [1.0, 1.0, 1.0, 1.0]
+        Dx: [0.0, 1.0, 1.0, 0.0]
+        Dy: [1.0, 0.0, 0.0, 1.0]
+        Amount: [2.0, 1.5, 0.5, 1.0]
     }
 }
 
-fn EvaluateSiteCoupling(lowered: LoweredProblem2D, pairs: SitePairRelation2D) -> SiteCouplingResult2D {
-    let unknowns = lowered.Unknowns
-
-    var pairDeltaUx = [0.0, 0.0, 0.0, 0.0]
-    var pairDeltaUy = [0.0, 0.0, 0.0, 0.0]
-
-    for p in 0..Len(pairs.I) {
-        let i = pairs.I[p]
-        let j = pairs.J[p]
-        let w = pairs.Weight[p]
-
-        pairDeltaUx[p] = w * (unknowns.Ux[j] - unknowns.Ux[i])
-        pairDeltaUy[p] = w * (unknowns.Uy[j] - unknowns.Uy[i])
-    }
-
-    return SiteCouplingResult2D {
-        PairDeltaUx: pairDeltaUx
-        PairDeltaUy: pairDeltaUy
-        PairI: pairs.I
-        PairJ: pairs.J
-    }
-}
-
-fn ProbeCouplingBoundary(lowered: LoweredProblem2D, pairs: SitePairRelation2D) -> CouplingBoundaryReport {
+fn AccumulateDirectedFluxBalance(lowered: LoweredProblem2D, flux: SiteFluxRelation2D) -> SiteFluxBalance2D {
     let _ = lowered
-    let _ = pairs
+
+    var incomingAmount = [0.0, 0.0, 0.0, 0.0]
+    var outgoingAmount = [0.0, 0.0, 0.0, 0.0]
+    var netAmount = [0.0, 0.0, 0.0, 0.0]
+    var netVectorX = [0.0, 0.0, 0.0, 0.0]
+    var netVectorY = [0.0, 0.0, 0.0, 0.0]
+
+    for p in 0..Len(flux.I) {
+        let i = flux.I[p]
+        let j = flux.J[p]
+        let amount = flux.Amount[p]
+        let vx = amount * flux.Dx[p]
+        let vy = amount * flux.Dy[p]
+
+        outgoingAmount[i] = outgoingAmount[i] + amount
+        incomingAmount[j] = incomingAmount[j] + amount
+
+        netAmount[i] = netAmount[i] + amount
+        netAmount[j] = netAmount[j] - amount
+
+        netVectorX[i] = netVectorX[i] + vx
+        netVectorY[i] = netVectorY[i] + vy
+        netVectorX[j] = netVectorX[j] - vx
+        netVectorY[j] = netVectorY[j] - vy
+    }
+
+    return SiteFluxBalance2D {
+        IncomingAmount: incomingAmount
+        OutgoingAmount: outgoingAmount
+        NetAmount: netAmount
+        NetVectorX: netVectorX
+        NetVectorY: netVectorY
+    }
+}
+
+fn ProbeCouplingBoundary(lowered: LoweredProblem2D, flux: SiteFluxRelation2D) -> CouplingBoundaryReport {
+    let _ = lowered
+    let _ = flux
 
     return CouplingBoundaryReport {
-        CouplingRelationChosen: "PairwiseDifferenceDeltaUij"
-        WhyMinimal: "Each pair computes only Δu_ij = u[j] - u[i], introducing interaction without any solve, assembly, or method-specific shape/stencil logic."
-        PairDefinition: "Pairs are explicit finite index lists (I,J) = {(0,1), (1,3), (0,2), (2,3)} with unit weights; no mesh connectivity is inferred."
+        CouplingRelationChosen: "DirectedScalarTransferAlongPair"
+        FluxLikeDefinition: "Each pair entry (i->j) carries a scalar transfer amount with explicit direction vector (dx, dy); amount is interpreted as directed outgoing transfer from i and incoming transfer to j."
+        PointOnlyWhatItCanExpress: "Point-only coupling over sites can store unknown slots and site values, but cannot by itself encode directed transfer amount, transfer orientation, or incoming-vs-outgoing semantics."
+        FluxCarrierWhatItAdds: "Directed transfer meaning is first-class: who sends, who receives, how much is transferred, and along which direction."
+        BalanceCapabilityUnlocked: "Per-site incoming, outgoing, and net transfer accumulation is computable directly from pair entries without introducing a solver or global assembly."
+        PairDefinition: "Pairs remain an explicit finite list (I,J,Dx,Dy,Amount) = {(0,1,0,1,2.0), (1,3,1,0,1.5), (0,2,1,0,0.5), (2,3,0,1,1.0)}."
         PairDefinitionRequiredTopology: false
-        CapabilityUnlocked: "Site-to-site interaction is now computable as typed per-pair coupling deltas over finite unknown slots."
-        StillImpossible: "No consistent global operator, no physical correctness guarantee, no solve, and no continuum-consistent discretization are available."
         IsTopologyRequiredNow: false
-        NextMissingPiece: "A) better pair-selection policy can still be attempted topology-free; pressure toward B) minimal topology appears when pair choice needs principled neighborhood correctness."
+        NextMissingPiece: "Principled pair/interface selection is the next boundary; minimal topology pressure appears when pair sets must represent neighborhood correctness beyond manual lists."
+        Recommendation: "Use directed flux-like pair carriers as the first interaction primitive for balance-shaped probes, while staying explicit and pre-topology until pair selection quality becomes the bottleneck."
     }
 }

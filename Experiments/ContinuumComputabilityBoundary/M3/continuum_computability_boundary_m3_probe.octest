@@ -1,60 +1,60 @@
 package ContinuumComputabilityBoundary
 
 [Fact]
-fn ContinuumBoundaryM3BuildsExplicitSitePairRelation() -> Void {
+fn ContinuumBoundaryM3BuildsDirectedFluxPairs() -> Void {
     let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
-    let pairs = BuildMinimalSitePairs(lowered.Sites)
+    let flux = BuildDirectedFluxPairs(lowered.Sites)
 
-    Assert.Equal(4, Len(pairs.I), "pair count")
-    Assert.Equal(0, pairs.I[0], "first pair i")
-    Assert.Equal(1, pairs.J[0], "first pair j")
-    Assert.Equal(2, pairs.I[3], "last pair i")
-    Assert.Equal(3, pairs.J[3], "last pair j")
-    Assert.Near(1.0, pairs.Weight[2], 0.0001, "unit weight remains explicit")
+    Assert.Equal(4, Len(flux.I), "directed pair count")
+    Assert.Equal(0, flux.I[0], "first source")
+    Assert.Equal(1, flux.J[0], "first target")
+    Assert.Near(0.0, flux.Dx[0], 0.0001, "first direction x")
+    Assert.Near(1.0, flux.Dy[0], 0.0001, "first direction y")
+    Assert.Near(1.0, flux.Dy[3], 0.0001, "last direction y")
+    Assert.Near(1.5, flux.Amount[1], 0.0001, "second transfer amount")
 }
 
 [Fact]
-fn ContinuumBoundaryM3EvaluatesPairwiseCouplingWithoutSolve() -> Void {
-    let base = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
-    let trial = LowerWithSiteUnknowns(base, [0.0, 0.5, 1.0, 1.5], [0.2, 0.2, -0.1, 0.4])
-    let pairs = BuildMinimalSitePairs(trial.Sites)
-    let coupling = EvaluateSiteCoupling(trial, pairs)
-
-    Assert.Near(0.5, coupling.PairDeltaUx[0], 0.0001, "delta ux over pair (0,1)")
-    Assert.Near(1.0, coupling.PairDeltaUx[1], 0.0001, "delta ux over pair (1,3)")
-    Assert.Near(-0.3, coupling.PairDeltaUy[2], 0.0001, "delta uy over pair (0,2)")
-    Assert.Near(0.5, coupling.PairDeltaUy[3], 0.0001, "delta uy over pair (2,3)")
-    Assert.Equal(0, coupling.PairI[0], "coupling retains source index")
-    Assert.Equal(3, coupling.PairJ[3], "coupling retains destination index")
-}
-
-[Fact]
-fn ContinuumBoundaryM3CouplingEvaluationIsDeterministic() -> Void {
-    let base = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
-    let trial = LowerWithSiteUnknowns(base, [0.3, 0.7, 0.9, 1.1], [0.0, 0.1, 0.2, 0.3])
-    let pairs = BuildMinimalSitePairs(trial.Sites)
-
-    let first = EvaluateSiteCoupling(trial, pairs)
-    let second = EvaluateSiteCoupling(trial, pairs)
-
-    Assert.Near(first.PairDeltaUx[0], second.PairDeltaUx[0], 0.0001, "repeat call same ux delta")
-    Assert.Near(first.PairDeltaUy[1], second.PairDeltaUy[1], 0.0001, "repeat call same uy delta")
-    Assert.Equal(first.PairI[2], second.PairI[2], "repeat call same index map")
-    Assert.Equal(first.PairJ[2], second.PairJ[2], "repeat call same index map")
-}
-
-[Fact]
-fn ContinuumBoundaryM3BoundaryReportAnswersCouplingQuestions() -> Void {
+fn ContinuumBoundaryM3AccumulatesDirectedBalanceAtSites() -> Void {
     let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
-    let pairs = BuildMinimalSitePairs(lowered.Sites)
-    let boundary = ProbeCouplingBoundary(lowered, pairs)
+    let flux = BuildDirectedFluxPairs(lowered.Sites)
+    let balance = AccumulateDirectedFluxBalance(lowered, flux)
 
-    Assert.Equal("PairwiseDifferenceDeltaUij", boundary.CouplingRelationChosen, "chosen relation")
-    Assert.True(Contains(boundary.WhyMinimal, "Δu_ij"), "minimality rationale")
-    Assert.True(Contains(boundary.PairDefinition, "explicit finite index lists"), "pair definition documented")
+    Assert.Near(2.5, balance.OutgoingAmount[0], 0.0001, "site 0 outgoing amount")
+    Assert.Near(2.0, balance.IncomingAmount[1], 0.0001, "site 1 incoming amount")
+    Assert.Near(0.5, balance.NetAmount[2], 0.0001, "site 2 net amount")
+    Assert.Near(-2.5, balance.NetAmount[3], 0.0001, "site 3 net amount")
+    Assert.Near(0.5, balance.NetVectorX[0], 0.0001, "site 0 net vector x")
+    Assert.Near(-2.0, balance.NetVectorY[1], 0.0001, "site 1 net vector y")
+    Assert.Near(-1.5, balance.NetVectorX[3], 0.0001, "site 3 net vector x")
+}
+
+[Fact]
+fn ContinuumBoundaryM3DirectedBalanceIsDeterministic() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let flux = BuildDirectedFluxPairs(lowered.Sites)
+
+    let first = AccumulateDirectedFluxBalance(lowered, flux)
+    let second = AccumulateDirectedFluxBalance(lowered, flux)
+
+    Assert.Near(first.NetAmount[0], second.NetAmount[0], 0.0001, "repeat call same net amount")
+    Assert.Near(first.NetVectorY[2], second.NetVectorY[2], 0.0001, "repeat call same vector")
+    Assert.Near(first.IncomingAmount[3], second.IncomingAmount[3], 0.0001, "repeat call same incoming")
+}
+
+[Fact]
+fn ContinuumBoundaryM3BoundaryReportComparesPointVsFlux() -> Void {
+    let lowered = LowerContinuumProblem2D(TinyCantileverProblem("SolveForField"))
+    let flux = BuildDirectedFluxPairs(lowered.Sites)
+    let boundary = ProbeCouplingBoundary(lowered, flux)
+
+    Assert.Equal("DirectedScalarTransferAlongPair", boundary.CouplingRelationChosen, "chosen relation")
+    Assert.True(Contains(boundary.FluxLikeDefinition, "scalar transfer amount"), "flux meaning is explicit")
+    Assert.True(Contains(boundary.PointOnlyWhatItCanExpress, "cannot by itself encode directed transfer amount"), "point-only limitation is explicit")
+    Assert.True(Contains(boundary.FluxCarrierWhatItAdds, "who sends, who receives"), "flux comparison is explicit")
+    Assert.True(Contains(boundary.BalanceCapabilityUnlocked, "incoming, outgoing, and net transfer"), "balance capability is explicit")
+    Assert.True(Contains(boundary.PairDefinition, "explicit finite list"), "pair policy is explicit")
     Assert.Equal(false, boundary.PairDefinitionRequiredTopology, "pair definition does not need topology")
-    Assert.True(Contains(boundary.CapabilityUnlocked, "Site-to-site interaction"), "new capability is explicit")
-    Assert.True(Contains(boundary.StillImpossible, "No consistent global operator"), "boundary keeps unsolved limits explicit")
-    Assert.Equal(false, boundary.IsTopologyRequiredNow, "topology still deferrable in this pass")
-    Assert.True(Contains(boundary.NextMissingPiece, "A) better pair-selection policy"), "next-piece options are explicit")
+    Assert.Equal(false, boundary.IsTopologyRequiredNow, "topology still not required")
+    Assert.True(Contains(boundary.NextMissingPiece, "pair/interface selection"), "next boundary is explicit")
 }
