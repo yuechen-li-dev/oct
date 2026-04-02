@@ -1,0 +1,53 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM23NormalTangentResponseIsDeterministic() -> Void {
+    let lattice = BuildM23Lattice()
+    let material = BuildTransportedMaterialOrientation(lattice)
+
+    let a = BuildNormalTangentResponseField(material, 1.0, 0.0, 1.8, 0.2, "horizontal")
+    let b = BuildNormalTangentResponseField(material, 1.0, 0.0, 1.8, 0.2, "horizontal")
+
+    Assert.Equal(CompareFieldL1(a.Response, b.Response), 0.0, "normal/tangent constitutive response should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM23IsotropicM22AndM23PathsDiffer() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.A_vs_B_L1 > 0.0, "isotropic and M22 richer responses should differ")
+    Assert.True(report.A_vs_C_L1 > 0.0, "isotropic and M23 normal/tangent responses should differ")
+    Assert.True(report.B_vs_C_L1 > 0.0, "M22 richer and M23 normal/tangent responses should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM23ExplicitAxisSplitShowsStructuralGain() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.AlongAcrossContrastC > report.AlongAcrossContrastB, "M23 normal/tangent split should increase directional contrast over M22 richer rule")
+    Assert.True(report.StructuralGainOverM22, "report should conclude explicit normal/tangent split adds constitutive structure")
+}
+
+[Fact]
+fn ContinuumBoundaryM23TransportedDirectionRemainsCoherentAndStaticLooksCrude() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.SpatialCoherenceTransported >= 0.85, "transported material direction should remain spatially coherent")
+    Assert.True(report.C_vs_D_L1 > 0.0, "transported and static M23 paths should measurably differ")
+    Assert.True(report.BoundaryCompatibilityTransported > report.BoundaryCompatibilityStatic, "transported direction should remain more boundary-compatible than static direction")
+    Assert.True(report.StaticTooCrude, "report should conclude static direction is too crude under explicit axis structure")
+    Assert.True(report.TransportedWorthIt, "report should conclude transported material direction remains useful")
+}
+
+[Fact]
+fn ContinuumBoundaryM23ReportAnswersBoundaryQuestionsWithoutSolverOrTopologyChange() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(Contains(report.M23Rule, "a_tangent") and Contains(report.M23Rule, "a_normal"), "report should state explicit normal/tangent constitutive rule")
+    Assert.True(Contains(report.M22Rule, "a_longitudinal") and Contains(report.M22Rule, "a_transverse"), "report should retain explicit M22 comparison rule")
+    Assert.True(Contains(report.ProbeDirections, "horizontal") and Contains(report.ProbeDirections, "vertical"), "report should state canonical probe directions")
+    Assert.True(report.IsotropicInsufficient, "report should conclude isotropic baseline is insufficient")
+    Assert.True(report.FieldSeparationPreserved, "field separation must remain intact")
+    Assert.True(not report.AuthorityNeededNow, "authority participation should still not be required in M23")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M23 must keep fixed topology and avoid solver machinery")
+}
