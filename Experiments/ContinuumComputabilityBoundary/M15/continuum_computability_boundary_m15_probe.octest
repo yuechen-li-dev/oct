@@ -1,0 +1,98 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM15BuildsDeterministicSdfField() -> Void {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+
+    let sdfA = BuildCircleSdf(boundary, lattice)
+    let sdfB = BuildCircleSdf(boundary, lattice)
+    let center = LatticeIndex(lattice, 2, 2)
+    let corner = LatticeIndex(lattice, 0, 0)
+
+    Assert.Equal(sdfA.Distance[center], sdfB.Distance[center], "SDF should be deterministic for repeated construction")
+    Assert.True(sdfA.Distance[center] < 0.0, "center-adjacent inside cell should be negative with chosen sign convention")
+    Assert.True(sdfA.Distance[corner] > 0.0, "outside corner cell should be positive with chosen sign convention")
+}
+
+[Fact]
+fn ContinuumBoundaryM15MarksDeterministicNarrowBand() -> Void {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+
+    let bandA = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let bandB = MarkSdfBand(lattice, sdf, lattice.Dx)
+
+    Assert.Equal(bandA.BandCount, bandB.BandCount, "SDF band count should be deterministic")
+    Assert.True(bandA.BandCount > 0, "narrow band should include interface-near cells")
+}
+
+[Fact]
+fn ContinuumBoundaryM15BuildsDeterministicSdfNormalsAndTangents() -> Void {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+
+    let normalsA = BuildSdfNormalField(lattice, sdf, band)
+    let normalsB = BuildSdfNormalField(lattice, sdf, band)
+    let tangents = BuildSdfTangentField(normalsA)
+    let probe = LatticeIndex(lattice, 4, 2)
+
+    Assert.Equal(normalsA.Ox[probe], normalsB.Ox[probe], "SDF normal X should be deterministic")
+    Assert.Equal(normalsA.Oy[probe], normalsB.Oy[probe], "SDF normal Y should be deterministic")
+    Assert.True(AbsFloat(normalsA.Ox[probe] * tangents.Ox[probe] + normalsA.Oy[probe] * tangents.Oy[probe]) < 0.001, "SDF tangent should be orthogonal to SDF normal")
+}
+
+[Fact]
+fn ContinuumBoundaryM15CoverageBandAndSdfBandDifferObservably() -> Void {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let sdfBand = MarkSdfBand(lattice, sdf, lattice.Dx)
+
+    let counts = CompareCoverageBandVsSdfBand(selective.BoundaryBand, sdfBand)
+    let overlap = counts[0]
+    let coverageOnly = counts[1]
+    let sdfOnly = counts[2]
+
+    Assert.True(overlap > 0, "coverage boundary band and SDF narrow band should overlap")
+    Assert.True(coverageOnly > 0 or sdfOnly > 0, "coverage boundary band and SDF narrow band should not be identical")
+}
+
+[Fact]
+fn ContinuumBoundaryM15SdfOrientationChangesOneStepConsequence() -> Void {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let coverageOrientation = BuildCircleTangentField(boundary, lattice, selective.BoundaryBand)
+    let coverageEdges = BuildOrientationEdgeField(lattice, selective.Coverage, coverageOrientation)
+
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let sdfBand = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let sdfNormals = BuildSdfNormalField(lattice, sdf, sdfBand)
+    let sdfTangents = BuildSdfTangentField(sdfNormals)
+    let sdfEdges = BuildOrientationEdgeField(lattice, selective.Coverage, sdfTangents)
+
+    let coverageStep = ApplyOrientationWeightedStep(lattice, selective.Coverage, coverageEdges)
+    let sdfStep = ApplySdfOrientationStep(lattice, selective.Coverage, sdfEdges)
+    let diff = CompareFieldL1(coverageStep, sdfStep)
+
+    Assert.True(diff > 0.0, "SDF-derived orientation should produce a measurably different one-step consequence")
+}
+
+[Fact]
+fn ContinuumBoundaryM15ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeSdfBoundary()
+
+    Assert.True(Contains(report.SignConvention, "Negative inside"), "report should state explicit SDF sign convention")
+    Assert.True(Contains(report.BandRule, "abs(signedDistance) <= dx"), "report should state explicit narrow-band rule")
+    Assert.True(Contains(report.BandComparison, "overlap"), "report should compare coverage band and SDF band")
+    Assert.True(Contains(report.SdfNormalRule, "central differences"), "report should state SDF normal derivation rule")
+    Assert.True(Contains(report.DownstreamComparison, "orientation-weighted local update"), "report should state downstream comparison")
+    Assert.Equal(true, report.NoTopologyOrSolverIntroduced, "probe must avoid topology and solver machinery")
+    Assert.True(Contains(report.NextBoundary, "boundary-only") or Contains(report.NextBoundary, "interior"), "report should identify next boundary")
+}
