@@ -1,0 +1,22 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "MainValid"
+        Version: "0.1.0"
+        Description: "M32 iteration horizon probe over M31 fixed-cap step5 loop"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
