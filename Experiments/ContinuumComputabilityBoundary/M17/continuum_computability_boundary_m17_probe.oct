@@ -1,0 +1,756 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record SignedDistanceField2D {
+    Distance: Float[]
+    Count: Int
+    SignConvention: String
+    BuildRule: String
+}
+
+record SdfBandMask2D {
+    InBand: Bool[]
+    Count: Int
+    BandCount: Int
+    BandRule: String
+}
+
+record OrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    OrientationRule: String
+}
+
+record MaterialOrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    MaterialRule: String
+}
+
+record CoupledOrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    CouplingRule: String
+    MaterialRule: String
+}
+
+record EdgeField2D {
+    WeightLeft: Float[]
+    WeightRight: Float[]
+    WeightUp: Float[]
+    WeightDown: Float[]
+    Count: Int
+    BaselineRule: String
+    DirectionalRule: String
+    DirectionalSignal: String
+}
+
+record CouplingBoundaryReport {
+    PolicyA: String
+    PolicyB: String
+    PolicyC: String
+    MaterialFieldsUsed: String
+    DownstreamRule: String
+    HardVsBlendL1: Float
+    HardVsAuthorityL1: Float
+    BlendVsAuthorityL1: Float
+    SeamHard: Float
+    SeamBlend: Float
+    SeamAuthority: Float
+    BoundaryFidelityHard: Float
+    BoundaryFidelityBlend: Float
+    BoundaryFidelityAuthority: Float
+    InteriorCoherenceHard: Float
+    InteriorCoherenceBlend: Float
+    InteriorCoherenceAuthority: Float
+    HardHandoffTooBrittle: Bool
+    SmoothBlendSufficient: Bool
+    AuthorityMoreHonest: Bool
+    CouplingVerdict: String
+    NextBoundary: String
+    NoTopologyOrSolverIntroduced: Bool
+    Deterministic: Bool
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM17CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D { CenterX: 2.5 CenterY: 2.5 Radius: 2.1 }
+}
+
+fn BuildM17Lattice() -> Lattice2D {
+    return Lattice2D { Nx: 6 Ny: 6 OriginX: 0.0 OriginY: 0.0 Dx: 1.0 Dy: 1.0 }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn HasCell(lattice: Lattice2D, i: Int, j: Int) -> Bool {
+    return i >= 0 and i < lattice.Nx and j >= 0 and j < lattice.Ny
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+    return value
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MaxFloat(a: Float, b: Float) -> Float {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn SqrtNewton(value: Float) -> Float {
+    if value <= 0.0 {
+        return 0.0
+    }
+
+    var x = value
+    if x < 1.0 {
+        x = 1.0
+    }
+
+    for _ in 0..8 {
+        x = 0.5 * (x + value / x)
+    }
+
+    return x
+}
+
+fn Normalize2(vx: Float, vy: Float) -> Float[] {
+    let mag = SqrtNewton(vx * vx + vy * vy)
+    if mag <= 0.000000001 {
+        return [0.0, 0.0]
+    }
+    return [vx / mag, vy / mag]
+}
+
+fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
+    let dx = x - boundary.CenterX
+    let dy = y - boundary.CenterY
+    return dx * dx + dy * dy <= boundary.Radius * boundary.Radius
+}
+
+fn SampleCellCoverage2x2(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+    let sampleX = [0.25, 0.75, 0.25, 0.75]
+    let sampleY = [0.25, 0.25, 0.75, 0.75]
+
+    var inside = 0
+    for s in 0..4 {
+        let x = x0 + sampleX[s] * lattice.Dx
+        let y = y0 + sampleY[s] * lattice.Dy
+        if IsInsideCircle(boundary, x, y) {
+            inside = inside + 1
+        }
+    }
+
+    return Float(inside) / 4.0
+}
+
+fn BuildCircleSdf(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SignedDistanceField2D {
+    var distance = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+            let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+            let dx = x - boundary.CenterX
+            let dy = y - boundary.CenterY
+            distance[LatticeIndex(lattice, i, j)] = SqrtNewton(dx * dx + dy * dy) - boundary.Radius
+        }
+    }
+
+    return SignedDistanceField2D {
+        Distance: distance
+        Count: lattice.Nx * lattice.Ny
+        SignConvention: "Negative inside the circle, positive outside, zero on the interface."
+        BuildRule: "Cell-centered signed distance: sqrt((x-cx)^2 + (y-cy)^2) - radius."
+    }
+}
+
+fn MarkSdfBand(_lattice: Lattice2D, sdf: SignedDistanceField2D, bandWidth: Float) -> SdfBandMask2D {
+    var marked = FalseBool36()
+    var count = 0
+
+    for idx in 0..sdf.Count {
+        if AbsFloat(sdf.Distance[idx]) <= bandWidth {
+            marked[idx] = true
+            count = count + 1
+        }
+    }
+
+    return SdfBandMask2D {
+        InBand: marked
+        Count: sdf.Count
+        BandCount: count
+        BandRule: "SDF narrow band uses abs(signedDistance) <= dx at cell centers."
+    }
+}
+
+fn GetSdfOrCenter(lattice: Lattice2D, sdf: SignedDistanceField2D, i: Int, j: Int, center: Float) -> Float {
+    if HasCell(lattice, i, j) {
+        return sdf.Distance[LatticeIndex(lattice, i, j)]
+    }
+    return center
+}
+
+fn BuildSdfNormalField(lattice: Lattice2D, sdf: SignedDistanceField2D, band: SdfBandMask2D) -> OrientationField2D {
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let center = sdf.Distance[idx]
+                let l = GetSdfOrCenter(lattice, sdf, i - 1, j, center)
+                let r = GetSdfOrCenter(lattice, sdf, i + 1, j, center)
+                let d = GetSdfOrCenter(lattice, sdf, i, j - 1, center)
+                let u = GetSdfOrCenter(lattice, sdf, i, j + 1, center)
+                let gradX = (r - l) / (2.0 * lattice.Dx)
+                let gradY = (u - d) / (2.0 * lattice.Dy)
+                let n = Normalize2(gradX, gradY)
+
+                nx[idx] = n[0]
+                ny[idx] = n[1]
+                strength[idx] = 1.0
+            }
+        }
+    }
+
+    return OrientationField2D {
+        Ox: nx
+        Oy: ny
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        OrientationRule: "SDF normal field from local central differences over cell-centered signed distance, normalized per cell in the narrow band."
+    }
+}
+
+fn BuildSdfTangentField(normals: OrientationField2D) -> OrientationField2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..normals.Count {
+        tx[idx] = -normals.Oy[idx]
+        ty[idx] = normals.Ox[idx]
+        strength[idx] = normals.Strength[idx]
+    }
+
+    return OrientationField2D {
+        Ox: tx
+        Oy: ty
+        Strength: strength
+        Count: normals.Count
+        OrientationRule: "SDF tangent field: tangent = (-normalY, normalX) using SDF-gradient normals; strength inherited from SDF band mask."
+    }
+}
+
+fn BuildMaterialOrientationHorizontal(lattice: Lattice2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        ox[idx] = 1.0
+        oy[idx] = 0.0
+        strength[idx] = 1.0
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "Constant horizontal material orientation: Ox=1, Oy=0, strength=1 everywhere."
+    }
+}
+
+fn BuildMaterialOrientationVertical(lattice: Lattice2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        ox[idx] = 0.0
+        oy[idx] = 1.0
+        strength[idx] = 1.0
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "Constant vertical material orientation: Ox=0, Oy=1, strength=1 everywhere."
+    }
+}
+
+fn BuildHardHandoffOrientation(sdf: SignedDistanceField2D, geometry: OrientationField2D, material: MaterialOrientationField2D, bandWidth: Float) -> CoupledOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..sdf.Count {
+        if AbsFloat(sdf.Distance[idx]) <= bandWidth {
+            ox[idx] = geometry.Ox[idx]
+            oy[idx] = geometry.Oy[idx]
+            strength[idx] = geometry.Strength[idx]
+        } else {
+            ox[idx] = material.Ox[idx]
+            oy[idx] = material.Oy[idx]
+            strength[idx] = material.Strength[idx]
+        }
+    }
+
+    return CoupledOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: sdf.Count
+        CouplingRule: "Path A hard handoff: abs(sdf)<=bandWidth -> geometry tangent; else material orientation."
+        MaterialRule: material.MaterialRule
+    }
+}
+
+fn BuildDistanceBlendOrientation(sdf: SignedDistanceField2D, geometry: OrientationField2D, material: MaterialOrientationField2D, blendWidth: Float) -> CoupledOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..sdf.Count {
+        let w = Clamp01(1.0 - AbsFloat(sdf.Distance[idx]) / blendWidth)
+        let bx = w * geometry.Ox[idx] + (1.0 - w) * material.Ox[idx]
+        let by = w * geometry.Oy[idx] + (1.0 - w) * material.Oy[idx]
+        let n = Normalize2(bx, by)
+
+        ox[idx] = n[0]
+        oy[idx] = n[1]
+        strength[idx] = 1.0
+    }
+
+    return CoupledOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: sdf.Count
+        CouplingRule: "Path B distance blend: w=clamp01(1-abs(sdf)/blendWidth), O=normalize(w*O_geom + (1-w)*O_mat)."
+        MaterialRule: material.MaterialRule
+    }
+}
+
+fn BuildAuthorityCoupledOrientation(sdf: SignedDistanceField2D, geometry: OrientationField2D, material: MaterialOrientationField2D, authorityWidth: Float) -> CoupledOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..sdf.Count {
+        let geomAuthority = Clamp01(1.0 - AbsFloat(sdf.Distance[idx]) / authorityWidth)
+        let materialAuthority = material.Strength[idx]
+        let winner = switch {
+            case geomAuthority >= 1.20 * materialAuthority => 1
+            case materialAuthority >= 1.20 * geomAuthority => 2
+            else => 0
+        }
+
+        let total = geomAuthority + materialAuthority
+        let wGeom = switch {
+            case winner == 1 => 1.0
+            case winner == 2 => 0.0
+            else => geomAuthority / total
+        }
+        let bx = wGeom * geometry.Ox[idx] + (1.0 - wGeom) * material.Ox[idx]
+        let by = wGeom * geometry.Oy[idx] + (1.0 - wGeom) * material.Oy[idx]
+        let n = Normalize2(bx, by)
+
+        if winner == 1 {
+            ox[idx] = geometry.Ox[idx]
+            oy[idx] = geometry.Oy[idx]
+            strength[idx] = 1.0
+        }
+        if winner == 2 {
+            ox[idx] = material.Ox[idx]
+            oy[idx] = material.Oy[idx]
+            strength[idx] = 1.0
+        }
+        if winner == 0 {
+            ox[idx] = n[0]
+            oy[idx] = n[1]
+            strength[idx] = 1.0
+        }
+    }
+
+    return CoupledOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: sdf.Count
+        CouplingRule: "Path C authority coupling: geometry authority from proximity, material authority from explicit strength, winner-takes-most outside tie zone, otherwise authority-weighted blend."
+        MaterialRule: material.MaterialRule
+    }
+}
+
+fn BuildCoverageField(boundary: CurvedBoundary2D, lattice: Lattice2D) -> Float[] {
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            coverage[LatticeIndex(lattice, i, j)] = SampleCellCoverage2x2(boundary, lattice, i, j)
+        }
+    }
+    return coverage
+}
+
+fn ComputeBaselineEdgeWeights(lattice: Lattice2D, coverage: Float[]) -> EdgeField2D {
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let c = coverage[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                left[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i - 1, j)])
+            }
+            if HasCell(lattice, i + 1, j) {
+                right[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i + 1, j)])
+            }
+            if HasCell(lattice, i, j + 1) {
+                up[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j + 1)])
+            }
+            if HasCell(lattice, i, j - 1) {
+                down[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j - 1)])
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: lattice.Nx * lattice.Ny
+        BaselineRule: "Baseline edge weight = min(CA, CB) on implicit Cartesian neighbors."
+        DirectionalRule: "No directional refinement."
+        DirectionalSignal: "None."
+    }
+}
+
+fn BuildOrientationEdgeField(lattice: Lattice2D, coverage: Float[], orientation: CoupledOrientationField2D) -> EdgeField2D {
+    let baseline = ComputeBaselineEdgeWeights(lattice, coverage)
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+    let beta = 0.60
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let txA = orientation.Ox[idx]
+            let tyA = orientation.Oy[idx]
+            let sA = orientation.Strength[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                let nidx = LatticeIndex(lattice, i - 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                left[idx] = Clamp01(baseline.WeightLeft[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i + 1, j) {
+                let nidx = LatticeIndex(lattice, i + 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                right[idx] = Clamp01(baseline.WeightRight[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j + 1) {
+                let nidx = LatticeIndex(lattice, i, j + 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                up[idx] = Clamp01(baseline.WeightUp[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j - 1) {
+                let nidx = LatticeIndex(lattice, i, j - 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                down[idx] = Clamp01(baseline.WeightDown[idx] * (1.0 + beta * s * align))
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: baseline.Count
+        BaselineRule: baseline.BaselineRule
+        DirectionalRule: "Orientation anisotropy multiplies baseline by (1 + beta * strength * axis-alignment), with beta=0.60."
+        DirectionalSignal: orientation.CouplingRule
+    }
+}
+
+fn ApplyCoupledOrientationStep(lattice: Lattice2D, field: Float[], orientation: CoupledOrientationField2D) -> Float[] {
+    let edges = BuildOrientationEdgeField(lattice, field, orientation)
+    var next = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            var accum = 0.0
+            var wsum = 0.0
+
+            if HasCell(lattice, i - 1, j) {
+                let w = edges.WeightLeft[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i - 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i + 1, j) {
+                let w = edges.WeightRight[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i + 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j + 1) {
+                let w = edges.WeightUp[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j + 1)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j - 1) {
+                let w = edges.WeightDown[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j - 1)]
+                wsum = wsum + w
+            }
+
+            if wsum > 0.0 {
+                next[idx] = accum / wsum
+            } else {
+                next[idx] = field[idx]
+            }
+        }
+    }
+
+    return next
+}
+
+fn CompareFieldL1(a: Float[], b: Float[]) -> Float {
+    var diff = 0.0
+    for idx in 0..Len(a) {
+        diff = diff + AbsFloat(a[idx] - b[idx])
+    }
+    return diff
+}
+
+fn ComputeBoundaryFidelity(lattice: Lattice2D, boundary: CurvedBoundary2D, band: SdfBandMask2D, coupled: CoupledOrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+                let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+                let n = Normalize2(x - boundary.CenterX, y - boundary.CenterY)
+                let tx = -n[1]
+                let ty = n[0]
+                let dotTan = AbsFloat(coupled.Ox[idx] * tx + coupled.Oy[idx] * ty)
+                sum = sum + dotTan
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn ComputeInteriorCoherence(lattice: Lattice2D, sdf: SignedDistanceField2D, coupled: CoupledOrientationField2D, material: MaterialOrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for idx in 0..sdf.Count {
+        if sdf.Distance[idx] < -1.25 * lattice.Dx {
+            let dotMat = AbsFloat(coupled.Ox[idx] * material.Ox[idx] + coupled.Oy[idx] * material.Oy[idx])
+            sum = sum + dotMat
+            count = count + 1
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn ComputeSeamMetric(lattice: Lattice2D, sdf: SignedDistanceField2D, coupled: CoupledOrientationField2D, bandWidth: Float) -> Float {
+    var seam = 0.0
+    var count = 0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if AbsFloat(AbsFloat(sdf.Distance[idx]) - bandWidth) <= 0.5 * lattice.Dx {
+                if HasCell(lattice, i + 1, j) {
+                    let nidx = LatticeIndex(lattice, i + 1, j)
+                    let dot = AbsFloat(coupled.Ox[idx] * coupled.Ox[nidx] + coupled.Oy[idx] * coupled.Oy[nidx])
+                    seam = seam + (1.0 - dot)
+                    count = count + 1
+                }
+                if HasCell(lattice, i, j + 1) {
+                    let nidx = LatticeIndex(lattice, i, j + 1)
+                    let dot = AbsFloat(coupled.Ox[idx] * coupled.Ox[nidx] + coupled.Oy[idx] * coupled.Oy[nidx])
+                    seam = seam + (1.0 - dot)
+                    count = count + 1
+                }
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return seam / Float(count)
+}
+
+fn CompareCouplingPolicies(lattice: Lattice2D, boundary: CurvedBoundary2D, sdf: SignedDistanceField2D, band: SdfBandMask2D, material: MaterialOrientationField2D, hard: CoupledOrientationField2D, blend: CoupledOrientationField2D, authority: CoupledOrientationField2D, bandWidth: Float) -> CouplingBoundaryReport {
+    let coverage = BuildCoverageField(boundary, lattice)
+
+    let stepHard = ApplyCoupledOrientationStep(lattice, coverage, hard)
+    let stepBlend = ApplyCoupledOrientationStep(lattice, coverage, blend)
+    let stepAuthority = ApplyCoupledOrientationStep(lattice, coverage, authority)
+
+    let l1AB = CompareFieldL1(stepHard, stepBlend)
+    let l1AC = CompareFieldL1(stepHard, stepAuthority)
+    let l1BC = CompareFieldL1(stepBlend, stepAuthority)
+
+    let seamA = ComputeSeamMetric(lattice, sdf, hard, bandWidth)
+    let seamB = ComputeSeamMetric(lattice, sdf, blend, bandWidth)
+    let seamC = ComputeSeamMetric(lattice, sdf, authority, bandWidth)
+
+    let boundaryA = ComputeBoundaryFidelity(lattice, boundary, band, hard)
+    let boundaryB = ComputeBoundaryFidelity(lattice, boundary, band, blend)
+    let boundaryC = ComputeBoundaryFidelity(lattice, boundary, band, authority)
+
+    let interiorA = ComputeInteriorCoherence(lattice, sdf, hard, material)
+    let interiorB = ComputeInteriorCoherence(lattice, sdf, blend, material)
+    let interiorC = ComputeInteriorCoherence(lattice, sdf, authority, material)
+
+    let hardBrittle = seamA > seamB and seamA > seamC
+    let blendEnough = boundaryB >= boundaryC and interiorB >= interiorC and seamB <= seamA
+    let authorityHonest = boundaryC >= boundaryB and interiorC >= interiorA and l1BC > 0.0
+
+    return CouplingBoundaryReport {
+        PolicyA: hard.CouplingRule
+        PolicyB: blend.CouplingRule
+        PolicyC: authority.CouplingRule
+        MaterialFieldsUsed: "Primary: constant horizontal (Ox=1, Oy=0). Secondary sensitivity check: constant vertical (Ox=0, Oy=1)."
+        DownstreamRule: "One deterministic step only: orientation-driven edge weighting then local diffusion-like update on the same fixed 6x6 Cartesian lattice."
+        HardVsBlendL1: l1AB
+        HardVsAuthorityL1: l1AC
+        BlendVsAuthorityL1: l1BC
+        SeamHard: seamA
+        SeamBlend: seamB
+        SeamAuthority: seamC
+        BoundaryFidelityHard: boundaryA
+        BoundaryFidelityBlend: boundaryB
+        BoundaryFidelityAuthority: boundaryC
+        InteriorCoherenceHard: interiorA
+        InteriorCoherenceBlend: interiorB
+        InteriorCoherenceAuthority: interiorC
+        HardHandoffTooBrittle: hardBrittle
+        SmoothBlendSufficient: blendEnough
+        AuthorityMoreHonest: authorityHonest
+        CouplingVerdict: "M17 verdict: coupling behaves more like local ownership/authority than pure interpolation; distance blending smooths seams but cannot by itself express carrier authority."
+        NextBoundary: "Next boundary after M17: keep fixed Cartesian topology and pressure material-interior transport/heterogeneous confidence fields before constitutive anisotropy or topology change."
+        NoTopologyOrSolverIntroduced: true
+        Deterministic: true
+    }
+}
+
+fn ProbeCarrierCouplingBoundary() -> CouplingBoundaryReport {
+    let lattice = BuildM17Lattice()
+    let boundary = BuildM17CircleBoundary()
+
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let bandWidth = lattice.Dx
+    let blendWidth = 2.0 * lattice.Dx
+    let authorityWidth = 1.5 * lattice.Dx
+    let band = MarkSdfBand(lattice, sdf, bandWidth)
+    let geometry = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+
+    let material = BuildMaterialOrientationHorizontal(lattice)
+    let hard = BuildHardHandoffOrientation(sdf, geometry, material, bandWidth)
+    let blend = BuildDistanceBlendOrientation(sdf, geometry, material, blendWidth)
+    let authority = BuildAuthorityCoupledOrientation(sdf, geometry, material, authorityWidth)
+
+    return CompareCouplingPolicies(lattice, boundary, sdf, band, material, hard, blend, authority, bandWidth)
+}

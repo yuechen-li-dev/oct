@@ -1,0 +1,76 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM17BuildsThreeCouplingPoliciesDeterministically() -> Void {
+    let lattice = BuildM17Lattice()
+    let boundary = BuildM17CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let geometry = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+    let material = BuildMaterialOrientationHorizontal(lattice)
+
+    let hardA = BuildHardHandoffOrientation(sdf, geometry, material, lattice.Dx)
+    let hardB = BuildHardHandoffOrientation(sdf, geometry, material, lattice.Dx)
+    Assert.Equal(CompareFieldL1(hardA.Ox, hardB.Ox), 0.0, "hard handoff should be deterministic")
+
+    let blendA = BuildDistanceBlendOrientation(sdf, geometry, material, 2.0 * lattice.Dx)
+    let blendB = BuildDistanceBlendOrientation(sdf, geometry, material, 2.0 * lattice.Dx)
+    Assert.Equal(CompareFieldL1(blendA.Oy, blendB.Oy), 0.0, "distance blend should be deterministic")
+
+    let authA = BuildAuthorityCoupledOrientation(sdf, geometry, material, 1.5 * lattice.Dx)
+    let authB = BuildAuthorityCoupledOrientation(sdf, geometry, material, 1.5 * lattice.Dx)
+    Assert.Equal(CompareFieldL1(authA.Ox, authB.Ox), 0.0, "authority coupling should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM17DownstreamDifferencesAreMeasurableAcrossPolicies() -> Void {
+    let report = ProbeCarrierCouplingBoundary()
+
+    Assert.True(report.HardVsBlendL1 > 0.0, "hard handoff and distance blend downstream results should differ")
+    Assert.True(report.HardVsAuthorityL1 > 0.0, "hard handoff and authority downstream results should differ")
+    Assert.True(report.BlendVsAuthorityL1 > 0.0, "distance blend and authority downstream results should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM17SeamBehaviorIsObservable() -> Void {
+    let report = ProbeCarrierCouplingBoundary()
+
+    Assert.True(report.SeamHard > 0.0, "hard handoff should exhibit non-zero seam discontinuity")
+    Assert.True(report.SeamHard != report.SeamBlend or report.SeamHard != report.SeamAuthority, "seam metric should differ across coupling policies")
+}
+
+[Fact]
+fn ContinuumBoundaryM17BoundaryAndInteriorTradeoffIsObservable() -> Void {
+    let report = ProbeCarrierCouplingBoundary()
+
+    Assert.True(report.BoundaryFidelityHard > 0.0 and report.InteriorCoherenceHard > 0.0, "hard path should produce measurable boundary and interior metrics")
+    Assert.True(report.BoundaryFidelityBlend > 0.0 and report.InteriorCoherenceBlend > 0.0, "blend path should produce measurable boundary and interior metrics")
+    Assert.True(report.BoundaryFidelityAuthority > 0.0 and report.InteriorCoherenceAuthority > 0.0, "authority path should produce measurable boundary and interior metrics")
+    Assert.True(report.BoundaryFidelityHard != report.BoundaryFidelityBlend or report.InteriorCoherenceHard != report.InteriorCoherenceBlend, "tradeoff should be observable across coupling policies")
+}
+
+[Fact]
+fn ContinuumBoundaryM17MaterialFieldSensitivityIsObservable() -> Void {
+    let lattice = BuildM17Lattice()
+    let boundary = BuildM17CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let geometry = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+
+    let horizontal = BuildAuthorityCoupledOrientation(sdf, geometry, BuildMaterialOrientationHorizontal(lattice), 1.5 * lattice.Dx)
+    let vertical = BuildAuthorityCoupledOrientation(sdf, geometry, BuildMaterialOrientationVertical(lattice), 1.5 * lattice.Dx)
+
+    Assert.True(CompareFieldL1(horizontal.Ox, vertical.Ox) > 0.0 or CompareFieldL1(horizontal.Oy, vertical.Oy) > 0.0, "changing explicit material orientation should change coupled field")
+}
+
+[Fact]
+fn ContinuumBoundaryM17ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeCarrierCouplingBoundary()
+
+    Assert.True(Contains(report.PolicyA, "hard handoff"), "report should define hard handoff policy")
+    Assert.True(Contains(report.PolicyB, "distance blend"), "report should define distance blend policy")
+    Assert.True(Contains(report.PolicyC, "authority"), "report should define authority policy")
+    Assert.True(Contains(report.MaterialFieldsUsed, "horizontal") and Contains(report.MaterialFieldsUsed, "vertical"), "report should list material field(s) used")
+    Assert.True(Contains(report.CouplingVerdict, "ownership/authority"), "report should state interpolation vs authority verdict")
+    Assert.Equal(true, report.NoTopologyOrSolverIntroduced, "M17 must not introduce topology or solver machinery")
+}
