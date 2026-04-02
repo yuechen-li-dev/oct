@@ -1,0 +1,49 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM21TransportedConstitutiveResponseIsDeterministic() -> Void {
+    let lattice = BuildM21Lattice()
+    let material = BuildTransportedMaterialOrientation(lattice)
+
+    let a = BuildTransportedDirectionalResponseField(material, 1.0, 0.0, 1.0, 0.6, "horizontal")
+    let b = BuildTransportedDirectionalResponseField(material, 1.0, 0.0, 1.0, 0.6, "horizontal")
+
+    Assert.Equal(CompareFieldL1(a.Response, b.Response), 0.0, "transported constitutive response should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM21IsotropicAndAnisotropicResponsesDiffer() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.A_vs_B_L1 > 0.0, "isotropic and static-direction responses should differ")
+    Assert.True(report.A_vs_C_L1 > 0.0, "isotropic and transported-direction responses should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM21StaticAndTransportedResponsesDiffer() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.B_vs_C_L1 > 0.0, "static and transported directional constitutive responses should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM21TransportedPathImprovesCoherenceAndBoundaryCompatibility() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.SpatialCoherenceC >= 0.85, "transported constitutive path should remain spatially coherent in the interior")
+    Assert.True(report.BoundaryCompatibilityC > report.BoundaryCompatibilityB, "transported material direction should improve boundary compatibility")
+}
+
+[Fact]
+fn ContinuumBoundaryM21ReportAnswersRequiredQuestionsWithoutSolverOrTopologyChange() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(Contains(report.ConstitutiveRule, "abs(dot(m, p))"), "report should state constitutive anisotropy rule")
+    Assert.True(Contains(report.ProbeDirections, "horizontal") and Contains(report.ProbeDirections, "vertical"), "report should state probe directions")
+    Assert.True(report.IsotropicInsufficient, "report should conclude isotropic baseline is insufficient")
+    Assert.True(report.StaticTooCrude, "report should conclude static direction is too crude")
+    Assert.True(report.TransportedWorthIt, "report should conclude transported direction is worth it")
+    Assert.True(report.FieldSeparationPreserved, "field separation must remain intact")
+    Assert.True(not report.AuthorityNeededNow, "authority participation should be optional/not yet required for M21")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M21 must keep fixed topology and avoid solver machinery")
+}
