@@ -783,3 +783,79 @@ Run one additional deterministic probe with one harder three-claimant junction c
 - flat interface + candidate records,
 - one-shot explicit ranking,
 - no graph/mesh/AMR/solver machinery.
+
+## M10
+
+### 1) What multi-claimant junction cases were tested?
+M10 stays axis-aligned and local, and tests two explicit cases on fixed 2x2 patch ownership bookkeeping:
+
+- **Case A (3 claimants):** corner-like competition at coarse `(1,1)` with claimants `{patch 0, patch 1, coarse fallback}`.
+- **Case B (4 claimants, tie-heavy):** T-junction-like competition at coarse `(2,1)` with claimants `{patch 0, patch 1, patch 2, coarse fallback}`.
+
+No mesh/graph/AMR/solver machinery was introduced.
+
+### 2) How many viable claimants existed in each case?
+From deterministic candidate generation (`BuildJunctionCandidates(...)`):
+
+- Case A: `3` candidates
+- Case B: `4` candidates
+
+Candidate shape remained the same flat table used in M9-style ownership probes:
+
+- `OwnerKind`
+- `PatchIndex`
+- `RefinementLevel`
+- `ExtractionOrder`
+- `Direction`
+- `ContextKind`
+- `Directness`
+- `SourceInterface`
+
+### 3) Did plain scoring and standalone `when utility` choose the same winners?
+Yes.
+
+M10 runs the **same candidate sets** through two deterministic paths:
+
+1. **Plain deterministic scoring path**
+   - primary score: `1000*level + 100*directness + 10*owner + direction bonus`
+   - explicit tie fallback helper
+
+2. **Standalone `when utility` path**
+   - same primary score expression per candidate branch
+   - same explicit post-selection tie fallback helper
+
+Both paths selected the same winners in both tested cases.
+
+### 4) Was standalone `when utility` actually cleaner here?
+For these 3+ claimant cases: **yes, modestly**.
+
+- The scoring expression stays branch-local and readable in one place.
+- It reduces pressure toward long nested `if` precedence ladders.
+- It remains one-shot, local, stateless, and deterministic.
+
+But this is not “free”: for array-backed candidate sets, candidate-count-specific branch listing is still explicit work.
+
+### 5) Did tie behavior remain easy to reason about?
+Yes, because tie behavior is still explicit and shared across both implementations:
+
+1. primary score selects top band
+2. exact-score ties break by lower `ExtractionOrder`
+3. then lower `PatchIndex`
+4. then patch owner over coarse fallback
+
+M10 does **not** hide tie policy inside utility syntax; fallback is stated directly.
+
+### 6) What new complexity appeared?
+Two bounded complexities are now visible:
+
+- utility branch enumeration remains manual for fixed candidate counts,
+- deterministic tie fallback remains necessary and should stay explicit.
+
+These are acceptable at current scope and still narrower than introducing generalized topology machinery.
+
+### 7) Blunt verdict and next boundary
+Bluntly: standalone `when utility` now earns its place for **local 3+ claimant one-shot ranked selection**.
+
+After this evidence, the next boundary is no longer “more of the same axis-aligned junction bookkeeping”; it is:
+
+- **curved / non-axis-aligned ownership** while preserving explicit local determinism and avoiding mesh/graph/solver broadening.

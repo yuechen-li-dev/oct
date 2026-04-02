@@ -1,0 +1,81 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM10BuildsDeterministicThreeAndFourClaimantSets() -> Void {
+    let refined = BuildM10RefinedFixture()
+    let caseThree = BuildM10CaseThreeClaimant()
+    let caseFour = BuildM10CaseFourClaimantTieHeavy()
+
+    let threeA = BuildJunctionCandidates(refined, caseThree.Interfaces, caseThree.Context)
+    let threeB = BuildJunctionCandidates(refined, caseThree.Interfaces, caseThree.Context)
+    let fourA = BuildJunctionCandidates(refined, caseFour.Interfaces, caseFour.Context)
+    let fourB = BuildJunctionCandidates(refined, caseFour.Interfaces, caseFour.Context)
+
+    Assert.Equal(3, threeA.CandidateCount, "three-claimant case should remain explicit")
+    Assert.Equal(4, fourA.CandidateCount, "tie-heavy case should expose four viable claimants")
+    Assert.Equal(threeA.CandidateCount, threeB.CandidateCount, "three-claimant generation deterministic")
+    Assert.Equal(fourA.CandidateCount, fourB.CandidateCount, "four-claimant generation deterministic")
+    Assert.Equal(threeA.PatchIndex[0], threeB.PatchIndex[0], "three-claimant ordering deterministic")
+    Assert.Equal(fourA.PatchIndex[0], fourB.PatchIndex[0], "four-claimant ordering deterministic")
+    Assert.True(Contains(threeA.BuildRule, "Flat interface sweep"), "candidate construction rule remains explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM10PlainAndUtilityPathsMatchOnThreeClaimants() -> Void {
+    let refined = BuildM10RefinedFixture()
+    let testCase = BuildM10CaseThreeClaimant()
+    let candidates = BuildJunctionCandidates(refined, testCase.Interfaces, testCase.Context)
+
+    let plain = SelectJunctionOwnerByPlainScoring(candidates, testCase.Context)
+    let utility = SelectJunctionOwnerByWhenUtility(candidates, testCase.Context)
+
+    Assert.Equal(plain.WinnerPatchIndex, utility.WinnerPatchIndex, "plain and utility winners should match for three-claimant case")
+    Assert.Equal(plain.WinnerOwnerKind, utility.WinnerOwnerKind, "plain and utility owner kind should match")
+    Assert.True(plain.WinnerPatchIndex >= 0, "three-claimant winner should be a patch in this fixture")
+}
+
+[Fact]
+fn ContinuumBoundaryM10PlainAndUtilityPathsMatchOnTieHeavyFourClaimants() -> Void {
+    let refined = BuildM10RefinedFixture()
+    let testCase = BuildM10CaseFourClaimantTieHeavy()
+    let candidates = BuildJunctionCandidates(refined, testCase.Interfaces, testCase.Context)
+
+    let plain = SelectJunctionOwnerByPlainScoring(candidates, testCase.Context)
+    let utility = SelectJunctionOwnerByWhenUtility(candidates, testCase.Context)
+
+    Assert.Equal(plain.WinnerPatchIndex, utility.WinnerPatchIndex, "plain and utility winners should match for tie-heavy four-claimant case")
+    Assert.Equal(plain.WinnerCandidateIndex, utility.WinnerCandidateIndex, "winner index should stay aligned across implementations")
+    Assert.Equal(0, plain.WinnerPatchIndex, "deterministic fallback should pick earliest extraction-order claimant on exact tie")
+}
+
+[Fact]
+fn ContinuumBoundaryM10TieFallbackIsStableAcrossRepeatedRuns() -> Void {
+    let refined = BuildM10RefinedFixture()
+    let testCase = BuildM10CaseFourClaimantTieHeavy()
+    let candidates = BuildJunctionCandidates(refined, testCase.Interfaces, testCase.Context)
+
+    let firstPlain = SelectJunctionOwnerByPlainScoring(candidates, testCase.Context)
+    let firstUtility = SelectJunctionOwnerByWhenUtility(candidates, testCase.Context)
+
+    for _ in 0..5 {
+        let againPlain = SelectJunctionOwnerByPlainScoring(candidates, testCase.Context)
+        let againUtility = SelectJunctionOwnerByWhenUtility(candidates, testCase.Context)
+
+        Assert.Equal(firstPlain.WinnerCandidateIndex, againPlain.WinnerCandidateIndex, "plain tie fallback remains stable")
+        Assert.Equal(firstUtility.WinnerCandidateIndex, againUtility.WinnerCandidateIndex, "utility tie fallback remains stable")
+        Assert.Equal(againPlain.WinnerCandidateIndex, againUtility.WinnerCandidateIndex, "both implementations stay aligned on repeated tie-heavy runs")
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM10ReportAnswersBoundaryQuestions() -> Void {
+    let report = ProbeJunctionBoundaryM10()
+
+    Assert.Equal(true, report.Deterministic, "M10 remains deterministic")
+    Assert.Equal(true, report.AvoidsTopologyMachinery, "M10 avoids graph/mesh/AMR/solver machinery")
+    Assert.Equal(true, report.WinnersMatchedAcrossImplementations, "both implementations should match in the tested cases")
+    Assert.Equal(true, report.UtilityCleanerThanPlainScoring, "M10 should state whether when utility became justified for multi-claimant cases")
+    Assert.True(Contains(report.CandidateCounts, "3 candidates"), "report should include per-case candidate counts")
+    Assert.True(Contains(report.TieBreakPolicy, "extraction order"), "report should keep deterministic tie-break behavior explicit")
+    Assert.True(Contains(report.NextBoundary, "Curved"), "report should surface the next boundary bluntly")
+}
