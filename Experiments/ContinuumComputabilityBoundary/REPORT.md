@@ -12,6 +12,7 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 - M3: minimal site-to-site coupling probe (explicit pairs, no mesh/no solve)
 - M4: deterministic Cartesian lattice coupling probe
 - M5: localized deterministic refinement patch probe (single-level coarse–fine split)
+- M6: deterministic graded refinement selection probe (importance-driven, one-step balancing)
 
 ## M0
 
@@ -494,3 +495,73 @@ The single-level fixed-rule patch begins to strain when requirements include:
 - richer interface transfer rules beyond equal deterministic splitting.
 
 At that point, additional interface bookkeeping may be required; this milestone intentionally stops before any general mesh/topology system.
+
+
+## M6
+
+### What importance field or demand mechanism was introduced?
+M6 introduces `RefinementDemand2D`, an explicit per-cell demand object over the same deterministic 5x3 Cartesian lattice:
+
+- `Importance`: float priority per active cell
+- `TargetLevel`: integer requested refinement level per active cell
+- deterministic policy: Manhattan distance to a designated hotspot cell
+  - distance 0 -> level 2
+  - distance 1 -> level 1
+  - otherwise -> level 0
+
+This is inspectable, deterministic, and rule-declared; no hidden heuristic scores are used.
+
+### How is refinement selected from demand?
+M6 adds `SelectRefinementLevels(...)` and `BalanceRefinementLevels(...)` to produce `RefinementLevelMap2D` directly from demand:
+
+1. copy `TargetLevel` to active cells (explicit selection rule),
+2. enforce grading via explicit neighbor balancing,
+3. derive a concrete patch anchor for M5-compatible execution by deterministic max-level scan order.
+
+This replaces hand-authored `ParentI/ParentJ` patch placement with rule-based selection from the demand field.
+
+### What balancing/grading rule is enforced?
+A strict one-step grading rule is enforced:
+
+- 4-neighbor active cells may differ by at most one refinement level,
+- deterministic sweep pass lowers violating cells,
+- no recursive trees, no adaptive rebalancing engine, no quadtree object.
+
+This provides the game-LOD-style graded transition behavior without leaving Cartesian indexing.
+
+### M5 vs M6: did arbitrariness actually drop?
+Yes, for the tested scope.
+
+- **M5**: patch placement existed but was hand-authored (`ParentI`, `ParentJ`).
+- **M6**: placement is selected from an explicit demand map + explicit grading rule.
+
+So the source of placement is now declarative and inspectable rather than manual choice.
+
+### Determinism and Cartesian structure status
+Preserved.
+
+- base lattice remains deterministic Cartesian (`Nx=5`, `Ny=3`, fixed `Dx`,`Dy`),
+- refinement remains binary local 2x2 patch structure,
+- selection and grading are deterministic from `(lattice, hotspot, rules)`.
+
+No mesh/tessellation structures are introduced.
+
+### Flux/balance compatibility status
+Preserved for this pass.
+
+After automatic selection, the resulting refined carrier still executes the M5-style coarse-fine conservative split and balance accumulation checks.
+
+### New boundary exposed by M6
+The next pressure point is **structured multi-patch extraction**:
+
+- a level map can request multiple separated high-demand regions,
+- this M6 pass still extracts only one concrete patch for downstream M5-compatible execution,
+- deterministic multi-patch extraction/ordering and non-overlap policy are now the next smallest justified extension.
+
+### Recommendation for next pass
+Run M7 as a narrow deterministic multi-patch probe:
+
+- consume `RefinementLevelMap2D`,
+- extract multiple local 2x2 Cartesian patches with explicit stable ordering and non-overlap rules,
+- preserve one-step grading and conservative interface routing,
+- still avoid AMR/quadtree frameworks and unstructured meshing.
