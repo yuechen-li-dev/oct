@@ -1255,3 +1255,43 @@ The sharper next boundary is no longer "whether transport exists," but:
   - material-side interior orientation.
 
 Blunt verdict: M16 supports treating geometry orientation and material direction as fundamentally separate carriers that need explicit coupling, still on fixed Cartesian topology and without introducing solver/PDE machinery.
+
+## M17
+
+M17 compared hard handoff, smooth distance blend, and authority/confidence coupling on the fixed Cartesian circle fixture. It found that smooth blending helps seam brittleness, but carrier coupling is more fundamentally an ownership/authority question than interpolation alone.
+
+## M18
+
+### 1) What authority strategies were tested?
+- **Path A:** fixed authority baseline (`abs(sdf)<=dx` geometry, else material).
+- **Path B:** geometry-proximity authority (`geometry confidence` from `abs(sdf)`, fixed global material confidence).
+- **Path C:** explicit heterogeneous confidence field (geometry confidence + spatially varying material confidence map).
+
+### 2) What material confidence field was used?
+A deterministic split map on the same lattice:
+- left half: high material confidence (`0.90`)
+- right half: low material confidence (`0.25`).
+
+### 3) Was fixed authority sufficient?
+No. Fixed authority remains brittle because one global ownership rule cannot express region-varying trust.
+
+### 4) Did geometry-proximity authority help?
+Yes. Geometry-proximity authority reduces brittleness versus fixed handoff, but it still assumes globally uniform material trust.
+
+### 5) Did explicit heterogeneous confidence behave better?
+Yes for this probe. It produced measurably different downstream behavior and gave more direct control over boundary/interior tradeoffs.
+
+### 6) Which path preserved boundary fidelity best?
+Geometry-led paths remain strongest near the boundary; Path C maintained boundary fidelity while allowing explicit local material authority shifts.
+
+### 7) Which path preserved interior material coherence best?
+Path C was strongest in high-material-confidence interior regions in this test setup.
+
+### 8) Does coupling now require a third field?
+For this boundary probe: yes. The coupling is better represented as:
+- geometry carrier field,
+- material carrier field,
+- explicit authority/confidence field.
+
+### 9) What is the next boundary after M18?
+Keep fixed topology and probe richer interior material-orientation transport and richer confidence maps; defer constitutive anisotropy and topology change to later passes.

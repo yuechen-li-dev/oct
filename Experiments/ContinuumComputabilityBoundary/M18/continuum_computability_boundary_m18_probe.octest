@@ -1,0 +1,68 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM18BuildsAllThreeAuthorityStrategiesDeterministically() -> Void {
+    let lattice = BuildM18Lattice()
+    let boundary = BuildM18CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let geometry = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+    let material = BuildMaterialOrientationHorizontal(lattice)
+
+    let fixedA = BuildFixedAuthorityCoupling(sdf, geometry, material, lattice.Dx)
+    let fixedB = BuildFixedAuthorityCoupling(sdf, geometry, material, lattice.Dx)
+    Assert.Equal(CompareFieldL1(fixedA.Ox, fixedB.Ox), 0.0, "fixed authority baseline should be deterministic")
+
+    let proxA = BuildGeometryProximityAuthority(sdf, geometry, material, 1.5 * lattice.Dx)
+    let proxB = BuildGeometryProximityAuthority(sdf, geometry, material, 1.5 * lattice.Dx)
+    Assert.Equal(CompareFieldL1(proxA.Oy, proxB.Oy), 0.0, "geometry-proximity authority should be deterministic")
+
+    let confidence = BuildHeterogeneousConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+    let heteroA = BuildConfidenceCoupledOrientation(confidence, geometry, material)
+    let heteroB = BuildConfidenceCoupledOrientation(confidence, geometry, material)
+    Assert.Equal(CompareFieldL1(heteroA.Ox, heteroB.Ox), 0.0, "heterogeneous confidence coupling should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM18BuildsDeterministicHeterogeneousMaterialConfidenceField() -> Void {
+    let lattice = BuildM18Lattice()
+    let boundary = BuildM18CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+
+    let confidence = BuildHeterogeneousConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+    let left = LatticeIndex(lattice, 1, 2)
+    let right = LatticeIndex(lattice, 4, 2)
+
+    Assert.True(confidence.MaterialConfidence[left] > confidence.MaterialConfidence[right], "left half should have higher material confidence than right half")
+    Assert.True(confidence.GeometryConfidence[left] >= 0.0 and confidence.GeometryConfidence[left] <= 1.0, "geometry confidence should be clamped")
+    Assert.True(confidence.GeometryConfidence[right] >= 0.0 and confidence.GeometryConfidence[right] <= 1.0, "geometry confidence should be clamped")
+}
+
+[Fact]
+fn ContinuumBoundaryM18DownstreamDifferencesAreMeasurableAcrossAuthorityStrategies() -> Void {
+    let report = ProbeAuthorityFieldBoundary()
+
+    Assert.True(report.FixedVsGeomProxL1 > 0.0, "fixed authority and geometry-proximity downstream results should differ")
+    Assert.True(report.FixedVsHeteroL1 > 0.0, "fixed authority and heterogeneous confidence downstream results should differ")
+    Assert.True(report.GeomProxVsHeteroL1 > 0.0, "geometry-proximity and heterogeneous confidence downstream results should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM18SeamAndInteriorBehaviorAreObservablyDifferent() -> Void {
+    let report = ProbeAuthorityFieldBoundary()
+
+    Assert.True(report.SeamFixed > 0.0 and report.SeamGeomProx > 0.0 and report.SeamHetero > 0.0, "all seam metrics should be measurable")
+    Assert.True(report.SeamFixed != report.SeamGeomProx or report.SeamFixed != report.SeamHetero, "seam behavior should differ across strategies")
+    Assert.True(report.InteriorFixed != report.InteriorGeomProx or report.InteriorFixed != report.InteriorHetero, "interior coherence should differ across strategies")
+}
+
+[Fact]
+fn ContinuumBoundaryM18ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeAuthorityFieldBoundary()
+
+    Assert.True(Contains(report.StrategyA, "fixed authority"), "report should define fixed authority baseline")
+    Assert.True(Contains(report.StrategyB, "geometry-proximity"), "report should define geometry-proximity authority")
+    Assert.True(Contains(report.StrategyC, "heterogeneous confidence"), "report should define heterogeneous confidence strategy")
+    Assert.True(Contains(report.MaterialConfidenceMap, "left half high") and Contains(report.MaterialConfidenceMap, "right half low"), "report should document deterministic heterogeneous material confidence map")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M18 must keep topology fixed and avoid solver machinery")
+}
