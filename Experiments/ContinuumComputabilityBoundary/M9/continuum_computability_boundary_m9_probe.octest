@@ -1,0 +1,171 @@
+package ContinuumComputabilityBoundary
+
+fn BuildM9RefinedFixture() -> MultiPatchRefinedLattice2D {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let manual = RefinementLevelMap2D {
+        Levels: [2, 2, 2, 1, 0, 2, 2, 1, 1, 0, 0, 0, 0, 0, 0]
+        MaxLevel: 2
+        SelectionRule: "manual M9 junction fixture"
+        GradingRule: "manual M9 junction fixture"
+    }
+    return BuildMultiPatchRefinedLattice(lattice, mask, manual)
+}
+
+
+fn BuildManualTieCandidates() -> JunctionCandidate2D {
+    var ownerKind = ZeroInt40()
+    var patchIndex = ZeroInt40()
+    var refinementLevel = ZeroInt40()
+    var extractionOrder = ZeroInt40()
+    var direction = ZeroInt40()
+    var contextKind = ZeroInt40()
+    var directness = ZeroInt40()
+    var sourceInterface = ZeroInt40()
+
+    ownerKind[0] = 1
+    patchIndex[0] = 4
+    refinementLevel[0] = 2
+    extractionOrder[0] = 3
+    direction[0] = 1
+    contextKind[0] = 1
+    directness[0] = 2
+    sourceInterface[0] = 7
+
+    ownerKind[1] = 1
+    patchIndex[1] = 2
+    refinementLevel[1] = 2
+    extractionOrder[1] = 1
+    direction[1] = 1
+    contextKind[1] = 1
+    directness[1] = 2
+    sourceInterface[1] = 8
+
+    return JunctionCandidate2D {
+        OwnerKind: ownerKind
+        PatchIndex: patchIndex
+        RefinementLevel: refinementLevel
+        ExtractionOrder: extractionOrder
+        Direction: direction
+        ContextKind: contextKind
+        Directness: directness
+        SourceInterface: sourceInterface
+        CandidateCount: 2
+        BuildRule: "manual tie fixture"
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM9TieBreakRemainsDeterministic() -> Void {
+    let candidates = BuildManualTieCandidates()
+    let context = JunctionContext2D {
+        CoarseI: 2
+        CoarseJ: 1
+        Direction: 1
+        ContextKind: 1
+    }
+
+    let resultA = SelectJunctionOwner(candidates, context)
+    let resultB = SelectJunctionOwner(candidates, context)
+
+    Assert.Equal(1, resultA.WinnerCandidateIndex, "lower extraction order wins exact-score tie")
+    Assert.Equal(resultA.WinnerCandidateIndex, resultB.WinnerCandidateIndex, "tie-break remains stable across repeated runs")
+}
+
+[Fact]
+fn ContinuumBoundaryM9BuildsDeterministicJunctionCandidates() -> Void {
+    let refined = BuildM9RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let context = JunctionContext2D {
+        CoarseI: 2
+        CoarseJ: 1
+        Direction: 1
+        ContextKind: 1
+    }
+
+    let a = BuildJunctionCandidates(refined, interfaces, context)
+    let b = BuildJunctionCandidates(refined, interfaces, context)
+
+    Assert.Equal(a.CandidateCount, b.CandidateCount, "candidate count deterministic")
+    Assert.True(a.CandidateCount >= 2, "ambiguous T-junction neighborhood yields multiple candidates")
+    Assert.Equal(a.PatchIndex[0], b.PatchIndex[0], "candidate ordering deterministic")
+    Assert.True(Contains(a.BuildRule, "Flat interface sweep"), "candidate generation rule is explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM9ScoresCandidatesDeterministically() -> Void {
+    let refined = BuildM9RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let context = JunctionContext2D {
+        CoarseI: 2
+        CoarseJ: 1
+        Direction: 1
+        ContextKind: 1
+    }
+
+    let candidates = BuildJunctionCandidates(refined, interfaces, context)
+
+    let s0a = ScoreJunctionCandidate(candidates, context, 0)
+    let s0b = ScoreJunctionCandidate(candidates, context, 0)
+
+    Assert.Equal(s0a, s0b, "score for same candidate is stable")
+    if candidates.CandidateCount > 1 {
+        let s1 = ScoreJunctionCandidate(candidates, context, 1)
+        Assert.True(s0a != s1 or candidates.ExtractionOrder[0] != candidates.ExtractionOrder[1], "score path exposes distinct factors or deterministic tie-break fields")
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM9SelectsExactlyOneWinnerDeterministically() -> Void {
+    let refined = BuildM9RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let context = JunctionContext2D {
+        CoarseI: 1
+        CoarseJ: 1
+        Direction: 0
+        ContextKind: 0
+    }
+
+    let candidates = BuildJunctionCandidates(refined, interfaces, context)
+    let resultA = SelectJunctionOwner(candidates, context)
+    let resultB = SelectJunctionOwner(candidates, context)
+
+    Assert.Equal(resultA.WinnerCandidateIndex, resultB.WinnerCandidateIndex, "winner selection deterministic")
+    Assert.True(resultA.WinnerCandidateIndex >= 0 and resultA.WinnerCandidateIndex < candidates.CandidateCount, "winner index is valid")
+    Assert.True(Contains(resultA.TieBreakRule, "when policy"), "selection rule explicitly documents Octomata utility policy usage")
+}
+
+[Fact]
+fn ContinuumBoundaryM9StableAcrossRepeatedRuns() -> Void {
+    let refined = BuildM9RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let context = JunctionContext2D {
+        CoarseI: 2
+        CoarseJ: 1
+        Direction: 1
+        ContextKind: 1
+    }
+
+    let candidates = BuildJunctionCandidates(refined, interfaces, context)
+    let first = SelectJunctionOwner(candidates, context)
+
+    for _ in 0..5 {
+        let again = SelectJunctionOwner(candidates, context)
+        Assert.Equal(first.WinnerPatchIndex, again.WinnerPatchIndex, "winner patch remains stable across repeated runs")
+        Assert.Equal(first.WinnerOwnerKind, again.WinnerOwnerKind, "winner owner kind remains stable across repeated runs")
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM9ComparesUtilityRankingAgainstNaivePrecedence() -> Void {
+    let refined = BuildM9RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let report = ProbeJunctionBoundary(refined, interfaces)
+
+    Assert.Equal(true, report.Deterministic, "probe remains deterministic")
+    Assert.Equal(true, report.AvoidsTopologyMachinery, "probe still avoids topology/mesh/AMR/solver infrastructure")
+    Assert.Equal(false, report.UtilityRankingCleanerThanPrecedence, "probe reports utility flow/state ceremony is not cleaner than plain helper scoring for this narrow one-shot pass")
+    Assert.True(Contains(report.ComparisonSummary, "same winners"), "comparison against naive precedence is grounded in observed winners")
+    Assert.True(Contains(report.NextBoundary, "multi-claimant"), "next boundary is surfaced explicitly")
+}

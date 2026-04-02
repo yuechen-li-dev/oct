@@ -710,3 +710,79 @@ Run a narrow junction-bookkeeping probe:
 - keep flat explicit interface records
 - add explicit corner/T-junction ownership tables
 - continue forbidding AMR/quadtree/mesh/solver infrastructure
+
+## M9
+
+### 1) What junction cases were tested?
+M9 probes two narrow ambiguous local configurations only:
+
+- **corner-like competition** at coarse neighborhood `(1,1)` where multiple nearby interface-side claims can own the junction,
+- **T-junction-like competition** at coarse neighborhood `(2,1)` where patch-side and coarse fallback attribution can both appear.
+
+No general junction engine was introduced.
+
+### 2) What candidate representation was used?
+M9 adds `JunctionCandidate2D` as a flat, explicit candidate table:
+
+- `OwnerKind` (`1 = patch`, `0 = coarse fallback`)
+- `PatchIndex` (`-1` sentinel for coarse fallback)
+- `RefinementLevel`
+- `ExtractionOrder`
+- `Direction`
+- `ContextKind`
+- `Directness`
+- `SourceInterface`
+
+Candidate generation is handled by `BuildJunctionCandidates(...)` via one deterministic interface sweep at a specific coarse `(i,j)`.
+
+### 3) What scoring factors were used?
+M9 now uses **real Octomata utility policy syntax** for primary owner choice:
+
+- `flow SelectJunctionOwnerPolicyFlow(...)`
+- single `state Decide`
+- `let winner = when policy { hysteresis: 0, min_commit: 0 } { ... }`
+
+Each candidate case uses the same explicit integer score:
+
+- `1000 * RefinementLevel`
+- `100 * Directness`
+- `10 * OwnerKind`
+- direction-match bonus (`4` if direction matches context, else `1`)
+- early extraction bonus (`50 - ExtractionOrder`)
+
+### 4) How was tie-breaking handled?
+`SelectJunctionOwner(...)` now executes two explicit deterministic phases:
+
+1. primary candidate choice via Octomata `when policy` (in `flow/state`) with `hysteresis: 0` and `min_commit: 0`,
+2. explicit exact-score tie-break by lower `ExtractionOrder`, then lower `PatchIndex`, then patch owner over coarse fallback.
+
+`flow/state` is present only because this pass intentionally uses real Octomata utility vocabulary; this remains a one-shot local decision, not a temporal controller.
+
+### 5) Was utility-style ranking cleaner than hardcoded precedence?
+For the two tested cases, Octomata utility policy and naive precedence produced the **same winners**.
+
+Bluntly: for this narrow one-shot probe, the Octomata version is **not cleaner** than the earlier plain helper loop. It is still inspectable, but introduces extra flow/state ceremony solely to stay in the real Octomata control model.
+
+### 6) What complexity remained?
+M9 introduces two explicit complexities:
+
+- score-weight calibration must stay disciplined to avoid disguised policy sprawl,
+- mandatory `flow/state + when policy` scaffolding is additional ceremony when `hysteresis` and `min_commit` are intentionally set to zero.
+
+So while deterministic and inspectable, this formulation is heavier than plain scoring for one-shot ownership.
+
+### 7) What boundary appears next?
+Based on probe evidence, the next boundary is:
+
+- harder **multi-claimant** junction classes (3+ viable patch claimants),
+- and eventually non-axis-aligned/curved ownership regions.
+
+That is still distinct from adopting full topology infrastructure.
+
+### Recommendation for next pass
+Run one additional deterministic probe with one harder three-claimant junction case while preserving:
+
+- fixed 2x2 Cartesian patches,
+- flat interface + candidate records,
+- one-shot explicit ranking,
+- no graph/mesh/AMR/solver machinery.
