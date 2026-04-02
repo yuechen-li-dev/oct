@@ -1,0 +1,58 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM19BuildsAllThreeMaterialPathsDeterministically() -> Void {
+    let lattice = BuildM19Lattice()
+
+    let staticA = BuildStaticMaterialOrientation(lattice)
+    let staticB = BuildStaticMaterialOrientation(lattice)
+    Assert.Equal(CompareFieldL1(staticA.Ox, staticB.Ox), 0.0, "static path should be deterministic")
+
+    let taggedA = BuildRegionTaggedMaterialOrientation(lattice)
+    let taggedB = BuildRegionTaggedMaterialOrientation(lattice)
+    Assert.Equal(CompareFieldL1(taggedA.Oy, taggedB.Oy), 0.0, "region-tagged path should be deterministic")
+
+    let transportA = BuildSeededTransportedMaterialOrientation(lattice)
+    let transportB = BuildSeededTransportedMaterialOrientation(lattice)
+    Assert.Equal(CompareFieldL1(transportA.Ox, transportB.Ox), 0.0, "seeded transport path should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM19SeededTransportCarriesBothSeedsAcrossInterior() -> Void {
+    let lattice = BuildM19Lattice()
+    let transported = BuildSeededTransportedMaterialOrientation(lattice)
+
+    let nearHorizontalSeed = LatticeIndex(lattice, 2, 1)
+    let nearVerticalSeed = LatticeIndex(lattice, 4, 3)
+    Assert.True(transported.Ox[nearHorizontalSeed] > transported.Oy[nearHorizontalSeed], "transport near horizontal seed should remain mostly horizontal")
+    Assert.True(transported.Oy[nearVerticalSeed] > transported.Ox[nearVerticalSeed], "transport near vertical seed should remain mostly vertical")
+}
+
+[Fact]
+fn ContinuumBoundaryM19DownstreamDifferencesAreMeasurableAcrossMaterialPaths() -> Void {
+    let report = ProbeMaterialOrientationBoundary()
+
+    Assert.True(report.StaticVsTaggedL1 > 0.0, "static and region-tagged downstream results should differ")
+    Assert.True(report.StaticVsTransportL1 > 0.0, "static and transported downstream results should differ")
+    Assert.True(report.TaggedVsTransportL1 > 0.0, "region-tagged and transported downstream results should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM19InteriorCoherenceAndSeamsDifferAcrossMaterialPaths() -> Void {
+    let report = ProbeMaterialOrientationBoundary()
+
+    Assert.True(report.InteriorStatic != report.InteriorTagged or report.InteriorStatic != report.InteriorTransport, "interior coherence should differ across paths")
+    Assert.True(report.SeamStatic != report.SeamTagged or report.SeamStatic != report.SeamTransport, "seam behavior should differ across paths")
+    Assert.True(report.SeamTagged >= report.SeamStatic or report.SeamTagged >= report.SeamTransport, "region-tagged path should expose visible internal seam cost")
+}
+
+[Fact]
+fn ContinuumBoundaryM19ReportAnswersRequiredQuestionsWithoutSolverOrTopologyChange() -> Void {
+    let report = ProbeMaterialOrientationBoundary()
+
+    Assert.True(Contains(report.PathA, "static global"), "report should include path A static global material field")
+    Assert.True(Contains(report.PathB, "region-tagged"), "report should include path B region-tagged material field")
+    Assert.True(Contains(report.PathC, "seeded transport"), "report should include path C seeded transported material field")
+    Assert.True(Contains(report.CouplingRule, "Geometry carrier + material carrier + explicit confidence field"), "coupling worldview should remain geometry/material/confidence")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M19 must keep topology fixed and avoid solver machinery")
+}
