@@ -1,49 +1,58 @@
-# Mechanics Continuum M33 — Strengthened Global Consistency Probe
+# Mechanics Continuum M33 — Strengthened Global Consistency Probe (Result-Tightened)
 
-M33 keeps the M32 loop frozen and tests only the global consistency relation.
+M33 keeps the M32 execution regime frozen (same 4 probes, fixed cap 8, same `Delta(k) < 0.5 * Delta(1)` horizon rule, same correction family with `alpha=0.2`) and changes only the global consistency operator.
 
-## What changed (and what did not)
+## Aggregate comparison
 
-- **Path A (control):** unchanged M32 baseline consistency operator.
-- **Path B (M33):** one strengthened consistency operator with:
-  - direction-weighted pair influence from transported tangents,
-  - authority-gated propagation via existing confidence carrier,
-  - tiny bounded two-hop contribution (`beta=0.1`).
+| Metric | M32 Path A (baseline) | M33 Path B (strengthened) |
+|---|---:|---:|
+| MeanDelta1 | 2.073194 | 0.444702 |
+| MeanDelta2 | 1.325704 | 0.309848 |
+| PracticalHorizonK (`k*`) | 8 | 8 |
+| MeanResidualAtK | 4.773679 | 1.331320 |
 
-Frozen from M32:
+Direct reading:
+- Early gain **did not improve** (`Delta1`, `Delta2` both smaller in M33).
+- Practical horizon **did not improve** (`k*` unchanged at 8).
+- Residual-at-horizon is lower for M33, but this sits on a reweighted residual definition, so this alone is not enough to claim a stronger operational regime.
 
-- same local constitutive model and transport/authority construction,
-- same correction family and `alpha=0.2`,
-- same fixed iteration cap (`8`) and same horizon criterion,
-- same probe set: horizontal, vertical, diagonal, opposite diagonal,
-- no convergence logic, no assembly, no topology change.
+## Per-probe comparison
 
-## Required M33 answers
+| Probe | Path | Step0 | Step1 | Step2 | Step8 (final) | Probe Horizon | Early gain vs M32 |
+|---|---|---:|---:|---:|---:|---:|---|
+| Horizontal | M32 | 8.762508 | 7.883590 | 7.093341 | 3.767721 | 8 | — |
+| Horizontal | M33 | 2.117382 | 1.904583 | 1.713305 | 0.909093 | 8 | Worse (`Delta1` -0.666118, `Delta2` -0.598970) |
+| Vertical | M32 | 8.762508 | 7.883590 | 7.093341 | 3.767721 | 8 | — |
+| Vertical | M33 | 2.110301 | 1.899735 | 1.710166 | 0.910204 | 8 | Worse (`Delta1` -0.668352, `Delta2` -0.600679) |
+| Diagonal | M32 | 16.653506 | 13.384905 | 11.524877 | 5.779636 | 3 | — |
+| Diagonal | M33 | 4.333022 | 3.646382 | 3.208852 | 1.754117 | 4 | Worse (`Delta1` -2.581961, `Delta2` -1.422498) |
+| Opposite diagonal | M32 | 16.653506 | 13.387168 | 11.524877 | 5.779636 | 3 | — |
+| Opposite diagonal | M33 | 4.256256 | 3.587455 | 3.166440 | 1.751865 | 4 | Worse (`Delta1` -2.597537, `Delta2` -1.441277) |
 
-1. **Early gain improvement (`Delta(1)`, `Delta(2)`)**
-   - Reported explicitly as `MeanDelta1_M32 vs MeanDelta1_M33` and `MeanDelta2_M32 vs MeanDelta2_M33`.
+## Diagonal-vs-axial judgment (concrete)
 
-2. **Practical horizon (`k*`)**
-   - Reported as `PracticalHorizonK_M32 vs PracticalHorizonK_M33` and mean residual at each path's `k*`.
+Using step-1 early-gain change (`M33 Delta1 - M32 Delta1`):
+- Axial average (horizontal + vertical): **-0.667235**
+- Diagonal-family average (diagonal + opposite): **-2.589749**
 
-3. **Probe-family behavior**
-   - `DiagonalImprovementVsAxial` indicates whether diagonals gain more than axial probes under strengthened consistency.
+Conclusion: **No**, diagonals did not benefit more; they regressed more strongly than axial probes on early-gain metrics.
 
-4. **Stability**
-   - `StableMonotone` enforces monotone residual and monotone diminishing deltas over the fixed schedule.
+## Stability
 
-5. **Local structure survival**
-   - `LocalStructurePreserved` requires spatial variation persistence while late-step movement shrinks.
+Across the full fixed cap (`0..8`):
+- Residual is monotone decreasing for all 4 probes in both paths.
+- Per-step deltas remain nonnegative and diminishing for all 4 probes in both paths.
+- No oscillation or instability was observed.
 
-6. **Architectural cleanliness**
-   - `FieldSeparationIntact` and `NonSolverLike` remain true by construction: explicit records/functions, no solver framework.
+## Blunt verdict
 
-## Blunt boundary statement
+**M33 is a wash.**
 
-M33 succeeds only if smarter consistency improves early trajectory behavior (or equal horizon with lower residual quality) while retaining monotone stability and explicit non-solver architecture.
+- Early trajectory behavior is worse by the required early-gain metrics (`MeanDelta1` and `MeanDelta2` both drop).
+- Practical horizon `k*` does not improve (8 → 8).
+- Residual-at-horizon is lower, but this comes with the strengthened operator’s reweighting, not faster practical saturation.
+- The pass stays architecturally clean and stable, but it does not deliver the target “smarter consistency beats iteration” win on early-horizon efficiency.
 
-Next boundary after M33 is evidence-driven:
+## Next-step recommendation
 
-- if gains are clear and stable: one more explicit global-operator strengthening pass,
-- otherwise: first explicit convergence boundary (acknowledged solver step),
-- do not guess beyond measured comparison.
+Move to the first explicit convergence-boundary pass rather than adding more operator complexity. M33 shows stable behavior and preserved structure, but it does not improve early gain or horizon efficiency under the frozen M32 schedule.
