@@ -1,0 +1,551 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record SignedDistanceField2D {
+    Distance: Float[]
+    Count: Int
+}
+
+record SdfBandMask2D {
+    InBand: Bool[]
+    Count: Int
+}
+
+record OrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+}
+
+record MaterialOrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    MaterialRule: String
+}
+
+record AuthorityConfidenceField2D {
+    GeometryConfidence: Float[]
+    MaterialConfidence: Float[]
+    Count: Int
+    AuthorityRule: String
+}
+
+record ConstitutiveResponseField2D {
+    ProbeName: String
+    Rule: String
+    Response: Float[]
+    Count: Int
+}
+
+record ConstitutiveBoundaryReport {
+    M22Rule: String
+    M23Rule: String
+    ProbeDirections: String
+    PathA: String
+    PathB: String
+    PathC: String
+    OptionalPathD: String
+    A_vs_B_L1: Float
+    A_vs_C_L1: Float
+    B_vs_C_L1: Float
+    C_vs_D_L1: Float
+    AlongAcrossContrastA: Float
+    AlongAcrossContrastB: Float
+    AlongAcrossContrastC: Float
+    AlongAcrossContrastD: Float
+    SpatialCoherenceTransported: Float
+    SpatialCoherenceStatic: Float
+    BoundaryCompatibilityTransported: Float
+    BoundaryCompatibilityStatic: Float
+    StructuralGainOverM22: Bool
+    IsotropicInsufficient: Bool
+    StaticTooCrude: Bool
+    TransportedWorthIt: Bool
+    FieldSeparationPreserved: Bool
+    AuthorityNeededNow: Bool
+    NoTopologyOrSolverIntroduced: Bool
+    Verdict: String
+    NextBoundary: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM23CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D { CenterX: 2.5 CenterY: 2.5 Radius: 2.1 }
+}
+
+fn BuildM23Lattice() -> Lattice2D {
+    return Lattice2D { Nx: 6 Ny: 6 OriginX: 0.0 OriginY: 0.0 Dx: 1.0 Dy: 1.0 }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn HasCell(lattice: Lattice2D, i: Int, j: Int) -> Bool {
+    return i >= 0 and i < lattice.Nx and j >= 0 and j < lattice.Ny
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+    return value
+}
+
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn SqrtNewton(value: Float) -> Float {
+    if value <= 0.0 {
+        return 0.0
+    }
+
+    var x = value
+    if x < 1.0 {
+        x = 1.0
+    }
+
+    for _ in 0..8 {
+        x = 0.5 * (x + value / x)
+    }
+
+    return x
+}
+
+fn Normalize2(vx: Float, vy: Float) -> Float[] {
+    let mag = SqrtNewton(vx * vx + vy * vy)
+    if mag <= 0.000000001 {
+        return [0.0, 0.0]
+    }
+    return [vx / mag, vy / mag]
+}
+
+fn BuildCircleSdf(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SignedDistanceField2D {
+    var distance = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+            let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+            let dx = x - boundary.CenterX
+            let dy = y - boundary.CenterY
+            distance[LatticeIndex(lattice, i, j)] = SqrtNewton(dx * dx + dy * dy) - boundary.Radius
+        }
+    }
+
+    return SignedDistanceField2D { Distance: distance Count: lattice.Nx * lattice.Ny }
+}
+
+fn MarkSdfBand(sdf: SignedDistanceField2D, bandWidth: Float) -> SdfBandMask2D {
+    var marked = FalseBool36()
+    for idx in 0..sdf.Count {
+        if AbsFloat(sdf.Distance[idx]) <= bandWidth {
+            marked[idx] = true
+        }
+    }
+    return SdfBandMask2D { InBand: marked Count: sdf.Count }
+}
+
+fn GetSdfOrCenter(lattice: Lattice2D, sdf: SignedDistanceField2D, i: Int, j: Int, center: Float) -> Float {
+    if HasCell(lattice, i, j) {
+        return sdf.Distance[LatticeIndex(lattice, i, j)]
+    }
+    return center
+}
+
+fn BuildSdfTangentField(lattice: Lattice2D, sdf: SignedDistanceField2D, band: SdfBandMask2D) -> OrientationField2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let center = sdf.Distance[idx]
+                let l = GetSdfOrCenter(lattice, sdf, i - 1, j, center)
+                let r = GetSdfOrCenter(lattice, sdf, i + 1, j, center)
+                let d = GetSdfOrCenter(lattice, sdf, i, j - 1, center)
+                let u = GetSdfOrCenter(lattice, sdf, i, j + 1, center)
+                let n = Normalize2((r - l) / (2.0 * lattice.Dx), (u - d) / (2.0 * lattice.Dy))
+                tx[idx] = -n[1]
+                ty[idx] = n[0]
+                strength[idx] = 1.0
+            }
+        }
+    }
+
+    return OrientationField2D { Ox: tx Oy: ty Strength: strength Count: lattice.Nx * lattice.Ny }
+}
+
+fn BuildAuthorityConfidenceField(lattice: Lattice2D, sdf: SignedDistanceField2D, authorityWidth: Float) -> AuthorityConfidenceField2D {
+    var geom = ZeroFloat36()
+    var mat = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            geom[idx] = 0.15 + 0.85 * Clamp01(1.0 - AbsFloat(sdf.Distance[idx]) / authorityWidth)
+
+            if i < lattice.Nx / 2 {
+                mat[idx] = 0.90
+            } else {
+                mat[idx] = 0.25
+            }
+        }
+    }
+
+    return AuthorityConfidenceField2D {
+        GeometryConfidence: geom
+        MaterialConfidence: mat
+        Count: lattice.Nx * lattice.Ny
+        AuthorityRule: "Independent authority/confidence carrier retained in M23 and still kept out of constitutive participation."
+    }
+}
+
+fn BuildTransportedMaterialOrientation(lattice: Lattice2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+    var isSeed = FalseBool36()
+
+    let seedA = LatticeIndex(lattice, 1, 1)
+    ox[seedA] = 1.0
+    oy[seedA] = 0.0
+    strength[seedA] = 1.0
+    isSeed[seedA] = true
+
+    let seedB = LatticeIndex(lattice, 4, 4)
+    ox[seedB] = 0.0
+    oy[seedB] = 1.0
+    strength[seedB] = 1.0
+    isSeed[seedB] = true
+
+    for _ in 0..8 {
+        for j in 0..lattice.Ny {
+            for i in 0..lattice.Nx {
+                let idx = LatticeIndex(lattice, i, j)
+                if not isSeed[idx] {
+                    var sumX = 0.0
+                    var sumY = 0.0
+                    var sumW = 0.0
+
+                    let ni = [i - 1, i + 1, i, i]
+                    let nj = [j, j, j - 1, j + 1]
+                    for n in 0..4 {
+                        if HasCell(lattice, ni[n], nj[n]) {
+                            let nidx = LatticeIndex(lattice, ni[n], nj[n])
+                            let w = strength[nidx]
+                            if w > 0.0 {
+                                sumX = sumX + w * ox[nidx]
+                                sumY = sumY + w * oy[nidx]
+                                sumW = sumW + w
+                            }
+                        }
+                    }
+
+                    if sumW > 0.0 {
+                        let dir = Normalize2(sumX / sumW, sumY / sumW)
+                        ox[idx] = dir[0]
+                        oy[idx] = dir[1]
+                        strength[idx] = Clamp01(0.95 * sumW / 4.0 + 0.05)
+                    }
+                }
+            }
+        }
+    }
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        if strength[idx] <= 0.0 {
+            ox[idx] = 1.0
+            oy[idx] = 0.0
+            strength[idx] = 0.1
+        }
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "Transported material-direction carrier (M20/M21/M22 lineage): deterministic fixed-pass local propagation from sparse seeds."
+    }
+}
+
+fn BuildStaticMaterialOrientation(lattice: Lattice2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        ox[idx] = 1.0
+        oy[idx] = 0.0
+        strength[idx] = 1.0
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "Static material-direction constitutive input: horizontal everywhere."
+    }
+}
+
+fn BuildIsotropicResponseField(lattice: Lattice2D, base: Float, probeName: String) -> ConstitutiveResponseField2D {
+    var response = ZeroFloat36()
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        response[idx] = base
+    }
+
+    return ConstitutiveResponseField2D {
+        ProbeName: probeName
+        Rule: "isotropic baseline: response = base"
+        Response: response
+        Count: lattice.Nx * lattice.Ny
+    }
+}
+
+fn BuildM22DirectionalResponseField(material: MaterialOrientationField2D, probeX: Float, probeY: Float, aLongitudinal: Float, aTransverse: Float, probeName: String) -> ConstitutiveResponseField2D {
+    var response = ZeroFloat36()
+
+    for idx in 0..material.Count {
+        let mx = material.Ox[idx]
+        let my = material.Oy[idx]
+        let tx = -my
+        let ty = mx
+
+        let longAlign = AbsFloat(mx * probeX + my * probeY)
+        let transAlign = AbsFloat(tx * probeX + ty * probeY)
+        response[idx] = aLongitudinal * longAlign + aTransverse * transAlign
+    }
+
+    return ConstitutiveResponseField2D {
+        ProbeName: probeName
+        Rule: "M22 richer local directional rule: response = a_longitudinal*abs(dot(m,p)) + a_transverse*abs(dot(perp(m),p)); a_longitudinal=1.5; a_transverse=0.5"
+        Response: response
+        Count: material.Count
+    }
+}
+
+fn EvaluateNormalTangentConstitutiveResponse(tangentX: Float, tangentY: Float, probeX: Float, probeY: Float, aTangent: Float, aNormal: Float) -> Float {
+    let normalX = -tangentY
+    let normalY = tangentX
+
+    let tangentAlign = AbsFloat(tangentX * probeX + tangentY * probeY)
+    let normalAlign = AbsFloat(normalX * probeX + normalY * probeY)
+
+    return aTangent * tangentAlign + aNormal * normalAlign
+}
+
+fn BuildNormalTangentResponseField(material: MaterialOrientationField2D, probeX: Float, probeY: Float, aTangent: Float, aNormal: Float, probeName: String) -> ConstitutiveResponseField2D {
+    var response = ZeroFloat36()
+
+    for idx in 0..material.Count {
+        let tangentX = material.Ox[idx]
+        let tangentY = material.Oy[idx]
+        response[idx] = EvaluateNormalTangentConstitutiveResponse(tangentX, tangentY, probeX, probeY, aTangent, aNormal)
+    }
+
+    return ConstitutiveResponseField2D {
+        ProbeName: probeName
+        Rule: "M23 explicit constitutive axis split: response = a_tangent*abs(dot(t,p)) + a_normal*abs(dot(n,p)); n=perp(t); a_tangent=1.8; a_normal=0.2"
+        Response: response
+        Count: material.Count
+    }
+}
+
+fn CompareFieldL1(a: Float[], b: Float[]) -> Float {
+    var diff = 0.0
+    for idx in 0..Len(a) {
+        diff = diff + AbsFloat(a[idx] - b[idx])
+    }
+    return diff
+}
+
+fn ComputeAlongAcrossContrast(horizontal: ConstitutiveResponseField2D, vertical: ConstitutiveResponseField2D) -> Float {
+    var sum = 0.0
+    for idx in 0..horizontal.Count {
+        sum = sum + AbsFloat(horizontal.Response[idx] - vertical.Response[idx])
+    }
+    return sum / Float(horizontal.Count)
+}
+
+fn ComputeMaterialCoherence(lattice: Lattice2D, sdf: SignedDistanceField2D, material: MaterialOrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for j in 1..(lattice.Ny - 1) {
+        for i in 1..(lattice.Nx - 1) {
+            let idx = LatticeIndex(lattice, i, j)
+            if sdf.Distance[idx] < -0.75 * lattice.Dx {
+                let right = LatticeIndex(lattice, i + 1, j)
+                let up = LatticeIndex(lattice, i, j + 1)
+                let dotR = AbsFloat(material.Ox[idx] * material.Ox[right] + material.Oy[idx] * material.Oy[right])
+                let dotU = AbsFloat(material.Ox[idx] * material.Ox[up] + material.Oy[idx] * material.Oy[up])
+                sum = sum + 0.5 * (dotR + dotU)
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn ComputeBoundaryCompatibility(band: SdfBandMask2D, geometry: OrientationField2D, material: MaterialOrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for idx in 0..band.Count {
+        if band.InBand[idx] {
+            let dot = AbsFloat(geometry.Ox[idx] * material.Ox[idx] + geometry.Oy[idx] * material.Oy[idx])
+            sum = sum + dot
+            count = count + 1
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn CompareConstitutivePaths(lattice: Lattice2D, sdf: SignedDistanceField2D, band: SdfBandMask2D, geometry: OrientationField2D, materialStatic: MaterialOrientationField2D, materialTransported: MaterialOrientationField2D) -> ConstitutiveBoundaryReport {
+    let probeHx = 1.0
+    let probeHy = 0.0
+    let probeVx = 0.0
+    let probeVy = 1.0
+
+    let base = 1.0
+    let m22Longitudinal = 1.5
+    let m22Transverse = 0.5
+    let aTangent = 1.8
+    let aNormal = 0.2
+
+    let aH = BuildIsotropicResponseField(lattice, base, "horizontal")
+    let aV = BuildIsotropicResponseField(lattice, base, "vertical")
+
+    let bH = BuildM22DirectionalResponseField(materialTransported, probeHx, probeHy, m22Longitudinal, m22Transverse, "horizontal")
+    let bV = BuildM22DirectionalResponseField(materialTransported, probeVx, probeVy, m22Longitudinal, m22Transverse, "vertical")
+
+    let cH = BuildNormalTangentResponseField(materialTransported, probeHx, probeHy, aTangent, aNormal, "horizontal")
+    let cV = BuildNormalTangentResponseField(materialTransported, probeVx, probeVy, aTangent, aNormal, "vertical")
+
+    let dH = BuildNormalTangentResponseField(materialStatic, probeHx, probeHy, aTangent, aNormal, "horizontal")
+    let dV = BuildNormalTangentResponseField(materialStatic, probeVx, probeVy, aTangent, aNormal, "vertical")
+
+    let l1AB = CompareFieldL1(aH.Response, bH.Response) + CompareFieldL1(aV.Response, bV.Response)
+    let l1AC = CompareFieldL1(aH.Response, cH.Response) + CompareFieldL1(aV.Response, cV.Response)
+    let l1BC = CompareFieldL1(bH.Response, cH.Response) + CompareFieldL1(bV.Response, cV.Response)
+    let l1CD = CompareFieldL1(cH.Response, dH.Response) + CompareFieldL1(cV.Response, dV.Response)
+
+    let contrastA = ComputeAlongAcrossContrast(aH, aV)
+    let contrastB = ComputeAlongAcrossContrast(bH, bV)
+    let contrastC = ComputeAlongAcrossContrast(cH, cV)
+    let contrastD = ComputeAlongAcrossContrast(dH, dV)
+
+    let coherenceTransported = ComputeMaterialCoherence(lattice, sdf, materialTransported)
+    let coherenceStatic = ComputeMaterialCoherence(lattice, sdf, materialStatic)
+
+    let boundaryTransported = ComputeBoundaryCompatibility(band, geometry, materialTransported)
+    let boundaryStatic = ComputeBoundaryCompatibility(band, geometry, materialStatic)
+
+    let structuralGain = l1BC > 0.0 and contrastC > contrastB
+    let isotropicInsufficient = l1AB > 0.0 and l1AC > 0.0 and contrastC > contrastA
+    let staticTooCrude = l1CD > 0.0 and boundaryTransported > boundaryStatic
+    let transportedWorthIt = coherenceTransported >= 0.85 and boundaryTransported > boundaryStatic
+
+    return ConstitutiveBoundaryReport {
+        M22Rule: "M22 richer directional channels: response = a_longitudinal*abs(dot(m,p)) + a_transverse*abs(dot(perp(m),p)); a_longitudinal=1.5; a_transverse=0.5"
+        M23Rule: "M23 explicit constitutive axes: t=material tangent, n=perp(t) normal, response = a_tangent*abs(dot(t,p)) + a_normal*abs(dot(n,p)); a_tangent=1.8; a_normal=0.2"
+        ProbeDirections: "Two canonical probes only: horizontal p=(1,0) and vertical p=(0,1)."
+        PathA: "A isotropic baseline: response = 1.0"
+        PathB: "B M22 richer local directional rule using transported material direction"
+        PathC: "C M23 explicit normal/tangent constitutive split using transported material direction"
+        OptionalPathD: "D M23 explicit normal/tangent split with static horizontal material direction (comparison-only)"
+        A_vs_B_L1: l1AB
+        A_vs_C_L1: l1AC
+        B_vs_C_L1: l1BC
+        C_vs_D_L1: l1CD
+        AlongAcrossContrastA: contrastA
+        AlongAcrossContrastB: contrastB
+        AlongAcrossContrastC: contrastC
+        AlongAcrossContrastD: contrastD
+        SpatialCoherenceTransported: coherenceTransported
+        SpatialCoherenceStatic: coherenceStatic
+        BoundaryCompatibilityTransported: boundaryTransported
+        BoundaryCompatibilityStatic: boundaryStatic
+        StructuralGainOverM22: structuralGain
+        IsotropicInsufficient: isotropicInsufficient
+        StaticTooCrude: staticTooCrude
+        TransportedWorthIt: transportedWorthIt
+        FieldSeparationPreserved: true
+        AuthorityNeededNow: false
+        NoTopologyOrSolverIntroduced: true
+        Verdict: "M23 verdict: explicit local normal/tangent constitutive axes add cleaner structure over M22 channel naming, transported direction remains useful, static direction is still too crude, and field separation stays intact without authority constitutive participation."
+        NextBoundary: "Next boundary after M23: either a local tensor-like constitutive response (still local and explicit) or a tightly scoped authority-modulated constitutive participation probe before any first tiny global solve."
+    }
+}
+
+fn ProbeConstitutiveBoundary() -> ConstitutiveBoundaryReport {
+    let lattice = BuildM23Lattice()
+    let boundary = BuildM23CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(sdf, lattice.Dx)
+
+    let geometry = BuildSdfTangentField(lattice, sdf, band)
+    let materialStatic = BuildStaticMaterialOrientation(lattice)
+    let materialTransported = BuildTransportedMaterialOrientation(lattice)
+
+    let _authority = BuildAuthorityConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+
+    return CompareConstitutivePaths(lattice, sdf, band, geometry, materialStatic, materialTransported)
+}
