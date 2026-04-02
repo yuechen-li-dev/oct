@@ -565,3 +565,69 @@ Run M7 as a narrow deterministic multi-patch probe:
 - extract multiple local 2x2 Cartesian patches with explicit stable ordering and non-overlap rules,
 - preserve one-step grading and conservative interface routing,
 - still avoid AMR/quadtree frameworks and unstructured meshing.
+
+## M7
+
+### Multi-patch extraction rule used
+M7 lowers `RefinementLevelMap2D` into multiple explicit 2x2 Cartesian patch candidates using one narrow rule:
+
+- a candidate anchor `(i,j)` is emitted only when:
+  - `levelMap.Levels[i,j] > 0`, and
+  - the full 2x2 parent-cell footprint `[(i,j),(i+1,j),(i,j+1),(i+1,j+1)]` is active.
+- no hand-authored patch coordinates are allowed.
+
+This yields a deterministic candidate list directly from the level map.
+
+### Ordering rule used
+M7 uses exactly one ordering policy:
+
+- **descending requested level, then row-major (`j` ascending, then `i` ascending)**.
+
+This is explicit and stable: identical input map always yields identical candidate order.
+
+### Overlap rule used
+M7 uses exactly one non-overlap policy:
+
+- **first-wins suppression by candidate order**.
+- each accepted patch claims its 2x2 parent-cell footprint.
+- any later candidate touching a claimed parent cell is suppressed.
+- no merge behavior is permitted.
+
+This keeps overlap handling transparent and deterministic.
+
+### Did flux/balance compatibility hold?
+Yes, within M7 scope.
+
+- multiple accepted patches coexist in one explicit multi-patch carrier,
+- each accepted patch still uses M5-style coarse-fine conservative split checks,
+- each accepted patch still supports explicit incoming/outgoing/net balance totals.
+
+This remains a representation/computational-structure probe; no global solve or mesh assembly is introduced.
+
+### Did this stay smaller/cleaner than adaptive meshing?
+Yes.
+
+M7 adds only list-level extraction bookkeeping (candidate list + suppression list + accepted list). It does **not** add tree recursion, parent/child graph traversal, mesh connectivity, basis machinery, or solver infrastructure.
+
+### New complexity that appeared
+The real added complexity is now explicit and local:
+
+- deterministic candidate enumeration from a graded level map,
+- deterministic overlap suppression bookkeeping,
+- per-patch interface accounting repeated over multiple accepted patches.
+
+This is still understandable as plain Cartesian list processing.
+
+### Next boundary surfaced by M7
+The next boundary is **inter-patch interaction bookkeeping**:
+
+- when multiple accepted patches are near each other, explicit handling of neighboring coarse-fine interfaces and interaction accounting becomes the dominant pressure point,
+- before any justified move to recursive hierarchies or flexible patch shapes.
+
+### Recommendation for next pass
+Run M8 as a narrow inter-patch-interface probe:
+
+- keep fixed 2x2 Cartesian patches,
+- keep deterministic order + first-wins suppression,
+- add explicit bookkeeping for adjacent-patch/coarse-neighbor interface accounting,
+- continue forbidding AMR/quadtree/mesh/solver infrastructure.

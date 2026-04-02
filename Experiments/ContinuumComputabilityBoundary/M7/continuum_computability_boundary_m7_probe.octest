@@ -1,0 +1,102 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM7ExtractsMultiplePatchesDeterministically() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildTwoRegionRefinementDemand(lattice, mask)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+
+    let extractedA = ExtractRefinementPatches(lattice, mask, balanced)
+    let extractedB = ExtractRefinementPatches(lattice, mask, balanced)
+
+    Assert.True(extractedA.AcceptedCount >= 2, "two separated hotspots produce multiple local patches")
+    Assert.Equal(extractedA.AcceptedCount, extractedB.AcceptedCount, "extraction count deterministic")
+    Assert.Equal(extractedA.AcceptedParentI[0], extractedB.AcceptedParentI[0], "first accepted parent i deterministic")
+    Assert.Equal(extractedA.AcceptedParentJ[0], extractedB.AcceptedParentJ[0], "first accepted parent j deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM7UsesStableExplicitOrderingRule() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildTwoRegionRefinementDemand(lattice, mask)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+    let ordered = OrderPatchCandidates(lattice, mask, balanced)
+
+    Assert.Equal(0, ordered.CandidateParentI[0], "highest-level first candidate is hotspot A")
+    Assert.Equal(0, ordered.CandidateParentJ[0], "highest-level first candidate is hotspot A")
+    Assert.Equal(3, ordered.CandidateParentI[1], "second highest-level candidate is hotspot B")
+    Assert.Equal(1, ordered.CandidateParentJ[1], "second highest-level candidate is hotspot B")
+    Assert.True(Contains(ordered.OrderingRule, "descending requested level"), "ordering rule is explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM7ResolvesOverlapsByFirstWinsSuppression() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+
+    var levels = [2, 2, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    let map = RefinementLevelMap2D {
+        Levels: levels
+        MaxLevel: 2
+        SelectionRule: "manual probe levels"
+        GradingRule: "manual probe levels"
+    }
+
+    let extracted = ExtractRefinementPatches(lattice, mask, map)
+
+    Assert.Equal(1, extracted.AcceptedCount, "overlapping top candidates reduce to first accepted patch")
+    Assert.Equal(0, extracted.AcceptedParentI[0], "row-major first candidate wins")
+    Assert.Equal(0, extracted.AcceptedParentJ[0], "row-major first candidate wins")
+    Assert.True(extracted.SuppressedCount >= 1, "later overlapping candidate suppressed")
+    Assert.Equal(1, extracted.SuppressedParentI[0], "first overlapping neighbor is explicitly suppressed")
+    Assert.True(Contains(extracted.OverlapRule, "First-wins suppression"), "overlap rule is explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM7PreservesCartesianFluxBalanceCompatibility() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildTwoRegionRefinementDemand(lattice, mask)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+
+    let refined = BuildMultiPatchRefinedLattice(lattice, mask, balanced)
+    let extraction = refined.Extraction
+    let compatibility = EvaluateMultiPatchFluxCompatibility(refined, BuildLatticeFluxStructure(lattice, mask))
+    let report = ProbeMultiPatchBoundary(refined, compatibility)
+
+    Assert.True(extraction.AcceptedCount >= 2, "multi-patch representation coexists in one carrier")
+
+    let patchCount = compatibility.PatchCount
+    for p in 0..patchCount {
+        Assert.Near(compatibility.PatchCoarseSum[p], compatibility.PatchFineSum[p], 0.0001, "coarse-fine split remains conservative per patch")
+        Assert.Near(compatibility.PatchIncomingAmount[p], compatibility.PatchOutgoingAmount[p], 0.0001, "per-patch balance accumulation remains explicit")
+    }
+
+    Assert.Equal(true, report.DeterministicOrderingPreserved, "deterministic ordering preserved")
+    Assert.Equal(true, report.NonOverlapGuaranteed, "non-overlap guarantee preserved")
+    Assert.Equal(true, report.FluxBalanceCompatibilityPreserved, "flux/balance compatibility preserved")
+}
+
+[Fact]
+fn ContinuumBoundaryM7StaysOutOfAdaptiveInfrastructure() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildTwoRegionRefinementDemand(lattice, mask)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+    let refined = BuildMultiPatchRefinedLattice(lattice, mask, balanced)
+    let report = ProbeMultiPatchBoundary(refined, EvaluateMultiPatchFluxCompatibility(refined, BuildLatticeFluxStructure(lattice, mask)))
+
+    Assert.True(Contains(report.NewComplexity, "not adaptive topology infrastructure"), "probe is explicit and narrow")
+    Assert.True(Contains(report.RecommendationForM8, "forbidding quadtree/AMR"), "next pass constraint remains explicit")
+}
