@@ -1,0 +1,340 @@
+package MainValid
+
+record Vec2 {
+    X: Float
+    Y: Float
+}
+
+record ConstitutiveResponseField2D {
+    TT: Float
+    NN: Float
+    TN: Float
+}
+
+record ConstitutiveBoundaryReport {
+    MagnitudeVsSignedDiagonalL1: Float
+    SignedVsOffAxisDiagonalL1: Float
+    MagnitudeVsSignedOppositeDiagonalL1: Float
+    SignedVsOffAxisOppositeDiagonalL1: Float
+    MagnitudeDiagonalAsymmetry: Float
+    SignedDiagonalAsymmetry: Float
+    OffAxisDiagonalAsymmetry: Float
+}
+
+fn Dot(a: Vec2, b: Vec2) -> Float {
+    return a.X * b.X + a.Y * b.Y
+}
+
+fn Magnitude(v: Vec2) -> Float {
+    return Sqrt(v.X * v.X + v.Y * v.Y)
+}
+
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Magnitude(v)
+    if m <= 0.000001 {
+        return Vec2 { X: 1.0 Y: 0.0 }
+    }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+
+fn TangentFromNormal(n: Vec2) -> Vec2 {
+    return Vec2 { X: 0.0 - n.Y Y: n.X }
+}
+
+fn IsInsideCircle(i: Int, j: Int) -> Bool {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return x * x + y * y <= 5.0
+}
+
+fn TransportedMaterialNormal(i: Int, j: Int) -> Vec2 {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return Normalize(Vec2 { X: x Y: y })
+}
+
+fn TransportedMaterialTangent(i: Int, j: Int) -> Vec2 {
+    return TangentFromNormal(TransportedMaterialNormal(i, j))
+}
+
+fn StaticMaterialTangent() -> Vec2 {
+    return Vec2 { X: 1.0 Y: 0.0 }
+}
+
+fn StaticMaterialNormal() -> Vec2 {
+    return Vec2 { X: 0.0 Y: 1.0 }
+}
+
+fn AuthorityField(i: Int, j: Int) -> Float {
+    return 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+}
+
+fn BuildMagnitudeCoupledResponseField() -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D { TT: 1.8 NN: 0.2 TN: 0.15 }
+}
+
+fn BuildSignedCoupledResponseField() -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D { TT: 1.8 NN: 0.2 TN: 0.15 }
+}
+
+fn BuildOffAxisCoupledResponseField() -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D { TT: 1.8 NN: 0.2 TN: 0.15 }
+}
+
+// semantics = 0: magnitude-only    R.tt*|pt| + R.nn*|pn| + R.tn*|pt*pn|
+// semantics = 1: signed coupling   R.tt*|pt| + R.nn*|pn| + R.tn*(pt*pn)
+// semantics = 2: off-axis variant  signed coupling + gated asymmetry on mixed-sign diagonals
+fn EvaluateCoupledConstitutiveResponse(semantics: Int, probe: Vec2, t: Vec2, n: Vec2, R: ConstitutiveResponseField2D) -> Float {
+    let pt = Dot(probe, t)
+    let pn = Dot(probe, n)
+    let base = R.TT * Abs(pt) + R.NN * Abs(pn)
+
+    if semantics == 0 {
+        return base + R.TN * Abs(pt * pn)
+    }
+
+    if semantics == 1 {
+        return base + R.TN * (pt * pn)
+    }
+
+    let mixedSign = pt * pn < 0.0
+    let aboveThresholdPt = Abs(pt) > 0.2
+    let aboveThresholdPn = Abs(pn) > 0.2
+    let aboveThreshold = if aboveThresholdPt {
+        aboveThresholdPn
+    } else {
+        false
+    }
+    let asymmetryScale = if mixedSign {
+        if aboveThreshold { 1.5 } else { 1.0 }
+    } else {
+        1.0
+    }
+    return base + asymmetryScale * R.TN * (pt * pn)
+}
+
+fn ResponseAt(semantics: Int, useStaticFrame: Bool, probe: Vec2, i: Int, j: Int, R: ConstitutiveResponseField2D) -> Float {
+    if IsInsideCircle(i, j) == false {
+        return 0.0
+    }
+
+    let t = if useStaticFrame { StaticMaterialTangent() } else { TransportedMaterialTangent(i, j) }
+    let n = if useStaticFrame { StaticMaterialNormal() } else { TransportedMaterialNormal(i, j) }
+    return EvaluateCoupledConstitutiveResponse(semantics, probe, t, n, R)
+}
+
+fn CouplingProjectionMagnitude(probe: Vec2, i: Int, j: Int) -> Float {
+    let t = TransportedMaterialTangent(i, j)
+    let n = TransportedMaterialNormal(i, j)
+    let pt = Dot(probe, t)
+    let pn = Dot(probe, n)
+    return Abs(pt * pn)
+}
+
+fn CouplingContributionAt(semantics: Int, probe: Vec2, i: Int, j: Int, R: ConstitutiveResponseField2D) -> Float {
+    let t = TransportedMaterialTangent(i, j)
+    let n = TransportedMaterialNormal(i, j)
+    let pt = Dot(probe, t)
+    let pn = Dot(probe, n)
+    if semantics == 0 {
+        return R.TN * Abs(pt * pn)
+    }
+    if semantics == 1 {
+        return R.TN * (pt * pn)
+    }
+    let mixedSign = pt * pn < 0.0
+    let aboveThresholdPt = Abs(pt) > 0.2
+    let aboveThresholdPn = Abs(pn) > 0.2
+    let aboveThreshold = if aboveThresholdPt {
+        aboveThresholdPn
+    } else {
+        false
+    }
+    let asymmetryScale = if mixedSign {
+        if aboveThreshold { 1.5 } else { 1.0 }
+    } else {
+        1.0
+    }
+    return asymmetryScale * R.TN * (pt * pn)
+}
+
+fn L1Difference(semanticsA: Int, staticA: Bool, semanticsB: Int, staticB: Bool, probe: Vec2, RA: ConstitutiveResponseField2D, RB: ConstitutiveResponseField2D) -> Float {
+    var total = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            let a = ResponseAt(semanticsA, staticA, probe, i, j, RA)
+            let b = ResponseAt(semanticsB, staticB, probe, i, j, RB)
+            total = total + Abs(a - b)
+        }
+    }
+    return total
+}
+
+fn ResponseSum(semantics: Int, useStaticFrame: Bool, probe: Vec2, R: ConstitutiveResponseField2D) -> Float {
+    var total = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            total = total + ResponseAt(semantics, useStaticFrame, probe, i, j, R)
+        }
+    }
+    return total
+}
+
+fn SpatialVariation(semantics: Int, useStaticFrame: Bool, probe: Vec2, R: ConstitutiveResponseField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                sum = sum + ResponseAt(semantics, useStaticFrame, probe, i, j, R)
+                count = count + 1
+            }
+        }
+    }
+
+    let mean = sum / Float(count)
+    var l1 = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                let v = ResponseAt(semantics, useStaticFrame, probe, i, j, R)
+                l1 = l1 + Abs(v - mean)
+            }
+        }
+    }
+    return l1
+}
+
+fn ProbeConstitutiveBoundary() -> ConstitutiveBoundaryReport {
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let magnitude = BuildMagnitudeCoupledResponseField()
+    let signed = BuildSignedCoupledResponseField()
+    let offAxis = BuildOffAxisCoupledResponseField()
+
+    let magnitudeVsSignedDiagonalL1 = L1Difference(0, false, 1, false, diagonal, magnitude, signed)
+    let signedVsOffAxisDiagonalL1 = L1Difference(1, false, 2, false, diagonal, signed, offAxis)
+    let magnitudeVsSignedOppositeDiagonalL1 = L1Difference(0, false, 1, false, oppositeDiagonal, magnitude, signed)
+    let signedVsOffAxisOppositeDiagonalL1 = L1Difference(1, false, 2, false, oppositeDiagonal, signed, offAxis)
+
+    let magnitudeDiagonalAsymmetry = Abs(ResponseSum(0, false, diagonal, magnitude) - ResponseSum(0, false, oppositeDiagonal, magnitude))
+    let signedDiagonalAsymmetry = Abs(ResponseSum(1, false, diagonal, signed) - ResponseSum(1, false, oppositeDiagonal, signed))
+    let offAxisDiagonalAsymmetry = Abs(ResponseSum(2, false, diagonal, offAxis) - ResponseSum(2, false, oppositeDiagonal, offAxis))
+
+    return ConstitutiveBoundaryReport {
+        MagnitudeVsSignedDiagonalL1: magnitudeVsSignedDiagonalL1
+        SignedVsOffAxisDiagonalL1: signedVsOffAxisDiagonalL1
+        MagnitudeVsSignedOppositeDiagonalL1: magnitudeVsSignedOppositeDiagonalL1
+        SignedVsOffAxisOppositeDiagonalL1: signedVsOffAxisOppositeDiagonalL1
+        MagnitudeDiagonalAsymmetry: magnitudeDiagonalAsymmetry
+        SignedDiagonalAsymmetry: signedDiagonalAsymmetry
+        OffAxisDiagonalAsymmetry: offAxisDiagonalAsymmetry
+    }
+}
+
+[Fact]
+fn ContinuumM26ConstructsThreeCouplingSemanticsDeterministically() -> Void {
+    let magnitude = BuildMagnitudeCoupledResponseField()
+    let signed = BuildSignedCoupledResponseField()
+    let offAxis = BuildOffAxisCoupledResponseField()
+
+    Assert.Near(1.8, magnitude.TT, 0.000001, "magnitude tt")
+    Assert.Near(0.2, magnitude.NN, 0.000001, "magnitude nn")
+    Assert.Near(0.15, magnitude.TN, 0.000001, "magnitude tn")
+
+    Assert.Near(1.8, signed.TT, 0.000001, "signed tt")
+    Assert.Near(0.2, signed.NN, 0.000001, "signed nn")
+    Assert.Near(0.15, signed.TN, 0.000001, "signed tn")
+
+    Assert.Near(1.8, offAxis.TT, 0.000001, "off-axis tt")
+    Assert.Near(0.2, offAxis.NN, 0.000001, "off-axis nn")
+    Assert.Near(0.15, offAxis.TN, 0.000001, "off-axis tn")
+}
+
+[Fact]
+fn ContinuumM26SignedAndOffAxisCouplingProduceMeasurableSemanticDifferences() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.MagnitudeVsSignedDiagonalL1 > 0.01, "signed semantics differs from magnitude on diagonal")
+    Assert.True(report.MagnitudeVsSignedOppositeDiagonalL1 > 0.01, "signed semantics differs from magnitude on opposite diagonal")
+
+    Assert.True(report.SignedVsOffAxisDiagonalL1 > 0.01, "off-axis semantics differs from signed on diagonal")
+    Assert.True(report.SignedVsOffAxisOppositeDiagonalL1 > 0.01, "off-axis semantics differs from signed on opposite diagonal")
+}
+
+[Fact]
+fn ContinuumM26DiagonalProbesExposeDifferencesMostClearly() -> Void {
+    let horizontal = Vec2 { X: 1.0 Y: 0.0 }
+    let vertical = Vec2 { X: 0.0 Y: 1.0 }
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let magnitude = BuildMagnitudeCoupledResponseField()
+    let signed = BuildSignedCoupledResponseField()
+    let offAxis = BuildOffAxisCoupledResponseField()
+
+    let signedDeltaDiagonal = L1Difference(0, false, 1, false, diagonal, magnitude, signed)
+    let signedDeltaOppositeDiagonal = L1Difference(0, false, 1, false, oppositeDiagonal, magnitude, signed)
+    Assert.True(signedDeltaDiagonal > 0.01, "diagonal probe exposes signed-vs-magnitude difference")
+    Assert.True(signedDeltaOppositeDiagonal > 0.01, "opposite diagonal probe exposes signed-vs-magnitude difference")
+
+    let offAxisDeltaDiagonal = L1Difference(1, false, 2, false, diagonal, signed, offAxis)
+    let offAxisDeltaOppositeDiagonal = L1Difference(1, false, 2, false, oppositeDiagonal, signed, offAxis)
+    Assert.True(offAxisDeltaDiagonal > 0.01, "diagonal exposes off-axis variant signal")
+    Assert.True(offAxisDeltaOppositeDiagonal > 0.01, "opposite diagonal exposes off-axis variant signal")
+
+    let i = 4
+    let j = 2
+    let couplingHorizontal = CouplingProjectionMagnitude(horizontal, i, j)
+    let couplingVertical = CouplingProjectionMagnitude(vertical, i, j)
+    let couplingDiagonal = CouplingProjectionMagnitude(diagonal, i, j)
+    let couplingOppositeDiagonal = CouplingProjectionMagnitude(oppositeDiagonal, i, j)
+
+    Assert.True(couplingDiagonal > couplingHorizontal, "local diagonal coupling channel is stronger than horizontal at probe cell")
+    Assert.True(couplingDiagonal > couplingVertical, "local diagonal coupling channel is stronger than vertical at probe cell")
+    Assert.True(couplingOppositeDiagonal > couplingHorizontal, "local opposite-diagonal coupling channel is stronger than horizontal at probe cell")
+    Assert.True(couplingOppositeDiagonal > couplingVertical, "local opposite-diagonal coupling channel is stronger than vertical at probe cell")
+}
+
+[Fact]
+fn ContinuumM26TransportedDirectionRemainsUsefulAuthorityRemainsOutAndFieldsStaySeparate() -> Void {
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+    let offAxis = BuildOffAxisCoupledResponseField()
+
+    let staticDiagonalVariation = SpatialVariation(2, true, diagonal, offAxis)
+    let transportedDiagonalVariation = SpatialVariation(2, false, diagonal, offAxis)
+    let staticOppDiagonalVariation = SpatialVariation(2, true, oppositeDiagonal, offAxis)
+    let transportedOppDiagonalVariation = SpatialVariation(2, false, oppositeDiagonal, offAxis)
+
+    Assert.Near(0.0, staticDiagonalVariation, 0.000001, "static frame collapses diagonal structure")
+    Assert.Near(0.0, staticOppDiagonalVariation, 0.000001, "static frame collapses opposite-diagonal structure")
+    Assert.True(transportedDiagonalVariation > staticDiagonalVariation, "transported direction keeps spatially coherent diagonal structure")
+    Assert.True(transportedOppDiagonalVariation > staticOppDiagonalVariation, "transported direction keeps spatially coherent opposite-diagonal structure")
+
+    let authority00 = AuthorityField(0, 0)
+    let authority55 = AuthorityField(5, 5)
+    Assert.True(authority55 > authority00, "authority exists as a separate field carrier")
+
+    let withoutAuthorityA = ResponseAt(2, false, diagonal, 4, 2, offAxis)
+    let withoutAuthorityB = ResponseAt(2, false, diagonal, 4, 2, offAxis)
+    Assert.Near(withoutAuthorityA, withoutAuthorityB, 0.000001, "authority remains excluded from constitutive participation")
+
+    let cellI = 4
+    let cellJ = 2
+    let magnitude = BuildMagnitudeCoupledResponseField()
+    let signedField = BuildSignedCoupledResponseField()
+
+    let magnitudeDiagCoupling = CouplingContributionAt(0, diagonal, cellI, cellJ, magnitude)
+    let magnitudeOppDiagCoupling = CouplingContributionAt(0, oppositeDiagonal, cellI, cellJ, magnitude)
+    Assert.Near(magnitudeDiagCoupling, magnitudeOppDiagCoupling, 0.000001, "magnitude-only coupling channel cannot distinguish diagonal sign families at local cell")
+
+    let signedDiag = CouplingContributionAt(1, diagonal, cellI, cellJ, signedField)
+    let signedOppDiag = CouplingContributionAt(1, oppositeDiagonal, cellI, cellJ, signedField)
+    let offAxisDiag = CouplingContributionAt(2, diagonal, cellI, cellJ, offAxis)
+    let offAxisOppDiag = CouplingContributionAt(2, oppositeDiagonal, cellI, cellJ, offAxis)
+
+    Assert.True(Abs(signedDiag - signedOppDiag) > 0.01, "signed coupling distinguishes diagonal and opposite-diagonal probes at local cell")
+    Assert.True(Abs(offAxisDiag - offAxisOppDiag) > Abs(signedDiag - signedOppDiag), "off-axis semantic asymmetry extends signed coupling behavior at local cell")
+}
