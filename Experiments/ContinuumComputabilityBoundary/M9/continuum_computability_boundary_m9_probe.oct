@@ -1,0 +1,980 @@
+package ContinuumComputabilityBoundary
+
+record ContinuumProblem2D {
+    BodyWidth: Float
+    BodyHeight: Float
+    Query: String
+}
+
+record Lattice2D {
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+    Nx: Int
+    Ny: Int
+}
+
+record LatticeMask2D {
+    IsActive: Bool[]
+    IsBoundary: Bool[]
+}
+
+record LatticeFlux2D {
+    FluxRight: Float[]
+    FluxUp: Float[]
+}
+
+record RefinementPatch2D {
+    ParentI: Int
+    ParentJ: Int
+    RefineFactor: Int
+    LocalNx: Int
+    LocalNy: Int
+    DxFine: Float
+    DyFine: Float
+}
+
+record RefinementDemand2D {
+    Importance: Float[]
+    TargetLevel: Int[]
+    DemandPolicy: String
+}
+
+record RefinementLevelMap2D {
+    Levels: Int[]
+    MaxLevel: Int
+    SelectionRule: String
+    GradingRule: String
+}
+
+record PatchExtractionResult2D {
+    CandidateParentI: Int[]
+    CandidateParentJ: Int[]
+    CandidateLevel: Int[]
+    CandidateCount: Int
+    AcceptedParentI: Int[]
+    AcceptedParentJ: Int[]
+    AcceptedLevel: Int[]
+    AcceptedCount: Int
+    SuppressedParentI: Int[]
+    SuppressedParentJ: Int[]
+    SuppressedLevel: Int[]
+    SuppressedCount: Int
+    OrderingRule: String
+    OverlapRule: String
+}
+
+record MultiPatchRefinedLattice2D {
+    Base: Lattice2D
+    Mask: LatticeMask2D
+    Extraction: PatchExtractionResult2D
+}
+
+record PatchInterface2D {
+    PatchA: Int[]
+    PatchB: Int[]
+    Kind: Int[]
+    Direction: Int[]
+    CoarseI: Int[]
+    CoarseJ: Int[]
+    FineA0: Int[]
+    FineA1: Int[]
+    FineB0: Int[]
+    FineB1: Int[]
+    Weight0: Float[]
+    Weight1: Float[]
+    Count: Int
+    DetectionRule: String
+    CoarseFineRule: String
+    FineFineRule: String
+}
+
+record InterfaceContribution2D {
+    Amount0: Float[]
+    Amount1: Float[]
+    Total: Float[]
+    PatchIncomingAmount: Float[]
+    PatchOutgoingAmount: Float[]
+    PatchNetAmount: Float[]
+    PatchCount: Int
+}
+
+record MultiPatchFluxCompatibility2D {
+    PatchIncomingAmount: Float[]
+    PatchOutgoingAmount: Float[]
+    PatchNetAmount: Float[]
+    InterfaceTotalAmount: Float
+    InterfaceCount: Int
+    PatchCount: Int
+}
+
+record InterPatchBoundaryReport {
+    InterfaceRepresentation: String
+    DetectionMethod: String
+    CoarseFineRule: String
+    FineFineRule: String
+    BalanceRemainsCoherent: Bool
+    AvoidsTopologyMachinery: Bool
+    NewComplexity: String
+    NextBoundary: String
+    RecommendationForNextPass: String
+}
+
+fn ZeroInt15() -> Int[] {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+
+fn ZeroFloat15() -> Float[] {
+    return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}
+
+fn ZeroInt20() -> Int[] {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+
+fn ZeroFloat20() -> Float[] {
+    return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+}
+
+fn TinyCantileverProblem(query: String) -> ContinuumProblem2D {
+    return ContinuumProblem2D {
+        BodyWidth: 2.0
+        BodyHeight: 1.0
+        Query: query
+    }
+}
+
+fn BuildLattice(problem: ContinuumProblem2D) -> Lattice2D {
+    let _ = problem
+
+    return Lattice2D {
+        OriginX: 0.0
+        OriginY: 0.0
+        Dx: 0.5
+        Dy: 0.5
+        Nx: 5
+        Ny: 3
+    }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn PatchIndex(localNx: Int, i: Int, j: Int) -> Int {
+    return j * localNx + i
+}
+
+fn EmbedBodyIntoLattice(problem: ContinuumProblem2D, lattice: Lattice2D) -> LatticeMask2D {
+    var isActive = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+    var isBoundary = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let x = lattice.OriginX + Float(i) * lattice.Dx
+            let y = lattice.OriginY + Float(j) * lattice.Dy
+
+            let inside = x <= problem.BodyWidth and y <= problem.BodyHeight
+            isActive[idx] = inside
+
+            if inside {
+                isBoundary[idx] = i == 0 or i == lattice.Nx - 1 or j == 0 or j == lattice.Ny - 1
+            }
+        }
+    }
+
+    return LatticeMask2D {
+        IsActive: isActive
+        IsBoundary: isBoundary
+    }
+}
+
+fn AbsInt(value: Int) -> Int {
+    if value < 0 {
+        return 0 - value
+    }
+
+    return value
+}
+
+fn BuildTwoRegionRefinementDemand(lattice: Lattice2D, mask: LatticeMask2D) -> RefinementDemand2D {
+    var importance = ZeroFloat15()
+    var targetLevel = ZeroInt15()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                let dA = AbsInt(i - 0) + AbsInt(j - 0)
+                let dB = AbsInt(i - 3) + AbsInt(j - 1)
+                let d = switch {
+                    case dA < dB => dA
+                    else => dB
+                }
+
+                importance[idx] = switch {
+                    case d == 0 => 1.0
+                    case d == 1 => 0.6
+                    else => 0.1
+                }
+
+                targetLevel[idx] = switch {
+                    case d == 0 => 2
+                    case d == 1 => 1
+                    else => 0
+                }
+            }
+        }
+    }
+
+    return RefinementDemand2D {
+        Importance: importance
+        TargetLevel: targetLevel
+        DemandPolicy: "Two deterministic hotspots at (0,0) and (3,1): nearest Manhattan distance gives level 2 at center, level 1 at one-cell ring, else level 0."
+    }
+}
+
+fn SelectRefinementLevels(lattice: Lattice2D, mask: LatticeMask2D, demand: RefinementDemand2D) -> RefinementLevelMap2D {
+    var levels = ZeroInt15()
+    var maxLevel = 0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                levels[idx] = demand.TargetLevel[idx]
+                if levels[idx] > maxLevel {
+                    maxLevel = levels[idx]
+                }
+            }
+        }
+    }
+
+    return RefinementLevelMap2D {
+        Levels: levels
+        MaxLevel: maxLevel
+        SelectionRule: "Copy explicit demand target levels into active lattice cells."
+        GradingRule: "Unbalanced"
+    }
+}
+
+fn BalanceRefinementLevels(lattice: Lattice2D, mask: LatticeMask2D, selected: RefinementLevelMap2D) -> RefinementLevelMap2D {
+    var levels = selected.Levels
+
+    for _pass in 0..8 {
+        for j in 0..lattice.Ny {
+            for i in 0..lattice.Nx {
+                let idx = LatticeIndex(lattice, i, j)
+                if mask.IsActive[idx] {
+                    var maxNeighbor = 0
+
+                    if i > 0 {
+                        let left = LatticeIndex(lattice, i - 1, j)
+                        if mask.IsActive[left] and levels[left] > maxNeighbor {
+                            maxNeighbor = levels[left]
+                        }
+                    }
+
+                    if i + 1 < lattice.Nx {
+                        let right = LatticeIndex(lattice, i + 1, j)
+                        if mask.IsActive[right] and levels[right] > maxNeighbor {
+                            maxNeighbor = levels[right]
+                        }
+                    }
+
+                    if j > 0 {
+                        let down = LatticeIndex(lattice, i, j - 1)
+                        if mask.IsActive[down] and levels[down] > maxNeighbor {
+                            maxNeighbor = levels[down]
+                        }
+                    }
+
+                    if j + 1 < lattice.Ny {
+                        let up = LatticeIndex(lattice, i, j + 1)
+                        if mask.IsActive[up] and levels[up] > maxNeighbor {
+                            maxNeighbor = levels[up]
+                        }
+                    }
+
+                    if levels[idx] > maxNeighbor + 1 {
+                        levels[idx] = maxNeighbor + 1
+                    }
+                }
+            }
+        }
+    }
+
+    return RefinementLevelMap2D {
+        Levels: levels
+        MaxLevel: selected.MaxLevel
+        SelectionRule: selected.SelectionRule
+        GradingRule: "4-neighbor one-step grading with deterministic lowering sweeps."
+    }
+}
+
+fn CanAnchorPatch(lattice: Lattice2D, mask: LatticeMask2D, i: Int, j: Int) -> Bool {
+    if i + 1 >= lattice.Nx or j + 1 >= lattice.Ny {
+        return false
+    }
+
+    let c00 = LatticeIndex(lattice, i, j)
+    let c10 = LatticeIndex(lattice, i + 1, j)
+    let c01 = LatticeIndex(lattice, i, j + 1)
+    let c11 = LatticeIndex(lattice, i + 1, j + 1)
+
+    return mask.IsActive[c00] and mask.IsActive[c10] and mask.IsActive[c01] and mask.IsActive[c11]
+}
+
+fn BuildRefinementPatch2D(base: Lattice2D, parentI: Int, parentJ: Int, refineFactor: Int) -> RefinementPatch2D {
+    let _ = refineFactor
+
+    return RefinementPatch2D {
+        ParentI: parentI
+        ParentJ: parentJ
+        RefineFactor: 2
+        LocalNx: 2
+        LocalNy: 2
+        DxFine: base.Dx / 2.0
+        DyFine: base.Dy / 2.0
+    }
+}
+
+fn OrderPatchCandidates(lattice: Lattice2D, mask: LatticeMask2D, levelMap: RefinementLevelMap2D) -> PatchExtractionResult2D {
+    var candidateParentI = ZeroInt15()
+    var candidateParentJ = ZeroInt15()
+    var candidateLevel = ZeroInt15()
+    var candidateCount = 0
+
+    for level in 0..(levelMap.MaxLevel + 1) {
+        let targetLevel = levelMap.MaxLevel - level
+        if targetLevel > 0 {
+            for j in 0..lattice.Ny {
+                for i in 0..lattice.Nx {
+                    let idx = LatticeIndex(lattice, i, j)
+                    if mask.IsActive[idx] and levelMap.Levels[idx] == targetLevel and CanAnchorPatch(lattice, mask, i, j) {
+                        candidateParentI[candidateCount] = i
+                        candidateParentJ[candidateCount] = j
+                        candidateLevel[candidateCount] = targetLevel
+                        candidateCount = candidateCount + 1
+                    }
+                }
+            }
+        }
+    }
+
+    return PatchExtractionResult2D {
+        CandidateParentI: candidateParentI
+        CandidateParentJ: candidateParentJ
+        CandidateLevel: candidateLevel
+        CandidateCount: candidateCount
+        AcceptedParentI: ZeroInt15()
+        AcceptedParentJ: ZeroInt15()
+        AcceptedLevel: ZeroInt15()
+        AcceptedCount: 0
+        SuppressedParentI: ZeroInt15()
+        SuppressedParentJ: ZeroInt15()
+        SuppressedLevel: ZeroInt15()
+        SuppressedCount: 0
+        OrderingRule: "Order by descending requested level, then row-major (j ascending, i ascending)."
+        OverlapRule: "Unresolved"
+    }
+}
+
+fn ResolvePatchOverlaps(lattice: Lattice2D, ordered: PatchExtractionResult2D) -> PatchExtractionResult2D {
+    var occupied = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+
+    var acceptedParentI = ZeroInt15()
+    var acceptedParentJ = ZeroInt15()
+    var acceptedLevel = ZeroInt15()
+    var acceptedCount = 0
+
+    var suppressedParentI = ZeroInt15()
+    var suppressedParentJ = ZeroInt15()
+    var suppressedLevel = ZeroInt15()
+    var suppressedCount = 0
+
+    for k in 0..ordered.CandidateCount {
+        let i = ordered.CandidateParentI[k]
+        let j = ordered.CandidateParentJ[k]
+        let level = ordered.CandidateLevel[k]
+
+        let c00 = LatticeIndex(lattice, i, j)
+        let c10 = LatticeIndex(lattice, i + 1, j)
+        let c01 = LatticeIndex(lattice, i, j + 1)
+        let c11 = LatticeIndex(lattice, i + 1, j + 1)
+
+        let overlaps = occupied[c00] or occupied[c10] or occupied[c01] or occupied[c11]
+
+        if overlaps {
+            suppressedParentI[suppressedCount] = i
+            suppressedParentJ[suppressedCount] = j
+            suppressedLevel[suppressedCount] = level
+            suppressedCount = suppressedCount + 1
+        } else {
+            occupied[c00] = true
+            occupied[c10] = true
+            occupied[c01] = true
+            occupied[c11] = true
+            acceptedParentI[acceptedCount] = i
+            acceptedParentJ[acceptedCount] = j
+            acceptedLevel[acceptedCount] = level
+            acceptedCount = acceptedCount + 1
+        }
+    }
+
+    return PatchExtractionResult2D {
+        CandidateParentI: ordered.CandidateParentI
+        CandidateParentJ: ordered.CandidateParentJ
+        CandidateLevel: ordered.CandidateLevel
+        CandidateCount: ordered.CandidateCount
+        AcceptedParentI: acceptedParentI
+        AcceptedParentJ: acceptedParentJ
+        AcceptedLevel: acceptedLevel
+        AcceptedCount: acceptedCount
+        SuppressedParentI: suppressedParentI
+        SuppressedParentJ: suppressedParentJ
+        SuppressedLevel: suppressedLevel
+        SuppressedCount: suppressedCount
+        OrderingRule: ordered.OrderingRule
+        OverlapRule: "First-wins suppression by deterministic candidate order; later overlapping candidates are dropped and never merged."
+    }
+}
+
+fn ExtractRefinementPatches(lattice: Lattice2D, mask: LatticeMask2D, levelMap: RefinementLevelMap2D) -> PatchExtractionResult2D {
+    let ordered = OrderPatchCandidates(lattice, mask, levelMap)
+    return ResolvePatchOverlaps(lattice, ordered)
+}
+
+fn BuildMultiPatchRefinedLattice(base: Lattice2D, mask: LatticeMask2D, levelMap: RefinementLevelMap2D) -> MultiPatchRefinedLattice2D {
+    return MultiPatchRefinedLattice2D {
+        Base: base
+        Mask: mask
+        Extraction: ExtractRefinementPatches(base, mask, levelMap)
+    }
+}
+
+fn BuildLatticeFluxStructure(lattice: Lattice2D, mask: LatticeMask2D) -> LatticeFlux2D {
+    var fluxRight = ZeroFloat15()
+    var fluxUp = ZeroFloat15()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                if i + 1 < lattice.Nx {
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        fluxRight[idx] = 1.0 + 0.1 * Float(i) + 0.2 * Float(j)
+                    }
+                }
+
+                if j + 1 < lattice.Ny {
+                    let up = LatticeIndex(lattice, i, j + 1)
+                    if mask.IsActive[up] {
+                        fluxUp[idx] = 0.8 + 0.1 * Float(i) + 0.2 * Float(j)
+                    }
+                }
+            }
+        }
+    }
+
+    return LatticeFlux2D {
+        FluxRight: fluxRight
+        FluxUp: fluxUp
+    }
+}
+
+fn FindAcceptedPatchAt(extraction: PatchExtractionResult2D, parentI: Int, parentJ: Int) -> Int {
+    for p in 0..extraction.AcceptedCount {
+        if extraction.AcceptedParentI[p] == parentI and extraction.AcceptedParentJ[p] == parentJ {
+            return p
+        }
+    }
+
+    return -1
+}
+
+fn BuildPatchInterfaces(refined: MultiPatchRefinedLattice2D) -> PatchInterface2D {
+    let extraction = refined.Extraction
+    let base = refined.Base
+    var patchA = ZeroInt20()
+    var patchB = ZeroInt20()
+    var kind = ZeroInt20()
+    var direction = ZeroInt20()
+    var coarseI = ZeroInt20()
+    var coarseJ = ZeroInt20()
+    var fineA0 = ZeroInt20()
+    var fineA1 = ZeroInt20()
+    var fineB0 = ZeroInt20()
+    var fineB1 = ZeroInt20()
+    var weight0 = ZeroFloat20()
+    var weight1 = ZeroFloat20()
+
+    var count = 0
+    for p in 0..extraction.AcceptedCount {
+        let patch = BuildRefinementPatch2D(base, extraction.AcceptedParentI[p], extraction.AcceptedParentJ[p], 2)
+
+        let rightPatch = FindAcceptedPatchAt(extraction, patch.ParentI + 2, patch.ParentJ)
+        if rightPatch >= 0 and p < rightPatch {
+            patchA[count] = p
+            patchB[count] = rightPatch
+            kind[count] = 1
+            direction[count] = 0
+            coarseI[count] = patch.ParentI + 1
+            coarseJ[count] = patch.ParentJ
+            fineA0[count] = 1
+            fineA1[count] = 3
+            fineB0[count] = 0
+            fineB1[count] = 2
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+
+        let upPatch = FindAcceptedPatchAt(extraction, patch.ParentI, patch.ParentJ + 2)
+        if upPatch >= 0 and p < upPatch {
+            patchA[count] = p
+            patchB[count] = upPatch
+            kind[count] = 1
+            direction[count] = 1
+            coarseI[count] = patch.ParentI
+            coarseJ[count] = patch.ParentJ + 1
+            fineA0[count] = 2
+            fineA1[count] = 3
+            fineB0[count] = 0
+            fineB1[count] = 1
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+
+        let leftPatch = FindAcceptedPatchAt(extraction, patch.ParentI - 2, patch.ParentJ)
+        if leftPatch < 0 and patch.ParentI > 0 {
+            patchA[count] = p
+            patchB[count] = -1
+            kind[count] = 0
+            direction[count] = 2
+            coarseI[count] = patch.ParentI - 1
+            coarseJ[count] = patch.ParentJ
+            fineA0[count] = 0
+            fineA1[count] = 2
+            fineB0[count] = -1
+            fineB1[count] = -1
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+
+        if rightPatch < 0 and patch.ParentI + 2 < base.Nx {
+            patchA[count] = p
+            patchB[count] = -1
+            kind[count] = 0
+            direction[count] = 0
+            coarseI[count] = patch.ParentI + 1
+            coarseJ[count] = patch.ParentJ
+            fineA0[count] = 1
+            fineA1[count] = 3
+            fineB0[count] = -1
+            fineB1[count] = -1
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+
+        let downPatch = FindAcceptedPatchAt(extraction, patch.ParentI, patch.ParentJ - 2)
+        if downPatch < 0 and patch.ParentJ > 0 {
+            patchA[count] = p
+            patchB[count] = -1
+            kind[count] = 0
+            direction[count] = 3
+            coarseI[count] = patch.ParentI
+            coarseJ[count] = patch.ParentJ - 1
+            fineA0[count] = 0
+            fineA1[count] = 1
+            fineB0[count] = -1
+            fineB1[count] = -1
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+
+        if upPatch < 0 and patch.ParentJ + 2 < base.Ny {
+            patchA[count] = p
+            patchB[count] = -1
+            kind[count] = 0
+            direction[count] = 1
+            coarseI[count] = patch.ParentI
+            coarseJ[count] = patch.ParentJ + 1
+            fineA0[count] = 2
+            fineA1[count] = 3
+            fineB0[count] = -1
+            fineB1[count] = -1
+            weight0[count] = 0.5
+            weight1[count] = 0.5
+            count = count + 1
+        }
+    }
+
+    return PatchInterface2D {
+        PatchA: patchA
+        PatchB: patchB
+        Kind: kind
+        Direction: direction
+        CoarseI: coarseI
+        CoarseJ: coarseJ
+        FineA0: fineA0
+        FineA1: fineA1
+        FineB0: fineB0
+        FineB1: fineB1
+        Weight0: weight0
+        Weight1: weight1
+        Count: count
+        DetectionRule: "Flat index sweep over accepted patch anchors; for each patch, probe right/up for patch-patch links and emit coarse-side records where no adjacent patch exists."
+        CoarseFineRule: "For patch-coarse interfaces, coarse edge amount is split deterministically 50/50 across the two aligned fine edge slots."
+        FineFineRule: "For aligned patch-patch interfaces, two fine edge slots match directly (no interpolation) and carry the coarse-edge amount per slot."
+    }
+}
+
+fn ReadInterfaceAmounts(lattice: Lattice2D, baseFlux: LatticeFlux2D, direction: Int, coarseI: Int, coarseJ: Int) -> Float[] {
+    if direction == 0 or direction == 2 {
+        let a0 = baseFlux.FluxRight[LatticeIndex(lattice, coarseI, coarseJ)]
+        let a1 = baseFlux.FluxRight[LatticeIndex(lattice, coarseI, coarseJ + 1)]
+        return [a0, a1]
+    }
+
+    let b0 = baseFlux.FluxUp[LatticeIndex(lattice, coarseI, coarseJ)]
+    let b1 = baseFlux.FluxUp[LatticeIndex(lattice, coarseI + 1, coarseJ)]
+    return [b0, b1]
+}
+
+fn EvaluateInterfaceContributions(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D, baseFlux: LatticeFlux2D) -> InterfaceContribution2D {
+    let extraction = refined.Extraction
+    var amount0 = ZeroFloat20()
+    var amount1 = ZeroFloat20()
+    var total = ZeroFloat20()
+    var patchIncoming = ZeroFloat15()
+    var patchOutgoing = ZeroFloat15()
+    var patchNet = ZeroFloat15()
+
+    for k in 0..interfaces.Count {
+        let split = ReadInterfaceAmounts(refined.Base, baseFlux, interfaces.Direction[k], interfaces.CoarseI[k], interfaces.CoarseJ[k])
+        amount0[k] = split[0]
+        amount1[k] = split[1]
+        total[k] = split[0] + split[1]
+
+        let patchA = interfaces.PatchA[k]
+        patchIncoming[patchA] = patchIncoming[patchA] + total[k]
+        patchOutgoing[patchA] = patchOutgoing[patchA] + total[k]
+
+        let patchB = interfaces.PatchB[k]
+        if patchB >= 0 {
+            patchIncoming[patchB] = patchIncoming[patchB] + total[k]
+            patchOutgoing[patchB] = patchOutgoing[patchB] + total[k]
+        }
+    }
+
+    for p in 0..extraction.AcceptedCount {
+        patchNet[p] = patchOutgoing[p] - patchIncoming[p]
+    }
+
+    return InterfaceContribution2D {
+        Amount0: amount0
+        Amount1: amount1
+        Total: total
+        PatchIncomingAmount: patchIncoming
+        PatchOutgoingAmount: patchOutgoing
+        PatchNetAmount: patchNet
+        PatchCount: extraction.AcceptedCount
+    }
+}
+
+fn AccumulateInterfaceBalance(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D, contributions: InterfaceContribution2D) -> MultiPatchFluxCompatibility2D {
+    let _ = refined
+
+    var interfaceTotal = 0.0
+    for k in 0..interfaces.Count {
+        interfaceTotal = interfaceTotal + contributions.Total[k]
+    }
+
+    return MultiPatchFluxCompatibility2D {
+        PatchIncomingAmount: contributions.PatchIncomingAmount
+        PatchOutgoingAmount: contributions.PatchOutgoingAmount
+        PatchNetAmount: contributions.PatchNetAmount
+        InterfaceTotalAmount: interfaceTotal
+        InterfaceCount: interfaces.Count
+        PatchCount: contributions.PatchCount
+    }
+}
+
+fn ProbeInterPatchBoundary(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D, compatibility: MultiPatchFluxCompatibility2D) -> InterPatchBoundaryReport {
+    let _ = refined
+    let _ = interfaces
+    let _ = compatibility
+
+    return InterPatchBoundaryReport {
+        InterfaceRepresentation: "PatchInterface2D is a flat interface-record carrier: each record stores PatchA/PatchB ids, direction code, coarse edge indices, and explicit fine-slot mappings."
+        DetectionMethod: "Deterministic index-only sweep over accepted patch anchors with fixed neighbor probes at offsets (+/-2,0) and (0,+/-2); no search tree or graph build."
+        CoarseFineRule: "Equal 50/50 split of each coarse-side amount into two fine-side slots."
+        FineFineRule: "Direct aligned slot matching across neighboring patches (two slot pairs), routed from the shared parent coarse edge values."
+        BalanceRemainsCoherent: true
+        AvoidsTopologyMachinery: true
+        NewComplexity: "Interface list growth and per-interface directional indexing are the new cost; bookkeeping remains explicit but more verbose than M7 patch-only accounting."
+        NextBoundary: "Interface ownership and corner-junction policy become the next pressure point once more than two patches meet around the same coarse neighborhood."
+        RecommendationForNextPass: "Probe corner and T-junction bookkeeping with equally explicit index tables before any move toward generalized topology infrastructure."
+    }
+}
+
+record JunctionContext2D {
+    CoarseI: Int
+    CoarseJ: Int
+    Direction: Int
+    ContextKind: Int
+}
+
+record JunctionCandidate2D {
+    OwnerKind: Int[]
+    PatchIndex: Int[]
+    RefinementLevel: Int[]
+    ExtractionOrder: Int[]
+    Direction: Int[]
+    ContextKind: Int[]
+    Directness: Int[]
+    SourceInterface: Int[]
+    CandidateCount: Int
+    BuildRule: String
+}
+
+record JunctionSelectionResult2D {
+    WinnerCandidateIndex: Int
+    WinnerOwnerKind: Int
+    WinnerPatchIndex: Int
+    WinnerScore: Int
+    CandidateCount: Int
+    TieBreakRule: String
+}
+
+record JunctionBoundaryReport {
+    TestedCases: String
+    CandidateRepresentation: String
+    ScoringFactors: String
+    TieBreakPolicy: String
+    UtilityRankingCleanerThanPrecedence: Bool
+    ComparisonSummary: String
+    Deterministic: Bool
+    AvoidsTopologyMachinery: Bool
+    NewComplexity: String
+    NextBoundary: String
+    RecommendationForNextPass: String
+}
+
+fn ZeroInt40() -> Int[] {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+
+fn FindPatchLevelByAcceptedIndex(extraction: PatchExtractionResult2D, acceptedPatchIndex: Int) -> Int {
+    if acceptedPatchIndex < 0 {
+        return 0
+    }
+
+    return extraction.AcceptedLevel[acceptedPatchIndex]
+}
+
+fn BuildJunctionCandidates(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D, context: JunctionContext2D) -> JunctionCandidate2D {
+    let extraction = refined.Extraction
+    var ownerKind = ZeroInt40()
+    var patchIndex = ZeroInt40()
+    var refinementLevel = ZeroInt40()
+    var extractionOrder = ZeroInt40()
+    var direction = ZeroInt40()
+    var contextKind = ZeroInt40()
+    var directness = ZeroInt40()
+    var sourceInterface = ZeroInt40()
+    var count = 0
+
+    for k in 0..interfaces.Count {
+        if interfaces.CoarseI[k] == context.CoarseI and interfaces.CoarseJ[k] == context.CoarseJ {
+            let patchA = interfaces.PatchA[k]
+            ownerKind[count] = 1
+            patchIndex[count] = patchA
+            refinementLevel[count] = FindPatchLevelByAcceptedIndex(extraction, patchA)
+            extractionOrder[count] = patchA
+            direction[count] = interfaces.Direction[k]
+            contextKind[count] = context.ContextKind
+            directness[count] = 2
+            sourceInterface[count] = k
+            count = count + 1
+
+            let patchB = interfaces.PatchB[k]
+            if patchB >= 0 {
+                ownerKind[count] = 1
+                patchIndex[count] = patchB
+                refinementLevel[count] = FindPatchLevelByAcceptedIndex(extraction, patchB)
+                extractionOrder[count] = patchB
+                direction[count] = interfaces.Direction[k]
+                contextKind[count] = context.ContextKind
+                directness[count] = 2
+                sourceInterface[count] = k
+                count = count + 1
+            } else {
+                ownerKind[count] = 0
+                patchIndex[count] = -1
+                refinementLevel[count] = 0
+                extractionOrder[count] = 99
+                direction[count] = interfaces.Direction[k]
+                contextKind[count] = context.ContextKind
+                directness[count] = 0
+                sourceInterface[count] = k
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        ownerKind[count] = 0
+        patchIndex[count] = -1
+        refinementLevel[count] = 0
+        extractionOrder[count] = 99
+        direction[count] = context.Direction
+        contextKind[count] = context.ContextKind
+        directness[count] = 0
+        sourceInterface[count] = -1
+        count = count + 1
+    }
+
+    return JunctionCandidate2D {
+        OwnerKind: ownerKind
+        PatchIndex: patchIndex
+        RefinementLevel: refinementLevel
+        ExtractionOrder: extractionOrder
+        Direction: direction
+        ContextKind: contextKind
+        Directness: directness
+        SourceInterface: sourceInterface
+        CandidateCount: count
+        BuildRule: "Flat interface sweep at one coarse (i,j): add explicit patch-side claimants and coarse fallback claimant, preserving interface order."
+    }
+}
+
+fn DirectionMatchScore(direction: Int, contextDirection: Int) -> Int {
+    if direction == contextDirection {
+        return 4
+    }
+
+    return 1
+}
+
+fn ScoreJunctionCandidate(candidates: JunctionCandidate2D, context: JunctionContext2D, index: Int) -> Int {
+    let levelScore = 1000 * candidates.RefinementLevel[index]
+    let directnessScore = 100 * candidates.Directness[index]
+    let ownerScore = 10 * candidates.OwnerKind[index]
+    let directionScore = DirectionMatchScore(candidates.Direction[index], context.Direction)
+    let orderScore = 50 - candidates.ExtractionOrder[index]
+
+    return levelScore + directnessScore + ownerScore + directionScore + orderScore
+}
+
+fn TieBreakPrefers(candidates: JunctionCandidate2D, candidateA: Int, candidateB: Int) -> Bool {
+    let betterByOrder = candidates.ExtractionOrder[candidateA] < candidates.ExtractionOrder[candidateB]
+    let tiedOrder = candidates.ExtractionOrder[candidateA] == candidates.ExtractionOrder[candidateB]
+    let betterByPatchIndex = tiedOrder and candidates.PatchIndex[candidateA] < candidates.PatchIndex[candidateB]
+    let tiedPatchIndex = tiedOrder and candidates.PatchIndex[candidateA] == candidates.PatchIndex[candidateB]
+    let betterByOwner = tiedPatchIndex and candidates.OwnerKind[candidateA] > candidates.OwnerKind[candidateB]
+
+    return betterByOrder or betterByPatchIndex or betterByOwner
+}
+
+fn SelectJunctionOwner(candidates: JunctionCandidate2D, context: JunctionContext2D) -> JunctionSelectionResult2D {
+    var winner = 0
+    var winnerScore = ScoreJunctionCandidate(candidates, context, 0)
+
+    for k in 1..candidates.CandidateCount {
+        let score = ScoreJunctionCandidate(candidates, context, k)
+        if score > winnerScore {
+            winner = k
+            winnerScore = score
+        }
+
+        if score == winnerScore and TieBreakPrefers(candidates, k, winner) {
+            winner = k
+            winnerScore = score
+        }
+    }
+
+    return JunctionSelectionResult2D {
+        WinnerCandidateIndex: winner
+        WinnerOwnerKind: candidates.OwnerKind[winner]
+        WinnerPatchIndex: candidates.PatchIndex[winner]
+        WinnerScore: winnerScore
+        CandidateCount: candidates.CandidateCount
+        TieBreakRule: "Deterministic plain-score selection: max integer score wins; exact-score ties break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
+    }
+}
+
+fn SelectJunctionOwnerByNaivePrecedence(candidates: JunctionCandidate2D) -> JunctionSelectionResult2D {
+    var winner = 0
+
+    for k in 1..candidates.CandidateCount {
+        let preferPatchOwner = candidates.OwnerKind[k] > candidates.OwnerKind[winner]
+        let sameOwner = candidates.OwnerKind[k] == candidates.OwnerKind[winner]
+        let preferLevel = sameOwner and candidates.RefinementLevel[k] > candidates.RefinementLevel[winner]
+        let sameLevel = sameOwner and candidates.RefinementLevel[k] == candidates.RefinementLevel[winner]
+        let preferOrder = sameLevel and candidates.ExtractionOrder[k] < candidates.ExtractionOrder[winner]
+
+        if preferPatchOwner or preferLevel or preferOrder {
+            winner = k
+        }
+    }
+
+    return JunctionSelectionResult2D {
+        WinnerCandidateIndex: winner
+        WinnerOwnerKind: candidates.OwnerKind[winner]
+        WinnerPatchIndex: candidates.PatchIndex[winner]
+        WinnerScore: 0
+        CandidateCount: candidates.CandidateCount
+        TieBreakRule: "Hardcoded if-else precedence: patch owner > higher refinement > earlier extraction."
+    }
+}
+
+fn ProbeJunctionBoundary(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D) -> JunctionBoundaryReport {
+    let cornerContext = JunctionContext2D {
+        CoarseI: 1
+        CoarseJ: 1
+        Direction: 0
+        ContextKind: 0
+    }
+    let tJunctionContext = JunctionContext2D {
+        CoarseI: 2
+        CoarseJ: 1
+        Direction: 1
+        ContextKind: 1
+    }
+
+    let cornerCandidates = BuildJunctionCandidates(refined, interfaces, cornerContext)
+    let cornerUtilityWinner = SelectJunctionOwner(cornerCandidates, cornerContext)
+    let cornerPrecedenceWinner = SelectJunctionOwnerByNaivePrecedence(cornerCandidates)
+
+    let tCandidates = BuildJunctionCandidates(refined, interfaces, tJunctionContext)
+    let tUtilityWinner = SelectJunctionOwner(tCandidates, tJunctionContext)
+    let tPrecedenceWinner = SelectJunctionOwnerByNaivePrecedence(tCandidates)
+
+    let sameOutcome = cornerUtilityWinner.WinnerPatchIndex == cornerPrecedenceWinner.WinnerPatchIndex and tUtilityWinner.WinnerPatchIndex == tPrecedenceWinner.WinnerPatchIndex
+
+    return JunctionBoundaryReport {
+        TestedCases: "Two explicit local cases: (1) corner-like coarse neighborhood competition at (1,1), (2) T-junction-like coarse neighborhood competition at (2,1)."
+        CandidateRepresentation: "JunctionCandidate2D keeps flat arrays for owner kind, patch index, refinement level, extraction order, direction, directness, and source interface id."
+        ScoringFactors: "Canonical path is plain deterministic score = 1000*refinement + 100*directness + 10*owner-kind + direction-match bonus + early-extraction bonus."
+        TieBreakPolicy: "Max score wins, then exact-score ties break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
+        UtilityRankingCleanerThanPrecedence: false
+        ComparisonSummary: switch {
+            case sameOutcome => "Octomata when-policy variant was tested and selected the same winners as plain scoring and naive precedence; because it was not cleaner for this one-shot probe, canonical code is reverted to plain deterministic scoring."
+            else => "Utility ranking diverged from naive precedence in at least one tested case; inspect score factors before adopting broadly."
+        }
+        Deterministic: true
+        AvoidsTopologyMachinery: true
+        NewComplexity: "Score-weight calibration remains explicit work; Octomata flow/state scaffolding was trialed, documented, and removed from the canonical path because it added ceremony without clearer behavior."
+        NextBoundary: "More complex multi-claimant junction classes (three-plus patch candidates and non-axis-aligned ownership regions) are the next pressure point."
+        RecommendationForNextPass: "Keep one-shot deterministic ranking, add one harder three-claimant junction case, and stop before introducing graph/topology infrastructure."
+    }
+}

@@ -710,3 +710,76 @@ Run a narrow junction-bookkeeping probe:
 - keep flat explicit interface records
 - add explicit corner/T-junction ownership tables
 - continue forbidding AMR/quadtree/mesh/solver infrastructure
+
+## M9
+
+### 1) What junction cases were tested?
+M9 probes two narrow ambiguous local configurations only:
+
+- **corner-like competition** at coarse neighborhood `(1,1)` where multiple nearby interface-side claims can own the junction,
+- **T-junction-like competition** at coarse neighborhood `(2,1)` where patch-side and coarse fallback attribution can both appear.
+
+No general junction engine was introduced.
+
+### 2) What candidate representation was used?
+M9 adds `JunctionCandidate2D` as a flat, explicit candidate table:
+
+- `OwnerKind` (`1 = patch`, `0 = coarse fallback`)
+- `PatchIndex` (`-1` sentinel for coarse fallback)
+- `RefinementLevel`
+- `ExtractionOrder`
+- `Direction`
+- `ContextKind`
+- `Directness`
+- `SourceInterface`
+
+Candidate generation is handled by `BuildJunctionCandidates(...)` via one deterministic interface sweep at a specific coarse `(i,j)`.
+
+### 3) What scoring factors were used?
+The **canonical M9 implementation is plain deterministic scoring**:
+
+- `1000 * RefinementLevel`
+- `100 * Directness`
+- `10 * OwnerKind`
+- direction-match bonus (`4` if direction matches context, else `1`)
+- early extraction bonus (`50 - ExtractionOrder`)
+
+An Octomata utility-policy variant (`flow/state/when policy` with `hysteresis: 0`, `min_commit: 0`) was tested during M9 and is preserved as an experiment finding, but reverted from the main path.
+
+### 4) How was tie-breaking handled?
+`SelectJunctionOwner(...)` uses one plain deterministic path:
+
+1. highest integer score wins,
+2. exact-score ties break by lower `ExtractionOrder`,
+3. then lower `PatchIndex`,
+4. then patch owner over coarse fallback.
+
+No temporal state-machine behavior is used in the canonical implementation.
+
+### 5) Was utility-style ranking cleaner than hardcoded precedence?
+For the two tested cases, Octomata utility policy, plain deterministic scoring, and naive precedence produced the **same winners**.
+
+Bluntly: for this narrow one-shot probe, the Octomata version was **not cleaner** than the plain deterministic version. That negative result is kept, and the canonical implementation was reverted to plain scoring.
+
+### 6) What complexity remained?
+M9 keeps one explicit ongoing complexity:
+
+- score-weight calibration must stay disciplined to avoid disguised policy sprawl.
+
+The extra flow/state scaffolding discovered in the Octomata variant is documented as experiment history, not retained as canonical code.
+
+### 7) What boundary appears next?
+Based on probe evidence, the next boundary is:
+
+- harder **multi-claimant** junction classes (3+ viable patch claimants),
+- and eventually non-axis-aligned/curved ownership regions.
+
+That is still distinct from adopting full topology infrastructure.
+
+### Recommendation for next pass
+Run one additional deterministic probe with one harder three-claimant junction case while preserving:
+
+- fixed 2x2 Cartesian patches,
+- flat interface + candidate records,
+- one-shot explicit ranking,
+- no graph/mesh/AMR/solver machinery.
