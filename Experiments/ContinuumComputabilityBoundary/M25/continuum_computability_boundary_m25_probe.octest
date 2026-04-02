@@ -1,0 +1,57 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM25ResponseObjectConstructionIsDeterministic() -> Void {
+    let lattice = BuildM25Lattice()
+    let material = BuildTransportedMaterialOrientation(lattice)
+    let R = LocalResponse { TT: 1.8 NN: 0.2 TN: 0.15 }
+
+    let a = BuildM25CoupledResponseField(material, 1.0, 0.0, R, "horizontal")
+    let b = BuildM25CoupledResponseField(material, 1.0, 0.0, R, "horizontal")
+
+    Assert.Equal(CompareFieldL1(a.Response, b.Response), 0.0, "M25 coupled response should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM25TinyOffDiagonalCouplingProducesMeasurableDifference() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.Near(0.15, report.OffDiagonalValue, 0.000001, "M25 should use explicit tn=0.15")
+    Assert.True(report.C_vs_D_L1 > 0.0, "M24 tn=0 and M25 tn!=0 should differ")
+    Assert.True(report.B_vs_C_L1 <= 0.000001, "M23 and M24 should remain behaviorally equivalent when tn=0")
+    Assert.True(report.B_vs_D_L1 > 0.0, "M25 should differ from M23 once coupling is enabled")
+    Assert.True(report.CapabilityUnlock, "M25 should unlock constitutive capability beyond M24/M23")
+}
+
+[Fact]
+fn ContinuumBoundaryM25MixedProbeRevealsStrongestCouplingSignal() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.CouplingDiagonalL1 > 0.0, "diagonal probe should detect off-diagonal coupling")
+    Assert.True(report.CouplingDiagonalL1 > report.CouplingHorizontalL1, "diagonal should exceed horizontal coupling signal")
+    Assert.True(report.CouplingDiagonalL1 > report.CouplingVerticalL1, "diagonal should exceed vertical coupling signal")
+    Assert.True(report.MixedProbeSensitivity, "report should conclude mixed-direction probing is most sensitive")
+}
+
+[Fact]
+fn ContinuumBoundaryM25TransportedDirectionRemainsCoherentAndStaticGetsWorseUnderCoupling() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.SpatialCoherenceTransported >= 0.85, "transported material direction should remain spatially coherent")
+    Assert.True(report.D_vs_E_L1 > 0.0, "transported and static M25 coupled fields should differ")
+    Assert.True(report.BoundaryCompatibilityTransported > report.BoundaryCompatibilityStatic, "transported direction should stay more boundary-compatible")
+    Assert.True(report.StaticTooCrude, "static direction should be even more inadequate under coupling")
+    Assert.True(report.TransportedWorthIt, "transported direction should remain worthwhile under coupling")
+}
+
+[Fact]
+fn ContinuumBoundaryM25ArchitectureStaysCleanWithoutAuthorityConstitutiveParticipation() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(Contains(report.M25Rule, "R.tn=0.15"), "report should state explicit M25 off-diagonal value")
+    Assert.True(Contains(report.M25Rule, "abs(pt*pn)"), "report should state coupling formula")
+    Assert.True(Contains(report.ProbeDirections, "diagonal"), "report should include mixed-direction probe")
+    Assert.True(report.FieldSeparationPreserved, "field separation must remain intact")
+    Assert.True(not report.AuthorityNeededNow, "authority should remain out of constitutive participation in M25")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M25 must keep fixed topology and avoid solver machinery")
+}
