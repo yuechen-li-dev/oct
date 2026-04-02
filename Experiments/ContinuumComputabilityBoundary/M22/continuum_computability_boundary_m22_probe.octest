@@ -1,0 +1,51 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM22RicherConstitutiveResponseIsDeterministic() -> Void {
+    let lattice = BuildM22Lattice()
+    let material = BuildTransportedMaterialOrientation(lattice)
+
+    let a = BuildRicherDirectionalResponseField(material, 1.0, 0.0, 1.5, 0.5, "horizontal")
+    let b = BuildRicherDirectionalResponseField(material, 1.0, 0.0, 1.5, 0.5, "horizontal")
+
+    Assert.Equal(CompareFieldL1(a.Response, b.Response), 0.0, "richer constitutive response should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM22IsotropicScalarAndRicherResponsesDiffer() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.A_vs_B_L1 > 0.0, "isotropic and scalar anisotropic responses should differ")
+    Assert.True(report.A_vs_C_L1 > 0.0, "isotropic and richer anisotropic responses should differ")
+    Assert.True(report.B_vs_C_L1 > 0.0, "scalar and richer anisotropic responses should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM22RicherRuleAddsDirectionalContrast() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.AlongAcrossContrastC > report.AlongAcrossContrastB, "richer anisotropy should increase along-vs-across constitutive contrast over M21 scalar")
+    Assert.True(report.RicherAddsStructure, "report should conclude richer local rule adds constitutive structure")
+}
+
+[Fact]
+fn ContinuumBoundaryM22TransportedDirectionRemainsCoherentAndUseful() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.SpatialCoherenceTransported >= 0.85, "transported material direction should remain spatially coherent")
+    Assert.True(report.BoundaryCompatibilityTransported > report.BoundaryCompatibilityStatic, "transported direction should be more boundary-compatible than static direction")
+    Assert.True(report.TransportedWorthIt, "report should conclude transported material direction remains useful")
+}
+
+[Fact]
+fn ContinuumBoundaryM22ReportAnswersBoundaryQuestionsWithoutSolver() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(Contains(report.RicherRule, "a_longitudinal") and Contains(report.RicherRule, "a_transverse"), "report should state richer two-channel constitutive rule")
+    Assert.True(Contains(report.ScalarRule, "abs(dot(m,p))"), "report should retain explicit M21 scalar comparison rule")
+    Assert.True(report.IsotropicInsufficient, "report should conclude isotropic baseline is insufficient")
+    Assert.True(report.StaticTooCrude, "report should conclude static direction is too crude under richer constitutive rule")
+    Assert.True(report.FieldSeparationPreserved, "field separation must remain intact")
+    Assert.True(not report.AuthorityNeededNow, "authority participation should remain unnecessary in M22")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M22 must keep fixed topology and avoid solver machinery")
+}
