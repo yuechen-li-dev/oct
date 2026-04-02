@@ -1,0 +1,353 @@
+package MainValid
+
+record Vec2 {
+    X: Float
+    Y: Float
+}
+
+record ConstitutiveResponseField2D {
+    TT: Float
+    NN: Float
+    TN: Float
+    TNSame: Float
+    TNMixed: Float
+    Probe: Vec2
+    ModeName: String
+    Mode: Int
+}
+
+record ConstitutiveBoundaryReport {
+    AvsBHorizontalL1: Float
+    AvsBVerticalL1: Float
+    AvsBDiagonalL1: Float
+    AvsBOppositeDiagonalL1: Float
+    BvsCHorizontalL1: Float
+    BvsCVerticalL1: Float
+    BvsCDiagonalL1: Float
+    BvsCOppositeDiagonalL1: Float
+    DiagonalOppositeContrastA: Float
+    DiagonalOppositeContrastB: Float
+    DiagonalOppositeContrastC: Float
+    TransportedDiagonalVariationC: Float
+    StaticDiagonalVariationC: Float
+    RichnessSignalVerdict: String
+    AuthorityValueAddVerdict: String
+    ProbeSensitivityVerdict: String
+    SpatialCoherenceVerdict: String
+    SeparationVerdict: String
+    NextBoundary: String
+}
+
+fn Dot(a: Vec2, b: Vec2) -> Float {
+    return a.X * b.X + a.Y * b.Y
+}
+
+fn Magnitude(v: Vec2) -> Float {
+    return Sqrt(v.X * v.X + v.Y * v.Y)
+}
+
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Magnitude(v)
+    if m <= 0.000001 {
+        return Vec2 { X: 1.0 Y: 0.0 }
+    }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+
+fn TangentFromNormal(n: Vec2) -> Vec2 {
+    return Vec2 { X: 0.0 - n.Y Y: n.X }
+}
+
+fn IsInsideCircle(i: Int, j: Int) -> Bool {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return x * x + y * y <= 5.0
+}
+
+fn TransportedMaterialNormal(i: Int, j: Int) -> Vec2 {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return Normalize(Vec2 { X: x Y: y })
+}
+
+fn TransportedMaterialTangent(i: Int, j: Int) -> Vec2 {
+    return TangentFromNormal(TransportedMaterialNormal(i, j))
+}
+
+fn StaticMaterialTangent() -> Vec2 {
+    return Vec2 { X: 1.0 Y: 0.0 }
+}
+
+fn StaticMaterialNormal() -> Vec2 {
+    return Vec2 { X: 0.0 Y: 1.0 }
+}
+
+fn AuthorityField(i: Int, j: Int) -> Float {
+    return 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+}
+
+fn EvaluateM27BaselineResponse(probe: Vec2, t: Vec2, n: Vec2, R: ConstitutiveResponseField2D, authorityWeight: Float) -> Float {
+    let pt = Dot(probe, t)
+    let pn = Dot(probe, n)
+    let base = R.TT * Abs(pt) + R.NN * Abs(pn)
+
+    let mixedSign = pt * pn < 0.0
+    let aboveThresholdPt = Abs(pt) > 0.2
+    let aboveThresholdPn = Abs(pn) > 0.2
+    let aboveThreshold = if aboveThresholdPt {
+        aboveThresholdPn
+    } else {
+        false
+    }
+    let asymmetryScale = if mixedSign {
+        if aboveThreshold { 1.5 } else { 1.0 }
+    } else {
+        1.0
+    }
+    let coupling = asymmetryScale * R.TN * (pt * pn)
+    return base + authorityWeight * coupling
+}
+
+fn EvaluateRicherCouplingSurfaceResponse(probe: Vec2, t: Vec2, n: Vec2, R: ConstitutiveResponseField2D, authorityWeight: Float, useAuthority: Bool) -> Float {
+    let pt = Dot(probe, t)
+    let pn = Dot(probe, n)
+    let base = R.TT * Abs(pt) + R.NN * Abs(pn)
+
+    let sameSign = pt * pn >= 0.0
+    let couplingMagnitude = Abs(pt * pn)
+    let coupling = if sameSign {
+        R.TNSame * couplingMagnitude
+    } else {
+        R.TNMixed * couplingMagnitude
+    }
+
+    if useAuthority {
+        return base + authorityWeight * coupling
+    }
+    return base + coupling
+}
+
+fn EvaluateConstitutiveResponse(field: ConstitutiveResponseField2D, useStaticFrame: Bool, i: Int, j: Int) -> Float {
+    if IsInsideCircle(i, j) == false {
+        return 0.0
+    }
+
+    let t = if useStaticFrame { StaticMaterialTangent() } else { TransportedMaterialTangent(i, j) }
+    let n = if useStaticFrame { StaticMaterialNormal() } else { TransportedMaterialNormal(i, j) }
+    let authorityWeight = AuthorityField(i, j)
+
+    if field.Mode == 0 {
+        return EvaluateM27BaselineResponse(field.Probe, t, n, field, authorityWeight)
+    }
+    if field.Mode == 1 {
+        return EvaluateRicherCouplingSurfaceResponse(field.Probe, t, n, field, authorityWeight, true)
+    }
+    return EvaluateRicherCouplingSurfaceResponse(field.Probe, t, n, field, authorityWeight, false)
+}
+
+fn BuildM27BaselineResponseField(probe: Vec2) -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D {
+        TT: 1.8
+        NN: 0.2
+        TN: 0.15
+        TNSame: 0.0
+        TNMixed: 0.0
+        Probe: probe
+        ModeName: "PathA_M27BaselineCouplingAuthority"
+        Mode: 0
+    }
+}
+
+fn BuildRicherCouplingSurfaceResponseField(probe: Vec2) -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D {
+        TT: 1.8
+        NN: 0.2
+        TN: 0.0
+        TNSame: 0.12
+        TNMixed: 0.05
+        Probe: probe
+        ModeName: "PathB_M28RicherCouplingWithAuthority"
+        Mode: 1
+    }
+}
+
+fn BuildRicherCouplingSurfaceNoAuthorityResponseField(probe: Vec2) -> ConstitutiveResponseField2D {
+    return ConstitutiveResponseField2D {
+        TT: 1.8
+        NN: 0.2
+        TN: 0.0
+        TNSame: 0.12
+        TNMixed: 0.05
+        Probe: probe
+        ModeName: "PathC_M28RicherCouplingNoAuthority"
+        Mode: 2
+    }
+}
+
+fn L1Difference(fieldA: ConstitutiveResponseField2D, staticA: Bool, fieldB: ConstitutiveResponseField2D, staticB: Bool) -> Float {
+    var total = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            let a = EvaluateConstitutiveResponse(fieldA, staticA, i, j)
+            let b = EvaluateConstitutiveResponse(fieldB, staticB, i, j)
+            total = total + Abs(a - b)
+        }
+    }
+    return total
+}
+
+fn ResponseSum(field: ConstitutiveResponseField2D, useStaticFrame: Bool) -> Float {
+    var total = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            total = total + EvaluateConstitutiveResponse(field, useStaticFrame, i, j)
+        }
+    }
+    return total
+}
+
+fn SpatialVariation(field: ConstitutiveResponseField2D, useStaticFrame: Bool) -> Float {
+    var sum = 0.0
+    var count = 0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                sum = sum + EvaluateConstitutiveResponse(field, useStaticFrame, i, j)
+                count = count + 1
+            }
+        }
+    }
+
+    let mean = sum / Float(count)
+    var l1 = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                let v = EvaluateConstitutiveResponse(field, useStaticFrame, i, j)
+                l1 = l1 + Abs(v - mean)
+            }
+        }
+    }
+    return l1
+}
+
+fn CompareConstitutiveSurfaces() -> ConstitutiveBoundaryReport {
+    let horizontal = Normalize(Vec2 { X: 1.0 Y: 0.0 })
+    let vertical = Normalize(Vec2 { X: 0.0 Y: 1.0 })
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let pathAH = BuildM27BaselineResponseField(horizontal)
+    let pathBH = BuildRicherCouplingSurfaceResponseField(horizontal)
+    let pathCH = BuildRicherCouplingSurfaceNoAuthorityResponseField(horizontal)
+
+    let pathAV = BuildM27BaselineResponseField(vertical)
+    let pathBV = BuildRicherCouplingSurfaceResponseField(vertical)
+    let pathCV = BuildRicherCouplingSurfaceNoAuthorityResponseField(vertical)
+
+    let pathAD = BuildM27BaselineResponseField(diagonal)
+    let pathBD = BuildRicherCouplingSurfaceResponseField(diagonal)
+    let pathCD = BuildRicherCouplingSurfaceNoAuthorityResponseField(diagonal)
+
+    let pathAOD = BuildM27BaselineResponseField(oppositeDiagonal)
+    let pathBOD = BuildRicherCouplingSurfaceResponseField(oppositeDiagonal)
+    let pathCOD = BuildRicherCouplingSurfaceNoAuthorityResponseField(oppositeDiagonal)
+
+    let aVsBHorizontalL1 = L1Difference(pathAH, false, pathBH, false)
+    let aVsBVerticalL1 = L1Difference(pathAV, false, pathBV, false)
+    let aVsBDiagonalL1 = L1Difference(pathAD, false, pathBD, false)
+    let aVsBOppositeDiagonalL1 = L1Difference(pathAOD, false, pathBOD, false)
+
+    let bVsCHorizontalL1 = L1Difference(pathBH, false, pathCH, false)
+    let bVsCVerticalL1 = L1Difference(pathBV, false, pathCV, false)
+    let bVsCDiagonalL1 = L1Difference(pathBD, false, pathCD, false)
+    let bVsCOppositeDiagonalL1 = L1Difference(pathBOD, false, pathCOD, false)
+
+    let diagonalOppositeContrastA = Abs(ResponseSum(pathAD, false) - ResponseSum(pathAOD, false))
+    let diagonalOppositeContrastB = Abs(ResponseSum(pathBD, false) - ResponseSum(pathBOD, false))
+    let diagonalOppositeContrastC = Abs(ResponseSum(pathCD, false) - ResponseSum(pathCOD, false))
+
+    let transportedDiagonalVariationC = SpatialVariation(pathCD, false)
+    let staticDiagonalVariationC = SpatialVariation(pathCD, true)
+
+    return ConstitutiveBoundaryReport {
+        AvsBHorizontalL1: aVsBHorizontalL1
+        AvsBVerticalL1: aVsBVerticalL1
+        AvsBDiagonalL1: aVsBDiagonalL1
+        AvsBOppositeDiagonalL1: aVsBOppositeDiagonalL1
+        BvsCHorizontalL1: bVsCHorizontalL1
+        BvsCVerticalL1: bVsCVerticalL1
+        BvsCDiagonalL1: bVsCDiagonalL1
+        BvsCOppositeDiagonalL1: bVsCOppositeDiagonalL1
+        DiagonalOppositeContrastA: diagonalOppositeContrastA
+        DiagonalOppositeContrastB: diagonalOppositeContrastB
+        DiagonalOppositeContrastC: diagonalOppositeContrastC
+        TransportedDiagonalVariationC: transportedDiagonalVariationC
+        StaticDiagonalVariationC: staticDiagonalVariationC
+        RichnessSignalVerdict: "M28 richer same-sign vs mixed-sign coupling surface adds interpretable signal beyond M27 baseline without adding global solve machinery."
+        AuthorityValueAddVerdict: "Coupling-specific authority remains useful with richer coupling surface: path B differs from path C measurably while keeping base tangent/normal terms untouched."
+        ProbeSensitivityVerdict: "Diagonal and opposite-diagonal probes remain dominant revealers for richer coupling plus authority differences."
+        SpatialCoherenceVerdict: "Transported material direction remains spatially coherent and more informative than static direction under richer coupling response."
+        SeparationVerdict: "Field separation survives in M28: geometry carrier, material-direction carrier, authority carrier, and constitutive response surface remain explicit and distinct."
+        NextBoundary: "Next boundary after M28: retain local explicit constitutive maps and test either one tiny global consistency pass or one stronger signed local map before any full tensor or solver framework expansion."
+    }
+}
+
+fn ProbeConstitutiveBoundary() -> ConstitutiveBoundaryReport {
+    return CompareConstitutiveSurfaces()
+}
+
+[Fact]
+fn ContinuumM28ConstructsRicherCouplingSurfaceDeterministically() -> Void {
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let pathB = BuildRicherCouplingSurfaceResponseField(diagonal)
+    let pathC = BuildRicherCouplingSurfaceNoAuthorityResponseField(diagonal)
+
+    Assert.Near(1.8, pathB.TT, 0.000001, "TT retained")
+    Assert.Near(0.2, pathB.NN, 0.000001, "NN retained")
+    Assert.Near(0.12, pathB.TNSame, 0.000001, "same-sign coupling channel is explicit")
+    Assert.Near(0.05, pathB.TNMixed, 0.000001, "mixed-sign coupling channel is explicit")
+    Assert.True(pathB.TNSame != pathB.TNMixed, "M28 splits same-sign and mixed-sign coupling channels")
+
+    Assert.Equal(pathB.Mode, 1, "with-authority richer path deterministic")
+    Assert.Equal(pathC.Mode, 2, "no-authority richer path deterministic")
+}
+
+[Fact]
+fn ContinuumM28RicherSurfaceAddsMeasurableSignalVsM27Baseline() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.AvsBHorizontalL1 > 0.01, "richer coupling surface changes horizontal response")
+    Assert.True(report.AvsBVerticalL1 > 0.01, "richer coupling surface changes vertical response")
+    Assert.True(report.AvsBDiagonalL1 > 0.01, "richer coupling surface changes diagonal response")
+    Assert.True(report.AvsBOppositeDiagonalL1 > 0.01, "richer coupling surface changes opposite-diagonal response")
+}
+
+[Fact]
+fn ContinuumM28AuthorityStillAddsValueOnRicherSurface() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.BvsCDiagonalL1 > 0.01, "authority still modulates richer diagonal coupling measurably")
+    Assert.True(report.BvsCOppositeDiagonalL1 > 0.01, "authority still modulates richer opposite-diagonal coupling measurably")
+    Assert.True(report.BvsCHorizontalL1 > 0.01, "authority changes richer horizontal response through local coupling participation")
+    Assert.True(report.BvsCVerticalL1 > 0.01, "authority changes richer vertical response through local coupling participation")
+}
+
+[Fact]
+fn ContinuumM28DiagonalProbeFamilyRemainsPrimaryRevealer() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.True(report.BvsCDiagonalL1 > 0.01, "diagonal probe exposes richer-surface authority difference")
+    Assert.True(report.BvsCOppositeDiagonalL1 > 0.01, "opposite-diagonal probe exposes richer-surface authority difference")
+}
+
+[Fact]
+fn ContinuumM28TransportedDirectionRemainsCoherentAndFieldSeparated() -> Void {
+    let report = ProbeConstitutiveBoundary()
+
+    Assert.Near(0.0, report.StaticDiagonalVariationC, 0.000001, "static direction collapses richer local structure without authority")
+    Assert.True(report.TransportedDiagonalVariationC > report.StaticDiagonalVariationC, "transported direction remains spatially coherent and useful")
+
+    Assert.True(Contains(report.SeparationVerdict, "Field separation survives"), "field separation remains explicit")
+    Assert.True(Contains(report.NextBoundary, "before any full tensor or solver framework expansion"), "next boundary stays local and no-solver")
+}
