@@ -1,0 +1,86 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM14BuildsDeterministicOrientationField() -> Void {
+    let lattice = BuildM14Lattice()
+    let boundary = BuildM14CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let band = selective.BoundaryBand
+    let orientationA = BuildCircleTangentField(boundary, lattice, band)
+    let orientationB = BuildCircleTangentField(boundary, lattice, band)
+    let probe = LatticeIndex(lattice, 4, 2)
+    let interior = LatticeIndex(lattice, 2, 2)
+
+    Assert.Equal(orientationA.Ox[probe], orientationB.Ox[probe], "tangent orientation x should be deterministic")
+    Assert.Equal(orientationA.Oy[probe], orientationB.Oy[probe], "tangent orientation y should be deterministic")
+    Assert.Equal(0.0, orientationA.Strength[interior], "orientation strength should stay zero away from boundary band")
+}
+
+[Fact]
+fn ContinuumBoundaryM14BuildsDeterministicOrientationEdgeWeights() -> Void {
+    let lattice = BuildM14Lattice()
+    let boundary = BuildM14CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let band = selective.BoundaryBand
+    let orientation = BuildCircleTangentField(boundary, lattice, band)
+
+    let edgesA = BuildOrientationEdgeField(lattice, selective.Coverage, orientation)
+    let edgesB = BuildOrientationEdgeField(lattice, selective.Coverage, orientation)
+    let probe = LatticeIndex(lattice, 4, 2)
+
+    Assert.Equal(edgesA.WeightLeft[probe], edgesB.WeightLeft[probe], "orientation-weighted left edge should be deterministic")
+    Assert.Equal(edgesA.WeightUp[probe], edgesB.WeightUp[probe], "orientation-weighted up edge should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM14ExplicitOrientationDiffersFromInferredAnisotropy() -> Void {
+    let lattice = BuildM14Lattice()
+    let boundary = BuildM14CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let band = selective.BoundaryBand
+    let orientation = BuildCircleTangentField(boundary, lattice, band)
+
+    let inferred = ComputeInferredDirectionalEdgeWeights(lattice, selective.Coverage)
+    let explicit = BuildOrientationEdgeField(lattice, selective.Coverage, orientation)
+    let inferredTangential = ComputeTangentialPreference(lattice, boundary, band, inferred)
+    let explicitTangential = ComputeTangentialPreference(lattice, boundary, band, explicit)
+
+    Assert.True(explicitTangential > inferredTangential, "explicit tangent field should increase tangential preference over inferred anisotropy")
+}
+
+[Fact]
+fn ContinuumBoundaryM14OneStepConsequenceChangesWithExplicitOrientation() -> Void {
+    let lattice = BuildM14Lattice()
+    let boundary = BuildM14CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let inferred = ComputeInferredDirectionalEdgeWeights(lattice, selective.Coverage)
+    let band = selective.BoundaryBand
+    let orientation = BuildCircleTangentField(boundary, lattice, band)
+    let explicit = BuildOrientationEdgeField(lattice, selective.Coverage, orientation)
+
+    let inferredStep = ApplyOrientationWeightedStep(lattice, selective.Coverage, inferred)
+    let explicitStep = ApplyOrientationWeightedStep(lattice, selective.Coverage, explicit)
+
+    let difference = CompareOrientationVsInferred(lattice, inferredStep, explicitStep)
+    let inferredTangential = ComputeTangentialPreference(lattice, boundary, band, inferred)
+    let explicitTangential = ComputeTangentialPreference(lattice, boundary, band, explicit)
+
+    Assert.True(difference > 0.0, "explicit orientation one-step field should differ from inferred anisotropy one-step field")
+    Assert.True(explicitTangential > inferredTangential, "explicit orientation should preserve stronger tangential transfer bias near the curved boundary")
+}
+
+[Fact]
+fn ContinuumBoundaryM14ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeOrientationBoundary()
+
+    Assert.True(Contains(report.OrientationFieldChosen, "tangent"), "report should identify chosen orientation field")
+    Assert.True(Contains(report.OrientationDerivation, "normalize") and Contains(report.OrientationDerivation, "tangent"), "report should state orientation derivation")
+    Assert.True(Contains(report.OrientationEdgeWeightRule, "axis-alignment"), "report should state orientation edge rule")
+    Assert.True(Contains(report.ComparisonVsInferred, "inferred anisotropy"), "report should compare explicit orientation vs inferred")
+    Assert.True(Contains(report.OneStepConsequence, "One deterministic local diffusion-like step"), "report should describe one-step consequence")
+    Assert.Equal(true, report.MeaningfulImprovement, "report should mark whether improvement is meaningful")
+    Assert.Equal(true, report.NoTopologyOrSolverIntroduced, "probe must remain topology-free and solver-free")
+    Assert.True(Contains(report.NextBoundary, "interior") or Contains(report.NextBoundary, "material"), "report should state next boundary")
+}

@@ -1043,3 +1043,69 @@ The next pressure point is anisotropy fidelity vs true geometry:
 - before explicit curved-edge geometry or mesh-topology machinery becomes necessary.
 
 Blunt verdict: M13 passes as a meaningful directional probe and remains cleaner than mesh-edge handling for this narrow objective.
+
+## M14
+
+### 1) What orientation field was introduced?
+M14 introduces one explicit per-cell field:
+
+- `OrientationField2D { Ox, Oy, Strength }`
+
+`Ox/Oy` store preferred local direction, and `Strength` keeps orientation separate from scalar coverage state by activating directionality only where intended.
+
+### 2) How was it derived?
+M14 uses one geometry-derived rule only, on the same M11–M13 circle fixture (`center=(2.5,2.5)`, `radius=2.1`) and same `6x6` Cartesian lattice:
+
+- compute local circle normal at each cell center: `normal = normalize(cellCenter - circleCenter)`
+- set tangent orientation: `tangent = (-normalY, normalX)`
+- set `Strength=1` only in boundary-band cells (`0 < coverage < 1`), and `0` elsewhere.
+
+So orientation is explicit, deterministic, local, and boundary-local by construction.
+
+### 3) How were edge weights computed from orientation?
+M14 keeps the same baseline edge rule from M13:
+
+- `baseline(A↔B) = min(CA, CB)` over implicit Cartesian neighbors.
+
+Orientation refinement is then:
+
+- `weight = baseline * (1 + beta * strength * alignment)` with `beta=0.60`
+- `alignment = abs(dot(tangent, edgeAxis))`, averaged across edge endpoints
+- horizontal edges use tangent `x`, vertical edges use tangent `y`
+- clamp to `[0,1]`.
+
+This remains one-hop local and deterministic; no solver or topology changes are introduced.
+
+### 4) How did explicit orientation compare vs inferred anisotropy?
+M14 compares two anisotropy paths on the same scalar coverage field:
+
+- **A) inferred anisotropy (M13-style):** derive direction from normalized local coverage differences.
+- **B) explicit orientation anisotropy:** read direction from stored tangent field.
+
+Observed in the probe:
+
+- one-step outputs differ measurably (`L1(inferred, explicit) > 0`),
+- explicit tangent orientation produces stronger tangential preference near curved boundaries,
+- explicit orientation sharpens tangential-vs-radial transfer preference near the curved boundary, while keeping deterministic one-step locality.
+
+### 5) What computational consequence was tested?
+Exactly one narrow consequence:
+
+- one deterministic diffusion-like local update over implicit Cartesian neighbors,
+- run once for inferred anisotropy and once for explicit orientation anisotropy,
+- compared with scalar-only context (uniform neighbor step) for reference.
+
+No iterative solve, no mesh pass, no topology mutation.
+
+### 6) Was improvement meaningful?
+For this M14 circle probe: **yes**.
+
+Explicit stored tangent orientation gave cleaner boundary-local anisotropic behavior than coverage-gradient inference alone, with measurable one-step impact and stronger tangential fidelity in the tested case.
+
+### 7) What is the next boundary after M14?
+M14 narrows the next boundary to:
+
+- whether boundary-local geometry-derived orientation should be transported into interior cells,
+- versus introducing orientation that is material-driven and independent of geometry.
+
+Blunt verdict: explicit orientation fielding is worth it at this stage; the pressure point moves from "inferred vs explicit" to "boundary-only orientation vs interior/material orientation" while keeping the same Cartesian carrier.
