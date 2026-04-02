@@ -885,43 +885,11 @@ fn TieBreakPrefers(candidates: JunctionCandidate2D, candidateA: Int, candidateB:
     return betterByOrder or betterByPatchIndex or betterByOwner
 }
 
-flow SelectJunctionOwnerPolicyFlow(candidates: JunctionCandidate2D, context: JunctionContext2D) -> Int {
-    state Decide {
-        let winner = when policy {
-            hysteresis: 0
-            min_commit: 0
-        } {
-            case 0 when candidates.CandidateCount > 0 score ScoreJunctionCandidate(candidates, context, 0)
-            case 1 when candidates.CandidateCount > 1 score ScoreJunctionCandidate(candidates, context, 1)
-            case 2 when candidates.CandidateCount > 2 score ScoreJunctionCandidate(candidates, context, 2)
-            case 3 when candidates.CandidateCount > 3 score ScoreJunctionCandidate(candidates, context, 3)
-            case 4 when candidates.CandidateCount > 4 score ScoreJunctionCandidate(candidates, context, 4)
-            case 5 when candidates.CandidateCount > 5 score ScoreJunctionCandidate(candidates, context, 5)
-            else 0
-        }
-
-        return winner
-    }
-}
-
 fn SelectJunctionOwner(candidates: JunctionCandidate2D, context: JunctionContext2D) -> JunctionSelectionResult2D {
-    let policy = SelectJunctionOwnerPolicyFlow(candidates, context)
-    Step(policy)
+    var winner = 0
+    var winnerScore = ScoreJunctionCandidate(candidates, context, 0)
 
-    var policyWinner = 0
-    match Result(policy) {
-        ok(value) => {
-            policyWinner = value
-        }
-        err(e) => {
-            let _ = e
-        }
-    }
-
-    var winner = policyWinner
-    var winnerScore = ScoreJunctionCandidate(candidates, context, winner)
-
-    for k in 0..candidates.CandidateCount {
+    for k in 1..candidates.CandidateCount {
         let score = ScoreJunctionCandidate(candidates, context, k)
         if score > winnerScore {
             winner = k
@@ -940,7 +908,7 @@ fn SelectJunctionOwner(candidates: JunctionCandidate2D, context: JunctionContext
         WinnerPatchIndex: candidates.PatchIndex[winner]
         WinnerScore: winnerScore
         CandidateCount: candidates.CandidateCount
-        TieBreakRule: "Primary owner choice is computed by Octomata when policy (hysteresis: 0, min_commit: 0); exact-score ties then break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
+        TieBreakRule: "Deterministic plain-score selection: max integer score wins; exact-score ties break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
     }
 }
 
@@ -996,16 +964,16 @@ fn ProbeJunctionBoundary(refined: MultiPatchRefinedLattice2D, interfaces: PatchI
     return JunctionBoundaryReport {
         TestedCases: "Two explicit local cases: (1) corner-like coarse neighborhood competition at (1,1), (2) T-junction-like coarse neighborhood competition at (2,1)."
         CandidateRepresentation: "JunctionCandidate2D keeps flat arrays for owner kind, patch index, refinement level, extraction order, direction, directness, and source interface id."
-        ScoringFactors: "Primary owner choice uses Octomata when policy cases (hysteresis: 0, min_commit: 0) with score = 1000*refinement + 100*directness + 10*owner-kind + direction-match bonus + early-extraction bonus."
-        TieBreakPolicy: "when policy picks the primary winner by score; exact-score ties then break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
+        ScoringFactors: "Canonical path is plain deterministic score = 1000*refinement + 100*directness + 10*owner-kind + direction-match bonus + early-extraction bonus."
+        TieBreakPolicy: "Max score wins, then exact-score ties break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
         UtilityRankingCleanerThanPrecedence: false
         ComparisonSummary: switch {
-            case sameOutcome => "Octomata when-policy and naive precedence selected the same winners in both tested cases; the Octomata form keeps real control vocabulary visible but is more ceremony than the previous plain helper loop for this one-shot probe."
+            case sameOutcome => "Octomata when-policy variant was tested and selected the same winners as plain scoring and naive precedence; because it was not cleaner for this one-shot probe, canonical code is reverted to plain deterministic scoring."
             else => "Utility ranking diverged from naive precedence in at least one tested case; inspect score factors before adopting broadly."
         }
         Deterministic: true
         AvoidsTopologyMachinery: true
-        NewComplexity: "Flow/state scaffolding plus explicit hysteresis/min_commit fields add ceremony for a one-shot decision; score weight calibration is still explicit work that must stay narrow."
+        NewComplexity: "Score-weight calibration remains explicit work; Octomata flow/state scaffolding was trialed, documented, and removed from the canonical path because it added ceremony without clearer behavior."
         NextBoundary: "More complex multi-claimant junction classes (three-plus patch candidates and non-axis-aligned ownership regions) are the next pressure point."
         RecommendationForNextPass: "Keep one-shot deterministic ranking, add one harder three-claimant junction case, and stop before introducing graph/topology infrastructure."
     }

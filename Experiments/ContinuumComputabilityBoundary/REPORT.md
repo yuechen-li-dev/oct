@@ -736,13 +736,7 @@ M9 adds `JunctionCandidate2D` as a flat, explicit candidate table:
 Candidate generation is handled by `BuildJunctionCandidates(...)` via one deterministic interface sweep at a specific coarse `(i,j)`.
 
 ### 3) What scoring factors were used?
-M9 now uses **real Octomata utility policy syntax** for primary owner choice:
-
-- `flow SelectJunctionOwnerPolicyFlow(...)`
-- single `state Decide`
-- `let winner = when policy { hysteresis: 0, min_commit: 0 } { ... }`
-
-Each candidate case uses the same explicit integer score:
+The **canonical M9 implementation is plain deterministic scoring**:
 
 - `1000 * RefinementLevel`
 - `100 * Directness`
@@ -750,26 +744,29 @@ Each candidate case uses the same explicit integer score:
 - direction-match bonus (`4` if direction matches context, else `1`)
 - early extraction bonus (`50 - ExtractionOrder`)
 
+An Octomata utility-policy variant (`flow/state/when policy` with `hysteresis: 0`, `min_commit: 0`) was tested during M9 and is preserved as an experiment finding, but reverted from the main path.
+
 ### 4) How was tie-breaking handled?
-`SelectJunctionOwner(...)` now executes two explicit deterministic phases:
+`SelectJunctionOwner(...)` uses one plain deterministic path:
 
-1. primary candidate choice via Octomata `when policy` (in `flow/state`) with `hysteresis: 0` and `min_commit: 0`,
-2. explicit exact-score tie-break by lower `ExtractionOrder`, then lower `PatchIndex`, then patch owner over coarse fallback.
+1. highest integer score wins,
+2. exact-score ties break by lower `ExtractionOrder`,
+3. then lower `PatchIndex`,
+4. then patch owner over coarse fallback.
 
-`flow/state` is present only because this pass intentionally uses real Octomata utility vocabulary; this remains a one-shot local decision, not a temporal controller.
+No temporal state-machine behavior is used in the canonical implementation.
 
 ### 5) Was utility-style ranking cleaner than hardcoded precedence?
-For the two tested cases, Octomata utility policy and naive precedence produced the **same winners**.
+For the two tested cases, Octomata utility policy, plain deterministic scoring, and naive precedence produced the **same winners**.
 
-Bluntly: for this narrow one-shot probe, the Octomata version is **not cleaner** than the earlier plain helper loop. It is still inspectable, but introduces extra flow/state ceremony solely to stay in the real Octomata control model.
+Bluntly: for this narrow one-shot probe, the Octomata version was **not cleaner** than the plain deterministic version. That negative result is kept, and the canonical implementation was reverted to plain scoring.
 
 ### 6) What complexity remained?
-M9 introduces two explicit complexities:
+M9 keeps one explicit ongoing complexity:
 
-- score-weight calibration must stay disciplined to avoid disguised policy sprawl,
-- mandatory `flow/state + when policy` scaffolding is additional ceremony when `hysteresis` and `min_commit` are intentionally set to zero.
+- score-weight calibration must stay disciplined to avoid disguised policy sprawl.
 
-So while deterministic and inspectable, this formulation is heavier than plain scoring for one-shot ownership.
+The extra flow/state scaffolding discovered in the Octomata variant is documented as experiment history, not retained as canonical code.
 
 ### 7) What boundary appears next?
 Based on probe evidence, the next boundary is:

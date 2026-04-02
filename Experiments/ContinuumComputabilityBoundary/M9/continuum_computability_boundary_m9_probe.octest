@@ -133,7 +133,7 @@ fn ContinuumBoundaryM9SelectsExactlyOneWinnerDeterministically() -> Void {
 
     Assert.Equal(resultA.WinnerCandidateIndex, resultB.WinnerCandidateIndex, "winner selection deterministic")
     Assert.True(resultA.WinnerCandidateIndex >= 0 and resultA.WinnerCandidateIndex < candidates.CandidateCount, "winner index is valid")
-    Assert.True(Contains(resultA.TieBreakRule, "when policy"), "selection rule explicitly documents Octomata utility policy usage")
+    Assert.True(Contains(resultA.TieBreakRule, "Deterministic plain-score"), "selection rule explicitly documents plain deterministic canonical path")
 }
 
 [Fact]
@@ -166,6 +166,6 @@ fn ContinuumBoundaryM9ComparesUtilityRankingAgainstNaivePrecedence() -> Void {
     Assert.Equal(true, report.Deterministic, "probe remains deterministic")
     Assert.Equal(true, report.AvoidsTopologyMachinery, "probe still avoids topology/mesh/AMR/solver infrastructure")
     Assert.Equal(false, report.UtilityRankingCleanerThanPrecedence, "probe reports utility flow/state ceremony is not cleaner than plain helper scoring for this narrow one-shot pass")
-    Assert.True(Contains(report.ComparisonSummary, "same winners"), "comparison against naive precedence is grounded in observed winners")
+    Assert.True(Contains(report.ComparisonSummary, "reverted to plain deterministic scoring"), "report preserves the Octomata-trial finding and explicit rollback")
     Assert.True(Contains(report.NextBoundary, "multi-claimant"), "next boundary is surfaced explicitly")
 }
