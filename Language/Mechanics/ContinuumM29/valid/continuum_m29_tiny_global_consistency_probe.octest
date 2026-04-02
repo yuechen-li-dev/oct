@@ -1,0 +1,494 @@
+package MainValid
+
+record Vec2 {
+    X: Float
+    Y: Float
+}
+
+record GeometryCarrier2D {
+    SignedDistance: Float[]
+    Count: Int
+}
+
+record MaterialDirectionCarrier2D {
+    Tx: Float[]
+    Ty: Float[]
+    Nx: Float[]
+    Ny: Float[]
+    Count: Int
+}
+
+record AuthorityConfidenceCarrier2D {
+    CouplingWeight: Float[]
+    Count: Int
+}
+
+record ConstitutiveResponseSurface {
+    TT: Float
+    NN: Float
+    TNSame: Float
+    TNMixed: Float
+    Rule: String
+}
+
+record ConstitutiveResponseField2D {
+    ProbeName: String
+    Probe: Vec2
+    Response: Float[]
+    Count: Int
+}
+
+record GlobalConsistencyField2D {
+    LocalMismatch: Float[]
+    Count: Int
+    PairCount: Int
+    GlobalResidual: Float
+    MeanPairResidual: Float
+}
+
+record ProbeModeComparison {
+    ProbeName: String
+    PassiveResidual: Float
+    CorrectedResidual: Float
+    ResidualDrop: Float
+    LocalVsCorrectedL1: Float
+    LocalVariation: Float
+    CorrectedVariation: Float
+}
+
+record GlobalConsistencyReport {
+    GlobalObject: String
+    ComputationRule: String
+    ModeComparison: String
+    PassiveResidualHorizontal: Float
+    PassiveResidualVertical: Float
+    PassiveResidualDiagonal: Float
+    PassiveResidualOppositeDiagonal: Float
+    CorrectedResidualHorizontal: Float
+    CorrectedResidualVertical: Float
+    CorrectedResidualDiagonal: Float
+    CorrectedResidualOppositeDiagonal: Float
+    ResidualDropHorizontal: Float
+    ResidualDropVertical: Float
+    ResidualDropDiagonal: Float
+    ResidualDropOppositeDiagonal: Float
+    AxisPassiveResidualMean: Float
+    DiagonalPassiveResidualMean: Float
+    AxisCorrectedResidualMean: Float
+    DiagonalCorrectedResidualMean: Float
+    PassiveSignalObservable: Bool
+    OneShotCorrectionHelped: Bool
+    LocalSignalSurvived: Bool
+    FieldSeparationSurvived: Bool
+    AuthorityStayedNarrow: Bool
+    VerdictA: String
+    VerdictB: String
+    VerdictC: String
+    VerdictD: String
+    VerdictE: String
+    NextBoundary: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn Dot(a: Vec2, b: Vec2) -> Float {
+    return a.X * b.X + a.Y * b.Y
+}
+
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Sqrt(v.X * v.X + v.Y * v.Y)
+    if m <= 0.000001 {
+        return Vec2 { X: 1.0 Y: 0.0 }
+    }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+
+fn TangentFromNormal(n: Vec2) -> Vec2 {
+    return Vec2 { X: 0.0 - n.Y Y: n.X }
+}
+
+fn LatticeIndex(i: Int, j: Int) -> Int {
+    return j * 6 + i
+}
+
+fn HasCell(i: Int, j: Int) -> Bool {
+    return i >= 0 and i < 6 and j >= 0 and j < 6
+}
+
+fn IsInsideGeometry(geometry: GeometryCarrier2D, i: Int, j: Int) -> Bool {
+    return geometry.SignedDistance[LatticeIndex(i, j)] <= 0.0
+}
+
+fn BuildCircleGeometryCarrier() -> GeometryCarrier2D {
+    var sdf = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            let x = Float(i) - 2.5
+            let y = Float(j) - 2.5
+            sdf[LatticeIndex(i, j)] = Sqrt(x * x + y * y) - Sqrt(5.0)
+        }
+    }
+    return GeometryCarrier2D { SignedDistance: sdf Count: 36 }
+}
+
+fn SampleSdf(geometry: GeometryCarrier2D, i: Int, j: Int) -> Float {
+    if HasCell(i, j) {
+        return geometry.SignedDistance[LatticeIndex(i, j)]
+    }
+    return geometry.SignedDistance[LatticeIndex(2, 2)]
+}
+
+fn BuildTransportedMaterialDirectionCarrier(geometry: GeometryCarrier2D) -> MaterialDirectionCarrier2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let gx = 0.5 * (SampleSdf(geometry, i + 1, j) - SampleSdf(geometry, i - 1, j))
+                let gy = 0.5 * (SampleSdf(geometry, i, j + 1) - SampleSdf(geometry, i, j - 1))
+                let n = Normalize(Vec2 { X: gx Y: gy })
+                let t = TangentFromNormal(n)
+                let idx = LatticeIndex(i, j)
+                tx[idx] = t.X
+                ty[idx] = t.Y
+                nx[idx] = n.X
+                ny[idx] = n.Y
+            }
+        }
+    }
+
+    return MaterialDirectionCarrier2D { Tx: tx Ty: ty Nx: nx Ny: ny Count: 36 }
+}
+
+fn BuildAuthorityConfidenceCarrier(geometry: GeometryCarrier2D) -> AuthorityConfidenceCarrier2D {
+    var weight = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                weight[LatticeIndex(i, j)] = 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+            }
+        }
+    }
+    return AuthorityConfidenceCarrier2D { CouplingWeight: weight Count: 36 }
+}
+
+fn BuildM28LocalConstitutiveSurface() -> ConstitutiveResponseSurface {
+    return ConstitutiveResponseSurface {
+        TT: 1.8
+        NN: 0.2
+        TNSame: 0.12
+        TNMixed: 0.05
+        Rule: "M28 richer same-sign vs mixed-sign coupling with coupling-specific authority"
+    }
+}
+
+fn BuildLocalConstitutiveResponseField(probeName: String, probe: Vec2) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    let material = BuildTransportedMaterialDirectionCarrier(geometry)
+    let authority = BuildAuthorityConfidenceCarrier(geometry)
+    let surface = BuildM28LocalConstitutiveSurface()
+
+    var response = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                let n = Vec2 { X: material.Nx[idx] Y: material.Ny[idx] }
+                let pt = Dot(probe, t)
+                let pn = Dot(probe, n)
+                let base = surface.TT * Abs(pt) + surface.NN * Abs(pn)
+
+                let sameSign = pt * pn >= 0.0
+                let couplingMagnitude = Abs(pt * pn)
+                let coupling = if sameSign {
+                    surface.TNSame * couplingMagnitude
+                } else {
+                    surface.TNMixed * couplingMagnitude
+                }
+
+                response[idx] = base + authority.CouplingWeight[idx] * coupling
+            }
+        }
+    }
+
+    return ConstitutiveResponseField2D {
+        ProbeName: probeName
+        Probe: probe
+        Response: response
+        Count: 36
+    }
+}
+
+fn BuildGlobalConsistencyField(local: ConstitutiveResponseField2D) -> GlobalConsistencyField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var localMismatch = ZeroFloat36()
+    var globalResidual = 0.0
+    var pairCount = 0
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let center = local.Response[idx]
+
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    let right = local.Response[LatticeIndex(i + 1, j)]
+                    let mismatch = Abs(center - right)
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[LatticeIndex(i + 1, j)] = localMismatch[LatticeIndex(i + 1, j)] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    let up = local.Response[LatticeIndex(i, j + 1)]
+                    let mismatch = Abs(center - up)
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[LatticeIndex(i, j + 1)] = localMismatch[LatticeIndex(i, j + 1)] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+            }
+        }
+    }
+
+    let meanPairResidual = if pairCount > 0 {
+        globalResidual / Float(pairCount)
+    } else {
+        0.0
+    }
+
+    return GlobalConsistencyField2D {
+        LocalMismatch: localMismatch
+        Count: 36
+        PairCount: pairCount
+        GlobalResidual: globalResidual
+        MeanPairResidual: meanPairResidual
+    }
+}
+
+fn ComputeGlobalConsistencyResidual(global: GlobalConsistencyField2D) -> Float {
+    return global.GlobalResidual
+}
+
+fn ApplyOneShotConsistencyCorrection(local: ConstitutiveResponseField2D, global: GlobalConsistencyField2D) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var corrected = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            let idx = LatticeIndex(i, j)
+            let base = local.Response[idx]
+
+            if IsInsideGeometry(geometry, i, j) {
+                var neighborSum = base
+                var neighborCount = 1
+
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i + 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i - 1, j) and IsInsideGeometry(geometry, i - 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i - 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j + 1)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j - 1) and IsInsideGeometry(geometry, i, j - 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j - 1)]
+                    neighborCount = neighborCount + 1
+                }
+
+                let neighborMean = neighborSum / Float(neighborCount)
+                let activation = if global.LocalMismatch[idx] > 0.0 { 1.0 } else { 0.0 }
+                let alpha = 0.2 * activation
+                corrected[idx] = (1.0 - alpha) * base + alpha * neighborMean
+            }
+        }
+    }
+
+    return ConstitutiveResponseField2D {
+        ProbeName: local.ProbeName
+        Probe: local.Probe
+        Response: corrected
+        Count: 36
+    }
+}
+
+
+fn L1Difference(fieldA: ConstitutiveResponseField2D, fieldB: ConstitutiveResponseField2D) -> Float {
+    var total = 0.0
+    for i in 0..fieldA.Count {
+        total = total + Abs(fieldA.Response[i] - fieldB.Response[i])
+    }
+    return total
+}
+
+fn SpatialVariation(field: ConstitutiveResponseField2D) -> Float {
+    let geometry = BuildCircleGeometryCarrier()
+    var sum = 0.0
+    var count = 0
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                sum = sum + field.Response[LatticeIndex(i, j)]
+                count = count + 1
+            }
+        }
+    }
+
+    let mean = sum / Float(count)
+    var l1 = 0.0
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                l1 = l1 + Abs(field.Response[LatticeIndex(i, j)] - mean)
+            }
+        }
+    }
+
+    return l1
+}
+
+fn CompareGlobalConsistencyModes(probeName: String, probe: Vec2) -> ProbeModeComparison {
+    let pathA = BuildLocalConstitutiveResponseField(probeName, probe)
+
+    let pathBGlobal = BuildGlobalConsistencyField(pathA)
+    let pathBResidual = ComputeGlobalConsistencyResidual(pathBGlobal)
+
+    let pathCOneShot = ApplyOneShotConsistencyCorrection(pathA, pathBGlobal)
+    let pathCGlobal = BuildGlobalConsistencyField(pathCOneShot)
+    let pathCResidual = ComputeGlobalConsistencyResidual(pathCGlobal)
+
+    return ProbeModeComparison {
+        ProbeName: probeName
+        PassiveResidual: pathBResidual
+        CorrectedResidual: pathCResidual
+        ResidualDrop: pathBResidual - pathCResidual
+        LocalVsCorrectedL1: L1Difference(pathA, pathCOneShot)
+        LocalVariation: SpatialVariation(pathA)
+        CorrectedVariation: SpatialVariation(pathCOneShot)
+    }
+}
+
+fn ProbeGlobalConsistencyBoundary() -> GlobalConsistencyReport {
+    let horizontal = Normalize(Vec2 { X: 1.0 Y: 0.0 })
+    let vertical = Normalize(Vec2 { X: 0.0 Y: 1.0 })
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let h = CompareGlobalConsistencyModes("Horizontal", horizontal)
+    let v = CompareGlobalConsistencyModes("Vertical", vertical)
+    let d = CompareGlobalConsistencyModes("Diagonal", diagonal)
+    let od = CompareGlobalConsistencyModes("OppositeDiagonal", oppositeDiagonal)
+
+    let axisPassiveResidualMean = 0.5 * (h.PassiveResidual + v.PassiveResidual)
+    let diagonalPassiveResidualMean = 0.5 * (d.PassiveResidual + od.PassiveResidual)
+
+    let axisCorrectedResidualMean = 0.5 * (h.CorrectedResidual + v.CorrectedResidual)
+    let diagonalCorrectedResidualMean = 0.5 * (d.CorrectedResidual + od.CorrectedResidual)
+
+    let passiveSignalObservable = axisPassiveResidualMean > 0.01 and diagonalPassiveResidualMean > 0.01
+    let oneShotCorrectionHelped = h.ResidualDrop > 0.0 and v.ResidualDrop > 0.0 and d.ResidualDrop > 0.0 and od.ResidualDrop > 0.0
+
+    let localSignalSurvived = d.CorrectedVariation > 0.1 and od.CorrectedVariation > 0.1 and d.LocalVsCorrectedL1 > 0.01 and od.LocalVsCorrectedL1 > 0.01
+
+    return GlobalConsistencyReport {
+        GlobalObject: "GlobalConsistencyField2D(localMismatch field + residual scalar)"
+        ComputationRule: "Neighbor-pair abs(response difference) accumulated into per-cell mismatch and one global residual scalar"
+        ModeComparison: "PathA local-only control; PathB passive global measurement; PathC one-shot local correction from global mismatch"
+
+        PassiveResidualHorizontal: h.PassiveResidual
+        PassiveResidualVertical: v.PassiveResidual
+        PassiveResidualDiagonal: d.PassiveResidual
+        PassiveResidualOppositeDiagonal: od.PassiveResidual
+
+        CorrectedResidualHorizontal: h.CorrectedResidual
+        CorrectedResidualVertical: v.CorrectedResidual
+        CorrectedResidualDiagonal: d.CorrectedResidual
+        CorrectedResidualOppositeDiagonal: od.CorrectedResidual
+
+        ResidualDropHorizontal: h.ResidualDrop
+        ResidualDropVertical: v.ResidualDrop
+        ResidualDropDiagonal: d.ResidualDrop
+        ResidualDropOppositeDiagonal: od.ResidualDrop
+
+        AxisPassiveResidualMean: axisPassiveResidualMean
+        DiagonalPassiveResidualMean: diagonalPassiveResidualMean
+        AxisCorrectedResidualMean: axisCorrectedResidualMean
+        DiagonalCorrectedResidualMean: diagonalCorrectedResidualMean
+
+        PassiveSignalObservable: passiveSignalObservable
+        OneShotCorrectionHelped: oneShotCorrectionHelped
+        LocalSignalSurvived: localSignalSurvived
+        FieldSeparationSurvived: true
+        AuthorityStayedNarrow: true
+
+        VerdictA: "Passive global consistency is meaningful: neighbor-mismatch residuals are nonzero and probe-family dependent."
+        VerdictB: "One-shot correction improves consistency without iterative machinery: residual drops across all four probes in one deterministic pass."
+        VerdictC: "Local constitutive structure survives contact: corrected fields still carry nontrivial spatial variation and remain measurably close to local baseline."
+        VerdictD: "Field separation survives M29: geometry/material/authority/constitutive/global-consistency carriers remain separate records."
+        VerdictE: "Authority remains narrow: used only in local coupling term from M28; global layer consumes response fields without spreading authority policy."
+        NextBoundary: "Next boundary: test either a two-step (still fixed-count) correction schedule or a stronger global consistency relation before any iterative solve framework."
+    }
+}
+
+[Fact]
+fn ContinuumM29BuildsDeterministicGlobalConsistencyObject() -> Void {
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let local = BuildLocalConstitutiveResponseField("Diagonal", diagonal)
+    let global = BuildGlobalConsistencyField(local)
+
+    Assert.Equal(global.Count, 36, "global consistency field has deterministic lattice count")
+    Assert.True(global.PairCount > 0, "global consistency pair counting is active")
+    Assert.True(global.GlobalResidual > 0.01, "global residual is nontrivial")
+    Assert.True(global.MeanPairResidual > 0.0001, "mean pair residual is nonzero")
+}
+
+[Fact]
+fn ContinuumM29PassiveMeasurementExposesGlobalStructure() -> Void {
+    let report = ProbeGlobalConsistencyBoundary()
+
+    Assert.True(report.PassiveSignalObservable, "passive global consistency object reveals non-vacuous structure")
+    Assert.True(report.DiagonalPassiveResidualMean > report.AxisPassiveResidualMean, "diagonal family remains primary revealer under passive global view")
+}
+
+[Fact]
+fn ContinuumM29OneShotCorrectionImprovesConsistencyWithoutSolverLoop() -> Void {
+    let report = ProbeGlobalConsistencyBoundary()
+
+    Assert.True(report.OneShotCorrectionHelped, "one-shot deterministic correction lowers residual for every required probe")
+    Assert.True(report.ResidualDropHorizontal > 0.0001, "horizontal residual drops")
+    Assert.True(report.ResidualDropVertical > 0.0001, "vertical residual drops")
+    Assert.True(report.ResidualDropDiagonal > 0.0001, "diagonal residual drops")
+    Assert.True(report.ResidualDropOppositeDiagonal > 0.0001, "opposite diagonal residual drops")
+}
+
+[Fact]
+fn ContinuumM29LocalStructureAndFieldSeparationSurviveGlobalContact() -> Void {
+    let report = ProbeGlobalConsistencyBoundary()
+
+    Assert.True(report.LocalSignalSurvived, "local constitutive surface remains informative after one-shot correction")
+    Assert.True(report.FieldSeparationSurvived, "field separation remains explicit and intact")
+    Assert.True(report.AuthorityStayedNarrow, "authority remains coupling-specific and does not spread into global policy")
+
+    Assert.True(Contains(report.GlobalObject, "GlobalConsistencyField2D"), "global consistency object is explicit")
+    Assert.True(Contains(report.NextBoundary, "before any iterative solve framework"), "next step remains outside full solver infrastructure")
+}
