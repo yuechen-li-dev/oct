@@ -1,0 +1,69 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM13BuildsDeterministicDirectionalEdgeField() -> Void {
+    let lattice = BuildM13Lattice()
+    let boundary = BuildM13CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let edgesA = BuildEdgeField(lattice, selective.Coverage)
+    let edgesB = BuildEdgeField(lattice, selective.Coverage)
+    let probe = LatticeIndex(lattice, 4, 2)
+
+    Assert.Equal(edgesA.Count, edgesB.Count, "edge field size should be deterministic")
+    Assert.Equal(edgesA.WeightRight[probe], edgesB.WeightRight[probe], "directional right-edge weight should be deterministic")
+    Assert.Equal(edgesA.WeightUp[probe], edgesB.WeightUp[probe], "directional up-edge weight should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM13DirectionalBiasExistsNearBoundaryBand() -> Void {
+    let lattice = BuildM13Lattice()
+    let boundary = BuildM13CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let baseline = ComputeBaselineEdgeWeights(lattice, selective.Coverage)
+    let directional = ComputeDirectionalEdgeWeights(lattice, selective.Coverage)
+    let probe = LatticeIndex(lattice, 4, 2)
+
+    let leftChanged = AbsFloat(directional.WeightLeft[probe] - baseline.WeightLeft[probe]) > 0.000001
+    let rightChanged = AbsFloat(directional.WeightRight[probe] - baseline.WeightRight[probe]) > 0.000001
+    Assert.True(leftChanged or rightChanged, "directional rule should alter at least one horizontal edge from baseline at boundary-band cell")
+    Assert.True(CountDirectionalBias(lattice, directional) > 0, "directional bias count should be non-zero")
+}
+
+[Fact]
+fn ContinuumBoundaryM13DirectionalOneStepDiffersFromUniformScalarStep() -> Void {
+    let lattice = BuildM13Lattice()
+    let boundary = BuildM13CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+
+    let edges = ComputeDirectionalEdgeWeights(lattice, selective.Coverage)
+    let uniform = ApplyUniformDiffusionStep(lattice, selective.Coverage)
+    let directional = ApplyDirectionalDiffusionStep(lattice, selective.Coverage, edges)
+
+    let difference = CompareDirectionalEffect(lattice, uniform, directional)
+    Assert.True(difference > 0.0, "directional one-step consequence should differ from scalar-only uniform interaction")
+}
+
+[Fact]
+fn ContinuumBoundaryM13DirectionalWeightsImproveOneStepBoundaryBehavior() -> Void {
+    let report = ProbeDirectionalEdgeBoundary()
+
+    Assert.True(report.OutsideLeakageDirectional < report.OutsideLeakageScalar, "directional one-step outside leakage should improve over uniform scalar step")
+    Assert.True(report.ScalarDirectionalDifferenceL1 > 0.0, "directional and scalar one-step fields should differ")
+    Assert.Equal(true, report.MeaningfulImprovement, "report should explicitly mark improvement as meaningful for this fixture")
+    Assert.Equal(true, report.CleanerThanMeshEdges, "probe should remain cleaner than mesh-edge handling")
+    Assert.Equal(true, report.NoTopologyOrSolverIntroduced, "probe should remain topology-free and solver-free")
+}
+
+[Fact]
+fn ContinuumBoundaryM13ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeDirectionalEdgeBoundary()
+
+    Assert.True(Contains(report.BaselineEdgeRule, "min(CA, CB)"), "report should state baseline edge rule")
+    Assert.True(Contains(report.DirectionalSignalUsed, "dX") and Contains(report.DirectionalSignalUsed, "dY"), "report should state directional signal")
+    Assert.True(Contains(report.ScalarVsDirectionalComparison, "diverge measurably"), "report should compare scalar and directional outcomes")
+    Assert.True(Contains(report.BoundaryBehaviorResult, "outside leakage"), "report should state boundary-behavior impact")
+    Assert.True(Contains(report.AddedComplexity, "EdgeField2D"), "report should state added complexity")
+    Assert.True(Contains(report.NextBoundary, "anisotropy"), "report should state next boundary")
+}

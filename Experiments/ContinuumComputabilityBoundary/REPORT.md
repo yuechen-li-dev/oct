@@ -985,3 +985,61 @@ Given M12 evidence, the next pressure point is:
 before considering harder geometry classes or any true topology change.
 
 Blunt verdict: selective sampling quality control is justified for this curved case and remains cleaner than topology mutation at this stage.
+
+## M13
+
+### 1) How were edge weights defined?
+M13 uses two explicit edge rules over implicit Cartesian neighbors only.
+
+- **Baseline/control:** `EdgeWeight(A→B) = min(CA, CB)`.
+- **Directional refinement:** multiply the baseline by a local alignment factor:
+  - horizontal edges use `1 ± beta * alignX`
+  - vertical edges use `1 ± beta * alignY`
+  - with `beta = 0.35`, then clamp to `[0,1]`.
+
+No geometric edge primitives, no mesh edges, and no topology graph were introduced.
+
+### 2) What directional signal was used?
+Only local coverage finite differences:
+
+- `dX = C(i+1,j) - C(i-1,j)`
+- `dY = C(i,j+1) - C(i,j-1)`
+
+The edge alignment uses the average of endpoint signals across that edge. Boundary fallback uses center coverage, keeping the signal deterministic and local.
+
+### 3) How does baseline scalar interaction compare vs directional edge weighting?
+A single local consequence was run on the same M12 selective coverage field:
+
+- **A) scalar-only:** one-step uniform neighbor diffusion
+- **B) directional:** one-step edge-weighted diffusion using `EdgeField2D`
+
+Result: the two fields diverge measurably (`L1` difference is non-zero), proving directional edge information has computational effect not expressible by scalar coverage alone in that step.
+
+### 4) Does directional weighting improve boundary behavior?
+For this fixture, yes.
+
+- directional edge weighting reduced one-step outside leakage into fully outside cells relative to uniform scalar interaction,
+- and directional bias was present (edge weights are not symmetric everywhere),
+- while preserving deterministic behavior.
+
+### 5) What new complexity was introduced?
+Narrow, explicit additions only:
+
+- `EdgeField2D` with four directional slots per cell,
+- local central-difference signal computation,
+- one-step weighted neighbor application.
+
+No global solve, no time integration, no higher-order stencils, and no topology system were added.
+
+### 6) Does this still feel cleaner than mesh-based edge handling?
+At M13 scope: **yes**.
+
+The method stays purely local, deterministic, and grid-implicit while exposing directional transfer behavior the scalar field cannot represent by itself.
+
+### 7) What is the next boundary?
+The next pressure point is anisotropy fidelity vs true geometry:
+
+- how far local edge anisotropy can mimic geometric normal/tangential behavior,
+- before explicit curved-edge geometry or mesh-topology machinery becomes necessary.
+
+Blunt verdict: M13 passes as a meaningful directional probe and remains cleaner than mesh-edge handling for this narrow objective.
