@@ -1423,11 +1423,14 @@ func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExp
 }
 
 func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
-	flowBinding, ok := env.lookup(flowInstanceBindingName)
-	if !ok || flowBinding.value.Kind != ValueFlow || flowBinding.value.Flow == nil {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: utility when requires flow instance context")
+	var instance *FlowRuntimeInstance
+	if expr.ControllerBound {
+		flowBinding, ok := env.lookup(flowInstanceBindingName)
+		if !ok || flowBinding.value.Kind != ValueFlow || flowBinding.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when requires flow instance context")
+		}
+		instance = flowBinding.value.Flow
 	}
-	instance := flowBinding.value.Flow
 
 	hysteresisResult, err := i.evalExpr(env, pkgName, expr.Policy.Hysteresis)
 	if err != nil {
@@ -1519,35 +1522,36 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 		return evalResult{}, fmt.Errorf("runtime invariant violation: utility when could not select value")
 	}
 
-	siteState := instance.UtilityWhenSites[expr.SiteID]
-	if siteState.HasCurrent {
-		currentStillValid := false
-		for _, c := range validCandidates {
-			if valuesEqual(c.value, siteState.Current) {
-				currentStillValid = true
-				break
+	if expr.ControllerBound {
+		siteState := instance.UtilityWhenSites[expr.SiteID]
+		if siteState.HasCurrent {
+			currentStillValid := false
+			for _, c := range validCandidates {
+				if valuesEqual(c.value, siteState.Current) {
+					currentStillValid = true
+					break
+				}
+			}
+			if currentStillValid {
+				commitActive := siteState.CommitAge < minCommit
+				hysteresisBlocks := next.score <= siteState.Score+hysteresis
+				if commitActive || hysteresisBlocks {
+					next = candidate{value: siteState.Current, score: siteState.Score}
+				}
 			}
 		}
-		if currentStillValid {
-			commitActive := siteState.CommitAge < minCommit
-			hysteresisBlocks := next.score <= siteState.Score+hysteresis
-			if commitActive || hysteresisBlocks {
-				next = candidate{value: siteState.Current, score: siteState.Score}
-			}
+		updated := siteState
+		if !updated.HasCurrent || !valuesEqual(updated.Current, next.value) {
+			updated.HasCurrent = true
+			updated.Current = cloneValue(next.value)
+			updated.Score = next.score
+			updated.CommitAge = 1
+		} else {
+			updated.Score = next.score
+			updated.CommitAge++
 		}
+		instance.UtilityWhenSites[expr.SiteID] = updated
 	}
-
-	updated := siteState
-	if !updated.HasCurrent || !valuesEqual(updated.Current, next.value) {
-		updated.HasCurrent = true
-		updated.Current = cloneValue(next.value)
-		updated.Score = next.score
-		updated.CommitAge = 1
-	} else {
-		updated.Score = next.score
-		updated.CommitAge++
-	}
-	instance.UtilityWhenSites[expr.SiteID] = updated
 
 	return evalResult{value: next.value}, nil
 }

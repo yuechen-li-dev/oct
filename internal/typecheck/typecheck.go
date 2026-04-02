@@ -1167,8 +1167,8 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 }
 
 func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
-	if !ctx.inState {
-		return ExprType{}, fmt.Errorf("utility when is only valid inside flow state bodies")
+	if expr.ControllerBound && !ctx.inState {
+		return ExprType{}, fmt.Errorf("when policy is only valid inside flow state bodies")
 	}
 
 	hysteresisType, err := c.checkExpr(scope, expr.Policy.Hysteresis, ctx)

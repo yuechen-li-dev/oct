@@ -943,6 +943,42 @@ func TestBuildFileParsesUtilityWhenExpressionInState(t *testing.T) {
 	if whenExpr.Else == nil {
 		t.Fatal("expected utility when else arm")
 	}
+	if !whenExpr.ControllerBound {
+		t.Fatal("expected when policy to be controller bound")
+	}
+}
+
+func TestBuildFileParsesStandaloneUtilityWhenWithDefaults(t *testing.T) {
+	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { case 1 when flag score 10 else 0 } }")
+	whenExpr, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+	}
+	value, ok := whenExpr.Value.(ast.UtilityWhenExpr)
+	if !ok {
+		t.Fatalf("expected utility when expression, got %T", whenExpr.Value)
+	}
+	if value.ControllerBound {
+		t.Fatal("expected when utility to be expression bound")
+	}
+}
+
+func TestBuildFileParsesStandaloneUtilityWhenWithExplicitPolicy(t *testing.T) {
+	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { hysteresis: 5 } { case 1 when flag score 10 else 0 } }")
+	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+	}
+	whenExpr, ok := returnStmt.Value.(ast.UtilityWhenExpr)
+	if !ok {
+		t.Fatalf("expected utility when expression, got %T", returnStmt.Value)
+	}
+	if _, ok := whenExpr.Policy.Hysteresis.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected explicit hysteresis policy literal, got %T", whenExpr.Policy.Hysteresis)
+	}
+	if _, ok := whenExpr.Policy.MinCommit.(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected default min_commit literal, got %T", whenExpr.Policy.MinCommit)
+	}
 }
 
 func TestBuildFileRejectsUtilityWhenWithoutElse(t *testing.T) {

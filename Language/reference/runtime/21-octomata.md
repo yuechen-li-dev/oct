@@ -25,7 +25,9 @@ Octomata and records are complementary:
 - Board fields must be declared up front and are not dynamically extensible.
 - Board fields are default-initialized from their declared type (for example: `Bool` -> `false`, `Int` -> `0`, `Float` -> `0.0`, `String` -> `""`).
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
-- Utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
+- Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
+- Standalone utility form `when utility { case value when condition score Int ... else value }` is an expression form valid wherever expressions are allowed.
+- Standalone `when utility` also accepts optional policy fields via `when utility { hysteresis: Int min_commit: Int } { ... }`; omitted fields default to `0`.
 - `remember` stores the current state as a resume target.
 - `resume` jumps to the remembered target.
 - Resume storage is a single slot.
@@ -252,8 +254,10 @@ Why this is clearer than ad hoc `if` branching: transition options are listed in
 
 ## Utility `when`
 
-Use utility `when` for arbitration and prioritization among competing behavioral policies.
-It is not generic branching.
+Use utility `when` for ranked arbitration and prioritization.
+
+- `when policy`: controller-bound Octomata form (inside `flow/state` only) with required `hysteresis` + `min_commit`.
+- `when utility`: standalone expression form for one-shot deterministic ranked choice.
 
 Use utility `when` for:
 
@@ -279,6 +283,20 @@ flow AlertChannel(fault: Bool, mode: Int) -> Int {
             else 0
         }
         return channel
+    }
+}
+```
+
+Standalone one-shot form:
+
+```oct
+package Main
+
+fn LocalOwner(a: Int, b: Int) -> Int {
+    return when utility {
+        case 100 when a > 0 score a
+        case 200 when b > 0 score b
+        else -1
     }
 }
 ```

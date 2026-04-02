@@ -1,0 +1,76 @@
+package MainValid
+
+fn PickWithDefaults(aOpen: Bool, bOpen: Bool) -> Int {
+    return when utility {
+        case 1 when aOpen score 10
+        case 2 when bOpen score 8
+        else 0
+    }
+}
+
+fn PickWithExplicitPolicy(aOpen: Bool, bOpen: Bool) -> Int {
+    return when utility {
+        hysteresis: 7
+        min_commit: 3
+    } {
+        case 1 when aOpen score 10
+        case 2 when bOpen score 8
+        else 0
+    }
+}
+
+fn LocalJunctionOwner(probeA: Int, probeB: Int) -> Int {
+    return when utility {
+        case 100 when probeA > 0 score probeA
+        case 200 when probeB > 0 score probeB
+        else -1
+    }
+}
+
+[Fact]
+fn StandaloneUtilityDefaultsSelectWinner() -> Void {
+    Assert.Equal(1, PickWithDefaults(true, true), "higher score should win")
+    Assert.Equal(2, PickWithDefaults(false, true), "only valid candidate should win")
+    Assert.Equal(0, PickWithDefaults(false, false), "else should win when no candidate is valid")
+}
+
+[Fact]
+fn StandaloneUtilityDefaultsMatchExplicitZeroPolicy() -> Void {
+    let withDefaults = when utility {
+        case 1 when true score 50
+        case 2 when true score 40
+        else 0
+    }
+    let withExplicitZeros = when utility {
+        hysteresis: 0
+        min_commit: 0
+    } {
+        case 1 when true score 50
+        case 2 when true score 40
+        else 0
+    }
+    Assert.Equal(withDefaults, withExplicitZeros, "omitted policy should default to zero values")
+}
+
+[Fact]
+fn StandaloneUtilityTieBreakIsDeterministicAndStable() -> Void {
+    let first = when utility {
+        case 10 when true score 5
+        case 20 when true score 5
+        else 0
+    }
+    let second = when utility {
+        case 10 when true score 5
+        case 20 when true score 5
+        else 0
+    }
+    Assert.Equal(10, first, "equal scores should keep source-order winner")
+    Assert.Equal(first, second, "same inputs should produce same winner")
+}
+
+[Fact]
+fn LocalJunctionOwnerUsesStandaloneUtilityWithoutFlowCeremony() -> Void {
+    Assert.Equal(100, LocalJunctionOwner(9, 5), "probe with higher utility wins")
+    Assert.Equal(200, LocalJunctionOwner(1, 7), "other branch can win when score is higher")
+    Assert.Equal(-1, LocalJunctionOwner(0, 0), "fallback applies when no candidate is valid")
+}
