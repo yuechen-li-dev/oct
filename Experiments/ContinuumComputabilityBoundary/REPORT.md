@@ -19,6 +19,9 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 - M10: deterministic multi-claimant junction ranking probe (plain vs standalone utility parity)
 - M11: curved boundary deterministic coverage weighting probe (binary vs fixed 2x2)
 - M12: selective boundary-band sampling quality probe (fixed 2x2 vs selective 4x4)
+- M13: directional edge-weight anisotropy probe (scalar coverage vs directional edges)
+- M14: explicit per-cell orientation probe (inferred vs stored tangent)
+- M15: narrow-band signed distance field geometry cue probe (coverage band vs SDF band)
 
 ## M0
 
@@ -1109,3 +1112,71 @@ M14 narrows the next boundary to:
 - versus introducing orientation that is material-driven and independent of geometry.
 
 Blunt verdict: explicit orientation fielding is worth it at this stage; the pressure point moves from "inferred vs explicit" to "boundary-only orientation vs interior/material orientation" while keeping the same Cartesian carrier.
+
+
+## M15
+
+### 1) What SDF was used?
+M15 introduces a cell-centered signed distance field on the same fixed `6x6` Cartesian lattice and same circle source (`center=(2.5,2.5)`, `radius=2.1`):
+
+- `SignedDistanceField2D { Distance }`
+- `distance(i,j) = sqrt((x-cx)^2 + (y-cy)^2) - radius` at each cell center.
+
+No meshing, no topology mutation, no solver behavior, no level-set evolution, and no reinitialization PDE were introduced.
+
+### 2) What sign convention and narrow-band rule were used?
+M15 uses one explicit sign convention and one explicit band rule:
+
+- sign convention: **negative inside**, positive outside, zero on interface
+- narrow-band rule: `abs(sdf) <= dx` (with `dx=1` here).
+
+This keeps SDF scope local and deterministic while making boundary proximity explicit.
+
+### 3) How did SDF band compare to coverage boundary band?
+M15 compares:
+
+- **coverage-band (M12 style):** `0 < coarseCoverage < 1`
+- **SDF narrow-band (M15):** `abs(sdf) <= dx`.
+
+On the same fixture, they overlap significantly but are not identical, producing nonzero overlap plus nonzero one-sided membership (`coverage-only` and `sdf-only` cells both observable).
+
+Bluntly: SDF banding gives a cleaner distance-to-interface notion, while coverage banding captures fractional occupancy from sampling. They are related but not equivalent.
+
+### 4) How were normals/tangents derived from SDF?
+M15 derives orientation locally from the SDF field:
+
+- normal from central-difference gradient of cell-centered SDF
+- normalize to unit normal
+- tangent as perpendicular: `(-normalY, normalX)`
+- active only in the SDF narrow band.
+
+This derivation is explicit, one-hop local, deterministic, and independent of direct analytic-circle tangent coding.
+
+### 5) What downstream consequence was reused?
+M15 reuses the same narrow downstream effect style as M13/M14:
+
+- orientation-driven edge weighting on implicit Cartesian neighbors (`min(CA,CB)` baseline + anisotropic multiplier)
+- one deterministic local diffusion-like weighted update step
+- direct comparison between:
+  - coverage-path geometry-tangent orientation
+  - SDF-gradient-derived orientation.
+
+The one-step outputs differ measurably (`L1 > 0`), showing the upstream geometry carrier choice has computational consequence even without any solver pass.
+
+### 6) Was SDF actually worth it?
+For this M15 probe: **yes, narrowly**.
+
+- SDF provides an explicit distance-proximity cue that coverage alone cannot encode
+- SDF yields local normals/tangents deterministically from one scalar field
+- SDF-orientation path changes downstream weighted transfer measurably while staying on the same lattice and same topology.
+
+Coverage remains useful for occupancy weighting, but as an upstream geometry-side carrier for localization + orientation derivation, narrow-band SDF is cleaner and more informative.
+
+### 7) What is the next boundary after M15?
+Given evidence in M15, the next boundary is now clearer:
+
+- boundary-only orientation versus interior/material orientation transport/definition
+- possibly direct SDF-driven edge weighting choices
+- then pressure with less trivial shapes before any topology change.
+
+Blunt verdict: adopt narrow-band SDF as the geometry-side cue for this pipeline stage, keep Cartesian topology fixed, and test boundary-only vs interior/material orientation next.

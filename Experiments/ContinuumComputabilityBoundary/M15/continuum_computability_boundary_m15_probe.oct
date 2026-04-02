@@ -1,0 +1,692 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record CoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+}
+
+record BoundaryBandMask2D {
+    Marked: Bool[]
+    Count: Int
+    UpgradedCount: Int
+    DetectionRule: String
+}
+
+record SelectiveCoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+    BoundaryBand: BoundaryBandMask2D
+}
+
+record SignedDistanceField2D {
+    Distance: Float[]
+    Count: Int
+    SignConvention: String
+    BuildRule: String
+}
+
+record SdfBandMask2D {
+    InBand: Bool[]
+    Count: Int
+    BandCount: Int
+    BandRule: String
+}
+
+record OrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    OrientationRule: String
+}
+
+record EdgeField2D {
+    WeightLeft: Float[]
+    WeightRight: Float[]
+    WeightUp: Float[]
+    WeightDown: Float[]
+    Count: Int
+    BaselineRule: String
+    DirectionalRule: String
+    DirectionalSignal: String
+}
+
+record SdfBoundaryReport {
+    SdfDefinition: String
+    SignConvention: String
+    BandRule: String
+    CoverageBandRule: String
+    BandComparison: String
+    SdfNormalRule: String
+    SdfTangentRule: String
+    DownstreamComparison: String
+    SdfWorthIt: Bool
+    NoTopologyOrSolverIntroduced: Bool
+    Deterministic: Bool
+    CoverageBandCount: Int
+    SdfBandCount: Int
+    OverlapCount: Int
+    CoverageOnlyCount: Int
+    SdfOnlyCount: Int
+    GeometryVsSdfTangentL1: Float
+    CoverageVsSdfStepL1: Float
+    TangentialPreferenceCoverageOrientation: Float
+    TangentialPreferenceSdfOrientation: Float
+    NextBoundary: String
+    RecommendationForNextPass: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM15CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D {
+        CenterX: 2.5
+        CenterY: 2.5
+        Radius: 2.1
+    }
+}
+
+fn BuildM15Lattice() -> Lattice2D {
+    return Lattice2D {
+        Nx: 6
+        Ny: 6
+        OriginX: 0.0
+        OriginY: 0.0
+        Dx: 1.0
+        Dy: 1.0
+    }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn HasCell(lattice: Lattice2D, i: Int, j: Int) -> Bool {
+    return i >= 0 and i < lattice.Nx and j >= 0 and j < lattice.Ny
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+    return value
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn SqrtNewton(value: Float) -> Float {
+    if value <= 0.0 {
+        return 0.0
+    }
+
+    var x = value
+    if x < 1.0 {
+        x = 1.0
+    }
+
+    for _ in 0..8 {
+        x = 0.5 * (x + value / x)
+    }
+
+    return x
+}
+
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
+    let dx = x - boundary.CenterX
+    let dy = y - boundary.CenterY
+    return dx * dx + dy * dy <= boundary.Radius * boundary.Radius
+}
+
+fn SampleCellCoverage2x2(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+
+    let sampleX = [0.25, 0.75, 0.25, 0.75]
+    let sampleY = [0.25, 0.25, 0.75, 0.75]
+
+    var inside = 0
+    for s in 0..4 {
+        let x = x0 + sampleX[s] * lattice.Dx
+        let y = y0 + sampleY[s] * lattice.Dy
+        if IsInsideCircle(boundary, x, y) {
+            inside = inside + 1
+        }
+    }
+
+    return Float(inside) / 4.0
+}
+
+fn SampleCellCoverage4x4(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+    let sample = [0.125, 0.375, 0.625, 0.875]
+
+    var inside = 0
+    for sj in 0..4 {
+        for si in 0..4 {
+            let x = x0 + sample[si] * lattice.Dx
+            let y = y0 + sample[sj] * lattice.Dy
+            if IsInsideCircle(boundary, x, y) {
+                inside = inside + 1
+            }
+        }
+    }
+
+    return Float(inside) / 16.0
+}
+
+fn BuildCoverageFieldFixed2x2(boundary: CurvedBoundary2D, lattice: Lattice2D) -> CoverageField2D {
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            coverage[LatticeIndex(lattice, i, j)] = SampleCellCoverage2x2(boundary, lattice, i, j)
+        }
+    }
+
+    return CoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Fixed deterministic 2x2 subcell pattern for every cell."
+    }
+}
+
+fn MarkCoverageBoundaryBand(coarse: CoverageField2D) -> BoundaryBandMask2D {
+    var marked = FalseBool36()
+    var upgraded = 0
+
+    for idx in 0..coarse.Count {
+        let c = coarse.Coverage[idx]
+        if c > 0.0 and c < 1.0 {
+            marked[idx] = true
+            upgraded = upgraded + 1
+        }
+    }
+
+    return BoundaryBandMask2D {
+        Marked: marked
+        Count: coarse.Count
+        UpgradedCount: upgraded
+        DetectionRule: "Coverage boundary-band cells are those with fractional coarse coverage: 0 < coverage < 1."
+    }
+}
+
+fn BuildSelectiveCoverageField(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SelectiveCoverageField2D {
+    let coarse = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let band = MarkCoverageBoundaryBand(coarse)
+
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.Marked[idx] {
+                coverage[idx] = SampleCellCoverage4x4(boundary, lattice, i, j)
+            } else {
+                coverage[idx] = coarse.Coverage[idx]
+            }
+        }
+    }
+
+    return SelectiveCoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Base pass 2x2 everywhere; upgrade only coverage boundary-band cells to deterministic 4x4."
+        BoundaryBand: band
+    }
+}
+
+fn BuildCircleSdf(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SignedDistanceField2D {
+    var distance = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+            let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+            let dx = x - boundary.CenterX
+            let dy = y - boundary.CenterY
+            distance[LatticeIndex(lattice, i, j)] = SqrtNewton(dx * dx + dy * dy) - boundary.Radius
+        }
+    }
+
+    return SignedDistanceField2D {
+        Distance: distance
+        Count: lattice.Nx * lattice.Ny
+        SignConvention: "Negative inside the circle, positive outside, zero on the interface."
+        BuildRule: "Cell-centered signed distance: sqrt((x-cx)^2 + (y-cy)^2) - radius."
+    }
+}
+
+fn MarkSdfBand(lattice: Lattice2D, sdf: SignedDistanceField2D, bandWidth: Float) -> SdfBandMask2D {
+    var marked = FalseBool36()
+    var count = 0
+
+    for idx in 0..sdf.Count {
+        if AbsFloat(sdf.Distance[idx]) <= bandWidth {
+            marked[idx] = true
+            count = count + 1
+        }
+    }
+
+    return SdfBandMask2D {
+        InBand: marked
+        Count: sdf.Count
+        BandCount: count
+        BandRule: "SDF narrow band uses abs(signedDistance) <= dx at cell centers."
+    }
+}
+
+fn GetSdfOrCenter(lattice: Lattice2D, sdf: SignedDistanceField2D, i: Int, j: Int, center: Float) -> Float {
+    if HasCell(lattice, i, j) {
+        return sdf.Distance[LatticeIndex(lattice, i, j)]
+    }
+    return center
+}
+
+fn BuildSdfNormalField(lattice: Lattice2D, sdf: SignedDistanceField2D, band: SdfBandMask2D) -> OrientationField2D {
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let center = sdf.Distance[idx]
+                let l = GetSdfOrCenter(lattice, sdf, i - 1, j, center)
+                let r = GetSdfOrCenter(lattice, sdf, i + 1, j, center)
+                let d = GetSdfOrCenter(lattice, sdf, i, j - 1, center)
+                let u = GetSdfOrCenter(lattice, sdf, i, j + 1, center)
+                let gradX = (r - l) / (2.0 * lattice.Dx)
+                let gradY = (u - d) / (2.0 * lattice.Dy)
+                let n = Normalize2(gradX, gradY)
+
+                nx[idx] = n[0]
+                ny[idx] = n[1]
+                strength[idx] = 1.0
+            }
+        }
+    }
+
+    return OrientationField2D {
+        Ox: nx
+        Oy: ny
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        OrientationRule: "SDF normal field from local central differences over cell-centered signed distance, normalized per cell in the narrow band."
+    }
+}
+
+fn BuildSdfTangentField(normals: OrientationField2D) -> OrientationField2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..normals.Count {
+        tx[idx] = -normals.Oy[idx]
+        ty[idx] = normals.Ox[idx]
+        strength[idx] = normals.Strength[idx]
+    }
+
+    return OrientationField2D {
+        Ox: tx
+        Oy: ty
+        Strength: strength
+        Count: normals.Count
+        OrientationRule: "SDF tangent field: tangent = (-normalY, normalX) using SDF-gradient normals; strength inherited from SDF band mask."
+    }
+}
+
+fn BuildCircleTangentField(boundary: CurvedBoundary2D, lattice: Lattice2D, band: BoundaryBandMask2D) -> OrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.Marked[idx] {
+                let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+                let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+                let normal = Normalize2(x - boundary.CenterX, y - boundary.CenterY)
+
+                ox[idx] = -normal[1]
+                oy[idx] = normal[0]
+                strength[idx] = 1.0
+            }
+        }
+    }
+
+    return OrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        OrientationRule: "Coverage-path orientation reference uses geometry tangent in fractional-coverage cells only: tangent=(-normalY,normalX), normal=normalize(cellCenter-center)."
+    }
+}
+
+fn Normalize2(vx: Float, vy: Float) -> Float[] {
+    let mag = SqrtNewton(vx * vx + vy * vy)
+    if mag <= 0.000000001 {
+        return [0.0, 0.0]
+    }
+    return [vx / mag, vy / mag]
+}
+
+fn ComputeBaselineEdgeWeights(lattice: Lattice2D, coverage: Float[]) -> EdgeField2D {
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let c = coverage[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                left[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i - 1, j)])
+            }
+            if HasCell(lattice, i + 1, j) {
+                right[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i + 1, j)])
+            }
+            if HasCell(lattice, i, j + 1) {
+                up[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j + 1)])
+            }
+            if HasCell(lattice, i, j - 1) {
+                down[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j - 1)])
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: lattice.Nx * lattice.Ny
+        BaselineRule: "Baseline edge weight = min(CA, CB) on implicit Cartesian neighbors."
+        DirectionalRule: "No directional refinement."
+        DirectionalSignal: "None."
+    }
+}
+
+fn BuildOrientationEdgeField(lattice: Lattice2D, coverage: Float[], orientation: OrientationField2D) -> EdgeField2D {
+    let baseline = ComputeBaselineEdgeWeights(lattice, coverage)
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+    let beta = 0.60
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let txA = orientation.Ox[idx]
+            let tyA = orientation.Oy[idx]
+            let sA = orientation.Strength[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                let nidx = LatticeIndex(lattice, i - 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                left[idx] = Clamp01(baseline.WeightLeft[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i + 1, j) {
+                let nidx = LatticeIndex(lattice, i + 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                right[idx] = Clamp01(baseline.WeightRight[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j + 1) {
+                let nidx = LatticeIndex(lattice, i, j + 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                up[idx] = Clamp01(baseline.WeightUp[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j - 1) {
+                let nidx = LatticeIndex(lattice, i, j - 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                down[idx] = Clamp01(baseline.WeightDown[idx] * (1.0 + beta * s * align))
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: baseline.Count
+        BaselineRule: baseline.BaselineRule
+        DirectionalRule: "Orientation anisotropy multiplies baseline by (1 + beta * strength * axis-alignment), where alignment is abs(dot(tangent, edge-axis)) averaged across edge endpoints with beta=0.60."
+        DirectionalSignal: orientation.OrientationRule
+    }
+}
+
+fn CompareCoverageBandVsSdfBand(coverageBand: BoundaryBandMask2D, sdfBand: SdfBandMask2D) -> Int[] {
+    var overlap = 0
+    var coverageOnly = 0
+    var sdfOnly = 0
+
+    for idx in 0..coverageBand.Count {
+        let c = coverageBand.Marked[idx]
+        let s = sdfBand.InBand[idx]
+
+        if c and s {
+            overlap = overlap + 1
+        }
+        if c and (not s) {
+            coverageOnly = coverageOnly + 1
+        }
+        if s and (not c) {
+            sdfOnly = sdfOnly + 1
+        }
+    }
+
+    return [overlap, coverageOnly, sdfOnly]
+}
+
+fn ApplyOrientationWeightedStep(lattice: Lattice2D, field: Float[], edges: EdgeField2D) -> Float[] {
+    var next = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            var accum = 0.0
+            var wsum = 0.0
+
+            if HasCell(lattice, i - 1, j) {
+                let w = edges.WeightLeft[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i - 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i + 1, j) {
+                let w = edges.WeightRight[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i + 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j + 1) {
+                let w = edges.WeightUp[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j + 1)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j - 1) {
+                let w = edges.WeightDown[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j - 1)]
+                wsum = wsum + w
+            }
+
+            if wsum > 0.0 {
+                next[idx] = accum / wsum
+            } else {
+                next[idx] = field[idx]
+            }
+        }
+    }
+
+    return next
+}
+
+fn ApplySdfOrientationStep(lattice: Lattice2D, field: Float[], edges: EdgeField2D) -> Float[] {
+    return ApplyOrientationWeightedStep(lattice, field, edges)
+}
+
+fn CompareFieldL1(a: Float[], b: Float[]) -> Float {
+    var diff = 0.0
+    for idx in 0..Len(a) {
+        diff = diff + AbsFloat(a[idx] - b[idx])
+    }
+    return diff
+}
+
+fn ComputeTangentialPreference(lattice: Lattice2D, boundary: CurvedBoundary2D, mask: Bool[], edges: EdgeField2D) -> Float {
+    var score = 0.0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask[idx] {
+                let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+                let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+                let n = Normalize2(x - boundary.CenterX, y - boundary.CenterY)
+                let tx = -n[1]
+                let ty = n[0]
+
+                let horizontal = 0.5 * (edges.WeightLeft[idx] + edges.WeightRight[idx])
+                let vertical = 0.5 * (edges.WeightDown[idx] + edges.WeightUp[idx])
+
+                let radial = AbsFloat(n[0]) * horizontal + AbsFloat(n[1]) * vertical
+                let tangential = AbsFloat(tx) * horizontal + AbsFloat(ty) * vertical
+                score = score + (tangential - radial)
+            }
+        }
+    }
+
+    return score
+}
+
+fn ProbeSdfBoundary() -> SdfBoundaryReport {
+    let lattice = BuildM15Lattice()
+    let boundary = BuildM15CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let selectiveAgain = BuildSelectiveCoverageField(boundary, lattice)
+    let band = selective.BoundaryBand
+
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let sdfAgain = BuildCircleSdf(boundary, lattice)
+    let sdfBand = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let sdfBandAgain = MarkSdfBand(lattice, sdfAgain, lattice.Dx)
+
+    let sdfNormals = BuildSdfNormalField(lattice, sdf, sdfBand)
+    let sdfTangents = BuildSdfTangentField(sdfNormals)
+    let coverageTangents = BuildCircleTangentField(boundary, lattice, band)
+
+    let counts = CompareCoverageBandVsSdfBand(band, sdfBand)
+    let overlap = counts[0]
+    let coverageOnly = counts[1]
+    let sdfOnly = counts[2]
+
+    let coverageEdges = BuildOrientationEdgeField(lattice, selective.Coverage, coverageTangents)
+    let sdfEdges = BuildOrientationEdgeField(lattice, selective.Coverage, sdfTangents)
+
+    let coverageStep = ApplyOrientationWeightedStep(lattice, selective.Coverage, coverageEdges)
+    let sdfStep = ApplySdfOrientationStep(lattice, selective.Coverage, sdfEdges)
+
+    let tangentDelta = CompareFieldL1(coverageTangents.Ox, sdfTangents.Ox) + CompareFieldL1(coverageTangents.Oy, sdfTangents.Oy)
+    let stepDelta = CompareFieldL1(coverageStep, sdfStep)
+    let tanPrefCoverage = ComputeTangentialPreference(lattice, boundary, band.Marked, coverageEdges)
+    let tanPrefSdf = ComputeTangentialPreference(lattice, boundary, sdfBand.InBand, sdfEdges)
+
+    let deterministicCoverage = CompareFieldL1(selective.Coverage, selectiveAgain.Coverage) == 0.0
+    let deterministicSdf = CompareFieldL1(sdf.Distance, sdfAgain.Distance) == 0.0
+    let deterministicBand = CompareFieldL1(BoolToFloat(sdfBand.InBand), BoolToFloat(sdfBandAgain.InBand)) == 0.0
+    let deterministic = deterministicCoverage and deterministicSdf and deterministicBand
+
+    return SdfBoundaryReport {
+        SdfDefinition: sdf.BuildRule
+        SignConvention: sdf.SignConvention
+        BandRule: sdfBand.BandRule
+        CoverageBandRule: band.DetectionRule
+        BandComparison: "Coverage band and SDF band are compared by overlap, coverage-only, and sdf-only cell counts on the same lattice."
+        SdfNormalRule: sdfNormals.OrientationRule
+        SdfTangentRule: sdfTangents.OrientationRule
+        DownstreamComparison: "One deterministic orientation-weighted local update is run twice: coverage-path geometry tangent orientation vs SDF-gradient tangent orientation."
+        SdfWorthIt: tanPrefSdf >= tanPrefCoverage and stepDelta > 0.0 and deterministic
+        NoTopologyOrSolverIntroduced: true
+        Deterministic: deterministic
+        CoverageBandCount: band.UpgradedCount
+        SdfBandCount: sdfBand.BandCount
+        OverlapCount: overlap
+        CoverageOnlyCount: coverageOnly
+        SdfOnlyCount: sdfOnly
+        GeometryVsSdfTangentL1: tangentDelta
+        CoverageVsSdfStepL1: stepDelta
+        TangentialPreferenceCoverageOrientation: tanPrefCoverage
+        TangentialPreferenceSdfOrientation: tanPrefSdf
+        NextBoundary: "Given SDF orientation now works as a local geometry carrier, the next boundary is whether orientation should remain boundary-only or be transported/defined in interior material space."
+        RecommendationForNextPass: "Keep Cartesian topology fixed and pressure boundary-only versus interior/material orientation transfer, optionally with direct SDF-driven edge weights before any topology change or level-set evolution."
+    }
+}
+
+fn BoolToFloat(values: Bool[]) -> Float[] {
+    var out = ZeroFloat36()
+    for idx in 0..Len(values) {
+        if values[idx] {
+            out[idx] = 1.0
+        }
+    }
+    return out
+}
