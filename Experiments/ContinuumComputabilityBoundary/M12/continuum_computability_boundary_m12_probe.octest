@@ -1,0 +1,69 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM12MarksBoundaryBandDeterministically() -> Void {
+    let lattice = BuildM12Lattice()
+    let boundary = BuildM12CircleBoundary()
+
+    let coarseA = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let coarseB = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let maskA = MarkBoundaryBandCells(coarseA)
+    let maskB = MarkBoundaryBandCells(coarseB)
+
+    Assert.Equal(maskA.UpgradedCount, maskB.UpgradedCount, "boundary-band upgraded count should be deterministic")
+    Assert.True(maskA.UpgradedCount > 0 and maskA.UpgradedCount < maskA.Count, "only a subset should be upgraded")
+    Assert.True(Contains(maskA.DetectionRule, "0 < coverage < 1"), "detection rule should be explicit and local")
+}
+
+[Fact]
+fn ContinuumBoundaryM12RefinesOnlyMarkedCellsWith4x4() -> Void {
+    let lattice = BuildM12Lattice()
+    let boundary = BuildM12CircleBoundary()
+
+    let coarse = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let band = selective.BoundaryBand
+
+    let center = LatticeIndex(lattice, 2, 2)
+    let boundaryBand = LatticeIndex(lattice, 4, 2)
+
+    Assert.Equal(false, band.Marked[center], "interior cell should not be marked")
+    Assert.Equal(coarse.Coverage[center], selective.Coverage[center], "interior cell should keep coarse 2x2 value")
+
+    Assert.Equal(true, band.Marked[boundaryBand], "fractional coarse cell should be marked for upgrade")
+    Assert.Equal(SampleCellCoverage4x4(boundary, lattice, 4, 2), selective.Coverage[boundaryBand], "marked cell should use deterministic 4x4 value")
+}
+
+[Fact]
+fn ContinuumBoundaryM12SelectiveSamplingImprovesQualityAtLowerCostThanGlobal4x4() -> Void {
+    let report = ProbeSelectiveSamplingBoundary()
+
+    Assert.True(report.JaggednessFixed2x2 < report.JaggednessBinary, "fixed 2x2 should remain less jagged than binary")
+    Assert.True(report.JaggednessSelective <= report.JaggednessFixed2x2, "selective pass should be at least as smooth as fixed 2x2")
+    Assert.True(report.UpgradedCells < report.TotalCells, "selective pass should upgrade only a subset of cells")
+    Assert.True(Contains(report.Fixed2x2VsSelectiveResult, "Selective 4x4"), "report should describe selective quality comparison")
+}
+
+[Fact]
+fn ContinuumBoundaryM12ImprovesOwnershipConsequenceWithoutTopologyChange() -> Void {
+    let report = ProbeSelectiveSamplingBoundary()
+
+    Assert.True(report.OwnershipJumpFixed2x2 < report.OwnershipJumpBinary, "fixed 2x2 ownership should already improve over binary")
+    Assert.True(report.OwnershipJumpSelective <= report.OwnershipJumpFixed2x2, "selective sampling should keep or improve ownership smoothness")
+    Assert.Equal(true, report.CleanerThanTopologyChange, "probe should remain cleaner than topology change for this scope")
+    Assert.Equal(true, report.Deterministic, "probe must remain deterministic")
+    Assert.True(Contains(report.NextBoundary, "Directional edge-coverage"), "next boundary should be explicit and local")
+}
+
+[Fact]
+fn ContinuumBoundaryM12ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeSelectiveSamplingBoundary()
+
+    Assert.True(Contains(report.BoundaryBandDetectionRule, "fractional"), "report should state boundary-band rule")
+    Assert.True(Contains(report.SampleUpgradeRule, "2x2") and Contains(report.SampleUpgradeRule, "4x4"), "report should state selective upgrade rule")
+    Assert.True(report.UpgradedCells > 0, "report should state number of upgraded cells")
+    Assert.Equal(12, report.UpgradedCells, "upgraded cell count should remain explicit for this fixture")
+    Assert.True(Contains(report.BinaryVsFixed2x2Result, "less jagged"), "report should compare binary vs fixed 2x2")
+    Assert.True(Contains(report.OwnershipConsequenceResult, "ownership"), "report should compare one computational consequence")
+    Assert.Equal(true, report.CleanerThanTopologyChange, "report should answer topology cleanliness question")
+}

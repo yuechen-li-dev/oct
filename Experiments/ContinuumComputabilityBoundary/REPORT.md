@@ -15,6 +15,10 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 - M6: deterministic graded refinement selection probe (importance-driven, one-step balancing)
 - M7: deterministic multi-patch extraction probe (ordering + overlap suppression)
 - M8: deterministic inter-patch interface bookkeeping probe (flat interface records + local balance accumulation)
+- M9: deterministic local junction ownership ranking probe (plain explicit scoring)
+- M10: deterministic multi-claimant junction ranking probe (plain vs standalone utility parity)
+- M11: curved boundary deterministic coverage weighting probe (binary vs fixed 2x2)
+- M12: selective boundary-band sampling quality probe (fixed 2x2 vs selective 4x4)
 
 ## M0
 
@@ -920,3 +924,64 @@ Based on M11 evidence, the next boundary is:
 - and then optional **edge coverage weighting** for directional transfer slots.
 
 Only after those are insufficient should true topology change be reconsidered.
+
+
+## M12
+
+### 1) What boundary-band detection rule was used?
+M12 uses exactly one local deterministic rule over the coarse weighted field:
+
+- build fixed **2x2** coverage first for every cell,
+- mark a cell as boundary-band when **`0 < coarseCoverage < 1`**.
+
+This is implemented by `MarkBoundaryBandCells(...)` and stored as `BoundaryBandMask2D`.
+
+### 2) What higher-quality sample rule was used?
+M12 uses one narrow deterministic upgrade path only:
+
+- base sampling: **2x2** for every cell,
+- upgraded sampling: **4x4** only for cells marked by the boundary-band mask.
+
+Unmarked cells keep their already-computed 2x2 value. No random sampling, no solver pass, and no topology mutation occurs.
+
+### 3) How many cells were upgraded?
+For the same M11-style circle `(center=(2.5,2.5), radius=2.1)` on the same `6x6` lattice:
+
+- total cells: `36`
+- upgraded boundary-band cells: **`12`**
+
+So only one-third of cells pay the higher sampling cost in this probe.
+
+### 4) How did selective sampling compare against fixed 2x2?
+Three embedding modes were compared on the same carrier:
+
+1. **binary center-point embedding**
+2. **fixed 2x2 weighted coverage**
+3. **selective 4x4-on-boundary-band weighted coverage**
+
+Observed in this probe:
+
+- fixed 2x2 remains less jagged than binary,
+- selective boundary-band 4x4 further reduces (or matches and never worsens) jaggedness relative to fixed 2x2,
+- interior/exterior obvious cells are unchanged because they are not upgraded.
+
+### 5) Did the computational consequence improve meaningfully?
+Yes, for the one reused consequence (weighted local ownership):
+
+- ownership derived from weighted coverage is already smoother than binary under fixed 2x2,
+- selective boundary-band 4x4 keeps or improves that ownership smoothness near curved boundaries,
+- effect stays explicit, local, and deterministic (no hidden smoothing stage).
+
+### 6) Does this still feel cleaner than topology change / meshing?
+For this pass: **yes**.
+
+M12 improves curved-boundary coverage quality by changing only deterministic sampling density in a narrow subset of cells. It adds no mesh elements, no adaptive connectivity, no curved topology, no graph infrastructure, and no solver behavior.
+
+### 7) What is the next boundary after M12?
+Given M12 evidence, the next pressure point is:
+
+- **directional edge-coverage weighting** on the same fixed Cartesian carrier,
+
+before considering harder geometry classes or any true topology change.
+
+Blunt verdict: selective sampling quality control is justified for this curved case and remains cleaner than topology mutation at this stage.
