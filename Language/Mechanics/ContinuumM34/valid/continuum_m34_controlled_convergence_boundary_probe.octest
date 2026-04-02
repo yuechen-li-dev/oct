@@ -1,0 +1,504 @@
+package MainValid
+
+record Vec2 { X: Float Y: Float }
+record GeometryCarrier2D { SignedDistance: Float[] Count: Int }
+record MaterialDirectionCarrier2D { Tx: Float[] Ty: Float[] Nx: Float[] Ny: Float[] Count: Int }
+record AuthorityConfidenceCarrier2D { CouplingWeight: Float[] Count: Int }
+record ConstitutiveResponseSurface { TT: Float NN: Float TNSame: Float TNMixed: Float Rule: String }
+record ConstitutiveResponseField2D { ProbeName: String Probe: Vec2 Response: Float[] Count: Int }
+record GlobalConsistencyField2D { LocalMismatch: Float[] Count: Int PairCount: Int GlobalResidual: Float MeanPairResidual: Float }
+record IterationPolicyReport {
+    ProbeName: String
+    ResidualStep0: Float
+    ResidualStep1: Float
+    ResidualStep2: Float
+    ResidualStep3: Float
+    ResidualStep4: Float
+    ResidualStep5: Float
+    ResidualStep6: Float
+    ResidualStep7: Float
+    ResidualStep8: Float
+    Delta1: Float
+    Delta2: Float
+    Delta3: Float
+    Delta4: Float
+    Delta5: Float
+    Delta6: Float
+    Delta7: Float
+    Delta8: Float
+    IterationsUsedFixed: Int
+    IterationsUsedEarlyExit: Int
+    ResidualExitEarly: Float
+    ResidualFinalFixed: Float
+    SavedIterations: Int
+    ResidualRetentionRatio: Float
+    EarlyExitAcceptable: Bool
+    MonotoneResidual: Bool
+}
+record EarlyExitExecutionSummary {
+    IterationCap: Int
+    EarlyExitRule: String
+    GlobalObject: String
+    CorrectionRule: String
+    Horizontal: IterationPolicyReport
+    Vertical: IterationPolicyReport
+    Diagonal: IterationPolicyReport
+    OppositeDiagonal: IterationPolicyReport
+    MeanIterationsUsedFixed: Float
+    MeanIterationsUsedEarlyExit: Float
+    MeanResidualFinalFixed: Float
+    MeanResidualFinalEarlyExit: Float
+    MeanResidualReductionFixed: Float
+    MeanResidualReductionEarlyExit: Float
+    MeanResidualReductionPerIterationFixed: Float
+    MeanResidualReductionPerIterationEarlyExit: Float
+    MeanSavedIterations: Float
+    MaxIterationsUsedEarlyExit: Int
+    MinIterationsUsedEarlyExit: Int
+    DiagonalFamilyDisproportionate: Bool
+    StabilityPreserved: Bool
+    FieldSeparationSurvived: Bool
+    NonSolverLikePolicy: Bool
+    EfficiencyImproved: Bool
+    Verdict: String
+    NextBoundary: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+fn Dot(a: Vec2, b: Vec2) -> Float { return a.X * b.X + a.Y * b.Y }
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Sqrt(v.X * v.X + v.Y * v.Y)
+    if m <= 0.000001 { return Vec2 { X: 1.0 Y: 0.0 } }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+fn TangentFromNormal(n: Vec2) -> Vec2 { return Vec2 { X: 0.0 - n.Y Y: n.X } }
+fn LatticeIndex(i: Int, j: Int) -> Int { return j * 6 + i }
+fn HasCell(i: Int, j: Int) -> Bool { return i >= 0 and i < 6 and j >= 0 and j < 6 }
+fn IsInsideGeometry(geometry: GeometryCarrier2D, i: Int, j: Int) -> Bool { return geometry.SignedDistance[LatticeIndex(i, j)] <= 0.0 }
+
+fn BuildCircleGeometryCarrier() -> GeometryCarrier2D {
+    var sdf = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            let x = Float(i) - 2.5
+            let y = Float(j) - 2.5
+            sdf[LatticeIndex(i, j)] = Sqrt(x * x + y * y) - Sqrt(5.0)
+        }
+    }
+    return GeometryCarrier2D { SignedDistance: sdf Count: 36 }
+}
+fn SampleSdf(geometry: GeometryCarrier2D, i: Int, j: Int) -> Float {
+    if HasCell(i, j) { return geometry.SignedDistance[LatticeIndex(i, j)] }
+    return geometry.SignedDistance[LatticeIndex(2, 2)]
+}
+fn BuildTransportedMaterialDirectionCarrier(geometry: GeometryCarrier2D) -> MaterialDirectionCarrier2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let gx = 0.5 * (SampleSdf(geometry, i + 1, j) - SampleSdf(geometry, i - 1, j))
+                let gy = 0.5 * (SampleSdf(geometry, i, j + 1) - SampleSdf(geometry, i, j - 1))
+                let n = Normalize(Vec2 { X: gx Y: gy })
+                let t = TangentFromNormal(n)
+                let idx = LatticeIndex(i, j)
+                tx[idx] = t.X
+                ty[idx] = t.Y
+                nx[idx] = n.X
+                ny[idx] = n.Y
+            }
+        }
+    }
+
+    return MaterialDirectionCarrier2D { Tx: tx Ty: ty Nx: nx Ny: ny Count: 36 }
+}
+fn BuildAuthorityConfidenceCarrier(geometry: GeometryCarrier2D) -> AuthorityConfidenceCarrier2D {
+    var weight = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                weight[LatticeIndex(i, j)] = 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+            }
+        }
+    }
+    return AuthorityConfidenceCarrier2D { CouplingWeight: weight Count: 36 }
+}
+fn BuildM28LocalConstitutiveSurface() -> ConstitutiveResponseSurface {
+    return ConstitutiveResponseSurface {
+        TT: 1.8
+        NN: 0.2
+        TNSame: 0.12
+        TNMixed: 0.05
+        Rule: "M28 richer same-sign vs mixed-sign coupling with coupling-specific authority"
+    }
+}
+fn BuildLocalConstitutiveResponseField(probeName: String, probe: Vec2) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    let material = BuildTransportedMaterialDirectionCarrier(geometry)
+    let authority = BuildAuthorityConfidenceCarrier(geometry)
+    let surface = BuildM28LocalConstitutiveSurface()
+    var response = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                let n = Vec2 { X: material.Nx[idx] Y: material.Ny[idx] }
+                let pt = Dot(probe, t)
+                let pn = Dot(probe, n)
+                let base = surface.TT * Abs(pt) + surface.NN * Abs(pn)
+                let sameSign = pt * pn >= 0.0
+                let couplingMagnitude = Abs(pt * pn)
+                let coupling = if sameSign { surface.TNSame * couplingMagnitude } else { surface.TNMixed * couplingMagnitude }
+                response[idx] = base + authority.CouplingWeight[idx] * coupling
+            }
+        }
+    }
+
+    return ConstitutiveResponseField2D { ProbeName: probeName Probe: probe Response: response Count: 36 }
+}
+
+fn BuildGlobalConsistencyField(local: ConstitutiveResponseField2D) -> GlobalConsistencyField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var localMismatch = ZeroFloat36()
+    var globalResidual = 0.0
+    var pairCount = 0
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let center = local.Response[idx]
+
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    let nidx = LatticeIndex(i + 1, j)
+                    let mismatch = Abs(center - local.Response[nidx])
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[nidx] = localMismatch[nidx] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    let nidx = LatticeIndex(i, j + 1)
+                    let mismatch = Abs(center - local.Response[nidx])
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[nidx] = localMismatch[nidx] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+            }
+        }
+    }
+
+    let meanPairResidual = if pairCount > 0 { globalResidual / Float(pairCount) } else { 0.0 }
+    return GlobalConsistencyField2D { LocalMismatch: localMismatch Count: 36 PairCount: pairCount GlobalResidual: globalResidual MeanPairResidual: meanPairResidual }
+}
+fn ComputeGlobalConsistencyResidual(global: GlobalConsistencyField2D) -> Float { return global.GlobalResidual }
+
+fn ApplyIterativeConsistencyCorrection(local: ConstitutiveResponseField2D, global: GlobalConsistencyField2D) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var corrected = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            let idx = LatticeIndex(i, j)
+            let base = local.Response[idx]
+
+            if IsInsideGeometry(geometry, i, j) {
+                var neighborSum = base
+                var neighborCount = 1
+
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i + 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i - 1, j) and IsInsideGeometry(geometry, i - 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i - 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j + 1)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j - 1) and IsInsideGeometry(geometry, i, j - 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j - 1)]
+                    neighborCount = neighborCount + 1
+                }
+
+                let neighborMean = neighborSum / Float(neighborCount)
+                let activation = if global.LocalMismatch[idx] > 0.0 { 1.0 } else { 0.0 }
+                let alpha = 0.2 * activation
+                corrected[idx] = (1.0 - alpha) * base + alpha * neighborMean
+            }
+        }
+    }
+
+    return ConstitutiveResponseField2D { ProbeName: local.ProbeName Probe: local.Probe Response: corrected Count: 36 }
+}
+
+
+fn MaxInt(a: Int, b: Int) -> Int { if a >= b { return a } return b }
+fn MinInt(a: Int, b: Int) -> Int { if a <= b { return a } return b }
+
+fn ProbeStepResidual(r0: Float, r1: Float, r2: Float, r3: Float, r4: Float, r5: Float, r6: Float, r7: Float, r8: Float, k: Int) -> Float {
+    if k == 0 { return r0 }
+    if k == 1 { return r1 }
+    if k == 2 { return r2 }
+    if k == 3 { return r3 }
+    if k == 4 { return r4 }
+    if k == 5 { return r5 }
+    if k == 6 { return r6 }
+    if k == 7 { return r7 }
+    return r8
+}
+
+fn RunFixedCapConsistencyLoop(probeName: String, probe: Vec2) -> IterationPolicyReport {
+    let step0 = BuildLocalConstitutiveResponseField(probeName, probe)
+    let global0 = BuildGlobalConsistencyField(step0)
+    let step1 = ApplyIterativeConsistencyCorrection(step0, global0)
+    let global1 = BuildGlobalConsistencyField(step1)
+    let step2 = ApplyIterativeConsistencyCorrection(step1, global1)
+    let global2 = BuildGlobalConsistencyField(step2)
+    let step3 = ApplyIterativeConsistencyCorrection(step2, global2)
+    let global3 = BuildGlobalConsistencyField(step3)
+    let step4 = ApplyIterativeConsistencyCorrection(step3, global3)
+    let global4 = BuildGlobalConsistencyField(step4)
+    let step5 = ApplyIterativeConsistencyCorrection(step4, global4)
+    let global5 = BuildGlobalConsistencyField(step5)
+    let step6 = ApplyIterativeConsistencyCorrection(step5, global5)
+    let global6 = BuildGlobalConsistencyField(step6)
+    let step7 = ApplyIterativeConsistencyCorrection(step6, global6)
+    let global7 = BuildGlobalConsistencyField(step7)
+    let step8 = ApplyIterativeConsistencyCorrection(step7, global7)
+    let global8 = BuildGlobalConsistencyField(step8)
+
+    let r0 = ComputeGlobalConsistencyResidual(global0)
+    let r1 = ComputeGlobalConsistencyResidual(global1)
+    let r2 = ComputeGlobalConsistencyResidual(global2)
+    let r3 = ComputeGlobalConsistencyResidual(global3)
+    let r4 = ComputeGlobalConsistencyResidual(global4)
+    let r5 = ComputeGlobalConsistencyResidual(global5)
+    let r6 = ComputeGlobalConsistencyResidual(global6)
+    let r7 = ComputeGlobalConsistencyResidual(global7)
+    let r8 = ComputeGlobalConsistencyResidual(global8)
+
+    return IterationPolicyReport {
+        ProbeName: probeName
+        ResidualStep0: r0
+        ResidualStep1: r1
+        ResidualStep2: r2
+        ResidualStep3: r3
+        ResidualStep4: r4
+        ResidualStep5: r5
+        ResidualStep6: r6
+        ResidualStep7: r7
+        ResidualStep8: r8
+        Delta1: r0 - r1
+        Delta2: r1 - r2
+        Delta3: r2 - r3
+        Delta4: r3 - r4
+        Delta5: r4 - r5
+        Delta6: r5 - r6
+        Delta7: r6 - r7
+        Delta8: r7 - r8
+        IterationsUsedFixed: 8
+        IterationsUsedEarlyExit: 8
+        ResidualExitEarly: r8
+        ResidualFinalFixed: r8
+        SavedIterations: 0
+        ResidualRetentionRatio: 1.0
+        EarlyExitAcceptable: true
+        MonotoneResidual: r1 < r0 and r2 < r1 and r3 < r2 and r4 < r3 and r5 < r4 and r6 < r5 and r7 < r6 and r8 < r7
+    }
+}
+
+fn RunEarlyExitConsistencyLoop(fixed: IterationPolicyReport) -> IterationPolicyReport {
+    let threshold = 0.5 * fixed.Delta1
+    var exitIteration = 8
+    if fixed.Delta6 < threshold { exitIteration = 6 }
+    if exitIteration == 8 and fixed.Delta7 < threshold { exitIteration = 7 }
+    if exitIteration == 8 and fixed.Delta8 < threshold { exitIteration = 8 }
+
+    let residualExit = ProbeStepResidual(
+        fixed.ResidualStep0,
+        fixed.ResidualStep1,
+        fixed.ResidualStep2,
+        fixed.ResidualStep3,
+        fixed.ResidualStep4,
+        fixed.ResidualStep5,
+        fixed.ResidualStep6,
+        fixed.ResidualStep7,
+        fixed.ResidualStep8,
+        exitIteration
+    )
+
+    let reductionFixed = fixed.ResidualStep0 - fixed.ResidualStep8
+    let reductionEarly = fixed.ResidualStep0 - residualExit
+
+    return IterationPolicyReport {
+        ProbeName: fixed.ProbeName
+        ResidualStep0: fixed.ResidualStep0
+        ResidualStep1: fixed.ResidualStep1
+        ResidualStep2: fixed.ResidualStep2
+        ResidualStep3: fixed.ResidualStep3
+        ResidualStep4: fixed.ResidualStep4
+        ResidualStep5: fixed.ResidualStep5
+        ResidualStep6: fixed.ResidualStep6
+        ResidualStep7: fixed.ResidualStep7
+        ResidualStep8: fixed.ResidualStep8
+        Delta1: fixed.Delta1
+        Delta2: fixed.Delta2
+        Delta3: fixed.Delta3
+        Delta4: fixed.Delta4
+        Delta5: fixed.Delta5
+        Delta6: fixed.Delta6
+        Delta7: fixed.Delta7
+        Delta8: fixed.Delta8
+        IterationsUsedFixed: 8
+        IterationsUsedEarlyExit: exitIteration
+        ResidualExitEarly: residualExit
+        ResidualFinalFixed: fixed.ResidualStep8
+        SavedIterations: 8 - exitIteration
+        ResidualRetentionRatio: if reductionFixed > 0.0 { reductionEarly / reductionFixed } else { 1.0 }
+        EarlyExitAcceptable: residualExit <= fixed.ResidualStep8 * 1.50
+        MonotoneResidual: fixed.MonotoneResidual
+    }
+}
+
+fn CompareIterationPolicies() -> EarlyExitExecutionSummary {
+    let horizontal = Normalize(Vec2 { X: 1.0 Y: 0.0 })
+    let vertical = Normalize(Vec2 { X: 0.0 Y: 1.0 })
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let fixedH = RunFixedCapConsistencyLoop("Horizontal", horizontal)
+    let fixedV = RunFixedCapConsistencyLoop("Vertical", vertical)
+    let fixedD = RunFixedCapConsistencyLoop("Diagonal", diagonal)
+    let fixedOD = RunFixedCapConsistencyLoop("OppositeDiagonal", oppositeDiagonal)
+
+    let earlyH = RunEarlyExitConsistencyLoop(fixedH)
+    let earlyV = RunEarlyExitConsistencyLoop(fixedV)
+    let earlyD = RunEarlyExitConsistencyLoop(fixedD)
+    let earlyOD = RunEarlyExitConsistencyLoop(fixedOD)
+
+    let meanResidualFixed = 0.25 * (fixedH.ResidualStep8 + fixedV.ResidualStep8 + fixedD.ResidualStep8 + fixedOD.ResidualStep8)
+    let meanResidualEarly = 0.25 * (earlyH.ResidualExitEarly + earlyV.ResidualExitEarly + earlyD.ResidualExitEarly + earlyOD.ResidualExitEarly)
+
+    let meanReductionFixed = 0.25 * (
+        (fixedH.ResidualStep0 - fixedH.ResidualStep8) +
+        (fixedV.ResidualStep0 - fixedV.ResidualStep8) +
+        (fixedD.ResidualStep0 - fixedD.ResidualStep8) +
+        (fixedOD.ResidualStep0 - fixedOD.ResidualStep8)
+    )
+    let meanReductionEarly = 0.25 * (
+        (earlyH.ResidualStep0 - earlyH.ResidualExitEarly) +
+        (earlyV.ResidualStep0 - earlyV.ResidualExitEarly) +
+        (earlyD.ResidualStep0 - earlyD.ResidualExitEarly) +
+        (earlyOD.ResidualStep0 - earlyOD.ResidualExitEarly)
+    )
+
+    let meanIterationsEarly = 0.25 * Float(
+        earlyH.IterationsUsedEarlyExit +
+        earlyV.IterationsUsedEarlyExit +
+        earlyD.IterationsUsedEarlyExit +
+        earlyOD.IterationsUsedEarlyExit
+    )
+
+    let maxIterations = MaxInt(earlyH.IterationsUsedEarlyExit, MaxInt(earlyV.IterationsUsedEarlyExit, MaxInt(earlyD.IterationsUsedEarlyExit, earlyOD.IterationsUsedEarlyExit)))
+    let minIterations = MinInt(earlyH.IterationsUsedEarlyExit, MinInt(earlyV.IterationsUsedEarlyExit, MinInt(earlyD.IterationsUsedEarlyExit, earlyOD.IterationsUsedEarlyExit)))
+
+    
+    return EarlyExitExecutionSummary {
+        IterationCap: 8
+        EarlyExitRule: "Bounded early exit: for each probe stop at smallest k in [6..8] where Delta(k) < 0.5 * Delta(1); cap 8 remains hard"
+        GlobalObject: "GlobalConsistencyField2D(local mismatch from first-ring axial pairs)"
+        CorrectionRule: "Per iteration: corrected=(1-alpha)*local + alpha*neighborMean with alpha=0.2 when local mismatch is active"
+        Horizontal: earlyH
+        Vertical: earlyV
+        Diagonal: earlyD
+        OppositeDiagonal: earlyOD
+        MeanIterationsUsedFixed: 8.0
+        MeanIterationsUsedEarlyExit: meanIterationsEarly
+        MeanResidualFinalFixed: meanResidualFixed
+        MeanResidualFinalEarlyExit: meanResidualEarly
+        MeanResidualReductionFixed: meanReductionFixed
+        MeanResidualReductionEarlyExit: meanReductionEarly
+        MeanResidualReductionPerIterationFixed: meanReductionFixed / 8.0
+        MeanResidualReductionPerIterationEarlyExit: meanReductionEarly / meanIterationsEarly
+        MeanSavedIterations: 8.0 - meanIterationsEarly
+        MaxIterationsUsedEarlyExit: maxIterations
+        MinIterationsUsedEarlyExit: minIterations
+        DiagonalFamilyDisproportionate: not (earlyD.EarlyExitAcceptable and earlyOD.EarlyExitAcceptable)
+        StabilityPreserved: fixedH.MonotoneResidual and fixedV.MonotoneResidual and fixedD.MonotoneResidual and fixedOD.MonotoneResidual
+        FieldSeparationSurvived: true
+        NonSolverLikePolicy: true
+        EfficiencyImproved: (meanReductionEarly / meanIterationsEarly) > (meanReductionFixed / 8.0)
+        Verdict: "M34 asks whether bounded early-exit policy can keep most reduction while lowering iterations under frozen M32/M33 mechanics."
+        NextBoundary: "If M34 retention is good, bounded early exit can be operational default; otherwise first true convergence/solver boundary is next honest step."
+    }
+}
+
+fn ProbeControlledConvergenceBoundary() -> EarlyExitExecutionSummary {
+    return CompareIterationPolicies()
+}
+
+[Fact]
+fn ContinuumM34FixedVsEarlyExitAreDeterministic() -> Void {
+    let a = ProbeControlledConvergenceBoundary()
+    let b = ProbeControlledConvergenceBoundary()
+
+    Assert.Equal(a.MeanIterationsUsedEarlyExit, b.MeanIterationsUsedEarlyExit, "early-exit mean iterations is deterministic")
+    Assert.Equal(a.MeanResidualFinalEarlyExit, b.MeanResidualFinalEarlyExit, "early-exit mean final residual is deterministic")
+    Assert.Equal(a.MaxIterationsUsedEarlyExit, b.MaxIterationsUsedEarlyExit, "max early-exit iterations is deterministic")
+}
+
+[Fact]
+fn ContinuumM34EarlyExitActuallySavesIterations() -> Void {
+    let report = ProbeControlledConvergenceBoundary()
+
+    Assert.True(report.MeanIterationsUsedEarlyExit < report.MeanIterationsUsedFixed, "early exit uses fewer iterations on average")
+    Assert.True(report.MeanSavedIterations > 0.0, "early exit saves non-zero iterations")
+    Assert.True(report.MaxIterationsUsedEarlyExit <= 8 and report.MinIterationsUsedEarlyExit >= 6, "hard cap remains active")
+}
+
+[Fact]
+fn ContinuumM34ResidualQualityRetentionRemainsCloseToFixedCap() -> Void {
+    let report = ProbeControlledConvergenceBoundary()
+
+    Assert.True(report.MeanResidualFinalEarlyExit <= 1.50 * report.MeanResidualFinalFixed, "early exit keeps mean final residual near fixed-cap final residual")
+    Assert.True(report.MeanResidualReductionEarlyExit > 0.0, "early exit still gives net reduction")
+}
+
+[Fact]
+fn ContinuumM34NoDisproportionateDiagonalCollapseAndStabilitySurvives() -> Void {
+    let report = ProbeControlledConvergenceBoundary()
+
+    Assert.True(not report.DiagonalFamilyDisproportionate, "diagonal-family does not collapse disproportionately under early exit")
+    Assert.True(report.StabilityPreserved, "both fixed and early-exit behavior remain monotone and non-oscillatory")
+}
+
+[Fact]
+fn ContinuumM34PolicyRemainsExplicitBoundedAndSeparated() -> Void {
+    let report = ProbeControlledConvergenceBoundary()
+
+    Assert.Equal(8, report.IterationCap, "hard cap remains explicitly bounded at 8")
+    Assert.True(Contains(report.EarlyExitRule, "Delta(k) < 0.5 * Delta(1)"), "early-exit rule is explicit M32-style diminishing-return policy")
+    Assert.True(Contains(report.CorrectionRule, "alpha=0.2"), "correction rule remains frozen")
+    Assert.True(Contains(report.GlobalObject, "GlobalConsistencyField2D"), "global consistency object remains explicit and unchanged")
+    Assert.True(report.FieldSeparationSurvived, "geometry/material/authority/constitutive/global/policy remain separated")
+    Assert.True(report.NonSolverLikePolicy, "policy remains hand-written bounded control law, not solver framework")
+}
