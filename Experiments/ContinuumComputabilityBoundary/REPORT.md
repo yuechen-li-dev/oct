@@ -13,6 +13,8 @@ This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` i
 - M4: deterministic Cartesian lattice coupling probe
 - M5: localized deterministic refinement patch probe (single-level coarse–fine split)
 - M6: deterministic graded refinement selection probe (importance-driven, one-step balancing)
+- M7: deterministic multi-patch extraction probe (ordering + overlap suppression)
+- M8: deterministic inter-patch interface bookkeeping probe (flat interface records + local balance accumulation)
 
 ## M0
 
@@ -631,3 +633,80 @@ Run M8 as a narrow inter-patch-interface probe:
 - keep deterministic order + first-wins suppression,
 - add explicit bookkeeping for adjacent-patch/coarse-neighbor interface accounting,
 - continue forbidding AMR/quadtree/mesh/solver infrastructure.
+
+
+## M8
+
+### 1) What interface representation was introduced?
+M8 introduces `PatchInterface2D` as a **flat interface-record carrier** (not a graph):
+
+- `PatchA`: accepted patch index that owns the record
+- `PatchB`: neighboring accepted patch index, or `-1` sentinel for coarse-side interfaces
+- `Kind`: encoded interaction type (`0 = patch-coarse`, `1 = patch-patch`)
+- `Direction`: encoded side (`0 = Right`, `1 = Up`, `2 = Left`, `3 = Down`)
+- `CoarseI`, `CoarseJ`: explicit parent-coarse edge locator
+- `FineA0/FineA1`, `FineB0/FineB1`: explicit fine-slot mappings
+- `Weight0/Weight1`: explicit split weights
+
+No hidden adjacency graph or mesh connectivity object is introduced.
+
+### 2) How are interfaces detected deterministically?
+`BuildPatchInterfaces(...)` performs one fixed index-only sweep over accepted patch anchors:
+
+- iterate accepted patches in deterministic M7 order
+- probe neighbors only at fixed offsets `(±2,0)` and `(0,±2)`
+- emit patch-patch records for right/up neighbors (`p < q` ownership for de-duplication)
+- emit patch-coarse records for sides with no patch neighbor
+
+Detection is explicit, deterministic, inspectable, and graph-free.
+
+### 3) What rules govern coarse-fine and fine-fine interactions?
+M8 uses one narrow rule per interface class.
+
+- **Coarse-fine rule:** read coarse edge amount at explicit `(CoarseI, CoarseJ)` indices and split 50/50 across the two aligned fine slots.
+- **Fine-fine (patch-patch) rule:** direct aligned slot matching (two slot pairs) using shared parent coarse edge amounts; no interpolation is introduced.
+
+### 4) Does flux/balance accounting remain coherent?
+Yes, within M8 scope.
+
+- `EvaluateInterfaceContributions(...)` computes per-interface amounts and explicit per-patch incoming/outgoing/net totals.
+- `AccumulateInterfaceBalance(...)` aggregates interface totals and preserves traceability.
+- With symmetric bookkeeping rules, each patch keeps zero net (`outgoing - incoming`) in this probe.
+
+No global system is assembled or solved.
+
+### 5) Does M8 still avoid topology/graph machinery?
+Yes. M8 stays within:
+
+- Cartesian base lattice
+- fixed 2x2 patches
+- flat arrays and interface records
+
+M8 still avoids AMR trees, quadtree traversal, mesh connectivity graphs, and solver infrastructure.
+
+### 6) What new complexity appeared?
+New complexity is explicit and local:
+
+- interface list size grows faster than patch count
+- directional coarse-index bookkeeping is verbose
+- ownership/de-dup policy (`p < q`) must remain stable
+
+This is still smaller than mesh/topology systems, but bookkeeping strain becomes visible.
+
+### 7) What is the next boundary?
+The next boundary is junction policy:
+
+- corner/T-junction ownership when several patches crowd one coarse neighborhood
+- deterministic tie-breaking for multi-interface attribution
+
+### M7 vs M8
+- **M7:** patches are extracted deterministically, but do not explicitly interact.
+- **M8:** patches explicitly interact through `PatchInterface2D` records (patch-patch and patch-coarse), and interface contributions are accumulated explicitly.
+
+### Recommendation for next pass
+Run a narrow junction-bookkeeping probe:
+
+- keep fixed 2x2 Cartesian patches
+- keep flat explicit interface records
+- add explicit corner/T-junction ownership tables
+- continue forbidding AMR/quadtree/mesh/solver infrastructure
