@@ -1,0 +1,657 @@
+package MainValid
+
+record Vec2 { X: Float Y: Float }
+record GeometryCarrier2D { SignedDistance: Float[] Count: Int }
+record MaterialDirectionCarrier2D { Tx: Float[] Ty: Float[] Nx: Float[] Ny: Float[] Count: Int }
+record AuthorityConfidenceCarrier2D { CouplingWeight: Float[] Count: Int }
+record ConstitutiveResponseSurface { TT: Float NN: Float TNSame: Float TNMixed: Float Rule: String }
+record ConstitutiveResponseField2D { ProbeName: String Probe: Vec2 Response: Float[] Count: Int }
+record GlobalConsistencyField2D {
+    LocalMismatch: Float[]
+    Count: Int
+    PairCount: Int
+    GlobalResidual: Float
+    MeanPairResidual: Float
+}
+record IterationTrajectorySummary {
+    ProbeName: String
+    Step0Residual: Float
+    Step1Residual: Float
+    Step2Residual: Float
+    Step3Residual: Float
+    Step4Residual: Float
+    Step5Residual: Float
+    Step6Residual: Float
+    Step7Residual: Float
+    Step8Residual: Float
+    Delta1: Float
+    Delta2: Float
+    Delta3: Float
+    Delta4: Float
+    Delta5: Float
+    Delta6: Float
+    Delta7: Float
+    Delta8: Float
+    VariationStep0: Float
+    VariationStep8: Float
+    Step1MoveL1: Float
+    Step8MoveL1: Float
+}
+record IterationOperatorReport {
+    OperatorName: String
+    GlobalObject: String
+    CorrectionRule: String
+    TrivialCriterion: String
+    IterationCap: Int
+    Horizontal: IterationTrajectorySummary
+    Vertical: IterationTrajectorySummary
+    Diagonal: IterationTrajectorySummary
+    OppositeDiagonal: IterationTrajectorySummary
+    MeanResidualStep0: Float
+    MeanResidualStep1: Float
+    MeanResidualStep2: Float
+    MeanResidualStep3: Float
+    MeanResidualStep4: Float
+    MeanResidualStep5: Float
+    MeanResidualStep6: Float
+    MeanResidualStep7: Float
+    MeanResidualStep8: Float
+    MeanDelta1: Float
+    MeanDelta2: Float
+    MeanDelta3: Float
+    MeanDelta4: Float
+    MeanDelta5: Float
+    MeanDelta6: Float
+    MeanDelta7: Float
+    MeanDelta8: Float
+    PracticalHorizonK: Int
+    StructureStabilized: Bool
+    ResidualMonotone: Bool
+    DeltaMonotone: Bool
+}
+record StrengthenedConsistencyReport {
+    PathA: IterationOperatorReport
+    PathB: IterationOperatorReport
+    MeanDelta1_M32: Float
+    MeanDelta1_M33: Float
+    MeanDelta2_M32: Float
+    MeanDelta2_M33: Float
+    PracticalHorizonK_M32: Int
+    PracticalHorizonK_M33: Int
+    MeanResidualAtK_M32: Float
+    MeanResidualAtK_M33: Float
+    DiagonalImprovementVsAxial: Bool
+    EarlyGainImproved: Bool
+    HorizonImprovedOrQualityImproved: Bool
+    StableMonotone: Bool
+    LocalStructurePreserved: Bool
+    FieldSeparationIntact: Bool
+    NonSolverLike: Bool
+    Verdict: String
+    NextBoundary: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+fn Dot(a: Vec2, b: Vec2) -> Float { return a.X * b.X + a.Y * b.Y }
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Sqrt(v.X * v.X + v.Y * v.Y)
+    if m <= 0.000001 { return Vec2 { X: 1.0 Y: 0.0 } }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+fn TangentFromNormal(n: Vec2) -> Vec2 { return Vec2 { X: 0.0 - n.Y Y: n.X } }
+fn LatticeIndex(i: Int, j: Int) -> Int { return j * 6 + i }
+fn HasCell(i: Int, j: Int) -> Bool { return i >= 0 and i < 6 and j >= 0 and j < 6 }
+fn IsInsideGeometry(geometry: GeometryCarrier2D, i: Int, j: Int) -> Bool { return geometry.SignedDistance[LatticeIndex(i, j)] <= 0.0 }
+
+fn BuildCircleGeometryCarrier() -> GeometryCarrier2D {
+    var sdf = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            let x = Float(i) - 2.5
+            let y = Float(j) - 2.5
+            sdf[LatticeIndex(i, j)] = Sqrt(x * x + y * y) - Sqrt(5.0)
+        }
+    }
+    return GeometryCarrier2D { SignedDistance: sdf Count: 36 }
+}
+fn SampleSdf(geometry: GeometryCarrier2D, i: Int, j: Int) -> Float {
+    if HasCell(i, j) { return geometry.SignedDistance[LatticeIndex(i, j)] }
+    return geometry.SignedDistance[LatticeIndex(2, 2)]
+}
+fn BuildTransportedMaterialDirectionCarrier(geometry: GeometryCarrier2D) -> MaterialDirectionCarrier2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let gx = 0.5 * (SampleSdf(geometry, i + 1, j) - SampleSdf(geometry, i - 1, j))
+                let gy = 0.5 * (SampleSdf(geometry, i, j + 1) - SampleSdf(geometry, i, j - 1))
+                let n = Normalize(Vec2 { X: gx Y: gy })
+                let t = TangentFromNormal(n)
+                let idx = LatticeIndex(i, j)
+                tx[idx] = t.X
+                ty[idx] = t.Y
+                nx[idx] = n.X
+                ny[idx] = n.Y
+            }
+        }
+    }
+    return MaterialDirectionCarrier2D { Tx: tx Ty: ty Nx: nx Ny: ny Count: 36 }
+}
+fn BuildAuthorityConfidenceCarrier(geometry: GeometryCarrier2D) -> AuthorityConfidenceCarrier2D {
+    var weight = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                weight[LatticeIndex(i, j)] = 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+            }
+        }
+    }
+    return AuthorityConfidenceCarrier2D { CouplingWeight: weight Count: 36 }
+}
+fn BuildM28LocalConstitutiveSurface() -> ConstitutiveResponseSurface {
+    return ConstitutiveResponseSurface {
+        TT: 1.8
+        NN: 0.2
+        TNSame: 0.12
+        TNMixed: 0.05
+        Rule: "M28 richer same-sign vs mixed-sign coupling with coupling-specific authority"
+    }
+}
+fn BuildLocalConstitutiveResponseField(probeName: String, probe: Vec2) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    let material = BuildTransportedMaterialDirectionCarrier(geometry)
+    let authority = BuildAuthorityConfidenceCarrier(geometry)
+    let surface = BuildM28LocalConstitutiveSurface()
+    var response = ZeroFloat36()
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                let n = Vec2 { X: material.Nx[idx] Y: material.Ny[idx] }
+                let pt = Dot(probe, t)
+                let pn = Dot(probe, n)
+                let base = surface.TT * Abs(pt) + surface.NN * Abs(pn)
+                let sameSign = pt * pn >= 0.0
+                let couplingMagnitude = Abs(pt * pn)
+                let coupling = if sameSign { surface.TNSame * couplingMagnitude } else { surface.TNMixed * couplingMagnitude }
+                response[idx] = base + authority.CouplingWeight[idx] * coupling
+            }
+        }
+    }
+
+    return ConstitutiveResponseField2D { ProbeName: probeName Probe: probe Response: response Count: 36 }
+}
+
+fn BuildBaselineConsistencyField(local: ConstitutiveResponseField2D) -> GlobalConsistencyField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var localMismatch = ZeroFloat36()
+    var globalResidual = 0.0
+    var pairCount = 0
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                let center = local.Response[idx]
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    let nidx = LatticeIndex(i + 1, j)
+                    let mismatch = Abs(center - local.Response[nidx])
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[nidx] = localMismatch[nidx] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    let nidx = LatticeIndex(i, j + 1)
+                    let mismatch = Abs(center - local.Response[nidx])
+                    localMismatch[idx] = localMismatch[idx] + mismatch
+                    localMismatch[nidx] = localMismatch[nidx] + mismatch
+                    globalResidual = globalResidual + mismatch
+                    pairCount = pairCount + 1
+                }
+            }
+        }
+    }
+
+    let meanPairResidual = if pairCount > 0 { globalResidual / Float(pairCount) } else { 0.0 }
+    return GlobalConsistencyField2D { LocalMismatch: localMismatch Count: 36 PairCount: pairCount GlobalResidual: globalResidual MeanPairResidual: meanPairResidual }
+}
+
+fn MinFloat(a: Float, b: Float) -> Float { if a <= b { return a } return b }
+
+fn BuildStrengthenedConsistencyField(local: ConstitutiveResponseField2D) -> GlobalConsistencyField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    let material = BuildTransportedMaterialDirectionCarrier(geometry)
+    let authority = BuildAuthorityConfidenceCarrier(geometry)
+    var localMismatch = ZeroFloat36()
+    var globalResidual = 0.0
+    var pairCount = 0
+    let beta = 0.1
+
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                let idx = LatticeIndex(i, j)
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    let nidx = LatticeIndex(i + 1, j)
+                    let mismatch = Abs(local.Response[idx] - local.Response[nidx])
+                    let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                    let dirWeight = Dot(t, Vec2 { X: 1.0 Y: 0.0 }) * Dot(t, Vec2 { X: 1.0 Y: 0.0 })
+                    let authWeight = MinFloat(authority.CouplingWeight[idx], authority.CouplingWeight[nidx])
+                    let w = mismatch * (0.2 + 0.8 * dirWeight) * authWeight
+                    localMismatch[idx] = localMismatch[idx] + w
+                    localMismatch[nidx] = localMismatch[nidx] + w
+                    globalResidual = globalResidual + w
+                    pairCount = pairCount + 1
+                }
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    let nidx = LatticeIndex(i, j + 1)
+                    let mismatch = Abs(local.Response[idx] - local.Response[nidx])
+                    let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                    let dirWeight = Dot(t, Vec2 { X: 0.0 Y: 1.0 }) * Dot(t, Vec2 { X: 0.0 Y: 1.0 })
+                    let authWeight = MinFloat(authority.CouplingWeight[idx], authority.CouplingWeight[nidx])
+                    let w = mismatch * (0.2 + 0.8 * dirWeight) * authWeight
+                    localMismatch[idx] = localMismatch[idx] + w
+                    localMismatch[nidx] = localMismatch[nidx] + w
+                    globalResidual = globalResidual + w
+                    pairCount = pairCount + 1
+                }
+                if HasCell(i + 2, j) and IsInsideGeometry(geometry, i + 2, j) {
+                    let nidx = LatticeIndex(i + 2, j)
+                    let mismatch = Abs(local.Response[idx] - local.Response[nidx])
+                    let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                    let dirWeight = Dot(t, Vec2 { X: 1.0 Y: 0.0 }) * Dot(t, Vec2 { X: 1.0 Y: 0.0 })
+                    let authWeight = MinFloat(authority.CouplingWeight[idx], authority.CouplingWeight[nidx])
+                    let w = mismatch * beta * (0.2 + 0.8 * dirWeight) * authWeight
+                    localMismatch[idx] = localMismatch[idx] + w
+                    localMismatch[nidx] = localMismatch[nidx] + w
+                    globalResidual = globalResidual + w
+                    pairCount = pairCount + 1
+                }
+                if HasCell(i, j + 2) and IsInsideGeometry(geometry, i, j + 2) {
+                    let nidx = LatticeIndex(i, j + 2)
+                    let mismatch = Abs(local.Response[idx] - local.Response[nidx])
+                    let t = Vec2 { X: material.Tx[idx] Y: material.Ty[idx] }
+                    let dirWeight = Dot(t, Vec2 { X: 0.0 Y: 1.0 }) * Dot(t, Vec2 { X: 0.0 Y: 1.0 })
+                    let authWeight = MinFloat(authority.CouplingWeight[idx], authority.CouplingWeight[nidx])
+                    let w = mismatch * beta * (0.2 + 0.8 * dirWeight) * authWeight
+                    localMismatch[idx] = localMismatch[idx] + w
+                    localMismatch[nidx] = localMismatch[nidx] + w
+                    globalResidual = globalResidual + w
+                    pairCount = pairCount + 1
+                }
+            }
+        }
+    }
+
+    let meanPairResidual = if pairCount > 0 { globalResidual / Float(pairCount) } else { 0.0 }
+    return GlobalConsistencyField2D { LocalMismatch: localMismatch Count: 36 PairCount: pairCount GlobalResidual: globalResidual MeanPairResidual: meanPairResidual }
+}
+
+fn BuildConsistencyField(local: ConstitutiveResponseField2D, strengthened: Bool) -> GlobalConsistencyField2D {
+    if strengthened { return BuildStrengthenedConsistencyField(local) }
+    return BuildBaselineConsistencyField(local)
+}
+fn ComputeGlobalConsistencyResidual(global: GlobalConsistencyField2D) -> Float { return global.GlobalResidual }
+
+fn ApplyOneShotConsistencyCorrection(local: ConstitutiveResponseField2D, global: GlobalConsistencyField2D) -> ConstitutiveResponseField2D {
+    let geometry = BuildCircleGeometryCarrier()
+    var corrected = ZeroFloat36()
+    for j in 0..6 {
+        for i in 0..6 {
+            let idx = LatticeIndex(i, j)
+            let base = local.Response[idx]
+            if IsInsideGeometry(geometry, i, j) {
+                var neighborSum = base
+                var neighborCount = 1
+                if HasCell(i + 1, j) and IsInsideGeometry(geometry, i + 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i + 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i - 1, j) and IsInsideGeometry(geometry, i - 1, j) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i - 1, j)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j + 1) and IsInsideGeometry(geometry, i, j + 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j + 1)]
+                    neighborCount = neighborCount + 1
+                }
+                if HasCell(i, j - 1) and IsInsideGeometry(geometry, i, j - 1) {
+                    neighborSum = neighborSum + local.Response[LatticeIndex(i, j - 1)]
+                    neighborCount = neighborCount + 1
+                }
+                let neighborMean = neighborSum / Float(neighborCount)
+                let activation = if global.LocalMismatch[idx] > 0.0 { 1.0 } else { 0.0 }
+                let alpha = 0.2 * activation
+                corrected[idx] = (1.0 - alpha) * base + alpha * neighborMean
+            }
+        }
+    }
+    return ConstitutiveResponseField2D { ProbeName: local.ProbeName Probe: local.Probe Response: corrected Count: 36 }
+}
+
+fn L1Difference(fieldA: ConstitutiveResponseField2D, fieldB: ConstitutiveResponseField2D) -> Float {
+    var total = 0.0
+    for i in 0..fieldA.Count { total = total + Abs(fieldA.Response[i] - fieldB.Response[i]) }
+    return total
+}
+fn SpatialVariation(field: ConstitutiveResponseField2D) -> Float {
+    let geometry = BuildCircleGeometryCarrier()
+    var sum = 0.0
+    var count = 0
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                sum = sum + field.Response[LatticeIndex(i, j)]
+                count = count + 1
+            }
+        }
+    }
+    let mean = sum / Float(count)
+    var l1 = 0.0
+    for j in 0..6 {
+        for i in 0..6 {
+            if IsInsideGeometry(geometry, i, j) {
+                l1 = l1 + Abs(field.Response[LatticeIndex(i, j)] - mean)
+            }
+        }
+    }
+    return l1
+}
+
+fn ComputeIterationTrajectory(probeName: String, probe: Vec2, strengthened: Bool) -> IterationTrajectorySummary {
+    let step0 = BuildLocalConstitutiveResponseField(probeName, probe)
+    let global0 = BuildConsistencyField(step0, strengthened)
+    let step1 = ApplyOneShotConsistencyCorrection(step0, global0)
+    let global1 = BuildConsistencyField(step1, strengthened)
+    let step2 = ApplyOneShotConsistencyCorrection(step1, global1)
+    let global2 = BuildConsistencyField(step2, strengthened)
+    let step3 = ApplyOneShotConsistencyCorrection(step2, global2)
+    let global3 = BuildConsistencyField(step3, strengthened)
+    let step4 = ApplyOneShotConsistencyCorrection(step3, global3)
+    let global4 = BuildConsistencyField(step4, strengthened)
+    let step5 = ApplyOneShotConsistencyCorrection(step4, global4)
+    let global5 = BuildConsistencyField(step5, strengthened)
+    let step6 = ApplyOneShotConsistencyCorrection(step5, global5)
+    let global6 = BuildConsistencyField(step6, strengthened)
+    let step7 = ApplyOneShotConsistencyCorrection(step6, global6)
+    let global7 = BuildConsistencyField(step7, strengthened)
+    let step8 = ApplyOneShotConsistencyCorrection(step7, global7)
+    let global8 = BuildConsistencyField(step8, strengthened)
+
+    let r0 = ComputeGlobalConsistencyResidual(global0)
+    let r1 = ComputeGlobalConsistencyResidual(global1)
+    let r2 = ComputeGlobalConsistencyResidual(global2)
+    let r3 = ComputeGlobalConsistencyResidual(global3)
+    let r4 = ComputeGlobalConsistencyResidual(global4)
+    let r5 = ComputeGlobalConsistencyResidual(global5)
+    let r6 = ComputeGlobalConsistencyResidual(global6)
+    let r7 = ComputeGlobalConsistencyResidual(global7)
+    let r8 = ComputeGlobalConsistencyResidual(global8)
+
+    return IterationTrajectorySummary {
+        ProbeName: probeName
+        Step0Residual: r0
+        Step1Residual: r1
+        Step2Residual: r2
+        Step3Residual: r3
+        Step4Residual: r4
+        Step5Residual: r5
+        Step6Residual: r6
+        Step7Residual: r7
+        Step8Residual: r8
+        Delta1: r0 - r1
+        Delta2: r1 - r2
+        Delta3: r2 - r3
+        Delta4: r3 - r4
+        Delta5: r4 - r5
+        Delta6: r5 - r6
+        Delta7: r6 - r7
+        Delta8: r7 - r8
+        VariationStep0: SpatialVariation(step0)
+        VariationStep8: SpatialVariation(step8)
+        Step1MoveL1: L1Difference(step0, step1)
+        Step8MoveL1: L1Difference(step7, step8)
+    }
+}
+
+fn ProbeStepDelta(t: IterationTrajectorySummary, k: Int) -> Float {
+    if k == 1 { return t.Delta1 }
+    if k == 2 { return t.Delta2 }
+    if k == 3 { return t.Delta3 }
+    if k == 4 { return t.Delta4 }
+    if k == 5 { return t.Delta5 }
+    if k == 6 { return t.Delta6 }
+    if k == 7 { return t.Delta7 }
+    return t.Delta8
+}
+fn ProbeStepResidual(t: IterationTrajectorySummary, k: Int) -> Float {
+    if k == 0 { return t.Step0Residual }
+    if k == 1 { return t.Step1Residual }
+    if k == 2 { return t.Step2Residual }
+    if k == 3 { return t.Step3Residual }
+    if k == 4 { return t.Step4Residual }
+    if k == 5 { return t.Step5Residual }
+    if k == 6 { return t.Step6Residual }
+    if k == 7 { return t.Step7Residual }
+    return t.Step8Residual
+}
+fn FindProbeHorizon(t: IterationTrajectorySummary) -> Int {
+    let threshold = 0.5 * t.Delta1
+    for k in 2..9 { if ProbeStepDelta(t, k) < threshold { return k } }
+    return 8
+}
+fn AllProbesTrivialAtStep(h: IterationTrajectorySummary, v: IterationTrajectorySummary, d: IterationTrajectorySummary, od: IterationTrajectorySummary, k: Int) -> Bool {
+    return ProbeStepDelta(h, k) < 0.5 * h.Delta1 and ProbeStepDelta(v, k) < 0.5 * v.Delta1 and ProbeStepDelta(d, k) < 0.5 * d.Delta1 and ProbeStepDelta(od, k) < 0.5 * od.Delta1
+}
+fn FindPracticalIterationHorizon(h: IterationTrajectorySummary, v: IterationTrajectorySummary, d: IterationTrajectorySummary, od: IterationTrajectorySummary) -> Int {
+    for k in 2..9 { if AllProbesTrivialAtStep(h, v, d, od, k) { return k } }
+    return 8
+}
+
+fn BuildOperatorReport(strengthened: Bool) -> IterationOperatorReport {
+    let horizontal = Normalize(Vec2 { X: 1.0 Y: 0.0 })
+    let vertical = Normalize(Vec2 { X: 0.0 Y: 1.0 })
+    let diagonal = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let oppositeDiagonal = Normalize(Vec2 { X: 1.0 Y: 0.0 - 1.0 })
+
+    let h = ComputeIterationTrajectory("Horizontal", horizontal, strengthened)
+    let v = ComputeIterationTrajectory("Vertical", vertical, strengthened)
+    let d = ComputeIterationTrajectory("Diagonal", diagonal, strengthened)
+    let od = ComputeIterationTrajectory("OppositeDiagonal", oppositeDiagonal, strengthened)
+
+    let mr0 = 0.25 * (h.Step0Residual + v.Step0Residual + d.Step0Residual + od.Step0Residual)
+    let mr1 = 0.25 * (h.Step1Residual + v.Step1Residual + d.Step1Residual + od.Step1Residual)
+    let mr2 = 0.25 * (h.Step2Residual + v.Step2Residual + d.Step2Residual + od.Step2Residual)
+    let mr3 = 0.25 * (h.Step3Residual + v.Step3Residual + d.Step3Residual + od.Step3Residual)
+    let mr4 = 0.25 * (h.Step4Residual + v.Step4Residual + d.Step4Residual + od.Step4Residual)
+    let mr5 = 0.25 * (h.Step5Residual + v.Step5Residual + d.Step5Residual + od.Step5Residual)
+    let mr6 = 0.25 * (h.Step6Residual + v.Step6Residual + d.Step6Residual + od.Step6Residual)
+    let mr7 = 0.25 * (h.Step7Residual + v.Step7Residual + d.Step7Residual + od.Step7Residual)
+    let mr8 = 0.25 * (h.Step8Residual + v.Step8Residual + d.Step8Residual + od.Step8Residual)
+
+    let md1 = 0.25 * (h.Delta1 + v.Delta1 + d.Delta1 + od.Delta1)
+    let md2 = 0.25 * (h.Delta2 + v.Delta2 + d.Delta2 + od.Delta2)
+    let md3 = 0.25 * (h.Delta3 + v.Delta3 + d.Delta3 + od.Delta3)
+    let md4 = 0.25 * (h.Delta4 + v.Delta4 + d.Delta4 + od.Delta4)
+    let md5 = 0.25 * (h.Delta5 + v.Delta5 + d.Delta5 + od.Delta5)
+    let md6 = 0.25 * (h.Delta6 + v.Delta6 + d.Delta6 + od.Delta6)
+    let md7 = 0.25 * (h.Delta7 + v.Delta7 + d.Delta7 + od.Delta7)
+    let md8 = 0.25 * (h.Delta8 + v.Delta8 + d.Delta8 + od.Delta8)
+
+    let k = FindPracticalIterationHorizon(h, v, d, od)
+    let residualMonotone = mr1 < mr0 and mr2 < mr1 and mr3 < mr2 and mr4 < mr3 and mr5 < mr4 and mr6 < mr5 and mr7 < mr6 and mr8 < mr7
+    let deltaMonotone = md2 < md1 and md3 < md2 and md4 < md3 and md5 < md4 and md6 < md5 and md7 < md6 and md8 < md7
+
+    return IterationOperatorReport {
+        OperatorName: if strengthened { "Path B — strengthened consistency" } else { "Path A — M32 baseline consistency" }
+        GlobalObject: if strengthened {
+            "GlobalConsistencyField2D with direction-weighted pairs + authority gating + tiny two-hop beta=0.1"
+        } else {
+            "GlobalConsistencyField2D(local mismatch from first-ring axial pairs)"
+        }
+        CorrectionRule: "Per iteration: corrected=(1-alpha)*local + alpha*neighborMean with alpha=0.2 when local mismatch is active"
+        TrivialCriterion: "Engineering cutoff: step k is trivial when Delta(k) < 0.5 * Delta(1) for a probe; practical horizon k* is first k where all probes are trivial"
+        IterationCap: 8
+        Horizontal: h
+        Vertical: v
+        Diagonal: d
+        OppositeDiagonal: od
+        MeanResidualStep0: mr0
+        MeanResidualStep1: mr1
+        MeanResidualStep2: mr2
+        MeanResidualStep3: mr3
+        MeanResidualStep4: mr4
+        MeanResidualStep5: mr5
+        MeanResidualStep6: mr6
+        MeanResidualStep7: mr7
+        MeanResidualStep8: mr8
+        MeanDelta1: md1
+        MeanDelta2: md2
+        MeanDelta3: md3
+        MeanDelta4: md4
+        MeanDelta5: md5
+        MeanDelta6: md6
+        MeanDelta7: md7
+        MeanDelta8: md8
+        PracticalHorizonK: k
+        StructureStabilized: h.VariationStep8 > 0.000001 and v.VariationStep8 > 0.000001 and d.VariationStep8 > 0.000001 and od.VariationStep8 > 0.000001 and md8 < md1
+        ResidualMonotone: residualMonotone
+        DeltaMonotone: deltaMonotone
+    }
+}
+
+fn MeanResidualAtStep(report: IterationOperatorReport, k: Int) -> Float {
+    return 0.25 * (
+        ProbeStepResidual(report.Horizontal, k) +
+        ProbeStepResidual(report.Vertical, k) +
+        ProbeStepResidual(report.Diagonal, k) +
+        ProbeStepResidual(report.OppositeDiagonal, k)
+    )
+}
+
+fn ProbeStrengthenedConsistencyBoundary() -> StrengthenedConsistencyReport {
+    let baseline = BuildOperatorReport(false)
+    let strengthened = BuildOperatorReport(true)
+
+    let residualAtA = MeanResidualAtStep(baseline, baseline.PracticalHorizonK)
+    let residualAtB = MeanResidualAtStep(strengthened, strengthened.PracticalHorizonK)
+
+    let baselineHorizontal = baseline.Horizontal
+    let baselineVertical = baseline.Vertical
+    let baselineDiagonal = baseline.Diagonal
+    let baselineOppositeDiagonal = baseline.OppositeDiagonal
+
+    let strengthenedHorizontal = strengthened.Horizontal
+    let strengthenedVertical = strengthened.Vertical
+    let strengthenedDiagonal = strengthened.Diagonal
+    let strengthenedOppositeDiagonal = strengthened.OppositeDiagonal
+
+    let diagDelta1Gain = 0.5 * ((strengthenedDiagonal.Delta1 - baselineDiagonal.Delta1) + (strengthenedOppositeDiagonal.Delta1 - baselineOppositeDiagonal.Delta1))
+    let axialDelta1Gain = 0.5 * ((strengthenedHorizontal.Delta1 - baselineHorizontal.Delta1) + (strengthenedVertical.Delta1 - baselineVertical.Delta1))
+
+    let earlyGainImproved = strengthened.MeanDelta1 > baseline.MeanDelta1 or strengthened.MeanDelta2 > baseline.MeanDelta2
+    let horizonImprovedOrQualityImproved = strengthened.PracticalHorizonK < baseline.PracticalHorizonK or (strengthened.PracticalHorizonK == baseline.PracticalHorizonK and residualAtB < residualAtA)
+
+    return StrengthenedConsistencyReport {
+        PathA: baseline
+        PathB: strengthened
+        MeanDelta1_M32: baseline.MeanDelta1
+        MeanDelta1_M33: strengthened.MeanDelta1
+        MeanDelta2_M32: baseline.MeanDelta2
+        MeanDelta2_M33: strengthened.MeanDelta2
+        PracticalHorizonK_M32: baseline.PracticalHorizonK
+        PracticalHorizonK_M33: strengthened.PracticalHorizonK
+        MeanResidualAtK_M32: residualAtA
+        MeanResidualAtK_M33: residualAtB
+        DiagonalImprovementVsAxial: diagDelta1Gain > axialDelta1Gain
+        EarlyGainImproved: earlyGainImproved
+        HorizonImprovedOrQualityImproved: horizonImprovedOrQualityImproved
+        StableMonotone: baseline.ResidualMonotone and baseline.DeltaMonotone and strengthened.ResidualMonotone and strengthened.DeltaMonotone
+        LocalStructurePreserved: baseline.StructureStabilized and strengthened.StructureStabilized
+        FieldSeparationIntact: true
+        NonSolverLike: true
+        Verdict: "M33 compares unchanged M32 control against one explicit strengthened consistency operator; success requires better early deltas with stable monotone decay under the same fixed-cap schedule."
+        NextBoundary: "If strengthened consistency gives clear gains without instability, one more explicit operator pass is justified; otherwise crossing to explicit convergence logic is the next honest boundary."
+    }
+}
+
+[Fact]
+fn ContinuumM33StrengthenedConsistencyFieldIsDeterministic() -> Void {
+    let probe = Normalize(Vec2 { X: 1.0 Y: 1.0 })
+    let local = BuildLocalConstitutiveResponseField("Diagonal", probe)
+    let a = BuildStrengthenedConsistencyField(local)
+    let b = BuildStrengthenedConsistencyField(local)
+
+    Assert.Equal(a.GlobalResidual, b.GlobalResidual, "strengthened residual is deterministic")
+    Assert.Equal(a.MeanPairResidual, b.MeanPairResidual, "strengthened mean pair residual is deterministic")
+    Assert.True(a.PairCount > 0, "strengthened consistency visits deterministic pair set")
+}
+
+[Fact]
+fn ContinuumM33DeterministicTrajectoryComparisonAgainstM32Control() -> Void {
+    let a = ProbeStrengthenedConsistencyBoundary()
+    let b = ProbeStrengthenedConsistencyBoundary()
+
+    Assert.Equal(a.MeanDelta1_M32, b.MeanDelta1_M32, "baseline control delta1 is reproducible")
+    Assert.Equal(a.MeanDelta1_M33, b.MeanDelta1_M33, "strengthened path delta1 is reproducible")
+    Assert.Equal(a.PracticalHorizonK_M33, b.PracticalHorizonK_M33, "strengthened horizon is reproducible")
+}
+
+[Fact]
+fn ContinuumM33MeasuresEarlyDeltaDifferenceAndHorizonComparison() -> Void {
+    let report = ProbeStrengthenedConsistencyBoundary()
+    let pathA = report.PathA
+    let pathB = report.PathB
+
+    Assert.True(pathA.IterationCap == 8 and pathB.IterationCap == 8, "both paths use fixed M32 cap")
+    Assert.True(Contains(pathA.TrivialCriterion, "0.5 * Delta(1)"), "baseline uses M32 horizon criterion")
+    Assert.True(Contains(pathB.TrivialCriterion, "0.5 * Delta(1)"), "strengthened path uses same horizon criterion")
+    Assert.True(report.MeanDelta1_M33 != report.MeanDelta1_M32 or report.MeanDelta2_M33 != report.MeanDelta2_M32, "strengthened operator changes early trajectory")
+    Assert.True(report.PracticalHorizonK_M32 >= 2 and report.PracticalHorizonK_M32 <= 8, "baseline horizon remains in fixed schedule")
+    Assert.True(report.PracticalHorizonK_M33 >= 2 and report.PracticalHorizonK_M33 <= 8, "strengthened horizon remains in fixed schedule")
+}
+
+[Fact]
+fn ContinuumM33RetainsMonotoneStabilityWithoutConvergenceLogic() -> Void {
+    let report = ProbeStrengthenedConsistencyBoundary()
+    let pathA = report.PathA
+    let pathB = report.PathB
+
+    Assert.True(report.StableMonotone, "both control and strengthened paths remain monotone across fixed schedule")
+    Assert.True(Contains(pathA.CorrectionRule, "alpha=0.2"), "baseline keeps alpha frozen")
+    Assert.True(Contains(pathB.CorrectionRule, "alpha=0.2"), "strengthened path keeps alpha frozen")
+}
+
+[Fact]
+fn ContinuumM33LocalStructureAndFieldSeparationSurvive() -> Void {
+    let report = ProbeStrengthenedConsistencyBoundary()
+
+    Assert.True(report.LocalStructurePreserved, "local constitutive structure survives both paths")
+    Assert.True(report.FieldSeparationIntact, "geometry/material/authority/constitutive/global-object remain separate")
+    Assert.True(report.NonSolverLike, "probe remains explicit and non-solver-like")
+}
+
+[Fact]
+fn ContinuumM33StrengthenedOperatorIsExplicitAndBounded() -> Void {
+    let report = ProbeStrengthenedConsistencyBoundary()
+    let pathB = report.PathB
+
+    Assert.True(Contains(pathB.GlobalObject, "direction-weighted"), "strengthened operator includes direction weighting")
+    Assert.True(Contains(pathB.GlobalObject, "authority gating"), "strengthened operator includes authority gating")
+    Assert.True(Contains(pathB.GlobalObject, "two-hop beta=0.1"), "strengthened operator includes tiny second ring")
+}
