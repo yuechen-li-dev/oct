@@ -394,10 +394,11 @@ type UtilityWhenCase struct {
 }
 
 type UtilityWhenExpr struct {
-	SiteID int
-	Policy UtilityWhenPolicy
-	Cases  []UtilityWhenCase
-	Else   Expr
+	SiteID          int
+	Policy          UtilityWhenPolicy
+	Cases           []UtilityWhenCase
+	Else            Expr
+	ControllerBound bool
 }
 
 func (UtilityWhenExpr) exprNode() {}

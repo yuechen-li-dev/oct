@@ -1448,16 +1448,29 @@ func (p *parser) parseBatchExpr() (ast.Expr, error) {
 
 func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	p.advance()
-	policyToken, err := p.expect(lex.Identifier, "expected 'policy' after 'when'")
+	modeToken, err := p.expect(lex.Identifier, "expected 'policy' or 'utility' after 'when'")
 	if err != nil {
 		return nil, err
 	}
-	if policyToken.Lexeme != "policy" {
-		return nil, p.errorAtToken(policyToken, "expected 'policy' after 'when'")
-	}
-	policy, err := p.parseUtilityWhenPolicy()
-	if err != nil {
-		return nil, err
+	var (
+		policy          ast.UtilityWhenPolicy
+		controllerBound bool
+	)
+	switch modeToken.Lexeme {
+	case "policy":
+		controllerBound = true
+		policy, err = p.parseUtilityWhenPolicy(true)
+		if err != nil {
+			return nil, err
+		}
+	case "utility":
+		controllerBound = false
+		policy, err = p.parseStandaloneUtilityWhenPolicy()
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, p.errorAtToken(modeToken, "expected 'policy' or 'utility' after 'when'")
 	}
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when cases"); err != nil {
 		return nil, err
@@ -1521,14 +1534,31 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	siteID := p.nextUtilityWhenSiteID
 	p.nextUtilityWhenSiteID++
 	return ast.UtilityWhenExpr{
-		SiteID: siteID,
-		Policy: policy,
-		Cases:  cases,
-		Else:   elseValue,
+		SiteID:          siteID,
+		Policy:          policy,
+		Cases:           cases,
+		Else:            elseValue,
+		ControllerBound: controllerBound,
 	}, nil
 }
 
-func (p *parser) parseUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
+func (p *parser) parseStandaloneUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
+	if p.current().Kind != lex.LeftBrace {
+		return ast.UtilityWhenPolicy{
+			Hysteresis: ast.IntegerLiteral{Value: "0"},
+			MinCommit:  ast.IntegerLiteral{Value: "0"},
+		}, nil
+	}
+	if p.position+1 >= len(p.tokens) || p.tokens[p.position+1].Kind != lex.Identifier {
+		return ast.UtilityWhenPolicy{
+			Hysteresis: ast.IntegerLiteral{Value: "0"},
+			MinCommit:  ast.IntegerLiteral{Value: "0"},
+		}, nil
+	}
+	return p.parseUtilityWhenPolicy(false)
+}
+
+func (p *parser) parseUtilityWhenPolicy(requireAllFields bool) (ast.UtilityWhenPolicy, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when policy"); err != nil {
 		return ast.UtilityWhenPolicy{}, err
 	}
@@ -1567,11 +1597,17 @@ func (p *parser) parseUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
 		}
 	}
 	p.advance()
-	if hysteresis == nil {
+	if hysteresis == nil && requireAllFields {
 		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'hysteresis'")
 	}
-	if minCommit == nil {
+	if minCommit == nil && requireAllFields {
 		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
+	}
+	if hysteresis == nil {
+		hysteresis = ast.IntegerLiteral{Value: "0"}
+	}
+	if minCommit == nil {
+		minCommit = ast.IntegerLiteral{Value: "0"}
 	}
 	return ast.UtilityWhenPolicy{Hysteresis: hysteresis, MinCommit: minCommit}, nil
 }
