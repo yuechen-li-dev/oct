@@ -1,0 +1,118 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM6BuildsDeterministicDemandField() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+
+    let demandA = BuildRefinementDemand(lattice, mask, 1, 0)
+    let demandB = BuildRefinementDemand(lattice, mask, 1, 0)
+
+    let center = LatticeIndex(lattice, 1, 0)
+    let ring = LatticeIndex(lattice, 2, 0)
+    let far = LatticeIndex(lattice, 4, 2)
+
+    Assert.Near(demandA.Importance[center], demandB.Importance[center], 0.0001, "demand importance deterministic")
+    Assert.Equal(2, demandA.TargetLevel[center], "hotspot gets highest requested level")
+    Assert.Equal(1, demandA.TargetLevel[ring], "one-step ring gets transitional level")
+    Assert.Equal(0, demandA.TargetLevel[far], "far cells stay coarse")
+    Assert.True(Contains(demandA.DemandPolicy, "distance 0 -> level 2"), "policy is explicit and inspectable")
+}
+
+[Fact]
+fn ContinuumBoundaryM6SelectsLevelsFromDemandDeterministically() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildRefinementDemand(lattice, mask, 1, 0)
+
+    let selectedA = SelectRefinementLevels(lattice, mask, demand)
+    let selectedB = SelectRefinementLevels(lattice, mask, demand)
+
+    let hotspot = LatticeIndex(lattice, 1, 0)
+    let shoulder = LatticeIndex(lattice, 1, 1)
+
+    Assert.Equal(selectedA.Levels[hotspot], selectedB.Levels[hotspot], "level selection deterministic")
+    Assert.Equal(2, selectedA.Levels[hotspot], "hotspot selected to highest level")
+    Assert.Equal(1, selectedA.Levels[shoulder], "graded shoulder selected")
+    Assert.Equal(2, selectedA.MaxLevel, "max level tracked")
+}
+
+[Fact]
+fn ContinuumBoundaryM6EnforcesNeighborGradingRule() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildRefinementDemand(lattice, mask, 1, 0)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if mask.IsActive[idx] {
+                if i + 1 < lattice.Nx {
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        let delta = AbsInt(balanced.Levels[idx] - balanced.Levels[right])
+                        Assert.True(delta <= 1, "x-neighbor grading bound")
+                    }
+                }
+
+                if j + 1 < lattice.Ny {
+                    let up = LatticeIndex(lattice, i, j + 1)
+                    if mask.IsActive[up] {
+                        let delta = AbsInt(balanced.Levels[idx] - balanced.Levels[up])
+                        Assert.True(delta <= 1, "y-neighbor grading bound")
+                    }
+                }
+            }
+        }
+    }
+
+    Assert.True(Contains(balanced.GradingRule, "differ by at most one level"), "grading rule remains explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM6RemovesManualPatchAuthorship() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildRefinementDemand(lattice, mask, 1, 0)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+
+    let refinedA = BuildRefinedLatticeFromLevels(lattice, mask, balanced)
+    let refinedB = BuildRefinedLatticeFromLevels(lattice, mask, balanced)
+
+    let patchA = refinedA.Patch
+    let patchB = refinedB.Patch
+
+    Assert.Equal(patchA.ParentI, patchB.ParentI, "patch anchor i deterministic")
+    Assert.Equal(patchA.ParentJ, patchB.ParentJ, "patch anchor j deterministic")
+    Assert.Equal(1, patchA.ParentI, "anchor selected from demand hotspot")
+    Assert.Equal(0, patchA.ParentJ, "anchor selected from demand hotspot")
+}
+
+[Fact]
+fn ContinuumBoundaryM6PreservesFluxAndBalanceCompatibility() -> Void {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildRefinementDemand(lattice, mask, 1, 0)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+    let refined = BuildRefinedLatticeFromLevels(lattice, mask, balanced)
+
+    let flux = BuildRefinedFlux2D(BuildLatticeFluxStructure(lattice, mask), refined.Patch)
+    let splitSums = CoarseFineSplitSums(refined, flux)
+    let balance = AccumulateRefinedFluxBalance(refined, flux)
+    let report = ProbeGradedRefinementBoundary(refined)
+
+    Assert.Near(splitSums[0], splitSums[1], 0.0001, "coarse-fine conservation remains valid")
+    Assert.Near(1.0, balance.PatchIncomingAmount[PatchIndex(2, 0, 0)], 0.0001, "patch still receives interface flow")
+    Assert.Equal(true, report.ManualPatchPlacementRemoved, "manual patch placement removed by rule-based selection")
+    Assert.Equal(true, report.DeterministicCartesianPreserved, "deterministic Cartesian structure remains")
+    Assert.Equal(true, report.FluxBalanceCompatibilityPreserved, "flux and balance compatibility preserved")
+}
