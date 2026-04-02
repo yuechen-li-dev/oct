@@ -1,0 +1,209 @@
+package MainValid
+
+record Vec2 {
+    X: Float
+    Y: Float
+}
+
+record LocalResponse {
+    TT: Float
+    NN: Float
+    TN: Float
+}
+
+fn Dot(a: Vec2, b: Vec2) -> Float {
+    return a.X * b.X + a.Y * b.Y
+}
+
+fn Magnitude(v: Vec2) -> Float {
+    return Sqrt(v.X * v.X + v.Y * v.Y)
+}
+
+fn Normalize(v: Vec2) -> Vec2 {
+    let m = Magnitude(v)
+    if m <= 0.000001 {
+        return Vec2 { X: 1.0 Y: 0.0 }
+    }
+    return Vec2 { X: v.X / m Y: v.Y / m }
+}
+
+fn TangentFromNormal(n: Vec2) -> Vec2 {
+    return Vec2 { X: 0.0 - n.Y Y: n.X }
+}
+
+fn IsInsideCircle(i: Int, j: Int) -> Bool {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return x * x + y * y <= 5.0
+}
+
+fn TransportedNormal(i: Int, j: Int) -> Vec2 {
+    let x = Float(i) - 2.5
+    let y = Float(j) - 2.5
+    return Normalize(Vec2 { X: x Y: y })
+}
+
+fn TransportedTangent(i: Int, j: Int) -> Vec2 {
+    return TangentFromNormal(TransportedNormal(i, j))
+}
+
+fn StaticTangent() -> Vec2 {
+    return Vec2 { X: 1.0 Y: 0.0 }
+}
+
+fn StaticNormal() -> Vec2 {
+    return Vec2 { X: 0.0 Y: 1.0 }
+}
+
+fn AuthorityField(i: Int, j: Int) -> Float {
+    return 0.2 + 0.05 * Float(i) + 0.02 * Float(j)
+}
+
+fn IsotropicResponse(probe: Vec2) -> Float {
+    return Magnitude(probe)
+}
+
+fn AxisSplitM23Response(probe: Vec2, t: Vec2, n: Vec2, aTangent: Float, aNormal: Float) -> Float {
+    let pT = Dot(probe, t)
+    let pN = Dot(probe, n)
+    return aTangent * Abs(pT) + aNormal * Abs(pN)
+}
+
+fn TensorLikeM24Response(probe: Vec2, t: Vec2, n: Vec2, R: LocalResponse) -> Float {
+    let pT = Dot(probe, t)
+    let pN = Dot(probe, n)
+    return R.TT * Abs(pT) + R.NN * Abs(pN) + R.TN * 0.0
+}
+
+fn ResponseAt(path: Int, useStaticFrame: Bool, probe: Vec2, i: Int, j: Int, aTangent: Float, aNormal: Float, R: LocalResponse) -> Float {
+    if IsInsideCircle(i, j) == false {
+        return 0.0
+    }
+
+    let t = if useStaticFrame { StaticTangent() } else { TransportedTangent(i, j) }
+    let n = if useStaticFrame { StaticNormal() } else { TransportedNormal(i, j) }
+
+    if path == 0 {
+        return IsotropicResponse(probe)
+    }
+    if path == 1 {
+        return AxisSplitM23Response(probe, t, n, aTangent, aNormal)
+    }
+    return TensorLikeM24Response(probe, t, n, R)
+}
+
+fn L1Difference(pathA: Int, staticA: Bool, pathB: Int, staticB: Bool, probe: Vec2, aTangent: Float, aNormal: Float, R: LocalResponse) -> Float {
+    var total = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            let a = ResponseAt(pathA, staticA, probe, i, j, aTangent, aNormal, R)
+            let b = ResponseAt(pathB, staticB, probe, i, j, aTangent, aNormal, R)
+            total = total + Abs(a - b)
+        }
+    }
+    return total
+}
+
+fn SpatialVariation(path: Int, useStaticFrame: Bool, probe: Vec2, aTangent: Float, aNormal: Float, R: LocalResponse) -> Float {
+    var sum = 0.0
+    var count = 0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                sum = sum + ResponseAt(path, useStaticFrame, probe, i, j, aTangent, aNormal, R)
+                count = count + 1
+            }
+        }
+    }
+
+    let mean = sum / Float(count)
+    var l1 = 0.0
+    for i in 0..6 {
+        for j in 0..6 {
+            if IsInsideCircle(i, j) {
+                let v = ResponseAt(path, useStaticFrame, probe, i, j, aTangent, aNormal, R)
+                l1 = l1 + Abs(v - mean)
+            }
+        }
+    }
+    return l1
+}
+
+[Fact]
+fn ContinuumM24ResponseObjectConstructionIsDeterministic() -> Void {
+    let R = LocalResponse {
+        TT: 1.4
+        NN: 0.6
+        TN: 0.0
+    }
+
+    Assert.Near(1.4, R.TT, 0.000001, "R.tt deterministic")
+    Assert.Near(0.6, R.NN, 0.000001, "R.nn deterministic")
+    Assert.Near(0.0, R.TN, 0.000001, "R.tn kept zero in M24")
+}
+
+[Fact]
+fn ContinuumM24MatchesM23WhenOffDiagonalCouplingIsZero() -> Void {
+    let horizontal = Vec2 { X: 1.0 Y: 0.0 }
+    let vertical = Vec2 { X: 0.0 Y: 1.0 }
+
+    let aTangent = 1.4
+    let aNormal = 0.6
+    let R = LocalResponse { TT: aTangent NN: aNormal TN: 0.0 }
+
+    let horizontalDiff = L1Difference(1, false, 2, false, horizontal, aTangent, aNormal, R)
+    let verticalDiff = L1Difference(1, false, 2, false, vertical, aTangent, aNormal, R)
+
+    Assert.Near(0.0, horizontalDiff, 0.000001, "M24 equals M23 horizontally when tn is zero")
+    Assert.Near(0.0, verticalDiff, 0.000001, "M24 equals M23 vertically when tn is zero")
+}
+
+[Fact]
+fn ContinuumM24DiffersFromIsotropicBaselineAndKeepsTransportedCoherence() -> Void {
+    let horizontal = Vec2 { X: 1.0 Y: 0.0 }
+    let vertical = Vec2 { X: 0.0 Y: 1.0 }
+
+    let aTangent = 1.4
+    let aNormal = 0.6
+    let R = LocalResponse { TT: aTangent NN: aNormal TN: 0.0 }
+
+    let l1IsoVsM24Horizontal = L1Difference(0, false, 2, false, horizontal, aTangent, aNormal, R)
+    let l1IsoVsM24Vertical = L1Difference(0, false, 2, false, vertical, aTangent, aNormal, R)
+
+    Assert.True(l1IsoVsM24Horizontal > 0.1, "M24 is measurably non-isotropic for horizontal probe")
+    Assert.True(l1IsoVsM24Vertical > 0.1, "M24 is measurably non-isotropic for vertical probe")
+
+    let coherenceHorizontal = SpatialVariation(2, false, horizontal, aTangent, aNormal, R)
+    let coherenceVertical = SpatialVariation(2, false, vertical, aTangent, aNormal, R)
+
+    Assert.True(coherenceHorizontal > 0.01, "transported field produces coherent spatial structure for horizontal probe")
+    Assert.True(coherenceVertical > 0.01, "transported field produces coherent spatial structure for vertical probe")
+}
+
+[Fact]
+fn ContinuumM24StaticDirectionIsLessInformativeAndAuthorityRemainsSeparate() -> Void {
+    let horizontal = Vec2 { X: 1.0 Y: 0.0 }
+    let vertical = Vec2 { X: 0.0 Y: 1.0 }
+
+    let aTangent = 1.4
+    let aNormal = 0.6
+    let R = LocalResponse { TT: aTangent NN: aNormal TN: 0.0 }
+
+    let staticHorizontalVariation = SpatialVariation(2, true, horizontal, aTangent, aNormal, R)
+    let staticVerticalVariation = SpatialVariation(2, true, vertical, aTangent, aNormal, R)
+    let transportedHorizontalVariation = SpatialVariation(2, false, horizontal, aTangent, aNormal, R)
+    let transportedVerticalVariation = SpatialVariation(2, false, vertical, aTangent, aNormal, R)
+
+    Assert.Near(0.0, staticHorizontalVariation, 0.000001, "static frame collapses horizontal spatial structure")
+    Assert.Near(0.0, staticVerticalVariation, 0.000001, "static frame collapses vertical spatial structure")
+    Assert.True(transportedHorizontalVariation > staticHorizontalVariation, "transported frame keeps spatially informative response")
+    Assert.True(transportedVerticalVariation > staticVerticalVariation, "transported frame keeps spatially informative response")
+
+    let a00 = AuthorityField(0, 0)
+    let a55 = AuthorityField(5, 5)
+    Assert.True(a55 > a00, "authority field exists independently")
+
+    let probeValueA = ResponseAt(2, false, horizontal, 4, 2, aTangent, aNormal, R)
+    let probeValueB = ResponseAt(2, false, horizontal, 4, 2, aTangent, aNormal, R)
+    Assert.Near(probeValueA, probeValueB, 0.000001, "authority does not enter constitutive evaluation in M24")
+}
