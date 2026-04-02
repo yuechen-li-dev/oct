@@ -1,0 +1,73 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM11ComputesDeterministicCellCoverage() -> Void {
+    let lattice = BuildM11Lattice()
+    let boundary = BuildM11CircleBoundary()
+
+    let fieldA = BuildCoverageField(boundary, lattice)
+    let fieldB = BuildCoverageField(boundary, lattice)
+
+    Assert.Equal(fieldA.Count, fieldB.Count, "coverage field count remains deterministic")
+
+    let center = LatticeIndex(lattice, 2, 2)
+    let corner = LatticeIndex(lattice, 0, 0)
+    let boundaryBand = LatticeIndex(lattice, 4, 2)
+
+    Assert.Equal(fieldA.Coverage[center], fieldB.Coverage[center], "center coverage deterministic")
+    Assert.Equal(fieldA.Coverage[corner], fieldB.Coverage[corner], "corner coverage deterministic")
+    Assert.True(fieldA.Coverage[boundaryBand] > 0.0 and fieldA.Coverage[boundaryBand] < 1.0, "boundary band should show fractional coverage")
+    Assert.True(Contains(fieldA.SampleRule, "2x2"), "sampling rule should be explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM11BinaryVsWeightedDifferenceIsObservable() -> Void {
+    let lattice = BuildM11Lattice()
+    let boundary = BuildM11CircleBoundary()
+
+    let weighted = BuildCoverageField(boundary, lattice)
+    let binary = BuildBinaryEmbedding(boundary, lattice)
+
+    let weightedJump = ComputeJaggedness(lattice, weighted.Coverage)
+    let binaryJump = ComputeJaggedness(lattice, binary)
+
+    Assert.True(weightedJump < binaryJump, "weighted embedding should reduce jaggedness metric versus binary center sampling")
+
+    let boundaryBand = LatticeIndex(lattice, 4, 2)
+    Assert.True(weighted.Coverage[boundaryBand] != binary[boundaryBand], "boundary cell should differ between weighted and binary embedding")
+}
+
+[Fact]
+fn ContinuumBoundaryM11UsesCoverageInOwnershipConsequence() -> Void {
+    let lattice = BuildM11Lattice()
+    let boundary = BuildM11CircleBoundary()
+
+    let weighted = BuildCoverageField(boundary, lattice)
+    let weightedOwnership = EvaluateWeightedOwnership(weighted, 0.5)
+
+    let binary = BuildBinaryEmbedding(boundary, lattice)
+    let binaryCoverage = CoverageField2D {
+        Coverage: binary
+        Count: Len(binary)
+        SampleRule: "binary"
+    }
+    let binaryOwnership = EvaluateWeightedOwnership(binaryCoverage, 0.5)
+
+    let boundaryBand = LatticeIndex(lattice, 4, 2)
+    Assert.True(weightedOwnership[boundaryBand] != binaryOwnership[boundaryBand], "ownership consequence should preserve fractional boundary information")
+}
+
+[Fact]
+fn ContinuumBoundaryM11ReportAnswersBoundaryQuestions() -> Void {
+    let report = ProbeCurvedBoundaryCoverage()
+
+    Assert.True(Contains(report.CurvedBoundarySource, "Circle"), "report should state curved boundary source")
+    Assert.True(Contains(report.WeightedQuantity, "coverage"), "report should state weighted quantity")
+    Assert.True(Contains(report.SamplingRule, "Deterministic"), "report should state deterministic rule")
+    Assert.True(Contains(report.BinaryVsWeightedResult, "jagged"), "report should compare binary vs weighted")
+    Assert.True(Contains(report.ComputationalConsequence, "ownership"), "report should state one computational consequence")
+    Assert.Equal(true, report.CleanerThanExactFit, "report should state cleaner-than-exact-fit verdict")
+    Assert.Equal(true, report.Deterministic, "probe must remain deterministic")
+    Assert.Equal(true, report.WeightedLessJagged, "weighted path should improve jaggedness metric")
+    Assert.True(Contains(report.NextBoundary, "Adaptive sampling"), "next boundary should be explicit")
+}

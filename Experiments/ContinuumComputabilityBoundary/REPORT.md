@@ -859,3 +859,64 @@ Bluntly: standalone `when utility` now earns its place for **local 3+ claimant o
 After this evidence, the next boundary is no longer “more of the same axis-aligned junction bookkeeping”; it is:
 
 - **curved / non-axis-aligned ownership** while preserving explicit local determinism and avoiding mesh/graph/solver broadening.
+
+## M11
+
+### 1) What curved boundary source was used?
+M11 uses one curved source only: a **circle** centered at `(2.5, 2.5)` with radius `2.1`, embedded on a fixed `6x6` Cartesian lattice (`dx=dy=1`).
+
+No curved topology, unstructured mesh, or exact geometric intersection graph was introduced.
+
+### 2) What weighted quantity was introduced?
+M11 adds one primary weighted quantity:
+
+- **cell coverage fraction** in `[0,1]`, stored as `CoverageField2D.Coverage[idx]`.
+
+This is explicit per lattice cell and remains local.
+
+### 3) What deterministic approximation rule was used?
+M11 uses deterministic MSAA-style subcell sampling:
+
+- fixed **2x2** sample pattern per cell,
+- offsets: `(0.25,0.25)`, `(0.75,0.25)`, `(0.25,0.75)`, `(0.75,0.75)`,
+- coverage = `inside_count / 4` from circle inside/outside checks.
+
+No randomness, no hidden smoothing heuristics.
+
+### 4) Binary vs weighted comparison
+M11 compares:
+
+- **Binary embedding:** center-point inside/outside (`0` or `1` per cell),
+- **Weighted embedding:** deterministic coverage fraction.
+
+Observed result in this probe:
+
+- weighted embedding preserves fractional boundary-band cells,
+- binary embedding collapses those to abrupt flips,
+- a simple neighbor-jump jaggedness metric is lower for weighted coverage.
+
+So for this tested curved case, weighted embedding is visibly less jagged while staying explicit.
+
+### 5) What computational consequence used the weights?
+M11 applies coverage to one narrow computational consequence:
+
+- **weighted local ownership score near the boundary** (`EvaluateWeightedOwnership(...)`).
+
+Coverage-driven ownership produces partial transitions in boundary-band cells rather than binary flips, making the ownership surface more honest for curved influence on the Cartesian carrier.
+
+No solver pass or global assembly was added.
+
+### 6) Is this cleaner than exact square-fit ownership or early meshing?
+For this pass: **yes**.
+
+Forcing exact square ownership near curved boundaries throws away subcell information too early. Deterministic coverage weighting keeps the same lattice topology while exposing geometric influence explicitly and reproducibly.
+
+This remains cleaner than introducing mesh/topology machinery at this stage.
+
+### 7) What is the next boundary?
+Based on M11 evidence, the next boundary is:
+
+- deterministic **sampling quality control** (e.g., selective 4x4 coverage in boundary-band cells),
+- and then optional **edge coverage weighting** for directional transfer slots.
+
+Only after those are insufficient should true topology change be reconsidered.
