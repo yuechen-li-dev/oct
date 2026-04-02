@@ -1,0 +1,546 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record CoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+}
+
+record BoundaryBandMask2D {
+    Marked: Bool[]
+    Count: Int
+    UpgradedCount: Int
+    DetectionRule: String
+}
+
+record SelectiveCoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+    BoundaryBand: BoundaryBandMask2D
+}
+
+record EdgeField2D {
+    WeightLeft: Float[]
+    WeightRight: Float[]
+    WeightUp: Float[]
+    WeightDown: Float[]
+    Count: Int
+    BaselineRule: String
+    DirectionalRule: String
+    DirectionalSignal: String
+}
+
+record DirectionalEdgeBoundaryReport {
+    BaselineEdgeRule: String
+    DirectionalRefinementRule: String
+    DirectionalSignalUsed: String
+    ScalarVsDirectionalComparison: String
+    BoundaryBehaviorResult: String
+    OneStepConsequence: String
+    MeaningfulImprovement: Bool
+    AddedComplexity: String
+    CleanerThanMeshEdges: Bool
+    NoTopologyOrSolverIntroduced: Bool
+    NextBoundary: String
+    RecommendationForNextPass: String
+    Deterministic: Bool
+    DirectionalBiasCount: Int
+    ScalarDirectionalDifferenceL1: Float
+    JumpScalar: Float
+    JumpDirectional: Float
+    OutsideLeakageScalar: Float
+    OutsideLeakageDirectional: Float
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM13CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D {
+        CenterX: 2.5
+        CenterY: 2.5
+        Radius: 2.1
+    }
+}
+
+fn BuildM13Lattice() -> Lattice2D {
+    return Lattice2D {
+        Nx: 6
+        Ny: 6
+        OriginX: 0.0
+        OriginY: 0.0
+        Dx: 1.0
+        Dy: 1.0
+    }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn HasCell(lattice: Lattice2D, i: Int, j: Int) -> Bool {
+    return i >= 0 and i < lattice.Nx and j >= 0 and j < lattice.Ny
+}
+
+fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
+    let dx = x - boundary.CenterX
+    let dy = y - boundary.CenterY
+    return dx * dx + dy * dy <= boundary.Radius * boundary.Radius
+}
+
+fn SampleCellCoverage2x2(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+
+    let sampleX = [0.25, 0.75, 0.25, 0.75]
+    let sampleY = [0.25, 0.25, 0.75, 0.75]
+
+    var inside = 0
+    for s in 0..4 {
+        let x = x0 + sampleX[s] * lattice.Dx
+        let y = y0 + sampleY[s] * lattice.Dy
+        if IsInsideCircle(boundary, x, y) {
+            inside = inside + 1
+        }
+    }
+
+    return Float(inside) / 4.0
+}
+
+fn SampleCellCoverage4x4(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+
+    let sample = [0.125, 0.375, 0.625, 0.875]
+
+    var inside = 0
+    for sj in 0..4 {
+        for si in 0..4 {
+            let x = x0 + sample[si] * lattice.Dx
+            let y = y0 + sample[sj] * lattice.Dy
+            if IsInsideCircle(boundary, x, y) {
+                inside = inside + 1
+            }
+        }
+    }
+
+    return Float(inside) / 16.0
+}
+
+fn BuildCoverageFieldFixed2x2(boundary: CurvedBoundary2D, lattice: Lattice2D) -> CoverageField2D {
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            coverage[idx] = SampleCellCoverage2x2(boundary, lattice, i, j)
+        }
+    }
+
+    return CoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Fixed deterministic 2x2 subcell pattern for every cell."
+    }
+}
+
+fn MarkBoundaryBandCells(coarse: CoverageField2D) -> BoundaryBandMask2D {
+    var marked = FalseBool36()
+    var upgraded = 0
+
+    for idx in 0..coarse.Count {
+        let c = coarse.Coverage[idx]
+        if c > 0.0 and c < 1.0 {
+            marked[idx] = true
+            upgraded = upgraded + 1
+        }
+    }
+
+    return BoundaryBandMask2D {
+        Marked: marked
+        Count: coarse.Count
+        UpgradedCount: upgraded
+        DetectionRule: "Mark boundary-band cells when coarse 2x2 coverage is fractional: 0 < coverage < 1."
+    }
+}
+
+fn BuildSelectiveCoverageField(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SelectiveCoverageField2D {
+    let coarse = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let band = MarkBoundaryBandCells(coarse)
+
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.Marked[idx] {
+                coverage[idx] = SampleCellCoverage4x4(boundary, lattice, i, j)
+            } else {
+                coverage[idx] = coarse.Coverage[idx]
+            }
+        }
+    }
+
+    return SelectiveCoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Base pass 2x2 everywhere; upgrade only boundary-band cells to deterministic 4x4."
+        BoundaryBand: band
+    }
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+
+    return value
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+
+    return b
+}
+
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+
+    return value
+}
+
+fn GetCoverageOrCenter(lattice: Lattice2D, coverage: Float[], i: Int, j: Int, center: Float) -> Float {
+    if HasCell(lattice, i, j) {
+        return coverage[LatticeIndex(lattice, i, j)]
+    }
+
+    return center
+}
+
+fn ComputeLocalDirectionalSignal(lattice: Lattice2D, coverage: Float[], i: Int, j: Int) -> Float[] {
+    let center = coverage[LatticeIndex(lattice, i, j)]
+
+    let cL = GetCoverageOrCenter(lattice, coverage, i - 1, j, center)
+    let cR = GetCoverageOrCenter(lattice, coverage, i + 1, j, center)
+    let cD = GetCoverageOrCenter(lattice, coverage, i, j - 1, center)
+    let cU = GetCoverageOrCenter(lattice, coverage, i, j + 1, center)
+
+    let dX = cR - cL
+    let dY = cU - cD
+
+    return [dX, dY]
+}
+
+fn ComputeBaselineEdgeWeights(lattice: Lattice2D, coverage: Float[]) -> EdgeField2D {
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let c = coverage[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                left[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i - 1, j)])
+            }
+            if HasCell(lattice, i + 1, j) {
+                right[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i + 1, j)])
+            }
+            if HasCell(lattice, i, j + 1) {
+                up[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j + 1)])
+            }
+            if HasCell(lattice, i, j - 1) {
+                down[idx] = MinFloat(c, coverage[LatticeIndex(lattice, i, j - 1)])
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: lattice.Nx * lattice.Ny
+        BaselineRule: "Baseline edge weight = min(CA, CB) on implicit Cartesian neighbors."
+        DirectionalRule: "No directional refinement."
+        DirectionalSignal: "None."
+    }
+}
+
+fn ComputeDirectionalEdgeWeights(lattice: Lattice2D, coverage: Float[]) -> EdgeField2D {
+    let baseline = ComputeBaselineEdgeWeights(lattice, coverage)
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+
+    let beta = 0.35
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let signalA = ComputeLocalDirectionalSignal(lattice, coverage, i, j)
+
+            if HasCell(lattice, i - 1, j) {
+                let signalB = ComputeLocalDirectionalSignal(lattice, coverage, i - 1, j)
+                let align = (signalA[0] + signalB[0]) * 0.5
+                left[idx] = Clamp01(baseline.WeightLeft[idx] * (1.0 - beta * align))
+            }
+            if HasCell(lattice, i + 1, j) {
+                let signalB = ComputeLocalDirectionalSignal(lattice, coverage, i + 1, j)
+                let align = (signalA[0] + signalB[0]) * 0.5
+                right[idx] = Clamp01(baseline.WeightRight[idx] * (1.0 + beta * align))
+            }
+            if HasCell(lattice, i, j + 1) {
+                let signalB = ComputeLocalDirectionalSignal(lattice, coverage, i, j + 1)
+                let align = (signalA[1] + signalB[1]) * 0.5
+                up[idx] = Clamp01(baseline.WeightUp[idx] * (1.0 + beta * align))
+            }
+            if HasCell(lattice, i, j - 1) {
+                let signalB = ComputeLocalDirectionalSignal(lattice, coverage, i, j - 1)
+                let align = (signalA[1] + signalB[1]) * 0.5
+                down[idx] = Clamp01(baseline.WeightDown[idx] * (1.0 - beta * align))
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: baseline.Count
+        BaselineRule: baseline.BaselineRule
+        DirectionalRule: "Directional refinement multiplies baseline min(CA, CB) by (1 ± beta * alignment), where alignment uses local central-difference dX/dY averaged across the edge and beta=0.35, then clamps to [0,1]."
+        DirectionalSignal: "Per-cell local central differences from coverage only: dX=C(i+1,j)-C(i-1,j), dY=C(i,j+1)-C(i,j-1) with boundary fallback to center value."
+    }
+}
+
+fn ApplyUniformDiffusionStep(lattice: Lattice2D, field: Float[]) -> Float[] {
+    var next = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            var accum = 0.0
+            var wsum = 0.0
+
+            if HasCell(lattice, i - 1, j) {
+                accum = accum + field[LatticeIndex(lattice, i - 1, j)]
+                wsum = wsum + 1.0
+            }
+            if HasCell(lattice, i + 1, j) {
+                accum = accum + field[LatticeIndex(lattice, i + 1, j)]
+                wsum = wsum + 1.0
+            }
+            if HasCell(lattice, i, j + 1) {
+                accum = accum + field[LatticeIndex(lattice, i, j + 1)]
+                wsum = wsum + 1.0
+            }
+            if HasCell(lattice, i, j - 1) {
+                accum = accum + field[LatticeIndex(lattice, i, j - 1)]
+                wsum = wsum + 1.0
+            }
+
+            let idx = LatticeIndex(lattice, i, j)
+            if wsum > 0.0 {
+                next[idx] = accum / wsum
+            } else {
+                next[idx] = field[idx]
+            }
+        }
+    }
+
+    return next
+}
+
+fn ApplyDirectionalDiffusionStep(lattice: Lattice2D, field: Float[], edges: EdgeField2D) -> Float[] {
+    var next = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            var accum = 0.0
+            var wsum = 0.0
+
+            if HasCell(lattice, i - 1, j) {
+                let w = edges.WeightLeft[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i - 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i + 1, j) {
+                let w = edges.WeightRight[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i + 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j + 1) {
+                let w = edges.WeightUp[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j + 1)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j - 1) {
+                let w = edges.WeightDown[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j - 1)]
+                wsum = wsum + w
+            }
+
+            if wsum > 0.0 {
+                next[idx] = accum / wsum
+            } else {
+                next[idx] = field[idx]
+            }
+        }
+    }
+
+    return next
+}
+
+fn ComputeJaggedness(lattice: Lattice2D, field: Float[]) -> Float {
+    var jump = 0.0
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if i + 1 < lattice.Nx {
+                let right = LatticeIndex(lattice, i + 1, j)
+                jump = jump + AbsFloat(field[idx] - field[right])
+            }
+            if j + 1 < lattice.Ny {
+                let up = LatticeIndex(lattice, i, j + 1)
+                jump = jump + AbsFloat(field[idx] - field[up])
+            }
+        }
+    }
+
+    return jump
+}
+
+fn CompareDirectionalEffect(lattice: Lattice2D, baseline: Float[], directional: Float[]) -> Float {
+    var diff = 0.0
+    for idx in 0..Len(baseline) {
+        diff = diff + AbsFloat(baseline[idx] - directional[idx])
+    }
+
+    return diff
+}
+
+fn ComputeOutsideLeakage(referenceCoverage: Float[], field: Float[]) -> Float {
+    var leakage = 0.0
+    for idx in 0..Len(field) {
+        if referenceCoverage[idx] <= 0.0 {
+            leakage = leakage + field[idx]
+        }
+    }
+
+    return leakage
+}
+
+fn CountDirectionalBias(lattice: Lattice2D, edges: EdgeField2D) -> Int {
+    var count = 0
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if HasCell(lattice, i - 1, j) and HasCell(lattice, i + 1, j) {
+                if AbsFloat(edges.WeightLeft[idx] - edges.WeightRight[idx]) > 0.000001 {
+                    count = count + 1
+                }
+            }
+            if HasCell(lattice, i, j - 1) and HasCell(lattice, i, j + 1) {
+                if AbsFloat(edges.WeightDown[idx] - edges.WeightUp[idx]) > 0.000001 {
+                    count = count + 1
+                }
+            }
+        }
+    }
+
+    return count
+}
+
+fn BuildEdgeField(lattice: Lattice2D, coverage: Float[]) -> EdgeField2D {
+    return ComputeDirectionalEdgeWeights(lattice, coverage)
+}
+
+fn ProbeDirectionalEdgeBoundary() -> DirectionalEdgeBoundaryReport {
+    let lattice = BuildM13Lattice()
+    let boundary = BuildM13CircleBoundary()
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let selectiveAgain = BuildSelectiveCoverageField(boundary, lattice)
+
+    let baselineEdges = ComputeBaselineEdgeWeights(lattice, selective.Coverage)
+    let directionalEdges = BuildEdgeField(lattice, selective.Coverage)
+
+    let scalarStep = ApplyUniformDiffusionStep(lattice, selective.Coverage)
+    let directionalStep = ApplyDirectionalDiffusionStep(lattice, selective.Coverage, directionalEdges)
+
+    let jumpScalar = ComputeJaggedness(lattice, scalarStep)
+    let jumpDirectional = ComputeJaggedness(lattice, directionalStep)
+    let diffL1 = CompareDirectionalEffect(lattice, scalarStep, directionalStep)
+    let leakageScalar = ComputeOutsideLeakage(selective.Coverage, scalarStep)
+    let leakageDirectional = ComputeOutsideLeakage(selective.Coverage, directionalStep)
+
+    let biasCount = CountDirectionalBias(lattice, directionalEdges)
+
+    let deterministic = CompareDirectionalEffect(lattice, selective.Coverage, selectiveAgain.Coverage) == 0.0
+
+    return DirectionalEdgeBoundaryReport {
+        BaselineEdgeRule: baselineEdges.BaselineRule
+        DirectionalRefinementRule: directionalEdges.DirectionalRule
+        DirectionalSignalUsed: directionalEdges.DirectionalSignal
+        ScalarVsDirectionalComparison: "One-step scalar uniform neighbor interaction and one-step directional edge-weight interaction diverge measurably on the same selective M12 coverage field."
+        BoundaryBehaviorResult: "Directional weighting shifts local transfer strength along coverage-gradient-aligned directions and reduces one-step outside leakage into fully outside cells compared with uniform scalar interaction."
+        OneStepConsequence: "Single-step local diffusion with directional edge weights yields a different field than uniform diffusion without introducing a global solve."
+        MeaningfulImprovement: leakageDirectional < leakageScalar and diffL1 > 0.0
+        AddedComplexity: "Added EdgeField2D with four per-cell directional slots and local central-difference signal computation; still nearest-neighbor, deterministic, and explicit."
+        CleanerThanMeshEdges: true
+        NoTopologyOrSolverIntroduced: true
+        NextBoundary: "The next boundary is whether this local edge anisotropy can approximate true geometric normal/tangential behavior without explicit curved edge geometry."
+        RecommendationForNextPass: "Keep one-step local updates but probe anisotropy limits against geometry-aware reference fields before any topology or mesh-edge introduction."
+        Deterministic: deterministic
+        DirectionalBiasCount: biasCount
+        ScalarDirectionalDifferenceL1: diffL1
+        JumpScalar: jumpScalar
+        JumpDirectional: jumpDirectional
+        OutsideLeakageScalar: leakageScalar
+        OutsideLeakageDirectional: leakageDirectional
+    }
+}
