@@ -1,0 +1,68 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM16PathAPropagationIsDeterministic() -> Void {
+    let lattice = BuildM16Lattice()
+    let boundary = BuildM16CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let tangents = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+
+    let a = PropagateBoundaryOrientation(lattice, tangents, 3, 0.72)
+    let b = PropagateBoundaryOrientation(lattice, tangents, 3, 0.72)
+
+    Assert.Equal(CompareFieldL1(a.Ox, b.Ox), 0.0, "Path A orientation x transport must be deterministic")
+    Assert.Equal(CompareFieldL1(a.Strength, b.Strength), 0.0, "Path A strength transport must be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM16PathBMaterialFieldIsExplicitAndDeterministic() -> Void {
+    let lattice = BuildM16Lattice()
+    let field = BuildMaterialOrientationField(lattice)
+    let probe = LatticeIndex(lattice, 3, 3)
+
+    Assert.Equal(field.Ox[probe], 1.0, "Path B should set Ox=1 everywhere")
+    Assert.Equal(field.Oy[probe], 0.0, "Path B should set Oy=0 everywhere")
+    Assert.Equal(field.Strength[probe], 1.0, "Path B should set strength=1 everywhere")
+}
+
+[Fact]
+fn ContinuumBoundaryM16PathCHybridBlendIsDeterministic() -> Void {
+    let lattice = BuildM16Lattice()
+    let boundary = BuildM16CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+
+    let tangents = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+    let transported = PropagateBoundaryOrientation(lattice, tangents, 3, 0.72)
+    let material = BuildMaterialOrientationField(lattice)
+
+    let a = BlendOrientationFields(transported, material)
+    let b = BlendOrientationFields(transported, material)
+
+    Assert.Equal(CompareFieldL1(a.Ox, b.Ox), 0.0, "Path C blended Ox must be deterministic")
+    Assert.Equal(CompareFieldL1(a.Oy, b.Oy), 0.0, "Path C blended Oy must be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM16DownstreamOutputsDifferAcrossA_B_C() -> Void {
+    let report = ProbeOrientationTransportBoundary()
+
+    Assert.True(report.BoundaryL1AB > 0.0, "Path A and Path B downstream outputs should differ")
+    Assert.True(report.BoundaryL1AC > 0.0, "Path A and Path C downstream outputs should differ")
+    Assert.True(report.BoundaryL1BC > 0.0, "Path B and Path C downstream outputs should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM16ReportAnswersRequiredQuestions() -> Void {
+    let report = ProbeOrientationTransportBoundary()
+
+    Assert.True(Contains(report.PathASummary, "Path A"), "report should define Path A")
+    Assert.True(Contains(report.PathBSummary, "Path B"), "report should define Path B")
+    Assert.True(Contains(report.PathCSummary, "Path C"), "report should define Path C")
+    Assert.True(Contains(report.TransportRule, "fixed 3 deterministic passes"), "report should state explicit transport rule")
+    Assert.True(Contains(report.MaterialRule, "constant horizontal"), "report should state explicit material field")
+    Assert.True(Contains(report.HybridBlendRule, "normalize(w*O_boundary"), "report should state explicit hybrid blending rule")
+    Assert.Equal(true, report.NoTopologyOrSolverIntroduced, "M16 must not introduce topology or solver machinery")
+    Assert.True(report.MaterialFieldUnavoidable or report.HybridMeaningfullyBetter or (not report.BoundaryOnlySufficient), "report should surface the boundary/interior carrier verdict")
+}

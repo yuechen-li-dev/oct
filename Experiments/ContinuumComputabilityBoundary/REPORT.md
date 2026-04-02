@@ -1180,3 +1180,78 @@ Given evidence in M15, the next boundary is now clearer:
 - then pressure with less trivial shapes before any topology change.
 
 Blunt verdict: adopt narrow-band SDF as the geometry-side cue for this pipeline stage, keep Cartesian topology fixed, and test boundary-only vs interior/material orientation next.
+
+## M16
+
+### 1) What were the three orientation paths?
+M16 compared three explicit carriers on the same fixed `6x6` Cartesian lattice, same circle fixture, and same M15 narrow-band SDF cue:
+
+- **Path A (boundary-transported):** SDF narrow-band tangent orientation is initialized only near interface cells, then pushed inward via a fixed local deterministic propagation rule.
+- **Path B (material-only):** one explicit geometry-independent material orientation field (`Ox=1`, `Oy=0`, `Strength=1`) everywhere.
+- **Path C (hybrid):** explicit blend between Path A and Path B per cell.
+
+No topology changes, no mesh generation, no solver pass, and no PDE transport framework were introduced.
+
+### 2) What transport rule was used for boundary-derived orientation?
+Path A uses a strict local carrier update only:
+
+- fixed **3 passes** (no convergence loop)
+- deterministic Cartesian sweep
+- for zero-strength cells, inspect 4-neighbors
+- average neighbor orientation vectors where neighbor strength is nonzero
+- normalize averaged vector
+- assign propagated strength as `0.72 * max(neighborStrength)`.
+
+This is a blunt local transport probe, not a solve.
+
+### 3) What material orientation field was used?
+Path B uses one intentionally simple and explicit interior/material field:
+
+- `Ox=1`
+- `Oy=0`
+- `Strength=1`
+- at every cell.
+
+This is geometry-independent by construction and acts as the interior-stability baseline.
+
+### 4) What blend rule was used for hybrid?
+Path C uses one deterministic blend rule:
+
+- `w = clamp01(transportedBoundaryStrength)`
+- `O = normalize(w * O_boundary + (1 - w) * O_material)`
+- `Strength=1` for downstream edge-weighting use.
+
+So boundary influence is strongest where transported strength remains high, while interior naturally relaxes toward material direction.
+
+### 5) How did the three downstream results compare?
+All three paths were fed into the same downstream consequence:
+
+- orientation-driven edge weighting (same M13–M15 style)
+- one deterministic diffusion-like local update
+- one step only.
+
+M16 produced nonzero pairwise differences (`L1 > 0`) for A vs B, A vs C, and B vs C, so the three carriers are computationally separable under identical downstream machinery.
+
+### 6) Is boundary-only orientation sufficient?
+For this probe: **not by itself**.
+
+Boundary-derived orientation transported inward remains meaningful near the interface, but transport strength decays and interior orientation coherence is weaker than a field explicitly defined everywhere.
+
+### 7) Is material orientation unavoidable for interior anisotropy?
+For this probe: **yes, likely unavoidable** if interior anisotropy is expected to stay stable and intentional.
+
+The material-defined field remains coherent deep inside by construction, while pure boundary transport degrades with distance from the interface.
+
+### 8) Is hybrid actually better, or just more complex?
+For this probe: **hybrid is justified**.
+
+Hybrid preserves boundary tangential fidelity better than pure material-only while keeping interior directionality more coherent than pure boundary transport.
+
+### 9) What is the next boundary after M16?
+The sharper next boundary is no longer "whether transport exists," but:
+
+- how to define a **minimal explicit coupling policy** between two separate carriers:
+  - geometry-side boundary orientation
+  - material-side interior orientation.
+
+Blunt verdict: M16 supports treating geometry orientation and material direction as fundamentally separate carriers that need explicit coupling, still on fixed Cartesian topology and without introducing solver/PDE machinery.
