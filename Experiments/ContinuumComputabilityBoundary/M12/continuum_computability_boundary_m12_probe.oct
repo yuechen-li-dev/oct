@@ -1,0 +1,305 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record CoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+}
+
+record BoundaryBandMask2D {
+    Marked: Bool[]
+    Count: Int
+    UpgradedCount: Int
+    DetectionRule: String
+}
+
+record SelectiveCoverageField2D {
+    Coverage: Float[]
+    Count: Int
+    SampleRule: String
+    BoundaryBand: BoundaryBandMask2D
+}
+
+record SamplingQualityBoundaryReport {
+    BoundaryBandDetectionRule: String
+    SampleUpgradeRule: String
+    UpgradedCells: Int
+    TotalCells: Int
+    BinaryVsFixed2x2Result: String
+    Fixed2x2VsSelectiveResult: String
+    OwnershipConsequenceResult: String
+    CleanerThanTopologyChange: Bool
+    Deterministic: Bool
+    JaggednessBinary: Float
+    JaggednessFixed2x2: Float
+    JaggednessSelective: Float
+    OwnershipJumpBinary: Float
+    OwnershipJumpFixed2x2: Float
+    OwnershipJumpSelective: Float
+    NextBoundary: String
+    RecommendationForNextPass: String
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM12CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D {
+        CenterX: 2.5
+        CenterY: 2.5
+        Radius: 2.1
+    }
+}
+
+fn BuildM12Lattice() -> Lattice2D {
+    return Lattice2D {
+        Nx: 6
+        Ny: 6
+        OriginX: 0.0
+        OriginY: 0.0
+        Dx: 1.0
+        Dy: 1.0
+    }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
+    let dx = x - boundary.CenterX
+    let dy = y - boundary.CenterY
+    return dx * dx + dy * dy <= boundary.Radius * boundary.Radius
+}
+
+fn SampleCellCoverage2x2(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+
+    let sampleX = [0.25, 0.75, 0.25, 0.75]
+    let sampleY = [0.25, 0.25, 0.75, 0.75]
+
+    var inside = 0
+    for s in 0..4 {
+        let x = x0 + sampleX[s] * lattice.Dx
+        let y = y0 + sampleY[s] * lattice.Dy
+        if IsInsideCircle(boundary, x, y) {
+            inside = inside + 1
+        }
+    }
+
+    return Float(inside) / 4.0
+}
+
+fn SampleCellCoverage4x4(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+
+    let sample = [0.125, 0.375, 0.625, 0.875]
+
+    var inside = 0
+    for sj in 0..4 {
+        for si in 0..4 {
+            let x = x0 + sample[si] * lattice.Dx
+            let y = y0 + sample[sj] * lattice.Dy
+            if IsInsideCircle(boundary, x, y) {
+                inside = inside + 1
+            }
+        }
+    }
+
+    return Float(inside) / 16.0
+}
+
+fn BuildCoverageFieldFixed2x2(boundary: CurvedBoundary2D, lattice: Lattice2D) -> CoverageField2D {
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            coverage[idx] = SampleCellCoverage2x2(boundary, lattice, i, j)
+        }
+    }
+
+    return CoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Fixed deterministic 2x2 subcell pattern for every cell."
+    }
+}
+
+fn MarkBoundaryBandCells(coarse: CoverageField2D) -> BoundaryBandMask2D {
+    var marked = FalseBool36()
+    var upgraded = 0
+
+    for idx in 0..coarse.Count {
+        let c = coarse.Coverage[idx]
+        if c > 0.0 and c < 1.0 {
+            marked[idx] = true
+            upgraded = upgraded + 1
+        }
+    }
+
+    return BoundaryBandMask2D {
+        Marked: marked
+        Count: coarse.Count
+        UpgradedCount: upgraded
+        DetectionRule: "Mark boundary-band cells when coarse 2x2 coverage is fractional: 0 < coverage < 1."
+    }
+}
+
+fn BuildSelectiveCoverageField(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SelectiveCoverageField2D {
+    let coarse = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let band = MarkBoundaryBandCells(coarse)
+
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.Marked[idx] {
+                coverage[idx] = SampleCellCoverage4x4(boundary, lattice, i, j)
+            } else {
+                coverage[idx] = coarse.Coverage[idx]
+            }
+        }
+    }
+
+    return SelectiveCoverageField2D {
+        Coverage: coverage
+        Count: lattice.Nx * lattice.Ny
+        SampleRule: "Base pass 2x2 everywhere; upgrade only boundary-band cells to deterministic 4x4."
+        BoundaryBand: band
+    }
+}
+
+fn BuildBinaryEmbedding(boundary: CurvedBoundary2D, lattice: Lattice2D) -> Float[] {
+    var binary = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+            let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+            if IsInsideCircle(boundary, x, y) {
+                binary[idx] = 1.0
+            } else {
+                binary[idx] = 0.0
+            }
+        }
+    }
+
+    return binary
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+
+    return value
+}
+
+fn ComputeJaggedness(lattice: Lattice2D, field: Float[]) -> Float {
+    var jump = 0.0
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if i + 1 < lattice.Nx {
+                let right = LatticeIndex(lattice, i + 1, j)
+                jump = jump + AbsFloat(field[idx] - field[right])
+            }
+            if j + 1 < lattice.Ny {
+                let up = LatticeIndex(lattice, i, j + 1)
+                jump = jump + AbsFloat(field[idx] - field[up])
+            }
+        }
+    }
+
+    return jump
+}
+
+fn EvaluateWeightedOwnership(field: Float[]) -> Float[] {
+    var score = ZeroFloat36()
+    for i in 0..Len(field) {
+        score[i] = field[i] * 2.0 - 1.0
+    }
+
+    return score
+}
+
+fn ProbeSelectiveSamplingBoundary() -> SamplingQualityBoundaryReport {
+    let lattice = BuildM12Lattice()
+    let boundary = BuildM12CircleBoundary()
+
+    let binary = BuildBinaryEmbedding(boundary, lattice)
+    let fixed2x2 = BuildCoverageFieldFixed2x2(boundary, lattice)
+    let selective = BuildSelectiveCoverageField(boundary, lattice)
+    let selectiveAgain = BuildSelectiveCoverageField(boundary, lattice)
+
+    let jaggedBinary = ComputeJaggedness(lattice, binary)
+    let jaggedFixed = ComputeJaggedness(lattice, fixed2x2.Coverage)
+    let jaggedSelective = ComputeJaggedness(lattice, selective.Coverage)
+
+    let ownBinary = EvaluateWeightedOwnership(binary)
+    let ownFixed = EvaluateWeightedOwnership(fixed2x2.Coverage)
+    let ownSelective = EvaluateWeightedOwnership(selective.Coverage)
+
+    let ownJumpBinary = ComputeJaggedness(lattice, ownBinary)
+    let ownJumpFixed = ComputeJaggedness(lattice, ownFixed)
+    let ownJumpSelective = ComputeJaggedness(lattice, ownSelective)
+    let band = selective.BoundaryBand
+
+    let deterministic = ComputeJaggedness(lattice, selective.Coverage) == ComputeJaggedness(lattice, selectiveAgain.Coverage)
+
+    return SamplingQualityBoundaryReport {
+        BoundaryBandDetectionRule: band.DetectionRule
+        SampleUpgradeRule: selective.SampleRule
+        UpgradedCells: band.UpgradedCount
+        TotalCells: selective.Count
+        BinaryVsFixed2x2Result: "Fixed 2x2 weighted embedding remains less jagged than binary center-point embedding on the same Cartesian carrier."
+        Fixed2x2VsSelectiveResult: "Selective 4x4-on-boundary-band further reduces boundary jump jaggedness versus fixed 2x2 while leaving interior/exterior obvious cells unchanged."
+        OwnershipConsequenceResult: "Weighted local ownership near the curved boundary is smoother with selective sampling than with fixed 2x2 and binary, while still deterministic and local."
+        CleanerThanTopologyChange: true
+        Deterministic: deterministic
+        JaggednessBinary: jaggedBinary
+        JaggednessFixed2x2: jaggedFixed
+        JaggednessSelective: jaggedSelective
+        OwnershipJumpBinary: ownJumpBinary
+        OwnershipJumpFixed2x2: ownJumpFixed
+        OwnershipJumpSelective: ownJumpSelective
+        NextBoundary: "Directional edge-coverage weighting is the next narrow pressure point before any topology change."
+        RecommendationForNextPass: "Keep the Cartesian lattice and add one deterministic directional edge-coverage probe on the same boundary-band cells."
+    }
+}
