@@ -1,0 +1,101 @@
+package ContinuumComputabilityBoundary
+
+fn BuildM8RefinedFixture() -> MultiPatchRefinedLattice2D {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let demand = BuildTwoRegionRefinementDemand(lattice, mask)
+    let selected = SelectRefinementLevels(lattice, mask, demand)
+    let balanced = BalanceRefinementLevels(lattice, mask, selected)
+    return BuildMultiPatchRefinedLattice(lattice, mask, balanced)
+}
+
+fn BuildM8AdjacentPatchFixture() -> MultiPatchRefinedLattice2D {
+    let problem = TinyCantileverProblem("SolveForField")
+    let lattice = BuildLattice(problem)
+    let mask = EmbedBodyIntoLattice(problem, lattice)
+    let manual = RefinementLevelMap2D {
+        Levels: [2, 1, 2, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+        MaxLevel: 2
+        SelectionRule: "manual adjacent patch probe"
+        GradingRule: "manual adjacent patch probe"
+    }
+    return BuildMultiPatchRefinedLattice(lattice, mask, manual)
+}
+
+[Fact]
+fn ContinuumBoundaryM8DetectsInterfacesDeterministically() -> Void {
+    let refined = BuildM8RefinedFixture()
+    let a = BuildPatchInterfaces(refined)
+    let b = BuildPatchInterfaces(refined)
+
+    Assert.Equal(a.Count, b.Count, "interface count deterministic")
+    Assert.True(a.Count >= 4, "multiple accepted patches produce explicit interface records")
+    Assert.Equal(a.PatchA[0], b.PatchA[0], "first interface patch A deterministic")
+    Assert.Equal(a.Direction[0], b.Direction[0], "first interface direction deterministic")
+    Assert.True(Contains(a.DetectionRule, "index sweep"), "detection method is explicit and index-based")
+}
+
+[Fact]
+fn ContinuumBoundaryM8EnumeratesPatchPatchAndPatchCoarseInterfaces() -> Void {
+    let refined = BuildM8AdjacentPatchFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+
+    var patchPatch = 0
+    var patchCoarse = 0
+
+    for k in 0..interfaces.Count {
+        if interfaces.PatchB[k] >= 0 {
+            patchPatch = patchPatch + 1
+        } else {
+            patchCoarse = patchCoarse + 1
+        }
+    }
+
+    Assert.True(patchPatch >= 1, "at least one adjacent patch-patch interface is captured")
+    Assert.True(patchCoarse >= 1, "patch-coarse interfaces remain explicit")
+    Assert.True(Contains(interfaces.FineFineRule, "no interpolation"), "fine-fine rule stays narrow")
+    Assert.True(Contains(interfaces.CoarseFineRule, "50/50"), "coarse-fine split rule stays explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM8EvaluatesInterfaceContributionsExplicitly() -> Void {
+    let refined = BuildM8RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let flux = BuildLatticeFluxStructure(refined.Base, refined.Mask)
+    let contributions = EvaluateInterfaceContributions(refined, interfaces, flux)
+
+    Assert.True(interfaces.Count <= Len(contributions.Total), "interface contribution carrier is explicit and aligned")
+    Assert.True(contributions.Total[0] > 0.0, "interface contribution amounts are computed")
+
+    let compatibility = AccumulateInterfaceBalance(refined, interfaces, contributions)
+    Assert.True(compatibility.InterfaceTotalAmount > 0.0, "accumulated interface total is explicit")
+}
+
+[Fact]
+fn ContinuumBoundaryM8KeepsConservationStylePatchBalancesCoherent() -> Void {
+    let refined = BuildM8RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let flux = BuildLatticeFluxStructure(refined.Base, refined.Mask)
+    let contributions = EvaluateInterfaceContributions(refined, interfaces, flux)
+    let compatibility = AccumulateInterfaceBalance(refined, interfaces, contributions)
+
+    for p in 0..compatibility.PatchCount {
+        Assert.Near(compatibility.PatchIncomingAmount[p], compatibility.PatchOutgoingAmount[p], 0.0001, "interface bookkeeping keeps per-patch incoming/outgoing coherent")
+        Assert.Near(0.0, compatibility.PatchNetAmount[p], 0.0001, "net interface balance remains zero per patch")
+    }
+}
+
+[Fact]
+fn ContinuumBoundaryM8StaysOutOfTopologyInfrastructure() -> Void {
+    let refined = BuildM8RefinedFixture()
+    let interfaces = BuildPatchInterfaces(refined)
+    let flux = BuildLatticeFluxStructure(refined.Base, refined.Mask)
+    let compatibility = AccumulateInterfaceBalance(refined, interfaces, EvaluateInterfaceContributions(refined, interfaces, flux))
+    let report = ProbeInterPatchBoundary(refined, interfaces, compatibility)
+
+    Assert.Equal(true, report.BalanceRemainsCoherent, "report confirms balance coherence")
+    Assert.Equal(true, report.AvoidsTopologyMachinery, "report confirms no graph/topology machinery")
+    Assert.True(Contains(report.NewComplexity, "more verbose"), "new complexity is explicit and bounded")
+    Assert.True(Contains(report.NextBoundary, "corner-junction"), "next boundary is named concretely")
+}
