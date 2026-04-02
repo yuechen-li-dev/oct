@@ -1295,3 +1295,19 @@ For this boundary probe: yes. The coupling is better represented as:
 
 ### 9) What is the next boundary after M18?
 Keep fixed topology and probe richer interior material-orientation transport and richer confidence maps; defer constitutive anisotropy and topology change to later passes.
+
+## M20
+
+M20 fixed the material carrier to M19 Path C (seeded transported field) and tested three explicit material/authority interaction models on the same lattice and downstream one-step consequence:
+
+- **Path A (decoupled):** material and authority built independently; authority only applied after material as downstream usage-strength scaling.
+- **Path B (authority-modulated usage):** material and authority still built independently; authority controls per-cell material usage weight, with no transport feedback.
+- **Path C (authority-influenced transport):** authority explicitly modulates local transport propagation weights in fixed-pass deterministic transport.
+
+Blunt result:
+- A/B stayed cleanly separable and stable.
+- C gave additional interior shaping freedom but introduced explicit coupling pressure.
+- Most honest default composition for this stage: **Path B** (local authority control without hidden feedback).
+
+Next boundary after M20:
+- introduce constitutive anisotropy while preserving explicit field-separation contracts and keeping any feedback coupling policy explicit and optional.

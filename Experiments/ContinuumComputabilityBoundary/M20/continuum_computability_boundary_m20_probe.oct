@@ -1,0 +1,852 @@
+package ContinuumComputabilityBoundary
+
+record CurvedBoundary2D {
+    CenterX: Float
+    CenterY: Float
+    Radius: Float
+}
+
+record Lattice2D {
+    Nx: Int
+    Ny: Int
+    OriginX: Float
+    OriginY: Float
+    Dx: Float
+    Dy: Float
+}
+
+record SignedDistanceField2D {
+    Distance: Float[]
+    Count: Int
+}
+
+record SdfBandMask2D {
+    InBand: Bool[]
+    Count: Int
+}
+
+record OrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+}
+
+record MaterialOrientationField2D {
+    Ox: Float[]
+    Oy: Float[]
+    Strength: Float[]
+    Count: Int
+    MaterialRule: String
+}
+
+record AuthorityConfidenceField2D {
+    GeometryConfidence: Float[]
+    MaterialConfidence: Float[]
+    Count: Int
+    AuthorityRule: String
+}
+
+record InteractionOutcome {
+    Coupled: OrientationField2D
+    OneStep: Float[]
+    InteractionRule: String
+}
+
+record MaterialAuthorityInteractionReport {
+    MaterialConstruction: String
+    AuthorityConstruction: String
+    PathA: String
+    PathB: String
+    PathC: String
+    DownstreamRule: String
+    A_vs_B_L1: Float
+    A_vs_C_L1: Float
+    B_vs_C_L1: Float
+    MaterialA_vs_Base_L1: Float
+    MaterialB_vs_Base_L1: Float
+    MaterialC_vs_Base_L1: Float
+    BoundaryA: Float
+    BoundaryB: Float
+    BoundaryC: Float
+    InteriorA: Float
+    InteriorB: Float
+    InteriorC: Float
+    StabilityA: Float
+    StabilityB: Float
+    StabilityC: Float
+    SeparableInA: Bool
+    SeparableInB: Bool
+    SeparableInC: Bool
+    MostHonestModel: String
+    FeedbackNecessary: Bool
+    Verdict: String
+    NextBoundary: String
+    NoTopologyOrSolverIntroduced: Bool
+    Deterministic: Bool
+}
+
+fn ZeroFloat36() -> Float[] {
+    return [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+}
+
+fn FalseBool36() -> Bool[] {
+    return [
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false,
+        false, false, false, false, false, false
+    ]
+}
+
+fn BuildM20CircleBoundary() -> CurvedBoundary2D {
+    return CurvedBoundary2D { CenterX: 2.5 CenterY: 2.5 Radius: 2.1 }
+}
+
+fn BuildM20Lattice() -> Lattice2D {
+    return Lattice2D { Nx: 6 Ny: 6 OriginX: 0.0 OriginY: 0.0 Dx: 1.0 Dy: 1.0 }
+}
+
+fn LatticeIndex(lattice: Lattice2D, i: Int, j: Int) -> Int {
+    return j * lattice.Nx + i
+}
+
+fn HasCell(lattice: Lattice2D, i: Int, j: Int) -> Bool {
+    return i >= 0 and i < lattice.Nx and j >= 0 and j < lattice.Ny
+}
+
+fn AbsFloat(value: Float) -> Float {
+    if value < 0.0 {
+        return -value
+    }
+    return value
+}
+
+fn MinFloat(a: Float, b: Float) -> Float {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn SqrtNewton(value: Float) -> Float {
+    if value <= 0.0 {
+        return 0.0
+    }
+
+    var x = value
+    if x < 1.0 {
+        x = 1.0
+    }
+
+    for _ in 0..8 {
+        x = 0.5 * (x + value / x)
+    }
+
+    return x
+}
+
+fn Normalize2(vx: Float, vy: Float) -> Float[] {
+    let mag = SqrtNewton(vx * vx + vy * vy)
+    if mag <= 0.000000001 {
+        return [0.0, 0.0]
+    }
+    return [vx / mag, vy / mag]
+}
+
+fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
+    let dx = x - boundary.CenterX
+    let dy = y - boundary.CenterY
+    return dx * dx + dy * dy <= boundary.Radius * boundary.Radius
+}
+
+fn SampleCellCoverage2x2(boundary: CurvedBoundary2D, lattice: Lattice2D, i: Int, j: Int) -> Float {
+    let x0 = lattice.OriginX + Float(i) * lattice.Dx
+    let y0 = lattice.OriginY + Float(j) * lattice.Dy
+    let sampleX = [0.25, 0.75, 0.25, 0.75]
+    let sampleY = [0.25, 0.25, 0.75, 0.75]
+
+    var inside = 0
+    for s in 0..4 {
+        let x = x0 + sampleX[s] * lattice.Dx
+        let y = y0 + sampleY[s] * lattice.Dy
+        if IsInsideCircle(boundary, x, y) {
+            inside = inside + 1
+        }
+    }
+
+    return Float(inside) / 4.0
+}
+
+fn BuildCoverageField(boundary: CurvedBoundary2D, lattice: Lattice2D) -> Float[] {
+    var coverage = ZeroFloat36()
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            coverage[LatticeIndex(lattice, i, j)] = SampleCellCoverage2x2(boundary, lattice, i, j)
+        }
+    }
+    return coverage
+}
+
+fn BuildCircleSdf(boundary: CurvedBoundary2D, lattice: Lattice2D) -> SignedDistanceField2D {
+    var distance = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+            let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+            let dx = x - boundary.CenterX
+            let dy = y - boundary.CenterY
+            distance[LatticeIndex(lattice, i, j)] = SqrtNewton(dx * dx + dy * dy) - boundary.Radius
+        }
+    }
+
+    return SignedDistanceField2D {
+        Distance: distance
+        Count: lattice.Nx * lattice.Ny
+    }
+}
+
+fn MarkSdfBand(_lattice: Lattice2D, sdf: SignedDistanceField2D, bandWidth: Float) -> SdfBandMask2D {
+    var marked = FalseBool36()
+
+    for idx in 0..sdf.Count {
+        if AbsFloat(sdf.Distance[idx]) <= bandWidth {
+            marked[idx] = true
+        }
+    }
+
+    return SdfBandMask2D {
+        InBand: marked
+        Count: sdf.Count
+    }
+}
+
+fn GetSdfOrCenter(lattice: Lattice2D, sdf: SignedDistanceField2D, i: Int, j: Int, center: Float) -> Float {
+    if HasCell(lattice, i, j) {
+        return sdf.Distance[LatticeIndex(lattice, i, j)]
+    }
+    return center
+}
+
+fn BuildSdfNormalField(lattice: Lattice2D, sdf: SignedDistanceField2D, band: SdfBandMask2D) -> OrientationField2D {
+    var nx = ZeroFloat36()
+    var ny = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let center = sdf.Distance[idx]
+                let l = GetSdfOrCenter(lattice, sdf, i - 1, j, center)
+                let r = GetSdfOrCenter(lattice, sdf, i + 1, j, center)
+                let d = GetSdfOrCenter(lattice, sdf, i, j - 1, center)
+                let u = GetSdfOrCenter(lattice, sdf, i, j + 1, center)
+                let n = Normalize2((r - l) / (2.0 * lattice.Dx), (u - d) / (2.0 * lattice.Dy))
+
+                nx[idx] = n[0]
+                ny[idx] = n[1]
+                strength[idx] = 1.0
+            }
+        }
+    }
+
+    return OrientationField2D {
+        Ox: nx
+        Oy: ny
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+    }
+}
+
+fn BuildSdfTangentField(normals: OrientationField2D) -> OrientationField2D {
+    var tx = ZeroFloat36()
+    var ty = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..normals.Count {
+        tx[idx] = -normals.Oy[idx]
+        ty[idx] = normals.Ox[idx]
+        strength[idx] = normals.Strength[idx]
+    }
+
+    return OrientationField2D {
+        Ox: tx
+        Oy: ty
+        Strength: strength
+        Count: normals.Count
+    }
+}
+
+fn BuildAuthorityConfidenceField(lattice: Lattice2D, sdf: SignedDistanceField2D, authorityWidth: Float) -> AuthorityConfidenceField2D {
+    var geom = ZeroFloat36()
+    var mat = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            geom[idx] = 0.15 + 0.85 * Clamp01(1.0 - AbsFloat(sdf.Distance[idx]) / authorityWidth)
+
+            if i < lattice.Nx / 2 {
+                mat[idx] = 0.90
+            } else {
+                mat[idx] = 0.25
+            }
+        }
+    }
+
+    return AuthorityConfidenceField2D {
+        GeometryConfidence: geom
+        MaterialConfidence: mat
+        Count: lattice.Nx * lattice.Ny
+        AuthorityRule: "Independent authority/confidence carrier: geometry confidence from SDF proximity (with floor), material confidence map left-high/right-low."
+    }
+}
+
+fn BuildTransportedMaterialOrientation(lattice: Lattice2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+    var isSeed = FalseBool36()
+
+    let seedA = LatticeIndex(lattice, 1, 1)
+    ox[seedA] = 1.0
+    oy[seedA] = 0.0
+    strength[seedA] = 1.0
+    isSeed[seedA] = true
+
+    let seedB = LatticeIndex(lattice, 4, 4)
+    ox[seedB] = 0.0
+    oy[seedB] = 1.0
+    strength[seedB] = 1.0
+    isSeed[seedB] = true
+
+    for _ in 0..8 {
+        for j in 0..lattice.Ny {
+            for i in 0..lattice.Nx {
+                let idx = LatticeIndex(lattice, i, j)
+                if not isSeed[idx] {
+                    var sumX = 0.0
+                    var sumY = 0.0
+                    var sumW = 0.0
+
+                    let ni = [i - 1, i + 1, i, i]
+                    let nj = [j, j, j - 1, j + 1]
+                    for n in 0..4 {
+                        if HasCell(lattice, ni[n], nj[n]) {
+                            let nidx = LatticeIndex(lattice, ni[n], nj[n])
+                            let w = strength[nidx]
+                            if w > 0.0 {
+                                sumX = sumX + w * ox[nidx]
+                                sumY = sumY + w * oy[nidx]
+                                sumW = sumW + w
+                            }
+                        }
+                    }
+
+                    if sumW > 0.0 {
+                        let dir = Normalize2(sumX / sumW, sumY / sumW)
+                        ox[idx] = dir[0]
+                        oy[idx] = dir[1]
+                        strength[idx] = Clamp01(0.95 * sumW / 4.0 + 0.05)
+                    }
+                }
+            }
+        }
+    }
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        if strength[idx] <= 0.0 {
+            ox[idx] = 1.0
+            oy[idx] = 0.0
+            strength[idx] = 0.1
+        }
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "M19 baseline Path C: seeded transported material direction with deterministic local propagation for fixed 8 passes; authority is not used in transport."
+    }
+}
+
+fn ApplyAuthorityInfluencedTransport(lattice: Lattice2D, authority: AuthorityConfidenceField2D) -> MaterialOrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+    var isSeed = FalseBool36()
+
+    let seedA = LatticeIndex(lattice, 1, 1)
+    ox[seedA] = 1.0
+    oy[seedA] = 0.0
+    strength[seedA] = 1.0
+    isSeed[seedA] = true
+
+    let seedB = LatticeIndex(lattice, 4, 4)
+    ox[seedB] = 0.0
+    oy[seedB] = 1.0
+    strength[seedB] = 1.0
+    isSeed[seedB] = true
+
+    for _ in 0..8 {
+        for j in 0..lattice.Ny {
+            for i in 0..lattice.Nx {
+                let idx = LatticeIndex(lattice, i, j)
+                if not isSeed[idx] {
+                    var sumX = 0.0
+                    var sumY = 0.0
+                    var sumW = 0.0
+
+                    let ni = [i - 1, i + 1, i, i]
+                    let nj = [j, j, j - 1, j + 1]
+                    for n in 0..4 {
+                        if HasCell(lattice, ni[n], nj[n]) {
+                            let nidx = LatticeIndex(lattice, ni[n], nj[n])
+                            let localAuthority = 0.35 + 0.65 * authority.MaterialConfidence[nidx]
+                            let w = strength[nidx] * localAuthority
+                            if w > 0.0 {
+                                sumX = sumX + w * ox[nidx]
+                                sumY = sumY + w * oy[nidx]
+                                sumW = sumW + w
+                            }
+                        }
+                    }
+
+                    if sumW > 0.0 {
+                        let dir = Normalize2(sumX / sumW, sumY / sumW)
+                        ox[idx] = dir[0]
+                        oy[idx] = dir[1]
+                        let local = 0.5 * authority.MaterialConfidence[idx] + 0.5 * authority.GeometryConfidence[idx]
+                        strength[idx] = Clamp01((0.90 * sumW / 4.0 + 0.10) * (0.6 + 0.4 * local))
+                    }
+                }
+            }
+        }
+    }
+
+    for idx in 0..(lattice.Nx * lattice.Ny) {
+        if strength[idx] <= 0.0 {
+            ox[idx] = 1.0
+            oy[idx] = 0.0
+            strength[idx] = 0.1
+        }
+    }
+
+    return MaterialOrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: lattice.Nx * lattice.Ny
+        MaterialRule: "Path C controlled feedback: material transport is still local and fixed-pass deterministic, but propagation weight is modulated by authority material confidence."
+    }
+}
+
+fn BuildCoupledByGeometryAndMaterial(geometry: OrientationField2D, material: MaterialOrientationField2D, usageWeight: Float[]) -> OrientationField2D {
+    var ox = ZeroFloat36()
+    var oy = ZeroFloat36()
+    var strength = ZeroFloat36()
+
+    for idx in 0..geometry.Count {
+        let wMat = Clamp01(usageWeight[idx])
+        let wGeom = 1.0 - wMat
+        let n = Normalize2(wGeom * geometry.Ox[idx] + wMat * material.Ox[idx], wGeom * geometry.Oy[idx] + wMat * material.Oy[idx])
+        ox[idx] = n[0]
+        oy[idx] = n[1]
+        strength[idx] = Clamp01(wGeom * geometry.Strength[idx] + wMat * material.Strength[idx])
+    }
+
+    return OrientationField2D {
+        Ox: ox
+        Oy: oy
+        Strength: strength
+        Count: geometry.Count
+    }
+}
+
+fn BuildUsageWeightsFixed(material: MaterialOrientationField2D) -> Float[] {
+    var weights = ZeroFloat36()
+    for idx in 0..material.Count {
+        weights[idx] = 0.5
+    }
+    return weights
+}
+
+fn BuildUsageWeightsFromAuthority(authority: AuthorityConfidenceField2D) -> Float[] {
+    var weights = ZeroFloat36()
+    for idx in 0..authority.Count {
+        let g = authority.GeometryConfidence[idx]
+        let m = authority.MaterialConfidence[idx]
+        weights[idx] = m / (g + m)
+    }
+    return weights
+}
+
+record EdgeField2D {
+    WeightLeft: Float[]
+    WeightRight: Float[]
+    WeightUp: Float[]
+    WeightDown: Float[]
+    Count: Int
+}
+
+fn ComputeBaselineEdgeWeights(lattice: Lattice2D, field: Float[]) -> EdgeField2D {
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let c = field[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                left[idx] = MinFloat(c, field[LatticeIndex(lattice, i - 1, j)])
+            }
+            if HasCell(lattice, i + 1, j) {
+                right[idx] = MinFloat(c, field[LatticeIndex(lattice, i + 1, j)])
+            }
+            if HasCell(lattice, i, j + 1) {
+                up[idx] = MinFloat(c, field[LatticeIndex(lattice, i, j + 1)])
+            }
+            if HasCell(lattice, i, j - 1) {
+                down[idx] = MinFloat(c, field[LatticeIndex(lattice, i, j - 1)])
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: lattice.Nx * lattice.Ny
+    }
+}
+
+fn BuildOrientationEdgeField(lattice: Lattice2D, field: Float[], orientation: OrientationField2D) -> EdgeField2D {
+    let baseline = ComputeBaselineEdgeWeights(lattice, field)
+    var left = ZeroFloat36()
+    var right = ZeroFloat36()
+    var up = ZeroFloat36()
+    var down = ZeroFloat36()
+    let beta = 0.60
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            let txA = orientation.Ox[idx]
+            let tyA = orientation.Oy[idx]
+            let sA = orientation.Strength[idx]
+
+            if HasCell(lattice, i - 1, j) {
+                let nidx = LatticeIndex(lattice, i - 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                left[idx] = Clamp01(baseline.WeightLeft[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i + 1, j) {
+                let nidx = LatticeIndex(lattice, i + 1, j)
+                let align = AbsFloat((txA + orientation.Ox[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                right[idx] = Clamp01(baseline.WeightRight[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j + 1) {
+                let nidx = LatticeIndex(lattice, i, j + 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                up[idx] = Clamp01(baseline.WeightUp[idx] * (1.0 + beta * s * align))
+            }
+            if HasCell(lattice, i, j - 1) {
+                let nidx = LatticeIndex(lattice, i, j - 1)
+                let align = AbsFloat((tyA + orientation.Oy[nidx]) * 0.5)
+                let s = (sA + orientation.Strength[nidx]) * 0.5
+                down[idx] = Clamp01(baseline.WeightDown[idx] * (1.0 + beta * s * align))
+            }
+        }
+    }
+
+    return EdgeField2D {
+        WeightLeft: left
+        WeightRight: right
+        WeightUp: up
+        WeightDown: down
+        Count: baseline.Count
+    }
+}
+
+fn ApplyOneStep(lattice: Lattice2D, field: Float[], orientation: OrientationField2D) -> Float[] {
+    let edges = BuildOrientationEdgeField(lattice, field, orientation)
+    var next = ZeroFloat36()
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            var accum = 0.0
+            var wsum = 0.0
+
+            if HasCell(lattice, i - 1, j) {
+                let w = edges.WeightLeft[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i - 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i + 1, j) {
+                let w = edges.WeightRight[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i + 1, j)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j + 1) {
+                let w = edges.WeightUp[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j + 1)]
+                wsum = wsum + w
+            }
+            if HasCell(lattice, i, j - 1) {
+                let w = edges.WeightDown[idx]
+                accum = accum + w * field[LatticeIndex(lattice, i, j - 1)]
+                wsum = wsum + w
+            }
+
+            if wsum > 0.0 {
+                next[idx] = accum / wsum
+            } else {
+                next[idx] = field[idx]
+            }
+        }
+    }
+
+    return next
+}
+
+fn CompareFieldL1(a: Float[], b: Float[]) -> Float {
+    var diff = 0.0
+    for idx in 0..Len(a) {
+        diff = diff + AbsFloat(a[idx] - b[idx])
+    }
+    return diff
+}
+
+fn ApplyDecoupledInteraction(lattice: Lattice2D, geometry: OrientationField2D, material: MaterialOrientationField2D, authority: AuthorityConfidenceField2D, coverage: Float[]) -> InteractionOutcome {
+    let usage = BuildUsageWeightsFixed(material)
+    let coupledBase = BuildCoupledByGeometryAndMaterial(geometry, material, usage)
+    var strength = ZeroFloat36()
+
+    for idx in 0..coupledBase.Count {
+        let authorityScale = 0.50 + 0.50 * (authority.GeometryConfidence[idx] + authority.MaterialConfidence[idx]) * 0.5
+        strength[idx] = Clamp01(coupledBase.Strength[idx] * authorityScale)
+    }
+
+    let coupled = OrientationField2D {
+        Ox: coupledBase.Ox
+        Oy: coupledBase.Oy
+        Strength: strength
+        Count: coupledBase.Count
+    }
+
+    return InteractionOutcome {
+        Coupled: coupled
+        OneStep: ApplyOneStep(lattice, coverage, coupled)
+        InteractionRule: "Path A decoupled interaction: material is transported independently, authority is built independently, authority only scales downstream usage strength (no feedback into material transport)."
+    }
+}
+
+fn ApplyAuthorityModulatedUsage(lattice: Lattice2D, geometry: OrientationField2D, material: MaterialOrientationField2D, authority: AuthorityConfidenceField2D, coverage: Float[]) -> InteractionOutcome {
+    let usage = BuildUsageWeightsFromAuthority(authority)
+    let coupled = BuildCoupledByGeometryAndMaterial(geometry, material, usage)
+
+    return InteractionOutcome {
+        Coupled: coupled
+        OneStep: ApplyOneStep(lattice, coverage, coupled)
+        InteractionRule: "Path B authority-modulated material usage: material and authority are built independently; authority controls how strongly material direction participates at each cell, with no transport feedback."
+    }
+}
+
+fn ComputeBoundaryFidelity(lattice: Lattice2D, boundary: CurvedBoundary2D, band: SdfBandMask2D, orientation: OrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if band.InBand[idx] {
+                let x = lattice.OriginX + (Float(i) + 0.5) * lattice.Dx
+                let y = lattice.OriginY + (Float(j) + 0.5) * lattice.Dy
+                let n = Normalize2(x - boundary.CenterX, y - boundary.CenterY)
+                let tx = -n[1]
+                let ty = n[0]
+                let dotTan = AbsFloat(orientation.Ox[idx] * tx + orientation.Oy[idx] * ty)
+                sum = sum + dotTan
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn ComputeInteriorCoherence(lattice: Lattice2D, sdf: SignedDistanceField2D, material: MaterialOrientationField2D) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for j in 1..(lattice.Ny - 1) {
+        for i in 1..(lattice.Nx - 1) {
+            let idx = LatticeIndex(lattice, i, j)
+            if sdf.Distance[idx] < -0.75 * lattice.Dx {
+                let right = LatticeIndex(lattice, i + 1, j)
+                let up = LatticeIndex(lattice, i, j + 1)
+                let dotR = AbsFloat(material.Ox[idx] * material.Ox[right] + material.Oy[idx] * material.Oy[right])
+                let dotU = AbsFloat(material.Ox[idx] * material.Ox[up] + material.Oy[idx] * material.Oy[up])
+                sum = sum + 0.5 * (dotR + dotU)
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return sum / Float(count)
+}
+
+fn ComputeStabilityIndicator(lattice: Lattice2D, orientation: OrientationField2D) -> Float {
+    var variation = 0.0
+    var count = 0
+
+    for j in 0..lattice.Ny {
+        for i in 0..lattice.Nx {
+            let idx = LatticeIndex(lattice, i, j)
+            if HasCell(lattice, i + 1, j) {
+                let nidx = LatticeIndex(lattice, i + 1, j)
+                variation = variation + (1.0 - AbsFloat(orientation.Ox[idx] * orientation.Ox[nidx] + orientation.Oy[idx] * orientation.Oy[nidx]))
+                count = count + 1
+            }
+            if HasCell(lattice, i, j + 1) {
+                let nidx = LatticeIndex(lattice, i, j + 1)
+                variation = variation + (1.0 - AbsFloat(orientation.Ox[idx] * orientation.Ox[nidx] + orientation.Oy[idx] * orientation.Oy[nidx]))
+                count = count + 1
+            }
+        }
+    }
+
+    if count == 0 {
+        return 0.0
+    }
+    return variation / Float(count)
+}
+
+fn Winner3(a: Float, b: Float, c: Float, labelA: String, labelB: String, labelC: String) -> String {
+    if a >= b and a >= c {
+        return labelA
+    }
+    if b >= a and b >= c {
+        return labelB
+    }
+    return labelC
+}
+
+fn CompareInteractionStrategies(lattice: Lattice2D, boundary: CurvedBoundary2D, sdf: SignedDistanceField2D, band: SdfBandMask2D, geometry: OrientationField2D, materialBase: MaterialOrientationField2D, authority: AuthorityConfidenceField2D, coverage: Float[]) -> MaterialAuthorityInteractionReport {
+    let outcomeA = ApplyDecoupledInteraction(lattice, geometry, materialBase, authority, coverage)
+    let outcomeB = ApplyAuthorityModulatedUsage(lattice, geometry, materialBase, authority, coverage)
+
+    let materialC = ApplyAuthorityInfluencedTransport(lattice, authority)
+    let outcomeC = ApplyAuthorityModulatedUsage(lattice, geometry, materialC, authority, coverage)
+
+    let l1AB = CompareFieldL1(outcomeA.OneStep, outcomeB.OneStep)
+    let l1AC = CompareFieldL1(outcomeA.OneStep, outcomeC.OneStep)
+    let l1BC = CompareFieldL1(outcomeB.OneStep, outcomeC.OneStep)
+
+    let boundaryA = ComputeBoundaryFidelity(lattice, boundary, band, outcomeA.Coupled)
+    let boundaryB = ComputeBoundaryFidelity(lattice, boundary, band, outcomeB.Coupled)
+    let boundaryC = ComputeBoundaryFidelity(lattice, boundary, band, outcomeC.Coupled)
+
+    let interiorA = ComputeInteriorCoherence(lattice, sdf, materialBase)
+    let interiorB = ComputeInteriorCoherence(lattice, sdf, materialBase)
+    let interiorC = ComputeInteriorCoherence(lattice, sdf, materialC)
+
+    let stabilityA = ComputeStabilityIndicator(lattice, outcomeA.Coupled)
+    let stabilityB = ComputeStabilityIndicator(lattice, outcomeB.Coupled)
+    let stabilityC = ComputeStabilityIndicator(lattice, outcomeC.Coupled)
+
+    let matABase = 0.0
+    let matBBase = 0.0
+    let matCBase = CompareFieldL1(materialBase.Ox, materialC.Ox) + CompareFieldL1(materialBase.Oy, materialC.Oy)
+
+    let mostHonest = switch {
+        case stabilityA <= stabilityB and stabilityA <= stabilityC and matABase == 0.0 => "Path A decoupled"
+        case stabilityB <= stabilityA and stabilityB <= stabilityC and matBBase == 0.0 => "Path B modulated usage"
+        else => "Path C feedback transport"
+    }
+
+    let feedbackNeeded = l1BC > 0.0 and interiorC > interiorB and stabilityC <= stabilityB
+
+    return MaterialAuthorityInteractionReport {
+        MaterialConstruction: materialBase.MaterialRule
+        AuthorityConstruction: authority.AuthorityRule
+        PathA: outcomeA.InteractionRule
+        PathB: outcomeB.InteractionRule
+        PathC: "Path C authority-influenced transport: authority modulates local material propagation weights during fixed-pass deterministic transport; downstream consequence remains unchanged."
+        DownstreamRule: "All paths use identical downstream consequence: orientation-driven edge weighting + one deterministic diffusion-like local update (single step only)."
+        A_vs_B_L1: l1AB
+        A_vs_C_L1: l1AC
+        B_vs_C_L1: l1BC
+        MaterialA_vs_Base_L1: matABase
+        MaterialB_vs_Base_L1: matBBase
+        MaterialC_vs_Base_L1: matCBase
+        BoundaryA: boundaryA
+        BoundaryB: boundaryB
+        BoundaryC: boundaryC
+        InteriorA: interiorA
+        InteriorB: interiorB
+        InteriorC: interiorC
+        StabilityA: stabilityA
+        StabilityB: stabilityB
+        StabilityC: stabilityC
+        SeparableInA: matABase == 0.0
+        SeparableInB: matBBase == 0.0
+        SeparableInC: matCBase > 0.0
+        MostHonestModel: mostHonest
+        FeedbackNecessary: feedbackNeeded
+        Verdict: "M20 verdict: transported material and authority fields compose cleanly in A/B; C can help interior shaping but introduces explicit coupling pressure."
+        NextBoundary: "Next boundary: constitutive anisotropy with transported material direction + authority-conditioned usage, while preserving explicit field separation contracts."
+        NoTopologyOrSolverIntroduced: true
+        Deterministic: true
+    }
+}
+
+fn ProbeMaterialAuthorityInteraction() -> MaterialAuthorityInteractionReport {
+    let lattice = BuildM20Lattice()
+    let boundary = BuildM20CircleBoundary()
+    let sdf = BuildCircleSdf(boundary, lattice)
+    let band = MarkSdfBand(lattice, sdf, lattice.Dx)
+    let geometry = BuildSdfTangentField(BuildSdfNormalField(lattice, sdf, band))
+    let coverage = BuildCoverageField(boundary, lattice)
+
+    let material = BuildTransportedMaterialOrientation(lattice)
+    let authority = BuildAuthorityConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+
+    return CompareInteractionStrategies(lattice, boundary, sdf, band, geometry, material, authority, coverage)
+}

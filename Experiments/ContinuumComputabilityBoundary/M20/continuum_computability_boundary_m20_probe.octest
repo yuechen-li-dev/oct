@@ -1,0 +1,58 @@
+package ContinuumComputabilityBoundary
+
+[Fact]
+fn ContinuumBoundaryM20TransportedMaterialConstructionIsDeterministic() -> Void {
+    let lattice = BuildM20Lattice()
+
+    let a = BuildTransportedMaterialOrientation(lattice)
+    let b = BuildTransportedMaterialOrientation(lattice)
+
+    Assert.Equal(CompareFieldL1(a.Ox, b.Ox), 0.0, "transported material field should be deterministic")
+    Assert.Equal(CompareFieldL1(a.Oy, b.Oy), 0.0, "transported material field should be deterministic")
+}
+
+[Fact]
+fn ContinuumBoundaryM20AuthorityConstructionIsDeterministicAndHeterogeneous() -> Void {
+    let lattice = BuildM20Lattice()
+    let sdf = BuildCircleSdf(BuildM20CircleBoundary(), lattice)
+
+    let a = BuildAuthorityConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+    let b = BuildAuthorityConfidenceField(lattice, sdf, 1.5 * lattice.Dx)
+
+    Assert.Equal(CompareFieldL1(a.GeometryConfidence, b.GeometryConfidence), 0.0, "authority geometry confidence should be deterministic")
+    Assert.Equal(CompareFieldL1(a.MaterialConfidence, b.MaterialConfidence), 0.0, "authority material confidence should be deterministic")
+
+    let left = LatticeIndex(lattice, 1, 2)
+    let right = LatticeIndex(lattice, 4, 2)
+    Assert.True(a.MaterialConfidence[left] > a.MaterialConfidence[right], "authority should be heterogeneous (left-high/right-low material confidence)")
+}
+
+[Fact]
+fn ContinuumBoundaryM20ThreeInteractionStrategiesProduceMeasurableDifferences() -> Void {
+    let report = ProbeMaterialAuthorityInteraction()
+
+    Assert.True(report.A_vs_B_L1 > 0.0, "A and B downstream results should differ")
+    Assert.True(report.A_vs_C_L1 > 0.0, "A and C downstream results should differ")
+    Assert.True(report.B_vs_C_L1 > 0.0, "B and C downstream results should differ")
+}
+
+[Fact]
+fn ContinuumBoundaryM20StabilityAndCoherenceSignalsAreObservable() -> Void {
+    let report = ProbeMaterialAuthorityInteraction()
+
+    Assert.True(report.StabilityA >= 0.0 and report.StabilityB >= 0.0 and report.StabilityC >= 0.0, "stability indicators should be observable")
+    Assert.True(report.InteriorA > 0.0 and report.InteriorB > 0.0 and report.InteriorC > 0.0, "interior coherence indicators should be observable")
+    Assert.True(report.MaterialC_vs_Base_L1 > 0.0, "Path C should visibly alter transported material due to controlled feedback")
+}
+
+[Fact]
+fn ContinuumBoundaryM20ReportAnswersRequiredQuestionsWithoutTopologyOrSolver() -> Void {
+    let report = ProbeMaterialAuthorityInteraction()
+
+    Assert.True(Contains(report.MaterialConstruction, "M19 baseline Path C"), "report should state independent transported material construction")
+    Assert.True(Contains(report.AuthorityConstruction, "Independent authority/confidence carrier"), "report should state independent authority construction")
+    Assert.True(Contains(report.PathA, "decoupled interaction"), "report should include Path A")
+    Assert.True(Contains(report.PathB, "modulated material usage"), "report should include Path B")
+    Assert.True(Contains(report.PathC, "authority-influenced transport"), "report should include Path C")
+    Assert.True(report.NoTopologyOrSolverIntroduced, "M20 must keep topology fixed and avoid solver machinery")
+}
