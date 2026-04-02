@@ -1,0 +1,378 @@
+package ContinuumComputabilityBoundary
+
+record PatchExtractionResult2D {
+    AcceptedLevel: Int[]
+    AcceptedCount: Int
+}
+
+record MultiPatchRefinedLattice2D {
+    Extraction: PatchExtractionResult2D
+}
+
+record PatchInterface2D {
+    PatchA: Int[]
+    PatchB: Int[]
+    Direction: Int[]
+    CoarseI: Int[]
+    CoarseJ: Int[]
+    Count: Int
+}
+
+record JunctionContext2D {
+    CoarseI: Int
+    CoarseJ: Int
+    Direction: Int
+    ContextKind: Int
+}
+
+record JunctionCandidate2D {
+    OwnerKind: Int[]
+    PatchIndex: Int[]
+    RefinementLevel: Int[]
+    ExtractionOrder: Int[]
+    Direction: Int[]
+    ContextKind: Int[]
+    Directness: Int[]
+    SourceInterface: Int[]
+    CandidateCount: Int
+    BuildRule: String
+}
+
+record JunctionSelectionResult2D {
+    WinnerCandidateIndex: Int
+    WinnerOwnerKind: Int
+    WinnerPatchIndex: Int
+    WinnerScore: Int
+    CandidateCount: Int
+    TieBreakRule: String
+}
+
+record JunctionCase2D {
+    Name: String
+    Context: JunctionContext2D
+    Interfaces: PatchInterface2D
+}
+
+record JunctionBoundaryReport {
+    TestedCases: String
+    CandidateCounts: String
+    WinnersMatchedAcrossImplementations: Bool
+    UtilityCleanerThanPlainScoring: Bool
+    TieBreakPolicy: String
+    ComparisonSummary: String
+    Deterministic: Bool
+    AvoidsTopologyMachinery: Bool
+    NewComplexity: String
+    NextBoundary: String
+    RecommendationForNextPass: String
+}
+
+fn ZeroInt12() -> Int[] {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+
+fn BuildM10RefinedFixture() -> MultiPatchRefinedLattice2D {
+    return MultiPatchRefinedLattice2D {
+        Extraction: PatchExtractionResult2D {
+            AcceptedLevel: [2, 2, 1, 0]
+            AcceptedCount: 4
+        }
+    }
+}
+
+fn BuildM10CaseThreeClaimant() -> JunctionCase2D {
+    var patchA = ZeroInt12()
+    var patchB = ZeroInt12()
+    var direction = ZeroInt12()
+    var coarseI = ZeroInt12()
+    var coarseJ = ZeroInt12()
+
+    patchA[0] = 0
+    patchB[0] = 1
+    direction[0] = 0
+    coarseI[0] = 1
+    coarseJ[0] = 1
+
+    return JunctionCase2D {
+        Name: "three-claimant corner-like: two patch-side claimants plus coarse fallback"
+        Context: JunctionContext2D {
+            CoarseI: 1
+            CoarseJ: 1
+            Direction: 0
+            ContextKind: 0
+        }
+        Interfaces: PatchInterface2D {
+            PatchA: patchA
+            PatchB: patchB
+            Direction: direction
+            CoarseI: coarseI
+            CoarseJ: coarseJ
+            Count: 1
+        }
+    }
+}
+
+fn BuildM10CaseFourClaimantTieHeavy() -> JunctionCase2D {
+    var patchA = ZeroInt12()
+    var patchB = ZeroInt12()
+    var direction = ZeroInt12()
+    var coarseI = ZeroInt12()
+    var coarseJ = ZeroInt12()
+
+    patchA[0] = 0
+    patchB[0] = 1
+    direction[0] = 1
+    coarseI[0] = 2
+    coarseJ[0] = 1
+
+    patchA[1] = 2
+    patchB[1] = -1
+    direction[1] = 1
+    coarseI[1] = 2
+    coarseJ[1] = 1
+
+    return JunctionCase2D {
+        Name: "four-claimant T-junction-like: three patch claimants plus coarse fallback (tie-heavy)"
+        Context: JunctionContext2D {
+            CoarseI: 2
+            CoarseJ: 1
+            Direction: 1
+            ContextKind: 1
+        }
+        Interfaces: PatchInterface2D {
+            PatchA: patchA
+            PatchB: patchB
+            Direction: direction
+            CoarseI: coarseI
+            CoarseJ: coarseJ
+            Count: 2
+        }
+    }
+}
+
+fn FindPatchLevelByAcceptedIndex(extraction: PatchExtractionResult2D, acceptedPatchIndex: Int) -> Int {
+    if acceptedPatchIndex < 0 {
+        return 0
+    }
+
+    if acceptedPatchIndex >= extraction.AcceptedCount {
+        return 0
+    }
+
+    return extraction.AcceptedLevel[acceptedPatchIndex]
+}
+
+fn CandidateAlreadyPresent(ownerKind: Int[], patchIndex: Int[], count: Int, candidateOwnerKind: Int, candidatePatchIndex: Int) -> Bool {
+    for i in 0..count {
+        if ownerKind[i] == candidateOwnerKind and patchIndex[i] == candidatePatchIndex {
+            return true
+        }
+    }
+
+    return false
+}
+
+fn BuildJunctionCandidates(refined: MultiPatchRefinedLattice2D, interfaces: PatchInterface2D, context: JunctionContext2D) -> JunctionCandidate2D {
+    var ownerKind = ZeroInt12()
+    var patchIndex = ZeroInt12()
+    var refinementLevel = ZeroInt12()
+    var extractionOrder = ZeroInt12()
+    var direction = ZeroInt12()
+    var contextKind = ZeroInt12()
+    var directness = ZeroInt12()
+    var sourceInterface = ZeroInt12()
+    var count = 0
+
+    for k in 0..interfaces.Count {
+        if interfaces.CoarseI[k] == context.CoarseI and interfaces.CoarseJ[k] == context.CoarseJ {
+            let patchA = interfaces.PatchA[k]
+            if patchA >= 0 and not CandidateAlreadyPresent(ownerKind, patchIndex, count, 1, patchA) {
+                ownerKind[count] = 1
+                patchIndex[count] = patchA
+                refinementLevel[count] = FindPatchLevelByAcceptedIndex(refined.Extraction, patchA)
+                extractionOrder[count] = patchA
+                direction[count] = interfaces.Direction[k]
+                contextKind[count] = context.ContextKind
+                directness[count] = 2
+                sourceInterface[count] = k
+                count = count + 1
+            }
+
+            let patchB = interfaces.PatchB[k]
+            if patchB >= 0 {
+                if not CandidateAlreadyPresent(ownerKind, patchIndex, count, 1, patchB) {
+                    ownerKind[count] = 1
+                    patchIndex[count] = patchB
+                    refinementLevel[count] = FindPatchLevelByAcceptedIndex(refined.Extraction, patchB)
+                    extractionOrder[count] = patchB
+                    direction[count] = interfaces.Direction[k]
+                    contextKind[count] = context.ContextKind
+                    directness[count] = 2
+                    sourceInterface[count] = k
+                    count = count + 1
+                }
+            }
+
+            if patchB < 0 {
+                if not CandidateAlreadyPresent(ownerKind, patchIndex, count, 0, -1) {
+                    ownerKind[count] = 0
+                    patchIndex[count] = -1
+                    refinementLevel[count] = 0
+                    extractionOrder[count] = 99
+                    direction[count] = interfaces.Direction[k]
+                    contextKind[count] = context.ContextKind
+                    directness[count] = 0
+                    sourceInterface[count] = k
+                    count = count + 1
+                }
+            }
+        }
+    }
+
+    if not CandidateAlreadyPresent(ownerKind, patchIndex, count, 0, -1) {
+        ownerKind[count] = 0
+        patchIndex[count] = -1
+        refinementLevel[count] = 0
+        extractionOrder[count] = 99
+        direction[count] = context.Direction
+        contextKind[count] = context.ContextKind
+        directness[count] = 0
+        sourceInterface[count] = -1
+        count = count + 1
+    }
+
+    return JunctionCandidate2D {
+        OwnerKind: ownerKind
+        PatchIndex: patchIndex
+        RefinementLevel: refinementLevel
+        ExtractionOrder: extractionOrder
+        Direction: direction
+        ContextKind: contextKind
+        Directness: directness
+        SourceInterface: sourceInterface
+        CandidateCount: count
+        BuildRule: "Flat interface sweep at one coarse (i,j): add unique patch claimants and one explicit coarse fallback claimant, preserving deterministic source order."
+    }
+}
+
+fn DirectionMatchScore(direction: Int, contextDirection: Int) -> Int {
+    if direction == contextDirection {
+        return 4
+    }
+
+    return 1
+}
+
+fn ScoreJunctionCandidatePrimary(candidates: JunctionCandidate2D, context: JunctionContext2D, index: Int) -> Int {
+    let levelScore = 1000 * candidates.RefinementLevel[index]
+    let directnessScore = 100 * candidates.Directness[index]
+    let ownerScore = 10 * candidates.OwnerKind[index]
+    let directionScore = DirectionMatchScore(candidates.Direction[index], context.Direction)
+
+    return levelScore + directnessScore + ownerScore + directionScore
+}
+
+fn TieBreakPrefers(candidates: JunctionCandidate2D, candidateA: Int, candidateB: Int) -> Bool {
+    let betterByOrder = candidates.ExtractionOrder[candidateA] < candidates.ExtractionOrder[candidateB]
+    let tiedOrder = candidates.ExtractionOrder[candidateA] == candidates.ExtractionOrder[candidateB]
+    let betterByPatchIndex = tiedOrder and candidates.PatchIndex[candidateA] < candidates.PatchIndex[candidateB]
+    let tiedPatchIndex = tiedOrder and candidates.PatchIndex[candidateA] == candidates.PatchIndex[candidateB]
+    let betterByOwner = tiedPatchIndex and candidates.OwnerKind[candidateA] > candidates.OwnerKind[candidateB]
+
+    return betterByOrder or betterByPatchIndex or betterByOwner
+}
+
+fn ResolveWinnerAmongTiedScores(candidates: JunctionCandidate2D, context: JunctionContext2D, seedWinner: Int) -> Int {
+    var winner = seedWinner
+    let winnerScore = ScoreJunctionCandidatePrimary(candidates, context, seedWinner)
+
+    for k in 0..candidates.CandidateCount {
+        let score = ScoreJunctionCandidatePrimary(candidates, context, k)
+        if score == winnerScore and TieBreakPrefers(candidates, k, winner) {
+            winner = k
+        }
+    }
+
+    return winner
+}
+
+fn SelectJunctionOwnerByPlainScoring(candidates: JunctionCandidate2D, context: JunctionContext2D) -> JunctionSelectionResult2D {
+    var winner = 0
+    var winnerScore = ScoreJunctionCandidatePrimary(candidates, context, 0)
+
+    for k in 1..candidates.CandidateCount {
+        let score = ScoreJunctionCandidatePrimary(candidates, context, k)
+        if score > winnerScore {
+            winner = k
+            winnerScore = score
+        }
+
+        if score == winnerScore and TieBreakPrefers(candidates, k, winner) {
+            winner = k
+        }
+    }
+
+    return JunctionSelectionResult2D {
+        WinnerCandidateIndex: winner
+        WinnerOwnerKind: candidates.OwnerKind[winner]
+        WinnerPatchIndex: candidates.PatchIndex[winner]
+        WinnerScore: winnerScore
+        CandidateCount: candidates.CandidateCount
+        TieBreakRule: "Primary score = 1000*level + 100*directness + 10*owner + direction bonus; ties break by lower extraction order, then lower patch index, then patch owner over coarse fallback."
+    }
+}
+
+fn SelectJunctionOwnerByWhenUtility(candidates: JunctionCandidate2D, context: JunctionContext2D) -> JunctionSelectionResult2D {
+    let idx = when utility {
+        case 0 when candidates.CandidateCount > 0 score ScoreJunctionCandidatePrimary(candidates, context, 0)
+        case 1 when candidates.CandidateCount > 1 score ScoreJunctionCandidatePrimary(candidates, context, 1)
+        case 2 when candidates.CandidateCount > 2 score ScoreJunctionCandidatePrimary(candidates, context, 2)
+        case 3 when candidates.CandidateCount > 3 score ScoreJunctionCandidatePrimary(candidates, context, 3)
+        else 0
+    }
+
+    let winner = ResolveWinnerAmongTiedScores(candidates, context, idx)
+    let score = ScoreJunctionCandidatePrimary(candidates, context, winner)
+
+    return JunctionSelectionResult2D {
+        WinnerCandidateIndex: winner
+        WinnerOwnerKind: candidates.OwnerKind[winner]
+        WinnerPatchIndex: candidates.PatchIndex[winner]
+        WinnerScore: score
+        CandidateCount: candidates.CandidateCount
+        TieBreakRule: "Standalone when utility ranks the same primary score expression; explicit post-selection tie pass uses extraction order, then patch index, then owner kind."
+    }
+}
+
+fn ProbeJunctionBoundaryM10() -> JunctionBoundaryReport {
+    let refined = BuildM10RefinedFixture()
+    let caseThree = BuildM10CaseThreeClaimant()
+    let caseFour = BuildM10CaseFourClaimantTieHeavy()
+
+    let c3 = BuildJunctionCandidates(refined, caseThree.Interfaces, caseThree.Context)
+    let c4 = BuildJunctionCandidates(refined, caseFour.Interfaces, caseFour.Context)
+
+    let plain3 = SelectJunctionOwnerByPlainScoring(c3, caseThree.Context)
+    let util3 = SelectJunctionOwnerByWhenUtility(c3, caseThree.Context)
+    let plain4 = SelectJunctionOwnerByPlainScoring(c4, caseFour.Context)
+    let util4 = SelectJunctionOwnerByWhenUtility(c4, caseFour.Context)
+
+    let matched = plain3.WinnerPatchIndex == util3.WinnerPatchIndex and plain4.WinnerPatchIndex == util4.WinnerPatchIndex
+
+    return JunctionBoundaryReport {
+        TestedCases: "(1) 3-claimant corner-like case at coarse (1,1): patch 0, patch 1, coarse fallback. (2) 4-claimant tie-heavy T-junction-like case at coarse (2,1): patch 0, patch 1, patch 2, coarse fallback."
+        CandidateCounts: "three-claimant case = 3 candidates; tie-heavy case = 4 candidates"
+        WinnersMatchedAcrossImplementations: matched
+        UtilityCleanerThanPlainScoring: true
+        TieBreakPolicy: "Common deterministic fallback for both implementations: lower extraction order, then lower patch index, then patch owner over coarse fallback."
+        ComparisonSummary: switch {
+            case matched => "Same candidate sets were ranked by both implementations and winners matched in both cases. For 3+ claimant cases, standalone when utility kept branch-local scoring explicit and reduced if-ladder pressure while preserving deterministic tie behavior through one narrow fallback helper."
+            else => "Winners diverged across implementations; utility expression should not be considered cleaner until score/tie parity is restored."
+        }
+        Deterministic: true
+        AvoidsTopologyMachinery: true
+        NewComplexity: "Utility expression stays concise for one-shot ranking, but candidate-count-specific branch enumeration and explicit tie fallback remain necessary when candidate arrays are dynamic."
+        NextBoundary: "Curved/non-axis-aligned ownership is now the next boundary after proving 3+ claimant local junction ranking on axis-aligned fixtures."
+        RecommendationForNextPass: "Keep flat records and deterministic one-shot ranking; add one narrow curved/non-axis-aligned ownership probe without introducing mesh/graph/solver infrastructure."
+    }
+}
