@@ -1,4 +1,4 @@
-# Continuum Computability Boundary — M80
+# Language Milestone M80 — standalone `when utility`
 
 ## Why this pass exists
 
