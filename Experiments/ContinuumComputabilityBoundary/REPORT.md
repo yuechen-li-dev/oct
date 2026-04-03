@@ -5,6 +5,8 @@ This experiment determines whether discretization is actually needed yet for tin
 
 This experiment was migrated from `Language/Mechanics/ContinuumBoundaryM0/...` into its canonical experiment home under `Experiments/ContinuumComputabilityBoundary/M0/`.
 
+Organization note: Continuum experiment milestones live under `Experiments/ContinuumComputabilityBoundary/`; language milestone M80 (`when utility`) lives under `Language/Expressions/UtilityWhen/`.
+
 ## Milestones
 - M0: problem-specification boundary probe
 - M1: computational lowering probe (finite sites, no mesh/no solver)
