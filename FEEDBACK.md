@@ -87,3 +87,15 @@ Prefer expanding for-range capabilities rather than encouraging while-based coun
 - All changes to the codebase must still follow AGENTS.md
 
 ---
+Observation:
+Candidate[] — arrays of record types — aren't supported in M0. The type checker explicitly rejects them. The parallel-array design (CandidateSet with Ids: Int[], Scores: Int[], Active: Bool[]) is the correct idiomatic workaround, and it's actually consistent with how the rest of the library ecosystem works — ProductCatalog in the storefront, flat matrices in LinearAlgebra, all use the same pattern.
+
+Suggestion:
+Maybe add them in the future.
+
+---
+Observation:
+Chained field access — result.Selection.HasWinner — is parsed as an enum value expression rather than two field accesses. Every CommitmentResult test needed let sel = result.Selection as an intermediate binding before asserting. 
+
+Suggestion:
+Worth adding to the language report for future LLM sessions.
