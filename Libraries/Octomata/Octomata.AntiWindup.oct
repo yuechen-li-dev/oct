@@ -1,0 +1,119 @@
+package Octomata
+
+/// PID with integral anti-windup clamping.
+///
+/// Extends PIDUpdate with output saturation and conditional integration:
+/// the integral only accumulates when the output is not saturated,
+/// or when saturation and error have opposite signs (back-calculation windup guard).
+///
+/// This is the most commonly needed extension of basic PID in real control systems —
+/// without it, integrators wind up during actuator saturation and cause large
+/// overshoot on setpoint changes.
+
+record ClampedPIDResult {
+    Output:        Float
+    ClampedOutput: Float
+    IntegralState: Float
+    PreviousError: Float
+    Saturated:     Bool
+}
+
+/// PID update with output clamping and conditional integration anti-windup.
+///
+/// outputMin, outputMax: saturation limits on the controller output.
+/// Integration is frozen when output is saturated AND error has the same sign
+/// as the saturation (i.e., further winding would make things worse).
+fn ClampedPIDUpdate(
+    kp: Float,
+    ki: Float,
+    kd: Float,
+    setpoint: Float,
+    measurement: Float,
+    integralState: Float,
+    previousError: Float,
+    dt: Float,
+    outputMin: Float,
+    outputMax: Float
+) -> ClampedPIDResult ! Error {
+    if dt <= 0.0 {
+        return error("clamped pid update requires dt > 0")
+    }
+    if outputMin >= outputMax {
+        return error("clamped pid update requires outputMin < outputMax")
+    }
+
+    let errorValue = setpoint - measurement
+    let derivative = (errorValue - previousError) / dt
+
+    /// Tentative integral update
+    let integralTentative = integralState + errorValue * dt
+
+    /// Proportional + derivative on tentative integral
+    let rawOutput = kp * errorValue + ki * integralTentative + kd * derivative
+
+    /// Check saturation
+    let saturated = rawOutput > outputMax or rawOutput < outputMin
+
+    /// Anti-windup: only accept integral update if not winding in the wrong direction.
+    /// Freeze integration if: output is saturated AND error has same sign as saturation.
+    let windingUp   = rawOutput > outputMax and errorValue > 0.0
+    let windingDown = rawOutput < outputMin and errorValue < 0.0
+    let freezeIntegral = windingUp or windingDown
+
+    let integralNext = switch {
+        case freezeIntegral => integralState
+        else => integralTentative
+    }
+
+    /// Recompute output with accepted integral
+    let output = kp * errorValue + ki * integralNext + kd * derivative
+
+    /// Clamp output to limits
+    let clampedOutput = switch {
+        case output > outputMax => outputMax
+        case output < outputMin => outputMin
+        else => output
+    }
+
+    return ClampedPIDResult {
+        Output:        output
+        ClampedOutput: clampedOutput
+        IntegralState: integralNext
+        PreviousError: errorValue
+        Saturated:     saturated
+    }
+}
+
+/// Clamp a Float value to [min, max].
+fn Clamp(value: Float, minVal: Float, maxVal: Float) -> Float ! Error {
+    if minVal >= maxVal {
+        return error("clamp requires minVal < maxVal")
+    }
+    if value < minVal { return minVal }
+    if value > maxVal { return maxVal }
+    return value
+}
+
+/// Deadband: zero out small signals below threshold.
+/// Useful for eliminating noise-driven control activity near setpoint.
+fn Deadband(value: Float, threshold: Float) -> Float ! Error {
+    if threshold < 0.0 {
+        return error("deadband requires threshold >= 0")
+    }
+    if value > threshold { return value - threshold }
+    if value < (0.0 - threshold) { return value + threshold }
+    return 0.0
+}
+
+/// Rate limiter: limit how fast a value can change per tick.
+/// Prevents actuator damage from step commands.
+fn RateLimit(current: Float, target: Float, maxRatePerTick: Float) -> Float ! Error {
+    if maxRatePerTick <= 0.0 {
+        return error("rate limit requires maxRatePerTick > 0")
+    }
+
+    let delta = target - current
+    if delta > maxRatePerTick  { return current + maxRatePerTick }
+    if delta < (0.0 - maxRatePerTick) { return current - maxRatePerTick }
+    return target
+}

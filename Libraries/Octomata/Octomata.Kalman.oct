@@ -1,0 +1,262 @@
+package Octomata
+
+/// Discrete-time Kalman filter.
+///
+/// The Kalman filter is an optimal linear estimator for systems of the form:
+///   x[k+1] = A*x[k] + B*u[k] + w[k]    w ~ N(0, Q)  process noise
+///   z[k]   = H*x[k] + v[k]              v ~ N(0, R)  measurement noise
+///
+/// The filter alternates between two steps each tick:
+///   Predict:  project state and covariance forward using the model
+///   Correct:  update estimate using the new measurement
+///
+/// State and covariance are carried explicitly — no hidden memory.
+/// Supports scalar (p=1) and 2D (p=2) observation spaces in M0.
+
+record KalmanPredictResult {
+    /// Predicted state estimate: x_pred = A*x + B*u
+    XPred: Float[]
+    /// Predicted covariance: P_pred = A*P*A^T + Q
+    PPred: Float[]
+}
+
+record KalmanCorrectResult {
+    /// Updated state estimate.
+    X: Float[]
+    /// Updated covariance (Joseph form for numerical stability).
+    P: Float[]
+    /// Kalman gain K (flat row-major, n×p).
+    K: Float[]
+    /// Innovation: z - H*x_pred.
+    Innovation: Float[]
+}
+
+/// Predict step: project state and covariance forward one tick.
+///
+/// A: n×n state transition (flat)
+/// B: n×m input matrix (flat)
+/// Q: n×n process noise covariance (flat)
+/// x: current state estimate, length n
+/// P: current covariance, length n*n
+/// u: input vector, length m
+fn KalmanPredict(
+    A: Float[],
+    B: Float[],
+    Q: Float[],
+    x: Float[],
+    P: Float[],
+    u: Float[],
+    n: Int,
+    m: Int
+) -> KalmanPredictResult ! Error {
+    if n <= 0 or m <= 0 {
+        return error("kalman predict requires n, m > 0")
+    }
+    if Len(A) != n * n  { return error("kalman predict requires A length == n*n") }
+    if Len(B) != n * m  { return error("kalman predict requires B length == n*m") }
+    if Len(Q) != n * n  { return error("kalman predict requires Q length == n*n") }
+    if Len(x) != n      { return error("kalman predict requires x length == n") }
+    if Len(P) != n * n  { return error("kalman predict requires P length == n*n") }
+    if Len(u) != m      { return error("kalman predict requires u length == m") }
+
+    let Ax    = MatVecMulFlat(A, n, n, x)?
+    let Bu    = MatVecMulFlat(B, n, m, u)?
+    let xPred = VecAdd(Ax, Bu)?
+
+    let AP    = MatMulFlat(A, n, n, P, n, n)?
+    let AT    = MatTransposeFlat(A, n, n)?
+    let APAT  = MatMulFlat(AP, n, n, AT, n, n)?
+    let pPred = MatAddFlat(APAT, Q, n, n)?
+
+    return KalmanPredictResult {
+        XPred: xPred
+        PPred: pPred
+    }
+}
+
+/// Correct step: update estimate with a new measurement z.
+///
+/// H: p×n observation matrix (flat)
+/// R: p×p measurement noise covariance (flat)
+/// xPred: predicted state, length n
+/// pPred: predicted covariance, length n*n
+/// z: measurement vector, length p
+fn KalmanCorrect(
+    H: Float[],
+    R: Float[],
+    xPred: Float[],
+    pPred: Float[],
+    z: Float[],
+    n: Int,
+    p: Int
+) -> KalmanCorrectResult ! Error {
+    if n <= 0 or p <= 0 {
+        return error("kalman correct requires n, p > 0")
+    }
+    if Len(H) != p * n    { return error("kalman correct requires H length == p*n") }
+    if Len(R) != p * p    { return error("kalman correct requires R length == p*p") }
+    if Len(xPred) != n    { return error("kalman correct requires xPred length == n") }
+    if Len(pPred) != n * n { return error("kalman correct requires pPred length == n*n") }
+    if Len(z) != p        { return error("kalman correct requires z length == p") }
+
+    // Innovation: y = z - H*xPred
+    let HxPred     = MatVecMulFlat(H, p, n, xPred)?
+    let innovation = VecSub(z, HxPred)?
+
+    // Innovation covariance: S = H*P*H^T + R
+    let HT   = MatTransposeFlat(H, p, n)?
+    let HP   = MatMulFlat(H, p, n, pPred, n, n)?
+    let HPHT = MatMulFlat(HP, p, n, HT, n, p)?
+    let S    = MatAddFlat(HPHT, R, p, p)?
+
+    // Kalman gain: K = P*H^T * S^-1
+    let PHT = MatMulFlat(pPred, n, n, HT, n, p)?
+    let K   = KalmanGain(PHT, S, n, p)?
+
+    // Updated state: x = xPred + K*innovation
+    let Ky   = MatVecMulFlat(K, n, p, innovation)?
+    let xNew = VecAdd(xPred, Ky)?
+
+    // Updated covariance via Joseph form: P = (I-KH)*P*(I-KH)^T + K*R*K^T
+    let I    = IdentityFlat(n)?
+    let KH   = MatMulFlat(K, n, p, H, p, n)?
+    let IKH  = MatSubFlat(I, KH, n, n)?
+    let IKHT = MatTransposeFlat(IKH, n, n)?
+
+    let IKPH  = MatMulFlat(IKH, n, n, pPred, n, n)?
+    let IKHPT = MatMulFlat(IKPH, n, n, IKHT, n, n)?
+
+    let KT   = MatTransposeFlat(K, n, p)?
+    let KR   = MatMulFlat(K, n, p, R, p, p)?
+    let KRK  = MatMulFlat(KR, n, p, KT, p, n)?
+
+    let pNew = MatAddFlat(IKHPT, KRK, n, n)?
+
+    return KalmanCorrectResult {
+        X:          xNew
+        P:          pNew
+        K:          K
+        Innovation: innovation
+    }
+}
+
+/// Compute Kalman gain K = P*H^T * S^-1.
+/// Supports scalar (p=1) and 2D (p=2) observation spaces in M0.
+fn KalmanGain(PHT: Float[], S: Float[], n: Int, p: Int) -> Float[] ! Error {
+    if p == 1 {
+        if Abs(S[0]) < 0.000000000001 {
+            return error("kalman gain: innovation covariance is singular")
+        }
+        return VecScale(PHT, 1.0 / S[0])
+    }
+
+    if p == 2 {
+        let det = S[0] * S[3] - S[1] * S[2]
+        if Abs(det) < 0.000000000001 {
+            return error("kalman gain: 2x2 innovation covariance is singular")
+        }
+        let sInv = [S[3]/det, (0.0 - S[1])/det, (0.0 - S[2])/det, S[0]/det]
+        return MatMulFlat(PHT, n, p, sInv, p, p)?
+    }
+
+    return error("kalman gain: observation dimension p > 2 not yet supported in M0")
+}
+
+/// --- Flat matrix utilities ---
+
+/// Matrix multiply: C = A * B.
+/// A is aRows×aCols, B is bRows×bCols, requires aCols == bRows.
+fn MatMulFlat(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    if aCols != bRows {
+        return error("matmul requires A cols == B rows")
+    }
+    if Len(A) != aRows * aCols {
+        return error("matmul requires A length == aRows*aCols")
+    }
+    if Len(B) != bRows * bCols {
+        return error("matmul requires B length == bRows*bCols")
+    }
+
+    var out = [0.0]
+    for i in 1 .. aRows * bCols {
+        out = Append(out, 0.0)
+    }
+
+    for r in 0 .. aRows {
+        for c in 0 .. bCols {
+            var sum = 0.0
+            for k in 0 .. aCols {
+                sum = sum + A[r * aCols + k] * B[k * bCols + c]
+            }
+            out[r * bCols + c] = sum
+        }
+    }
+
+    return out
+}
+
+/// Matrix transpose: B = A^T.
+fn MatTransposeFlat(A: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    if Len(A) != rows * cols {
+        return error("transpose requires A length == rows*cols")
+    }
+
+    var out = [0.0]
+    for i in 1 .. rows * cols {
+        out = Append(out, 0.0)
+    }
+
+    for r in 0 .. rows {
+        for c in 0 .. cols {
+            out[c * rows + r] = A[r * cols + c]
+        }
+    }
+
+    return out
+}
+
+/// Element-wise matrix addition. Requires same shape.
+fn MatAddFlat(A: Float[], B: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    if Len(A) != rows * cols or Len(B) != rows * cols {
+        return error("mat add requires A and B length == rows*cols")
+    }
+
+    var out = [A[0] + B[0]]
+    for i in 1 .. Len(A) {
+        out = Append(out, A[i] + B[i])
+    }
+
+    return out
+}
+
+/// Element-wise matrix subtraction. Requires same shape.
+fn MatSubFlat(A: Float[], B: Float[], rows: Int, cols: Int) -> Float[] ! Error {
+    if Len(A) != rows * cols or Len(B) != rows * cols {
+        return error("mat sub requires A and B length == rows*cols")
+    }
+
+    var out = [A[0] - B[0]]
+    for i in 1 .. Len(A) {
+        out = Append(out, A[i] - B[i])
+    }
+
+    return out
+}
+
+/// n×n identity matrix (flat row-major).
+fn IdentityFlat(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("identity requires n > 0")
+    }
+
+    var out = [0.0]
+    for i in 1 .. n * n {
+        out = Append(out, 0.0)
+    }
+
+    for j in 0 .. n {
+        out[j * n + j] = 1.0
+    }
+
+    return out
+}

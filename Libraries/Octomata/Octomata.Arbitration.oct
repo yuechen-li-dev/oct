@@ -1,0 +1,248 @@
+package Octomata
+
+/// Scored arbitration over runtime-sized candidate sets.
+///
+/// `when utility` and `when policy` require statically written cases at authoring time.
+/// Octomata.Arbitration provides the same selection semantics over dynamically built
+/// candidate sets — enabling coordination patterns where the number of candidates
+/// is determined at runtime (N active operations, N agents, N resource requests).
+///
+/// Design:
+///   Candidate sets use parallel arrays (Ids, Scores, Active) rather than record arrays,
+///   matching the flat-array pattern used throughout oct libraries.
+///   Selection follows the same rule as `when utility`: highest score among active
+///   candidates wins. Ties resolve to the lowest index (first-encountered).
+///   Commitment and hysteresis mirror `when policy` semantics as explicit state,
+///   composable with flows via manual state threading — matching PIDUpdate style.
+
+/// A candidate set represented as parallel arrays of equal length.
+/// Ids[i], Scores[i], Active[i] describe candidate i.
+record CandidateSet {
+    Ids:    Int[]
+    Scores: Int[]
+    Active: Bool[]
+    Count:  Int
+}
+
+/// Result of a one-shot arbitration selection.
+record SelectionResult {
+    /// Index into the CandidateSet of the winner, or -1 if no active candidates.
+    WinnerIndex: Int
+    /// Id of the winning candidate, or -1 if none.
+    WinnerId:    Int
+    /// Score of the winner, or 0 if none.
+    WinnerScore: Int
+    /// True if at least one candidate was active.
+    HasWinner:   Bool
+}
+
+/// Persistent state for commitment-aware arbitration.
+/// Mirrors UtilityWhenSites state inside `when policy` flows,
+/// expressed as an explicit record for use outside flows.
+record CommitmentState {
+    /// Id of the currently committed candidate, or -1 if none.
+    CurrentId:    Int
+    /// Score at the time the current candidate was selected.
+    CurrentScore: Int
+    /// How many ticks the current candidate has been held.
+    CommitAge:    Int
+    /// Whether a current candidate is held.
+    HasCurrent:   Bool
+}
+
+/// Result of a commitment-aware arbitration tick.
+record CommitmentResult {
+    /// The resolved winner after applying hysteresis and min_commit.
+    Selection: SelectionResult
+    /// Updated commitment state to thread into the next tick.
+    Next:      CommitmentState
+    /// True if the winner changed from the previous tick.
+    Changed:   Bool
+}
+
+/// Build an empty commitment state — no current candidate held.
+fn NoCommitment() -> CommitmentState {
+    return CommitmentState {
+        CurrentId:    -1
+        CurrentScore: 0
+        CommitAge:    0
+        HasCurrent:   false
+    }
+}
+
+/// Build a candidate set from parallel arrays.
+/// Validates that all arrays have equal length.
+fn MakeCandidateSet(ids: Int[], scores: Int[], active: Bool[]) -> CandidateSet ! Error {
+    let n = Len(ids)
+    if n == 0 {
+        return error("candidate set must be non-empty")
+    }
+    if Len(scores) != n {
+        return error("candidate set requires scores length == ids length")
+    }
+    if Len(active) != n {
+        return error("candidate set requires active length == ids length")
+    }
+    return CandidateSet {
+        Ids:    ids
+        Scores: scores
+        Active: active
+        Count:  n
+    }
+}
+
+/// One-shot selection: pick the highest-scoring active candidate.
+/// Ties resolve to the lowest index (first encountered), matching `when utility`.
+/// Returns HasWinner=false with WinnerIndex=-1 if no candidates are active.
+fn SelectBest(cs: CandidateSet) -> SelectionResult {
+    var winnerIndex = -1
+    var winnerId    = -1
+    var winnerScore = 0
+    var hasWinner   = false
+
+    for i in 0 .. cs.Count {
+        if cs.Active[i] {
+            if not hasWinner or cs.Scores[i] > winnerScore {
+                winnerIndex = i
+                winnerId    = cs.Ids[i]
+                winnerScore = cs.Scores[i]
+                hasWinner   = true
+            }
+        }
+    }
+
+    return SelectionResult {
+        WinnerIndex: winnerIndex
+        WinnerId:    winnerId
+        WinnerScore: winnerScore
+        HasWinner:   hasWinner
+    }
+}
+
+/// Commitment-aware selection: applies hysteresis and min_commit over ticks.
+/// Mirrors `when policy` semantics over a runtime-built candidate set.
+///
+/// hysteresis: challenger must beat current score by more than this to switch.
+/// minCommit:  current candidate is held for at least this many ticks before switching.
+fn SelectWithCommitment(
+    cs:         CandidateSet,
+    commitment: CommitmentState,
+    hysteresis: Int,
+    minCommit:  Int
+) -> CommitmentResult {
+    let best = SelectBest(cs)
+
+    if not best.HasWinner {
+        return CommitmentResult {
+            Selection: best
+            Next:      NoCommitment()
+            Changed:   commitment.HasCurrent
+        }
+    }
+
+    let currentStillActive = switch {
+        case not commitment.HasCurrent => false
+        else => IdIsActive(cs, commitment.CurrentId)
+    }
+
+    let resolvedId = switch {
+        case not currentStillActive              => best.WinnerId
+        case commitment.CommitAge < minCommit    => commitment.CurrentId
+        case best.WinnerId == commitment.CurrentId => commitment.CurrentId
+        case best.WinnerScore <= commitment.CurrentScore + hysteresis => commitment.CurrentId
+        else => best.WinnerId
+    }
+
+    let resolvedScore = switch {
+        case resolvedId == best.WinnerId => best.WinnerScore
+        else => commitment.CurrentScore
+    }
+
+    let changed = switch {
+        case not commitment.HasCurrent => true
+        else => resolvedId != commitment.CurrentId
+    }
+
+    let nextAge = switch {
+        case changed => 1
+        else => commitment.CommitAge + 1
+    }
+
+    return CommitmentResult {
+        Selection: SelectionResult {
+            WinnerIndex: -1
+            WinnerId:    resolvedId
+            WinnerScore: resolvedScore
+            HasWinner:   true
+        }
+        Next: CommitmentState {
+            CurrentId:    resolvedId
+            CurrentScore: resolvedScore
+            CommitAge:    nextAge
+            HasCurrent:   true
+        }
+        Changed: changed
+    }
+}
+
+/// Check whether a candidate with the given id is active in the set.
+fn IdIsActive(cs: CandidateSet, id: Int) -> Bool {
+    for i in 0 .. cs.Count {
+        if cs.Ids[i] == id and cs.Active[i] {
+            return true
+        }
+    }
+    return false
+}
+
+/// --- Scoring utilities ---
+
+/// Map a Float value linearly from [inputMin, inputMax] to [scoreMin, scoreMax].
+/// Returns a Float score. Clamps if input is out of range.
+/// Useful for converting physical measurements (distance, urgency, load) into scores.
+fn LinearScore(
+    value:    Float,
+    inputMin: Float,
+    inputMax: Float,
+    scoreMin: Int,
+    scoreMax: Int
+) -> Float ! Error {
+    if inputMin >= inputMax {
+        return error("linear score requires inputMin < inputMax")
+    }
+    if scoreMin > scoreMax {
+        return error("linear score requires scoreMin <= scoreMax")
+    }
+
+    let t = (value - inputMin) / (inputMax - inputMin)
+
+    let tClamped = switch {
+        case t < 0.0 => 0.0
+        case t > 1.0 => 1.0
+        else => t
+    }
+
+    return Float(scoreMin) + tClamped * Float(scoreMax - scoreMin)
+}
+
+/// Invert a score: higher input → lower output.
+/// Useful for "prefer less loaded" or "prefer lower urgency" candidates.
+fn InvertScore(score: Int, maxScore: Int) -> Int ! Error {
+    if maxScore <= 0 {
+        return error("invert score requires maxScore > 0")
+    }
+    if score < 0 or score > maxScore {
+        return error("invert score requires 0 <= score <= maxScore")
+    }
+    return maxScore - score
+}
+
+/// Combine two scores with explicit integer weights.
+/// result = (scoreA * weightA + scoreB * weightB) / (weightA + weightB)
+fn WeightedScore(scoreA: Int, weightA: Int, scoreB: Int, weightB: Int) -> Int ! Error {
+    let totalWeight = weightA + weightB
+    if totalWeight <= 0 {
+        return error("weighted score requires total weight > 0")
+    }
+    return (scoreA * weightA + scoreB * weightB) / totalWeight
+}

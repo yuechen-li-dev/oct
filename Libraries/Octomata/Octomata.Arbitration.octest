@@ -1,0 +1,345 @@
+package Octomata
+
+// Helper: build a 3-candidate set inline.
+fn ThreeCandidates(id1: Int, s1: Int, a1: Bool, id2: Int, s2: Int, a2: Bool, id3: Int, s3: Int, a3: Bool) -> CandidateSet {
+    return MakeCandidateSet([id1, id2, id3], [s1, s2, s3], [a1, a2, a3])!
+}
+
+// Helper: build a 2-candidate set inline.
+fn TwoCandidates(id1: Int, s1: Int, a1: Bool, id2: Int, s2: Int, a2: Bool) -> CandidateSet {
+    return MakeCandidateSet([id1, id2], [s1, s2], [a1, a2])!
+}
+
+/// --- MakeCandidateSet ---
+
+[Fact]
+fn MakeCandidateSetRejectsMismatchedLengths() -> Void {
+    match MakeCandidateSet([1, 2], [10], [true, true]) {
+        ok(cs) => { Assert.True(false, "should reject mismatched lengths") }
+        err(e) => { }
+    }
+}
+
+/// --- SelectBest ---
+
+[Fact]
+fn SelectBestPicksHighestScore() -> Void {
+    let cs = ThreeCandidates(1, 40, true, 2, 80, true, 3, 60, true)
+    let result = SelectBest(cs)
+    Assert.True(result.HasWinner, "should have a winner")
+    Assert.Equal(2, result.WinnerId, "highest score wins")
+    Assert.Equal(80, result.WinnerScore, "winner score correct")
+}
+
+[Fact]
+fn SelectBestIgnoresInactiveCandidates() -> Void {
+    let cs = ThreeCandidates(1, 100, false, 2, 50, true, 3, 90, false)
+    let result = SelectBest(cs)
+    Assert.True(result.HasWinner, "should have a winner")
+    Assert.Equal(2, result.WinnerId, "only active candidate wins")
+}
+
+[Fact]
+fn SelectBestReturnsNoWinnerWhenAllInactive() -> Void {
+    let cs = TwoCandidates(1, 100, false, 2, 200, false)
+    let result = SelectBest(cs)
+    Assert.False(result.HasWinner, "no winner when all inactive")
+    Assert.Equal(-1, result.WinnerId, "winner id is -1 when none active")
+    Assert.Equal(-1, result.WinnerIndex, "winner index is -1 when none active")
+}
+
+[Fact]
+fn SelectBestTieResolvesToFirstSourceOrder() -> Void {
+    // Mirrors language-level `when utility` behavior: ties go to first case encountered.
+    let cs = ThreeCandidates(1, 50, true, 2, 50, true, 3, 50, true)
+    let result = SelectBest(cs)
+    Assert.Equal(1, result.WinnerId, "tie resolves to first (lowest index)")
+    Assert.Equal(0, result.WinnerIndex, "winner index is 0 for first candidate")
+}
+
+[Fact]
+fn SelectBestSingleCandidateAlwaysWins() -> Void {
+    let cs = MakeCandidateSet([7], [42], [true])!
+    let result = SelectBest(cs)
+    Assert.True(result.HasWinner, "single active candidate wins")
+    Assert.Equal(7, result.WinnerId, "winner id matches")
+    Assert.Equal(42, result.WinnerScore, "winner score matches")
+    Assert.Equal(0, result.WinnerIndex, "winner index is 0")
+}
+
+[Fact]
+fn SelectBestSingleInactiveCandidateHasNoWinner() -> Void {
+    let cs = MakeCandidateSet([1], [100], [false])!
+    let result = SelectBest(cs)
+    Assert.False(result.HasWinner, "inactive single candidate has no winner")
+}
+
+/// --- SelectWithCommitment ---
+
+[Fact]
+fn SelectWithCommitmentFirstCallPicksBest() -> Void {
+    let cs = TwoCandidates(1, 60, true, 2, 80, true)
+    let result = SelectWithCommitment(cs, NoCommitment(), 0, 1)
+    let sel  = result.Selection
+    let next = result.Next
+    Assert.True(sel.HasWinner, "should have winner")
+    Assert.Equal(2, sel.WinnerId, "best candidate wins on first call")
+    Assert.True(result.Changed, "first selection is always a change")
+    Assert.Equal(1, next.CommitAge, "commit age starts at 1")
+}
+
+[Fact]
+fn SelectWithCommitmentHysteresisBlocksSmallGain() -> Void {
+    // Current = id 1 (score 60), challenger = id 2 (score 65), hysteresis = 8.
+    // Gain = 5 <= 8, so current holds.
+    let cs = TwoCandidates(1, 60, true, 2, 65, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 60
+        CommitAge:    3
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 8, 1)
+    let sel = result.Selection
+    Assert.Equal(1, sel.WinnerId, "hysteresis keeps current for small gain")
+    Assert.False(result.Changed, "no change when hysteresis blocks")
+}
+
+[Fact]
+fn SelectWithCommitmentHysteresisAllowsClearWin() -> Void {
+    // Current = id 1 (score 60), challenger = id 2 (score 80), hysteresis = 8.
+    // Gain = 20 > 8, challenger wins.
+    let cs = TwoCandidates(1, 60, true, 2, 80, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 60
+        CommitAge:    3
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 8, 1)
+    let sel = result.Selection
+    Assert.Equal(2, sel.WinnerId, "clear win beats hysteresis")
+    Assert.True(result.Changed, "winner changed")
+}
+
+[Fact]
+fn SelectWithCommitmentMinCommitBlocksEarlySwitch() -> Void {
+    // Held for 1 tick, minCommit = 3. Higher scorer cannot win yet.
+    let cs = TwoCandidates(1, 50, true, 2, 90, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 50
+        CommitAge:    1
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 0, 3)
+    let sel = result.Selection
+    Assert.Equal(1, sel.WinnerId, "min_commit blocks early switch")
+    Assert.False(result.Changed, "no change while committed")
+}
+
+[Fact]
+fn SelectWithCommitmentMinCommitExpiryAllowsSwitch() -> Void {
+    // CommitAge == minCommit: lock expired, switch is now allowed.
+    let cs = TwoCandidates(1, 50, true, 2, 90, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 50
+        CommitAge:    3
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 0, 3)
+    let sel = result.Selection
+    Assert.Equal(2, sel.WinnerId, "min_commit expired, switch allowed")
+    Assert.True(result.Changed, "winner changed after commit expires")
+}
+
+[Fact]
+fn SelectWithCommitmentCurrentBecomesInactiveForcesSwitchToNext() -> Void {
+    // Current candidate becomes inactive — must switch even through hysteresis/commit.
+    let cs = TwoCandidates(1, 50, false, 2, 40, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 50
+        CommitAge:    1
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 10, 10)
+    let sel = result.Selection
+    Assert.Equal(2, sel.WinnerId, "inactive current forces switch")
+    Assert.True(result.Changed, "winner changed when current becomes inactive")
+}
+
+[Fact]
+fn SelectWithCommitmentNoActiveCandidatesClearsState() -> Void {
+    let cs = TwoCandidates(1, 100, false, 2, 200, false)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 100
+        CommitAge:    5
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 0, 1)
+    let sel  = result.Selection
+    let next = result.Next
+    Assert.False(sel.HasWinner, "no winner when all inactive")
+    Assert.False(next.HasCurrent, "commitment cleared when no candidates active")
+    Assert.True(result.Changed, "clearing commitment is a change")
+}
+
+[Fact]
+fn SelectWithCommitmentCommitAgeIncrementsWhenSameWinner() -> Void {
+    let cs = MakeCandidateSet([1], [60], [true])!
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 60
+        CommitAge:    4
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 0, 1)
+    let sel  = result.Selection
+    let next = result.Next
+    Assert.Equal(1, sel.WinnerId, "same winner")
+    Assert.Equal(5, next.CommitAge, "commit age increments")
+    Assert.False(result.Changed, "no change reported when same winner")
+}
+
+[Fact]
+fn SelectWithCommitmentCommitAgeResetsOnSwitch() -> Void {
+    let cs = TwoCandidates(1, 50, true, 2, 90, true)
+    let held = CommitmentState {
+        CurrentId:    1
+        CurrentScore: 50
+        CommitAge:    5
+        HasCurrent:   true
+    }
+    let result = SelectWithCommitment(cs, held, 0, 1)
+    let sel  = result.Selection
+    let next = result.Next
+    Assert.Equal(2, sel.WinnerId, "winner switches")
+    Assert.Equal(1, next.CommitAge, "commit age resets to 1 on switch")
+}
+
+/// --- IdIsActive ---
+
+[Fact]
+fn IdIsActiveReturnsTrueForActiveId() -> Void {
+    let cs = ThreeCandidates(1, 0, false, 2, 0, true, 3, 0, false)
+    Assert.True(IdIsActive(cs, 2), "id 2 is active")
+    Assert.False(IdIsActive(cs, 1), "id 1 is inactive")
+    Assert.False(IdIsActive(cs, 99), "id 99 not found")
+}
+
+/// --- LinearScore ---
+
+[Fact]
+fn LinearScoreMapsEndpointsCorrectly() -> Void {
+    let lo  = LinearScore(0.0, 0.0, 1.0, 0, 100)!
+    let hi  = LinearScore(1.0, 0.0, 1.0, 0, 100)!
+    let mid = LinearScore(0.5, 0.0, 1.0, 0, 100)!
+    Assert.Near(0.0,   lo,  0.001, "min input maps to scoreMin")
+    Assert.Near(100.0, hi,  0.001, "max input maps to scoreMax")
+    Assert.Near(50.0,  mid, 0.001, "midpoint maps to mid score")
+}
+
+[Fact]
+fn LinearScoreClampsOutOfRange() -> Void {
+    let below = LinearScore(-1.0, 0.0, 1.0, 0, 100)!
+    let above = LinearScore(2.0,  0.0, 1.0, 0, 100)!
+    Assert.Near(0.0,   below, 0.001, "below input min clamps to scoreMin")
+    Assert.Near(100.0, above, 0.001, "above input max clamps to scoreMax")
+}
+
+[Fact]
+fn LinearScoreRejectsInvalidInputRange() -> Void {
+    match LinearScore(0.5, 1.0, 0.0, 0, 100) {
+        ok(v) => { Assert.True(false, "should reject inputMin >= inputMax") }
+        err(e) => { }
+    }
+}
+
+/// --- InvertScore ---
+
+[Fact]
+fn InvertScoreFlipsRelativeOrder() -> Void {
+    Assert.Equal(20,  InvertScore(80, 100)!, "high input -> low inverted score")
+    Assert.Equal(80,  InvertScore(20, 100)!, "low input -> high inverted score")
+    Assert.Equal(0,   InvertScore(100, 100)!, "max input -> 0")
+    Assert.Equal(100, InvertScore(0, 100)!, "0 input -> max")
+}
+
+[Fact]
+fn InvertScoreRejectsInvalidInputs() -> Void {
+    match InvertScore(50, 0) {
+        ok(v) => { Assert.True(false, "should reject maxScore <= 0") }
+        err(e) => { }
+    }
+    match InvertScore(150, 100) {
+        ok(v) => { Assert.True(false, "should reject score > maxScore") }
+        err(e) => { }
+    }
+}
+
+/// --- WeightedScore ---
+
+[Fact]
+fn WeightedScoreEqualWeightsAveragesTwoScores() -> Void {
+    Assert.Equal(70, WeightedScore(60, 1, 80, 1)!, "equal weights average the two scores")
+}
+
+[Fact]
+fn WeightedScoreRespectsWeightRatio() -> Void {
+    // scoreA=0 weight 1, scoreB=100 weight 3 -> (0 + 300) / 4 = 75
+    Assert.Equal(75, WeightedScore(0, 1, 100, 3)!, "3:1 weight ratio respected")
+}
+
+[Fact]
+fn WeightedScoreRejectsZeroTotalWeight() -> Void {
+    match WeightedScore(50, 0, 50, 0) {
+        ok(v) => { Assert.True(false, "should reject zero total weight") }
+        err(e) => { }
+    }
+}
+
+/// --- Composition ---
+
+[Fact]
+fn ArbitrationComposesWithScoringUtilities() -> Void {
+    // candidate 1: urgency score = 70
+    // candidate 2: urgency 40, proximity 30, weighted 2:1 -> (80 + 30) / 3 = 36
+    let score1 = 70
+    let score2 = WeightedScore(40, 2, 30, 1)!
+    let cs = MakeCandidateSet([1, 2], [score1, score2], [true, true])!
+    let result = SelectBest(cs)
+    Assert.True(result.HasWinner, "should have winner")
+    Assert.Equal(1, result.WinnerId, "higher urgency wins")
+}
+
+[Fact]
+fn ArbitrationPersistsCorrectlyAcrossMultipleTicks() -> Void {
+    // Tick 1: only candidate 1 active -> selects 1
+    // Tick 2: both active, challenger within hysteresis -> holds 1
+    // Tick 3: challenger breaks hysteresis -> switches to 2
+    let hysteresis = 10
+    let minCommit  = 1
+
+    let t1 = SelectWithCommitment(
+        TwoCandidates(1, 60, true, 2, 0, false),
+        NoCommitment(), hysteresis, minCommit)
+    let t1sel = t1.Selection
+    Assert.Equal(1, t1sel.WinnerId, "tick 1: only active candidate wins")
+
+    let t2 = SelectWithCommitment(
+        TwoCandidates(1, 60, true, 2, 65, true),
+        t1.Next, hysteresis, minCommit)
+    let t2sel = t2.Selection
+    Assert.Equal(1, t2sel.WinnerId, "tick 2: hysteresis holds candidate 1")
+    Assert.False(t2.Changed, "tick 2: no change")
+
+    let t3 = SelectWithCommitment(
+        TwoCandidates(1, 60, true, 2, 85, true),
+        t2.Next, hysteresis, minCommit)
+    let t3sel = t3.Selection
+    Assert.Equal(2, t3sel.WinnerId, "tick 3: large gain breaks hysteresis")
+    Assert.True(t3.Changed, "tick 3: winner changed")
+}
