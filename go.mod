@@ -2,7 +2,10 @@ module oct
 
 go 1.23.0
 
-require gonum.org/v1/plot v0.16.0
+require (
+	github.com/xuri/excelize/v2 v2.9.1
+	gonum.org/v1/plot v0.16.0
+)
 
 require (
 	codeberg.org/go-fonts/liberation v0.5.0 // indirect
@@ -17,7 +20,6 @@ require (
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/tiendc/go-deepcopy v1.6.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
-	github.com/xuri/excelize/v2 v2.9.1 // indirect
 	github.com/xuri/nfp v0.0.1 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/image v0.25.0 // indirect
