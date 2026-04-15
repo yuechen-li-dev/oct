@@ -6,15 +6,14 @@ package Octomata
 ///   x[k+1] = A * x[k] + B * u[k]   (state update)
 ///   y[k]   = C * x[k] + D * u[k]   (output equation)
 ///
-/// A: n×n state transition matrix (flat, row-major), length n*n
+/// A: n×n state transition matrix (flat row-major), length n*n
 /// B: n×m input matrix, length n*m
 /// C: p×n output matrix, length p*n
 /// D: p×m feedthrough matrix, length p*m
-/// x: state vector, length n
+/// x: current state vector, length n
 /// u: input vector, length m
 ///
 /// Returns updated state x[k+1] and output y[k].
-/// All values are dimensionless Float in M0.
 record StateSpaceResult {
     State:  Float[]
     Output: Float[]
@@ -53,15 +52,13 @@ fn StateSpaceUpdate(
         return error("state-space update requires u length == m")
     }
 
-    /// x_next = A*x + B*u
-    let Ax = MatVecMulFlat(A, n, n, x)?
-    let Bu = MatVecMulFlat(B, n, m, u)?
+    let Ax    = MatVecMulFlat(A, n, n, x)?
+    let Bu    = MatVecMulFlat(B, n, m, u)?
     let xNext = VecAdd(Ax, Bu)?
 
-    /// y = C*x + D*u
     let Cx = MatVecMulFlat(C, p, n, x)?
     let Du = MatVecMulFlat(D, p, m, u)?
-    let y = VecAdd(Cx, Du)?
+    let y  = VecAdd(Cx, Du)?
 
     return StateSpaceResult {
         State:  xNext
@@ -69,8 +66,8 @@ fn StateSpaceUpdate(
     }
 }
 
-/// Flat row-major matrix-vector multiply: y = A * x
-/// A is rows×cols, x is cols-length, y is rows-length.
+/// Flat row-major matrix-vector multiply: result = A * x.
+/// A is rows×cols (length rows*cols), x is cols-length, result is rows-length.
 fn MatVecMulFlat(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Error {
     if Len(A) != rows * cols {
         return error("matvecmul requires A length == rows*cols")
@@ -80,22 +77,16 @@ fn MatVecMulFlat(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Erro
     }
 
     var out = [0.0]
-    var i = 1
-    while i < rows {
+    for i in 1 .. rows {
         out = Append(out, 0.0)
-        i = i + 1
     }
 
-    var r = 0
-    while r < rows {
+    for r in 0 .. rows {
         var sum = 0.0
-        var c = 0
-        while c < cols {
+        for c in 0 .. cols {
             sum = sum + A[r * cols + c] * x[c]
-            c = c + 1
         }
         out[r] = sum
-        r = r + 1
     }
 
     return out
@@ -108,10 +99,8 @@ fn VecAdd(a: Float[], b: Float[]) -> Float[] ! Error {
     }
 
     var out = [a[0] + b[0]]
-    var i = 1
-    while i < Len(a) {
+    for i in 1 .. Len(a) {
         out = Append(out, a[i] + b[i])
-        i = i + 1
     }
 
     return out
@@ -124,10 +113,8 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
     }
 
     var out = [a[0] - b[0]]
-    var i = 1
-    while i < Len(a) {
+    for i in 1 .. Len(a) {
         out = Append(out, a[i] - b[i])
-        i = i + 1
     }
 
     return out
@@ -136,10 +123,9 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
 /// Scalar-vector multiply.
 fn VecScale(a: Float[], s: Float) -> Float[] {
     var out = [a[0] * s]
-    var i = 1
-    while i < Len(a) {
+    for i in 1 .. Len(a) {
         out = Append(out, a[i] * s)
-        i = i + 1
     }
     return out
 }
+
