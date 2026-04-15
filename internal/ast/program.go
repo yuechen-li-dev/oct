@@ -66,8 +66,14 @@ type FlowDecl struct {
 	Name       string
 	Parameters []Parameter
 	ReturnType TypeRef
+	Board      []BoardField
 	States     []StateDecl
 	EntryState string
+}
+
+type BoardField struct {
+	Name string
+	Type TypeRef
 }
 
 type StateDecl struct {
@@ -241,6 +247,12 @@ type WhenReturnAction struct {
 }
 
 func (WhenReturnAction) whenActionNode() {}
+
+type WhenBlockAction struct {
+	Statements []Stmt
+}
+
+func (WhenBlockAction) whenActionNode() {}
 
 type Expr interface {
 	exprNode()

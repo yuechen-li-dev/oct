@@ -1,0 +1,19 @@
+expect error: "function BadWhenBlock: when block action only supports remember, resume, goto, suspend, return, and board assignment"
+
+package MainInvalid
+
+flow BadWhenBlock(flag: Bool) -> Int {
+    state Start {
+        when {
+            case flag -> {
+                let x = 1
+                return x
+            }
+            else -> return 0
+        }
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

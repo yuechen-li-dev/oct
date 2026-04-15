@@ -515,6 +515,22 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 	for index, parameter := range flow.Parameters {
 		rootEnv.define(parameter.Name, arguments[index], false)
 	}
+	if len(flow.Board) > 0 {
+		boardFields := make(map[string]Value, len(flow.Board))
+		fieldOrder := make([]string, 0, len(flow.Board))
+		for _, field := range flow.Board {
+			boardFields[field.Name] = defaultFlowBoardValue(field.Type)
+			fieldOrder = append(fieldOrder, field.Name)
+		}
+		rootEnv.define("board", Value{
+			Kind: ValueRecord,
+			Record: RecordValue{
+				TypeName:   "__flow_board_" + flow.Name,
+				Fields:     boardFields,
+				FieldOrder: fieldOrder,
+			},
+		}, false)
+	}
 	return &FlowRuntimeInstance{
 		Decl:             flow,
 		Package:          pkgName,
@@ -523,6 +539,21 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 		StateHistory:     nil,
 		UtilityWhenSites: make(map[int]utilityWhenSiteState),
 		DirtyBoardFields: make(map[string]struct{}),
+	}
+}
+
+func defaultFlowBoardValue(fieldType ast.TypeRef) Value {
+	switch fieldType.Name {
+	case "Bool":
+		return Value{Kind: ValueBool, Bool: false}
+	case "Int":
+		return Value{Kind: ValueInt, Int: 0}
+	case "Float":
+		return Value{Kind: ValueFloat, Float: 0.0}
+	case "String":
+		return Value{Kind: ValueString, Text: ""}
+	default:
+		return Value{}
 	}
 }
 
@@ -992,6 +1023,17 @@ func (i interpreter) executeWhenAction(env *environment, pkgName string, action 
 		return flowSignal{kind: flowSignalSuspend}, nil
 	case ast.WhenReturnAction:
 		return i.executeFlowStmt(env, pkgName, ast.ReturnStmt{Value: node.Value})
+	case ast.WhenBlockAction:
+		for _, statement := range node.Statements {
+			signal, err := i.executeFlowStmt(env, pkgName, statement)
+			if err != nil {
+				return flowSignal{}, err
+			}
+			if signal.kind != flowSignalNone {
+				return signal, nil
+			}
+		}
+		return flowSignal{}, nil
 	default:
 		return flowSignal{}, fmt.Errorf("runtime invariant violation: unsupported when action %T", action)
 	}

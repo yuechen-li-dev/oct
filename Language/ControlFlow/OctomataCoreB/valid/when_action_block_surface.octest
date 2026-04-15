@@ -1,0 +1,60 @@
+package MainValid
+
+record Input {
+    HazardActive: Bool
+    Ack: Bool
+}
+
+flow Guarded(input: Input) -> String {
+    board {
+        FaultLatched: Bool
+    }
+
+    state Monitor {
+        when {
+            case input.HazardActive -> {
+                remember
+                board.FaultLatched = true
+                goto HazardHold
+            }
+            case input.Ack -> {
+                board.FaultLatched = false
+                return "cleared"
+            }
+            else -> {
+                suspend
+            }
+        }
+    }
+
+    state HazardHold {
+        when {
+            case input.Ack -> {
+                board.FaultLatched = false
+                return "resumed"
+            }
+            else -> {
+                suspend
+            }
+        }
+    }
+}
+
+[Fact]
+fn WhenActionBlocksExpressInterruptPatterns() -> Void {
+    let tripped = Guarded(Input { HazardActive: true Ack: false })
+    Step(tripped)
+    Assert.Equal("HazardHold", Active(tripped), "hazard branch should remember + goto")
+    Assert.Equal("Monitor", ResumeTarget(tripped), "remember should capture source state")
+
+    let cleared = Guarded(Input { HazardActive: false Ack: true })
+    Step(cleared)
+    match Result(cleared) {
+        ok(value) => { Assert.Equal("cleared", value, "ack branch should allow board mutation + return") }
+        err(e) => { Assert.True(false, "ack branch should return") }
+    }
+
+    let idle = Guarded(Input { HazardActive: false Ack: false })
+    Step(idle)
+    Assert.Equal("Monitor", Active(idle), "else block suspend should keep monitor state active")
+}
