@@ -1,0 +1,120 @@
+package Octomata
+
+/// --- ClampedPIDUpdate ---
+
+[Fact]
+fn ClampedPIDMatchesUnclampedWhenInBounds() -> Void {
+    /// When output is within limits, clamped PID should match regular PID.
+    let result = ClampedPIDUpdate(2.0, 0.5, 0.1, 5.0, 3.0, 0.0, 0.0, 0.2, -100.0, 100.0)!
+    let unclamped = PIDUpdate(2.0, 0.5, 0.1, 5.0, 3.0, 0.0, 0.0, 0.2)!
+
+    Assert.Near(unclamped.Output, result.ClampedOutput, 0.000001, "clamped output matches unclamped when in bounds")
+    Assert.False(result.Saturated, "should not report saturation when in bounds")
+}
+
+[Fact]
+fn ClampedPIDClampsSaturationAtMaxLimit() -> Void {
+    /// Large error with high gain -> output should hit max limit.
+    let result = ClampedPIDUpdate(100.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.1, -1.0, 1.0)!
+
+    Assert.Near(1.0, result.ClampedOutput, 0.000001, "output clamped at max")
+    Assert.True(result.Saturated, "should report saturation")
+}
+
+[Fact]
+fn ClampedPIDClampsSaturationAtMinLimit() -> Void {
+    let result = ClampedPIDUpdate(100.0, 0.0, 0.0, -10.0, 0.0, 0.0, 0.0, 0.1, -1.0, 1.0)!
+
+    Assert.Near(-1.0, result.ClampedOutput, 0.000001, "output clamped at min")
+    Assert.True(result.Saturated, "should report saturation")
+}
+
+[Fact]
+fn AntiWindupFreezesIntegralWhenSaturatedAndWindingUp() -> Void {
+    /// Drive output hard into positive saturation over many steps.
+    /// Without anti-windup, integral would grow unboundedly.
+    /// With anti-windup, integral should freeze.
+    var integral = 0.0
+    var prevErr  = 0.0
+    var i = 0
+    while i < 20 {
+        let r = ClampedPIDUpdate(1.0, 10.0, 0.0, 100.0, 0.0, integral, prevErr, 0.1, -1.0, 1.0)!
+        integral = r.IntegralState
+        prevErr  = r.PreviousError
+        i = i + 1
+    }
+
+    /// Integral should be bounded — without anti-windup it would be 200.0 (100*20*0.1)
+    Assert.True(integral < 10.0, "anti-windup should prevent integral from winding to 200")
+}
+
+[Fact]
+fn AntiWindupAllowsIntegralWhenNotSaturated() -> Void {
+    /// Small error, output well within bounds — integral should accumulate normally.
+    var integral = 0.0
+    var prevErr  = 0.0
+    var i = 0
+    while i < 5 {
+        let r = ClampedPIDUpdate(0.0, 1.0, 0.0, 0.1, 0.0, integral, prevErr, 0.1, -100.0, 100.0)!
+        integral = r.IntegralState
+        prevErr  = r.PreviousError
+        i = i + 1
+    }
+
+    /// ki=1, error=0.1, dt=0.1, 5 steps -> integral = 0.1*0.1*5 = 0.05
+    Assert.Near(0.05, integral, 0.000001, "integral accumulates when not saturated")
+}
+
+[Fact]
+fn ClampedPIDRejectsInvalidLimits() -> Void {
+    match ClampedPIDUpdate(1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.1, 5.0, 1.0) {
+        ok(r) => { Assert.True(false, "should reject outputMin >= outputMax") }
+        err(e) => { }
+    }
+}
+
+/// --- Clamp ---
+
+[Fact]
+fn ClampReturnsValueWhenInRange() -> Void {
+    Assert.Near(3.0, Clamp(3.0, 0.0, 10.0)!, 0.000001, "in-range value unchanged")
+}
+
+[Fact]
+fn ClampEnforcesLimits() -> Void {
+    Assert.Near(0.0, Clamp(-5.0, 0.0, 10.0)!, 0.000001, "below min clamped to min")
+    Assert.Near(10.0, Clamp(15.0, 0.0, 10.0)!, 0.000001, "above max clamped to max")
+}
+
+/// --- Deadband ---
+
+[Fact]
+fn DeadbandZerosSmallSignals() -> Void {
+    Assert.Near(0.0, Deadband(0.05, 0.1)!, 0.000001, "signal within deadband -> 0")
+    Assert.Near(0.0, Deadband(-0.05, 0.1)!, 0.000001, "negative signal within deadband -> 0")
+}
+
+[Fact]
+fn DeadbandPassesLargeSignalsReduced() -> Void {
+    Assert.Near(0.5, Deadband(0.6, 0.1)!, 0.000001, "signal above deadband reduced by threshold")
+    Assert.Near(-0.5, Deadband(-0.6, 0.1)!, 0.000001, "negative signal above deadband")
+}
+
+/// --- RateLimit ---
+
+[Fact]
+fn RateLimitConstrainsStepChange() -> Void {
+    /// Current = 0, target = 10, max rate = 2 -> should advance by 2
+    Assert.Near(2.0, RateLimit(0.0, 10.0, 2.0)!, 0.000001, "step limited to max rate")
+    Assert.Near(-2.0, RateLimit(0.0, -10.0, 2.0)!, 0.000001, "negative step limited")
+}
+
+[Fact]
+fn RateLimitAllowsSmallChanges() -> Void {
+    Assert.Near(3.0, RateLimit(2.0, 3.0, 5.0)!, 0.000001, "small change within rate allowed")
+}
+
+[Fact]
+fn RateLimitReachesTargetExactly() -> Void {
+    Assert.Near(5.0, RateLimit(4.8, 5.0, 1.0)!, 0.000001, "reaches target exactly within rate")
+}
