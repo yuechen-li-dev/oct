@@ -1,32 +1,78 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# ------------------------------
+# Go build artifacts
+# ------------------------------
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.a
+*.o
+*.obj
 
-# Test binary, built with `go test -c`
+# Common local binaries
+oct
+oct.exe
+
+# Test binaries
 *.test
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
+# ------------------------------
+# Coverage / profiling artifacts
+# Keep these precise so we do NOT ignore real source files like coverage.go
+# ------------------------------
+coverage.out
 *.coverprofile
 profile.cov
+cpu.pprof
+mem.pprof
+*.pprof
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
+# ------------------------------
+# Go workspace files
+# ------------------------------
 go.work
 go.work.sum
 
-# env file
+# ------------------------------
+# Environment / local config
+# ------------------------------
 .env
+.env.*
+!.env.example
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# ------------------------------
+# Editor / IDE
+# ------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ------------------------------
+# OS junk
+# ------------------------------
+.DS_Store
+Thumbs.db
+
+# ------------------------------
+# Oct / repo-local generated artifacts
+# ------------------------------
+*.octbin
+*.octagon
+*.bench.cpu.pprof
+*.gen.go
+*.mir
+
+# Dist / temp output
+dist/
+tmp/
+temp/
+
+# ------------------------------
+# Dependency vendoring
+# Default: keep vendor tracked when intentionally generated.
+# Do NOT ignore vendor/ here, because llm-sandbox-vendor exists on purpose.
+# ------------------------------
+# vendor/
