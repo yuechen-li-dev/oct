@@ -1,0 +1,18 @@
+expect error: "function BadBoardType: assignment to board.Count: expected Int, got String"
+
+package MainInvalid
+
+flow BadBoardType() -> Int {
+    board {
+        Count: Int
+    }
+
+    state Start {
+        board.Count = "oops"
+        return 0
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

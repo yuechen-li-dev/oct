@@ -1,0 +1,17 @@
+expect error: "expected 'state' declaration inside flow"
+
+package MainInvalid
+
+flow BadBoardPlacement() -> Int {
+    state Start {
+        return 0
+    }
+
+    board {
+        Flag: Bool
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

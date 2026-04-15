@@ -905,6 +905,35 @@ func TestBuildFileParsesWhenInFlowState(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesFlowBoardDeclaration(t *testing.T) {
+	file := parseSource(t, "flow Patrol(input: Bool) -> Int { board { FaultLatched: Bool Cooldown: Int } state Start { if input { board.FaultLatched = true } return board.Cooldown } }")
+	flow := file.Flows[0]
+	if len(flow.Board) != 2 {
+		t.Fatalf("expected 2 board fields, got %d", len(flow.Board))
+	}
+	if flow.Board[0].Name != "FaultLatched" || flow.Board[0].Type.Name != "Bool" {
+		t.Fatalf("unexpected first board field: %#v", flow.Board[0])
+	}
+}
+
+func TestBuildFileParsesWhenBlockAction(t *testing.T) {
+	file := parseSource(t, "flow Patrol(flag: Bool) -> Int { state Search { when { case flag -> { remember goto Track } else -> { suspend } } } state Track { return 1 } }")
+	whenStmt, ok := file.Flows[0].States[0].Body.Statements[0].(ast.WhenStmt)
+	if !ok {
+		t.Fatalf("expected when statement, got %T", file.Flows[0].States[0].Body.Statements[0])
+	}
+	caseAction, ok := whenStmt.Cases[0].Action.(ast.WhenBlockAction)
+	if !ok {
+		t.Fatalf("expected block action, got %T", whenStmt.Cases[0].Action)
+	}
+	if len(caseAction.Statements) != 2 {
+		t.Fatalf("expected 2 statements in when block action, got %d", len(caseAction.Statements))
+	}
+	if _, ok := caseAction.Statements[0].(ast.RememberStmt); !ok {
+		t.Fatalf("expected remember statement first in when block, got %T", caseAction.Statements[0])
+	}
+}
+
 func TestBuildFileParsesRememberResumeInFlowState(t *testing.T) {
 	file := parseSource(t, "flow Patrol(input: Int) -> Int { state Search { remember goto Track } state Track { if input > 0 { resume } return input } }")
 	if len(file.Flows) != 1 {

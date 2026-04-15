@@ -966,6 +966,82 @@ fn main() -> Int {
 	}
 }
 
+func TestCompileFlowBoardAndWhenActionBlock(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+record Input {
+    HazardActive: Bool
+    Ack: Bool
+}
+
+flow Machine(input: Input) -> Int {
+    board {
+        FaultLatched: Bool
+        Count: Int
+    }
+
+    state Start {
+        when {
+            case input.HazardActive -> {
+                remember
+                board.FaultLatched = true
+                board.Count = board.Count + 1
+                goto Hold
+            }
+            case input.Ack -> {
+                board.FaultLatched = false
+                return 7
+            }
+            else -> {
+                suspend
+            }
+        }
+    }
+
+    state Hold {
+        return board.Count
+    }
+}
+
+fn main() -> Int {
+    let f = Machine(Input { HazardActive: true Ack: false })
+    Step(f)
+    match Result(f) {
+        ok(v) => { return v }
+        err(e) => { return -1 }
+    }
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "board.Count = (board.Count + 1)") {
+		t.Fatalf("expected board field reads/writes in MIR dump, got:\n%s", text)
+	}
+	if !strings.Contains(text, "case input.HazardActive -> { remember; board.FaultLatched = true; board.Count = (board.Count + 1); goto Hold }") {
+		t.Fatalf("expected when action block in MIR dump, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileFlowRememberResumeMIRDump(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")

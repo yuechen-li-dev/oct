@@ -123,6 +123,8 @@ type functionContext struct {
 	inFlow     bool
 	inState    bool
 	states     map[string]struct{}
+	boardType  Type
+	board      map[string]Type
 }
 
 func Check(file ast.File) error {
@@ -487,7 +489,24 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 
 	flowScope := newScope(nil)
 	for i, parameter := range flow.Parameters {
+		if parameter.Name == "board" && len(flow.Board) > 0 {
+			return fmt.Errorf("flow %s: parameter name 'board' conflicts with flow board declaration", flow.Name)
+		}
 		flowScope.define(parameter.Name, signature.parameters[i], false)
+	}
+	boardFields := make(map[string]Type, len(flow.Board))
+	if len(flow.Board) > 0 {
+		for _, field := range flow.Board {
+			if _, exists := boardFields[field.Name]; exists {
+				return fmt.Errorf("flow %s: duplicate board field '%s'", flow.Name, field.Name)
+			}
+			fieldType, err := c.resolveFlowBoardFieldType(field.Type)
+			if err != nil {
+				return fmt.Errorf("flow %s board field %s: %w", flow.Name, field.Name, err)
+			}
+			boardFields[field.Name] = fieldType
+		}
+		flowScope.define("board", Type{Name: "__flow_board_" + flow.Name}, false)
 	}
 	stateSet := make(map[string]struct{}, len(flow.States))
 	for _, state := range flow.States {
@@ -497,7 +516,14 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 		stateSet[state.Name] = struct{}{}
 	}
 
-	ctx := functionContext{name: flow.Name, returnType: signature.returnType, inFlow: true, states: stateSet}
+	ctx := functionContext{
+		name:       flow.Name,
+		returnType: signature.returnType,
+		inFlow:     true,
+		states:     stateSet,
+		boardType:  Type{Name: "__flow_board_" + flow.Name},
+		board:      boardFields,
+	}
 	for _, state := range flow.States {
 		stateCtx := ctx
 		stateCtx.inState = true
@@ -506,6 +532,22 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 		}
 	}
 	return nil
+}
+
+func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
+	t, err := c.resolveNonReturnType(ref)
+	if err != nil {
+		return Type{}, err
+	}
+	if t.IsArray || t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
+		return Type{}, fmt.Errorf("board fields must be one of Bool, Int, Float, or String")
+	}
+	switch t.Base {
+	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
+		return t, nil
+	default:
+		return Type{}, fmt.Errorf("board fields must be one of Bool, Int, Float, or String")
+	}
 }
 
 func (c checker) checkInlineDataExpr(expr ast.Expr) (Type, error) {
@@ -645,13 +687,23 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if !ok {
 			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Target)
 		}
-		recordDecl, ok := c.lookupRecord(target.valueType.Name)
-		if !ok || target.valueType.IsArray || target.valueType.Base != "" {
-			return false, fmt.Errorf("function %s: board field assignment requires board to be a record type, got %s", ctx.name, target.valueType)
-		}
-		fieldType, ok := recordDecl.fields[node.Field]
-		if !ok {
-			return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
+		var fieldType Type
+		if ctx.board != nil && target.valueType == ctx.boardType {
+			var exists bool
+			fieldType, exists = ctx.board[node.Field]
+			if !exists {
+				return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
+			}
+		} else {
+			recordDecl, recordOk := c.lookupRecord(target.valueType.Name)
+			if !recordOk || target.valueType.IsArray || target.valueType.Base != "" {
+				return false, fmt.Errorf("function %s: board field assignment requires board to be a record type, got %s", ctx.name, target.valueType)
+			}
+			var exists bool
+			fieldType, exists = recordDecl.fields[node.Field]
+			if !exists {
+				return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
+			}
 		}
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
@@ -862,8 +914,34 @@ func (c checker) checkWhenAction(scope *scope, action ast.WhenAction, ctx functi
 		return false, nil
 	case ast.WhenReturnAction:
 		return c.checkStmt(scope, ast.ReturnStmt{Value: node.Value}, ctx)
+	case ast.WhenBlockAction:
+		if len(node.Statements) == 0 {
+			return false, fmt.Errorf("function %s: when block action must contain at least one statement", ctx.name)
+		}
+		for i, statement := range node.Statements {
+			switch statement.(type) {
+			case ast.RememberStmt, ast.ResumeStmt, ast.GotoStmt, ast.SuspendStmt, ast.ReturnStmt, ast.FieldAssignStmt:
+				// allowed
+			default:
+				return false, fmt.Errorf("function %s: when block action only supports remember, resume, goto, suspend, return, and board assignment", ctx.name)
+			}
+			isLast := i == len(node.Statements)-1
+			if !isLast {
+				switch statement.(type) {
+				case ast.ReturnStmt, ast.GotoStmt, ast.SuspendStmt, ast.ResumeStmt:
+					return false, fmt.Errorf("function %s: when block action has unreachable statements after control transfer", ctx.name)
+				}
+			}
+		}
+		switch node.Statements[len(node.Statements)-1].(type) {
+		case ast.ReturnStmt, ast.GotoStmt, ast.SuspendStmt, ast.ResumeStmt:
+			// required for deterministic when action lowering.
+		default:
+			return false, fmt.Errorf("function %s: when block action must end with goto, suspend, resume, or return", ctx.name)
+		}
+		return c.checkBlock(scope, ast.Block{Statements: node.Statements}, ctx)
 	default:
-		return false, fmt.Errorf("function %s: when branch action must be goto, suspend, or return", ctx.name)
+		return false, fmt.Errorf("function %s: when branch action must be goto, suspend, return, or action block", ctx.name)
 	}
 }
 
@@ -1030,6 +1108,13 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		}
 		if targetType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if ctx.board != nil && targetType.ValueType == ctx.boardType {
+			fieldType, ok := ctx.board[node.Field]
+			if !ok {
+				return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType.Name, node.Field)
+			}
+			return ExprType{ValueType: fieldType}, nil
 		}
 		recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
 		if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {

@@ -1,0 +1,50 @@
+package MainValid
+
+flow BoardDeclLoop(tempHigh: Bool) -> String {
+    board {
+        FaultLatched: Bool
+        CooldownTicks: Int
+        LastTemp: Float
+        Label: String
+    }
+
+    state Tick {
+        if tempHigh {
+            board.FaultLatched = true
+            board.CooldownTicks = 2
+            board.LastTemp = 99.5
+            board.Label = "fault"
+            goto Fault
+        }
+
+        if board.CooldownTicks > 0 {
+            board.CooldownTicks = board.CooldownTicks - 1
+            return "cooldown"
+        }
+
+        return board.Label
+    }
+
+    state Fault {
+        return board.Label
+    }
+}
+
+[Fact]
+fn DeclaredBoardDefaultsAndMutationsWork() -> Void {
+    let nominal = BoardDeclLoop(false)
+    Step(nominal)
+    match Result(nominal) {
+        ok(value) => {
+            Assert.Equal("", value, "String board fields should default to empty")
+        }
+        err(e) => { Assert.True(false, "nominal run should return") }
+    }
+
+    let fault = BoardDeclLoop(true)
+    Step(fault)
+    match Result(fault) {
+        ok(value) => { Assert.Equal("fault", value, "mutated board fields should persist across goto") }
+        err(e) => { Assert.True(false, "fault run should return") }
+    }
+}

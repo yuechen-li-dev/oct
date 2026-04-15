@@ -144,6 +144,12 @@ A blackboard is behavior-local working memory owned by control flow.
 
 Declare board shape inside the flow with `board { ... }` before states.
 Board shape is fixed for the flow instance and fields are declared up front.
+Board fields are default initialized by type:
+
+- `Bool -> false`
+- `Int -> 0`
+- `Float -> 0.0`
+- `String -> ""`
 
 ```oct
 package Main
@@ -251,6 +257,22 @@ flow DoorControl(openCmd: Bool, closeCmd: Bool, blocked: Bool) -> String {
 ```
 
 Why this is clearer than ad hoc `if` branching: transition options are listed in one place, in execution order.
+
+For interrupt-style control, guard branches also support bounded action blocks:
+
+```oct
+when {
+    case input.HazardActive -> {
+        remember
+        goto HazardHold
+    }
+    else -> {
+        suspend
+    }
+}
+```
+
+Action blocks are intentionally bounded to flow-control statements (`remember`, `resume`, `goto`, `suspend`, `return`) plus board field assignment.
 
 ## Utility `when`
 

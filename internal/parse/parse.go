@@ -550,6 +550,31 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' after flow signature"); err != nil {
 		return ast.FlowDecl{}, err
 	}
+	boardFields := make([]ast.BoardField, 0)
+	if p.current().Kind == lex.Identifier && p.current().Lexeme == "board" {
+		p.advance()
+		if _, err := p.expect(lex.LeftBrace, "expected '{' after 'board'"); err != nil {
+			return ast.FlowDecl{}, err
+		}
+		for p.current().Kind != lex.RightBrace {
+			if p.current().Kind == lex.EOF {
+				return ast.FlowDecl{}, p.errorAtCurrent("expected '}' to close board declaration")
+			}
+			fieldName, err := p.expect(lex.Identifier, "expected board field name")
+			if err != nil {
+				return ast.FlowDecl{}, err
+			}
+			if _, err := p.expect(lex.Colon, "expected ':' after board field name"); err != nil {
+				return ast.FlowDecl{}, err
+			}
+			fieldType, err := p.parseTypeRef()
+			if err != nil {
+				return ast.FlowDecl{}, err
+			}
+			boardFields = append(boardFields, ast.BoardField{Name: fieldName.Lexeme, Type: fieldType})
+		}
+		p.advance()
+	}
 	states := make([]ast.StateDecl, 0)
 	for p.current().Kind != lex.RightBrace {
 		if p.current().Kind == lex.EOF {
@@ -562,7 +587,7 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 		states = append(states, stateDecl)
 	}
 	p.advance()
-	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType, States: states}
+	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType, Board: boardFields, States: states}
 	if len(states) > 0 {
 		flow.EntryState = states[0].Name
 	}
@@ -824,6 +849,13 @@ func (p *parser) parseWhenStmt() (ast.Stmt, error) {
 }
 
 func (p *parser) parseWhenAction() (ast.WhenAction, error) {
+	if p.current().Kind == lex.LeftBrace {
+		block, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		return ast.WhenBlockAction{Statements: block.Statements}, nil
+	}
 	switch p.current().Kind {
 	case lex.KeywordGoto:
 		p.advance()

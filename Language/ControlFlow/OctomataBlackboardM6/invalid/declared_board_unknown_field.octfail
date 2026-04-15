@@ -1,0 +1,18 @@
+expect error: "function BadBoardField: type '__flow_board_BadBoardField' has no field 'Missing'"
+
+package MainInvalid
+
+flow BadBoardField() -> Int {
+    board {
+        Flag: Bool
+    }
+
+    state Start {
+        board.Missing = true
+        return 0
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}
