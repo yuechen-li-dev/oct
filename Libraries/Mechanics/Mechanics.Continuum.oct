@@ -1,0 +1,176 @@
+package Mechanics
+
+/// 2D continuum mechanics: kinematics, constitutive relations, and material
+/// parameter bridges.
+///
+/// Covers small-strain and finite-strain kinematics, isotropic linear elastic
+/// constitutive maps under plane stress and plane strain assumptions, and
+/// engineering parameter conversion (Young's modulus E, Poisson's ratio nu).
+///
+/// All tensors are 2×2 Matrix<Float> in Voigt-like arrangement.
+/// Flat-array forms are not used here — the Matrix<Float> builtin and
+/// Einstein index notation express the operations directly.
+
+// ============================================================
+// Material parameter bridges
+// ============================================================
+
+/// Shear modulus from Young's modulus and Poisson's ratio.
+/// mu = E / (2 * (1 + nu))
+fn MuFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return E / (2.0 * (1.0 + nu))
+}
+
+/// 3D Lamé first parameter from engineering parameters.
+/// lambda = E * nu / ((1 + nu) * (1 - 2*nu))
+fn LameLambdaFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return (E * nu) / ((1.0 + nu) * (1.0 - 2.0 * nu))
+}
+
+/// Bulk modulus from Young's modulus and Poisson's ratio.
+/// K = E / (3 * (1 - 2*nu))
+fn BulkModulusFromYoungPoisson(E: Float, nu: Float) -> Float {
+    return E / (3.0 * (1.0 - 2.0 * nu))
+}
+
+/// Effective in-plane Lamé lambda for plane stress, derived from 3D parameters
+/// by eliminating sigma_zz = 0.
+/// lambda* = 2*mu*lambda / (lambda + 2*mu)
+fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
+    return (2.0 * mu * lambda) / (lambda + 2.0 * mu)
+}
+
+// ============================================================
+// Small-strain kinematics
+// ============================================================
+
+/// Symmetric small-strain tensor from a displacement gradient matrix.
+/// eps = 0.5 * (gradU + gradU^T)
+/// The diagonal entries are normal strains; off-diagonal are engineering
+/// shear strains divided by 2 (tensor shear components).
+fn SmallStrain2D(gradU: Matrix<Float>) -> Matrix<Float> {
+    return matrix[[
+        gradU[0, 0],
+        0.5 * (gradU[0, 1] + gradU[1, 0])
+    ] [
+        0.5 * (gradU[1, 0] + gradU[0, 1]),
+        gradU[1, 1]
+    ]]
+}
+
+/// Volumetric strain: first invariant I1 = tr(eps).
+/// Equals the sum of normal strains: eps_xx + eps_yy.
+fn VolumetricStrain2D(strain: Matrix<Float>) -> Float {
+    return Trace(strain)
+}
+
+// ============================================================
+// Finite-strain kinematics
+// ============================================================
+
+/// Right Cauchy-Green deformation tensor: C = F^T * F.
+/// Symmetric, positive definite for admissible deformation gradients.
+/// Eigenvalues are the squares of the principal stretches.
+fn RightCauchyGreen2D(F: Matrix<Float>) -> Matrix<Float> {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+    return F[k, i] * F[k, j]
+}
+
+/// Left Cauchy-Green (Finger) deformation tensor: B = F * F^T.
+/// Used in Eulerian (spatial) formulations; related to principal stretches
+/// in the deformed configuration.
+fn LeftCauchyGreen2D(F: Matrix<Float>) -> Matrix<Float> {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+    return F[i, k] * F[j, k]
+}
+
+/// Green-Lagrange strain tensor: E = 0.5 * (C - I).
+/// Reduces to the small-strain tensor eps when displacements are small.
+/// Measures stretch relative to the reference configuration.
+fn GreenLagrangeStrain2D(F: Matrix<Float>) -> Matrix<Float> {
+    let C    = RightCauchyGreen2D(F)
+    let half = 0.5
+    return matrix[[
+        half * (C[0, 0] - 1.0),
+        half * C[0, 1]
+    ] [
+        half * C[1, 0],
+        half * (C[1, 1] - 1.0)
+    ]]
+}
+
+// ============================================================
+// Tensor invariants
+// ============================================================
+
+/// First invariant I1 = tr(T).
+/// For strain: equals volumetric (dilatational) part.
+/// For stress: equals three times the hydrostatic pressure (in 2D approximation).
+fn FirstInvariantI1(T: Matrix<Float>) -> Float {
+    return Trace(T)
+}
+
+/// Second invariant I2 for a 2×2 symmetric tensor.
+/// I2 = 0.5 * ((tr T)^2 - tr(T^2))
+///    = T[0,0]*T[1,1] - T[0,1]*T[1,0]
+/// For a symmetric 2×2 matrix this equals the determinant.
+fn SecondInvariantI2(T: Matrix<Float>) -> Float {
+    return T[0, 0] * T[1, 1] - T[0, 1] * T[1, 0]
+}
+
+/// Von Mises equivalent stress from a 2D plane stress tensor.
+/// Accounts for out-of-plane deviatoric component s_zz = -(s_xx + s_yy).
+/// sigma_vm = sqrt(3/2 * s_ij * s_ij) where the double contraction
+/// includes the out-of-plane term.
+fn VonMisesStress2D(sigma: Matrix<Float>) -> Float {
+    let p   = Trace(sigma) / 3.0
+    let sxx = sigma[0, 0] - p
+    let syy = sigma[1, 1] - p
+    let sxy = sigma[0, 1]
+    let szz = 0.0 - sxx - syy
+    let contraction = sxx*sxx + syy*syy + szz*szz + 2.0*sxy*sxy
+    return Sqrt(1.5 * contraction)
+}
+
+// ============================================================
+// Isotropic linear elastic constitutive relations
+// ============================================================
+
+/// Isotropic linear elastic stress from strain and Lamé parameters.
+/// sigma = lambda * tr(eps) * I + 2 * mu * eps
+/// Valid for both plane strain (full lambda) and plane stress (effective lambda*).
+fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let vol      = FirstInvariantI1(strain)
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    return (lambda * vol) * identity + (2.0 * mu) * strain
+}
+
+/// Plane strain constitutive relation using Lamé parameters.
+/// Full 3D lambda — out-of-plane strain is constrained to zero.
+fn LinearIsotropicStressPlaneStrain2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, lambda, mu)
+}
+
+/// Plane stress constitutive relation using Lamé parameters.
+/// Uses effective lambda* to enforce sigma_zz = 0.
+fn LinearIsotropicStressPlaneStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    return LinearIsotropicStress2D(strain, PlaneStressLambda2D(lambda, mu), mu)
+}
+
+/// Plane strain constitutive relation from Young's modulus and Poisson's ratio.
+fn LinearIsotropicStressPlaneStrain2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let mu     = MuFromYoungPoisson(E, nu)
+    return LinearIsotropicStressPlaneStrain2D(strain, lambda, mu)
+}
+
+/// Plane stress constitutive relation from Young's modulus and Poisson's ratio.
+fn LinearIsotropicStressPlaneStress2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let mu     = MuFromYoungPoisson(E, nu)
+    return LinearIsotropicStressPlaneStress2D(strain, lambda, mu)
+}

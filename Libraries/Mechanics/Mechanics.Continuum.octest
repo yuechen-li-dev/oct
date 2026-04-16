@@ -1,0 +1,350 @@
+package Mechanics
+
+// ============================================================
+// Material parameter bridges
+// ============================================================
+
+[Fact]
+fn MuFromYoungPoissonMatchesFormula() -> Void {
+    // mu = E / (2*(1+nu))  for E=210e9, nu=0.3 -> mu=80.77e9
+    let mu = MuFromYoungPoisson(210.0, 0.3)
+    Assert.Near(80.769, mu, 0.001, "shear modulus from E=210, nu=0.3")
+}
+
+[Fact]
+fn LameLambdaFromYoungPoissonMatchesFormula() -> Void {
+    // lambda = E*nu / ((1+nu)*(1-2*nu))  for E=210, nu=0.3 -> lambda=121.15
+    let lambda = LameLambdaFromYoungPoisson(210.0, 0.3)
+    Assert.Near(121.154, lambda, 0.001, "lame lambda from E=210, nu=0.3")
+}
+
+[Fact]
+fn BulkModulusFromYoungPoissonMatchesFormula() -> Void {
+    // K = E / (3*(1-2*nu))  for E=210, nu=0.3 -> K=175
+    let K = BulkModulusFromYoungPoisson(210.0, 0.3)
+    Assert.Near(175.0, K, 0.001, "bulk modulus from E=210, nu=0.3")
+}
+
+[Fact]
+fn MuAndLambdaRelationToKIsConsistent() -> Void {
+    // K = lambda + 2*mu/3  (3D relation)
+    let E  = 200.0
+    let nu = 0.25
+    let mu     = MuFromYoungPoisson(E, nu)
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let K      = BulkModulusFromYoungPoisson(E, nu)
+    Assert.Near(K, lambda + 2.0 * mu / 3.0, 0.001, "K = lambda + 2*mu/3")
+}
+
+[Fact]
+fn PlaneStressLambdaIsLessThanFullLambda() -> Void {
+    // Effective plane stress lambda* < 3D lambda for nu > 0.
+    let lambda = LameLambdaFromYoungPoisson(210.0, 0.3)
+    let mu     = MuFromYoungPoisson(210.0, 0.3)
+    let lambdaStar = PlaneStressLambda2D(lambda, mu)
+    Assert.True(lambdaStar < lambda, "plane stress effective lambda < 3D lambda")
+}
+
+[Fact]
+fn PlaneStressLambdaMatchesEngineeringFormula() -> Void {
+    // For plane stress: lambda* = 2*E*nu / ((1+nu)*(1-nu)) simplifies via Lame.
+    // Numerically verify against known E=100, nu=0.25 case.
+    let E  = 100.0
+    let nu = 0.25
+    let lambda     = LameLambdaFromYoungPoisson(E, nu)
+    let mu         = MuFromYoungPoisson(E, nu)
+    let lambdaStar = PlaneStressLambda2D(lambda, mu)
+    // lambda* = 2*mu*lambda / (lambda + 2*mu)
+    let expected = (2.0 * mu * lambda) / (lambda + 2.0 * mu)
+    Assert.Near(expected, lambdaStar, 0.000001, "plane stress lambda matches formula")
+}
+
+// ============================================================
+// Small-strain kinematics
+// ============================================================
+
+[Fact]
+fn SmallStrain2DProducesSymmetricTensor() -> Void {
+    // SmallStrain2D must produce a symmetric tensor for any gradU.
+    let gradU = matrix[[0.02, 0.05] [0.01, -0.01]]
+    let eps = SmallStrain2D(gradU)
+    Assert.Near(eps[0, 1], eps[1, 0], 0.000001, "strain tensor is symmetric")
+}
+
+[Fact]
+fn SmallStrain2DForPureExtensionHasNoShear() -> Void {
+    // Pure axial stretch: gradU = [[e, 0][0, 0]] -> eps = [[e, 0][0, 0]]
+    let gradU = matrix[[0.03, 0.0] [0.0, 0.0]]
+    let eps = SmallStrain2D(gradU)
+    Assert.Near(0.03, eps[0, 0], 0.000001, "axial strain correct")
+    Assert.Near(0.0,  eps[0, 1], 0.000001, "no shear for pure extension")
+    Assert.Near(0.0,  eps[1, 1], 0.000001, "no transverse strain for pure extension")
+}
+
+[Fact]
+fn SmallStrain2DForPureShearIsSymmetric() -> Void {
+    // Pure shear: gradU = [[0, gamma][0, 0]] -> eps_xy = gamma/2
+    let gradU = matrix[[0.0, 0.04] [0.0, 0.0]]
+    let eps = SmallStrain2D(gradU)
+    Assert.Near(0.0,  eps[0, 0], 0.000001, "no normal strain for pure shear")
+    Assert.Near(0.02, eps[0, 1], 0.000001, "tensor shear = gamma/2")
+    Assert.Near(0.02, eps[1, 0], 0.000001, "tensor shear is symmetric")
+}
+
+[Fact]
+fn VolumetricStrainEqualsTraceOfStrainTensor() -> Void {
+    let gradU = matrix[[0.02, 0.03] [0.01, -0.01]]
+    let eps   = SmallStrain2D(gradU)
+    let vol   = VolumetricStrain2D(eps)
+    Assert.Near(eps[0, 0] + eps[1, 1], vol, 0.000001, "volumetric = trace(eps)")
+}
+
+[Fact]
+fn VolumetricStrainIsZeroForIsochoricDeformation() -> Void {
+    // Isochoric (volume-preserving): tr(eps) = 0.
+    // eps_xx = 0.01, eps_yy = -0.01 -> tr = 0.
+    let gradU = matrix[[0.01, 0.0] [0.0, -0.01]]
+    let eps   = SmallStrain2D(gradU)
+    let vol   = VolumetricStrain2D(eps)
+    Assert.Near(0.0, vol, 0.000001, "isochoric deformation has zero volumetric strain")
+}
+
+// ============================================================
+// Finite-strain kinematics
+// ============================================================
+
+[Fact]
+fn RightCauchyGreenIsSymmetric() -> Void {
+    let F = matrix[[1.10, 0.20] [0.00, 0.95]]
+    let C = RightCauchyGreen2D(F)
+    Assert.Near(C[0, 1], C[1, 0], 0.000001, "C = F^T F is symmetric")
+}
+
+[Fact]
+fn RightCauchyGreenMatchesTextbookValues() -> Void {
+    // F = [[1.10, 0.20][0.00, 0.95]]
+    // C = F^T F: C00 = 1.21, C01=C10 = 0.22, C11 = 0.9425 (0.04+0.9025)
+    let F = matrix[[1.10, 0.20] [0.00, 0.95]]
+    let C = RightCauchyGreen2D(F)
+    Assert.Near(1.21,   C[0, 0], 0.000001, "C00")
+    Assert.Near(0.22,   C[0, 1], 0.000001, "C01")
+    Assert.Near(0.9425, C[1, 1], 0.000001, "C11")
+}
+
+[Fact]
+fn RightCauchyGreenEqualsIdentityForNoDeformation() -> Void {
+    // F = I -> C = I
+    let F = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let C = RightCauchyGreen2D(F)
+    Assert.Near(1.0, C[0, 0], 0.000001, "C00 = 1 for identity F")
+    Assert.Near(0.0, C[0, 1], 0.000001, "C01 = 0 for identity F")
+    Assert.Near(1.0, C[1, 1], 0.000001, "C11 = 1 for identity F")
+}
+
+[Fact]
+fn LeftCauchyGreenIsSymmetric() -> Void {
+    let F = matrix[[1.10, 0.20] [0.05, 0.95]]
+    let B = LeftCauchyGreen2D(F)
+    Assert.Near(B[0, 1], B[1, 0], 0.000001, "B = F F^T is symmetric")
+}
+
+[Fact]
+fn GreenLagrangeStrainIsZeroForNoDeformation() -> Void {
+    // F = I -> E = 0.5*(I - I) = 0
+    let F = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let E = GreenLagrangeStrain2D(F)
+    Assert.Near(0.0, E[0, 0], 0.000001, "E00 = 0 for identity F")
+    Assert.Near(0.0, E[0, 1], 0.000001, "E01 = 0 for identity F")
+    Assert.Near(0.0, E[1, 1], 0.000001, "E11 = 0 for identity F")
+}
+
+[Fact]
+fn GreenLagrangeStrainIsSymmetric() -> Void {
+    let F = matrix[[1.10, 0.20] [0.00, 0.95]]
+    let E = GreenLagrangeStrain2D(F)
+    Assert.Near(E[0, 1], E[1, 0], 0.000001, "Green-Lagrange strain is symmetric")
+}
+
+[Fact]
+fn GreenLagrangeStrainApproachesSmallStrainForSmallDisplacements() -> Void {
+    // For small displacements, GL strain -> small strain.
+    // gradU = [[0.001, 0.002][0.001, -0.001]] (tiny)
+    // F = I + gradU
+    let F = matrix[[1.001, 0.002] [0.001, 0.999]]
+    let gradU = matrix[[0.001, 0.002] [0.001, -0.001]]
+
+    let EGL    = GreenLagrangeStrain2D(F)
+    let epsSmall = SmallStrain2D(gradU)
+
+    // At small strains, GL and small strain should be very close.
+    Assert.Near(epsSmall[0, 0], EGL[0, 0], 0.0001, "GL ~ small strain for small displacements (00)")
+    Assert.Near(epsSmall[0, 1], EGL[0, 1], 0.0001, "GL ~ small strain for small displacements (01)")
+}
+
+// ============================================================
+// Tensor invariants
+// ============================================================
+
+[Fact]
+fn FirstInvariantI1IsTrace() -> Void {
+    let T  = matrix[[3.0, 1.0] [1.0, 7.0]]
+    let I1 = FirstInvariantI1(T)
+    Assert.Near(10.0, I1, 0.000001, "I1 = trace = 3 + 7 = 10")
+}
+
+[Fact]
+fn SecondInvariantI2IsDeterminantFor2x2() -> Void {
+    // For 2×2: I2 = det(T) = T00*T11 - T01*T10
+    let T  = matrix[[3.0, 1.0] [1.0, 7.0]]
+    let I2 = SecondInvariantI2(T)
+    Assert.Near(20.0, I2, 0.000001, "I2 = det = 3*7 - 1*1 = 20")
+}
+
+[Fact]
+fn SecondInvariantI2IsZeroForSingularTensor() -> Void {
+    // Rank-1 tensor has zero determinant.
+    let T  = matrix[[2.0, 4.0] [1.0, 2.0]]
+    let I2 = SecondInvariantI2(T)
+    Assert.Near(0.0, I2, 0.000001, "singular tensor has I2 = 0")
+}
+
+[Fact]
+fn InvariantsAreRotationallyInvariant() -> Void {
+    // Rotate a symmetric tensor by 45 degrees and check I1, I2 are preserved.
+    // Original: [[5, 2][2, 3]], I1=8, I2=15-4=11
+    let T = matrix[[5.0, 2.0] [2.0, 3.0]]
+    let I1 = FirstInvariantI1(T)
+    let I2 = SecondInvariantI2(T)
+
+    // Rotate by 45 degrees: Q = [[c, -s][s, c]], c=s=1/sqrt(2)
+    let c  = 1.0 / Sqrt(2.0)
+    let Q  = matrix[[c, (0.0 - c)] [c, c]]
+    let i  = Idx("i")
+    let j  = Idx("j")
+    let k  = Idx("k")
+    let l  = Idx("l")
+    // T' = Q * T * Q^T
+    let QT  = Q[i, k] * T[k, j]
+    let TRot = QT[i, k] * Q[j, k]
+
+    Assert.Near(I1, FirstInvariantI1(TRot),  0.0001, "I1 preserved under rotation")
+    Assert.Near(I2, SecondInvariantI2(TRot), 0.0001, "I2 preserved under rotation")
+}
+
+// ============================================================
+// Von Mises stress
+// ============================================================
+
+[Fact]
+fn VonMisesStress2DForUniaxialTensionEqualsForceMagnitude() -> Void {
+    // Uniaxial tension: sigma_xx = S, all others 0 -> sigma_vm = S
+    let S     = 250.0
+    let sigma = matrix[[250.0, 0.0] [0.0, 0.0]]
+    let vm    = VonMisesStress2D(sigma)
+    Assert.Near(S, vm, 0.001, "uniaxial tension: vm = applied stress")
+}
+
+[Fact]
+fn VonMisesStress2DForPureShearIsRootThreeTimesShear() -> Void {
+    // Pure shear tau: sigma_vm = sqrt(3) * tau
+    let tau   = 100.0
+    let sigma = matrix[[0.0, 100.0] [100.0, 0.0]]
+    let vm    = VonMisesStress2D(sigma)
+    Assert.Near(Sqrt(3.0) * tau, vm, 0.001, "pure shear: vm = sqrt(3)*tau")
+}
+
+[Fact]
+fn VonMisesStress2DScalesWithStressLevel() -> Void {
+    // Von Mises is degree-1 homogeneous: vm(2*sigma) = 2*vm(sigma)
+    let sigma  = matrix[[150.0, 60.0] [60.0, 80.0]]
+    let sigma2 = matrix[[300.0, 120.0] [120.0, 160.0]]
+    let vm1 = VonMisesStress2D(sigma)
+    let vm2 = VonMisesStress2D(sigma2)
+    Assert.Near(2.0 * vm1, vm2, 0.001, "von Mises is degree-1 homogeneous")
+}
+
+// ============================================================
+// Isotropic linear elastic constitutive relations
+// ============================================================
+
+[Fact]
+fn LinearIsotropicStress2DMatchesLambdaMuSkeleton() -> Void {
+    // eps = [[0.01, 0.02][0.02, -0.005]], lambda=100, mu=50
+    // tr(eps) = 0.005, sigma = 100*0.005*I + 100*eps
+    // sigma00 = 0.5 + 100*0.01 = 1.5, sigma11 = 0.5 + 100*(-0.005) = 0
+    // sigma01 = 100*0.02 = 2.0
+    let eps   = matrix[[0.01, 0.02] [0.02, (0.0 - 0.005)]]
+    let sigma = LinearIsotropicStress2D(eps, 100.0, 50.0)
+    Assert.Near(1.5, sigma[0, 0], 0.000001, "sigma00")
+    Assert.Near(2.0, sigma[0, 1], 0.000001, "sigma01")
+    Assert.Near(2.0, sigma[1, 0], 0.000001, "sigma10")
+    Assert.Near(0.0, sigma[1, 1], 0.000001, "sigma11")
+}
+
+[Fact]
+fn LinearIsotropicStress2DProducesSymmetricTensor() -> Void {
+    // Constitutive map of a symmetric strain must be symmetric.
+    let gradU = matrix[[0.02, 0.03] [0.01, -0.01]]
+    let eps   = SmallStrain2D(gradU)
+    let sigma = LinearIsotropicStress2D(eps, 120.0, 80.0)
+    Assert.Near(sigma[0, 1], sigma[1, 0], 0.000001, "stress tensor is symmetric")
+}
+
+[Fact]
+fn PlaneStressAndPlaneStrainDifferForNonZeroVolumetricStrain() -> Void {
+    // When tr(eps) != 0, plane stress and plane strain give different results.
+    let gradU = matrix[[0.02, 0.01] [0.00, -0.01]]
+    let eps   = SmallStrain2D(gradU)
+    let lambda = 120.0
+    let mu     = 80.0
+    let sigmaPS  = LinearIsotropicStressPlaneStress2D(eps, lambda, mu)
+    let sigmaPSN = LinearIsotropicStressPlaneStrain2D(eps, lambda, mu)
+    Assert.True(sigmaPS[0, 0] != sigmaPSN[0, 0], "plane stress and plane strain differ when tr(eps) != 0")
+}
+
+[Fact]
+fn PlaneStressAndPlaneStrainAgreeForIsochoricStrain() -> Void {
+    // When tr(eps) = 0, lambda* doesn't matter — both are identical.
+    // Pure shear has zero trace.
+    let eps    = matrix[[0.0, 0.02] [0.02, 0.0]]
+    let lambda = 100.0
+    let mu     = 60.0
+    let sigmaPS  = LinearIsotropicStressPlaneStress2D(eps, lambda, mu)
+    let sigmaPSN = LinearIsotropicStressPlaneStrain2D(eps, lambda, mu)
+    Assert.Near(sigmaPS[0, 1], sigmaPSN[0, 1], 0.000001, "agree on shear for isochoric strain")
+    Assert.Near(sigmaPS[0, 0], sigmaPSN[0, 0], 0.000001, "agree on normals for isochoric strain")
+}
+
+[Fact]
+fn YoungPoissonBridgeMatchesDirectLamePath() -> Void {
+    // Verify that FromYoungPoisson variants produce the same result as
+    // computing lambda/mu explicitly and passing them.
+    let E  = 210.0
+    let nu = 0.30
+    let gradU = matrix[[0.02, 0.01] [0.00, -0.01]]
+    let eps   = SmallStrain2D(gradU)
+
+    let lambda = LameLambdaFromYoungPoisson(E, nu)
+    let mu     = MuFromYoungPoisson(E, nu)
+
+    let sigmaBridgePE = LinearIsotropicStressPlaneStrain2DFromYoungPoisson(eps, E, nu)
+    let sigmaLamePE   = LinearIsotropicStressPlaneStrain2D(eps, lambda, mu)
+
+    Assert.Near(sigmaLamePE[0, 0], sigmaBridgePE[0, 0], 0.000001, "plane strain bridge matches Lame path [0,0]")
+    Assert.Near(sigmaLamePE[1, 1], sigmaBridgePE[1, 1], 0.000001, "plane strain bridge matches Lame path [1,1]")
+    Assert.Near(sigmaLamePE[0, 1], sigmaBridgePE[0, 1], 0.000001, "plane strain bridge matches Lame path [0,1]")
+
+    let sigmaBridgePS = LinearIsotropicStressPlaneStress2DFromYoungPoisson(eps, E, nu)
+    let sigmaLamePS   = LinearIsotropicStressPlaneStress2D(eps, lambda, mu)
+
+    Assert.Near(sigmaLamePS[0, 0], sigmaBridgePS[0, 0], 0.000001, "plane stress bridge matches Lame path [0,0]")
+    Assert.Near(sigmaLamePS[1, 1], sigmaBridgePS[1, 1], 0.000001, "plane stress bridge matches Lame path [1,1]")
+}
+
+[Fact]
+fn PureHydrostaticLoadProducesNoShearStress() -> Void {
+    // For isotropic material under hydrostatic strain, off-diagonal stress = 0.
+    let eps   = matrix[[0.01, 0.0] [0.0, 0.01]]
+    let sigma = LinearIsotropicStress2D(eps, 100.0, 50.0)
+    Assert.Near(0.0, sigma[0, 1], 0.000001, "no shear stress for hydrostatic strain")
+}
