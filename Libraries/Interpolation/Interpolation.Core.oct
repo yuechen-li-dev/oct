@@ -1,18 +1,60 @@
 package Interpolation
 
+// ============================================================
+// Scalar lerp primitives
+// ============================================================
+
+/// Linear interpolation between a and b by parameter t.
+/// t=0 returns a, t=1 returns b. t outside [0,1] extrapolates.
 fn Lerp(a: Float, b: Float, t: Float) -> Float {
     return a + (b - a) * t
 }
 
+/// Lerp with t clamped to [0, 1]. Never extrapolates.
+fn LerpClamped(a: Float, b: Float, t: Float) -> Float {
+    let tC = switch {
+        case t < 0.0 => 0.0
+        case t > 1.0 => 1.0
+        else         => t
+    }
+    return a + (b - a) * tC
+}
+
+/// Inverse lerp: given a value v in [a, b], return t such that Lerp(a, b, t) = v.
+/// Returns t outside [0, 1] when v is outside [a, b].
+fn InverseLerp(a: Float, b: Float, v: Float) -> Float ! Error {
+    if a == b {
+        return error("inverse lerp requires a != b")
+    }
+    return (v - a) / (b - a)
+}
+
+/// Remap a value from [inMin, inMax] to [outMin, outMax].
+/// Equivalent to Lerp(outMin, outMax, InverseLerp(inMin, inMax, v)).
+fn Remap(v: Float, inMin: Float, inMax: Float, outMin: Float, outMax: Float) -> Float ! Error {
+    let t = InverseLerp(inMin, inMax, v)?
+    return Lerp(outMin, outMax, t)
+}
+
+// ============================================================
+// Two-point linear interpolation
+// ============================================================
+
+/// Interpolate at x between two known points (x0, y0) and (x1, y1).
 fn LinearInterpolate(x0: Float, y0: Float, x1: Float, y1: Float, x: Float) -> Float ! Error {
     if x0 == x1 {
         return error("linear interpolation requires x0 != x1")
     }
-
     let t = (x - x0) / (x1 - x0)
     return Lerp(y0, y1, t)
 }
 
+// ============================================================
+// Piecewise linear interpolation
+// ============================================================
+
+/// Interpolate at x using a piecewise linear function defined by knots (xs, ys).
+/// xs must be strictly increasing. Errors if x is outside [xs[0], xs[n-1]].
 fn PiecewiseLinear(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
     let ok = ValidatePiecewiseInputs(xs, ys)?
 
@@ -20,46 +62,293 @@ fn PiecewiseLinear(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
         return error("piecewise linear query x is out of range")
     }
 
+    return PiecewiseLinearSearch(xs, ys, x)
+}
+
+/// Piecewise linear interpolation with clamping at boundaries.
+/// Returns ys[0] for x < xs[0] and ys[n-1] for x > xs[n-1].
+fn PiecewiseLinearClamped(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
+    let ok = ValidatePiecewiseInputs(xs, ys)?
+
+    if x <= xs[0] {
+        return ys[0]
+    }
+    if x >= xs[Len(xs) - 1] {
+        return ys[Len(ys) - 1]
+    }
+
+    return PiecewiseLinearSearch(xs, ys, x)
+}
+
+/// Piecewise linear interpolation with linear extrapolation beyond endpoints.
+/// Extends the slope of the first/last segment outside the knot range.
+fn PiecewiseLinearExtrapolated(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
+    let ok = ValidatePiecewiseInputs(xs, ys)?
+
+    if x < xs[0] {
+        // Extrapolate using the first segment slope.
+        return LinearInterpolate(xs[0], ys[0], xs[1], ys[1], x)?
+    }
+
+    let n = Len(xs)
+    if x > xs[n - 1] {
+        // Extrapolate using the last segment slope.
+        return LinearInterpolate(xs[n - 2], ys[n - 2], xs[n - 1], ys[n - 1], x)?
+    }
+
+    return PiecewiseLinearSearch(xs, ys, x)
+}
+
+// ============================================================
+// Cubic spline interpolation
+// ============================================================
+
+/// Precomputed cubic spline coefficients for a set of knots.
+///
+/// For n knots, there are n-1 cubic segments. On segment i:
+///   s(x) = a[i] + b[i]*(x-xs[i]) + c[i]*(x-xs[i])^2 + d[i]*(x-xs[i])^3
+///
+/// Natural boundary conditions: second derivative = 0 at both endpoints.
+record CubicSpline {
+    Xs: Float[]
+    A:  Float[]
+    B:  Float[]
+    C:  Float[]
+    D:  Float[]
+    N:  Int
+}
+
+/// Build a natural cubic spline from knots (xs, ys).
+/// xs must be strictly increasing, at least 2 points required.
+/// Natural boundary conditions: s''(xs[0]) = s''(xs[n-1]) = 0.
+fn BuildCubicSpline(xs: Float[], ys: Float[]) -> CubicSpline ! Error {
+    let ok = ValidatePiecewiseInputs(xs, ys)?
+    let n  = Len(xs)
+
+    // For n=2: degenerate to linear (one segment, zero second derivatives).
+    if n == 2 {
+        let h  = xs[1] - xs[0]
+        let slope = (ys[1] - ys[0]) / h
+        return CubicSpline {
+            Xs: xs
+            A:  [ys[0]]
+            B:  [slope]
+            C:  [0.0]
+            D:  [0.0]
+            N:  1
+        }
+    }
+
+    let nSeg = n - 1
+
+    // Step 1: compute interval widths h[i] = xs[i+1] - xs[i].
+    var h = [xs[1] - xs[0]]
+    for i in 1 .. nSeg {
+        h = Append(h, xs[i + 1] - xs[i])
+    }
+
+    // Step 2: set up the tridiagonal system for the second derivatives m[i].
+    // Natural BC: m[0] = m[n-1] = 0.
+    // Interior equations (Thomas algorithm):
+    //   h[i-1]*m[i-1] + 2*(h[i-1]+h[i])*m[i] + h[i]*m[i+1]
+    //   = 6*((ys[i+1]-ys[i])/h[i] - (ys[i]-ys[i-1])/h[i-1])
+
+    let nInt = n - 2  // number of interior points
+
+    // Build RHS and diagonal/off-diagonal arrays for interior points.
+    var diag  = [2.0 * (h[0] + h[1])]
+    var upper = [h[1]]
+    var rhs   = [6.0 * ((ys[2] - ys[1]) / h[1] - (ys[1] - ys[0]) / h[0])]
+
+    for i in 1 .. nInt {
+        diag  = Append(diag,  2.0 * (h[i] + h[i + 1]))
+        rhs   = Append(rhs,   6.0 * ((ys[i + 2] - ys[i + 1]) / h[i + 1] - (ys[i + 1] - ys[i]) / h[i]))
+        if i < nInt - 1 {
+            upper = Append(upper, h[i + 1])
+        }
+    }
+
+    // Step 3: Thomas algorithm (forward sweep + back substitution).
+    var mInt = SolveTridiagonalNatural(h, diag, upper, rhs, nInt)?
+
+    // Step 4: assemble full m array (including m[0]=0 and m[n-1]=0).
+    var m = [0.0]
+    for i in 0 .. nInt {
+        m = Append(m, mInt[i])
+    }
+    m = Append(m, 0.0)
+
+    // Step 5: compute spline coefficients for each segment.
+    var a = [ys[0]]
+    var b = [(ys[1] - ys[0]) / h[0] - h[0] * (2.0 * m[0] + m[1]) / 6.0]
+    var c = [m[0] / 2.0]
+    var d = [(m[1] - m[0]) / (6.0 * h[0])]
+
+    for i in 1 .. nSeg {
+        a = Append(a, ys[i])
+        b = Append(b, (ys[i + 1] - ys[i]) / h[i] - h[i] * (2.0 * m[i] + m[i + 1]) / 6.0)
+        c = Append(c, m[i] / 2.0)
+        d = Append(d, (m[i + 1] - m[i]) / (6.0 * h[i]))
+    }
+
+    return CubicSpline {
+        Xs: xs
+        A:  a
+        B:  b
+        C:  c
+        D:  d
+        N:  nSeg
+    }
+}
+
+/// Evaluate a prebuilt cubic spline at x.
+/// Errors if x is outside the knot range.
+fn EvalCubicSpline(spline: CubicSpline, x: Float) -> Float ! Error {
+    let xs = spline.Xs
+    let n  = Len(xs)
+
+    if x < xs[0] or x > xs[n - 1] {
+        return error("cubic spline query x is out of range")
+    }
+
+    // Find the segment containing x.
+    var seg = spline.N - 1
+    for i in 0 .. spline.N {
+        if x <= xs[i + 1] {
+            seg = i
+            /// Break by going to a fixed index — oct has no break, so track via seg.
+        }
+    }
+    // Refine: find the last i where xs[i] <= x.
+    var idx = 0
+    for i in 0 .. spline.N {
+        if xs[i] <= x {
+            idx = i
+        }
+    }
+
+    let dx = x - xs[idx]
+    return spline.A[idx] + spline.B[idx] * dx + spline.C[idx] * dx * dx + spline.D[idx] * dx * dx * dx
+}
+
+/// Evaluate a cubic spline at x with clamping at boundaries.
+fn EvalCubicSplineClamped(spline: CubicSpline, x: Float) -> Float ! Error {
+    let xs = spline.Xs
+    let n  = Len(xs)
+    if x <= xs[0] {
+        return spline.A[0]
+    }
+    if x >= xs[n - 1] {
+        // Last knot value: evaluate the last segment at its right endpoint.
+        let lastSeg = spline.N - 1
+        let dx = xs[n - 1] - xs[lastSeg]
+        return spline.A[lastSeg] + spline.B[lastSeg] * dx + spline.C[lastSeg] * dx * dx + spline.D[lastSeg] * dx * dx * dx
+    }
+    return EvalCubicSpline(spline, x)?
+}
+
+// ============================================================
+// 2D bilinear interpolation
+// ============================================================
+
+/// Bilinear interpolation on a unit square.
+/// q00=value at (0,0), q10=(1,0), q01=(0,1), q11=(1,1).
+/// tx, ty are the fractional positions in [0,1].
+fn BilinearUnit(q00: Float, q10: Float, q01: Float, q11: Float, tx: Float, ty: Float) -> Float {
+    let bot = Lerp(q00, q10, tx)
+    let top = Lerp(q01, q11, tx)
+    return Lerp(bot, top, ty)
+}
+
+/// Bilinear interpolation given four corner coordinates and their values.
+/// (x0, y0) is the bottom-left corner, (x1, y1) is the top-right.
+fn BilinearInterpolate(
+    x0: Float, y0: Float, x1: Float, y1: Float,
+    q00: Float, q10: Float, q01: Float, q11: Float,
+    x: Float, y: Float
+) -> Float ! Error {
+    if x0 == x1 {
+        return error("bilinear interpolation requires x0 != x1")
+    }
+    if y0 == y1 {
+        return error("bilinear interpolation requires y0 != y1")
+    }
+    let tx = (x - x0) / (x1 - x0)
+    let ty = (y - y0) / (y1 - y0)
+    return BilinearUnit(q00, q10, q01, q11, tx, ty)
+}
+
+// ============================================================
+// Internal helpers
+// ============================================================
+
+/// Thomas algorithm for the natural spline tridiagonal system.
+/// Solves a tridiagonal system with subdiag = h[0..nInt-2],
+/// diag = diag[0..nInt-1], superdiag = upper[0..nInt-2], rhs = rhs[0..nInt-1].
+fn SolveTridiagonalNatural(h: Float[], diag: Float[], upper: Float[], rhs: Float[], n: Int) -> Float[] ! Error {
+    if n == 0 {
+        return error("tridiagonal solve requires n > 0")
+    }
+
+    var c = [diag[0]]
+    var d = [rhs[0]]
+
+    // Forward sweep.
+    for i in 1 .. n {
+        let sub = h[i - 1]
+        let w   = sub / c[i - 1]
+        c = Append(c, diag[i] - w * upper[i - 1])
+        d = Append(d, rhs[i] - w * d[i - 1])
+    }
+
+    // Back substitution.
+    var x = [0.0]
+    for i in 1 .. n {
+        x = Append(x, 0.0)
+    }
+    x[n - 1] = d[n - 1] / c[n - 1]
+
+    var i = n - 2
+    while i >= 0 {
+        x[i] = (d[i] - upper[i] * x[i + 1]) / c[i]
+        i = i - 1
+    }
+
+    return x
+}
+
+/// Internal: search for x in knots and interpolate linearly.
+/// Assumes xs is validated and x is in range.
+fn PiecewiseLinearSearch(xs: Float[], ys: Float[], x: Float) -> Float {
     if x == xs[Len(xs) - 1] {
         return ys[Len(ys) - 1]
     }
 
-    var i = 0
-    while i < Len(xs) - 1 {
-        if x == xs[i] {
-            return ys[i]
+    var result = ys[0]
+    for i in 0 .. Len(xs) - 1 {
+        if xs[i] <= x and x < xs[i + 1] {
+            let t = (x - xs[i]) / (xs[i + 1] - xs[i])
+            result = ys[i] + t * (ys[i + 1] - ys[i])
         }
-
-        if x > xs[i] and x < xs[i + 1] {
-            return LinearInterpolate(xs[i], ys[i], xs[i + 1], ys[i + 1], x)?
-        }
-
-        i = i + 1
     }
-
-    return ys[Len(ys) - 1]
+    return result
 }
 
+/// Validate that xs and ys form a valid piecewise input set.
 fn ValidatePiecewiseInputs(xs: Float[], ys: Float[]) -> Bool ! Error {
     if Len(xs) == 0 or Len(ys) == 0 {
-        return error("piecewise linear requires non-empty xs and ys")
+        return error("piecewise requires non-empty xs and ys")
     }
-
     if Len(xs) != Len(ys) {
-        return error("piecewise linear requires xs and ys to have same length")
+        return error("piecewise requires xs and ys to have same length")
     }
-
     if Len(xs) < 2 {
-        return error("piecewise linear requires at least two points")
+        return error("piecewise requires at least two points")
     }
-
-    var i = 0
-    while i < Len(xs) - 1 {
+    for i in 0 .. Len(xs) - 1 {
         if xs[i] >= xs[i + 1] {
-            return error("piecewise linear xs must be strictly increasing")
+            return error("piecewise xs must be strictly increasing")
         }
-        i = i + 1
     }
-
     return true
 }

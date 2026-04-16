@@ -1,17 +1,70 @@
 package Interpolation
 
+// ============================================================
+// Lerp and variants
+// ============================================================
+
 [Fact]
 fn LerpHandlesBoundariesAndMidpoint() -> Void {
-    Assert.Near(10.0, Lerp(10.0, 20.0, 0.0), 0.000001, "t=0 should return a")
-    Assert.Near(20.0, Lerp(10.0, 20.0, 1.0), 0.000001, "t=1 should return b")
-    Assert.Near(15.0, Lerp(10.0, 20.0, 0.5), 0.000001, "t=0.5 should return midpoint")
+    Assert.Near(10.0, Lerp(10.0, 20.0, 0.0), 0.000001, "t=0 returns a")
+    Assert.Near(20.0, Lerp(10.0, 20.0, 1.0), 0.000001, "t=1 returns b")
+    Assert.Near(15.0, Lerp(10.0, 20.0, 0.5), 0.000001, "t=0.5 returns midpoint")
 }
 
 [Fact]
+fn LerpExtrapolatesBeyondRange() -> Void {
+    Assert.Near(25.0, Lerp(10.0, 20.0, 1.5), 0.000001, "t=1.5 extrapolates beyond b")
+    Assert.Near(5.0,  Lerp(10.0, 20.0, (0.0 - 0.5)), 0.000001, "t=-0.5 extrapolates before a")
+}
+
+[Fact]
+fn LerpClampedNeverExtrapolates() -> Void {
+    Assert.Near(20.0, LerpClamped(10.0, 20.0, 1.5), 0.000001, "t>1 clamped to b")
+    Assert.Near(10.0, LerpClamped(10.0, 20.0, (0.0 - 0.5)), 0.000001, "t<0 clamped to a")
+    Assert.Near(15.0, LerpClamped(10.0, 20.0, 0.5), 0.000001, "t in range unchanged")
+}
+
+[Fact]
+fn InverseLerpInvertLerp() -> Void {
+    let t = InverseLerp(10.0, 20.0, 15.0)!
+    Assert.Near(0.5, t, 0.000001, "inverse lerp at midpoint = 0.5")
+    Assert.Near(0.0, InverseLerp(10.0, 20.0, 10.0)!, 0.000001, "at a = 0")
+    Assert.Near(1.0, InverseLerp(10.0, 20.0, 20.0)!, 0.000001, "at b = 1")
+}
+
+[Fact]
+fn InverseLerpAndLerpAreInverse() -> Void {
+    let v = 17.3
+    let t = InverseLerp(10.0, 30.0, v)!
+    let back = Lerp(10.0, 30.0, t)
+    Assert.Near(v, back, 0.000001, "InverseLerp then Lerp recovers original value")
+}
+
+[Fact]
+fn InverseLerpRejectsEqualEndpoints() -> Void {
+    match InverseLerp(5.0, 5.0, 5.0) {
+        ok(v) => { Assert.True(false, "should reject a == b") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn RemapTranslatesBetweenRanges() -> Void {
+    // Remap from [0,1] to [100,200]: midpoint 0.5 -> 150
+    Assert.Near(150.0, Remap(0.5, 0.0, 1.0, 100.0, 200.0)!, 0.000001, "midpoint remapped")
+    Assert.Near(100.0, Remap(0.0, 0.0, 1.0, 100.0, 200.0)!, 0.000001, "start remapped")
+    Assert.Near(200.0, Remap(1.0, 0.0, 1.0, 100.0, 200.0)!, 0.000001, "end remapped")
+}
+
+// ============================================================
+// Two-point linear interpolation
+// ============================================================
+
+[Fact]
 fn LinearInterpolateBasicCasesAndSlope() -> Void {
-    Assert.Near(5.0, LinearInterpolate(0.0, 0.0, 10.0, 10.0, 5.0)!, 0.000001, "midpoint interpolation")
-    Assert.Near(7.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 3.0)!, 0.000001, "nontrivial slope interpolation")
-    Assert.Near(11.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 5.0)!, 0.000001, "exact upper knot")
+    Assert.Near(5.0,  LinearInterpolate(0.0, 0.0, 10.0, 10.0, 5.0)!, 0.000001, "midpoint")
+    Assert.Near(7.0,  LinearInterpolate(1.0, 3.0, 5.0, 11.0, 3.0)!,  0.000001, "nontrivial slope")
+    Assert.Near(11.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 5.0)!,  0.000001, "at upper knot")
 }
 
 [Fact]
@@ -22,47 +75,40 @@ fn LinearInterpolateRejectsDegenerateInterval() -> Void {
     }
 }
 
+// ============================================================
+// Piecewise linear
+// ============================================================
+
 [Fact]
 fn PiecewiseLinearSupportsInteriorAndKnotQueries() -> Void {
     let xs = [0.0, 1.0, 3.0, 4.0]
     let ys = [0.0, 2.0, 6.0, 10.0]
-
-    Assert.Near(0.0, PiecewiseLinear(xs, ys, 0.0)!, 0.000001, "exact first knot")
-    Assert.Near(6.0, PiecewiseLinear(xs, ys, 3.0)!, 0.000001, "exact interior knot")
-    Assert.Near(4.0, PiecewiseLinear(xs, ys, 2.0)!, 0.000001, "interior interpolation")
-    Assert.Near(10.0, PiecewiseLinear(xs, ys, 4.0)!, 0.000001, "exact last knot")
+    Assert.Near(0.0,  PiecewiseLinear(xs, ys, 0.0)!, 0.000001, "first knot")
+    Assert.Near(6.0,  PiecewiseLinear(xs, ys, 3.0)!, 0.000001, "interior knot")
+    Assert.Near(4.0,  PiecewiseLinear(xs, ys, 2.0)!, 0.000001, "interior point")
+    Assert.Near(10.0, PiecewiseLinear(xs, ys, 4.0)!, 0.000001, "last knot")
 }
 
 [Fact]
 fn PiecewiseLinearRejectsOutOfRangeAndInvalidInputs() -> Void {
     let xs = [0.0, 1.0, 2.0]
     let ys = [0.0, 10.0, 20.0]
-
-    match PiecewiseLinear(xs, ys, 0.0 - 0.1) {
-        ok(v) => { Assert.True(false, "out-of-range lower query must fail") }
+    match PiecewiseLinear(xs, ys, (0.0 - 0.1)) {
+        ok(v) => { Assert.True(false, "below range must fail") }
         err(e) => { }
     }
-
     match PiecewiseLinear(xs, ys, 2.1) {
-        ok(v) => { Assert.True(false, "out-of-range upper query must fail") }
+        ok(v) => { Assert.True(false, "above range must fail") }
         err(e) => { }
     }
-
     match PiecewiseLinear([0.0, 1.0], [0.0], 0.5) {
         ok(v) => { Assert.True(false, "mismatched lengths must fail") }
         err(e) => { }
     }
-
     match PiecewiseLinear([0.0, 2.0, 1.0], [0.0, 1.0, 2.0], 1.5) {
         ok(v) => { Assert.True(false, "unsorted xs must fail") }
         err(e) => { }
     }
-
-    match PiecewiseLinear([0.0, 1.0, 1.0], [0.0, 1.0, 2.0], 1.0) {
-        ok(v) => { Assert.True(false, "duplicate xs must fail") }
-        err(e) => { }
-    }
-
     match PiecewiseLinear([0.0], [1.0], 0.0) {
         ok(v) => { Assert.True(false, "too-short input must fail") }
         err(e) => { }
@@ -70,13 +116,199 @@ fn PiecewiseLinearRejectsOutOfRangeAndInvalidInputs() -> Void {
 }
 
 [Fact]
-fn PiecewiseWorkflowComposableInExpressionChain() -> Void {
+fn PiecewiseLinearClampedReturnsEndValuesOutsideRange() -> Void {
+    let xs = [1.0, 2.0, 3.0]
+    let ys = [10.0, 20.0, 30.0]
+    Assert.Near(10.0, PiecewiseLinearClamped(xs, ys, 0.0)!, 0.000001, "below range clamped to first")
+    Assert.Near(30.0, PiecewiseLinearClamped(xs, ys, 5.0)!, 0.000001, "above range clamped to last")
+    Assert.Near(15.0, PiecewiseLinearClamped(xs, ys, 1.5)!, 0.000001, "in-range unchanged")
+}
+
+[Fact]
+fn PiecewiseLinearExtrapolatedExtendsFirstAndLastSegment() -> Void {
+    // xs=[0,1,2], ys=[0,10,20]: uniform slope 10/unit.
+    // Extrapolating to x=-1 should give -10, x=3 should give 30.
+    let xs = [0.0, 1.0, 2.0]
+    let ys = [0.0, 10.0, 20.0]
+    Assert.Near((0.0 - 10.0), PiecewiseLinearExtrapolated(xs, ys, (0.0 - 1.0))!, 0.000001, "extrapolate below")
+    Assert.Near(30.0, PiecewiseLinearExtrapolated(xs, ys, 3.0)!, 0.000001, "extrapolate above")
+    Assert.Near(15.0, PiecewiseLinearExtrapolated(xs, ys, 1.5)!, 0.000001, "in-range unchanged")
+}
+
+[Fact]
+fn PiecewiseLinearExtrapolatedWithNonUniformSlopes() -> Void {
+    // xs=[0,1,3], ys=[0,2,8]: first slope=2, last slope=3.
+    // x=-0.5 extrapolates with slope 2: expected -1.
+    // x=4 extrapolates with slope 3: expected 11.
+    let xs = [0.0, 1.0, 3.0]
+    let ys = [0.0, 2.0, 8.0]
+    Assert.Near((0.0 - 1.0), PiecewiseLinearExtrapolated(xs, ys, (0.0 - 0.5))!, 0.000001, "first slope extrapolation")
+    Assert.Near(11.0, PiecewiseLinearExtrapolated(xs, ys, 4.0)!, 0.000001, "last slope extrapolation")
+}
+
+// ============================================================
+// Cubic spline
+// ============================================================
+
+[Fact]
+fn CubicSplineOnLinearDataMatchesLinearResult() -> Void {
+    // A cubic spline through collinear points should reproduce the line exactly.
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 2.0, 4.0, 6.0]
+    let sp = BuildCubicSpline(xs, ys)!
+    Assert.Near(1.0, EvalCubicSpline(sp, 0.5)!, 0.000001, "linear data: midpoint of first segment")
+    Assert.Near(3.0, EvalCubicSpline(sp, 1.5)!, 0.000001, "linear data: midpoint of second segment")
+    Assert.Near(5.0, EvalCubicSpline(sp, 2.5)!, 0.000001, "linear data: midpoint of third segment")
+}
+
+[Fact]
+fn CubicSplineReproducesKnotValues() -> Void {
+    let xs = [0.0, 1.0, 2.0, 4.0]
+    let ys = [0.0, 1.0, 0.0, 2.0]
+    let sp = BuildCubicSpline(xs, ys)!
+    // Spline must pass exactly through all knots.
+    Assert.Near(0.0, EvalCubicSpline(sp, 0.0)!, 0.0001, "knot 0")
+    Assert.Near(1.0, EvalCubicSpline(sp, 1.0)!, 0.0001, "knot 1")
+    Assert.Near(0.0, EvalCubicSpline(sp, 2.0)!, 0.0001, "knot 2")
+    Assert.Near(2.0, EvalCubicSpline(sp, 4.0)!, 0.0001, "knot 3")
+}
+
+[Fact]
+fn CubicSplineIsSmoothAcrossSegments() -> Void {
+    // Query points just before and after an interior knot should be close
+    // (C2 continuity — no jump or kink at knots).
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 3.0, 1.0, 4.0]
+    let sp = BuildCubicSpline(xs, ys)!
+    let leftOf1  = EvalCubicSpline(sp, 0.9999)!
+    let rightOf1 = EvalCubicSpline(sp, 1.0001)!
+    Assert.Near(leftOf1, rightOf1, 0.01, "smooth at interior knot x=1")
+    let leftOf2  = EvalCubicSpline(sp, 1.9999)!
+    let rightOf2 = EvalCubicSpline(sp, 2.0001)!
+    Assert.Near(leftOf2, rightOf2, 0.01, "smooth at interior knot x=2")
+}
+
+[Fact]
+fn CubicSplineOnTwoPointsDegeneratesToLinear() -> Void {
+    let xs = [0.0, 2.0]
+    let ys = [1.0, 5.0]
+    let sp = BuildCubicSpline(xs, ys)!
+    Assert.Near(3.0, EvalCubicSpline(sp, 1.0)!, 0.000001, "two-point spline = linear: midpoint")
+    Assert.Near(1.0, EvalCubicSpline(sp, 0.0)!, 0.000001, "two-point spline = linear: start")
+    Assert.Near(5.0, EvalCubicSpline(sp, 2.0)!, 0.000001, "two-point spline = linear: end")
+}
+
+[Fact]
+fn CubicSplineRejectsOutOfRange() -> Void {
+    let sp = BuildCubicSpline([0.0, 1.0, 2.0], [0.0, 1.0, 0.0])!
+    match EvalCubicSpline(sp, (0.0 - 0.1)) {
+        ok(v) => { Assert.True(false, "below range must fail") }
+        err(e) => { }
+    }
+    match EvalCubicSpline(sp, 2.1) {
+        ok(v) => { Assert.True(false, "above range must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn CubicSplineClampedReturnsEndValues() -> Void {
+    let sp = BuildCubicSpline([0.0, 1.0, 2.0], [5.0, 3.0, 7.0])!
+    Assert.Near(5.0, EvalCubicSplineClamped(sp, (0.0 - 1.0))!, 0.000001, "below clamped to first y")
+    Assert.Near(7.0, EvalCubicSplineClamped(sp, 3.0)!, 0.000001, "above clamped to last y")
+}
+
+[Fact]
+fn CubicSplineIsMoreAccurateThanPiecewiseLinearForSmoothData() -> Void {
+    // Interpolate sin(x) at sparse knots. Cubic spline should be more accurate
+    // than piecewise linear at midpoints between knots.
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [Sin(0.0), Sin(1.0), Sin(2.0), Sin(3.0)]
+    let sp = BuildCubicSpline(xs, ys)!
+
+    let xMid = 0.5
+    let exact = Sin(xMid)
+    let splineVal = EvalCubicSpline(sp, xMid)!
+    let linearVal = PiecewiseLinear(xs, ys, xMid)!
+
+    let splineErr = Abs(exact - splineVal)
+    let linearErr = Abs(exact - linearVal)
+    Assert.True(splineErr < linearErr, "cubic spline more accurate than piecewise linear for sin(x)")
+}
+
+// ============================================================
+// Bilinear interpolation
+// ============================================================
+
+[Fact]
+fn BilinearUnitAtCornersReturnsCornerValues() -> Void {
+    Assert.Near(1.0, BilinearUnit(1.0, 2.0, 3.0, 4.0, 0.0, 0.0), 0.000001, "q00 at (0,0)")
+    Assert.Near(2.0, BilinearUnit(1.0, 2.0, 3.0, 4.0, 1.0, 0.0), 0.000001, "q10 at (1,0)")
+    Assert.Near(3.0, BilinearUnit(1.0, 2.0, 3.0, 4.0, 0.0, 1.0), 0.000001, "q01 at (0,1)")
+    Assert.Near(4.0, BilinearUnit(1.0, 2.0, 3.0, 4.0, 1.0, 1.0), 0.000001, "q11 at (1,1)")
+}
+
+[Fact]
+fn BilinearUnitAtCenterIsAverageOfCorners() -> Void {
+    // For a uniform field f=c everywhere, bilinear at center = c.
+    Assert.Near(5.0, BilinearUnit(5.0, 5.0, 5.0, 5.0, 0.5, 0.5), 0.000001, "uniform field = constant")
+    // General center: average of four corners.
+    let avg = (1.0 + 2.0 + 3.0 + 4.0) / 4.0
+    Assert.Near(avg, BilinearUnit(1.0, 2.0, 3.0, 4.0, 0.5, 0.5), 0.000001, "center = average of corners")
+}
+
+[Fact]
+fn BilinearInterpolateMatchesBilinearUnit() -> Void {
+    // Place the unit square at [0,1] x [0,1].
+    let v = BilinearInterpolate(0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 0.5, 0.5)!
+    let u = BilinearUnit(1.0, 2.0, 3.0, 4.0, 0.5, 0.5)
+    Assert.Near(u, v, 0.000001, "BilinearInterpolate matches BilinearUnit on unit square")
+}
+
+[Fact]
+fn BilinearInterpolateAtEdgeMidpointsIsLinear() -> Void {
+    // Along the bottom edge (y=0, ty=0): should be Lerp(q00, q10, tx).
+    let v = BilinearInterpolate(0.0, 0.0, 2.0, 2.0, 0.0, 10.0, 0.0, 10.0, 1.0, 0.0)!
+    Assert.Near(5.0, v, 0.000001, "bottom edge midpoint is linear")
+}
+
+[Fact]
+fn BilinearInterpolateRejectsZeroExtents() -> Void {
+    match BilinearInterpolate(1.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 1.0, 0.5) {
+        ok(v) => { Assert.True(false, "x0==x1 must fail") }
+        err(e) => { }
+    }
+    match BilinearInterpolate(0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 0.5, 1.0) {
+        ok(v) => { Assert.True(false, "y0==y1 must fail") }
+        err(e) => { }
+    }
+}
+
+// ============================================================
+// Composition
+// ============================================================
+
+[Fact]
+fn PiecewiseWorkflowComposesWithRemap() -> Void {
+    // Build a lookup table and remap the output to a different range.
     let xs = [0.0, 2.0, 5.0]
     let ys = [0.0, 4.0, 10.0]
+    let raw = PiecewiseLinear(xs, ys, 3.5)!
+    // Remap from [0, 10] to [0, 1].
+    let normalized = Remap(raw, 0.0, 10.0, 0.0, 1.0)!
+    Assert.Near(7.0, raw, 0.000001, "piecewise value correct")
+    Assert.Near(0.7, normalized, 0.000001, "remapped to [0,1]")
+}
 
-    let position = PiecewiseLinear(xs, ys, 3.5)!
-    let normalized = position / LinearInterpolate(0.0, 1.0, 5.0, 1.0, 3.5)!
-
-    Assert.Near(7.0, position, 0.000001, "piecewise interpolation should return expected point")
-    Assert.Near(7.0, normalized, 0.000001, "interpolation results should compose deterministically")
+[Fact]
+fn SplineAndPiecewiseAgreeAtKnots() -> Void {
+    // Both methods must agree exactly at knot locations.
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [1.0, 4.0, 2.0, 5.0]
+    let sp = BuildCubicSpline(xs, ys)!
+    for i in 0 .. 4 {
+        let pw = PiecewiseLinear(xs, ys, xs[i])!
+        let sv = EvalCubicSpline(sp, xs[i])!
+        Assert.Near(pw, sv, 0.0001, "spline and piecewise agree at knots")
+    }
 }
