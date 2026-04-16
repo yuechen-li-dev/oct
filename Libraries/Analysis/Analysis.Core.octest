@@ -1,21 +1,397 @@
 package Analysis
 
-[Fact]
-fn GenerateAndComputeReturnsExpectedSeriesShape() -> Void {
-    let result = GenerateAndCompute(0.0, 1.0)
+// ============================================================
+// Finite differences
+// ============================================================
 
-    Assert.Equal(Len(result.X), Len(result.Y), "x and y lengths should match")
-    Assert.Equal(Len(result.X), Len(result.Z), "x and z lengths should match")
-    Assert.Equal(5, Len(result.X), "expected fixed 5-point series")
+[Fact]
+fn DiffForwardOnLinearDataIsConstant() -> Void {
+    // y = 2x -> dy/dx = 2 everywhere
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 2.0, 4.0, 6.0]
+    let d = DiffForward(xs, ys)!
+    Assert.Equal(3, Len(d), "forward diff output length = n-1")
+    Assert.Near(2.0, d[0], 0.000001, "slope segment 0")
+    Assert.Near(2.0, d[1], 0.000001, "slope segment 1")
+    Assert.Near(2.0, d[2], 0.000001, "slope segment 2")
 }
 
-[Theory]
-[InlineData(2, 2.0, 2.0, 4.0)]
-[InlineData(3, 3.0, 7.0, 9.0)]
-[InlineData(4, 4.0, 14.0, 16.0)]
-fn GenerateAndComputeKnownSamples(index: Int, expectedX: Float, expectedY: Float, expectedZ: Float) -> Void {
-    let result = GenerateAndCompute(0.0, 1.0)
-    Assert.Near(expectedX, result.X[index], 0.0001, "x sample mismatch")
-    Assert.Near(expectedY, result.Y[index], 0.0001, "y sample mismatch")
-    Assert.Near(expectedZ, result.Z[index], 0.0001, "z sample mismatch")
+[Fact]
+fn DiffForwardHandlesNonUniformSpacing() -> Void {
+    // xs=[0,1,3], ys=[0,2,8]: slopes are 2 and 3
+    let xs = [0.0, 1.0, 3.0]
+    let ys = [0.0, 2.0, 8.0]
+    let d = DiffForward(xs, ys)!
+    Assert.Near(2.0, d[0], 0.000001, "first segment slope")
+    Assert.Near(3.0, d[1], 0.000001, "second segment slope")
+}
+
+[Fact]
+fn DiffCentralOnLinearDataIsExact() -> Void {
+    // Central diff is exact for linear data, same as forward diff.
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [0.0, 3.0, 6.0, 9.0, 12.0]
+    let d = DiffCentral(xs, ys)!
+    Assert.Equal(3, Len(d), "central diff output length = n-2")
+    for i in 0 .. 3 {
+        Assert.Near(3.0, d[i], 0.000001, "central diff on linear data")
+    }
+}
+
+[Fact]
+fn Diff2CentralOnQuadraticIsExact() -> Void {
+    // y = x^2: d2y/dx2 = 2 everywhere, for all interior points.
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [0.0, 1.0, 4.0, 9.0, 16.0]
+    let d2 = Diff2Central(xs, ys)!
+    Assert.Equal(3, Len(d2), "second diff output length = n-2")
+    for i in 0 .. 3 {
+        Assert.Near(2.0, d2[i], 0.000001, "d2(x^2)/dx2 = 2")
+    }
+}
+
+[Fact]
+fn Diff2CentralOnLinearDataIsZero() -> Void {
+    // y = 3x: d2y/dx2 = 0.
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 3.0, 6.0, 9.0]
+    let d2 = Diff2Central(xs, ys)!
+    for i in 0 .. Len(d2) {
+        Assert.Near(0.0, d2[i], 0.000001, "second diff of linear = 0")
+    }
+}
+
+[Fact]
+fn DiffCentralIsMoreAccurateThanForwardForQuadratic() -> Void {
+    // y = x^2, dy/dx = 2x. Central diff is exact for quadratic.
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [0.0, 1.0, 4.0, 9.0, 16.0]
+    let dc = DiffCentral(xs, ys)!
+    let df = DiffForward(xs, ys)!
+    // Central diff at interior point x=2 (index 1 of dc): exact = 4
+    Assert.Near(4.0, dc[1], 0.000001, "central diff exact for x^2 at x=2")
+    // Forward diff at x=2 (index 2 of df): (9-4)/1 = 5 (not exact)
+    Assert.Near(5.0, df[2], 0.000001, "forward diff at x=2 is off by 1 for x^2")
+}
+
+[Fact]
+fn DiffForwardRejectsInvalidInputs() -> Void {
+    match DiffForward([0.0, 1.0], [1.0, 2.0, 3.0]) {
+        ok(v) => { Assert.True(false, "mismatched lengths must fail") }
+        err(e) => { }
+    }
+    match DiffForward([1.0, 0.0], [1.0, 2.0]) {
+        ok(v) => { Assert.True(false, "non-increasing xs must fail") }
+        err(e) => { }
+    }
+}
+
+// ============================================================
+// Numerical integration of data
+// ============================================================
+
+[Fact]
+fn IntegrateTrapezoidalOnConstantSignalIsExact() -> Void {
+    // Integral of y=3 from 0 to 4 = 12
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [3.0, 3.0, 3.0, 3.0, 3.0]
+    let area = IntegrateTrapezoidal(xs, ys)!
+    Assert.Near(12.0, area, 0.000001, "constant signal: exact integral")
+}
+
+[Fact]
+fn IntegrateTrapezoidalOnLinearSignalIsExact() -> Void {
+    // Integral of y=x from 0 to 4 = 8. Trapezoidal is exact for linear.
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let area = IntegrateTrapezoidal(xs, ys)!
+    Assert.Near(8.0, area, 0.000001, "linear signal: trapezoidal is exact")
+}
+
+[Fact]
+fn IntegrateTrapezoidalHandlesNonUniformSpacing() -> Void {
+    // xs=[0,1,3], ys=[0,2,2]: area = 0.5*(0+2)*1 + 0.5*(2+2)*2 = 1+4 = 5
+    let xs = [0.0, 1.0, 3.0]
+    let ys = [0.0, 2.0, 2.0]
+    let area = IntegrateTrapezoidal(xs, ys)!
+    Assert.Near(5.0, area, 0.000001, "non-uniform spacing: correct area")
+}
+
+[Fact]
+fn CumulativeIntegralFirstElementIsZero() -> Void {
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [1.0, 1.0, 1.0, 1.0]
+    let ci = CumulativeIntegral(xs, ys)!
+    Assert.Equal(4, Len(ci), "cumulative integral length = n")
+    Assert.Near(0.0, ci[0], 0.000001, "first element is always 0")
+}
+
+[Fact]
+fn CumulativeIntegralFinalElementMatchesTotalIntegral() -> Void {
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 1.0, 2.0, 3.0]
+    let ci    = CumulativeIntegral(xs, ys)!
+    let total = IntegrateTrapezoidal(xs, ys)!
+    Assert.Near(total, ci[Len(ci) - 1], 0.000001, "last element = total integral")
+}
+
+[Fact]
+fn CumulativeIntegralIsMonotonicForPositiveSignal() -> Void {
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [1.0, 2.0, 3.0, 1.0, 2.0]
+    let ci = CumulativeIntegral(xs, ys)!
+    for i in 0 .. Len(ci) - 1 {
+        Assert.True(ci[i + 1] >= ci[i], "cumulative integral is non-decreasing for positive signal")
+    }
+}
+
+// ============================================================
+// Cumulative and running operations
+// ============================================================
+
+[Fact]
+fn CumulativeSumMatchesHandComputed() -> Void {
+    let ys = [1.0, 2.0, 3.0, 4.0]
+    let cs = CumulativeSum(ys)!
+    Assert.Equal(4, Len(cs), "cumulative sum length = n")
+    Assert.Near(1.0,  cs[0], 0.000001, "cs[0]")
+    Assert.Near(3.0,  cs[1], 0.000001, "cs[1]")
+    Assert.Near(6.0,  cs[2], 0.000001, "cs[2]")
+    Assert.Near(10.0, cs[3], 0.000001, "cs[3]")
+}
+
+[Fact]
+fn RunningMinIsNonIncreasing() -> Void {
+    let ys = [5.0, 3.0, 7.0, 1.0, 4.0]
+    let rm = RunningMin(ys)!
+    Assert.Equal(5, Len(rm), "length preserved")
+    Assert.Near(5.0, rm[0], 0.000001, "initial value")
+    Assert.Near(3.0, rm[1], 0.000001, "new minimum")
+    Assert.Near(3.0, rm[2], 0.000001, "holds at non-minimum")
+    Assert.Near(1.0, rm[3], 0.000001, "new global minimum")
+    Assert.Near(1.0, rm[4], 0.000001, "holds at non-minimum")
+}
+
+[Fact]
+fn RunningMaxIsNonDecreasing() -> Void {
+    let ys = [2.0, 5.0, 3.0, 8.0, 6.0]
+    let rm = RunningMax(ys)!
+    Assert.Near(2.0, rm[0], 0.000001, "initial value")
+    Assert.Near(5.0, rm[1], 0.000001, "new maximum")
+    Assert.Near(5.0, rm[2], 0.000001, "holds at non-maximum")
+    Assert.Near(8.0, rm[3], 0.000001, "new global maximum")
+    Assert.Near(8.0, rm[4], 0.000001, "holds")
+}
+
+// ============================================================
+// Series normalization and transforms
+// ============================================================
+
+[Fact]
+fn NormalizeProducesZeroToOneRange() -> Void {
+    let ys = [2.0, 5.0, 8.0, 3.0, 10.0]
+    let n  = Normalize(ys)!
+    Assert.Equal(5, Len(n), "length preserved")
+    Assert.Near(0.0, n[0], 0.000001, "min maps to 0")
+    Assert.Near(1.0, n[4], 0.000001, "max maps to 1")
+    Assert.True(n[1] > 0.0 and n[1] < 1.0, "interior values in (0,1)")
+}
+
+[Fact]
+fn NormalizePreservesRelativeOrder() -> Void {
+    let ys = [1.0, 3.0, 2.0, 5.0, 4.0]
+    let n  = Normalize(ys)!
+    // Order should be preserved after normalization.
+    Assert.True(n[1] > n[2], "n[1] > n[2] since 3 > 2")
+    Assert.True(n[3] > n[4], "n[3] > n[4] since 5 > 4")
+}
+
+[Fact]
+fn NormalizeRejectsConstantSeries() -> Void {
+    match Normalize([3.0, 3.0, 3.0]) {
+        ok(v) => { Assert.True(false, "constant series must fail") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn CenterProducesZeroMean() -> Void {
+    let ys = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let c  = Center(ys)!
+    var sum = 0.0
+    for i in 0 .. Len(c) {
+        sum = sum + c[i]
+    }
+    Assert.Near(0.0, sum, 0.000001, "centered series has zero mean")
+}
+
+[Fact]
+fn CenterPreservesRelativeDifferences() -> Void {
+    let ys = [10.0, 20.0, 30.0]
+    let c  = Center(ys)!
+    // Differences should be unchanged: c[1]-c[0] = ys[1]-ys[0] = 10
+    Assert.Near(10.0, c[1] - c[0], 0.000001, "centering preserves differences")
+    Assert.Near(10.0, c[2] - c[1], 0.000001, "centering preserves differences")
+}
+
+[Fact]
+fn StandardizeProducesZeroMeanUnitVariance() -> Void {
+    let ys = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    let s  = Standardize(ys)!
+
+    var sum = 0.0
+    for i in 0 .. Len(s) {
+        sum = sum + s[i]
+    }
+    let mean = sum / Float(Len(s))
+    Assert.Near(0.0, mean, 0.000001, "standardized mean = 0")
+
+    var sumSq = 0.0
+    for i in 0 .. Len(s) {
+        sumSq = sumSq + s[i] * s[i]
+    }
+    let variance = sumSq / Float(Len(s))
+    Assert.Near(1.0, variance, 0.000001, "standardized variance = 1")
+}
+
+[Fact]
+fn StandardizeRejectsConstantSeries() -> Void {
+    match Standardize([7.0, 7.0, 7.0]) {
+        ok(v) => { Assert.True(false, "constant series must fail") }
+        err(e) => { }
+    }
+}
+
+// ============================================================
+// Peak and feature detection
+// ============================================================
+
+[Fact]
+fn LocalMaximaFindsCorrectIndices() -> Void {
+    // Peak at index 2 (value 5) and index 5 (value 4)
+    let ys = [1.0, 3.0, 5.0, 2.0, 1.0, 4.0, 2.0]
+    let peaks = LocalMaxima(ys)!
+    Assert.Equal(2, Len(peaks), "two peaks found")
+    Assert.Equal(2, peaks[0], "first peak at index 2")
+    Assert.Equal(5, peaks[1], "second peak at index 5")
+}
+
+[Fact]
+fn LocalMinimaFindsCorrectIndices() -> Void {
+    // Valley at index 1 (value 1) and index 4 (value 0)
+    let ys = [3.0, 1.0, 4.0, 2.0, 0.0, 3.0]
+    let valleys = LocalMinima(ys)!
+    Assert.Equal(2, Len(valleys), "two valleys found")
+    Assert.Equal(1, valleys[0], "first valley at index 1")
+    Assert.Equal(4, valleys[1], "second valley at index 4")
+}
+
+[Fact]
+fn LocalMaximaDoesNotIncludeEndpoints() -> Void {
+    // Even if endpoints are global max, they should not be returned.
+    let ys = [10.0, 2.0, 3.0, 2.0, 10.0]
+    match LocalMaxima(ys) {
+        ok(peaks) => {
+            for i in 0 .. Len(peaks) {
+                Assert.True(peaks[i] != 0 and peaks[i] != 4, "endpoints not returned as peaks")
+            }
+        }
+        err(e) => { }  // No interior peaks is fine
+    }
+}
+
+[Fact]
+fn ZeroCrossingsFindsSignChanges() -> Void {
+    // Crosses zero between index 1->2 and 3->4
+    let ys = [1.0, 2.0, (0.0 - 1.0), (0.0 - 2.0), 1.0]
+    let zc = ZeroCrossings(ys)!
+    Assert.Equal(2, Len(zc), "two zero crossings")
+    Assert.Equal(1, zc[0], "first crossing between index 1 and 2")
+    Assert.Equal(3, zc[1], "second crossing between index 3 and 4")
+}
+
+[Fact]
+fn ArgMaxAndArgMinFindGlobalExtrema() -> Void {
+    let ys = [3.0, 7.0, 1.0, 9.0, 2.0]
+    Assert.Equal(3, ArgMax(ys)!, "global max at index 3")
+    Assert.Equal(2, ArgMin(ys)!, "global min at index 2")
+}
+
+[Fact]
+fn ArgMaxArgMinOnMonotonicSeries() -> Void {
+    let ys = [1.0, 2.0, 3.0, 4.0, 5.0]
+    Assert.Equal(4, ArgMax(ys)!, "max at last element")
+    Assert.Equal(0, ArgMin(ys)!, "min at first element")
+}
+
+// ============================================================
+// Series comparison
+// ============================================================
+
+[Fact]
+fn RMSEIsZeroForIdenticalSeries() -> Void {
+    let ys = [1.0, 2.0, 3.0, 4.0]
+    Assert.Near(0.0, RMSE(ys, ys)!, 0.000001, "RMSE of series with itself = 0")
+}
+
+[Fact]
+fn RMSEMatchesHandComputed() -> Void {
+    // actual=[0,0], predicted=[3,4]: errors=[3,4], sq=[9,16], mean=12.5, rmse=sqrt(12.5)
+    let actual    = [0.0, 0.0]
+    let predicted = [3.0, 4.0]
+    Assert.Near(Sqrt(12.5), RMSE(actual, predicted)!, 0.000001, "RMSE matches hand computation")
+}
+
+[Fact]
+fn MAEIsZeroForIdenticalSeries() -> Void {
+    let ys = [5.0, 3.0, 8.0]
+    Assert.Near(0.0, MAE(ys, ys)!, 0.000001, "MAE of series with itself = 0")
+}
+
+[Fact]
+fn MAEMatchesHandComputed() -> Void {
+    // errors=[1, 2, 3], mean = 2
+    let actual    = [0.0, 0.0, 0.0]
+    let predicted = [1.0, 2.0, 3.0]
+    Assert.Near(2.0, MAE(actual, predicted)!, 0.000001, "MAE matches hand computation")
+}
+
+[Fact]
+fn RMSEIsAlwaysGreaterOrEqualToMAE() -> Void {
+    // RMSE >= MAE always (by Cauchy-Schwarz / power mean inequality)
+    let actual    = [0.0, 0.0, 0.0, 0.0]
+    let predicted = [1.0, 3.0, 0.5, 2.0]
+    let rmse = RMSE(actual, predicted)!
+    let mae  = MAE(actual, predicted)!
+    Assert.True(rmse >= mae, "RMSE >= MAE always")
+}
+
+// ============================================================
+// Composition
+// ============================================================
+
+[Fact]
+fn DiffAndIntegrateAreApproximatelyInverse() -> Void {
+    // Integrating the derivative of a signal should approximately recover the
+    // area under the original signal. Use a uniform signal for exactness.
+    // y = x: dy/dx = 1 (forward diff), integral of [1,1,1] over [0,1,2,3] = 3
+    let xs = [0.0, 1.0, 2.0, 3.0]
+    let ys = [0.0, 1.0, 2.0, 3.0]
+    let deriv = DiffForward(xs, ys)!
+    // xs for deriv are the left endpoints: [0,1,2]
+    let derivXs = [0.0, 1.0, 2.0]
+    let area = IntegrateTrapezoidal(derivXs, deriv)!
+    // Integral of derivative of x over [0,3] = 3-0 = 3... but deriv is [1,1,1]
+    // over [0,1,2]: trapezoidal area = 0.5*(1+1)*1 + 0.5*(1+1)*1 = 2
+    Assert.Near(2.0, area, 0.000001, "integral of forward diff of linear = range length - 1 segment")
+}
+
+[Fact]
+fn NormalizeAndCenterComposeDeterministically() -> Void {
+    let ys = [10.0, 20.0, 30.0, 40.0, 50.0]
+    let n  = Normalize(ys)!   // now in [0,1]
+    let c  = Center(n)!       // now zero-mean
+    // Mean of [0, 0.25, 0.5, 0.75, 1.0] = 0.5, so centered = [-0.5,-0.25,0,0.25,0.5]
+    Assert.Near((0.0 - 0.5), c[0], 0.000001, "normalize then center: first element")
+    Assert.Near(0.5,          c[4], 0.000001, "normalize then center: last element")
 }

@@ -1,26 +1,419 @@
 package Analysis
 
-record AnalysisResult {
-    X: Float[]
-    Y: Float[]
-    Z: Float[]
+/// Numerical analysis of discrete data series.
+///
+/// Analysis operates on Float[] arrays of observed measurements —
+/// not on mathematical functions (that is Mathematics.Calculus)
+/// and not on population statistics (that is Statistics).
+///
+/// The identity: given sampled data, answer the questions that sit
+/// between raw measurements and final statistics.
+
+// ============================================================
+// Validation
+// ============================================================
+
+fn ValidateSeries(xs: Float[]) -> Bool ! Error {
+    if Len(xs) == 0 {
+        return error("series must be non-empty")
+    }
+    return true
 }
 
-fn GenerateAndCompute(start: Float, increment: Float) -> AnalysisResult {
-    var x = [0.0, 0.0, 0.0, 0.0, 0.0]
-    var y = [0.0, 0.0, 0.0, 0.0, 0.0]
-    var z = [0.0, 0.0, 0.0, 0.0, 0.0]
+fn ValidatePairedSeries(xs: Float[], ys: Float[]) -> Bool ! Error {
+    if Len(xs) == 0 {
+        return error("series must be non-empty")
+    }
+    if Len(xs) != Len(ys) {
+        return error("xs and ys must have equal length")
+    }
+    return true
+}
 
-    for i in 0 .. Len(x) {
-        let xi = start + increment * i
-        x[i] = xi
-        y[i] = xi * xi - 2.0
-        z[i] = xi * xi
+fn ValidateStrictlyIncreasing(xs: Float[]) -> Bool ! Error {
+    let ok = ValidateSeries(xs)?
+    for i in 0 .. Len(xs) - 1 {
+        if xs[i] >= xs[i + 1] {
+            return error("xs must be strictly increasing")
+        }
+    }
+    return true
+}
+
+// ============================================================
+// Finite differences (derivatives from data)
+// ============================================================
+
+/// Forward difference: dy[i] = (ys[i+1] - ys[i]) / (xs[i+1] - xs[i])
+///
+/// Output length: Len(xs) - 1.
+/// Use when data is sampled at the left edge of each interval.
+fn DiffForward(xs: Float[], ys: Float[]) -> Float[] ! Error {
+    let ok = ValidatePairedSeries(xs, ys)?
+    let ok2 = ValidateStrictlyIncreasing(xs)?
+    if Len(xs) < 2 {
+        return error("diff requires at least 2 points")
     }
 
-    return AnalysisResult {
-        X: x
-        Y: y
-        Z: z
+    var out = [(ys[1] - ys[0]) / (xs[1] - xs[0])]
+    for i in 1 .. Len(xs) - 1 {
+        out = Append(out, (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]))
     }
+    return out
+}
+
+/// Central difference: dy[i] = (ys[i+1] - ys[i-1]) / (xs[i+1] - xs[i-1])
+///
+/// Output length: Len(xs) - 2 (interior points only).
+/// More accurate than forward difference for smooth data.
+fn DiffCentral(xs: Float[], ys: Float[]) -> Float[] ! Error {
+    let ok = ValidatePairedSeries(xs, ys)?
+    let ok2 = ValidateStrictlyIncreasing(xs)?
+    if Len(xs) < 3 {
+        return error("central diff requires at least 3 points")
+    }
+
+    // Interior points only: i=1..n-2, using neighbors i-1 and i+1.
+    var out = [(ys[2] - ys[0]) / (xs[2] - xs[0])]
+    for i in 2 .. Len(xs) - 1 {
+        out = Append(out, (ys[i + 1] - ys[i - 1]) / (xs[i + 1] - xs[i - 1]))
+    }
+    return out
+}
+
+/// Second derivative via central difference on interior points.
+/// d2y[i] = (ys[i+1] - 2*ys[i] + ys[i-1]) / h^2  where h = (xs[i+1] - xs[i-1]) / 2
+///
+/// Output length: Len(xs) - 2. Most accurate for uniform spacing.
+fn Diff2Central(xs: Float[], ys: Float[]) -> Float[] ! Error {
+    let ok = ValidatePairedSeries(xs, ys)?
+    let ok2 = ValidateStrictlyIncreasing(xs)?
+    if Len(xs) < 3 {
+        return error("second diff requires at least 3 points")
+    }
+
+    // i=1 is the first interior point; seed with it.
+    let h0 = (xs[2] - xs[0]) / 2.0
+    var out = [(ys[2] - 2.0 * ys[1] + ys[0]) / (h0 * h0)]
+
+    for i in 2 .. Len(xs) - 1 {
+        let h = (xs[i + 1] - xs[i - 1]) / 2.0
+        out = Append(out, (ys[i + 1] - 2.0 * ys[i] + ys[i - 1]) / (h * h))
+    }
+
+    return out
+}
+
+// ============================================================
+// Numerical integration of data (area under discrete signal)
+// ============================================================
+
+/// Trapezoidal integration of a sampled signal.
+///
+/// Returns the scalar total area under the (xs, ys) curve.
+/// Non-uniform spacing is handled correctly.
+fn IntegrateTrapezoidal(xs: Float[], ys: Float[]) -> Float ! Error {
+    let ok = ValidatePairedSeries(xs, ys)?
+    let ok2 = ValidateStrictlyIncreasing(xs)?
+    if Len(xs) < 2 {
+        return error("integration requires at least 2 points")
+    }
+
+    var total = 0.0
+    for i in 0 .. Len(xs) - 1 {
+        total = total + 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i])
+    }
+    return total
+}
+
+/// Cumulative trapezoidal integral: running area from xs[0] to each xs[i].
+///
+/// Output length: Len(xs). First element is always 0.
+/// Useful for computing displacement from velocity, energy from power, etc.
+fn CumulativeIntegral(xs: Float[], ys: Float[]) -> Float[] ! Error {
+    let ok = ValidatePairedSeries(xs, ys)?
+    let ok2 = ValidateStrictlyIncreasing(xs)?
+    if Len(xs) < 2 {
+        return error("cumulative integral requires at least 2 points")
+    }
+
+    var out = [0.0]
+    var running = 0.0
+    for i in 0 .. Len(xs) - 1 {
+        running = running + 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i])
+        out = Append(out, running)
+    }
+    return out
+}
+
+// ============================================================
+// Cumulative and running operations
+// ============================================================
+
+/// Cumulative sum: out[i] = sum of ys[0..i].
+fn CumulativeSum(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+    var out = [ys[0]]
+    var running = ys[0]
+    for i in 1 .. Len(ys) {
+        running = running + ys[i]
+        out = Append(out, running)
+    }
+    return out
+}
+
+/// Running minimum: out[i] = min of ys[0..i].
+fn RunningMin(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+    var out = [ys[0]]
+    var current = ys[0]
+    for i in 1 .. Len(ys) {
+        if ys[i] < current {
+            current = ys[i]
+        }
+        out = Append(out, current)
+    }
+    return out
+}
+
+/// Running maximum: out[i] = max of ys[0..i].
+fn RunningMax(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+    var out = [ys[0]]
+    var current = ys[0]
+    for i in 1 .. Len(ys) {
+        if ys[i] > current {
+            current = ys[i]
+        }
+        out = Append(out, current)
+    }
+    return out
+}
+
+// ============================================================
+// Series normalization and transforms
+// ============================================================
+
+/// Normalize a series to [0, 1] by min-max scaling.
+///
+/// out[i] = (ys[i] - min) / (max - min)
+/// Errors if all values are equal (range = 0).
+fn Normalize(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+
+    var minVal = ys[0]
+    var maxVal = ys[0]
+    for i in 1 .. Len(ys) {
+        if ys[i] < minVal { minVal = ys[i] }
+        if ys[i] > maxVal { maxVal = ys[i] }
+    }
+
+    let range = maxVal - minVal
+    if Abs(range) < 0.000000000001 {
+        return error("normalize requires non-constant series")
+    }
+
+    var out = [(ys[0] - minVal) / range]
+    for i in 1 .. Len(ys) {
+        out = Append(out, (ys[i] - minVal) / range)
+    }
+    return out
+}
+
+/// Center a series by subtracting its mean.
+///
+/// out[i] = ys[i] - mean(ys)
+/// The result has zero mean.
+fn Center(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+
+    var sum = 0.0
+    for i in 0 .. Len(ys) {
+        sum = sum + ys[i]
+    }
+    let mean = sum / Float(Len(ys))
+
+    var out = [ys[0] - mean]
+    for i in 1 .. Len(ys) {
+        out = Append(out, ys[i] - mean)
+    }
+    return out
+}
+
+/// Standardize a series to zero mean and unit variance (z-score).
+///
+/// out[i] = (ys[i] - mean) / stddev
+/// Errors if standard deviation is zero (constant series).
+fn Standardize(ys: Float[]) -> Float[] ! Error {
+    let ok = ValidateSeries(ys)?
+
+    var sum = 0.0
+    for i in 0 .. Len(ys) {
+        sum = sum + ys[i]
+    }
+    let mean = sum / Float(Len(ys))
+
+    var sumSq = 0.0
+    for i in 0 .. Len(ys) {
+        let d = ys[i] - mean
+        sumSq = sumSq + d * d
+    }
+    let variance = sumSq / Float(Len(ys))
+    let stddev   = Sqrt(variance)
+
+    if Abs(stddev) < 0.000000000001 {
+        return error("standardize requires non-constant series")
+    }
+
+    var out = [(ys[0] - mean) / stddev]
+    for i in 1 .. Len(ys) {
+        out = Append(out, (ys[i] - mean) / stddev)
+    }
+    return out
+}
+
+// ============================================================
+// Peak and feature detection
+// ============================================================
+
+/// Find indices of local maxima in a series.
+///
+/// A point i is a local maximum if ys[i] > ys[i-1] and ys[i] > ys[i+1].
+/// Endpoints are never returned as peaks.
+fn LocalMaxima(ys: Float[]) -> Int[] ! Error {
+    let ok = ValidateSeries(ys)?
+    if Len(ys) < 3 {
+        return error("local maxima requires at least 3 points")
+    }
+
+    var out = [0]
+    var found = false
+    for i in 1 .. Len(ys) - 1 {
+        if ys[i] > ys[i - 1] and ys[i] > ys[i + 1] {
+            if not found {
+                out[0] = i
+                found = true
+            } else {
+                out = Append(out, i)
+            }
+        }
+    }
+
+    if not found {
+        return error("no local maxima found")
+    }
+    return out
+}
+
+/// Find indices of local minima in a series.
+///
+/// A point i is a local minimum if ys[i] < ys[i-1] and ys[i] < ys[i+1].
+/// Endpoints are never returned.
+fn LocalMinima(ys: Float[]) -> Int[] ! Error {
+    let ok = ValidateSeries(ys)?
+    if Len(ys) < 3 {
+        return error("local minima requires at least 3 points")
+    }
+
+    var out = [0]
+    var found = false
+    for i in 1 .. Len(ys) - 1 {
+        if ys[i] < ys[i - 1] and ys[i] < ys[i + 1] {
+            if not found {
+                out[0] = i
+                found = true
+            } else {
+                out = Append(out, i)
+            }
+        }
+    }
+
+    if not found {
+        return error("no local minima found")
+    }
+    return out
+}
+
+/// Find indices where the series crosses zero (sign changes).
+///
+/// Returns the index of the sample just before each crossing.
+/// A crossing occurs between i and i+1 when ys[i]*ys[i+1] < 0.
+fn ZeroCrossings(ys: Float[]) -> Int[] ! Error {
+    let ok = ValidateSeries(ys)?
+    if Len(ys) < 2 {
+        return error("zero crossings requires at least 2 points")
+    }
+
+    var out = [0]
+    var found = false
+    for i in 0 .. Len(ys) - 1 {
+        if ys[i] * ys[i + 1] < 0.0 {
+            if not found {
+                out[0] = i
+                found = true
+            } else {
+                out = Append(out, i)
+            }
+        }
+    }
+
+    if not found {
+        return error("no zero crossings found")
+    }
+    return out
+}
+
+/// Find the index of the global maximum in a series.
+fn ArgMax(ys: Float[]) -> Int ! Error {
+    let ok = ValidateSeries(ys)?
+    var maxVal = ys[0]
+    var maxIdx = 0
+    for i in 1 .. Len(ys) {
+        if ys[i] > maxVal {
+            maxVal = ys[i]
+            maxIdx = i
+        }
+    }
+    return maxIdx
+}
+
+/// Find the index of the global minimum in a series.
+fn ArgMin(ys: Float[]) -> Int ! Error {
+    let ok = ValidateSeries(ys)?
+    var minVal = ys[0]
+    var minIdx = 0
+    for i in 1 .. Len(ys) {
+        if ys[i] < minVal {
+            minVal = ys[i]
+            minIdx = i
+        }
+    }
+    return minIdx
+}
+
+// ============================================================
+// Series comparison
+// ============================================================
+
+/// Root mean square error between two series of equal length.
+fn RMSE(actual: Float[], predicted: Float[]) -> Float ! Error {
+    let ok = ValidatePairedSeries(actual, predicted)?
+
+    var sumSq = 0.0
+    for i in 0 .. Len(actual) {
+        let diff = actual[i] - predicted[i]
+        sumSq = sumSq + diff * diff
+    }
+    return Sqrt(sumSq / Float(Len(actual)))
+}
+
+/// Mean absolute error between two series of equal length.
+fn MAE(actual: Float[], predicted: Float[]) -> Float ! Error {
+    let ok = ValidatePairedSeries(actual, predicted)?
+
+    var sumAbs = 0.0
+    for i in 0 .. Len(actual) {
+        sumAbs = sumAbs + Abs(actual[i] - predicted[i])
+    }
+    return sumAbs / Float(Len(actual))
 }
