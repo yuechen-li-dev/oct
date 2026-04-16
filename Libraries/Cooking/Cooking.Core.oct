@@ -1,0 +1,373 @@
+package Cooking
+
+/// Practical cooking mathematics: recipe scaling, baker's percentages,
+/// unit conversion, temperature stages, and yield after trim loss.
+///
+/// The centerpiece is recipe scaling with leavening correction — the thing
+/// that explains why cakes fail when you naively double a recipe.
+
+// ============================================================
+// Unit conversion — weight
+// ============================================================
+
+/// Grams to ounces.
+fn GramsToOunces(g: Float) -> Float {
+    return g * 0.035274
+}
+
+/// Ounces to grams.
+fn OuncesToGrams(oz: Float) -> Float {
+    return oz * 28.3495
+}
+
+/// Grams to pounds.
+fn GramsToPounds(g: Float) -> Float {
+    return g * 0.00220462
+}
+
+/// Pounds to grams.
+fn PoundsToGrams(lb: Float) -> Float {
+    return lb * 453.592
+}
+
+// ============================================================
+// Unit conversion — volume
+// ============================================================
+
+/// Millilitres to US fluid ounces.
+fn MlToFlOz(ml: Float) -> Float {
+    return ml * 0.033814
+}
+
+/// US fluid ounces to millilitres.
+fn FlOzToMl(floz: Float) -> Float {
+    return floz * 29.5735
+}
+
+/// US cups to millilitres. 1 US cup = 236.588 ml.
+fn CupsToMl(cups: Float) -> Float {
+    return cups * 236.588
+}
+
+/// Millilitres to US cups.
+fn MlToCups(ml: Float) -> Float {
+    return ml / 236.588
+}
+
+/// US tablespoons to millilitres. 1 US tbsp = 14.7868 ml.
+fn TbspToMl(tbsp: Float) -> Float {
+    return tbsp * 14.7868
+}
+
+/// Millilitres to US tablespoons.
+fn MlToTbsp(ml: Float) -> Float {
+    return ml / 14.7868
+}
+
+/// US teaspoons to millilitres. 1 US tsp = 4.92892 ml.
+fn TspToMl(tsp: Float) -> Float {
+    return tsp * 4.92892
+}
+
+/// Millilitres to US teaspoons.
+fn MlToTsp(ml: Float) -> Float {
+    return ml / 4.92892
+}
+
+// ============================================================
+// Unit conversion — temperature
+// ============================================================
+
+/// Celsius to Fahrenheit.
+fn CelsiusToFahrenheit(c: Float) -> Float {
+    return c * 9.0 / 5.0 + 32.0
+}
+
+/// Fahrenheit to Celsius.
+fn FahrenheitToCelsius(f: Float) -> Float {
+    return (f - 32.0) * 5.0 / 9.0
+}
+
+/// Celsius to gas mark (UK oven). Returns nearest integer gas mark.
+/// Reference: GM1=135C, GM2=150, GM3=160, GM4=175, GM5=190, GM6=200, GM7=220, GM8=230, GM9=245.
+fn CelsiusToGasMark(c: Float) -> Int ! Error {
+    if c < 125.0 {
+        return error("gas mark requires temperature >= 125 C (below gas mark 1)")
+    }
+    return switch {
+        case c < 143.0 => 1
+        case c < 155.0 => 2
+        case c < 168.0 => 3
+        case c < 183.0 => 4
+        case c < 196.0 => 5
+        case c < 211.0 => 6
+        case c < 226.0 => 7
+        case c < 238.0 => 8
+        else           => 9
+    }
+}
+
+// ============================================================
+// Temperature stages for cooking
+// ============================================================
+
+/// Sugar syrup stage at a given temperature in Celsius.
+/// Returns the stage name used in confectionery.
+fn SugarStage(tempC: Float) -> String {
+    return switch {
+        case tempC < 112.0  => "below thread"
+        case tempC < 116.0  => "thread (112-115 C)"
+        case tempC < 121.0  => "soft ball (116-120 C)"
+        case tempC < 130.0  => "firm ball (121-129 C)"
+        case tempC < 138.0  => "hard ball (130-137 C)"
+        case tempC < 149.0  => "soft crack (138-148 C)"
+        case tempC < 166.0  => "hard crack (149-165 C)"
+        case tempC < 180.0  => "clear caramel (166-179 C)"
+        else                => "dark caramel / burnt (180+ C)"
+    }
+}
+
+/// Meat doneness stage for beef/lamb at a given core temperature in Celsius.
+fn BeefDoneness(tempC: Float) -> String {
+    return switch {
+        case tempC < 50.0  => "rare (below 50 C)"
+        case tempC < 55.0  => "medium-rare (50-54 C)"
+        case tempC < 60.0  => "medium (55-59 C)"
+        case tempC < 65.0  => "medium-well (60-64 C)"
+        else               => "well done (65+ C)"
+    }
+}
+
+/// Safe minimum internal temperature check for common proteins.
+/// Returns true if the temperature meets food safety guidelines.
+fn IsSafeTemperature(protein: String, tempC: Float) -> Bool ! Error {
+    if protein == "beef_steak"  { return tempC >= 63.0 }
+    if protein == "beef_ground" { return tempC >= 71.0 }
+    if protein == "pork"        { return tempC >= 63.0 }
+    if protein == "poultry"     { return tempC >= 74.0 }
+    if protein == "fish"        { return tempC >= 63.0 }
+    if protein == "egg"         { return tempC >= 71.0 }
+    return error("unknown protein — use: beef_steak, beef_ground, pork, poultry, fish, egg")
+}
+
+// ============================================================
+// Volume-to-weight for common ingredients
+// ============================================================
+
+/// Weight in grams of one US cup of a common ingredient.
+/// Based on standard culinary measurement references.
+fn GramsPerCup(ingredient: String) -> Float ! Error {
+    if ingredient == "all_purpose_flour"  { return 125.0 }
+    if ingredient == "bread_flour"        { return 130.0 }
+    if ingredient == "cake_flour"         { return 100.0 }
+    if ingredient == "whole_wheat_flour"  { return 120.0 }
+    if ingredient == "cocoa_powder"       { return 85.0 }
+    if ingredient == "granulated_sugar"   { return 200.0 }
+    if ingredient == "powdered_sugar"     { return 120.0 }
+    if ingredient == "brown_sugar_packed" { return 220.0 }
+    if ingredient == "salt"               { return 288.0 }
+    if ingredient == "butter"             { return 227.0 }
+    if ingredient == "honey"              { return 340.0 }
+    if ingredient == "milk"               { return 244.0 }
+    if ingredient == "water"              { return 237.0 }
+    if ingredient == "rice_uncooked"      { return 185.0 }
+    if ingredient == "rolled_oats"        { return 90.0 }
+    return error("unknown ingredient — see GramsPerCup for supported keys")
+}
+
+/// Convert cups to grams for a known ingredient.
+fn CupsToGrams(cups: Float, ingredient: String) -> Float ! Error {
+    let gpc = GramsPerCup(ingredient)?
+    return cups * gpc
+}
+
+// ============================================================
+// Baker's percentages
+// ============================================================
+
+/// Baker's percentage: ingredient weight as a percentage of flour weight.
+///
+/// In professional baking, all ingredients are expressed relative to flour.
+/// Flour is always 100%. A 65% hydration bread has 65g water per 100g flour.
+fn BakersPercentage(ingredientGrams: Float, flourGrams: Float) -> Float ! Error {
+    if flourGrams <= 0.0 {
+        return error("baker's percentage requires flour weight > 0")
+    }
+    return (ingredientGrams / flourGrams) * 100.0
+}
+
+/// Weight of an ingredient from its baker's percentage and flour weight.
+fn FromBakersPercentage(percent: Float, flourGrams: Float) -> Float ! Error {
+    if flourGrams <= 0.0 {
+        return error("from baker's percentage requires flour weight > 0")
+    }
+    return (percent / 100.0) * flourGrams
+}
+
+/// Total dough weight from flour weight and a list of baker's percentages.
+///
+/// percentages: baker's percentages of each ingredient including flour (100).
+/// flourGrams: the flour weight.
+fn TotalDoughWeight(percentages: Float[], flourGrams: Float) -> Float ! Error {
+    if flourGrams <= 0.0 {
+        return error("total dough weight requires flour weight > 0")
+    }
+    if Len(percentages) == 0 {
+        return error("total dough weight requires at least one percentage")
+    }
+    var total = 0.0
+    for i in 0 .. Len(percentages) {
+        total = total + (percentages[i] / 100.0) * flourGrams
+    }
+    return total
+}
+
+// ============================================================
+// Recipe scaling
+// ============================================================
+
+/// Scale a simple ingredient quantity by a ratio.
+/// Use for most ingredients: flour, sugar, butter, liquids, spices.
+fn ScaleIngredient(amount: Float, scaleFactor: Float) -> Float ! Error {
+    if scaleFactor <= 0.0 {
+        return error("scale factor must be > 0")
+    }
+    return amount * scaleFactor
+}
+
+/// Scale a leavening agent (baking powder, baking soda) with correction.
+///
+/// Leavening does not scale linearly. Above roughly 3× the original
+/// quantity, full linear scaling causes bitterness and structural collapse
+/// from over-gassing. The correction applies 75% of linear scaling above
+/// the 3× threshold — a standard professional baking rule of thumb.
+///
+/// Below 3×: full linear scaling (exact).
+/// At 3× and above: linear up to 3×, then 75% of remaining linear increment.
+///
+/// Example: 1 tsp baking powder scaled to 4×:
+///   Linear would be 4 tsp.
+///   Corrected: 3 tsp (linear part) + 0.75*(4-3) = 3.75 tsp.
+fn ScaleLeavening(amount: Float, scaleFactor: Float) -> Float ! Error {
+    if scaleFactor <= 0.0 {
+        return error("scale factor must be > 0")
+    }
+    if scaleFactor <= 3.0 {
+        return amount * scaleFactor
+    }
+    let linearPart     = amount * 3.0
+    let excessFactor   = scaleFactor - 3.0
+    let correctedExtra = amount * excessFactor * 0.75
+    return linearPart + correctedExtra
+}
+
+/// Scale salt with a mild correction for large batches.
+///
+/// Salt perception is non-linear at scale. Above 2× the original quantity,
+/// the correction applies 90% of linear scaling — salt taste amplifies
+/// slightly with concentration, so you need slightly less than linear.
+///
+/// Below 2×: full linear scaling.
+/// At 2× and above: linear up to 2×, then 90% of remaining increment.
+fn ScaleSalt(amount: Float, scaleFactor: Float) -> Float ! Error {
+    if scaleFactor <= 0.0 {
+        return error("scale factor must be > 0")
+    }
+    if scaleFactor <= 2.0 {
+        return amount * scaleFactor
+    }
+    let linearPart     = amount * 2.0
+    let excessFactor   = scaleFactor - 2.0
+    let correctedExtra = amount * excessFactor * 0.90
+    return linearPart + correctedExtra
+}
+
+/// Recommended pan size adjustment when scaling a baking recipe.
+///
+/// When scaling a recipe by area (round or square pan), the depth stays
+/// approximately constant. Returns the required pan area ratio.
+/// Use Sqrt of this to get the linear dimension ratio.
+///
+/// Example: scaling from an 8-inch to a 9-inch round pan:
+///   areaRatio = (9/8)^2 = 1.266
+///   scaleFactor for ingredients = 1.266
+fn PanAreaScaleFactor(originalDiameter: Float, newDiameter: Float) -> Float ! Error {
+    if originalDiameter <= 0.0 or newDiameter <= 0.0 {
+        return error("pan diameters must be > 0")
+    }
+    return (newDiameter * newDiameter) / (originalDiameter * originalDiameter)
+}
+
+// ============================================================
+// Yield and trim loss
+// ============================================================
+
+/// Net weight after trim loss.
+///
+/// trimLossPercent: percentage of gross weight that is discarded (0-99).
+/// Example: leeks with 40% trim loss — buy 500g, keep 300g.
+fn NetWeight(grossGrams: Float, trimLossPercent: Float) -> Float ! Error {
+    if grossGrams <= 0.0 {
+        return error("net weight requires gross weight > 0")
+    }
+    if trimLossPercent < 0.0 or trimLossPercent >= 100.0 {
+        return error("trim loss percent must be in [0, 100)")
+    }
+    return grossGrams * (1.0 - trimLossPercent / 100.0)
+}
+
+/// Gross weight to buy given a required net weight and trim loss.
+///
+/// Answers: "I need 300g of usable leek. How much do I buy?"
+fn GrossWeightRequired(netGrams: Float, trimLossPercent: Float) -> Float ! Error {
+    if netGrams <= 0.0 {
+        return error("gross weight requires net weight > 0")
+    }
+    if trimLossPercent < 0.0 or trimLossPercent >= 100.0 {
+        return error("trim loss percent must be in [0, 100)")
+    }
+    return netGrams / (1.0 - trimLossPercent / 100.0)
+}
+
+// ============================================================
+// Brine and dilution
+// ============================================================
+
+/// Salt percentage of a brine by weight.
+///
+/// A standard wet brine for poultry is 3-6%. Deli-style cured meats are 2-3%.
+fn BrineSaltPercent(saltGrams: Float, waterGrams: Float) -> Float ! Error {
+    if waterGrams <= 0.0 {
+        return error("brine salt percent requires water weight > 0")
+    }
+    if saltGrams < 0.0 {
+        return error("brine salt percent requires salt weight >= 0")
+    }
+    return (saltGrams / (saltGrams + waterGrams)) * 100.0
+}
+
+/// Salt grams needed to hit a target brine percentage given a water volume.
+fn SaltForBrine(waterGrams: Float, targetPercent: Float) -> Float ! Error {
+    if waterGrams <= 0.0 {
+        return error("salt for brine requires water weight > 0")
+    }
+    if targetPercent <= 0.0 or targetPercent >= 100.0 {
+        return error("target percent must be in (0, 100)")
+    }
+    return waterGrams * targetPercent / (100.0 - targetPercent)
+}
+
+/// Final concentration after reducing a liquid by evaporation.
+///
+/// reductionPercent: percentage of volume removed by boiling (0-99).
+/// Example: reduce a 2% salt stock by 50% → 4% concentration.
+fn ReductionConcentration(initialPercent: Float, reductionPercent: Float) -> Float ! Error {
+    if initialPercent <= 0.0 or initialPercent >= 100.0 {
+        return error("initial percent must be in (0, 100)")
+    }
+    if reductionPercent < 0.0 or reductionPercent >= 100.0 {
+        return error("reduction percent must be in [0, 100)")
+    }
+    let remainingFraction = 1.0 - reductionPercent / 100.0
+    return initialPercent / remainingFraction
+}
