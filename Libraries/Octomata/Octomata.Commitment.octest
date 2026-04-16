@@ -1,0 +1,285 @@
+package Octomata
+
+/// --- StabilizeValue ---
+
+[Fact]
+fn StabilizeValueFirstCallAcceptsAnyValue() -> Void {
+    let r = StabilizeValue(5, NoValueCommitment(), 0, 1)!
+    let next = r.Next
+    Assert.Equal(5, r.Value, "first call accepts incoming value")
+    Assert.True(r.Changed, "first call is always a change")
+    Assert.Equal(1, next.CommitAge, "commit age starts at 1")
+    Assert.True(next.HasValue, "has value after first call")
+}
+
+[Fact]
+fn StabilizeValueSameValueIncrementsAge() -> Void {
+    let held = ValueCommitment { Current: 3  CommitAge: 2  HasValue: true }
+    let r = StabilizeValue(3, held, 0, 1)!
+    let next = r.Next
+    Assert.Equal(3, r.Value, "same value held")
+    Assert.False(r.Changed, "no change on same value")
+    Assert.Equal(3, next.CommitAge, "age increments")
+}
+
+[Fact]
+fn StabilizeValueMinCommitBlocksEarlyChange() -> Void {
+    // Held for 1 tick, minCommit=3. New value must not win yet.
+    let held = ValueCommitment { Current: 10  CommitAge: 1  HasValue: true }
+    let r = StabilizeValue(20, held, 0, 3)!
+    Assert.Equal(10, r.Value, "min_commit blocks early change")
+    Assert.False(r.Changed, "no change while committed")
+}
+
+[Fact]
+fn StabilizeValueMinCommitExpiryAllowsChange() -> Void {
+    // CommitAge == minCommit: lock expired.
+    let held = ValueCommitment { Current: 10  CommitAge: 3  HasValue: true }
+    let r = StabilizeValue(20, held, 0, 3)!
+    Assert.Equal(20, r.Value, "change allowed after min_commit expires")
+    Assert.True(r.Changed, "changed reported")
+}
+
+[Fact]
+fn StabilizeValueHysteresisBlocksSmallChange() -> Void {
+    // hysteresis=5: new value must differ by more than 5 to switch.
+    // current=10, next=13, diff=3 <= 5 -> hold.
+    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let r = StabilizeValue(13, held, 5, 1)!
+    Assert.Equal(10, r.Value, "hysteresis blocks small change")
+    Assert.False(r.Changed, "no change within hysteresis band")
+}
+
+[Fact]
+fn StabilizeValueHysteresisAllowsLargeChange() -> Void {
+    // current=10, next=20, diff=10 > hysteresis=5 -> switch.
+    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let r = StabilizeValue(20, held, 5, 1)!
+    Assert.Equal(20, r.Value, "large change beats hysteresis")
+    Assert.True(r.Changed, "change reported")
+}
+
+[Fact]
+fn StabilizeValueHysteresisIsSymmetric() -> Void {
+    // Decrease: current=10, next=4, diff=6 > hysteresis=5 -> switch.
+    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let r = StabilizeValue(4, held, 5, 1)!
+    Assert.Equal(4, r.Value, "hysteresis is symmetric for decreases")
+    Assert.True(r.Changed, "decrease beats hysteresis")
+}
+
+[Fact]
+fn StabilizeValueCommitAgeResetsOnChange() -> Void {
+    let held = ValueCommitment { Current: 10  CommitAge: 8  HasValue: true }
+    let r = StabilizeValue(99, held, 0, 1)!
+    let next = r.Next
+    Assert.Equal(99, r.Value, "new value accepted")
+    Assert.Equal(1, next.CommitAge, "commit age resets to 1 on change")
+}
+
+[Fact]
+fn StabilizeValueRejectsNegativeHysteresis() -> Void {
+    match StabilizeValue(1, NoValueCommitment(), -1, 0) {
+        ok(r) => { Assert.True(false, "should reject negative hysteresis") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn StabilizeValueRejectsNegativeMinCommit() -> Void {
+    match StabilizeValue(1, NoValueCommitment(), 0, -1) {
+        ok(r) => { Assert.True(false, "should reject negative minCommit") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn StabilizeValuePersistsCorrectlyOverMultipleTicks() -> Void {
+    // Tick 1: first call -> accepts 7
+    // Tick 2: same value -> holds, age=2
+    // Tick 3: new value 7->15, minCommit=2, age=2 -> allowed
+    // Tick 4: new value 15->16, hysteresis=5, diff=1 -> blocked
+    let t1 = StabilizeValue(7, NoValueCommitment(), 5, 2)!
+    Assert.Equal(7, t1.Value, "tick 1: first value accepted")
+
+    let t2 = StabilizeValue(7, t1.Next, 5, 2)!
+    Assert.Equal(7, t2.Value, "tick 2: same value held")
+    Assert.False(t2.Changed, "tick 2: no change")
+
+    let t3 = StabilizeValue(15, t2.Next, 5, 2)!
+    Assert.Equal(15, t3.Value, "tick 3: large change accepted after min_commit")
+    Assert.True(t3.Changed, "tick 3: changed")
+
+    let t4 = StabilizeValue(16, t3.Next, 5, 2)!
+    Assert.Equal(15, t4.Value, "tick 4: small change blocked by hysteresis")
+    Assert.False(t4.Changed, "tick 4: no change")
+}
+
+/// --- TickCooldown ---
+
+[Fact]
+fn TickCooldownDecrementsRemaining() -> Void {
+    let r = TickCooldown(5)!
+    Assert.Equal(4, r.Remaining, "remaining decremented")
+    Assert.False(r.Expired, "not expired yet")
+}
+
+[Fact]
+fn TickCooldownReportsExpiryAtZero() -> Void {
+    let r = TickCooldown(1)!
+    Assert.Equal(0, r.Remaining, "remaining reaches zero")
+    Assert.True(r.Expired, "expired when reaching zero")
+}
+
+[Fact]
+fn TickCooldownAtZeroRemainsExpired() -> Void {
+    let r = TickCooldown(0)!
+    Assert.Equal(0, r.Remaining, "stays at zero")
+    Assert.True(r.Expired, "already expired at zero")
+}
+
+[Fact]
+fn TickCooldownRejectsNegative() -> Void {
+    match TickCooldown(-1) {
+        ok(r) => { Assert.True(false, "should reject negative remaining") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn StartCooldownRejectsZeroOrNegative() -> Void {
+    match StartCooldown(0) {
+        ok(v) => { Assert.True(false, "should reject zero ticks") }
+        err(e) => { }
+    }
+    match StartCooldown(-3) {
+        ok(v) => { Assert.True(false, "should reject negative ticks") }
+        err(e) => { }
+    }
+}
+
+[Fact]
+fn CooldownRunsToExpiry() -> Void {
+    // 3-tick cooldown should expire after exactly 3 decrements.
+    var remaining = StartCooldown(3)!
+    var expired = false
+    var ticks = 0
+    while not expired and ticks < 10 {
+        let r = TickCooldown(remaining)!
+        remaining = r.Remaining
+        expired = r.Expired
+        ticks = ticks + 1
+    }
+    Assert.Equal(3, ticks, "expires after exactly 3 ticks")
+    Assert.True(expired, "expired flag set")
+    Assert.Equal(0, remaining, "remaining is zero at expiry")
+}
+
+/// --- DetectEdge ---
+
+[Fact]
+fn DetectEdgeRisingOnFalseToTrue() -> Void {
+    let r = DetectEdge(true, false)
+    Assert.True(r.Rising, "rising edge detected")
+    Assert.False(r.Falling, "no falling edge")
+    Assert.True(r.Current, "current reflects signal")
+}
+
+[Fact]
+fn DetectEdgeFallingOnTrueToFalse() -> Void {
+    let r = DetectEdge(false, true)
+    Assert.False(r.Rising, "no rising edge")
+    Assert.True(r.Falling, "falling edge detected")
+    Assert.False(r.Current, "current reflects signal")
+}
+
+[Fact]
+fn DetectEdgeNoEdgeWhenSignalHeld() -> Void {
+    let rHigh = DetectEdge(true, true)
+    Assert.False(rHigh.Rising, "no rising when already high")
+    Assert.False(rHigh.Falling, "no falling when held high")
+
+    let rLow = DetectEdge(false, false)
+    Assert.False(rLow.Rising, "no rising when held low")
+    Assert.False(rLow.Falling, "no falling when already low")
+}
+
+[Fact]
+fn DetectEdgeOnlyFiresOneTick() -> Void {
+    // Edge detection only fires on the transition tick, not on sustained hold.
+    let first  = DetectEdge(true, false)  // rising edge tick
+    let second = DetectEdge(true, true)   // held high
+    Assert.True(first.Rising, "rising fires on transition tick")
+    Assert.False(second.Rising, "rising does not fire on hold")
+}
+
+/// --- UpdateLatch ---
+
+[Fact]
+fn UpdateLatchSetHoldsTrue() -> Void {
+    let r = UpdateLatch(false, true, false)
+    Assert.True(r.Latched, "set causes latch to go true")
+    Assert.True(r.Next, "next state is true")
+}
+
+[Fact]
+fn UpdateLatchHoldsTrueWithoutReset() -> Void {
+    let r = UpdateLatch(true, false, false)
+    Assert.True(r.Latched, "latch holds without set or reset")
+}
+
+[Fact]
+fn UpdateLatchResetClearsLatch() -> Void {
+    let r = UpdateLatch(true, false, true)
+    Assert.False(r.Latched, "reset clears latch")
+    Assert.False(r.Next, "next state is false after reset")
+}
+
+[Fact]
+fn UpdateLatchResetTakesPriorityOverSet() -> Void {
+    // When both set and reset are true, reset wins.
+    let r = UpdateLatch(true, true, true)
+    Assert.False(r.Latched, "reset takes priority over set")
+}
+
+[Fact]
+fn UpdateLatchFaultPatternHoldsUntilAck() -> Void {
+    // Simulate a fault latch: set on fault, clear on ack.
+    let r1 = UpdateLatch(false, true,  false)  // fault fires
+    let r2 = UpdateLatch(r1.Next, false, false) // fault gone, latch holds
+    let r3 = UpdateLatch(r2.Next, false, true)  // ack received
+    Assert.True(r1.Latched,  "latch sets on fault")
+    Assert.True(r2.Latched,  "latch holds after fault clears")
+    Assert.False(r3.Latched, "latch clears on ack")
+}
+
+/// --- Composition: commitment with edge detection ---
+
+[Fact]
+fn CommitmentAndEdgeComposeForModeChangeDetection() -> Void {
+    // Stabilize a mode value, then detect the edge when it changes.
+    // This is a pattern for generating one-shot events from stabilized decisions.
+    var commitment = NoValueCommitment()
+    var prevValue = 0
+    var edgeSeen  = false
+
+    // Ticks 1-2: mode = 1 (first call + hold)
+    let t1 = StabilizeValue(1, commitment, 0, 2)!
+    commitment = t1.Next
+    let e1 = DetectEdge(t1.Changed, false)
+    // first call is always Changed=true, so rising edge on tick 1
+    Assert.True(e1.Rising, "edge fires on first acceptance")
+    prevValue = t1.Value
+
+    let t2 = StabilizeValue(1, commitment, 0, 2)!
+    commitment = t2.Next
+    let e2 = DetectEdge(t2.Changed, e1.Current)
+    Assert.False(e2.Rising, "no edge on same value")
+
+    // Tick 3: mode changes to 2, min_commit=2, age=2 -> allowed
+    let t3 = StabilizeValue(2, commitment, 0, 2)!
+    commitment = t3.Next
+    let e3 = DetectEdge(t3.Changed, e2.Current)
+    Assert.True(e3.Rising, "edge fires on stabilized mode change")
+    Assert.Equal(2, t3.Value, "new mode accepted")
+}

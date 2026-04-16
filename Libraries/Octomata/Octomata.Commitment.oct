@@ -1,0 +1,220 @@
+package Octomata
+
+/// Standalone commitment and stabilization primitives.
+///
+/// `when policy` inside a flow provides hysteresis and min_commit backed by
+/// flow-local UtilityWhenSites state. Octomata.Commitment exposes the same
+/// stability logic as explicit records for two contexts:
+///
+///   1. Outside flows — pure functions, batch pipelines, or test code where
+///      you want commitment behavior without writing a flow.
+///
+///   2. Board-backed commitment inside a flow — carry a ValueCommitment in
+///      board memory and call StabilizeValue each tick for any scalar decision
+///      that needs debouncing but doesn't warrant a full arbitration set.
+///
+/// Design mirrors the rest of the Octomata library: pure stateless update
+/// functions, explicit state threading, all fallible with ! Error where
+/// inputs can be invalid.
+
+/// Persistent commitment state for a single scalar Int decision.
+/// Carry this in board memory or thread it explicitly across calls.
+record ValueCommitment {
+    /// The currently committed value.
+    Current:   Int
+    /// How many ticks the current value has been held.
+    CommitAge: Int
+    /// Whether a value is currently committed.
+    HasValue:  Bool
+}
+
+/// Result of a single stabilization tick.
+record StabilizeResult {
+    /// The resolved value after applying hysteresis and min_commit.
+    Value:     Int
+    /// Updated commitment state to carry into the next tick.
+    Next:      ValueCommitment
+    /// True if the resolved value changed from the previous tick.
+    Changed:   Bool
+}
+
+/// Build an empty commitment state — no value held yet.
+fn NoValueCommitment() -> ValueCommitment {
+    return ValueCommitment {
+        Current:   0
+        CommitAge: 0
+        HasValue:  false
+    }
+}
+
+/// Stabilize a scalar Int decision against transient flips.
+///
+/// Mirrors `when policy` semantics for a single value rather than an
+/// arbitration set. Use this to debounce mode changes, regime switches,
+/// or any discrete decision that should resist noise.
+///
+/// next:       the newly computed value this tick
+/// commitment: current commitment state
+/// hysteresis: next must differ from current by more than this to switch
+///             (for Int values, any change satisfies threshold of 0)
+/// minCommit:  current value is held for at least this many ticks
+fn StabilizeValue(
+    next:       Int,
+    commitment: ValueCommitment,
+    hysteresis: Int,
+    minCommit:  Int
+) -> StabilizeResult ! Error {
+    if hysteresis < 0 {
+        return error("stabilize value requires hysteresis >= 0")
+    }
+    if minCommit < 0 {
+        return error("stabilize value requires minCommit >= 0")
+    }
+
+    if not commitment.HasValue {
+        // First call — accept whatever arrives.
+        return StabilizeResult {
+            Value: next
+            Next: ValueCommitment {
+                Current:   next
+                CommitAge: 1
+                HasValue:  true
+            }
+            Changed: true
+        }
+    }
+
+    // Check min_commit lock.
+    if commitment.CommitAge < minCommit {
+        return StabilizeResult {
+            Value: commitment.Current
+            Next: ValueCommitment {
+                Current:   commitment.Current
+                CommitAge: commitment.CommitAge + 1
+                HasValue:  true
+            }
+            Changed: false
+        }
+    }
+
+    // Same value — increment age, no change.
+    if next == commitment.Current {
+        return StabilizeResult {
+            Value: commitment.Current
+            Next: ValueCommitment {
+                Current:   commitment.Current
+                CommitAge: commitment.CommitAge + 1
+                HasValue:  true
+            }
+            Changed: false
+        }
+    }
+
+    // Different value — check hysteresis.
+    // For Int values, hysteresis acts as a required difference threshold.
+    // With hysteresis=0 any change is accepted; hysteresis>0 is unusual
+    // for plain Int but supported for scored-mode use cases.
+    let diff = Abs(next - commitment.Current)
+    if diff <= hysteresis {
+        return StabilizeResult {
+            Value: commitment.Current
+            Next: ValueCommitment {
+                Current:   commitment.Current
+                CommitAge: commitment.CommitAge + 1
+                HasValue:  true
+            }
+            Changed: false
+        }
+    }
+
+    // Change accepted.
+    return StabilizeResult {
+        Value: next
+        Next: ValueCommitment {
+            Current:   next
+            CommitAge: 1
+            HasValue:  true
+        }
+        Changed: true
+    }
+}
+
+/// Cooldown timer: count down a tick budget and report whether it has expired.
+///
+/// A common board pattern is `CooldownTicks: Int` decremented each tick.
+/// This function makes the intent explicit and testable in isolation.
+///
+/// Returns the next tick count and whether the cooldown is now expired.
+record CooldownResult {
+    Remaining: Int
+    Expired:   Bool
+}
+
+fn TickCooldown(remaining: Int) -> CooldownResult ! Error {
+    if remaining < 0 {
+        return error("tick cooldown requires remaining >= 0")
+    }
+    if remaining == 0 {
+        return CooldownResult {
+            Remaining: 0
+            Expired:   true
+        }
+    }
+    return CooldownResult {
+        Remaining: remaining - 1
+        Expired:   remaining - 1 == 0
+    }
+}
+
+/// Build a fresh cooldown with a given number of ticks.
+fn StartCooldown(ticks: Int) -> Int ! Error {
+    if ticks <= 0 {
+        return error("start cooldown requires ticks > 0")
+    }
+    return ticks
+}
+
+/// Edge detector: report rising and falling edges on a Bool signal.
+///
+/// Tracks previous signal state explicitly. Use in board memory to catch
+/// the first tick of a transition without triggering on every held tick.
+record EdgeResult {
+    /// True on the first tick the signal becomes true (rising edge).
+    Rising:   Bool
+    /// True on the first tick the signal becomes false (falling edge).
+    Falling:  Bool
+    /// The current signal value (for threading convenience).
+    Current:  Bool
+}
+
+fn DetectEdge(signal: Bool, previous: Bool) -> EdgeResult {
+    return EdgeResult {
+        Rising:  signal and not previous
+        Falling: not signal and previous
+        Current: signal
+    }
+}
+
+/// Latch: hold a Bool true once set, clear only on explicit reset.
+///
+/// Models fault latches, acknowledge flags, and one-shot triggers.
+/// The pattern appears repeatedly in Octomata board usage — this makes
+/// the intent explicit and the logic testable.
+record LatchResult {
+    /// Current latch output.
+    Latched: Bool
+    /// Updated latch state to carry forward.
+    Next:    Bool
+}
+
+fn UpdateLatch(current: Bool, set: Bool, reset: Bool) -> LatchResult {
+    let next = switch {
+        case reset        => false
+        case set          => true
+        else              => current
+    }
+    return LatchResult {
+        Latched: next
+        Next:    next
+    }
+}
