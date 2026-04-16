@@ -1,124 +1,417 @@
 package Signal
 
+// ============================================================
+// ZeroSeries and Reverse
+// ============================================================
+
 [Fact]
-fn AnalyzeSignalReturnsConsistentShapes() -> Void {
-    let result = AnalyzeSignal(0.0, 0.5, 3)!
-
-    Assert.Equal(12, Len(result.Raw), "raw should contain 12 samples")
-    Assert.Equal(Len(result.Raw), Len(result.X), "x axis length should match raw samples")
-    Assert.Equal(10, Len(result.Smoothed), "smoothed length should use valid-window policy")
-    Assert.Near(0.0, result.X[0], 0.0001, "x should start at the provided start value")
-    Assert.Near(1.5, result.X[3], 0.0001, "x should advance by delta")
-}
-
-[Theory]
-[InlineData(0, 0.0)]
-[InlineData(5, 3.2)]
-[InlineData(11, 5.0)]
-fn GeneratedSignalContainsKnownSamples(index: Int, expected: Float) -> Void {
-    let raw = GenerateSignalValues()
-    Assert.Near(expected, raw[index], 0.0001, "raw sample mismatch")
+fn ZeroSeriesProducesCorrectLength() -> Void {
+    let z = ZeroSeries(5)!
+    Assert.Equal(5, Len(z), "length matches")
+    Assert.Near(0.0, z[0], 0.0, "all zeros")
+    Assert.Near(0.0, z[4], 0.0, "all zeros at end")
 }
 
 [Fact]
-fn ConvolveMatchesHandComputedValuesAndLength() -> Void {
-    let actual = Convolve([1.0, 2.0, 3.0], [0.5, 1.0])!
-
-    Assert.Equal(4, Len(actual), "convolution output length should be Len(x)+Len(h)-1")
-    Assert.Near(0.5, actual[0], 0.000001, "convolution sample 0")
-    Assert.Near(2.0, actual[1], 0.000001, "convolution sample 1")
-    Assert.Near(3.5, actual[2], 0.000001, "convolution sample 2")
-    Assert.Near(3.0, actual[3], 0.000001, "convolution sample 3")
+fn ZeroSeriesRejectsNonPositiveCount() -> Void {
+    match ZeroSeries(0) {
+        ok(v) => { Assert.True(false, "should reject count=0") }
+        err(e) => { }
+    }
 }
 
 [Fact]
-fn ConvolveWithIdentityLikeKernelReturnsInput() -> Void {
-    let x = [2.0, 0.0 - 1.5, 4.25]
-    let actual = Convolve(x, [1.0])!
+fn ReverseFlipsArray() -> Void {
+    let r = Reverse([1.0, 2.0, 3.0])!
+    Assert.Near(3.0, r[0], 0.000001, "first element is last original")
+    Assert.Near(2.0, r[1], 0.000001, "middle preserved")
+    Assert.Near(1.0, r[2], 0.000001, "last element is first original")
+}
 
-    Assert.Equal(Len(x), Len(actual), "identity kernel should preserve length")
+[Fact]
+fn ReverseOfSingleElementIsIdentity() -> Void {
+    let r = Reverse([7.0])!
+    Assert.Near(7.0, r[0], 0.000001, "single element unchanged")
+}
+
+// ============================================================
+// Convolution
+// ============================================================
+
+[Fact]
+fn ConvolveMatchesHandComputedValues() -> Void {
+    let y = Convolve([1.0, 2.0, 3.0], [0.5, 1.0])!
+    Assert.Equal(4, Len(y), "output length = Len(x)+Len(h)-1")
+    Assert.Near(0.5, y[0], 0.000001, "y[0]")
+    Assert.Near(2.0, y[1], 0.000001, "y[1]")
+    Assert.Near(3.5, y[2], 0.000001, "y[2]")
+    Assert.Near(3.0, y[3], 0.000001, "y[3]")
+}
+
+[Fact]
+fn ConvolveWithIdentityKernelPreservesSignal() -> Void {
+    let x = [2.0, (0.0 - 1.5), 4.25]
+    let y = Convolve(x, [1.0])!
+    Assert.Equal(Len(x), Len(y), "identity kernel preserves length")
     for i in 0 .. Len(x) {
-        Assert.Near(x[i], actual[i], 0.000001, "identity kernel should preserve samples")
+        Assert.Near(x[i], y[i], 0.000001, "identity kernel preserves samples")
     }
 }
 
+[Fact]
+fn ConvolveIsCommutativeForEqualLengthInputs() -> Void {
+    let a = [1.0, 2.0, 3.0]
+    let b = [4.0, 5.0, 6.0]
+    let ab = Convolve(a, b)!
+    let ba = Convolve(b, a)!
+    Assert.Equal(Len(ab), Len(ba), "commutative: equal lengths")
+    for i in 0 .. Len(ab) {
+        Assert.Near(ab[i], ba[i], 0.000001, "commutative: equal values")
+    }
+}
+
+// ============================================================
+// Correlation
+// ============================================================
 
 [Fact]
-fn CorrelateUsesIncreasingLagOrderAndKnownValues() -> Void {
-    let actual = Correlate([1.0, 2.0], [3.0, 4.0])!
-
-    Assert.Equal(3, Len(actual), "correlation output length should be Len(x)+Len(y)-1")
-    // Lag ordering is k=-1,0,1.
-    Assert.Near(4.0, actual[0], 0.000001, "k=-1")
-    Assert.Near(11.0, actual[1], 0.000001, "k=0")
-    Assert.Near(6.0, actual[2], 0.000001, "k=1")
+fn CorrelateMatchesHandComputedValues() -> Void {
+    let r = Correlate([1.0, 2.0], [3.0, 4.0])!
+    Assert.Equal(3, Len(r), "output length = Len(x)+Len(y)-1")
+    Assert.Near(4.0,  r[0], 0.000001, "lag -1")
+    Assert.Near(11.0, r[1], 0.000001, "lag 0")
+    Assert.Near(6.0,  r[2], 0.000001, "lag +1")
 }
 
 [Fact]
-fn CorrelateSelfCorrelationHasExpectedCenterPeak() -> Void {
+fn AutoCorrelateHasPeakAtZeroLag() -> Void {
     let x = [1.0, 2.0, 3.0]
-    let r = Correlate(x, x)!
-
-    Assert.Equal(5, Len(r), "self correlation output length")
-    Assert.Near(14.0, r[2], 0.000001, "center lag should equal sum of squares")
-}
-
-
-[Fact]
-fn MovingAverageUsesValidWindowOnlyPolicy() -> Void {
-    let values = [1.0, 2.0, 3.0, 4.0]
-    let actual = MovingAverage(values, 2)!
-
-    Assert.Equal(3, Len(actual), "valid-window policy should emit Len(x)-window+1 samples")
-    Assert.Near(1.5, actual[0], 0.000001, "moving average sample 0")
-    Assert.Near(2.5, actual[1], 0.000001, "moving average sample 1")
-    Assert.Near(3.5, actual[2], 0.000001, "moving average sample 2")
+    let r = AutoCorrelate(x)!
+    let center = Len(x) - 1
+    Assert.Near(14.0, r[center], 0.000001, "zero-lag = sum of squares")
+    Assert.True(r[center] >= r[center - 1], "zero-lag >= adjacent lag")
+    Assert.True(r[center] >= r[center + 1], "zero-lag >= adjacent lag")
 }
 
 [Fact]
-fn MovingAverageCoversWindowEdgeCasesAndValidation() -> Void {
-    let values = [2.0, 4.0, 6.0]
+fn NormalizedAutoCorrelateHasPeakOfOne() -> Void {
+    let x = [1.0, 2.0, 1.0, 0.0, (0.0 - 1.0)]
+    let r = NormalizedAutoCorrelate(x)!
+    let center = Len(x) - 1
+    Assert.Near(1.0, r[center], 0.000001, "normalized zero-lag = 1")
+    Assert.True(Abs(r[center - 1]) <= 1.0, "off-peak <= 1 in magnitude")
+}
 
-    let windowOne = MovingAverage(values, 1)!
-    Assert.Equal(3, Len(windowOne), "window=1 should preserve length")
-    Assert.Near(2.0, windowOne[0], 0.000001, "window=1 sample 0")
-    Assert.Near(4.0, windowOne[1], 0.000001, "window=1 sample 1")
-    Assert.Near(6.0, windowOne[2], 0.000001, "window=1 sample 2")
+[Fact]
+fn NormalizedAutoCorrelateIsSymmetric() -> Void {
+    let x = [1.0, 2.0, 3.0, 2.0, 1.0]
+    let r = NormalizedAutoCorrelate(x)!
+    let n = Len(r)
+    for i in 0 .. n / 2 {
+        Assert.Near(r[i], r[n - 1 - i], 0.000001, "normalized autocorrelation is symmetric")
+    }
+}
 
-    let fullWindow = MovingAverage(values, Len(values))!
-    Assert.Equal(1, Len(fullWindow), "window=Len(x) should return one value")
-    Assert.Near(4.0, fullWindow[0], 0.000001, "window=Len(x) should average all samples")
+// ============================================================
+// Moving average
+// ============================================================
 
-    match MovingAverage(values, 0) {
-        ok(v) => { Assert.True(false, "moving average must reject non-positive window") }
+[Fact]
+fn MovingAverageValidWindowPolicy() -> Void {
+    let out = MovingAverage([1.0, 2.0, 3.0, 4.0], 2)!
+    Assert.Equal(3, Len(out), "valid-window: Len(x)-window+1")
+    Assert.Near(1.5, out[0], 0.000001, "window 0")
+    Assert.Near(2.5, out[1], 0.000001, "window 1")
+    Assert.Near(3.5, out[2], 0.000001, "window 2")
+}
+
+[Fact]
+fn MovingAverageWindowOneIsIdentity() -> Void {
+    let x = [2.0, 4.0, 6.0]
+    let out = MovingAverage(x, 1)!
+    Assert.Equal(3, Len(out), "window=1 preserves length")
+    for i in 0 .. Len(x) {
+        Assert.Near(x[i], out[i], 0.000001, "window=1 preserves values")
+    }
+}
+
+[Fact]
+fn MovingAverageFullWindowReturnsMean() -> Void {
+    let x = [2.0, 4.0, 6.0]
+    let out = MovingAverage(x, 3)!
+    Assert.Equal(1, Len(out), "full window = one output")
+    Assert.Near(4.0, out[0], 0.000001, "full window = mean")
+}
+
+[Fact]
+fn MovingAverageRejectsInvalidInputs() -> Void {
+    match MovingAverage([1.0, 2.0], 0) {
+        ok(v) => { Assert.True(false, "should reject window=0") }
         err(e) => { }
     }
+    match MovingAverage([1.0, 2.0], 3) {
+        ok(v) => { Assert.True(false, "should reject window > length") }
+        err(e) => { }
+    }
+}
 
-    match MovingAverage(values, 4) {
-        ok(v) => { Assert.True(false, "moving average must reject window > Len(values)") }
+// ============================================================
+// Window functions
+// ============================================================
+
+[Fact]
+fn RectangularWindowIsAllOnes() -> Void {
+    let w = RectangularWindow(5)!
+    Assert.Equal(5, Len(w), "length correct")
+    for i in 0 .. 5 {
+        Assert.Near(1.0, w[i], 0.000001, "rectangular = 1 everywhere")
+    }
+}
+
+[Fact]
+fn HannWindowIsZeroAtBothEnds() -> Void {
+    let w = HannWindow(8)!
+    Assert.Equal(8, Len(w), "length correct")
+    Assert.Near(0.0, w[0], 0.000001, "Hann starts at 0")
+    Assert.Near(0.0, w[7], 0.000001, "Hann ends at 0")
+}
+
+[Fact]
+fn HannWindowPeaksNearCenter() -> Void {
+    let w = HannWindow(9)!
+    let center = 4
+    Assert.True(w[center] > w[0], "center > edge")
+    Assert.True(w[center] > w[center - 1], "center is local maximum")
+    Assert.True(w[center] > w[center + 1], "center is local maximum")
+}
+
+[Fact]
+fn HammingWindowDoesNotGoToZeroAtEnds() -> Void {
+    let w = HammingWindow(8)!
+    // Hamming at endpoints: 0.54 - 0.46 = 0.08
+    Assert.True(w[0] > 0.0, "Hamming does not go to zero at start")
+    Assert.True(w[7] > 0.0, "Hamming does not go to zero at end")
+    Assert.Near(0.08, w[0], 0.001, "Hamming endpoint = 0.08")
+}
+
+[Fact]
+fn BlackmanWindowIsZeroAtBothEnds() -> Void {
+    let w = BlackmanWindow(8)!
+    Assert.Near(0.0, w[0], 0.001, "Blackman starts near 0")
+    Assert.Near(0.0, w[7], 0.001, "Blackman ends near 0")
+}
+
+[Fact]
+fn BlackmanWindowHasLowerSidelobeEnergyThanHann() -> Void {
+    // Both Hann and Blackman peak at 1.0 at the center.
+    // Blackman's advantage is lower sidelobe energy — the tails fall off faster.
+    // Test: Blackman edge values are smaller than Hann edge values.
+    let n = 9
+    let hann     = HannWindow(n)!
+    let blackman = BlackmanWindow(n)!
+    // At position 1 (near edge), Blackman should be smaller than Hann.
+    Assert.True(blackman[1] < hann[1], "Blackman falls off faster than Hann near edges")
+    Assert.True(blackman[n - 2] < hann[n - 2], "Blackman falls off faster near end")
+}
+
+[Fact]
+fn WindowFunctionsAreSymmetric() -> Void {
+    let n = 9
+    let hann    = HannWindow(n)!
+    let hamming = HammingWindow(n)!
+    let blackman = BlackmanWindow(n)!
+    for i in 0 .. n / 2 {
+        Assert.Near(hann[i],    hann[n - 1 - i],    0.000001, "Hann is symmetric")
+        Assert.Near(hamming[i], hamming[n - 1 - i],  0.000001, "Hamming is symmetric")
+        Assert.Near(blackman[i], blackman[n - 1 - i], 0.000001, "Blackman is symmetric")
+    }
+}
+
+[Fact]
+fn ApplyWindowScalesSignalByWindowCoefficients() -> Void {
+    let signal = [1.0, 1.0, 1.0, 1.0, 1.0]
+    let window = HannWindow(5)!
+    let out    = ApplyWindow(signal, window)!
+    for i in 0 .. 5 {
+        Assert.Near(window[i], out[i], 0.000001, "unit signal * window = window")
+    }
+}
+
+[Fact]
+fn ApplyWindowRejectsMismatchedLengths() -> Void {
+    match ApplyWindow([1.0, 2.0], [1.0, 0.5, 0.0]) {
+        ok(v) => { Assert.True(false, "should reject mismatched lengths") }
+        err(e) => { }
+    }
+}
+
+// ============================================================
+// FIR filter design
+// ============================================================
+
+[Fact]
+fn LowpassFIRHasCenterPeakAndIsSymmetric() -> Void {
+    let n = 9
+    let w = HannWindow(n)!
+    let h = LowpassFIR(0.25, n, w)!
+    let center = (n - 1) / 2
+    Assert.Equal(n, Len(h), "filter length correct")
+    // Symmetric about center
+    for i in 0 .. center {
+        Assert.Near(h[i], h[n - 1 - i], 0.000001, "FIR kernel is symmetric")
+    }
+    // Center tap is the largest
+    Assert.True(h[center] > h[0], "center tap is dominant")
+}
+
+[Fact]
+fn LowpassFIRSumsToOne() -> Void {
+    // After normalization, the sum of FIR coefficients should equal 1 (unit DC gain).
+    let n = 9
+    let w = HannWindow(n)!
+    let h = LowpassFIR(0.4, n, w)!
+    var sum = 0.0
+    for i in 0 .. n {
+        sum = sum + h[i]
+    }
+    Assert.Near(1.0, sum, 0.000001, "normalized lowpass FIR sums to 1")
+}
+
+[Fact]
+fn HighpassFIRRejectsEvenLength() -> Void {
+    let w = HannWindow(8)!
+    match HighpassFIR(0.25, 8, w) {
+        ok(v) => { Assert.True(false, "should reject even length") }
         err(e) => { }
     }
 }
 
 [Fact]
-fn AutoCorrelateWrapsCorrelate() -> Void {
-    let viaWrapper = AutoCorrelate([1.0, 0.0 - 1.0, 2.0])!
-    let direct = Correlate([1.0, 0.0 - 1.0, 2.0], [1.0, 0.0 - 1.0, 2.0])!
+fn HighpassFIRIsAntiSymmetricToLowpass() -> Void {
+    // HP = spectral inversion of LP.
+    // All taps negated, center tap gets +1.
+    let n = 9
+    let w = HannWindow(n)!
+    let lp = LowpassFIR(0.25, n, w)!
+    let hp = HighpassFIR(0.25, n, w)!
+    let center = (n - 1) / 2
+    // Non-center taps: hp[i] = -lp[i]
+    Assert.Near((0.0 - lp[0]), hp[0], 0.000001, "non-center tap negated")
+    Assert.Near((0.0 - lp[1]), hp[1], 0.000001, "non-center tap negated")
+    // Center tap: hp[center] = -lp[center] + 1
+    Assert.Near(1.0 - lp[center], hp[center], 0.000001, "center tap = 1 - lp[center]")
+}
 
-    Assert.Equal(Len(direct), Len(viaWrapper), "autocorrelation length should match direct correlation")
-    for i in 0 .. Len(direct) {
-        Assert.Near(direct[i], viaWrapper[i], 0.000001, "autocorrelation wrapper should match direct output")
+[Fact]
+fn BandpassFIRIsLowpassDifference() -> Void {
+    // BP(lo, hi) = LP(hi) - LP(lo).
+    let n = 9
+    let w = HannWindow(n)!
+    let bp  = BandpassFIR(0.1, 0.4, n, w)!
+    let lph = LowpassFIR(0.4, n, w)!
+    let lpl = LowpassFIR(0.1, n, w)!
+    for i in 0 .. n {
+        Assert.Near(lph[i] - lpl[i], bp[i], 0.000001, "bandpass = LP(hi) - LP(lo)")
     }
 }
 
 [Fact]
-fn SignalOperationsComposeDeterministically() -> Void {
-    let x = [1.0, 3.0, 2.0, 5.0]
-    let smoothed = MovingAverage(x, 2)!
-    let kernel = [1.0, 0.0 - 0.5]
-    let convolved = Convolve(smoothed, kernel)!
-    let score = Correlate(convolved, [1.0, 0.0, 1.0])!
+fn BandpassFIRRejectsInvalidCutoffs() -> Void {
+    let w = HannWindow(9)!
+    match BandpassFIR(0.4, 0.2, 9, w) {
+        ok(v) => { Assert.True(false, "should reject lowCutoff >= highCutoff") }
+        err(e) => { }
+    }
+}
 
-    Assert.Equal(6, Len(score), "composed workflow length should be deterministic")
-    Assert.True(score[2] > score[0], "composed workflow should produce meaningful lag structure")
+[Fact]
+fn LowpassFIRConvolvesCorrectlyWithTestSignal() -> Void {
+    // A lowpass filter applied to a DC signal should produce near-unity output
+    // once the filter has fully settled (past the transient of length n-1).
+    // A lowpass applied to Nyquist-rate [1,-1,1,-1,...] should strongly attenuate.
+    let n = 9
+    let w = HannWindow(n)!
+    let h = LowpassFIR(0.25, n, w)!
+
+    // DC signal long enough to settle: needs at least n samples before steady state.
+    // Use 32 samples; check at index n+5 (well past transient).
+    var dc = [1.0]
+    for i in 1 .. 32 {
+        dc = Append(dc, 1.0)
+    }
+    let dcOut = Convolve(dc, h)!
+    // Check at a settled point well past the filter length
+    let settled = n + 5
+    Assert.Near(1.0, dcOut[settled], 0.05, "lowpass passes DC after settling")
+
+    // High-frequency [1,-1,...] — 32 samples
+    var hf = [1.0]
+    for i in 1 .. 32 {
+        let sign = switch { case i / 2 * 2 == i => 1.0 else => (0.0 - 1.0) }
+        hf = Append(hf, sign)
+    }
+    let hfOut = Convolve(hf, h)!
+    Assert.True(Abs(hfOut[settled]) < 0.1, "lowpass attenuates Nyquist-rate signal")
+}
+
+// ============================================================
+// Spectral analysis
+// ============================================================
+
+[Fact]
+fn MagnitudeSpectrumLengthMatchesInput() -> Void {
+    // Build a trivial 4-point spectrum manually
+    let spectrum = [Complex(3.0, 0.0), Complex(1.0, 2.0), Complex(0.0, 1.0), Complex(1.0, (0.0 - 2.0))]
+    let mag = MagnitudeSpectrum(spectrum)!
+    Assert.Equal(4, Len(mag), "magnitude spectrum length matches input")
+}
+
+[Fact]
+fn MagnitudeSpectrumOfRealConstantIsCorrect() -> Void {
+    // Complex(4, 0) has magnitude 4.
+    let spectrum = [Complex(4.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0)]
+    let mag = MagnitudeSpectrum(spectrum)!
+    Assert.Near(4.0, mag[0], 0.000001, "DC bin magnitude = 4")
+    Assert.Near(0.0, mag[1], 0.000001, "other bins zero")
+}
+
+[Fact]
+fn PowerSpectrumIsMagnitudeSquared() -> Void {
+    let spectrum = [Complex(3.0, 4.0), Complex(1.0, 0.0)]
+    let mag  = MagnitudeSpectrum(spectrum)!
+    let pwr  = PowerSpectrum(spectrum)!
+    Assert.Equal(Len(mag), Len(pwr), "same length")
+    // mag[0] = sqrt(9+16) = 5, pwr[0] = 25
+    Assert.Near(25.0, pwr[0], 0.000001, "power = magnitude squared: 3^2+4^2=25")
+    Assert.Near(1.0,  pwr[1], 0.000001, "power = 1^2+0^2=1")
+}
+
+[Fact]
+fn DominantBinIndexFindsHighestMagnitude() -> Void {
+    // Bin 2 has the highest magnitude
+    let mag = [1.0, 2.0, 8.0, 3.0, 1.0, 0.5, 0.0, 0.0]
+    let idx = DominantBinIndex(mag)!
+    Assert.Equal(2, idx, "dominant bin is index 2")
+}
+
+[Fact]
+fn BinIndexToFrequencyConvertsCorrectly() -> Void {
+    // Bin 1 of N=8 -> frequency 1/8 = 0.125
+    let f = BinIndexToFrequency(1, 8)!
+    Assert.Near(0.125, f, 0.000001, "bin 1 of 8 = 0.125 normalized")
+    // Bin 0 = DC = 0
+    let dc = BinIndexToFrequency(0, 8)!
+    Assert.Near(0.0, dc, 0.000001, "bin 0 = DC = 0")
+}
+
+[Fact]
+fn BinIndexToFrequencyRejectsInvalidInputs() -> Void {
+    match BinIndexToFrequency(1, 0) {
+        ok(v) => { Assert.True(false, "should reject n=0") }
+        err(e) => { }
+    }
+    match BinIndexToFrequency(8, 8) {
+        ok(v) => { Assert.True(false, "should reject binIndex >= n") }
+        err(e) => { }
+    }
 }

@@ -1,45 +1,51 @@
 package Signal
 
-record SignalAnalysisResult {
-    X: Float[]
-    Raw: Float[]
-    Smoothed: Float[]
-}
+// ============================================================
+// Core utilities
+// ============================================================
 
-fn GenerateSignalValues() -> Float[] {
-    var raw = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-    for i in 0 .. Len(raw) {
-        let base = i * 0.4
-
-        let shape = switch {
-            case i < 3 => 0.0
-            case i < 6 => 1.2
-            case i < 9 => 0.0 - 0.8
-            else => 0.6
-        }
-
-        raw[i] = base + shape
+/// Build a zero-filled Float array of the given length.
+fn ZeroSeries(count: Int) -> Float[] ! Error {
+    if count <= 0 {
+        return error("zero series requires count > 0")
     }
-
-    return raw
+    var out = [0.0]
+    for i in 1 .. count {
+        out = Append(out, 0.0)
+    }
+    return out
 }
 
-/// Computes finite linear discrete convolution for dimensionless real sequences.
-/// - Inputs: non-empty Float[] x and h.
-/// - Output length: Len(x) + Len(h) - 1.
-/// - Output ordering: y[n] for n = 0..Len(y)-1 where y[n] = Sum_i x[i] * h[n - i].
+/// Reverse a Float array.
+fn Reverse(values: Float[]) -> Float[] ! Error {
+    if Len(values) == 0 {
+        return error("reverse requires non-empty array")
+    }
+    var out = [values[Len(values) - 1]]
+    for i in 1 .. Len(values) {
+        out = Append(out, values[Len(values) - 1 - i])
+    }
+    return out
+}
+
+// ============================================================
+// Convolution and correlation
+// ============================================================
+
+/// Finite linear discrete convolution of real sequences.
+///
+/// Output length: Len(x) + Len(h) - 1.
+/// y[n] = Sum_i x[i] * h[n - i]
 fn Convolve(x: Float[], h: Float[]) -> Float[] ! Error {
     if Len(x) == 0 {
         return error("convolution requires non-empty x")
     }
-
     if Len(h) == 0 {
         return error("convolution requires non-empty h")
     }
 
     let outputLength = Len(x) + Len(h) - 1
-    var out = ZeroSeries(outputLength)
+    var out = ZeroSeries(outputLength)?
 
     for i in 0 .. Len(x) {
         for j in 0 .. Len(h) {
@@ -50,93 +56,318 @@ fn Convolve(x: Float[], h: Float[]) -> Float[] ! Error {
     return out
 }
 
-/// Computes finite discrete cross-correlation for dimensionless real sequences.
-/// Convention:
-/// - Returns rxy(k) for integer lag k in increasing order.
-/// - First output index corresponds to k = -(Len(y)-1).
-/// - Last output index corresponds to k = Len(x)-1.
-/// - rxy(k) = Sum_i x[i] * y[i-k] over valid indices.
-/// - Output length: Len(x) + Len(y) - 1.
+/// Finite discrete cross-correlation of real sequences.
+///
+/// Output length: Len(x) + Len(y) - 1.
+/// Lag ordering: first element = lag -(Len(y)-1), last = lag +(Len(x)-1).
+/// rxy(k) = Sum_i x[i] * y[i-k]
 fn Correlate(x: Float[], y: Float[]) -> Float[] ! Error {
     if Len(x) == 0 {
         return error("correlation requires non-empty x")
     }
-
     if Len(y) == 0 {
         return error("correlation requires non-empty y")
     }
-
-    let reversedY = Reverse(y)
+    let reversedY = Reverse(y)?
     return Convolve(x, reversedY)?
 }
 
-/// Computes a valid-window simple moving average for a dimensionless real sequence.
-/// - Inputs: non-empty Float[] values and window with 1 <= window <= Len(values).
-/// - Output length: Len(values) - window + 1.
-/// - Policy: valid-window only (no padding, no edge extension).
+/// Unnormalized autocorrelation: Correlate(x, x).
+fn AutoCorrelate(x: Float[]) -> Float[] ! Error {
+    return Correlate(x, x)?
+}
+
+/// Normalized autocorrelation: r[k] / r[0], so the zero-lag value is 1.
+///
+/// Returns the full correlation sequence normalized by its peak (zero-lag).
+/// Useful for periodicity detection and lag estimation.
+fn NormalizedAutoCorrelate(x: Float[]) -> Float[] ! Error {
+    let r = AutoCorrelate(x)?
+    let center = Len(x) - 1
+    let peak   = r[center]
+    if Abs(peak) < 0.000000000001 {
+        return error("normalized autocorrelation requires non-zero peak")
+    }
+    var out = [r[0] / peak]
+    for i in 1 .. Len(r) {
+        out = Append(out, r[i] / peak)
+    }
+    return out
+}
+
+// ============================================================
+// Time-domain filtering
+// ============================================================
+
+/// Simple moving average (valid window only, no padding).
+///
+/// Output length: Len(values) - window + 1.
 fn MovingAverage(values: Float[], window: Int) -> Float[] ! Error {
     if Len(values) == 0 {
         return error("moving average requires non-empty values")
     }
-
     if window <= 0 {
         return error("moving average requires window > 0")
     }
-
     if window > Len(values) {
         return error("moving average requires window <= Len(values)")
     }
 
     let outputLength = Len(values) - window + 1
-    var smoothed = ZeroSeries(outputLength)
+    var out = ZeroSeries(outputLength)?
 
     for i in 0 .. outputLength {
         var sum = 0.0
         for j in i .. i + window {
             sum = sum + values[j]
         }
-
-        smoothed[i] = sum / window
-    }
-
-    return smoothed
-}
-
-/// Computes finite autocorrelation as Correlate(x, x) with the same lag ordering.
-fn AutoCorrelate(x: Float[]) -> Float[] ! Error {
-    return Correlate(x, x)?
-}
-
-fn AnalyzeSignal(start: Float, delta: Float, window: Int) -> SignalAnalysisResult ! Error {
-    let raw = GenerateSignalValues()
-    let smoothed = MovingAverage(raw, window)!
-
-    var x = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    for i in 0 .. Len(x) {
-        x[i] = start + delta * i
-    }
-
-    return SignalAnalysisResult {
-        X: x
-        Raw: raw
-        Smoothed: smoothed
-    }
-}
-
-fn Reverse(values: Float[]) -> Float[] {
-    var out = [values[Len(values) - 1]]
-    for i in 1 .. Len(values) {
-        out = Append(out, values[Len(values) - 1 - i])
+        out[i] = sum / Float(window)
     }
 
     return out
 }
 
-fn ZeroSeries(count: Int) -> Float[] {
-    var out = [0.0]
-    for _ in 1 .. count {
-        out = Append(out, 0.0)
-    }
+// ============================================================
+// Window functions
+// ============================================================
 
+/// Rectangular window: all ones.
+/// No spectral leakage reduction — baseline for comparison.
+fn RectangularWindow(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("window requires n > 0")
+    }
+    var out = [1.0]
+    for i in 1 .. n {
+        out = Append(out, 1.0)
+    }
     return out
 }
+
+/// Hann window: w[i] = 0.5 * (1 - cos(2*pi*i / (n-1)))
+///
+/// Good general-purpose window. Reduces spectral leakage at the cost of
+/// slightly wider main lobe. Use for most spectral analysis tasks.
+fn HannWindow(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("window requires n > 0")
+    }
+    if n == 1 {
+        return [1.0]
+    }
+    let twoPi   = 2.0 * Pi()
+    let nMinus1 = Float(n - 1)
+    var out = [0.5 * (1.0 - Cos(twoPi * 0.0 / nMinus1))]
+    for i in 1 .. n {
+        out = Append(out, 0.5 * (1.0 - Cos(twoPi * Float(i) / nMinus1)))
+    }
+    return out
+}
+
+/// Hamming window: w[i] = 0.54 - 0.46 * cos(2*pi*i / (n-1))
+///
+/// Similar to Hann but doesn't go fully to zero at the edges.
+/// Slightly better sidelobe suppression than Hann.
+fn HammingWindow(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("window requires n > 0")
+    }
+    if n == 1 {
+        return [1.0]
+    }
+    let twoPi   = 2.0 * Pi()
+    let nMinus1 = Float(n - 1)
+    var out = [0.54 - 0.46 * Cos(twoPi * 0.0 / nMinus1)]
+    for i in 1 .. n {
+        out = Append(out, 0.54 - 0.46 * Cos(twoPi * Float(i) / nMinus1))
+    }
+    return out
+}
+
+/// Blackman window: w[i] = 0.42 - 0.5*cos(2pi*i/(n-1)) + 0.08*cos(4pi*i/(n-1))
+///
+/// Best sidelobe suppression of the three. Wider main lobe.
+/// Use when high dynamic range is required and frequency resolution is secondary.
+fn BlackmanWindow(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("window requires n > 0")
+    }
+    if n == 1 {
+        return [1.0]
+    }
+    let twoPi   = 2.0 * Pi()
+    let fourPi  = 4.0 * Pi()
+    let nMinus1 = Float(n - 1)
+    var out = [0.42 - 0.5 * Cos(twoPi * 0.0 / nMinus1) + 0.08 * Cos(fourPi * 0.0 / nMinus1)]
+    for i in 1 .. n {
+        let fi = Float(i)
+        out = Append(out, 0.42 - 0.5 * Cos(twoPi * fi / nMinus1) + 0.08 * Cos(fourPi * fi / nMinus1))
+    }
+    return out
+}
+
+/// Apply a window to a signal by element-wise multiplication.
+///
+/// Requires equal length. Typically called before FFT or FIR design.
+fn ApplyWindow(signal: Float[], window: Float[]) -> Float[] ! Error {
+    if Len(signal) == 0 {
+        return error("apply window requires non-empty signal")
+    }
+    if Len(window) != Len(signal) {
+        return error("apply window requires signal and window to have equal length")
+    }
+    var out = [signal[0] * window[0]]
+    for i in 1 .. Len(signal) {
+        out = Append(out, signal[i] * window[i])
+    }
+    return out
+}
+
+// ============================================================
+// FIR filter design (windowed-sinc method)
+// ============================================================
+
+/// Ideal lowpass FIR kernel via windowed-sinc method.
+///
+/// cutoff: normalized cutoff frequency in [0, 1] where 1 = Nyquist.
+/// n:      filter length (odd recommended for linear phase).
+/// window: window coefficients of length n (use HannWindow, HammingWindow, etc).
+///
+/// The sinc kernel is centered at (n-1)/2 for linear phase.
+/// Convolve your signal with this kernel to apply the filter.
+fn LowpassFIR(cutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
+    if cutoff <= 0.0 or cutoff >= 1.0 {
+        return error("lowpass FIR requires cutoff in (0, 1)")
+    }
+    if n <= 0 {
+        return error("lowpass FIR requires n > 0")
+    }
+    if Len(window) != n {
+        return error("lowpass FIR requires window length == n")
+    }
+
+    let center  = Float(n - 1) / 2.0
+    let omegaC  = Pi() * cutoff
+
+    var h = [0.0]
+    for i in 1 .. n {
+        h = Append(h, 0.0)
+    }
+
+    for i in 0 .. n {
+        let m = Float(i) - center
+        let val = switch {
+            case m == 0.0 => cutoff
+            else          => Sin(omegaC * m) / (Pi() * m)
+        }
+        h[i] = val * window[i]
+    }
+
+    return h
+}
+
+/// Ideal highpass FIR kernel via spectral inversion of a lowpass kernel.
+///
+/// Spectral inversion: negate all lowpass coefficients, add 1 to the center tap.
+/// Requires odd filter length for the center tap to exist.
+fn HighpassFIR(cutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
+    if n / 2 * 2 == n {
+        return error("highpass FIR via spectral inversion requires odd filter length")
+    }
+    let lp = LowpassFIR(cutoff, n, window)?
+    let center = (n - 1) / 2
+
+    var h = [0.0 - lp[0]]
+    for i in 1 .. n {
+        h = Append(h, 0.0 - lp[i])
+    }
+    h[center] = 1.0 + h[center]
+
+    return h
+}
+
+/// Ideal bandpass FIR kernel.
+///
+/// lowCutoff < highCutoff, both in (0, 1).
+/// Implemented as LP(highCutoff) - LP(lowCutoff).
+fn BandpassFIR(lowCutoff: Float, highCutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
+    if lowCutoff >= highCutoff {
+        return error("bandpass FIR requires lowCutoff < highCutoff")
+    }
+    let lpHigh = LowpassFIR(highCutoff, n, window)?
+    let lpLow  = LowpassFIR(lowCutoff,  n, window)?
+
+    var h = [lpHigh[0] - lpLow[0]]
+    for i in 1 .. n {
+        h = Append(h, lpHigh[i] - lpLow[i])
+    }
+    return h
+}
+
+// ============================================================
+// Spectral analysis
+// ============================================================
+
+/// Compute magnitude of each bin from a complex FFT result.
+///
+/// Call Mathematics.FFT on your windowed signal first, then pass the result here.
+/// Output length equals input length.
+/// Bins 0..N/2 are the meaningful (non-redundant) portion for real signals.
+fn MagnitudeSpectrum(spectrum: Complex[]) -> Float[] ! Error {
+    if Len(spectrum) == 0 {
+        return error("magnitude spectrum requires non-empty spectrum")
+    }
+    var out = [Abs(spectrum[0])]
+    for i in 1 .. Len(spectrum) {
+        out = Append(out, Abs(spectrum[i]))
+    }
+    return out
+}
+
+/// Compute power spectrum (magnitude squared) from a complex FFT result.
+///
+/// P[k] = |X[k]|^2 — proportional to energy per frequency bin.
+fn PowerSpectrum(spectrum: Complex[]) -> Float[] ! Error {
+    let mag = MagnitudeSpectrum(spectrum)?
+    var out = [mag[0] * mag[0]]
+    for i in 1 .. Len(mag) {
+        out = Append(out, mag[i] * mag[i])
+    }
+    return out
+}
+
+/// Find the index of the dominant frequency bin in a magnitude spectrum.
+///
+/// Searches bins 0..N/2 (the non-redundant half for real signals).
+/// Returns the index with the highest magnitude.
+fn DominantBinIndex(magnitudes: Float[]) -> Int ! Error {
+    if Len(magnitudes) == 0 {
+        return error("dominant bin requires non-empty spectrum")
+    }
+    let half = Len(magnitudes) / 2 + 1
+    var maxVal = magnitudes[0]
+    var maxIdx = 0
+    for i in 1 .. half {
+        if magnitudes[i] > maxVal {
+            maxVal = magnitudes[i]
+            maxIdx = i
+        }
+    }
+    return maxIdx
+}
+
+/// Convert a bin index to normalized frequency (cycles per sample).
+///
+/// freq = binIndex / N, where N is the FFT length.
+/// Multiply by sample rate in Hz to get frequency in Hz.
+fn BinIndexToFrequency(binIndex: Int, n: Int) -> Float ! Error {
+    if n <= 0 {
+        return error("bin index to frequency requires n > 0")
+    }
+    if binIndex < 0 or binIndex >= n {
+        return error("bin index to frequency requires 0 <= binIndex < n")
+    }
+    return Float(binIndex) / Float(n)
+}
+
+
