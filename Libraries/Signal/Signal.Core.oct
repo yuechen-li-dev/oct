@@ -263,7 +263,20 @@ fn LowpassFIR(cutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
         h[i] = val * window[i]
     }
 
-    return h
+    // Normalize so filter has unit DC gain (sum of coefficients = 1).
+    var kernelSum = 0.0
+    for i in 0 .. n {
+        kernelSum = kernelSum + h[i]
+    }
+    if Abs(kernelSum) < 0.000000000001 {
+        return error("lowpass FIR: kernel sum is zero after windowing")
+    }
+    var normalized = [h[0] / kernelSum]
+    for i in 1 .. n {
+        normalized = Append(normalized, h[i] / kernelSum)
+    }
+
+    return normalized
 }
 
 /// Ideal highpass FIR kernel via spectral inversion of a lowpass kernel.

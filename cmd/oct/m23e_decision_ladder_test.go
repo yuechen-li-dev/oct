@@ -42,7 +42,7 @@ func TestM23eProofSignalUsesConditionSwitch(t *testing.T) {
 		t.Fatalf("read signal proof package: %v", err)
 	}
 	src := string(bytes)
-	if !strings.Contains(src, "let shape = switch {") {
+	if !strings.Contains(src, "let val = switch {") {
 		t.Fatalf("expected signal proof package to use condition-switch shape selection")
 	}
 	if strings.Contains(src, "} else {\n            if") {

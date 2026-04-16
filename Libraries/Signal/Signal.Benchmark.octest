@@ -1,8 +1,22 @@
 package Signal
 
 [Benchmark]
+fn ConvolveSmall() -> Void {
+    let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    let h = [0.25, 0.5, 0.25]
+    let _ = Convolve(x, h)!
+    return
+}
+
+[Benchmark]
 fn MovingAverageSmall() -> Void {
-    let values = GenerateSignalValues()
+    let values = [0.0, 1.2, 2.4, 3.6, 0.8, 1.6, 0.4, 2.0, 1.0, 3.2, 2.8, 1.4]
     let _ = MovingAverage(values, 3)!
+    return
+}
+
+[Benchmark]
+fn HannWindowMedium() -> Void {
+    let _ = HannWindow(64)!
     return
 }
