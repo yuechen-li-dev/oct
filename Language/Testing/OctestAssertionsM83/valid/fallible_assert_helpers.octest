@@ -1,0 +1,19 @@
+package MainValid
+
+fn ParsePositive(input: Int) -> Int ! Error {
+    if input > 0 {
+        return input
+    }
+    return error("input must be positive")
+}
+
+[Fact]
+fn AssertLGTMReturnsSuccessValue() -> Void {
+    let value = Assert.LGTM(ParsePositive(3), "expected ParsePositive(3) to succeed")
+    Assert.Equal(3, value, "Assert.LGTM should return underlying ok(value)")
+}
+
+[Fact]
+fn AssertErrorAcceptsErrorResult() -> Void {
+    Assert.Error(ParsePositive(0), "expected ParsePositive(0) to fail")
+}

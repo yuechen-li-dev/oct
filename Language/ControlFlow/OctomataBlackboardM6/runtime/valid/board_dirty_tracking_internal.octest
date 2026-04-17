@@ -18,11 +18,7 @@ fn BoardFlowReturnsMutatedBoardFields() -> Void {
     let f = TouchBoard(Board { DisplayMode: "Trend" AlertStatus: "Normal" })
     Step(f)
 
-    match Result(f) {
-        ok(value) => {
-            Assert.Equal("Fault", value.DisplayMode, "board display should be mutable only in flow")
-            Assert.Equal("Fault", value.AlertStatus, "board alert should be mutable only in flow")
-        }
-        err(e) => { Assert.True(false, "TouchBoard should complete successfully") }
-    }
+    let value = Assert.LGTM(Result(f), "TouchBoard should complete successfully")
+    Assert.Equal("Fault", value.DisplayMode, "board display should be mutable only in flow")
+    Assert.Equal("Fault", value.AlertStatus, "board alert should be mutable only in flow")
 }

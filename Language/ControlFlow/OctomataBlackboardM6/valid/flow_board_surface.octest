@@ -45,11 +45,7 @@ fn BoardFieldReadWriteIsFlowLocalAndPersistsAcrossSuspend() -> Void {
 
     let ack = BoardLifecycle(initial, "ack")
     Step(ack)
-    match Result(ack) {
-        ok(value) => {
-            Assert.True(value.FaultLatched == false, "ack path should clear latch")
-            Assert.Equal("Normal", value.AlertStatus, "ack path should normalize alert")
-        }
-        err(e) => { Assert.True(false, "ack path should return board") }
-    }
+    let value = Assert.LGTM(Result(ack), "ack path should return board")
+    Assert.True(value.FaultLatched == false, "ack path should clear latch")
+    Assert.Equal("Normal", value.AlertStatus, "ack path should normalize alert")
 }

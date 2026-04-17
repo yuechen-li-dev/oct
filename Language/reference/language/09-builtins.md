@@ -100,6 +100,8 @@ Calls are checked statically for arity and type constraints.
 - `Assert.False(condition: Bool, message: String) -> Void`.
 - `Assert.Equal(expected: T, actual: T, message: String) -> Void`.
 - `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`.
+- `Assert.Error(expr: T ! Error, message: String) -> Void`.
+- `Assert.LGTM(expr: T ! Error, message: String) -> T`.
   - Argument order is `expected`, then `actual`, then tolerance/message.
 
 ### Conversion vs formatting guidance
