@@ -23,19 +23,19 @@ The emitted module is produced via runtime emission API:
 
 This writes a real Wasm binary artifact to the requested path.
 
-Current production path:
+Current production path (M98c training-wheels removal):
 
 - `internal/interpret/ui_wasm_lowering.go`
   - builds canonical M96 JSON render templates from real Machina UI UIIR projection nodes
-  - lowers the bounded M98 control slice into generated C source
-  - compiles that lowered source to `.wasm` via `clang --target=wasm32`
+  - emits Wasm bytes directly in-process (no generated C stage, no `clang` invocation in production emission)
+  - appends a direct-emission provenance custom section (`oct.m98c.direct`) seeded from the lowering templates
 
 Reference-only fixtures retained in-repo:
 
 - `internal/interpret/testdata/machina_ui_m98_counter.c`
 - `internal/interpret/ui_wasm_artifact_fixture.go`
 
-Those fixture assets are documentation/parity references only and are not used by production emission.
+Those fixture assets are documentation/parity references only. They are not compiled or linked as a production backend.
 
 ## Exported boundary surface
 
@@ -78,6 +78,7 @@ No allocator API or advanced memory ownership protocol is introduced in M98.
 6. malformed/invalid-shape event JSON rejection (`invalid input` status)
 7. routed mode switch behavior (`route.stats` -> UIIR update)
 8. production-path replacement guard: emitted bytes must differ from the legacy fixture byte blob
+9. production emission works with `PATH` cleared (guards against accidental compiler toolchain reliance)
 
 ## Explicitly preserved boundaries
 

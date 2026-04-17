@@ -8,8 +8,9 @@ import (
 // machinaUIWasmArtifactBase64 preserves the exact bytes of the M98a fixture module
 // in text-only form so PR/repo surfaces remain diffable.
 //
-// M98b demotes this fixture to reference-only status. Production emission uses the
-// real lowering path in ui_wasm_lowering.go.
+// M98b demotes this fixture to reference-only status. M98c keeps fixture bytes as
+// a historical/reference oracle while production emission uses direct Wasm bytes
+// from ui_wasm_lowering.go.
 //
 // Historical source-of-truth behavior remains in:
 // internal/interpret/testdata/machina_ui_m98_counter.c

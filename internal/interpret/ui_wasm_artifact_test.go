@@ -175,9 +175,6 @@ func TestEmitMachinaUIWasmArtifactRequiresPath(t *testing.T) {
 }
 
 func TestEmitMachinaUIWasmArtifactIsNotFixtureBytes(t *testing.T) {
-	if _, err := exec.LookPath("clang"); err != nil {
-		t.Skip("clang is required for real lowering wasm emission")
-	}
 	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
 	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {
 		t.Fatalf("EmitMachinaUIWasmArtifact failed: %v", err)
@@ -192,5 +189,30 @@ func TestEmitMachinaUIWasmArtifactIsNotFixtureBytes(t *testing.T) {
 	}
 	if bytes.Equal(emitted, fixture) {
 		t.Fatalf("expected production emission to differ from reference fixture bytes")
+	}
+}
+
+func TestEmitMachinaUIWasmArtifactDoesNotRequireClangInPATH(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is required for wasm artifact execution check")
+	}
+	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", "")
+	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {
+		t.Fatalf("EmitMachinaUIWasmArtifact failed without PATH tools: %v", err)
+	}
+	t.Setenv("PATH", originalPath)
+	cmd := exec.Command("node", "-e", `
+const fs = require('fs');
+const bytes = fs.readFileSync(process.argv[1]);
+WebAssembly.instantiate(bytes, {}).then(() => process.exit(0)).catch((err) => {
+  console.error(err && err.stack ? err.stack : String(err));
+  process.exit(1);
+});
+`, artifactPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node failed to instantiate emitted wasm: %v\n%s", err, string(out))
 	}
 }
