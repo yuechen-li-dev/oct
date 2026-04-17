@@ -157,3 +157,46 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl) error
 	}
 	return nil
 }
+
+func manifestDependencySet(file ast.File) map[string]struct{} {
+	manifestFn, ok := findManifestFunction(file)
+	if !ok || len(manifestFn.Body.Statements) != 1 {
+		return nil
+	}
+	ret, ok := manifestFn.Body.Statements[0].(ast.ReturnStmt)
+	if !ok {
+		return nil
+	}
+	recordExpr, ok := ret.Value.(ast.RecordLiteralExpr)
+	if !ok || recordExpr.TypeName != "PackageManifest" {
+		return nil
+	}
+	fields := make(map[string]ast.Expr, len(recordExpr.Fields))
+	for _, field := range recordExpr.Fields {
+		fields[field.Name] = field.Value
+	}
+	depArray, ok := fields["Dependencies"].(ast.ArrayLiteralExpr)
+	if !ok {
+		return nil
+	}
+	deps := make(map[string]struct{}, len(depArray.Elements))
+	for _, depExpr := range depArray.Elements {
+		depRecord, ok := depExpr.(ast.RecordLiteralExpr)
+		if !ok || depRecord.TypeName != "Dependency" {
+			continue
+		}
+		for _, depField := range depRecord.Fields {
+			if depField.Name != "Name" {
+				continue
+			}
+			nameExpr, ok := depField.Value.(ast.StringLiteralExpr)
+			if !ok {
+				continue
+			}
+			if nameExpr.Value != "" {
+				deps[nameExpr.Value] = struct{}{}
+			}
+		}
+	}
+	return deps
+}

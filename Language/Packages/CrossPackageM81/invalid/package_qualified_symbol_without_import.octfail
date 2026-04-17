@@ -1,0 +1,7 @@
+expect error: "unknown package 'Cooking'"
+
+package Main
+
+fn Main() -> Int {
+    return Cooking.CupsToGrams(2.0, "bread_flour")!
+}
