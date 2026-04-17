@@ -14,6 +14,7 @@ Goal: keep the compiled boundary explicit and testable.
 | Functions, returns, variables, assignment, control-flow blocks | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunSubsetProgram`, `TestLowerProgramBuildsMIRShape`) |
 | Records (construction, field access, updates), enums | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunCrossPackageFallibleAndEnum`, `TestCompileAndRunNamedRecordArraySurface`) |
 | Arrays (including named-record arrays) and indexing | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunNamedRecordArraySurface`) |
+| Vector literals, matrix literals, and core matrix multiplication (`Matrix @ Vector`, `Matrix @ Matrix`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunVectorsMatricesM93`, `TestCompileRunParityVectorsMatricesM93`) |
 | Fallible functions (`! Error`, `?`, `!`, `match`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunCrossPackageFallibleAndEnum`, `TestCompileAndRunFalliblePropagationAndMatch / TestCompileAndRunFallibleUnwrap`) |
 | Package imports / cross-package calls | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunSubsetProgram`, `TestCompileAndRunCrossPackageFallibleAndEnum`) |
 | `if` statements and `if` expressions (condition-switch style) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunIfExpressionConditionSwitchSurface`, branch MIR tests) |
@@ -37,8 +38,6 @@ These are rejected with deterministic diagnostics.
 | --- | --- |
 | top-level statement `when` (non-flow) | `compiled mode does not yet support when` |
 | standalone range expressions (outside `for` lowering) | `compiled mode does not yet support range` |
-| vector literals | `compiled mode does not yet support vector literals` |
-| matrix literals | `compiled mode does not yet support matrix literals` |
 | unsupported built-ins (for example plotting, XLSX, trig/math, UI, Einstein/tensor helpers not lowered yet) | `compiled mode does not yet support builtin <Name>` |
 
 ## M86 hardening guarantees

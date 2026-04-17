@@ -1697,30 +1697,7 @@ fn main() -> Int {
 }
 `,
 			wantErr: "range step must be positive, got 0",
-		},
-		{
-			name: "matrix literals",
-			source: `package Main
-
-fn main() -> Int {
-    let m = matrix[[1.0, 2.0] [3.0, 4.0]]
-    return 0
-}
-`,
-			wantErr: "compiled mode does not yet support matrix literals",
-		},
-		{
-			name: "vector literals",
-			source: `package Main
-
-fn main() -> Int {
-    let v = vector[1, 2, 3]
-    Print(v)
-    return 0
-}
-`,
-			wantErr: "compiled mode does not yet support vector literals",
-		},
+			},
 		{
 			name: "plot builtin",
 			source: `package Main
@@ -1754,6 +1731,193 @@ fn main() -> Int {
 			_, err := Compile(mainPath)
 			if err == nil {
 				t.Fatalf("expected compile failure")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestCompileAndRunVectorsMatricesM93(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "vector literal compiled",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    return vector[1, 2, 3]
+}
+`,
+			want: "[1 2 3]",
+		},
+		{
+			name: "matrix literal compiled",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    return matrix[[1, 2] [3, 4]]
+}
+`,
+			want: "[[1 2] [3 4]]",
+		},
+		{
+			name: "matrix at vector compiled",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    let a = matrix[[1, 2] [3, 4]]
+    let x = vector[10, 20]
+    return a @ x
+}
+`,
+			want: "[50 110]",
+		},
+		{
+			name: "matrix at matrix compiled",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+    return a @ b
+}
+`,
+			want: "[[19 22] [43 50]]",
+		},
+		{
+			name: "dimensioned matrix at vector compiled",
+			source: `package Main
+
+fn Main() -> Vector<Float<m>> {
+    let k = matrix[[1.0m/s, 0.0m/s] [0.0m/s, 2.0m/s]]
+    let x = vector[3.0s, 4.0s]
+    return k @ x
+}
+`,
+			want: "[3 8]",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Compile(mainPath)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("run artifact: %v (%s)", err, string(out))
+			}
+			if strings.TrimSpace(string(out)) != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, strings.TrimSpace(string(out)))
+			}
+		})
+	}
+}
+
+func TestCompileRunParityVectorsMatricesM93(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Main() -> Matrix<Int> {
+    let a = matrix[[2, 1] [0, 3]]
+    let b = matrix[[1, 4] [2, 5]]
+    return a @ b
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, err := project.Load(mainPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	interpValue, err := interpret.ExecuteMain(program, nil)
+	if err != nil {
+		t.Fatalf("interpreter run: %v", err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	got := strings.TrimSpace(string(out))
+	want := strings.TrimSpace(interpValue.String())
+	want = strings.TrimPrefix(want, "matrix")
+	want = strings.TrimPrefix(want, "vector")
+	want = strings.ReplaceAll(want, ",", "")
+	if got != want {
+		t.Fatalf("compiled/interpreter mismatch: compiled=%q interpreter=%q", got, want)
+	}
+}
+
+func TestCompileVectorsMatricesBoundaryErrorsM93(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name: "no implicit array to vector coercion",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    return [1, 2, 3]
+}
+`,
+			wantErr: "function expects Vector<Int>, but return is Int[]",
+		},
+		{
+			name: "no implicit nested array to matrix coercion",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    return [[1, 2], [3, 4]]
+}
+`,
+			wantErr: "function expects Matrix<Int>, but return is Int[][]",
+		},
+		{
+			name: "vector at vector remains unsupported",
+			source: `package Main
+
+fn Main() -> Int {
+    let a = vector[1, 2]
+    let b = vector[3, 4]
+    return a @ b
+}
+`,
+			wantErr: "operator '@' not defined for Vector<Int> and Vector<Int>",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Compile(mainPath)
+			if err == nil {
+				t.Fatal("expected compile failure")
 			}
 			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
