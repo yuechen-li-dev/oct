@@ -1,6 +1,7 @@
 package interpret
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -65,6 +66,242 @@ type uiirNode struct {
 type uiMount struct {
 	Root   *uiirNode
 	Events []string
+}
+
+const uiirJSONABI = "machina.uiir.v1"
+
+var uiirJSONNull = json.RawMessage("null")
+
+type uiirSerializedDocument struct {
+	ABI  string             `json:"abi"`
+	Root uiirSerializedNode `json:"root"`
+}
+
+type uiirSerializedNode struct {
+	ID       string               `json:"id"`
+	Kind     string               `json:"kind"`
+	Key      *string              `json:"key"`
+	Text     *string              `json:"text"`
+	Label    *string              `json:"label"`
+	Enabled  *bool                `json:"enabled"`
+	Event    *uiirSerializedEvent `json:"event"`
+	Box      *uiirSerializedBox   `json:"box"`
+	Layout   *uiirSerializedRect  `json:"layout"`
+	Children []uiirSerializedNode `json:"children"`
+}
+
+type uiirSerializedBox struct {
+	Kind     string                     `json:"kind"`
+	Absolute *uiirSerializedRect        `json:"absolute"`
+	Anchored *uiirSerializedBoxAnchored `json:"anchored"`
+}
+
+type uiirSerializedBoxAnchored struct {
+	Left   float64 `json:"left"`
+	Top    float64 `json:"top"`
+	Right  float64 `json:"right"`
+	Bottom float64 `json:"bottom"`
+}
+
+type uiirSerializedRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+type uiirSerializedEvent struct {
+	Token   string          `json:"token"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func serializeUIIRCanonicalJSON(root *uiirNode) (string, error) {
+	if root == nil {
+		return "", fmt.Errorf("uiir serialization requires non-nil root")
+	}
+	doc := uiirSerializedDocument{
+		ABI:  uiirJSONABI,
+		Root: serializeUIIRNode(withUIIRNodeIDs(root)),
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return "", fmt.Errorf("uiir serialization failed: %w", err)
+	}
+	return string(payload), nil
+}
+
+func deserializeUIIRCanonicalJSON(serialized string) (*uiirNode, error) {
+	var doc uiirSerializedDocument
+	if err := json.Unmarshal([]byte(serialized), &doc); err != nil {
+		return nil, fmt.Errorf("uiir deserialization failed: %w", err)
+	}
+	if doc.ABI != uiirJSONABI {
+		return nil, fmt.Errorf("uiir deserialization failed: unsupported abi %q", doc.ABI)
+	}
+	return deserializeUIIRNode(doc.Root)
+}
+
+func serializeUIIREventCanonicalJSON(token string, payload json.RawMessage) (string, error) {
+	if token == "" {
+		return "", fmt.Errorf("ui event serialization requires non-empty token")
+	}
+	event := uiirSerializedEvent{Token: token, Payload: uiirNormalizedPayload(payload)}
+	bytes, err := json.Marshal(event)
+	if err != nil {
+		return "", fmt.Errorf("ui event serialization failed: %w", err)
+	}
+	return string(bytes), nil
+}
+
+func deserializeUIIREventCanonicalJSON(serialized string) (uiirSerializedEvent, error) {
+	var event uiirSerializedEvent
+	if err := json.Unmarshal([]byte(serialized), &event); err != nil {
+		return uiirSerializedEvent{}, fmt.Errorf("ui event deserialization failed: %w", err)
+	}
+	if event.Token == "" {
+		return uiirSerializedEvent{}, fmt.Errorf("ui event deserialization failed: token is required")
+	}
+	event.Payload = uiirNormalizedPayload(event.Payload)
+	return event, nil
+}
+
+func uiirNormalizedPayload(payload json.RawMessage) json.RawMessage {
+	if len(payload) == 0 {
+		return uiirJSONNull
+	}
+	return payload
+}
+
+func serializeUIIRNode(node *uiirNode) uiirSerializedNode {
+	serialized := uiirSerializedNode{
+		ID:       node.NodeID,
+		Kind:     string(node.Kind),
+		Children: make([]uiirSerializedNode, 0, len(node.Children)),
+	}
+	if node.Key != "" {
+		key := node.Key
+		serialized.Key = &key
+	}
+	if node.Layout != nil {
+		serialized.Layout = &uiirSerializedRect{X: node.Layout.X, Y: node.Layout.Y, Width: node.Layout.Width, Height: node.Layout.Height}
+	}
+	switch node.Kind {
+	case uiirNodeText:
+		text := node.Text
+		serialized.Text = &text
+	case uiirNodeButton:
+		label := node.Label
+		enabled := node.Enabled
+		serialized.Label = &label
+		serialized.Enabled = &enabled
+		serialized.Event = &uiirSerializedEvent{Token: node.Event, Payload: uiirJSONNull}
+	case uiirNodeAbsoluteBox, uiirNodeAnchorBox:
+		serialized.Box = serializeUIIRBox(node.Box)
+	}
+	for _, child := range node.Children {
+		serialized.Children = append(serialized.Children, serializeUIIRNode(child))
+	}
+	return serialized
+}
+
+func serializeUIIRBox(box *uiirBoxSpec) *uiirSerializedBox {
+	if box == nil {
+		return nil
+	}
+	serialized := &uiirSerializedBox{Kind: string(box.Kind)}
+	if box.Kind == uiirBoxAbsolute {
+		serialized.Absolute = &uiirSerializedRect{X: box.X, Y: box.Y, Width: box.Width, Height: box.Height}
+		return serialized
+	}
+	serialized.Anchored = &uiirSerializedBoxAnchored{
+		Left:   box.Left,
+		Top:    box.Top,
+		Right:  box.Right,
+		Bottom: box.Bottom,
+	}
+	return serialized
+}
+
+func deserializeUIIRNode(node uiirSerializedNode) (*uiirNode, error) {
+	if node.ID == "" {
+		return nil, fmt.Errorf("uiir node deserialization failed: id is required")
+	}
+	kind := uiirNodeKind(node.Kind)
+	result := &uiirNode{
+		NodeID:   node.ID,
+		Kind:     kind,
+		Children: make([]*uiirNode, 0, len(node.Children)),
+	}
+	if node.Key != nil {
+		result.Key = *node.Key
+	}
+	if node.Layout != nil {
+		result.Layout = &uiirResolvedBox{X: node.Layout.X, Y: node.Layout.Y, Width: node.Layout.Width, Height: node.Layout.Height}
+	}
+	switch kind {
+	case uiirNodeText:
+		if node.Text == nil {
+			return nil, fmt.Errorf("uiir node deserialization failed: text payload missing")
+		}
+		result.Text = *node.Text
+	case uiirNodeButton:
+		if node.Label == nil || node.Enabled == nil || node.Event == nil {
+			return nil, fmt.Errorf("uiir node deserialization failed: button payload missing")
+		}
+		result.Label = *node.Label
+		result.Enabled = *node.Enabled
+		result.Event = node.Event.Token
+	case uiirNodeAbsoluteBox, uiirNodeAnchorBox:
+		box, err := deserializeUIIRBox(node.Box)
+		if err != nil {
+			return nil, err
+		}
+		result.Box = box
+	case uiirNodeColumn, uiirNodeRow, uiirNodeGrid, uiirNodeSpacer:
+	default:
+		return nil, fmt.Errorf("uiir node deserialization failed: unsupported kind %q", node.Kind)
+	}
+	for _, child := range node.Children {
+		next, err := deserializeUIIRNode(child)
+		if err != nil {
+			return nil, err
+		}
+		result.Children = append(result.Children, next)
+	}
+	return result, nil
+}
+
+func deserializeUIIRBox(box *uiirSerializedBox) (*uiirBoxSpec, error) {
+	if box == nil {
+		return nil, fmt.Errorf("uiir box deserialization failed: box is required")
+	}
+	kind := uiirBoxKind(box.Kind)
+	switch kind {
+	case uiirBoxAbsolute:
+		if box.Absolute == nil {
+			return nil, fmt.Errorf("uiir box deserialization failed: absolute payload missing")
+		}
+		return &uiirBoxSpec{
+			Kind:   uiirBoxAbsolute,
+			X:      box.Absolute.X,
+			Y:      box.Absolute.Y,
+			Width:  box.Absolute.Width,
+			Height: box.Absolute.Height,
+		}, nil
+	case uiirBoxAnchored:
+		if box.Anchored == nil {
+			return nil, fmt.Errorf("uiir box deserialization failed: anchored payload missing")
+		}
+		return &uiirBoxSpec{
+			Kind:   uiirBoxAnchored,
+			Left:   box.Anchored.Left,
+			Top:    box.Anchored.Top,
+			Right:  box.Anchored.Right,
+			Bottom: box.Anchored.Bottom,
+		}, nil
+	default:
+		return nil, fmt.Errorf("uiir box deserialization failed: unsupported kind %q", box.Kind)
+	}
 }
 
 func cloneUIIR(node *uiirNode) *uiirNode {

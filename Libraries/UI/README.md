@@ -54,3 +54,16 @@ Machina UI projection now lowers into **UIIR** (UI Intermediate Representation),
 - **Layout worldview** is led by `AbsoluteBox` and `AnchorBox`; row/column/grid/spacer remain helper composition nodes.
 
 Current scope is representation only: no Wasm lowering, no host rendering ABI, and no effects runtime in this milestone.
+
+## M96 Serialized ABI Truth Surface
+
+M96 locks the canonical serialized cross-boundary representation for:
+
+- **UIIR trees/nodes** (deterministic JSON)
+- **event values** (`token` + `payload`)
+
+The ABI surface is documented in:
+
+- `docs/MACHINA_UI_UIIR_ABI.md`
+
+This contract is the stable bridge for future Wasm exports and native/web hosts. It remains intentionally separate from procedural MIR and from any host rendering strategy.
