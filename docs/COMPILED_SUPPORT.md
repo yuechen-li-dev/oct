@@ -1,4 +1,4 @@
-# `oct build` Compiled Support Matrix (M86)
+# `oct build` Compiled Support Matrix (M87)
 
 This page is the repository truth surface for compiled mode (`oct build`).
 
@@ -17,6 +17,8 @@ Goal: keep the compiled boundary explicit and testable.
 | Fallible functions (`! Error`, `?`, `!`, `match`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunCrossPackageFallibleAndEnum`, `TestCompileAndRunFalliblePropagationAndMatch / TestCompileAndRunFallibleUnwrap`) |
 | Package imports / cross-package calls | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunSubsetProgram`, `TestCompileAndRunCrossPackageFallibleAndEnum`) |
 | `if` statements and `if` expressions (condition-switch style) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunIfExpressionConditionSwitchSurface`, branch MIR tests) |
+| `while` statements | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunLoopLoweringParity`) |
+| `for` range loops (`start..end`, `start..end step n`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunLoopLoweringParity`) |
 | Flows (`Step`, `Active`, `Result`, `Complete`, `StateHistory`, `ResumeTarget`) | Supported | `internal/build/compiler_test.go` flow tests `TestCompileAndRunFlowCoreRuntimeBuiltins` |
 | `when` in flow states | Supported | `internal/build/compiler_test.go` (`TestCompileFlowDecisionDoesNotUseSpecialCaseShimPath`, `TestCompileFlowBoardAndWhenActionBlock`) |
 | Flow `board` fields | Supported | `internal/build/compiler_test.go` (`TestCompileFlowBoardAndWhenActionBlock`) |
@@ -31,10 +33,9 @@ These are rejected with deterministic diagnostics.
 
 | Surface | Diagnostic shape |
 | --- | --- |
-| `for` / `while` statements | `compiled mode does not yet support for|while` |
 | top-level statement `when` (non-flow) | `compiled mode does not yet support when` |
 | switch expressions | `compiled mode does not yet support switch expression` |
-| range expressions | `compiled mode does not yet support range` |
+| standalone range expressions (outside `for` lowering) | `compiled mode does not yet support range` |
 | vector literals | `compiled mode does not yet support vector literals` |
 | matrix literals | `compiled mode does not yet support matrix literals` |
 | utility `when` expression outside supported flow lowering path | `compiled mode does not yet support utility when` |
