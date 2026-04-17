@@ -20,7 +20,7 @@ Readable when priorities are fixed, but guard ordering starts carrying hidden we
 A score table makes intent explicit:
 
 ```oct
-let next = when {
+let next = when utility {
     case Retreat when lowHealth score 100
     case Recover when lowAmmo score 70
     case Attack when inRange score 60
@@ -52,7 +52,7 @@ Fault-first ordering is clear, but stability logic becomes verbose: manual state
 Scoring plus local stickiness policy captures intent:
 
 ```oct
-let mode = when policy { hysteresis 8, min_commit 3 } {
+let mode = when policy { hysteresis: 8 min_commit: 3 } {
     case Fault when faulted score 100
     case Cool when tempHigh score 60
     case Hold when tempNominal score 55

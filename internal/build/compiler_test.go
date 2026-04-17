@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"oct/internal/interpret"
 	"oct/internal/octagon"
 	"oct/internal/project"
 	"oct/internal/typecheck"
@@ -1604,6 +1605,77 @@ fn main() -> Int {
 	}
 	if strings.TrimSpace(string(out)) != "1" {
 		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunStandaloneUtilityWhenParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn ChooseMode(temp: Int, pressure: Int, fault: Bool) -> Int {
+    return when utility {
+        case 900 when fault score 100
+        case 200 when temp > 70 score temp
+        case 100 when pressure > 50 score pressure
+        case 300 when temp > 40 and pressure > 40 score temp + pressure
+        else 0
+    }
+}
+
+fn TieStable() -> Int {
+    return when utility {
+        case 10 when true score 5
+        case 20 when true score 5
+        else 0
+    }
+}
+
+fn Main() -> Int {
+    let basic = ChooseMode(80, 20, false)
+    let ordered = when utility {
+        case 1 when true score 7
+        case 2 when true score 9
+        case 3 when true score 9
+        else 0
+    }
+    let realistic = ChooseMode(45, 60, false)
+    let fallback = ChooseMode(0, 0, false)
+    let tie = TieStable()
+    return basic + ordered + realistic + fallback + tie
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, err := project.Load(mainPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+
+	interpValue, err := interpret.ExecuteMain(program, nil)
+	if err != nil {
+		t.Fatalf("interpreter run: %v", err)
+	}
+	want := strings.TrimSpace(interpValue.String())
+	if want != "512" {
+		t.Fatalf("expected interpreter baseline 512, got %q", want)
+	}
+
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	got := strings.TrimSpace(string(out))
+	if got != want {
+		t.Fatalf("compiled/interpreter mismatch: compiled=%q interpreter=%q", got, want)
 	}
 }
 

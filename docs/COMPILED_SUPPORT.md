@@ -1,4 +1,4 @@
-# `oct build` Compiled Support Matrix (M88)
+# `oct build` Compiled Support Matrix (M89)
 
 This page is the repository truth surface for compiled mode (`oct build`).
 
@@ -22,6 +22,7 @@ Goal: keep the compiled boundary explicit and testable.
 | `for` range loops (`start..end`, `start..end step n`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunLoopLoweringParity`) |
 | Flows (`Step`, `Active`, `Result`, `Complete`, `StateHistory`, `ResumeTarget`) | Supported | `internal/build/compiler_test.go` flow tests `TestCompileAndRunFlowCoreRuntimeBuiltins` |
 | `when` in flow states | Supported | `internal/build/compiler_test.go` (`TestCompileFlowDecisionDoesNotUseSpecialCaseShimPath`, `TestCompileFlowBoardAndWhenActionBlock`) |
+| non-flow utility `when utility` expressions | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunStandaloneUtilityWhenParity`) |
 | Flow `board` fields | Supported | `internal/build/compiler_test.go` (`TestCompileFlowBoardAndWhenActionBlock`) |
 | `remember` / `resume` in flows | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunFlowRememberResume...`, `TestCompileFlowRememberResumeMIRDump`) |
 | `batch` expression | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunBatchParameterSweepAndOrder`) |
@@ -38,7 +39,6 @@ These are rejected with deterministic diagnostics.
 | standalone range expressions (outside `for` lowering) | `compiled mode does not yet support range` |
 | vector literals | `compiled mode does not yet support vector literals` |
 | matrix literals | `compiled mode does not yet support matrix literals` |
-| utility `when` expression outside supported flow lowering path | `compiled mode does not yet support utility when` |
 | unsupported built-ins (for example plotting, XLSX, trig/math, UI, Einstein/tensor helpers not lowered yet) | `compiled mode does not yet support builtin <Name>` |
 
 ## M86 hardening guarantees
