@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,56 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 		wantBuildErr string
 	}{
 		{
+			name: "basic integer switch",
+			source: "fn Main() -> Int {\n" +
+				"    let x = 2\n" +
+				"    return switch x {\n" +
+				"        case 1 => 10\n" +
+				"        case 2 => 20\n" +
+				"        else => 0\n" +
+				"    }\n" +
+				"}\n",
+			wantStdout: "20\n",
+		},
+		{
+			name: "ordered condition switch first match wins",
+			source: "fn Main() -> Int {\n" +
+				"    let v = 7\n" +
+				"    return switch {\n" +
+				"        case v > 0 => 1\n" +
+				"        case v > 5 => 2\n" +
+				"        else => 3\n" +
+				"    }\n" +
+				"}\n",
+			wantStdout: "1\n",
+		},
+		{
+			name: "else fallback is used",
+			source: "fn Main() -> Int {\n" +
+				"    let x = 99\n" +
+				"    return switch x {\n" +
+				"        case 1 => 10\n" +
+				"        case 2 => 20\n" +
+				"        else => -1\n" +
+				"    }\n" +
+				"}\n",
+			wantStdout: "-1\n",
+		},
+		{
+			name: "realistic usage chooses shipping tier",
+			source: "fn ShippingTier(weight: Int) -> Int {\n" +
+				"    return switch {\n" +
+				"        case weight < 1 => 1\n" +
+				"        case weight < 5 => 2\n" +
+				"        else => 3\n" +
+				"    }\n" +
+				"}\n" +
+				"fn Main() -> Int {\n" +
+				"    return ShippingTier(3)\n" +
+				"}\n",
+			wantStdout: "2\n",
+		},
+		{
 			name: "basic enum switch",
 			source: "enum Method { Euler RK4 }\n" +
 				"fn Main() -> Int {\n" +
@@ -25,8 +76,7 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        case Method.RK4 => 4\n" +
 				"    }\n" +
 				"}\n",
-			wantStdout:   "1\n",
-			wantBuildErr: "compiled mode does not yet support switch expression",
+			wantStdout: "1\n",
 		},
 		{
 			name: "non exhaustive without else",
@@ -50,8 +100,7 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"        else => 0\n" +
 				"    }\n" +
 				"}\n",
-			wantStdout:   "0\n",
-			wantBuildErr: "compiled mode does not yet support switch expression",
+			wantStdout: "0\n",
 		},
 		{
 			name: "duplicate enum case",
@@ -147,6 +196,13 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 					}
 					if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
 						t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+					}
+					artifactOut, artifactErr := exec.Command(sourcePath + ".octbin").CombinedOutput()
+					if artifactErr != nil {
+						t.Fatalf("run artifact failed: %v (%s)", artifactErr, string(artifactOut))
+					}
+					if string(artifactOut) != test.wantStdout {
+						t.Fatalf("expected artifact stdout %q, got %q", test.wantStdout, string(artifactOut))
 					}
 				} else {
 					if buildErr == nil {

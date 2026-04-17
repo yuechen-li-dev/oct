@@ -866,7 +866,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		return false, nil
 	case ast.WhenStmt:
 		if !ctx.inState {
-			return false, fmt.Errorf("function %s: when is only valid inside flow state bodies", ctx.name)
+			return false, fmt.Errorf("function %s: guard when is only valid inside flow state bodies; outside flows use switch or when utility", ctx.name)
 		}
 		if node.Else == nil {
 			return false, fmt.Errorf("function %s: when requires else branch", ctx.name)
@@ -1253,7 +1253,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 
 func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
 	if expr.ControllerBound && !ctx.inState {
-		return ExprType{}, fmt.Errorf("when policy is only valid inside flow state bodies")
+		return ExprType{}, fmt.Errorf("when policy is only valid inside flow state bodies; outside flows use switch or when utility")
 	}
 
 	hysteresisType, err := c.checkExpr(scope, expr.Policy.Hysteresis, ctx)
