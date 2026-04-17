@@ -31,3 +31,15 @@ The design goal is predictable rendering and deterministic behavior with clear b
 - Placement should remain explicit and deterministic.
 - Procedural/dynamic logic should remain code.
 - Composition emits events; behavior defines meaning.
+
+
+## M94 Control Contract (Octomata-aligned)
+
+Machina UI apps are modeled as control systems:
+
+- **State**: explicit app state records (route + durable values)
+- **Events**: `UIEvent { Token, Payload }` with deterministic token dispatch
+- **Transitions**: Octomata `flow/state` control (no hidden callback loop)
+- **View projection**: pure state -> `UI` projection suitable for signature/snapshot tests
+
+Reference implementation: `UI.AppModel.oct` + `UI.M94.octest`.
