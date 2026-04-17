@@ -1,9 +1,9 @@
 name: CI
- 
+
 on:
   push:
   pull_request:
- 
+
 jobs:
   build-test-artifact:
     name: ${{ matrix.os }}
@@ -20,24 +20,25 @@ jobs:
             goos: windows
             goarch: amd64
             binary_name: oct.exe
- 
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
- 
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
- 
+
       - name: Setup MinGW (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          echo "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
- 
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          release: false
+          path-type: inherit
+
       - name: Build oct binary
         env:
           GOOS: ${{ matrix.goos }}
@@ -46,10 +47,10 @@ jobs:
         run: |
           mkdir -p dist
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct
- 
+
       - name: Run tests
         run: go test ./...
- 
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
