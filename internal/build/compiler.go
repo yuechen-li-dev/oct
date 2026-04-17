@@ -914,6 +914,16 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		switch e.Operator {
 		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
 			ret = "Bool"
+		case "+", "-", "*", "/":
+			if isFloatScalarTypeString(lt) || isFloatScalarTypeString(rt) {
+				if strings.HasPrefix(lt, "Float<") && strings.HasSuffix(lt, ">") {
+					ret = lt
+				} else if strings.HasPrefix(rt, "Float<") && strings.HasSuffix(rt, ">") {
+					ret = rt
+				} else {
+					ret = "Float"
+				}
+			}
 		}
 		tmp := c.temp(ret)
 		op := e.Operator
@@ -990,6 +1000,28 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			tmp := c.temp(fallibleType(resultType))
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Result", Args: []string{flowArg}, Builtin: true, RetType: resultType})
 			return tmp, resultType, true, nil
+		}
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
+			switch ident.Name {
+			case "Abs", "Pi", "E":
+				args := make([]string, 0, len(e.Arguments))
+				argTypes := make([]string, 0, len(e.Arguments))
+				for _, a := range e.Arguments {
+					v, t, _, err := c.lowerExpr(a)
+					if err != nil {
+						return "", "", false, err
+					}
+					args = append(args, v)
+					argTypes = append(argTypes, t)
+				}
+				ret, err := compiledBuiltinReturnType(ident.Name, argTypes)
+				if err != nil {
+					return "", "", false, err
+				}
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: ident.Name, Args: args, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			}
 		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
@@ -1653,6 +1685,14 @@ func parseMatrixElemType(t string) (string, bool) {
 	return parseGenericType(t, "Matrix")
 }
 
+func isFloatScalarTypeString(t string) bool {
+	return t == "Float" || (strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">"))
+}
+
+func isIntScalarTypeString(t string) bool {
+	return t == "Int" || (strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">"))
+}
+
 func unifyLinearElemType(leftElem, rightElem string) string {
 	if strings.HasPrefix(leftElem, "Float<") || strings.HasPrefix(rightElem, "Float<") {
 		if strings.HasPrefix(leftElem, "Float<") {
@@ -1671,6 +1711,26 @@ func parseFlowInstanceType(t string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), true
+}
+
+func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
+	switch name {
+	case "Pi", "E":
+		if len(argTypes) != 0 {
+			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
+		}
+		return "Float", nil
+	case "Abs":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
+			return argTypes[0], nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", argTypes[0])
+	default:
+		return "", fmt.Errorf("compiled mode does not yet support builtin %s", name)
+	}
 }
 
 func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
@@ -2141,6 +2201,9 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
 		importSet["strings"] = struct{}{}
+	}
+	if usedBuiltins["Abs"] {
+		importSet["math"] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
 	for pkg := range importSet {
@@ -3353,6 +3416,14 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
 				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
+			case "Abs":
+				if isIntScalarTypeString(st.RetType) {
+					return fmt.Sprintf("%s = func(__v int) int { if __v < 0 { return -__v }; return __v }(%s)", st.Target, st.Args[0]), nil
+				}
+				if isFloatScalarTypeString(st.RetType) {
+					return fmt.Sprintf("%s = math.Abs(%s)", st.Target, st.Args[0]), nil
+				}
+				return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", st.RetType)
 			case "Contains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "StartsWith":
