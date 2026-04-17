@@ -1,0 +1,7 @@
+expect error: "unknown type: Error[]"
+
+package Main
+
+fn Main() -> Error[] {
+    return [error("boom")]
+}

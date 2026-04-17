@@ -84,6 +84,14 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "record P { X: Int } fn Main() -> Int { var x = [P { X: 1 }] x[0] = P { X: 2 } return x[0].X }",
 		},
 		{
+			name: "named record arrays in signatures",
+			src:  "record Ingredient { Name: String Grams: Float } fn First(xs: Ingredient[]) -> Ingredient { return xs[0] } fn Main() -> String { let xs = [Ingredient { Name: \"Flour\" Grams: 500.0 }] return First(xs).Name }",
+		},
+		{
+			name: "named enum arrays in signatures",
+			src:  "enum Phase { Solid Liquid Gas } fn Allowed() -> Phase[] { return [Phase.Solid, Phase.Liquid] } fn Main() -> Bool { let phases = Allowed() return phases[1] == Phase.Liquid }",
+		},
+		{
 			name: "whole value record reassignment",
 			src:  "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }",
 		},
