@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"oct/internal/ast"
+	"oct/internal/builtin"
 	"oct/internal/project"
 	"oct/internal/typecheck"
 )
@@ -529,6 +530,10 @@ func unsupported(feature string) error {
 	return fmt.Errorf("compiled mode does not yet support %s", feature)
 }
 
+func unsupportedBuiltin(name string) error {
+	return unsupported("builtin " + name)
+}
+
 func fallibleType(t string) string {
 	return "Fallible[" + t + "]"
 }
@@ -842,6 +847,10 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		tmp := c.temp(typeName + "[]")
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
 		return tmp, typeName + "[]", false, nil
+	case ast.VectorLiteralExpr:
+		return "", "", false, unsupported("vector literals")
+	case ast.MatrixLiteralExpr:
+		return "", "", false, unsupported("matrix literals")
 	case ast.FieldAccessExpr:
 		if enumType, variant, ok := c.flattenEnumVariantExpr(e); ok {
 			enumValue, enumFound, err := c.resolveEnumVariantValue(enumType, variant)
@@ -1181,6 +1190,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			if flow.Name == x.Name {
 				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType)), false, false, nil
 			}
+		}
+		if builtin.IsName(x.Name) {
+			return "", "", false, false, unsupportedBuiltin(x.Name)
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
 	case ast.FieldAccessExpr:
