@@ -189,14 +189,15 @@ type MIRField struct {
 }
 
 type MIRFunction struct {
-	Package    string
-	Name       string
-	Params     []MIRField
-	Return     string
-	IsFallible bool
-	ErrorType  string
-	Locals     []MIRField
-	Blocks     []MIRBlock
+	Package         string
+	Name            string
+	Params          []MIRField
+	Return          string
+	IsFallible      bool
+	ErrorType       string
+	Locals          []MIRField
+	Blocks          []MIRBlock
+	UsesUtilityWhen bool
 }
 
 type MIRBlock struct {
@@ -318,17 +319,18 @@ func artifactPathFor(path string) string {
 }
 
 type lowerCtx struct {
-	pkg     project.Package
-	program project.Program
-	locals  map[string]string
-	blocks  []MIRBlock
-	cur     int
-	tempID  int
-	batchID int
-	retType string
-	fn      ast.FunctionDecl
-	extra   []MIRFunction
-	lastRet string
+	pkg             project.Package
+	program         project.Program
+	locals          map[string]string
+	blocks          []MIRBlock
+	cur             int
+	tempID          int
+	batchID         int
+	retType         string
+	fn              ast.FunctionDecl
+	extra           []MIRFunction
+	lastRet         string
+	usesUtilityWhen bool
 }
 
 func lowerProgram(program project.Program) (MIRModule, error) {
@@ -414,6 +416,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 			return nil, fmt.Errorf("missing return")
 		}
 	}
+	mirFn.UsesUtilityWhen = ctx.usesUtilityWhen
 	mirFn.Blocks = ctx.blocks
 	for n, t := range ctx.locals {
 		isParam := false
@@ -1101,7 +1104,38 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.BatchExpr:
 		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
-		return "", "", false, unsupported("utility when")
+		h, _, _, err := c.lowerExpr(e.Policy.Hysteresis)
+		if err != nil {
+			return "", "", false, err
+		}
+		m, _, _, err := c.lowerExpr(e.Policy.MinCommit)
+		if err != nil {
+			return "", "", false, err
+		}
+		elseExpr, resultType, _, err := c.lowerExpr(e.Else)
+		if err != nil {
+			return "", "", false, err
+		}
+		cases := make([]string, 0, len(e.Cases))
+		valueType := goType(resultType)
+		for _, wc := range e.Cases {
+			v, _, _, err := c.lowerExpr(wc.Value)
+			if err != nil {
+				return "", "", false, err
+			}
+			cond, _, _, err := c.lowerExpr(wc.Condition)
+			if err != nil {
+				return "", "", false, err
+			}
+			score, _, _, err := c.lowerExpr(wc.Score)
+			if err != nil {
+				return "", "", false, err
+			}
+			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
+		}
+		c.usesUtilityWhen = true
+		return fmt.Sprintf("__octUtilSelect[%s](map[int]__octUtilitySiteState{}, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
+			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), resultType, false, nil
 	case ast.ParenExpr:
 		return c.lowerExpr(e.Inner)
 	default:
@@ -1949,6 +1983,9 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	for _, fn := range m.Functions {
+		if fn.UsesUtilityWhen {
+			needsUtilityHelpers = true
+		}
 		if fn.IsFallible {
 			resultTypes[fn.Return] = struct{}{}
 		}
