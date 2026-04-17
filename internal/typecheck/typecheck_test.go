@@ -40,6 +40,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "fn Main() -> Int { let x = [1, 2, 3] return x[1] }",
 		},
 		{
+			name: "nested array return and indexing",
+			src:  "fn Grid() -> Int[][] { return [[1, 2], [3, 4]] } fn Main() -> Int { let g = Grid() return g[1][0] }",
+		},
+		{
 			name: "for loop over range",
 			src:  "fn Main() -> Int { for i in 0..3 { return i } return 0 }",
 		},
@@ -130,6 +134,7 @@ func TestCheckRejectsInvalidOperatorUsage(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Bool[] { return [true, false] + [true, true] }", `function Main: operator "+" not defined for Bool[] and Bool[]`)
 	assertTypeErrorContains(t, `fn Main() -> String { return "value: " + 1 }`, `function Main: operator "+" not defined for String and Int`)
 	assertTypeErrorContains(t, `fn Main() -> String { return 1 + "x" }`, `function Main: operator "+" not defined for Int and String`)
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [[1, 2], [3, 4]] }", "function Main: function expects Matrix<Int>, but return is Int[][]")
 }
 
 func TestCheckRejectsUndefinedVariable(t *testing.T) {

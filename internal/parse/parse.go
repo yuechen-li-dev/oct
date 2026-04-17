@@ -720,15 +720,13 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		typeRef.Dimension = dim
 		typeRef.HasUnit = true
 	}
-	if p.match(lex.LeftBracket) {
+	for p.match(lex.LeftBracket) {
 		if _, err := p.expect(lex.RightBracket, "expected ']' after '[' in array type"); err != nil {
 			return ast.TypeRef{}, err
 		}
-		if p.current().Kind == lex.LeftBracket {
-			return ast.TypeRef{}, p.errorAtCurrent("nested array types are not supported")
-		}
-		typeRef.IsArray = true
+		typeRef.ArrayDepth++
 	}
+	typeRef.IsArray = typeRef.ArrayDepth > 0
 
 	return typeRef, nil
 }

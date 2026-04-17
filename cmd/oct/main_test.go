@@ -1427,6 +1427,64 @@ func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
 	}
 }
 
+func TestM91NestedArraysRunAndBuild(t *testing.T) {
+	valid := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "nested array literal and indexing",
+			source: "fn Main() -> Int { let grid = [[1, 2], [3, 4]] return grid[1][1] }",
+			want:   "4\n",
+		},
+		{
+			name:   "nested array return and jagged container",
+			source: "fn Adj() -> Int[][] { return [[1], [0, 2], [1, 3, 4]] } fn Main() -> Int { let adj = Adj() return Len(adj[2]) }",
+			want:   "3\n",
+		},
+	}
+	for _, test := range valid {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+
+	invalidBuild := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{"nested array does not coerce to matrix", "fn Main() -> Matrix<Int> { return [[1, 2], [3, 4]] }", "function expects Matrix<Int>, but return is Int[][]"},
+		{"array does not coerce to vector", "fn Main() -> Vector<Int> { return [1, 2] }", "function expects Vector<Int>, but return is Int[]"},
+	}
+	for _, test := range invalidBuild {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("build", sourcePath)
+			if err == nil {
+				t.Fatalf("expected build failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty build stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
 func TestM18MutableLocalsAndReassignment(t *testing.T) {
 	valid := []struct {
 		name   string

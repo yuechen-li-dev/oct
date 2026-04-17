@@ -1,11 +1,7 @@
-expect error: "nested array types are not supported"
+expect error: "function Main: function expects Matrix<Int>, but return is Int[][]"
 
 package Main
 
-record Ingredient {
-    Name: String
-}
-
-fn Main() -> Ingredient[][] {
-    return [Ingredient { Name: "Flour" }]
+fn Main() -> Matrix<Int> {
+    return [[1, 2], [3, 4]]
 }

@@ -14,7 +14,7 @@ Record and enum identity is nominal.
 - `UI` values are produced/consumed by UI library functions.
 - `UI` is not a browser object and not a normal record you can reshape with fields.
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
-- Arrays are one-dimensional and homogeneous (`T[]`).
+- Arrays are homogeneous containers (`T[]`, `T[][]`, ...).
 - Record identity is defined by record name.
 - Enum identity is defined by enum name.
 - Two records with matching fields are different types when names differ.
