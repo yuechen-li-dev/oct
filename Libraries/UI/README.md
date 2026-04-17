@@ -32,6 +32,70 @@ The design goal is predictable rendering and deterministic behavior with clear b
 - Procedural/dynamic logic should remain code.
 - Composition emits events; behavior defines meaning.
 
+---
+
+## 🔷 UIIR vs MIR — Boundary Principle
+
+Machina UI deliberately separates **UIIR (presentation)** from **MIR (computation)**, even though both operate over similar underlying data and state.
+
+At a data level, frontend and backend are not fundamentally different — both are mostly state, records, and transformations. However, they **lower to different semantic targets**:
+
+* **MIR (backend / core)**
+  Handles computation, control flow, analysis, persistence, and general program logic.
+
+* **UIIR (frontend / UI)**
+  Handles presentation, layout, interaction surfaces, and event bindings.
+
+This separation is intentional and must be preserved.
+
+### Core rule
+
+> **UIIR is a presentation IR, not a general execution IR.**
+
+UIIR must not absorb responsibilities such as:
+
+* arbitrary computation or service logic
+* persistence or data orchestration
+* backend-style control flow beyond UI interaction
+
+Likewise, MIR should not take on UI layout or rendering responsibilities.
+
+### Interface boundary
+
+Even when both sides run in the same environment (e.g. Wasm):
+
+* MIR and UIIR communicate through an **explicit interface boundary**
+* typically via:
+
+  * events (UI → core)
+  * state or projections (core → UI)
+
+This follows the principle of separation of concerns — keeping UI and logic independent improves maintainability, testability, and clarity
+
+### Design intent
+
+* Shared state models are encouraged
+* Shared domain logic is allowed
+* **Lowering remains separate**
+
+This ensures:
+
+* UIIR stays small, declarative, and LLM-friendly
+* MIR remains the single place for general computation
+* future targets (native, Wasm, etc.) stay composable
+
+### Anti-goal
+
+Do **not** merge UIIR and MIR into a single IR.
+
+That leads to:
+
+* bloated responsibilities
+* unclear semantics
+* “god runtime” anti-patterns
+* loss of clarity in both UI and computation layers
+
+---
 
 ## M94 Control Contract (Octomata-aligned)
 
