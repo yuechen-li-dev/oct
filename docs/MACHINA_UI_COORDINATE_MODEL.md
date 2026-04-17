@@ -4,6 +4,8 @@
 
 This note is a **narrowing/design probe** for Machina UI coordinate typing. It does not redesign layout primitives and does not add responsive systems.
 
+As of M95, these primitives are represented in **UIIR** (UI Intermediate Representation), the declarative presentation contract projected from Machina UI control state.
+
 In current authoring (see Storefront M0), Machina UI already uses two semantic spaces:
 
 - **Anchored / normalized space** for parent-relative macro layout (`0.01`, `0.99`, etc.)

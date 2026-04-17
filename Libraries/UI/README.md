@@ -43,3 +43,14 @@ Machina UI apps are modeled as control systems:
 - **View projection**: pure state -> `UI` projection suitable for signature/snapshot tests
 
 Reference implementation: `UI.AppModel.oct` + `UI.M94.octest`.
+
+## M95 Presentation Contract (UIIR)
+
+Machina UI projection now lowers into **UIIR** (UI Intermediate Representation), a deterministic declarative tree that is distinct from Oct procedural MIR.
+
+- **Control stays in Octomata** (`state` + `events` + `transitions`).
+- **Presentation lowers to UIIR** (`Text`, `Button`, `AbsoluteBox`, `AnchorBox`, `Row`, `Column`, `Grid`, `Spacer`).
+- **Stable ordering and identity** are encoded in signatures via deterministic node IDs.
+- **Layout worldview** is led by `AbsoluteBox` and `AnchorBox`; row/column/grid/spacer remain helper composition nodes.
+
+Current scope is representation only: no Wasm lowering, no host rendering ABI, and no effects runtime in this milestone.

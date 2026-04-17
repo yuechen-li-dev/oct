@@ -28,6 +28,14 @@ fn Canvas(children: UI[]) -> UI {
     return UICanvas(children)
 }
 
+fn Grid(children: UI[]) -> UI {
+    return UIGrid(children)
+}
+
+fn Spacer() -> UI {
+    return UISpacer()
+}
+
 fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
     return UIBox {
         Kind: "absolute"
