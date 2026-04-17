@@ -43,7 +43,7 @@ func TestM22ePackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStdout != "" {
 		t.Fatalf("expected empty build stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "unsupported expression ast.MatrixLiteralExpr") {
+	if !strings.Contains(buildStderr, "compiled mode does not yet support matrix literals") {
 		t.Fatalf("expected unsupported matrix literal diagnostic, got %q", buildStderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {

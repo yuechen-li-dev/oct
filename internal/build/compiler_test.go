@@ -1523,3 +1523,113 @@ fn main() -> Int {
 		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
 	}
 }
+
+func TestCompileModeUnsupportedSurfaceDiagnostics(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name: "matrix literals",
+			source: `package Main
+
+fn main() -> Int {
+    let m = matrix[[1.0, 2.0] [3.0, 4.0]]
+    return 0
+}
+`,
+			wantErr: "compiled mode does not yet support matrix literals",
+		},
+		{
+			name: "vector literals",
+			source: `package Main
+
+fn main() -> Int {
+    let v = vector[1, 2, 3]
+    Print(v)
+    return 0
+}
+`,
+			wantErr: "compiled mode does not yet support vector literals",
+		},
+		{
+			name: "plot builtin",
+			source: `package Main
+
+fn main() -> Int {
+    return PlotLine([0.0], [1.0], "out.png")
+}
+`,
+			wantErr: "compiled mode does not yet support builtin PlotLine",
+		},
+		{
+			name: "xlsx builtin",
+			source: `package Main
+
+fn main() -> Int {
+    let wb = XlsxCreateWorkbook()
+    return wb
+}
+`,
+			wantErr: "compiled mode does not yet support builtin XlsxCreateWorkbook",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Compile(mainPath)
+			if err == nil {
+				t.Fatalf("expected compile failure")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestCompileAndRunIfExpressionConditionSwitchSurface(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn tier(x: Int) -> String {
+    return if x > 10 {
+        "high"
+    } else {
+        if x > 5 {
+            "mid"
+        } else {
+            "low"
+        }
+    }
+}
+
+fn main() -> Int {
+    if tier(11) == "high" and tier(7) == "mid" and tier(1) == "low" {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}

@@ -689,7 +689,7 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: unknown function 'Sqrt'"
+		want := "build failed: function Main.Main: compiled mode does not yet support builtin Sqrt"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
@@ -848,7 +848,7 @@ func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: unknown function 'PlotLine'"
+		want := "build failed: function Main.Main: compiled mode does not yet support builtin PlotLine"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
