@@ -26,7 +26,7 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"    }\n" +
 				"}\n",
 			wantStdout:   "1\n",
-			wantBuildErr: "unknown identifier 'Method'",
+			wantBuildErr: "compiled mode does not yet support switch expression",
 		},
 		{
 			name: "non exhaustive without else",
@@ -51,7 +51,7 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 				"    }\n" +
 				"}\n",
 			wantStdout:   "0\n",
-			wantBuildErr: "unknown identifier 'Method'",
+			wantBuildErr: "compiled mode does not yet support switch expression",
 		},
 		{
 			name: "duplicate enum case",
