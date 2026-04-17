@@ -844,6 +844,26 @@ func TestBuildFileParsesDegreeLiteralAsDimensionlessRadians(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesCelsiusLiteralAsKelvinFloat(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Float<K> { return 100C }")
+	fn := file.Functions[0]
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	literal, ok := ret.Value.(ast.FloatLiteral)
+	if !ok {
+		t.Fatalf("expected FloatLiteral, got %T", ret.Value)
+	}
+	if literal.Dimension.String() != "K" {
+		t.Fatalf("expected kelvin literal, got %q", literal.Dimension.String())
+	}
+	if literal.Value != "373.15" {
+		t.Fatalf("expected kelvin converted value, got %q", literal.Value)
+	}
+}
+
+func TestBuildFileRejectsCelsiusInDimensionExpressions(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Float<K/m> { return 20C/m }", "unknown base unit: C")
+}
+
 func TestBuildFileParsesM16VectorMatrixSyntax(t *testing.T) {
 	file := parseSource(t, "fn Main(v: Vector<Int>, m: Matrix<Float<m>>) -> Int { return m[0, 0] + v[0] }")
 	fn := file.Functions[0]

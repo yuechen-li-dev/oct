@@ -1393,6 +1393,16 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseUtilityWhenExpr()
 	case lex.IntLiteral:
 		p.advance()
+		if p.current().Kind == lex.Identifier && p.current().Lexeme == "C" && tokensAdjacent(token, p.current()) && !literalSuffixContinuesAsDimensionSpec(p.peek(1)) {
+			p.advance()
+			intValue, err := strconv.ParseInt(token.Lexeme, 10, 64)
+			if err != nil {
+				return nil, p.errorAtToken(token, "invalid integer literal")
+			}
+			kelvin := float64(intValue) + 273.15
+			kelvinDim, _ := dimension.FromBaseName("K")
+			return ast.FloatLiteral{Value: strconv.FormatFloat(kelvin, 'g', -1, 64), Dimension: kelvinDim, HasUnit: true}, nil
+		}
 		if p.current().Kind == lex.Identifier && p.current().Lexeme == "deg" && tokensAdjacent(token, p.current()) {
 			p.advance()
 			intValue, err := strconv.ParseInt(token.Lexeme, 10, 64)
@@ -1409,6 +1419,16 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.IntegerLiteral{Value: token.Lexeme, Dimension: dim, HasUnit: hasUnit}, nil
 	case lex.FloatLiteral:
 		p.advance()
+		if p.current().Kind == lex.Identifier && p.current().Lexeme == "C" && tokensAdjacent(token, p.current()) && !literalSuffixContinuesAsDimensionSpec(p.peek(1)) {
+			p.advance()
+			floatValue, err := strconv.ParseFloat(token.Lexeme, 64)
+			if err != nil {
+				return nil, p.errorAtToken(token, "invalid float literal")
+			}
+			kelvin := floatValue + 273.15
+			kelvinDim, _ := dimension.FromBaseName("K")
+			return ast.FloatLiteral{Value: strconv.FormatFloat(kelvin, 'g', -1, 64), Dimension: kelvinDim, HasUnit: true}, nil
+		}
 		if p.current().Kind == lex.Identifier && p.current().Lexeme == "deg" && tokensAdjacent(token, p.current()) {
 			p.advance()
 			floatValue, err := strconv.ParseFloat(token.Lexeme, 64)
@@ -2056,4 +2076,13 @@ func (p *parser) parseDimensionFactor() (dimension.Dimension, error) {
 
 func tokensAdjacent(left lex.Token, right lex.Token) bool {
 	return left.Line == right.Line && left.Column+len(left.Lexeme) == right.Column
+}
+
+func literalSuffixContinuesAsDimensionSpec(next lex.Token) bool {
+	switch next.Kind {
+	case lex.Star, lex.Slash, lex.Caret:
+		return true
+	default:
+		return false
+	}
 }
