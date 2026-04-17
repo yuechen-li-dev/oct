@@ -2681,7 +2681,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: operandType.ValueType.Base, Dimension: operandType.ValueType.Dimension, IsMatrix: true}}, nil
 	}
-	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" {
+	if callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" || callee == "UIGrid" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -2697,6 +2697,16 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		if childrenType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 1) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
+
+	if callee == "UISpacer" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UISpacer' does not accept type arguments")
+		}
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function 'UISpacer' expects 0 arguments, got %d", len(arguments))
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}

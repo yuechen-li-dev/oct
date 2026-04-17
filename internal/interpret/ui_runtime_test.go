@@ -1,114 +1,97 @@
 package interpret
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestUISignatureIsDeterministic(t *testing.T) {
-	tree := &uiNode{
-		Kind: uiNodeColumn,
-		Children: []*uiNode{
-			{Kind: uiNodeText, Text: "count:0"},
-			{Kind: uiNodeRow, Children: []*uiNode{{Kind: uiNodeButton, Label: "+", Event: "inc", Enabled: true}, {Kind: uiNodeButton, Label: "-", Event: "dec", Enabled: false}}},
+func TestUIIRSignatureIsDeterministicForSameState(t *testing.T) {
+	tree := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "count:0"},
+			{Kind: uiirNodeRow, Children: []*uiirNode{{Kind: uiirNodeButton, Label: "+", Event: "inc", Enabled: true}, {Kind: uiirNodeButton, Label: "-", Event: "dec", Enabled: false}}},
 		},
 	}
 
-	left := uiSignature(tree)
-	right := uiSignature(cloneUI(tree))
+	left := uiirSignature(withUIIRNodeIDs(tree))
+	right := uiirSignature(withUIIRNodeIDs(cloneUIIR(tree)))
 	if left != right {
 		t.Fatalf("expected deterministic signature, got %q vs %q", left, right)
 	}
 }
 
-func TestUIEventDiscovery(t *testing.T) {
-	tree := &uiNode{
-		Kind: uiNodeColumn,
-		Children: []*uiNode{
-			{Kind: uiNodeText, Text: "hello"},
-			{Kind: uiNodeButton, Label: "go", Event: "go", Enabled: true},
-			{Kind: uiNodeButton, Label: "stop", Event: "stop", Enabled: false},
+func TestUIIRTreeContainsOnlyEnabledEvents(t *testing.T) {
+	tree := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "hello"},
+			{Kind: uiirNodeButton, Label: "go", Event: "go", Enabled: true},
+			{Kind: uiirNodeButton, Label: "stop", Event: "stop", Enabled: false},
 		},
 	}
 
-	if !uiTreeContainsEvent(tree, "go") {
+	if !uiirTreeContainsEvent(tree, "go") {
 		t.Fatal("expected event token to be discoverable")
 	}
-	if uiTreeContainsEvent(tree, "stop") {
+	if uiirTreeContainsEvent(tree, "stop") {
 		t.Fatal("disabled event token should not be discoverable")
 	}
 }
 
-func TestResolveAbsoluteBoxPlacement(t *testing.T) {
-	parent := &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
-	resolved, err := resolveBox(&uiBoxSpec{Kind: uiBoxAbsolute, X: 15, Y: 25, Width: 200, Height: 80}, parent)
+func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
+	parent := &uiirResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, X: 15, Y: 25, Width: 200, Height: 80}, parent)
 	if err != nil {
-		t.Fatalf("resolveBox returned unexpected error: %v", err)
+		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
 	if resolved.X != 15 || resolved.Y != 25 || resolved.Width != 200 || resolved.Height != 80 {
 		t.Fatalf("unexpected absolute placement resolution: %+v", resolved)
 	}
 }
 
-func TestResolveAnchoredBoxPlacement(t *testing.T) {
-	parent := &uiResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
-	resolved, err := resolveBox(&uiBoxSpec{Kind: uiBoxAnchored, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
+func TestUIIRResolveAnchoredBoxPlacement(t *testing.T) {
+	parent := &uiirResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAnchored, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
 	if err != nil {
-		t.Fatalf("resolveBox returned unexpected error: %v", err)
+		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
 	if resolved.X != 110 || resolved.Y != 40 || resolved.Width != 200 || resolved.Height != 100 {
 		t.Fatalf("unexpected anchored placement resolution: %+v", resolved)
 	}
 }
 
-func TestResolveMixedChildrenWithoutBreakingLegacyNodes(t *testing.T) {
-	root := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{
-				Kind: uiNodePlaced,
-				Box:  &uiBoxSpec{Kind: uiBoxAbsolute, X: 20, Y: 30, Width: 120, Height: 40},
-				Children: []*uiNode{
-					{Kind: uiNodeButton, Label: "go", Event: "go", Enabled: true},
-				},
-			},
-			{Kind: uiNodeText, Text: "legacy"},
+func TestUIIRStructuralKindsRemainExplicit(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "hello"},
+			{Kind: uiirNodeButton, Label: "go", Event: "evt.go", Enabled: true},
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, X: 20, Y: 30, Width: 120, Height: 40}, Children: []*uiirNode{{Kind: uiirNodeSpacer}}},
+			{Kind: uiirNodeAnchorBox, Box: &uiirBoxSpec{Kind: uiirBoxAnchored, Left: 0.1, Top: 0.2, Right: 0.9, Bottom: 0.8}, Children: []*uiirNode{{Kind: uiirNodeGrid, Children: []*uiirNode{{Kind: uiirNodeText, Text: "g0"}, {Kind: uiirNodeText, Text: "g1"}}}}},
 		},
 	}
-	resolved, err := resolveUIBoxes(root, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
-	if err != nil {
-		t.Fatalf("resolveUIBoxes returned unexpected error: %v", err)
-	}
-	placedChild := resolved.Children[0].Children[0]
-	if placedChild.Layout == nil {
-		t.Fatal("expected placed child to receive resolved layout")
-	}
-	if resolved.Children[1].Layout != nil {
-		t.Fatal("expected non-placed legacy child to keep nil layout")
+	sig := uiirSignature(withUIIRNodeIDs(root))
+	if !containsAll(sig, []string{"Text#", "Button#", "AbsoluteBox#", "AnchorBox#", "Grid#", "Spacer#"}) {
+		t.Fatalf("expected explicit UIIR node kinds in signature, got %q", sig)
 	}
 }
 
-func TestPatchedBoxChangeUpdatesResolvedLayout(t *testing.T) {
-	initial := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{Kind: uiNodePlaced, Box: &uiBoxSpec{Kind: uiBoxAbsolute, X: 10, Y: 10, Width: 50, Height: 20}, Children: []*uiNode{{Kind: uiNodeText, Text: "a"}}},
-		},
+func TestUIIRNodeIDOrderingTracksChildOrder(t *testing.T) {
+	ordered := &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{{Kind: uiirNodeText, Text: "first"}, {Kind: uiirNodeText, Text: "second"}}}
+	reversed := &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{{Kind: uiirNodeText, Text: "second"}, {Kind: uiirNodeText, Text: "first"}}}
+	orderedSig := uiirSignature(withUIIRNodeIDs(ordered))
+	reversedSig := uiirSignature(withUIIRNodeIDs(reversed))
+	if orderedSig == reversedSig {
+		t.Fatalf("child ordering must affect deterministic UIIR signatures: %q", orderedSig)
 	}
-	next := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{Kind: uiNodePlaced, Box: &uiBoxSpec{Kind: uiBoxAbsolute, X: 5, Y: 10, Width: 50, Height: 20}, Children: []*uiNode{{Kind: uiNodeText, Text: "a"}}},
-		},
+}
+
+func containsAll(haystack string, parts []string) bool {
+	for _, part := range parts {
+		if !strings.Contains(haystack, part) {
+			return false
+		}
 	}
-	initialResolved, err := resolveUIBoxes(initial, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
-	if err != nil {
-		t.Fatalf("resolveUIBoxes initial returned unexpected error: %v", err)
-	}
-	nextResolved, err := resolveUIBoxes(next, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
-	if err != nil {
-		t.Fatalf("resolveUIBoxes next returned unexpected error: %v", err)
-	}
-	beforeX := initialResolved.Children[0].Children[0].Layout.X
-	afterX := nextResolved.Children[0].Children[0].Layout.X
-	if beforeX == afterX {
-		t.Fatalf("expected box patch to update resolved layout x, both were %v", beforeX)
-	}
+	return true
 }

@@ -7,28 +7,30 @@ import (
 	"oct/internal/ast"
 )
 
-type uiNodeKind string
+type uiirNodeKind string
 
 const (
-	uiNodeText         uiNodeKind = "Text"
-	uiNodeButton       uiNodeKind = "Button"
-	uiNodeColumn       uiNodeKind = "Column"
-	uiNodeRow          uiNodeKind = "Row"
-	uiNodeCanvas       uiNodeKind = "Canvas"
-	uiNodePlaced       uiNodeKind = "Placed"
-	uiRootLayoutExtent float64    = 1000.0
-	uiAbsCoordLimit    float64    = 1000000.0
+	uiirNodeText         uiirNodeKind = "Text"
+	uiirNodeButton       uiirNodeKind = "Button"
+	uiirNodeColumn       uiirNodeKind = "Column"
+	uiirNodeRow          uiirNodeKind = "Row"
+	uiirNodeGrid         uiirNodeKind = "Grid"
+	uiirNodeSpacer       uiirNodeKind = "Spacer"
+	uiirNodeAbsoluteBox  uiirNodeKind = "AbsoluteBox"
+	uiirNodeAnchorBox    uiirNodeKind = "AnchorBox"
+	uiirRootLayoutExtent float64      = 1000.0
+	uiirAbsCoordLimit    float64      = 1000000.0
 )
 
-type uiBoxKind string
+type uiirBoxKind string
 
 const (
-	uiBoxAbsolute uiBoxKind = "absolute"
-	uiBoxAnchored uiBoxKind = "anchored"
+	uiirBoxAbsolute uiirBoxKind = "absolute"
+	uiirBoxAnchored uiirBoxKind = "anchored"
 )
 
-type uiBoxSpec struct {
-	Kind         uiBoxKind
+type uiirBoxSpec struct {
+	Kind         uiirBoxKind
 	X            float64
 	Y            float64
 	Width        float64
@@ -37,114 +39,138 @@ type uiBoxSpec struct {
 	Top          float64
 	Right        float64
 	Bottom       float64
-	ResolvedRect *uiResolvedBox
+	ResolvedRect *uiirResolvedBox
 }
 
-type uiResolvedBox struct {
+type uiirResolvedBox struct {
 	X      float64
 	Y      float64
 	Width  float64
 	Height float64
 }
 
-type uiNode struct {
-	Kind     uiNodeKind
+type uiirNode struct {
+	NodeID   string
+	Key      string
+	Kind     uiirNodeKind
 	Text     string
 	Label    string
 	Event    string
 	Enabled  bool
-	Children []*uiNode
-	Box      *uiBoxSpec
-	Layout   *uiResolvedBox
+	Children []*uiirNode
+	Box      *uiirBoxSpec
+	Layout   *uiirResolvedBox
 }
 
 type uiMount struct {
-	Root   *uiNode
+	Root   *uiirNode
 	Events []string
 }
 
-func cloneUI(node *uiNode) *uiNode {
+func cloneUIIR(node *uiirNode) *uiirNode {
 	if node == nil {
 		return nil
 	}
-	children := make([]*uiNode, 0, len(node.Children))
+	children := make([]*uiirNode, 0, len(node.Children))
 	for _, child := range node.Children {
-		children = append(children, cloneUI(child))
+		children = append(children, cloneUIIR(child))
 	}
-	return &uiNode{
+	return &uiirNode{
+		NodeID:   node.NodeID,
+		Key:      node.Key,
 		Kind:     node.Kind,
 		Text:     node.Text,
 		Label:    node.Label,
 		Event:    node.Event,
 		Enabled:  node.Enabled,
 		Children: children,
-		Box:      cloneUIBoxSpec(node.Box),
-		Layout:   cloneUIResolvedBox(node.Layout),
+		Box:      cloneUIIRBoxSpec(node.Box),
+		Layout:   cloneUIIRResolvedBox(node.Layout),
 	}
 }
 
-func uiSignature(node *uiNode) string {
+func withUIIRNodeIDs(node *uiirNode) *uiirNode {
+	root := cloneUIIR(node)
+	assignUIIRNodeIDs(root, "0")
+	return root
+}
+
+func assignUIIRNodeIDs(node *uiirNode, id string) {
+	if node == nil {
+		return
+	}
+	node.NodeID = id
+	for idx := range node.Children {
+		assignUIIRNodeIDs(node.Children[idx], fmt.Sprintf("%s.%d", id, idx))
+	}
+}
+
+func uiirSignature(node *uiirNode) string {
 	if node == nil {
 		return "<nil>"
 	}
+	nodePrefix := string(node.Kind) + "#" + node.NodeID
+	if node.Key != "" {
+		nodePrefix += "{key=" + node.Key + "}"
+	}
 	switch node.Kind {
-	case uiNodeText:
-		return "Text" + uiLayoutSuffix(node.Layout) + "(" + node.Text + ")"
-	case uiNodeButton:
-		return "Button" + uiLayoutSuffix(node.Layout) + "(" + node.Label + "->" + node.Event + ",enabled=" + fmt.Sprintf("%t", node.Enabled) + ")"
-	case uiNodeColumn, uiNodeRow, uiNodeCanvas:
+	case uiirNodeText:
+		return nodePrefix + uiirLayoutSuffix(node.Layout) + "(" + node.Text + ")"
+	case uiirNodeSpacer:
+		return nodePrefix + uiirLayoutSuffix(node.Layout)
+	case uiirNodeButton:
+		return nodePrefix + uiirLayoutSuffix(node.Layout) + "(" + node.Label + "->" + node.Event + ",enabled=" + fmt.Sprintf("%t", node.Enabled) + ")"
+	case uiirNodeColumn, uiirNodeRow, uiirNodeGrid, uiirNodeAbsoluteBox, uiirNodeAnchorBox:
 		parts := make([]string, 0, len(node.Children))
 		for _, child := range node.Children {
-			parts = append(parts, uiSignature(child))
+			parts = append(parts, uiirSignature(child))
 		}
-		return string(node.Kind) + uiLayoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
-	case uiNodePlaced:
-		if len(node.Children) != 1 {
-			return "Placed<invalid>"
+		if node.Box != nil {
+			return nodePrefix + "(" + uiirBoxSignature(node.Box) + ")" + uiirLayoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
 		}
-		return "Placed(" + uiBoxSignature(node.Box) + ")->" + uiSignature(node.Children[0])
+		return nodePrefix + uiirLayoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
 	default:
 		return "<unknown>"
 	}
 }
 
-func uiLayoutSuffix(layout *uiResolvedBox) string {
+func uiirLayoutSuffix(layout *uiirResolvedBox) string {
 	if layout == nil {
 		return ""
 	}
 	return fmt.Sprintf("@(%.2f,%.2f,%.2f,%.2f)", layout.X, layout.Y, layout.Width, layout.Height)
 }
 
-func uiBoxSignature(spec *uiBoxSpec) string {
+func uiirBoxSignature(spec *uiirBoxSpec) string {
 	if spec == nil {
 		return "<nil>"
 	}
-	if spec.Kind == uiBoxAbsolute {
+	if spec.Kind == uiirBoxAbsolute {
 		return fmt.Sprintf("absolute(%.2f,%.2f,%.2f,%.2f)", spec.X, spec.Y, spec.Width, spec.Height)
 	}
 	return fmt.Sprintf("anchored(%.2f,%.2f,%.2f,%.2f)", spec.Left, spec.Top, spec.Right, spec.Bottom)
 }
 
-func uiTreeContainsEvent(node *uiNode, token string) bool {
+func uiirTreeContainsEvent(node *uiirNode, token string) bool {
 	if node == nil {
 		return false
 	}
-	if node.Kind == uiNodeButton && node.Enabled && node.Event == token {
+	if node.Kind == uiirNodeButton && node.Enabled && node.Event == token {
 		return true
 	}
 	for _, child := range node.Children {
-		if uiTreeContainsEvent(child, token) {
+		if uiirTreeContainsEvent(child, token) {
 			return true
 		}
 	}
 	return false
 }
 
-func cloneUIBoxSpec(spec *uiBoxSpec) *uiBoxSpec {
+func cloneUIIRBoxSpec(spec *uiirBoxSpec) *uiirBoxSpec {
 	if spec == nil {
 		return nil
 	}
-	return &uiBoxSpec{
+	return &uiirBoxSpec{
 		Kind:         spec.Kind,
 		X:            spec.X,
 		Y:            spec.Y,
@@ -154,15 +180,15 @@ func cloneUIBoxSpec(spec *uiBoxSpec) *uiBoxSpec {
 		Top:          spec.Top,
 		Right:        spec.Right,
 		Bottom:       spec.Bottom,
-		ResolvedRect: cloneUIResolvedBox(spec.ResolvedRect),
+		ResolvedRect: cloneUIIRResolvedBox(spec.ResolvedRect),
 	}
 }
 
-func cloneUIResolvedBox(rect *uiResolvedBox) *uiResolvedBox {
+func cloneUIIRResolvedBox(rect *uiirResolvedBox) *uiirResolvedBox {
 	if rect == nil {
 		return nil
 	}
-	return &uiResolvedBox{X: rect.X, Y: rect.Y, Width: rect.Width, Height: rect.Height}
+	return &uiirResolvedBox{X: rect.X, Y: rect.Y, Width: rect.Width, Height: rect.Height}
 }
 
 func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
@@ -181,7 +207,7 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if content.value.Kind != ValueString {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIText expects String argument")
 		}
-		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: uiNodeText, Text: content.value.Text}}}, nil
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeText, Text: content.value.Text}}}, nil
 	case "UIButton":
 		if len(argumentExprs) != 3 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects 3 arguments")
@@ -210,8 +236,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if label.value.Kind != ValueString || event.value.Kind != ValueString || enabled.value.Kind != ValueBool {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects (String, String, Bool)")
 		}
-		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: uiNodeButton, Label: label.value.Text, Event: event.value.Text, Enabled: enabled.value.Bool}}}, nil
-	case "UIColumn", "UIRow", "UICanvas":
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeButton, Label: label.value.Text, Event: event.value.Text, Enabled: enabled.value.Bool}}}, nil
+	case "UIColumn", "UIRow", "UICanvas", "UIGrid":
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
 		}
@@ -225,21 +251,29 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if children.value.Kind != ValueArray {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects UI[]", callee)
 		}
-		nodes := make([]*uiNode, 0, len(children.value.Array))
+		nodes := make([]*uiirNode, 0, len(children.value.Array))
 		for idx, child := range children.value.Array {
 			if child.Kind != ValueUI || child.UI == nil {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: %s children[%d] expects UI", callee, idx)
 			}
-			nodes = append(nodes, cloneUI(child.UI))
+			nodes = append(nodes, cloneUIIR(child.UI))
 		}
-		kind := uiNodeColumn
+		kind := uiirNodeColumn
 		if callee == "UIRow" {
-			kind = uiNodeRow
+			kind = uiirNodeRow
 		}
 		if callee == "UICanvas" {
-			kind = uiNodeCanvas
+			kind = uiirNodeAbsoluteBox
 		}
-		return evalResult{value: Value{Kind: ValueUI, UI: &uiNode{Kind: kind, Children: nodes}}}, nil
+		if callee == "UIGrid" {
+			kind = uiirNodeGrid
+		}
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: kind, Children: nodes}}}, nil
+	case "UISpacer":
+		if len(argumentExprs) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UISpacer expects 0 arguments")
+		}
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeSpacer}}}, nil
 	case "UIPlaceAbsolute":
 		node, errResult, err := i.evalUIPlaceAbsolute(env, pkgName, argumentExprs)
 		if err != nil {
@@ -272,7 +306,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if root.value.Kind != ValueUI || root.value.UI == nil {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIMount expects UI")
 		}
-		resolvedRoot, resolveErr := resolveUIBoxes(cloneUI(root.value.UI), &uiResolvedBox{X: 0, Y: 0, Width: uiRootLayoutExtent, Height: uiRootLayoutExtent})
+		canonicalRoot := withUIIRNodeIDs(root.value.UI)
+		resolvedRoot, resolveErr := resolveUIIRBoxes(canonicalRoot, &uiirResolvedBox{X: 0, Y: 0, Width: uiirRootLayoutExtent, Height: uiirRootLayoutExtent})
 		if resolveErr != nil {
 			return wrapperErrorResult(callee, resolveErr), nil
 		}
@@ -289,7 +324,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if errResult != nil {
 			return *errResult, nil
 		}
-		resolvedRoot, resolveErr := resolveUIBoxes(cloneUI(nextRoot), &uiResolvedBox{X: 0, Y: 0, Width: uiRootLayoutExtent, Height: uiRootLayoutExtent})
+		canonicalRoot := withUIIRNodeIDs(nextRoot)
+		resolvedRoot, resolveErr := resolveUIIRBoxes(canonicalRoot, &uiirResolvedBox{X: 0, Y: 0, Width: uiirRootLayoutExtent, Height: uiirRootLayoutExtent})
 		if resolveErr != nil {
 			return wrapperErrorResult(callee, resolveErr), nil
 		}
@@ -336,7 +372,7 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if err != nil {
 			return wrapperErrorResult(callee, err), nil
 		}
-		if !uiTreeContainsEvent(mount.Root, eventValue.value.Text) {
+		if !uiirTreeContainsEvent(mount.Root, eventValue.value.Text) {
 			return wrapperErrorResult(callee, fmt.Errorf("event %q not found in mounted UI", eventValue.value.Text)), nil
 		}
 		mount.Events = append(mount.Events, eventValue.value.Text)
@@ -379,13 +415,13 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		if root.value.Kind != ValueUI || root.value.UI == nil {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UISignature expects UI")
 		}
-		return evalResult{value: Value{Kind: ValueString, Text: uiSignature(root.value.UI)}}, nil
+		return evalResult{value: Value{Kind: ValueString, Text: uiirSignature(withUIIRNodeIDs(root.value.UI))}}, nil
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported UI builtin %s", callee)
 	}
 }
 
-func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiNode, *evalResult, error) {
+func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiirNode, *evalResult, error) {
 	if len(argumentExprs) != 5 {
 		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAbsolute expects 5 arguments")
 	}
@@ -413,24 +449,24 @@ func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argum
 		errEval := wrapperErrorResult("UIPlaceAbsolute", fmt.Errorf("absolute box width and height must be >= 0"))
 		return nil, &errEval, nil
 	}
-	if x < -uiAbsCoordLimit || y < -uiAbsCoordLimit || x > uiAbsCoordLimit || y > uiAbsCoordLimit || width > uiAbsCoordLimit || height > uiAbsCoordLimit {
+	if x < -uiirAbsCoordLimit || y < -uiirAbsCoordLimit || x > uiirAbsCoordLimit || y > uiirAbsCoordLimit || width > uiirAbsCoordLimit || height > uiirAbsCoordLimit {
 		errEval := wrapperErrorResult("UIPlaceAbsolute", fmt.Errorf("absolute box values exceed runtime bounds"))
 		return nil, &errEval, nil
 	}
-	return &uiNode{
-		Kind: uiNodePlaced,
-		Box: &uiBoxSpec{
-			Kind:   uiBoxAbsolute,
+	return &uiirNode{
+		Kind: uiirNodeAbsoluteBox,
+		Box: &uiirBoxSpec{
+			Kind:   uiirBoxAbsolute,
 			X:      x,
 			Y:      y,
 			Width:  width,
 			Height: height,
 		},
-		Children: []*uiNode{cloneUI(child)},
+		Children: []*uiirNode{cloneUIIR(child)},
 	}, nil, nil
 }
 
-func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiNode, *evalResult, error) {
+func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiirNode, *evalResult, error) {
 	if len(argumentExprs) != 5 {
 		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAnchored expects 5 arguments")
 	}
@@ -458,16 +494,16 @@ func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argum
 		errEval := wrapperErrorResult("UIPlaceAnchored", fmt.Errorf("anchored box requires Right >= Left and Bottom >= Top"))
 		return nil, &errEval, nil
 	}
-	return &uiNode{
-		Kind: uiNodePlaced,
-		Box: &uiBoxSpec{
-			Kind:   uiBoxAnchored,
+	return &uiirNode{
+		Kind: uiirNodeAnchorBox,
+		Box: &uiirBoxSpec{
+			Kind:   uiirBoxAnchored,
 			Left:   left,
 			Top:    top,
 			Right:  right,
 			Bottom: bottom,
 		},
-		Children: []*uiNode{cloneUI(child)},
+		Children: []*uiirNode{cloneUIIR(child)},
 	}, nil, nil
 }
 
@@ -486,7 +522,7 @@ func (i interpreter) evalFloatArg(env *environment, pkgName string, expr ast.Exp
 	return value.value.Float, nil, nil
 }
 
-func (i interpreter) evalUIArg(env *environment, pkgName string, expr ast.Expr, callee string) (*uiNode, *evalResult, error) {
+func (i interpreter) evalUIArg(env *environment, pkgName string, expr ast.Expr, callee string) (*uiirNode, *evalResult, error) {
 	value, err := i.evalExpr(env, pkgName, expr)
 	if err != nil {
 		return nil, nil, err
@@ -501,50 +537,41 @@ func (i interpreter) evalUIArg(env *environment, pkgName string, expr ast.Expr, 
 	return value.value.UI, nil, nil
 }
 
-func resolveUIBoxes(node *uiNode, parent *uiResolvedBox) (*uiNode, error) {
+func resolveUIIRBoxes(node *uiirNode, parent *uiirResolvedBox) (*uiirNode, error) {
 	if node == nil {
 		return nil, nil
 	}
-	switch node.Kind {
-	case uiNodePlaced:
-		if len(node.Children) != 1 || node.Box == nil {
-			return nil, fmt.Errorf("placed node must have exactly one child and one box")
-		}
-		resolved, err := resolveBox(node.Box, parent)
+	nextParent := parent
+	if node.Box != nil {
+		resolved, err := resolveUIIRBox(node.Box, parent)
 		if err != nil {
 			return nil, err
 		}
-		node.Box.ResolvedRect = cloneUIResolvedBox(resolved)
-		node.Children[0].Layout = cloneUIResolvedBox(resolved)
-		child, err := resolveUIBoxes(node.Children[0], resolved)
-		if err != nil {
-			return nil, err
-		}
-		node.Children[0] = child
-		return node, nil
-	default:
-		for idx := range node.Children {
-			child, err := resolveUIBoxes(node.Children[idx], parent)
-			if err != nil {
-				return nil, err
-			}
-			node.Children[idx] = child
-		}
-		return node, nil
+		node.Box.ResolvedRect = cloneUIIRResolvedBox(resolved)
+		node.Layout = cloneUIIRResolvedBox(resolved)
+		nextParent = resolved
 	}
+	for idx := range node.Children {
+		child, err := resolveUIIRBoxes(node.Children[idx], nextParent)
+		if err != nil {
+			return nil, err
+		}
+		node.Children[idx] = child
+	}
+	return node, nil
 }
 
-func resolveBox(spec *uiBoxSpec, parent *uiResolvedBox) (*uiResolvedBox, error) {
+func resolveUIIRBox(spec *uiirBoxSpec, parent *uiirResolvedBox) (*uiirResolvedBox, error) {
 	if spec == nil || parent == nil {
 		return nil, fmt.Errorf("box resolution requires spec and parent")
 	}
 	switch spec.Kind {
-	case uiBoxAbsolute:
+	case uiirBoxAbsolute:
 		if spec.Width < 0 || spec.Height < 0 {
 			return nil, fmt.Errorf("absolute box width and height must be >= 0")
 		}
-		return &uiResolvedBox{X: parent.X + spec.X, Y: parent.Y + spec.Y, Width: spec.Width, Height: spec.Height}, nil
-	case uiBoxAnchored:
+		return &uiirResolvedBox{X: parent.X + spec.X, Y: parent.Y + spec.Y, Width: spec.Width, Height: spec.Height}, nil
+	case uiirBoxAnchored:
 		x := parent.X + (spec.Left * parent.Width)
 		y := parent.Y + (spec.Top * parent.Height)
 		width := (spec.Right - spec.Left) * parent.Width
@@ -552,13 +579,13 @@ func resolveBox(spec *uiBoxSpec, parent *uiResolvedBox) (*uiResolvedBox, error) 
 		if width < 0 || height < 0 {
 			return nil, fmt.Errorf("anchored box resolved width and height must be >= 0")
 		}
-		return &uiResolvedBox{X: x, Y: y, Width: width, Height: height}, nil
+		return &uiirResolvedBox{X: x, Y: y, Width: width, Height: height}, nil
 	default:
 		return nil, fmt.Errorf("unsupported box kind %s", spec.Kind)
 	}
 }
 
-func (i interpreter) evalUIMountAndRootArgs(env *environment, pkgName string, callee string, mountExpr ast.Expr, rootExpr ast.Expr) (*uiMount, *uiNode, *evalResult, error) {
+func (i interpreter) evalUIMountAndRootArgs(env *environment, pkgName string, callee string, mountExpr ast.Expr, rootExpr ast.Expr) (*uiMount, *uiirNode, *evalResult, error) {
 	handleValue, err := i.evalExpr(env, pkgName, mountExpr)
 	if err != nil {
 		return nil, nil, nil, err

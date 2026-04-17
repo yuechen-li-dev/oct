@@ -356,6 +356,7 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.1ui, 0.0px, 10.0px, 10.0px, UIText(\"x\")) }", "function Main: function 'UIPlaceAbsolute' argument 1 expects Float<px>, got Float<ui>")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(1.0px, 0.0ui, 1.0ui, 1.0ui, UIText(\"x\")) }", "function Main: function 'UIPlaceAnchored' argument 1 expects Float<ui>, got Float<px>")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(0.0ui, 0.0ui, 1.0ui, 1.0ui, \"x\") }", "function Main: function 'UIPlaceAnchored' argument 5 expects UI, got String")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UISpacer(1) }", "function Main: function 'UISpacer' expects 0 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")

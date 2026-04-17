@@ -48,6 +48,8 @@ var names = map[string]struct{}{
 	"UIColumn":           {},
 	"UIRow":              {},
 	"UICanvas":           {},
+	"UIGrid":             {},
+	"UISpacer":           {},
 	"UIPlaceAbsolute":    {},
 	"UIPlaceAnchored":    {},
 	"UIMount":            {},
