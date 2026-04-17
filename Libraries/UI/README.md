@@ -67,3 +67,15 @@ The ABI surface is documented in:
 - `docs/MACHINA_UI_UIIR_ABI.md`
 
 This contract is the stable bridge for future Wasm exports and native/web hosts. It remains intentionally separate from procedural MIR and from any host rendering strategy.
+
+## M97 Wasm Runtime Boundary Skeleton
+
+M97 adds the first Machina UI Wasm runtime boundary skeleton in the Go runtime layer.
+
+- explicit init/render/dispatch boundary functions
+- pointer/length event input crossing discipline
+- deterministic output buffer contract for canonical M96 UIIR JSON
+- focused runtime-layer tests for boundary behavior
+
+Reference docs: `docs/MACHINA_UI_WASM_RUNTIME_M97.md`.
+
