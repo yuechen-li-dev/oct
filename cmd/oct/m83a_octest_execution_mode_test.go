@@ -43,7 +43,7 @@ func TestM83aOctestExecutesInterpreterOnlySurface(t *testing.T) {
 	}
 }
 
-func TestM83aCompiledBuildStillUnsupportedForEquivalentFlow(t *testing.T) {
+func TestM83aCompiledBuildSupportsEquivalentFlow(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m83a_compiled_mode_boundary.oct", strings.Join([]string{
 		"fn Main() -> Int {",
 		"    let n = 0",
@@ -55,10 +55,13 @@ func TestM83aCompiledBuildStillUnsupportedForEquivalentFlow(t *testing.T) {
 	}, "\n")+"\n")
 
 	stdout, stderr, err := executeCLI("build", sourcePath)
-	if err == nil {
-		t.Fatalf("expected compiled build failure, got success with stdout=%q", stdout)
+	if err != nil {
+		t.Fatalf("expected compiled build success, got err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	if !strings.Contains(stderr, "compiled mode does not yet support while") {
-		t.Fatalf("expected explicit compiled boundary diagnostic, got %q", stderr)
+	if !strings.Contains(stdout, "build succeeded: ") {
+		t.Fatalf("expected build success output, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 }

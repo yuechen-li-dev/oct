@@ -573,7 +573,8 @@ func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
 	if err := c.lowerBlock(s.ThenBody); err != nil {
 		return err
 	}
-	thenFallsThrough := c.blocks[c.cur].Terminator == nil
+	thenEndID := c.cur
+	thenFallsThrough := c.blocks[thenEndID].Terminator == nil
 
 	c.cur = elseID
 	if s.ElseBody != nil {
@@ -581,20 +582,21 @@ func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
 			return err
 		}
 	}
-	elseFallsThrough := c.blocks[c.cur].Terminator == nil
+	elseEndID := c.cur
+	elseFallsThrough := c.blocks[elseEndID].Terminator == nil
 
 	if !thenFallsThrough && !elseFallsThrough {
-		c.cur = thenID
+		c.cur = thenEndID
 		return nil
 	}
 
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
 	if thenFallsThrough {
-		c.blocks[thenID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.blocks[thenEndID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}
 	if elseFallsThrough {
-		c.blocks[elseID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.blocks[elseEndID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}
 	c.cur = mergeID
 	return nil
