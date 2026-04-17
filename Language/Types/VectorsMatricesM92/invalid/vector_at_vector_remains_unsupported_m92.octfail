@@ -1,0 +1,7 @@
+expect error: "operator '@' not defined for Vector<Float<m>> and Vector<Float<kg/s^2>>"
+
+package Main
+
+fn Main() -> Vector<Float<kg*m/s^2>> {
+    return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2]
+}

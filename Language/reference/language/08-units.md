@@ -17,9 +17,14 @@ Unit behavior is explicit and deterministic.
 - Only `Int` and `Float` may be dimension-qualified.
 - Dimensions are part of type identity.
 - `Int<m>` and `Int<s>` are different types.
+- Arrays carry dimensions per element type (`Float<m>[]` is a sequence of measured values).
+- Vectors/matrices carry dimensions per element type as mathematical objects (`Vector<Float<m>>`, `Matrix<Float<kg/s^2>>`).
 - `+` and `-` require matching dimensions.
 - `*` multiplies dimensions.
 - `/` divides dimensions.
+- Matrix multiplication `@` on dimensioned linear objects propagates dimensions at compile time:
+  - `Matrix<Float<D1>> @ Vector<Float<D2>> -> Vector<Float<D1*D2>>`
+  - `Matrix<Float<D1>> @ Matrix<Float<D2>> -> Matrix<Float<D1*D2>>`
 - Comparisons require compatible dimensions.
 - Trigonometric, logarithmic, and exponential builtins that require dimensionless input reject dimensioned arguments.
 - `Sqrt` requires even exponents across all dimensions.
@@ -43,6 +48,16 @@ package Main
 
 fn Main() -> Float<K> {
     return 180C
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Vector<Float<kg*m/s^2>> {
+    let stiffness = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]]
+    let displacement = vector[4.0m, 5.0m]
+    return stiffness @ displacement
 }
 ```
 

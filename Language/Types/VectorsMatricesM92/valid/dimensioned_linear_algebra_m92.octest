@@ -1,0 +1,60 @@
+package MainValid
+
+fn DimensionedDisplacement() -> Vector<Float<m>> {
+    return vector[0.01m, -0.02m]
+}
+
+fn DimensionedStiffness() -> Matrix<Float<kg/s^2>> {
+    return matrix[[1.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 1.5kg/s^2]]
+}
+
+fn StiffnessTimesDisplacement() -> Vector<Float<kg*m/s^2>> {
+    let stiffness = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]]
+    let displacement = vector[4.0m, 5.0m]
+    return stiffness @ displacement
+}
+
+fn DampingTimesStiffness() -> Matrix<Float<kg^2/s^3>> {
+    let damping = matrix[[1.0kg/s, 0.0kg/s] [0.0kg/s, 2.0kg/s]]
+    let stiffness = matrix[[3.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 4.0kg/s^2]]
+    return damping @ stiffness
+}
+
+fn RealisticStiffnessDisplacement() -> Vector<Float<kg*m/s^2>> {
+    let stiffness = matrix[[8.0kg/s^2, 2.0kg/s^2] [2.0kg/s^2, 4.0kg/s^2]]
+    let displacement = vector[0.25m, -0.5m]
+    return stiffness @ displacement
+}
+
+[Fact]
+fn AcceptsDimensionedVectorAndMatrixTypes() -> Void {
+    let displacement = DimensionedDisplacement()
+    let stiffness = DimensionedStiffness()
+
+    Assert.Equal(0.01m, displacement[0], "dimensioned vector element type is preserved")
+    Assert.Equal(1.5kg/s^2, stiffness[1, 1], "dimensioned matrix element type is preserved")
+}
+
+[Fact]
+fn MatrixVectorMultiplyPropagatesDimensions() -> Void {
+    let force = StiffnessTimesDisplacement()
+
+    Assert.Equal(8.0kg*m/s^2, force[0], "stiffness times displacement yields force")
+    Assert.Equal(15.0kg*m/s^2, force[1], "second row preserves propagated dimensions")
+}
+
+[Fact]
+fn MatrixMatrixMultiplyPropagatesDimensions() -> Void {
+    let transfer = DampingTimesStiffness()
+
+    Assert.Equal(3.0kg^2/s^3, transfer[0, 0], "matrix product combines SI dimensions")
+    Assert.Equal(8.0kg^2/s^3, transfer[1, 1], "matrix product keeps propagated dimensions")
+}
+
+[Fact]
+fn RealisticStiffnessDisplacementExample() -> Void {
+    let force = RealisticStiffnessDisplacement()
+
+    Assert.Equal(1.0kg*m/s^2, force[0], "first force component")
+    Assert.Equal(-1.5kg*m/s^2, force[1], "second force component")
+}
