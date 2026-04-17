@@ -119,15 +119,15 @@ Use Octomata states + transitions for behavior progression only.
 package Main
 
 record Telemetry {
-    TempC: Float
+    Temperature: Float<K>
     Pressure: Float
-    WindowAvgTempC: Float
+    WindowAvgTemperature: Float<K>
 }
 
-flow CoolingController(t: Telemetry, trip: Float) -> String {
+flow CoolingController(t: Telemetry, trip: Float<K>) -> String {
     state Evaluate {
         when {
-            case t.WindowAvgTempC >= trip -> goto Cooling
+            case t.WindowAvgTemperature >= trip -> goto Cooling
             else -> return "hold"
         }
     }
@@ -190,7 +190,7 @@ Preferred blackboard shape is typed, fixed-shape, constrained, and explicit.
 package Main
 
 record Telemetry {
-    TempC: Float
+    Temperature: Float<K>
     Pressure: Float
 }
 
@@ -201,7 +201,7 @@ flow PumpLoop(t: Telemetry) -> String {
     }
 
     state Tick {
-        if t.TempC > 95.0 {
+        if t.Temperature > 95C {
             board.FaultLatched = true
             board.CooldownTicks = 5
             goto Fault
@@ -396,13 +396,13 @@ package Main
 
 record LoopData {
     Samples: Int
-    AvgTempC: Float
+    AvgTemperature: Float<K>
 }
 
-fn PushSample(d: LoopData, sampleAvg: Float) -> LoopData {
+fn PushSample(d: LoopData, sampleAvg: Float<K>) -> LoopData {
     return d with {
         Samples: d.Samples + 1
-        AvgTempC: sampleAvg
+        AvgTemperature: sampleAvg
     }
 }
 ```

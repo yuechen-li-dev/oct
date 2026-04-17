@@ -16,7 +16,7 @@ Whitespace separates tokens.
 - Float literals support decimal and scientific notation (`1.0`, `1e3`, `2.5E-2`).
 - String literals use double quotes and cannot span lines.
 - Bool literals are `true` and `false`.
-- Dimension suffixes attach to numeric literals (`5m`, `2.5s`, `90deg`).
+- Dimension suffixes attach to numeric literals (`5m`, `2.5s`, `90deg`, `22C`).
 - `//` comments continue to end of line.
 
 ## Examples
