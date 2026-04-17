@@ -31,10 +31,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Setup MinGW (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
       - name: Build oct binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
         run: |
           mkdir -p dist
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct

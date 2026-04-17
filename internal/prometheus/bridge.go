@@ -2,7 +2,7 @@ package prometheus
 
 /*
 #cgo CXXFLAGS: -std=c++17
-#cgo LDFLAGS: -lstdc++
+#cgo LDFLAGS: -lstdc++ -static-libgcc -static-libstdc++
 #include "native/bridge.h"
 */
 import "C"
