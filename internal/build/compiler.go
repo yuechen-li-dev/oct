@@ -876,9 +876,39 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if err != nil {
 			return "", "", false, err
 		}
-		r, _, _, err := c.lowerExpr(e.Right)
+		r, rt, _, err := c.lowerExpr(e.Right)
 		if err != nil {
 			return "", "", false, err
+		}
+		if e.Operator == "@" {
+			if leftElem, ok := parseMatrixElemType(lt); ok {
+				if rightElem, ok := parseVectorElemType(rt); ok {
+					elemType := unifyLinearElemType(leftElem, rightElem)
+					ret := "Vector<" + elemType + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+						Target:  tmp,
+						Callee:  "MatMulMV",
+						Args:    []string{l, r},
+						Builtin: true,
+						RetType: ret,
+					})
+					return tmp, ret, false, nil
+				}
+				if rightElem, ok := parseMatrixElemType(rt); ok {
+					elemType := unifyLinearElemType(leftElem, rightElem)
+					ret := "Matrix<" + elemType + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+						Target:  tmp,
+						Callee:  "MatMulMM",
+						Args:    []string{l, r},
+						Builtin: true,
+						RetType: ret,
+					})
+					return tmp, ret, false, nil
+				}
+			}
 		}
 		ret := lt
 		switch e.Operator {
@@ -997,9 +1027,46 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
 		return tmp, typeName + "[]", false, nil
 	case ast.VectorLiteralExpr:
-		return "", "", false, unsupported("vector literals")
+		vals := make([]string, 0, len(e.Elements))
+		elemType := "Int"
+		for i, el := range e.Elements {
+			v, t, _, err := c.lowerExpr(el)
+			if err != nil {
+				return "", "", false, err
+			}
+			vals = append(vals, v)
+			if i == 0 {
+				elemType = t
+			}
+		}
+		vectorType := "Vector<" + elemType + ">"
+		tmp := c.temp(vectorType)
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: elemType, Values: vals})
+		return tmp, vectorType, false, nil
 	case ast.MatrixLiteralExpr:
-		return "", "", false, unsupported("matrix literals")
+		rows := make([]string, 0, len(e.Rows))
+		elemType := "Int"
+		for _, row := range e.Rows {
+			rowVals := make([]string, 0, len(row))
+			for j, cell := range row {
+				v, t, _, err := c.lowerExpr(cell)
+				if err != nil {
+					return "", "", false, err
+				}
+				rowVals = append(rowVals, v)
+				if len(rows) == 0 && j == 0 {
+					elemType = t
+				}
+			}
+			rowType := "Vector<" + elemType + ">"
+			rowTmp := c.temp(rowType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: rowTmp, ElemType: elemType, Values: rowVals})
+			rows = append(rows, rowTmp)
+		}
+		matrixType := "Matrix<" + elemType + ">"
+		tmp := c.temp(matrixType)
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: "Vector<" + elemType + ">", Values: rows})
+		return tmp, matrixType, false, nil
 	case ast.FieldAccessExpr:
 		if enumType, variant, ok := c.flattenEnumVariantExpr(e); ok {
 			enumValue, resolvedEnumType, enumFound, err := c.resolveEnumVariantValue(enumType, variant)
@@ -1533,6 +1600,12 @@ func typeRefString(t ast.TypeRef) string {
 }
 
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
+	if t.VectorOf != nil {
+		return "Vector<" + typeRefStringForPackage(currentPkg, *t.VectorOf) + ">"
+	}
+	if t.MatrixOf != nil {
+		return "Matrix<" + typeRefStringForPackage(currentPkg, *t.MatrixOf) + ">"
+	}
 	base := t.Name
 	if t.Package != "" {
 		base = t.Package + "." + base
@@ -1541,6 +1614,9 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 	}
 	if base == "" {
 		base = "Void"
+	}
+	if t.HasUnit {
+		base = fmt.Sprintf("%s<%s>", base, t.Dimension.String())
 	}
 	if t.IsArray {
 		return base + "[]"
@@ -1559,6 +1635,35 @@ func isBuiltinTypeName(name string) bool {
 
 func flowInstanceTypeString(resultType string) string {
 	return "FlowInstance<" + resultType + ">"
+}
+
+func parseGenericType(input, base string) (string, bool) {
+	prefix := base + "<"
+	if !strings.HasPrefix(input, prefix) || !strings.HasSuffix(input, ">") {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(input, prefix), ">"), true
+}
+
+func parseVectorElemType(t string) (string, bool) {
+	return parseGenericType(t, "Vector")
+}
+
+func parseMatrixElemType(t string) (string, bool) {
+	return parseGenericType(t, "Matrix")
+}
+
+func unifyLinearElemType(leftElem, rightElem string) string {
+	if strings.HasPrefix(leftElem, "Float<") || strings.HasPrefix(rightElem, "Float<") {
+		if strings.HasPrefix(leftElem, "Float<") {
+			return leftElem
+		}
+		return rightElem
+	}
+	if leftElem == "Float" || rightElem == "Float" {
+		return "Float"
+	}
+	return leftElem
 }
 
 func parseFlowInstanceType(t string) (string, bool) {
@@ -2096,6 +2201,9 @@ func emitGo(m MIRModule) (string, error) {
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] {
+		b.WriteString(__octLinearAlgebraHelpers)
+	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
 		b.WriteString("const (\n")
@@ -2226,6 +2334,68 @@ func __octTypeKey(t reflect.Type) string {
 		return t.Name()
 	}
 	return t.PkgPath() + "." + t.Name()
+}
+`
+
+const __octLinearAlgebraHelpers = `
+type __octNumber interface {
+	~int | ~float64
+}
+
+func __octMatMulMV[T __octNumber](left [][]T, right []T) []T {
+	if len(left) == 0 {
+		return []T{}
+	}
+	if len(left[0]) != len(right) {
+		panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %d", len(left), len(left[0]), len(right)))
+	}
+	result := make([]T, len(left))
+	for r := range left {
+		if len(left[r]) != len(right) {
+			panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %d", len(left), len(left[r]), len(right)))
+		}
+		var acc T
+		for c := range right {
+			acc += left[r][c] * right[c]
+		}
+		result[r] = acc
+	}
+	return result
+}
+
+func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
+	if len(left) == 0 || len(right) == 0 {
+		return [][]T{}
+	}
+	leftCols := len(left[0])
+	rightRows := len(right)
+	if leftCols != rightRows {
+		panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %dx%d", len(left), leftCols, len(right), len(right[0])))
+	}
+	rightCols := len(right[0])
+	for r := range left {
+		if len(left[r]) != leftCols {
+			panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %dx%d", len(left), len(left[r]), len(right), rightCols))
+		}
+	}
+	for r := range right {
+		if len(right[r]) != rightCols {
+			panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %dx%d and %dx%d", len(left), leftCols, len(right), len(right[r])))
+		}
+	}
+	result := make([][]T, len(left))
+	for r := range left {
+		row := make([]T, rightCols)
+		for c := 0; c < rightCols; c++ {
+			var acc T
+			for k := 0; k < leftCols; k++ {
+				acc += left[r][k] * right[k][c]
+			}
+			row[c] = acc
+		}
+		result[r] = row
+	}
+	return result
 }
 `
 
@@ -3214,6 +3384,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
 			case "ResumeTarget":
 				return fmt.Sprintf("%s = %s.__octResumeTarget()", st.Target, st.Args[0]), nil
+			case "MatMulMV":
+				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MatMulMM":
+				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
@@ -3258,6 +3432,12 @@ func goType(t string) string {
 	if flowRet, ok := parseFlowInstanceType(t); ok {
 		return "__octFlowInstance_" + goSafeName(flowRet)
 	}
+	if vectorElem, ok := parseVectorElemType(t); ok {
+		return "[]" + goType(vectorElem)
+	}
+	if matrixElem, ok := parseMatrixElemType(t); ok {
+		return "[][]" + goType(matrixElem)
+	}
 	switch t {
 	case "Int":
 		return "int"
@@ -3271,6 +3451,12 @@ func goType(t string) string {
 		return "string"
 	case "Void":
 		return ""
+	}
+	if strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">") {
+		return "float64"
+	}
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return "int"
 	}
 	if isFallibleType(t) {
 		return goResultTypeName(fallibleValueType(t))
