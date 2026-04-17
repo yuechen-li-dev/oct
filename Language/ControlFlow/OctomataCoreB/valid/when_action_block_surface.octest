@@ -49,10 +49,8 @@ fn WhenActionBlocksExpressInterruptPatterns() -> Void {
 
     let cleared = Guarded(Input { HazardActive: false Ack: true })
     Step(cleared)
-    match Result(cleared) {
-        ok(value) => { Assert.Equal("cleared", value, "ack branch should allow board mutation + return") }
-        err(e) => { Assert.True(false, "ack branch should return") }
-    }
+    let value = Assert.LGTM(Result(cleared), "ack branch should return")
+    Assert.Equal("cleared", value, "ack branch should allow board mutation + return")
 
     let idle = Guarded(Input { HazardActive: false Ack: false })
     Step(idle)

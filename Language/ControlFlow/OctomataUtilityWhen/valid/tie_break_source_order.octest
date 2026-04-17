@@ -18,8 +18,6 @@ flow TieBreak() -> Int {
 fn TieBreakBySourceOrder() -> Void {
     let f = TieBreak()
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(10, value, "equal scores should pick first case") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(10, value, "equal scores should pick first case")
 }

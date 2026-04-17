@@ -21,8 +21,6 @@ fn PatrolRuntimeProgression() -> Void {
     Step(f)
     Assert.Equal("", Active(f), "second step resumes Track and returns")
 
-    match Result(f) {
-        ok(value) => { Assert.Equal(2, value, "result captured after multi-state progression") }
-        err(e) => { Assert.True(false, "Result should succeed once completed") }
-    }
+    let value = Assert.LGTM(Result(f), "Result should succeed once completed")
+    Assert.Equal(2, value, "result captured after multi-state progression")
 }

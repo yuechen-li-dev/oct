@@ -2060,6 +2060,44 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", callee, msgType.ValueType)
 		}
 		return voidType, nil
+	case "Assert.Error":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		resultType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !resultType.Fallible {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects fallible expression, got %s", callee, resultType.ValueType)
+		}
+		msgType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if msgType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, msgType.ValueType)
+		}
+		return voidType, nil
+	case "Assert.LGTM":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		resultType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !resultType.Fallible {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects fallible expression, got %s", callee, resultType.ValueType)
+		}
+		msgType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if msgType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, msgType.ValueType)
+		}
+		return ExprType{ValueType: resultType.ValueType}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported Assert function '%s'", callee)
 	}

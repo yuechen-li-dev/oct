@@ -21,8 +21,6 @@ fn StepSuspendResumeReturn() -> Void {
     Step(f)
     Assert.Equal("", Active(f), "second step returns and clears active state")
 
-    match Result(f) {
-        ok(value) => { Assert.Equal(2, value, "completed flow returns final value") }
-        err(e) => { Assert.True(false, "Result should succeed after completion") }
-    }
+    let value = Assert.LGTM(Result(f), "Result should succeed after completion")
+    Assert.Equal(2, value, "completed flow returns final value")
 }

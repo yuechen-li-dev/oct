@@ -19,8 +19,6 @@ flow Tactical(faulted: Bool, tempHigh: Bool, tempNominal: Bool) -> Int {
 fn SimpleScoreChoice() -> Void {
     let f = Tactical(false, true, true)
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(2, value, "highest score should win") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(2, value, "highest score should win")
 }

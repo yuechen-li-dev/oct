@@ -36,8 +36,6 @@ flow MultiSiteIsolation() -> Int {
 fn UtilityWhenSitesDoNotInterfere() -> Void {
     let f = MultiSiteIsolation()
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(21, value, "site-local policy state should remain independent") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(21, value, "site-local policy state should remain independent")
 }

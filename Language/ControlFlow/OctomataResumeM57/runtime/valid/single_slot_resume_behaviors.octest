@@ -136,10 +136,8 @@ fn ExplicitRestartCanStillBeClearerThanResume() -> Void {
     Step(f)
     Assert.Equal("", Active(f), "fault handling should restart explicitly and complete")
 
-    match Result(f) {
-        ok(value) => { Assert.Equal(7, value, "explicit restart should produce deterministic recovery result") }
-        err(e) => { Assert.True(false, "Result should succeed after explicit restart flow completes") }
-    }
+    let value = Assert.LGTM(Result(f), "Result should succeed after explicit restart flow completes")
+    Assert.Equal(7, value, "explicit restart should produce deterministic recovery result")
 
     let history = StateHistory(f)
     Assert.Equal("Operate", history[0], "explicit restart case should start in Operate")

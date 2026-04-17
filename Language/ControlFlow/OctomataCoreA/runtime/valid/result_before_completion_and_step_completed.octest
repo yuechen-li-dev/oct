@@ -12,10 +12,8 @@ fn ResultBeforeCompletionIsErrorAndStepCompletedIsNoop() -> Void {
     let f = OneSuspend()
     var sawPreCompletionError = false
 
-    match Result(f) {
-        ok(value) => { Assert.True(false, "Result should fail before completion") }
-        err(e) => { sawPreCompletionError = true }
-    }
+    Assert.Error(Result(f), "Result should fail before completion")
+    sawPreCompletionError = true
     Assert.True(sawPreCompletionError, "Result returns error before completion")
 
     Step(f)
@@ -27,8 +25,6 @@ fn ResultBeforeCompletionIsErrorAndStepCompletedIsNoop() -> Void {
     Step(f)
     Assert.Equal("", Active(f), "stepping completed flow is a no-op")
 
-    match Result(f) {
-        ok(value) => { Assert.Equal(7, value, "completed flow keeps result") }
-        err(e) => { Assert.True(false, "Result should remain available") }
-    }
+    let value = Assert.LGTM(Result(f), "Result should remain available")
+    Assert.Equal(7, value, "completed flow keeps result")
 }

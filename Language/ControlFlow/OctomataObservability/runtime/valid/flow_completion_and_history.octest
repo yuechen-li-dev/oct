@@ -63,10 +63,8 @@ fn CompletionAndHistoryForSimpleSuspendFlow() -> Void {
     let historyAfterCompletion = StateHistory(f)
     Assert.Equal("Start", historyAfterCompletion[0], "completed flow should keep deterministic entry history")
 
-    match Result(f) {
-        ok(v) => { Assert.Equal(7, v, "simple flow should return final value") }
-        err(e) => { Assert.True(false, "Result should be available after completion") }
-    }
+    let v = Assert.LGTM(Result(f), "Result should be available after completion")
+    Assert.Equal(7, v, "simple flow should return final value")
 }
 
 [Fact]
@@ -118,10 +116,8 @@ fn WhenDrivenTransitionIsVisibleInHistory() -> Void {
     Assert.Equal("Decide", history[0], "history should begin with decision state")
     Assert.Equal("Medium", history[1], "history should expose when-selected branch target")
 
-    match Result(f) {
-        ok(v) => { Assert.Equal(5, v, "medium branch should return expected value") }
-        err(e) => { Assert.True(false, "Result should succeed after medium branch completion") }
-    }
+    let v = Assert.LGTM(Result(f), "Result should succeed after medium branch completion")
+    Assert.Equal(5, v, "medium branch should return expected value")
 }
 
 [Fact]

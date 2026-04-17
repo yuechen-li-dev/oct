@@ -18,8 +18,6 @@ flow IndustrialController(tempHigh: Bool, pressureHigh: Bool) -> Int {
 fn IndustrialExampleCompilesAndRuns() -> Void {
     let f = IndustrialController(true, false)
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(1, value, "cooling command should be selected") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(1, value, "cooling command should be selected")
 }
