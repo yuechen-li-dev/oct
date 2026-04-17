@@ -77,8 +77,8 @@ func TestM22cPackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStdout != "" {
 		t.Fatalf("expected empty build stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "compiled mode does not yet support for") {
-		t.Fatalf("expected unsupported for-loop diagnostic, got %q", buildStderr)
+	if !strings.Contains(buildStderr, "compiled mode does not yet support builtin Abs") {
+		t.Fatalf("expected unsupported builtin Abs diagnostic, got %q", buildStderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)

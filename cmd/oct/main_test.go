@@ -718,21 +718,20 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 }
 
 func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
-	t.Run("unsupported while in compiled mode fails deterministically", func(t *testing.T) {
+	t.Run("while in compiled mode builds successfully", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m12_valid_build.oct", "fn Main() -> Int {\n    while false {\n        return 1\n    }\n    return Print(1)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		if err != nil {
+			t.Fatalf("expected build success, got err=%v stdout=%q stderr=%q", err, stdout, stderr)
 		}
-		if stdout != "" {
-			t.Fatalf("expected empty stdout, got %q", stdout)
+		if !strings.Contains(stdout, "build succeeded: ") {
+			t.Fatalf("expected build success output, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: compiled mode does not yet support while"
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
 
@@ -1309,17 +1308,17 @@ func TestM14ComparisonsRunAndBuild(t *testing.T) {
 		}
 
 		buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
-		if buildErr == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
+		if buildErr != nil {
+			t.Fatalf("expected build success, got err=%v stdout=%q stderr=%q", buildErr, buildStdout, buildStderr)
 		}
-		if buildStdout != "" {
-			t.Fatalf("expected empty build stdout, got %q", buildStdout)
+		if !strings.Contains(buildStdout, "build succeeded: ") {
+			t.Fatalf("expected build success output, got %q", buildStdout)
 		}
-		if !strings.Contains(buildStderr, "build failed: function Main.Main: compiled mode does not yet support while") {
-			t.Fatalf("expected unsupported while diagnostic, got %q", buildStderr)
+		if buildStderr != "" {
+			t.Fatalf("expected empty build stderr, got %q", buildStderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
 
