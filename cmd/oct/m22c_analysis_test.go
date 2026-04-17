@@ -14,11 +14,11 @@ func TestM22cBasicAnalysisResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
-	if !strings.Contains(stdout, "PASS Analysis.GenerateAndComputeReturnsExpectedSeriesShape") {
+	if !strings.Contains(stdout, "PASS Analysis.CumulativeSumMatchesHandComputed") {
 		t.Fatalf("expected fact pass output, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "PASS Analysis.GenerateAndComputeKnownSamples[2]") {
-		t.Fatalf("expected theory case pass output, got %q", stdout)
+	if !strings.Contains(stdout, "PASS Analysis.DiffForwardOnLinearDataIsConstant") {
+		t.Fatalf("expected diff fact pass output, got %q", stdout)
 	}
 }
 
@@ -30,8 +30,10 @@ func TestM22cPlotGeneration(t *testing.T) {
 		"import Analysis",
 		"",
 		"fn Main() -> Int {",
-		"    let result = Analysis.GenerateAndCompute(0.0, 1.0)",
-		"    return PlotScatter(result.X, result.Y, " + strconv.Quote(outputPath) + ")",
+		"    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]",
+		"    let ys = [0.0, 1.0, 4.0, 9.0, 16.0]",
+		"    let cs = Analysis.CumulativeSum(ys)!",
+		"    return PlotScatter(xs, cs, " + strconv.Quote(outputPath) + ")",
 		"}",
 	}, "\n"))
 
@@ -60,11 +62,12 @@ func TestM22cPackageIntegrationRunAndBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run failed: %v stderr=%s", err, stderr)
 	}
+	// main.oct prints Len(cs) = 5, then cs[0] = 0
 	if !strings.Contains(stdout, "5\n") {
 		t.Fatalf("expected length print output, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "-2\n") {
-		t.Fatalf("expected first value print output, got %q", stdout)
+	if !strings.Contains(stdout, "0\n") {
+		t.Fatalf("expected first cumsum value, got %q", stdout)
 	}
 
 	buildStdout, buildStderr, buildErr := executeCLI("build", entry)
@@ -90,7 +93,10 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 		"import Analysis",
 		"",
 		"fn Main() -> Int {",
-		"    let result = Analysis.GenerateAndCompute(\"bad\", 1.0)",
+		"    let xs = [0.0, 1.0, 2.0]",
+		"    let bad = Analysis.CumulativeSum(xs)!",
+		// Pass a String where Float[] is expected to force a type error.
+		"    let result = Analysis.RMSE(\"oops\", xs)",
 		"    Print(result)",
 		"    return 0",
 		"}",
@@ -100,7 +106,7 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected build failure, got success with stdout %q", stdout)
 	}
-	if !strings.Contains(stderr, "function 'Analysis.GenerateAndCompute' argument 1 expects Float, got String") {
+	if !strings.Contains(stderr, "expects Float[]") {
 		t.Fatalf("unexpected stderr %q", stderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
@@ -108,21 +114,27 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	}
 }
 
-func TestM22cAnalysisUsesDirectArrayAssignment(t *testing.T) {
-	// M22cr proof note: this package now populates arrays with x[i]/y[i]/z[i] assignment.
+func TestM22cAnalysisUsesAppendPattern(t *testing.T) {
+	// Structural proof: the new Analysis library uses Append-based array
+	// construction rather than pre-allocated indexed assignment.
 	analysisPath := filepath.Join("..", "..", "Libraries", "Analysis", "Analysis.Core.oct")
 	contents, err := os.ReadFile(analysisPath)
 	if err != nil {
 		t.Fatalf("read analysis source: %v", err)
 	}
 	src := string(contents)
-	for _, snippet := range []string{"x[i] =", "y[i] =", "z[i] ="} {
-		if !strings.Contains(src, snippet) {
-			t.Fatalf("expected direct array assignment snippet %q in %s", snippet, analysisPath)
-		}
+
+	// Should use Append for building output arrays.
+	if !strings.Contains(src, "Append(out,") {
+		t.Fatalf("expected Append-based array construction in Analysis.Core.oct")
 	}
-	if strings.Contains(src, "Basis5") || strings.Contains(src, "Splat5") {
-		t.Fatalf("expected M22cr refresh to remove whole-array reassignment helpers")
+	// Should not contain the old scaffolding function.
+	if strings.Contains(src, "GenerateAndCompute") {
+		t.Fatalf("expected old scaffolding function GenerateAndCompute to be removed")
+	}
+	// Should use for loops not while loops for structured iteration.
+	if strings.Contains(src, "condition-switch shape") {
+		t.Fatalf("expected no condition-switch shape comment (wrong file)")
 	}
 }
 

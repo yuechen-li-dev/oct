@@ -2,8 +2,10 @@ package Main
 import Analysis
 
 fn Main() -> Int {
-    let result = Analysis.GenerateAndCompute(0.0, 1.0)
-    Print(Len(result.X))
-    Print(result.Y[0])
-    return PlotLine(result.X, result.Y, "analysis_output.png")
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [0.0, 1.0, 4.0, 9.0, 16.0]
+    let cs = Analysis.CumulativeSum(ys)!
+    Print(Len(cs))
+    Print(cs[0])
+    return PlotLine(xs, ys, "analysis_output.png")
 }
