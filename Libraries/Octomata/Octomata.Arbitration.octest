@@ -14,10 +14,7 @@ fn TwoCandidates(id1: Int, s1: Int, a1: Bool, id2: Int, s2: Int, a2: Bool) -> Ca
 
 [Fact]
 fn MakeCandidateSetRejectsMismatchedLengths() -> Void {
-    match MakeCandidateSet([1, 2], [10], [true, true]) {
-        ok(cs) => { Assert.True(false, "should reject mismatched lengths") }
-        err(e) => { }
-    }
+    Assert.Error(MakeCandidateSet([1, 2], [10], [true, true]), "should reject mismatched lengths")
 }
 
 /// --- SelectBest ---
@@ -252,10 +249,7 @@ fn LinearScoreClampsOutOfRange() -> Void {
 
 [Fact]
 fn LinearScoreRejectsInvalidInputRange() -> Void {
-    match LinearScore(0.5, 1.0, 0.0, 0, 100) {
-        ok(v) => { Assert.True(false, "should reject inputMin >= inputMax") }
-        err(e) => { }
-    }
+    Assert.Error(LinearScore(0.5, 1.0, 0.0, 0, 100), "should reject inputMin >= inputMax")
 }
 
 /// --- InvertScore ---
@@ -270,14 +264,8 @@ fn InvertScoreFlipsRelativeOrder() -> Void {
 
 [Fact]
 fn InvertScoreRejectsInvalidInputs() -> Void {
-    match InvertScore(50, 0) {
-        ok(v) => { Assert.True(false, "should reject maxScore <= 0") }
-        err(e) => { }
-    }
-    match InvertScore(150, 100) {
-        ok(v) => { Assert.True(false, "should reject score > maxScore") }
-        err(e) => { }
-    }
+    Assert.Error(InvertScore(50, 0), "should reject maxScore <= 0")
+    Assert.Error(InvertScore(150, 100), "should reject score > maxScore")
 }
 
 /// --- WeightedScore ---
@@ -295,10 +283,7 @@ fn WeightedScoreRespectsWeightRatio() -> Void {
 
 [Fact]
 fn WeightedScoreRejectsZeroTotalWeight() -> Void {
-    match WeightedScore(50, 0, 50, 0) {
-        ok(v) => { Assert.True(false, "should reject zero total weight") }
-        err(e) => { }
-    }
+    Assert.Error(WeightedScore(50, 0, 50, 0), "should reject zero total weight")
 }
 
 /// --- Composition ---

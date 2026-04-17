@@ -74,10 +74,7 @@ fn StateSpaceRejectsInvalidDimensions() -> Void {
     let D = [0.0]
 
     /// Wrong B length — should be n*m = 2*1 = 2
-    match StateSpaceUpdate(A, B, C, D, [0.0, 0.0], [0.0], 2, 1, 1) {
-        ok(r) => { Assert.True(false, "should reject wrong B length") }
-        err(e) => { }
-    }
+    Assert.Error(StateSpaceUpdate(A, B, C, D, [0.0, 0.0], [0.0], 2, 1, 1), "should reject wrong B length")
 }
 
 [Fact]

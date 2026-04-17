@@ -29,25 +29,13 @@ fn PlanarZeroDimensionPolicy() -> Void {
 
 [Fact]
 fn PlanarNegativeDimensionsRejected() -> Void {
-    match CircleArea(0m - 1m) {
-        ok(v) => {Assert.True(false, "negative radius must fail")}
-        err(e) => {}
-    }
+    Assert.Error(CircleArea(0m - 1m), "negative radius must fail")
 
-    match CircleCircumference(0m - 1m) {
-        ok(v) => {Assert.True(false, "negative radius must fail")}
-        err(e) => {}
-    }
+    Assert.Error(CircleCircumference(0m - 1m), "negative radius must fail")
 
-    match RectangleArea(0m - 1m, 2m) {
-        ok(v) => {Assert.True(false, "negative width must fail")}
-        err(e) => {}
-    }
+    Assert.Error(RectangleArea(0m - 1m, 2m), "negative width must fail")
 
-    match TriangleArea(3m, 0m - 1m) {
-        ok(v) => {Assert.True(false, "negative height must fail")}
-        err(e) => {}
-    }
+    Assert.Error(TriangleArea(3m, 0m - 1m), "negative height must fail")
 }
 
 [Fact]

@@ -76,14 +76,8 @@ fn DiffCentralIsMoreAccurateThanForwardForQuadratic() -> Void {
 
 [Fact]
 fn DiffForwardRejectsInvalidInputs() -> Void {
-    match DiffForward([0.0, 1.0], [1.0, 2.0, 3.0]) {
-        ok(v) => { Assert.True(false, "mismatched lengths must fail") }
-        err(e) => { }
-    }
-    match DiffForward([1.0, 0.0], [1.0, 2.0]) {
-        ok(v) => { Assert.True(false, "non-increasing xs must fail") }
-        err(e) => { }
-    }
+    Assert.Error(DiffForward([0.0, 1.0], [1.0, 2.0, 3.0]), "mismatched lengths must fail")
+    Assert.Error(DiffForward([1.0, 0.0], [1.0, 2.0]), "non-increasing xs must fail")
 }
 
 // ============================================================
@@ -208,10 +202,7 @@ fn NormalizePreservesRelativeOrder() -> Void {
 
 [Fact]
 fn NormalizeRejectsConstantSeries() -> Void {
-    match Normalize([3.0, 3.0, 3.0]) {
-        ok(v) => { Assert.True(false, "constant series must fail") }
-        err(e) => { }
-    }
+    Assert.Error(Normalize([3.0, 3.0, 3.0]), "constant series must fail")
 }
 
 [Fact]
@@ -256,10 +247,7 @@ fn StandardizeProducesZeroMeanUnitVariance() -> Void {
 
 [Fact]
 fn StandardizeRejectsConstantSeries() -> Void {
-    match Standardize([7.0, 7.0, 7.0]) {
-        ok(v) => { Assert.True(false, "constant series must fail") }
-        err(e) => { }
-    }
+    Assert.Error(Standardize([7.0, 7.0, 7.0]), "constant series must fail")
 }
 
 // ============================================================

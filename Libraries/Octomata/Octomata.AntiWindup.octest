@@ -67,10 +67,7 @@ fn AntiWindupAllowsIntegralWhenNotSaturated() -> Void {
 
 [Fact]
 fn ClampedPIDRejectsInvalidLimits() -> Void {
-    match ClampedPIDUpdate(1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.1, 5.0, 1.0) {
-        ok(r) => { Assert.True(false, "should reject outputMin >= outputMax") }
-        err(e) => { }
-    }
+    Assert.Error(ClampedPIDUpdate(1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.1, 5.0, 1.0), "should reject outputMin >= outputMax")
 }
 
 /// --- Clamp ---

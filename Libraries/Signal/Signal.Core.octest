@@ -14,10 +14,7 @@ fn ZeroSeriesProducesCorrectLength() -> Void {
 
 [Fact]
 fn ZeroSeriesRejectsNonPositiveCount() -> Void {
-    match ZeroSeries(0) {
-        ok(v) => { Assert.True(false, "should reject count=0") }
-        err(e) => { }
-    }
+    Assert.Error(ZeroSeries(0), "should reject count=0")
 }
 
 [Fact]
@@ -145,14 +142,8 @@ fn MovingAverageFullWindowReturnsMean() -> Void {
 
 [Fact]
 fn MovingAverageRejectsInvalidInputs() -> Void {
-    match MovingAverage([1.0, 2.0], 0) {
-        ok(v) => { Assert.True(false, "should reject window=0") }
-        err(e) => { }
-    }
-    match MovingAverage([1.0, 2.0], 3) {
-        ok(v) => { Assert.True(false, "should reject window > length") }
-        err(e) => { }
-    }
+    Assert.Error(MovingAverage([1.0, 2.0], 0), "should reject window=0")
+    Assert.Error(MovingAverage([1.0, 2.0], 3), "should reject window > length")
 }
 
 // ============================================================
@@ -239,10 +230,7 @@ fn ApplyWindowScalesSignalByWindowCoefficients() -> Void {
 
 [Fact]
 fn ApplyWindowRejectsMismatchedLengths() -> Void {
-    match ApplyWindow([1.0, 2.0], [1.0, 0.5, 0.0]) {
-        ok(v) => { Assert.True(false, "should reject mismatched lengths") }
-        err(e) => { }
-    }
+    Assert.Error(ApplyWindow([1.0, 2.0], [1.0, 0.5, 0.0]), "should reject mismatched lengths")
 }
 
 // ============================================================
@@ -280,10 +268,7 @@ fn LowpassFIRSumsToOne() -> Void {
 [Fact]
 fn HighpassFIRRejectsEvenLength() -> Void {
     let w = HannWindow(8)!
-    match HighpassFIR(0.25, 8, w) {
-        ok(v) => { Assert.True(false, "should reject even length") }
-        err(e) => { }
-    }
+    Assert.Error(HighpassFIR(0.25, 8, w), "should reject even length")
 }
 
 [Fact]
@@ -318,10 +303,7 @@ fn BandpassFIRIsLowpassDifference() -> Void {
 [Fact]
 fn BandpassFIRRejectsInvalidCutoffs() -> Void {
     let w = HannWindow(9)!
-    match BandpassFIR(0.4, 0.2, 9, w) {
-        ok(v) => { Assert.True(false, "should reject lowCutoff >= highCutoff") }
-        err(e) => { }
-    }
+    Assert.Error(BandpassFIR(0.4, 0.2, 9, w), "should reject lowCutoff >= highCutoff")
 }
 
 [Fact]
@@ -406,12 +388,6 @@ fn BinIndexToFrequencyConvertsCorrectly() -> Void {
 
 [Fact]
 fn BinIndexToFrequencyRejectsInvalidInputs() -> Void {
-    match BinIndexToFrequency(1, 0) {
-        ok(v) => { Assert.True(false, "should reject n=0") }
-        err(e) => { }
-    }
-    match BinIndexToFrequency(8, 8) {
-        ok(v) => { Assert.True(false, "should reject binIndex >= n") }
-        err(e) => { }
-    }
+    Assert.Error(BinIndexToFrequency(1, 0), "should reject n=0")
+    Assert.Error(BinIndexToFrequency(8, 8), "should reject binIndex >= n")
 }

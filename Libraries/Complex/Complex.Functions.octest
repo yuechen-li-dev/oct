@@ -71,12 +71,7 @@ fn EulerConsistencyMatchesExponentialFormulas() -> Void {
 fn ComplexTanSurfacesSingularityNearOddHalfPiOnRealAxis() -> Void {
     let z = Complex(Pi() / 2, 0.0)
 
-    match ComplexTan(z) {
-        ok(v) => {
-            Assert.True(false, "ComplexTan should reject singular input near pi/2")
-        }
-        err(e) => { }
-    }
+    Assert.Error(ComplexTan(z), "ComplexTan should reject singular input near pi/2")
 }
 
 [Fact]

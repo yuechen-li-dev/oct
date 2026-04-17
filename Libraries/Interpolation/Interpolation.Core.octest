@@ -42,10 +42,7 @@ fn InverseLerpAndLerpAreInverse() -> Void {
 
 [Fact]
 fn InverseLerpRejectsEqualEndpoints() -> Void {
-    match InverseLerp(5.0, 5.0, 5.0) {
-        ok(v) => { Assert.True(false, "should reject a == b") }
-        err(e) => { }
-    }
+    Assert.Error(InverseLerp(5.0, 5.0, 5.0), "should reject a == b")
 }
 
 [Fact]
@@ -69,10 +66,7 @@ fn LinearInterpolateBasicCasesAndSlope() -> Void {
 
 [Fact]
 fn LinearInterpolateRejectsDegenerateInterval() -> Void {
-    match LinearInterpolate(1.0, 2.0, 1.0, 3.0, 1.0) {
-        ok(v) => { Assert.True(false, "x0 == x1 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(LinearInterpolate(1.0, 2.0, 1.0, 3.0, 1.0), "x0 == x1 must fail")
 }
 
 // ============================================================
@@ -93,26 +87,11 @@ fn PiecewiseLinearSupportsInteriorAndKnotQueries() -> Void {
 fn PiecewiseLinearRejectsOutOfRangeAndInvalidInputs() -> Void {
     let xs = [0.0, 1.0, 2.0]
     let ys = [0.0, 10.0, 20.0]
-    match PiecewiseLinear(xs, ys, (0.0 - 0.1)) {
-        ok(v) => { Assert.True(false, "below range must fail") }
-        err(e) => { }
-    }
-    match PiecewiseLinear(xs, ys, 2.1) {
-        ok(v) => { Assert.True(false, "above range must fail") }
-        err(e) => { }
-    }
-    match PiecewiseLinear([0.0, 1.0], [0.0], 0.5) {
-        ok(v) => { Assert.True(false, "mismatched lengths must fail") }
-        err(e) => { }
-    }
-    match PiecewiseLinear([0.0, 2.0, 1.0], [0.0, 1.0, 2.0], 1.5) {
-        ok(v) => { Assert.True(false, "unsorted xs must fail") }
-        err(e) => { }
-    }
-    match PiecewiseLinear([0.0], [1.0], 0.0) {
-        ok(v) => { Assert.True(false, "too-short input must fail") }
-        err(e) => { }
-    }
+    Assert.Error(PiecewiseLinear(xs, ys, (0.0 - 0.1)), "below range must fail")
+    Assert.Error(PiecewiseLinear(xs, ys, 2.1), "above range must fail")
+    Assert.Error(PiecewiseLinear([0.0, 1.0], [0.0], 0.5), "mismatched lengths must fail")
+    Assert.Error(PiecewiseLinear([0.0, 2.0, 1.0], [0.0, 1.0, 2.0], 1.5), "unsorted xs must fail")
+    Assert.Error(PiecewiseLinear([0.0], [1.0], 0.0), "too-short input must fail")
 }
 
 [Fact]
@@ -201,14 +180,8 @@ fn CubicSplineOnTwoPointsDegeneratesToLinear() -> Void {
 [Fact]
 fn CubicSplineRejectsOutOfRange() -> Void {
     let sp = BuildCubicSpline([0.0, 1.0, 2.0], [0.0, 1.0, 0.0])!
-    match EvalCubicSpline(sp, (0.0 - 0.1)) {
-        ok(v) => { Assert.True(false, "below range must fail") }
-        err(e) => { }
-    }
-    match EvalCubicSpline(sp, 2.1) {
-        ok(v) => { Assert.True(false, "above range must fail") }
-        err(e) => { }
-    }
+    Assert.Error(EvalCubicSpline(sp, (0.0 - 0.1)), "below range must fail")
+    Assert.Error(EvalCubicSpline(sp, 2.1), "above range must fail")
 }
 
 [Fact]
@@ -274,14 +247,8 @@ fn BilinearInterpolateAtEdgeMidpointsIsLinear() -> Void {
 
 [Fact]
 fn BilinearInterpolateRejectsZeroExtents() -> Void {
-    match BilinearInterpolate(1.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 1.0, 0.5) {
-        ok(v) => { Assert.True(false, "x0==x1 must fail") }
-        err(e) => { }
-    }
-    match BilinearInterpolate(0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 0.5, 1.0) {
-        ok(v) => { Assert.True(false, "y0==y1 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(BilinearInterpolate(1.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 1.0, 0.5), "x0==x1 must fail")
+    Assert.Error(BilinearInterpolate(0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 0.5, 1.0), "y0==y1 must fail")
 }
 
 // ============================================================
