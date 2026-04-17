@@ -1,0 +1,7 @@
+expect error: "function Main: function expects Matrix<Float<kg/s^2>>, but return is Float<kg/s^2>[]"
+
+package Main
+
+fn Main() -> Matrix<Float<kg/s^2>> {
+    return [[1.0kg/s^2, 2.0kg/s^2], [3.0kg/s^2, 4.0kg/s^2]]
+}

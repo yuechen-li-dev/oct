@@ -606,6 +606,28 @@ func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
 }
 
+func TestCheckValidatesM92DimensionedLinearAlgebra(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Vector<Float<m>> { return vector[1.0m, 2.0m] }",
+		"fn Main() -> Matrix<Float<kg/s^2>> { return matrix[[1.0kg/s^2, 2.0kg/s^2] [3.0kg/s^2, 4.0kg/s^2]] }",
+		"fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] return k @ u }",
+		"fn Main() -> Matrix<Float<kg^2/s^3>> { let a = matrix[[1.0kg/s, 0.0kg/s] [0.0kg/s, 2.0kg/s]] let b = matrix[[3.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 4.0kg/s^2]] return a @ b }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM92DimensionedLinearAlgebra(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] let f = k @ u return f + vector[1.0s, 2.0s] }", "cannot add m*kg/s^2 and s")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<m>> { return [1.0m, 2.0m] }", "function Main: function expects Vector<Float<m>>, but return is Float<m>[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Float<kg/s^2>> { return [[1.0kg/s^2, 2.0kg/s^2], [3.0kg/s^2, 4.0kg/s^2]] }", "function Main: function expects Matrix<Float<kg/s^2>>, but return is Float<kg/s^2>[]")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2] }", "operator '@' not defined for Vector<Float<m>> and Vector<Float<kg/s^2>>")
+}
+
 func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
 	validPrograms := []string{
 		"flow Idle() -> Void { state Start { suspend } } fn Main() -> Int { return 0 }",
