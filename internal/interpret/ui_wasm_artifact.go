@@ -12,7 +12,7 @@ const machinaUIWasmArtifactName = "machina-ui-m98-counter.wasm"
 //
 // Current scope is intentionally narrow: this module implements the locked M96/M97
 // JSON/boundary contract for the canonical counter+routing Machina UI slice used
-// by runtime harness tests.
+// by runtime harness tests via direct Wasm emission (no generated-C production backend).
 func EmitMachinaUIWasmArtifact(outputPath string) error {
 	if outputPath == "" {
 		return fmt.Errorf("machina ui wasm emission requires non-empty output path")
