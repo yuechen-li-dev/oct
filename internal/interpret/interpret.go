@@ -3132,9 +3132,6 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr
 		if element.hasError {
 			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached array literal element %d", idx)
 		}
-		if element.value.Kind == ValueArray {
-			return Value{}, errors.New("runtime invariant violation: nested arrays are not supported")
-		}
 		if idx == 0 {
 			firstType = valueTypeName(element.value)
 		} else if valueTypeName(element.value) != firstType {
@@ -3602,9 +3599,6 @@ func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error
 		element, err := evalBinaryExpr(operator, left.Array[i], right.Array[i])
 		if err != nil {
 			return Value{}, err
-		}
-		if element.Kind == ValueArray {
-			return Value{}, errors.New("runtime invariant violation: nested array result is not supported")
 		}
 		result = append(result, element)
 	}

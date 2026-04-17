@@ -38,6 +38,7 @@ type Type struct {
 	Name              string
 	Dimension         dimension.Dimension
 	IsArray           bool
+	ArrayDepth        int
 	IsVector          bool
 	IsMatrix          bool
 	IsFunction        bool
@@ -55,6 +56,19 @@ func mustDimension(name string) dimension.Dimension {
 	return dim
 }
 
+func withArrayDepth(t Type, depth int) Type {
+	t.ArrayDepth = depth
+	t.IsArray = depth > 0
+	return t
+}
+
+func peelArrayType(t Type) Type {
+	if !t.IsArray || t.ArrayDepth <= 0 {
+		return t
+	}
+	return withArrayDepth(t, t.ArrayDepth-1)
+}
+
 func (t Type) String() string {
 	base := t.Name
 	if base == "" {
@@ -64,7 +78,7 @@ func (t Type) String() string {
 		base += "<" + t.Dimension.String() + ">"
 	}
 	if t.IsArray {
-		return base + "[]"
+		return base + strings.Repeat("[]", t.ArrayDepth)
 	}
 	if t.IsFunction {
 		return t.FunctionSignature
@@ -671,7 +685,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
 		}
 		elementType := target.valueType
-		elementType.IsArray = false
+		elementType = peelArrayType(elementType)
 		if !isAssignable(valueType.ValueType, elementType) {
 			return false, fmt.Errorf("function %s: assigned value type does not match array element type", ctx.name)
 		}
@@ -1034,7 +1048,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			if indexTypes[0] != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("array indexing index must be Int, got %s", indexTypes[0])
 			}
-			return ExprType{ValueType: Type{Name: targetType.ValueType.Name, Base: targetType.ValueType.Base, Dimension: targetType.ValueType.Dimension}}, nil
+			return ExprType{ValueType: peelArrayType(targetType.ValueType)}, nil
 		case targetType.ValueType.IsVector:
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("vector indexing requires exactly 1 index, got %d", len(node.Indices))
@@ -1367,7 +1381,7 @@ func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionCo
 	}
 
 	itemType := inputType.ValueType
-	itemType.IsArray = false
+	itemType = peelArrayType(itemType)
 	batchScope := newScope(scope)
 	batchScope.define(expr.ItemName, itemType, false)
 
@@ -1390,7 +1404,7 @@ func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionCo
 	}
 
 	outputType := resultType.ValueType
-	outputType.IsArray = true
+	outputType = withArrayDepth(outputType, outputType.ArrayDepth+1)
 	return ExprType{ValueType: outputType}, nil
 }
 
@@ -1672,6 +1686,7 @@ func hasMatchingShapeDifferentDimensions(left Type, right Type) bool {
 	return left.Base == right.Base &&
 		left.Name == right.Name &&
 		left.IsArray == right.IsArray &&
+		left.ArrayDepth == right.ArrayDepth &&
 		left.IsVector == right.IsVector &&
 		left.IsMatrix == right.IsMatrix &&
 		left.Dimension != right.Dimension
@@ -2273,7 +2288,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'StateHistory' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeString, IsArray: true}}, nil
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
 	}
 	if callee == "ResumeTarget" {
 		if len(typeArguments) > 0 {
@@ -2483,7 +2498,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if partsType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		if partsType.ValueType != (Type{Base: BaseTypeString, IsArray: true}) {
+		if partsType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
 			return ExprType{}, fmt.Errorf("function 'Join' argument 1 expects String[], got %s", partsType.ValueType)
 		}
 		sepType, err := c.checkExpr(scope, arguments[1], ctx)
@@ -2680,7 +2695,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if childrenType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 		}
-		if childrenType.ValueType != (Type{Base: BaseTypeUI, IsArray: true}) {
+		if childrenType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 1) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
@@ -2860,7 +2875,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' argument 1 expects Int, got %s", mountType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeString, IsArray: true}}, nil
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
 	}
 	if callee == "UISignature" {
 		if len(typeArguments) > 0 {
@@ -3240,7 +3255,7 @@ func isOctagonRepresentableType(valueType Type) bool {
 	}
 	if valueType.IsArray {
 		elementType := valueType
-		elementType.IsArray = false
+		elementType = peelArrayType(elementType)
 		return isOctagonRepresentableType(elementType)
 	}
 	if valueType.Name != "" {
@@ -3279,7 +3294,7 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 	}
 
 	expectedElementType := arrayType.ValueType
-	expectedElementType.IsArray = false
+	expectedElementType = peelArrayType(expectedElementType)
 	if elementType.ValueType != expectedElementType {
 		return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s", expectedElementType, elementType.ValueType)
 	}
@@ -3368,10 +3383,6 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 	if firstType.Fallible {
 		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if firstType.ValueType.IsArray {
-		return Type{}, fmt.Errorf("nested arrays are not supported")
-	}
-
 	for _, element := range expr.Elements[1:] {
 		elementType, err := c.checkExpr(scope, element, ctx)
 		if err != nil {
@@ -3385,7 +3396,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 	}
 
-	return Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsArray: true}, nil
+	return withArrayDepth(Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension}, firstType.ValueType.ArrayDepth+1), nil
 }
 
 func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr, ctx functionContext) (Type, error) {
@@ -3539,6 +3550,11 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
+	arrayDepth := typeRef.ArrayDepth
+	if typeRef.IsArray && arrayDepth == 0 {
+		arrayDepth = 1
+	}
+
 	if typeRef.Function != nil {
 		functionRef := typeRef.Function
 		if functionRef.ReturnType.Function != nil {
@@ -3604,7 +3620,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 				if typeRef.HasUnit {
 					return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 				}
-				return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
+				return withArrayDepth(Type{Name: qualifiedName}, arrayDepth), nil
 			}
 			return Type{}, fmt.Errorf("unknown package '%s'", typeRef.Package)
 		}
@@ -3612,13 +3628,13 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 			if typeRef.HasUnit {
 				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 			}
-			return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
+			return withArrayDepth(Type{Name: qualifiedName}, arrayDepth), nil
 		}
 		if _, ok := imported.enums[typeRef.Name]; ok {
 			if typeRef.HasUnit {
 				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 			}
-			return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
+			return withArrayDepth(Type{Name: qualifiedName}, arrayDepth), nil
 		}
 		if _, ok := imported.functions[typeRef.Name]; ok {
 			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
@@ -3636,16 +3652,16 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		if typeRef.HasUnit {
 			return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
 		}
-		return Type{Name: typeRef.Name, IsArray: typeRef.IsArray}, nil
+		return withArrayDepth(Type{Name: typeRef.Name}, arrayDepth), nil
 	}
 	if typeRef.HasUnit && !isDimensionCapableBaseType(baseType) {
 		return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
 	}
-	if typeRef.IsArray {
+	if arrayDepth > 0 {
 		if baseType == BaseTypeError || baseType == BaseTypeRange || baseType == BaseTypeVoid {
-			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
+			return Type{}, fmt.Errorf("unknown type: %s%s", typeRef.Name, strings.Repeat("[]", arrayDepth))
 		}
-		return Type{Base: baseType, Dimension: typeRef.Dimension, IsArray: true}, nil
+		return withArrayDepth(Type{Base: baseType, Dimension: typeRef.Dimension}, arrayDepth), nil
 	}
 	if baseType == BaseTypeVoid && !allowVoid {
 		return Type{}, fmt.Errorf("Void is only allowed as a function return type")
@@ -3863,15 +3879,20 @@ func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType 
 	if !leftType.IsArray || !rightType.IsArray {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	if leftType.Base == BaseTypeBool || leftType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeBool || rightType.Base == BaseTypeString || rightType.Base == BaseTypeError {
+	if leftType.ArrayDepth != rightType.ArrayDepth {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	result, err := c.checkBinaryExpr(operator, Type{Base: leftType.Base, Dimension: leftType.Dimension}, Type{Base: rightType.Base, Dimension: rightType.Dimension})
+	leftElementType := peelArrayType(leftType)
+	rightElementType := peelArrayType(rightType)
+	if leftElementType.Base == BaseTypeBool || leftElementType.Base == BaseTypeString || leftElementType.Base == BaseTypeError ||
+		rightElementType.Base == BaseTypeBool || rightElementType.Base == BaseTypeString || rightElementType.Base == BaseTypeError {
+		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	}
+	result, err := c.checkBinaryExpr(operator, leftElementType, rightElementType)
 	if err != nil {
 		return Type{}, err
 	}
-	result.IsArray = true
-	return result, nil
+	return withArrayDepth(result, result.ArrayDepth+1), nil
 }
 
 func (c checker) checkComparisonExpr(operator string, leftType Type, rightType Type) (Type, error) {
@@ -4050,7 +4071,7 @@ func isAssignable(actual Type, expected Type) bool {
 	if actual.Name != "" || expected.Name != "" {
 		return false
 	}
-	if actual.IsArray != expected.IsArray || actual.IsVector != expected.IsVector || actual.IsMatrix != expected.IsMatrix || actual.Dimension != expected.Dimension {
+	if actual.IsArray != expected.IsArray || actual.ArrayDepth != expected.ArrayDepth || actual.IsVector != expected.IsVector || actual.IsMatrix != expected.IsMatrix || actual.Dimension != expected.Dimension {
 		return false
 	}
 	return (actual.Base == BaseTypeInt && expected.Base == BaseTypeFloat) ||

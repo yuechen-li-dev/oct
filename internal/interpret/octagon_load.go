@@ -9,6 +9,9 @@ import (
 
 func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
 	expr = unwrapParenExpr(expr)
+	if expectedType.IsArray && expectedType.ArrayDepth == 0 {
+		expectedType.ArrayDepth = 1
+	}
 	if expectedType.Function != nil || expectedType.VectorOf != nil || expectedType.MatrixOf != nil {
 		return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
 	}
@@ -18,7 +21,8 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 			return Value{}, fmt.Errorf("expected %s, got %T", expectedTypeString(expectedType), expr)
 		}
 		elementType := expectedType
-		elementType.IsArray = false
+		elementType.ArrayDepth--
+		elementType.IsArray = elementType.ArrayDepth > 0
 		elements := make([]Value, 0, len(arrayExpr.Elements))
 		for idx, elementExpr := range arrayExpr.Elements {
 			element, err := i.materializeOctagonValue(currentPkg, elementType, elementExpr)
@@ -168,12 +172,17 @@ func expectedTypeName(typeRef ast.TypeRef) string {
 }
 
 func expectedTypeString(typeRef ast.TypeRef) string {
+	if typeRef.IsArray && typeRef.ArrayDepth == 0 {
+		typeRef.ArrayDepth = 1
+	}
 	name := expectedTypeName(typeRef)
 	if (name == "Int" || name == "Float") && !typeRef.Dimension.IsDimensionless() {
 		name += "<" + typeRef.Dimension.String() + ">"
 	}
 	if typeRef.IsArray {
-		name += "[]"
+		for idx := 0; idx < typeRef.ArrayDepth; idx++ {
+			name += "[]"
+		}
 	}
 	if typeRef.Function != nil {
 		return "fn(...)"

@@ -5,13 +5,16 @@
 Vectors and matrices are fixed-shape numeric structures.
 They have dedicated literal, indexing, and arithmetic forms.
 `@` is matrix multiplication, distinct from element-wise operators.
+They are mathematical value categories, not general-purpose storage containers.
 
 ## Rules
 
 - `[...]` is always an array literal.
 - Vector literal form is `vector[a, b, c]`.
 - Matrix literal form is `matrix[[r1c1, r1c2] [r2c1, r2c2]]`.
+- Arrays (`T[]`, `T[][]`, ...) are generic containers; vectors/matrices are mathematical values.
 - Arrays are not implicitly reinterpreted as vectors or matrices by expected type.
+- `[[...], [...]]` is an array-of-arrays literal, not a matrix literal.
 - Vector literals require homogeneous element type.
 - Matrix rows must all have equal length.
 - Vector indexing form is `v[i]` (exactly one index).
@@ -54,5 +57,14 @@ package Main
 fn Main() -> Vector<Int> {
     // Invalid: [1, 2, 3] is an Int[] array literal, not a Vector<Int>.
     return [1, 2, 3]
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Matrix<Int> {
+    // Invalid: [[1, 2], [3, 4]] is Int[][], not Matrix<Int>.
+    return [[1, 2], [3, 4]]
 }
 ```

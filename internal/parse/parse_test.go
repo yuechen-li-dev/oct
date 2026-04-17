@@ -569,8 +569,15 @@ func TestBuildFileRejectsEmptyArrayLiteral(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int[] { return [] }", "empty array literals are not supported")
 }
 
-func TestBuildFileRejectsNestedArrayTypeSyntax(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int[][] { return [1] }", "nested array types are not supported")
+func TestBuildFileParsesNestedArrayTypeSyntax(t *testing.T) {
+	file := parseSource(t, "fn Main(grid: Int[][]) -> Int[][] { return grid }")
+	fn := file.Functions[0]
+	if !fn.Parameters[0].Type.IsArray || fn.Parameters[0].Type.ArrayDepth != 2 {
+		t.Fatalf("expected Int[][] parameter type, got %+v", fn.Parameters[0].Type)
+	}
+	if !fn.ReturnType.IsArray || fn.ReturnType.ArrayDepth != 2 {
+		t.Fatalf("expected Int[][] return type, got %+v", fn.ReturnType)
+	}
 }
 
 func TestBuildFileRejectsMalformedMatch(t *testing.T) {
