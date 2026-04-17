@@ -79,3 +79,15 @@ M97 adds the first Machina UI Wasm runtime boundary skeleton in the Go runtime l
 
 Reference docs: `docs/MACHINA_UI_WASM_RUNTIME_M97.md`.
 
+
+## M98 Real Wasm Emission Slice
+
+M98 is the first milestone where Machina UI is emitted as a real `.wasm` artifact and executed through real Wasm exports + linear memory.
+
+- emitted artifact path is host-selected via `interpret.EmitMachinaUIWasmArtifact(outputPath)`
+- exported boundary remains the M97 contract (`init`, `render`, `dispatch(ptr,len)`, `buffer ptr/len`)
+- serialized UI surface remains canonical M96 JSON ABI (`machina.uiir.v1`)
+- no host renderer exists in this milestone
+- this remains a bounded Machina UI Wasm slice, not a full Oct-to-Wasm backend
+
+Reference docs: `docs/MACHINA_UI_WASM_EMISSION_M98.md`.
