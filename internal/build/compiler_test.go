@@ -1,6 +1,7 @@
 package build
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -473,19 +474,33 @@ fn Manifest() -> PackageManifest {
 		t.Fatal(err)
 	}
 	indexPath := filepath.Join(cacheDir, "index.json")
-	index := `{
-  "entries": {
-    "dep-cooking": {
-      "source": "https://example.com/cooking.git",
-      "cache_key": "dep-cooking",
-      "path": "` + depDir + `",
-      "name": "Cooking",
-      "version": "0.1.0",
-      "fetched_at": "2026-01-01T00:00:00Z"
-    }
-  }
-}`
-	if err := os.WriteFile(indexPath, []byte(index), 0o644); err != nil {
+	type packageCacheEntry struct {
+		Source    string `json:"source"`
+		CacheKey  string `json:"cache_key"`
+		Path      string `json:"path"`
+		Name      string `json:"name"`
+		Version   string `json:"version"`
+		FetchedAt string `json:"fetched_at"`
+	}
+	type packageCacheIndex struct {
+		Entries map[string]packageCacheEntry `json:"entries"`
+	}
+	indexData, err := json.MarshalIndent(packageCacheIndex{
+		Entries: map[string]packageCacheEntry{
+			"dep-cooking": {
+				Source:    "https://example.com/cooking.git",
+				CacheKey:  "dep-cooking",
+				Path:      depDir,
+				Name:      "Cooking",
+				Version:   "0.1.0",
+				FetchedAt: "2026-01-01T00:00:00Z",
+			},
+		},
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal cache index: %v", err)
+	}
+	if err := os.WriteFile(indexPath, indexData, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
