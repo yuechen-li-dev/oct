@@ -502,9 +502,13 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 		case ast.ForStmt:
-			return unsupported("for")
+			if err := c.lowerForStmt(s); err != nil {
+				return err
+			}
 		case ast.WhileStmt:
-			return unsupported("while")
+			if err := c.lowerWhileStmt(s); err != nil {
+				return err
+			}
 		case ast.MatchStmt:
 			if err := c.lowerMatchStmt(s); err != nil {
 				return err
@@ -593,6 +597,146 @@ func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
 		c.blocks[elseID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}
 	c.cur = mergeID
+	return nil
+}
+
+func (c *lowerCtx) lowerWhileStmt(s ast.WhileStmt) error {
+	condID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", condID)})
+	bodyID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", bodyID)})
+	exitID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", exitID)})
+
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
+
+	c.cur = condID
+	cond, _, _, err := c.lowerExpr(s.Condition)
+	if err != nil {
+		return err
+	}
+	c.blocks[c.cur].Terminator = MIRBranch{
+		Cond:        cond,
+		TrueTarget:  c.blocks[bodyID].Label,
+		FalseTarget: c.blocks[exitID].Label,
+	}
+
+	c.cur = bodyID
+	if err := c.lowerBlock(s.Body); err != nil {
+		return err
+	}
+	if c.blocks[c.cur].Terminator == nil {
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
+	}
+	c.cur = exitID
+	return nil
+}
+
+func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
+	rangeExpr, ok := s.Range.(ast.RangeExpr)
+	if !ok {
+		return unsupported("for range expression")
+	}
+	start, _, _, err := c.lowerExpr(rangeExpr.Start)
+	if err != nil {
+		return err
+	}
+	end, _, _, err := c.lowerExpr(rangeExpr.End)
+	if err != nil {
+		return err
+	}
+	step := "1"
+	if rangeExpr.Step != nil {
+		step, _, _, err = c.lowerExpr(rangeExpr.Step)
+		if err != nil {
+			return err
+		}
+	}
+
+	startLocal := c.temp("Int")
+	endLocal := c.temp("Int")
+	stepLocal := c.temp("Int")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements,
+		MIRAssign{Target: startLocal, Value: start},
+		MIRAssign{Target: endLocal, Value: end},
+		MIRAssign{Target: stepLocal, Value: step},
+	)
+
+	stepCheckID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", stepCheckID)})
+	rangeCheckID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", rangeCheckID)})
+	condID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", condID)})
+	bodyID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", bodyID)})
+	incrID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", incrID)})
+	exitID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", exitID)})
+	stepFailID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", stepFailID)})
+	rangeFailID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", rangeFailID)})
+
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[stepCheckID].Label}
+
+	c.cur = stepCheckID
+	c.blocks[c.cur].Terminator = MIRBranch{
+		Cond:        fmt.Sprintf("(%s > 0)", stepLocal),
+		TrueTarget:  c.blocks[rangeCheckID].Label,
+		FalseTarget: c.blocks[stepFailID].Label,
+	}
+
+	c.cur = rangeCheckID
+	c.blocks[c.cur].Terminator = MIRBranch{
+		Cond:        fmt.Sprintf("(%s <= %s)", startLocal, endLocal),
+		TrueTarget:  c.blocks[condID].Label,
+		FalseTarget: c.blocks[rangeFailID].Label,
+	}
+
+	previousType, hadPrevious := c.locals[s.Name]
+	if !hadPrevious {
+		c.locals[s.Name] = "Int"
+	}
+	previousLoopTemp := ""
+	if hadPrevious {
+		previousLoopTemp = c.temp(previousType)
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: previousLoopTemp, Value: s.Name})
+		c.locals[s.Name] = "Int"
+	}
+
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: startLocal})
+	c.cur = condID
+	c.blocks[c.cur].Terminator = MIRBranch{
+		Cond:        fmt.Sprintf("(%s < %s)", s.Name, endLocal),
+		TrueTarget:  c.blocks[bodyID].Label,
+		FalseTarget: c.blocks[exitID].Label,
+	}
+
+	c.cur = bodyID
+	if err := c.lowerBlock(s.Body); err != nil {
+		return err
+	}
+	if c.blocks[c.cur].Terminator == nil {
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[incrID].Label}
+	}
+
+	c.cur = incrID
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: fmt.Sprintf("(%s + %s)", s.Name, stepLocal)})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
+
+	c.cur = stepFailID
+	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s)", "runtime error: range step must be positive, got ", stepLocal)}
+
+	c.cur = rangeFailID
+	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s) + %q + fmt.Sprint(%s)", "runtime error: range start must be less than or equal to end, got ", startLocal, "..", endLocal)}
+
+	c.cur = exitID
+	if hadPrevious {
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: previousLoopTemp})
+		c.locals[s.Name] = previousType
+	}
 	return nil
 }
 

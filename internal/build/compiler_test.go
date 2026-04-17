@@ -294,6 +294,89 @@ fn main() -> Int {
 	}
 }
 
+func TestCompileAndRunLoopLoweringParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn WhileAccumulation() -> Int {
+    var i = 0
+    var sum = 0
+    while i < 5 {
+        sum = sum + i
+        i = i + 1
+    }
+    return sum
+}
+
+fn ForRangeAccumulation() -> Int {
+    var sum = 0
+    for i in 1..5 {
+        sum = sum + i
+    }
+    return sum
+}
+
+fn ForRangeStepAccumulation() -> Int {
+    var sum = 0
+    for i in 0..10 step 2 {
+        if i < 6 {
+            sum = sum + i
+        } else {
+            sum = sum + (i + 1)
+        }
+    }
+    return sum
+}
+
+fn ForRangeEvaluatesBoundsOnce() -> Int {
+    var end = 5
+    var sum = 0
+    for i in 0..end {
+        sum = sum + i
+        end = end + 100
+    }
+    return sum
+}
+
+fn ForLoopScopeShadowing() -> Int {
+    let i = 9
+    for i in 0..1 {
+        let x = i
+        if x != 0 {
+            return 0
+        }
+    }
+    return i
+}
+
+fn main() -> Int {
+    if WhileAccumulation() == 10 and
+        ForRangeAccumulation() == 10 and
+        ForRangeStepAccumulation() == 22 and
+        ForRangeEvaluatesBoundsOnce() == 10 and
+        ForLoopScopeShadowing() == 9 {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileFailsWhenImportedPackageMissingSymbol(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
@@ -1530,6 +1613,19 @@ func TestCompileModeUnsupportedSurfaceDiagnostics(t *testing.T) {
 		source  string
 		wantErr string
 	}{
+		{
+			name: "range step zero still rejected by typechecker",
+			source: `package Main
+
+fn main() -> Int {
+    for i in 0..10 step 0 {
+        return i
+    }
+    return 0
+}
+`,
+			wantErr: "range step must be positive, got 0",
+		},
 		{
 			name: "matrix literals",
 			source: `package Main
