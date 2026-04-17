@@ -23,11 +23,12 @@ The emitted module is produced via runtime emission API:
 
 This writes a real Wasm binary artifact to the requested path.
 
-Current production path (post-M98c, M98d convergent slice):
+Current production path (post-M98e completion slice):
 
 - `internal/interpret/ui_wasm_lowering.go`
   - builds canonical M96 JSON render templates from real Machina UI UIIR projection nodes
-  - appends a direct-emission provenance custom section (`oct.m98d.lowering`) seeded from the lowering templates
+  - emits the bounded Machina UI module sections directly (type/function/memory/export/code/data)
+  - appends a direct-emission provenance custom section (`oct.m98e.lowering`) seeded from lowering templates
 - `internal/interpret/wasm_module_builder.go`
   - provides explicit Wasm section framing + ULEB emission utilities used by production emission
 
@@ -36,19 +37,15 @@ Reference-only fixtures retained in-repo:
 - `internal/interpret/testdata/machina_ui_m98_counter.c`
 - `internal/interpret/ui_wasm_artifact_fixture.go`
 
-Those fixture assets remain historical/reference artifacts. As of the current M98d convergent slice, production emission still reads the historical Wasm bytes as the runtime/code-data source before applying builder-emitted section augmentation.
+Those fixture assets remain historical/reference artifacts and optional oracle material only. Production emission no longer reads historical runtime/template-body bytes.
 
-## M98d status (current bounded slice)
+## M98e status (current bounded slice)
 
-M98d now includes an internal Wasm module builder (`internal/interpret/wasm_module_builder.go`) in the production path for explicit section framing/ULEB emission.
+M98e completes backend ownership for the bounded Machina UI module:
 
-Remaining blocker (explicit): production still depends on historical runtime/template bytes for the module body (type/function/memory/export/code/data sections are not fully re-emitted yet).
-
-Follow-up slice to complete M98d backend ownership:
-
-- emit bounded Machina UI module sections directly from the internal builder
+- bounded module sections are directly emitted in-process via the internal builder
 - preserve M94–M97 semantics and the exact M96 ABI
-- keep reference fixture artifacts as optional oracle material only
+- keep reference fixture artifacts as reference/oracle only (not production inputs)
 
 ## Exported boundary surface
 
@@ -92,6 +89,7 @@ No allocator API or advanced memory ownership protocol is introduced in M98.
 7. routed mode switch behavior (`route.stats` -> UIIR update)
 8. production-path replacement guard: emitted bytes must differ from the legacy fixture byte blob
 9. production emission works with `PATH` cleared (guards against accidental compiler toolchain reliance)
+10. production emission ignores the legacy fixture decode hook (guards against hidden runtime/template-byte fallback)
 
 ## Explicitly preserved boundaries
 

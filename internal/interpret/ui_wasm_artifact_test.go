@@ -216,3 +216,17 @@ WebAssembly.instantiate(bytes, {}).then(() => process.exit(0)).catch((err) => {
 		t.Fatalf("node failed to instantiate emitted wasm: %v\n%s", err, string(out))
 	}
 }
+
+func TestEmitMachinaUIWasmArtifactDoesNotUseLegacyFixtureDecodeHook(t *testing.T) {
+	orig := legacyFixtureDecodeHook
+	legacyFixtureDecodeHook = func() ([]byte, error) {
+		t.Fatalf("legacy fixture decode hook must not be called in production emission")
+		return nil, nil
+	}
+	t.Cleanup(func() { legacyFixtureDecodeHook = orig })
+
+	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
+	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {
+		t.Fatalf("EmitMachinaUIWasmArtifact failed: %v", err)
+	}
+}
