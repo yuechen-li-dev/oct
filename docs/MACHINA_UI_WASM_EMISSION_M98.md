@@ -23,19 +23,32 @@ The emitted module is produced via runtime emission API:
 
 This writes a real Wasm binary artifact to the requested path.
 
-Current production path (M98c training-wheels removal):
+Current production path (post-M98c, M98d convergent slice):
 
 - `internal/interpret/ui_wasm_lowering.go`
   - builds canonical M96 JSON render templates from real Machina UI UIIR projection nodes
-  - emits Wasm bytes directly in-process (no generated C stage, no `clang` invocation in production emission)
-  - appends a direct-emission provenance custom section (`oct.m98c.direct`) seeded from the lowering templates
+  - appends a direct-emission provenance custom section (`oct.m98d.lowering`) seeded from the lowering templates
+- `internal/interpret/wasm_module_builder.go`
+  - provides explicit Wasm section framing + ULEB emission utilities used by production emission
 
 Reference-only fixtures retained in-repo:
 
 - `internal/interpret/testdata/machina_ui_m98_counter.c`
 - `internal/interpret/ui_wasm_artifact_fixture.go`
 
-Those fixture assets are documentation/parity references only. They are not compiled or linked as a production backend.
+Those fixture assets remain historical/reference artifacts. As of the current M98d convergent slice, production emission still reads the historical Wasm bytes as the runtime/code-data source before applying builder-emitted section augmentation.
+
+## M98d status (current bounded slice)
+
+M98d now includes an internal Wasm module builder (`internal/interpret/wasm_module_builder.go`) in the production path for explicit section framing/ULEB emission.
+
+Remaining blocker (explicit): production still depends on historical runtime/template bytes for the module body (type/function/memory/export/code/data sections are not fully re-emitted yet).
+
+Follow-up slice to complete M98d backend ownership:
+
+- emit bounded Machina UI module sections directly from the internal builder
+- preserve M94–M97 semantics and the exact M96 ABI
+- keep reference fixture artifacts as optional oracle material only
 
 ## Exported boundary surface
 

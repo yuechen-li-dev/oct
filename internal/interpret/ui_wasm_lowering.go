@@ -20,8 +20,9 @@ func emitMachinaUIWasmFromLowering() ([]byte, error) {
 		return nil, fmt.Errorf("machina ui wasm emission failed decoding direct wasm template: %w", err)
 	}
 	stamp := buildMachinaUIDirectWasmStamp(fragments)
-	module = appendWasmCustomSection(module, "oct.m98c.direct", stamp)
-	return module, nil
+	builder := newWasmModuleBuilderFromBytes(module)
+	builder.appendCustomSection("oct.m98d.lowering", stamp)
+	return builder.bytesOut(), nil
 }
 
 func buildMachinaUIDirectWasmStamp(fragments map[string]m98bRenderTemplate) []byte {
@@ -32,33 +33,6 @@ func buildMachinaUIDirectWasmStamp(fragments map[string]m98bRenderTemplate) []by
 		parts = append(parts, name+":"+frag.prefix+"|"+frag.suffix)
 	}
 	return []byte(strings.Join(parts, "\n"))
-}
-
-func appendWasmCustomSection(module []byte, name string, payload []byte) []byte {
-	section := make([]byte, 0, len(name)+len(payload)+16)
-	section = append(section, 0x00)
-	content := encodeULEB128(uint32(len(name)))
-	content = append(content, []byte(name)...)
-	content = append(content, payload...)
-	section = append(section, encodeULEB128(uint32(len(content)))...)
-	section = append(section, content...)
-	return append(module, section...)
-}
-
-func encodeULEB128(v uint32) []byte {
-	if v == 0 {
-		return []byte{0}
-	}
-	out := make([]byte, 0, 5)
-	for v > 0 {
-		b := byte(v & 0x7f)
-		v >>= 7
-		if v != 0 {
-			b |= 0x80
-		}
-		out = append(out, b)
-	}
-	return out
 }
 
 func buildMachinaUIM98bRenderTemplates() (map[string]m98bRenderTemplate, error) {
