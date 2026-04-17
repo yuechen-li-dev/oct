@@ -247,6 +247,52 @@ fn Manifest() -> PackageManifest {
 	}
 }
 
+func TestCompileAndRunNamedRecordArraySurface(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+record Ingredient {
+    Name: String
+    Grams: Float
+}
+
+fn Ingredients() -> Ingredient[] {
+    return [
+        Ingredient { Name: "Flour" Grams: 500.0 },
+        Ingredient { Name: "Salt" Grams: 10.0 }
+    ]
+}
+
+fn Pick(xs: Ingredient[]) -> Ingredient {
+    return xs[1]
+}
+
+fn main() -> Int {
+    let xs = Ingredients()
+    let picked = Pick(xs)
+    if Len(xs) == 2 and picked.Name == "Salt" and picked.Grams == 10.0 {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileFailsWhenImportedPackageMissingSymbol(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {

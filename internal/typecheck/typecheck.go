@@ -2986,12 +2986,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if !argumentType.ValueType.IsArray {
 			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String or array type, got %s", argumentType.ValueType)
 		}
-		switch argumentType.ValueType.Base {
-		case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeComplex, BaseTypeString, BaseTypeUI:
-			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
-		default:
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String or array type, got %s", argumentType.ValueType)
-		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 	case "Abs":
 		if isRealNumericScalar(argumentType.ValueType) {
 			return ExprType{ValueType: argumentType.ValueType}, nil
@@ -3609,10 +3604,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 				if typeRef.HasUnit {
 					return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 				}
-				if typeRef.IsArray {
-					return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
-				}
-				return Type{Name: qualifiedName}, nil
+				return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
 			}
 			return Type{}, fmt.Errorf("unknown package '%s'", typeRef.Package)
 		}
@@ -3620,19 +3612,13 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 			if typeRef.HasUnit {
 				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 			}
-			if typeRef.IsArray {
-				return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
-			}
-			return Type{Name: qualifiedName}, nil
+			return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
 		}
 		if _, ok := imported.enums[typeRef.Name]; ok {
 			if typeRef.HasUnit {
 				return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", qualifiedName, typeRef.Dimension.String())
 			}
-			if typeRef.IsArray {
-				return Type{}, fmt.Errorf("unknown type: %s[]", qualifiedName)
-			}
-			return Type{Name: qualifiedName}, nil
+			return Type{Name: qualifiedName, IsArray: typeRef.IsArray}, nil
 		}
 		if _, ok := imported.functions[typeRef.Name]; ok {
 			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
@@ -3650,10 +3636,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		if typeRef.HasUnit {
 			return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())
 		}
-		if typeRef.IsArray {
-			return Type{}, fmt.Errorf("unknown type: %s[]", typeRef.Name)
-		}
-		return Type{Name: typeRef.Name}, nil
+		return Type{Name: typeRef.Name, IsArray: typeRef.IsArray}, nil
 	}
 	if typeRef.HasUnit && !isDimensionCapableBaseType(baseType) {
 		return Type{}, fmt.Errorf("invalid dimension-qualified type syntax: %s<%s>", typeRef.Name, typeRef.Dimension.String())

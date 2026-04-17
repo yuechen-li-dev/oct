@@ -1,0 +1,11 @@
+expect error: "nested array types are not supported"
+
+package Main
+
+record Ingredient {
+    Name: String
+}
+
+fn Main() -> Ingredient[][] {
+    return [Ingredient { Name: "Flour" }]
+}
