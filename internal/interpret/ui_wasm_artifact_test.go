@@ -1,7 +1,9 @@
 package interpret
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -169,5 +171,26 @@ run(process.argv[1]).catch((err) => {
 func TestEmitMachinaUIWasmArtifactRequiresPath(t *testing.T) {
 	if err := EmitMachinaUIWasmArtifact(""); err == nil {
 		t.Fatalf("expected empty output path to fail")
+	}
+}
+
+func TestEmitMachinaUIWasmArtifactIsNotFixtureBytes(t *testing.T) {
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang is required for real lowering wasm emission")
+	}
+	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
+	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {
+		t.Fatalf("EmitMachinaUIWasmArtifact failed: %v", err)
+	}
+	emitted, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatalf("read emitted wasm artifact: %v", err)
+	}
+	fixture, err := decodeMachinaUIWasmArtifactFixture()
+	if err != nil {
+		t.Fatalf("decode fixture bytes: %v", err)
+	}
+	if bytes.Equal(emitted, fixture) {
+		t.Fatalf("expected production emission to differ from reference fixture bytes")
 	}
 }

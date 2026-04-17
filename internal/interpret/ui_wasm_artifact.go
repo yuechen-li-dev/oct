@@ -17,7 +17,7 @@ func EmitMachinaUIWasmArtifact(outputPath string) error {
 	if outputPath == "" {
 		return fmt.Errorf("machina ui wasm emission requires non-empty output path")
 	}
-	artifactBytes, err := decodeMachinaUIWasmArtifactFixture()
+	artifactBytes, err := emitMachinaUIWasmFromLowering()
 	if err != nil {
 		return err
 	}
