@@ -592,6 +592,9 @@ func TestCheckValidatesM16VectorsMatrices(t *testing.T) {
 func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3]] }", "matrix rows must all have equal length")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2.0] }", "Vector literals require homogeneous element type")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return [1, 2] }", "function Main: function expects Vector<Int>, but return is Int[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [1, 2] }", "function Main: function expects Matrix<Int>, but return is Int[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [[1, 2] [3, 4]] }", "array indexing requires exactly 1 index, got 2")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[0] }", "matrix indexing requires exactly 2 indices, got 1")

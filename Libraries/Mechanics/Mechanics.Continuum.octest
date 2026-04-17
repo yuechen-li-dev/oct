@@ -73,7 +73,7 @@ fn SmallStrain2DProducesSymmetricTensor() -> Void {
 
 [Fact]
 fn SmallStrain2DForPureExtensionHasNoShear() -> Void {
-    // Pure axial stretch: gradU = [[e, 0][0, 0]] -> eps = [[e, 0][0, 0]]
+    // Pure axial stretch: gradU = matrix[[e, 0] [0, 0]] -> eps = matrix[[e, 0] [0, 0]]
     let gradU = matrix[[0.03, 0.0] [0.0, 0.0]]
     let eps = SmallStrain2D(gradU)
     Assert.Near(0.03, eps[0, 0], 0.000001, "axial strain correct")
@@ -83,7 +83,7 @@ fn SmallStrain2DForPureExtensionHasNoShear() -> Void {
 
 [Fact]
 fn SmallStrain2DForPureShearIsSymmetric() -> Void {
-    // Pure shear: gradU = [[0, gamma][0, 0]] -> eps_xy = gamma/2
+    // Pure shear: gradU = matrix[[0, gamma] [0, 0]] -> eps_xy = gamma/2
     let gradU = matrix[[0.0, 0.04] [0.0, 0.0]]
     let eps = SmallStrain2D(gradU)
     Assert.Near(0.0,  eps[0, 0], 0.000001, "no normal strain for pure shear")
@@ -122,7 +122,7 @@ fn RightCauchyGreenIsSymmetric() -> Void {
 
 [Fact]
 fn RightCauchyGreenMatchesTextbookValues() -> Void {
-    // F = [[1.10, 0.20][0.00, 0.95]]
+    // F = matrix[[1.10, 0.20] [0.00, 0.95]]
     // C = F^T F: C00 = 1.21, C01=C10 = 0.22, C11 = 0.9425 (0.04+0.9025)
     let F = matrix[[1.10, 0.20] [0.00, 0.95]]
     let C = RightCauchyGreen2D(F)

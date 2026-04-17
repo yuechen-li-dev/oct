@@ -4,7 +4,7 @@ package Octomata
 
 [Fact]
 fn MatMulFlatMatchesKnownResult() -> Void {
-    /// [[1,2][3,4]] @ [[5,6][7,8]] = [[19,22][43,50]]
+    /// matrix[[1,2] [3,4]] @ matrix[[5,6] [7,8]] = matrix[[19,22] [43,50]]
     let A = [1.0, 2.0, 3.0, 4.0]
     let B = [5.0, 6.0, 7.0, 8.0]
     let C = MatMulFlat(A, 2, 2, B, 2, 2)!
@@ -17,7 +17,7 @@ fn MatMulFlatMatchesKnownResult() -> Void {
 
 [Fact]
 fn MatTransposeFlatIsCorrect() -> Void {
-    /// [[1,2,3][4,5,6]]^T = [[1,4][2,5][3,6]]
+    /// matrix[[1,2,3] [4,5,6]]^T = matrix[[1,4] [2,5] [3,6]]
     let A = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     let AT = MatTransposeFlat(A, 2, 3)!
 

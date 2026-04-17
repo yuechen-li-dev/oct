@@ -8,8 +8,10 @@ They have dedicated literal, indexing, and arithmetic forms.
 
 ## Rules
 
+- `[...]` is always an array literal.
 - Vector literal form is `vector[a, b, c]`.
 - Matrix literal form is `matrix[[r1c1, r1c2] [r2c1, r2c2]]`.
+- Arrays are not implicitly reinterpreted as vectors or matrices by expected type.
 - Vector literals require homogeneous element type.
 - Matrix rows must all have equal length.
 - Vector indexing form is `v[i]` (exactly one index).
@@ -43,5 +45,14 @@ package Main
 fn Main() -> Int {
     let m = matrix[[1, 2] [3, 4]]
     return m[0]
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Vector<Int> {
+    // Invalid: [1, 2, 3] is an Int[] array literal, not a Vector<Int>.
+    return [1, 2, 3]
 }
 ```
