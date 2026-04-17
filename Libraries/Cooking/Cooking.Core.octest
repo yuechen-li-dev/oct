@@ -87,10 +87,7 @@ fn CelsiusToGasMarkKnownValues() -> Void {
 
 [Fact]
 fn CelsiusToGasMarkRejectsTooLow() -> Void {
-    match CelsiusToGasMark(100.0) {
-        ok(v) => { Assert.True(false, "too low should fail") }
-        err(e) => { }
-    }
+    Assert.Error(CelsiusToGasMark(100.0), "too low should fail")
 }
 
 // ============================================================
@@ -121,10 +118,7 @@ fn IsSafeTemperaturePoultryAt74() -> Void {
 
 [Fact]
 fn IsSafeTemperatureUnknownProteinErrors() -> Void {
-    match IsSafeTemperature("mystery_meat", 80.0) {
-        ok(v) => { Assert.True(false, "unknown protein should error") }
-        err(e) => { }
-    }
+    Assert.Error(IsSafeTemperature("mystery_meat", 80.0), "unknown protein should error")
 }
 
 // ============================================================
@@ -147,10 +141,7 @@ fn CupsToGramsAllPurposeFlour() -> Void {
 
 [Fact]
 fn GramsPerCupUnknownIngredientErrors() -> Void {
-    match GramsPerCup("dragon_scales") {
-        ok(v) => { Assert.True(false, "unknown ingredient should error") }
-        err(e) => { }
-    }
+    Assert.Error(GramsPerCup("dragon_scales"), "unknown ingredient should error")
 }
 
 // ============================================================

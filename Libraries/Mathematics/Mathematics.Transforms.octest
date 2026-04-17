@@ -7,15 +7,9 @@ fn NearComplexAt(expected: Complex[], actual: Complex[], i: Int, tolerance: Floa
 
 [Fact]
 fn FFTRejectsInvalidLengthPolicy() -> Void {
-    match ValidateFFTLength(0) {
-        ok(v) => { Assert.True(false, "empty input must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ValidateFFTLength(0), "empty input must fail")
 
-    match FFT([Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]) {
-        ok(v) => { Assert.True(false, "non-power-of-two length must fail") }
-        err(e) => { }
-    }
+    Assert.Error(FFT([Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]), "non-power-of-two length must fail")
 }
 
 [Fact]

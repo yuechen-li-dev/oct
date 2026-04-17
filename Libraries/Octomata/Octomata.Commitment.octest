@@ -79,18 +79,12 @@ fn StabilizeValueCommitAgeResetsOnChange() -> Void {
 
 [Fact]
 fn StabilizeValueRejectsNegativeHysteresis() -> Void {
-    match StabilizeValue(1, NoValueCommitment(), -1, 0) {
-        ok(r) => { Assert.True(false, "should reject negative hysteresis") }
-        err(e) => { }
-    }
+    Assert.Error(StabilizeValue(1, NoValueCommitment(), -1, 0), "should reject negative hysteresis")
 }
 
 [Fact]
 fn StabilizeValueRejectsNegativeMinCommit() -> Void {
-    match StabilizeValue(1, NoValueCommitment(), 0, -1) {
-        ok(r) => { Assert.True(false, "should reject negative minCommit") }
-        err(e) => { }
-    }
+    Assert.Error(StabilizeValue(1, NoValueCommitment(), 0, -1), "should reject negative minCommit")
 }
 
 [Fact]
@@ -140,22 +134,13 @@ fn TickCooldownAtZeroRemainsExpired() -> Void {
 
 [Fact]
 fn TickCooldownRejectsNegative() -> Void {
-    match TickCooldown(-1) {
-        ok(r) => { Assert.True(false, "should reject negative remaining") }
-        err(e) => { }
-    }
+    Assert.Error(TickCooldown(-1), "should reject negative remaining")
 }
 
 [Fact]
 fn StartCooldownRejectsZeroOrNegative() -> Void {
-    match StartCooldown(0) {
-        ok(v) => { Assert.True(false, "should reject zero ticks") }
-        err(e) => { }
-    }
-    match StartCooldown(-3) {
-        ok(v) => { Assert.True(false, "should reject negative ticks") }
-        err(e) => { }
-    }
+    Assert.Error(StartCooldown(0), "should reject zero ticks")
+    Assert.Error(StartCooldown(-3), "should reject negative ticks")
 }
 
 [Fact]

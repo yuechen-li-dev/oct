@@ -26,30 +26,15 @@ fn SolidZeroDimensionPolicy() -> Void {
 
 [Fact]
 fn SolidNegativeDimensionsRejected() -> Void {
-    match CylinderVolume(0m - 1m, 2m) {
-        ok(v) => {Assert.True(false, "negative radius must fail")}
-        err(e) => {}
-    }
+    Assert.Error(CylinderVolume(0m - 1m, 2m), "negative radius must fail")
 
-    match CylinderSurfaceArea(2m, 0m - 1m) {
-        ok(v) => {Assert.True(false, "negative height must fail")}
-        err(e) => {}
-    }
+    Assert.Error(CylinderSurfaceArea(2m, 0m - 1m), "negative height must fail")
 
-    match SphereVolume(0m - 1m) {
-        ok(v) => {Assert.True(false, "negative radius must fail")}
-        err(e) => {}
-    }
+    Assert.Error(SphereVolume(0m - 1m), "negative radius must fail")
 
-    match SphereSurfaceArea(0m - 1m) {
-        ok(v) => {Assert.True(false, "negative radius must fail")}
-        err(e) => {}
-    }
+    Assert.Error(SphereSurfaceArea(0m - 1m), "negative radius must fail")
 
-    match ConeVolume(2m, 0m - 1m) {
-        ok(v) => {Assert.True(false, "negative height must fail")}
-        err(e) => {}
-    }
+    Assert.Error(ConeVolume(2m, 0m - 1m), "negative height must fail")
 }
 
 [Fact]

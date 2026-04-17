@@ -59,14 +59,8 @@ fn EdgeCasesSingleElementInput() -> Void {
 fn PercentileRejectsInvalidParameterRange() -> Void {
     let xs = [1.0, 2.0, 3.0]
 
-    match Percentile(xs, 0.0 - 1.0) {
-        ok(v) => { Assert.True(false, "negative percentile must fail") }
-        err(e) => { }
-    }
-    match Percentile(xs, 101.0) {
-        ok(v) => { Assert.True(false, "percentile above 100 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(Percentile(xs, 0.0 - 1.0), "negative percentile must fail")
+    Assert.Error(Percentile(xs, 101.0), "percentile above 100 must fail")
 }
 
 [Fact]

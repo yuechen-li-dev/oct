@@ -12,15 +12,9 @@ fn DifferentiateCentralPolynomialCase() -> Void {
 
 [Fact]
 fn DifferentiateCentralRejectsNonPositiveStep() -> Void {
-    match DifferentiateCentral(f, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "h = 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(DifferentiateCentral(f, 1.0, 0.0), "h = 0 must fail")
 
-    match DifferentiateCentral(f, 1.0, 0.0 - 0.1) {
-        ok(v) => { Assert.True(false, "h < 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(DifferentiateCentral(f, 1.0, 0.0 - 0.1), "h < 0 must fail")
 }
 
 [Fact]
@@ -37,10 +31,7 @@ fn IntegrateTrapezoidalCoversCoreAndBoundPolicy() -> Void {
 
 [Fact]
 fn IntegrateTrapezoidalRejectsInvalidSegments() -> Void {
-    match IntegrateTrapezoidal(f, 0.0, 1.0, 0) {
-        ok(v) => { Assert.True(false, "n = 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(IntegrateTrapezoidal(f, 0.0, 1.0, 0), "n = 0 must fail")
 }
 
 [Fact]
@@ -54,15 +45,9 @@ fn IntegrateSimpsonCoreValidationAndBoundPolicy() -> Void {
     let reversed = IntegrateSimpson(f, 1.0, 0.0, 200)!
     Assert.Near(0.0 - forward, reversed, 0.000001, "a > b should return signed negative of reversed interval")
 
-    match IntegrateSimpson(f, 0.0, 1.0, 3) {
-        ok(v) => { Assert.True(false, "odd n must fail") }
-        err(e) => { }
-    }
+    Assert.Error(IntegrateSimpson(f, 0.0, 1.0, 3), "odd n must fail")
 
-    match IntegrateSimpson(f, 0.0, 1.0, 0) {
-        ok(v) => { Assert.True(false, "n = 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(IntegrateSimpson(f, 0.0, 1.0, 0), "n = 0 must fail")
 }
 
 [Fact]

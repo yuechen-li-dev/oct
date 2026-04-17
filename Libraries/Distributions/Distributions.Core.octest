@@ -15,15 +15,9 @@ fn NormalPdfAtMeanAndSymmetry() -> Void {
 
 [Fact]
 fn NormalPdfAndCdfRejectInvalidSigma() -> Void {
-    match NormalPdf(0.0, 0.0, 0.0) {
-        ok(v) => { Assert.True(false, "normal pdf sigma <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(NormalPdf(0.0, 0.0, 0.0), "normal pdf sigma <= 0 must fail")
 
-    match NormalCdf(0.0, 0.0, 0.0 - 1.0) {
-        ok(v) => { Assert.True(false, "normal cdf sigma <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(NormalCdf(0.0, 0.0, 0.0 - 1.0), "normal cdf sigma <= 0 must fail")
 }
 
 [Fact]
@@ -51,10 +45,7 @@ fn UniformPdfCoversInsideBoundaryOutsideAndInvalidRange() -> Void {
     Assert.Near(0.0, UniformPdf(1.9, 2.0, 4.0)!, 0.000001, "uniform pdf below support should be zero")
     Assert.Near(0.0, UniformPdf(4.1, 2.0, 4.0)!, 0.000001, "uniform pdf above support should be zero")
 
-    match UniformPdf(0.0, 1.0, 1.0) {
-        ok(v) => { Assert.True(false, "uniform pdf a >= b must fail") }
-        err(e) => { }
-    }
+    Assert.Error(UniformPdf(0.0, 1.0, 1.0), "uniform pdf a >= b must fail")
 }
 
 [Fact]
@@ -65,10 +56,7 @@ fn UniformCdfCoversDomainAndInvalidRange() -> Void {
     Assert.Near(1.0, UniformCdf(4.0, 2.0, 4.0)!, 0.000001, "uniform cdf at upper boundary")
     Assert.Near(1.0, UniformCdf(4.1, 2.0, 4.0)!, 0.000001, "uniform cdf above support should be one")
 
-    match UniformCdf(0.0, 3.0, 2.0) {
-        ok(v) => { Assert.True(false, "uniform cdf a >= b must fail") }
-        err(e) => { }
-    }
+    Assert.Error(UniformCdf(0.0, 3.0, 2.0), "uniform cdf a >= b must fail")
 }
 
 [Fact]
@@ -81,15 +69,9 @@ fn ExponentialFunctionsHandleSupportAndInvalidLambda() -> Void {
     Assert.Near(0.0, ExponentialCdf(0.0, 2.0)!, 0.000001, "exponential cdf at x=0")
     Assert.Near(1.0 - Exp(0.0 - 2.0), ExponentialCdf(1.0, 2.0)!, 0.000001, "exponential cdf for x>0")
 
-    match ExponentialPdf(1.0, 0.0) {
-        ok(v) => { Assert.True(false, "exponential pdf lambda <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ExponentialPdf(1.0, 0.0), "exponential pdf lambda <= 0 must fail")
 
-    match ExponentialCdf(1.0, 0.0 - 1.0) {
-        ok(v) => { Assert.True(false, "exponential cdf lambda <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ExponentialCdf(1.0, 0.0 - 1.0), "exponential cdf lambda <= 0 must fail")
 }
 
 [Fact]

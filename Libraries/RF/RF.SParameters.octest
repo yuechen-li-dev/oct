@@ -26,42 +26,33 @@ fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
         S22: [Complex(0.1, 0.0)]
     })!, "single-sample dataset should be valid")
 
-    match ValidateSParameters2Port(SParameters2Port {
+    Assert.Error(ValidateSParameters2Port(SParameters2Port {
         Frequencies: [1000000000.0, 900000000.0]
         S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S22: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
-    }) {
-        ok(v) => { Assert.True(false, "unsorted frequencies must fail") }
-        err(e) => { }
-    }
+    }), "unsorted frequencies must fail")
 
-    match ValidateSParameters2Port(SParameters2Port {
+    Assert.Error(ValidateSParameters2Port(SParameters2Port {
         Frequencies: [1000000000.0, 1000000000.0]
         S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S22: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
-    }) {
-        ok(v) => { Assert.True(false, "duplicate frequencies must fail") }
-        err(e) => { }
-    }
+    }), "duplicate frequencies must fail")
 }
 
 
 [Fact]
 fn ValidateSParameters2PortRejectsMismatchedComplexTraceLengths() -> Void {
-    match ValidateSParameters2Port(SParameters2Port {
+    Assert.Error(ValidateSParameters2Port(SParameters2Port {
         Frequencies: [1000000000.0, 2000000000.0]
         S11: [Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
         S22: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
-    }) {
-        ok(v) => { Assert.True(false, "mismatched trace lengths must fail") }
-        err(e) => { }
-    }
+    }), "mismatched trace lengths must fail")
 }
 [Fact]
 fn MagnitudePhaseAndDbHelpersAreConsistent() -> Void {
@@ -88,15 +79,9 @@ fn InterpolationSupportsKnotsInteriorAndOutOfRangeRejection() -> Void {
     Assert.Near(0.5, Real(s21Interior), 0.000001, "s21 real interpolation should be separate")
     Assert.Near(0.4, Imag(s21Interior), 0.000001, "s21 imag interpolation should be separate")
 
-    match InterpolateS11(data, 900000000.0) {
-        ok(v) => { Assert.True(false, "below-range query must fail") }
-        err(e) => { }
-    }
+    Assert.Error(InterpolateS11(data, 900000000.0), "below-range query must fail")
 
-    match InterpolateS21(data, 3100000000.0) {
-        ok(v) => { Assert.True(false, "above-range query must fail") }
-        err(e) => { }
-    }
+    Assert.Error(InterpolateS21(data, 3100000000.0), "above-range query must fail")
 }
 
 [Fact]

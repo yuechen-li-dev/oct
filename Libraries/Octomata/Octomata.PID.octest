@@ -37,13 +37,7 @@ fn PIDUpdateDerivativeRespondsToErrorChange() -> Void {
 
 [Fact]
 fn PIDUpdateRejectsNonPositiveDt() -> Void {
-    match PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0) {
-        ok(v) => { Assert.True(false, "pid update must reject dt <= 0") }
-        err(e) => { }
-    }
+    Assert.Error(PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0), "pid update must reject dt <= 0")
 
-    match PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0 - 0.1) {
-        ok(v) => { Assert.True(false, "pid update must reject negative dt") }
-        err(e) => { }
-    }
+    Assert.Error(PIDUpdate(1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0 - 0.1), "pid update must reject negative dt")
 }
