@@ -999,12 +999,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		return "", "", false, unsupported("matrix literals")
 	case ast.FieldAccessExpr:
 		if enumType, variant, ok := c.flattenEnumVariantExpr(e); ok {
-			enumValue, enumFound, err := c.resolveEnumVariantValue(enumType, variant)
+			enumValue, resolvedEnumType, enumFound, err := c.resolveEnumVariantValue(enumType, variant)
 			if err != nil {
 				return "", "", false, err
 			}
 			if enumFound {
-				return enumValue, enumType, false, nil
+				return enumValue, resolvedEnumType, false, nil
 			}
 		}
 		t, targetType, _, err := c.lowerExpr(e.Target)
@@ -1083,11 +1083,15 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: sourceType, FieldNames: names, FieldVals: values})
 		return tmp, sourceType, false, nil
 	case ast.EnumValueExpr:
-		return fmt.Sprintf("%s_%s", e.EnumName, e.Variant), e.EnumName, false, nil
+		enumType := e.EnumName
+		if !strings.Contains(enumType, ".") {
+			enumType = c.pkg.Name + "." + enumType
+		}
+		return fmt.Sprintf("%s_%s", e.EnumName, e.Variant), enumType, false, nil
 	case ast.IfExpr:
 		return c.lowerIfExpr(e)
 	case ast.SwitchExpr:
-		return "", "", false, unsupported("switch expression")
+		return c.lowerSwitchExpr(e)
 	case ast.RangeExpr:
 		return "", "", false, unsupported("range")
 	case ast.PropagateExpr:
@@ -1286,6 +1290,87 @@ func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
 	return out, thenType, false, nil
 }
 
+func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, error) {
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+
+	var (
+		subject    string
+		out        string
+		resultType string
+	)
+	if e.Subject != nil {
+		var err error
+		subject, _, _, err = c.lowerExpr(e.Subject)
+		if err != nil {
+			return "", "", false, err
+		}
+	}
+
+	assignResult := func(valueExpr ast.Expr) error {
+		value, valueType, _, err := c.lowerExpr(valueExpr)
+		if err != nil {
+			return err
+		}
+		if out == "" {
+			out = c.temp(valueType)
+			resultType = valueType
+		}
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: value})
+		return nil
+	}
+
+	for _, switchCase := range e.Cases {
+		var cond string
+		if e.Subject == nil {
+			condValue, _, _, err := c.lowerExpr(switchCase.Match)
+			if err != nil {
+				return "", "", false, err
+			}
+			cond = condValue
+		} else {
+			matchValue, _, _, err := c.lowerExpr(switchCase.Match)
+			if err != nil {
+				return "", "", false, err
+			}
+			cond = c.temp("Bool")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
+				Target: cond,
+				Value:  fmt.Sprintf("(%s == %s)", subject, matchValue),
+			})
+		}
+
+		matchID := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", matchID)})
+		nextID := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", nextID)})
+		c.blocks[c.cur].Terminator = MIRBranch{
+			Cond:        cond,
+			TrueTarget:  c.blocks[matchID].Label,
+			FalseTarget: c.blocks[nextID].Label,
+		}
+
+		c.cur = matchID
+		if err := assignResult(switchCase.Value); err != nil {
+			return "", "", false, err
+		}
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.cur = nextID
+	}
+
+	if e.Else != nil {
+		if err := assignResult(e.Else); err != nil {
+			return "", "", false, err
+		}
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	} else {
+		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q", "non-exhaustive switch reached in compiled mode")}
+	}
+
+	c.cur = mergeID
+	return out, resultType, false, nil
+}
+
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
@@ -1384,7 +1469,7 @@ func flattenEnumTypeExpr(expr ast.Expr) (string, bool) {
 	}
 }
 
-func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (string, bool, error) {
+func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (string, string, bool, error) {
 	enumPkg := c.pkg.Name
 	enumName := enumType
 	if dot := strings.Index(enumType, "."); dot >= 0 {
@@ -1393,7 +1478,7 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 	}
 	pkg, ok := c.program.Packages[enumPkg]
 	if !ok {
-		return "", false, nil
+		return "", "", false, nil
 	}
 	for _, enumDecl := range pkg.Enums {
 		if enumDecl.Name != enumName {
@@ -1401,12 +1486,12 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 		}
 		for _, declaredVariant := range enumDecl.Variants {
 			if declaredVariant == variant {
-				return fmt.Sprintf("%s_%s", enumName, variant), true, nil
+				return fmt.Sprintf("%s_%s", enumName, variant), enumPkg + "." + enumName, true, nil
 			}
 		}
-		return "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
+		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
 	}
-	return "", false, nil
+	return "", "", false, nil
 }
 
 func typeRefString(t ast.TypeRef) string {
