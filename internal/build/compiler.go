@@ -843,6 +843,15 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
 		return tmp, typeName + "[]", false, nil
 	case ast.FieldAccessExpr:
+		if enumType, variant, ok := c.flattenEnumVariantExpr(e); ok {
+			enumValue, enumFound, err := c.resolveEnumVariantValue(enumType, variant)
+			if err != nil {
+				return "", "", false, err
+			}
+			if enumFound {
+				return enumValue, enumType, false, nil
+			}
+		}
 		t, targetType, _, err := c.lowerExpr(e.Target)
 		if err != nil {
 			return "", "", false, err
@@ -881,7 +890,10 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			vals = append(vals, v)
 			names = append(names, f.Name)
 		}
-		typeName := c.pkg.Name + "." + e.TypeName
+		typeName := e.TypeName
+		if !strings.Contains(typeName, ".") {
+			typeName = c.pkg.Name + "." + typeName
+		}
 		tmp := c.temp(typeName)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
 		return tmp, typeName, false, nil
@@ -1189,6 +1201,54 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	default:
 		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
 	}
+}
+
+func (c *lowerCtx) flattenEnumVariantExpr(expr ast.FieldAccessExpr) (string, string, bool) {
+	enumType, ok := flattenEnumTypeExpr(expr.Target)
+	if !ok {
+		return "", "", false
+	}
+	return enumType, expr.Field, true
+}
+
+func flattenEnumTypeExpr(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", false
+		}
+		return pkgIdent.Name + "." + node.Field, true
+	default:
+		return "", false
+	}
+}
+
+func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (string, bool, error) {
+	enumPkg := c.pkg.Name
+	enumName := enumType
+	if dot := strings.Index(enumType, "."); dot >= 0 {
+		enumPkg = enumType[:dot]
+		enumName = enumType[dot+1:]
+	}
+	pkg, ok := c.program.Packages[enumPkg]
+	if !ok {
+		return "", false, nil
+	}
+	for _, enumDecl := range pkg.Enums {
+		if enumDecl.Name != enumName {
+			continue
+		}
+		for _, declaredVariant := range enumDecl.Variants {
+			if declaredVariant == variant {
+				return fmt.Sprintf("%s_%s", enumName, variant), true, nil
+			}
+		}
+		return "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
+	}
+	return "", false, nil
 }
 
 func typeRefString(t ast.TypeRef) string {

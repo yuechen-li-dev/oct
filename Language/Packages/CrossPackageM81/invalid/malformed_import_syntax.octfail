@@ -1,0 +1,9 @@
+expect error: "expected import package name"
+
+package Main
+
+import
+
+fn Main() -> Int {
+    return 0
+}

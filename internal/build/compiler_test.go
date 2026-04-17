@@ -134,6 +134,329 @@ fn Make(a: Int, b: Int) -> Pair {
 	}
 }
 
+func TestCompileAndRunCrossPackageFallibleAndEnum(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Cooking"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int ! Error {
+    let grams = Cooking.CupsToGrams(2.0, "bread_flour")?
+    let flour = Cooking.Flour.Bread
+    if flour == Cooking.PreferredFlour() and grams == 240.0 {
+        return 1
+    }
+    return 0
+}
+`
+	cookingSrc := `package Cooking
+
+enum Flour {
+    Bread
+    Pastry
+}
+
+fn CupsToGrams(cups: Float, flour: String) -> Float ! Error {
+    if flour == "bread_flour" {
+        return cups * 120.0
+    }
+    if flour == "pastry_flour" {
+        return cups * 110.0
+    }
+    return error("unknown flour")
+}
+
+fn PreferredFlour() -> Flour {
+    return Flour.Bread
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "compiled cross-package test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	cookingManifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "compiled cross-package cooking"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "cooking.oct"), []byte(cookingSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "manifest.oct"), []byte(cookingManifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(root)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFailsWhenImportedPackageMissingSymbol(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Cooking"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int {
+    return Cooking.DoesNotExist()
+}
+`
+	cookingSrc := `package Cooking
+
+fn CupsToGrams(cups: Float, flour: String) -> Float {
+    return cups
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "missing symbol test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	cookingManifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "missing symbol test dependency"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "cooking.oct"), []byte(cookingSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "manifest.oct"), []byte(cookingManifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Compile(root)
+	if err == nil {
+		t.Fatal("expected compile failure")
+	}
+	if !strings.Contains(err.Error(), "package 'Cooking' has no function 'DoesNotExist'") {
+		t.Fatalf("unexpected compile error: %v", err)
+	}
+}
+
+func TestCompileResolvesManifestDependencyFromPackageCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int ! Error {
+    let grams = Cooking.CupsToGrams(2.0, "bread_flour")?
+    if grams == 240.0 {
+        return 1
+    }
+    return 0
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "cache dependency test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheDir := filepath.Join(root, ".pkgcache")
+	depDir := filepath.Join(cacheDir, "repos", "dep-cooking")
+	if err := os.MkdirAll(depDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	depSrc := `package Cooking
+
+fn CupsToGrams(cups: Float, flour: String) -> Float ! Error {
+    if flour == "bread_flour" {
+        return cups * 120.0
+    }
+    return error("unknown flour")
+}
+`
+	depManifest := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "cached dependency"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(depDir, "cooking.oct"), []byte(depSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(depDir, "manifest.oct"), []byte(depManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	indexPath := filepath.Join(cacheDir, "index.json")
+	index := `{
+  "entries": {
+    "dep-cooking": {
+      "source": "https://example.com/cooking.git",
+      "cache_key": "dep-cooking",
+      "path": "` + depDir + `",
+      "name": "Cooking",
+      "version": "0.1.0",
+      "fetched_at": "2026-01-01T00:00:00Z"
+    }
+  }
+}`
+	if err := os.WriteFile(indexPath, []byte(index), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
+
+	result, err := Compile(root)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileAndRunBatchParameterSweepAndOrder(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
