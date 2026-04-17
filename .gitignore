@@ -11,7 +11,7 @@
 *.obj
 
 # Common local binaries
-oct
+
 oct.exe
 
 # Test binaries
