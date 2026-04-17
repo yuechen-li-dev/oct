@@ -19,7 +19,7 @@ Index convention: `A[row * cols + col]`.
 - `MatVecMul(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Error`
 - `VecMatMul(x: Float[], A: Float[], rows: Int, cols: Int) -> Float[] ! Error`
 - `Transpose(A: Float[], rows: Int, cols: Int) -> Float[] ! Error`
-- `Trace(A: Float[], rows: Int, cols: Int) -> Float ! Error`
+- `MatrixTrace(A: Float[], rows: Int, cols: Int) -> Float ! Error`
 - `Diagonal(A: Float[], rows: Int, cols: Int) -> Float[] ! Error`
 - `Identity(n: Int) -> Float[] ! Error`
 - `Zeros(m: Int, n: Int) -> Float[] ! Error`
@@ -50,7 +50,7 @@ No function reshapes data, infers dimensions, or silently truncates mismatched i
 - `MatMul` requires `aCols == bRows`.
 - `MatVecMul` requires `Len(x) == cols`.
 - `VecMatMul` requires `Len(x) == rows`.
-- `Trace` requires `rows == cols`.
+- `MatrixTrace` requires `rows == cols`.
 - `Diagonal` returns `min(rows, cols)` elements.
 - `Add` and `Sub` require both inputs to satisfy the same `(rows, cols)`.
 - `Identity` requires `n > 0`.

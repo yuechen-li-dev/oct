@@ -152,7 +152,7 @@ fn Transpose(A: Float[], rows: Int, cols: Int) -> Float[] ! Error {
     return out
 }
 
-fn Trace(A: Float[], rows: Int, cols: Int) -> Float ! Error {
+fn MatrixTrace(A: Float[], rows: Int, cols: Int) -> Float ! Error {
     let mok = ValidateMatrixData(A, rows, cols)?
 
     if rows != cols {

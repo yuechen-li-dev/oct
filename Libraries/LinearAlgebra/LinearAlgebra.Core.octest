@@ -70,11 +70,11 @@ fn TransposeSupportsRectangularAndDoubleTranspose() -> Void {
 }
 
 [Fact]
-fn TraceSupportsSquareAndRejectsRectangular() -> Void {
+fn MatrixTraceSupportsSquareAndRejectsRectangular() -> Void {
     let A = [1.0, 2.0, 3.0, 4.0]
-    Assert.Near(5.0, Trace(A, 2, 2)!, 0.000001, "trace should sum main diagonal")
+    Assert.Near(5.0, MatrixTrace(A, 2, 2)!, 0.000001, "trace should sum main diagonal")
 
-    Assert.Error(Trace([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "trace should reject non-square matrices")
+    Assert.Error(MatrixTrace([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "trace should reject non-square matrices")
 }
 
 [Fact]
