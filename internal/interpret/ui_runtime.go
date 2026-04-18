@@ -21,6 +21,8 @@ const (
 	uiirNodeAnchorBox    uiirNodeKind = "AnchorBox"
 	uiirRootLayoutExtent float64      = 1000.0
 	uiirAbsCoordLimit    float64      = 1000000.0
+	uiirMinZOrder        int64        = -5
+	uiirMaxZOrder        int64        = 5
 )
 
 type uiirBoxKind string
@@ -32,6 +34,7 @@ const (
 
 type uiirBoxSpec struct {
 	Kind         uiirBoxKind
+	ZOrder       int64
 	X            float64
 	Y            float64
 	Width        float64
@@ -92,6 +95,7 @@ type uiirSerializedNode struct {
 
 type uiirSerializedBox struct {
 	Kind     string                     `json:"kind"`
+	Z        int64                      `json:"z"`
 	Absolute *uiirSerializedRect        `json:"absolute"`
 	Anchored *uiirSerializedBoxAnchored `json:"anchored"`
 }
@@ -208,7 +212,7 @@ func serializeUIIRBox(box *uiirBoxSpec) *uiirSerializedBox {
 	if box == nil {
 		return nil
 	}
-	serialized := &uiirSerializedBox{Kind: string(box.Kind)}
+	serialized := &uiirSerializedBox{Kind: string(box.Kind), Z: box.ZOrder}
 	if box.Kind == uiirBoxAbsolute {
 		serialized.Absolute = &uiirSerializedRect{X: box.X, Y: box.Y, Width: box.Width, Height: box.Height}
 		return serialized
@@ -283,6 +287,7 @@ func deserializeUIIRBox(box *uiirSerializedBox) (*uiirBoxSpec, error) {
 		}
 		return &uiirBoxSpec{
 			Kind:   uiirBoxAbsolute,
+			ZOrder: box.Z,
 			X:      box.Absolute.X,
 			Y:      box.Absolute.Y,
 			Width:  box.Absolute.Width,
@@ -294,6 +299,7 @@ func deserializeUIIRBox(box *uiirSerializedBox) (*uiirBoxSpec, error) {
 		}
 		return &uiirBoxSpec{
 			Kind:   uiirBoxAnchored,
+			ZOrder: box.Z,
 			Left:   box.Anchored.Left,
 			Top:    box.Anchored.Top,
 			Right:  box.Anchored.Right,
@@ -383,9 +389,9 @@ func uiirBoxSignature(spec *uiirBoxSpec) string {
 		return "<nil>"
 	}
 	if spec.Kind == uiirBoxAbsolute {
-		return fmt.Sprintf("absolute(%.2f,%.2f,%.2f,%.2f)", spec.X, spec.Y, spec.Width, spec.Height)
+		return fmt.Sprintf("absolute(z=%d,%.2f,%.2f,%.2f,%.2f)", spec.ZOrder, spec.X, spec.Y, spec.Width, spec.Height)
 	}
-	return fmt.Sprintf("anchored(%.2f,%.2f,%.2f,%.2f)", spec.Left, spec.Top, spec.Right, spec.Bottom)
+	return fmt.Sprintf("anchored(z=%d,%.2f,%.2f,%.2f,%.2f)", spec.ZOrder, spec.Left, spec.Top, spec.Right, spec.Bottom)
 }
 
 func uiirTreeContainsEvent(node *uiirNode, token string) bool {
@@ -409,6 +415,7 @@ func cloneUIIRBoxSpec(spec *uiirBoxSpec) *uiirBoxSpec {
 	}
 	return &uiirBoxSpec{
 		Kind:         spec.Kind,
+		ZOrder:       spec.ZOrder,
 		X:            spec.X,
 		Y:            spec.Y,
 		Width:        spec.Width,
@@ -659,8 +666,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 }
 
 func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiirNode, *evalResult, error) {
-	if len(argumentExprs) != 5 {
-		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAbsolute expects 5 arguments")
+	if len(argumentExprs) != 6 {
+		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAbsolute expects 6 arguments")
 	}
 	x, errResult, err := i.evalFloatArg(env, pkgName, argumentExprs[0], "UIPlaceAbsolute")
 	if err != nil || errResult != nil {
@@ -682,6 +689,10 @@ func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argum
 	if err != nil || errResult != nil {
 		return nil, errResult, err
 	}
+	zOrder, errResult, err := i.evalIntArg(env, pkgName, argumentExprs[5], "UIPlaceAbsolute")
+	if err != nil || errResult != nil {
+		return nil, errResult, err
+	}
 	if width < 0 || height < 0 {
 		errEval := wrapperErrorResult("UIPlaceAbsolute", fmt.Errorf("absolute box width and height must be >= 0"))
 		return nil, &errEval, nil
@@ -690,10 +701,15 @@ func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argum
 		errEval := wrapperErrorResult("UIPlaceAbsolute", fmt.Errorf("absolute box values exceed runtime bounds"))
 		return nil, &errEval, nil
 	}
+	if zOrder < uiirMinZOrder || zOrder > uiirMaxZOrder {
+		errEval := wrapperErrorResult("UIPlaceAbsolute", fmt.Errorf("z-order must be within [%d, %d]", uiirMinZOrder, uiirMaxZOrder))
+		return nil, &errEval, nil
+	}
 	return &uiirNode{
 		Kind: uiirNodeAbsoluteBox,
 		Box: &uiirBoxSpec{
 			Kind:   uiirBoxAbsolute,
+			ZOrder: zOrder,
 			X:      x,
 			Y:      y,
 			Width:  width,
@@ -704,8 +720,8 @@ func (i interpreter) evalUIPlaceAbsolute(env *environment, pkgName string, argum
 }
 
 func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argumentExprs []ast.Expr) (*uiirNode, *evalResult, error) {
-	if len(argumentExprs) != 5 {
-		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAnchored expects 5 arguments")
+	if len(argumentExprs) != 6 {
+		return nil, nil, fmt.Errorf("runtime invariant violation: UIPlaceAnchored expects 6 arguments")
 	}
 	left, errResult, err := i.evalFloatArg(env, pkgName, argumentExprs[0], "UIPlaceAnchored")
 	if err != nil || errResult != nil {
@@ -727,14 +743,23 @@ func (i interpreter) evalUIPlaceAnchored(env *environment, pkgName string, argum
 	if err != nil || errResult != nil {
 		return nil, errResult, err
 	}
+	zOrder, errResult, err := i.evalIntArg(env, pkgName, argumentExprs[5], "UIPlaceAnchored")
+	if err != nil || errResult != nil {
+		return nil, errResult, err
+	}
 	if right < left || bottom < top {
 		errEval := wrapperErrorResult("UIPlaceAnchored", fmt.Errorf("anchored box requires Right >= Left and Bottom >= Top"))
+		return nil, &errEval, nil
+	}
+	if zOrder < uiirMinZOrder || zOrder > uiirMaxZOrder {
+		errEval := wrapperErrorResult("UIPlaceAnchored", fmt.Errorf("z-order must be within [%d, %d]", uiirMinZOrder, uiirMaxZOrder))
 		return nil, &errEval, nil
 	}
 	return &uiirNode{
 		Kind: uiirNodeAnchorBox,
 		Box: &uiirBoxSpec{
 			Kind:   uiirBoxAnchored,
+			ZOrder: zOrder,
 			Left:   left,
 			Top:    top,
 			Right:  right,
@@ -757,6 +782,21 @@ func (i interpreter) evalFloatArg(env *environment, pkgName string, expr ast.Exp
 		return 0, nil, fmt.Errorf("runtime invariant violation: %s expects Float box values", callee)
 	}
 	return value.value.Float, nil, nil
+}
+
+func (i interpreter) evalIntArg(env *environment, pkgName string, expr ast.Expr, callee string) (int64, *evalResult, error) {
+	value, err := i.evalExpr(env, pkgName, expr)
+	if err != nil {
+		return 0, nil, err
+	}
+	if value.hasError {
+		errEval := evalResult{hasError: true, errorVal: value.errorVal}
+		return 0, &errEval, nil
+	}
+	if value.value.Kind != ValueInt {
+		return 0, nil, fmt.Errorf("runtime invariant violation: %s expects Int z-order", callee)
+	}
+	return value.value.Int, nil, nil
 }
 
 func (i interpreter) evalUIArg(env *environment, pkgName string, expr ast.Expr, callee string) (*uiirNode, *evalResult, error) {

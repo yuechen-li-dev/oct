@@ -43,6 +43,14 @@ Current bounded host renderer supports these UIIR families:
 
 `AbsoluteBox` and `AnchorBox` remain explicit primitives (not erased into host-local semantics).
 
+M99a semantic hardening adds:
+
+- explicit unit behavior in renderer paths:
+  - `AbsoluteBox` uses `px` positioning/sizing
+  - `AnchorBox` uses normalized `ui` coordinates mapped to percentages
+- bounded optional z-order on placement boxes (`-5..5`, default `0`)
+- deterministic paint ordering: z ascending, then stable child order for same-z ties
+
 ## Source-of-truth boundary remains unchanged
 
 The Wasm module remains the source of truth for:
@@ -75,6 +83,8 @@ This milestone does not broaden into packaging/pipeline polish.
 3. route switch roundtrip (`route.stats`, `route.home`)
 4. deterministic repeated interaction sequence checks
 5. bounded renderer node-family coverage checks for all currently locked UIIR node kinds
+6. unit semantics checks (`px` for absolute, `ui` for anchored)
+7. bounded z-order checks (default z=0, deterministic same-z tie-break)
 
 ## Screenshot proof
 

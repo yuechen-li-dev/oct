@@ -1,6 +1,8 @@
 (function (globalScope) {
   const UIIR_ABI = 'machina.uiir.v1';
   const DEFAULT_WASM_GAP = 64;
+  const BOX_MIN_Z = -5;
+  const BOX_MAX_Z = 5;
 
   function assertCondition(condition, message) {
     if (!condition) {
@@ -53,6 +55,10 @@
     if (!node.box) {
       return;
     }
+    const zOrder = Number.isInteger(node.box.z) ? node.box.z : 0;
+    assertCondition(zOrder >= BOX_MIN_Z && zOrder <= BOX_MAX_Z, 'z-order must be within [-5, 5]');
+    target.style.zIndex = String(zOrder);
+    target.dataset.zOrder = String(zOrder);
 
     target.style.position = 'absolute';
     if (node.box.kind === 'absolute' && node.box.absolute) {
@@ -61,6 +67,7 @@
       target.style.top = absolute.y + 'px';
       target.style.width = absolute.width + 'px';
       target.style.height = absolute.height + 'px';
+      target.dataset.boxUnit = 'px';
       return;
     }
     if (node.box.kind === 'anchored' && node.box.anchored) {
@@ -69,7 +76,22 @@
       target.style.top = anchored.top * 100 + '%';
       target.style.right = (1 - anchored.right) * 100 + '%';
       target.style.bottom = (1 - anchored.bottom) * 100 + '%';
+      target.dataset.boxUnit = 'ui';
     }
+  }
+
+  function paintOrderChildren(children) {
+    return (children || [])
+      .map((child, idx) => ({ child, idx }))
+      .sort((left, right) => {
+        const leftZ = left.child && left.child.box && Number.isInteger(left.child.box.z) ? left.child.box.z : 0;
+        const rightZ = right.child && right.child.box && Number.isInteger(right.child.box.z) ? right.child.box.z : 0;
+        if (leftZ !== rightZ) {
+          return leftZ - rightZ;
+        }
+        return left.idx - right.idx;
+      })
+      .map((entry) => entry.child);
   }
 
   function renderNode(documentRef, node, dispatchEvent) {
@@ -130,7 +152,7 @@
       el.style.position = 'absolute';
     }
 
-    for (const child of node.children || []) {
+    for (const child of paintOrderChildren(node.children)) {
       el.appendChild(renderNode(documentRef, child, dispatchEvent));
     }
     return el;

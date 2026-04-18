@@ -8,6 +8,8 @@ It is intentionally small and explicit:
 - calls the locked boundary exports (`ExportMachinaUIInit`, `ExportMachinaUIRender`, `ExportMachinaUIDispatchEventJSON`, buffer ptr/len)
 - reads canonical M96 UIIR JSON (`machina.uiir.v1`)
 - renders visible DOM nodes for current node families (`Text`, `Button`, `AbsoluteBox`, `AnchorBox`, `Row`, `Column`, `Grid`, `Spacer`)
+- enforces explicit box units: `AbsoluteBox` as `px`, `AnchorBox` as normalized `ui`
+- enforces bounded box z-order (`-5..5`, default `0`) with deterministic paint ordering (z ascending, then stable node order)
 - dispatches canonical event JSON back into Wasm on click (`{"token":"...","payload":...}`)
 - rerenders after each successful event transition
 

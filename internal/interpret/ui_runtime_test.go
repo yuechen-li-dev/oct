@@ -43,7 +43,7 @@ func TestUIIRTreeContainsOnlyEnabledEvents(t *testing.T) {
 
 func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
 	parent := &uiirResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
-	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, X: 15, Y: 25, Width: 200, Height: 80}, parent)
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -2, X: 15, Y: 25, Width: 200, Height: 80}, parent)
 	if err != nil {
 		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
 
 func TestUIIRResolveAnchoredBoxPlacement(t *testing.T) {
 	parent := &uiirResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
-	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAnchored, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 3, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
 	if err != nil {
 		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
@@ -149,6 +149,36 @@ func TestUIIRCanonicalJSONStructuralKindsAndLayoutStayExplicit(t *testing.T) {
 		if !strings.Contains(encoded, expected) {
 			t.Fatalf("expected canonical json to include %q, got %q", expected, encoded)
 		}
+	}
+}
+
+func TestUIIRBoxZOrderRoundTripAndSignature(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -5, X: 1, Y: 2, Width: 3, Height: 4}, Children: []*uiirNode{{Kind: uiirNodeText, Text: "a"}}},
+			{Kind: uiirNodeAnchorBox, Box: &uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 0, Left: 0.1, Top: 0.2, Right: 0.8, Bottom: 0.9}, Children: []*uiirNode{{Kind: uiirNodeText, Text: "b"}}},
+		},
+	}
+
+	sig := uiirSignature(withUIIRNodeIDs(root))
+	if !strings.Contains(sig, "absolute(z=-5") || !strings.Contains(sig, "anchored(z=0") {
+		t.Fatalf("expected z-order to remain visible in UIIR signature, got %q", sig)
+	}
+
+	serialized, err := serializeUIIRCanonicalJSON(root)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if !strings.Contains(serialized, `"z":-5`) || !strings.Contains(serialized, `"z":0`) {
+		t.Fatalf("expected canonical json to include box z-order, got %q", serialized)
+	}
+	decoded, err := deserializeUIIRCanonicalJSON(serialized)
+	if err != nil {
+		t.Fatalf("deserializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if decoded.Children[0].Box.ZOrder != -5 || decoded.Children[1].Box.ZOrder != 0 {
+		t.Fatalf("expected z-order roundtrip to preserve values, got %#v", decoded)
 	}
 }
 
