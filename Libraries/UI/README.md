@@ -169,15 +169,18 @@ M99 is the first host milestone with visible rendering using the real emitted Wa
 
 Reference docs: `docs/MACHINA_UI_HOST_RENDERER_M99.md`.
 
-## M100 Native Host (webview-backed first slice)
+## M100/M100b Native Host (desktop webview path)
 
 M100 extends the same host/runtime contract into a desktop webview boundary.
+M100b completes the first real native shell slice around that shared runtime.
 
-- desktop webview layer lives at `tools/machina-ui-desktop/`
+- desktop webview adapter lives at `tools/machina-ui-desktop/`
 - reuses browser host runtime/renderer (`tools/machina-ui-host/host.js`) directly
 - consumes the same emitted `.ui.wasm` artifact and `machina.uiir.v1` JSON ABI
 - dispatches the same canonical event JSON contract
+- real native shell launcher lives at `cmd/machina-ui-desktop-host` + `internal/machina/desktophost`
+- real webview binding is intentionally bounded behind `-tags machina_desktop_webview` (`linux`/`darwin`, `cgo`)
 
-This milestone is architectural proof of “one UI runtime, multiple hosts,” not native platform productization.
+These milestones prove “one UI runtime, multiple hosts” while keeping native packaging scope explicit and bounded.
 
 Reference docs: `docs/MACHINA_UI_NATIVE_HOST_M100.md`.
