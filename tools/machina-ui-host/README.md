@@ -40,3 +40,8 @@ This host is only:
 - event bridge
 
 No second UI runtime is introduced here.
+
+## Reuse in M100 desktop host
+
+M100 desktop hosting reuses this exact host runtime/renderer through
+`tools/machina-ui-desktop/desktop_host.js` rather than forking semantics.

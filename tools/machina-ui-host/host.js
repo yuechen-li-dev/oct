@@ -177,6 +177,7 @@
       this.wasmBytes = options.wasmBytes || null;
       this.wasmURL = options.wasmURL || null;
       this.wasmGap = options.wasmGap || DEFAULT_WASM_GAP;
+      this.onBeforeDispatch = options.onBeforeDispatch || null;
       this.instance = null;
       this.exports = null;
       this.lastRenderJSON = '';
@@ -225,6 +226,9 @@
       const token = event && event.token;
       assertCondition(!!token, 'event token is required');
       const eventJSON = JSON.stringify({ token, payload: event.payload ?? null });
+      if (this.onBeforeDispatch) {
+        this.onBeforeDispatch(eventJSON);
+      }
       const written = this.writeDispatchJSON(eventJSON);
       const status = Number(this.exports.ExportMachinaUIDispatchEventJSON(written.ptr, written.len));
       if (status !== 0) {
