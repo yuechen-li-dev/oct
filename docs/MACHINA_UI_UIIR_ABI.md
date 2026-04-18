@@ -67,8 +67,9 @@ Notes:
 - `kind` is explicit for all node families.
 - `event` is explicit when present (currently on `Button`).
 - `box` is explicit for placement nodes:
-  - absolute: `{ "kind":"absolute", "absolute":{x,y,width,height}, "anchored":null }`
-  - anchored: `{ "kind":"anchored", "absolute":null, "anchored":{left,top,right,bottom} }`
+  - includes bounded `z` (`-5..5`), default `0`
+  - absolute: `{ "kind":"absolute", "z":0, "absolute":{x,y,width,height}, "anchored":null }`
+  - anchored: `{ "kind":"anchored", "z":0, "absolute":null, "anchored":{left,top,right,bottom} }`
 - `layout` carries resolved box data when available.
 
 ## Canonical event shape

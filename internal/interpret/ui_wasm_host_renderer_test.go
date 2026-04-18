@@ -116,6 +116,8 @@ function snapshotTree(root) {
       'kind=' + (node.dataset.kind || ''),
       'id=' + (node.dataset.nodeId || ''),
       'token=' + (node.dataset.eventToken || ''),
+      'unit=' + (node.dataset.boxUnit || ''),
+      'z=' + (node.dataset.zOrder || ''),
       'disabled=' + String(node.disabled),
       'text=' + JSON.stringify(node.textContent || '')
     ];
@@ -194,13 +196,19 @@ async function run(artifactPath) {
         },
         {
           id: '0.4', kind: 'AbsoluteBox', key: null, text: null, label: null, enabled: null, event: null,
-          box: { kind: 'absolute', absolute: { x: 1, y: 2, width: 3, height: 4 }, anchored: null },
+          box: { kind: 'absolute', z: 2, absolute: { x: 1, y: 2, width: 3, height: 4 }, anchored: null },
           layout: null,
           children: []
         },
         {
           id: '0.5', kind: 'AnchorBox', key: null, text: null, label: null, enabled: null, event: null,
-          box: { kind: 'anchored', absolute: null, anchored: { left: 0.1, top: 0.2, right: 0.9, bottom: 0.8 } },
+          box: { kind: 'anchored', z: -1, absolute: null, anchored: { left: 0.1, top: 0.2, right: 0.9, bottom: 0.8 } },
+          layout: null,
+          children: []
+        },
+        {
+          id: '0.6', kind: 'AbsoluteBox', key: null, text: null, label: null, enabled: null, event: null,
+          box: { kind: 'absolute', absolute: { x: 9, y: 9, width: 9, height: 9 }, anchored: null },
           layout: null,
           children: []
         }
@@ -211,6 +219,38 @@ async function run(artifactPath) {
   const syntheticEvents = [];
   hostModule.renderUIDocument(fakeDocument, syntheticRoot, syntheticDocument, (event) => syntheticEvents.push(event.token));
   findButtonByToken(syntheticRoot.firstChild, 'synthetic.ok').click();
+  const syntheticKinds = syntheticRoot.firstChild.children.filter((c) => c.dataset && (c.dataset.kind === 'AbsoluteBox' || c.dataset.kind === 'AnchorBox'));
+  const syntheticOrder = syntheticKinds.map((node) => node.dataset.nodeId);
+  const absWithZ = syntheticKinds.find((node) => node.dataset.nodeId === '0.4');
+  const anchoredWithZ = syntheticKinds.find((node) => node.dataset.nodeId === '0.5');
+  const absDefaultZ = syntheticKinds.find((node) => node.dataset.nodeId === '0.6');
+  let syntheticRejectsOutOfRangeZ = false;
+  try {
+    hostModule.renderUIDocument(fakeDocument, fakeDocument.createElement('div'), {
+      abi: hostModule.UIIR_ABI,
+      root: {
+        id: '0',
+        kind: 'Column',
+        key: null,
+        text: null,
+        label: null,
+        enabled: null,
+        event: null,
+        box: null,
+        layout: null,
+        children: [
+          {
+            id: '0.0', kind: 'AbsoluteBox', key: null, text: null, label: null, enabled: null, event: null,
+            box: { kind: 'absolute', z: 6, absolute: { x: 0, y: 0, width: 1, height: 1 }, anchored: null },
+            layout: null,
+            children: []
+          }
+        ]
+      }
+    }, () => {});
+  } catch (err) {
+    syntheticRejectsOutOfRangeZ = String(err).includes('z-order must be within [-5, 5]');
+  }
 
   const summary = {
     abi: firstDoc.abi,
@@ -228,7 +268,12 @@ async function run(artifactPath) {
       !!syntheticRoot.firstChild.children.find((c) => c.dataset && c.dataset.kind === 'AbsoluteBox'),
       !!syntheticRoot.firstChild.children.find((c) => c.dataset && c.dataset.kind === 'AnchorBox')
     ].every(Boolean),
-    syntheticEventRoundtrip: syntheticEvents.length === 1 && syntheticEvents[0] === 'synthetic.ok'
+    syntheticEventRoundtrip: syntheticEvents.length === 1 && syntheticEvents[0] === 'synthetic.ok',
+    syntheticAbsoluteUsesPX: absWithZ && absWithZ.dataset.boxUnit === 'px' && absWithZ.style.left === '1px' && absWithZ.style.width === '3px',
+    syntheticAnchoredUsesUI: anchoredWithZ && anchoredWithZ.dataset.boxUnit === 'ui' && anchoredWithZ.style.left === '10%' && anchoredWithZ.style.right === '9.999999999999998%',
+    syntheticZOrdering: JSON.stringify(syntheticOrder) === JSON.stringify(['0.5', '0.6', '0.4']),
+    syntheticDefaultZZero: absDefaultZ && absDefaultZ.dataset.zOrder === '0' && absDefaultZ.style.zIndex === '0',
+    syntheticRejectsOutOfRangeZ
   };
 
   process.stdout.write(JSON.stringify(summary));
@@ -257,6 +302,11 @@ run(process.argv[1]).catch((err) => {
 		Deterministic        bool   `json:"deterministic"`
 		SyntheticKinds       bool   `json:"syntheticKinds"`
 		SyntheticEventBridge bool   `json:"syntheticEventRoundtrip"`
+		SyntheticAbsolutePX  bool   `json:"syntheticAbsoluteUsesPX"`
+		SyntheticAnchoredUI  bool   `json:"syntheticAnchoredUsesUI"`
+		SyntheticZOrder      bool   `json:"syntheticZOrdering"`
+		SyntheticDefaultZ    bool   `json:"syntheticDefaultZZero"`
+		SyntheticRejectsZ    bool   `json:"syntheticRejectsOutOfRangeZ"`
 	}
 	if err := json.Unmarshal(out, &summary); err != nil {
 		t.Fatalf("decode harness summary: %v\noutput=%q", err, string(out))
@@ -285,5 +335,14 @@ run(process.argv[1]).catch((err) => {
 	}
 	if !summary.SyntheticEventBridge {
 		t.Fatalf("expected synthetic button click to invoke canonical host dispatch callback")
+	}
+	if !summary.SyntheticAbsolutePX || !summary.SyntheticAnchoredUI {
+		t.Fatalf("expected host renderer to preserve px/ui unit semantics for absolute/anchored boxes")
+	}
+	if !summary.SyntheticZOrder || !summary.SyntheticDefaultZ {
+		t.Fatalf("expected deterministic z-order rendering with default z=0")
+	}
+	if !summary.SyntheticRejectsZ {
+		t.Fatalf("expected host renderer to reject out-of-range z-order")
 	}
 }

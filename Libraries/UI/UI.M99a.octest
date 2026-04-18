@@ -1,0 +1,25 @@
+package UI
+
+[Fact]
+fn PlacementBoxDefaultZIsZeroInSignature() -> Void {
+    let ui = Canvas([
+        Place(AbsoluteBox(10.0 px, 20.0 px, 30.0 px, 40.0 px), Text("abs-default")),
+        Place(AnchoredBox(0.1 ui, 0.2 ui, 0.6 ui, 0.9 ui), Text("anchor-default"))
+    ])
+
+    let sig = Signature(ui)
+    Assert.True(Contains(sig, "absolute(z=0"), "AbsoluteBox default z should be 0")
+    Assert.True(Contains(sig, "anchored(z=0"), "AnchoredBox default z should be 0")
+}
+
+[Fact]
+fn PlacementBoxExplicitZIsVisibleAndPatchable() -> Void {
+    let ui = Canvas([
+        Place(AbsoluteBoxZ(2.0 px, 3.0 px, 44.0 px, 55.0 px, -3), Text("lower")),
+        Place(AnchoredBoxZ(0.2 ui, 0.2 ui, 0.8 ui, 0.8 ui, 4), Text("upper"))
+    ])
+
+    let mounted = MountUI(ui)
+    Assert.Equal(0, PatchUI(mounted, ui), "explicit z placement should patch cleanly")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}

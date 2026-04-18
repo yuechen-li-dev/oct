@@ -2714,8 +2714,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' does not accept type arguments")
 		}
-		if len(arguments) != 5 {
-			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' expects 5 arguments, got %d", len(arguments))
+		if len(arguments) != 6 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' expects 6 arguments, got %d", len(arguments))
 		}
 		for idx := 0; idx < 4; idx++ {
 			valueType, err := c.checkExpr(scope, arguments[idx], ctx)
@@ -2739,14 +2739,24 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if childType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 5 expects UI, got %s", childType.ValueType)
 		}
+		zType, err := c.checkExpr(scope, arguments[5], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if zType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if zType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 6 expects Int, got %s", zType.ValueType)
+		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}
 	if callee == "UIPlaceAnchored" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' does not accept type arguments")
 		}
-		if len(arguments) != 5 {
-			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' expects 5 arguments, got %d", len(arguments))
+		if len(arguments) != 6 {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' expects 6 arguments, got %d", len(arguments))
 		}
 		for idx := 0; idx < 4; idx++ {
 			valueType, err := c.checkExpr(scope, arguments[idx], ctx)
@@ -2769,6 +2779,16 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		if childType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 5 expects UI, got %s", childType.ValueType)
+		}
+		zType, err := c.checkExpr(scope, arguments[5], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if zType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if zType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 6 expects Int, got %s", zType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}
