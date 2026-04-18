@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Machina UI Host (M99)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main>
+    <h1>Machina UI Host Renderer (M99)</h1>
+    <p>This browser host loads real Machina UI Wasm, consumes canonical UIIR JSON, and renders the current bounded UI slice.</p>
+    <div id="machina-root" class="machina-root" aria-live="polite"></div>
+  </main>
+  <script src="./host.js"></script>
+  <script>
+    (async function () {
+      const wasmParam = new URLSearchParams(window.location.search).get('wasm');
+      const wasmURL = wasmParam || './machina-ui-m98-counter.wasm';
+      const container = document.getElementById('machina-root');
+      try {
+        await window.MachinaUIHost.bootBrowserHost({
+          wasmURL,
+          container,
+          document,
+          fetchImpl: window.fetch.bind(window)
+        });
+      } catch (err) {
+        container.textContent = 'Host boot failed: ' + (err && err.message ? err.message : String(err));
+      }
+    })();
+  </script>
+</body>
+</html>
