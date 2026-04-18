@@ -29,25 +29,13 @@ fn BisectionRootFindsKnownRootFromValidBracket() -> Void {
 
 [Fact]
 fn BisectionRootRejectsInvalidInputsAndNonBracketingIntervals() -> Void {
-    match BisectionRoot(f, 2.0, 1.0, 0.000001, 50) {
-        ok(v) => { Assert.True(false, "a >= b must fail") }
-        err(e) => { }
-    }
+    Assert.Error(BisectionRoot(f, 2.0, 1.0, 0.000001, 50), "a >= b must fail")
 
-    match BisectionRoot(f, 1.0, 2.0, 0.0, 50) {
-        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(BisectionRoot(f, 1.0, 2.0, 0.0, 50), "tolerance <= 0 must fail")
 
-    match BisectionRoot(f, 1.0, 2.0, 0.000001, 0) {
-        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(BisectionRoot(f, 1.0, 2.0, 0.000001, 0), "maxIterations <= 0 must fail")
 
-    match BisectionRoot(f, 2.0, 3.0, 0.000001, 50) {
-        ok(v) => { Assert.True(false, "non-bracketing interval must fail") }
-        err(e) => { }
-    }
+    Assert.Error(BisectionRoot(f, 2.0, 3.0, 0.000001, 50), "non-bracketing interval must fail")
 }
 
 [Fact]
@@ -70,20 +58,11 @@ fn NewtonRootFindsKnownRootWithDerivative() -> Void {
 
 [Fact]
 fn NewtonRootRejectsInvalidInputsAndUnsafeDerivative() -> Void {
-    match NewtonRoot(f, df, 1.0, 0.0, 20) {
-        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(NewtonRoot(f, df, 1.0, 0.0, 20), "tolerance <= 0 must fail")
 
-    match NewtonRoot(f, df, 1.0, 0.000001, 0) {
-        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(NewtonRoot(f, df, 1.0, 0.000001, 0), "maxIterations <= 0 must fail")
 
-    match NewtonRoot(g, dg, 0.0, 0.000001, 20) {
-        ok(v) => { Assert.True(false, "near-zero derivative step must fail") }
-        err(e) => { }
-    }
+    Assert.Error(NewtonRoot(g, dg, 0.0, 0.000001, 20), "near-zero derivative step must fail")
 }
 
 [Fact]

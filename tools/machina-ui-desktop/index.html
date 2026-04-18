@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Machina UI Desktop Host (M100)</title>
+  <link rel="stylesheet" href="../machina-ui-host/styles.css" />
+</head>
+<body>
+  <main>
+    <h1>Machina UI Desktop Host (M100)</h1>
+    <p>This webview-backed host reuses the same Wasm/UIIR/event runtime contract as the browser host.</p>
+    <div id="app" class="machina-root"></div>
+  </main>
+
+  <script src="../machina-ui-host/host.js"></script>
+  <script src="./desktop_host.js"></script>
+  <script>
+    (async function run() {
+      const container = document.getElementById('app');
+      await window.MachinaUIDesktopHost.bootDesktopHost({
+        document,
+        container,
+        nativeBridge: window.MachinaDesktopBridge
+      });
+    })().catch((err) => {
+      const pre = document.createElement('pre');
+      pre.textContent = String(err && err.stack ? err.stack : err);
+      document.body.appendChild(pre);
+    });
+  </script>
+</body>
+</html>

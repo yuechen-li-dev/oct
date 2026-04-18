@@ -1,0 +1,359 @@
+package Cooking
+
+// ============================================================
+// Weight conversions
+// ============================================================
+
+[Fact]
+fn GramsToOuncesAndBack() -> Void {
+    let g  = 100.0
+    let oz = GramsToOunces(g)
+    let back = OuncesToGrams(oz)
+    Assert.Near(g, back, 0.001, "grams -> ounces -> grams round-trips")
+}
+
+[Fact]
+fn GramsToPoundsAndBack() -> Void {
+    let g   = 454.0
+    let lb  = GramsToPounds(g)
+    let back = PoundsToGrams(lb)
+    Assert.Near(g, back, 0.1, "grams -> pounds -> grams round-trips")
+}
+
+[Fact]
+fn OneKilogramIsAboutTwoPoundsTwoOunces() -> Void {
+    let lb = GramsToPounds(1000.0)
+    Assert.Near(2.205, lb, 0.001, "1 kg ≈ 2.205 lb")
+}
+
+// ============================================================
+// Volume conversions
+// ============================================================
+
+[Fact]
+fn MlAndFlOzRoundTrip() -> Void {
+    let ml   = 250.0
+    let floz = MlToFlOz(ml)
+    let back = FlOzToMl(floz)
+    Assert.Near(ml, back, 0.01, "ml -> fl oz -> ml round-trips")
+}
+
+[Fact]
+fn OneCupIsAbout237Ml() -> Void {
+    Assert.Near(236.588, CupsToMl(1.0), 0.01, "1 cup ≈ 236.6 ml")
+}
+
+[Fact]
+fn CupsAndMlRoundTrip() -> Void {
+    let cups = 2.5
+    let ml   = CupsToMl(cups)
+    let back = MlToCups(ml)
+    Assert.Near(cups, back, 0.0001, "cups -> ml -> cups round-trips")
+}
+
+[Fact]
+fn OneTbspIsThreeTsp() -> Void {
+    let tbspMl = TbspToMl(1.0)
+    let tspMl  = TspToMl(3.0)
+    Assert.Near(tbspMl, tspMl, 0.01, "1 tbsp = 3 tsp in ml")
+}
+
+// ============================================================
+// Temperature conversion
+// ============================================================
+
+[Fact]
+fn CelsiusToFahrenheitKnownValues() -> Void {
+    Assert.Near(32.0,  CelsiusToFahrenheit(0.0),   0.001, "0 C = 32 F")
+    Assert.Near(212.0, CelsiusToFahrenheit(100.0),  0.001, "100 C = 212 F")
+    Assert.Near(350.0, CelsiusToFahrenheit(176.67), 0.1,   "177 C ≈ 350 F")
+}
+
+[Fact]
+fn FahrenheitToCelsiusRoundTrips() -> Void {
+    let c    = 180.0
+    let f    = CelsiusToFahrenheit(c)
+    let back = FahrenheitToCelsius(f)
+    Assert.Near(c, back, 0.0001, "C -> F -> C round-trips")
+}
+
+[Fact]
+fn CelsiusToGasMarkKnownValues() -> Void {
+    Assert.Equal(4, CelsiusToGasMark(177.0)!, "177 C = gas mark 4 (moderate)")
+    Assert.Equal(6, CelsiusToGasMark(200.0)!, "200 C = gas mark 6 (hot)")
+    Assert.Equal(1, CelsiusToGasMark(135.0)!, "135 C = gas mark 1 (very low)")
+    Assert.Equal(7, CelsiusToGasMark(220.0)!, "220 C = gas mark 7 (very hot)")
+}
+
+[Fact]
+fn CelsiusToGasMarkRejectsTooLow() -> Void {
+    Assert.Error(CelsiusToGasMark(100.0), "too low should fail")
+}
+
+// ============================================================
+// Temperature stages
+// ============================================================
+
+[Fact]
+fn SugarStageKnownTemperatures() -> Void {
+    Assert.Equal("soft ball (116-120 C)", SugarStage(118.0), "118 C = soft ball")
+    Assert.Equal("hard crack (149-165 C)", SugarStage(155.0), "155 C = hard crack")
+    Assert.Equal("clear caramel (166-179 C)", SugarStage(170.0), "170 C = clear caramel")
+    Assert.Equal("dark caramel / burnt (180+ C)", SugarStage(185.0), "185 C = dark caramel")
+}
+
+[Fact]
+fn BeefDonenessKnownTemperatures() -> Void {
+    Assert.Equal("rare (below 50 C)",        BeefDoneness(45.0), "45 C = rare")
+    Assert.Equal("medium-rare (50-54 C)",    BeefDoneness(52.0), "52 C = medium-rare")
+    Assert.Equal("medium (55-59 C)",         BeefDoneness(57.0), "57 C = medium")
+    Assert.Equal("well done (65+ C)",        BeefDoneness(70.0), "70 C = well done")
+}
+
+[Fact]
+fn IsSafeTemperaturePoultryAt74() -> Void {
+    Assert.True(IsSafeTemperature("poultry", 74.0)!, "74 C poultry is safe")
+    Assert.False(IsSafeTemperature("poultry", 70.0)!, "70 C poultry is not safe")
+}
+
+[Fact]
+fn IsSafeTemperatureUnknownProteinErrors() -> Void {
+    Assert.Error(IsSafeTemperature("mystery_meat", 80.0), "unknown protein should error")
+}
+
+// ============================================================
+// Volume-to-weight conversion
+// ============================================================
+
+[Fact]
+fn GramsPerCupBreadFlourIsHeavierThanCakeFlour() -> Void {
+    let bread = GramsPerCup("bread_flour")!
+    let cake  = GramsPerCup("cake_flour")!
+    Assert.True(bread > cake, "bread flour denser than cake flour per cup")
+}
+
+[Fact]
+fn CupsToGramsAllPurposeFlour() -> Void {
+    // 2 cups all-purpose flour = 250g
+    let g = CupsToGrams(2.0, "all_purpose_flour")!
+    Assert.Near(250.0, g, 0.001, "2 cups AP flour = 250g")
+}
+
+[Fact]
+fn GramsPerCupUnknownIngredientErrors() -> Void {
+    Assert.Error(GramsPerCup("dragon_scales"), "unknown ingredient should error")
+}
+
+// ============================================================
+// Baker's percentages
+// ============================================================
+
+[Fact]
+fn BakersPercentageFlourIs100Percent() -> Void {
+    let pct = BakersPercentage(500.0, 500.0)!
+    Assert.Near(100.0, pct, 0.000001, "flour is always 100%")
+}
+
+[Fact]
+fn BakersPercentage65HydrationBread() -> Void {
+    // 65% hydration: 325g water per 500g flour
+    let pct = BakersPercentage(325.0, 500.0)!
+    Assert.Near(65.0, pct, 0.001, "325g water / 500g flour = 65%")
+}
+
+[Fact]
+fn FromBakersPercentageRoundTrips() -> Void {
+    let flour = 400.0
+    let waterPct = 68.0
+    let waterG = FromBakersPercentage(waterPct, flour)!
+    let backPct = BakersPercentage(waterG, flour)!
+    Assert.Near(waterPct, backPct, 0.0001, "baker's percentage round-trips")
+}
+
+[Fact]
+fn TotalDoughWeightSumsAllIngredients() -> Void {
+    // 500g flour (100%), 325g water (65%), 10g salt (2%), 5g yeast (1%)
+    let flour = 500.0
+    let pcts  = [100.0, 65.0, 2.0, 1.0]
+    let total = TotalDoughWeight(pcts, flour)!
+    Assert.Near(840.0, total, 0.01, "total dough = flour + water + salt + yeast")
+}
+
+// ============================================================
+// Recipe scaling — the centerpiece
+// ============================================================
+
+[Fact]
+fn ScaleIngredientIsLinear() -> Void {
+    Assert.Near(200.0, ScaleIngredient(100.0, 2.0)!, 0.000001, "2x doubles ingredient")
+    Assert.Near(75.0,  ScaleIngredient(100.0, 0.75)!, 0.000001, "0.75x scales down")
+    Assert.Near(350.0, ScaleIngredient(100.0, 3.5)!, 0.000001, "3.5x scales up")
+}
+
+[Fact]
+fn ScaleLeaveningBelowThreeXIsLinear() -> Void {
+    // Below 3x: exact linear scaling.
+    Assert.Near(2.0, ScaleLeavening(1.0, 2.0)!, 0.000001, "2x leavening is linear")
+    Assert.Near(3.0, ScaleLeavening(1.0, 3.0)!, 0.000001, "3x leavening is linear at boundary")
+}
+
+[Fact]
+fn ScaleLeaveningAboveThreeXIsCorrected() -> Void {
+    // 4x: linear part = 3 tsp, excess = 1 unit * 0.75 = 0.75, total = 3.75
+    let result = ScaleLeavening(1.0, 4.0)!
+    Assert.Near(3.75, result, 0.000001, "4x leavening = 3.75 (corrected)")
+
+    // 5x: linear = 3, excess = 2 * 0.75 = 1.5, total = 4.5
+    let result5 = ScaleLeavening(1.0, 5.0)!
+    Assert.Near(4.5, result5, 0.000001, "5x leavening = 4.5 (corrected)")
+}
+
+[Fact]
+fn ScaleLeaveningCorrectionIsAlwaysLessThanLinear() -> Void {
+    // The correction should always be less than naive linear scaling above 3x.
+    let c4  = ScaleLeavening(1.0, 4.0)!
+    let c5  = ScaleLeavening(1.0, 5.0)!
+    let c6  = ScaleLeavening(1.0, 6.0)!
+    let c8  = ScaleLeavening(1.0, 8.0)!
+    let c10 = ScaleLeavening(1.0, 10.0)!
+    Assert.True(c4  < 4.0,  "4x: corrected < linear")
+    Assert.True(c5  < 5.0,  "5x: corrected < linear")
+    Assert.True(c6  < 6.0,  "6x: corrected < linear")
+    Assert.True(c8  < 8.0,  "8x: corrected < linear")
+    Assert.True(c10 < 10.0, "10x: corrected < linear")
+}
+
+[Fact]
+fn ScaleSaltBelowTwoXIsLinear() -> Void {
+    Assert.Near(1.5, ScaleSalt(1.0, 1.5)!, 0.000001, "1.5x salt is linear")
+    Assert.Near(2.0, ScaleSalt(1.0, 2.0)!, 0.000001, "2x salt is linear at boundary")
+}
+
+[Fact]
+fn ScaleSaltAboveTwoXIsCorrected() -> Void {
+    // 3x: linear part = 2, excess = 1 * 0.9 = 0.9, total = 2.9
+    Assert.Near(2.9, ScaleSalt(1.0, 3.0)!, 0.000001, "3x salt = 2.9 (corrected)")
+}
+
+[Fact]
+fn ScaleLeaveningAndSaltCorrectionsDivergeAtHighScales() -> Void {
+    // Leavening correction (75%) is more aggressive than salt (90%).
+    let leavening = ScaleLeavening(1.0, 6.0)!
+    let salt      = ScaleSalt(1.0, 6.0)!
+    Assert.True(leavening < salt, "leavening correction more aggressive than salt at 6x")
+}
+
+[Fact]
+fn PanAreaScaleFactorNineInchVsEightInch() -> Void {
+    // 8-inch to 9-inch round pan: (9/8)^2 = 1.266
+    let factor = PanAreaScaleFactor(8.0, 9.0)!
+    Assert.Near(1.2656, factor, 0.001, "8 to 9 inch pan area factor")
+}
+
+[Fact]
+fn PanAreaScaleFactorDoubleSquarePan() -> Void {
+    // Doubling a square pan side doubles each dimension.
+    // Area factor = 4, so you need 4x the recipe.
+    let factor = PanAreaScaleFactor(8.0, 16.0)!
+    Assert.Near(4.0, factor, 0.000001, "doubling pan dimensions = 4x recipe")
+}
+
+// ============================================================
+// Yield and trim loss
+// ============================================================
+
+[Fact]
+fn NetWeightLeeks40PercentTrimLoss() -> Void {
+    // Buy 500g leeks, lose 40% to tops: keep 300g.
+    let net = NetWeight(500.0, 40.0)!
+    Assert.Near(300.0, net, 0.001, "500g leeks at 40% trim = 300g net")
+}
+
+[Fact]
+fn GrossWeightRequiredIsInverseOfNetWeight() -> Void {
+    let net      = 300.0
+    let trimLoss = 40.0
+    let gross    = GrossWeightRequired(net, trimLoss)!
+    let backNet  = NetWeight(gross, trimLoss)!
+    Assert.Near(net, backNet, 0.001, "GrossWeightRequired inverts NetWeight")
+}
+
+[Fact]
+fn ZeroTrimLossPreservesWeight() -> Void {
+    Assert.Near(500.0, NetWeight(500.0, 0.0)!, 0.000001, "0% trim loss = no loss")
+}
+
+// ============================================================
+// Brine and dilution
+// ============================================================
+
+[Fact]
+fn BrineSaltPercentKnownValues() -> Void {
+    // 30g salt in 1000g water = 30/1030 ≈ 2.91%
+    let pct = BrineSaltPercent(30.0, 1000.0)!
+    Assert.Near(2.913, pct, 0.001, "30g salt / 1000g water ≈ 2.91%")
+}
+
+[Fact]
+fn SaltForBrineHitsTargetPercent() -> Void {
+    // How much salt for a 3% brine in 1000g water?
+    let salt = SaltForBrine(1000.0, 3.0)!
+    let check = BrineSaltPercent(salt, 1000.0)!
+    Assert.Near(3.0, check, 0.001, "SaltForBrine produces target percentage")
+}
+
+[Fact]
+fn ReductionConcentrationDoublesAt50PercentReduction() -> Void {
+    // Reduce by 50%: 2% concentration doubles to 4%.
+    let result = ReductionConcentration(2.0, 50.0)!
+    Assert.Near(4.0, result, 0.000001, "50% reduction doubles concentration")
+}
+
+[Fact]
+fn ReductionConcentrationTriplesAt67PercentReduction() -> Void {
+    // Reduce by 66.67%: retain 1/3 of volume, triple concentration.
+    let result = ReductionConcentration(3.0, 66.667)!
+    Assert.Near(9.0, result, 0.01, "66.7% reduction triples concentration")
+}
+
+// ============================================================
+// Composition: real baking scenario
+// ============================================================
+
+[Fact]
+fn ScalingACakeRecipeFrom8To10InchPan() -> Void {
+    // Original recipe for 8-inch pan:
+    // - 200g flour, 150g sugar, 2 tsp baking powder, 1 tsp salt, 120ml milk
+    // Scale to 10-inch pan.
+    let scaleFactor = PanAreaScaleFactor(8.0, 10.0)!  // (10/8)^2 = 1.5625
+
+    let flour    = ScaleIngredient(200.0, scaleFactor)!
+    let sugar    = ScaleIngredient(150.0, scaleFactor)!
+    let bakingPw = ScaleLeavening(2.0, scaleFactor)!
+    let salt     = ScaleSalt(1.0, scaleFactor)!
+    let milk     = ScaleIngredient(120.0, scaleFactor)!
+
+    // Flour and sugar scale linearly.
+    Assert.Near(312.5, flour, 0.1, "flour scales linearly")
+    Assert.Near(234.375, sugar, 0.1, "sugar scales linearly")
+
+    // Baking powder: scale factor < 3, so still linear.
+    Assert.Near(3.125, bakingPw, 0.001, "baking powder linear at 1.56x")
+
+    // All corrections are below threshold at this scale.
+    Assert.Near(1.5625, salt, 0.001, "salt linear at 1.56x")
+    Assert.Near(187.5, milk, 0.1, "milk scales linearly")
+}
+
+[Fact]
+fn ScalingBreadRecipeByFiveXShowsLeaveningCorrection() -> Void {
+    // Original: 7g instant yeast for a standard loaf.
+    // Scale 5x for a commercial batch.
+    let linear    = ScaleIngredient(7.0, 5.0)!
+    let corrected = ScaleLeavening(7.0, 5.0)!
+
+    Assert.Near(35.0, linear, 0.000001, "linear would give 35g yeast")
+    // Corrected: 7*3 + 7*2*0.75 = 21 + 10.5 = 31.5g
+    Assert.Near(31.5, corrected, 0.000001, "corrected gives 31.5g yeast")
+    Assert.True(corrected < linear, "corrected yeast is less than linear at 5x")
+}

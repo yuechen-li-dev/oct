@@ -1,0 +1,40 @@
+package MainValid
+
+record Ingredient {
+    Name: String
+    Grams: Float
+}
+
+enum Phase {
+    Solid
+    Liquid
+    Gas
+}
+
+fn Ingredients() -> Ingredient[] {
+    return [
+        Ingredient { Name: "Flour" Grams: 500.0 },
+        Ingredient { Name: "Salt" Grams: 10.0 }
+    ]
+}
+
+fn IngredientName(xs: Ingredient[]) -> String {
+    return xs[1].Name
+}
+
+fn AllowedPhases() -> Phase[] {
+    return [Phase.Solid, Phase.Liquid]
+}
+
+[Fact]
+fn NamedRecordAndEnumArraysM85() -> Void {
+    let ingredients = Ingredients()
+    Assert.Equal(2, Len(ingredients), "ingredient array length")
+    Assert.Equal("Salt", IngredientName(ingredients), "record array parameter + indexing")
+    Assert.Equal(500.0, ingredients[0].Grams, "record array field access")
+
+    let phases = AllowedPhases()
+    Assert.Equal(2, Len(phases), "enum array length")
+    Assert.True(phases[0] == Phase.Solid, "enum array element 0")
+    Assert.True(phases[1] == Phase.Liquid, "enum array element 1")
+}

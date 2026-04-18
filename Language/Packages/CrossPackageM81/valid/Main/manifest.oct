@@ -1,0 +1,22 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "Cross-package import contract validation"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}

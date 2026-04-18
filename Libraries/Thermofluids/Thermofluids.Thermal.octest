@@ -30,30 +30,15 @@ fn FirstOrderThermalStepMatchesExplicitRecurrence() -> Void {
 
 [Fact]
 fn ThermalInvalidSetupRejected() -> Void {
-    match ThermalEnergy(0kg, 4200m^2/s^2, 300.0) {
-        ok(v) => { Assert.True(false, "mass <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ThermalEnergy(0kg, 4200m^2/s^2, 300.0), "mass <= 0 must fail")
 
-    match ThermalEnergy(10kg, 0m^2/s^2, 300.0) {
-        ok(v) => { Assert.True(false, "cp <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ThermalEnergy(10kg, 0m^2/s^2, 300.0), "cp <= 0 must fail")
 
-    match HeatFlowNewtonCooling(10kg/s^3, 0m^2, 320.0, 300.0) {
-        ok(v) => { Assert.True(false, "area <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(HeatFlowNewtonCooling(10kg/s^3, 0m^2, 320.0, 300.0), "area <= 0 must fail")
 
-    match FirstOrderThermalStep(320.0, 300.0, 0.0s, 1.0s) {
-        ok(v) => { Assert.True(false, "tau <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(FirstOrderThermalStep(320.0, 300.0, 0.0s, 1.0s), "tau <= 0 must fail")
 
-    match FirstOrderThermalStep(320.0, 300.0, 10.0s, 0.0s) {
-        ok(v) => { Assert.True(false, "dt <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(FirstOrderThermalStep(320.0, 300.0, 10.0s, 0.0s), "dt <= 0 must fail")
 }
 
 [Fact]

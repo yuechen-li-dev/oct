@@ -24,6 +24,21 @@ Conditions never use implicit coercion.
 - `step` must be `Int` and greater than zero.
 - `while` conditions must be `Bool`.
 
+### Decision surfaces by context
+
+Outside flow state bodies, use ordinary program control flow:
+
+- `if`
+- `switch`
+- `when utility` (expression form)
+
+Inside `flow/state` bodies, use Octomata decision surfaces:
+
+- guard `when { ... -> ... }`
+- `when policy { ... } { ... }`
+
+When a flow-only form is used outside a flow state, diagnostics should steer you back to `switch` or `when utility`.
+
 ### Decision ladder policy
 
 - Nested `else { if ... }` decision ladders are rejected.

@@ -40,6 +40,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "fn Main() -> Int { let x = [1, 2, 3] return x[1] }",
 		},
 		{
+			name: "nested array return and indexing",
+			src:  "fn Grid() -> Int[][] { return [[1, 2], [3, 4]] } fn Main() -> Int { let g = Grid() return g[1][0] }",
+		},
+		{
 			name: "for loop over range",
 			src:  "fn Main() -> Int { for i in 0..3 { return i } return 0 }",
 		},
@@ -84,6 +88,14 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "record P { X: Int } fn Main() -> Int { var x = [P { X: 1 }] x[0] = P { X: 2 } return x[0].X }",
 		},
 		{
+			name: "named record arrays in signatures",
+			src:  "record Ingredient { Name: String Grams: Float } fn First(xs: Ingredient[]) -> Ingredient { return xs[0] } fn Main() -> String { let xs = [Ingredient { Name: \"Flour\" Grams: 500.0 }] return First(xs).Name }",
+		},
+		{
+			name: "named enum arrays in signatures",
+			src:  "enum Phase { Solid Liquid Gas } fn Allowed() -> Phase[] { return [Phase.Solid, Phase.Liquid] } fn Main() -> Bool { let phases = Allowed() return phases[1] == Phase.Liquid }",
+		},
+		{
 			name: "whole value record reassignment",
 			src:  "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }",
 		},
@@ -122,6 +134,7 @@ func TestCheckRejectsInvalidOperatorUsage(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Bool[] { return [true, false] + [true, true] }", `function Main: operator "+" not defined for Bool[] and Bool[]`)
 	assertTypeErrorContains(t, `fn Main() -> String { return "value: " + 1 }`, `function Main: operator "+" not defined for String and Int`)
 	assertTypeErrorContains(t, `fn Main() -> String { return 1 + "x" }`, `function Main: operator "+" not defined for Int and String`)
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [[1, 2], [3, 4]] }", "function Main: function expects Matrix<Int>, but return is Int[][]")
 }
 
 func TestCheckRejectsUndefinedVariable(t *testing.T) {
@@ -339,10 +352,12 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return WriteOctagon(\"a.octagon\") }", "function Main: function 'WriteOctagon' expects 2 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\") }", "function Main: function 'UIButton' expects 3 arguments, got 2")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIButton(\"go\", \"evt\", \"yes\") }", "function Main: function 'UIButton' argument 3 expects Bool, got String")
-	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.0, 0.0, 10.0, Text(\"x\")) } fn Text(content: String) -> UI { return UIText(content) }", "function Main: function 'UIPlaceAbsolute' expects 5 arguments, got 4")
-	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.1ui, 0.0px, 10.0px, 10.0px, UIText(\"x\")) }", "function Main: function 'UIPlaceAbsolute' argument 1 expects Float<px>, got Float<ui>")
-	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(1.0px, 0.0ui, 1.0ui, 1.0ui, UIText(\"x\")) }", "function Main: function 'UIPlaceAnchored' argument 1 expects Float<ui>, got Float<px>")
-	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(0.0ui, 0.0ui, 1.0ui, 1.0ui, \"x\") }", "function Main: function 'UIPlaceAnchored' argument 5 expects UI, got String")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.0, 0.0, 10.0, Text(\"x\")) } fn Text(content: String) -> UI { return UIText(content) }", "function Main: function 'UIPlaceAbsolute' expects 6 arguments, got 4")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.1ui, 0.0px, 10.0px, 10.0px, UIText(\"x\"), 0) }", "function Main: function 'UIPlaceAbsolute' argument 1 expects Float<px>, got Float<ui>")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(1.0px, 0.0ui, 1.0ui, 1.0ui, UIText(\"x\"), 0) }", "function Main: function 'UIPlaceAnchored' argument 1 expects Float<ui>, got Float<px>")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAnchored(0.0ui, 0.0ui, 1.0ui, 1.0ui, \"x\", 0) }", "function Main: function 'UIPlaceAnchored' argument 5 expects UI, got String")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.0px, 0.0px, 1.0px, 1.0px, UIText(\"x\"), 0.1) }", "function Main: function 'UIPlaceAbsolute' argument 6 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> UI { return UISpacer(1) }", "function Main: function 'UISpacer' expects 0 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")
@@ -584,10 +599,35 @@ func TestCheckValidatesM16VectorsMatrices(t *testing.T) {
 func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3]] }", "matrix rows must all have equal length")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2.0] }", "Vector literals require homogeneous element type")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return [1, 2] }", "function Main: function expects Vector<Int>, but return is Int[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [1, 2] }", "function Main: function expects Matrix<Int>, but return is Int[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [[1, 2] [3, 4]] }", "array indexing requires exactly 1 index, got 2")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[0] }", "matrix indexing requires exactly 2 indices, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
+}
+
+func TestCheckValidatesM92DimensionedLinearAlgebra(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Vector<Float<m>> { return vector[1.0m, 2.0m] }",
+		"fn Main() -> Matrix<Float<kg/s^2>> { return matrix[[1.0kg/s^2, 2.0kg/s^2] [3.0kg/s^2, 4.0kg/s^2]] }",
+		"fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] return k @ u }",
+		"fn Main() -> Matrix<Float<kg^2/s^3>> { let a = matrix[[1.0kg/s, 0.0kg/s] [0.0kg/s, 2.0kg/s]] let b = matrix[[3.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 4.0kg/s^2]] return a @ b }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM92DimensionedLinearAlgebra(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] let f = k @ u return f + vector[1.0s, 2.0s] }", "cannot add m*kg/s^2 and s")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<m>> { return [1.0m, 2.0m] }", "function Main: function expects Vector<Float<m>>, but return is Float<m>[]")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Float<kg/s^2>> { return [[1.0kg/s^2, 2.0kg/s^2], [3.0kg/s^2, 4.0kg/s^2]] }", "function Main: function expects Matrix<Float<kg/s^2>>, but return is Float<kg/s^2>[]")
+	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2] }", "operator '@' not defined for Vector<Float<m>> and Vector<Float<kg/s^2>>")
 }
 
 func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
@@ -619,7 +659,7 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { remember return 0 }", "function Main: remember is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "fn Main() -> Int { resume return 0 }", "function Main: resume is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "flow BadReturn() -> Int { state S { return true } } fn Main() -> Int { return 0 }", "function BadReturn: function expects Int, but return is Bool")
-	assertTypeErrorContains(t, "fn Main() -> Int { when { case true -> return 1 else -> return 2 } }", "function Main: when is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "fn Main() -> Int { when { case true -> return 1 else -> return 2 } }", "function Main: guard when is only valid inside flow state bodies; outside flows use switch or when utility")
 	assertTypeErrorContains(t, "flow MissingElse(input: Bool) -> Int { state S { when { case input -> return 1 } } } fn Main() -> Int { return 0 }", "function MissingElse: when requires else branch")
 	assertTypeErrorContains(t, "flow BadCond(input: Int) -> Int { state S { when { case input -> return 1 else -> return 0 } } } fn Main() -> Int { return 0 }", "function BadCond: when case condition must be Bool, got Int")
 	assertTypeErrorContains(t, "flow BadGoto(input: Bool) -> Int { state S { when { case input -> goto Missing else -> return 0 } } } fn Main() -> Int { return 0 }", "flow BadGoto: goto target 'Missing' does not exist")
@@ -631,7 +671,7 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "flow BadBoardAccess() -> Int { board { A: Bool } state S { board.B = true return 0 } } fn Main() -> Int { return 0 }", "function BadBoardAccess: type '__flow_board_BadBoardAccess' has no field 'B'")
 	assertTypeErrorContains(t, "flow BadBoardAssign() -> Int { board { Count: Int } state S { board.Count = 1.5 return 0 } } fn Main() -> Int { return 0 }", "function BadBoardAssign: assignment to board.Count: expected Int, got Float")
 	assertTypeErrorContains(t, "flow BadBoardParam(board: Int) -> Int { board { Flag: Bool } state S { return 0 } } fn Main() -> Int { return 0 }", "flow BadBoardParam: parameter name 'board' conflicts with flow board declaration")
-	assertTypeErrorContains(t, "fn Main() -> Int { return when policy { hysteresis: 1 min_commit: 1 } { case 1 when true score 1 else 0 } }", "function Main: when policy is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "fn Main() -> Int { return when policy { hysteresis: 1 min_commit: 1 } { case 1 when true score 1 else 0 } }", "function Main: when policy is only valid inside flow state bodies; outside flows use switch or when utility")
 	assertTypeErrorContains(t, "flow BadUtilityCond(x: Int) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when x score 1 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityCond: let y: utility when case condition must be Bool")
 	assertTypeErrorContains(t, "flow BadUtilityScore(flag: Bool) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 1.5 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityScore: let y: utility when case score must be Int")
 	assertTypeErrorContains(t, "flow BadUtilityPolicy(flag: Bool) -> Int { state S { let y = when policy { hysteresis: true min_commit: 1 } { case 1 when flag score 1 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityPolicy: let y: utility when policy hysteresis must be Int")

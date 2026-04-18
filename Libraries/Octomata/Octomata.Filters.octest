@@ -23,15 +23,9 @@ fn LowPassUpdateSupportsAlphaBoundaryValues() -> Void {
 
 [Fact]
 fn LowPassUpdateRejectsInvalidAlpha() -> Void {
-    match LowPassUpdate(0.0 - 0.1, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "low-pass update must reject alpha < 0") }
-        err(e) => { }
-    }
+    Assert.Error(LowPassUpdate(0.0 - 0.1, 1.0, 0.0), "low-pass update must reject alpha < 0")
 
-    match LowPassUpdate(1.1, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "low-pass update must reject alpha > 1") }
-        err(e) => { }
-    }
+    Assert.Error(LowPassUpdate(1.1, 1.0, 0.0), "low-pass update must reject alpha > 1")
 }
 
 [Fact]

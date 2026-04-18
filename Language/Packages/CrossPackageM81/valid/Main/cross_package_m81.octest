@@ -1,0 +1,36 @@
+package Main
+
+import Cooking
+
+[Fact]
+fn package_qualified_function_call_across_packages() -> Void {
+    let grams = Cooking.CupsToGrams(2.0, "bread_flour")!
+    Assert.Near(240.0, grams, 0.0001, "2 cups bread flour should map to 240g")
+    return
+}
+
+[Fact]
+fn package_qualified_fallible_call_across_packages() -> Void ! Error {
+    let grams = Cooking.CupsToGrams(1.5, "pastry_flour")?
+    Assert.Near(165.0, grams, 0.0001, "fallible cross-package call should propagate via ?")
+    return
+}
+
+[Fact]
+fn package_qualified_enum_value_reference_across_packages() -> Void {
+    let flour = Cooking.Flour.Bread
+    Assert.True(flour == Cooking.PreferredFlour(), "package-qualified enum value should resolve")
+    return
+}
+
+[Fact]
+fn package_qualified_type_reference_across_packages() -> Void {
+    let recipe = Cooking.Recipe {
+        FlourKind: "pastry"
+        Cups: 2.0
+    }
+    let built = Cooking.BuildRecipe(2.0, "pastry")
+    Assert.True(recipe.FlourKind == built.FlourKind, "cross-package qualified record type should resolve")
+    Assert.Near(2.0, recipe.Cups, 0.0001, "record field should be populated")
+    return
+}

@@ -14,6 +14,7 @@ record UIBox {
     Top: Float<ui>
     Right: Float<ui>
     Bottom: Float<ui>
+    Z: Int
 }
 
 fn Column(children: UI[]) -> UI {
@@ -28,7 +29,19 @@ fn Canvas(children: UI[]) -> UI {
     return UICanvas(children)
 }
 
+fn Grid(children: UI[]) -> UI {
+    return UIGrid(children)
+}
+
+fn Spacer() -> UI {
+    return UISpacer()
+}
+
 fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
+    return AbsoluteBoxZ(x, y, width, height, 0)
+}
+
+fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
     return UIBox {
         Kind: "absolute"
         X: x
@@ -39,10 +52,15 @@ fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) 
         Top: 0.0 ui
         Right: 0.0 ui
         Bottom: 0.0 ui
+        Z: z
     }
 }
 
 fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
+    return AnchoredBoxZ(left, top, right, bottom, 0)
+}
+
+fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int) -> UIBox {
     return UIBox {
         Kind: "anchored"
         X: 0.0 px
@@ -53,15 +71,16 @@ fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<
         Top: top
         Right: right
         Bottom: bottom
+        Z: z
     }
 }
 
 fn Place(box: UIBox, child: UI) -> UI {
     if box.Kind == "absolute" {
-        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, box.Z)
     }
 
-    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child, box.Z)
 }
 
 fn MountUI(root: UI) -> Mount {

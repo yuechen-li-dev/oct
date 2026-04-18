@@ -34,17 +34,11 @@ flow BoardDeclLoop(tempHigh: Bool) -> String {
 fn DeclaredBoardDefaultsAndMutationsWork() -> Void {
     let nominal = BoardDeclLoop(false)
     Step(nominal)
-    match Result(nominal) {
-        ok(value) => {
-            Assert.Equal("", value, "String board fields should default to empty")
-        }
-        err(e) => { Assert.True(false, "nominal run should return") }
-    }
+    let nominalResult = Assert.LGTM(Result(nominal), "nominal run should return")
+    Assert.Equal("", nominalResult, "String board fields should default to empty")
 
     let fault = BoardDeclLoop(true)
     Step(fault)
-    match Result(fault) {
-        ok(value) => { Assert.Equal("fault", value, "mutated board fields should persist across goto") }
-        err(e) => { Assert.True(false, "fault run should return") }
-    }
+    let faultResult = Assert.LGTM(Result(fault), "fault run should return")
+    Assert.Equal("fault", faultResult, "mutated board fields should persist across goto")
 }

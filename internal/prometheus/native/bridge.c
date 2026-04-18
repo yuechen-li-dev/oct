@@ -1,33 +1,38 @@
 #include "bridge.h"
 
-#include <cstdlib>
+#include <stdlib.h>
+#include <string.h>
 
 struct prometheus_runtime {
   int placeholder;
 };
 
 int prometheus_runtime_create(prometheus_runtime** out_runtime) {
-  if (out_runtime == nullptr) {
+  if (out_runtime == NULL) {
     return PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
   }
-  const char* unavailable = std::getenv("PROMETHEUS_FORCE_UNAVAILABLE");
-  if (unavailable != nullptr && unavailable[0] == '1') {
-    *out_runtime = nullptr;
+  const char* unavailable = getenv("PROMETHEUS_FORCE_UNAVAILABLE");
+  if (unavailable != NULL && unavailable[0] == '1') {
+    *out_runtime = NULL;
     return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
   }
-  const char* force_submit_failure = std::getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
-  const char* stub_ready = std::getenv("PROMETHEUS_STUB_RUNTIME_READY");
-  if ((stub_ready == nullptr || stub_ready[0] != '1') &&
-      (force_submit_failure == nullptr || force_submit_failure[0] != '1')) {
-    *out_runtime = nullptr;
+  const char* force_submit_failure = getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
+  const char* stub_ready = getenv("PROMETHEUS_STUB_RUNTIME_READY");
+  if ((stub_ready == NULL || stub_ready[0] != '1') &&
+      (force_submit_failure == NULL || force_submit_failure[0] != '1')) {
+    *out_runtime = NULL;
     return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
   }
-  *out_runtime = new prometheus_runtime{1};
+  *out_runtime = (prometheus_runtime*)malloc(sizeof(prometheus_runtime));
+  if (*out_runtime == NULL) {
+    return PROMETHEUS_NATIVE_ERR_INTERNAL;
+  }
+  (*out_runtime)->placeholder = 1;
   return PROMETHEUS_NATIVE_OK;
 }
 
 void prometheus_runtime_destroy(prometheus_runtime* runtime) {
-  delete runtime;
+  free(runtime);
 }
 
 int prometheus_sgemm(prometheus_runtime* runtime,
@@ -39,28 +44,28 @@ int prometheus_sgemm(prometheus_runtime* runtime,
                      float* c,
                      int* out_stage,
                      int* out_code) {
-  if (out_stage != nullptr) {
+  if (out_stage != NULL) {
     *out_stage = PROMETHEUS_NATIVE_STAGE_UNKNOWN;
   }
-  if (out_code != nullptr) {
+  if (out_code != NULL) {
     *out_code = PROMETHEUS_NATIVE_OK;
   }
-  if (runtime == nullptr || a == nullptr || b == nullptr || c == nullptr || m <= 0 || n <= 0 || k <= 0) {
-    if (out_stage != nullptr) {
+  if (runtime == NULL || a == NULL || b == NULL || c == NULL || m <= 0 || n <= 0 || k <= 0) {
+    if (out_stage != NULL) {
       *out_stage = PROMETHEUS_NATIVE_STAGE_INIT;
     }
-    if (out_code != nullptr) {
+    if (out_code != NULL) {
       *out_code = PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
     }
     return PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
   }
 
-  const char* fail_submit = std::getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
-  if (fail_submit != nullptr && fail_submit[0] == '1') {
-    if (out_stage != nullptr) {
+  const char* fail_submit = getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
+  if (fail_submit != NULL && fail_submit[0] == '1') {
+    if (out_stage != NULL) {
       *out_stage = PROMETHEUS_NATIVE_STAGE_SUBMIT;
     }
-    if (out_code != nullptr) {
+    if (out_code != NULL) {
       *out_code = PROMETHEUS_NATIVE_ERR_INTERNAL;
     }
     return PROMETHEUS_NATIVE_ERR_INTERNAL;

@@ -13,7 +13,7 @@ fn CounterInit() -> CounterState {
 }
 
 fn CounterView(model: CounterState) -> UI {
-    let status = Text("count=" + ToString(model.Count))
+    let status = Text("count=" + CounterCountText(model.Count))
     let voltage = Text("voltage=" + FormatFloat(model.Voltage, 2))
     let canDecrement = model.Count > 0
     return Column([
@@ -55,7 +55,7 @@ fn CounterDecrementEvent() -> String {
     return "counter.decrement"
 }
 
-fn ToString(value: Int) -> String {
+fn CounterCountText(value: Int) -> String {
     if value == 0 {
         return "0"
     }

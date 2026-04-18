@@ -1,114 +1,281 @@
 package interpret
 
-import "testing"
+import (
+	"encoding/json"
+	"reflect"
+	"strings"
+	"testing"
+)
 
-func TestUISignatureIsDeterministic(t *testing.T) {
-	tree := &uiNode{
-		Kind: uiNodeColumn,
-		Children: []*uiNode{
-			{Kind: uiNodeText, Text: "count:0"},
-			{Kind: uiNodeRow, Children: []*uiNode{{Kind: uiNodeButton, Label: "+", Event: "inc", Enabled: true}, {Kind: uiNodeButton, Label: "-", Event: "dec", Enabled: false}}},
+func TestUIIRSignatureIsDeterministicForSameState(t *testing.T) {
+	tree := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "count:0"},
+			{Kind: uiirNodeRow, Children: []*uiirNode{{Kind: uiirNodeButton, Label: "+", Event: "inc", Enabled: true}, {Kind: uiirNodeButton, Label: "-", Event: "dec", Enabled: false}}},
 		},
 	}
 
-	left := uiSignature(tree)
-	right := uiSignature(cloneUI(tree))
+	left := uiirSignature(withUIIRNodeIDs(tree))
+	right := uiirSignature(withUIIRNodeIDs(cloneUIIR(tree)))
 	if left != right {
 		t.Fatalf("expected deterministic signature, got %q vs %q", left, right)
 	}
 }
 
-func TestUIEventDiscovery(t *testing.T) {
-	tree := &uiNode{
-		Kind: uiNodeColumn,
-		Children: []*uiNode{
-			{Kind: uiNodeText, Text: "hello"},
-			{Kind: uiNodeButton, Label: "go", Event: "go", Enabled: true},
-			{Kind: uiNodeButton, Label: "stop", Event: "stop", Enabled: false},
+func TestUIIRTreeContainsOnlyEnabledEvents(t *testing.T) {
+	tree := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "hello"},
+			{Kind: uiirNodeButton, Label: "go", Event: "go", Enabled: true},
+			{Kind: uiirNodeButton, Label: "stop", Event: "stop", Enabled: false},
 		},
 	}
 
-	if !uiTreeContainsEvent(tree, "go") {
+	if !uiirTreeContainsEvent(tree, "go") {
 		t.Fatal("expected event token to be discoverable")
 	}
-	if uiTreeContainsEvent(tree, "stop") {
+	if uiirTreeContainsEvent(tree, "stop") {
 		t.Fatal("disabled event token should not be discoverable")
 	}
 }
 
-func TestResolveAbsoluteBoxPlacement(t *testing.T) {
-	parent := &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
-	resolved, err := resolveBox(&uiBoxSpec{Kind: uiBoxAbsolute, X: 15, Y: 25, Width: 200, Height: 80}, parent)
+func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
+	parent := &uiirResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -2, X: 15, Y: 25, Width: 200, Height: 80}, parent)
 	if err != nil {
-		t.Fatalf("resolveBox returned unexpected error: %v", err)
+		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
 	if resolved.X != 15 || resolved.Y != 25 || resolved.Width != 200 || resolved.Height != 80 {
 		t.Fatalf("unexpected absolute placement resolution: %+v", resolved)
 	}
 }
 
-func TestResolveAnchoredBoxPlacement(t *testing.T) {
-	parent := &uiResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
-	resolved, err := resolveBox(&uiBoxSpec{Kind: uiBoxAnchored, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
+func TestUIIRResolveAnchoredBoxPlacement(t *testing.T) {
+	parent := &uiirResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
+	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 3, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
 	if err != nil {
-		t.Fatalf("resolveBox returned unexpected error: %v", err)
+		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
 	if resolved.X != 110 || resolved.Y != 40 || resolved.Width != 200 || resolved.Height != 100 {
 		t.Fatalf("unexpected anchored placement resolution: %+v", resolved)
 	}
 }
 
-func TestResolveMixedChildrenWithoutBreakingLegacyNodes(t *testing.T) {
-	root := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{
-				Kind: uiNodePlaced,
-				Box:  &uiBoxSpec{Kind: uiBoxAbsolute, X: 20, Y: 30, Width: 120, Height: 40},
-				Children: []*uiNode{
-					{Kind: uiNodeButton, Label: "go", Event: "go", Enabled: true},
-				},
-			},
-			{Kind: uiNodeText, Text: "legacy"},
+func TestUIIRStructuralKindsRemainExplicit(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "hello"},
+			{Kind: uiirNodeButton, Label: "go", Event: "evt.go", Enabled: true},
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, X: 20, Y: 30, Width: 120, Height: 40}, Children: []*uiirNode{{Kind: uiirNodeSpacer}}},
+			{Kind: uiirNodeAnchorBox, Box: &uiirBoxSpec{Kind: uiirBoxAnchored, Left: 0.1, Top: 0.2, Right: 0.9, Bottom: 0.8}, Children: []*uiirNode{{Kind: uiirNodeGrid, Children: []*uiirNode{{Kind: uiirNodeText, Text: "g0"}, {Kind: uiirNodeText, Text: "g1"}}}}},
 		},
 	}
-	resolved, err := resolveUIBoxes(root, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
-	if err != nil {
-		t.Fatalf("resolveUIBoxes returned unexpected error: %v", err)
-	}
-	placedChild := resolved.Children[0].Children[0]
-	if placedChild.Layout == nil {
-		t.Fatal("expected placed child to receive resolved layout")
-	}
-	if resolved.Children[1].Layout != nil {
-		t.Fatal("expected non-placed legacy child to keep nil layout")
+	sig := uiirSignature(withUIIRNodeIDs(root))
+	if !containsAll(sig, []string{"Text#", "Button#", "AbsoluteBox#", "AnchorBox#", "Grid#", "Spacer#"}) {
+		t.Fatalf("expected explicit UIIR node kinds in signature, got %q", sig)
 	}
 }
 
-func TestPatchedBoxChangeUpdatesResolvedLayout(t *testing.T) {
-	initial := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{Kind: uiNodePlaced, Box: &uiBoxSpec{Kind: uiBoxAbsolute, X: 10, Y: 10, Width: 50, Height: 20}, Children: []*uiNode{{Kind: uiNodeText, Text: "a"}}},
+func TestUIIRNodeIDOrderingTracksChildOrder(t *testing.T) {
+	ordered := &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{{Kind: uiirNodeText, Text: "first"}, {Kind: uiirNodeText, Text: "second"}}}
+	reversed := &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{{Kind: uiirNodeText, Text: "second"}, {Kind: uiirNodeText, Text: "first"}}}
+	orderedSig := uiirSignature(withUIIRNodeIDs(ordered))
+	reversedSig := uiirSignature(withUIIRNodeIDs(reversed))
+	if orderedSig == reversedSig {
+		t.Fatalf("child ordering must affect deterministic UIIR signatures: %q", orderedSig)
+	}
+}
+
+func TestUIIRCanonicalJSONDeterministicAndOrderSensitive(t *testing.T) {
+	ordered := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "first"},
+			{Kind: uiirNodeButton, Label: "go", Event: "evt.go", Enabled: true},
 		},
 	}
-	next := &uiNode{
-		Kind: uiNodeCanvas,
-		Children: []*uiNode{
-			{Kind: uiNodePlaced, Box: &uiBoxSpec{Kind: uiBoxAbsolute, X: 5, Y: 10, Width: 50, Height: 20}, Children: []*uiNode{{Kind: uiNodeText, Text: "a"}}},
+	sameShape := cloneUIIR(ordered)
+	reversed := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeButton, Label: "go", Event: "evt.go", Enabled: true},
+			{Kind: uiirNodeText, Text: "first"},
 		},
 	}
-	initialResolved, err := resolveUIBoxes(initial, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
+
+	left, err := serializeUIIRCanonicalJSON(ordered)
 	if err != nil {
-		t.Fatalf("resolveUIBoxes initial returned unexpected error: %v", err)
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
 	}
-	nextResolved, err := resolveUIBoxes(next, &uiResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000})
+	right, err := serializeUIIRCanonicalJSON(sameShape)
 	if err != nil {
-		t.Fatalf("resolveUIBoxes next returned unexpected error: %v", err)
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
 	}
-	beforeX := initialResolved.Children[0].Children[0].Layout.X
-	afterX := nextResolved.Children[0].Children[0].Layout.X
-	if beforeX == afterX {
-		t.Fatalf("expected box patch to update resolved layout x, both were %v", beforeX)
+	reversedJSON, err := serializeUIIRCanonicalJSON(reversed)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
 	}
+	if left != right {
+		t.Fatalf("expected deterministic canonical json, got %q vs %q", left, right)
+	}
+	if left == reversedJSON {
+		t.Fatalf("expected child order to affect canonical json; left=%q", left)
+	}
+}
+
+func TestUIIRCanonicalJSONStructuralKindsAndLayoutStayExplicit(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "header"},
+			{Kind: uiirNodeRow, Children: []*uiirNode{{Kind: uiirNodeSpacer}}},
+			{Kind: uiirNodeGrid, Children: []*uiirNode{{Kind: uiirNodeText, Text: "g0"}}},
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, X: 10, Y: 20, Width: 30, Height: 40}, Children: []*uiirNode{{Kind: uiirNodeButton, Label: "A", Event: "evt.abs", Enabled: true}}},
+			{Kind: uiirNodeAnchorBox, Box: &uiirBoxSpec{Kind: uiirBoxAnchored, Left: 0.1, Top: 0.2, Right: 0.8, Bottom: 0.9}, Children: []*uiirNode{{Kind: uiirNodeButton, Label: "B", Event: "evt.anchor", Enabled: false}}},
+		},
+	}
+	resolved, err := resolveUIIRBoxes(withUIIRNodeIDs(root), &uiirResolvedBox{X: 0, Y: 0, Width: uiirRootLayoutExtent, Height: uiirRootLayoutExtent})
+	if err != nil {
+		t.Fatalf("resolveUIIRBoxes returned unexpected error: %v", err)
+	}
+	encoded, err := serializeUIIRCanonicalJSON(resolved)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	for _, expected := range []string{`"kind":"Text"`, `"kind":"Button"`, `"kind":"Row"`, `"kind":"Column"`, `"kind":"Grid"`, `"kind":"Spacer"`, `"kind":"AbsoluteBox"`, `"kind":"AnchorBox"`, `"box":{"kind":"absolute"`, `"box":{"kind":"anchored"`, `"event":{"token":"evt.abs","payload":null}`, `"enabled":false`, `"layout":{"x":10`} {
+		if !strings.Contains(encoded, expected) {
+			t.Fatalf("expected canonical json to include %q, got %q", expected, encoded)
+		}
+	}
+}
+
+func TestUIIRBoxZOrderRoundTripAndSignature(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -5, X: 1, Y: 2, Width: 3, Height: 4}, Children: []*uiirNode{{Kind: uiirNodeText, Text: "a"}}},
+			{Kind: uiirNodeAnchorBox, Box: &uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 0, Left: 0.1, Top: 0.2, Right: 0.8, Bottom: 0.9}, Children: []*uiirNode{{Kind: uiirNodeText, Text: "b"}}},
+		},
+	}
+
+	sig := uiirSignature(withUIIRNodeIDs(root))
+	if !strings.Contains(sig, "absolute(z=-5") || !strings.Contains(sig, "anchored(z=0") {
+		t.Fatalf("expected z-order to remain visible in UIIR signature, got %q", sig)
+	}
+
+	serialized, err := serializeUIIRCanonicalJSON(root)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if !strings.Contains(serialized, `"z":-5`) || !strings.Contains(serialized, `"z":0`) {
+		t.Fatalf("expected canonical json to include box z-order, got %q", serialized)
+	}
+	decoded, err := deserializeUIIRCanonicalJSON(serialized)
+	if err != nil {
+		t.Fatalf("deserializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if decoded.Children[0].Box.ZOrder != -5 || decoded.Children[1].Box.ZOrder != 0 {
+		t.Fatalf("expected z-order roundtrip to preserve values, got %#v", decoded)
+	}
+}
+
+func TestUIIRCanonicalJSONRoundTrip(t *testing.T) {
+	root := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "hello"},
+			{Kind: uiirNodeButton, Label: "Run", Event: "evt.run", Enabled: true},
+			{Kind: uiirNodeAbsoluteBox, Box: &uiirBoxSpec{Kind: uiirBoxAbsolute, X: 5, Y: 6, Width: 70, Height: 22}, Children: []*uiirNode{{Kind: uiirNodeSpacer}}},
+		},
+	}
+	serialized, err := serializeUIIRCanonicalJSON(root)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	decoded, err := deserializeUIIRCanonicalJSON(serialized)
+	if err != nil {
+		t.Fatalf("deserializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(withUIIRNodeIDs(root), decoded) {
+		t.Fatalf("uiir json roundtrip mismatch\nwant: %#v\ngot: %#v", withUIIRNodeIDs(root), decoded)
+	}
+}
+
+func TestUIIREventCanonicalJSONTokenOnlyAndPayload(t *testing.T) {
+	tokenOnly, err := serializeUIIREventCanonicalJSON("counter.increment", nil)
+	if err != nil {
+		t.Fatalf("serializeUIIREventCanonicalJSON returned unexpected error: %v", err)
+	}
+	if tokenOnly != `{"token":"counter.increment","payload":null}` {
+		t.Fatalf("unexpected token-only serialization: %q", tokenOnly)
+	}
+	decoded, err := deserializeUIIREventCanonicalJSON(tokenOnly)
+	if err != nil {
+		t.Fatalf("deserializeUIIREventCanonicalJSON returned unexpected error: %v", err)
+	}
+	if decoded.Token != "counter.increment" || string(decoded.Payload) != "null" {
+		t.Fatalf("unexpected decoded token-only event: %+v", decoded)
+	}
+
+	withPayload, err := serializeUIIREventCanonicalJSON("counter.set", json.RawMessage(`{"next":2}`))
+	if err != nil {
+		t.Fatalf("serializeUIIREventCanonicalJSON returned unexpected error: %v", err)
+	}
+	payloadDecoded, err := deserializeUIIREventCanonicalJSON(withPayload)
+	if err != nil {
+		t.Fatalf("deserializeUIIREventCanonicalJSON returned unexpected error: %v", err)
+	}
+	if payloadDecoded.Token != "counter.set" || string(payloadDecoded.Payload) != `{"next":2}` {
+		t.Fatalf("unexpected payload event roundtrip: %+v", payloadDecoded)
+	}
+}
+
+func TestUIIRCanonicalJSONModeSwitchCompatibility(t *testing.T) {
+	home := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "Home"},
+			{Kind: uiirNodeButton, Label: "Go Stats", Event: "counter.route.stats", Enabled: true},
+		},
+	}
+	stats := &uiirNode{
+		Kind: uiirNodeColumn,
+		Children: []*uiirNode{
+			{Kind: uiirNodeText, Text: "Stats"},
+			{Kind: uiirNodeButton, Label: "Back", Event: "counter.route.home", Enabled: true},
+		},
+	}
+	homeJSON, err := serializeUIIRCanonicalJSON(home)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	statsJSON, err := serializeUIIRCanonicalJSON(stats)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	homeJSONAgain, err := serializeUIIRCanonicalJSON(home)
+	if err != nil {
+		t.Fatalf("serializeUIIRCanonicalJSON returned unexpected error: %v", err)
+	}
+	if homeJSON != homeJSONAgain {
+		t.Fatalf("mode projection must serialize deterministically: %q vs %q", homeJSON, homeJSONAgain)
+	}
+	if homeJSON == statsJSON {
+		t.Fatalf("distinct routed modes must serialize differently: %q", homeJSON)
+	}
+	if !strings.Contains(homeJSON, `"counter.route.stats"`) || !strings.Contains(statsJSON, `"counter.route.home"`) {
+		t.Fatalf("mode serialization must preserve routed event bindings")
+	}
+}
+
+func containsAll(haystack string, parts []string) bool {
+	for _, part := range parts {
+		if !strings.Contains(haystack, part) {
+			return false
+		}
+	}
+	return true
 }

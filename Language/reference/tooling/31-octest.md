@@ -6,6 +6,9 @@
 `.octest` defines executable passing tests.
 `.octfail` defines required compile-time rejection expectations.
 
+`oct test` executes `.octest` functions through the interpreter execution path.
+It does not compile `.octest` functions to `.octbin`, and no compiled parity guarantee is claimed for octest helper behavior in the current tooling contract.
+
 ## Rules
 
 - `oct test <path>` discovers `.octest` and `.octfail` recursively under `<path>`.
@@ -23,6 +26,10 @@
 - `[Fact]`, `[Theory]`, `[Artifact]`, and `[Benchmark]` attributes are mutually constrained (invalid combinations are rejected).
 - Theory case names use zero-based row indices: `Package.Function[0]`, `Package.Function[1]`, ...
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
+- `oct test` executes `.octest` functions through the interpreter path (source execution).
+- `oct test` does not build or run a compiled `.octbin` test artifact.
+- Assert helper behavior in `.octest` (`Assert.True`, `Assert.False`, `Assert.Equal`, `Assert.Near`, `Assert.Error`, `Assert.LGTM`) is guaranteed on this interpreter-driven path.
+- Compiled parity for `.octest` helper behavior is not a current contract.
 - `oct test` does not run `[Artifact]` or `[Benchmark]` functions.
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.
@@ -33,7 +40,7 @@
 - `.octfail` requires one header line: `expect error: "<non-empty substring>"`.
 - `.octfail` passes when compilation fails and the error contains the declared substring.
 - `.octfail` fails on missing rejection, malformed header, or mismatch.
-- `Assert.True(condition: Bool, message: String) -> Void`, `Assert.False(condition: Bool, message: String) -> Void`, `Assert.Equal(expected: T, actual: T, message: String) -> Void`, and `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void` are the supported assert builtins.
+- `Assert.True(condition: Bool, message: String) -> Void`, `Assert.False(condition: Bool, message: String) -> Void`, `Assert.Equal(expected: T, actual: T, message: String) -> Void`, `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`, `Assert.Error(expr: T ! Error, message: String) -> Void`, and `Assert.LGTM(expr: T ! Error, message: String) -> T` are the supported assert builtins.
 
 See also [34 octagon](./34-octagon.md) for benchmark artifact output via `--octagon-out`.
 

@@ -1,0 +1,7 @@
+expect error: "function Main: function expects Vector<Float<m>>, but return is Float<m>[]"
+
+package Main
+
+fn Main() -> Vector<Float<m>> {
+    return [1.0m, 2.0m]
+}

@@ -1,0 +1,88 @@
+package UI
+
+[Fact]
+fn M95UIIRProjectionDeterministicForSameState() -> Void {
+    let snapshot = AppState {
+        Route: CounterRouteHome()
+        Count: 4
+    }
+
+    let left = Signature(CounterProject(snapshot))
+    let right = Signature(CounterProject(snapshot))
+    Assert.Equal(left, right, "same state must project to identical UIIR signature")
+}
+
+[Fact]
+fn M95UIIRProjectionChangesWhenStateChanges() -> Void {
+    let home = Signature(CounterProject(AppState {
+        Route: CounterRouteHome()
+        Count: 1
+    }))
+    let stats = Signature(CounterProject(AppState {
+        Route: CounterRouteStats()
+        Count: 1
+    }))
+
+    Assert.True(home != stats, "mode changes must alter projected UIIR shape")
+}
+
+[Fact]
+fn M95UIIRStructuralNodeKindsAreExplicit() -> Void {
+    let ui = Column([
+        Text("title"),
+        Button("Save", "evt.save", true),
+        Row([
+            Spacer(),
+            Grid([
+                Text("cell.0"),
+                Text("cell.1")
+            ])
+        ]),
+        Canvas([
+            Place(AbsoluteBox(8.0 px, 12.0 px, 48.0 px, 20.0 px), Text("absolute")),
+            Place(AnchoredBox(0.1 ui, 0.2 ui, 0.9 ui, 0.8 ui), Text("anchored"))
+        ])
+    ])
+
+    let sig = Signature(ui)
+    Assert.True(Contains(sig, "Text#"), "text must lower to Text UIIR node")
+    Assert.True(Contains(sig, "Button#"), "button must lower to Button UIIR node")
+    Assert.True(Contains(sig, "Row#"), "row must lower to Row UIIR node")
+    Assert.True(Contains(sig, "Column#"), "column must lower to Column UIIR node")
+    Assert.True(Contains(sig, "Grid#"), "grid must lower to Grid UIIR node")
+    Assert.True(Contains(sig, "Spacer#"), "spacer must lower to Spacer UIIR node")
+    Assert.True(Contains(sig, "AbsoluteBox#"), "absolute layout must remain explicit in UIIR")
+    Assert.True(Contains(sig, "AnchorBox#"), "anchored layout must remain explicit in UIIR")
+}
+
+[Fact]
+fn M95UIIRRowColumnOrderingIsStable() -> Void {
+    let left = Signature(Column([
+        Row([
+            Text("first"),
+            Text("second")
+        ])
+    ]))
+
+    let right = Signature(Column([
+        Row([
+            Text("second"),
+            Text("first")
+        ])
+    ]))
+
+    Assert.True(left != right, "child order must be preserved in canonical UIIR")
+}
+
+[Fact]
+fn M95UIIRRoutingStyleModeSwitchStillProjectsCleanly() -> Void {
+    let toStats = CounterTransition(CounterInitialState(), Event(CounterGoStatsToken(), "")) !
+    let statsSig = Signature(CounterProject(toStats))
+
+    let backHome = CounterTransition(toStats, Event(CounterGoHomeToken(), "")) !
+    let homeSig = Signature(CounterProject(backHome))
+
+    Assert.True(Contains(statsSig, "Button#"), "routed mode should still expose interactable UIIR buttons")
+    Assert.True(Contains(homeSig, "Button#"), "return mode should still expose interactable UIIR buttons")
+    Assert.True(statsSig != homeSig, "routed projection should differ across modes")
+}

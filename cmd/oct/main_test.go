@@ -689,7 +689,7 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: unknown function 'Sqrt'"
+		want := "build failed: function Main.Main: compiled mode does not yet support builtin Sqrt"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
@@ -718,21 +718,20 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 }
 
 func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
-	t.Run("unsupported while in compiled mode fails deterministically", func(t *testing.T) {
+	t.Run("while in compiled mode builds successfully", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m12_valid_build.oct", "fn Main() -> Int {\n    while false {\n        return 1\n    }\n    return Print(1)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		if err != nil {
+			t.Fatalf("expected build success, got err=%v stdout=%q stderr=%q", err, stdout, stderr)
 		}
-		if stdout != "" {
-			t.Fatalf("expected empty stdout, got %q", stdout)
+		if !strings.Contains(stdout, "build succeeded: ") {
+			t.Fatalf("expected build success output, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: compiled mode does not yet support while"
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
 
@@ -848,7 +847,7 @@ func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: unknown function 'PlotLine'"
+		want := "build failed: function Main.Main: compiled mode does not yet support builtin PlotLine"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
@@ -1309,17 +1308,17 @@ func TestM14ComparisonsRunAndBuild(t *testing.T) {
 		}
 
 		buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
-		if buildErr == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", buildStdout)
+		if buildErr != nil {
+			t.Fatalf("expected build success, got err=%v stdout=%q stderr=%q", buildErr, buildStdout, buildStderr)
 		}
-		if buildStdout != "" {
-			t.Fatalf("expected empty build stdout, got %q", buildStdout)
+		if !strings.Contains(buildStdout, "build succeeded: ") {
+			t.Fatalf("expected build success output, got %q", buildStdout)
 		}
-		if !strings.Contains(buildStderr, "build failed: function Main.Main: compiled mode does not yet support while") {
-			t.Fatalf("expected unsupported while diagnostic, got %q", buildStderr)
+		if buildStderr != "" {
+			t.Fatalf("expected empty build stderr, got %q", buildStderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
 
@@ -1420,6 +1419,64 @@ func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
 			}
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantMessage) {
+				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
+			}
+		})
+	}
+}
+
+func TestM91NestedArraysRunAndBuild(t *testing.T) {
+	valid := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "nested array literal and indexing",
+			source: "fn Main() -> Int { let grid = [[1, 2], [3, 4]] return grid[1][1] }",
+			want:   "4\n",
+		},
+		{
+			name:   "nested array return and jagged container",
+			source: "fn Adj() -> Int[][] { return [[1], [0, 2], [1, 3, 4]] } fn Main() -> Int { let adj = Adj() return Len(adj[2]) }",
+			want:   "3\n",
+		},
+	}
+	for _, test := range valid {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("run", sourcePath)
+			if err != nil {
+				t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+			}
+			if stdout != test.want {
+				t.Fatalf("expected stdout %q, got %q", test.want, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+		})
+	}
+
+	invalidBuild := []struct {
+		name        string
+		source      string
+		wantMessage string
+	}{
+		{"nested array does not coerce to matrix", "fn Main() -> Matrix<Int> { return [[1, 2], [3, 4]] }", "function expects Matrix<Int>, but return is Int[][]"},
+		{"array does not coerce to vector", "fn Main() -> Vector<Int> { return [1, 2] }", "function expects Vector<Int>, but return is Int[]"},
+	}
+	for _, test := range invalidBuild {
+		t.Run(test.name, func(t *testing.T) {
+			sourcePath := writeSourceFile(t, test.name+".oct", test.source)
+			stdout, stderr, err := executeCLI("build", sourcePath)
+			if err == nil {
+				t.Fatalf("expected build failure, got success with stdout %q", stdout)
+			}
+			if stdout != "" {
+				t.Fatalf("expected empty build stdout, got %q", stdout)
 			}
 			if !strings.Contains(stderr, test.wantMessage) {
 				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)

@@ -18,8 +18,6 @@ flow GameController(enemyVisible: Bool, lowHealth: Bool) -> Int {
 fn GameShapedControllerCompilesAndRuns() -> Void {
     let f = GameController(true, false)
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(1, value, "combat mode should be selected") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(1, value, "combat mode should be selected")
 }

@@ -1,0 +1,32 @@
+package Cooking
+
+enum Flour {
+    Bread
+    Pastry
+}
+
+record Recipe {
+    FlourKind: String
+    Cups: Float
+}
+
+fn CupsToGrams(cups: Float, flour: String) -> Float ! Error {
+    if flour == "bread_flour" {
+        return cups * 120.0
+    }
+    if flour == "pastry_flour" {
+        return cups * 110.0
+    }
+    return error("unknown flour")
+}
+
+fn PreferredFlour() -> Flour {
+    return Flour.Bread
+}
+
+fn BuildRecipe(cups: Float, flourKind: String) -> Recipe {
+    return Recipe {
+        FlourKind: flourKind
+        Cups: cups
+    }
+}

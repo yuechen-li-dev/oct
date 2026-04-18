@@ -30,10 +30,7 @@ fn GiteaConfigValidationRejectsInvalidPortsAndMissingValues() -> Void {
         "OctLab"
     )
 
-    match ValidateGiteaInstanceConfig(invalidPort) {
-        ok(v) => { Assert.True(false, "invalid http port should fail") }
-        err(e) => {}
-    }
+    Assert.Error(ValidateGiteaInstanceConfig(invalidPort), "invalid http port should fail")
 
     let missingDomain = CreateGiteaInstanceConfig(
         "/srv/gitea",
@@ -46,10 +43,7 @@ fn GiteaConfigValidationRejectsInvalidPortsAndMissingValues() -> Void {
         "OctLab"
     )
 
-    match ValidateGiteaInstanceConfig(missingDomain) {
-        ok(v) => { Assert.True(false, "missing domain should fail") }
-        err(e) => {}
-    }
+    Assert.Error(ValidateGiteaInstanceConfig(missingDomain), "missing domain should fail")
 }
 
 [Fact]
@@ -106,10 +100,7 @@ fn OctLabCloneCommandIncludesRepoAndTargetDirectory() -> Void {
     let command = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git") !
     Assert.Equal("git clone https://github.com/oct-lang/oct.git /srv/gitea/repos/oct", command, "clone command should be explicit and readable")
 
-    match OctLabCloneCommand(config, "") {
-        ok(v) => { Assert.True(false, "empty repo url should fail") }
-        err(e) => {}
-    }
+    Assert.Error(OctLabCloneCommand(config, ""), "empty repo url should fail")
 }
 
 [Fact]

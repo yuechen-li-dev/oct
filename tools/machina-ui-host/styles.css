@@ -1,0 +1,79 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: #f6f8fb;
+  color: #12263a;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.machina-root {
+  width: 1000px;
+  height: 1000px;
+  position: relative;
+  border: 1px solid #d8e0ea;
+  background: #fff;
+  padding: 8px;
+  overflow: auto;
+}
+
+.machina-node {
+  box-sizing: border-box;
+}
+
+.machina-column {
+  display: grid;
+  grid-auto-flow: row;
+  row-gap: 8px;
+}
+
+.machina-row {
+  display: grid;
+  grid-auto-flow: column;
+  column-gap: 8px;
+  justify-content: start;
+}
+
+.machina-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, max-content));
+}
+
+.machina-text {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.machina-button {
+  width: fit-content;
+  border: 1px solid #406080;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: #e7f0fa;
+  color: #12263a;
+}
+
+.machina-button:disabled {
+  border-color: #a7b4c2;
+  color: #7f8a96;
+  background: #f0f3f6;
+}
+
+.machina-spacer {
+  min-height: 8px;
+  min-width: 8px;
+}
+
+.machina-absolute-box,
+.machina-anchor-box {
+  position: absolute;
+}

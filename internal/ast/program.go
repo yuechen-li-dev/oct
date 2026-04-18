@@ -91,14 +91,15 @@ type Parameter struct {
 }
 
 type TypeRef struct {
-	Package   string
-	Name      string
-	Dimension dimension.Dimension
-	HasUnit   bool
-	IsArray   bool
-	VectorOf  *TypeRef
-	MatrixOf  *TypeRef
-	Function  *FunctionTypeRef
+	Package    string
+	Name       string
+	Dimension  dimension.Dimension
+	HasUnit    bool
+	IsArray    bool
+	ArrayDepth int
+	VectorOf   *TypeRef
+	MatrixOf   *TypeRef
+	Function   *FunctionTypeRef
 }
 
 type FunctionTypeRef struct {

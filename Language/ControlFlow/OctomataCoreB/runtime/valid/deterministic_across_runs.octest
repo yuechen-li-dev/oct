@@ -26,13 +26,7 @@ fn DeterministicAcrossRepeatedRuns() -> Void {
     Step(second)
     Assert.Equal(Active(first), Active(second), "active state after second step should match")
 
-    match Result(first) {
-        ok(v1) => {
-            match Result(second) {
-                ok(v2) => { Assert.Equal(v1, v2, "final result should match across repeated runs") }
-                err(e2) => { Assert.True(false, "second result should be available") }
-            }
-        }
-        err(e1) => { Assert.True(false, "first result should be available") }
-    }
+    let v1 = Assert.LGTM(Result(first), "first result should be available")
+    let v2 = Assert.LGTM(Result(second), "second result should be available")
+    Assert.Equal(v1, v2, "final result should match across repeated runs")
 }

@@ -25,8 +25,6 @@ flow MinCommitBlocks() -> Int {
 fn MinCommitPreventsImmediateFlip() -> Void {
     let f = MinCommitBlocks()
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(1, value, "min_commit should keep initial choice early") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(1, value, "min_commit should keep initial choice early")
 }

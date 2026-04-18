@@ -24,8 +24,6 @@ fn GotoTransitionsWithinSingleStep() -> Void {
     Step(f)
     Assert.Equal("", Active(f), "second step completes flow")
 
-    match Result(f) {
-        ok(value) => { Assert.Equal(3, value, "flow returns value from Track state") }
-        err(e) => { Assert.True(false, "Result should be available after completion") }
-    }
+    let value = Assert.LGTM(Result(f), "Result should be available after completion")
+    Assert.Equal(3, value, "flow returns value from Track state")
 }

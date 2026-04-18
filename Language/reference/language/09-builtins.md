@@ -13,6 +13,7 @@ Calls are checked statically for arity and type constraints.
   - Requires exactly one argument.
   - Prints the value and returns a status code `Int`.
 - `Len(x: String | Int[] | Float[] | Bool[] | Complex[]) -> Int`.
+  - Len accepts any array type T[], including arrays of user-defined records and enums.  
 - `Append(xs: T[], value: T) -> T[]`.
   - First argument must be an array.
   - Value type must exactly match the array element type.
@@ -100,6 +101,8 @@ Calls are checked statically for arity and type constraints.
 - `Assert.False(condition: Bool, message: String) -> Void`.
 - `Assert.Equal(expected: T, actual: T, message: String) -> Void`.
 - `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`.
+- `Assert.Error(expr: T ! Error, message: String) -> Void`.
+- `Assert.LGTM(expr: T ! Error, message: String) -> T`.
   - Argument order is `expected`, then `actual`, then tolerance/message.
 
 ### Conversion vs formatting guidance

@@ -19,6 +19,7 @@ require (
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/tiendc/go-deepcopy v1.6.0 // indirect
+	github.com/webview/webview_go v0.0.0-20240220051247-56f456ca3a43
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.1 // indirect
 	golang.org/x/crypto v0.38.0 // indirect

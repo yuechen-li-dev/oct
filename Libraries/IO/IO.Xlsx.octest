@@ -16,44 +16,24 @@ fn XlsxWriteMiniWorkflow() -> Void {
 [Fact]
 fn XlsxRejectsMissingSheetWrites() -> Void {
     let workbook = CreateWorkbook()
-    match SetCellString(workbook, "Missing", "A1", "x") {
-        ok(v) => {
-            Assert.True(false, "writing to a missing sheet should fail")
-        }
-        err(e) => {}
-    }
+    Assert.Error(SetCellString(workbook, "Missing", "A1", "x"), "writing to a missing sheet should fail")
 }
 
 [Fact]
 fn XlsxRejectsInvalidWorkbookHandle() -> Void {
     let workbook = Workbook { Handle: 987654321 }
-    match AddSheet(workbook, "Data") {
-        ok(v) => {
-            Assert.True(false, "invalid workbook handle should fail")
-        }
-        err(e) => {}
-    }
+    Assert.Error(AddSheet(workbook, "Data"), "invalid workbook handle should fail")
 }
 
 [Fact]
 fn XlsxRejectsInvalidSavePathExtension() -> Void {
     let workbook = CreateWorkbook()
     let _a0 = AddSheet(workbook, "Data") !
-    match SaveWorkbook(workbook, "io_xlsx_m0.txt") {
-        ok(v) => {
-            Assert.True(false, "saving with a non-xlsx extension should fail")
-        }
-        err(e) => {}
-    }
+    Assert.Error(SaveWorkbook(workbook, "io_xlsx_m0.txt"), "saving with a non-xlsx extension should fail")
 }
 
 [Fact]
 fn XlsxRejectsSaveWithInvalidWorkbookHandle() -> Void {
     let workbook = Workbook { Handle: 123456789 }
-    match SaveWorkbook(workbook, "io_xlsx_bad.xlsx") {
-        ok(v) => {
-            Assert.True(false, "saving with an invalid workbook handle should fail")
-        }
-        err(e) => {}
-    }
+    Assert.Error(SaveWorkbook(workbook, "io_xlsx_bad.xlsx"), "saving with an invalid workbook handle should fail")
 }

@@ -10,6 +10,7 @@ import (
 	"oct/internal/ast"
 	"oct/internal/lex"
 	"oct/internal/parse"
+	"oct/internal/pkgmgr"
 	"oct/internal/source"
 )
 
@@ -67,7 +68,15 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 	if err != nil {
 		return Program{}, err
 	}
-	builder := builder{root: root, includeTests: includeTests, requireManifests: requireManifests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+	builder := builder{
+		root:             root,
+		includeTests:     includeTests,
+		requireManifests: requireManifests,
+		packages:         make(map[string]Package),
+		visiting:         make(map[string]struct{}),
+		visited:          make(map[string]struct{}),
+		manifestDeps:     make(map[string]map[string]struct{}),
+	}
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
@@ -79,7 +88,15 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 	if err != nil {
 		return Program{}, err
 	}
-	builder := builder{root: root, includeTests: includeTests, requireManifests: requireManifests, packages: make(map[string]Package), visiting: make(map[string]struct{}), visited: make(map[string]struct{})}
+	builder := builder{
+		root:             root,
+		includeTests:     includeTests,
+		requireManifests: requireManifests,
+		packages:         make(map[string]Package),
+		visiting:         make(map[string]struct{}),
+		visited:          make(map[string]struct{}),
+		manifestDeps:     make(map[string]map[string]struct{}),
+	}
 	mainDir := filepath.Join(root, "Main")
 	if _, err := os.Stat(mainDir); err == nil {
 		if err := builder.loadPackage("Main", mainDir); err != nil {
@@ -117,6 +134,8 @@ type builder struct {
 	packages         map[string]Package
 	visiting         map[string]struct{}
 	visited          map[string]struct{}
+	manifestDeps     map[string]map[string]struct{}
+	cachedDeps       map[string]string
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
@@ -136,9 +155,11 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("unknown package '%s'", packageName)
 	}
-	if err := b.validateManifest(packageName, directory); err != nil {
+	manifestDeps, err := b.validateManifest(packageName, directory)
+	if err != nil {
 		return err
 	}
+	b.manifestDeps[packageName] = manifestDeps
 
 	pkg := Package{Name: packageName, Directory: directory}
 	importSet := make(map[string]struct{})
@@ -190,7 +211,10 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	b.packages[packageName] = pkg
 
 	for _, imp := range pkg.Imports {
-		importDir := filepath.Join(b.root, imp)
+		importDir, err := b.resolveImportDirectory(packageName, imp)
+		if err != nil {
+			return err
+		}
 		if err := b.loadPackage(imp, importDir); err != nil {
 			return err
 		}
@@ -303,25 +327,89 @@ func isMilestoneDir(name string) bool {
 	return idx+1 == len(name) && name[idx] >= 'a' && name[idx] <= 'z'
 }
 
-func (b *builder) validateManifest(packageName string, directory string) error {
+func (b *builder) validateManifest(packageName string, directory string) (map[string]struct{}, error) {
 	if !b.requireManifests {
-		return nil
+		return nil, nil
 	}
 	manifestPath := filepath.Join(directory, "manifest.oct")
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("package manifest missing")
+			return nil, fmt.Errorf("package manifest missing")
 		}
-		return fmt.Errorf("read package manifest %s: %w", manifestPath, err)
+		return nil, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
 	}
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := validateManifestFile(packageName, manifestFile); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return manifestDependencySet(manifestFile), nil
+}
+
+func (b *builder) resolveImportDirectory(packageName string, importName string) (string, error) {
+	localDir := filepath.Join(b.root, importName)
+	files, err := loadPackageFiles(localDir, b.includeTests)
+	if err != nil {
+		return "", err
+	}
+	if len(files) > 0 {
+		return localDir, nil
+	}
+	if !b.requireManifests {
+		return localDir, nil
+	}
+	deps := b.manifestDeps[packageName]
+	if deps == nil {
+		return "", fmt.Errorf("unknown package '%s'", importName)
+	}
+	if _, declared := deps[importName]; !declared {
+		return "", fmt.Errorf("unknown package '%s'", importName)
+	}
+	cachedDir, ok, err := b.resolveCachedDependencyDir(importName)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("package '%s' declared as dependency in manifest but not available in local project or package cache", importName)
+	}
+	return cachedDir, nil
+}
+
+func (b *builder) resolveCachedDependencyDir(importName string) (string, bool, error) {
+	if b.cachedDeps == nil {
+		cachedDeps, err := loadCachedDependencyPaths()
+		if err != nil {
+			return "", false, err
+		}
+		b.cachedDeps = cachedDeps
+	}
+	dir, ok := b.cachedDeps[importName]
+	return dir, ok, nil
+}
+
+func loadCachedDependencyPaths() (map[string]string, error) {
+	manager, err := pkgmgr.NewManager()
+	if err != nil {
+		return nil, fmt.Errorf("resolve package cache: %w", err)
+	}
+	entries, err := manager.List()
+	if err != nil {
+		return nil, fmt.Errorf("read package cache index: %w", err)
+	}
+	byName := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := byName[name]; exists {
+			continue
+		}
+		byName[name] = entry.Path
+	}
+	return byName, nil
 }
 
 func detectManifestedRoot(root string) (bool, error) {

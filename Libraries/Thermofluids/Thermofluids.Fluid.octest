@@ -38,55 +38,25 @@ fn ResidenceTimeHandCheck() -> Void {
 
 [Fact]
 fn FluidInvalidSetupRejected() -> Void {
-    match TankAreaCylinder(0m) {
-        ok(v) => { Assert.True(false, "radius <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(TankAreaCylinder(0m), "radius <= 0 must fail")
 
-    match TankVolumeCylinder(1m, 0m - 1m) {
-        ok(v) => { Assert.True(false, "height < 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(TankVolumeCylinder(1m, 0m - 1m), "height < 0 must fail")
 
-    match TankLevelStep(0m - 0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 1s) {
-        ok(v) => { Assert.True(false, "level < 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(TankLevelStep(0m - 0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 1s), "level < 0 must fail")
 
-    match TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 0m^2, 1s) {
-        ok(v) => { Assert.True(false, "area <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 0m^2, 1s), "area <= 0 must fail")
 
-    match TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 0s) {
-        ok(v) => { Assert.True(false, "dt <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(TankLevelStep(0.1m, 0.1m^3/s, 0m^3/s, 1m^2, 0s), "dt <= 0 must fail")
 
-    match OutflowTorricelli(0.6, 0m^2, 9.81m/s^2, 1m) {
-        ok(v) => { Assert.True(false, "outletArea <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(OutflowTorricelli(0.6, 0m^2, 9.81m/s^2, 1m), "outletArea <= 0 must fail")
 
-    match OutflowTorricelli(0.6, 0.01m^2, 0m/s^2, 1m) {
-        ok(v) => { Assert.True(false, "gravity <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(OutflowTorricelli(0.6, 0.01m^2, 0m/s^2, 1m), "gravity <= 0 must fail")
 
-    match OutflowTorricelli(0.6, 0.01m^2, 9.81m/s^2, 0m - 1m) {
-        ok(v) => { Assert.True(false, "level < 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(OutflowTorricelli(0.6, 0.01m^2, 9.81m/s^2, 0m - 1m), "level < 0 must fail")
 
-    match OutflowTorricelli(0.0 - 0.1, 0.01m^2, 9.81m/s^2, 1m) {
-        ok(v) => { Assert.True(false, "dischargeCoefficient < 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(OutflowTorricelli(0.0 - 0.1, 0.01m^2, 9.81m/s^2, 1m), "dischargeCoefficient < 0 must fail")
 
-    match ResidenceTime(4m^3, 0m^3/s) {
-        ok(v) => { Assert.True(false, "flowRate <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(ResidenceTime(4m^3, 0m^3/s), "flowRate <= 0 must fail")
 }
 
 [Fact]

@@ -1,0 +1,26 @@
+package MainValid
+
+[Fact]
+fn CelsiusLiteralZeroMatchesKelvin() -> Void {
+    Assert.Equal(273.15K, 0C, "0C should lower to 273.15K")
+}
+
+[Fact]
+fn CelsiusLiteralBoilingMatchesKelvin() -> Void {
+    Assert.Equal(373.15K, 100C, "100C should lower to 373.15K")
+}
+
+[Fact]
+fn CelsiusLiteralWorksInOrdinaryComparisons() -> Void {
+    let room = 22C
+    let oven = 180C
+    Assert.True(oven > room, "ordinary comparisons should work for Celsius literals")
+}
+
+[Fact]
+fn CelsiusLiteralSupportsControlSetpointExample() -> Void {
+    let setpoint = 180C
+    let measured = 172C
+    let heatingRequired = measured < setpoint
+    Assert.True(heatingRequired, "control threshold comparison should be ergonomic with C literals")
+}

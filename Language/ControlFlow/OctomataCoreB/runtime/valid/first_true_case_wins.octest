@@ -14,8 +14,6 @@ flow Prioritized() -> Int {
 fn FirstTrueCaseWins() -> Void {
     let f = Prioritized()
     Step(f)
-    match Result(f) {
-        ok(value) => { Assert.Equal(1, value, "first true case should win") }
-        err(e) => { Assert.True(false, "result should be available") }
-    }
+    let value = Assert.LGTM(Result(f), "result should be available")
+    Assert.Equal(1, value, "first true case should win")
 }

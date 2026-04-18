@@ -37,17 +37,17 @@ func TestM22ePackageIntegrationRunAndBuild(t *testing.T) {
 	}
 
 	buildStdout, buildStderr, buildErr := executeCLI("build", entry)
-	if buildErr == nil {
-		t.Fatalf("expected build failure for unsupported compiled feature, got success with stdout %q", buildStdout)
+	if buildErr != nil {
+		t.Fatalf("expected build success, got err=%v stderr=%q", buildErr, buildStderr)
 	}
-	if buildStdout != "" {
-		t.Fatalf("expected empty build stdout, got %q", buildStdout)
+	if !strings.Contains(buildStdout, "build succeeded: ") {
+		t.Fatalf("expected build success output, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "unsupported expression ast.MatrixLiteralExpr") {
-		t.Fatalf("expected unsupported matrix literal diagnostic, got %q", buildStderr)
+	if buildStderr != "" {
+		t.Fatalf("expected empty build stderr, got %q", buildStderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+	if _, statErr := os.Stat(entry + ".octbin"); statErr != nil {
+		t.Fatalf("expected build artifact to exist, stat err = %v", statErr)
 	}
 }
 

@@ -69,12 +69,7 @@ fn ExplicitEventTokensDriveStateTransition() -> Void {
 fn DisabledButtonPreventsEventEmission() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
 
-    match Emit(mounted, CounterDecrementEvent()) {
-        ok(v) => {
-            Assert.True(false, "disabled decrement button should not emit")
-        }
-        err(e) => {}
-    }
+    Assert.Error(Emit(mounted, CounterDecrementEvent()), "disabled decrement button should not emit")
 
     Assert.Equal(0, Len(DrainEvents(mounted)), "disabled emission should not enqueue events")
     Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
@@ -100,10 +95,5 @@ fn EnabledButtonStillEmitsAfterRerender() -> Void {
 [Fact]
 fn UnknownEventTokenIsRejectedByRuntimeBridge() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
-    match Emit(mounted, "counter.unknown") {
-        ok(v) => {
-            Assert.True(false, "runtime bridge must reject unknown event token")
-        }
-        err(e) => {}
-    }
+    Assert.Error(Emit(mounted, "counter.unknown"), "runtime bridge must reject unknown event token")
 }

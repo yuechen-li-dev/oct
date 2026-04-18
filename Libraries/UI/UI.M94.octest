@@ -1,0 +1,77 @@
+package UI
+
+[Fact]
+fn M94AppEntrySurfaceIsExplicitAndTyped() -> Void {
+    let app = CounterApp() !
+    let initial = app.Initial
+    Assert.Equal(CounterRouteHome(), initial.Route, "app contract carries explicit initial route")
+    Assert.Equal(0, initial.Count, "app contract carries explicit initial count")
+}
+
+[Fact]
+fn M94EventDispatchRoutesIntoOctomataTransitions() -> Void {
+    let afterIncrement = CounterTransition(CounterInitialState(), Event(CounterIncrementToken(), "")) !
+    Assert.Equal(1, afterIncrement.Count, "increment token must route into increment transition")
+
+    let afterRoute = CounterTransition(afterIncrement, Event(CounterGoStatsToken(), "")) !
+    Assert.Equal(CounterRouteStats(), afterRoute.Route, "route token must route into route transition")
+
+    let afterUnknown = CounterTransition(afterRoute, Event("counter.unknown", "")) !
+    Assert.Equal(afterRoute.Route, afterUnknown.Route, "unknown tokens must be deterministic no-op")
+    Assert.Equal(afterRoute.Count, afterUnknown.Count, "unknown tokens must preserve state")
+}
+
+[Fact]
+fn M94ProjectionIsDeterministicForSameState() -> Void {
+    let stableState = AppState {
+        Route: CounterRouteHome()
+        Count: 2
+    }
+
+    let left = Signature(CounterProject(stableState))
+    let right = Signature(CounterProject(stableState))
+    Assert.Equal(left, right, "projection must be deterministic for identical state")
+}
+
+[Fact]
+fn M94ProjectionChangesWhenRouteChanges() -> Void {
+    let homeState = AppState {
+        Route: CounterRouteHome()
+        Count: 3
+    }
+    let statsState = AppState {
+        Route: CounterRouteStats()
+        Count: 3
+    }
+
+    let home = Signature(CounterProject(homeState))
+    let stats = Signature(CounterProject(statsState))
+
+    Assert.True(home != stats, "route is part of control state and must alter projected view")
+}
+
+[Fact]
+fn M94RuntimeBridgeDispatchesAndProjectsDeterministically() -> Void {
+    let mounted = MountUI(CounterProject(CounterInitialState()))
+
+    Assert.Equal(0, Emit(mounted, CounterIncrementToken()) !, "increment event must be emitted")
+    let events = DrainEvents(mounted)
+    Assert.Equal(1, Len(events), "exactly one event should be drained")
+
+    let next = CounterTransition(CounterInitialState(), Event(events[0], "")) !
+    Assert.Equal(1, next.Count, "drained event token must route through transition model")
+
+    let patch = PatchUI(mounted, CounterProject(next))
+    Assert.Equal(0, patch, "patched projection must remain valid")
+    Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn M94RoutingStyleExampleSupportsTwoPageModes() -> Void {
+    let started = CounterInitialState()
+    let toStats = CounterTransition(started, Event(CounterGoStatsToken(), "")) !
+    let backHome = CounterTransition(toStats, Event(CounterGoHomeToken(), "")) !
+
+    Assert.Equal(CounterRouteStats(), toStats.Route, "first routing event moves to stats mode")
+    Assert.Equal(CounterRouteHome(), backHome.Route, "second routing event moves back to home mode")
+}

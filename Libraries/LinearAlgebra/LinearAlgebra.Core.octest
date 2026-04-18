@@ -11,10 +11,7 @@ fn DotAndNormBasicCases() -> Void {
 
 [Fact]
 fn DotRejectsLengthMismatch() -> Void {
-    match Dot([1.0, 2.0], [1.0]) {
-        ok(v) => { Assert.True(false, "dot should fail for length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(Dot([1.0, 2.0], [1.0]), "dot should fail for length mismatch")
 }
 
 [Fact]
@@ -26,10 +23,7 @@ fn MatVecMulSupportsValidAndRejectsMismatchedShape() -> Void {
     Assert.Near(140.0, y[0], 0.000001, "matvec row 0")
     Assert.Near(320.0, y[1], 0.000001, "matvec row 1")
 
-    match MatVecMul(A, 2, 3, [1.0, 2.0]) {
-        ok(v) => { Assert.True(false, "matvec should fail for vector length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(MatVecMul(A, 2, 3, [1.0, 2.0]), "matvec should fail for vector length mismatch")
 }
 
 [Fact]
@@ -42,10 +36,7 @@ fn VecMatMulSupportsValidAndRejectsMismatchedShape() -> Void {
     Assert.Near(120.0, y[1], 0.000001, "vecmat col 1")
     Assert.Near(150.0, y[2], 0.000001, "vecmat col 2")
 
-    match VecMatMul([1.0], A, 2, 3) {
-        ok(v) => { Assert.True(false, "vecmat should fail for vector length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(VecMatMul([1.0], A, 2, 3), "vecmat should fail for vector length mismatch")
 }
 
 [Fact]
@@ -59,10 +50,7 @@ fn MatMulAndShapeMismatch() -> Void {
     Assert.Near(43.0, C[2], 0.000001, "matmul c10")
     Assert.Near(50.0, C[3], 0.000001, "matmul c11")
 
-    match MatMul([1.0, 2.0], 1, 2, [1.0, 2.0], 1, 2) {
-        ok(v) => { Assert.True(false, "matmul should fail for incompatible shapes") }
-        err(e) => { }
-    }
+    Assert.Error(MatMul([1.0, 2.0], 1, 2, [1.0, 2.0], 1, 2), "matmul should fail for incompatible shapes")
 }
 
 [Fact]
@@ -82,14 +70,11 @@ fn TransposeSupportsRectangularAndDoubleTranspose() -> Void {
 }
 
 [Fact]
-fn TraceSupportsSquareAndRejectsRectangular() -> Void {
+fn MatrixTraceSupportsSquareAndRejectsRectangular() -> Void {
     let A = [1.0, 2.0, 3.0, 4.0]
-    Assert.Near(5.0, Trace(A, 2, 2)!, 0.000001, "trace should sum main diagonal")
+    Assert.Near(5.0, MatrixTrace(A, 2, 2)!, 0.000001, "trace should sum main diagonal")
 
-    match Trace([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
-        ok(v) => { Assert.True(false, "trace should reject non-square matrices") }
-        err(e) => { }
-    }
+    Assert.Error(MatrixTrace([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "trace should reject non-square matrices")
 }
 
 [Fact]
@@ -148,10 +133,7 @@ fn AddSubScaleWithShapeValidation() -> Void {
     Assert.Near(0.5, scaled[0], 0.000001, "scale c0")
     Assert.Near(2.0, scaled[3], 0.000001, "scale c3")
 
-    match Add([1.0], [1.0, 2.0], 1, 1) {
-        ok(v) => { Assert.True(false, "add should fail for shape mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(Add([1.0], [1.0, 2.0], 1, 1), "add should fail for shape mismatch")
 }
 
 [Fact]
@@ -162,15 +144,9 @@ fn EdgeCasesAndValidationPolicy() -> Void {
     Assert.Near(14.0, Scale(one, 1, 1, 2.0)![0], 0.000001, "1x1 scale works")
     Assert.Near(49.0, MatMul(one, 1, 1, one, 1, 1)![0], 0.000001, "1x1 matmul works")
 
-    match Identity(0) {
-        ok(v) => { Assert.True(false, "identity(0) should fail") }
-        err(e) => { }
-    }
+    Assert.Error(Identity(0), "identity(0) should fail")
 
-    match Zeros(0, 2) {
-        ok(v) => { Assert.True(false, "zero rows should fail") }
-        err(e) => { }
-    }
+    Assert.Error(Zeros(0, 2), "zero rows should fail")
 
 }
 
@@ -204,10 +180,7 @@ fn DeterminantCoversCoreCasesAndSquareValidation() -> Void {
     let det3 = Determinant([6.0, 1.0, 1.0, 4.0, 0.0 - 2.0, 5.0, 2.0, 8.0, 7.0], 3, 3)!
     Assert.Near(0.0 - 306.0, det3, 0.000001, "det 3x3")
 
-    match Determinant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
-        ok(v) => { Assert.True(false, "determinant should reject non-square matrices") }
-        err(e) => { }
-    }
+    Assert.Error(Determinant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "determinant should reject non-square matrices")
 }
 
 [Fact]
@@ -224,15 +197,9 @@ fn SolveLinearSystemCovers2x2And3x3Cases() -> Void {
 
 [Fact]
 fn SolveLinearSystemRejectsSingularAndShapeMismatch() -> Void {
-    match SolveLinearSystem([1.0, 2.0, 2.0, 4.0], 2, 2, [3.0, 6.0]) {
-        ok(v) => { Assert.True(false, "solve should reject singular systems") }
-        err(e) => { }
-    }
+    Assert.Error(SolveLinearSystem([1.0, 2.0, 2.0, 4.0], 2, 2, [3.0, 6.0]), "solve should reject singular systems")
 
-    match SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0]) {
-        ok(v) => { Assert.True(false, "solve should reject RHS length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0]), "solve should reject RHS length mismatch")
 }
 
 [Fact]
@@ -255,15 +222,9 @@ fn InverseCoversExplicitAndIdentityCompositionCases() -> Void {
 
 [Fact]
 fn InverseRejectsSingularAndNonSquare() -> Void {
-    match Inverse([1.0, 2.0, 2.0, 4.0], 2, 2) {
-        ok(v) => { Assert.True(false, "inverse should reject singular matrices") }
-        err(e) => { }
-    }
+    Assert.Error(Inverse([1.0, 2.0, 2.0, 4.0], 2, 2), "inverse should reject singular matrices")
 
-    match Inverse([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
-        ok(v) => { Assert.True(false, "inverse should reject non-square matrices") }
-        err(e) => { }
-    }
+    Assert.Error(Inverse([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "inverse should reject non-square matrices")
 }
 
 [Fact]
@@ -280,25 +241,13 @@ fn SolveAndMatVecMulComposeToReproduceRhs() -> Void {
 
 [Fact]
 fn M0bValidationRejectsInvalidDimensionsAndDataLengths() -> Void {
-    match Determinant([1.0], 0, 1) {
-        ok(v) => { Assert.True(false, "determinant should reject invalid dimensions") }
-        err(e) => { }
-    }
+    Assert.Error(Determinant([1.0], 0, 1), "determinant should reject invalid dimensions")
 
-    match Determinant([1.0, 2.0, 3.0], 2, 2) {
-        ok(v) => { Assert.True(false, "determinant should reject invalid matrix data length") }
-        err(e) => { }
-    }
+    Assert.Error(Determinant([1.0, 2.0, 3.0], 2, 2), "determinant should reject invalid matrix data length")
 
-    match SolveLinearSystem([1.0, 2.0, 3.0], 2, 2, [1.0, 2.0]) {
-        ok(v) => { Assert.True(false, "solve should reject invalid matrix data length") }
-        err(e) => { }
-    }
+    Assert.Error(SolveLinearSystem([1.0, 2.0, 3.0], 2, 2, [1.0, 2.0]), "solve should reject invalid matrix data length")
 
-    match SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0, 2.0, 3.0]) {
-        ok(v) => { Assert.True(false, "solve should reject RHS length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(SolveLinearSystem([1.0, 2.0, 3.0, 4.0], 2, 2, [1.0, 2.0, 3.0]), "solve should reject RHS length mismatch")
 }
 
 [Fact]
@@ -325,15 +274,9 @@ fn LUDecomposeCoversPivotingAndRejections() -> Void {
     Assert.Equal(0, f.Permutation[1], "pivoting should move row 0 to bottom")
     Assert.Equal(1, f.SwapCount, "pivoting should record swap count")
 
-    match LUDecompose([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3) {
-        ok(v) => { Assert.True(false, "lu decompose should reject non-square matrices") }
-        err(e) => { }
-    }
+    Assert.Error(LUDecompose([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3), "lu decompose should reject non-square matrices")
 
-    match LUDecompose([1.0, 2.0, 2.0, 4.0], 2, 2) {
-        ok(v) => { Assert.True(false, "lu decompose should reject singular matrices") }
-        err(e) => { }
-    }
+    Assert.Error(LUDecompose([1.0, 2.0, 2.0, 4.0], 2, 2), "lu decompose should reject singular matrices")
 }
 
 [Fact]
@@ -344,10 +287,7 @@ fn LUSolveCoversKnownSystemMismatchAndSolveComposability() -> Void {
     Assert.Near(64.0 / 9.0, x[0], 0.000001, "lu solve 2x2 x0")
     Assert.Near(0.0 - 29.0 / 9.0, x[1], 0.000001, "lu solve 2x2 x1")
 
-    match LUSolve(factorization, [11.0]) {
-        ok(v) => { Assert.True(false, "lu solve should reject RHS length mismatch") }
-        err(e) => { }
-    }
+    Assert.Error(LUSolve(factorization, [11.0]), "lu solve should reject RHS length mismatch")
 
     let direct = SolveLinearSystem(A, 2, 2, [11.0, 13.0])!
     Assert.Near(direct[0], x[0], 0.000001, "lu solve should match direct solve x0")
@@ -426,8 +366,5 @@ fn LUValidationRejectsInvalidFactorizationState() -> Void {
         Cols: 2
     }
 
-    match LUSolve(invalid, [1.0, 2.0]) {
-        ok(v) => { Assert.True(false, "lu solve should reject invalid factorization permutation state") }
-        err(e) => { }
-    }
+    Assert.Error(LUSolve(invalid, [1.0, 2.0]), "lu solve should reject invalid factorization permutation state")
 }

@@ -86,10 +86,7 @@ fn BatchRepeatedRunsAreDeterministicallyOrdered() -> Void {
 
 [Fact]
 fn BatchItemFailureFailsWholeBatchAndNoPartialOutputIsExposed() -> Void {
-    match CollectWithPossibleFailure() {
-        ok(value) => { Assert.True(false, "expected batch failure to fail whole expression") }
-        err(e) => { return }
-    }
+    Assert.Error(CollectWithPossibleFailure(), "expected batch failure to fail whole expression")
 }
 
 fn CollectWithPossibleFailure() -> Int[] ! Error {

@@ -1,4 +1,4 @@
-expect error: "function Main: when is only valid inside flow state bodies"
+expect error: "function Main: guard when is only valid inside flow state bodies; outside flows use switch or when utility"
 
 package MainInvalid
 

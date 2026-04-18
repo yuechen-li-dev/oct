@@ -21,20 +21,11 @@ fn GoldenSectionSearchFindsKnownMinimum() -> Void {
 
 [Fact]
 fn GoldenSectionSearchRejectsInvalidInputs() -> Void {
-    match GoldenSectionSearch(f, 1.0, 1.0, 0.000001, 100) {
-        ok(v) => { Assert.True(false, "a >= b must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GoldenSectionSearch(f, 1.0, 1.0, 0.000001, 100), "a >= b must fail")
 
-    match GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.0, 100) {
-        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.0, 100), "tolerance <= 0 must fail")
 
-    match GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.000001, 0) {
-        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GoldenSectionSearch(f, 0.0 - 1.0, 1.0, 0.000001, 0), "maxIterations <= 0 must fail")
 }
 
 [Fact]
@@ -63,25 +54,13 @@ fn GradientDescentSolveSupportsMaxIterationStopping() -> Void {
 
 [Fact]
 fn GradientDescentRejectsInvalidInputs() -> Void {
-    match GradientDescentStep(1.0, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "stepSize <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GradientDescentStep(1.0, 1.0, 0.0), "stepSize <= 0 must fail")
 
-    match GradientDescentSolve(f, grad, 1.0, 0.0, 0.001, 10) {
-        ok(v) => { Assert.True(false, "stepSize <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GradientDescentSolve(f, grad, 1.0, 0.0, 0.001, 10), "stepSize <= 0 must fail")
 
-    match GradientDescentSolve(f, grad, 1.0, 0.1, 0.0, 10) {
-        ok(v) => { Assert.True(false, "tolerance <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GradientDescentSolve(f, grad, 1.0, 0.1, 0.0, 10), "tolerance <= 0 must fail")
 
-    match GradientDescentSolve(f, grad, 1.0, 0.1, 0.001, 0) {
-        ok(v) => { Assert.True(false, "maxIterations <= 0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(GradientDescentSolve(f, grad, 1.0, 0.1, 0.001, 0), "maxIterations <= 0 must fail")
 }
 
 [Fact]

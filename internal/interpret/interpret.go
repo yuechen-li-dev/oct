@@ -60,7 +60,7 @@ type Value struct {
 	Enum      EnumValue
 	Function  FunctionValue
 	Flow      *FlowRuntimeInstance
-	UI        *uiNode
+	UI        *uiirNode
 	DiffOp    DifferentialOpValue
 	FieldOp   FieldOpValue
 }
@@ -187,7 +187,7 @@ func (v Value) String() string {
 		if v.UI == nil {
 			return "UI<invalid>"
 		}
-		return "UI<" + uiSignature(v.UI) + ">"
+		return "UI<" + uiirSignature(withUIIRNodeIDs(v.UI)) + ">"
 	case ValueIndex:
 		return "Index(" + v.Text + ")"
 	case ValueDiffOp:
@@ -1771,38 +1771,143 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 }
 
 func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	arguments := make([]Value, 0, len(argumentExprs))
-	for _, argumentExpr := range argumentExprs {
-		argument, err := i.evalExpr(env, pkgName, argumentExpr)
-		if err != nil {
-			return evalResult{}, err
-		}
-		if argument.hasError {
-			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
-		}
-		arguments = append(arguments, argument.value)
-	}
-
 	fail := func(message string) (evalResult, error) {
 		return evalResult{}, fmt.Errorf("assertion failed: %s", message)
 	}
+
+	evalArg := func(index int) (evalResult, error) {
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[index])
+		if err != nil {
+			return evalResult{}, err
+		}
+		return argument, nil
+	}
+
 	switch callee {
 	case "Assert.True":
-		if !arguments[0].Bool {
-			return fail(arguments[1].Text)
+		condition, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if condition.hasError {
+			return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+		}
+		message, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if !condition.value.Bool {
+			return fail(message.value.Text)
 		}
 	case "Assert.False":
-		if arguments[0].Bool {
-			return fail(arguments[1].Text)
+		condition, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if condition.hasError {
+			return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+		}
+		message, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if condition.value.Bool {
+			return fail(message.value.Text)
 		}
 	case "Assert.Equal":
-		if !valuesEqual(arguments[0], arguments[1]) {
-			return fail(arguments[2].Text)
+		expected, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if expected.hasError {
+			return evalResult{hasError: true, errorVal: expected.errorVal}, nil
+		}
+		actual, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if actual.hasError {
+			return evalResult{hasError: true, errorVal: actual.errorVal}, nil
+		}
+		message, err := evalArg(2)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if !valuesEqual(expected.value, actual.value) {
+			return fail(message.value.Text)
 		}
 	case "Assert.Near":
-		if math.Abs(arguments[0].Float-arguments[1].Float) > arguments[2].Float {
-			return fail(arguments[3].Text)
+		expected, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
 		}
+		if expected.hasError {
+			return evalResult{hasError: true, errorVal: expected.errorVal}, nil
+		}
+		actual, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if actual.hasError {
+			return evalResult{hasError: true, errorVal: actual.errorVal}, nil
+		}
+		tolerance, err := evalArg(2)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if tolerance.hasError {
+			return evalResult{hasError: true, errorVal: tolerance.errorVal}, nil
+		}
+		message, err := evalArg(3)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if math.Abs(expected.value.Float-actual.value.Float) > tolerance.value.Float {
+			return fail(message.value.Text)
+		}
+	case "Assert.Error":
+		result, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
+		}
+		message, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if !result.hasError {
+			return fail(message.value.Text)
+		}
+	case "Assert.LGTM":
+		result, err := evalArg(0)
+		if err != nil {
+			return evalResult{}, err
+		}
+		message, err := evalArg(1)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if message.hasError {
+			return evalResult{hasError: true, errorVal: message.errorVal}, nil
+		}
+		if result.hasError {
+			return fail(fmt.Sprintf("%s\nunderlying error: %s", message.value.Text, result.errorVal))
+		}
+		return evalResult{value: result.value}, nil
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported Assert function %s", callee)
 	}
@@ -1897,7 +2002,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return i.wrappers.eval(&i, env, pkgName, callee, argumentExprs)
 	}
-	if callee == "UIText" || callee == "UIButton" || callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" || callee == "UIPlaceAbsolute" || callee == "UIPlaceAnchored" || callee == "UIMount" || callee == "UIPatch" || callee == "UIUnmount" || callee == "UIEmit" || callee == "UIDrainEvents" || callee == "UISignature" {
+	if callee == "UIText" || callee == "UIButton" || callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" || callee == "UIGrid" || callee == "UISpacer" || callee == "UIPlaceAbsolute" || callee == "UIPlaceAnchored" || callee == "UIMount" || callee == "UIPatch" || callee == "UIUnmount" || callee == "UIEmit" || callee == "UIDrainEvents" || callee == "UISignature" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 		}
@@ -3027,9 +3132,6 @@ func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr
 		if element.hasError {
 			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached array literal element %d", idx)
 		}
-		if element.value.Kind == ValueArray {
-			return Value{}, errors.New("runtime invariant violation: nested arrays are not supported")
-		}
 		if idx == 0 {
 			firstType = valueTypeName(element.value)
 		} else if valueTypeName(element.value) != firstType {
@@ -3497,9 +3599,6 @@ func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error
 		element, err := evalBinaryExpr(operator, left.Array[i], right.Array[i])
 		if err != nil {
 			return Value{}, err
-		}
-		if element.Kind == ValueArray {
-			return Value{}, errors.New("runtime invariant violation: nested array result is not supported")
 		}
 		result = append(result, element)
 	}

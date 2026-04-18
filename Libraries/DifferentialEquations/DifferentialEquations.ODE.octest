@@ -77,25 +77,13 @@ fn RK4SolveBeatsEulerOnSameGridForYPrimeEqualsY() -> Void {
 
 [Fact]
 fn StepAndSolveRejectInvalidDtAndSteps() -> Void {
-    match EulerStep(DerivativeIdentity, 0.0, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "euler step with dt=0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(EulerStep(DerivativeIdentity, 0.0, 1.0, 0.0), "euler step with dt=0 must fail")
 
-    match RK4Step(DerivativeIdentity, 0.0, 1.0, 0.0) {
-        ok(v) => { Assert.True(false, "rk4 step with dt=0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(RK4Step(DerivativeIdentity, 0.0, 1.0, 0.0), "rk4 step with dt=0 must fail")
 
-    match EulerSolve(DerivativeIdentity, 0.0, 1.0, 0.0, 1) {
-        ok(v) => { Assert.True(false, "euler solve with dt=0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(EulerSolve(DerivativeIdentity, 0.0, 1.0, 0.0, 1), "euler solve with dt=0 must fail")
 
-    match RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.1, 0) {
-        ok(v) => { Assert.True(false, "rk4 solve with steps<=0 must fail") }
-        err(e) => { }
-    }
+    Assert.Error(RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.1, 0), "rk4 solve with steps<=0 must fail")
 }
 
 [Fact]

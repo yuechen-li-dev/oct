@@ -1,0 +1,11 @@
+expect error: "expected ']' after '[' in array type"
+
+package Main
+
+record Ingredient {
+    Name: String
+}
+
+fn Main(xs: Ingredient[) -> Int {
+    return 0
+}

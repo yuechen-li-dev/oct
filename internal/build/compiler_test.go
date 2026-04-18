@@ -1,6 +1,7 @@
 package build
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"oct/internal/interpret"
 	"oct/internal/octagon"
 	"oct/internal/project"
 	"oct/internal/typecheck"
@@ -131,6 +133,472 @@ fn Make(a: Int, b: Int) -> Pair {
 	}
 	if strings.TrimSpace(string(out)) != "7" {
 		t.Fatalf("expected 7, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunCrossPackageFallibleAndEnum(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Cooking"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int ! Error {
+    let grams = Cooking.CupsToGrams(2.0, "bread_flour")?
+    let flour = Cooking.Flour.Bread
+    if flour == Cooking.PreferredFlour() and grams == 240.0 {
+        return 1
+    }
+    return 0
+}
+`
+	cookingSrc := `package Cooking
+
+enum Flour {
+    Bread
+    Pastry
+}
+
+fn CupsToGrams(cups: Float, flour: String) -> Float ! Error {
+    if flour == "bread_flour" {
+        return cups * 120.0
+    }
+    if flour == "pastry_flour" {
+        return cups * 110.0
+    }
+    return error("unknown flour")
+}
+
+fn PreferredFlour() -> Flour {
+    return Flour.Bread
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "compiled cross-package test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	cookingManifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "compiled cross-package cooking"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "cooking.oct"), []byte(cookingSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "manifest.oct"), []byte(cookingManifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(root)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunNamedRecordArraySurface(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+record Ingredient {
+    Name: String
+    Grams: Float
+}
+
+fn Ingredients() -> Ingredient[] {
+    return [
+        Ingredient { Name: "Flour" Grams: 500.0 },
+        Ingredient { Name: "Salt" Grams: 10.0 }
+    ]
+}
+
+fn Pick(xs: Ingredient[]) -> Ingredient {
+    return xs[1]
+}
+
+fn main() -> Int {
+    let xs = Ingredients()
+    let picked = Pick(xs)
+    if Len(xs) == 2 and picked.Name == "Salt" and picked.Grams == 10.0 {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunLoopLoweringParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn WhileAccumulation() -> Int {
+    var i = 0
+    var sum = 0
+    while i < 5 {
+        sum = sum + i
+        i = i + 1
+    }
+    return sum
+}
+
+fn ForRangeAccumulation() -> Int {
+    var sum = 0
+    for i in 1..5 {
+        sum = sum + i
+    }
+    return sum
+}
+
+fn ForRangeStepAccumulation() -> Int {
+    var sum = 0
+    for i in 0..10 step 2 {
+        if i < 6 {
+            sum = sum + i
+        } else {
+            sum = sum + (i + 1)
+        }
+    }
+    return sum
+}
+
+fn ForRangeEvaluatesBoundsOnce() -> Int {
+    var end = 5
+    var sum = 0
+    for i in 0..end {
+        sum = sum + i
+        end = end + 100
+    }
+    return sum
+}
+
+fn ForLoopScopeShadowing() -> Int {
+    let i = 9
+    for i in 0..1 {
+        let x = i
+        if x != 0 {
+            return 0
+        }
+    }
+    return i
+}
+
+fn main() -> Int {
+    if WhileAccumulation() == 10 and
+        ForRangeAccumulation() == 10 and
+        ForRangeStepAccumulation() == 22 and
+        ForRangeEvaluatesBoundsOnce() == 10 and
+        ForLoopScopeShadowing() == 9 {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileFailsWhenImportedPackageMissingSymbol(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Cooking"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int {
+    return Cooking.DoesNotExist()
+}
+`
+	cookingSrc := `package Cooking
+
+fn CupsToGrams(cups: Float, flour: String) -> Float {
+    return cups
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "missing symbol test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	cookingManifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "missing symbol test dependency"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "cooking.oct"), []byte(cookingSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cooking", "manifest.oct"), []byte(cookingManifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Compile(root)
+	if err == nil {
+		t.Fatal("expected compile failure")
+	}
+	if !strings.Contains(err.Error(), "package 'Cooking' has no function 'DoesNotExist'") {
+		t.Fatalf("unexpected compile error: %v", err)
+	}
+}
+
+func TestCompileResolvesManifestDependencyFromPackageCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainSrc := `package Main
+
+import Cooking
+
+fn Main() -> Int ! Error {
+    let grams = Cooking.CupsToGrams(2.0, "bread_flour")?
+    if grams == 240.0 {
+        return 1
+    }
+    return 0
+}
+`
+	manifestSrc := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "cache dependency test"
+        Dependencies: [Dependency { Name: "Cooking" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "manifest.oct"), []byte(manifestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheDir := filepath.Join(root, ".pkgcache")
+	depDir := filepath.Join(cacheDir, "repos", "dep-cooking")
+	if err := os.MkdirAll(depDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	depSrc := `package Cooking
+
+fn CupsToGrams(cups: Float, flour: String) -> Float ! Error {
+    if flour == "bread_flour" {
+        return cups * 120.0
+    }
+    return error("unknown flour")
+}
+`
+	depManifest := `package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Cooking"
+        Version: "0.1.0"
+        Description: "cached dependency"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(depDir, "cooking.oct"), []byte(depSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(depDir, "manifest.oct"), []byte(depManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	indexPath := filepath.Join(cacheDir, "index.json")
+	type packageCacheEntry struct {
+		Source    string `json:"source"`
+		CacheKey  string `json:"cache_key"`
+		Path      string `json:"path"`
+		Name      string `json:"name"`
+		Version   string `json:"version"`
+		FetchedAt string `json:"fetched_at"`
+	}
+	type packageCacheIndex struct {
+		Entries map[string]packageCacheEntry `json:"entries"`
+	}
+	indexData, err := json.MarshalIndent(packageCacheIndex{
+		Entries: map[string]packageCacheEntry{
+			"dep-cooking": {
+				Source:    "https://example.com/cooking.git",
+				CacheKey:  "dep-cooking",
+				Path:      depDir,
+				Name:      "Cooking",
+				Version:   "0.1.0",
+				FetchedAt: "2026-01-01T00:00:00Z",
+			},
+		},
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal cache index: %v", err)
+	}
+	if err := os.WriteFile(indexPath, indexData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
+
+	result, err := Compile(root)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
 	}
 }
 
@@ -1130,6 +1598,364 @@ fn main() -> Int {
 	text := string(data)
 	if !strings.Contains(text, "utility_when[site=") {
 		t.Fatalf("expected lowered utility when in MIR dump, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileAndRunStandaloneUtilityWhenParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn ChooseMode(temp: Int, pressure: Int, fault: Bool) -> Int {
+    return when utility {
+        case 900 when fault score 100
+        case 200 when temp > 70 score temp
+        case 100 when pressure > 50 score pressure
+        case 300 when temp > 40 and pressure > 40 score temp + pressure
+        else 0
+    }
+}
+
+fn TieStable() -> Int {
+    return when utility {
+        case 10 when true score 5
+        case 20 when true score 5
+        else 0
+    }
+}
+
+fn Main() -> Int {
+    let basic = ChooseMode(80, 20, false)
+    let ordered = when utility {
+        case 1 when true score 7
+        case 2 when true score 9
+        case 3 when true score 9
+        else 0
+    }
+    let realistic = ChooseMode(45, 60, false)
+    let fallback = ChooseMode(0, 0, false)
+    let tie = TieStable()
+    return basic + ordered + realistic + fallback + tie
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, err := project.Load(mainPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+
+	interpValue, err := interpret.ExecuteMain(program, nil)
+	if err != nil {
+		t.Fatalf("interpreter run: %v", err)
+	}
+	want := strings.TrimSpace(interpValue.String())
+	if want != "512" {
+		t.Fatalf("expected interpreter baseline 512, got %q", want)
+	}
+
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	got := strings.TrimSpace(string(out))
+	if got != want {
+		t.Fatalf("compiled/interpreter mismatch: compiled=%q interpreter=%q", got, want)
+	}
+}
+
+func TestCompileModeUnsupportedSurfaceDiagnostics(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name: "range step zero still rejected by typechecker",
+			source: `package Main
+
+fn main() -> Int {
+    for i in 0..10 step 0 {
+        return i
+    }
+    return 0
+}
+`,
+			wantErr: "range step must be positive, got 0",
+			},
+		{
+			name: "plot builtin",
+			source: `package Main
+
+fn main() -> Int {
+    return PlotLine([0.0], [1.0], "out.png")
+}
+`,
+			wantErr: "compiled mode does not yet support builtin PlotLine",
+		},
+		{
+			name: "xlsx builtin",
+			source: `package Main
+
+fn main() -> Int {
+    let wb = XlsxCreateWorkbook()
+    return wb
+}
+`,
+			wantErr: "compiled mode does not yet support builtin XlsxCreateWorkbook",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Compile(mainPath)
+			if err == nil {
+				t.Fatalf("expected compile failure")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestCompileAndRunVectorsMatricesM93(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "vector literal compiled",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    return vector[1, 2, 3]
+}
+`,
+			want: "[1 2 3]",
+		},
+		{
+			name: "matrix literal compiled",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    return matrix[[1, 2] [3, 4]]
+}
+`,
+			want: "[[1 2] [3 4]]",
+		},
+		{
+			name: "matrix at vector compiled",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    let a = matrix[[1, 2] [3, 4]]
+    let x = vector[10, 20]
+    return a @ x
+}
+`,
+			want: "[50 110]",
+		},
+		{
+			name: "matrix at matrix compiled",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+    return a @ b
+}
+`,
+			want: "[[19 22] [43 50]]",
+		},
+		{
+			name: "dimensioned matrix at vector compiled",
+			source: `package Main
+
+fn Main() -> Vector<Float<m>> {
+    let k = matrix[[1.0m/s, 0.0m/s] [0.0m/s, 2.0m/s]]
+    let x = vector[3.0s, 4.0s]
+    return k @ x
+}
+`,
+			want: "[3 8]",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Compile(mainPath)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("run artifact: %v (%s)", err, string(out))
+			}
+			if strings.TrimSpace(string(out)) != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, strings.TrimSpace(string(out)))
+			}
+		})
+	}
+}
+
+func TestCompileRunParityVectorsMatricesM93(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Main() -> Matrix<Int> {
+    let a = matrix[[2, 1] [0, 3]]
+    let b = matrix[[1, 4] [2, 5]]
+    return a @ b
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, err := project.Load(mainPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	interpValue, err := interpret.ExecuteMain(program, nil)
+	if err != nil {
+		t.Fatalf("interpreter run: %v", err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	got := strings.TrimSpace(string(out))
+	want := strings.TrimSpace(interpValue.String())
+	want = strings.TrimPrefix(want, "matrix")
+	want = strings.TrimPrefix(want, "vector")
+	want = strings.ReplaceAll(want, ",", "")
+	if got != want {
+		t.Fatalf("compiled/interpreter mismatch: compiled=%q interpreter=%q", got, want)
+	}
+}
+
+func TestCompileVectorsMatricesBoundaryErrorsM93(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			name: "no implicit array to vector coercion",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    return [1, 2, 3]
+}
+`,
+			wantErr: "function expects Vector<Int>, but return is Int[]",
+		},
+		{
+			name: "no implicit nested array to matrix coercion",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    return [[1, 2], [3, 4]]
+}
+`,
+			wantErr: "function expects Matrix<Int>, but return is Int[][]",
+		},
+		{
+			name: "vector at vector remains unsupported",
+			source: `package Main
+
+fn Main() -> Int {
+    let a = vector[1, 2]
+    let b = vector[3, 4]
+    return a @ b
+}
+`,
+			wantErr: "operator '@' not defined for Vector<Int> and Vector<Int>",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Compile(mainPath)
+			if err == nil {
+				t.Fatal("expected compile failure")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestCompileAndRunIfExpressionConditionSwitchSurface(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn tier(x: Int) -> String {
+    return if x > 10 {
+        "high"
+    } else {
+        if x > 5 {
+            "mid"
+        } else {
+            "low"
+        }
+    }
+}
+
+fn main() -> Int {
+    if tier(11) == "high" and tier(7) == "mid" and tier(1) == "low" {
+        return 1
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
 	}
 	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
 	if err != nil {

@@ -1,0 +1,7 @@
+expect error: "function Main: function expects Vector<Int>, but return is Int[]"
+
+package Main
+
+fn Main() -> Vector<Int> {
+    return [1, 2, 3]
+}

@@ -23,48 +23,30 @@ enum OtherMode {
 
 [Fact]
 fn RejectsTopLevelMismatch() -> Void {
-    match LoadOctagon[Int]("Language/Data/Octagon/valid/record_literal.octagon") {
-        ok(value) => { Assert.True(false, "expected top-level mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[Int]("Language/Data/Octagon/valid/record_literal.octagon"), "expected top-level mismatch")
 }
 
 [Fact]
 fn RejectsRecordFieldMismatch() -> Void {
-    match LoadOctagon[WrongStepsType]("Language/Data/Octagon/valid/record_literal.octagon") {
-        ok(value) => { Assert.True(false, "expected record field mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[WrongStepsType]("Language/Data/Octagon/valid/record_literal.octagon"), "expected record field mismatch")
 }
 
 [Fact]
 fn RejectsExtraRecordField() -> Void {
-    match LoadOctagon[MissingFieldConfig]("Language/Data/Octagon/valid/record_literal.octagon") {
-        ok(value) => { Assert.True(false, "expected extra record field mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[MissingFieldConfig]("Language/Data/Octagon/valid/record_literal.octagon"), "expected extra record field mismatch")
 }
 
 [Fact]
 fn RejectsEnumMismatch() -> Void {
-    match LoadOctagon[OtherMode]("Language/Data/Octagon/valid/enum_value.octagon") {
-        ok(value) => { Assert.True(false, "expected enum mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[OtherMode]("Language/Data/Octagon/valid/enum_value.octagon"), "expected enum mismatch")
 }
 
 [Fact]
 fn RejectsArrayElementMismatch() -> Void {
-    match LoadOctagon[Float[]]("Language/Data/Octagon/valid/array_of_scalars.octagon") {
-        ok(value) => { Assert.True(false, "expected array element mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[Float[]]("Language/Data/Octagon/valid/array_of_scalars.octagon"), "expected array element mismatch")
 }
 
 [Fact]
 fn RejectsDimensionMismatch() -> Void {
-    match LoadOctagon[Float<s>]("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon") {
-        ok(value) => { Assert.True(false, "expected dimension mismatch") }
-        err(e) => { return }
-    }
+    Assert.Error(LoadOctagon[Float<s>]("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon"), "expected dimension mismatch")
 }

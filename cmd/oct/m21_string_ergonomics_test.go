@@ -49,7 +49,7 @@ func TestM21StringErgonomics(t *testing.T) {
 				"    }\n" +
 				"}\n",
 			wantStdout:   "alpha\n",
-			wantBuildErr: "compiled mode does not yet support switch expression",
+			wantBuildErr: "",
 		},
 		{
 			name: "mixed string and int rejected",

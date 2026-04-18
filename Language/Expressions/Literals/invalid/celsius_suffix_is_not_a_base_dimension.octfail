@@ -1,0 +1,7 @@
+expect error: "unknown base unit: C"
+
+package Main
+
+fn Main() -> Float<C> {
+    return 273.15K
+}

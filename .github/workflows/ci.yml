@@ -31,10 +31,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Setup MinGW (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          release: false
+          path-type: inherit
+
       - name: Build oct binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
         run: |
           mkdir -p dist
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct
@@ -49,3 +58,34 @@ jobs:
           path: dist/${{ matrix.binary_name }}
           if-no-files-found: error
           retention-days: 14
+
+  native-webview-smoke-linux:
+    name: native-webview-smoke-linux
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install native webview dependencies
+        run: |
+          sudo ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
+
+      - name: Build native desktop host (tagged)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go build -tags machina_desktop_webview ./cmd/machina-ui-desktop-host
+
+      - name: Run native webview smoke test
+        env:
+          CGO_ENABLED: "1"
+          MACHINA_WEBVIEW_SMOKE: "1"
+        run: |
+          xvfb-run -a go test -tags machina_desktop_webview ./internal/machina/desktophost -run TestWebviewDriverFactoryConstructsAndInitializesNativeBinding -count=1

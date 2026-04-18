@@ -1,0 +1,39 @@
+package MainValid
+
+record Row {
+    Values: Int[]
+}
+
+fn BuildGrid() -> Int[][] {
+    return [[1, 2], [3, 4]]
+}
+
+fn Neighbors() -> Int[][] {
+    return [[1, 2], [0, 2, 3], [0, 1], [1]]
+}
+
+[Fact]
+fn NestedArrayLiteralAndIndexing() -> Void {
+    let grid = BuildGrid()
+    Assert.Equal(2, Len(grid), "nested array row count")
+    Assert.Equal(2, Len(grid[0]), "nested array first row length")
+    Assert.Equal(4, grid[1][1], "nested array double indexing")
+}
+
+[Fact]
+fn NestedArrayAsContainerCanBeJagged() -> Void {
+    let adjacency = Neighbors()
+    Assert.Equal(4, Len(adjacency), "adjacency list node count")
+    Assert.Equal(3, Len(adjacency[1]), "adjacency list variable degree")
+    Assert.Equal(3, adjacency[1][2], "adjacency list nested value")
+}
+
+[Fact]
+fn NestedRecordArraysAreSupported() -> Void {
+    let rows = [
+        [Row { Values: [1, 2] }],
+        [Row { Values: [3] }, Row { Values: [4, 5] }]
+    ]
+    Assert.Equal(2, Len(rows), "record nested row count")
+    Assert.Equal(5, rows[1][1].Values[1], "record nested indexing")
+}
