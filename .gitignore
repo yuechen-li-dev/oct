@@ -75,4 +75,4 @@ temp/
 # Default: keep vendor tracked when intentionally generated.
 # Do NOT ignore vendor/ here, because llm-sandbox-vendor exists on purpose.
 # ------------------------------
-# vendor/
+vendor/
