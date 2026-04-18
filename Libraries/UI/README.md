@@ -157,3 +157,27 @@ M98 is the first milestone where Machina UI is emitted as a real `.wasm` artifac
 - this remains a bounded Machina UI Wasm slice, not a full Oct-to-Wasm backend
 
 Reference docs: `docs/MACHINA_UI_WASM_EMISSION_M98.md`.
+
+## M99 Browser Host Renderer
+
+M99 is the first host milestone with visible rendering using the real emitted Wasm artifact.
+
+- browser host lives at `tools/machina-ui-host/`
+- consumes the same locked M96 UIIR JSON ABI
+- dispatches canonical event JSON back into Wasm
+- keeps Wasm as the source of truth for state/transitions/UIIR generation
+
+Reference docs: `docs/MACHINA_UI_HOST_RENDERER_M99.md`.
+
+## M100 Native Host (webview-backed first slice)
+
+M100 extends the same host/runtime contract into a desktop webview boundary.
+
+- desktop webview layer lives at `tools/machina-ui-desktop/`
+- reuses browser host runtime/renderer (`tools/machina-ui-host/host.js`) directly
+- consumes the same emitted `.ui.wasm` artifact and `machina.uiir.v1` JSON ABI
+- dispatches the same canonical event JSON contract
+
+This milestone is architectural proof of “one UI runtime, multiple hosts,” not native platform productization.
+
+Reference docs: `docs/MACHINA_UI_NATIVE_HOST_M100.md`.
