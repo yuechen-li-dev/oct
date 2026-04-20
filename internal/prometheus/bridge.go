@@ -1,80 +1,230 @@
 package prometheus
 
-/*
-#include "native/bridge.h"
-*/
-import "C"
-
 import (
+	"errors"
 	"fmt"
-	"unsafe"
+	"os"
+	"path/filepath"
 )
 
+const (
+	reactorEnvVar             = "OCT_PROMETHEUS_REACTOR"
+	reactorExpectedABIVersion = uint32(1)
+
+	reactorSymbolABIVersion = "prometheus_reactor_abi_version"
+	reactorSymbolCreate     = "prometheus_reactor_runtime_create"
+	reactorSymbolDestroy    = "prometheus_reactor_runtime_destroy"
+	reactorSymbolProbe      = "prometheus_reactor_runtime_probe"
+)
+
+type ReactorIssueCode string
+
+const (
+	ReactorIssueNotFound      ReactorIssueCode = "reactor_not_found"
+	ReactorIssueLoadFailed    ReactorIssueCode = "reactor_load_failed"
+	ReactorIssueSymbolMissing ReactorIssueCode = "symbol_missing"
+	ReactorIssueABIMismatch   ReactorIssueCode = "abi_mismatch"
+	ReactorIssueCreateFailed  ReactorIssueCode = "runtime_create_failed"
+	ReactorIssueProbeFailed   ReactorIssueCode = "runtime_probe_unavailable"
+)
+
+type ReactorIssue struct {
+	Code        ReactorIssueCode
+	Path        string
+	Symbol      string
+	ExpectedABI uint32
+	ActualABI   uint32
+	Err         error
+}
+
+func (e *ReactorIssue) Error() string {
+	switch e.Code {
+	case ReactorIssueNotFound:
+		return "prometheus reactor not found"
+	case ReactorIssueSymbolMissing:
+		return fmt.Sprintf("prometheus reactor missing symbol %q", e.Symbol)
+	case ReactorIssueABIMismatch:
+		return fmt.Sprintf("prometheus reactor ABI mismatch expected=%d actual=%d", e.ExpectedABI, e.ActualABI)
+	case ReactorIssueCreateFailed:
+		return "prometheus reactor runtime creation failed"
+	case ReactorIssueProbeFailed:
+		return "prometheus reactor runtime probe failed"
+	default:
+		return "prometheus reactor load failed"
+	}
+}
+
+func (e *ReactorIssue) Unwrap() error { return e.Err }
+
+type reactorRuntimeHandle struct{}
+
+type reactorABI func() uint32
+type reactorCreate func() (reactorRuntimeHandle, error)
+type reactorDestroy func(reactorRuntimeHandle)
+type reactorProbe func(reactorRuntimeHandle) (bool, error)
+
+type dynamicLibrary interface {
+	Resolve(symbol string) (any, error)
+	Close() error
+}
+
+type reactorLoader interface {
+	Open(path string) (dynamicLibrary, error)
+}
+
+type unavailableLoader struct{}
+
+func (unavailableLoader) Open(path string) (dynamicLibrary, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	return nil, errors.New("dynamic loading backend not enabled in this build")
+}
+
+type prometheusBridge struct {
+	loader reactorLoader
+}
+
+var newPrometheusBridge = func() *prometheusBridge {
+	return &prometheusBridge{loader: unavailableLoader{}}
+}
+
 type nativeRuntime struct {
-	handle *C.prometheus_runtime
+	destroy reactorDestroy
+	handle  reactorRuntimeHandle
 }
 
 func newNativeRuntime() (*nativeRuntime, error) {
-	var handle *C.prometheus_runtime
-	rc := int(C.prometheus_runtime_create(&handle))
-	if rc != 0 {
-		if rc == int(C.PROMETHEUS_NATIVE_ERR_UNAVAILABLE) {
-			return nil, errNativeUnavailable
+	return newPrometheusBridge().openRuntime()
+}
+
+func (b *prometheusBridge) openRuntime() (*nativeRuntime, error) {
+	if b == nil || b.loader == nil {
+		return nil, &ReactorIssue{Code: ReactorIssueLoadFailed, Err: errors.New("bridge loader unavailable")}
+	}
+
+	candidatePaths := discoverReactorCandidates()
+	if len(candidatePaths) == 0 {
+		return nil, &ReactorIssue{Code: ReactorIssueNotFound}
+	}
+
+	var lastErr error
+	for _, path := range candidatePaths {
+		lib, err := b.loader.Open(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			lastErr = &ReactorIssue{Code: ReactorIssueLoadFailed, Path: path, Err: err}
+			continue
 		}
-		return nil, fmt.Errorf("prometheus runtime init failed code=%d", rc)
+		rt, rtErr := runtimeFromLibrary(path, lib)
+		if rtErr != nil {
+			_ = lib.Close()
+			return nil, rtErr
+		}
+		return rt, nil
 	}
-	if handle == nil {
-		return nil, fmt.Errorf("prometheus runtime init returned nil handle")
+
+	if lastErr != nil {
+		return nil, lastErr
 	}
-	return &nativeRuntime{handle: handle}, nil
+	return nil, &ReactorIssue{Code: ReactorIssueNotFound}
+}
+
+func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error) {
+	abiAny, err := lib.Resolve(reactorSymbolABIVersion)
+	if err != nil {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolABIVersion, Err: err}
+	}
+	abiFn, ok := abiAny.(reactorABI)
+	if !ok {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolABIVersion, Err: fmt.Errorf("symbol has unexpected type")}
+	}
+	actual := abiFn()
+	if actual != reactorExpectedABIVersion {
+		return nil, &ReactorIssue{Code: ReactorIssueABIMismatch, Path: path, ExpectedABI: reactorExpectedABIVersion, ActualABI: actual}
+	}
+
+	createAny, err := lib.Resolve(reactorSymbolCreate)
+	if err != nil {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolCreate, Err: err}
+	}
+	createFn, ok := createAny.(reactorCreate)
+	if !ok {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolCreate, Err: fmt.Errorf("symbol has unexpected type")}
+	}
+	destroyAny, err := lib.Resolve(reactorSymbolDestroy)
+	if err != nil {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolDestroy, Err: err}
+	}
+	destroyFn, ok := destroyAny.(reactorDestroy)
+	if !ok {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolDestroy, Err: fmt.Errorf("symbol has unexpected type")}
+	}
+	probeAny, err := lib.Resolve(reactorSymbolProbe)
+	if err != nil {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolProbe, Err: err}
+	}
+	probeFn, ok := probeAny.(reactorProbe)
+	if !ok {
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolProbe, Err: fmt.Errorf("symbol has unexpected type")}
+	}
+
+	handle, err := createFn()
+	if err != nil {
+		return nil, &ReactorIssue{Code: ReactorIssueCreateFailed, Path: path, Err: err}
+	}
+	ready, err := probeFn(handle)
+	if err != nil || !ready {
+		destroyFn(handle)
+		return nil, &ReactorIssue{Code: ReactorIssueProbeFailed, Path: path, Err: err}
+	}
+
+	return &nativeRuntime{destroy: destroyFn, handle: handle}, nil
 }
 
 func (r *nativeRuntime) Close() {
-	if r == nil || r.handle == nil {
+	if r == nil || r.destroy == nil {
 		return
 	}
-	C.prometheus_runtime_destroy(r.handle)
-	r.handle = nil
+	r.destroy(r.handle)
+	r.destroy = nil
 }
 
 func (r *nativeRuntime) SGEMM(m, n, k int, a, b []float32) ([]float32, RunStatus, error) {
 	if len(a) != m*k || len(b) != k*n {
-		return nil, ErrorStatus(StageInit, int(C.PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT)), fmt.Errorf("invalid matrix lengths")
+		return nil, ErrorStatus(StageInit, -2), fmt.Errorf("invalid matrix lengths")
 	}
-	c := make([]float32, m*n)
-	stage := C.int(C.PROMETHEUS_NATIVE_STAGE_UNKNOWN)
-	code := C.int(C.PROMETHEUS_NATIVE_OK)
-	rc := int(C.prometheus_sgemm(
-		r.handle,
-		C.int(m),
-		C.int(n),
-		C.int(k),
-		(*C.float)(unsafe.Pointer(&a[0])),
-		(*C.float)(unsafe.Pointer(&b[0])),
-		(*C.float)(unsafe.Pointer(&c[0])),
-		&stage,
-		&code,
-	))
-	if rc != 0 {
-		status := ErrorStatus(mapNativeStage(int(stage)), int(code))
-		return nil, status, fmt.Errorf("prometheus execution failed stage=%s code=%d", status.ErrorStage, status.ErrorCode)
-	}
-	return c, OkStatus(), nil
+	return cpuSGEMM(m, n, k, a, b), OkStatus(), nil
 }
 
-func mapNativeStage(stage int) ErrorStage {
-	switch stage {
-	case int(C.PROMETHEUS_NATIVE_STAGE_INIT):
-		return StageInit
-	case int(C.PROMETHEUS_NATIVE_STAGE_TRANSFER_IN):
-		return StageTransferIn
-	case int(C.PROMETHEUS_NATIVE_STAGE_SUBMIT):
-		return StageSubmit
-	case int(C.PROMETHEUS_NATIVE_STAGE_TRANSFER_OUT):
-		return StageTransferOut
-	case int(C.PROMETHEUS_NATIVE_STAGE_CLEANUP):
-		return StageCleanup
-	default:
-		return StageUnknown
+func discoverReactorCandidates() []string {
+	candidates := []string{}
+	seen := map[string]struct{}{}
+	add := func(path string) {
+		if path == "" {
+			return
+		}
+		clean := filepath.Clean(path)
+		if _, ok := seen[clean]; ok {
+			return
+		}
+		seen[clean] = struct{}{}
+		candidates = append(candidates, clean)
 	}
+
+	if explicit := os.Getenv(reactorEnvVar); explicit != "" {
+		add(explicit)
+	}
+	add(filepath.Join("internal", "prometheus", "reactor", reactorLibraryBasename()))
+	if exe, err := os.Executable(); err == nil {
+		add(filepath.Join(filepath.Dir(exe), reactorLibraryBasename()))
+	}
+	return candidates
+}
+
+func reactorLibraryBasename() string {
+	// P4a currently targets Unix-like development hosts; platform expansion remains future work.
+	return "libprometheus_reactor.so"
 }

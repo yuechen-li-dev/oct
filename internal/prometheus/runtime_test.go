@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,7 @@ func TestRunSGEMMCPUPathPassesStarterCorrectness(t *testing.T) {
 }
 
 func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
-	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "1")
+	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-reactor.so"))
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
 		Shape:   Shape{M: 4, N: 4, K: 4},
@@ -49,29 +50,24 @@ func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
 	}
 }
 
-func TestRunSGEMMPrometheusDefaultStubFallsBackUntilRuntimeReady(t *testing.T) {
-	t.Setenv("PROMETHEUS_STUB_RUNTIME_READY", "")
-	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "")
-	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "")
-	run, err := RunSGEMM(SGEMMRequest{
-		Backend: BackendPrometheus,
-		Shape:   Shape{M: 4, N: 4, K: 4},
-		A:       deterministicMatrix(4, 4),
-		B:       deterministicMatrix(4, 4),
-	})
-	if err != nil {
-		t.Fatalf("expected fallback, got err=%v", err)
-	}
-	if run.Status.Kind != RunStatusFallback || run.Status.FallbackReason != "prometheus_unavailable" {
-		t.Fatalf("expected fallback(prometheus_unavailable), got %s", run.Status.String())
-	}
-	if run.UsedBackend != BackendCPU {
-		t.Fatalf("expected cpu fallback backend, got %s", run.UsedBackend)
-	}
-}
+func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
-func TestRunSGEMMPrometheusSubmitFailureReturnsExplicitErrorWithoutFallback(t *testing.T) {
-	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "1")
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (bool, error) { return false, nil }),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
 		Shape:   Shape{M: 4, N: 4, K: 4},
@@ -79,13 +75,13 @@ func TestRunSGEMMPrometheusSubmitFailureReturnsExplicitErrorWithoutFallback(t *t
 		B:       deterministicMatrix(4, 4),
 	})
 	if err == nil {
-		t.Fatalf("expected explicit submit failure")
+		t.Fatalf("expected init failure")
 	}
 	if run.UsedBackend != BackendPrometheus {
-		t.Fatalf("expected used backend prometheus, got %s", run.UsedBackend)
+		t.Fatalf("expected prometheus backend on explicit init failure, got %s", run.UsedBackend)
 	}
-	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageSubmit {
-		t.Fatalf("expected error(submit,*), got %s", run.Status.String())
+	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageInit {
+		t.Fatalf("expected init error status, got %s", run.Status.String())
 	}
 }
 
@@ -112,3 +108,33 @@ func TestWriteOctagonReportIncludesRequiredFields(t *testing.T) {
 		t.Fatalf("expected report to be loadable octagon: %v", err)
 	}
 }
+
+type fakeLoader struct {
+	libraries map[string]fakeLibrarySpec
+}
+
+type fakeLibrarySpec struct {
+	symbols map[string]any
+}
+
+func (l fakeLoader) Open(path string) (dynamicLibrary, error) {
+	spec, ok := l.libraries[path]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return &fakeLibrary{symbols: spec.symbols}, nil
+}
+
+type fakeLibrary struct {
+	symbols map[string]any
+}
+
+func (l *fakeLibrary) Resolve(symbol string) (any, error) {
+	v, ok := l.symbols[symbol]
+	if !ok {
+		return nil, errors.New("symbol missing")
+	}
+	return v, nil
+}
+
+func (l *fakeLibrary) Close() error { return nil }

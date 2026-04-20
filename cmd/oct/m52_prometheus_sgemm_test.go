@@ -26,7 +26,7 @@ func TestM52PrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
 }
 
 func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
-	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "1")
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr); err != nil {
@@ -41,9 +41,7 @@ func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
 }
 
 func TestM52PrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *testing.T) {
-	t.Setenv("PROMETHEUS_STUB_RUNTIME_READY", "")
-	t.Setenv("PROMETHEUS_FORCE_UNAVAILABLE", "")
-	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "")
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr); err != nil {
@@ -54,21 +52,5 @@ func TestM52PrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *t
 	}
 	if !strings.Contains(stdout.String(), "backend_requested=prometheus backend_used=cpu") {
 		t.Fatalf("expected explicit backend distinction, got %q", stdout.String())
-	}
-}
-
-func TestM52PrometheusSgemmPrometheusSubmitFailureNoHiddenFallback(t *testing.T) {
-	t.Setenv("PROMETHEUS_FORCE_SUBMIT_FAILURE", "1")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr)
-	if err == nil {
-		t.Fatalf("expected explicit prometheus submit failure")
-	}
-	if strings.Contains(stdout.String(), "backend_used=cpu") {
-		t.Fatalf("expected no cpu fallback after dispatch failure, got %q", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "prometheus-sgemm failed") {
-		t.Fatalf("expected surfaced command error, got %q", stderr.String())
 	}
 }

@@ -66,12 +66,13 @@ fn Main() -> Int {
 }
 ```
 
-## Prometheus/P2 Vertical Slice (Scoped)
+## Prometheus (EVT transition scaffold)
 
-A narrow Prometheus SGEMM slice exists to validate architecture and correctness shape (not performance claims).
+Prometheus is now scaffolded as an **optional** runtime capability:
 
-- What it is: fixed SGEMM path (`float32`, row-major, explicit backend choice)
-- Why it exists: prove backend selection/fallback/error wiring behavior
-- CLI entrypoint: `oct prometheus-sgemm <cpu|prometheus> [--octagon-out <file.octagon>]`
+- `oct` core remains pure Go in the default build path.
+- Prometheus Reactor is expected as a dynamically loaded native library when requested.
+- If no compatible Reactor is found, `prometheus` requests surface explicit `fallback(prometheus_unavailable)` and run on CPU.
+- CLI entrypoint remains: `oct prometheus-sgemm <cpu|prometheus> [--octagon-out <file.octagon>]`
 
-See `docs/BACKENDS.md` for backend context and boundaries.
+See `docs/reports/prometheus/P4A_REPORT.md` for the P4a transition report.
