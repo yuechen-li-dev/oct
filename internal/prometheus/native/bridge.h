@@ -24,6 +24,15 @@ enum {
   PROM_REASON_STUB_UNAVAILABLE = 1,
 };
 
+enum {
+  PROM_STAGE_NONE = 0,
+  PROM_STAGE_INIT = 1,
+  PROM_STAGE_TRANSFER_IN = 2,
+  PROM_STAGE_SUBMIT = 3,
+  PROM_STAGE_TRANSFER_OUT = 4,
+  PROM_STAGE_CLEANUP = 5,
+};
+
 typedef struct PrometheusCaps {
   uint32_t available;
   uint32_t backend_type;
@@ -34,6 +43,15 @@ uint32_t prometheus_reactor_abi_version(void);
 int prometheus_reactor_runtime_create(void* config, void** out_handle);
 int prometheus_reactor_runtime_destroy(void* handle);
 int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
+int prometheus_reactor_runtime_sgemm(void* handle,
+                                     const float* a,
+                                     const float* b,
+                                     float* c,
+                                     uint32_t m,
+                                     uint32_t n,
+                                     uint32_t k,
+                                     uint32_t* out_stage,
+                                     int* out_detail_code);
 
 /* Backward-compat aliases for earlier contract drafts. */
 int prometheus_runtime_create(void* config, void** out_handle);
