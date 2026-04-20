@@ -22,11 +22,7 @@ cp "$OUT_DIR/$LIB_NAME" "$REACTOR_DIR/$LIB_NAME"
 c++ -std=c++23 -O2 \
   -DMARIONETTE_TEST_REPO_ROOT="\"$ROOT_DIR\"" \
   "$NATIVE_DIR/bridge.c" \
-  "$NATIVE_DIR/Marionette/test_main.cpp" \
-  "$NATIVE_DIR/Marionette/test_doom.cpp" \
-  "$NATIVE_DIR/Marionette/test_harness_doom_tests.cpp" \
-  "$NATIVE_DIR/Marionette/test_harness_phase1_tests.cpp" \
-  "$NATIVE_DIR/Marionette/reactor_stub_tests.cpp" \
+  "$NATIVE_DIR/Marionette"/*.cpp \
   -o "$OUT_DIR/marionette_tests"
 
 echo "Built reactor library: $OUT_DIR/$LIB_NAME"

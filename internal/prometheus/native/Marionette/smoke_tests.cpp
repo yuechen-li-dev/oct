@@ -100,3 +100,10 @@ FACT(SmokeFactWritesDeterministicArtifacts)
         std::istreambuf_iterator<char>{}};
     ASSERT_EQUAL(artifactContents, actualContents, "artifact contents should be deterministic and overwritten in place");
 }
+
+FACT(SmokeFactSupportsNearAssertions)
+{
+    const float expected = 10.0f;
+    const float measured = 10.05f;
+    ASSERT_NEAR(expected, measured, 0.1f, "near assertions should pass when difference is in tolerance");
+}
