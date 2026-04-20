@@ -1,85 +1,112 @@
 #include "bridge.h"
 
+#include <stddef.h>
 #include <stdlib.h>
-#include <string.h>
 
-struct prometheus_runtime {
-  int placeholder;
-};
+#define PROMETHEUS_REACTOR_ABI_V1 1u
+#define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
+#define PROMETHEUS_MAX_TRACKED_HANDLES 256
 
-int prometheus_runtime_create(prometheus_runtime** out_runtime) {
-  if (out_runtime == NULL) {
-    return PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
+typedef struct prometheus_runtime {
+  uint32_t magic;
+} prometheus_runtime;
+
+static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
+
+static int registry_contains(void* handle) {
+  size_t i;
+  for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
+    if (g_active_handles[i] == handle) {
+      return 1;
+    }
   }
-  const char* unavailable = getenv("PROMETHEUS_FORCE_UNAVAILABLE");
-  if (unavailable != NULL && unavailable[0] == '1') {
-    *out_runtime = NULL;
-    return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
-  }
-  const char* force_submit_failure = getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
-  const char* stub_ready = getenv("PROMETHEUS_STUB_RUNTIME_READY");
-  if ((stub_ready == NULL || stub_ready[0] != '1') &&
-      (force_submit_failure == NULL || force_submit_failure[0] != '1')) {
-    *out_runtime = NULL;
-    return PROMETHEUS_NATIVE_ERR_UNAVAILABLE;
-  }
-  *out_runtime = (prometheus_runtime*)malloc(sizeof(prometheus_runtime));
-  if (*out_runtime == NULL) {
-    return PROMETHEUS_NATIVE_ERR_INTERNAL;
-  }
-  (*out_runtime)->placeholder = 1;
-  return PROMETHEUS_NATIVE_OK;
+  return 0;
 }
 
-void prometheus_runtime_destroy(prometheus_runtime* runtime) {
-  free(runtime);
+static int registry_add(void* handle) {
+  size_t i;
+  for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
+    if (g_active_handles[i] == NULL) {
+      g_active_handles[i] = handle;
+      return 1;
+    }
+  }
+  return 0;
 }
 
-int prometheus_sgemm(prometheus_runtime* runtime,
-                     int m,
-                     int n,
-                     int k,
-                     const float* a,
-                     const float* b,
-                     float* c,
-                     int* out_stage,
-                     int* out_code) {
-  if (out_stage != NULL) {
-    *out_stage = PROMETHEUS_NATIVE_STAGE_UNKNOWN;
-  }
-  if (out_code != NULL) {
-    *out_code = PROMETHEUS_NATIVE_OK;
-  }
-  if (runtime == NULL || a == NULL || b == NULL || c == NULL || m <= 0 || n <= 0 || k <= 0) {
-    if (out_stage != NULL) {
-      *out_stage = PROMETHEUS_NATIVE_STAGE_INIT;
+static void registry_remove(void* handle) {
+  size_t i;
+  for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
+    if (g_active_handles[i] == handle) {
+      g_active_handles[i] = NULL;
+      return;
     }
-    if (out_code != NULL) {
-      *out_code = PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
-    }
-    return PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT;
+  }
+}
+
+uint32_t prometheus_reactor_abi_version(void) {
+  return PROMETHEUS_REACTOR_ABI_V1;
+}
+
+int prometheus_reactor_runtime_create(void* config, void** out_handle) {
+  (void)config;
+
+  if (out_handle == NULL) {
+    return PROM_ERROR;
   }
 
-  const char* fail_submit = getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE");
-  if (fail_submit != NULL && fail_submit[0] == '1') {
-    if (out_stage != NULL) {
-      *out_stage = PROMETHEUS_NATIVE_STAGE_SUBMIT;
-    }
-    if (out_code != NULL) {
-      *out_code = PROMETHEUS_NATIVE_ERR_INTERNAL;
-    }
-    return PROMETHEUS_NATIVE_ERR_INTERNAL;
+  *out_handle = NULL;
+  prometheus_runtime* runtime = (prometheus_runtime*)malloc(sizeof(prometheus_runtime));
+  if (runtime == NULL) {
+    return PROM_INTERNAL_ERROR;
   }
 
-  for (int row = 0; row < m; ++row) {
-    for (int col = 0; col < n; ++col) {
-      float sum = 0.0f;
-      for (int kk = 0; kk < k; ++kk) {
-        sum += a[row * k + kk] * b[kk * n + col];
-      }
-      c[row * n + col] = sum;
-    }
+  runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
+  if (!registry_add(runtime)) {
+    free(runtime);
+    return PROM_INTERNAL_ERROR;
   }
 
-  return PROMETHEUS_NATIVE_OK;
+  *out_handle = runtime;
+  return PROM_OK;
+}
+
+int prometheus_reactor_runtime_destroy(void* handle) {
+  if (handle == NULL) {
+    return PROM_OK;
+  }
+
+  if (!registry_contains(handle)) {
+    return PROM_INVALID_HANDLE;
+  }
+
+  registry_remove(handle);
+  free(handle);
+  return PROM_OK;
+}
+
+int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps) {
+  if (out_caps == NULL) {
+    return PROM_ERROR;
+  }
+  if (handle == NULL || !registry_contains(handle)) {
+    return PROM_INVALID_HANDLE;
+  }
+
+  out_caps->available = 0u;
+  out_caps->backend_type = PROM_BACKEND_STUB;
+  out_caps->reason_code = PROM_REASON_STUB_UNAVAILABLE;
+  return PROM_OK;
+}
+
+int prometheus_runtime_create(void* config, void** out_handle) {
+  return prometheus_reactor_runtime_create(config, out_handle);
+}
+
+int prometheus_runtime_destroy(void* handle) {
+  return prometheus_reactor_runtime_destroy(handle);
+}
+
+int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps) {
+  return prometheus_reactor_runtime_probe(handle, out_caps);
 }

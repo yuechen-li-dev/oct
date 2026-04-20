@@ -1,48 +1,56 @@
-#include "test_doom.h"
-#include "test_harness.h"
+#pragma once
 
-#include <cstdlib>
 #include <filesystem>
+#include <string>
 #include <string_view>
+#include <vector>
+#include <utility>
 
-namespace
+namespace marionette::tests
 {
-    [[nodiscard]] bool ContainsText(std::string_view text, std::string_view token)
+    using DoomFunction = void (*)();
+
+    struct DoomCase
     {
-        return text.find(token) != std::string_view::npos;
-    }
+        std::string name;
+        DoomFunction function = nullptr;
+    };
+
+    class DoomRegistrar
+    {
+    public:
+        DoomRegistrar(const char* doomCaseName, DoomFunction function);
+    };
+
+    struct DoomRunResult
+    {
+        bool launched = false;
+        bool terminatedAbnormally = false;
+        int exitCode = 0;
+        int signalNumber = 0;
+        std::filesystem::path artifactDirectory;
+        std::filesystem::path breadcrumbPath;
+        std::filesystem::path stdoutPath;
+        std::filesystem::path stderrPath;
+        std::string foretelling;
+    };
+
+    [[nodiscard]] std::vector<DoomCase>& DoomRegistry();
+    [[nodiscard]] bool IsDoomCaseRegistered(std::string_view doomCaseName);
+    [[nodiscard]] bool RecordDoomForetelling(std::string_view foretelling);
+    [[nodiscard]] const std::filesystem::path& CurrentDoomArtifactDirectory();
+
+    void SetMarionetteExecutablePath(std::filesystem::path executablePath);
+    [[nodiscard]] int RunDoomCaseInChild(std::string_view doomCaseName, std::filesystem::path artifactDirectory);
+    [[nodiscard]] DoomRunResult RunDoomCaseSubprocess(std::string_view doomCaseName, std::filesystem::path artifactDirectory);
 }
 
-DOOM_FACT(MarionetteDoom_AbortInChild_EnvelopeCase)
-{
-    FORETELL_DOOM("Intentional abort to validate subprocess doom containment and artifact breadcrumbs.");
-    std::abort();
-}
+#define DOOM_FACT(DOOM_CASE_NAME) \
+    static void DOOM_CASE_NAME(); \
+    static const ::marionette::tests::DoomRegistrar DOOM_CASE_NAME##_doom_registrar(#DOOM_CASE_NAME, &DOOM_CASE_NAME); \
+    static void DOOM_CASE_NAME()
 
-FACT(DoomCaseRegistrationFindsNamedCase)
-{
-    ASSERT_TRUE(
-        ::marionette::tests::IsDoomCaseRegistered("MarionetteDoom_AbortInChild_EnvelopeCase"),
-        "doom case should be discoverable by name");
-}
-
-FACT(AssertDoomContainsCatastropheAndRecoversForetelling)
-{
-    ASSERT_DOOM(MarionetteDoom_AbortInChild_EnvelopeCase);
-
-    bool foundSummary = false;
-    bool foundBreadcrumb = false;
-    for (const std::filesystem::path& artifactPath : context.ArtifactPaths()) {
-        const std::string normalizedPath = artifactPath.lexically_normal().string();
-        if (ContainsText(normalizedPath, "doom_MarionetteDoom_AbortInChild_EnvelopeCase_summary")) {
-            foundSummary = true;
-        }
-
-        if (ContainsText(normalizedPath, "doom_MarionetteDoom_AbortInChild_EnvelopeCase_breadcrumb")) {
-            foundBreadcrumb = true;
-        }
-    }
-
-    ASSERT_TRUE(foundSummary, "summary artifact should be attached to parent test context");
-    ASSERT_TRUE(foundBreadcrumb, "breadcrumb artifact should be attached to parent test context");
-}
+#define FORETELL_DOOM(MESSAGE) \
+    do { \
+        (void)::marionette::tests::RecordDoomForetelling((MESSAGE)); \
+    } while (false)

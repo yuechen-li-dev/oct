@@ -1,40 +1,44 @@
 #ifndef OCT_INTERNAL_PROMETHEUS_NATIVE_BRIDGE_H
 #define OCT_INTERNAL_PROMETHEUS_NATIVE_BRIDGE_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct prometheus_runtime prometheus_runtime;
-
 enum {
-  PROMETHEUS_NATIVE_OK = 0,
-  PROMETHEUS_NATIVE_ERR_UNAVAILABLE = 1,
-  PROMETHEUS_NATIVE_ERR_INVALID_ARGUMENT = 2,
-  PROMETHEUS_NATIVE_ERR_INTERNAL = 3,
+  PROM_OK = 0,
+  PROM_ERROR = 1,
+  PROM_INVALID_HANDLE = 2,
+  PROM_INTERNAL_ERROR = 3,
 };
 
 enum {
-  PROMETHEUS_NATIVE_STAGE_UNKNOWN = 0,
-  PROMETHEUS_NATIVE_STAGE_INIT = 1,
-  PROMETHEUS_NATIVE_STAGE_TRANSFER_IN = 2,
-  PROMETHEUS_NATIVE_STAGE_SUBMIT = 3,
-  PROMETHEUS_NATIVE_STAGE_TRANSFER_OUT = 4,
-  PROMETHEUS_NATIVE_STAGE_CLEANUP = 5,
+  PROM_BACKEND_UNKNOWN = 0,
+  PROM_BACKEND_STUB = 1,
 };
 
-int prometheus_runtime_create(prometheus_runtime** out_runtime);
-void prometheus_runtime_destroy(prometheus_runtime* runtime);
+enum {
+  PROM_REASON_NONE = 0,
+  PROM_REASON_STUB_UNAVAILABLE = 1,
+};
 
-int prometheus_sgemm(prometheus_runtime* runtime,
-                     int m,
-                     int n,
-                     int k,
-                     const float* a,
-                     const float* b,
-                     float* c,
-                     int* out_stage,
-                     int* out_code);
+typedef struct PrometheusCaps {
+  uint32_t available;
+  uint32_t backend_type;
+  uint32_t reason_code;
+} PrometheusCaps;
+
+uint32_t prometheus_reactor_abi_version(void);
+int prometheus_reactor_runtime_create(void* config, void** out_handle);
+int prometheus_reactor_runtime_destroy(void* handle);
+int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
+
+/* Backward-compat aliases for earlier contract drafts. */
+int prometheus_runtime_create(void* config, void** out_handle);
+int prometheus_runtime_destroy(void* handle);
+int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps);
 
 #ifdef __cplusplus
 }

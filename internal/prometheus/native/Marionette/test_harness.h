@@ -1,233 +1,154 @@
-#include "test_doom.h"
+#pragma once
 
-#include <cstdlib>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
-
-#if defined(__unix__) || defined(__APPLE__)
-#include <sys/wait.h>
-#endif
+#include <vector>
 
 namespace marionette::tests
 {
-    namespace
+    struct Failure
     {
-        struct DoomExecutionContext
-        {
-            std::filesystem::path artifactDirectory;
-            std::filesystem::path breadcrumbPath;
-            std::string foretelling;
-        };
+        std::string testName;
+        std::string file;
+        int line = 0;
+        std::string assertion;
+        std::string message;
+        std::string expected;
+        std::string actual;
+    };
 
-        DoomExecutionContext* g_activeDoomContext = nullptr;
-        std::filesystem::path g_marionetteExecutablePath;
-
-        [[nodiscard]] std::filesystem::path MetaPathForDirectory(const std::filesystem::path& artifactDirectory)
-        {
-            return artifactDirectory / "doom-meta.txt";
-        }
-
-        [[nodiscard]] std::string QuotePath(const std::filesystem::path& path)
-        {
-            std::string quoted = "\"";
-            quoted += path.string();
-            quoted += "\"";
-            return quoted;
-        }
-
-        [[nodiscard]] std::string ReadTextFile(const std::filesystem::path& path)
-        {
-            std::ifstream stream(path, std::ios::binary);
-            if (!stream.is_open()) {
-                return {};
-            }
-
-            std::ostringstream buffer;
-            buffer << stream.rdbuf();
-            return buffer.str();
-        }
-    }
-
-    DoomRegistrar::DoomRegistrar(const char* doomCaseName, DoomFunction function)
+    struct Skip
     {
-        DoomRegistry().push_back(DoomCase{
-            .name = doomCaseName,
-            .function = function
-        });
-    }
+        std::string testName;
+        std::string file;
+        int line = 0;
+        std::string reason;
+    };
 
-    [[nodiscard]] std::vector<DoomCase>& DoomRegistry()
+    class TestContext
     {
-        static std::vector<DoomCase> registry;
-        return registry;
-    }
+    public:
+        explicit TestContext(std::string_view testName);
 
-    [[nodiscard]] bool IsDoomCaseRegistered(std::string_view doomCaseName)
+        [[nodiscard]] std::string_view TestName() const;
+        [[nodiscard]] std::string DisplayName() const;
+        [[nodiscard]] const std::vector<Failure>& Failures() const;
+        [[nodiscard]] const std::vector<std::filesystem::path>& ArtifactPaths() const;
+        [[nodiscard]] const Skip* SkipState() const;
+        [[nodiscard]] bool HasFailures() const;
+        [[nodiscard]] bool IsSkipped() const;
+
+        void RecordFailure(
+            const char* file,
+            int line,
+            std::string_view assertion,
+            std::string_view message,
+            std::string_view expected = {},
+            std::string_view actual = {});
+        void SkipTest(const char* file, int line, std::string_view reason);
+        [[nodiscard]] bool WriteTextArtifact(std::string_view artifactName, std::string_view content);
+
+    private:
+        std::string testName_;
+        std::vector<Failure> failures_;
+        std::vector<std::filesystem::path> artifactPaths_;
+        Skip skip_;
+        bool skipped_ = false;
+    };
+
+    using TestFunction = void (*)(TestContext& context);
+
+    struct TestCase
     {
-        for (const DoomCase& doomCase : DoomRegistry()) {
-            if (doomCase.name == doomCaseName) {
-                return true;
-            }
-        }
+        std::string name;
+        TestFunction function = nullptr;
+    };
 
-        return false;
-    }
-
-    [[nodiscard]] bool RecordDoomForetelling(std::string_view foretelling)
+    class TestRegistrar
     {
-        if (g_activeDoomContext == nullptr) {
-            return false;
-        }
+    public:
+        TestRegistrar(const char* testName, TestFunction function);
+    };
 
-        g_activeDoomContext->foretelling = std::string(foretelling);
-
-        std::ofstream breadcrumb(g_activeDoomContext->breadcrumbPath, std::ios::app | std::ios::binary);
-        if (!breadcrumb.is_open()) {
-            return false;
-        }
-
-        breadcrumb << "foretell: " << g_activeDoomContext->foretelling << "\n";
-        breadcrumb.flush();
-        return static_cast<bool>(breadcrumb);
-    }
-
-    [[nodiscard]] const std::filesystem::path& CurrentDoomArtifactDirectory()
+    struct BenchmarkContext
     {
-        static const std::filesystem::path emptyPath;
-        if (g_activeDoomContext == nullptr) {
-            return emptyPath;
-        }
+        std::uint64_t iteration = 0;
+    };
 
-        return g_activeDoomContext->artifactDirectory;
-    }
+    [[nodiscard]] std::vector<TestCase>& Registry();
+    [[nodiscard]] int RunAllTests(std::string_view filter);
+    [[nodiscard]] int RunBenchmarks(std::string_view filter);
 
-    void SetMarionetteExecutablePath(std::filesystem::path executablePath)
-    {
-        g_marionetteExecutablePath = std::move(executablePath);
-    }
-
-    [[nodiscard]] int RunDoomCaseInChild(std::string_view doomCaseName, std::filesystem::path artifactDirectory)
-    {
-        std::error_code error;
-        std::filesystem::create_directories(artifactDirectory, error);
-        if (error) {
-            return 31;
-        }
-
-        DoomExecutionContext context{
-            .artifactDirectory = artifactDirectory,
-            .breadcrumbPath = artifactDirectory / "doom-breadcrumb.txt",
-            .foretelling = {}
-        };
-
-        std::ofstream breadcrumb(context.breadcrumbPath, std::ios::binary | std::ios::trunc);
-        if (!breadcrumb.is_open()) {
-            return 32;
-        }
-        breadcrumb << "doom-case: " << doomCaseName << "\n";
-        breadcrumb << "child-stage: entered\n";
-        breadcrumb.flush();
-        if (!breadcrumb) {
-            return 33;
-        }
-        breadcrumb.close();
-
-        std::ofstream meta(MetaPathForDirectory(artifactDirectory), std::ios::binary | std::ios::trunc);
-        if (!meta.is_open()) {
-            return 34;
-        }
-        meta << "doom-case=" << doomCaseName << "\n";
-        meta << "child-entered=1\n";
-        meta.flush();
-        meta.close();
-
-        DoomFunction function = nullptr;
-        for (const DoomCase& doomCase : DoomRegistry()) {
-            if (doomCase.name == doomCaseName) {
-                function = doomCase.function;
-                break;
-            }
-        }
-
-        if (function == nullptr) {
-            return 35;
-        }
-
-        g_activeDoomContext = &context;
-        function();
-        g_activeDoomContext = nullptr;
-
-        std::ofstream completed(MetaPathForDirectory(artifactDirectory), std::ios::binary | std::ios::app);
-        if (completed.is_open()) {
-            completed << "child-returned=1\n";
-            completed.flush();
-        }
-
-        return 0;
-    }
-
-    [[nodiscard]] DoomRunResult RunDoomCaseSubprocess(std::string_view doomCaseName, std::filesystem::path artifactDirectory)
-    {
-        DoomRunResult result;
-        result.artifactDirectory = artifactDirectory;
-        result.breadcrumbPath = artifactDirectory / "doom-breadcrumb.txt";
-        result.stdoutPath = artifactDirectory / "stdout.txt";
-        result.stderrPath = artifactDirectory / "stderr.txt";
-
-        std::error_code error;
-        std::filesystem::create_directories(artifactDirectory, error);
-        if (error) {
-            return result;
-        }
-
-        const std::filesystem::path executablePath = g_marionetteExecutablePath;
-        if (executablePath.empty()) {
-            return result;
-        }
-
-        const std::string command =
-            QuotePath(executablePath) +
-            " --doom-case " + std::string(doomCaseName) +
-            " --doom-artifact-dir " + QuotePath(artifactDirectory) +
-            " > " + QuotePath(result.stdoutPath) +
-            " 2> " + QuotePath(result.stderrPath);
-
-        result.launched = true;
-        const int status = std::system(command.c_str());
-
-#if defined(__unix__) || defined(__APPLE__)
-        if (WIFSIGNALED(status)) {
-            result.terminatedAbnormally = true;
-            result.signalNumber = WTERMSIG(status);
-            result.exitCode = 0;
-        } else if (WIFEXITED(status)) {
-            result.exitCode = WEXITSTATUS(status);
-            result.terminatedAbnormally = result.exitCode != 0;
-        } else {
-            result.terminatedAbnormally = true;
-        }
-#else
-        result.exitCode = status;
-        result.terminatedAbnormally = status != 0;
-#endif
-
-        const std::string breadcrumbText = ReadTextFile(result.breadcrumbPath);
-        const std::string token = "foretell: ";
-        const std::size_t tokenStart = breadcrumbText.find(token);
-        if (tokenStart != std::string::npos) {
-            const std::size_t valueStart = tokenStart + token.size();
-            const std::size_t valueEnd = breadcrumbText.find('\n', valueStart);
-            if (valueEnd == std::string::npos) {
-                result.foretelling = breadcrumbText.substr(valueStart);
-            } else {
-                result.foretelling = breadcrumbText.substr(valueStart, valueEnd - valueStart);
-            }
-        }
-
-        return result;
-    }
+    [[nodiscard]] std::string FormatValue(bool value);
+    [[nodiscard]] std::string FormatValue(int value);
+    [[nodiscard]] std::string FormatValue(std::uint32_t value);
+    [[nodiscard]] std::string FormatValue(std::size_t value);
+    [[nodiscard]] std::string FormatValue(const char* value);
+    [[nodiscard]] std::string FormatValue(const std::string& value);
+    [[nodiscard]] std::string FormatValue(std::string_view value);
 }
+
+#define FACT(TEST_NAME) \
+    static void TEST_NAME(::marionette::tests::TestContext& context); \
+    static const ::marionette::tests::TestRegistrar TEST_NAME##_registrar(#TEST_NAME, &TEST_NAME); \
+    static void TEST_NAME(::marionette::tests::TestContext& context)
+
+#define THEORY(TEST_NAME) FACT(TEST_NAME)
+
+#define ASSERT_TRUE(CONDITION, MESSAGE) \
+    do { \
+        if (!(CONDITION)) { \
+            context.RecordFailure(__FILE__, __LINE__, "ASSERT_TRUE", MESSAGE, "true", "false"); \
+        } \
+    } while (false)
+
+#define ASSERT_FALSE(CONDITION, MESSAGE) \
+    do { \
+        if (CONDITION) { \
+            context.RecordFailure(__FILE__, __LINE__, "ASSERT_FALSE", MESSAGE, "false", "true"); \
+        } \
+    } while (false)
+
+#define ASSERT_EQUAL(EXPECTED, ACTUAL, MESSAGE) \
+    do { \
+        const auto expectedValue = (EXPECTED); \
+        const auto actualValue = (ACTUAL); \
+        if (!(expectedValue == actualValue)) { \
+            context.RecordFailure( \
+                __FILE__, \
+                __LINE__, \
+                "ASSERT_EQUAL", \
+                MESSAGE, \
+                ::marionette::tests::FormatValue(expectedValue), \
+                ::marionette::tests::FormatValue(actualValue)); \
+        } \
+    } while (false)
+
+#define ASSERT_NOT_EQUAL(EXPECTED, ACTUAL, MESSAGE) \
+    do { \
+        const auto expectedValue = (EXPECTED); \
+        const auto actualValue = (ACTUAL); \
+        if (expectedValue == actualValue) { \
+            context.RecordFailure( \
+                __FILE__, \
+                __LINE__, \
+                "ASSERT_NOT_EQUAL", \
+                MESSAGE, \
+                ::marionette::tests::FormatValue(expectedValue), \
+                ::marionette::tests::FormatValue(actualValue)); \
+        } \
+    } while (false)
+
+#define FAIL(MESSAGE) \
+    do { \
+        context.RecordFailure(__FILE__, __LINE__, "FAIL", MESSAGE); \
+    } while (false)
+
+#define SKIP(MESSAGE) \
+    do { \
+        context.SkipTest(__FILE__, __LINE__, MESSAGE); \
+        return; \
+    } while (false)
