@@ -2,6 +2,7 @@ package prometheus
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,3 +227,61 @@ func (l *fakeLibrary) Resolve(symbol string) (any, error) {
 }
 
 func (l *fakeLibrary) Close() error { return nil }
+
+func TestCompareAgainstOracleRejectsNaNAndInf(t *testing.T) {
+	expected := []float32{1, 2, 3}
+	actual := []float32{1, float32(math.NaN()), float32(math.Inf(1))}
+	res := compareAgainstOracle(expected, actual)
+	if res.Pass {
+		t.Fatalf("expected compareAgainstOracle to fail for non-finite values")
+	}
+	if res.FailingCount != 2 {
+		t.Fatalf("expected 2 non-finite failures, got %d", res.FailingCount)
+	}
+	if res.FirstFailingIndex != 1 {
+		t.Fatalf("expected first failing index 1, got %d", res.FirstFailingIndex)
+	}
+}
+
+func TestRunSGEMMReportingInvariantsNoFalseFallbackOrSuccess(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 2}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, _, _, _ int, _, _ []float32) ([]float32, reactorCallStatus, error) {
+						return nil, reactorCallStatus{StageCode: 3, DetailCode: -501}, errors.New("forced submit failure")
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 3, N: 5, K: 7},
+		A:       deterministicMatrix(3, 7),
+		B:       deterministicMatrix(7, 5),
+	})
+	if err == nil {
+		t.Fatalf("expected forced native failure")
+	}
+	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageSubmit || run.Status.ErrorCode != -501 {
+		t.Fatalf("expected explicit submit error status, got %s", run.Status.String())
+	}
+	if run.UsedBackend != BackendPrometheus {
+		t.Fatalf("expected used backend to remain prometheus, got %s", run.UsedBackend)
+	}
+	if run.Status.Kind == RunStatusFallback {
+		t.Fatalf("prometheus execution failure must not be reported as fallback")
+	}
+}

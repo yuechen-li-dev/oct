@@ -1,4 +1,4 @@
-#include "bridge.h"
+#include "reactor_vulkan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -7,7 +7,6 @@
 
 #include <vulkan/vulkan.h>
 
-#define PROMETHEUS_REACTOR_ABI_V1 1u
 #define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
 #define PROMETHEUS_MAX_TRACKED_HANDLES 256
 
@@ -19,6 +18,7 @@ typedef struct prometheus_runtime {
   uint32_t available;
   uint32_t reason_code;
   int init_detail_code;
+  uint32_t test_flags;
 
   VkInstance instance;
   VkPhysicalDevice physical_device;
@@ -219,6 +219,10 @@ static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize 
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) {
+    return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+  }
+
   memset(out_buffer, 0, sizeof(*out_buffer));
   out_buffer->size = size;
 
@@ -392,6 +396,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   device_info.queueCreateInfoCount = 1u;
   device_info.pQueueCreateInfos = &queue_info;
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_DEVICE_CREATE) != 0u) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
   result = vkCreateDevice(rt->physical_device, &device_info, NULL, &rt->device);
   if (result != VK_SUCCESS) {
     return result;
@@ -467,16 +475,17 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
+    vkDestroyShaderModule(rt->device, shader_module, NULL);
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
   result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
   vkDestroyShaderModule(rt->device, shader_module, NULL);
   return result;
 }
 
-uint32_t prometheus_reactor_abi_version(void) {
-  return PROMETHEUS_REACTOR_ABI_V1;
-}
-
-int prometheus_reactor_runtime_create(void* config, void** out_handle) {
+int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   VkResult result;
   prometheus_runtime* runtime;
   (void)config;
@@ -493,6 +502,13 @@ int prometheus_reactor_runtime_create(void* config, void** out_handle) {
   memset(runtime, 0, sizeof(*runtime));
   runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
   runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+
+  if (config != NULL) {
+    const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
+    if (cfg->struct_size >= sizeof(PrometheusReactorConfig)) {
+      runtime->test_flags = cfg->test_flags;
+    }
+  }
 
   result = vk_runtime_init(runtime);
   if (result == VK_SUCCESS) {
@@ -516,7 +532,7 @@ int prometheus_reactor_runtime_create(void* config, void** out_handle) {
   return PROM_OK;
 }
 
-int prometheus_reactor_runtime_destroy(void* handle) {
+int prom_reactor_runtime_destroy_impl(void* handle) {
   prometheus_runtime* runtime;
   if (handle == NULL) {
     return PROM_OK;
@@ -536,7 +552,7 @@ int prometheus_reactor_runtime_destroy(void* handle) {
   return PROM_OK;
 }
 
-int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps) {
+int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
   prometheus_runtime* runtime;
   if (out_caps == NULL) {
     return PROM_ERROR;
@@ -552,7 +568,7 @@ int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps) {
   return PROM_OK;
 }
 
-int prometheus_reactor_runtime_sgemm(void* handle,
+int prom_reactor_runtime_sgemm_impl(void* handle,
                                      const float* a,
                                      const float* b,
                                      float* c,
@@ -628,6 +644,11 @@ int prometheus_reactor_runtime_sgemm(void* handle,
     destroy_buffer(rt, &b_buf);
     destroy_buffer(rt, &a_buf);
     return PROM_ERROR;
+  }
+
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
+    goto cleanup;
   }
 
   memcpy(a_buf.mapped, a, (size_t)(m * k * sizeof(float)));
@@ -758,6 +779,11 @@ int prometheus_reactor_runtime_sgemm(void* handle,
                      &push);
 
   set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
+    goto cleanup;
+  }
+
   vkCmdDispatch(command_buffer,
                 (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
                 (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
@@ -808,6 +834,11 @@ int prometheus_reactor_runtime_sgemm(void* handle,
     goto cleanup;
   }
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE);
+    goto cleanup;
+  }
+
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
   memcpy(c, c_buf.mapped, (size_t)(m * n * sizeof(float)));
 
@@ -831,21 +862,9 @@ cleanup:
   destroy_buffer(rt, &b_buf);
   destroy_buffer(rt, &a_buf);
 
-  if (out_stage != NULL && *out_stage == PROM_STAGE_TRANSFER_OUT) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
+  if (out_stage != NULL && out_detail_code != NULL && *out_stage == PROM_STAGE_TRANSFER_OUT && *out_detail_code == 0) {
     return PROM_OK;
   }
   return PROM_ERROR;
 }
 
-int prometheus_runtime_create(void* config, void** out_handle) {
-  return prometheus_reactor_runtime_create(config, out_handle);
-}
-
-int prometheus_runtime_destroy(void* handle) {
-  return prometheus_reactor_runtime_destroy(handle);
-}
-
-int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps) {
-  return prometheus_reactor_runtime_probe(handle, out_caps);
-}

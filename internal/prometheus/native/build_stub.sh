@@ -14,7 +14,8 @@ if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || "${OS:-}" == Windows
 fi
 
 cc -std=c11 -fPIC -shared \
-  "$NATIVE_DIR/bridge.c" \
+  "$NATIVE_DIR/reactor_api.c" \
+  "$NATIVE_DIR/reactor_vulkan.c" \
   -lvulkan \
   -o "$OUT_DIR/$LIB_NAME"
 
@@ -22,7 +23,8 @@ cp "$OUT_DIR/$LIB_NAME" "$REACTOR_DIR/$LIB_NAME"
 
 c++ -std=c++23 -O2 \
   -DMARIONETTE_TEST_REPO_ROOT="\"$ROOT_DIR\"" \
-  "$NATIVE_DIR/bridge.c" \
+  "$NATIVE_DIR/reactor_api.c" \
+  "$NATIVE_DIR/reactor_vulkan.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
   -lvulkan \
   -o "$OUT_DIR/marionette_tests"
