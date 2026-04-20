@@ -23,7 +23,10 @@ func TestBridgeABIMismatchIsStructured(t *testing.T) {
 		reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion + 1 }),
 		reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 		reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
-		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (bool, error) { return true, nil }),
+		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: true}, nil }),
+		reactorSymbolSGEMM: reactorSGEMM(func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error) {
+			return nil, reactorCallStatus{}, nil
+		}),
 	}})
 	var issue *ReactorIssue
 	if !errors.As(err, &issue) {
@@ -39,7 +42,10 @@ func TestBridgeSuccessfulLoadProbeViaStubLibrary(t *testing.T) {
 		reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 		reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 		reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
-		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (bool, error) { return true, nil }),
+		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: true}, nil }),
+		reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+			return cpuSGEMM(m, n, k, a, b), reactorCallStatus{}, nil
+		}),
 	}})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)

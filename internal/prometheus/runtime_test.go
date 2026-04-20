@@ -61,7 +61,10 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
-					reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (bool, error) { return false, nil }),
+					reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: false}, nil }),
+					reactorSymbolSGEMM: reactorSGEMM(func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error) {
+						return nil, reactorCallStatus{}, nil
+					}),
 				},
 			},
 		}}}
@@ -82,6 +85,91 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 	}
 	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageInit {
 		t.Fatalf("expected init error status, got %s", run.Status.String())
+	}
+}
+
+func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	called := false
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 1}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+						called = true
+						return cpuSGEMM(m, n, k, a, b), reactorCallStatus{}, nil
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 3, N: 5, K: 7},
+		A:       deterministicMatrix(3, 7),
+		B:       deterministicMatrix(7, 5),
+	})
+	if err != nil {
+		t.Fatalf("expected successful prometheus run, got err=%v", err)
+	}
+	if !called {
+		t.Fatalf("expected native sgemm path to be called")
+	}
+	if run.UsedBackend != BackendPrometheus {
+		t.Fatalf("expected prometheus backend, got %s", run.UsedBackend)
+	}
+	if run.Status.Kind != RunStatusOK || !run.Correctness.Pass {
+		t.Fatalf("expected ok+correctness, got status=%s correctness=%#v", run.Status.String(), run.Correctness)
+	}
+}
+
+func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 1}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, _, _, _ int, _, _ []float32) ([]float32, reactorCallStatus, error) {
+						return nil, reactorCallStatus{StageCode: 3, DetailCode: -77}, errors.New("native submit failed")
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 4, N: 4, K: 4},
+		A:       deterministicMatrix(4, 4),
+		B:       deterministicMatrix(4, 4),
+	})
+	if err == nil {
+		t.Fatalf("expected native sgemm failure")
+	}
+	if run.UsedBackend != BackendPrometheus {
+		t.Fatalf("expected prometheus backend on native failure, got %s", run.UsedBackend)
+	}
+	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageSubmit || run.Status.ErrorCode != -77 {
+		t.Fatalf("expected explicit submit error, got %s", run.Status.String())
 	}
 }
 

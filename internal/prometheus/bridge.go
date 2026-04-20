@@ -15,6 +15,7 @@ const (
 	reactorSymbolCreate     = "prometheus_reactor_runtime_create"
 	reactorSymbolDestroy    = "prometheus_reactor_runtime_destroy"
 	reactorSymbolProbe      = "prometheus_reactor_runtime_probe"
+	reactorSymbolSGEMM      = "prometheus_reactor_runtime_sgemm"
 )
 
 type ReactorIssueCode string
@@ -26,6 +27,7 @@ const (
 	ReactorIssueABIMismatch   ReactorIssueCode = "abi_mismatch"
 	ReactorIssueCreateFailed  ReactorIssueCode = "runtime_create_failed"
 	ReactorIssueProbeFailed   ReactorIssueCode = "runtime_probe_unavailable"
+	ReactorIssueSGEMMFailed   ReactorIssueCode = "runtime_sgemm_failed"
 )
 
 type ReactorIssue struct {
@@ -49,6 +51,8 @@ func (e *ReactorIssue) Error() string {
 		return "prometheus reactor runtime creation failed"
 	case ReactorIssueProbeFailed:
 		return "prometheus reactor runtime probe failed"
+	case ReactorIssueSGEMMFailed:
+		return "prometheus reactor runtime sgemm failed"
 	default:
 		return "prometheus reactor load failed"
 	}
@@ -57,11 +61,21 @@ func (e *ReactorIssue) Error() string {
 func (e *ReactorIssue) Unwrap() error { return e.Err }
 
 type reactorRuntimeHandle struct{}
+type reactorCaps struct {
+	Available   bool
+	BackendType uint32
+	ReasonCode  uint32
+}
+type reactorCallStatus struct {
+	StageCode  uint32
+	DetailCode int
+}
 
 type reactorABI func() uint32
 type reactorCreate func() (reactorRuntimeHandle, error)
 type reactorDestroy func(reactorRuntimeHandle)
-type reactorProbe func(reactorRuntimeHandle) (bool, error)
+type reactorProbe func(reactorRuntimeHandle) (reactorCaps, error)
+type reactorSGEMM func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error)
 
 type dynamicLibrary interface {
 	Resolve(symbol string) (any, error)
@@ -91,6 +105,7 @@ var newPrometheusBridge = func() *prometheusBridge {
 
 type nativeRuntime struct {
 	destroy reactorDestroy
+	sgemm   reactorSGEMM
 	handle  reactorRuntimeHandle
 }
 
@@ -175,13 +190,24 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 	if err != nil {
 		return nil, &ReactorIssue{Code: ReactorIssueCreateFailed, Path: path, Err: err}
 	}
-	ready, err := probeFn(handle)
-	if err != nil || !ready {
+	caps, err := probeFn(handle)
+	if err != nil || !caps.Available {
 		destroyFn(handle)
 		return nil, &ReactorIssue{Code: ReactorIssueProbeFailed, Path: path, Err: err}
 	}
 
-	return &nativeRuntime{destroy: destroyFn, handle: handle}, nil
+	sgemmAny, err := lib.Resolve(reactorSymbolSGEMM)
+	if err != nil {
+		destroyFn(handle)
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolSGEMM, Err: err}
+	}
+	sgemmFn, ok := sgemmAny.(reactorSGEMM)
+	if !ok {
+		destroyFn(handle)
+		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolSGEMM, Err: fmt.Errorf("symbol has unexpected type")}
+	}
+
+	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle}, nil
 }
 
 func (r *nativeRuntime) Close() {
@@ -196,7 +222,31 @@ func (r *nativeRuntime) SGEMM(m, n, k int, a, b []float32) ([]float32, RunStatus
 	if len(a) != m*k || len(b) != k*n {
 		return nil, ErrorStatus(StageInit, -2), fmt.Errorf("invalid matrix lengths")
 	}
-	return cpuSGEMM(m, n, k, a, b), OkStatus(), nil
+	if r == nil || r.sgemm == nil {
+		return nil, ErrorStatus(StageInit, -3), &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: errors.New("runtime sgemm entrypoint unavailable")}
+	}
+	out, nativeStatus, err := r.sgemm(r.handle, m, n, k, a, b)
+	if err != nil {
+		return nil, ErrorStatus(stageFromNativeCode(nativeStatus.StageCode), nativeStatus.DetailCode), &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: err}
+	}
+	return out, OkStatus(), nil
+}
+
+func stageFromNativeCode(stage uint32) ErrorStage {
+	switch stage {
+	case 1:
+		return StageInit
+	case 2:
+		return StageTransferIn
+	case 3:
+		return StageSubmit
+	case 4:
+		return StageTransferOut
+	case 5:
+		return StageCleanup
+	default:
+		return StageUnknown
+	}
 }
 
 func discoverReactorCandidates() []string {
