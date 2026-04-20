@@ -1,12 +1,22 @@
 #include "../bridge.h"
 #include "test_harness.h"
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
+
+#include <vulkan/vulkan.h>
 
 namespace
 {
     constexpr std::uint32_t kExpectedAbiVersion = 1;
+
+    struct ShapeCase {
+        const char* name;
+        std::uint32_t m;
+        std::uint32_t n;
+        std::uint32_t k;
+    };
 
     std::vector<float> cpu_oracle(std::uint32_t m, std::uint32_t n, std::uint32_t k, const std::vector<float>& a, const std::vector<float>& b)
     {
@@ -106,17 +116,16 @@ FACT(PrometheusReactor_SgemmPathMatchesCpuOracleWhenAvailable)
         return;
     }
 
-    const struct {
-        std::uint32_t m;
-        std::uint32_t n;
-        std::uint32_t k;
-    } shapes[] = {
-        {1u, 1u, 1u},
-        {4u, 4u, 4u},
-        {3u, 5u, 7u},
+    const ShapeCase shapes[] = {
+        {"unit", 1u, 1u, 1u},
+        {"square_small", 4u, 4u, 4u},
+        {"non_square", 3u, 7u, 5u},
+        {"degenerate_row", 1u, 9u, 4u},
+        {"degenerate_col", 11u, 1u, 3u},
+        {"awkward", 2u, 13u, 3u},
     };
 
-    for (const auto& shape : shapes) {
+    for (const ShapeCase& shape : shapes) {
         const std::vector<float> a = deterministic_matrix(shape.m, shape.k);
         const std::vector<float> b = deterministic_matrix(shape.k, shape.n);
         std::vector<float> c(shape.m * shape.n, 0.0f);
@@ -131,10 +140,40 @@ FACT(PrometheusReactor_SgemmPathMatchesCpuOracleWhenAvailable)
 
         ASSERT_EQUAL(expected.size(), c.size(), "output size should match expected");
         for (std::size_t i = 0; i < expected.size(); ++i) {
+            ASSERT_TRUE(std::isfinite(c[i]), "sgemm output must be finite");
             ASSERT_NEAR(expected[i], c[i], 1e-4f, "sgemm output should match CPU oracle within tolerance");
         }
     }
 
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_SgemmDeterministicAcrossRepeatedRuns)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; deterministic GPU run cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 3u;
+    constexpr std::uint32_t n = 5u;
+    constexpr std::uint32_t k = 7u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+
+    std::vector<float> first(m * n, 0.0f);
+    std::vector<float> second(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = -1;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), first.data(), m, n, k, &stage, &detail), "first SGEMM run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), second.data(), m, n, k, &stage, &detail), "second SGEMM run should succeed");
+
+    ASSERT_SEQUENCE_EQUAL(first, second, "repeated SGEMM runs should remain deterministic");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
@@ -150,13 +189,97 @@ FACT(PrometheusReactor_SgemmRejectsInvalidArguments)
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
 
-    const int null_buffer_status = prometheus_reactor_runtime_sgemm(handle, nullptr, one.data(), one.data(), 1u, 1u, 1u, &stage, &detail);
-    ASSERT_EQUAL(PROM_ERROR, null_buffer_status, "sgemm should reject null matrix pointers");
+    const int null_a_status = prometheus_reactor_runtime_sgemm(handle, nullptr, one.data(), one.data(), 1u, 1u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, null_a_status, "sgemm should reject null A pointer");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "sgemm null pointers should report transfer-in stage");
 
-    const int zero_dim_status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), one.data(), 0u, 1u, 1u, &stage, &detail);
-    ASSERT_EQUAL(PROM_ERROR, zero_dim_status, "sgemm should reject zero dimensions");
+    const int null_b_status = prometheus_reactor_runtime_sgemm(handle, one.data(), nullptr, one.data(), 1u, 1u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, null_b_status, "sgemm should reject null B pointer");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "sgemm null pointers should report transfer-in stage");
+
+    const int null_c_status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), nullptr, 1u, 1u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, null_c_status, "sgemm should reject null C pointer");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "sgemm null pointers should report transfer-in stage");
+
+    const int zero_m_status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), one.data(), 0u, 1u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, zero_m_status, "sgemm should reject zero M");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_INIT), stage, "sgemm invalid shape should report init stage");
+
+    const int zero_n_status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), one.data(), 1u, 0u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, zero_n_status, "sgemm should reject zero N");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_INIT), stage, "sgemm invalid shape should report init stage");
+
+    const int zero_k_status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), one.data(), 1u, 1u, 0u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, zero_k_status, "sgemm should reject zero K");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_INIT), stage, "sgemm invalid shape should report init stage");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_InitFailurePathsReportExplicitStages)
+{
+    void* handle = nullptr;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+
+    cfg.test_flags = PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should return handle even on unavailable runtime");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(0u), caps.available, "device create failure should mark runtime unavailable");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+
+    handle = nullptr;
+    cfg.test_flags = PROM_TESTCFG_FAIL_PIPELINE_CREATE;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should return handle even on unavailable runtime");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(0u), caps.available, "pipeline create failure should mark runtime unavailable");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_RuntimeFailurePathsReportExplicitStages)
+{
+    const struct FailureCase {
+        const char* name;
+        std::uint32_t flag;
+        std::uint32_t expected_stage;
+        int expected_detail;
+    } cases[] = {
+        {"buffer_alloc", PROM_TESTCFG_FAIL_BUFFER_ALLOC, PROM_STAGE_TRANSFER_IN, VK_ERROR_OUT_OF_DEVICE_MEMORY},
+        {"upload", PROM_TESTCFG_FAIL_UPLOAD, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE},
+        {"dispatch", PROM_TESTCFG_FAIL_DISPATCH, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE},
+        {"download", PROM_TESTCFG_FAIL_DOWNLOAD, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE},
+    };
+
+    for (const FailureCase& failure : cases) {
+        PrometheusReactorConfig cfg{};
+        cfg.struct_size = sizeof(cfg);
+        cfg.test_flags = failure.flag;
+
+        void* handle = nullptr;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed for injected runtime failure");
+
+        PrometheusCaps caps{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+        if (caps.available == 0u) {
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+            SKIP("Vulkan runtime unavailable; runtime failure path cannot execute");
+        }
+
+        const std::uint32_t m = 2u;
+        const std::uint32_t n = 3u;
+        const std::uint32_t k = 4u;
+        const std::vector<float> a = deterministic_matrix(m, k);
+        const std::vector<float> b = deterministic_matrix(k, n);
+        std::vector<float> c(m * n, 0.0f);
+
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+        const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+        ASSERT_EQUAL(PROM_ERROR, status, "sgemm should fail for injected runtime failure");
+        ASSERT_EQUAL(failure.expected_stage, stage, "failure should report expected stage code");
+        ASSERT_EQUAL(failure.expected_detail, detail, "failure should report expected detail code");
+
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+    }
 }
