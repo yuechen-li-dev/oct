@@ -76,3 +76,19 @@ temp/
 # Do NOT ignore vendor/ here, because llm-sandbox-vendor exists on purpose.
 # ------------------------------
 vendor/
+Backends/ClrOct/src/ClrOct.Octest/obj/ClrOct.Octest.csproj.nuget.dgspec.json
+Backends/ClrOct/src/ClrOct.Octest/obj/ClrOct.Octest.csproj.nuget.g.props
+Backends/ClrOct/src/ClrOct.Octest/obj/ClrOct.Octest.csproj.nuget.g.targets
+Backends/ClrOct/src/ClrOct.Octest/obj/project.assets.json
+Backends/ClrOct/src/ClrOct.Octest/obj/project.nuget.cache
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/ClrOct.Octest.AssemblyInfo.cs
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/ClrOct.Octest.AssemblyInfoInputs.cache
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/ClrOct.Octest.assets.cache
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/ClrOct.Octest.GeneratedMSBuildEditorConfig.editorconfig
+Backends/ClrOct/src/ClrOct.Octest/obj/Debug/net10.0/ClrOct.Octest.GlobalUsings.g.cs
+Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.AssemblyInfo.cs
+Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.AssemblyInfoInputs.cache
+Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.GeneratedMSBuildEditorConfig.editorconfig
+Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.GlobalUsings.g.cs
