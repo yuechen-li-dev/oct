@@ -4,13 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"oct/internal/interpret"
 )
-
-var errNativeUnavailable = errors.New("prometheus runtime unavailable")
 
 const (
 	defaultAbsTolerance = 1e-4
@@ -109,21 +106,16 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		return result, nil
 	}
 
-	if prometheusForceSubmitFailure() {
-		result.UsedBackend = BackendPrometheus
-		result.Status = ErrorStatus(StageSubmit, 3)
-		return result, fmt.Errorf("prometheus execution failed stage=%s code=%d", result.Status.ErrorStage, result.Status.ErrorCode)
-	}
-
 	rt, err := newNativeRuntime()
 	if err != nil {
-		if errors.Is(err, errNativeUnavailable) {
+		var issue *ReactorIssue
+		if errors.As(err, &issue) && issue.Code == ReactorIssueNotFound {
 			start := time.Now()
 			actual := cpuSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
 			result.WallTimeNs = time.Since(start).Nanoseconds()
 			result.UsedBackend = BackendCPU
 			result.Status = FallbackStatus("prometheus_unavailable")
-			result.Notes = "prometheus unavailable before execution; used cpu fallback"
+			result.Notes = "prometheus reactor not found; used cpu fallback"
 			result.Correctness = compareAgainstOracle(reference, actual)
 			if !result.Correctness.Pass {
 				return result, fmt.Errorf("correctness gate failed for fallback backend=%s", result.UsedBackend)
@@ -131,7 +123,7 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 			return result, nil
 		}
 		result.UsedBackend = BackendPrometheus
-		result.Status = ErrorStatus(StageInit, -1)
+		result.Status = ErrorStatus(StageInit, bridgeIssueStatusCode(err))
 		return result, err
 	}
 	defer rt.Close()
@@ -153,8 +145,25 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 	return result, nil
 }
 
-func prometheusForceSubmitFailure() bool {
-	return os.Getenv("PROMETHEUS_FORCE_SUBMIT_FAILURE") == "1"
+func bridgeIssueStatusCode(err error) int {
+	var issue *ReactorIssue
+	if !errors.As(err, &issue) {
+		return -1
+	}
+	switch issue.Code {
+	case ReactorIssueLoadFailed:
+		return -10
+	case ReactorIssueSymbolMissing:
+		return -11
+	case ReactorIssueABIMismatch:
+		return -12
+	case ReactorIssueCreateFailed:
+		return -13
+	case ReactorIssueProbeFailed:
+		return -14
+	default:
+		return -1
+	}
 }
 
 func deterministicMatrix(rows, cols int) []float32 {
