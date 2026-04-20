@@ -15,6 +15,7 @@ fi
 
 cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/bridge.c" \
+  -lvulkan \
   -o "$OUT_DIR/$LIB_NAME"
 
 cp "$OUT_DIR/$LIB_NAME" "$REACTOR_DIR/$LIB_NAME"
@@ -23,6 +24,7 @@ c++ -std=c++23 -O2 \
   -DMARIONETTE_TEST_REPO_ROOT="\"$ROOT_DIR\"" \
   "$NATIVE_DIR/bridge.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
+  -lvulkan \
   -o "$OUT_DIR/marionette_tests"
 
 echo "Built reactor library: $OUT_DIR/$LIB_NAME"
