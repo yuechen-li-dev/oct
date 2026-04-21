@@ -27,8 +27,13 @@ typedef struct prometheus_runtime {
   VkQueue compute_queue;
   VkCommandPool command_pool;
   VkDescriptorSetLayout descriptor_set_layout;
+  VkDescriptorPool descriptor_pool;
+  VkDescriptorSet descriptor_set;
+  VkCommandBuffer command_buffer;
+  VkFence submit_fence;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
+  uint32_t software_vulkan;
 } prometheus_runtime;
 
 typedef struct prom_vk_buffer {
@@ -42,6 +47,7 @@ typedef struct prom_vk_push {
   uint32_t m;
   uint32_t n;
   uint32_t k;
+  uint32_t reserved0;
 } prom_vk_push;
 
 static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
@@ -194,6 +200,35 @@ static void registry_remove(void* handle) {
   }
 }
 
+static int text_contains_llvmpipe(const char* value) {
+  size_t i;
+  const char* needle = "llvmpipe";
+  if (value == NULL) {
+    return 0;
+  }
+  for (i = 0u; value[i] != '\0'; ++i) {
+    size_t j = 0u;
+    while (needle[j] != '\0') {
+      char left = value[i + j];
+      char right = needle[j];
+      if (left == '\0') {
+        break;
+      }
+      if (left >= 'A' && left <= 'Z') {
+        left = (char)(left - 'A' + 'a');
+      }
+      if (left != right) {
+        break;
+      }
+      ++j;
+    }
+    if (needle[j] == '\0') {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 static uint32_t find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties) {
   uint32_t i;
   VkPhysicalDeviceMemoryProperties memory_properties;
@@ -301,6 +336,14 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyDescriptorSetLayout(rt->device, rt->descriptor_set_layout, NULL);
     rt->descriptor_set_layout = VK_NULL_HANDLE;
   }
+  if (rt->descriptor_pool != VK_NULL_HANDLE) {
+    vkDestroyDescriptorPool(rt->device, rt->descriptor_pool, NULL);
+    rt->descriptor_pool = VK_NULL_HANDLE;
+  }
+  if (rt->submit_fence != VK_NULL_HANDLE) {
+    vkDestroyFence(rt->device, rt->submit_fence, NULL);
+    rt->submit_fence = VK_NULL_HANDLE;
+  }
   if (rt->command_pool != VK_NULL_HANDLE) {
     vkDestroyCommandPool(rt->device, rt->command_pool, NULL);
     rt->command_pool = VK_NULL_HANDLE;
@@ -333,6 +376,11 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkShaderModule shader_module = VK_NULL_HANDLE;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
+  VkDescriptorPoolSize pool_size;
+  VkDescriptorPoolCreateInfo descriptor_pool_info;
+  VkDescriptorSetAllocateInfo set_alloc_info;
+  VkCommandBufferAllocateInfo cmd_alloc_info;
+  VkFenceCreateInfo fence_info;
 
   memset(&instance_info, 0, sizeof(instance_info));
   instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -383,6 +431,15 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   if (rt->physical_device == VK_NULL_HANDLE || rt->queue_family_index == UINT32_MAX) {
     return VK_ERROR_FEATURE_NOT_PRESENT;
+  }
+  {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(rt->physical_device, &props);
+    if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU || text_contains_llvmpipe(props.deviceName)) {
+      rt->software_vulkan = 1u;
+    } else {
+      rt->software_vulkan = 0u;
+    }
   }
 
   memset(&queue_info, 0, sizeof(queue_info));
@@ -439,6 +496,28 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
+  pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  pool_size.descriptorCount = 3u;
+  memset(&descriptor_pool_info, 0, sizeof(descriptor_pool_info));
+  descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  descriptor_pool_info.poolSizeCount = 1u;
+  descriptor_pool_info.pPoolSizes = &pool_size;
+  descriptor_pool_info.maxSets = 1u;
+  result = vkCreateDescriptorPool(rt->device, &descriptor_pool_info, NULL, &rt->descriptor_pool);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&set_alloc_info, 0, sizeof(set_alloc_info));
+  set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  set_alloc_info.descriptorPool = rt->descriptor_pool;
+  set_alloc_info.descriptorSetCount = 1u;
+  set_alloc_info.pSetLayouts = &rt->descriptor_set_layout;
+  result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, &rt->descriptor_set);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
   memset(&push_range, 0, sizeof(push_range));
   push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
   push_range.offset = 0u;
@@ -482,6 +561,23 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
   vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
+  cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cmd_alloc_info.commandPool = rt->command_pool;
+  cmd_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cmd_alloc_info.commandBufferCount = 1u;
+  result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &rt->command_buffer);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&fence_info, 0, sizeof(fence_info));
+  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submit_fence);
   return result;
 }
 
@@ -563,7 +659,13 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
 
   runtime = (prometheus_runtime*)handle;
   out_caps->available = runtime->available;
-  out_caps->backend_type = runtime->available ? PROM_BACKEND_VULKAN : PROM_BACKEND_UNKNOWN;
+  if (runtime->available == 0u) {
+    out_caps->backend_type = PROM_BACKEND_UNKNOWN;
+  } else if (runtime->software_vulkan != 0u) {
+    out_caps->backend_type = PROM_BACKEND_VULKAN_SOFTWARE;
+  } else {
+    out_caps->backend_type = PROM_BACKEND_VULKAN;
+  }
   out_caps->reason_code = runtime->reason_code;
   return PROM_OK;
 }
@@ -582,18 +684,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_vk_buffer a_buf;
   prom_vk_buffer b_buf;
   prom_vk_buffer c_buf;
-  VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-  VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
-  VkDescriptorPoolSize pool_size;
-  VkDescriptorPoolCreateInfo pool_info;
-  VkDescriptorSetAllocateInfo set_alloc_info;
   VkWriteDescriptorSet writes[3];
   VkDescriptorBufferInfo buffer_infos[3];
-  VkCommandBufferAllocateInfo cmd_alloc_info;
-  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
   VkCommandBufferBeginInfo begin_info;
-  VkFenceCreateInfo fence_info;
-  VkFence fence = VK_NULL_HANDLE;
   VkSubmitInfo submit_info;
   VkBufferMemoryBarrier barrier;
   prom_vk_push push;
@@ -655,30 +748,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   memcpy(b_buf.mapped, b, (size_t)(k * n * sizeof(float)));
   memset(c_buf.mapped, 0, (size_t)(m * n * sizeof(float)));
 
-  pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  pool_size.descriptorCount = 3u;
-  memset(&pool_info, 0, sizeof(pool_info));
-  pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  pool_info.poolSizeCount = 1u;
-  pool_info.pPoolSizes = &pool_size;
-  pool_info.maxSets = 1u;
-  vk_result = vkCreateDescriptorPool(rt->device, &pool_info, NULL, &descriptor_pool);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, (int)vk_result);
-    goto cleanup;
-  }
-
-  memset(&set_alloc_info, 0, sizeof(set_alloc_info));
-  set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  set_alloc_info.descriptorPool = descriptor_pool;
-  set_alloc_info.descriptorSetCount = 1u;
-  set_alloc_info.pSetLayouts = &rt->descriptor_set_layout;
-  vk_result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, &descriptor_set);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, (int)vk_result);
-    goto cleanup;
-  }
-
   memset(buffer_infos, 0, sizeof(buffer_infos));
   buffer_infos[0].buffer = a_buf.buffer;
   buffer_infos[0].offset = 0;
@@ -692,7 +761,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   memset(writes, 0, sizeof(writes));
   writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  writes[0].dstSet = descriptor_set;
+  writes[0].dstSet = rt->descriptor_set;
   writes[0].dstBinding = 0u;
   writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   writes[0].descriptorCount = 1u;
@@ -705,12 +774,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   writes[2].pBufferInfo = &buffer_infos[2];
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
-  memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
-  cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cmd_alloc_info.commandPool = rt->command_pool;
-  cmd_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  cmd_alloc_info.commandBufferCount = 1u;
-  vk_result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &command_buffer);
+  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
@@ -718,7 +782,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  vk_result = vkBeginCommandBuffer(command_buffer, &begin_info);
+  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
@@ -734,7 +798,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   barrier.buffer = a_buf.buffer;
   barrier.offset = 0;
   barrier.size = a_buf.size;
-  vkCmdPipelineBarrier(command_buffer,
+  vkCmdPipelineBarrier(rt->command_buffer,
                        VK_PIPELINE_STAGE_HOST_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        0,
@@ -747,7 +811,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   barrier.buffer = b_buf.buffer;
   barrier.size = b_buf.size;
-  vkCmdPipelineBarrier(command_buffer,
+  vkCmdPipelineBarrier(rt->command_buffer,
                        VK_PIPELINE_STAGE_HOST_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        0,
@@ -758,20 +822,20 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                        0,
                        NULL);
 
-  vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
-  vkCmdBindDescriptorSets(command_buffer,
+  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+  vkCmdBindDescriptorSets(rt->command_buffer,
                           VK_PIPELINE_BIND_POINT_COMPUTE,
                           rt->pipeline_layout,
                           0u,
                           1u,
-                          &descriptor_set,
+                          &rt->descriptor_set,
                           0u,
                           NULL);
 
   push.m = m;
   push.n = n;
   push.k = k;
-  vkCmdPushConstants(command_buffer,
+  vkCmdPushConstants(rt->command_buffer,
                      rt->pipeline_layout,
                      VK_SHADER_STAGE_COMPUTE_BIT,
                      0u,
@@ -784,7 +848,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     goto cleanup;
   }
 
-  vkCmdDispatch(command_buffer,
+  vkCmdDispatch(rt->command_buffer,
                 (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
                 (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
                 1u);
@@ -793,7 +857,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
   barrier.buffer = c_buf.buffer;
   barrier.size = c_buf.size;
-  vkCmdPipelineBarrier(command_buffer,
+  vkCmdPipelineBarrier(rt->command_buffer,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        VK_PIPELINE_STAGE_HOST_BIT,
                        0,
@@ -804,15 +868,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                        0,
                        NULL);
 
-  vk_result = vkEndCommandBuffer(command_buffer);
+  vk_result = vkEndCommandBuffer(rt->command_buffer);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
   }
 
-  memset(&fence_info, 0, sizeof(fence_info));
-  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  vk_result = vkCreateFence(rt->device, &fence_info, NULL, &fence);
+  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
@@ -821,14 +883,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   memset(&submit_info, 0, sizeof(submit_info));
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &command_buffer;
-  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, fence);
+  submit_info.pCommandBuffers = &rt->command_buffer;
+  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
   }
 
-  vk_result = vkWaitForFences(rt->device, 1u, &fence, VK_TRUE, UINT64_MAX);
+  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     goto cleanup;
@@ -846,18 +908,6 @@ cleanup:
   set_status(out_stage, out_detail_code, out_stage != NULL ? *out_stage : PROM_STAGE_CLEANUP,
              out_detail_code != NULL ? *out_detail_code : 0);
 
-  if (fence != VK_NULL_HANDLE) {
-    vkDestroyFence(rt->device, fence, NULL);
-  }
-  if (command_buffer != VK_NULL_HANDLE) {
-    VkCommandBuffer buffers[1];
-    buffers[0] = command_buffer;
-    vkFreeCommandBuffers(rt->device, rt->command_pool, 1u, buffers);
-  }
-  if (descriptor_pool != VK_NULL_HANDLE) {
-    vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
-  }
-
   destroy_buffer(rt, &c_buf);
   destroy_buffer(rt, &b_buf);
   destroy_buffer(rt, &a_buf);
@@ -867,4 +917,3 @@ cleanup:
   }
   return PROM_ERROR;
 }
-

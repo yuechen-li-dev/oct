@@ -193,8 +193,50 @@ func TestWriteOctagonReportIncludesRequiredFields(t *testing.T) {
 			t.Fatalf("report missing field token %q", required)
 		}
 	}
+	for _, required := range []string{"CPUTimeNs", "VulkanTimeNs", "VulkanEnv"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("report missing timing/env field token %q", required)
+		}
+	}
 	if _, err := octagon.Load(out); err != nil {
 		t.Fatalf("expected report to be loadable octagon: %v", err)
+	}
+}
+
+func TestRunSGEMMReportsSoftwareVulkanEnvironment(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 3}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+						return cpuSGEMM(m, n, k, a, b), reactorCallStatus{}, nil
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 4, N: 4, K: 4},
+		A:       deterministicMatrix(4, 4),
+		B:       deterministicMatrix(4, 4),
+	})
+	if err != nil {
+		t.Fatalf("expected successful prometheus run, got err=%v", err)
+	}
+	if run.VulkanEnv != "software_vulkan_llvmpipe_or_cpu" {
+		t.Fatalf("expected software Vulkan environment note, got %q", run.VulkanEnv)
 	}
 }
 

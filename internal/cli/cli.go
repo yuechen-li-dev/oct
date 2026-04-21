@@ -99,8 +99,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		backend := prometheus.Backend(path)
 		report, runErr := prometheus.RunStarterCorpus(backend)
 		for _, item := range report.Runs {
-			_, _ = fmt.Fprintf(stdout, "SGEMM M=%d N=%d K=%d backend_requested=%s backend_used=%s status=%s correctness=%t wall=%dns\n",
-				item.Shape.M, item.Shape.N, item.Shape.K, item.RequestedBackend, item.UsedBackend, item.Status.String(), item.Correctness.Pass, item.WallTimeNs)
+			_, _ = fmt.Fprintf(stdout, "SGEMM M=%d N=%d K=%d backend_requested=%s backend_used=%s status=%s correctness=%t cpu=%dns vulkan=%dns vulkan_env=%s wall=%dns\n",
+				item.Shape.M, item.Shape.N, item.Shape.K, item.RequestedBackend, item.UsedBackend, item.Status.String(), item.Correctness.Pass, item.CPUTimeNs, item.VulkanTimeNs, item.VulkanEnv, item.WallTimeNs)
 		}
 		if octagonOut != "" {
 			if err := prometheus.WriteOctagonReport(octagonOut, report); err != nil {
