@@ -28,6 +28,7 @@ Start with [00-overview.md](./00-overview.md).
 - [14 Variables](./language/14-variables.md)
 - [15 Function Values](./language/15-function-values.md)
 - [16 Vectors and Matrices](./language/16-vectors-and-matrices.md)
+- [Tensors](./tensors.md)
 
 ## Runtime
 

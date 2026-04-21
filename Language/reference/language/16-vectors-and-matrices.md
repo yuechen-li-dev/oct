@@ -7,13 +7,16 @@ They have dedicated literal, indexing, and arithmetic forms.
 `@` is matrix multiplication, distinct from element-wise operators.
 They are mathematical value categories, not general-purpose storage containers.
 
+Matrices are rank-2 tensors.
+For indexed tensor notation and differential tensor operators, see [tensors](../tensors.md).
+
 ## Rules
 
 - `[...]` is always an array literal.
 - Vector literal form is `vector[a, b, c]`.
 - Matrix literal form is `matrix[[r1c1, r1c2] [r2c1, r2c2]]`.
 - Arrays (`T[]`, `T[][]`, ...) are generic containers; vectors/matrices are mathematical values.
-- Vectors and matrices may use dimension-qualified numeric elements (for example `Vector<Float<m>>`, `Matrix<Float<kg/s^2>>`).
+- Vectors and matrices may use dimension-qualified numeric elements.
 - Arrays are not implicitly reinterpreted as vectors or matrices by expected type.
 - `[[...], [...]]` is an array-of-arrays literal, not a matrix literal.
 - Vector literals require homogeneous element type.
@@ -31,11 +34,11 @@ They are mathematical value categories, not general-purpose storage containers.
   - `Matrix<Float<D1>> @ Matrix<Float<D2>> -> Matrix<Float<D1*D2>>`
 - Vector/matrix element mutation through index assignment is not supported.
 
-## Matrix construction surface (Mx100a+)
+## Construction surface (Mx100a+)
 
 Use constructors when matrix values are generated, repetitive, or large:
 
-- `Matrix.tabulate(rows, cols, Fn)` where `Fn` has shape `fn(r: Int, c: Int) -> T`.
+- `Matrix.tabulate(rows, cols, Fn)` where `Fn` is `fn(r: Int, c: Int) -> T`.
 - `Matrix.fill(rows, cols, value)` for constant matrices.
 - `Matrix.zeros<T>(rows, cols)` for typed zero matrices.
 - `Matrix.identity<T>(n)` for identity matrices.
@@ -43,7 +46,13 @@ Use constructors when matrix values are generated, repetitive, or large:
 Use literals (`matrix[[...]]`) for small hand-authored constants where the literal is clearer.
 For benchmark/corpus-style setup, prefer constructors over giant literals.
 
-Compiled mode supports the same matrix element indexing form `m[r, c]` as interpreted mode.
+## Compiled mode support
+
+Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
+
+- **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-vector and matrix-matrix, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
+- **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
+- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two indices and non-matrix indexing remains single-dimension.
 
 ## Examples
 
@@ -103,7 +112,7 @@ fn Main() -> Int {
 package Main
 
 fn Main() -> Vector<Int> {
-    // Invalid: [1, 2, 3] is an Int[] array literal, not a Vector<Int>.
+    // Invalid: [1, 2, 3] is Int[] (array), not Vector<Int>.
     return [1, 2, 3]
 }
 ```

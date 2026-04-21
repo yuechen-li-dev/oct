@@ -28,7 +28,6 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
 - `oct test` executes `.octest` functions through the interpreter path (source execution).
 - `oct test` does not build or run a compiled `.octbin` test artifact.
-- Assert helper behavior in `.octest` (`Assert.True`, `Assert.False`, `Assert.Equal`, `Assert.Near`, `Assert.Error`, `Assert.LGTM`) is guaranteed on this interpreter-driven path.
 - Compiled parity for `.octest` helper behavior is not a current contract.
 - `oct test` does not run `[Artifact]` or `[Benchmark]` functions.
 - `oct artifact <path>` runs `[Artifact]` functions only.
@@ -40,7 +39,19 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `.octfail` requires one header line: `expect error: "<non-empty substring>"`.
 - `.octfail` passes when compilation fails and the error contains the declared substring.
 - `.octfail` fails on missing rejection, malformed header, or mismatch.
-- `Assert.True(condition: Bool, message: String) -> Void`, `Assert.False(condition: Bool, message: String) -> Void`, `Assert.Equal(expected: T, actual: T, message: String) -> Void`, `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`, `Assert.Error(expr: T ! Error, message: String) -> Void`, and `Assert.LGTM(expr: T ! Error, message: String) -> T` are the supported assert builtins.
+
+## Assert helpers (`.octest` test-only surface)
+
+These helpers are intended for `.octest` tests and are not part of general runtime program semantics:
+
+- `Assert.True(condition: Bool, message: String) -> Void`
+- `Assert.False(condition: Bool, message: String) -> Void`
+- `Assert.Equal(expected: T, actual: T, message: String) -> Void`
+- `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`
+- `Assert.Error(expr: T ! Error, message: String) -> Void`
+- `Assert.LGTM(expr: T ! Error, message: String) -> T`
+
+See [09 builtins](../language/09-builtins.md) for non-test builtin surface.
 
 See also [34 octagon](./34-octagon.md) for benchmark artifact output via `--octagon-out`.
 

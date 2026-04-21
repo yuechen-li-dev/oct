@@ -2,34 +2,29 @@
 
 ## Overview
 
-This page defines core builtins used by the v1 reference.
 Builtin names are reserved.
 Calls are checked statically for arity and type constraints.
 
-## Rules
+This page documents the user-facing builtin surface and its organization.
+For `.octest`-only assert helpers, see [31 octest](../tooling/31-octest.md).
+For matrix and tensor-focused language surface, see [16 vectors and matrices](./16-vectors-and-matrices.md) and [tensors](../tensors.md).
 
-- Builtin names cannot be redeclared.
+## 1) Core utilities
+
 - `Print(x: AnySupportedValue) -> Int`
   - Requires exactly one argument.
-  - Prints the value and returns a status code `Int`.
-- `Len(x: String | Int[] | Float[] | Bool[] | Complex[]) -> Int`.
-  - Len accepts any array type T[], including arrays of user-defined records and enums.  
+  - Prints the value and returns status code `Int`.
+- `Len(x: T[]) -> Int` and `Len(x: String) -> Int`.
+  - `Len` accepts any array element type `T`.
 - `Append(xs: T[], value: T) -> T[]`.
   - First argument must be an array.
-  - Value type must exactly match the array element type.
+  - Value type must match array element type.
+
+## 2) Numeric / math
+
 - `Abs(x: Int | Int<D>) -> Int | Int<D>`.
 - `Abs(x: Float | Float<D>) -> Float | Float<D>`.
 - `Abs(z: Complex) -> Float`.
-- `Complex(re: Int | Float, im: Int | Float) -> Complex`.
-  - Both arguments must be dimensionless.
-- `ComplexPolar(r: Int | Float, theta: Int | Float) -> Complex`.
-  - Both arguments must be dimensionless.
-- `I() -> Complex`.
-- `Real(z: Complex) -> Float`.
-- `Imag(z: Complex) -> Float`.
-- `Conj(z: Complex) -> Complex`.
-- `Arg(z: Complex) -> Float`.
-  - Returns principal argument in radians with range `[-Pi(), Pi()]`.
 - `Sqrt(x: Int | Float | Int<D> | Float<D>) -> Float<sqrt(D)>`.
   - Requires even dimension exponents for dimensioned input.
 - `Sin(x: Int | Float) -> Float`.
@@ -47,117 +42,100 @@ Calls are checked statically for arity and type constraints.
 - `Atan(x: Int | Float) -> Float`.
   - Input must be dimensionless.
 - `Atan2(y: Int | Float, x: Int | Float) -> Float`.
-  - Both inputs must be dimensionless.
+  - Inputs must be dimensionless.
 - `Exp(x: Int | Float) -> Float`.
   - Input must be dimensionless.
 - `Exp(z: Complex) -> Complex`.
 - `Ln(x: Int | Float) -> Float`.
   - Input must be dimensionless.
-  - Runtime input domain is positive values only.
+  - Runtime domain is positive values.
 - `Ln(z: Complex) -> Complex`.
   - Uses principal logarithm with `Im(Ln(z)) = Arg(z)` in `[-Pi(), Pi()]`.
 - `Log10(x: Int | Float) -> Float`.
   - Input must be dimensionless.
-  - Runtime input domain is positive values only.
+  - Runtime domain is positive values.
 - `Sinh(x: Int | Float) -> Float`.
   - Input must be dimensionless.
 - `Cosh(x: Int | Float) -> Float`.
   - Input must be dimensionless.
 - `Tanh(x: Int | Float) -> Float`.
   - Input must be dimensionless.
-- `Pi() -> Float`.
-  - Requires zero arguments.
-- `E() -> Float`.
-  - Requires zero arguments.
-- `FormatFloat(value: Float, precision: Int) -> String`.
-  - Preferred when rendering display text from floating-point values.
-  - Use this when UI/status strings need fixed precision.
+- `Pi() -> Float` and `E() -> Float`.
+
+## 3) Complex numbers
+
+- `Complex(re: Int | Float, im: Int | Float) -> Complex`.
+  - Arguments must be dimensionless.
+- `ComplexPolar(r: Int | Float, theta: Int | Float) -> Complex`.
+  - Arguments must be dimensionless.
+- `I() -> Complex`.
+- `Real(z: Complex) -> Float`.
+- `Imag(z: Complex) -> Float`.
+- `Conj(z: Complex) -> Complex`.
+- `Arg(z: Complex) -> Float`.
+
+## 4) Conversion & formatting
+
 - `Float(value: Int) -> Float`.
-  - Explicit numeric widening conversion.
-  - Converts `Int` (including dimensioned `Int<D>`) to `Float` (`Float<D>`).
-  - `Float -> Int` conversion is intentionally not provided in the current language.
+  - Explicit numeric widening conversion (`Int`/`Int<D>` to `Float`/`Float<D>`).
+  - `Float -> Int` conversion is intentionally not provided.
 - `ToString(value: Int | Float | Bool) -> String`.
-  - Plain explicit conversion for common scalar display paths.
-  - Does not apply formatting policy beyond standard value rendering.
+- `FormatFloat(value: Float, precision: Int) -> String`.
+  - Preferred when fixed decimal precision is required.
+
+### Conversion vs formatting guidance
+
+- Use `ToString(x)` for plain explicit conversion.
+- Use `FormatFloat(x, precision)` when display precision matters.
+- Use `Float(x)` only for explicit `Int -> Float` conversion.
+- No implicit numeric/string conversion is performed in concatenation or other expressions.
+
+## 5) String helpers
+
 - `Contains(s: String, part: String) -> Bool`.
-  - Returns true when `part` occurs in `s`.
 - `StartsWith(s: String, prefix: String) -> Bool`.
-  - Returns true when `s` begins with `prefix`.
 - `EndsWith(s: String, suffix: String) -> Bool`.
-  - Returns true when `s` ends with `suffix`.
 - `Trim(s: String) -> String`.
-  - Removes leading and trailing whitespace.
 - `Lower(s: String) -> String`.
-  - Lowercases text for lightweight UI normalization.
 - `Upper(s: String) -> String`.
-  - Uppercases text for lightweight UI normalization.
 - `Join(parts: String[], sep: String) -> String`.
-  - Concatenates `parts` with `sep` inserted between elements.
+
+## 6) Plotting
+
 - `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
 - `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
   - Rejects dimensioned arrays.
-- `Assert.True(condition: Bool, message: String) -> Void`.
-- `Assert.False(condition: Bool, message: String) -> Void`.
-- `Assert.Equal(expected: T, actual: T, message: String) -> Void`.
-- `Assert.Near(expected: Float, actual: Float, tolerance: Float, message: String) -> Void`.
-- `Assert.Error(expr: T ! Error, message: String) -> Void`.
-- `Assert.LGTM(expr: T ! Error, message: String) -> T`.
-  - Argument order is `expected`, then `actual`, then tolerance/message.
 
-### Conversion vs formatting guidance
+Notes:
+- Plotting is implemented via a thin runtime wrapper over `gonum/plot`, not as a core language primitive.
+- Compiled-mode behavior depends on compiled runtime wrapper support.
+- Current compiled parity corpus records plotting as not yet supported in compiled mode.
 
-Use `ToString(x)` for explicit plain conversion (`Int`, `Float`, `Bool`).
-Use `FormatFloat(x, precision)` when you need fixed float formatting.
-Use `Float(x)` for explicit `Int -> Float` conversion only.
-`Float -> Int` is intentionally unavailable in this version.
-No implicit conversion is performed in concatenation or other expressions.
+## 7) Data / Octagon I/O
 
-Examples:
-- `Float(3)` -> `3.0`
-- `Float(3m) / 2.0` -> `1.5m`
+- `LoadOctagon<T>(path: String) -> T[]`.
+- `WriteOctagon<T>(path: String, data: T[]) -> Int`.
 
-### String helper examples
+## Compiled Mode Support (derived from corpus + compiler implementation)
 
-- `Contains("storefront", "front")` -> `true`
-- `StartsWith("status: ok", "status")` -> `true`
-- `EndsWith("status: ok", "ok")` -> `true`
-- `Trim("  ready  ")` -> `"ready"`
-- `Lower("MiXeD")` -> `"mixed"`
-- `Upper("MiXeD")` -> `"MIXED"`
-- `Join(["desk", "gear", "sale"], " / ")` -> `"desk / gear / sale"`
+Source of truth used here:
+- compiled parity corpus/tests in `internal/build/compiler_test.go`
+- compiled lowering support in `internal/build/compiler.go`
 
-## Examples
+Current status (for this builtin page scope):
 
-Valid:
+- **Supported in compiled mode:**
+  - `Print`, `Len`, `Append`
+  - `ToString`, `Float`
+  - string helpers: `Contains`, `StartsWith`, `EndsWith`, `Trim`, `Lower`, `Upper`, `Join`
+  - matrix constructor surface (see note in [16 vectors and matrices](./16-vectors-and-matrices.md) for corpus-verified vs code-implemented split)
+  - `LoadOctagon`, `WriteOctagon`
+- **Supported with restrictions in compiled mode:**
+  - `Abs` on scalar `Int`/`Float`-family values supported; unsupported argument types are rejected.
+- **Interpreter-only / deferred in compiled mode (known from corpus and compiler diagnostics):**
+  - math family not explicitly lowered in compiled mode (`Sqrt`, trig, exp/log, hyperbolic)
+  - complex-number family (`Complex`, `ComplexPolar`, `I`, `Real`, `Imag`, `Conj`, `Arg`)
+  - plotting builtins (`PlotLine`, `PlotScatter`)
 
-```oct
-package Main
-
-fn Main() -> Int {
-    let theta = Pi() / 4
-    let xs = [1, 2]
-    let ys = Append(xs, 3)
-    let label = "theta=" + ToString(theta)
-    let precise = "theta_fixed=" + FormatFloat(theta, 3)
-    let canonical = Lower(Trim("  READY  "))
-    let slug = Join(["desk", "gear", "sale"], " / ")
-    Print(ToString(Contains(slug, "gear")))
-    Print(ToString(StartsWith(canonical, "rea")))
-    Print(ToString(EndsWith(canonical, "dy")))
-    Print(label)
-    Print(precise)
-    Print(Atan2(1, 1) + Tan(theta))
-    return Len(ys)
-}
-```
-
-Invalid:
-
-```oct
-package Main
-
-fn Main() -> Float {
-    return Ln(0)
-}
-```
+When in doubt, treat the parity corpus as SSOT and validate against `internal/build/compiler.go`.
