@@ -1,94 +1,53 @@
-# P5b — Prometheus Benchmark Harness Experiment (M0)
+# P5c — Enable `PROMETHEUS { ... }` in Compiled Benchmark Authoring Surface
 
 Date executed: **2026-04-21 (UTC)**
 
-## 1) Experiment folder structure
+## 1) Blocker discovered in P5b
 
-- `Experiments/PrometheusBenchmarkHarness/manifest.oct`
-- `Experiments/PrometheusBenchmarkHarness/REPORT.md`
-- `Experiments/PrometheusBenchmarkHarness/M0/main.oct`
-- `Experiments/PrometheusBenchmarkHarness/M0/matrix_mul_cpu_reference.octest`
+`PROMETHEUS { ... }` was not parseable/lowerable in `.octest [Benchmark]` functions, so compiled benchmark authoring only had the CPU path.
 
-This follows the existing experiment convention (`manifest.oct` + `REPORT.md` + milestone folder).
+## 2) Minimal pipeline stages fixed
 
-## 2) Benchmark corpus cases added
+1. **Lex/parse/AST surface**
+   - Added `PROMETHEUS` as a language keyword.
+   - Added `ast.PrometheusStmt` and parser support for `PROMETHEUS { ... }` blocks.
 
-### Added
+2. **Typecheck legality (kept narrow)**
+   - `PROMETHEUS { ... }` is accepted only inside `[Benchmark]` functions.
 
-- **CPU reference benchmark**
-  - File: `M0/matrix_mul_cpu_reference.octest`
-  - Case: `[Benchmark] fn MatrixMulCPUReferenceM0() -> Void`
-  - Workload shape: matrix-vector multiply via `@`.
+3. **MIR lowering + compiled backend plumbing**
+   - Lowering now tracks when expressions are inside a Prometheus block.
+   - `Matrix<Float> @ Matrix<Float>` inside `PROMETHEUS { ... }` lowers to a dedicated compiled builtin (`PrometheusMatMulMM`).
+   - Generated compiled Go helper emits explicit backend truth (`backend_requested=prometheus`, `backend_used=cpu`, `status=fallback(prometheus_unavailable)`) and executes the existing compiled matrix multiply path, avoiding silent substitution.
 
-### Requested-but-blocked in current snapshot
+4. **Benchmark runner observability**
+   - Compiled benchmark stdout is now surfaced by `oct bench`, so backend requested/used/status lines emitted by Prometheus-path execution are visible in benchmark runs.
 
-- **Prometheus-forced `.octest [Benchmark]` case using `PROMETHEUS { ... }`**
+## 3) Official M0 corpus status
 
-Blocker evidence:
+M0 now contains both benchmark variants:
 
-1. `internal/lex/lex.go` does not define a `PROMETHEUS` keyword/token.
-2. There is no Oct-surface benchmark routing construct to force Prometheus backend from `.octest`.
-3. Prometheus execution currently surfaces through `oct prometheus-sgemm <cpu|prometheus>` (CLI path), not Oct benchmark syntax.
+- `M0/matrix_mul_cpu_reference.octest`
+- `M0/matrix_mul_prometheus.octest`
 
-## 3) Benchmark compile/lowering status
+Both compile and run through the compiled benchmark path.
 
-### CPU `.octest [Benchmark]`
+## 4) Reporting/fallback truth in current cloud environment
 
-Command:
+In this Codex/cloud snapshot, Prometheus runtime remains environment-constrained and reports explicit fallback:
 
-- `go run ./cmd/oct bench Experiments/PrometheusBenchmarkHarness --octagon-out /tmp/p5b-bench.octagon`
+- `backend_requested=prometheus`
+- `backend_used=cpu`
+- `status=fallback(prometheus_unavailable)`
 
-Observed:
+No silent CPU substitution is reported as success.
 
-- Benchmark discovered and run under milestone mode.
-- Compiled benchmark execution path succeeded.
-- Milestone-prefixed benchmark `.octagon` output emitted at `/tmp/M0.p5b-bench.octagon`.
+## 5) What remains for local validation later
 
-## 4) Benchmark execution status
-
-### CPU benchmark case
-
-- `Main.MatrixMulCPUReferenceM0` passed end to end.
-
-### Prometheus harness status in this environment
-
-Command:
-
-- `go run ./cmd/oct prometheus-sgemm prometheus --octagon-out /tmp/p5b-prometheus.octagon`
-
-Observed:
-
-- Prometheus request was accepted at CLI level.
-- Runtime status was explicit fallback for all starter corpus shapes:
-  - `backend_requested=prometheus`
-  - `backend_used=cpu`
-  - `status=fallback(prometheus_unavailable)`
-  - `vulkan_env=unavailable`
-
-This is environment-honest for Codex/cloud: no hardware-GPU claim is made.
-
-## 5) Artifacts/reports emitted
-
-- CPU benchmark run summary:
-  - `/tmp/M0.p5b-bench.octagon`
-- Prometheus SGEMM harness report:
-  - `/tmp/p5b-prometheus.octagon`
-
-Both artifacts were emitted and loadable as plain `.octagon` output.
-
-## 6) CPU vs Prometheus symmetry status (M0)
-
-- **Partial:** CPU path is validated through `.octest [Benchmark]` compiled benchmark harness.
-- **Blocked:** Prometheus-forced path is currently only available through `oct prometheus-sgemm`, not `.octest [Benchmark]` + `PROMETHEUS { ... }` authoring.
-
-## 7) What remains for local/hardware validation
-
-1. Add Oct-surface Prometheus routing in benchmark authoring (`PROMETHEUS { ... }` or equivalent) so CPU and Prometheus both run through the same `.octest [Benchmark]` mechanism.
-2. Re-run M0 on local hardware with reactor available and verify:
-   - `backend_used=prometheus`
-   - non-software Vulkan environment where applicable.
-3. Only after (1) and (2), start performance-focused corpus expansion.
+- Re-run the same M0 corpus on local hardware with a valid Prometheus reactor.
+- Verify runs where `backend_used=prometheus` and status stays explicit.
+- Capture hardware-specific timing behavior after backend-truth validation.
 
 ## Convergence state
 
-**Meaningful progression**: official experiment scaffold exists and end-to-end benchmark/report harness is proven for CPU plus CLI Prometheus harness; the next blocker is isolated with concrete evidence (missing Oct-language Prometheus routing for `.octest [Benchmark]`).
+**Success**: the benchmark authoring gap isolated by P5b is closed for compiled benchmark path symmetry (CPU + Prometheus-authored blocks in `.octest [Benchmark]`).

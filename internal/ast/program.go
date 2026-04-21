@@ -199,6 +199,12 @@ type WhileStmt struct {
 
 func (WhileStmt) stmtNode() {}
 
+type PrometheusStmt struct {
+	Body Block
+}
+
+func (PrometheusStmt) stmtNode() {}
+
 type GotoStmt struct {
 	Target string
 }

@@ -768,6 +768,8 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseIfStmt()
 	case lex.KeywordWhile:
 		return p.parseWhileStmt()
+	case lex.KeywordPrometheus:
+		return p.parsePrometheusStmt()
 	case lex.KeywordGoto:
 		return p.parseGotoStmt()
 	case lex.KeywordSuspend:
@@ -791,6 +793,15 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		}
 		return nil, p.errorAtCurrent("expected statement")
 	}
+}
+
+func (p *parser) parsePrometheusStmt() (ast.Stmt, error) {
+	p.advance()
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	return ast.PrometheusStmt{Body: body}, nil
 }
 
 func (p *parser) parseWhenStmt() (ast.Stmt, error) {

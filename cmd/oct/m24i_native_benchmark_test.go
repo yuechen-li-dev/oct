@@ -160,6 +160,45 @@ func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 	}
 }
 
+func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{
+		"package Main",
+		"[Benchmark]",
+		"fn MatrixMulCPUReferenceM0() -> Void {",
+		"    let a = matrix[[1.0, 2.0] [3.0, 4.0]]",
+		"    let b = matrix[[5.0, 6.0] [7.0, 8.0]]",
+		"    let c = a @ b",
+		"    Print(c)",
+		"}",
+		"[Benchmark]",
+		"fn MatrixMulPrometheusM0() -> Void {",
+		"    let a = matrix[[1.0, 2.0] [3.0, 4.0]]",
+		"    let b = matrix[[5.0, 6.0] [7.0, 8.0]]",
+		"    PROMETHEUS {",
+		"        let c = a @ b",
+		"        Print(c)",
+		"    }",
+		"}",
+	}, "\n")+"\n")
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{"bench", root}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected benchmark success, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "PASS Main.MatrixMulCPUReferenceM0") || !strings.Contains(output, "PASS Main.MatrixMulPrometheusM0") {
+		t.Fatalf("expected both benchmark variants to pass, got %q", output)
+	}
+	if !strings.Contains(output, "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable)") {
+		t.Fatalf("expected explicit prometheus fallback reporting, got %q", output)
+	}
+}
+
 func TestOctBenchCPUProfileEmitsDeterministicArtifact(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")

@@ -104,13 +104,16 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, benchmark.filePath))
 		start := time.Now()
-		err := executeBenchmarkCompiled(program, benchmark)
+		benchmarkOutput, err := executeBenchmarkCompiled(program, benchmark)
 		duration := time.Since(start)
 		run.Cases = append(run.Cases, BenchmarkCaseResult{Name: qualified, DurationNs: duration.Nanoseconds()})
 		if err != nil {
 			failed++
 			_, _ = fmt.Fprintf(stdout, "FAIL %s %s (%s): %v\n", qualified, duration.Round(time.Microsecond), shortPath(path, benchmark.filePath), err)
 			continue
+		}
+		if strings.TrimSpace(benchmarkOutput) != "" {
+			_, _ = fmt.Fprint(stdout, benchmarkOutput)
 		}
 		_, _ = fmt.Fprintf(stdout, "PASS %s %s (%s)\n", qualified, duration.Round(time.Microsecond), shortPath(path, benchmark.filePath))
 	}
@@ -127,20 +130,20 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 	return nil
 }
 
-func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) error {
+func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) (string, error) {
 	pkg, ok := program.Packages[benchmark.pkg]
 	if !ok {
-		return fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
+		return "", fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
 	}
 	runnerPath, cleanupRunner, err := writeBenchmarkRunner(pkg.Directory, benchmark.pkg, benchmark.name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer cleanupRunner()
 
 	result, err := build.CompileForTest(runnerPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer cleanupArtifact(result.ArtifactPath)
 
@@ -152,11 +155,11 @@ func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) 
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg == "" {
-			return fmt.Errorf("run compiled benchmark binary: %w", err)
+			return "", fmt.Errorf("run compiled benchmark binary: %w", err)
 		}
-		return fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
+		return "", fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
 	}
-	return nil
+	return string(output), nil
 }
 
 func writeBenchmarkRunner(pkgDir string, pkgName string, benchmarkName string) (string, func(), error) {

@@ -130,15 +130,16 @@ func (s functionSignature) String() string {
 }
 
 type functionContext struct {
-	name       string
-	returnType Type
-	isFallible bool
-	isTestFile bool
-	inFlow     bool
-	inState    bool
-	states     map[string]struct{}
-	boardType  Type
-	board      map[string]Type
+	name        string
+	returnType  Type
+	isFallible  bool
+	isTestFile  bool
+	isBenchmark bool
+	inFlow      bool
+	inState     bool
+	states      map[string]struct{}
+	boardType   Type
+	board       map[string]Type
 }
 
 func Check(file ast.File) error {
@@ -477,7 +478,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		functionScope.define(parameter.Name, signature.parameters[i], false)
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile}
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isBenchmark: function.IsBenchmark}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -851,6 +852,15 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 
 		_, err = c.checkBlock(scope, node.Body, ctx)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	case ast.PrometheusStmt:
+		if !ctx.isBenchmark {
+			return false, fmt.Errorf("function %s: PROMETHEUS blocks are only valid inside [Benchmark] functions", ctx.name)
+		}
+		_, err := c.checkBlock(scope, node.Body, ctx)
 		if err != nil {
 			return false, err
 		}
