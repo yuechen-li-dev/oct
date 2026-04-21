@@ -59,3 +59,41 @@ The test coverage also verifies:
 - Loop-order variants are now isolated as explicit, readable kernels with identical I/O contracts.
 - Blocked variants currently tile only output-space dimensions (`i`, `j`) and keep multiply-accumulate semantics straightforward.
 - Shared validation and indexing helpers reduce drift risk between variants and establish a repeatable pattern for later milestones.
+
+## M2 scope
+
+M2 expands the SGEMM algorithm space with K-dimension blocking and a conceptual staged path while preserving correctness-first validation.
+
+### Variants introduced
+
+- `MatMul_KBlocked`: K-blocked accumulation over `k` chunks with baseline-style inner reduction per output element
+- `MatMul_KBlocked_IKJ`: K-blocked accumulation with `i -> k -> j` ordering inside each K chunk
+- `MatMul_Staged`: conceptual three-phase structure (load/copy, compute, accumulate) using explicit temporary chunk buffers
+- `MatMul_Staged_IKJ`: conceptual three-phase structure with `i -> k -> j` compute ordering
+
+### Factors explored
+
+- **K-blocking**: introduced explicit chunking over K with edge-chunk handling (`kBlock` not required to divide K)
+- **Conceptual staging**: separated the algorithm into explicit phases to model data preparation, chunk-local compute, and chunk accumulation without introducing hardware simulation
+
+### Correctness confirmation
+
+M2 `.octest` coverage verifies baseline equality for all M2 variants across:
+
+- small square shapes (`2x2`, `3x3`)
+- rectangular shape (`3x5 * 5x2`)
+- medium square shape (`16x16`)
+
+The coverage also verifies:
+
+- K-block edge cases for `kBlock = 1`, `2`, and `4`
+- non-divisible chunk handling and accumulation correctness on rectangular inputs
+- consistent rejection of incompatible matrix shapes
+- consistent rejection of invalid K-block parameters (`kBlock <= 0`)
+
+### Structural observations (non-performance)
+
+- K-chunk accumulation makes partial-sum boundaries explicit and easier to reason about than monolithic K traversal.
+- Direct K-blocked variants keep data access inline, while staged variants expose clearer phase boundaries at the cost of additional temporary structures.
+- Staging centralizes chunk copy logic (`StageAChunk`, `StageBChunk`), which improves reuse and keeps per-variant compute loops focused on ordering differences.
+- K-blocking combined with loop-order variants (`ijk`-style local reduction vs `ikj`) changes code shape without changing semantic output contracts.
