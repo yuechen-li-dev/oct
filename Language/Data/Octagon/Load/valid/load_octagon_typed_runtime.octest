@@ -18,40 +18,40 @@ enum SolverMode {
 
 [Fact]
 fn LoadScalar() -> Void ! Error {
-    let value = LoadOctagon[Int]("Language/Data/Octagon/valid/scalar_literal.octagon")?
+    let value = LoadOctagon<Int>("Language/Data/Octagon/valid/scalar_literal.octagon")?
     Assert.Equal(42, value, "scalar load")
 }
 
 [Fact]
 fn LoadDimensionedScalar() -> Void ! Error {
-    let value = LoadOctagon[Float<m/s^2>]("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon")?
+    let value = LoadOctagon<Float<m/s^2>>("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon")?
     Assert.Equal(9.81m/s^2, value, "dimensioned scalar load")
 }
 
 [Fact]
 fn LoadArray() -> Void ! Error {
-    let value = LoadOctagon[Int[]]("Language/Data/Octagon/valid/array_of_scalars.octagon")?
+    let value = LoadOctagon<Int[]>("Language/Data/Octagon/valid/array_of_scalars.octagon")?
     Assert.Equal(3, Len(value), "array length")
     Assert.Equal(2, value[1], "array element")
 }
 
 [Fact]
 fn LoadRecord() -> Void ! Error {
-    let value = LoadOctagon[SimulationConfig]("Language/Data/Octagon/valid/record_literal.octagon")?
+    let value = LoadOctagon<SimulationConfig>("Language/Data/Octagon/valid/record_literal.octagon")?
     Assert.Equal("Cantilever", value.Name, "record field")
     Assert.Equal(1000, value.Steps, "record int field")
 }
 
 [Fact]
 fn LoadEnum() -> Void ! Error {
-    let value = LoadOctagon[SolverMode]("Language/Data/Octagon/valid/enum_value.octagon")?
+    let value = LoadOctagon<SolverMode>("Language/Data/Octagon/valid/enum_value.octagon")?
     Assert.Equal(SolverMode.Explicit, value, "enum load")
 }
 
 [Fact]
 fn LoadNestedRecordArrayEnum() -> Void ! Error {
-    let samples = LoadOctagon[SamplesConfig]("Language/Data/Octagon/Load/valid/samples_config.octagon")?
-    let mode = LoadOctagon[SolverMode]("Language/Data/Octagon/valid/enum_value.octagon")?
+    let samples = LoadOctagon<SamplesConfig>("Language/Data/Octagon/Load/valid/samples_config.octagon")?
+    let mode = LoadOctagon<SolverMode>("Language/Data/Octagon/valid/enum_value.octagon")?
     Assert.Equal(SolverMode.Explicit, mode, "nested enum load")
     Assert.Equal(3, Len(samples.Samples), "nested array field")
 }

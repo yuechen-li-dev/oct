@@ -1,6 +1,6 @@
 # Mx100a Report
 
-1. Added matrix construction builtins: `Matrix.tabulate(rows, cols, callback)`, `Matrix.zeros[T](rows, cols)`, `Matrix.fill(rows, cols, value)`, and `Matrix.identity[T](n)`.
+1. Added matrix construction builtins: `Matrix.tabulate(rows, cols, callback)`, `Matrix.zeros<T>(rows, cols)`, `Matrix.fill(rows, cols, value)`, and `Matrix.identity<T>(n)`.
 2. Syntax uses static-style builtins on `Matrix` with named function callbacks for `tabulate`.
 3. Derived constructors were included as thin wrappers on the same matrix-construction path.
 4. Shape accessors `m.rows` and `m.cols` were added as read-only `Int` fields in interpreted and compiled paths.

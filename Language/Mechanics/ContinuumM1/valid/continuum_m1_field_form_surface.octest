@@ -16,6 +16,6 @@ fn ContinuumM1FieldFormSurface() -> Void {
         sampledGradU[1, 1]
     ]]
 
-    let sigma = Matrix.identity[Float](2) * 120.0 + (Matrix.identity[Float](2) * 160.0) * eps
+    let sigma = Matrix.identity<Float>(2) * 120.0 + (Matrix.identity<Float>(2) * 160.0) * eps
     let _ = Div(sigma)
 }

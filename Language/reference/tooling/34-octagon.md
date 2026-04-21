@@ -14,7 +14,7 @@ Load and write are explicit through builtins.
 - `WriteOctagon(path, value)` writes `.octagon` data and returns `Int` status.
 - `WriteOctagon` path must end with `.octagon`.
 - `WriteOctagon` value must be `.octagon`-representable.
-- `LoadOctagon[T](path)` loads a value as type `T` and is fallible.
+- `LoadOctagon<T>(path)` loads a value as type `T` and is fallible.
 - `LoadOctagon` path must end with `.octagon`.
 - `LoadOctagon` type argument `T` must be `.octagon`-representable.
 - Load performs runtime type materialization checks.
@@ -46,7 +46,7 @@ Valid usage:
 package Main
 
 fn Main() -> Int ! Error {
-    let cfg = LoadOctagon[SimulationConfig]("config.octagon")?
+    let cfg = LoadOctagon<SimulationConfig>("config.octagon")?
     return WriteOctagon("copy.octagon", cfg)
 }
 ```

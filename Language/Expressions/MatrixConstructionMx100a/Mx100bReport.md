@@ -3,7 +3,7 @@
 ## What was refactored
 
 - Prometheus benchmark parser/compiler fixtures now construct benchmark matrices with `Matrix.fill(...)` instead of hard-coded matrix literals.
-- Mechanics and dimensioned linear-algebra language examples were selectively updated where identity/diagonal matrix intent is clearer with the new construction surface (`Matrix.identity[...]`, `Matrix.tabulate(...)`).
+- Mechanics and dimensioned linear-algebra language examples were selectively updated where identity/diagonal matrix intent is clearer with the new construction surface (`Matrix.identity<...>`, `Matrix.tabulate(...)`).
 - Existing benchmark integration fixture from Mx100a remains constructor-based (`Matrix.fill(...)`) for deterministic setup.
 
 ## Why these cases

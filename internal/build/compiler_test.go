@@ -760,7 +760,7 @@ func TestCompileAndRunBatchEmptyAndSingleElement(t *testing.T) {
 	src := fmt.Sprintf(`package Main
 
 fn main() -> Int ! Error {
-    let source = LoadOctagon[Int[]](%q)?
+    let source = LoadOctagon<Int[]>(%q)?
     let empty = batch source as x {
         return x + 1
     }
@@ -1029,7 +1029,7 @@ record Payload {
 }
 
 fn LoadCount(path: String) -> Int ! Error {
-    let payload = LoadOctagon[Payload](path)?
+    let payload = LoadOctagon<Payload>(path)?
     return payload.Count
 }
 
@@ -1073,7 +1073,7 @@ fn main() -> Int ! Error {
         Samples: [1, 2, 3]
     }
     WriteOctagon(%q, payload)
-    let loaded = LoadOctagon[Payload](%q)?
+    let loaded = LoadOctagon<Payload>(%q)?
     return loaded.Samples[2]
 }
 `, artifactPath, artifactPath)
@@ -1108,7 +1108,7 @@ record Payload {
 }
 
 fn main() -> Int {
-    match LoadOctagon[Payload](%q) {
+    match LoadOctagon<Payload>(%q) {
         ok(v) => { return 0 }
         err(e) => { return 1 }
     }
@@ -1142,7 +1142,7 @@ record Payload {
 
 fn main() -> Int ! Error {
     WriteOctagon(%q, Payload { Count: 1 })
-    let loaded = LoadOctagon[Payload](%q)?
+    let loaded = LoadOctagon<Payload>(%q)?
     return loaded.Count
 }
 `, artifactPath, artifactPath)

@@ -125,7 +125,7 @@ func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 }
 
 func TestBuildFileParsesCallTypeArguments(t *testing.T) {
-	file := parseSource(t, "fn Main() -> Int ! Error { return LoadOctagon[Int[]](\"x.octagon\")? }")
+	file := parseSource(t, "fn Main() -> Int ! Error { return LoadOctagon<Int[]>(\"x.octagon\")? }")
 	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
 	propagate := ret.Value.(ast.PropagateExpr)
 	call := propagate.Inner.(ast.CallExpr)
@@ -135,6 +135,10 @@ func TestBuildFileParsesCallTypeArguments(t *testing.T) {
 	if call.TypeArguments[0].Name != "Int" || !call.TypeArguments[0].IsArray {
 		t.Fatalf("expected Int[] type argument, got %+v", call.TypeArguments[0])
 	}
+}
+
+func TestBuildFileRejectsLegacyBracketTypeArguments(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"x.octagon\")? }", "type arguments must use '<...>'")
 }
 
 func TestBuildFileParsesFatalUnwrapAndStrings(t *testing.T) {

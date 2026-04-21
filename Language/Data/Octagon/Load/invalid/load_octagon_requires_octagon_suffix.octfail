@@ -3,5 +3,5 @@ expect error: "LoadOctagon path must end with .octagon"
 package OctagonLoadInvalid
 
 fn Main() -> Int ! Error {
-    return LoadOctagon[Int]("not-data.txt")?
+    return LoadOctagon<Int>("not-data.txt")?
 }

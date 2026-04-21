@@ -23,30 +23,30 @@ enum OtherMode {
 
 [Fact]
 fn RejectsTopLevelMismatch() -> Void {
-    Assert.Error(LoadOctagon[Int]("Language/Data/Octagon/valid/record_literal.octagon"), "expected top-level mismatch")
+    Assert.Error(LoadOctagon<Int>("Language/Data/Octagon/valid/record_literal.octagon"), "expected top-level mismatch")
 }
 
 [Fact]
 fn RejectsRecordFieldMismatch() -> Void {
-    Assert.Error(LoadOctagon[WrongStepsType]("Language/Data/Octagon/valid/record_literal.octagon"), "expected record field mismatch")
+    Assert.Error(LoadOctagon<WrongStepsType>("Language/Data/Octagon/valid/record_literal.octagon"), "expected record field mismatch")
 }
 
 [Fact]
 fn RejectsExtraRecordField() -> Void {
-    Assert.Error(LoadOctagon[MissingFieldConfig]("Language/Data/Octagon/valid/record_literal.octagon"), "expected extra record field mismatch")
+    Assert.Error(LoadOctagon<MissingFieldConfig>("Language/Data/Octagon/valid/record_literal.octagon"), "expected extra record field mismatch")
 }
 
 [Fact]
 fn RejectsEnumMismatch() -> Void {
-    Assert.Error(LoadOctagon[OtherMode]("Language/Data/Octagon/valid/enum_value.octagon"), "expected enum mismatch")
+    Assert.Error(LoadOctagon<OtherMode>("Language/Data/Octagon/valid/enum_value.octagon"), "expected enum mismatch")
 }
 
 [Fact]
 fn RejectsArrayElementMismatch() -> Void {
-    Assert.Error(LoadOctagon[Float[]]("Language/Data/Octagon/valid/array_of_scalars.octagon"), "expected array element mismatch")
+    Assert.Error(LoadOctagon<Float[]>("Language/Data/Octagon/valid/array_of_scalars.octagon"), "expected array element mismatch")
 }
 
 [Fact]
 fn RejectsDimensionMismatch() -> Void {
-    Assert.Error(LoadOctagon[Float<s>]("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon"), "expected dimension mismatch")
+    Assert.Error(LoadOctagon<Float<s>>("Language/Data/Octagon/valid/dimensioned_scalar_literal.octagon"), "expected dimension mismatch")
 }
