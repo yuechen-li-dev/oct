@@ -46,8 +46,8 @@ func TestM22bPackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStdout != "" {
 		t.Fatalf("expected empty build stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "compiled mode only supports single-dimension indexing") {
-		t.Fatalf("expected unsupported multi-dimension indexing diagnostic, got %q", buildStderr)
+	if !strings.Contains(buildStderr, "compiled mode does not yet support builtin Idx") {
+		t.Fatalf("expected unsupported tensor index builtin diagnostic, got %q", buildStderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)

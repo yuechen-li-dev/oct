@@ -1911,6 +1911,31 @@ fn Main() -> Vector<Float<m>> {
 `,
 			want: "[3 8]",
 		},
+		{
+			name: "trace builtin compiled",
+			source: `package Main
+
+fn Main() -> Int {
+    let a = matrix[[1, 2] [3, 4]]
+    return Trace(a)
+}
+`,
+			want: "5",
+		},
+		{
+			name: "tensor differential helpers compiled",
+			source: `package Main
+
+fn Main() -> Int {
+    let u = vector[2, 4]
+    let eps = SymGrad(u)
+    let gradU = Grad(u)
+    let divU = Div(u)
+    return Trace(eps) + gradU[1, 1] + divU
+}
+`,
+			want: "16",
+		},
 	}
 
 	for _, tc := range tests {
