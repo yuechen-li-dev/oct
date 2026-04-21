@@ -182,7 +182,7 @@ func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
 		"    }",
 		"}",
 	}, "\n")+"\n")
-	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

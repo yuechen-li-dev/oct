@@ -131,13 +131,12 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 
 	rt, err := newNativeRuntime()
 	if err != nil {
-		var issue *ReactorIssue
-		if errors.As(err, &issue) && issue.Code == ReactorIssueNotFound {
+		if isPrometheusUnavailable(err) {
 			actual := reference
 			result.WallTimeNs = result.CPUTimeNs
 			result.UsedBackend = BackendCPU
 			result.Status = FallbackStatus("prometheus_unavailable")
-			result.Notes = "prometheus reactor not found; used cpu fallback"
+			result.Notes = fmt.Sprintf("prometheus reactor unavailable; used cpu fallback: %v", err)
 			result.VulkanEnv = "unavailable"
 			result.Correctness = compareAgainstOracle(reference, actual)
 			if !result.Correctness.Pass {
@@ -171,6 +170,19 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 		return actual, result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
 	}
 	return actual, result, nil
+}
+
+func isPrometheusUnavailable(err error) bool {
+	var issue *ReactorIssue
+	if !errors.As(err, &issue) {
+		return false
+	}
+	switch issue.Code {
+	case ReactorIssueNotFound, ReactorIssueLoadFailed, ReactorIssueSymbolMissing, ReactorIssueABIMismatch, ReactorIssueCreateFailed, ReactorIssueProbeFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func bridgeIssueStatusCode(err error) int {

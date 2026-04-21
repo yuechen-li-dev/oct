@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const (
@@ -248,6 +249,9 @@ func (r *nativeRuntime) Environment() string {
 	}
 	switch r.caps.BackendType {
 	case 2:
+		if runtime.GOOS == "windows" {
+			return "windows_native_vulkan"
+		}
 		return "hardware_vulkan"
 	case 3:
 		return "software_vulkan_llvmpipe_or_cpu"
@@ -290,15 +294,24 @@ func discoverReactorCandidates() []string {
 
 	if explicit := os.Getenv(reactorEnvVar); explicit != "" {
 		add(explicit)
+		return candidates
 	}
 	add(filepath.Join("internal", "prometheus", "reactor", reactorLibraryBasename()))
+	add(filepath.Join("out", "prometheus", "native", reactorLibraryBasename()))
 	if exe, err := os.Executable(); err == nil {
 		add(filepath.Join(filepath.Dir(exe), reactorLibraryBasename()))
+	}
+	if _, file, _, ok := runtime.Caller(0); ok {
+		pkgDir := filepath.Dir(file)
+		add(filepath.Join(pkgDir, "reactor", reactorLibraryBasename()))
+		add(filepath.Join(pkgDir, "..", "..", "out", "prometheus", "native", reactorLibraryBasename()))
 	}
 	return candidates
 }
 
 func reactorLibraryBasename() string {
-	// P4a currently targets Unix-like development hosts; platform expansion remains future work.
+	if runtime.GOOS == "windows" {
+		return "prometheus_reactor.dll"
+	}
 	return "libprometheus_reactor.so"
 }

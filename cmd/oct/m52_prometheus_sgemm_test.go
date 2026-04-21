@@ -29,7 +29,7 @@ func TestM52PrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
 }
 
 func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
-	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr); err != nil {
@@ -44,7 +44,7 @@ func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
 }
 
 func TestM52PrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *testing.T) {
-	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if err := cli.Execute([]string{"prometheus-sgemm", "prometheus"}, &stdout, &stderr); err != nil {

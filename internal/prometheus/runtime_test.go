@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func TestRunSGEMMCPUPathPassesStarterCorrectness(t *testing.T) {
 }
 
 func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
-	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-reactor.so"))
+	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-"+reactorLibraryBasename()))
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
 		Shape:   Shape{M: 4, N: 4, K: 4},
@@ -84,14 +85,14 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 		A:       deterministicMatrix(4, 4),
 		B:       deterministicMatrix(4, 4),
 	})
-	if err == nil {
-		t.Fatalf("expected init failure")
+	if err != nil {
+		t.Fatalf("expected unavailable fallback success, got err=%v", err)
 	}
-	if run.UsedBackend != BackendPrometheus {
-		t.Fatalf("expected prometheus backend on explicit init failure, got %s", run.UsedBackend)
+	if run.UsedBackend != BackendCPU {
+		t.Fatalf("expected cpu fallback backend on unavailable probe, got %s", run.UsedBackend)
 	}
-	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageInit {
-		t.Fatalf("expected init error status, got %s", run.Status.String())
+	if run.Status.Kind != RunStatusFallback || run.Status.FallbackReason != "prometheus_unavailable" {
+		t.Fatalf("expected fallback(prometheus_unavailable), got %s", run.Status.String())
 	}
 }
 
@@ -194,7 +195,7 @@ func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) 
 }
 
 func TestRunCompiledMatMulMMUnavailableFallsBackTruthfully(t *testing.T) {
-	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-reactor.so"))
+	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-"+reactorLibraryBasename()))
 
 	out, run, err := RunCompiledMatMulMM(
 		[][]float64{{1, 2}, {3, 4}},
@@ -316,6 +317,48 @@ func TestRunSGEMMReportsSoftwareVulkanEnvironment(t *testing.T) {
 	}
 	if run.VulkanEnv != "software_vulkan_llvmpipe_or_cpu" {
 		t.Fatalf("expected software Vulkan environment note, got %q", run.VulkanEnv)
+	}
+}
+
+func TestRunSGEMMReportsWindowsNativeVulkanEnvironment(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			reactorPath: {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 2}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+						return cpuSGEMM(m, n, k, a, b), reactorCallStatus{}, nil
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, reactorPath)
+
+	run, err := RunSGEMM(SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: 4, N: 4, K: 4},
+		A:       deterministicMatrix(4, 4),
+		B:       deterministicMatrix(4, 4),
+	})
+	if err != nil {
+		t.Fatalf("expected successful prometheus run, got err=%v", err)
+	}
+	want := "hardware_vulkan"
+	if runtime.GOOS == "windows" {
+		want = "windows_native_vulkan"
+	}
+	if run.VulkanEnv != want {
+		t.Fatalf("expected %q environment note, got %q", want, run.VulkanEnv)
 	}
 }
 
