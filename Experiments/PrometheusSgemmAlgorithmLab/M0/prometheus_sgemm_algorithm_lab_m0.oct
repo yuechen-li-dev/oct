@@ -1,28 +1,27 @@
 package PrometheusSgemmAlgorithmLab
 
-fn MatMulBaseline(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
-    let aok = ValidateMatrixData(A, aRows, aCols)?
-    let bok = ValidateMatrixData(B, bRows, bCols)?
+fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, B)?
 
-    if aCols != bRows {
-        return error("matmul requires A columns to equal B rows")
-    }
-
-    var out = [0.0]
-    for i in 1 .. aRows * bCols {
-        out = Append(out, 0.0)
-    }
-
-    for r in 0 .. aRows {
-        for c in 0 .. bCols {
+    var out = ZeroMatrixData(A.rows, B.cols)
+    for r in 0 .. A.rows {
+        for c in 0 .. B.cols {
             var sum = 0.0
-            for k in 0 .. aCols {
-                sum = sum + A[FlatIndex(r, k, aCols)] * B[FlatIndex(k, c, bCols)]
+            for k in 0 .. A.cols {
+                sum = sum + A[r, k] * B[k, c]
             }
-            out[FlatIndex(r, c, bCols)] = sum
+            out[FlatIndex(r, c, B.cols)] = sum
         }
     }
 
+    return out
+}
+
+fn ZeroMatrixData(rows: Int, cols: Int) -> Float[] {
+    var out = [0.0]
+    for i in 1 .. rows * cols {
+        out = Append(out, 0.0)
+    }
     return out
 }
 
@@ -30,15 +29,20 @@ fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
     return row * cols + col
 }
 
-fn ValidateMatrixData(A: Float[], rows: Int, cols: Int) -> Bool ! Error {
-    if rows <= 0 or cols <= 0 {
+fn ValidateMatMulInputs(A: Matrix<Float>, B: Matrix<Float>) -> Bool ! Error {
+    let _aOk = ValidateMatrixShape(A)?
+    let _bOk = ValidateMatrixShape(B)?
+
+    if A.cols != B.rows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    return true
+}
+
+fn ValidateMatrixShape(m: Matrix<Float>) -> Bool ! Error {
+    if m.rows <= 0 or m.cols <= 0 {
         return error("matrix dimensions must be > 0")
-    }
-    if Len(A) == 0 {
-        return error("matrix data must be non-empty")
-    }
-    if Len(A) != rows * cols {
-        return error("matrix data length must equal rows * cols")
     }
     return true
 }
