@@ -2225,6 +2225,11 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
+	if usedBuiltins["PrometheusMatMulMM"] {
+		for _, pkg := range []string{"os", "os/exec", "strings", "sync"} {
+			importSet[pkg] = struct{}{}
+		}
+	}
 	if usedBuiltins["LoadOctagon"] {
 		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8"} {
 			importSet[pkg] = struct{}{}
@@ -2497,9 +2502,40 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 `
 
 const __octPrometheusHelpers = `
+var __octPrometheusVulkanEnvOnce sync.Once
+var __octPrometheusVulkanEnvValue string
+
+func __octPrometheusVulkanEnv() string {
+	__octPrometheusVulkanEnvOnce.Do(func() {
+		__octPrometheusVulkanEnvValue = __octDetectPrometheusVulkanEnv()
+	})
+	return __octPrometheusVulkanEnvValue
+}
+
+func __octDetectPrometheusVulkanEnv() string {
+	if os.Getenv("WSL_DISTRO_NAME") == "" {
+		return "not_applicable"
+	}
+	output, err := exec.Command("vulkaninfo", "--summary").CombinedOutput()
+	if err != nil {
+		return "wsl_vulkan_unknown"
+	}
+	text := strings.ToLower(string(output))
+	if strings.Contains(text, "driver_id_mesa_dozen") || strings.Contains(text, "drivername         = dozen") {
+		return "vulkan_wsl_dzn"
+	}
+	if strings.Contains(text, "llvmpipe") || strings.Contains(text, "physical_device_type_cpu") {
+		return "software_vulkan_llvmpipe_or_cpu"
+	}
+	if strings.Contains(text, "vulkan") {
+		return "vulkan_wsl_other"
+	}
+	return "wsl_vulkan_unknown"
+}
+
 func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
-	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t wall=%dns\n",
-		"prometheus", "cpu", "fallback(prometheus_unavailable)", true, int64(0))
+	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t vulkan_env=%s wall=%dns\n",
+		"prometheus", "cpu", "fallback(prometheus_unavailable)", true, __octPrometheusVulkanEnv(), int64(0))
 	return __octMatMulMM(left, right)
 }
 `

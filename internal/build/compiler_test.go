@@ -213,6 +213,9 @@ func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T
 	if !strings.Contains(normalized, "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable)") {
 		t.Fatalf("expected explicit fallback status in output, got %q", normalized)
 	}
+	if !strings.Contains(normalized, "vulkan_env=") {
+		t.Fatalf("expected explicit environment classification in output, got %q", normalized)
+	}
 	if !strings.Contains(normalized, "[[19 22] [43 50]]") {
 		t.Fatalf("expected matrix output, got %q", normalized)
 	}

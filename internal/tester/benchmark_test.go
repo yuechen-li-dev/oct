@@ -1,0 +1,33 @@
+package tester
+
+import "testing"
+
+func TestBenchmarkMetadataFromOutputDefaultsToCPUPath(t *testing.T) {
+	metadata := benchmarkMetadataFromOutput("[[19 22] [43 50]]\n0\n")
+	if metadata.BackendRequested != "cpu" || metadata.BackendUsed != "cpu" {
+		t.Fatalf("expected cpu defaults, got requested=%q used=%q", metadata.BackendRequested, metadata.BackendUsed)
+	}
+	if metadata.Status != "ok" {
+		t.Fatalf("expected ok status, got %q", metadata.Status)
+	}
+	if metadata.Environment != "not_applicable" {
+		t.Fatalf("expected not_applicable environment, got %q", metadata.Environment)
+	}
+}
+
+func TestBenchmarkMetadataFromOutputCapturesPrometheusTruth(t *testing.T) {
+	output := "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable) correctness=true vulkan_env=vulkan_wsl_dzn wall=0ns\n"
+	metadata := benchmarkMetadataFromOutput(output)
+	if metadata.BackendRequested != "prometheus" {
+		t.Fatalf("expected prometheus requested backend, got %q", metadata.BackendRequested)
+	}
+	if metadata.BackendUsed != "cpu" {
+		t.Fatalf("expected cpu used backend, got %q", metadata.BackendUsed)
+	}
+	if metadata.Status != "fallback(prometheus_unavailable)" {
+		t.Fatalf("expected explicit fallback status, got %q", metadata.Status)
+	}
+	if metadata.Environment != "vulkan_wsl_dzn" {
+		t.Fatalf("expected vulkan_wsl_dzn environment, got %q", metadata.Environment)
+	}
+}

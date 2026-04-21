@@ -197,6 +197,9 @@ func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
 	if !strings.Contains(output, "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable)") {
 		t.Fatalf("expected explicit prometheus fallback reporting, got %q", output)
 	}
+	if !strings.Contains(output, "vulkan_env=") {
+		t.Fatalf("expected explicit prometheus environment reporting, got %q", output)
+	}
 }
 
 func TestOctBenchCPUProfileEmitsDeterministicArtifact(t *testing.T) {

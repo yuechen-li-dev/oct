@@ -29,8 +29,12 @@ type BenchmarkRun struct {
 }
 
 type BenchmarkCaseResult struct {
-	Name       string
-	DurationNs int64
+	Name             string
+	DurationNs       int64
+	BackendRequested string
+	BackendUsed      string
+	Status           string
+	Environment      string
 }
 
 type benchmarkCase struct {
@@ -106,7 +110,15 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		start := time.Now()
 		benchmarkOutput, err := executeBenchmarkCompiled(program, benchmark)
 		duration := time.Since(start)
-		run.Cases = append(run.Cases, BenchmarkCaseResult{Name: qualified, DurationNs: duration.Nanoseconds()})
+		metadata := benchmarkMetadataFromOutput(benchmarkOutput)
+		run.Cases = append(run.Cases, BenchmarkCaseResult{
+			Name:             qualified,
+			DurationNs:       duration.Nanoseconds(),
+			BackendRequested: metadata.BackendRequested,
+			BackendUsed:      metadata.BackendUsed,
+			Status:           metadata.Status,
+			Environment:      metadata.Environment,
+		})
 		if err != nil {
 			failed++
 			_, _ = fmt.Fprintf(stdout, "FAIL %s %s (%s): %v\n", qualified, duration.Round(time.Microsecond), shortPath(path, benchmark.filePath), err)
@@ -128,6 +140,50 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		}
 	}
 	return nil
+}
+
+type benchmarkMetadata struct {
+	BackendRequested string
+	BackendUsed      string
+	Status           string
+	Environment      string
+}
+
+func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
+	metadata := benchmarkMetadata{
+		BackendRequested: "cpu",
+		BackendUsed:      "cpu",
+		Status:           "ok",
+		Environment:      "not_applicable",
+	}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) == 0 {
+			continue
+		}
+		values := map[string]string{}
+		for _, field := range fields {
+			key, value, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			values[key] = value
+		}
+		requested, haveRequested := values["backend_requested"]
+		used, haveUsed := values["backend_used"]
+		status, haveStatus := values["status"]
+		if !haveRequested || !haveUsed || !haveStatus {
+			continue
+		}
+		metadata.BackendRequested = requested
+		metadata.BackendUsed = used
+		metadata.Status = status
+		if env, ok := values["vulkan_env"]; ok && env != "" {
+			metadata.Environment = env
+		}
+		return metadata
+	}
+	return metadata
 }
 
 func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) (string, error) {
@@ -232,10 +288,14 @@ func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
 			Kind: interpret.ValueRecord,
 			Record: interpret.RecordValue{
 				TypeName:   "BenchmarkCaseResult",
-				FieldOrder: []string{"Name", "DurationNs"},
+				FieldOrder: []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment"},
 				Fields: map[string]interpret.Value{
-					"Name":       {Kind: interpret.ValueString, Text: result.Name},
-					"DurationNs": {Kind: interpret.ValueInt, Int: result.DurationNs},
+					"Name":             {Kind: interpret.ValueString, Text: result.Name},
+					"DurationNs":       {Kind: interpret.ValueInt, Int: result.DurationNs},
+					"BackendRequested": {Kind: interpret.ValueString, Text: result.BackendRequested},
+					"BackendUsed":      {Kind: interpret.ValueString, Text: result.BackendUsed},
+					"Status":           {Kind: interpret.ValueString, Text: result.Status},
+					"Environment":      {Kind: interpret.ValueString, Text: result.Environment},
 				},
 			},
 		})
