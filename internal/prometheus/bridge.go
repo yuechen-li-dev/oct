@@ -107,6 +107,7 @@ type nativeRuntime struct {
 	destroy reactorDestroy
 	sgemm   reactorSGEMM
 	handle  reactorRuntimeHandle
+	caps    reactorCaps
 }
 
 func newNativeRuntime() (*nativeRuntime, error) {
@@ -207,7 +208,7 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolSGEMM, Err: fmt.Errorf("symbol has unexpected type")}
 	}
 
-	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle}, nil
+	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle, caps: caps}, nil
 }
 
 func (r *nativeRuntime) Close() {
@@ -230,6 +231,20 @@ func (r *nativeRuntime) SGEMM(m, n, k int, a, b []float32) ([]float32, RunStatus
 		return nil, ErrorStatus(stageFromNativeCode(nativeStatus.StageCode), nativeStatus.DetailCode), &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: err}
 	}
 	return out, OkStatus(), nil
+}
+
+func (r *nativeRuntime) Environment() string {
+	if r == nil {
+		return "unknown"
+	}
+	switch r.caps.BackendType {
+	case 2:
+		return "hardware_vulkan"
+	case 3:
+		return "software_vulkan_llvmpipe_or_cpu"
+	default:
+		return "unknown"
+	}
 }
 
 func stageFromNativeCode(stage uint32) ErrorStage {

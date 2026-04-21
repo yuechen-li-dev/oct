@@ -177,6 +177,37 @@ FACT(PrometheusReactor_SgemmDeterministicAcrossRepeatedRuns)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+FACT(PrometheusReactor_SgemmSupportsManyConsecutiveCalls)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; consecutive-call Vulkan path cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 4u;
+    constexpr std::uint32_t n = 4u;
+    constexpr std::uint32_t k = 4u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    const std::vector<float> expected = cpu_sgemm(a, b, m, n, k);
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = -1;
+    for (int iter = 0; iter < 8; ++iter) {
+        std::vector<float> out(m * n, 0.0f);
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), out.data(), m, n, k, &stage, &detail), "consecutive SGEMM run should succeed");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "successful SGEMM should end in transfer-out stage");
+        ASSERT_EQUAL(0, detail, "successful SGEMM should report zero detail");
+        ASSERT_SEQUENCE_EQUAL(expected, out, "consecutive SGEMM output should remain stable");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 FACT(PrometheusReactor_SgemmRejectsInvalidArguments)
 {
     std::uint32_t stage = PROM_STAGE_NONE;

@@ -20,6 +20,9 @@ func TestM52PrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
 	if !strings.Contains(stdout.String(), "backend_requested=cpu backend_used=cpu status=ok correctness=true") {
 		t.Fatalf("expected explicit cpu status line, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "cpu=") || !strings.Contains(stdout.String(), "vulkan=") || !strings.Contains(stdout.String(), "vulkan_env=") {
+		t.Fatalf("expected explicit timing/env output, got %q", stdout.String())
+	}
 	if _, err := octagon.Load(out); err != nil {
 		t.Fatalf("expected loadable .octagon report, got %v", err)
 	}

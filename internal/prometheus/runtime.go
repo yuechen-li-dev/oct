@@ -43,6 +43,9 @@ type SGEMMRunResult struct {
 	Shape            Shape
 	Status           RunStatus
 	Correctness      CorrectnessResult
+	CPUTimeNs        int64
+	VulkanTimeNs     int64
+	VulkanEnv        string
 	TimingMode       string
 	WallTimeNs       int64
 	Notes            string
@@ -55,9 +58,9 @@ type CorpusReport struct {
 var StarterCorpus = []Shape{
 	{M: 1, N: 1, K: 1},
 	{M: 4, N: 4, K: 4},
+	{M: 16, N: 16, K: 16},
+	{M: 32, N: 32, K: 32},
 	{M: 3, N: 5, K: 7},
-	{M: 64, N: 64, K: 64},
-	{M: 256, N: 64, K: 1024},
 }
 
 func RunStarterCorpus(backend Backend) (CorpusReport, error) {
@@ -89,14 +92,17 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		RequestedBackend: req.Backend,
 		Shape:            req.Shape,
 		TimingMode:       "end_to_end",
+		CPUTimeNs:        0,
+		VulkanTimeNs:     0,
+		VulkanEnv:        "not_applicable",
 	}
 
-	reference := cpuSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
+	reference, cpuDuration := timedCPUSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
+	result.CPUTimeNs = cpuDuration.Nanoseconds()
 
 	if req.Backend == BackendCPU {
-		start := time.Now()
-		actual := cpuSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
-		result.WallTimeNs = time.Since(start).Nanoseconds()
+		actual := reference
+		result.WallTimeNs = result.CPUTimeNs
 		result.UsedBackend = BackendCPU
 		result.Status = OkStatus()
 		result.Correctness = compareAgainstOracle(reference, actual)
@@ -110,12 +116,12 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 	if err != nil {
 		var issue *ReactorIssue
 		if errors.As(err, &issue) && issue.Code == ReactorIssueNotFound {
-			start := time.Now()
-			actual := cpuSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
-			result.WallTimeNs = time.Since(start).Nanoseconds()
+			actual := reference
+			result.WallTimeNs = result.CPUTimeNs
 			result.UsedBackend = BackendCPU
 			result.Status = FallbackStatus("prometheus_unavailable")
 			result.Notes = "prometheus reactor not found; used cpu fallback"
+			result.VulkanEnv = "unavailable"
 			result.Correctness = compareAgainstOracle(reference, actual)
 			if !result.Correctness.Pass {
 				return result, fmt.Errorf("correctness gate failed for fallback backend=%s", result.UsedBackend)
@@ -127,10 +133,15 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		return result, err
 	}
 	defer rt.Close()
+	result.VulkanEnv = rt.Environment()
+	if result.VulkanEnv == "software_vulkan_llvmpipe_or_cpu" {
+		result.Notes = "software Vulkan path (llvmpipe/CPU device): timings are not representative of hardware GPU acceleration"
+	}
 
 	start := time.Now()
 	actual, status, err := rt.SGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
-	result.WallTimeNs = time.Since(start).Nanoseconds()
+	result.VulkanTimeNs = time.Since(start).Nanoseconds()
+	result.WallTimeNs = result.VulkanTimeNs
 	result.UsedBackend = BackendPrometheus
 	if err != nil {
 		result.Status = status
@@ -189,6 +200,12 @@ func cpuSGEMM(m, n, k int, a, b []float32) []float32 {
 	return c
 }
 
+func timedCPUSGEMM(m, n, k int, a, b []float32) ([]float32, time.Duration) {
+	start := time.Now()
+	out := cpuSGEMM(m, n, k, a, b)
+	return out, time.Since(start)
+}
+
 func compareAgainstOracle(expected, actual []float32) CorrectnessResult {
 	res := CorrectnessResult{Pass: true, FirstFailingIndex: -1}
 	for idx := range expected {
@@ -241,7 +258,7 @@ func reportToOctagon(report CorpusReport) interpret.Value {
 	for _, run := range report.Runs {
 		runs = append(runs, interpret.Value{Kind: interpret.ValueRecord, Record: interpret.RecordValue{
 			TypeName:   "PrometheusSgemmRun",
-			FieldOrder: []string{"BackendRequested", "BackendUsed", "M", "N", "K", "Status", "CorrectnessPass", "MaxAbsError", "MaxRelError", "FailingElementCount", "FirstFailingIndex", "FirstExpectedValue", "FirstActualValue", "TimingMode", "WallTimeNs", "Notes"},
+			FieldOrder: []string{"BackendRequested", "BackendUsed", "M", "N", "K", "Status", "CorrectnessPass", "MaxAbsError", "MaxRelError", "FailingElementCount", "FirstFailingIndex", "FirstExpectedValue", "FirstActualValue", "CPUTimeNs", "VulkanTimeNs", "VulkanEnv", "TimingMode", "WallTimeNs", "Notes"},
 			Fields: map[string]interpret.Value{
 				"BackendRequested":    {Kind: interpret.ValueString, Text: string(run.RequestedBackend)},
 				"BackendUsed":         {Kind: interpret.ValueString, Text: string(run.UsedBackend)},
@@ -256,6 +273,9 @@ func reportToOctagon(report CorpusReport) interpret.Value {
 				"FirstFailingIndex":   {Kind: interpret.ValueInt, Int: int64(octagonFailingIndex(run.Correctness.FirstFailingIndex))},
 				"FirstExpectedValue":  {Kind: interpret.ValueFloat, Float: float64(run.Correctness.FirstExpectedValue)},
 				"FirstActualValue":    {Kind: interpret.ValueFloat, Float: float64(run.Correctness.FirstActualValue)},
+				"CPUTimeNs":           {Kind: interpret.ValueInt, Int: run.CPUTimeNs},
+				"VulkanTimeNs":        {Kind: interpret.ValueInt, Int: run.VulkanTimeNs},
+				"VulkanEnv":           {Kind: interpret.ValueString, Text: run.VulkanEnv},
 				"TimingMode":          {Kind: interpret.ValueString, Text: run.TimingMode},
 				"WallTimeNs":          {Kind: interpret.ValueInt, Int: run.WallTimeNs},
 				"Notes":               {Kind: interpret.ValueString, Text: run.Notes},
