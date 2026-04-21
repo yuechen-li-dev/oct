@@ -26,7 +26,7 @@ func TestOctTestWriteThenLoadOctagonRoundTrip(t *testing.T) {
 		"[Fact]",
 		"fn WriteThenLoad() -> Void ! Error {",
 		fmt.Sprintf("    WriteOctagon(%q, Payload { Name: \"Run\" Samples: [1, 2, 3] })", artifactPath),
-		fmt.Sprintf("    let loaded = LoadOctagon[Payload](%q)?", artifactPath),
+		fmt.Sprintf("    let loaded = LoadOctagon<Payload>(%q)?", artifactPath),
 		"    Assert.Equal(\"Run\", loaded.Name, \"roundtrip record field\")",
 		"    Assert.Equal(3, Len(loaded.Samples), \"roundtrip array len\")",
 		"}",

@@ -37,8 +37,8 @@ Use constructors when matrix values are generated, repetitive, or large:
 
 - `Matrix.tabulate(rows, cols, Fn)` where `Fn` has shape `fn(r: Int, c: Int) -> T`.
 - `Matrix.fill(rows, cols, value)` for constant matrices.
-- `Matrix.zeros[T](rows, cols)` for typed zero matrices.
-- `Matrix.identity[T](n)` for identity matrices.
+- `Matrix.zeros<T>(rows, cols)` for typed zero matrices.
+- `Matrix.identity<T>(n)` for identity matrices.
 
 Use literals (`matrix[[...]]`) for small hand-authored constants where the literal is clearer.
 For benchmark/corpus-style setup, prefer constructors over giant literals.

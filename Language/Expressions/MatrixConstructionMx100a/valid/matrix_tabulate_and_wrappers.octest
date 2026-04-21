@@ -15,8 +15,8 @@ fn matrix_tabulate_construction() -> Void {
 [Fact]
 fn matrix_fill_zeros_identity() -> Void {
     let filled = Matrix.fill(2, 2, 3)
-    let zeros = Matrix.zeros[Int](2, 2)
-    let ident = Matrix.identity[Int](2)
+    let zeros = Matrix.zeros<Int>(2, 2)
+    let ident = Matrix.identity<Int>(2)
 
     Assert.Equal(3, filled[1, 0], "fill")
     Assert.Equal(0, zeros[0, 1], "zeros")

@@ -5,7 +5,7 @@
 Compiled mode now supports runtime-backed `.octagon` data operations for the current representable subset:
 
 - `WriteOctagon(path, value)`
-- `LoadOctagon[T](path) -> T ! Error`
+- `LoadOctagon<T>(path) -> T ! Error`
 
 This is implemented in the compiled pipeline without introducing a separate semantic model.
 
@@ -16,7 +16,7 @@ MIR lowering keeps both operations explicit as builtin runtime calls:
 - `call WriteOctagon(path, value)`
 - `call LoadOctagon(path)` (with explicit return type retained in MIR call metadata)
 
-`LoadOctagon[T]` remains fallible in MIR and through Go emission.
+`LoadOctagon<T>` remains fallible in MIR and through Go emission.
 
 ## Runtime / backend model
 

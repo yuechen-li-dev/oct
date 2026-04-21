@@ -9,7 +9,7 @@ fn ContinuumM2DisplacementToStressPathwayIsFieldForm() -> Void {
 
     // Narrow constitutive slice (lambda = 0): sigma = 2 * mu * eps.
     let mu = 80.0
-    let twoMuI = Matrix.identity[Float](2) * (2.0 * mu)
+    let twoMuI = Matrix.identity<Float>(2) * (2.0 * mu)
     let sigma = twoMuI * eps
 
     // Projection remains available for tensor-level inspection without evaluation.

@@ -284,7 +284,7 @@ func TestCheckValidatesM7Builtins(t *testing.T) {
 		"record P { X: Int } fn Main() -> Int { var xs = [P { X: 1 }] xs = Append(xs, P { X: 2 }) return xs[1].X }",
 		"fn Main() -> Int<m>[] { var xs = [1m, 2m] xs = Append(xs, 3m) return xs }",
 		"enum Mode { A B } fn Main() -> Int { return WriteOctagon(\"artifact.octagon\", Mode.A) }",
-		"record Payload { Name: String Count: Int } fn Main() -> Payload ! Error { return LoadOctagon[Payload](\"artifact.octagon\")? }",
+		"record Payload { Name: String Count: Int } fn Main() -> Payload ! Error { return LoadOctagon<Payload>(\"artifact.octagon\")? }",
 	}
 
 	for _, src := range validPrograms {
@@ -360,9 +360,9 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> UI { return UIPlaceAbsolute(0.0px, 0.0px, 1.0px, 1.0px, UIText(\"x\"), 0.1) }", "function Main: function 'UIPlaceAbsolute' argument 6 expects Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> UI { return UISpacer(1) }", "function Main: function 'UISpacer' expects 0 arguments, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon(\"a.octagon\")? }", "function Main: function 'LoadOctagon' expects 1 type argument, got 0")
-	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
-	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")
-	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Vector<Int>](\"a.octagon\")? }", "function Main: function 'LoadOctagon' type argument expects .octagon-representable type, got Vector<Int>")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon<Int>(1)? }", "function Main: function 'LoadOctagon' argument 1 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon<Int>(\"a.txt\")? }", "function Main: LoadOctagon path must end with .octagon")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon<Vector<Int>>(\"a.octagon\")? }", "function Main: function 'LoadOctagon' type argument expects .octagon-representable type, got Vector<Int>")
 	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn Append(xs: Int[], x: Int) -> Int[] { return xs } fn Main() -> Int { return 0 }", "function Append: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn WriteOctagon(path: String, value: Int) -> Int { return 0 } fn Main() -> Int { return 0 }", "function WriteOctagon: cannot redeclare built-in function")
@@ -612,9 +612,9 @@ func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 func TestCheckValidatesMatrixConstructionSurfaceMx100a(t *testing.T) {
 	validPrograms := []string{
 		"fn Elem(r: Int, c: Int) -> Float { return Float(r * 3 + c * 5) } fn Main() -> Matrix<Float> { return Matrix.tabulate(2, 3, Elem) }",
-		"fn Main() -> Matrix<Int> { return Matrix.zeros[Int](2, 3) }",
+		"fn Main() -> Matrix<Int> { return Matrix.zeros<Int>(2, 3) }",
 		"fn Main() -> Matrix<Float> { return Matrix.fill(2, 3, 1.5) }",
-		"fn Main() -> Matrix<Int> { return Matrix.identity[Int](3) }",
+		"fn Main() -> Matrix<Int> { return Matrix.identity<Int>(3) }",
 		"fn Main() -> Int { let m = Matrix.fill(2, 3, 9) return m.rows + m.cols }",
 	}
 	for _, src := range validPrograms {
@@ -627,8 +627,8 @@ func TestCheckValidatesMatrixConstructionSurfaceMx100a(t *testing.T) {
 
 func TestCheckRejectsInvalidMatrixConstructionSurfaceMx100a(t *testing.T) {
 	assertTypeErrorContains(t, "fn Bad(r: Int) -> Int { return r } fn Main() -> Matrix<Int> { return Matrix.tabulate(2, 2, Bad) }", "function 'Matrix.tabulate' argument 3 expects function (Int, Int) -> T")
-	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.zeros[Int](2.0, 2) }", "function 'Matrix.zeros' argument 1 expects Int, got Float")
-	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.identity[Int](2.0) }", "function 'Matrix.identity' argument 1 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.zeros<Int>(2.0, 2) }", "function 'Matrix.zeros' argument 1 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.identity<Int>(2.0) }", "function 'Matrix.identity' argument 1 expects Int, got Float")
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m.depth }", "type 'Matrix<Int>' has no field 'depth'")
 }
 
