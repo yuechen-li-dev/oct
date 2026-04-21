@@ -1712,6 +1712,12 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "Float" {
 			return "Float", "Float", true, false, nil
 		}
+		if x.Name == "Complex" {
+			return "Complex", "Complex", true, false, nil
+		}
+		if x.Name == "fft" {
+			return "fft", "Complex[]", true, true, nil
+		}
 		if x.Name == "Contains" || x.Name == "StartsWith" || x.Name == "EndsWith" {
 			return x.Name, "Bool", true, false, nil
 		}
@@ -1879,7 +1885,7 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 
 func isBuiltinTypeName(name string) bool {
 	switch name {
-	case "Int", "Float", "Bool", "String", "Error", "Void":
+	case "Int", "Float", "Complex", "Bool", "String", "Error", "Void":
 		return true
 	default:
 		return false
@@ -1936,6 +1942,14 @@ func parseFlowInstanceType(t string) (string, bool) {
 
 func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 	switch name {
+	case "fft":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function 'fft' expects 1 arguments, got %d", len(argTypes))
+		}
+		if argTypes[0] != "Complex[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin fft for type %s", argTypes[0])
+		}
+		return "Complex[]", nil
 	case "Pi", "E":
 		if len(argTypes) != 0 {
 			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
@@ -1967,6 +1981,16 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "Float", nil
+	case "Complex":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function 'Complex' expects 2 arguments, got %d", len(argTypes))
+		}
+		for idx := range argTypes {
+			if !(isIntScalarTypeString(argTypes[idx]) || isFloatScalarTypeString(argTypes[idx])) {
+				return "", fmt.Errorf("compiled mode does not yet support builtin Complex for type %s", argTypes[idx])
+			}
+		}
+		return "Complex", nil
 	case "Trace":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -2485,7 +2509,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
 		importSet["strings"] = struct{}{}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
@@ -2549,6 +2573,9 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] {
 		b.WriteString(__octLinearAlgebraHelpers)
+	}
+	if usedBuiltins["fft"] {
+		b.WriteString(__octFFTHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octPrometheusHelpers)
@@ -2796,6 +2823,59 @@ func __octDiv[T __octNumber](m [][]T) []T {
 
 func __octSymGrad[T __octNumber](v []T) [][]T {
 	return __octGrad(v)
+}
+`
+
+const __octFFTHelpers = `
+func __octFFT(values []complex128) octResult_ComplexSlice {
+	n := len(values)
+	if n == 0 {
+		return octResult_ComplexSlice{Err: "runtime error: fft requires non-empty input", IsErr: true}
+	}
+	if n&(n-1) != 0 {
+		return octResult_ComplexSlice{Err: "runtime error: fft requires power-of-two input length", IsErr: true}
+	}
+
+	out := make([]complex128, n)
+	copy(out, values)
+
+	for i := 0; i < n; i++ {
+		j := __octReverseBits(i, n)
+		if j > i {
+			out[i], out[j] = out[j], out[i]
+		}
+	}
+
+	for span := 2; span <= n; span *= 2 {
+		halfSpan := span / 2
+		phaseStep := -2.0 * math.Pi / float64(span)
+		for blockStart := 0; blockStart < n; blockStart += span {
+			for j := 0; j < halfSpan; j++ {
+				angle := phaseStep * float64(j)
+				twiddle := complex(math.Cos(angle), math.Sin(angle))
+				odd := out[blockStart+j+halfSpan]
+				t := twiddle * odd
+				even := out[blockStart+j]
+				out[blockStart+j] = even + t
+				out[blockStart+j+halfSpan] = even - t
+			}
+		}
+	}
+
+	return octResult_ComplexSlice{Value: out}
+}
+
+func __octReverseBits(index int, width int) int {
+	value := index
+	reversed := 0
+	n := width
+	for n > 1 {
+		lowBit := value & 1
+		reversed = reversed*2 + lowBit
+		value /= 2
+		n /= 2
+	}
+	return reversed
 }
 `
 
@@ -3809,6 +3889,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
 				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
+			case "Complex":
+				return fmt.Sprintf("%s = complex(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
 			case "Abs":
 				if isIntScalarTypeString(st.RetType) {
 					return fmt.Sprintf("%s = func(__v int) int { if __v < 0 { return -__v }; return __v }(%s)", st.Target, st.Args[0]), nil
@@ -3859,6 +3941,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, st.Args[0]), nil
 			case "Join":
 				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "fft":
+				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
 			case "WriteOctagon":
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":
@@ -3990,6 +4074,8 @@ func goType(t string) string {
 		return "int"
 	case "Float":
 		return "float64"
+	case "Complex":
+		return "complex128"
 	case "Bool":
 		return "bool"
 	case "String":

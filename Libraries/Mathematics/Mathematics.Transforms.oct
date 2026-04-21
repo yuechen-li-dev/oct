@@ -1,6 +1,9 @@
 package Mathematics
 
-/// Computes the 1D discrete Fourier transform using radix-2 Cooley-Tukey.
+/// Reference implementation: computes the 1D discrete Fourier transform using radix-2 Cooley-Tukey.
+///
+/// This pure Oct implementation is kept as the readable/textbook oracle path.
+/// Production programs should prefer the fft(...) builtin.
 ///
 /// Convention (forward, unnormalized):
 /// X[k] = Sum_{n=0}^{N-1} x[n] * exp(-j*2*pi*k*n/N)
@@ -10,7 +13,7 @@ package Mathematics
 /// - Len(x) is a power of two
 ///
 /// Rejects invalid input with Error.
-fn FFT(x: Complex[]) -> Complex[] ! Error {
+fn FastFourierTransform(x: Complex[]) -> Complex[] ! Error {
     let transformed = FFTWithDirection(x, false)?
     return transformed
 }
@@ -99,7 +102,7 @@ fn ValidateFFTInput(values: Complex[]) -> Bool ! Error {
     let nonEmpty = ValidateFFTLength(n)?
 
     if not IsPowerOfTwo(n) {
-        return error("FFT/IFFT require power-of-two input length")
+        return error("FastFourierTransform/IFFT require power-of-two input length")
     }
 
     return true
@@ -107,7 +110,7 @@ fn ValidateFFTInput(values: Complex[]) -> Bool ! Error {
 
 fn ValidateFFTLength(length: Int) -> Bool ! Error {
     if length <= 0 {
-        return error("FFT/IFFT require non-empty input")
+        return error("FastFourierTransform/IFFT require non-empty input")
     }
 
     return true
