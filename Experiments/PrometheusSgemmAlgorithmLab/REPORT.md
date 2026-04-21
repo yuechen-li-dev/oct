@@ -97,3 +97,43 @@ The coverage also verifies:
 - Direct K-blocked variants keep data access inline, while staged variants expose clearer phase boundaries at the cost of additional temporary structures.
 - Staging centralizes chunk copy logic (`StageAChunk`, `StageBChunk`), which improves reuse and keeps per-variant compute loops focused on ordering differences.
 - K-blocking combined with loop-order variants (`ijk`-style local reduction vs `ikj`) changes code shape without changing semantic output contracts.
+
+## M2a scope
+
+M2a ports the M0 baseline and M1 variant suite to matrix-native inputs and indexing where language support is available, while preserving algorithm structure and tests.
+
+### What was ported to matrix-native surface
+
+- M0 `MatMulBaseline` now accepts `Matrix<Float>` inputs, uses `m.rows`/`m.cols`, and reads elements through `m[r, c]` in the core multiply loop.
+- M1 variants (`MatMulBaseline`, `MatMul_IKJ`, `MatMul_KIJ`, `MatMul_Blocked`, `MatMul_Blocked_IKJ`) now use `Matrix<Float>` input contracts and matrix-native read indexing in algorithm bodies.
+- M0/M1 `.octest` fixtures now construct matrices with matrix literals and `Matrix.tabulate(...)` (for medium-size deterministic coverage).
+
+### Helpers removed or simplified
+
+- Simplified helper surface by removing flat-array shape plumbing from function signatures (`aRows/aCols/bRows/bCols`) and relying on matrix shape fields.
+- Removed `ValidateMatrixData(...)` from M0/M1; shape checks now use matrix metadata directly.
+- Kept `FlatIndex(...)` and zero-buffer helpers only for mutable accumulation/storage paths, due current matrix write limitations (see inconsistency note).
+- Kept and reused shape-level helpers that remain true contract checks: `ValidateMatMulInputs(...)`, `ValidateMatrixShape(...)`, `ValidateBlockSize(...)`, and `MinInt(...)`.
+
+### How algorithm structure was preserved
+
+- Loop-order intent is unchanged:
+  - baseline remains `i -> j -> k`
+  - `MatMul_IKJ` remains `i -> k -> j`
+  - `MatMul_KIJ` remains `k -> i -> j`
+- Blocked variants still tile output-space (`i`, `j`) with explicit edge handling and preserve their original inner-loop ordering differences.
+- Error contracts under test remain unchanged in meaning (shape mismatch rejection and invalid block-size rejection).
+
+### Intentionally not rewritten in M2a
+
+- M2 variants were intentionally left untouched to keep scope narrowed to M0/M1 surface normalization.
+- No benchmark-harness, runtime, Reactor, or optimization work was included.
+
+### Inconsistency note surfaced
+
+Two explicit gaps were surfaced during the port and left visible by design:
+
+- Matrix element **read** indexing (`m[r, c]`) is available, but mutable matrix element **assignment** is still rejected by the parser in this environment (`index assignment target must use exactly one index`).
+- Anonymous callback functions are still rejected in this environment, so generic row-major array -> matrix conversion via captured callbacks is not available.
+
+Because of those limits, M0/M1 now use matrix-native inputs/reads and shape metadata, but retain flat row-major output buffers for accumulation. M2 remains unchanged and still flat-array-based by milestone scope.
