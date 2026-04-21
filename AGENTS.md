@@ -1,5 +1,47 @@
 # AGENTS.md
 
+## Language Reference Authority (Oct)
+
+* The `Language/reference` directory is the **single source of truth** for:
+
+  * syntax
+  * style conventions
+  * supported language features
+
+* When writing or modifying Oct code, **always follow `Language/reference`**, even if:
+
+  * existing experiments
+  * older library code
+  * prior generated code
+
+  use different patterns.
+
+* Treat older code as potentially outdated. Do **not** cargo-cult:
+
+  * deprecated syntax
+  * superseded patterns (e.g., while-loops used as for-loops)
+  * pre-Mx100/Mx101 workarounds
+
+* If you encounter inconsistencies between:
+
+  * `Language/reference`
+  * existing code
+  * experiments
+  * tests
+
+  you must:
+
+  1. **Follow `Language/reference`**
+  2. **Explicitly surface the inconsistency** in your report or summary
+
+* If a feature appears in code but is **not documented** in `Language/reference`, or vice versa:
+
+  * treat this as a documentation gap
+  * call it out explicitly
+
+* Do not silently resolve inconsistencies.
+  Always make them visible so they can be corrected intentionally.
+
 ## Primer
 
 Read `primer/` before writing or editing native code (C, C++, Vulkan, etc.).
