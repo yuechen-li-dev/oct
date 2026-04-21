@@ -1,0 +1,9 @@
+package Main
+
+[Benchmark]
+fn MatrixMulCPUReferenceM0() -> Void {
+    let stiffness = matrix[[2.0, 0.0] [0.0, 3.0]]
+    let displacement = vector[4.0, 5.0]
+    let force = stiffness @ displacement
+    Print(force)
+}
