@@ -20,6 +20,7 @@ They are mathematical value categories, not general-purpose storage containers.
 - Matrix rows must all have equal length.
 - Vector indexing form is `v[i]` (exactly one index).
 - Matrix indexing form is `m[r, c]` (exactly two indices).
+- Matrix shape accessors are `m.rows` and `m.cols` (both `Int`, read-only).
 - `+`, `-`, `*`, `/` on vectors and matrices are element-wise operations.
 - Element-wise vector operations require equal runtime lengths.
 - Element-wise matrix operations require equal runtime shapes.
@@ -30,6 +31,20 @@ They are mathematical value categories, not general-purpose storage containers.
   - `Matrix<Float<D1>> @ Matrix<Float<D2>> -> Matrix<Float<D1*D2>>`
 - Vector/matrix element mutation through index assignment is not supported.
 
+## Matrix construction surface (Mx100a+)
+
+Use constructors when matrix values are generated, repetitive, or large:
+
+- `Matrix.tabulate(rows, cols, Fn)` where `Fn` has shape `fn(r: Int, c: Int) -> T`.
+- `Matrix.fill(rows, cols, value)` for constant matrices.
+- `Matrix.zeros[T](rows, cols)` for typed zero matrices.
+- `Matrix.identity[T](n)` for identity matrices.
+
+Use literals (`matrix[[...]]`) for small hand-authored constants where the literal is clearer.
+For benchmark/corpus-style setup, prefer constructors over giant literals.
+
+Compiled mode supports the same matrix element indexing form `m[r, c]` as interpreted mode.
+
 ## Examples
 
 Valid:
@@ -38,9 +53,13 @@ Valid:
 package Main
 
 fn Main() -> Vector<Int> {
-    let m = matrix[[1, 2] [3, 4]]
+    let m = Matrix.tabulate(2, 2, Weight)
     let v = vector[10, 20]
     return m @ v
+}
+
+fn Weight(r: Int, c: Int) -> Int {
+    return r * 2 + c + 1
 }
 ```
 
@@ -48,9 +67,24 @@ fn Main() -> Vector<Int> {
 package Main
 
 fn Main() -> Vector<Float<kg*m/s^2>> {
-    let stiffness = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]]
+    let stiffness = Matrix.tabulate(2, 2, DiagonalStiffness)
     let displacement = vector[4.0m, 5.0m]
     return stiffness @ displacement
+}
+
+fn DiagonalStiffness(r: Int, c: Int) -> Float<kg/s^2> {
+    if r != c { return 0.0kg/s^2 }
+    if r == 0 { return 2.0kg/s^2 }
+    return 3.0kg/s^2
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Int {
+    let m = Matrix.fill(3, 4, 7)
+    return m.rows + m.cols + m[2, 1]
 }
 ```
 

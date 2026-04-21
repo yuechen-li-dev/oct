@@ -1,0 +1,11 @@
+package Main
+
+[Fact]
+fn CompiledMatrixIndexAndShapeParity() -> Void {
+    let m = Matrix.tabulate(2, 3, Cell)
+    Assert.Equal(17, m.rows + m.cols + m[1, 2], "shape and 2d indexing")
+}
+
+fn Cell(r: Int, c: Int) -> Int {
+    return r * 10 + c
+}

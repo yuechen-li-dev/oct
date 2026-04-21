@@ -1084,6 +1084,86 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				return tmp, ret, false, nil
 			}
 		}
+		if calleeName, ok := flattenDirectCallName(e.Callee); ok {
+			switch calleeName {
+			case "Matrix.tabulate":
+				if len(e.Arguments) != 3 {
+					return "", "", false, fmt.Errorf("Matrix.tabulate expects 3 arguments")
+				}
+				rowsArg, _, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				colsArg, _, _, err := c.lowerExpr(e.Arguments[1])
+				if err != nil {
+					return "", "", false, err
+				}
+				callbackName, callbackRet, err := c.resolveMatrixTabulateCallback(e.Arguments[2])
+				if err != nil {
+					return "", "", false, err
+				}
+				ret := "Matrix<" + callbackRet + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.tabulate", Args: []string{rowsArg, colsArg, callbackName}, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			case "Matrix.fill":
+				if len(e.Arguments) != 3 {
+					return "", "", false, fmt.Errorf("Matrix.fill expects 3 arguments")
+				}
+				args := make([]string, 0, 3)
+				elemType := "Int"
+				for idx, a := range e.Arguments {
+					v, t, _, err := c.lowerExpr(a)
+					if err != nil {
+						return "", "", false, err
+					}
+					args = append(args, v)
+					if idx == 2 {
+						elemType = t
+					}
+				}
+				ret := "Matrix<" + elemType + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.fill", Args: args, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			case "Matrix.zeros":
+				if len(e.TypeArguments) != 1 {
+					return "", "", false, fmt.Errorf("Matrix.zeros expects 1 type argument")
+				}
+				if len(e.Arguments) != 2 {
+					return "", "", false, fmt.Errorf("Matrix.zeros expects 2 arguments")
+				}
+				rowsArg, _, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				colsArg, _, _, err := c.lowerExpr(e.Arguments[1])
+				if err != nil {
+					return "", "", false, err
+				}
+				elemType := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
+				ret := "Matrix<" + elemType + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.zeros", Args: []string{rowsArg, colsArg}, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			case "Matrix.identity":
+				if len(e.TypeArguments) != 1 {
+					return "", "", false, fmt.Errorf("Matrix.identity expects 1 type argument")
+				}
+				if len(e.Arguments) != 1 {
+					return "", "", false, fmt.Errorf("Matrix.identity expects 1 argument")
+				}
+				sizeArg, _, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				elemType := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
+				ret := "Matrix<" + elemType + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.identity", Args: []string{sizeArg}, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			}
+		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
 			return "", "", false, err
@@ -1178,6 +1258,18 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if err != nil {
 			return "", "", false, err
 		}
+		if _, ok := parseMatrixElemType(targetType); ok {
+			switch e.Field {
+			case "rows":
+				tmp := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("len(%s)", t)})
+				return tmp, "Int", false, nil
+			case "cols":
+				tmp := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("func() int { if len(%s) == 0 { return 0 }; return len(%s[0]) }()", t, t)})
+				return tmp, "Int", false, nil
+			}
+		}
 		fieldType := "Int"
 		if resolvedType, ok := c.lookupRecordFieldType(targetType, e.Field); ok {
 			fieldType = resolvedType
@@ -1189,6 +1281,22 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		target, targetType, _, err := c.lowerExpr(e.Target)
 		if err != nil {
 			return "", "", false, err
+		}
+		if matrixElem, ok := parseMatrixElemType(targetType); ok {
+			if len(e.Indices) != 2 {
+				return "", "", false, fmt.Errorf("compiled mode matrix indexing requires exactly 2 indices")
+			}
+			r, _, _, err := c.lowerExpr(e.Indices[0])
+			if err != nil {
+				return "", "", false, err
+			}
+			cIdx, _, _, err := c.lowerExpr(e.Indices[1])
+			if err != nil {
+				return "", "", false, err
+			}
+			tmp := c.temp(matrixElem)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s][%s]", target, r, cIdx)})
+			return tmp, matrixElem, false, nil
 		}
 		if len(e.Indices) != 1 {
 			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
@@ -1629,6 +1737,10 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if !ok {
 			return "", "", false, false, fmt.Errorf("unsupported call target")
 		}
+		builtinName := pkgIdent.Name + "." + x.Field
+		if builtin.IsName(builtinName) {
+			return builtinName, "", true, false, nil
+		}
 		importPkg, ok := c.program.Packages[pkgIdent.Name]
 		if !ok {
 			return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgIdent.Name)
@@ -1641,6 +1753,50 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:
 		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
+	}
+}
+
+func flattenDirectCallName(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		left, ok := node.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", false
+		}
+		return left.Name + "." + node.Field, true
+	default:
+		return "", false
+	}
+}
+
+func (c *lowerCtx) resolveMatrixTabulateCallback(expr ast.Expr) (string, string, error) {
+	switch fn := expr.(type) {
+	case ast.IdentifierExpr:
+		for _, declared := range c.pkg.Functions {
+			if declared.Name == fn.Name {
+				return "fn_" + strings.ReplaceAll(c.pkg.Name+"."+fn.Name, ".", "_"), typeRefStringForPackage(c.pkg.Name, declared.ReturnType), nil
+			}
+		}
+		return "", "", fmt.Errorf("Matrix.tabulate callback '%s' must be a named function", fn.Name)
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := fn.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", "", fmt.Errorf("Matrix.tabulate callback must be a named function")
+		}
+		importPkg, ok := c.program.Packages[pkgIdent.Name]
+		if !ok {
+			return "", "", fmt.Errorf("unknown package '%s'", pkgIdent.Name)
+		}
+		for _, declared := range importPkg.Functions {
+			if declared.Name == fn.Field {
+				return "fn_" + strings.ReplaceAll(pkgIdent.Name+"."+fn.Field, ".", "_"), typeRefStringForPackage(pkgIdent.Name, declared.ReturnType), nil
+			}
+		}
+		return "", "", fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, fn.Field)
+	default:
+		return "", "", fmt.Errorf("Matrix.tabulate callback must be a named function")
 	}
 }
 
@@ -3590,6 +3746,42 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "PrometheusMatMulMM":
 				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "Matrix.fill":
+				elemType, ok := parseMatrixElemType(st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid Matrix.fill return type %s", st.RetType)
+				}
+				goElemType := goType(elemType)
+				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s }; __m[__r] = __row }; return __m }()",
+					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
+			case "Matrix.zeros":
+				elemType, ok := parseMatrixElemType(st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid Matrix.zeros return type %s", st.RetType)
+				}
+				goElemType := goType(elemType)
+				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __m[__r] = make([]%s, __cols) }; return __m }()",
+					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType), nil
+			case "Matrix.identity":
+				elemType, ok := parseMatrixElemType(st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid Matrix.identity return type %s", st.RetType)
+				}
+				one := "1"
+				if strings.HasPrefix(elemType, "Float") {
+					one = "1.0"
+				}
+				goElemType := goType(elemType)
+				return fmt.Sprintf("%s = func() [][]%s { __n := int(%s); __m := make([][]%s, __n); for __r := 0; __r < __n; __r++ { __row := make([]%s, __n); __row[__r] = %s; __m[__r] = __row }; return __m }()",
+					st.Target, goElemType, st.Args[0], goElemType, goElemType, one), nil
+			case "Matrix.tabulate":
+				elemType, ok := parseMatrixElemType(st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid Matrix.tabulate return type %s", st.RetType)
+				}
+				goElemType := goType(elemType)
+				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s(__r, __c) }; __m[__r] = __row }; return __m }()",
+					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}

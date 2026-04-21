@@ -75,6 +75,10 @@ var names = map[string]struct{}{
 	"Grad":               {},
 	"Div":                {},
 	"SymGrad":            {},
+	"Matrix.tabulate":    {},
+	"Matrix.zeros":       {},
+	"Matrix.fill":        {},
+	"Matrix.identity":    {},
 }
 
 func IsName(name string) bool {

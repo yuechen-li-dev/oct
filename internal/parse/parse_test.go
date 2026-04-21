@@ -668,15 +668,15 @@ func TestBuildFileParsesBenchmarkInOctest(t *testing.T) {
 }
 
 func TestBuildFileParsesPrometheusBlockInBenchmark(t *testing.T) {
-	file := parseSourceWithPath(t, "example.octest", "package Main\n[Benchmark]\nfn Bench() -> Void { PROMETHEUS { let a = matrix[[1.0, 2.0] [3.0, 4.0]] let b = matrix[[5.0, 6.0] [7.0, 8.0]] let _ = a @ b } }\n")
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Benchmark]\nfn Bench() -> Void { let a = Matrix.fill(2, 2, 3.0) let b = Matrix.fill(2, 2, 5.0) PROMETHEUS { let _ = a @ b } }\n")
 	if len(file.Functions) != 1 {
 		t.Fatalf("expected one function, got %+v", file.Functions)
 	}
-	if len(file.Functions[0].Body.Statements) != 1 {
-		t.Fatalf("expected one statement in benchmark body, got %+v", file.Functions[0].Body.Statements)
+	if len(file.Functions[0].Body.Statements) != 3 {
+		t.Fatalf("expected benchmark setup + PROMETHEUS block, got %+v", file.Functions[0].Body.Statements)
 	}
-	if _, ok := file.Functions[0].Body.Statements[0].(ast.PrometheusStmt); !ok {
-		t.Fatalf("expected PROMETHEUS block statement, got %T", file.Functions[0].Body.Statements[0])
+	if _, ok := file.Functions[0].Body.Statements[2].(ast.PrometheusStmt); !ok {
+		t.Fatalf("expected PROMETHEUS block statement, got %T", file.Functions[0].Body.Statements[2])
 	}
 }
 

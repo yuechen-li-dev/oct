@@ -1235,6 +1235,16 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if target.hasError {
 			return evalResult{hasError: true, errorVal: target.errorVal}, nil
 		}
+		if target.value.Kind == ValueMatrix {
+			switch node.Field {
+			case "rows":
+				return evalResult{value: Value{Kind: ValueInt, Int: int64(target.value.Matrix.Rows)}}, nil
+			case "cols":
+				return evalResult{value: Value{Kind: ValueInt, Int: int64(target.value.Matrix.Cols)}}, nil
+			default:
+				return evalResult{}, fmt.Errorf("runtime invariant violation: type 'Matrix' has no field '%s'", node.Field)
+			}
+		}
 		if target.value.Kind != ValueRecord {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: field access requires record value, got %s", valueTypeName(target.value))
 		}
@@ -2138,7 +2148,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: target}}, nil
 	}
-	if len(typeArguments) != 0 {
+	if len(typeArguments) != 0 && callee != "Matrix.zeros" && callee != "Matrix.identity" {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 	}
 
@@ -2557,6 +2567,185 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime error: Idx requires non-empty index name")
 		}
 		return evalResult{value: Value{Kind: ValueIndex, Text: nameResult.value.Text}}, nil
+	}
+	if callee == "Matrix.tabulate" {
+		if len(argumentExprs) != 3 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.tabulate expects 3 arguments")
+		}
+		rowsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rowsResult.hasError {
+			return evalResult{hasError: true, errorVal: rowsResult.errorVal}, nil
+		}
+		colsResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if colsResult.hasError {
+			return evalResult{hasError: true, errorVal: colsResult.errorVal}, nil
+		}
+		if rowsResult.value.Kind != ValueInt || colsResult.value.Kind != ValueInt || !rowsResult.value.Dimension.IsDimensionless() || !colsResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.tabulate expects Int dimensions")
+		}
+		if rowsResult.value.Int < 0 || colsResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Matrix.tabulate dimensions must be non-negative")
+		}
+		callbackResult, err := i.evalExpr(env, pkgName, argumentExprs[2])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if callbackResult.hasError {
+			return evalResult{hasError: true, errorVal: callbackResult.errorVal}, nil
+		}
+		if callbackResult.value.Kind != ValueFunc {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.tabulate expects callback function")
+		}
+		rows := int(rowsResult.value.Int)
+		cols := int(colsResult.value.Int)
+		elements := make([]Value, rows*cols)
+		for r := 0; r < rows; r++ {
+			for cIdx := 0; cIdx < cols; cIdx++ {
+				callback, ok := i.functions[callbackResult.value.Function.Key]
+				if !ok {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", callbackResult.value.Function.Key)
+				}
+				callPkg := pkgName
+				if dot := strings.Index(callbackResult.value.Function.Key, "."); dot >= 0 {
+					callPkg = callbackResult.value.Function.Key[:dot]
+				}
+				callResult, err := i.executeFunction(callback, callPkg, []Value{
+					{Kind: ValueInt, Int: int64(r)},
+					{Kind: ValueInt, Int: int64(cIdx)},
+				})
+				if err != nil {
+					return evalResult{}, err
+				}
+				if callResult.hasError {
+					return evalResult{hasError: true, errorVal: callResult.errorVal}, nil
+				}
+				elements[r*cols+cIdx] = callResult.value
+			}
+		}
+		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: elements}}}, nil
+	}
+	if callee == "Matrix.zeros" {
+		if len(typeArguments) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.zeros expects 1 type argument")
+		}
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.zeros expects 2 arguments")
+		}
+		rowsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rowsResult.hasError {
+			return evalResult{hasError: true, errorVal: rowsResult.errorVal}, nil
+		}
+		colsResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if colsResult.hasError {
+			return evalResult{hasError: true, errorVal: colsResult.errorVal}, nil
+		}
+		if rowsResult.value.Kind != ValueInt || colsResult.value.Kind != ValueInt || !rowsResult.value.Dimension.IsDimensionless() || !colsResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.zeros expects Int dimensions")
+		}
+		if rowsResult.value.Int < 0 || colsResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Matrix.zeros dimensions must be non-negative")
+		}
+		zero := Value{Kind: ValueInt, Int: 0}
+		if typeArguments[0].Name == "Float" {
+			zero = Value{Kind: ValueFloat, Float: 0.0}
+		}
+		rows := int(rowsResult.value.Int)
+		cols := int(colsResult.value.Int)
+		elements := make([]Value, rows*cols)
+		for idx := range elements {
+			elements[idx] = cloneValue(zero)
+		}
+		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: elements}}}, nil
+	}
+	if callee == "Matrix.fill" {
+		if len(argumentExprs) != 3 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.fill expects 3 arguments")
+		}
+		rowsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rowsResult.hasError {
+			return evalResult{hasError: true, errorVal: rowsResult.errorVal}, nil
+		}
+		colsResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if colsResult.hasError {
+			return evalResult{hasError: true, errorVal: colsResult.errorVal}, nil
+		}
+		valueResult, err := i.evalExpr(env, pkgName, argumentExprs[2])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if valueResult.hasError {
+			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+		}
+		if rowsResult.value.Kind != ValueInt || colsResult.value.Kind != ValueInt || !rowsResult.value.Dimension.IsDimensionless() || !colsResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.fill expects Int dimensions")
+		}
+		if rowsResult.value.Int < 0 || colsResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Matrix.fill dimensions must be non-negative")
+		}
+		rows := int(rowsResult.value.Int)
+		cols := int(colsResult.value.Int)
+		elements := make([]Value, rows*cols)
+		for idx := range elements {
+			elements[idx] = cloneValue(valueResult.value)
+		}
+		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: elements}}}, nil
+	}
+	if callee == "Matrix.identity" {
+		if len(typeArguments) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.identity expects 1 type argument")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.identity expects 1 argument")
+		}
+		sizeResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if sizeResult.hasError {
+			return evalResult{hasError: true, errorVal: sizeResult.errorVal}, nil
+		}
+		if sizeResult.value.Kind != ValueInt || !sizeResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.identity expects Int dimension")
+		}
+		if sizeResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Matrix.identity dimension must be non-negative")
+		}
+		n := int(sizeResult.value.Int)
+		elements := make([]Value, n*n)
+		zero := Value{Kind: ValueInt, Int: 0}
+		one := Value{Kind: ValueInt, Int: 1}
+		if typeArguments[0].Name == "Float" {
+			zero = Value{Kind: ValueFloat, Float: 0.0}
+			one = Value{Kind: ValueFloat, Float: 1.0}
+		}
+		for r := 0; r < n; r++ {
+			for cIdx := 0; cIdx < n; cIdx++ {
+				if r == cIdx {
+					elements[r*n+cIdx] = cloneValue(one)
+				} else {
+					elements[r*n+cIdx] = cloneValue(zero)
+				}
+			}
+		}
+		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: n, Cols: n, Elements: elements}}}, nil
 	}
 
 	if len(argumentExprs) != 1 {
