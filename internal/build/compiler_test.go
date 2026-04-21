@@ -175,6 +175,49 @@ func TestCompileForTestLowersBenchmarkFunctionIntoMIRAndRuns(t *testing.T) {
 	}
 }
 
+func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte("package Main\nfn Main() -> Int { return 0 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	benchSource := "package Main\n[Benchmark]\nfn BenchPrometheus() -> Void {\n    let a = matrix[[1.0, 2.0] [3.0, 4.0]]\n    let b = matrix[[5.0, 6.0] [7.0, 8.0]]\n    PROMETHEUS {\n        let c = a @ b\n        Print(c)\n    }\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "Main", "bench.octest"), []byte(benchSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runnerPath := filepath.Join(root, "Main", "zz_compiled_bench_runner_prometheus.oct")
+	if err := os.WriteFile(runnerPath, []byte("package Main\nfn main() -> Int {\n    BenchPrometheus()\n    return 0\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+	result, err := CompileForTest(runnerPath)
+	if err != nil {
+		t.Fatalf("compile for test: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "PrometheusMatMulMM") {
+		t.Fatalf("expected PROMETHEUS MIR builtin call, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	normalized := strings.ReplaceAll(string(out), "\r\n", "\n")
+	if !strings.Contains(normalized, "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable)") {
+		t.Fatalf("expected explicit fallback status in output, got %q", normalized)
+	}
+	if !strings.Contains(normalized, "[[19 22] [43 50]]") {
+		t.Fatalf("expected matrix output, got %q", normalized)
+	}
+}
+
 func TestCompileAndRunCrossPackageFallibleAndEnum(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {

@@ -217,6 +217,7 @@ func TestCheckValidatesM18Assignments(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { var x = 1 x[0] = 5 return x }", "function Main: index assignment requires array type")
 	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[0] = 1.5 return x[0] }", "function Main: assigned value type does not match array element type")
 	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[true] = 1 return x[0] }", "function Main: array index must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Void { PROMETHEUS { return } }", "function Main: PROMETHEUS blocks are only valid inside [Benchmark] functions")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } fn Main() -> Int { var board = Board { Flag: false } board.Flag = true return 0 }", "function Main: board field assignment is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } flow F(board: Board) -> Int { state S { let shadow = board shadow.Flag = true return 0 } }", "function F: only board field assignment is supported")
 	assertTypeErrorContains(t, "record Board { Count: Int } flow F(board: Board) -> Int { state S { board.Count = 1.5 return 0 } }", "function F: assignment to board.Count: expected Int, got Float")

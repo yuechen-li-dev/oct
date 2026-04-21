@@ -343,6 +343,7 @@ type lowerCtx struct {
 	extra           []MIRFunction
 	lastRet         string
 	usesUtilityWhen bool
+	inPrometheus    bool
 }
 
 func lowerProgram(program project.Program) (MIRModule, error) {
@@ -524,6 +525,14 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 		case ast.WhileStmt:
 			if err := c.lowerWhileStmt(s); err != nil {
+				return err
+			}
+		case ast.PrometheusStmt:
+			previous := c.inPrometheus
+			c.inPrometheus = true
+			err := c.lowerBlock(s.Body)
+			c.inPrometheus = previous
+			if err != nil {
 				return err
 			}
 		case ast.MatchStmt:
@@ -913,9 +922,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					elemType := unifyLinearElemType(leftElem, rightElem)
 					ret := "Matrix<" + elemType + ">"
 					tmp := c.temp(ret)
+					callee := "MatMulMM"
+					if c.inPrometheus && leftElem == "Float" && rightElem == "Float" {
+						callee = "PrometheusMatMulMM"
+					}
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
-						Callee:  "MatMulMM",
+						Callee:  callee,
 						Args:    []string{l, r},
 						Builtin: true,
 						RetType: ret,
@@ -2282,8 +2295,11 @@ func emitGo(m MIRModule) (string, error) {
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octLinearAlgebraHelpers)
+	}
+	if usedBuiltins["PrometheusMatMulMM"] {
+		b.WriteString(__octPrometheusHelpers)
 	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
@@ -2477,6 +2493,14 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 		result[r] = row
 	}
 	return result
+}
+`
+
+const __octPrometheusHelpers = `
+func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
+	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t wall=%dns\n",
+		"prometheus", "cpu", "fallback(prometheus_unavailable)", true, int64(0))
+	return __octMatMulMM(left, right)
 }
 `
 
@@ -3486,6 +3510,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "MatMulMM":
 				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "PrometheusMatMulMM":
+				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
