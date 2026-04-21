@@ -11,6 +11,11 @@ import (
 	"oct/internal/octagon"
 )
 
+func fakeReactorPath(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), reactorLibraryBasename())
+}
+
 func TestRunSGEMMCPUPathPassesStarterCorrectness(t *testing.T) {
 	report, err := RunStarterCorpus(BackendCPU)
 	if err != nil {
@@ -52,12 +57,13 @@ func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
 }
 
 func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -70,7 +76,7 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
@@ -90,13 +96,14 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 }
 
 func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	called := false
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -112,7 +119,7 @@ func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
@@ -135,13 +142,14 @@ func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
 }
 
 func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	called := false
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -157,7 +165,7 @@ func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) 
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	out, run, err := RunCompiledMatMulMM(
 		[][]float64{{1, 2}, {3, 4}},
@@ -204,12 +212,13 @@ func TestRunCompiledMatMulMMUnavailableFallsBackTruthfully(t *testing.T) {
 }
 
 func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -224,7 +233,7 @@ func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
@@ -273,12 +282,13 @@ func TestWriteOctagonReportIncludesRequiredFields(t *testing.T) {
 }
 
 func TestRunSGEMMReportsSoftwareVulkanEnvironment(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -293,7 +303,7 @@ func TestRunSGEMMReportsSoftwareVulkanEnvironment(t *testing.T) {
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
@@ -355,12 +365,13 @@ func TestCompareAgainstOracleRejectsNaNAndInf(t *testing.T) {
 }
 
 func TestRunSGEMMReportingInvariantsNoFalseFallbackOrSuccess(t *testing.T) {
+	reactorPath := fakeReactorPath(t)
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })
 
 	newPrometheusBridge = func() *prometheusBridge {
 		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
-			"/tmp/reactor.so": {
+			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
 					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
@@ -375,7 +386,7 @@ func TestRunSGEMMReportingInvariantsNoFalseFallbackOrSuccess(t *testing.T) {
 			},
 		}}}
 	}
-	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+	t.Setenv(reactorEnvVar, reactorPath)
 
 	run, err := RunSGEMM(SGEMMRequest{
 		Backend: BackendPrometheus,
