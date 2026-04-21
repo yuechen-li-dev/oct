@@ -60,7 +60,9 @@ func (e *ReactorIssue) Error() string {
 
 func (e *ReactorIssue) Unwrap() error { return e.Err }
 
-type reactorRuntimeHandle struct{}
+type reactorRuntimeHandle struct {
+	ptr uintptr
+}
 type reactorCaps struct {
 	Available   bool
 	BackendType uint32
@@ -100,7 +102,7 @@ type prometheusBridge struct {
 }
 
 var newPrometheusBridge = func() *prometheusBridge {
-	return &prometheusBridge{loader: unavailableLoader{}}
+	return &prometheusBridge{loader: defaultReactorLoader()}
 }
 
 type nativeRuntime struct {
@@ -108,6 +110,7 @@ type nativeRuntime struct {
 	sgemm   reactorSGEMM
 	handle  reactorRuntimeHandle
 	caps    reactorCaps
+	lib     dynamicLibrary
 }
 
 func newNativeRuntime() (*nativeRuntime, error) {
@@ -208,15 +211,21 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolSGEMM, Err: fmt.Errorf("symbol has unexpected type")}
 	}
 
-	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle, caps: caps}, nil
+	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle, caps: caps, lib: lib}, nil
 }
 
 func (r *nativeRuntime) Close() {
-	if r == nil || r.destroy == nil {
+	if r == nil {
 		return
 	}
-	r.destroy(r.handle)
-	r.destroy = nil
+	if r.destroy != nil {
+		r.destroy(r.handle)
+		r.destroy = nil
+	}
+	if r.lib != nil {
+		_ = r.lib.Close()
+		r.lib = nil
+	}
 }
 
 func (r *nativeRuntime) SGEMM(m, n, k int, a, b []float32) ([]float32, RunStatus, error) {

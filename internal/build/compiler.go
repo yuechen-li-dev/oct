@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -302,13 +303,22 @@ func compileProgram(program project.Program) (Result, error) {
 	}
 
 	artifactPath := artifactPathFor(program.EntrySource)
-	genPath := artifactPath + ".gen.go"
+	genDir, err := generatedBuildDir()
+	if err != nil {
+		return Result{}, err
+	}
+	defer os.RemoveAll(genDir)
+	genPath := filepath.Join(genDir, filepath.Base(artifactPath)+".gen.go")
 	if err := os.WriteFile(genPath, []byte(goSrc), 0o644); err != nil {
 		return Result{}, fmt.Errorf("write generated go %s: %w", genPath, err)
 	}
-	defer os.Remove(genPath)
 
 	cmd := exec.Command("go", "build", "-o", artifactPath, genPath)
+	moduleRoot, err := compilerModuleRoot()
+	if err != nil {
+		return Result{}, err
+	}
+	cmd.Dir = moduleRoot
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -328,6 +338,30 @@ func compileProgram(program project.Program) (Result, error) {
 
 func artifactPathFor(path string) string {
 	return filepath.Join(filepath.Dir(path), filepath.Base(path)+".octbin")
+}
+
+func generatedBuildDir() (string, error) {
+	root, err := compilerModuleRoot()
+	if err != nil {
+		return "", err
+	}
+	parent := filepath.Join(root, ".octbuild")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", fmt.Errorf("create generated build directory %s: %w", parent, err)
+	}
+	dir, err := os.MkdirTemp(parent, "gen-")
+	if err != nil {
+		return "", fmt.Errorf("create generated build temp dir: %w", err)
+	}
+	return dir, nil
+}
+
+func compilerModuleRoot() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("locate compiler module root: runtime caller unavailable")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..")), nil
 }
 
 type lowerCtx struct {
@@ -2226,7 +2260,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
-		for _, pkg := range []string{"os", "os/exec", "strings", "sync"} {
+		for _, pkg := range []string{"oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -2534,9 +2568,17 @@ func __octDetectPrometheusVulkanEnv() string {
 }
 
 func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
+	out, run, err := prometheus.RunCompiledMatMulMM(left, right)
+	env := __octPrometheusVulkanEnv()
+	if env == "not_applicable" && run.VulkanEnv != "" {
+		env = run.VulkanEnv
+	}
 	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t vulkan_env=%s wall=%dns\n",
-		"prometheus", "cpu", "fallback(prometheus_unavailable)", true, __octPrometheusVulkanEnv(), int64(0))
-	return __octMatMulMM(left, right)
+		run.RequestedBackend, run.UsedBackend, run.Status.String(), run.Correctness.Pass, env, run.WallTimeNs)
+	if err != nil {
+		panic(fmt.Sprintf("PrometheusMatMulMM failed: %v", err))
+	}
+	return out
 }
 `
 

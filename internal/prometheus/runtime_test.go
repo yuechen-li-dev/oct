@@ -134,6 +134,75 @@ func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
 	}
 }
 
+func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) {
+	oldFactory := newPrometheusBridge
+	t.Cleanup(func() { newPrometheusBridge = oldFactory })
+
+	called := false
+	newPrometheusBridge = func() *prometheusBridge {
+		return &prometheusBridge{loader: fakeLoader{libraries: map[string]fakeLibrarySpec{
+			"/tmp/reactor.so": {
+				symbols: map[string]any{
+					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
+					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
+					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
+						return reactorCaps{Available: true, BackendType: 2}, nil
+					}),
+					reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+						called = true
+						return cpuSGEMM(m, n, k, a, b), reactorCallStatus{}, nil
+					}),
+				},
+			},
+		}}}
+	}
+	t.Setenv(reactorEnvVar, "/tmp/reactor.so")
+
+	out, run, err := RunCompiledMatMulMM(
+		[][]float64{{1, 2}, {3, 4}},
+		[][]float64{{5, 6}, {7, 8}},
+	)
+	if err != nil {
+		t.Fatalf("expected successful compiled matmul, got err=%v", err)
+	}
+	if !called {
+		t.Fatalf("expected compiled matmul to call native sgemm")
+	}
+	if run.UsedBackend != BackendPrometheus || run.Status.Kind != RunStatusOK {
+		t.Fatalf("expected prometheus ok result, got backend=%s status=%s", run.UsedBackend, run.Status.String())
+	}
+	want := [][]float64{{19, 22}, {43, 50}}
+	if len(out) != len(want) || len(out[0]) != len(want[0]) {
+		t.Fatalf("unexpected output shape: %#v", out)
+	}
+	for row := range want {
+		for col := range want[row] {
+			if out[row][col] != want[row][col] {
+				t.Fatalf("unexpected output at [%d][%d]: got %v want %v", row, col, out[row][col], want[row][col])
+			}
+		}
+	}
+}
+
+func TestRunCompiledMatMulMMUnavailableFallsBackTruthfully(t *testing.T) {
+	t.Setenv(reactorEnvVar, filepath.Join(t.TempDir(), "missing-reactor.so"))
+
+	out, run, err := RunCompiledMatMulMM(
+		[][]float64{{1, 2}, {3, 4}},
+		[][]float64{{5, 6}, {7, 8}},
+	)
+	if err != nil {
+		t.Fatalf("expected compiled matmul fallback success, got err=%v", err)
+	}
+	if run.UsedBackend != BackendCPU || run.Status.String() != "fallback(prometheus_unavailable)" {
+		t.Fatalf("expected truthful cpu fallback, got backend=%s status=%s", run.UsedBackend, run.Status.String())
+	}
+	if out[0][0] != 19 || out[1][1] != 50 {
+		t.Fatalf("expected cpu fallback output, got %#v", out)
+	}
+}
+
 func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
 	oldFactory := newPrometheusBridge
 	t.Cleanup(func() { newPrometheusBridge = oldFactory })

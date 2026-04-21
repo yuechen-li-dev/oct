@@ -78,14 +78,31 @@ func RunStarterCorpus(backend Backend) (CorpusReport, error) {
 }
 
 func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
+	_, result, err := runSGEMMWithOutput(req)
+	return result, err
+}
+
+func RunCompiledMatMulMM(left [][]float64, right [][]float64) ([][]float64, SGEMMRunResult, error) {
+	req, result, err := compiledMatMulRequest(left, right)
+	if err != nil {
+		return nil, result, err
+	}
+	out, result, err := runSGEMMWithOutput(req)
+	if len(out) == 0 {
+		return nil, result, err
+	}
+	return reshapeMatrixFloat64(req.Shape.M, req.Shape.N, out), result, err
+}
+
+func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 	if req.Backend != BackendCPU && req.Backend != BackendPrometheus {
-		return SGEMMRunResult{}, fmt.Errorf("backend must be one of %q or %q", BackendCPU, BackendPrometheus)
+		return nil, SGEMMRunResult{}, fmt.Errorf("backend must be one of %q or %q", BackendCPU, BackendPrometheus)
 	}
 	if req.Shape.M <= 0 || req.Shape.N <= 0 || req.Shape.K <= 0 {
-		return SGEMMRunResult{}, fmt.Errorf("shape dimensions must be positive")
+		return nil, SGEMMRunResult{}, fmt.Errorf("shape dimensions must be positive")
 	}
 	if len(req.A) != req.Shape.M*req.Shape.K || len(req.B) != req.Shape.K*req.Shape.N {
-		return SGEMMRunResult{}, fmt.Errorf("matrix dimensions do not match shape")
+		return nil, SGEMMRunResult{}, fmt.Errorf("matrix dimensions do not match shape")
 	}
 
 	result := SGEMMRunResult{
@@ -107,9 +124,9 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 		result.Status = OkStatus()
 		result.Correctness = compareAgainstOracle(reference, actual)
 		if !result.Correctness.Pass {
-			return result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
+			return actual, result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
 		}
-		return result, nil
+		return actual, result, nil
 	}
 
 	rt, err := newNativeRuntime()
@@ -124,13 +141,13 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 			result.VulkanEnv = "unavailable"
 			result.Correctness = compareAgainstOracle(reference, actual)
 			if !result.Correctness.Pass {
-				return result, fmt.Errorf("correctness gate failed for fallback backend=%s", result.UsedBackend)
+				return actual, result, fmt.Errorf("correctness gate failed for fallback backend=%s", result.UsedBackend)
 			}
-			return result, nil
+			return actual, result, nil
 		}
 		result.UsedBackend = BackendPrometheus
 		result.Status = ErrorStatus(StageInit, bridgeIssueStatusCode(err))
-		return result, err
+		return nil, result, err
 	}
 	defer rt.Close()
 	result.VulkanEnv = rt.Environment()
@@ -145,15 +162,15 @@ func RunSGEMM(req SGEMMRequest) (SGEMMRunResult, error) {
 	result.UsedBackend = BackendPrometheus
 	if err != nil {
 		result.Status = status
-		return result, err
+		return nil, result, err
 	}
 
 	result.Status = OkStatus()
 	result.Correctness = compareAgainstOracle(reference, actual)
 	if !result.Correctness.Pass {
-		return result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
+		return actual, result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
 	}
-	return result, nil
+	return actual, result, nil
 }
 
 func bridgeIssueStatusCode(err error) int {
@@ -182,6 +199,74 @@ func deterministicMatrix(rows, cols int) []float32 {
 	for i := range out {
 		v := ((i % 23) - 11)
 		out[i] = float32(v) / 7.0
+	}
+	return out
+}
+
+func compiledMatMulRequest(left [][]float64, right [][]float64) (SGEMMRequest, SGEMMRunResult, error) {
+	result := SGEMMRunResult{
+		RequestedBackend: BackendPrometheus,
+		UsedBackend:      BackendPrometheus,
+		Status:           ErrorStatus(StageInit, -2),
+		TimingMode:       "end_to_end",
+		VulkanEnv:        "not_applicable",
+	}
+	if len(left) == 0 || len(right) == 0 {
+		return SGEMMRequest{}, result, fmt.Errorf("compiled Prometheus matmul requires non-empty matrices")
+	}
+	k, err := consistentColumnCount(left)
+	if err != nil {
+		return SGEMMRequest{}, result, err
+	}
+	if k == 0 {
+		return SGEMMRequest{}, result, fmt.Errorf("compiled Prometheus matmul requires matrices with at least one column")
+	}
+	rightRows := len(right)
+	n, err := consistentColumnCount(right)
+	if err != nil {
+		return SGEMMRequest{}, result, err
+	}
+	if n == 0 {
+		return SGEMMRequest{}, result, fmt.Errorf("compiled Prometheus matmul requires matrices with at least one column")
+	}
+	if k != rightRows {
+		return SGEMMRequest{}, result, fmt.Errorf("compiled Prometheus matmul shape mismatch: left columns=%d right rows=%d", k, rightRows)
+	}
+	return SGEMMRequest{
+		Backend: BackendPrometheus,
+		Shape:   Shape{M: len(left), N: n, K: k},
+		A:       flattenMatrixFloat32(left),
+		B:       flattenMatrixFloat32(right),
+	}, result, nil
+}
+
+func consistentColumnCount(matrix [][]float64) (int, error) {
+	width := len(matrix[0])
+	for row := 1; row < len(matrix); row++ {
+		if len(matrix[row]) != width {
+			return 0, fmt.Errorf("compiled Prometheus matmul requires rectangular matrices")
+		}
+	}
+	return width, nil
+}
+
+func flattenMatrixFloat32(matrix [][]float64) []float32 {
+	out := make([]float32, 0, len(matrix)*len(matrix[0]))
+	for _, row := range matrix {
+		for _, value := range row {
+			out = append(out, float32(value))
+		}
+	}
+	return out
+}
+
+func reshapeMatrixFloat64(rows, cols int, values []float32) [][]float64 {
+	out := make([][]float64, rows)
+	for row := 0; row < rows; row++ {
+		out[row] = make([]float64, cols)
+		for col := 0; col < cols; col++ {
+			out[row][col] = float64(values[row*cols+col])
+		}
 	}
 	return out
 }
