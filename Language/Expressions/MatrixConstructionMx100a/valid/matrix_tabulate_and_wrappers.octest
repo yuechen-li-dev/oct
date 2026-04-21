@@ -1,0 +1,25 @@
+package Main
+
+fn Element(r: Int, c: Int) -> Float {
+    return Float(r * 10 + c)
+}
+
+[Fact]
+fn matrix_tabulate_construction() -> Void {
+    let m = Matrix.tabulate(2, 3, Element)
+    Assert.Equal(2, m.rows, "rows")
+    Assert.Equal(3, m.cols, "cols")
+    Assert.Equal(11.0, m[1, 1], "middle")
+}
+
+[Fact]
+fn matrix_fill_zeros_identity() -> Void {
+    let filled = Matrix.fill(2, 2, 3)
+    let zeros = Matrix.zeros[Int](2, 2)
+    let ident = Matrix.identity[Int](2)
+
+    Assert.Equal(3, filled[1, 0], "fill")
+    Assert.Equal(0, zeros[0, 1], "zeros")
+    Assert.Equal(1, ident[0, 0], "identity diag")
+    Assert.Equal(0, ident[0, 1], "identity offdiag")
+}

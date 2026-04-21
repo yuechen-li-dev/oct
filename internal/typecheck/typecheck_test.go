@@ -609,6 +609,29 @@ func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
 }
 
+func TestCheckValidatesMatrixConstructionSurfaceMx100a(t *testing.T) {
+	validPrograms := []string{
+		"fn Elem(r: Int, c: Int) -> Float { return Float(r * 3 + c * 5) } fn Main() -> Matrix<Float> { return Matrix.tabulate(2, 3, Elem) }",
+		"fn Main() -> Matrix<Int> { return Matrix.zeros[Int](2, 3) }",
+		"fn Main() -> Matrix<Float> { return Matrix.fill(2, 3, 1.5) }",
+		"fn Main() -> Matrix<Int> { return Matrix.identity[Int](3) }",
+		"fn Main() -> Int { let m = Matrix.fill(2, 3, 9) return m.rows + m.cols }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidMatrixConstructionSurfaceMx100a(t *testing.T) {
+	assertTypeErrorContains(t, "fn Bad(r: Int) -> Int { return r } fn Main() -> Matrix<Int> { return Matrix.tabulate(2, 2, Bad) }", "function 'Matrix.tabulate' argument 3 expects function (Int, Int) -> T")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.zeros[Int](2.0, 2) }", "function 'Matrix.zeros' argument 1 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return Matrix.identity[Int](2.0) }", "function 'Matrix.identity' argument 1 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m.depth }", "type 'Matrix<Int>' has no field 'depth'")
+}
+
 func TestCheckValidatesM92DimensionedLinearAlgebra(t *testing.T) {
 	validPrograms := []string{
 		"fn Main() -> Vector<Float<m>> { return vector[1.0m, 2.0m] }",

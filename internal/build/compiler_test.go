@@ -183,7 +183,7 @@ func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T
 	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte("package Main\nfn Main() -> Int { return 0 }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	benchSource := "package Main\n[Benchmark]\nfn BenchPrometheus() -> Void {\n    let a = matrix[[1.0, 2.0] [3.0, 4.0]]\n    let b = matrix[[5.0, 6.0] [7.0, 8.0]]\n    PROMETHEUS {\n        let c = a @ b\n        Print(c)\n    }\n}\n"
+	benchSource := "package Main\n[Benchmark]\nfn BenchPrometheus() -> Void {\n    let a = Matrix.fill(2, 2, 3.0)\n    let b = Matrix.fill(2, 2, 5.0)\n    PROMETHEUS {\n        let c = a @ b\n        Print(c)\n    }\n}\n"
 	if err := os.WriteFile(filepath.Join(root, "Main", "bench.octest"), []byte(benchSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T
 	if !strings.Contains(normalized, "vulkan_env=") {
 		t.Fatalf("expected explicit environment classification in output, got %q", normalized)
 	}
-	if !strings.Contains(normalized, "[[19 22] [43 50]]") {
+	if !strings.Contains(normalized, "[[30 30] [30 30]]") {
 		t.Fatalf("expected matrix output, got %q", normalized)
 	}
 }
@@ -1873,6 +1873,31 @@ fn Main() -> Matrix<Int> {
 }
 `,
 			want: "[[19 22] [43 50]]",
+		},
+		{
+			name: "matrix tabulate compiled",
+			source: `package Main
+
+fn Elem(r: Int, c: Int) -> Int {
+    return r * 10 + c
+}
+
+fn Main() -> Matrix<Int> {
+    return Matrix.tabulate(2, 3, Elem)
+}
+`,
+			want: "[[0 1 2] [10 11 12]]",
+		},
+		{
+			name: "matrix shape and index access compiled",
+			source: `package Main
+
+fn Main() -> Int {
+    let m = Matrix.fill(2, 3, 7)
+    return m.rows + m.cols + m[1, 2]
+}
+`,
+			want: "12",
 		},
 		{
 			name: "dimensioned matrix at vector compiled",

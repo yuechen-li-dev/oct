@@ -5,13 +5,33 @@ fn DimensionedDisplacement() -> Vector<Float<m>> {
 }
 
 fn DimensionedStiffness() -> Matrix<Float<kg/s^2>> {
-    return matrix[[1.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 1.5kg/s^2]]
+    return Matrix.tabulate(2, 2, DimensionedStiffnessEntry)
+}
+
+fn DimensionedStiffnessEntry(r: Int, c: Int) -> Float<kg/s^2> {
+    if r == c {
+        if r == 0 {
+            return 1.0kg/s^2
+        }
+        return 1.5kg/s^2
+    }
+    return 0.0kg/s^2
 }
 
 fn StiffnessTimesDisplacement() -> Vector<Float<kg*m/s^2>> {
-    let stiffness = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]]
+    let stiffness = Matrix.tabulate(2, 2, StiffnessTimesDisplacementEntry)
     let displacement = vector[4.0m, 5.0m]
     return stiffness @ displacement
+}
+
+fn StiffnessTimesDisplacementEntry(r: Int, c: Int) -> Float<kg/s^2> {
+    if r == c {
+        if r == 0 {
+            return 2.0kg/s^2
+        }
+        return 3.0kg/s^2
+    }
+    return 0.0kg/s^2
 }
 
 fn DampingTimesStiffness() -> Matrix<Float<kg^2/s^3>> {

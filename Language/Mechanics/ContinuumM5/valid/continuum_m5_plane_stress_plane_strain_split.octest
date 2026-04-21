@@ -5,7 +5,7 @@ fn PlaneStressLambda2D(lambda: Float, mu: Float) -> Float {
 }
 
 fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
-    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let identity = Matrix.identity[Float](2)
     let volumetric = Trace(strain)
 
     return (lambda * volumetric) * identity + (2.0 * mu) * strain

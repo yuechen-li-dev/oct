@@ -1140,6 +1140,14 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			}
 			return ExprType{ValueType: fieldType}, nil
 		}
+		if targetType.ValueType.IsMatrix {
+			switch node.Field {
+			case "rows", "cols":
+				return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+			default:
+				return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType, node.Field)
+			}
+		}
 		recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
 		if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
 			return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
@@ -2541,6 +2549,132 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Idx' argument 1 expects String, got %s", nameType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeIndex}}, nil
+	}
+	if callee == "Matrix.tabulate" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' does not accept type arguments")
+		}
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' expects 3 arguments, got %d", len(arguments))
+		}
+		for idx := 0; idx < 2; idx++ {
+			dimType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if dimType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' argument %d expects Int, got %s", idx+1, dimType.ValueType)
+			}
+		}
+		callbackType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if callbackType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !callbackType.ValueType.IsFunction {
+			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' argument 3 expects function (Int, Int) -> T, got %s", callbackType.ValueType)
+		}
+		signature, ok := c.functionTypes[callbackType.ValueType.FunctionSignature]
+		if !ok {
+			return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", callbackType.ValueType.FunctionSignature)
+		}
+		if len(signature.parameters) != 2 || signature.parameters[0] != (Type{Base: BaseTypeInt}) || signature.parameters[1] != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' argument 3 expects function (Int, Int) -> T, got %s", callbackType.ValueType)
+		}
+		if !isNumericBaseType(signature.returnType.Base) || signature.returnType.IsArray || signature.returnType.IsVector || signature.returnType.IsMatrix || signature.returnType.IsFunction || signature.returnType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' callback must return numeric scalar value, got %s", signature.returnType)
+		}
+		return ExprType{ValueType: Type{Base: signature.returnType.Base, Dimension: signature.returnType.Dimension, IsMatrix: true}}, nil
+	}
+	if callee == "Matrix.zeros" {
+		if len(typeArguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.zeros' expects 1 type arguments, got %d", len(typeArguments))
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.zeros' expects 2 arguments, got %d", len(arguments))
+		}
+		for idx := 0; idx < 2; idx++ {
+			dimType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if dimType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("function 'Matrix.zeros' argument %d expects Int, got %s", idx+1, dimType.ValueType)
+			}
+		}
+		elemType, err := c.resolveType(typeArguments[0], false)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !isNumericBaseType(elemType.Base) || elemType.IsArray || elemType.IsVector || elemType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function 'Matrix.zeros' type argument must be numeric scalar, got %s", elemType)
+		}
+		return ExprType{ValueType: Type{Base: elemType.Base, Dimension: elemType.Dimension, IsMatrix: true}}, nil
+	}
+	if callee == "Matrix.fill" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.fill' does not accept type arguments")
+		}
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.fill' expects 3 arguments, got %d", len(arguments))
+		}
+		for idx := 0; idx < 2; idx++ {
+			dimType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if dimType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("function 'Matrix.fill' argument %d expects Int, got %s", idx+1, dimType.ValueType)
+			}
+		}
+		valueType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isNumericBaseType(valueType.ValueType.Base) || valueType.ValueType.IsArray || valueType.ValueType.IsVector || valueType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function 'Matrix.fill' argument 3 expects numeric scalar, got %s", valueType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: valueType.ValueType.Base, Dimension: valueType.ValueType.Dimension, IsMatrix: true}}, nil
+	}
+	if callee == "Matrix.identity" {
+		if len(typeArguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.identity' expects 1 type arguments, got %d", len(typeArguments))
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Matrix.identity' expects 1 arguments, got %d", len(arguments))
+		}
+		sizeType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if sizeType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if sizeType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Matrix.identity' argument 1 expects Int, got %s", sizeType.ValueType)
+		}
+		elemType, err := c.resolveType(typeArguments[0], false)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !isNumericBaseType(elemType.Base) || elemType.IsArray || elemType.IsVector || elemType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function 'Matrix.identity' type argument must be numeric scalar, got %s", elemType)
+		}
+		return ExprType{ValueType: Type{Base: elemType.Base, Dimension: elemType.Dimension, IsMatrix: true}}, nil
 	}
 	if callee == "EinMul" || callee == "EinAdd" {
 		if len(typeArguments) > 0 {

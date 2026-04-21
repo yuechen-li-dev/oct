@@ -55,9 +55,15 @@ fn Main() -> Float<K> {
 package Main
 
 fn Main() -> Vector<Float<kg*m/s^2>> {
-    let stiffness = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]]
+    let stiffness = Matrix.tabulate(2, 2, DiagonalStiffness)
     let displacement = vector[4.0m, 5.0m]
     return stiffness @ displacement
+}
+
+fn DiagonalStiffness(r: Int, c: Int) -> Float<kg/s^2> {
+    if r != c { return 0.0kg/s^2 }
+    if r == 0 { return 2.0kg/s^2 }
+    return 3.0kg/s^2
 }
 ```
 
