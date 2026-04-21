@@ -1,0 +1,15 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn MatMulBaselineAndShapeMismatch() -> Void {
+    let A = [1.0, 2.0, 3.0, 4.0]
+    let B = [5.0, 6.0, 7.0, 8.0]
+    let C = MatMulBaseline(A, 2, 2, B, 2, 2)!
+
+    Assert.Near(19.0, C[0], 0.000001, "matmul c00")
+    Assert.Near(22.0, C[1], 0.000001, "matmul c01")
+    Assert.Near(43.0, C[2], 0.000001, "matmul c10")
+    Assert.Near(50.0, C[3], 0.000001, "matmul c11")
+
+    Assert.Error(MatMulBaseline([1.0, 2.0], 1, 2, [1.0, 2.0], 1, 2), "matmul should fail for incompatible shapes")
+}

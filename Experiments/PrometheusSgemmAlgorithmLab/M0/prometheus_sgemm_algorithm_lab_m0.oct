@@ -1,0 +1,44 @@
+package PrometheusSgemmAlgorithmLab
+
+fn MatMulBaseline(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let aok = ValidateMatrixData(A, aRows, aCols)?
+    let bok = ValidateMatrixData(B, bRows, bCols)?
+
+    if aCols != bRows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    var out = [0.0]
+    for i in 1 .. aRows * bCols {
+        out = Append(out, 0.0)
+    }
+
+    for r in 0 .. aRows {
+        for c in 0 .. bCols {
+            var sum = 0.0
+            for k in 0 .. aCols {
+                sum = sum + A[FlatIndex(r, k, aCols)] * B[FlatIndex(k, c, bCols)]
+            }
+            out[FlatIndex(r, c, bCols)] = sum
+        }
+    }
+
+    return out
+}
+
+fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
+    return row * cols + col
+}
+
+fn ValidateMatrixData(A: Float[], rows: Int, cols: Int) -> Bool ! Error {
+    if rows <= 0 or cols <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+    if Len(A) == 0 {
+        return error("matrix data must be non-empty")
+    }
+    if Len(A) != rows * cols {
+        return error("matrix data length must equal rows * cols")
+    }
+    return true
+}

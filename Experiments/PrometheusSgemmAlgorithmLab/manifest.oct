@@ -1,0 +1,24 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "PrometheusSgemmAlgorithmLab"
+        Version: "0.1.0"
+        Description: "Correctness-first SGEMM algorithm lab for Prometheus in Oct before Reactor porting"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }
+        ]
+    }
+}
