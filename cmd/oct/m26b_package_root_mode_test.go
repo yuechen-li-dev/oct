@@ -28,11 +28,21 @@ fn Roundtrip() -> Void { Assert.Equal(1, One(), "roundtrip") }
 }
 
 func TestPackageRootBenchCommandRunsPackageLocalBenchmark(t *testing.T) {
-	stdout, stderr, err := executeCLI("bench", filepath.Join("..", "..", "Libraries", "Signal"))
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Tooling", "manifest.oct", manifestSource("Tooling", "package-root bench package"))
+	writeOctPkgFile(t, root, "Tooling", "tooling.oct", `package Tooling
+fn Main() -> Int { return 0 }
+`)
+	writeOctPkgFile(t, root, "Tooling", "tooling.octest", `package Tooling
+[Benchmark]
+fn PackageLocalBench() -> Void { return }
+`)
+
+	stdout, stderr, err := executeCLI("bench", filepath.Join(root, "Tooling"))
 	if err != nil {
 		t.Fatalf("oct bench failed: %v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	if !strings.Contains(stdout, "PASS Signal.MovingAverageSmall") {
+	if !strings.Contains(stdout, "PASS Tooling.PackageLocalBench") {
 		t.Fatalf("expected migrated benchmark output, got %q", stdout)
 	}
 }

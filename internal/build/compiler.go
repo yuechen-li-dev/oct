@@ -275,6 +275,18 @@ func Compile(path string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	return compileProgram(program)
+}
+
+func CompileForTest(path string) (Result, error) {
+	program, err := project.LoadForTest(path)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program)
+}
+
+func compileProgram(program project.Program) (Result, error) {
 	if err := typecheck.CheckProgram(program); err != nil {
 		return Result{}, err
 	}
@@ -376,7 +388,7 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Flows = append(module.Flows, mirFlow)
 		}
 		for _, fn := range pkg.Functions {
-			if fn.IsTestFile || fn.IsTheory || fn.IsFact || fn.IsArtifact || fn.IsBenchmark {
+			if fn.IsTheory || fn.IsFact || fn.IsArtifact || (fn.IsTestFile && !fn.IsBenchmark) {
 				continue
 			}
 			lowered, err := lowerFunction(program, pkg, fn)
@@ -476,11 +488,13 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", s.Target, idx), Value: val})
 		case ast.ExprStmt:
-			v, _, _, err := c.lowerExpr(s.Value)
+			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: v})
+			if t != "Void" {
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: v})
+			}
 		case ast.ReturnStmt:
 			if s.Value == nil {
 				c.blocks[c.cur].Terminator = MIRReturn{}
@@ -1038,6 +1052,10 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		localType := ret
 		if fallible {
 			localType = fallibleType(ret)
+		}
+		if !fallible && localType == "Void" {
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: callee, Args: args, Builtin: builtin, RetType: ret})
+			return "", ret, false, nil
 		}
 		tmp := c.temp(localType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: args, Builtin: builtin, RetType: ret})
@@ -2190,7 +2208,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usedBuiltins["WriteOctagon"] {
-		for _, pkg := range []string{"os", "reflect", "strconv", "strings"} {
+		for _, pkg := range []string{"os", "path/filepath", "reflect", "strconv", "strings"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -2464,6 +2482,7 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 
 const __octWriteHelpers = `
 func __octWriteOctagon(path string, value any) {
+	path = __octAttributedOutputPath(path)
 	if !strings.HasSuffix(path, ".octagon") {
 		panic("WriteOctagon path must end with .octagon")
 	}
@@ -2474,6 +2493,14 @@ func __octWriteOctagon(path string, value any) {
 	if err := os.WriteFile(path, []byte(rendered+"\n"), 0o644); err != nil {
 		panic(fmt.Sprintf("WriteOctagon write %s: %v", path, err))
 	}
+}
+
+func __octAttributedOutputPath(path string) string {
+	prefix := os.Getenv("OCT_OUTPUT_PATH_PREFIX")
+	if prefix == "" {
+		return path
+	}
+	return filepath.Join(filepath.Dir(path), prefix+"."+filepath.Base(path))
 }
 
 func __octSerialize(v reflect.Value, depth int) (string, error) {
@@ -3462,6 +3489,9 @@ func goStmt(s MIRStmt) (string, error) {
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
+		}
+		if st.Target == "_" && st.RetType == "Void" {
+			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 	case MIRBatchMap:

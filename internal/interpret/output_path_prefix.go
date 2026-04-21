@@ -22,6 +22,12 @@ func SetOutputPathPrefix(prefix string) func() {
 	}
 }
 
+func CurrentOutputPathPrefix() string {
+	outputPathPrefixState.mu.Lock()
+	defer outputPathPrefixState.mu.Unlock()
+	return outputPathPrefixState.prefix
+}
+
 func attributedOutputPath(path string) string {
 	outputPathPrefixState.mu.Lock()
 	prefix := outputPathPrefixState.prefix

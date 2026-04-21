@@ -102,6 +102,7 @@ fn main() -> Int {
     }
     return 0
 }
+
 `
 	mathSrc := `package Math
 
@@ -133,6 +134,44 @@ fn Make(a: Int, b: Int) -> Pair {
 	}
 	if strings.TrimSpace(string(out)) != "7" {
 		t.Fatalf("expected 7, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileForTestLowersBenchmarkFunctionIntoMIRAndRuns(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte("package Main\nfn Main() -> Int { return 0 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main", "bench.octest"), []byte("package Main\n[Benchmark]\nfn Bench() -> Void { let x = 1 + 1 Print(x) }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runnerPath := filepath.Join(root, "Main", "zz_compiled_bench_runner.oct")
+	if err := os.WriteFile(runnerPath, []byte("package Main\nfn main() -> Int {\n    Bench()\n    return 0\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := CompileForTest(runnerPath)
+	if err != nil {
+		t.Fatalf("compile for test: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "fn Main.Bench") {
+		t.Fatalf("expected benchmark function in MIR dump, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	normalized := strings.ReplaceAll(string(out), "\r\n", "\n")
+	if strings.TrimSpace(normalized) != "2\n0" {
+		t.Fatalf("expected benchmark print and runner return, got %q", string(out))
 	}
 }
 
@@ -1697,7 +1736,7 @@ fn main() -> Int {
 }
 `,
 			wantErr: "range step must be positive, got 0",
-			},
+		},
 		{
 			name: "plot builtin",
 			source: `package Main
