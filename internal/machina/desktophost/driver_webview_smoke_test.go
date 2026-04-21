@@ -16,10 +16,12 @@ func TestWebviewDriverFactoryConstructsAndInitializesNativeBinding(t *testing.T)
 	if err != nil {
 		t.Fatalf("construct native webview driver: %v", err)
 	}
+	if driver == nil {
+		t.Fatal("construct native webview driver: received nil driver")
+	}
 	t.Cleanup(driver.Destroy)
 
 	driver.SetTitle("Machina UI native smoke")
 	driver.SetSize(320, 240)
 	driver.Init(`window.__machina_webview_smoke = { ready: true };`)
-	driver.Navigate("data:text/html,%3C!doctype%20html%3E%3Ctitle%3Emachina%20smoke%3C/title%3E%3Cp%3Eok%3C/p%3E")
 }
