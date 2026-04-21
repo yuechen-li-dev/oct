@@ -3070,6 +3070,23 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
+	if callee == "fft" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'fft' expects 1 arguments, got %d", len(arguments))
+		}
+		argumentType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argumentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argumentType.ValueType != withArrayDepth(Type{Base: BaseTypeComplex}, 1) {
+			return ExprType{}, fmt.Errorf("function 'fft' argument 1 expects Complex[], got %s", argumentType.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeComplex}, 1), Fallible: true}, nil
+	}
+
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}

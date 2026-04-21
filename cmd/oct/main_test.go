@@ -1259,6 +1259,47 @@ func TestRunCommandSupportsM72Builtins(t *testing.T) {
 	}
 }
 
+func TestMx101cFFTBuiltinRunAndBuildParity(t *testing.T) {
+	source := `
+fn Main() -> Int {
+    let signal = [
+        Complex(1.0, 0.0),
+        Complex(0.0, 0.0),
+        Complex(0.0, 0.0),
+        Complex(0.0, 0.0)
+    ]
+    let spectrum = fft(signal)!
+    return Len(spectrum)
+}
+`
+	sourcePath := writeSourceFile(t, "mx101c_fft_parity.oct", source)
+
+	stdout, stderr, err := executeCLI("run", sourcePath)
+	if err != nil {
+		t.Fatalf("run command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
+	}
+	if stdout != "4\n" {
+		t.Fatalf("expected stdout %q, got %q", "4\n", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	buildStdout, buildStderr, buildErr := executeCLI("build", sourcePath)
+	if buildErr != nil {
+		t.Fatalf("expected build success, got err=%v stdout=%q stderr=%q", buildErr, buildStdout, buildStderr)
+	}
+	if !strings.Contains(buildStdout, "build succeeded: ") {
+		t.Fatalf("expected build success output, got %q", buildStdout)
+	}
+	if buildStderr != "" {
+		t.Fatalf("expected empty build stderr, got %q", buildStderr)
+	}
+	if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+		t.Fatalf("expected artifact on build success, stat err = %v", statErr)
+	}
+}
+
 func TestRunCommandRejectsInvalidM72Domains(t *testing.T) {
 	tests := []struct {
 		name        string

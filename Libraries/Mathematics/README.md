@@ -16,8 +16,10 @@
 - `DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error`
 - `IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
 - `IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error`
-- `FFT(x: Complex[]) -> Complex[] ! Error`
+- `FastFourierTransform(x: Complex[]) -> Complex[] ! Error`
 - `IFFT(X: Complex[]) -> Complex[] ! Error`
+
+Production transforms should use builtin `fft(x: Complex[]) -> Complex[] ! Error`; `FastFourierTransform` remains the pure Oct reference/oracle path.
 
 ## M1 transform conventions
 
@@ -32,7 +34,7 @@ This sign and normalization placement is fixed by tests.
 
 ## Input policy
 
-For both `FFT` and `IFFT` in M1:
+For both `FastFourierTransform` and `IFFT` in M1:
 
 - input length must be `> 0`
 - input length must be a power of two

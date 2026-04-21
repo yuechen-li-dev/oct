@@ -9,25 +9,25 @@ fn NearComplexAt(expected: Complex[], actual: Complex[], i: Int, tolerance: Floa
 fn FFTRejectsInvalidLengthPolicy() -> Void {
     Assert.Error(ValidateFFTLength(0), "empty input must fail")
 
-    Assert.Error(FFT([Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]), "non-power-of-two length must fail")
+    Assert.Error(FastFourierTransform([Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]), "non-power-of-two length must fail")
 }
 
 [Fact]
 fn FFTLengthOneAndLengthPreservation() -> Void {
     let unit = [Complex(2.5, 0.0 - 1.5)]
-    let spectrum = FFT(unit)!
+    let spectrum = FastFourierTransform(unit)!
     Assert.Equal(1, Len(spectrum), "FFT must preserve length")
     NearComplexAt(unit, spectrum, 0, 0.000000001, "length-1 fft should be identity")
 
     let vector = [Complex(1.0, 2.0), Complex(3.0, 4.0), Complex(5.0, 6.0), Complex(7.0, 8.0)]
-    let transformed = FFT(vector)!
+    let transformed = FastFourierTransform(vector)!
     Assert.Equal(Len(vector), Len(transformed), "FFT output length must match input")
 }
 
 [Fact]
 fn FFTMatchesImpulseAndConstantCases() -> Void {
     let impulse = [Complex(1.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0)]
-    let impulseSpectrum = FFT(impulse)!
+    let impulseSpectrum = FastFourierTransform(impulse)!
 
     let expectedImpulseSpectrum = [Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0)]
     NearComplexAt(expectedImpulseSpectrum, impulseSpectrum, 0, 0.000001, "impulse bin 0")
@@ -36,7 +36,7 @@ fn FFTMatchesImpulseAndConstantCases() -> Void {
     NearComplexAt(expectedImpulseSpectrum, impulseSpectrum, 3, 0.000001, "impulse bin 3")
 
     let constant = [Complex(2.0, 0.0), Complex(2.0, 0.0), Complex(2.0, 0.0), Complex(2.0, 0.0)]
-    let constantSpectrum = FFT(constant)!
+    let constantSpectrum = FastFourierTransform(constant)!
     let expectedConstantSpectrum = [Complex(8.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0)]
     NearComplexAt(expectedConstantSpectrum, constantSpectrum, 0, 0.000001, "constant dc bin")
     NearComplexAt(expectedConstantSpectrum, constantSpectrum, 1, 0.000001, "constant bin 1")
@@ -47,7 +47,7 @@ fn FFTMatchesImpulseAndConstantCases() -> Void {
 [Fact]
 fn FFTConventionSignAndNormalizationAreLocked() -> Void {
     let x = [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0)]
-    let X = FFT(x)!
+    let X = FastFourierTransform(x)!
 
     let expected = [Complex(1.0, 0.0), Complex(0.0, 0.0 - 1.0), Complex(0.0 - 1.0, 0.0), Complex(0.0, 1.0)]
     NearComplexAt(expected, X, 0, 0.000001, "k=0")
@@ -75,7 +75,7 @@ fn IFFTRoundTripNonTrivialSequence() -> Void {
         Complex(0.0, 0.0 - 0.5)
     ]
 
-    let spectrum = FFT(signal)!
+    let spectrum = FastFourierTransform(signal)!
     let reconstructed = IFFT(spectrum)!
 
     var i = 0
@@ -89,7 +89,7 @@ fn IFFTRoundTripNonTrivialSequence() -> Void {
 fn FFTComposableFrequencyWorkflow() -> Void {
     let signal = [Complex(1.0, 0.0), Complex(0.0 - 1.0, 0.0), Complex(1.0, 0.0), Complex(0.0 - 1.0, 0.0)]
 
-    let spectrum = FFT(signal)!
+    let spectrum = FastFourierTransform(signal)!
     let dominantMagnitude = Max(
         Max(Abs(spectrum[0]), Abs(spectrum[1])),
         Max(Abs(spectrum[2]), Abs(spectrum[3]))
@@ -101,4 +101,30 @@ fn FFTComposableFrequencyWorkflow() -> Void {
     let reconstructed = IFFT(filtered)!
     Assert.Equal(4, Len(reconstructed), "IFFT output length must be preserved after spectral edits")
     Assert.True(Abs(reconstructed[0]) > 0.5, "frequency-domain edits should produce deterministic time-domain output")
+}
+
+
+[Fact]
+fn FFTBuiltinMatchesReferenceImplementation() -> Void {
+    let signal = [
+        Complex(0.5, 0.0 - 0.25),
+        Complex(1.0, 0.75),
+        Complex(0.0 - 0.5, 0.5),
+        Complex(0.25, 0.0 - 1.0)
+    ]
+
+    let referenceSpectrum = FastFourierTransform(signal)!
+    let builtinSpectrum = fft(signal)!
+
+    var i = 0
+    while i < Len(signal) {
+        NearComplexAt(referenceSpectrum, builtinSpectrum, i, 0.000001, "fft builtin should match FastFourierTransform reference")
+        i = i + 1
+    }
+}
+
+[Fact]
+fn FFTBuiltinRejectsInvalidLengthPolicy() -> Void {
+    let invalid = [Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]
+    Assert.Error(fft(invalid), "fft builtin non-power-of-two length must fail")
 }

@@ -2148,6 +2148,29 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: target}}, nil
 	}
+	if callee == "fft" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: fft does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: fft expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: fft expects Complex[] argument")
+		}
+		transformed, err := fftCPU(argument.value.Array)
+		if err != nil {
+			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
+		}
+		return evalResult{value: Value{Kind: ValueArray, Array: transformed}}, nil
+	}
 	if len(typeArguments) != 0 && callee != "Matrix.zeros" && callee != "Matrix.identity" {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 	}

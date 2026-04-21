@@ -79,6 +79,7 @@ var names = map[string]struct{}{
 	"Matrix.zeros":       {},
 	"Matrix.fill":        {},
 	"Matrix.identity":    {},
+	"fft":                {},
 }
 
 func IsName(name string) bool {
