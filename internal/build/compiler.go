@@ -1064,7 +1064,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
 			switch ident.Name {
-			case "Abs", "Pi", "E":
+			case "Abs", "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
 				args := make([]string, 0, len(e.Arguments))
 				argTypes := make([]string, 0, len(e.Arguments))
 				for _, a := range e.Arguments {
@@ -1949,6 +1949,63 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return argTypes[0], nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", argTypes[0])
+	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
+			return "Float", nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+	case "Atan2":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		for idx := range argTypes {
+			if !(isIntScalarTypeString(argTypes[idx]) || isFloatScalarTypeString(argTypes[idx])) {
+				return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[idx])
+			}
+		}
+		return "Float", nil
+	case "Trace":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		elemType, ok := parseMatrixElemType(argTypes[0])
+		if !ok {
+			return "", fmt.Errorf("compiled mode does not yet support builtin Trace for type %s", argTypes[0])
+		}
+		return elemType, nil
+	case "Grad":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if elemType, ok := parseVectorElemType(argTypes[0]); ok {
+			return "Matrix<" + elemType + ">", nil
+		}
+		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
+			return "Vector<" + argTypes[0] + ">", nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin Grad for type %s", argTypes[0])
+	case "Div":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if elemType, ok := parseMatrixElemType(argTypes[0]); ok {
+			return "Vector<" + elemType + ">", nil
+		}
+		if elemType, ok := parseVectorElemType(argTypes[0]); ok {
+			return elemType, nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin Div for type %s", argTypes[0])
+	case "SymGrad":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if elemType, ok := parseVectorElemType(argTypes[0]); ok {
+			return "Matrix<" + elemType + ">", nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
 	default:
 		return "", fmt.Errorf("compiled mode does not yet support builtin %s", name)
 	}
@@ -2428,7 +2485,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
 		importSet["strings"] = struct{}{}
 	}
-	if usedBuiltins["Abs"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] {
 		importSet["math"] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
@@ -2490,7 +2547,7 @@ func emitGo(m MIRModule) (string, error) {
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] {
 		b.WriteString(__octLinearAlgebraHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
@@ -2688,6 +2745,57 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 		result[r] = row
 	}
 	return result
+}
+
+func __octTrace[T __octNumber](m [][]T) T {
+	if len(m) == 0 {
+		panic("runtime error: Trace requires non-empty matrix")
+	}
+	if len(m[0]) != len(m) {
+		panic(fmt.Sprintf("runtime error: Trace requires square matrix, got %dx%d", len(m), len(m[0])))
+	}
+	var out T
+	for i := 0; i < len(m); i++ {
+		if len(m[i]) != len(m) {
+			panic(fmt.Sprintf("runtime error: Trace requires square matrix, got %dx%d", len(m), len(m[i])))
+		}
+		out += m[i][i]
+	}
+	return out
+}
+
+func __octGrad[T __octNumber](v []T) [][]T {
+	out := make([][]T, len(v))
+	for i := range v {
+		row := make([]T, len(v))
+		row[i] = v[i]
+		out[i] = row
+	}
+	return out
+}
+
+func __octGradScalar[T __octNumber](v T) []T {
+	return []T{v}
+}
+
+func __octDivVector[T __octNumber](v []T) T {
+	var out T
+	for _, cell := range v {
+		out += cell
+	}
+	return out
+}
+
+func __octDiv[T __octNumber](m [][]T) []T {
+	out := make([]T, len(m))
+	for r := range m {
+		out[r] = __octDivVector(m[r])
+	}
+	return out
+}
+
+func __octSymGrad[T __octNumber](v []T) [][]T {
+	return __octGrad(v)
 }
 `
 
@@ -3709,6 +3817,34 @@ func goStmt(s MIRStmt) (string, error) {
 					return fmt.Sprintf("%s = math.Abs(%s)", st.Target, st.Args[0]), nil
 				}
 				return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", st.RetType)
+			case "Sqrt":
+				return fmt.Sprintf("%s = math.Sqrt(float64(%s))", st.Target, st.Args[0]), nil
+			case "Sin":
+				return fmt.Sprintf("%s = math.Sin(float64(%s))", st.Target, st.Args[0]), nil
+			case "Cos":
+				return fmt.Sprintf("%s = math.Cos(float64(%s))", st.Target, st.Args[0]), nil
+			case "Tan":
+				return fmt.Sprintf("%s = math.Tan(float64(%s))", st.Target, st.Args[0]), nil
+			case "Asin":
+				return fmt.Sprintf("%s = math.Asin(float64(%s))", st.Target, st.Args[0]), nil
+			case "Acos":
+				return fmt.Sprintf("%s = math.Acos(float64(%s))", st.Target, st.Args[0]), nil
+			case "Atan":
+				return fmt.Sprintf("%s = math.Atan(float64(%s))", st.Target, st.Args[0]), nil
+			case "Atan2":
+				return fmt.Sprintf("%s = math.Atan2(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+			case "Exp":
+				return fmt.Sprintf("%s = math.Exp(float64(%s))", st.Target, st.Args[0]), nil
+			case "Ln":
+				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, st.Args[0]), nil
+			case "Log10":
+				return fmt.Sprintf("%s = math.Log10(float64(%s))", st.Target, st.Args[0]), nil
+			case "Sinh":
+				return fmt.Sprintf("%s = math.Sinh(float64(%s))", st.Target, st.Args[0]), nil
+			case "Cosh":
+				return fmt.Sprintf("%s = math.Cosh(float64(%s))", st.Target, st.Args[0]), nil
+			case "Tanh":
+				return fmt.Sprintf("%s = math.Tanh(float64(%s))", st.Target, st.Args[0]), nil
 			case "Contains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "StartsWith":
@@ -3746,6 +3882,20 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "PrometheusMatMulMM":
 				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "Trace":
+				return fmt.Sprintf("%s = __octTrace(%s)", st.Target, st.Args[0]), nil
+			case "Grad":
+				if _, ok := parseMatrixElemType(st.RetType); ok {
+					return fmt.Sprintf("%s = __octGrad(%s)", st.Target, st.Args[0]), nil
+				}
+				return fmt.Sprintf("%s = __octGradScalar(%s)", st.Target, st.Args[0]), nil
+			case "Div":
+				if _, ok := parseVectorElemType(st.RetType); ok {
+					return fmt.Sprintf("%s = __octDiv(%s)", st.Target, st.Args[0]), nil
+				}
+				return fmt.Sprintf("%s = __octDivVector(%s)", st.Target, st.Args[0]), nil
+			case "SymGrad":
+				return fmt.Sprintf("%s = __octSymGrad(%s)", st.Target, st.Args[0]), nil
 			case "Matrix.fill":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {

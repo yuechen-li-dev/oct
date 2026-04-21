@@ -680,21 +680,20 @@ fn Main() -> Int {
 }
 
 func TestBuildCommandHandlesM7Builtins(t *testing.T) {
-	t.Run("unsupported builtin in compiled mode fails deterministically", func(t *testing.T) {
+	t.Run("sqrt builtin in compiled mode builds deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m7_valid.oct", "fn Main() -> Float {\n    return Sqrt(4)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		if err != nil {
+			t.Fatalf("expected build success, got err=%v stderr=%q stdout=%q", err, stderr, stdout)
 		}
-		if stdout != "" {
-			t.Fatalf("expected empty stdout, got %q", stdout)
+		if !strings.Contains(stdout, "build succeeded: ") {
+			t.Fatalf("expected build success output, got %q", stdout)
 		}
-		want := "build failed: function Main.Main: compiled mode does not yet support builtin Sqrt"
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
+		if stderr != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
 
