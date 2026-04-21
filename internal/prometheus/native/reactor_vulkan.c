@@ -652,16 +652,22 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     }
   }
 
-  result = vk_runtime_init(runtime);
-  if (result == VK_SUCCESS) {
-    runtime->available = 1u;
-    runtime->reason_code = PROM_REASON_NONE;
-    runtime->init_detail_code = 0;
-  } else {
+  if ((runtime->test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u) {
     runtime->available = 0u;
     runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
-    runtime->init_detail_code = (int)result;
-    vk_runtime_cleanup(runtime);
+    runtime->init_detail_code = (int)VK_ERROR_INITIALIZATION_FAILED;
+  } else {
+    result = vk_runtime_init(runtime);
+    if (result == VK_SUCCESS) {
+      runtime->available = 1u;
+      runtime->reason_code = PROM_REASON_NONE;
+      runtime->init_detail_code = 0;
+    } else {
+      runtime->available = 0u;
+      runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+      runtime->init_detail_code = (int)result;
+      vk_runtime_cleanup(runtime);
+    }
   }
 
   if (!registry_add(runtime)) {

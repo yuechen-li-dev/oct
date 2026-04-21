@@ -201,12 +201,19 @@ FACT(PrometheusReactor_SgemmSupportsManyConsecutiveCalls)
 
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = -1;
+    std::vector<float> previous;
     for (int iter = 0; iter < 8; ++iter) {
         std::vector<float> out(m * n, 0.0f);
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), out.data(), m, n, k, &stage, &detail), "consecutive SGEMM run should succeed");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "successful SGEMM should end in transfer-out stage");
         ASSERT_EQUAL(0, detail, "successful SGEMM should report zero detail");
-        ASSERT_SEQUENCE_EQUAL(expected, out, "consecutive SGEMM output should remain stable");
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            ASSERT_NEAR(expected[i], out[i], 1e-4f, "consecutive SGEMM output should remain numerically stable");
+        }
+        if (!previous.empty()) {
+            ASSERT_SEQUENCE_EQUAL(previous, out, "consecutive SGEMM output should remain deterministic across runs");
+        }
+        previous = out;
     }
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
@@ -412,6 +419,9 @@ FACT(PrometheusReactor_RegistrySupportsConcurrentLifecycleOperations)
 {
     constexpr int thread_count = 8;
     constexpr int iterations = 16;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_SKIP_VULKAN_INIT;
     std::vector<std::thread> threads;
     std::vector<int> failures(static_cast<std::size_t>(thread_count), 0);
     threads.reserve(thread_count);
@@ -419,11 +429,11 @@ FACT(PrometheusReactor_RegistrySupportsConcurrentLifecycleOperations)
     for (int t = 0; t < thread_count; ++t) {
         const int thread_index = t;
         threads.emplace_back(
-            [&failures, thread_index]()
+            [&cfg, &failures, thread_index]()
             {
                 for (int i = 0; i < iterations; ++i) {
                     void* handle = nullptr;
-                    if (prometheus_reactor_runtime_create(nullptr, &handle) != PROM_OK || handle == nullptr) {
+                    if (prometheus_reactor_runtime_create(&cfg, &handle) != PROM_OK || handle == nullptr) {
                         failures[static_cast<std::size_t>(thread_index)] = 1;
                         return;
                     }

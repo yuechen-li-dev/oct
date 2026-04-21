@@ -15,13 +15,11 @@ If instructions and primers appear to disagree, surface the conflict explicitly.
 Every substantial task must end in exactly one of three states:
 
 1. **Success**  
-   The intended capability works in the real path and the real motivating case materially improves.
-
+The intended capability works in the real path and the real motivating case materially improves.
 2. **Meaningful progression**  
-   The capability is not complete, but one genuine blocker is removed and the next blocker is isolated with evidence.
-
+The capability is not complete, but one genuine blocker is removed and the next blocker is isolated with evidence.
 3. **Honest stop**  
-   Further work would require overbroad scope expansion, excessive debt, brittle patching, or tangled logic. Stop and report the reason with concrete evidence.
+Further work would require overbroad scope expansion, excessive debt, brittle patching, or tangled logic. Stop and report the reason with concrete evidence.
 
 Do not continue producing patches once the work stops converging.
 
@@ -39,27 +37,28 @@ Oct has a strict, non-negotiable separation of concerns:
 
 Do not blur this boundary.
 
----
+\---
 
 ## Mental Model
 
 Think of the repository as two layers:
 
-- **Go = compiler/runtime (implementation layer)**
-- **Oct = user space (programs and contracts)**
+* **Go = compiler/runtime (implementation layer)**
+* **Oct = user space (programs and contracts)**
 
 Go defines how Oct works.  
 Oct is never used to define how Oct works.
 
----
+\---
 
 ## Hard Rules
 
-### 1. Do not embed Oct inside Go
+### 1\. Do not embed Oct inside Go
 
 Writing Oct programs as strings inside Go code is almost always a bug.
 
 ❌ Forbidden:
+
 ```go
 src := `
 fn main() {
@@ -71,7 +70,7 @@ fn main() {
 ✅ Correct:
 
 * Place code in `.octest` or `.octfail`
-* Execute tests via `go run ./cmd/oct test ...` (preferred in this environment), or `oct test ...` when the oct binary is available.
+* Execute tests via `go run ./cmd/oct test ...`, or `oct test ...` when the oct binary is available.
 
 #### Exception (narrow and explicit)
 
@@ -94,9 +93,9 @@ It does **not** allow:
 * duplicating language semantics already expressed in `Language/`
 * writing general program tests in Go
 
----
+\---
 
-### 2. Do not implement Oct in Oct
+### 2\. Do not implement Oct in Oct
 
 Oct is **100% implemented in Go and 0% implemented in Oct**.
 
@@ -108,9 +107,9 @@ Do not:
 
 If behavior belongs to the language, it belongs in Go.
 
----
+\---
 
-### 3. Language semantics belong in Oct tests, not Go
+### 3\. Language semantics belong in Oct tests, not Go
 
 All user-visible behavior must be expressed as:
 
@@ -126,9 +125,9 @@ These live under:
 * encoding language semantics in Go test assertions
 * using embedded Oct in Go to define behavior
 
----
+\---
 
-### 4. Do not duplicate semantics across Go and Language/
+### 4\. Do not duplicate semantics across Go and Language/
 
 If a language contract exists in `Language/`, it must not be re-expressed in Go tests.
 
@@ -141,9 +140,9 @@ There must be a **single source of truth** for language behavior:
 
 > `Language/`
 
----
+\---
 
-### 5. Go tests orchestrate, not define semantics
+### 5\. Go tests orchestrate, not define semantics
 
 Go test code should:
 
@@ -155,9 +154,9 @@ Go test code must not:
 * define or reimplement language semantics
 * encode evaluation logic that belongs to Oct tests
 
----
+\---
 
-### 6. Migrate legacy semantic tests out of Go
+### 6\. Migrate legacy semantic tests out of Go
 
 If existing Go tests encode language semantics:
 
@@ -166,27 +165,24 @@ If existing Go tests encode language semantics:
 
 Go should not remain the owner of semantic contracts.
 
----
+\---
 
-### 7. Keep the repository roles clean
+### 7\. Keep the repository roles clean
 
 Each top-level area has a strict purpose:
 
 * `Language/`
-  Canonical language contracts (semantic truth)
-
+Canonical language contracts (semantic truth)
 * `Packages/`
-  Reusable Oct packages (user-level code)
-
+Reusable Oct packages (user-level code)
 * `testdata/`
-  Fixtures, synthetic inputs, transitional data (not semantic contracts)
-
+Fixtures, synthetic inputs, transitional data (not semantic contracts)
 * Go code (`cmd/`, `internal/`)
-  Language implementation only
+Language implementation only
 
----
+\---
 
-### 8. Do not use testdata for language semantics
+### 8\. Do not use testdata for language semantics
 
 `testdata/` must not contain language contracts.
 
@@ -201,7 +197,7 @@ Use `testdata/` only for:
 * invalid parsing cases
 * temporary or transitional data
 
----
+\---
 
 ## Placement Rule
 
@@ -212,7 +208,7 @@ When adding code or tests:
 * If it is synthetic or temporary → `testdata/`
 * If it implements the language → Go
 
----
+\---
 
 ## Allowed vs Forbidden Patterns
 
@@ -227,7 +223,7 @@ When adding code or tests:
 
 * define behavior in Go tests using embedded Oct
 
----
+\---
 
 ### Testing behavior
 
@@ -239,7 +235,7 @@ When adding code or tests:
 
 * duplicate the same behavior in Go tests
 
----
+\---
 
 ### Reusing logic
 
@@ -252,7 +248,7 @@ When adding code or tests:
 * simulate reuse via embedded Oct strings in Go
 * build meta-systems in Oct to compensate for missing language features
 
----
+\---
 
 ## If You Are Unsure
 
@@ -266,7 +262,7 @@ When in doubt:
 
 > keep implementation in Go, and semantics in Oct
 
----
+\---
 
 ## Summary
 
@@ -277,3 +273,4 @@ When in doubt:
 
 This separation is fundamental to the architecture.
 Do not violate it.
+
