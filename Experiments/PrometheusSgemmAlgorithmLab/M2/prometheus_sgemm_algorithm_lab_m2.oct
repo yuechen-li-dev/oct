@@ -1,0 +1,225 @@
+package PrometheusSgemmAlgorithmLab
+
+fn MatMulBaseline(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+
+    var out = ZeroMatrix(aRows, bCols)
+    for i in 0 .. aRows {
+        for j in 0 .. bCols {
+            var sum = 0.0
+            for k in 0 .. aCols {
+                sum = sum + A[FlatIndex(i, k, aCols)] * B[FlatIndex(k, j, bCols)]
+            }
+            out[FlatIndex(i, j, bCols)] = sum
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KBlocked(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, kBlock: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for kBlockIndex in 0 .. aCols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < aCols {
+            let kEnd = MinInt(kStart + kBlock, aCols)
+            for i in 0 .. aRows {
+                for j in 0 .. bCols {
+                    var partial = 0.0
+                    for k in kStart .. kEnd {
+                        partial = partial + A[FlatIndex(i, k, aCols)] * B[FlatIndex(k, j, bCols)]
+                    }
+                    let outIndex = FlatIndex(i, j, bCols)
+                    out[outIndex] = out[outIndex] + partial
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KBlocked_IKJ(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, kBlock: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for kBlockIndex in 0 .. aCols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < aCols {
+            let kEnd = MinInt(kStart + kBlock, aCols)
+            for i in 0 .. aRows {
+                for k in kStart .. kEnd {
+                    let aValue = A[FlatIndex(i, k, aCols)]
+                    for j in 0 .. bCols {
+                        let outIndex = FlatIndex(i, j, bCols)
+                        out[outIndex] = out[outIndex] + aValue * B[FlatIndex(k, j, bCols)]
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Staged(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, kBlock: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for kBlockIndex in 0 .. aCols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < aCols {
+            let kEnd = MinInt(kStart + kBlock, aCols)
+            let kChunkLen = kEnd - kStart
+
+            // Phase 1: Load (conceptual)
+            let stagedA = StageAChunk(A, aRows, aCols, kStart, kChunkLen)
+            let stagedB = StageBChunk(B, bRows, bCols, kStart, kChunkLen)
+
+            // Phase 2: Compute
+            var partialOut = ZeroMatrix(aRows, bCols)
+            for i in 0 .. aRows {
+                for j in 0 .. bCols {
+                    var partial = 0.0
+                    for kLocal in 0 .. kChunkLen {
+                        partial = partial + stagedA[FlatIndex(i, kLocal, kChunkLen)] * stagedB[FlatIndex(kLocal, j, bCols)]
+                    }
+                    partialOut[FlatIndex(i, j, bCols)] = partial
+                }
+            }
+
+            // Phase 3: Accumulate
+            for i in 0 .. aRows {
+                for j in 0 .. bCols {
+                    let outIndex = FlatIndex(i, j, bCols)
+                    out[outIndex] = out[outIndex] + partialOut[outIndex]
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Staged_IKJ(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, kBlock: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for kBlockIndex in 0 .. aCols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < aCols {
+            let kEnd = MinInt(kStart + kBlock, aCols)
+            let kChunkLen = kEnd - kStart
+
+            // Phase 1: Load (conceptual)
+            let stagedA = StageAChunk(A, aRows, aCols, kStart, kChunkLen)
+            let stagedB = StageBChunk(B, bRows, bCols, kStart, kChunkLen)
+
+            // Phase 2: Compute
+            var partialOut = ZeroMatrix(aRows, bCols)
+            for i in 0 .. aRows {
+                for kLocal in 0 .. kChunkLen {
+                    let aValue = stagedA[FlatIndex(i, kLocal, kChunkLen)]
+                    for j in 0 .. bCols {
+                        let outIndex = FlatIndex(i, j, bCols)
+                        partialOut[outIndex] = partialOut[outIndex] + aValue * stagedB[FlatIndex(kLocal, j, bCols)]
+                    }
+                }
+            }
+
+            // Phase 3: Accumulate
+            for i in 0 .. aRows {
+                for j in 0 .. bCols {
+                    let outIndex = FlatIndex(i, j, bCols)
+                    out[outIndex] = out[outIndex] + partialOut[outIndex]
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn StageAChunk(A: Float[], aRows: Int, aCols: Int, kStart: Int, kChunkLen: Int) -> Float[] {
+    var staged = ZeroMatrix(aRows, kChunkLen)
+
+    for i in 0 .. aRows {
+        for kLocal in 0 .. kChunkLen {
+            staged[FlatIndex(i, kLocal, kChunkLen)] = A[FlatIndex(i, kStart + kLocal, aCols)]
+        }
+    }
+
+    return staged
+}
+
+fn StageBChunk(B: Float[], bRows: Int, bCols: Int, kStart: Int, kChunkLen: Int) -> Float[] {
+    var staged = ZeroMatrix(kChunkLen, bCols)
+
+    for kLocal in 0 .. kChunkLen {
+        for j in 0 .. bCols {
+            staged[FlatIndex(kLocal, j, bCols)] = B[FlatIndex(kStart + kLocal, j, bCols)]
+        }
+    }
+
+    return staged
+}
+
+fn ZeroMatrix(rows: Int, cols: Int) -> Float[] {
+    var out = [0.0]
+    for i in 1 .. rows * cols {
+        out = Append(out, 0.0)
+    }
+    return out
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
+    return row * cols + col
+}
+
+fn ValidateMatMulInputs(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Bool ! Error {
+    let _aOk = ValidateMatrixData(A, aRows, aCols)?
+    let _bOk = ValidateMatrixData(B, bRows, bCols)?
+
+    if aCols != bRows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    return true
+}
+
+fn ValidateMatrixData(A: Float[], rows: Int, cols: Int) -> Bool ! Error {
+    if rows <= 0 or cols <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+    if Len(A) == 0 {
+        return error("matrix data must be non-empty")
+    }
+    if Len(A) != rows * cols {
+        return error("matrix data length must equal rows * cols")
+    }
+    return true
+}
+
+fn ValidateKBlockSize(kBlock: Int) -> Bool ! Error {
+    if kBlock <= 0 {
+        return error("kBlock must be > 0")
+    }
+    return true
+}
