@@ -173,7 +173,7 @@ func assertBenchmarkRunShape(t *testing.T, expr ast.Expr, wantNames []string) {
 		if item.TypeName != "BenchmarkCaseResult" {
 			t.Fatalf("expected BenchmarkCaseResult record, got %q", item.TypeName)
 		}
-		wantFields := []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment"}
+		wantFields := []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment", "ReportedWallNs"}
 		if len(item.Fields) != len(wantFields) {
 			t.Fatalf("expected %d fields, got %#v", len(wantFields), item.Fields)
 		}
@@ -196,6 +196,9 @@ func assertBenchmarkRunShape(t *testing.T, expr ast.Expr, wantNames []string) {
 			if _, ok := unwrapOctagonParenExpr(item.Fields[fieldIndex].Value).(ast.StringLiteralExpr); !ok {
 				t.Fatalf("expected field %q string value, got %T", item.Fields[fieldIndex].Name, item.Fields[fieldIndex].Value)
 			}
+		}
+		if _, ok := unwrapOctagonParenExpr(item.Fields[6].Value).(ast.IntegerLiteral); !ok {
+			t.Fatalf("expected ReportedWallNs int field, got %T", item.Fields[6].Value)
 		}
 	}
 }

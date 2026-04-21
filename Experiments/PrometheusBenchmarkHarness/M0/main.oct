@@ -1,5 +1,9 @@
 package Main
 
+fn ConsumeMatrix(m: Matrix<Float>) -> Void {
+    Print(0)
+}
+
 fn Main() -> Int {
     return 0
 }

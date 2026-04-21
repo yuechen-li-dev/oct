@@ -1,53 +1,64 @@
-# P5c — Enable `PROMETHEUS { ... }` in Compiled Benchmark Authoring Surface
+# Prometheus Benchmark Harness
 
-Date executed: **2026-04-21 (UTC)**
+This experiment is the official `[Benchmark]` authoring surface for the
+Windows-native Prometheus characterization baseline.
 
-## 1) Blocker discovered in P5b
+## Current M0 corpus
 
-`PROMETHEUS { ... }` was not parseable/lowerable in `.octest [Benchmark]` functions, so compiled benchmark authoring only had the CPU path.
+`M0` now contains paired CPU and Prometheus benchmark cases for:
 
-## 2) Minimal pipeline stages fixed
+- tiny: `1x1x1`, `2x2x2`, `4x4x4`, `8x8x8`
+- awkward: `3x5x7`, `7x3x11`, `5x17x9`
+- medium square: `16x16x16`, `32x32x32`, `64x64x64`
+- medium rectangular: `64x16x64`, `16x64x64`, `64x64x16`
+- larger sanity: `128x128x128`
 
-1. **Lex/parse/AST surface**
-   - Added `PROMETHEUS` as a language keyword.
-   - Added `ast.PrometheusStmt` and parser support for `PROMETHEUS { ... }` blocks.
+Each shape is authored twice through the same official surface:
 
-2. **Typecheck legality (kept narrow)**
-   - `PROMETHEUS { ... }` is accepted only inside `[Benchmark]` functions.
+- `matrix_mul_cpu_reference.octest`
+- `matrix_mul_prometheus.octest`
 
-3. **MIR lowering + compiled backend plumbing**
-   - Lowering now tracks when expressions are inside a Prometheus block.
-   - `Matrix<Float> @ Matrix<Float>` inside `PROMETHEUS { ... }` lowers to a dedicated compiled builtin (`PrometheusMatMulMM`).
-   - Generated compiled Go helper emits explicit backend truth (`backend_requested=prometheus`, `backend_used=cpu`, `status=fallback(prometheus_unavailable)`) and executes the existing compiled matrix multiply path, avoiding silent substitution.
+Case names encode the shape directly, for example:
 
-4. **Benchmark runner observability**
-   - Compiled benchmark stdout is now surfaced by `oct bench`, so backend requested/used/status lines emitted by Prometheus-path execution are visible in benchmark runs.
+- `Main.MatrixMulCPUReference_M064_N064_K064`
+- `Main.MatrixMulPrometheus_M064_N064_K064`
 
-## 3) Official M0 corpus status
+## Harness reporting
 
-M0 now contains both benchmark variants:
+Benchmark `.octagon` artifacts preserve per-case:
 
-- `M0/matrix_mul_cpu_reference.octest`
-- `M0/matrix_mul_prometheus.octest`
+- `Name`
+- `DurationNs`
+- `BackendRequested`
+- `BackendUsed`
+- `Status`
+- `Environment`
+- `ReportedWallNs`
 
-Both compile and run through the compiled benchmark path.
+`DurationNs` is the compiled benchmark process runtime.
 
-## 4) Reporting/fallback truth in current cloud environment
+`ReportedWallNs` is the inner Prometheus `wall=` value when the benchmark emits
+one; CPU cases keep it at `0`.
 
-In this Codex/cloud snapshot, Prometheus runtime remains environment-constrained and reports explicit fallback:
+## Characterization runner
 
-- `backend_requested=prometheus`
-- `backend_used=cpu`
-- `status=fallback(prometheus_unavailable)`
+Use the repo-local Windows runner:
 
-No silent CPU substitution is reported as success.
+`tools/prometheus/run_p6c_windows_native.ps1`
 
-## 5) What remains for local validation later
+That runner:
 
-- Re-run the same M0 corpus on local hardware with a valid Prometheus reactor.
-- Verify runs where `backend_used=prometheus` and status stays explicit.
-- Capture hardware-specific timing behavior after backend-truth validation.
+- sets `CGO_ENABLED=1`
+- configures a repo-local MinGW toolchain when needed
+- points `OCT_PROMETHEUS_REACTOR` at the Windows reactor DLL
+- performs warmup runs plus repeated measured runs
+- stores per-run `.octagon` artifacts under `out/prometheus/native/p6c/`
+- writes aggregated summaries to:
+  - `out/prometheus/native/p6c/summary.json`
+  - `out/prometheus/native/p6c/summary.md`
 
-## Convergence state
+## Primary report
 
-**Success**: the benchmark authoring gap isolated by P5b is closed for compiled benchmark path symmetry (CPU + Prometheus-authored blocks in `.octest [Benchmark]`).
+See [docs/reports/prometheus/P6C_REPORT.md](/C:/Users/yuech/source/repos/oct/docs/reports/prometheus/P6C_REPORT.md)
+for the measured Windows-native baseline, truth status, and the recommended
+next optimization target.

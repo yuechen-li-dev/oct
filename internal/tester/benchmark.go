@@ -35,6 +35,7 @@ type BenchmarkCaseResult struct {
 	BackendUsed      string
 	Status           string
 	Environment      string
+	ReportedWallNs   int64
 }
 
 type benchmarkCase struct {
@@ -107,9 +108,7 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 	for _, benchmark := range benchmarks {
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, benchmark.filePath))
-		start := time.Now()
-		benchmarkOutput, err := executeBenchmarkCompiled(program, benchmark)
-		duration := time.Since(start)
+		benchmarkOutput, duration, err := executeBenchmarkCompiled(program, benchmark)
 		metadata := benchmarkMetadataFromOutput(benchmarkOutput)
 		run.Cases = append(run.Cases, BenchmarkCaseResult{
 			Name:             qualified,
@@ -118,6 +117,7 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 			BackendUsed:      metadata.BackendUsed,
 			Status:           metadata.Status,
 			Environment:      metadata.Environment,
+			ReportedWallNs:   metadata.ReportedWallNs,
 		})
 		if err != nil {
 			failed++
@@ -147,6 +147,7 @@ type benchmarkMetadata struct {
 	BackendUsed      string
 	Status           string
 	Environment      string
+	ReportedWallNs   int64
 }
 
 func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
@@ -155,6 +156,7 @@ func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
 		BackendUsed:      "cpu",
 		Status:           "ok",
 		Environment:      "not_applicable",
+		ReportedWallNs:   0,
 	}
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
@@ -181,25 +183,31 @@ func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
 		if env, ok := values["vulkan_env"]; ok && env != "" {
 			metadata.Environment = env
 		}
+		if wall, ok := values["wall"]; ok && strings.HasSuffix(wall, "ns") {
+			wall = strings.TrimSuffix(wall, "ns")
+			if parsed, err := time.ParseDuration(wall + "ns"); err == nil {
+				metadata.ReportedWallNs = parsed.Nanoseconds()
+			}
+		}
 		return metadata
 	}
 	return metadata
 }
 
-func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) (string, error) {
+func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) (string, time.Duration, error) {
 	pkg, ok := program.Packages[benchmark.pkg]
 	if !ok {
-		return "", fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
+		return "", 0, fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
 	}
 	runnerPath, cleanupRunner, err := writeBenchmarkRunner(pkg.Directory, benchmark.pkg, benchmark.name)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer cleanupRunner()
 
 	result, err := build.CompileForTest(runnerPath)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer cleanupArtifact(result.ArtifactPath)
 
@@ -207,15 +215,17 @@ func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) 
 	if prefix := interpret.CurrentOutputPathPrefix(); prefix != "" {
 		cmd.Env = append(os.Environ(), "OCT_OUTPUT_PATH_PREFIX="+prefix)
 	}
+	start := time.Now()
 	output, err := cmd.CombinedOutput()
+	duration := time.Since(start)
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg == "" {
-			return "", fmt.Errorf("run compiled benchmark binary: %w", err)
+			return "", duration, fmt.Errorf("run compiled benchmark binary: %w", err)
 		}
-		return "", fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
+		return "", duration, fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
 	}
-	return string(output), nil
+	return string(output), duration, nil
 }
 
 func writeBenchmarkRunner(pkgDir string, pkgName string, benchmarkName string) (string, func(), error) {
@@ -288,7 +298,7 @@ func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
 			Kind: interpret.ValueRecord,
 			Record: interpret.RecordValue{
 				TypeName:   "BenchmarkCaseResult",
-				FieldOrder: []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment"},
+				FieldOrder: []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment", "ReportedWallNs"},
 				Fields: map[string]interpret.Value{
 					"Name":             {Kind: interpret.ValueString, Text: result.Name},
 					"DurationNs":       {Kind: interpret.ValueInt, Int: result.DurationNs},
@@ -296,6 +306,7 @@ func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
 					"BackendUsed":      {Kind: interpret.ValueString, Text: result.BackendUsed},
 					"Status":           {Kind: interpret.ValueString, Text: result.Status},
 					"Environment":      {Kind: interpret.ValueString, Text: result.Environment},
+					"ReportedWallNs":   {Kind: interpret.ValueInt, Int: result.ReportedWallNs},
 				},
 			},
 		})

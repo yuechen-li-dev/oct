@@ -1,0 +1,127 @@
+RUN  Main.MatrixMulCPUReference_M001_N001_K001 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M001_N001_K001 496.964ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M002_N002_K002 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M002_N002_K002 513.011ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M003_N005_K007 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M003_N005_K007 479.937ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M004_N004_K004 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M004_N004_K004 483.183ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M005_N017_K009 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M005_N017_K009 483.114ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M007_N003_K011 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M007_N003_K011 473.699ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M008_N008_K008 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M008_N008_K008 497.44ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M016_N016_K016 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M016_N016_K016 482.109ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M016_N064_K064 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M016_N064_K064 501.61ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M032_N032_K032 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M032_N032_K032 511.9ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M064_N016_K064 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M064_N016_K064 510.972ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M064_N064_K016 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M064_N064_K016 500.325ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M064_N064_K064 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M064_N064_K064 501.636ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulCPUReference_M128_N128_K128 (matrix_mul_cpu_reference.octest)
+0
+0
+PASS Main.MatrixMulCPUReference_M128_N128_K128 469.462ms (matrix_mul_cpu_reference.octest)
+RUN  Main.MatrixMulPrometheus_M001_N001_K001 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=505100ns
+0
+0
+PASS Main.MatrixMulPrometheus_M001_N001_K001 680.372ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M002_N002_K002 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=637700ns
+0
+0
+PASS Main.MatrixMulPrometheus_M002_N002_K002 664.663ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M003_N005_K007 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502000ns
+0
+0
+PASS Main.MatrixMulPrometheus_M003_N005_K007 659.749ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M004_N004_K004 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=675400ns
+0
+0
+PASS Main.MatrixMulPrometheus_M004_N004_K004 662.253ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M005_N017_K009 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1026000ns
+0
+0
+PASS Main.MatrixMulPrometheus_M005_N017_K009 795.615ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M007_N003_K011 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=501400ns
+0
+0
+PASS Main.MatrixMulPrometheus_M007_N003_K011 686.71ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M008_N008_K008 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=664800ns
+0
+0
+PASS Main.MatrixMulPrometheus_M008_N008_K008 675.415ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M016_N016_K016 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=672400ns
+0
+0
+PASS Main.MatrixMulPrometheus_M016_N016_K016 702.129ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M016_N064_K064 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1034300ns
+0
+0
+PASS Main.MatrixMulPrometheus_M016_N064_K064 676.501ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M032_N032_K032 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1021800ns
+0
+0
+PASS Main.MatrixMulPrometheus_M032_N032_K032 668.109ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M064_N016_K064 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502100ns
+0
+0
+PASS Main.MatrixMulPrometheus_M064_N016_K064 668.036ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M064_N064_K016 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1836300ns
+0
+0
+PASS Main.MatrixMulPrometheus_M064_N064_K016 662.968ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M064_N064_K064 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1083800ns
+0
+0
+PASS Main.MatrixMulPrometheus_M064_N064_K064 708.667ms (matrix_mul_prometheus.octest)
+RUN  Main.MatrixMulPrometheus_M128_N128_K128 (matrix_mul_prometheus.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1040200ns
+0
+0
+PASS Main.MatrixMulPrometheus_M128_N128_K128 685.244ms (matrix_mul_prometheus.octest)
+Result: 28 benchmark(s) passed, 0 failed

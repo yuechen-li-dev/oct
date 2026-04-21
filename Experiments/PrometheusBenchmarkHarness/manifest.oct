@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "PrometheusBenchmarkHarness"
         Version: "0.1.0"
-        Description: "P5b M0 harness-validation experiment for compiled benchmark execution and reporting"
+        Description: "P6c Windows-native Prometheus characterization baseline experiment"
         Dependencies: [
             Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }
         ]

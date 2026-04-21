@@ -13,6 +13,9 @@ func TestBenchmarkMetadataFromOutputDefaultsToCPUPath(t *testing.T) {
 	if metadata.Environment != "not_applicable" {
 		t.Fatalf("expected not_applicable environment, got %q", metadata.Environment)
 	}
+	if metadata.ReportedWallNs != 0 {
+		t.Fatalf("expected zero reported wall for cpu default, got %d", metadata.ReportedWallNs)
+	}
 }
 
 func TestBenchmarkMetadataFromOutputCapturesPrometheusTruth(t *testing.T) {
@@ -29,5 +32,8 @@ func TestBenchmarkMetadataFromOutputCapturesPrometheusTruth(t *testing.T) {
 	}
 	if metadata.Environment != "vulkan_wsl_dzn" {
 		t.Fatalf("expected vulkan_wsl_dzn environment, got %q", metadata.Environment)
+	}
+	if metadata.ReportedWallNs != 0 {
+		t.Fatalf("expected parsed wall of 0ns, got %d", metadata.ReportedWallNs)
 	}
 }

@@ -52,8 +52,8 @@ func TestWindowsBenchM0UsesPrometheusBackendAndWritesOctagon(t *testing.T) {
 		t.Fatalf("expected benchmark success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 	text := stdout.String()
-	if !strings.Contains(text, "PASS Main.MatrixMulCPUReferenceM0") || !strings.Contains(text, "PASS Main.MatrixMulPrometheusM0") {
-		t.Fatalf("expected CPU and Prometheus benchmark passes, got %q", text)
+	if !strings.Contains(text, "PASS Main.MatrixMulCPUReference_M001_N001_K001") || !strings.Contains(text, "PASS Main.MatrixMulPrometheus_M128_N128_K128") {
+		t.Fatalf("expected expanded CPU and Prometheus benchmark passes, got %q", text)
 	}
 	if !strings.Contains(text, "backend_requested=prometheus backend_used=prometheus status=ok") {
 		t.Fatalf("expected truthful prometheus success line, got %q", text)
