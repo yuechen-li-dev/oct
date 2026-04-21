@@ -9,9 +9,6 @@ REACTOR_DIR="$ROOT_DIR/internal/prometheus/reactor"
 mkdir -p "$OUT_DIR" "$REACTOR_DIR"
 
 LIB_NAME="libprometheus_reactor.so"
-if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || "${OS:-}" == Windows_NT ]]; then
-  LIB_NAME="prometheus_reactor.dll"
-fi
 
 cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/reactor_api.c" \

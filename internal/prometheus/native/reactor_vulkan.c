@@ -4,7 +4,18 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#include <windows.h>
+#else
 #include <pthread.h>
+#endif
 
 #include <vulkan/vulkan.h>
 
@@ -52,7 +63,28 @@ typedef struct prom_vk_push {
 } prom_vk_push;
 
 static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
+
+#if defined(_WIN32)
+static SRWLOCK g_registry_lock = SRWLOCK_INIT;
+
+static void registry_lock(void) {
+  AcquireSRWLockExclusive(&g_registry_lock);
+}
+
+static void registry_unlock(void) {
+  ReleaseSRWLockExclusive(&g_registry_lock);
+}
+#else
 static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void registry_lock(void) {
+  pthread_mutex_lock(&g_registry_mutex);
+}
+
+static void registry_unlock(void) {
+  pthread_mutex_unlock(&g_registry_mutex);
+}
+#endif
 
 /* SPIR-V for:
  * #version 450
@@ -205,21 +237,21 @@ static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize*
 static int registry_contains(void* handle) {
   size_t i;
   int found = 0;
-  pthread_mutex_lock(&g_registry_mutex);
+  registry_lock();
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == handle) {
       found = 1;
       break;
     }
   }
-  pthread_mutex_unlock(&g_registry_mutex);
+  registry_unlock();
   return found;
 }
 
 static int registry_add(void* handle) {
   size_t i;
   int added = 0;
-  pthread_mutex_lock(&g_registry_mutex);
+  registry_lock();
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == NULL) {
       g_active_handles[i] = handle;
@@ -227,20 +259,20 @@ static int registry_add(void* handle) {
       break;
     }
   }
-  pthread_mutex_unlock(&g_registry_mutex);
+  registry_unlock();
   return added;
 }
 
 static void registry_remove(void* handle) {
   size_t i;
-  pthread_mutex_lock(&g_registry_mutex);
+  registry_lock();
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == handle) {
       g_active_handles[i] = NULL;
       break;
     }
   }
-  pthread_mutex_unlock(&g_registry_mutex);
+  registry_unlock();
 }
 
 static int text_contains_llvmpipe(const char* value) {

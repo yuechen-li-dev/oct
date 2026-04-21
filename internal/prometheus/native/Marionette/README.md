@@ -22,7 +22,29 @@ g++ -std=c++20 -O2 \
 
 Run from the repository root so `$(pwd)` resolves correctly and artifacts land under `out/test-artifacts/`.
 
+For the Prometheus native Reactor flow in this repository, the repo helper
+`internal/prometheus/native/build_stub.sh` builds both the shared Reactor
+library and the Marionette test binary into `out/prometheus/native/`.
+
 When adding your own tests, append your `.cpp` files to the same compile command — no registration step required beyond the `FACT`/`THEORY`/`BENCHMARK` macros in source.
+
+**MSVC developer shell**
+
+From a Visual Studio developer shell with `cl` on `PATH`, run:
+
+```bat
+internal\prometheus\native\build_windows.cmd
+```
+
+That helper builds:
+
+- `out\prometheus\native\prometheus_reactor.dll`
+- `out\prometheus\native\prometheus_reactor.lib`
+- `out\prometheus\native\marionette_tests.exe`
+
+It also copies `prometheus_reactor.dll` to
+`internal\prometheus\reactor\prometheus_reactor.dll` to prepare for the later
+Windows bridge-loader milestone.
 
 **Run modes**
 

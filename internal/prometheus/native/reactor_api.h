@@ -3,6 +3,18 @@
 
 #include <stdint.h>
 
+#if defined(_WIN32)
+#if defined(PROMETHEUS_REACTOR_BUILD_DLL)
+#define PROM_REACTOR_API __declspec(dllexport)
+#elif defined(PROMETHEUS_REACTOR_USE_DLL)
+#define PROM_REACTOR_API __declspec(dllimport)
+#else
+#define PROM_REACTOR_API
+#endif
+#else
+#define PROM_REACTOR_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -65,24 +77,24 @@ typedef struct PrometheusReactorConfig {
   uint32_t test_flags;
 } PrometheusReactorConfig;
 
-uint32_t prometheus_reactor_abi_version(void);
-int prometheus_reactor_runtime_create(void* config, void** out_handle);
-int prometheus_reactor_runtime_destroy(void* handle);
-int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
-int prometheus_reactor_runtime_sgemm(void* handle,
-                                     const float* a,
-                                     const float* b,
-                                     float* c,
-                                     uint32_t m,
-                                     uint32_t n,
-                                     uint32_t k,
-                                     uint32_t* out_stage,
-                                     int* out_detail_code);
+PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
+PROM_REACTOR_API int prometheus_reactor_runtime_create(void* config, void** out_handle);
+PROM_REACTOR_API int prometheus_reactor_runtime_destroy(void* handle);
+PROM_REACTOR_API int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
+                                                      const float* a,
+                                                      const float* b,
+                                                      float* c,
+                                                      uint32_t m,
+                                                      uint32_t n,
+                                                      uint32_t k,
+                                                      uint32_t* out_stage,
+                                                      int* out_detail_code);
 
 /* Backward-compat aliases for earlier contract drafts. */
-int prometheus_runtime_create(void* config, void** out_handle);
-int prometheus_runtime_destroy(void* handle);
-int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps);
+PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);
+PROM_REACTOR_API int prometheus_runtime_destroy(void* handle);
+PROM_REACTOR_API int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps);
 
 #ifdef __cplusplus
 }
