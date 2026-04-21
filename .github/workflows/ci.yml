@@ -75,8 +75,17 @@ jobs:
 
       - name: Install native webview dependencies
         run: |
-          sudo ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
-          sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev xvfb dbus-x11
+          pwd
+          test -f ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
+          ls -l ./tools/machina-ui-desktop
+          sudo bash ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
+          sudo apt-get install -y dbus-x11
+          if ! pkg-config --exists webkit2gtk-4.0 && pkg-config --exists webkit2gtk-4.1; then
+            mkdir -p "${RUNNER_TEMP}/pkgconfig-compat"
+            pcdir="$(pkg-config --variable pcfiledir webkit2gtk-4.1)"
+            ln -sf "${pcdir}/webkit2gtk-4.1.pc" "${RUNNER_TEMP}/pkgconfig-compat/webkit2gtk-4.0.pc"
+            echo "PKG_CONFIG_PATH=${RUNNER_TEMP}/pkgconfig-compat:${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
+          fi
 
       - name: Build native desktop host (tagged)
         env:
