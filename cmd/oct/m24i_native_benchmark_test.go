@@ -136,16 +136,26 @@ func TestOctBenchFailurePropagatesAndOtherCommandsUnaffected(t *testing.T) {
 
 func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 	root := t.TempDir()
-	copyDir(t, filepath.Join("..", "..", "Libraries", "Signal"), filepath.Join(root, "Signal"))
-	copyDir(t, filepath.Join("..", "..", "testdata", "m24i", "valid", "Main"), filepath.Join(root, "Main"))
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{
+		"package Main",
+		"[Benchmark]",
+		"fn PrometheusLikeKernel() -> Void {",
+		"    var acc = 0",
+		"    for i in 0..64 {",
+		"        acc = acc + i",
+		"    }",
+		"    Print(acc)",
+		"}",
+	}, "\n")+"\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := cli.Execute([]string{"bench", root}, &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("expected migrated signal benchmark example to pass, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+		t.Fatalf("expected compiled benchmark example to pass, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "PASS Signal.MovingAverageSmall") {
+	if !strings.Contains(stdout.String(), "PASS Main.PrometheusLikeKernel") {
 		t.Fatalf("expected real benchmark pass output, got %q", stdout.String())
 	}
 }

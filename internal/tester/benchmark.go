@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
 
+	"oct/internal/build"
 	"oct/internal/interpret"
 	"oct/internal/project"
 	"oct/internal/typecheck"
@@ -102,7 +104,7 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, benchmark.filePath))
 		start := time.Now()
-		err := interpret.ExecuteFunction(program, benchmark.pkg, benchmark.name, io.Discard)
+		err := executeBenchmarkCompiled(program, benchmark)
 		duration := time.Since(start)
 		run.Cases = append(run.Cases, BenchmarkCaseResult{Name: qualified, DurationNs: duration.Nanoseconds()})
 		if err != nil {
@@ -123,6 +125,63 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 		}
 	}
 	return nil
+}
+
+func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) error {
+	pkg, ok := program.Packages[benchmark.pkg]
+	if !ok {
+		return fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
+	}
+	runnerPath, cleanupRunner, err := writeBenchmarkRunner(pkg.Directory, benchmark.pkg, benchmark.name)
+	if err != nil {
+		return err
+	}
+	defer cleanupRunner()
+
+	result, err := build.CompileForTest(runnerPath)
+	if err != nil {
+		return err
+	}
+	defer cleanupArtifact(result.ArtifactPath)
+
+	cmd := exec.Command(result.ArtifactPath)
+	if prefix := interpret.CurrentOutputPathPrefix(); prefix != "" {
+		cmd.Env = append(os.Environ(), "OCT_OUTPUT_PATH_PREFIX="+prefix)
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			return fmt.Errorf("run compiled benchmark binary: %w", err)
+		}
+		return fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
+	}
+	return nil
+}
+
+func writeBenchmarkRunner(pkgDir string, pkgName string, benchmarkName string) (string, func(), error) {
+	fileName := fmt.Sprintf("zz_oct_bench_runner_%d_%d.oct", os.Getpid(), time.Now().UnixNano())
+	runnerPath := filepath.Join(pkgDir, fileName)
+	source := strings.Join([]string{
+		"package " + pkgName,
+		"fn main() -> Int {",
+		fmt.Sprintf("    %s()", benchmarkName),
+		"    return 0",
+		"}",
+		"",
+	}, "\n")
+	if err := os.WriteFile(runnerPath, []byte(source), 0o644); err != nil {
+		return "", nil, err
+	}
+	cleanup := func() {
+		_ = os.Remove(runnerPath)
+	}
+	return runnerPath, cleanup, nil
+}
+
+func cleanupArtifact(path string) {
+	_ = os.Remove(path)
+	_ = os.Remove(path + ".mir")
 }
 
 func DefaultCPUProfilePath(path string) string {
