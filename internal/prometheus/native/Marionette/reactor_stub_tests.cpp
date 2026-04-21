@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -72,7 +73,10 @@ FACT(PrometheusReactor_ProbeIsDeterministic)
     const int probe_status = prometheus_reactor_runtime_probe(handle, &caps);
     ASSERT_EQUAL(PROM_OK, probe_status, "probe should succeed for valid handle");
     if (caps.available != 0u) {
-        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_BACKEND_VULKAN), caps.backend_type, "available runtime should identify Vulkan backend");
+        ASSERT_TRUE(
+            caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN) ||
+                caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN_SOFTWARE),
+            "available runtime should identify hardware or software Vulkan backend");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_REASON_NONE), caps.reason_code, "available runtime should have no reason code");
     } else {
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_BACKEND_UNKNOWN), caps.backend_type, "unavailable runtime should identify unknown backend");
@@ -193,7 +197,7 @@ FACT(PrometheusReactor_SgemmSupportsManyConsecutiveCalls)
     constexpr std::uint32_t k = 4u;
     const std::vector<float> a = deterministic_matrix(m, k);
     const std::vector<float> b = deterministic_matrix(k, n);
-    const std::vector<float> expected = cpu_sgemm(a, b, m, n, k);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
 
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = -1;
@@ -312,5 +316,129 @@ FACT(PrometheusReactor_RuntimeFailurePathsReportExplicitStages)
         ASSERT_EQUAL(failure.expected_detail, detail, "failure should report expected detail code");
 
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+    }
+}
+
+FACT(PrometheusReactor_SgemmRejectsShapeSizeOverflowExplicitly)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; overflow guard path cannot be asserted through runtime");
+    }
+
+    std::vector<float> one(1u, 1.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm(handle, one.data(), one.data(), one.data(), 65536u, 65536u, 1u, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, status, "overflow-prone SGEMM shape must fail explicitly");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "overflow rejection should be reported as transfer-in failure");
+    ASSERT_EQUAL(PROM_DETAIL_SIZE_OVERFLOW, detail, "overflow rejection should use explicit overflow detail code");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_CleanupPreservesFailureStatusFromFailingStage)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FAIL_DISPATCH;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; cleanup status behavior cannot be asserted");
+    }
+
+    const std::uint32_t m = 2u;
+    const std::uint32_t n = 2u;
+    const std::uint32_t k = 2u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, status, "dispatch injection should fail");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_SUBMIT), stage, "cleanup must preserve failing stage instead of rewriting status");
+    ASSERT_EQUAL(PROM_DETAIL_INJECTED_DISPATCH_FAILURE, detail, "cleanup must preserve failing detail code");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_MemoryTypeFailureUsesDiagnosticCode)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_NO_MEMORY_TYPE;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; memory-type failure mapping cannot be asserted");
+    }
+
+    const std::uint32_t m = 1u;
+    const std::uint32_t n = 1u;
+    const std::uint32_t k = 1u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+    ASSERT_EQUAL(PROM_ERROR, status, "injected memory type miss should fail");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "memory type miss should report transfer-in stage");
+    ASSERT_EQUAL(static_cast<int>(VK_ERROR_FEATURE_NOT_PRESENT), detail, "memory type miss should map to feature-not-present code");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_RegistrySupportsConcurrentLifecycleOperations)
+{
+    constexpr int thread_count = 8;
+    constexpr int iterations = 16;
+    std::vector<std::thread> threads;
+    std::vector<int> failures(static_cast<std::size_t>(thread_count), 0);
+    threads.reserve(thread_count);
+
+    for (int t = 0; t < thread_count; ++t) {
+        const int thread_index = t;
+        threads.emplace_back(
+            [&failures, thread_index]()
+            {
+                for (int i = 0; i < iterations; ++i) {
+                    void* handle = nullptr;
+                    if (prometheus_reactor_runtime_create(nullptr, &handle) != PROM_OK || handle == nullptr) {
+                        failures[static_cast<std::size_t>(thread_index)] = 1;
+                        return;
+                    }
+                    if (prometheus_reactor_runtime_destroy(handle) != PROM_OK) {
+                        failures[static_cast<std::size_t>(thread_index)] = 1;
+                        return;
+                    }
+                }
+            });
+    }
+
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    for (int failed : failures) {
+        ASSERT_EQUAL(0, failed, "concurrent lifecycle operations should remain race-free");
     }
 }

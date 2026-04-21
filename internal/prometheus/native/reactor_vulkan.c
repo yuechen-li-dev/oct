@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include <vulkan/vulkan.h>
 
@@ -51,6 +52,7 @@ typedef struct prom_vk_push {
 } prom_vk_push;
 
 static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
+static pthread_mutex_t g_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* SPIR-V for:
  * #version 450
@@ -169,35 +171,76 @@ static void set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage
   }
 }
 
+static int checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value) {
+  if (out_value == NULL) {
+    return 0;
+  }
+  if (left != 0u && right > UINT32_MAX / left) {
+    return 0;
+  }
+  *out_value = left * right;
+  return 1;
+}
+
+static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size) {
+  uint32_t elements;
+  uint64_t bytes;
+
+  if (out_vk_size == NULL || out_copy_size == NULL) {
+    return 0;
+  }
+  if (!checked_mul_u32(rows, cols, &elements)) {
+    return 0;
+  }
+  bytes = (uint64_t)elements * (uint64_t)sizeof(float);
+  if (bytes > (uint64_t)SIZE_MAX) {
+    return 0;
+  }
+
+  *out_copy_size = (size_t)bytes;
+  *out_vk_size = (VkDeviceSize)bytes;
+  return 1;
+}
+
 static int registry_contains(void* handle) {
   size_t i;
+  int found = 0;
+  pthread_mutex_lock(&g_registry_mutex);
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == handle) {
-      return 1;
+      found = 1;
+      break;
     }
   }
-  return 0;
+  pthread_mutex_unlock(&g_registry_mutex);
+  return found;
 }
 
 static int registry_add(void* handle) {
   size_t i;
+  int added = 0;
+  pthread_mutex_lock(&g_registry_mutex);
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == NULL) {
       g_active_handles[i] = handle;
-      return 1;
+      added = 1;
+      break;
     }
   }
-  return 0;
+  pthread_mutex_unlock(&g_registry_mutex);
+  return added;
 }
 
 static void registry_remove(void* handle) {
   size_t i;
+  pthread_mutex_lock(&g_registry_mutex);
   for (i = 0; i < PROMETHEUS_MAX_TRACKED_HANDLES; ++i) {
     if (g_active_handles[i] == handle) {
       g_active_handles[i] = NULL;
-      return;
+      break;
     }
   }
+  pthread_mutex_unlock(&g_registry_mutex);
 }
 
 static int text_contains_llvmpipe(const char* value) {
@@ -276,8 +319,11 @@ static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize 
   memory_type_index = find_memory_type(rt->physical_device,
                                        requirements.memoryTypeBits,
                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u) {
+    memory_type_index = UINT32_MAX;
+  }
   if (memory_type_index == UINT32_MAX) {
-    return VK_ERROR_MEMORY_MAP_FAILED;
+    return VK_ERROR_FEATURE_NOT_PRESENT;
   }
 
   memset(&alloc_info, 0, sizeof(alloc_info));
@@ -690,6 +736,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   VkSubmitInfo submit_info;
   VkBufferMemoryBarrier barrier;
   prom_vk_push push;
+  VkDeviceSize a_buffer_size;
+  VkDeviceSize b_buffer_size;
+  VkDeviceSize c_buffer_size;
+  size_t a_copy_size;
+  size_t b_copy_size;
+  size_t c_copy_size;
 
   memset(&a_buf, 0, sizeof(a_buf));
   memset(&b_buf, 0, sizeof(b_buf));
@@ -718,20 +770,26 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
   }
+  if (!checked_float_buffer_size(m, k, &a_buffer_size, &a_copy_size) ||
+      !checked_float_buffer_size(k, n, &b_buffer_size, &b_copy_size) ||
+      !checked_float_buffer_size(m, n, &c_buffer_size, &c_copy_size)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
+    return PROM_ERROR;
+  }
 
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
-  vk_result = create_host_visible_buffer(rt, (VkDeviceSize)(m * k * sizeof(float)), &a_buf);
+  vk_result = create_host_visible_buffer(rt, a_buffer_size, &a_buf);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
     return PROM_ERROR;
   }
-  vk_result = create_host_visible_buffer(rt, (VkDeviceSize)(k * n * sizeof(float)), &b_buf);
+  vk_result = create_host_visible_buffer(rt, b_buffer_size, &b_buf);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
     destroy_buffer(rt, &a_buf);
     return PROM_ERROR;
   }
-  vk_result = create_host_visible_buffer(rt, (VkDeviceSize)(m * n * sizeof(float)), &c_buf);
+  vk_result = create_host_visible_buffer(rt, c_buffer_size, &c_buf);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
     destroy_buffer(rt, &b_buf);
@@ -744,9 +802,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     goto cleanup;
   }
 
-  memcpy(a_buf.mapped, a, (size_t)(m * k * sizeof(float)));
-  memcpy(b_buf.mapped, b, (size_t)(k * n * sizeof(float)));
-  memset(c_buf.mapped, 0, (size_t)(m * n * sizeof(float)));
+  memcpy(a_buf.mapped, a, a_copy_size);
+  memcpy(b_buf.mapped, b, b_copy_size);
+  memset(c_buf.mapped, 0, c_copy_size);
 
   memset(buffer_infos, 0, sizeof(buffer_infos));
   buffer_infos[0].buffer = a_buf.buffer;
@@ -902,12 +960,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
-  memcpy(c, c_buf.mapped, (size_t)(m * n * sizeof(float)));
+  memcpy(c, c_buf.mapped, c_copy_size);
 
 cleanup:
-  set_status(out_stage, out_detail_code, out_stage != NULL ? *out_stage : PROM_STAGE_CLEANUP,
-             out_detail_code != NULL ? *out_detail_code : 0);
-
   destroy_buffer(rt, &c_buf);
   destroy_buffer(rt, &b_buf);
   destroy_buffer(rt, &a_buf);
