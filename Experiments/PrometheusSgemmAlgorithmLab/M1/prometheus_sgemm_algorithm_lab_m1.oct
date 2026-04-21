@@ -1,0 +1,164 @@
+package PrometheusSgemmAlgorithmLab
+
+fn MatMulBaseline(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+
+    var out = ZeroMatrix(aRows, bCols)
+    for i in 0 .. aRows {
+        for j in 0 .. bCols {
+            var sum = 0.0
+            for k in 0 .. aCols {
+                sum = sum + A[FlatIndex(i, k, aCols)] * B[FlatIndex(k, j, bCols)]
+            }
+            out[FlatIndex(i, j, bCols)] = sum
+        }
+    }
+
+    return out
+}
+
+fn MatMul_IKJ(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+
+    var out = ZeroMatrix(aRows, bCols)
+    for i in 0 .. aRows {
+        for k in 0 .. aCols {
+            let aValue = A[FlatIndex(i, k, aCols)]
+            for j in 0 .. bCols {
+                let outIndex = FlatIndex(i, j, bCols)
+                out[outIndex] = out[outIndex] + aValue * B[FlatIndex(k, j, bCols)]
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KIJ(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+
+    var out = ZeroMatrix(aRows, bCols)
+    for k in 0 .. aCols {
+        for i in 0 .. aRows {
+            let aValue = A[FlatIndex(i, k, aCols)]
+            for j in 0 .. bCols {
+                let outIndex = FlatIndex(i, j, bCols)
+                out[outIndex] = out[outIndex] + aValue * B[FlatIndex(k, j, bCols)]
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Blocked(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, blockSize: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _blockOk = ValidateBlockSize(blockSize)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for iBlockIndex in 0 .. aRows {
+        let iBlock = iBlockIndex * blockSize
+        if iBlock < aRows {
+            let iEnd = MinInt(iBlock + blockSize, aRows)
+            for jBlockIndex in 0 .. bCols {
+                let jBlock = jBlockIndex * blockSize
+                if jBlock < bCols {
+                    let jEnd = MinInt(jBlock + blockSize, bCols)
+                    for i in iBlock .. iEnd {
+                        for j in jBlock .. jEnd {
+                            var sum = 0.0
+                            for k in 0 .. aCols {
+                                sum = sum + A[FlatIndex(i, k, aCols)] * B[FlatIndex(k, j, bCols)]
+                            }
+                            out[FlatIndex(i, j, bCols)] = sum
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Blocked_IKJ(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int, blockSize: Int) -> Float[] ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, aRows, aCols, B, bRows, bCols)?
+    let _blockOk = ValidateBlockSize(blockSize)?
+
+    var out = ZeroMatrix(aRows, bCols)
+
+    for iBlockIndex in 0 .. aRows {
+        let iBlock = iBlockIndex * blockSize
+        if iBlock < aRows {
+            let iEnd = MinInt(iBlock + blockSize, aRows)
+            for jBlockIndex in 0 .. bCols {
+                let jBlock = jBlockIndex * blockSize
+                if jBlock < bCols {
+                    let jEnd = MinInt(jBlock + blockSize, bCols)
+                    for i in iBlock .. iEnd {
+                        for k in 0 .. aCols {
+                            let aValue = A[FlatIndex(i, k, aCols)]
+                            for j in jBlock .. jEnd {
+                                let outIndex = FlatIndex(i, j, bCols)
+                                out[outIndex] = out[outIndex] + aValue * B[FlatIndex(k, j, bCols)]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn ZeroMatrix(rows: Int, cols: Int) -> Float[] {
+    var out = [0.0]
+    for i in 1 .. rows * cols {
+        out = Append(out, 0.0)
+    }
+    return out
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
+    return row * cols + col
+}
+
+fn ValidateMatMulInputs(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int) -> Bool ! Error {
+    let _aOk = ValidateMatrixData(A, aRows, aCols)?
+    let _bOk = ValidateMatrixData(B, bRows, bCols)?
+
+    if aCols != bRows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    return true
+}
+
+fn ValidateMatrixData(A: Float[], rows: Int, cols: Int) -> Bool ! Error {
+    if rows <= 0 or cols <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+    if Len(A) == 0 {
+        return error("matrix data must be non-empty")
+    }
+    if Len(A) != rows * cols {
+        return error("matrix data length must equal rows * cols")
+    }
+    return true
+}
+
+fn ValidateBlockSize(blockSize: Int) -> Bool ! Error {
+    if blockSize <= 0 {
+        return error("blockSize must be > 0")
+    }
+    return true
+}
