@@ -1,0 +1,410 @@
+package PrometheusSgemmAlgorithmLab
+
+enum MatMulStrategy {
+    Baseline
+    IKJ
+    KIJ
+    Blocked
+    BlockedIKJ
+    KBlocked
+    KBlockedIKJ
+    StagedIKJ
+}
+
+fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for i in 0 .. A.rows {
+        for j in 0 .. B.cols {
+            var sum = 0.0
+            for k in 0 .. A.cols {
+                sum = sum + A[i, k] * B[k, j]
+            }
+            out[i, j] = sum
+        }
+    }
+
+    return out
+}
+
+fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for i in 0 .. A.rows {
+        for k in 0 .. A.cols {
+            let aValue = A[i, k]
+            for j in 0 .. B.cols {
+                out[i, j] = out[i, j] + aValue * B[k, j]
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for k in 0 .. A.cols {
+        for i in 0 .. A.rows {
+            let aValue = A[i, k]
+            for j in 0 .. B.cols {
+                out[i, j] = out[i, j] + aValue * B[k, j]
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+    let blockOk = ValidateBlockSize(blockSize)?
+    if not blockOk {
+        return error("block size validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for iBlockIndex in 0 .. A.rows {
+        let iBlock = iBlockIndex * blockSize
+        if iBlock < A.rows {
+            let iEnd = MinInt(iBlock + blockSize, A.rows)
+            for jBlockIndex in 0 .. B.cols {
+                let jBlock = jBlockIndex * blockSize
+                if jBlock < B.cols {
+                    let jEnd = MinInt(jBlock + blockSize, B.cols)
+                    for i in iBlock .. iEnd {
+                        for j in jBlock .. jEnd {
+                            var sum = 0.0
+                            for k in 0 .. A.cols {
+                                sum = sum + A[i, k] * B[k, j]
+                            }
+                            out[i, j] = sum
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+    let blockOk = ValidateBlockSize(blockSize)?
+    if not blockOk {
+        return error("block size validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for iBlockIndex in 0 .. A.rows {
+        let iBlock = iBlockIndex * blockSize
+        if iBlock < A.rows {
+            let iEnd = MinInt(iBlock + blockSize, A.rows)
+            for jBlockIndex in 0 .. B.cols {
+                let jBlock = jBlockIndex * blockSize
+                if jBlock < B.cols {
+                    let jEnd = MinInt(jBlock + blockSize, B.cols)
+                    for i in iBlock .. iEnd {
+                        for k in 0 .. A.cols {
+                            let aValue = A[i, k]
+                            for j in jBlock .. jEnd {
+                                out[i, j] = out[i, j] + aValue * B[k, j]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KBlocked(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+    let kBlockOk = ValidateKBlockSize(kBlock)?
+    if not kBlockOk {
+        return error("kBlock validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for kBlockIndex in 0 .. A.cols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < A.cols {
+            let kEnd = MinInt(kStart + kBlock, A.cols)
+            for i in 0 .. A.rows {
+                for j in 0 .. B.cols {
+                    var partial = 0.0
+                    for k in kStart .. kEnd {
+                        partial = partial + A[i, k] * B[k, j]
+                    }
+                    out[i, j] = out[i, j] + partial
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_KBlocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+    let kBlockOk = ValidateKBlockSize(kBlock)?
+    if not kBlockOk {
+        return error("kBlock validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for kBlockIndex in 0 .. A.cols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < A.cols {
+            let kEnd = MinInt(kStart + kBlock, A.cols)
+            for i in 0 .. A.rows {
+                for k in kStart .. kEnd {
+                    let aValue = A[i, k]
+                    for j in 0 .. B.cols {
+                        out[i, j] = out[i, j] + aValue * B[k, j]
+                    }
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+    let kBlockOk = ValidateKBlockSize(kBlock)?
+    if not kBlockOk {
+        return error("kBlock validation failed")
+    }
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for kBlockIndex in 0 .. A.cols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < A.cols {
+            let kEnd = MinInt(kStart + kBlock, A.cols)
+            let kChunkLen = kEnd - kStart
+
+            let stagedA = StageAChunk(A, kStart, kChunkLen)
+            let stagedB = StageBChunk(B, kStart, kChunkLen)
+
+            var partialOut = Matrix.zeros<Float>(A.rows, B.cols)
+            for i in 0 .. A.rows {
+                for kLocal in 0 .. kChunkLen {
+                    let aValue = stagedA[i, kLocal]
+                    for j in 0 .. B.cols {
+                        partialOut[i, j] = partialOut[i, j] + aValue * stagedB[kLocal, j]
+                    }
+                }
+            }
+
+            for i in 0 .. A.rows {
+                for j in 0 .. B.cols {
+                    out[i, j] = out[i, j] + partialOut[i, j]
+                }
+            }
+        }
+    }
+
+    return out
+}
+
+fn StageAChunk(A: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
+    var staged = Matrix.zeros<Float>(A.rows, kChunkLen)
+
+    for i in 0 .. A.rows {
+        for kLocal in 0 .. kChunkLen {
+            staged[i, kLocal] = A[i, kStart + kLocal]
+        }
+    }
+
+    return staged
+}
+
+fn StageBChunk(B: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
+    var staged = Matrix.zeros<Float>(kChunkLen, B.cols)
+
+    for kLocal in 0 .. kChunkLen {
+        for j in 0 .. B.cols {
+            staged[kLocal, j] = B[kStart + kLocal, j]
+        }
+    }
+
+    return staged
+}
+
+fn MatMulWithStrategy(
+    A: Matrix<Float>,
+    B: Matrix<Float>,
+    strategy: MatMulStrategy,
+    blockSize: Int,
+    kBlock: Int
+) -> Matrix<Float> ! Error {
+    return switch strategy {
+        case MatMulStrategy.Baseline => MatMulBaseline(A, B)?
+        case MatMulStrategy.IKJ => MatMul_IKJ(A, B)?
+        case MatMulStrategy.KIJ => MatMul_KIJ(A, B)?
+        case MatMulStrategy.Blocked => MatMul_Blocked(A, B, blockSize)?
+        case MatMulStrategy.BlockedIKJ => MatMul_Blocked_IKJ(A, B, blockSize)?
+        case MatMulStrategy.KBlocked => MatMul_KBlocked(A, B, kBlock)?
+        case MatMulStrategy.KBlockedIKJ => MatMul_KBlocked_IKJ(A, B, kBlock)?
+        case MatMulStrategy.StagedIKJ => MatMul_Staged_IKJ(A, B, kBlock)?
+    }
+}
+
+fn ChooseStrategy(A: Matrix<Float>, B: Matrix<Float>) -> MatMulStrategy ! Error {
+    let inputsOk = ValidateMatMulInputs(A, B)?
+    if not inputsOk {
+        return error("matmul validation failed")
+    }
+
+    let m = A.rows
+    let n = B.cols
+    let k = A.cols
+    let outArea = m * n
+
+    if m <= 4 and n <= 4 and k <= 8 {
+        return MatMulStrategy.IKJ
+    }
+
+    let maxOuter = MaxInt(m, n)
+    if k >= maxOuter * 4 {
+        return MatMulStrategy.KBlockedIKJ
+    }
+
+    if outArea <= 64 {
+        return MatMulStrategy.IKJ
+    }
+
+    if m >= 32 or n >= 32 {
+        if k >= 16 {
+            return MatMulStrategy.KBlockedIKJ
+        }
+        return MatMulStrategy.BlockedIKJ
+    }
+
+    if k >= 24 {
+        return MatMulStrategy.KBlocked
+    }
+
+    if outArea >= 128 and k >= 8 {
+        return MatMulStrategy.KBlocked
+    }
+
+    return MatMulStrategy.Blocked
+}
+
+
+fn MeasureStrategy(
+    a: Matrix<Float>,
+    b: Matrix<Float>,
+    strategy: MatMulStrategy,
+    blockSize: Int,
+    kBlock: Int
+) -> Int ! Error {
+    // Timing is captured by `oct bench` at the benchmark function boundary.
+    // This wrapper keeps strategy invocation centralized and benchmark bodies minimal.
+    let out = MatMulWithStrategy(a, b, strategy, blockSize, kBlock)?
+    return out.rows * out.cols * a.cols
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn MaxInt(a: Int, b: Int) -> Int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn ValidateMatMulInputs(A: Matrix<Float>, B: Matrix<Float>) -> Bool ! Error {
+    let aOk = ValidateMatrixShape(A)?
+    if not aOk {
+        return error("A matrix shape validation failed")
+    }
+    let bOk = ValidateMatrixShape(B)?
+    if not bOk {
+        return error("B matrix shape validation failed")
+    }
+
+    if A.cols != B.rows {
+        return error("matmul requires A columns to equal B rows")
+    }
+
+    return true
+}
+
+fn ValidateMatrixShape(m: Matrix<Float>) -> Bool ! Error {
+    if m.rows <= 0 or m.cols <= 0 {
+        return error("matrix dimensions must be > 0")
+    }
+    return true
+}
+
+fn ValidateBlockSize(blockSize: Int) -> Bool ! Error {
+    if blockSize <= 0 {
+        return error("blockSize must be > 0")
+    }
+    return true
+}
+
+fn ValidateKBlockSize(kBlock: Int) -> Bool ! Error {
+    if kBlock <= 0 {
+        return error("kBlock must be > 0")
+    }
+    return true
+}
+
+fn ProbeA(r: Int, c: Int) -> Float {
+    return Float(r * 101 + c * 3 + 1)
+}
+
+fn ProbeB(r: Int, c: Int) -> Float {
+    let v = Float(r * 97 + c * 5 + 2)
+    let parity = (r + c) - ((r + c) / 2) * 2
+    if parity == 0 {
+        return -v
+    }
+    return v
+}

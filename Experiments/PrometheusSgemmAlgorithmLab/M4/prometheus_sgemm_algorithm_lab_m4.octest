@@ -1,0 +1,633 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn StrategyDispatchMatchesBaselineOnRepresentativeShapes() -> Void {
+    let a22 = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let b22 = matrix[[5.0, 6.0] [7.0, 8.0]]
+    AssertAllStrategiesMatchBaseline(a22, b22, 2, 2)
+
+    let a35 = matrix[
+        [1.0, -2.0, 3.0, 0.5, 4.0]
+        [-1.5, 2.5, 0.0, 1.0, -3.0]
+        [2.0, 1.5, -0.5, -1.0, 2.5]
+    ]
+    let b52 = matrix[
+        [1.0, 0.5]
+        [-2.0, 3.0]
+        [0.0, -1.0]
+        [4.0, 2.0]
+        [-1.5, 1.0]
+    ]
+    AssertAllStrategiesMatchBaseline(a35, b52, 4, 3)
+
+    let a168 = Matrix.tabulate(16, 8, ProbeA)
+    let b812 = Matrix.tabulate(8, 12, ProbeB)
+    AssertAllStrategiesMatchBaseline(a168, b812, 4, 4)
+}
+
+[Fact]
+fn ChooseStrategyReturnsExpectedVariantsForShapeSignals() -> Void {
+    let verySmallA = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let verySmallB = matrix[[5.0, 6.0] [7.0, 8.0]]
+    Assert.Equal(MatMulStrategy.IKJ, ChooseStrategy(verySmallA, verySmallB)!, "very small shape")
+
+    let tallK_A = Matrix.tabulate(8, 40, ProbeA)
+    let tallK_B = Matrix.tabulate(40, 8, ProbeB)
+    Assert.Equal(MatMulStrategy.KBlockedIKJ, ChooseStrategy(tallK_A, tallK_B)!, "k dominant shape")
+
+    let largeOutputA = Matrix.tabulate(32, 8, ProbeA)
+    let largeOutputB = Matrix.tabulate(8, 36, ProbeB)
+    Assert.Equal(MatMulStrategy.BlockedIKJ, ChooseStrategy(largeOutputA, largeOutputB)!, "large output shape")
+
+    let balancedMidA = Matrix.tabulate(12, 12, ProbeA)
+    let balancedMidB = Matrix.tabulate(12, 12, ProbeB)
+    Assert.Equal(MatMulStrategy.KBlocked, ChooseStrategy(balancedMidA, balancedMidB)!, "mid shape with larger k")
+}
+
+[Fact]
+fn ChooseStrategyIsDeterministic() -> Void {
+    let a = Matrix.tabulate(14, 20, ProbeA)
+    let b = Matrix.tabulate(20, 10, ProbeB)
+
+    let first = ChooseStrategy(a, b)!
+    let second = ChooseStrategy(a, b)!
+    let third = ChooseStrategy(a, b)!
+
+    Assert.Equal(first, second, "first and second selection")
+    Assert.Equal(second, third, "second and third selection")
+}
+
+[Fact]
+fn DirectAndStagedFamiliesRemainConsistent() -> Void {
+    let a = matrix[
+        [1.0, 2.0, 3.0, 4.0, 5.0]
+        [6.0, 7.0, 8.0, 9.0, 10.0]
+        [11.0, 12.0, 13.0, 14.0, 15.0]
+        [16.0, 17.0, 18.0, 19.0, 20.0]
+    ]
+
+    let b = matrix[
+        [0.5, 1.0, -1.0]
+        [1.5, -0.5, 2.0]
+        [-2.0, 0.25, 0.75]
+        [1.0, 1.0, 1.0]
+        [-1.0, 2.0, -0.25]
+    ]
+
+    let baseline = MatMulBaseline(a, b)!
+    let directKBlockedIkj = MatMul_KBlocked_IKJ(a, b, 2)!
+    let stagedIkj = MatMul_Staged_IKJ(a, b, 2)!
+
+    AssertMatricesNear("directKBlockedIkj", baseline, directKBlockedIkj)
+    AssertMatricesNear("stagedIkj", baseline, stagedIkj)
+    AssertMatricesNear("directVsStaged", directKBlockedIkj, stagedIkj)
+}
+
+[Fact]
+fn StrategyDispatchRejectsInvalidInputsAcrossFamilies() -> Void {
+    let mismatchA = matrix[[1.0, 2.0, 3.0] [4.0, 5.0, 6.0]]
+    let mismatchB = matrix[[1.0, 2.0] [3.0, 4.0]]
+
+    Assert.Error(MatMulWithStrategy(mismatchA, mismatchB, MatMulStrategy.Baseline, 2, 2), "baseline strategy rejects mismatch")
+    Assert.Error(MatMulWithStrategy(mismatchA, mismatchB, MatMulStrategy.StagedIKJ, 2, 2), "staged strategy rejects mismatch")
+
+    let validA = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let validB = matrix[[5.0, 6.0] [7.0, 8.0]]
+
+    Assert.Error(MatMulWithStrategy(validA, validB, MatMulStrategy.Blocked, 0, 2), "blocked strategy rejects block size 0")
+    Assert.Error(MatMulWithStrategy(validA, validB, MatMulStrategy.KBlocked, 2, 0), "kblocked strategy rejects kBlock 0")
+}
+
+fn AssertAllStrategiesMatchBaseline(a: Matrix<Float>, b: Matrix<Float>, blockSize: Int, kBlock: Int) -> Void {
+    let baseline = MatMulBaseline(a, b)!
+
+    AssertMatricesNear("strategy baseline", baseline, MatMulWithStrategy(a, b, MatMulStrategy.Baseline, blockSize, kBlock)!)
+    AssertMatricesNear("strategy ikj", baseline, MatMulWithStrategy(a, b, MatMulStrategy.IKJ, blockSize, kBlock)!)
+    AssertMatricesNear("strategy kij", baseline, MatMulWithStrategy(a, b, MatMulStrategy.KIJ, blockSize, kBlock)!)
+    AssertMatricesNear("strategy blocked", baseline, MatMulWithStrategy(a, b, MatMulStrategy.Blocked, blockSize, kBlock)!)
+    AssertMatricesNear("strategy blockedIkj", baseline, MatMulWithStrategy(a, b, MatMulStrategy.BlockedIKJ, blockSize, kBlock)!)
+    AssertMatricesNear("strategy kblocked", baseline, MatMulWithStrategy(a, b, MatMulStrategy.KBlocked, blockSize, kBlock)!)
+    AssertMatricesNear("strategy kblockedIkj", baseline, MatMulWithStrategy(a, b, MatMulStrategy.KBlockedIKJ, blockSize, kBlock)!)
+    AssertMatricesNear("strategy stagedIkj", baseline, MatMulWithStrategy(a, b, MatMulStrategy.StagedIKJ, blockSize, kBlock)!)
+}
+
+fn MediumA(r: Int, c: Int) -> Float {
+    return Float(r * 101 + c * 3 + 1)
+}
+
+fn MediumB(r: Int, c: Int) -> Float {
+    let v = Float(r * 97 + c * 5 + 2)
+    let parity = (r + c) - ((r + c) / 2) * 2
+    if parity == 0 {
+        return -v
+    }
+    return v
+}
+
+fn AssertMatricesNear(label: String, expected: Matrix<Float>, actual: Matrix<Float>) -> Void {
+    Assert.Equal(expected.rows, actual.rows, label + " rows")
+    Assert.Equal(expected.cols, actual.cols, label + " cols")
+    for r in 0 .. expected.rows {
+        for c in 0 .. expected.cols {
+            Assert.Near(expected[r, c], actual[r, c], 0.000001, label + " matrix element")
+        }
+    }
+}
+
+record M4CaseSelection {
+    Shape: String
+    M: Int
+    N: Int
+    K: Int
+    ChosenStrategy: String
+}
+
+[Artifact]
+fn EmitM4ChooseStrategySelections() -> Void {
+    let selections = [
+        SelectionForShape("S2x2", 2, 2, 2),
+        SelectionForShape("S4x4", 4, 4, 4),
+        SelectionForShape("S16x16", 16, 16, 16),
+        SelectionForShape("S32x32", 32, 32, 32),
+        SelectionForShape("R16x64x8", 16, 8, 64),
+        SelectionForShape("R8x128x16", 8, 16, 128),
+        SelectionForShape("K8x8x256", 8, 8, 256),
+        SelectionForShape("K16x16x512", 16, 16, 512)
+    ]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M4/m4_choose_strategy.octagon", selections)
+}
+
+fn SelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M4CaseSelection {
+    let a = Matrix.tabulate(m, k, ProbeA)
+    let b = Matrix.tabulate(k, n, ProbeB)
+    let chosen = ChooseStrategy(a, b)!
+    return M4CaseSelection {
+        Shape: shape
+        M: m
+        N: n
+        K: k
+        ChosenStrategy: StrategyLabel(chosen)
+    }
+}
+
+fn StrategyLabel(strategy: MatMulStrategy) -> String {
+    return switch strategy {
+        case MatMulStrategy.Baseline => "Baseline"
+        case MatMulStrategy.IKJ => "IKJ"
+        case MatMulStrategy.KIJ => "KIJ"
+        case MatMulStrategy.Blocked => "Blocked"
+        case MatMulStrategy.BlockedIKJ => "BlockedIKJ"
+        case MatMulStrategy.KBlocked => "KBlocked"
+        case MatMulStrategy.KBlockedIKJ => "KBlockedIKJ"
+        case MatMulStrategy.StagedIKJ => "StagedIKJ"
+    }
+}
+
+[Benchmark]
+fn M4_S2x2_Baseline() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_IKJ() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_KIJ() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_Blocked() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_KBlocked() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S2x2_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(2, 2, ProbeA)
+    let b = Matrix.tabulate(2, 2, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_Baseline() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_IKJ() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_KIJ() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_Blocked() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_KBlocked() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S4x4_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(4, 4, ProbeA)
+    let b = Matrix.tabulate(4, 4, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_Baseline() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_IKJ() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_KIJ() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_Blocked() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_KBlocked() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S16x16_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_Baseline() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_IKJ() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_KIJ() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_Blocked() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_KBlocked() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_S32x32_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_Baseline() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_IKJ() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_KIJ() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_Blocked() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_KBlocked() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R16x64x8_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_Baseline() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_IKJ() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_KIJ() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_Blocked() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_KBlocked() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_R8x128x16_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_Baseline() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_IKJ() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_KIJ() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_Blocked() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_KBlocked() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K8x8x256_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_Baseline() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_IKJ() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.IKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_KIJ() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KIJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_Blocked() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_BlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.BlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_KBlocked() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_KBlockedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlockedIKJ, 8, 16)!)
+}
+
+[Benchmark]
+fn M4_K16x16x512_StagedIKJ() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
+}
+

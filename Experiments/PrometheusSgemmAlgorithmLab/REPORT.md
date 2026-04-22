@@ -223,3 +223,73 @@ M3 `.octest` coverage validates:
 M2 was originally flat-array based, while M0/M1 had already moved to matrix-native inputs/shape metadata.
 
 M3 aligns M2 with matrix-native indexing and shapes to match current language-supported matrix read/write conventions and keep the lab surface consistent.
+
+## M4 scope
+
+M4 introduces controlled execution measurement to validate M3 structural assumptions without turning the lab into a full benchmark suite.
+
+### Measurement setup
+
+- **Cloud directional probe (completed):**
+  - Measurement surface: `Experiments/PrometheusSgemmAlgorithmLab/M4`
+  - Strategy wrapper: `MeasureStrategy(...)` routes through `MatMulWithStrategy(...)` and keeps benchmark bodies structurally minimal.
+  - Bench command used: `go run ./cmd/oct bench Experiments/PrometheusSgemmAlgorithmLab/M4 --octagon-out out/prometheus/sgemm_lab_m4/cloud_m4_bench.octagon`
+  - Strategy-selection snapshot command: `go run ./cmd/oct artifact Experiments/PrometheusSgemmAlgorithmLab/M4` (emits `m4_choose_strategy.octagon`)
+- **Windows native checkpoint (planned, not executed in this environment):**
+  - Same M4 corpus and strategy sweep should be re-run under real Windows + native NVIDIA Vulkan Prometheus environment.
+  - Use this as confirmation only for crossover and dispatch/setup realism; do not transplant cloud timings directly.
+
+### Shape sets tested
+
+M4 uses the fixed DOE shape set:
+
+- Small: `2x2`, `4x4`
+- Medium: `16x16`, `32x32`
+- Rectangular: `16x64 * 64x8`, `8x128 * 128x16`
+- K-dominant: `8x8 * 256`, `16x16 * 512`
+
+Each shape sweeps all retained strategies:
+
+- Baseline, IKJ, KIJ, Blocked, BlockedIKJ, KBlocked, KBlockedIKJ, StagedIKJ
+
+Structured cloud output is recorded in:
+
+- `out/prometheus/sgemm_lab_m4/cloud_m4_bench.octagon`
+- `Experiments/PrometheusSgemmAlgorithmLab/M4/CLOUD_MEASUREMENTS.md`
+- `Experiments/PrometheusSgemmAlgorithmLab/M4/m4_choose_strategy.octagon`
+
+### Observed trends (cloud directional only)
+
+- Staged strategy (`StagedIKJ`) is generally non-winning across medium, rectangular, and K-dominant probes in this run.
+- `KBlocked`/`KIJ` frequently appear near the front for K-heavy and rectangular cases, supporting the idea that K-structure can matter.
+- Small-shape timings are tightly clustered and noisy; no robust claim should be made from absolute differences there.
+
+### Crossover observations (directional)
+
+- In this cloud run, direct variants remain favored for most shapes.
+- K-dominant regions show clearer preference shifts toward K-aware direct variants (`KBlocked`, `KBlockedIKJ`, sometimes `KIJ`) versus baseline/blocked forms.
+- No convincing staged crossover was observed in cloud data.
+
+### Heuristic mismatches identified
+
+From `ChooseStrategy` vs observed cloud winners:
+
+- `S16x16`: chooser picked `KBlocked`, fastest observed was `Baseline`.
+- `S32x32`: chooser picked `KBlockedIKJ`, fastest observed was `KIJ`.
+- `R16x64x8`: chooser picked `KBlockedIKJ`, fastest observed was `KIJ`.
+- `R8x128x16`: chooser picked `KBlockedIKJ`, fastest observed was `Baseline`.
+- `K8x8x256`: chooser picked `KBlockedIKJ`, fastest observed was `KBlocked`.
+- `K16x16x512`: chooser picked `KBlockedIKJ`, fastest observed was `Baseline`.
+
+These are exactly the kind of mismatches M4 was intended to expose before introducing scoring.
+
+### Candidate signals for future M5 scoring
+
+- Relative K pressure (`k / max(m, n)`)
+- Output area (`m * n`) plus rectangularity ratio (`max(m, n) / min(m, n)`)
+- Staging penalty signal (temporary-buffer overhead signature)
+- Strategy family penalties/bonuses inferred from repeated directional wins, not single-point absolute timings
+
+### Inconsistency/documentation gap surfaced
+
+The M4 request asks for a direct in-language `MeasureStrategy(...) -> duration` API. Current `Language/reference` builtins do not document a timing builtin for obtaining wall-clock duration inside Oct code. M4 therefore uses `oct bench` boundary timing (`DurationNs` in `.octagon`) as the measurement source of truth and keeps `MeasureStrategy(...)` as an execution wrapper rather than an in-language timer.
