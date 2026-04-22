@@ -411,3 +411,60 @@ Common metadata across all eighteen native shape runs:
 - Not safe to use yet:
   - per-strategy native scoring among `Baseline`, `IKJ`, `KIJ`, `Blocked`, `BlockedIKJ`, `KBlocked`, `KBlockedIKJ`, `StagedIKJ`
   - any native staged penalty or K-block bonus derived from the current M4b path-validation surface
+
+## M4c scope
+
+M4b exposed a concrete architecture gap: the retained M3 strategy family in `M4` was measuring compiled CPU loop kernels, while the real Prometheus path was only proven for builtin `@` inside `PROMETHEUS { ... }` in `M4b`.
+
+### Bridge added
+
+M4c introduces a narrow strategy-to-Prometheus execution bridge for the lab:
+
+- new builtin surface: `PrometheusMatMul(left: Matrix<Float>, right: Matrix<Float>) -> Matrix<Float>`
+- compiler lowering of that builtin directly to `PrometheusMatMulMM` in MIR
+- strategy refactor in `M4` to keep strategy control structure in Oct while delegating SGEMM compute steps through that bridge
+
+This keeps Oct as the strategy/control layer while moving actual matrix multiply compute onto the Prometheus-backed runtime path.
+
+### Strategy-family consequences after bridging
+
+After delegation, several previous loop-order distinctions no longer describe distinct Prometheus execution shapes:
+
+- direct-family variants are now execution aliases over the same bridge call:
+  - `Baseline`, `IKJ`, `KIJ`
+- blocked-family loop-order aliases are likewise collapsed:
+  - `Blocked` and `BlockedIKJ`
+- K-block staging aliases are collapsed:
+  - `KBlocked`, `KBlockedIKJ`, `StagedIKJ`
+
+Meaningful retained structure is now at delegation granularity:
+
+1. full-matrix single-call delegation
+2. output-block decomposition (multiple delegated calls over row/col tiles)
+3. K-block decomposition with accumulation (multiple delegated calls over K chunks)
+
+This is an intentional simplification: M4c prunes fake distinctions that only existed when scalar multiply-accumulate was implemented directly in Oct loops.
+
+### What measurement is now possible
+
+`Experiments/PrometheusSgemmAlgorithmLab/M4` now invokes Prometheus-backed compute from the strategy path itself, so future Windows-native runs can compare real backend-targeted strategy families instead of CPU-loop proxies.
+
+### Correctness and contract status
+
+- matrix shape mismatch behavior is preserved
+- invalid `blockSize` / `kBlock` behavior is preserved
+- strategy parity tests continue to validate against baseline outputs
+- lowering/compiled tests now explicitly assert that the bridge path emits `PrometheusMatMulMM` and reports backend/fallback status strings
+
+### Out of scope that remains out of scope
+
+M4c intentionally does **not**:
+
+- lower arbitrary Oct loops to Prometheus
+- port strategy code to C/Reactor
+- introduce broad GPU-lowering infrastructure
+- introduce scoring (`when utility`) or controller policy work
+
+### Inconsistency/documentation gap surfaced
+
+`PrometheusMatMul(...)` is introduced as a minimal bridge surface for this experiment milestone, but `Language/reference` does not currently document this builtin. This is a language-reference gap that should be resolved explicitly in a follow-up documentation pass.

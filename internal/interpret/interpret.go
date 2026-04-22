@@ -2752,6 +2752,37 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: elements}}}, nil
 	}
+	if callee == "PrometheusMatMul" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: PrometheusMatMul does not accept type arguments")
+		}
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: PrometheusMatMul expects 2 arguments")
+		}
+		leftResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if leftResult.hasError {
+			return evalResult{hasError: true, errorVal: leftResult.errorVal}, nil
+		}
+		rightResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if rightResult.hasError {
+			return evalResult{hasError: true, errorVal: rightResult.errorVal}, nil
+		}
+		if leftResult.value.Kind != ValueMatrix || rightResult.value.Kind != ValueMatrix {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: PrometheusMatMul expects matrix arguments")
+		}
+		out, err := evalMatrixMultiply(leftResult.value, rightResult.value)
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: out}, nil
+	}
+
 	if callee == "Matrix.identity" {
 		if len(typeArguments) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.identity expects 1 type argument")

@@ -2565,6 +2565,37 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeIndex}}, nil
 	}
+	if callee == "PrometheusMatMul" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'PrometheusMatMul' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'PrometheusMatMul' expects 2 arguments, got %d", len(arguments))
+		}
+		leftType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if leftType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		rightType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rightType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		floatMatrix := Type{Base: BaseTypeFloat, IsMatrix: true}
+		if leftType.ValueType != floatMatrix {
+			return ExprType{}, fmt.Errorf("function 'PrometheusMatMul' argument 1 expects Matrix<Float>, got %s", leftType.ValueType)
+		}
+		if rightType.ValueType != floatMatrix {
+			return ExprType{}, fmt.Errorf("function 'PrometheusMatMul' argument 2 expects Matrix<Float>, got %s", rightType.ValueType)
+		}
+		return ExprType{ValueType: floatMatrix}, nil
+	}
+
 	if callee == "Matrix.tabulate" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' does not accept type arguments")
