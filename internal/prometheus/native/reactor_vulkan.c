@@ -69,8 +69,27 @@ typedef struct prom_vk_push {
   uint32_t m;
   uint32_t n;
   uint32_t k;
-  uint32_t reserved0;
 } prom_vk_push;
+
+enum {
+  PROM_VK_PUSH_FIELD_OFFSET_M = 0,
+  PROM_VK_PUSH_FIELD_OFFSET_N = 4,
+  PROM_VK_PUSH_FIELD_OFFSET_K = 8,
+  PROM_VK_SHADER_PUSH_BYTES = 12,
+};
+
+/*
+ * Push-constant layout contract (M11 hygiene port):
+ * - host and shader use the same field list and order: m, n, k
+ * - no mixed-width fields
+ * - no reliance on implicit host padding
+ * - append-only evolution only: add new fields at the end and update both
+ *   this host contract and the shader module together
+ */
+_Static_assert(offsetof(prom_vk_push, m) == PROM_VK_PUSH_FIELD_OFFSET_M, "push.m offset drift");
+_Static_assert(offsetof(prom_vk_push, n) == PROM_VK_PUSH_FIELD_OFFSET_N, "push.n offset drift");
+_Static_assert(offsetof(prom_vk_push, k) == PROM_VK_PUSH_FIELD_OFFSET_K, "push.k offset drift");
+_Static_assert(sizeof(prom_vk_push) == PROM_VK_SHADER_PUSH_BYTES, "push struct size drift");
 
 static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
 
@@ -103,6 +122,7 @@ static void registry_unlock(void) {
  * layout(set=0,binding=1) readonly buffer BBuffer{float b[];};
  * layout(set=0,binding=2) writeonly buffer CBuffer{float c[];};
  * layout(push_constant) uniform Push{uint m; uint n; uint k;} pc;
+ * SPIR-V confirms offsets m=0, n=4, k=8.
  * ... naive row-major SGEMM C=A*B
  */
 static const uint32_t k_prom_sgemm_spirv[] = {
@@ -675,7 +695,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   memset(&push_range, 0, sizeof(push_range));
   push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
   push_range.offset = 0u;
-  push_range.size = sizeof(prom_vk_push);
+  push_range.size = PROM_VK_SHADER_PUSH_BYTES;
 
   memset(&pipeline_layout_info, 0, sizeof(pipeline_layout_info));
   pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1002,12 +1022,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     push.m = m;
     push.n = n;
     push.k = k;
-    push.reserved0 = 0u;
     vkCmdPushConstants(rt->command_buffer,
                        rt->pipeline_layout,
                        VK_SHADER_STAGE_COMPUTE_BIT,
                        0u,
-                       sizeof(push),
+                       PROM_VK_SHADER_PUSH_BYTES,
                        &push);
 
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
