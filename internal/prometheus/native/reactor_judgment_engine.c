@@ -161,3 +161,34 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
   out_decision->final_detail =
       candidate_detail_code(out_decision->selected_path, out_decision->compute_mode, out_decision->used_fallback_to_direct);
 }
+
+void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
+                                                  prom_judgment_async_decision* out_decision) {
+  if (out_decision == NULL) {
+    return;
+  }
+
+  out_decision->success = 0u;
+  out_decision->execute_async = 0u;
+  out_decision->reject_detail = PROM_DETAIL_ASYNC_SUBMIT_REJECTED;
+
+  if (facts == NULL) {
+    return;
+  }
+  if (facts->request_async == 0u) {
+    out_decision->success = 1u;
+    return;
+  }
+  if (facts->in_flight != 0u) {
+    out_decision->reject_detail = PROM_DETAIL_REUSE_IN_FLIGHT;
+    return;
+  }
+  if (facts->software_vulkan != 0u) {
+    out_decision->reject_detail = PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED;
+    return;
+  }
+
+  out_decision->success = 1u;
+  out_decision->execute_async = 1u;
+  out_decision->reject_detail = 0;
+}

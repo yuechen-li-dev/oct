@@ -49,6 +49,14 @@ enum {
 };
 
 enum {
+  PROM_ASYNC_STATE_IDLE = 0,
+  PROM_ASYNC_STATE_SUBMITTED = 1,
+  PROM_ASYNC_STATE_READY = 2,
+  PROM_ASYNC_STATE_FAILED = 3,
+  PROM_ASYNC_STATE_CONSUMED = 4,
+};
+
+enum {
   PROM_TESTCFG_FAIL_DEVICE_CREATE = 1u << 0,
   PROM_TESTCFG_FAIL_PIPELINE_CREATE = 1u << 1,
   PROM_TESTCFG_FAIL_BUFFER_ALLOC = 1u << 2,
@@ -80,6 +88,14 @@ enum {
   PROM_DETAIL_PATH_DIRECT_TILED = 6105,
   PROM_DETAIL_PATH_STAGED_UPLOAD_TILED = 6106,
   PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED = 6107,
+  PROM_DETAIL_ASYNC_NOT_READY = -6108,
+  PROM_DETAIL_ASYNC_NO_TASK = -6109,
+  PROM_DETAIL_ASYNC_ALREADY_CONSUMED = -6110,
+  PROM_DETAIL_ASYNC_INVALID_TASK = -6111,
+  PROM_DETAIL_ASYNC_SUBMIT_REJECTED = -6112,
+  PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED = -6113,
+  PROM_DETAIL_ASYNC_FAILED = -6114,
+  PROM_DETAIL_ASYNC_UNCONSUMED = -6115,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -95,6 +111,16 @@ typedef struct PrometheusReactorConfig {
   uint32_t test_flags;
 } PrometheusReactorConfig;
 
+typedef struct PrometheusAsyncStatus {
+  uint32_t lifecycle_state;
+  uint32_t stage;
+  int detail_code;
+  uint32_t ready;
+  uint32_t failed;
+  uint32_t consumed;
+  uint32_t outstanding_tasks;
+} PrometheusAsyncStatus;
+
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
 PROM_REACTOR_API int prometheus_reactor_runtime_create(void* config, void** out_handle);
 PROM_REACTOR_API int prometheus_reactor_runtime_destroy(void* handle);
@@ -108,6 +134,25 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       uint32_t k,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
+                                                                   const float* a,
+                                                                   const float* b,
+                                                                   uint32_t m,
+                                                                   uint32_t n,
+                                                                   uint32_t k,
+                                                                   int* out_task_id,
+                                                                   uint32_t* out_stage,
+                                                                   int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_query_async(void* handle,
+                                                                  int task_id,
+                                                                  PrometheusAsyncStatus* out_status);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_consume_async(void* handle,
+                                                                    int task_id,
+                                                                    float* c,
+                                                                    uint32_t c_len,
+                                                                    uint32_t* out_stage,
+                                                                    int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);

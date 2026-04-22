@@ -871,3 +871,131 @@ FACT(PrometheusReactor_RegistrySupportsConcurrentLifecycleOperations)
         ASSERT_EQUAL(0, failed, "concurrent lifecycle operations should remain race-free");
     }
 }
+
+FACT(PrometheusReactor_AsyncDeferredCompletionIsExplicitlyObservable)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN_SOFTWARE)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("async path requires non-software Vulkan runtime");
+    }
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+    std::vector<float> out(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int task_id = -1;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &task_id, &stage, &detail), "async submit should succeed");
+    ASSERT_TRUE(task_id > 0, "async submit should return a non-zero task id");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_SUBMIT), stage, "async submit should surface submit stage");
+
+    PrometheusAsyncStatus status{};
+    for (int attempts = 0; attempts < 2000; ++attempts) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, task_id, &status), "query should succeed for active async task");
+        if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
+            break;
+        }
+    }
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY), status.lifecycle_state, "async status should eventually reach ready");
+    ASSERT_EQUAL(1u, status.ready, "ready state should be explicit");
+    ASSERT_EQUAL(0u, status.failed, "ready path should not mark failure");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "consume should succeed after readiness");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "consume should report transfer-out for readable result paths");
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        ASSERT_NEAR(expected[i], out[i], 1e-4f, "async consumed output should match CPU oracle");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_AsyncUseBeforeCompleteAndDoubleConsumeAreRejected)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN_SOFTWARE)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("async path requires non-software Vulkan runtime");
+    }
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> out(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int task_id = -1;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &task_id, &stage, &detail), "async submit should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "consume before ready should fail explicitly");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_NOT_READY, detail, "consume before ready should report distinct not-ready detail");
+
+    PrometheusAsyncStatus status{};
+    for (int attempts = 0; attempts < 2000; ++attempts) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, task_id, &status), "query should succeed");
+        if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
+            break;
+        }
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "first consume after ready should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "second consume should fail");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_ALREADY_CONSUMED, detail, "double consume should be explicitly rejected");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN_SOFTWARE)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("async path requires non-software Vulkan runtime");
+    }
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int first_task = -1;
+    int second_task = -1;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &first_task, &stage, &detail), "first async submit should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "second async submit during in-flight work should fail");
+    ASSERT_TRUE(detail == PROM_DETAIL_REUSE_IN_FLIGHT || detail == PROM_DETAIL_ASYNC_UNCONSUMED, "in-flight ownership hazard should be surfaced explicitly");
+
+    PrometheusAsyncStatus status{};
+    for (int attempts = 0; attempts < 2000; ++attempts) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, first_task, &status), "query should succeed");
+        if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
+            break;
+        }
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, first_task), "abandon after ready should be structurally safe");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "submit after abandonment should succeed");
+    ASSERT_TRUE(second_task > first_task, "new submission should allocate a fresh task id");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
