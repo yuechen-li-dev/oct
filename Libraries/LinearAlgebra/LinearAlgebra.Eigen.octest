@@ -1,0 +1,186 @@
+package LinearAlgebra
+ 
+[Fact]
+fn IsSymmetricCoversAllCases() -> Void {
+    Assert.True(IsSymmetric([5.0], 1)!, "1x1 matrix is always symmetric")
+    Assert.True(IsSymmetric([1.0, 2.0, 2.0, 1.0], 2)!, "symmetric 2x2 should return true")
+    Assert.False(IsSymmetric([1.0, 2.0, 3.0, 4.0], 2)!, "asymmetric 2x2 should return false")
+ 
+    let A3 = [4.0, 1.0, 2.0, 1.0, 3.0, 0.0, 2.0, 0.0, 5.0]
+    Assert.True(IsSymmetric(A3, 3)!, "symmetric 3x3 should return true")
+ 
+    Assert.Error(IsSymmetric([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2), "data length mismatch should fail")
+}
+ 
+[Fact]
+fn NormalizeVecProducesUnitNorm() -> Void {
+    let v = NormalizeVec([3.0, 4.0])!
+    Assert.Near(0.6, v[0], 0.000001, "normalized x")
+    Assert.Near(0.8, v[1], 0.000001, "normalized y")
+    Assert.Near(1.0, Norm(v)!, 0.000001, "norm of normalized vector should be 1")
+ 
+    let u = NormalizeVec([1.0])!
+    Assert.Near(1.0, u[0], 0.000001, "1-element normalized vector should be 1")
+ 
+    Assert.Error(NormalizeVec([0.0, 0.0]), "zero vector should fail")
+}
+ 
+[Fact]
+fn RayleighQuotientMatchesEigenvalueForExactEigenvector() -> Void {
+    let isqrt2 = 1.0 / Sqrt(2.0)
+    let v = [isqrt2, isqrt2]
+    let A = [3.0, 1.0, 1.0, 3.0]
+ 
+    Assert.Near(4.0, RayleighQuotient(A, 2, v)!, 0.000001, "rayleigh quotient for eigenvector should equal eigenvalue")
+ 
+    let e0 = [1.0, 0.0]
+    let e1 = [0.0, 1.0]
+    let D = [5.0, 0.0, 0.0, 2.0]
+    Assert.Near(5.0, RayleighQuotient(D, 2, e0)!, 0.000001, "rayleigh quotient with basis vector matches diagonal entry")
+    Assert.Near(2.0, RayleighQuotient(D, 2, e1)!, 0.000001, "rayleigh quotient with basis vector matches diagonal entry")
+ 
+    Assert.Error(RayleighQuotient(A, 2, [1.0, 0.0, 0.0]), "dimension mismatch should fail")
+}
+ 
+[Fact]
+fn PowerIterationFindsDominantEigenvalue() -> Void {
+    let A = [5.0, 0.0, 0.0, 2.0]
+    let pair = PowerIteration(A, 2, 200, 0.0000001)!
+ 
+    Assert.Near(5.0, pair.Eigenvalue, 0.000001, "dominant eigenvalue of [5,0;0,2] should be 5")
+    Assert.Near(1.0, Norm(pair.Eigenvector)!, 0.000001, "eigenvector should be unit norm")
+    Assert.True(pair.Converged, "should converge for diagonal matrix")
+ 
+    let rq = RayleighQuotient(A, 2, pair.Eigenvector)!
+    Assert.Near(pair.Eigenvalue, rq, 0.000001, "rayleigh quotient of converged eigenvector should match eigenvalue")
+}
+ 
+[Fact]
+fn PowerIterationConvergesOnSymmetricMatrix() -> Void {
+    let A = [3.0, 1.0, 1.0, 3.0]
+    let pair = PowerIteration(A, 2, 200, 0.0000001)!
+ 
+    Assert.Near(4.0, pair.Eigenvalue, 0.00001, "dominant eigenvalue of [3,1;1,3] should be 4")
+    Assert.Near(1.0, Norm(pair.Eigenvector)!, 0.000001, "eigenvector should be unit norm")
+ 
+    let Av = MatVecMul(A, 2, 2, pair.Eigenvector)!
+    Assert.Near(pair.Eigenvalue * pair.Eigenvector[0], Av[0], 0.000001, "Av should equal lambda*v at index 0")
+    Assert.Near(pair.Eigenvalue * pair.Eigenvector[1], Av[1], 0.000001, "Av should equal lambda*v at index 1")
+}
+ 
+[Fact]
+fn JacobiEigenOnDiagonalConvergesImmediately() -> Void {
+    let A = [5.0, 0.0, 0.0, 2.0]
+    let result = JacobiEigen(A, 2, 100, 0.0000001)!
+ 
+    Assert.Near(5.0, result.Eigenvalues[0], 0.000001, "diagonal eigenvalue 0 should be 5")
+    Assert.Near(2.0, result.Eigenvalues[1], 0.000001, "diagonal eigenvalue 1 should be 2")
+    Assert.True(result.Converged, "diagonal matrix should converge immediately")
+    Assert.Equal(2, result.Rows, "rows field should equal matrix dimension")
+    Assert.Equal(2, Len(result.Eigenvalues), "eigenvalues length should equal n")
+    Assert.Equal(4, Len(result.Eigenvectors), "eigenvector matrix should be n*n")
+}
+ 
+[Fact]
+fn JacobiEigenOn2x2SymmetricExactCase() -> Void {
+    let A = [3.0, 1.0, 1.0, 3.0]
+    let result = JacobiEigen(A, 2, 100, 0.0000001)!
+ 
+    Assert.Near(2.0, result.Eigenvalues[0], 0.000001, "eigenvalue 0 should be 2")
+    Assert.Near(4.0, result.Eigenvalues[1], 0.000001, "eigenvalue 1 should be 4")
+    Assert.True(result.Converged, "should converge in one rotation for this matrix")
+ 
+    let col0 = [result.Eigenvectors[0], result.Eigenvectors[2]]
+    let col1 = [result.Eigenvectors[1], result.Eigenvectors[3]]
+ 
+    let av0 = MatVecMul(A, 2, 2, col0)!
+    let av1 = MatVecMul(A, 2, 2, col1)!
+ 
+    Assert.Near(result.Eigenvalues[0] * col0[0], av0[0], 0.000001, "Av0 = lambda0*v0 at index 0")
+    Assert.Near(result.Eigenvalues[0] * col0[1], av0[1], 0.000001, "Av0 = lambda0*v0 at index 1")
+    Assert.Near(result.Eigenvalues[1] * col1[0], av1[0], 0.000001, "Av1 = lambda1*v1 at index 0")
+    Assert.Near(result.Eigenvalues[1] * col1[1], av1[1], 0.000001, "Av1 = lambda1*v1 at index 1")
+}
+ 
+[Fact]
+fn JacobiEigenEigenvectorsAreOrthonormal() -> Void {
+    let A = [3.0, 1.0, 1.0, 3.0]
+    let result = JacobiEigen(A, 2, 100, 0.0000001)!
+ 
+    let col0 = [result.Eigenvectors[0], result.Eigenvectors[2]]
+    let col1 = [result.Eigenvectors[1], result.Eigenvectors[3]]
+ 
+    Assert.Near(1.0, Norm(col0)!, 0.000001, "eigenvector 0 should be unit norm")
+    Assert.Near(1.0, Norm(col1)!, 0.000001, "eigenvector 1 should be unit norm")
+    Assert.Near(0.0, Dot(col0, col1)!, 0.000001, "eigenvectors should be orthogonal")
+}
+ 
+[Fact]
+fn JacobiEigenSumAndProductMatchTraceAndDet() -> Void {
+    let A = [2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 1.0, 2.0]
+    let result = JacobiEigen(A, 3, 200, 0.0000001)!
+ 
+    let sumLambda = result.Eigenvalues[0] + result.Eigenvalues[1] + result.Eigenvalues[2]
+    let prodLambda = result.Eigenvalues[0] * result.Eigenvalues[1] * result.Eigenvalues[2]
+ 
+    Assert.Near(6.0, sumLambda, 0.00001, "sum of eigenvalues should equal trace")
+    Assert.Near(4.0, prodLambda, 0.00001, "product of eigenvalues should equal determinant")
+    Assert.True(result.Converged, "3x3 symmetric case should converge")
+}
+ 
+[Fact]
+fn JacobiEigenSatisfiesEigenpairProperty3x3() -> Void {
+    let A = [2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 1.0, 2.0]
+    let result = JacobiEigen(A, 3, 200, 0.0000001)!
+ 
+    let col0 = [result.Eigenvectors[0], result.Eigenvectors[3], result.Eigenvectors[6]]
+    let col1 = [result.Eigenvectors[1], result.Eigenvectors[4], result.Eigenvectors[7]]
+    let col2 = [result.Eigenvectors[2], result.Eigenvectors[5], result.Eigenvectors[8]]
+ 
+    let av0 = MatVecMul(A, 3, 3, col0)!
+    let av1 = MatVecMul(A, 3, 3, col1)!
+    let av2 = MatVecMul(A, 3, 3, col2)!
+ 
+    Assert.Near(result.Eigenvalues[0] * col0[0], av0[0], 0.00001, "Av0=lv0 c0")
+    Assert.Near(result.Eigenvalues[0] * col0[1], av0[1], 0.00001, "Av0=lv0 c1")
+    Assert.Near(result.Eigenvalues[0] * col0[2], av0[2], 0.00001, "Av0=lv0 c2")
+    Assert.Near(result.Eigenvalues[1] * col1[0], av1[0], 0.00001, "Av1=lv1 c0")
+    Assert.Near(result.Eigenvalues[1] * col1[1], av1[1], 0.00001, "Av1=lv1 c1")
+    Assert.Near(result.Eigenvalues[1] * col1[2], av1[2], 0.00001, "Av1=lv1 c2")
+    Assert.Near(result.Eigenvalues[2] * col2[0], av2[0], 0.00001, "Av2=lv2 c0")
+    Assert.Near(result.Eigenvalues[2] * col2[1], av2[1], 0.00001, "Av2=lv2 c1")
+    Assert.Near(result.Eigenvalues[2] * col2[2], av2[2], 0.00001, "Av2=lv2 c2")
+}
+ 
+[Fact]
+fn JacobiEigenOn1x1ReturnsImmediately() -> Void {
+    let result = JacobiEigen([7.0], 1, 100, 0.0000001)!
+    Assert.Near(7.0, result.Eigenvalues[0], 0.000001, "1x1 eigenvalue should equal the single element")
+    Assert.Near(1.0, result.Eigenvectors[0], 0.000001, "1x1 eigenvector should be 1")
+    Assert.True(result.Converged, "1x1 case is trivially converged")
+    Assert.Equal(0, result.Iterations, "1x1 case should require zero iterations")
+}
+ 
+[Fact]
+fn ValidationRejectsInvalidInputs() -> Void {
+    Assert.Error(JacobiEigen([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 100, 0.0000001), "non-square data should fail")
+    Assert.Error(JacobiEigen([1.0, 2.0, 3.0, 4.0], 2, 0, 0.0000001), "maxIter=0 should fail")
+    Assert.Error(JacobiEigen([1.0, 2.0, 3.0, 4.0], 2, 100, 0.0), "tol=0 should fail")
+    Assert.Error(JacobiEigen([1.0, 2.0, 3.0, 4.0], 2, 100, 0.0000001), "asymmetric matrix should fail")
+ 
+    Assert.Error(PowerIteration([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 100, 0.0000001), "non-square data should fail")
+    Assert.Error(PowerIteration([1.0, 0.0, 0.0, 1.0], 2, 0, 0.0000001), "maxIter=0 should fail")
+    Assert.Error(PowerIteration([1.0, 0.0, 0.0, 1.0], 2, 100, 0.0), "tol=0 should fail")
+ 
+    Assert.Error(RayleighQuotient([1.0, 0.0, 0.0, 1.0], 2, [1.0, 0.0, 0.0]), "vector length mismatch should fail")
+    Assert.Error(RayleighQuotient([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, [1.0, 0.0]), "non-square data should fail")
+}
+ 
+[Fact]
+fn RayleighQuotientAndPowerIterationCompose() -> Void {
+    let A = [4.0, 1.0, 1.0, 4.0]
+    let pair = PowerIteration(A, 2, 200, 0.0000001)!
+    let rq = RayleighQuotient(A, 2, pair.Eigenvector)!
+ 
+    Assert.Near(pair.Eigenvalue, rq, 0.000001, "rayleigh quotient of converged eigenvector should match power iteration eigenvalue")
+}
