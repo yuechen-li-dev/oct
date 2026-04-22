@@ -1,0 +1,300 @@
+package PrometheusSgemmAlgorithmLab
+
+record Shape3 {
+    Rows: Int
+    Cols: Int
+    Depth: Int
+}
+
+record CallResources {
+    Shape: Shape3
+    BufferA: String
+    BufferB: String
+    BufferC: String
+}
+
+record ReusePolicy {
+    LifetimeMode: String
+    ResetDiscipline: String
+    BindingDiscipline: String
+    CompletionDiscipline: String
+}
+
+record ReuseRuntimeState {
+    HasRecordedCall: Bool
+    InFlight: Bool
+    CachedShape: Shape3
+    BoundShape: Shape3
+    BoundA: String
+    BoundB: String
+    BoundC: String
+}
+
+record ProtocolSignals {
+    ResultCorrect: Bool
+    ProtocolSafe: Bool
+    StaleStateDetected: Bool
+    MissingReset: Bool
+    MissingUpdate: Bool
+    ReuseRejected: Bool
+    StructurallyValid: Bool
+    InFlightHazard: Bool
+    ShapeInvalidationHazard: Bool
+    BindingHazard: Bool
+    CommandRecordingHazard: Bool
+    Notes: String
+}
+
+record ReuseStepOutcome {
+    NextState: ReuseRuntimeState
+    Signals: ProtocolSignals
+}
+
+fn ModePerCall() -> String { return "PerCall" }
+fn ModePersistent() -> String { return "Persistent" }
+
+fn ResetFull() -> String { return "FullReset" }
+fn ResetNone() -> String { return "NoReset" }
+fn ResetPartial() -> String { return "PartialReset" }
+
+fn UpdateAlways() -> String { return "AlwaysUpdate" }
+fn UpdateOnShapeChange() -> String { return "UpdateOnShapeChange" }
+fn UpdateNever() -> String { return "NeverUpdate" }
+
+fn ReuseOnlyWhenComplete() -> String { return "ReuseOnlyWhenComplete" }
+fn ReuseWhileInFlight() -> String { return "ReuseWhileInFlight" }
+
+fn EmptyShape() -> Shape3 {
+    return Shape3 { Rows: 0 Cols: 0 Depth: 0 }
+}
+
+fn InitialReuseState() -> ReuseRuntimeState {
+    return ReuseRuntimeState {
+        HasRecordedCall: false
+        InFlight: false
+        CachedShape: EmptyShape()
+        BoundShape: EmptyShape()
+        BoundA: ""
+        BoundB: ""
+        BoundC: ""
+    }
+}
+
+fn ShapeEquals(a: Shape3, b: Shape3) -> Bool {
+    return a.Rows == b.Rows and a.Cols == b.Cols and a.Depth == b.Depth
+}
+
+fn HasBoundResources(runtime: ReuseRuntimeState) -> Bool {
+    return runtime.BoundA != "" and runtime.BoundB != "" and runtime.BoundC != ""
+}
+
+fn IsStructuralCallValid(call: CallResources) -> Bool {
+    let shape = call.Shape
+    if (shape.Rows <= 0) or (shape.Cols <= 0) or (shape.Depth <= 0) {
+        return false
+    }
+
+    if (call.BufferA == "") or (call.BufferB == "") or (call.BufferC == "") {
+        return false
+    }
+
+    return true
+}
+
+fn StepReuseProtocol(
+    current: ReuseRuntimeState,
+    call: CallResources,
+    policy: ReusePolicy,
+    completeAfterSubmit: Bool
+) -> ReuseStepOutcome {
+    let runtime0 = current
+    var runtime1 = runtime0
+
+    if policy.LifetimeMode == ModePerCall() {
+        runtime1 = InitialReuseState()
+    }
+
+    let structurallyValid = IsStructuralCallValid(call)
+    if structurallyValid == false {
+        return Rejected(runtime1, structurallyValid, "structural call contract violated")
+    }
+
+    var runtime2 = runtime1
+    if runtime1.InFlight {
+        if policy.CompletionDiscipline == ReuseOnlyWhenComplete() {
+            runtime2 = ReuseRuntimeState {
+                HasRecordedCall: runtime1.HasRecordedCall
+                InFlight: false
+                CachedShape: runtime1.CachedShape
+                BoundShape: runtime1.BoundShape
+                BoundA: runtime1.BoundA
+                BoundB: runtime1.BoundB
+                BoundC: runtime1.BoundC
+            }
+        } else {
+            return ProtocolFailure(runtime1, structurallyValid, true, false, false, false, false, true, false, "illegal in-flight reuse")
+        }
+    }
+
+    let requiresReset = policy.LifetimeMode == ModePersistent() and runtime2.HasRecordedCall
+    let missingReset = requiresReset and policy.ResetDiscipline != ResetFull()
+    let shapeChanged = runtime2.HasRecordedCall and ShapeEquals(runtime2.CachedShape, call.Shape) == false
+
+    let hasBound = HasBoundResources(runtime2)
+    let didUpdateBindings = switch {
+        case policy.BindingDiscipline == UpdateAlways() => true
+        case policy.BindingDiscipline == UpdateOnShapeChange() => hasBound == false or shapeChanged
+        else => hasBound == false
+    }
+
+    let buffersChanged = hasBound and (runtime2.BoundA != call.BufferA or runtime2.BoundB != call.BufferB or runtime2.BoundC != call.BufferC)
+    let staleBinding = buffersChanged and didUpdateBindings == false
+    let staleBindingShape = hasBound and ShapeEquals(runtime2.BoundShape, call.Shape) == false and didUpdateBindings == false
+
+    let shapeInvalidationHazard = shapeChanged and (policy.ResetDiscipline != ResetFull() or didUpdateBindings == false)
+    let commandRecordingHazard = shapeChanged and policy.ResetDiscipline != ResetFull()
+
+    var nextBoundShape = runtime2.BoundShape
+    var nextBoundA = runtime2.BoundA
+    var nextBoundB = runtime2.BoundB
+    var nextBoundC = runtime2.BoundC
+    if didUpdateBindings {
+        nextBoundShape = call.Shape
+        nextBoundA = call.BufferA
+        nextBoundB = call.BufferB
+        nextBoundC = call.BufferC
+    }
+
+    let nextInFlight = switch {
+        case completeAfterSubmit => false
+        else => true
+    }
+
+    let runtime3 = ReuseRuntimeState {
+        HasRecordedCall: true
+        InFlight: nextInFlight
+        CachedShape: call.Shape
+        BoundShape: nextBoundShape
+        BoundA: nextBoundA
+        BoundB: nextBoundB
+        BoundC: nextBoundC
+    }
+
+    let missingUpdate = (buffersChanged or staleBindingShape or shapeChanged) and didUpdateBindings == false
+    let staleState = staleBinding or staleBindingShape or shapeInvalidationHazard or commandRecordingHazard
+
+    if missingReset or staleState {
+        return ProtocolFailure(
+            runtime3,
+            structurallyValid,
+            false,
+            missingReset,
+            missingUpdate,
+            shapeInvalidationHazard,
+            staleBinding or staleBindingShape,
+            false,
+            commandRecordingHazard,
+            "reuse protocol violation"
+        )
+    }
+
+    return ProtocolSuccess(runtime3, structurallyValid, "reuse protocol satisfied")
+}
+
+fn ProtocolSuccess(runtime: ReuseRuntimeState, structurallyValid: Bool, notes: String) -> ReuseStepOutcome {
+    return ReuseStepOutcome {
+        NextState: runtime
+        Signals: ProtocolSignals {
+            ResultCorrect: true
+            ProtocolSafe: true
+            StaleStateDetected: false
+            MissingReset: false
+            MissingUpdate: false
+            ReuseRejected: false
+            StructurallyValid: structurallyValid
+            InFlightHazard: false
+            ShapeInvalidationHazard: false
+            BindingHazard: false
+            CommandRecordingHazard: false
+            Notes: notes
+        }
+    }
+}
+
+fn ProtocolFailure(
+    runtime: ReuseRuntimeState,
+    structurallyValid: Bool,
+    inFlightHazard: Bool,
+    missingReset: Bool,
+    missingUpdate: Bool,
+    shapeInvalidationHazard: Bool,
+    bindingHazard: Bool,
+    reuseRejected: Bool,
+    commandRecordingHazard: Bool,
+    notes: String
+) -> ReuseStepOutcome {
+    return ReuseStepOutcome {
+        NextState: runtime
+        Signals: ProtocolSignals {
+            ResultCorrect: false
+            ProtocolSafe: false
+            StaleStateDetected: missingReset or missingUpdate or shapeInvalidationHazard or bindingHazard or commandRecordingHazard
+            MissingReset: missingReset
+            MissingUpdate: missingUpdate
+            ReuseRejected: reuseRejected
+            StructurallyValid: structurallyValid
+            InFlightHazard: inFlightHazard
+            ShapeInvalidationHazard: shapeInvalidationHazard
+            BindingHazard: bindingHazard
+            CommandRecordingHazard: commandRecordingHazard
+            Notes: notes
+        }
+    }
+}
+
+fn Rejected(runtime: ReuseRuntimeState, structurallyValid: Bool, notes: String) -> ReuseStepOutcome {
+    return ReuseStepOutcome {
+        NextState: runtime
+        Signals: ProtocolSignals {
+            ResultCorrect: false
+            ProtocolSafe: false
+            StaleStateDetected: false
+            MissingReset: false
+            MissingUpdate: false
+            ReuseRejected: true
+            StructurallyValid: structurallyValid
+            InFlightHazard: false
+            ShapeInvalidationHazard: false
+            BindingHazard: false
+            CommandRecordingHazard: false
+            Notes: notes
+        }
+    }
+}
+
+
+fn OutcomeSignals(outcome: ReuseStepOutcome) -> ProtocolSignals {
+    return outcome.Signals
+}
+
+fn OutcomeRuntime(outcome: ReuseStepOutcome) -> ReuseRuntimeState {
+    return outcome.NextState
+}
+
+fn MakeCall(m: Int, n: Int, k: Int, a: String, b: String, c: String) -> CallResources {
+    return CallResources {
+        Shape: Shape3 { Rows: m Cols: n Depth: k }
+        BufferA: a
+        BufferB: b
+        BufferC: c
+    }
+}
+
+fn MakePolicy(lifetime: String, reset: String, binding: String, completion: String) -> ReusePolicy {
+    return ReusePolicy {
+        LifetimeMode: lifetime
+        ResetDiscipline: reset
+        BindingDiscipline: binding
+        CompletionDiscipline: completion
+    }
+}
