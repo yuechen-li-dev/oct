@@ -1,0 +1,225 @@
+package LinearAlgebra
+ 
+record EigenPair {
+    Eigenvalue: Float
+    Eigenvector: Float[]
+    Iterations: Int
+    Converged: Bool
+}
+ 
+record EigenResult {
+    Eigenvalues: Float[]
+    Eigenvectors: Float[]
+    Rows: Int
+    Iterations: Int
+    Converged: Bool
+}
+ 
+fn IsSymmetric(A: Float[], n: Int) -> Bool ! Error {
+    let mok = ValidateSquareMatrixData(A, n, n)?
+ 
+    let eps = PivotEpsilon()
+    for r in 0..n {
+        for c in (r + 1)..n {
+            if Abs(A[FlatIndex(r, c, n)] - A[FlatIndex(c, r, n)]) > eps {
+                return false
+            }
+        }
+    }
+    return true
+}
+ 
+fn RayleighQuotient(A: Float[], n: Int, v: Float[]) -> Float ! Error {
+    let mok = ValidateSquareMatrixData(A, n, n)?
+    let vok = ValidateVector(v)?
+ 
+    if Len(v) != n {
+        return error("rayleigh quotient requires vector length to equal matrix dimension")
+    }
+ 
+    let Av = MatVecMul(A, n, n, v)?
+    let num = Dot(v, Av)?
+    let den = Dot(v, v)?
+ 
+    if Abs(den) < PivotEpsilon() {
+        return error("rayleigh quotient requires a non-zero vector")
+    }
+ 
+    return num / den
+}
+ 
+fn NormalizeVec(v: Float[]) -> Float[] ! Error {
+    let vok = ValidateVector(v)?
+    let mag = Norm(v)?
+ 
+    if mag < PivotEpsilon() {
+        return error("normalize requires a non-zero vector")
+    }
+ 
+    var out = [v[0] / mag]
+    for i in 1..Len(v) {
+        out = Append(out, v[i] / mag)
+    }
+    return out
+}
+ 
+fn PowerIteration(A: Float[], n: Int, maxIter: Int, tol: Float) -> EigenPair ! Error {
+    let mok = ValidateSquareMatrixData(A, n, n)?
+ 
+    if maxIter <= 0 {
+        return error("power iteration requires maxIter > 0")
+    }
+    if tol <= 0.0 {
+        return error("power iteration requires tol > 0")
+    }
+ 
+    var v = [1.0]
+    for i in 1..n {
+        v = Append(v, 1.0)
+    }
+    v = NormalizeVec(v)?
+ 
+    var lambda = 0.0
+    var iter = 0
+    var converged = false
+ 
+    while iter < maxIter and converged == false {
+        let w = MatVecMul(A, n, n, v)?
+        let newLambda = Dot(v, w)?
+        let normW = Norm(w)?
+ 
+        if normW < PivotEpsilon() {
+            return error("power iteration encountered a zero vector")
+        }
+ 
+        var newV = [w[0] / normW]
+        for j in 1..n {
+            newV = Append(newV, w[j] / normW)
+        }
+ 
+        if Abs(newLambda - lambda) <= tol and iter > 0 {
+            converged = true
+        }
+ 
+        lambda = newLambda
+        v = newV
+        iter = iter + 1
+    }
+ 
+    return EigenPair {
+        Eigenvalue: lambda
+        Eigenvector: v
+        Iterations: iter
+        Converged: converged
+    }
+}
+ 
+fn JacobiEigen(A: Float[], n: Int, maxIter: Int, tol: Float) -> EigenResult ! Error {
+    let mok = ValidateSquareMatrixData(A, n, n)?
+ 
+    if maxIter <= 0 {
+        return error("jacobi eigen requires maxIter > 0")
+    }
+    if tol <= 0.0 {
+        return error("jacobi eigen requires tol > 0")
+    }
+ 
+    let sym = IsSymmetric(A, n)?
+    if not sym {
+        return error("jacobi eigen requires a symmetric matrix")
+    }
+ 
+    if n == 1 {
+        return EigenResult {
+            Eigenvalues: [A[0]]
+            Eigenvectors: [1.0]
+            Rows: 1
+            Iterations: 0
+            Converged: true
+        }
+    }
+ 
+    var work = CopyFloatArray(A)
+    var V = Identity(n)?
+    var iter = 0
+    var converged = false
+ 
+    while iter < maxIter and converged == false {
+        var p = 0
+        var q = 1
+        var maxOff = Abs(work[FlatIndex(0, 1, n)])
+ 
+        for r in 0..n {
+            for c in (r + 1)..n {
+                let val = Abs(work[FlatIndex(r, c, n)])
+                if val > maxOff {
+                    maxOff = val
+                    p = r
+                    q = c
+                }
+            }
+        }
+ 
+        if maxOff <= tol {
+            converged = true
+        } else {
+            let apq = work[FlatIndex(p, q, n)]
+            let theta = (work[FlatIndex(q, q, n)] - work[FlatIndex(p, p, n)]) / (2.0 * apq)
+            var t = 1.0 / (Abs(theta) + Sqrt(1.0 + theta * theta))
+            if theta < 0.0 {
+                t = -t
+            }
+            let c = 1.0 / Sqrt(1.0 + t * t)
+            let s = t * c
+ 
+            work = ApplyJacobiRotation(work, n, p, q, c, s)
+            V = AccumulateRotation(V, n, p, q, c, s)
+        }
+ 
+        iter = iter + 1
+    }
+ 
+    var eigenvalues = [work[FlatIndex(0, 0, n)]]
+    for ei in 1..n {
+        eigenvalues = Append(eigenvalues, work[FlatIndex(ei, ei, n)])
+    }
+ 
+    return EigenResult {
+        Eigenvalues: eigenvalues
+        Eigenvectors: V
+        Rows: n
+        Iterations: iter
+        Converged: converged
+    }
+}
+ 
+fn ApplyJacobiRotation(A: Float[], n: Int, p: Int, q: Int, c: Float, s: Float) -> Float[] {
+    var B = CopyFloatArray(A)
+    for i in 0..n {
+        let aip = A[FlatIndex(i, p, n)]
+        let aiq = A[FlatIndex(i, q, n)]
+        B[FlatIndex(i, p, n)] = c * aip - s * aiq
+        B[FlatIndex(i, q, n)] = s * aip + c * aiq
+    }
+ 
+    var out = CopyFloatArray(B)
+    for j in 0..n {
+        let bpj = B[FlatIndex(p, j, n)]
+        let bqj = B[FlatIndex(q, j, n)]
+        out[FlatIndex(p, j, n)] = c * bpj - s * bqj
+        out[FlatIndex(q, j, n)] = s * bpj + c * bqj
+    }
+ 
+    return out
+}
+ 
+fn AccumulateRotation(V: Float[], n: Int, p: Int, q: Int, c: Float, s: Float) -> Float[] {
+    var out = CopyFloatArray(V)
+    for i in 0..n {
+        let vip = V[FlatIndex(i, p, n)]
+        let viq = V[FlatIndex(i, q, n)]
+        out[FlatIndex(i, p, n)] = c * vip - s * viq
+        out[FlatIndex(i, q, n)] = s * vip + c * viq
+    }
+    return out
+}
