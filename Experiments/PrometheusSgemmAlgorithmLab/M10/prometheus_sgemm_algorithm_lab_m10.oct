@@ -1,0 +1,241 @@
+package PrometheusSgemmAlgorithmLab
+
+record AsyncScenario {
+    Name: String
+    Submission: Int
+    Consumption: Int
+    Failure: Int
+    Ownership: Int
+    Progress: Int
+    Observation: Int
+    DuplicateSubmit: Bool
+    ResumeWithoutRemember: Bool
+    TreatFailureAsNotReady: Bool
+    AbandonAfterReady: Bool
+}
+
+record AsyncStructuralMetrics {
+    ProgressStepCount: Int
+    InFlightDurationSteps: Int
+    ResultAvailabilityTransitions: Int
+    OutstandingTaskCount: Int
+    ResourceOwnershipOverlapCount: Int
+    ObservabilityCoverageCount: Int
+    FailurePathVisibilityCount: Int
+}
+
+record AsyncSignals {
+    ResultCorrect: Bool
+    ProtocolSafe: Bool
+    UseBeforeComplete: Bool
+    DoubleConsume: Bool
+    DoubleSubmitHazard: Bool
+    LifetimeHazard: Bool
+    FailureSurfaced: Bool
+    ResumeHazard: Bool
+    AbandonmentSafe: Bool
+    StateObservable: Bool
+    StructurallyValid: Bool
+}
+
+record AsyncOutcome {
+    Metrics: AsyncStructuralMetrics
+    Signals: AsyncSignals
+}
+
+fn AsyncOutcomeSignals(outcome: AsyncOutcome) -> AsyncSignals {
+    return outcome.Signals
+}
+
+fn AsyncOutcomeMetrics(outcome: AsyncOutcome) -> AsyncStructuralMetrics {
+    return outcome.Metrics
+}
+
+fn MakeAsyncScenario(
+    name: String,
+    submission: Int,
+    consumption: Int,
+    failure: Int,
+    ownership: Int,
+    progress: Int,
+    observation: Int,
+    duplicateSubmit: Bool,
+    resumeWithoutRemember: Bool,
+    treatFailureAsNotReady: Bool,
+    abandonAfterReady: Bool
+) -> AsyncScenario {
+    return AsyncScenario {
+        Name: name
+        Submission: submission
+        Consumption: consumption
+        Failure: failure
+        Ownership: ownership
+        Progress: progress
+        Observation: observation
+        DuplicateSubmit: duplicateSubmit
+        ResumeWithoutRemember: resumeWithoutRemember
+        TreatFailureAsNotReady: treatFailureAsNotReady
+        AbandonAfterReady: abandonAfterReady
+    }
+}
+
+fn EvaluateAsyncScenario(s: AsyncScenario) -> AsyncOutcome {
+    let submissionAccepted = s.Failure != 1
+    let executionFailed = s.Failure == 2
+    let invalidTransitionFail = s.Failure == 3
+
+    let inFlightSteps = switch s.Submission {
+        case 0 => 0
+        case 1 => 1
+        case 2 => 2
+        else => 0
+    }
+
+    let progressSteps = switch s.Progress {
+        case 0 => 1
+        case 1 => 2
+        case 2 => 3
+        else => 1
+    }
+
+    let resultReady = submissionAccepted and executionFailed == false and invalidTransitionFail == false
+
+    let useBeforeComplete = s.Consumption == 1
+    let doubleConsume = s.Consumption == 2
+    let neverConsume = s.Consumption == 3
+
+    let doubleSubmitHazard = s.DuplicateSubmit
+    let ownershipOverlap = s.Ownership != 0
+    let lifetimeHazard = s.Ownership == 1 or s.Ownership == 2
+
+    let resumeHazard = s.ResumeWithoutRemember or (s.Progress == 2 and s.Failure == 3)
+
+    let failurePresent = s.Failure != 0
+    let failureSurfaced = failurePresent and s.TreatFailureAsNotReady == false
+    let swallowedFailure = failurePresent and s.TreatFailureAsNotReady
+
+    let stateObservable = s.Observation == 0 or s.Observation == 3
+    let diagnosticsVisible = s.Observation == 3
+
+    let abandonmentSafe = s.AbandonAfterReady and resultReady and lifetimeHazard == false
+
+    let protocolSafe = useBeforeComplete == false and
+        doubleConsume == false and
+        doubleSubmitHazard == false and
+        lifetimeHazard == false and
+        resumeHazard == false and
+        swallowedFailure == false
+
+    let resultCorrect = protocolSafe and resultReady and useBeforeComplete == false and
+        (s.Consumption == 0 or neverConsume)
+
+    return AsyncOutcome {
+        Metrics: AsyncStructuralMetrics {
+            ProgressStepCount: progressSteps
+            InFlightDurationSteps: inFlightSteps
+            ResultAvailabilityTransitions: switch {
+                case resultReady => 1
+                else => 0
+            }
+            OutstandingTaskCount: switch {
+                case doubleSubmitHazard => 2
+                else => 1
+            }
+            ResourceOwnershipOverlapCount: switch {
+                case ownershipOverlap => 1
+                else => 0
+            }
+            ObservabilityCoverageCount: switch {
+                case diagnosticsVisible => 2
+                case stateObservable => 1
+                else => 0
+            }
+            FailurePathVisibilityCount: switch {
+                case failureSurfaced => 1
+                else => 0
+            }
+        }
+        Signals: AsyncSignals {
+            ResultCorrect: resultCorrect
+            ProtocolSafe: protocolSafe
+            UseBeforeComplete: useBeforeComplete
+            DoubleConsume: doubleConsume
+            DoubleSubmitHazard: doubleSubmitHazard
+            LifetimeHazard: lifetimeHazard
+            FailureSurfaced: failureSurfaced
+            ResumeHazard: resumeHazard
+            AbandonmentSafe: abandonmentSafe
+            StateObservable: stateObservable
+            StructurallyValid: submissionAccepted or failurePresent
+        }
+    }
+}
+
+flow DeferredSubmissionProtocol(mode: Int, fail: Int, useResume: Bool) -> String {
+    board {
+        InFlightStepsRemaining: Int
+        Ready: Bool
+        Failed: Bool
+        FailureCode: String
+    }
+
+    state Submit {
+        if fail == 1 {
+            board.Failed = true
+            board.FailureCode = "submission-reject"
+            goto Failed
+        }
+
+        board.InFlightStepsRemaining = switch mode {
+            case 0 => 0
+            case 1 => 1
+            case 2 => 2
+            else => 0
+        }
+
+        when {
+            case board.InFlightStepsRemaining == 0 -> goto Ready
+            else -> goto InFlight
+        }
+    }
+
+    state InFlight {
+        if board.InFlightStepsRemaining > 1 {
+            board.InFlightStepsRemaining = board.InFlightStepsRemaining - 1
+            if useResume {
+                remember
+                goto ResumeBridge
+            }
+            suspend
+        }
+
+        if fail == 2 or fail == 3 {
+            board.Failed = true
+            board.FailureCode = "execution-fail"
+            goto Failed
+        }
+
+        board.Ready = true
+        goto Ready
+    }
+
+    state ResumeBridge {
+        suspend
+        resume
+    }
+
+    state Ready {
+        suspend
+        return "ready"
+    }
+
+    state Failed {
+        return board.FailureCode
+    }
+}
+
+flow ResumeMisuseProbe() -> String {
+    state Start {
+        resume
+    }
+}

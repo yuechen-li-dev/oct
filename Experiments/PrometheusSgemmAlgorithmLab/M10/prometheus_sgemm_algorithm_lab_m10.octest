@@ -1,0 +1,309 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn SafeDeferredCompletionWithExplicitProgress() -> Void {
+    let scenario = MakeAsyncScenario(
+        "safe deferred",
+        2,
+        0,
+        0,
+        0,
+        2,
+        3,
+        false,
+        false,
+        false,
+        false
+    )
+
+    let outcome = EvaluateAsyncScenario(scenario)
+    Assert.True(AsyncOutcomeSignals(outcome).ResultCorrect, "deferred multi-step should be correct when consumed after readiness")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe, "safe deferred completion path should be protocol-safe")
+    Assert.True(AsyncOutcomeSignals(outcome).StateObservable, "safe async path should keep explicit state observability")
+
+    let protocolFlow = DeferredSubmissionProtocol(2, 0, true)
+    Step(protocolFlow)
+    Assert.Equal("ResumeBridge", Active(protocolFlow), "first step should enter deferred resume bridge after submission and in-flight setup")
+
+    Step(protocolFlow)
+    Assert.True(Active(protocolFlow) != "", "second step should keep deferred protocol active")
+
+    Step(protocolFlow)
+    Step(protocolFlow)
+    Step(protocolFlow)
+    Assert.True(Complete(protocolFlow), "ready state should complete after explicit consume step")
+
+    let value = Assert.LGTM(Result(protocolFlow), "result should be available after completion")
+    Assert.Equal("ready", value, "terminal result should expose ready completion")
+}
+
+[Fact]
+fn SafeRepeatedSubmissionWithDistinctBacking() -> Void {
+    let first = EvaluateAsyncScenario(MakeAsyncScenario(
+        "first unique",
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    let second = EvaluateAsyncScenario(MakeAsyncScenario(
+        "second unique",
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(first).ProtocolSafe, "first submission should remain safe with unique ownership")
+    Assert.True(AsyncOutcomeSignals(second).ProtocolSafe, "second submission should remain safe with unique ownership")
+    Assert.True(AsyncOutcomeMetrics(first).ResourceOwnershipOverlapCount == 0, "unique ownership should not overlap backing resources")
+    Assert.True(AsyncOutcomeMetrics(second).OutstandingTaskCount == 1, "bounded submission should keep one outstanding task per evaluation")
+}
+
+[Fact]
+fn SafeFailureSurfacedAndVisible() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "exec failure surfaced",
+        1,
+        3,
+        2,
+        0,
+        1,
+        3,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).FailureSurfaced, "execution failure should be surfaced explicitly")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe, "surfaced failure path can remain protocol-safe when handled explicitly")
+    Assert.True(AsyncOutcomeMetrics(outcome).FailurePathVisibilityCount == 1, "failure visibility metric should count surfaced path")
+
+    let protocolFlow = DeferredSubmissionProtocol(1, 2, false)
+    Step(protocolFlow)
+    Step(protocolFlow)
+    Assert.True(Complete(protocolFlow), "failure state should complete deterministically")
+
+    let failure = Assert.LGTM(Result(protocolFlow), "failed flow should expose failure code")
+    Assert.Equal("execution-fail", failure, "execution failure should not be swallowed as not-ready")
+}
+
+[Fact]
+fn SafeAbandonmentAfterReadyIsStructurallySafe() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "abandon after ready",
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        true
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).AbandonmentSafe, "abandoning a completed task with unique backing should be structurally safe")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe, "abandonment in this regime should not corrupt protocol safety")
+}
+
+[Fact]
+fn UnsafeUseBeforeCompleteAndStatusIgnored() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "use before complete",
+        2,
+        1,
+        0,
+        0,
+        2,
+        1,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).UseBeforeComplete, "consuming before ready should be flagged explicitly")
+    Assert.True(AsyncOutcomeSignals(outcome).ResultCorrect == false, "early consume must not be considered correct")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe == false, "use-before-complete should violate protocol safety")
+}
+
+[Fact]
+fn UnsafeDuplicateSubmitAndBackingReuse() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "duplicate submit",
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        true,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).DoubleSubmitHazard, "duplicate submission should be marked as hazard")
+    Assert.True(AsyncOutcomeSignals(outcome).LifetimeHazard, "reusing backing during in-flight work should be lifetime hazard")
+    Assert.True(AsyncOutcomeMetrics(outcome).OutstandingTaskCount == 2, "duplicate submit should raise outstanding task count")
+}
+
+[Fact]
+fn UnsafeDoubleConsumeTokenReuse() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "double consume",
+        1,
+        2,
+        0,
+        0,
+        1,
+        2,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).DoubleConsume, "double consume must be explicit protocol hazard")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe == false, "double consume should invalidate protocol safety")
+}
+
+[Fact]
+fn UnsafeFailureSwallowedAsNotReady() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "swallowed failure",
+        1,
+        3,
+        1,
+        0,
+        0,
+        2,
+        false,
+        false,
+        true,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).FailureSurfaced == false, "treating failure as not-ready should be visible as unsurfaced failure")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe == false, "swallowed failure should be unsafe")
+}
+
+[Fact]
+fn UnsafeResumeWithoutRemember() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "resume misuse",
+        2,
+        0,
+        3,
+        0,
+        2,
+        3,
+        false,
+        true,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).ResumeHazard, "resume without stored continuation should be a hazard")
+}
+
+[Fact]
+fn UnsafeOverwriteBackingBeforeCompletion() -> Void {
+    let outcome = EvaluateAsyncScenario(MakeAsyncScenario(
+        "overwrite backing",
+        2,
+        0,
+        0,
+        2,
+        1,
+        3,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(outcome).LifetimeHazard, "overwriting backing before completion should be a lifetime hazard")
+    Assert.True(AsyncOutcomeMetrics(outcome).ResourceOwnershipOverlapCount == 1, "ownership overlap metric should expose overwrite hazard")
+    Assert.True(AsyncOutcomeSignals(outcome).ProtocolSafe == false, "overwrite hazard must fail safety")
+}
+
+[Fact]
+fn BoundedDoeCoversAsyncRakeAxes() -> Void {
+    let immediateSafe = EvaluateAsyncScenario(MakeAsyncScenario(
+        "doe immediate safe",
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    let deferredEarlyUse = EvaluateAsyncScenario(MakeAsyncScenario(
+        "doe deferred early use",
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    let multiStepFailure = EvaluateAsyncScenario(MakeAsyncScenario(
+        "doe multi failure",
+        2,
+        3,
+        2,
+        0,
+        2,
+        3,
+        false,
+        false,
+        false,
+        false
+    ))
+
+    let reuseHazard = EvaluateAsyncScenario(MakeAsyncScenario(
+        "doe reuse hazard",
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        true,
+        false,
+        false,
+        false
+    ))
+
+    Assert.True(AsyncOutcomeSignals(immediateSafe).ProtocolSafe, "immediate success regime should stay safe in DOE set")
+    Assert.True(AsyncOutcomeSignals(deferredEarlyUse).UseBeforeComplete, "DOE should include early-use hazard")
+    Assert.True(AsyncOutcomeSignals(multiStepFailure).FailureSurfaced, "DOE should include surfaced execution failure")
+    Assert.True(AsyncOutcomeSignals(reuseHazard).DoubleSubmitHazard, "DOE should include duplicate-submit hazard")
+}

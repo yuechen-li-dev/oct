@@ -1040,3 +1040,95 @@ A future Vulkan C tiled/shared-memory SGEMM implementation should preserve this 
 ### Inconsistency note surfaced
 
 M9 intentionally models portable protocol invariants rather than backend scheduling or subgroup behavior. This is a deliberate abstraction choice and not a claim about any specific vendor runtime behavior.
+
+## M10 scope — Async Submission Rake Lab (deferred completion via Octomata)
+
+M10 adds a pure-Oct, correctness-first protocol lab for deferred SGEMM submission semantics. This milestone does **not** model real queue scheduling or threading. Instead, it models the minimum behavior contract that a future Vulkan C async path must preserve.
+
+### Deferred-submission protocol modeled
+
+M10 models async submission as a protocol with explicit factors and outcomes:
+
+- submission mode (`Immediate`, `DeferredOneStep`, `DeferredMultiStep`)
+- consumption timing (`AfterReady`, `BeforeReady`, `Twice`, `Never`)
+- failure regime (`Success`, `SubmissionReject`, `ExecutionFail`, `InvalidTransition`)
+- resource ownership regime (`UniqueBacking`, `ReusedBacking`, `OverwrittenBeforeComplete`)
+- progress model (`OneStep`, `MultiStep`, `SuspendedIntermediate`)
+- observation regime (`ExplicitStatus`, `StatusIgnored`, `ResultOnly`, `StatusAndDiagnostics`)
+
+The Octomata flow surface (`DeferredSubmissionProtocol`) provides explicit state progression with:
+
+- `Submit -> InFlight -> Ready`
+- `Failed` terminal state
+- optional continuation bridge via `remember` / `resume`
+- explicit suspension points to represent deferred progression
+
+A dedicated misuse probe (`ResumeMisuseProbe`) encodes invalid resume-without-remember behavior.
+
+### Semantic hazards explicitly tested
+
+M10 `.octest` scenarios cover the async rake buckets:
+
+1. **Use-before-complete** (`UnsafeUseBeforeCompleteAndStatusIgnored`)
+2. **Double-submit / duplicate ownership** (`UnsafeDuplicateSubmitAndBackingReuse`)
+3. **Completion / resume discipline** (`SafeDeferredCompletionWithExplicitProgress`, `UnsafeResumeWithoutRemember`)
+4. **Error propagation** (`SafeFailureSurfacedAndVisible`, `UnsafeFailureSwallowedAsNotReady`)
+5. **Resource lifetime hazards** (`UnsafeDuplicateSubmitAndBackingReuse`, `UnsafeOverwriteBackingBeforeCompletion`)
+6. **Abandonment / non-consumption** (`SafeAbandonmentAfterReadyIsStructurallySafe`)
+7. **Observability / testability** (explicitly asserted through `StateObservable` and observability coverage metrics)
+
+### Structural signals tracked (non-performance)
+
+M10 tracks structural async/testability metrics:
+
+- `ProgressStepCount`
+- `InFlightDurationSteps`
+- `ResultAvailabilityTransitions`
+- `OutstandingTaskCount`
+- `ResourceOwnershipOverlapCount`
+- `ObservabilityCoverageCount`
+- `FailurePathVisibilityCount`
+
+Each scenario emits protocol signals:
+
+- `ResultCorrect`
+- `ProtocolSafe`
+- `UseBeforeComplete`
+- `DoubleConsume`
+- `DoubleSubmitHazard`
+- `LifetimeHazard`
+- `FailureSurfaced`
+- `ResumeHazard`
+- `AbandonmentSafe`
+- `StateObservable`
+- `StructurallyValid`
+
+### Minimal safe deferred-submission protocol for future Vulkan C authors
+
+The M10 lab indicates the minimum safe protocol should require:
+
+1. explicit lifecycle states at least equivalent to `idle/submitted(in-flight)/ready/failed/consumed`
+2. explicit progress advancement (no implicit completion assumptions)
+3. readiness-gated consumption (result access before ready is illegal)
+4. single-consume discipline for completion/result tokens
+5. strict backing-resource ownership while work is in-flight (no reuse/overwrite)
+6. explicit failure channels that are distinguishable from "not ready"
+7. validated continuation discipline (`resume` only with a stored continuation)
+8. abandonment semantics that keep global protocol state structurally valid
+
+### Mandatory observability surface for maintainable async behavior
+
+M10 indicates async submission becomes difficult to test and reason about without at least:
+
+- explicit status visibility (`idle`, `in-flight`, `ready`, `failed`, `consumed` equivalents)
+- failure diagnostics distinguishable from ordinary waiting
+- outstanding-work visibility for ownership/reuse checks
+- progression visibility (step or transition-level observability)
+
+### Inconsistency surfaced
+
+M10 intentionally models protocol safety via deterministic Oct/Octomata state transitions and structural diagnostics rather than backend timing or true concurrent execution.
+
+This is consistent with the active P7 Oct-only phase and intentionally differs from historical backend-coupled timing artifacts retained elsewhere in this lab.
+
+Additionally, although the report describes named factor regimes, the executable M10 model currently encodes those regimes as bounded `Int` codes in scenario records. This keeps the model executable in this experiment path while preserving explicit factor coverage in tests, and should be revisited once named-regime ergonomics are uniformly available in this package path.
