@@ -631,3 +631,32 @@ fn M4_K16x16x512_StagedIKJ() -> Void {
     Print(MeasureStrategy(a, b, MatMulStrategy.StagedIKJ, 8, 16)!)
 }
 
+
+[Fact]
+fn BridgeCollapsesDirectFamiliesToSameExecutionShape() -> Void {
+    let a = Matrix.tabulate(6, 6, ProbeA)
+    let b = Matrix.tabulate(6, 6, ProbeB)
+
+    let baseline = MatMulBaseline(a, b)!
+    let ikj = MatMul_IKJ(a, b)!
+    let kij = MatMul_KIJ(a, b)!
+
+    AssertMatricesNear("baseline_vs_ikj", baseline, ikj)
+    AssertMatricesNear("ikj_vs_kij", ikj, kij)
+}
+
+[Fact]
+fn BridgeCollapsesBlockedAliasesToSameExecutionShape() -> Void {
+    let a = Matrix.tabulate(10, 12, ProbeA)
+    let b = Matrix.tabulate(12, 8, ProbeB)
+
+    let blocked = MatMul_Blocked(a, b, 4)!
+    let blockedIkj = MatMul_Blocked_IKJ(a, b, 4)!
+    let kblocked = MatMul_KBlocked(a, b, 3)!
+    let kblockedIkj = MatMul_KBlocked_IKJ(a, b, 3)!
+    let stagedIkj = MatMul_Staged_IKJ(a, b, 3)!
+
+    AssertMatricesNear("blocked_vs_blockedIkj", blocked, blockedIkj)
+    AssertMatricesNear("kblocked_vs_kblockedIkj", kblocked, kblockedIkj)
+    AssertMatricesNear("kblocked_vs_stagedIkj", kblocked, stagedIkj)
+}

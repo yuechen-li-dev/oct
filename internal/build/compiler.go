@@ -1085,6 +1085,30 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
 			switch ident.Name {
+			case "PrometheusMatMul":
+				if len(e.Arguments) != 2 {
+					return "", "", false, fmt.Errorf("PrometheusMatMul expects 2 arguments")
+				}
+				leftArg, leftType, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				rightArg, rightType, _, err := c.lowerExpr(e.Arguments[1])
+				if err != nil {
+					return "", "", false, err
+				}
+				if leftType != "Matrix<Float>" || rightType != "Matrix<Float>" {
+					return "", "", false, fmt.Errorf("PrometheusMatMul expects Matrix<Float> arguments")
+				}
+				tmp := c.temp("Matrix<Float>")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:  tmp,
+					Callee:  "PrometheusMatMulMM",
+					Args:    []string{leftArg, rightArg},
+					Builtin: true,
+					RetType: "Matrix<Float>",
+				})
+				return tmp, "Matrix<Float>", false, nil
 			case "Abs", "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
 				args := make([]string, 0, len(e.Arguments))
 				argTypes := make([]string, 0, len(e.Arguments))

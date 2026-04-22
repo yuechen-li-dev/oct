@@ -707,3 +707,13 @@ func TestCheckRejectsInvalidM41aFlowStaticSurface(t *testing.T) {
 	assertTypeErrorContains(t, "flow BadUtilityPolicy(flag: Bool) -> Int { state S { let y = when policy { hysteresis: true min_commit: 1 } { case 1 when flag score 1 else 0 } return y } } fn Main() -> Int { return 0 }", "function BadUtilityPolicy: let y: utility when policy hysteresis must be Int")
 	assertTypeErrorContains(t, "flow BadUtilityResult(flag: Bool) -> Int { state S { let y = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 1 else false } return y } } fn Main() -> Int { return 0 }", "function BadUtilityResult: let y: utility when result arms must have matching types")
 }
+
+func TestCheckValidatesPrometheusMatMulBuiltin(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Matrix<Float> { let a = Matrix.fill(2, 2, 1.0) let b = Matrix.fill(2, 2, 2.0) return PrometheusMatMul(a, b) }")
+	if err := Check(file); err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Float> { let a = Matrix.fill(2, 2, 1.0) let b = Matrix.fill(2, 2, 2) return PrometheusMatMul(a, b) }", "function Main: function 'PrometheusMatMul' argument 2 expects Matrix<Float>, got Matrix<Int>")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Float> { let a = Matrix.fill(2, 2, 1.0) return PrometheusMatMul(a) }", "function Main: function 'PrometheusMatMul' expects 2 arguments, got 1")
+}

@@ -2113,3 +2113,39 @@ fn main() -> Int {
 		t.Fatalf("expected 1, got %q", strings.TrimSpace(string(out)))
 	}
 }
+
+func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "package Main\nfn main() -> Int {\n    let a = Matrix.fill(2, 2, 3.0)\n    let b = Matrix.fill(2, 2, 5.0)\n    let c = PrometheusMatMul(a, b)\n    Print(c)\n    return 0\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "Main", "main.oct"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
+	result, err := CompileForTest(filepath.Join(root, "Main", "main.oct"))
+	if err != nil {
+		t.Fatalf("compile for test: %v", err)
+	}
+	data, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "PrometheusMatMulMM") {
+		t.Fatalf("expected PrometheusMatMul builtin to lower into PrometheusMatMulMM, got:\n%s", text)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	normalized := strings.ReplaceAll(string(out), "\r\n", "\n")
+	if !strings.Contains(normalized, "backend_requested=prometheus backend_used=cpu status=fallback(prometheus_unavailable)") {
+		t.Fatalf("expected explicit fallback status in output, got %q", normalized)
+	}
+	if !strings.Contains(normalized, "[[30 30] [30 30]]") {
+		t.Fatalf("expected matrix output, got %q", normalized)
+	}
+}
