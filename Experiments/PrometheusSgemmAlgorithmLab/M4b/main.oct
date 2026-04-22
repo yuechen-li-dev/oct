@@ -1,3 +1,5 @@
+// Status (2026-04-22): Historical backend-path helper for M4b. Quarantined from active pure-Oct SGEMM lab decisions.
+
 package Main
 
 fn ConsumeMatrix(m: Matrix<Float>) -> Void {

@@ -17,35 +17,68 @@ record MatMulDecision {
     KBlock: Int
 }
 
-fn PrometheusMatMulBridge(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
-    let inputsOk = ValidateMatMulInputs(A, B)?
-    if not inputsOk {
-        return error("matmul validation failed")
-    }
-    return PrometheusMatMul(A, B)
+record StructuralCostSignals {
+    OutputTiles: Int
+    KChunks: Int
+    TempChunkMatrices: Int
+    CopyPhases: Int
+    ConceptualCopyVolume: Int
+    DecompositionDepth: Int
+    AccumulationSteps: Int
 }
 
 fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
-    return PrometheusMatMulBridge(A, B)?
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for i in 0 .. A.rows {
+        for j in 0 .. B.cols {
+            var sum = 0.0
+            for k in 0 .. A.cols {
+                sum = sum + A[i, k] * B[k, j]
+            }
+            out[i, j] = sum
+        }
+    }
+
+    return out
 }
 
 fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
-    return PrometheusMatMulBridge(A, B)?
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for i in 0 .. A.rows {
+        for k in 0 .. A.cols {
+            let aValue = A[i, k]
+            for j in 0 .. B.cols {
+                out[i, j] = out[i, j] + aValue * B[k, j]
+            }
+        }
+    }
+
+    return out
 }
 
 fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
-    return PrometheusMatMulBridge(A, B)?
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+    for k in 0 .. A.cols {
+        for i in 0 .. A.rows {
+            let aValue = A[i, k]
+            for j in 0 .. B.cols {
+                out[i, j] = out[i, j] + aValue * B[k, j]
+            }
+        }
+    }
+
+    return out
 }
 
 fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
-    let inputsOk = ValidateMatMulInputs(A, B)?
-    if not inputsOk {
-        return error("matmul validation failed")
-    }
-    let blockOk = ValidateBlockSize(blockSize)?
-    if not blockOk {
-        return error("block size validation failed")
-    }
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+    let _blockOk = ValidateBlockSize(blockSize)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
@@ -53,17 +86,19 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<
         let iBlock = iBlockIndex * blockSize
         if iBlock < A.rows {
             let iEnd = MinInt(iBlock + blockSize, A.rows)
-            let rowLen = iEnd - iBlock
-            let subA = ExtractARowBlock(A, iBlock, rowLen)
-
             for jBlockIndex in 0 .. B.cols {
                 let jBlock = jBlockIndex * blockSize
                 if jBlock < B.cols {
                     let jEnd = MinInt(jBlock + blockSize, B.cols)
-                    let colLen = jEnd - jBlock
-                    let subB = ExtractBColBlock(B, jBlock, colLen)
-                    let subOut = PrometheusMatMulBridge(subA, subB)?
-                    out = ScatterBlock(out, subOut, iBlock, jBlock)
+                    for i in iBlock .. iEnd {
+                        for j in jBlock .. jEnd {
+                            var sum = 0.0
+                            for k in 0 .. A.cols {
+                                sum = sum + A[i, k] * B[k, j]
+                            }
+                            out[i, j] = sum
+                        }
+                    }
                 }
             }
         }
@@ -73,18 +108,87 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<
 }
 
 fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
-    return MatMul_Blocked(A, B, blockSize)?
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+    let _blockOk = ValidateBlockSize(blockSize)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for iBlockIndex in 0 .. A.rows {
+        let iBlock = iBlockIndex * blockSize
+        if iBlock < A.rows {
+            let iEnd = MinInt(iBlock + blockSize, A.rows)
+            for jBlockIndex in 0 .. B.cols {
+                let jBlock = jBlockIndex * blockSize
+                if jBlock < B.cols {
+                    let jEnd = MinInt(jBlock + blockSize, B.cols)
+                    for i in iBlock .. iEnd {
+                        for k in 0 .. A.cols {
+                            let aValue = A[i, k]
+                            for j in jBlock .. jEnd {
+                                out[i, j] = out[i, j] + aValue * B[k, j]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out
 }
 
 fn MatMul_KBlocked(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
-    let inputsOk = ValidateMatMulInputs(A, B)?
-    if not inputsOk {
-        return error("matmul validation failed")
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for kBlockIndex in 0 .. A.cols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < A.cols {
+            let kEnd = MinInt(kStart + kBlock, A.cols)
+            for i in 0 .. A.rows {
+                for j in 0 .. B.cols {
+                    var partial = 0.0
+                    for k in kStart .. kEnd {
+                        partial = partial + A[i, k] * B[k, j]
+                    }
+                    out[i, j] = out[i, j] + partial
+                }
+            }
+        }
     }
-    let kBlockOk = ValidateKBlockSize(kBlock)?
-    if not kBlockOk {
-        return error("kBlock validation failed")
+
+    return out
+}
+
+fn MatMul_KBlocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
+
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
+
+    for kBlockIndex in 0 .. A.cols {
+        let kStart = kBlockIndex * kBlock
+        if kStart < A.cols {
+            let kEnd = MinInt(kStart + kBlock, A.cols)
+            for i in 0 .. A.rows {
+                for k in kStart .. kEnd {
+                    let aValue = A[i, k]
+                    for j in 0 .. B.cols {
+                        out[i, j] = out[i, j] + aValue * B[k, j]
+                    }
+                }
+            }
+        }
     }
+
+    return out
+}
+
+fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
+    let _inputsOk = ValidateMatMulInputs(A, B)?
+    let _kBlockOk = ValidateKBlockSize(kBlock)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
@@ -96,68 +200,26 @@ fn MatMul_KBlocked(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Fl
 
             let stagedA = StageAChunk(A, kStart, kChunkLen)
             let stagedB = StageBChunk(B, kStart, kChunkLen)
-            let partialOut = PrometheusMatMulBridge(stagedA, stagedB)?
-            out = AccumulateInto(out, partialOut)
+
+            var partialOut = Matrix.zeros<Float>(A.rows, B.cols)
+            for i in 0 .. A.rows {
+                for kLocal in 0 .. kChunkLen {
+                    let aValue = stagedA[i, kLocal]
+                    for j in 0 .. B.cols {
+                        partialOut[i, j] = partialOut[i, j] + aValue * stagedB[kLocal, j]
+                    }
+                }
+            }
+
+            for i in 0 .. A.rows {
+                for j in 0 .. B.cols {
+                    out[i, j] = out[i, j] + partialOut[i, j]
+                }
+            }
         }
     }
 
     return out
-}
-
-fn MatMul_KBlocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
-    return MatMul_KBlocked(A, B, kBlock)?
-}
-
-fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Float> ! Error {
-    return MatMul_KBlocked(A, B, kBlock)?
-}
-
-fn ExtractARowBlock(A: Matrix<Float>, rowStart: Int, rowLen: Int) -> Matrix<Float> {
-    var subA = Matrix.zeros<Float>(rowLen, A.cols)
-
-    for iLocal in 0 .. rowLen {
-        for k in 0 .. A.cols {
-            subA[iLocal, k] = A[rowStart + iLocal, k]
-        }
-    }
-
-    return subA
-}
-
-fn ExtractBColBlock(B: Matrix<Float>, colStart: Int, colLen: Int) -> Matrix<Float> {
-    var subB = Matrix.zeros<Float>(B.rows, colLen)
-
-    for k in 0 .. B.rows {
-        for jLocal in 0 .. colLen {
-            subB[k, jLocal] = B[k, colStart + jLocal]
-        }
-    }
-
-    return subB
-}
-
-fn ScatterBlock(out: Matrix<Float>, block: Matrix<Float>, rowStart: Int, colStart: Int) -> Matrix<Float> {
-    var next = out
-    for iLocal in 0 .. block.rows {
-        for jLocal in 0 .. block.cols {
-            next[rowStart + iLocal, colStart + jLocal] = block[iLocal, jLocal]
-        }
-    }
-
-
-    return next
-}
-
-fn AccumulateInto(out: Matrix<Float>, partial: Matrix<Float>) -> Matrix<Float> {
-    var next = out
-    for i in 0 .. out.rows {
-        for j in 0 .. out.cols {
-            next[i, j] = next[i, j] + partial[i, j]
-        }
-    }
-
-
-    return next
 }
 
 fn StageAChunk(A: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
@@ -204,10 +266,7 @@ fn MatMulWithStrategy(
 }
 
 fn ChooseStrategy(A: Matrix<Float>, B: Matrix<Float>) -> MatMulStrategy ! Error {
-    let inputsOk = ValidateMatMulInputs(A, B)?
-    if not inputsOk {
-        return error("matmul validation failed")
-    }
+    let _inputsOk = ValidateMatMulInputs(A, B)?
 
     return DecisionStrategy(ChooseDecision(A.rows, B.cols, A.cols))
 }
@@ -324,88 +383,148 @@ fn ChooseKBlockSize(m: Int, n: Int, k: Int) -> Int {
     return 4
 }
 
+fn StructuralSignalsForStrategy(
+    strategy: MatMulStrategy,
+    m: Int,
+    n: Int,
+    k: Int,
+    blockSize: Int,
+    kBlock: Int
+) -> StructuralCostSignals {
+    let safeBlockSize = MaxInt(1, blockSize)
+    let safeKBlock = MaxInt(1, kBlock)
+
+    let tilesM = CeilDiv(m, safeBlockSize)
+    let tilesN = CeilDiv(n, safeBlockSize)
+    let outputTiles = tilesM * tilesN
+    let kChunks = CeilDiv(k, safeKBlock)
+
+    return switch strategy {
+        case MatMulStrategy.Baseline => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: 1
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 1
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.IKJ => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: 1
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 1
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.KIJ => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: 1
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 1
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.Blocked => StructuralCostSignals {
+            OutputTiles: outputTiles
+            KChunks: 1
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 2
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.BlockedIKJ => StructuralCostSignals {
+            OutputTiles: outputTiles
+            KChunks: 1
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 2
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.KBlocked => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: kChunks
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 2
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.KBlockedIKJ => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: kChunks
+            TempChunkMatrices: 0
+            CopyPhases: 0
+            ConceptualCopyVolume: 0
+            DecompositionDepth: 2
+            AccumulationSteps: m * n * k
+        }
+        case MatMulStrategy.StagedIKJ => StructuralCostSignals {
+            OutputTiles: 1
+            KChunks: kChunks
+            TempChunkMatrices: 2 * kChunks
+            CopyPhases: 2 * kChunks
+            ConceptualCopyVolume: (m * k) + (k * n)
+            DecompositionDepth: 3
+            AccumulationSteps: m * n * k
+        }
+    }
+}
+
 fn ScoreSingleCall(m: Int, n: Int, k: Int) -> Int {
+    let signals = StructuralSignalsForStrategy(MatMulStrategy.Baseline, m, n, k, 1, 1)
     let maxOuter = MaxInt(m, n)
     let minOuter = MaxInt(1, MinInt(m, n))
-    let area = m * n
-    let kPressureScaled = (k * 100) / maxOuter
     let balanceScaled = (maxOuter * 100) / minOuter
 
-    var score = 40
+    var score = 100
+    score = score - signals.DecompositionDepth * 10
     if balanceScaled <= 125 {
-        score = score + 45
-    }
-    if area >= 512 {
-        score = score + 20
-    }
-    if kPressureScaled <= 140 {
         score = score + 15
     }
-    if kPressureScaled >= 280 {
-        score = score - 45
+    if k >= maxOuter * 3 {
+        score = score - 35
     }
-    if area <= 256 {
-        score = score - 20
-    }
-
     return score
 }
 
 fn ScoreBlocked(m: Int, n: Int, k: Int) -> Int {
-    let maxOuter = MaxInt(m, n)
-    let minOuter = MaxInt(1, MinInt(m, n))
-    let area = m * n
-    let kPressureScaled = (k * 100) / maxOuter
-    let balanceScaled = (maxOuter * 100) / minOuter
-    let smallThreshold = 16
+    let blockSize = ChooseBlockedBlockSize(m, n, k)
+    let signals = StructuralSignalsForStrategy(MatMulStrategy.Blocked, m, n, k, blockSize, 1)
 
-    var score = 25
-    if m <= smallThreshold and n <= smallThreshold and k <= smallThreshold {
-        score = score + 90
+    var score = 60
+    if signals.OutputTiles >= 4 {
+        score = score + 45
     }
-    if area <= 256 {
-        score = score + 25
+    if signals.OutputTiles >= 16 {
+        score = score + 20
     }
-    if balanceScaled <= 125 {
-        score = score + 10
-    }
-    if kPressureScaled >= 280 {
-        score = score - 35
-    }
-    if balanceScaled >= 200 {
+    if k >= MaxInt(m, n) * 3 {
         score = score - 20
     }
-
     return score
 }
 
 fn ScoreKDecomposition(m: Int, n: Int, k: Int) -> Int {
-    let maxOuter = MaxInt(m, n)
-    let minOuter = MaxInt(1, MinInt(m, n))
-    let area = m * n
-    let kPressureScaled = (k * 100) / maxOuter
-    let balanceScaled = (maxOuter * 100) / minOuter
+    let kBlock = ChooseKBlockSize(m, n, k)
+    let signals = StructuralSignalsForStrategy(MatMulStrategy.KBlocked, m, n, k, 1, kBlock)
 
-    var score = 35
-    if kPressureScaled >= 280 {
-        score = score + 85
+    var score = 55
+    if signals.KChunks >= 4 {
+        score = score + 35
     }
-    if kPressureScaled >= 160 and kPressureScaled < 280 {
-        score = score + 25
+    if signals.KChunks >= 8 {
+        score = score + 20
     }
-    if balanceScaled >= 180 {
-        score = score + 40
+    if m <= 8 and n <= 8 and k <= 16 {
+        score = score - 20
     }
-    if balanceScaled <= 125 {
-        score = score - 30
-    }
-    if area <= 256 and balanceScaled <= 125 and kPressureScaled <= 140 {
-        score = score - 35
-    }
-
     return score
 }
-
 
 fn MeasureStrategy(
     a: Matrix<Float>,
@@ -414,10 +533,19 @@ fn MeasureStrategy(
     blockSize: Int,
     kBlock: Int
 ) -> Int ! Error {
-    // Timing is captured by `oct bench` at the benchmark function boundary.
-    // This wrapper keeps strategy invocation centralized and benchmark bodies minimal.
     let out = MatMulWithStrategy(a, b, strategy, blockSize, kBlock)?
-    return out.rows * out.cols * a.cols
+    let signals = StructuralSignalsForStrategy(strategy, a.rows, b.cols, a.cols, blockSize, kBlock)
+    return out.rows * out.cols + signals.AccumulationSteps + signals.ConceptualCopyVolume
+}
+
+fn CeilDiv(value: Int, divisor: Int) -> Int {
+    if divisor <= 0 {
+        return 0
+    }
+    if value <= 0 {
+        return 0
+    }
+    return ((value - 1) / divisor) + 1
 }
 
 fn MinInt(a: Int, b: Int) -> Int {

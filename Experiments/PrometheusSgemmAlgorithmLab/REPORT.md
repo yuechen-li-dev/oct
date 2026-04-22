@@ -4,6 +4,37 @@
 
 Prometheus SGEMM Algorithm Lab is a correctness-first Oct experiment track for matrix-multiplication design work. It is intended for scientific prototyping, algorithm exploration, and policy exploration before low-level implementation work.
 
+## P7 reset pass (active phase as of 2026-04-22)
+
+This lab is now explicitly recentered to a **pure Oct, CPU-only, correctness-first simulation phase**.
+
+### Active phase rules
+
+- Active SGEMM algorithm/controller work runs in Oct kernels only (no backend bridge in the active path).
+- `PROMETHEUS { ... }`, Vulkan runs, and Windows-native truth runs are **deferred** for this phase.
+- Historical backend timing artifacts remain in-repo for traceability, but they are **not decision authority** for current algorithm/controller choices.
+- Controller reasoning is based on deterministic structure and synthetic cost signals, not wall-clock backend timing.
+
+### Historical milestones status
+
+- M0/M1/M2/M3 remain active algorithm/controller design milestones.
+- M4b and cloud timing artifacts are retained as historical backend-path investigation records and are currently out-of-scope for active decision-making.
+
+### Inconsistency surfaced and resolved in active path
+
+Previous M4 code had backend-coupled execution via `PrometheusMatMul(...)` wrappers inside active strategy kernels, which conflicted with this phase intent.
+
+The active M4 surface is now pure-Oct kernel logic again (direct, blocked, K-blocked, staged), and backend-coupled surfaces are treated as quarantined historical artifacts.
+
+### Next Oct-only milestone (prepared)
+
+Next milestone work should stay in this pure-Oct lane and focus on:
+
+- validating Gemini-listed optimization ideas as Oct algorithm variants only
+- decomposition/staging correctness and cross-family equivalence checks
+- controller-decision modeling against synthetic structural signals (`OutputTiles`, `KChunks`, `TempChunkMatrices`, `CopyPhases`, `ConceptualCopyVolume`, `DecompositionDepth`, `AccumulationSteps`)
+- retaining backend and hardware timing as deferred follow-on work after Oct-side convergence
+
 ## Why this is separate from the benchmark harness
 
 This lab captures reference algorithm behavior and design reasoning in Oct. The benchmark harness answers performance questions. Keeping them separate prevents benchmark concerns from distorting baseline algorithm validation.
@@ -226,7 +257,7 @@ M3 aligns M2 with matrix-native indexing and shapes to match current language-su
 
 ## M4 scope
 
-M4 introduces controlled execution measurement to validate M3 structural assumptions without turning the lab into a full benchmark suite.
+M4 is now treated as the active **Oct-only algorithm/controller simulation** milestone surface for structural reasoning and correctness checks.
 
 ### Measurement setup
 
@@ -294,9 +325,9 @@ These are exactly the kind of mismatches M4 was intended to expose before introd
 
 The M4 request asks for a direct in-language `MeasureStrategy(...) -> duration` API. Current `Language/reference` builtins do not document a timing builtin for obtaining wall-clock duration inside Oct code. M4 therefore uses `oct bench` boundary timing (`DurationNs` in `.octagon`) as the measurement source of truth and keeps `MeasureStrategy(...)` as an execution wrapper rather than an in-language timer.
 
-## M4b scope
+## M4b scope (quarantined historical backend path work)
 
-M4b is the Windows-native Prometheus reality check for the suspicious M4 shapes, with an explicit emphasis on proving what the current code can and cannot validate truthfully.
+M4b remains preserved for historical context but is currently **inactive/out-of-scope** for active SGEMM algorithm/controller decisions in this phase.
 
 ### Windows-native path validation
 

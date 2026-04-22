@@ -1,3 +1,5 @@
+> **Status (2026-04-22):** Historical cloud timing artifact only. Do not use as active controller/algorithm scoring authority in the current pure-Oct phase.
+
 # M4 Cloud Measurement Output
 
 Source artifacts:

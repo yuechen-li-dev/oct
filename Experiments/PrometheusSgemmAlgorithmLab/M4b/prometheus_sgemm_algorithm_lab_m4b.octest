@@ -1,3 +1,5 @@
+// Status (2026-04-22): Historical backend-path benchmark surface. Inactive for the current pure-Oct SGEMM algorithm/controller phase.
+
 package Main
 
 [Benchmark]
