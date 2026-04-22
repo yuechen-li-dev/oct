@@ -283,6 +283,11 @@ static int update_async_progress(prometheus_runtime* rt) {
   if (rt->async_state != PROM_ASYNC_STATE_SUBMITTED) {
     return PROM_OK;
   }
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_ASYNC_POLL) != 0u) {
+    rt->in_flight_submit = 0u;
+    set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
+    return PROM_ERROR;
+  }
   vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
   if (vk_result == VK_SUCCESS) {
     rt->in_flight_submit = 0u;
@@ -1164,8 +1169,15 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
-  if (rt->async_state == PROM_ASYNC_STATE_FAILED || rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
+  if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_async_state(rt, PROM_ASYNC_STATE_IDLE, PROM_STAGE_NONE, 0);
+  }
+  if (rt->async_state == PROM_ASYNC_STATE_FAILED) {
+    set_status(out_stage,
+               out_detail_code,
+               PROM_STAGE_SUBMIT,
+               rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
+    return PROM_ERROR;
   }
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
@@ -1372,6 +1384,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barriers[2].buffer = rt->staged_device_c.buffer;
     barriers[2].size = rt->staged_device_c.size;
+    /* Staged device-local C is not pre-zeroed: current SGEMM kernels overwrite every final C element. */
     vkCmdPipelineBarrier(rt->command_buffer,
                          VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1410,6 +1423,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     return PROM_ERROR;
   }
 
+  /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
   vkCmdDispatch(rt->command_buffer,
                 (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
                 (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
