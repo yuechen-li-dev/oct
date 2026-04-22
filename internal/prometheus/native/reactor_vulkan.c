@@ -25,6 +25,13 @@
 #define PROM_VK_LOCAL_SIZE_X 8u
 #define PROM_VK_LOCAL_SIZE_Y 8u
 
+typedef struct prom_vk_buffer {
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+  void* mapped;
+  VkDeviceSize size;
+} prom_vk_buffer;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -45,15 +52,18 @@ typedef struct prometheus_runtime {
   VkFence submit_fence;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
+  prom_vk_buffer reusable_a;
+  prom_vk_buffer reusable_b;
+  prom_vk_buffer reusable_c;
+  uint32_t reusable_m;
+  uint32_t reusable_n;
+  uint32_t reusable_k;
+  uint32_t has_reusable_buffers;
+  uint32_t descriptor_bindings_valid;
+  uint32_t command_recording_valid;
+  uint32_t in_flight_submit;
   uint32_t software_vulkan;
 } prometheus_runtime;
-
-typedef struct prom_vk_buffer {
-  VkBuffer buffer;
-  VkDeviceMemory memory;
-  void* mapped;
-  VkDeviceSize size;
-} prom_vk_buffer;
 
 typedef struct prom_vk_push {
   uint32_t m;
@@ -395,6 +405,71 @@ static void destroy_buffer(prometheus_runtime* rt, prom_vk_buffer* buffer) {
   }
 }
 
+static void destroy_reusable_execution_buffers(prometheus_runtime* rt) {
+  if (rt == NULL) {
+    return;
+  }
+  destroy_buffer(rt, &rt->reusable_c);
+  destroy_buffer(rt, &rt->reusable_b);
+  destroy_buffer(rt, &rt->reusable_a);
+  rt->has_reusable_buffers = 0u;
+  rt->descriptor_bindings_valid = 0u;
+  rt->command_recording_valid = 0u;
+  rt->reusable_m = 0u;
+  rt->reusable_n = 0u;
+  rt->reusable_k = 0u;
+}
+
+static int ensure_reusable_execution_buffers(prometheus_runtime* rt,
+                                             uint32_t m,
+                                             uint32_t n,
+                                             uint32_t k,
+                                             VkDeviceSize a_buffer_size,
+                                             VkDeviceSize b_buffer_size,
+                                             VkDeviceSize c_buffer_size,
+                                             VkResult* out_result) {
+  VkResult result;
+  int shape_changed;
+
+  if (out_result == NULL || rt == NULL) {
+    return 0;
+  }
+
+  *out_result = VK_SUCCESS;
+  shape_changed = (rt->has_reusable_buffers == 0u) || (rt->reusable_m != m) || (rt->reusable_n != n) || (rt->reusable_k != k);
+  if (!shape_changed) {
+    return 1;
+  }
+
+  destroy_reusable_execution_buffers(rt);
+
+  result = create_host_visible_buffer(rt, a_buffer_size, &rt->reusable_a);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    return 0;
+  }
+  result = create_host_visible_buffer(rt, b_buffer_size, &rt->reusable_b);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_reusable_execution_buffers(rt);
+    return 0;
+  }
+  result = create_host_visible_buffer(rt, c_buffer_size, &rt->reusable_c);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_reusable_execution_buffers(rt);
+    return 0;
+  }
+
+  rt->reusable_m = m;
+  rt->reusable_n = n;
+  rt->reusable_k = k;
+  rt->has_reusable_buffers = 1u;
+  rt->descriptor_bindings_valid = 0u;
+  rt->command_recording_valid = 0u;
+  return 1;
+}
+
 static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt == NULL) {
     return;
@@ -402,6 +477,7 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->device != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(rt->device);
   }
+  destroy_reusable_execution_buffers(rt);
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
@@ -765,9 +841,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                      int* out_detail_code) {
   prometheus_runtime* rt;
   VkResult vk_result;
-  prom_vk_buffer a_buf;
-  prom_vk_buffer b_buf;
-  prom_vk_buffer c_buf;
   VkWriteDescriptorSet writes[3];
   VkDescriptorBufferInfo buffer_infos[3];
   VkCommandBufferBeginInfo begin_info;
@@ -781,9 +854,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   size_t b_copy_size;
   size_t c_copy_size;
 
-  memset(&a_buf, 0, sizeof(a_buf));
-  memset(&b_buf, 0, sizeof(b_buf));
-  memset(&c_buf, 0, sizeof(c_buf));
   set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
   if (handle == NULL || !registry_contains(handle)) {
@@ -816,164 +886,168 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
-  vk_result = create_host_visible_buffer(rt, a_buffer_size, &a_buf);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
-    return PROM_ERROR;
+  if (rt->in_flight_submit != 0u) {
+    vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
+    if (vk_result == VK_SUCCESS) {
+      rt->in_flight_submit = 0u;
+    } else {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
+      return PROM_ERROR;
+    }
   }
-  vk_result = create_host_visible_buffer(rt, b_buffer_size, &b_buf);
-  if (vk_result != VK_SUCCESS) {
+
+  if (!ensure_reusable_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
-    destroy_buffer(rt, &a_buf);
-    return PROM_ERROR;
-  }
-  vk_result = create_host_visible_buffer(rt, c_buffer_size, &c_buf);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
-    destroy_buffer(rt, &b_buf);
-    destroy_buffer(rt, &a_buf);
     return PROM_ERROR;
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
-    goto cleanup;
+    return PROM_ERROR;
   }
 
-  memcpy(a_buf.mapped, a, a_copy_size);
-  memcpy(b_buf.mapped, b, b_copy_size);
-  memset(c_buf.mapped, 0, c_copy_size);
+  memcpy(rt->reusable_a.mapped, a, a_copy_size);
+  memcpy(rt->reusable_b.mapped, b, b_copy_size);
+  memset(rt->reusable_c.mapped, 0, c_copy_size);
 
   memset(buffer_infos, 0, sizeof(buffer_infos));
-  buffer_infos[0].buffer = a_buf.buffer;
+  buffer_infos[0].buffer = rt->reusable_a.buffer;
   buffer_infos[0].offset = 0;
-  buffer_infos[0].range = a_buf.size;
-  buffer_infos[1].buffer = b_buf.buffer;
+  buffer_infos[0].range = rt->reusable_a.size;
+  buffer_infos[1].buffer = rt->reusable_b.buffer;
   buffer_infos[1].offset = 0;
-  buffer_infos[1].range = b_buf.size;
-  buffer_infos[2].buffer = c_buf.buffer;
+  buffer_infos[1].range = rt->reusable_b.size;
+  buffer_infos[2].buffer = rt->reusable_c.buffer;
   buffer_infos[2].offset = 0;
-  buffer_infos[2].range = c_buf.size;
+  buffer_infos[2].range = rt->reusable_c.size;
 
-  memset(writes, 0, sizeof(writes));
-  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  writes[0].dstSet = rt->descriptor_set;
-  writes[0].dstBinding = 0u;
-  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  writes[0].descriptorCount = 1u;
-  writes[0].pBufferInfo = &buffer_infos[0];
-  writes[1] = writes[0];
-  writes[1].dstBinding = 1u;
-  writes[1].pBufferInfo = &buffer_infos[1];
-  writes[2] = writes[0];
-  writes[2].dstBinding = 2u;
-  writes[2].pBufferInfo = &buffer_infos[2];
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
-
-  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
+  if (rt->descriptor_bindings_valid == 0u) {
+    memset(writes, 0, sizeof(writes));
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = rt->descriptor_set;
+    writes[0].dstBinding = 0u;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[0].descriptorCount = 1u;
+    writes[0].pBufferInfo = &buffer_infos[0];
+    writes[1] = writes[0];
+    writes[1].dstBinding = 1u;
+    writes[1].pBufferInfo = &buffer_infos[1];
+    writes[2] = writes[0];
+    writes[2].dstBinding = 2u;
+    writes[2].pBufferInfo = &buffer_infos[2];
+    vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+    rt->descriptor_bindings_valid = 1u;
+    rt->command_recording_valid = 0u;
   }
 
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
-  }
+  if (rt->command_recording_valid == 0u) {
+    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+    if (vk_result != VK_SUCCESS) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
 
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+    if (vk_result != VK_SUCCESS) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
 
-  barrier.buffer = a_buf.buffer;
-  barrier.offset = 0;
-  barrier.size = a_buf.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_HOST_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1,
-                       &barrier,
-                       0,
-                       NULL);
+    memset(&barrier, 0, sizeof(barrier));
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
-  barrier.buffer = b_buf.buffer;
-  barrier.size = b_buf.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_HOST_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1,
-                       &barrier,
-                       0,
-                       NULL);
+    barrier.buffer = rt->reusable_a.buffer;
+    barrier.offset = 0;
+    barrier.size = rt->reusable_a.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0,
+                         0,
+                         NULL,
+                         1,
+                         &barrier,
+                         0,
+                         NULL);
 
-  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
-  vkCmdBindDescriptorSets(rt->command_buffer,
-                          VK_PIPELINE_BIND_POINT_COMPUTE,
-                          rt->pipeline_layout,
-                          0u,
-                          1u,
-                          &rt->descriptor_set,
-                          0u,
-                          NULL);
+    barrier.buffer = rt->reusable_b.buffer;
+    barrier.size = rt->reusable_b.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0,
+                         0,
+                         NULL,
+                         1,
+                         &barrier,
+                         0,
+                         NULL);
 
-  push.m = m;
-  push.n = n;
-  push.k = k;
-  vkCmdPushConstants(rt->command_buffer,
-                     rt->pipeline_layout,
-                     VK_SHADER_STAGE_COMPUTE_BIT,
-                     0u,
-                     sizeof(push),
-                     &push);
+    vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+    vkCmdBindDescriptorSets(rt->command_buffer,
+                            VK_PIPELINE_BIND_POINT_COMPUTE,
+                            rt->pipeline_layout,
+                            0u,
+                            1u,
+                            &rt->descriptor_set,
+                            0u,
+                            NULL);
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
-    goto cleanup;
-  }
+    push.m = m;
+    push.n = n;
+    push.k = k;
+    push.reserved0 = 0u;
+    vkCmdPushConstants(rt->command_buffer,
+                       rt->pipeline_layout,
+                       VK_SHADER_STAGE_COMPUTE_BIT,
+                       0u,
+                       sizeof(push),
+                       &push);
 
-  vkCmdDispatch(rt->command_buffer,
-                (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
-                (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
-                1u);
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+    if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
+      return PROM_ERROR;
+    }
 
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-  barrier.buffer = c_buf.buffer;
-  barrier.size = c_buf.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_HOST_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1,
-                       &barrier,
-                       0,
-                       NULL);
+    vkCmdDispatch(rt->command_buffer,
+                  (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
+                  (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
+                  1u);
 
-  vk_result = vkEndCommandBuffer(rt->command_buffer);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    barrier.buffer = rt->reusable_c.buffer;
+    barrier.size = rt->reusable_c.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT,
+                         0,
+                         0,
+                         NULL,
+                         1,
+                         &barrier,
+                         0,
+                         NULL);
+
+    vk_result = vkEndCommandBuffer(rt->command_buffer);
+    if (vk_result != VK_SUCCESS) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    rt->command_recording_valid = 1u;
   }
 
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
+    return PROM_ERROR;
   }
 
   memset(&submit_info, 0, sizeof(submit_info));
@@ -983,27 +1057,29 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
+    return PROM_ERROR;
   }
+  rt->in_flight_submit = 1u;
 
-  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
-  if (vk_result != VK_SUCCESS) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    goto cleanup;
+  if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
+    vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    if (vk_result != VK_SUCCESS) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    rt->in_flight_submit = 0u;
+  } else {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
+    return PROM_ERROR;
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE);
-    goto cleanup;
+    return PROM_ERROR;
   }
 
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
-  memcpy(c, c_buf.mapped, c_copy_size);
-
-cleanup:
-  destroy_buffer(rt, &c_buf);
-  destroy_buffer(rt, &b_buf);
-  destroy_buffer(rt, &a_buf);
+  memcpy(c, rt->reusable_c.mapped, c_copy_size);
 
   if (out_stage != NULL && out_detail_code != NULL && *out_stage == PROM_STAGE_TRANSFER_OUT && *out_detail_code == 0) {
     return PROM_OK;

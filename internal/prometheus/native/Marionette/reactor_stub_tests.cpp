@@ -291,6 +291,7 @@ FACT(PrometheusReactor_RuntimeFailurePathsReportExplicitStages)
         {"upload", PROM_TESTCFG_FAIL_UPLOAD, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE},
         {"dispatch", PROM_TESTCFG_FAIL_DISPATCH, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE},
         {"download", PROM_TESTCFG_FAIL_DOWNLOAD, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE},
+        {"skip_wait_in_flight", PROM_TESTCFG_SKIP_SUBMIT_WAIT, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT},
     };
 
     for (const FailureCase& failure : cases) {
@@ -324,6 +325,71 @@ FACT(PrometheusReactor_RuntimeFailurePathsReportExplicitStages)
 
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
     }
+}
+
+FACT(PrometheusReactor_SgemmReuseHandlesShapeAndBufferChangesCorrectly)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM reuse protocol path cannot be asserted");
+    }
+
+    const std::uint32_t same_m = 4u;
+    const std::uint32_t same_n = 4u;
+    const std::uint32_t same_k = 4u;
+    const std::vector<float> a0 = deterministic_matrix(same_m, same_k);
+    const std::vector<float> b0 = deterministic_matrix(same_k, same_n);
+    const std::vector<float> expected0 = cpu_oracle(same_m, same_n, same_k, a0, b0);
+    std::vector<float> out0(same_m * same_n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a0.data(), b0.data(), out0.data(), same_m, same_n, same_k, &stage, &detail), "first SGEMM call should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "first SGEMM call should complete transfer-out stage");
+    ASSERT_EQUAL(0, detail, "first SGEMM call should complete with zero detail");
+    for (std::size_t i = 0; i < expected0.size(); ++i) {
+        ASSERT_NEAR(expected0[i], out0[i], 1e-4f, "first SGEMM call should match CPU oracle");
+    }
+
+    const std::vector<float> a1 = deterministic_matrix(same_m, same_k);
+    const std::vector<float> b1 = deterministic_matrix(same_k, same_n);
+    std::vector<float> a1_shifted = a1;
+    std::vector<float> b1_shifted = b1;
+    for (float& v : a1_shifted) {
+        v += 0.25f;
+    }
+    for (float& v : b1_shifted) {
+        v -= 0.5f;
+    }
+
+    const std::vector<float> expected1 = cpu_oracle(same_m, same_n, same_k, a1_shifted, b1_shifted);
+    std::vector<float> out1(same_m * same_n, 0.0f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a1_shifted.data(), b1_shifted.data(), out1.data(), same_m, same_n, same_k, &stage, &detail), "same-shape different host buffers should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "same-shape reuse should complete transfer-out stage");
+    ASSERT_EQUAL(0, detail, "same-shape reuse should complete with zero detail");
+    for (std::size_t i = 0; i < expected1.size(); ++i) {
+        ASSERT_NEAR(expected1[i], out1[i], 1e-4f, "same-shape different host buffers should not retain stale binding assumptions");
+    }
+
+    const std::uint32_t changed_m = 3u;
+    const std::uint32_t changed_n = 6u;
+    const std::uint32_t changed_k = 5u;
+    const std::vector<float> a2 = deterministic_matrix(changed_m, changed_k);
+    const std::vector<float> b2 = deterministic_matrix(changed_k, changed_n);
+    const std::vector<float> expected2 = cpu_oracle(changed_m, changed_n, changed_k, a2, b2);
+    std::vector<float> out2(changed_m * changed_n, 0.0f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a2.data(), b2.data(), out2.data(), changed_m, changed_n, changed_k, &stage, &detail), "shape-change SGEMM call should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "shape-change SGEMM call should complete transfer-out stage");
+    ASSERT_EQUAL(0, detail, "shape-change SGEMM call should complete with zero detail");
+    for (std::size_t i = 0; i < expected2.size(); ++i) {
+        ASSERT_NEAR(expected2[i], out2[i], 1e-4f, "shape-change SGEMM call should invalidate stale shape assumptions");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
 FACT(PrometheusReactor_SgemmRejectsShapeSizeOverflowExplicitly)
