@@ -484,3 +484,29 @@ fn ProbeB(r: Int, c: Int) -> Float {
     }
     return v
 }
+
+fn M6BenchA(m: Int, k: Int) -> Matrix<Float> {
+    return Matrix.tabulate(m, k, ProbeA)
+}
+
+fn M6BenchB(k: Int, n: Int) -> Matrix<Float> {
+    return Matrix.tabulate(k, n, ProbeB)
+}
+
+fn M6MeasureSingleCall(m: Int, n: Int, k: Int) -> Int ! Error {
+    let a = M6BenchA(m, k)
+    let b = M6BenchB(k, n)
+    return MeasureStrategy(a, b, MatMulStrategy.Baseline, 0, 0)!
+}
+
+fn M6MeasureBlocked(m: Int, n: Int, k: Int, blockSize: Int) -> Int ! Error {
+    let a = M6BenchA(m, k)
+    let b = M6BenchB(k, n)
+    return MeasureStrategy(a, b, MatMulStrategy.Blocked, blockSize, 0)!
+}
+
+fn M6MeasureKDecomposition(m: Int, n: Int, k: Int, kBlock: Int) -> Int ! Error {
+    let a = M6BenchA(m, k)
+    let b = M6BenchB(k, n)
+    return MeasureStrategy(a, b, MatMulStrategy.KBlocked, 0, kBlock)!
+}

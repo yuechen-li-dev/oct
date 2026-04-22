@@ -1,0 +1,303 @@
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B16 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=723100ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B16 607.001ms (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B2 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=503000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1183800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1194800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1033500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1470800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=959600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=524700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=935900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=935400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1251900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1269500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1116500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1046800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1110800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1192300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=979800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1178400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=962900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1223700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=806100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=927500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=742700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=933400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1069400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1428500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1003700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=878900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1353900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1146100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=948800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1083000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1062800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1237400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=970200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=980200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1246800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=926200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1193800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1482200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=812700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1368900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1321400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1327900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=542200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=960700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=973300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=532500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1449500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1501800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=531500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=591700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=964200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=952400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1153100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1455000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=504400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1273900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=991900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1035700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=504100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1515100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=790000ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B2 4.604029s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B4 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=746700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1156900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=977600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=511700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1258300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1030100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=612900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=826200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=625900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1345900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=903300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=514500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1387100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=963400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1339700ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B4 1.558319s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B8 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=2033300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1199300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1116400ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_Blocked_B8 817.889ms (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K16 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1112300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=912400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1207000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1039800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1351600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1271900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1391000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1308000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1024200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1111000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1297800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1221700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1052600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1169900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=685600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=932700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=939800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1278700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1228100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1219400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1428400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1383600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1232000ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K16 2.043885s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K32 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=664600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1085200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1130600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1194600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=803200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=596300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=702500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=791900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1293800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1345500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=0ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K32 1.309938s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K4 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1193000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=725500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1114800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1264000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=724900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=650200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1361800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=758300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1131900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1259100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1291200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=928800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1217600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1191400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1357600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1086400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1030500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1179700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1171000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1310100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1238500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1081600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=703300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1072700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1231800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1046700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1168400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=966900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1344200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1336300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1242700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1147300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1459500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1069200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1210400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1393800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=994900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1173300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=688900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1173400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1061500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1124300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=985100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1481300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1291000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=728400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1478400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=829100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=2062500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1323000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=888100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1522400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=736200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=859700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=618600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1021900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1450300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1320300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=717700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1822900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=663700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1143200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=645200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1243900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1093400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1001500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=869200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1306000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1000800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1225800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1078600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1264000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1286700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1135300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=744500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1272700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1931400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=3205700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1175500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1046900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1204900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1751600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1349000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=713100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1654300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1506500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=939900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1865400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1172500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1547300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=2724800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=3179500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1249200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1062100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=957600ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K4 7.158085s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K8 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1171500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1285800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1392700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1280800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=667800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1413100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=691400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1142800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1259500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1231400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1321000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1043600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1293700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=332700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1307300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1267700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=975600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=503200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1076200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1241300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=835600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1239900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1161300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=826900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1268400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1187500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1260500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1047400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=946900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1377400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1155200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=812100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=958300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1525800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1327400ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=557000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1159700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1412900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=962000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=951000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1502700ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=680300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1431600ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=745500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=611900ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=709100ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=918100ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_KDecomposition_K8 3.641679s (prometheus_sgemm_algorithm_lab_m4.octest)
+RUN  PrometheusSgemmAlgorithmLab.M6a_K16x16x384_SingleCall (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1019500ns
+98304
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_K16x16x384_SingleCall 620.657ms (prometheus_sgemm_algorithm_lab_m4.octest)
+Result: 9 benchmark(s) passed, 0 failed

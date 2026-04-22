@@ -1,0 +1,14 @@
+RUN  PrometheusSgemmAlgorithmLab.M6a_S48x48x48_Blocked_B16 (prometheus_sgemm_algorithm_lab_m4.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=516800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1265800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1140300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1237800ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1325000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1408000ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=543300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1347300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1423000ns
+110592
+0
+PASS PrometheusSgemmAlgorithmLab.M6a_S48x48x48_Blocked_B16 1.153081s (prometheus_sgemm_algorithm_lab_m4.octest)
+Result: 1 benchmark(s) passed, 0 failed

@@ -71,7 +71,7 @@ fn ChooseDecisionUsesRetainedFamiliesOnly() -> Void {
 }
 
 [Fact]
-fn ChooseStrategyBridgeMatchesUtilityChooser() -> Void {
+fn ChooseStrategyBridgeMatchesLegacyUtilityChooser() -> Void {
     let a = Matrix.tabulate(16, 64, ProbeA)
     let b = Matrix.tabulate(64, 8, ProbeB)
 
@@ -232,6 +232,9 @@ record M6DecisionProbeSelection {
     BlockSize: Int
     KBlock: Int
     StabilizedStrategy: String
+    StabilizedFamily: String
+    StabilizedBlockSize: Int
+    StabilizedKBlock: Int
 }
 
 [Artifact]
@@ -296,8 +299,264 @@ fn DecisionSelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M6Decisio
         BlockSize: decision.BlockSize
         KBlock: decision.KBlock
         StabilizedStrategy: stabilized.Strategy
+        StabilizedFamily: FamilyLabel(DecisionStrategy(stabilized))
+        StabilizedBlockSize: stabilized.BlockSize
+        StabilizedKBlock: stabilized.KBlock
     }
 }
+
+[Benchmark]
+fn M6a_S8x8x8_SingleCall() -> Void { Print(M6MeasureSingleCall(8, 8, 8)!) }
+[Benchmark]
+fn M6a_S8x8x8_Blocked_B2() -> Void { Print(M6MeasureBlocked(8, 8, 8, 2)!) }
+[Benchmark]
+fn M6a_S8x8x8_Blocked_B4() -> Void { Print(M6MeasureBlocked(8, 8, 8, 4)!) }
+[Benchmark]
+fn M6a_S8x8x8_Blocked_B8() -> Void { Print(M6MeasureBlocked(8, 8, 8, 8)!) }
+[Benchmark]
+fn M6a_S8x8x8_Blocked_B16() -> Void { Print(M6MeasureBlocked(8, 8, 8, 16)!) }
+[Benchmark]
+fn M6a_S8x8x8_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(8, 8, 8, 4)!) }
+[Benchmark]
+fn M6a_S8x8x8_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(8, 8, 8, 8)!) }
+[Benchmark]
+fn M6a_S8x8x8_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(8, 8, 8, 16)!) }
+[Benchmark]
+fn M6a_S8x8x8_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(8, 8, 8, 32)!) }
+[Benchmark]
+fn M6a_S12x12x12_SingleCall() -> Void { Print(M6MeasureSingleCall(12, 12, 12)!) }
+[Benchmark]
+fn M6a_S12x12x12_Blocked_B2() -> Void { Print(M6MeasureBlocked(12, 12, 12, 2)!) }
+[Benchmark]
+fn M6a_S12x12x12_Blocked_B4() -> Void { Print(M6MeasureBlocked(12, 12, 12, 4)!) }
+[Benchmark]
+fn M6a_S12x12x12_Blocked_B8() -> Void { Print(M6MeasureBlocked(12, 12, 12, 8)!) }
+[Benchmark]
+fn M6a_S12x12x12_Blocked_B16() -> Void { Print(M6MeasureBlocked(12, 12, 12, 16)!) }
+[Benchmark]
+fn M6a_S12x12x12_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(12, 12, 12, 4)!) }
+[Benchmark]
+fn M6a_S12x12x12_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(12, 12, 12, 8)!) }
+[Benchmark]
+fn M6a_S12x12x12_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(12, 12, 12, 16)!) }
+[Benchmark]
+fn M6a_S12x12x12_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(12, 12, 12, 32)!) }
+[Benchmark]
+fn M6a_S16x16x16_SingleCall() -> Void { Print(M6MeasureSingleCall(16, 16, 16)!) }
+[Benchmark]
+fn M6a_S16x16x16_Blocked_B2() -> Void { Print(M6MeasureBlocked(16, 16, 16, 2)!) }
+[Benchmark]
+fn M6a_S16x16x16_Blocked_B4() -> Void { Print(M6MeasureBlocked(16, 16, 16, 4)!) }
+[Benchmark]
+fn M6a_S16x16x16_Blocked_B8() -> Void { Print(M6MeasureBlocked(16, 16, 16, 8)!) }
+[Benchmark]
+fn M6a_S16x16x16_Blocked_B16() -> Void { Print(M6MeasureBlocked(16, 16, 16, 16)!) }
+[Benchmark]
+fn M6a_S16x16x16_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(16, 16, 16, 4)!) }
+[Benchmark]
+fn M6a_S16x16x16_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(16, 16, 16, 8)!) }
+[Benchmark]
+fn M6a_S16x16x16_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(16, 16, 16, 16)!) }
+[Benchmark]
+fn M6a_S16x16x16_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(16, 16, 16, 32)!) }
+[Benchmark]
+fn M6a_S20x20x20_SingleCall() -> Void { Print(M6MeasureSingleCall(20, 20, 20)!) }
+[Benchmark]
+fn M6a_S20x20x20_Blocked_B2() -> Void { Print(M6MeasureBlocked(20, 20, 20, 2)!) }
+[Benchmark]
+fn M6a_S20x20x20_Blocked_B4() -> Void { Print(M6MeasureBlocked(20, 20, 20, 4)!) }
+[Benchmark]
+fn M6a_S20x20x20_Blocked_B8() -> Void { Print(M6MeasureBlocked(20, 20, 20, 8)!) }
+[Benchmark]
+fn M6a_S20x20x20_Blocked_B16() -> Void { Print(M6MeasureBlocked(20, 20, 20, 16)!) }
+[Benchmark]
+fn M6a_S20x20x20_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(20, 20, 20, 4)!) }
+[Benchmark]
+fn M6a_S20x20x20_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(20, 20, 20, 8)!) }
+[Benchmark]
+fn M6a_S20x20x20_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(20, 20, 20, 16)!) }
+[Benchmark]
+fn M6a_S20x20x20_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(20, 20, 20, 32)!) }
+[Benchmark]
+fn M6a_S24x24x24_SingleCall() -> Void { Print(M6MeasureSingleCall(24, 24, 24)!) }
+[Benchmark]
+fn M6a_S24x24x24_Blocked_B2() -> Void { Print(M6MeasureBlocked(24, 24, 24, 2)!) }
+[Benchmark]
+fn M6a_S24x24x24_Blocked_B4() -> Void { Print(M6MeasureBlocked(24, 24, 24, 4)!) }
+[Benchmark]
+fn M6a_S24x24x24_Blocked_B8() -> Void { Print(M6MeasureBlocked(24, 24, 24, 8)!) }
+[Benchmark]
+fn M6a_S24x24x24_Blocked_B16() -> Void { Print(M6MeasureBlocked(24, 24, 24, 16)!) }
+[Benchmark]
+fn M6a_S24x24x24_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(24, 24, 24, 4)!) }
+[Benchmark]
+fn M6a_S24x24x24_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(24, 24, 24, 8)!) }
+[Benchmark]
+fn M6a_S24x24x24_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(24, 24, 24, 16)!) }
+[Benchmark]
+fn M6a_S24x24x24_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(24, 24, 24, 32)!) }
+[Benchmark]
+fn M6a_S32x32x32_SingleCall() -> Void { Print(M6MeasureSingleCall(32, 32, 32)!) }
+[Benchmark]
+fn M6a_S32x32x32_Blocked_B2() -> Void { Print(M6MeasureBlocked(32, 32, 32, 2)!) }
+[Benchmark]
+fn M6a_S32x32x32_Blocked_B4() -> Void { Print(M6MeasureBlocked(32, 32, 32, 4)!) }
+[Benchmark]
+fn M6a_S32x32x32_Blocked_B8() -> Void { Print(M6MeasureBlocked(32, 32, 32, 8)!) }
+[Benchmark]
+fn M6a_S32x32x32_Blocked_B16() -> Void { Print(M6MeasureBlocked(32, 32, 32, 16)!) }
+[Benchmark]
+fn M6a_S32x32x32_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(32, 32, 32, 4)!) }
+[Benchmark]
+fn M6a_S32x32x32_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(32, 32, 32, 8)!) }
+[Benchmark]
+fn M6a_S32x32x32_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(32, 32, 32, 16)!) }
+[Benchmark]
+fn M6a_S32x32x32_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(32, 32, 32, 32)!) }
+[Benchmark]
+fn M6a_S40x40x40_SingleCall() -> Void { Print(M6MeasureSingleCall(40, 40, 40)!) }
+[Benchmark]
+fn M6a_S40x40x40_Blocked_B2() -> Void { Print(M6MeasureBlocked(40, 40, 40, 2)!) }
+[Benchmark]
+fn M6a_S40x40x40_Blocked_B4() -> Void { Print(M6MeasureBlocked(40, 40, 40, 4)!) }
+[Benchmark]
+fn M6a_S40x40x40_Blocked_B8() -> Void { Print(M6MeasureBlocked(40, 40, 40, 8)!) }
+[Benchmark]
+fn M6a_S40x40x40_Blocked_B16() -> Void { Print(M6MeasureBlocked(40, 40, 40, 16)!) }
+[Benchmark]
+fn M6a_S40x40x40_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(40, 40, 40, 4)!) }
+[Benchmark]
+fn M6a_S40x40x40_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(40, 40, 40, 8)!) }
+[Benchmark]
+fn M6a_S40x40x40_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(40, 40, 40, 16)!) }
+[Benchmark]
+fn M6a_S40x40x40_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(40, 40, 40, 32)!) }
+[Benchmark]
+fn M6a_S48x48x48_SingleCall() -> Void { Print(M6MeasureSingleCall(48, 48, 48)!) }
+[Benchmark]
+fn M6a_S48x48x48_Blocked_B2() -> Void { Print(M6MeasureBlocked(48, 48, 48, 2)!) }
+[Benchmark]
+fn M6a_S48x48x48_Blocked_B4() -> Void { Print(M6MeasureBlocked(48, 48, 48, 4)!) }
+[Benchmark]
+fn M6a_S48x48x48_Blocked_B8() -> Void { Print(M6MeasureBlocked(48, 48, 48, 8)!) }
+[Benchmark]
+fn M6a_S48x48x48_Blocked_B16() -> Void { Print(M6MeasureBlocked(48, 48, 48, 16)!) }
+[Benchmark]
+fn M6a_S48x48x48_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(48, 48, 48, 4)!) }
+[Benchmark]
+fn M6a_S48x48x48_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(48, 48, 48, 8)!) }
+[Benchmark]
+fn M6a_S48x48x48_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(48, 48, 48, 16)!) }
+[Benchmark]
+fn M6a_S48x48x48_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(48, 48, 48, 32)!) }
+[Benchmark]
+fn M6a_R16x64x8_SingleCall() -> Void { Print(M6MeasureSingleCall(16, 8, 64)!) }
+[Benchmark]
+fn M6a_R16x64x8_Blocked_B2() -> Void { Print(M6MeasureBlocked(16, 8, 64, 2)!) }
+[Benchmark]
+fn M6a_R16x64x8_Blocked_B4() -> Void { Print(M6MeasureBlocked(16, 8, 64, 4)!) }
+[Benchmark]
+fn M6a_R16x64x8_Blocked_B8() -> Void { Print(M6MeasureBlocked(16, 8, 64, 8)!) }
+[Benchmark]
+fn M6a_R16x64x8_Blocked_B16() -> Void { Print(M6MeasureBlocked(16, 8, 64, 16)!) }
+[Benchmark]
+fn M6a_R16x64x8_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(16, 8, 64, 4)!) }
+[Benchmark]
+fn M6a_R16x64x8_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(16, 8, 64, 8)!) }
+[Benchmark]
+fn M6a_R16x64x8_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(16, 8, 64, 16)!) }
+[Benchmark]
+fn M6a_R16x64x8_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(16, 8, 64, 32)!) }
+[Benchmark]
+fn M6a_R8x128x16_SingleCall() -> Void { Print(M6MeasureSingleCall(8, 16, 128)!) }
+[Benchmark]
+fn M6a_R8x128x16_Blocked_B2() -> Void { Print(M6MeasureBlocked(8, 16, 128, 2)!) }
+[Benchmark]
+fn M6a_R8x128x16_Blocked_B4() -> Void { Print(M6MeasureBlocked(8, 16, 128, 4)!) }
+[Benchmark]
+fn M6a_R8x128x16_Blocked_B8() -> Void { Print(M6MeasureBlocked(8, 16, 128, 8)!) }
+[Benchmark]
+fn M6a_R8x128x16_Blocked_B16() -> Void { Print(M6MeasureBlocked(8, 16, 128, 16)!) }
+[Benchmark]
+fn M6a_R8x128x16_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(8, 16, 128, 4)!) }
+[Benchmark]
+fn M6a_R8x128x16_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(8, 16, 128, 8)!) }
+[Benchmark]
+fn M6a_R8x128x16_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(8, 16, 128, 16)!) }
+[Benchmark]
+fn M6a_R8x128x16_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(8, 16, 128, 32)!) }
+[Benchmark]
+fn M6a_K8x8x256_SingleCall() -> Void { Print(M6MeasureSingleCall(8, 8, 256)!) }
+[Benchmark]
+fn M6a_K8x8x256_Blocked_B2() -> Void { Print(M6MeasureBlocked(8, 8, 256, 2)!) }
+[Benchmark]
+fn M6a_K8x8x256_Blocked_B4() -> Void { Print(M6MeasureBlocked(8, 8, 256, 4)!) }
+[Benchmark]
+fn M6a_K8x8x256_Blocked_B8() -> Void { Print(M6MeasureBlocked(8, 8, 256, 8)!) }
+[Benchmark]
+fn M6a_K8x8x256_Blocked_B16() -> Void { Print(M6MeasureBlocked(8, 8, 256, 16)!) }
+[Benchmark]
+fn M6a_K8x8x256_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(8, 8, 256, 4)!) }
+[Benchmark]
+fn M6a_K8x8x256_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(8, 8, 256, 8)!) }
+[Benchmark]
+fn M6a_K8x8x256_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(8, 8, 256, 16)!) }
+[Benchmark]
+fn M6a_K8x8x256_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(8, 8, 256, 32)!) }
+[Benchmark]
+fn M6a_K12x12x192_SingleCall() -> Void { Print(M6MeasureSingleCall(12, 12, 192)!) }
+[Benchmark]
+fn M6a_K12x12x192_Blocked_B2() -> Void { Print(M6MeasureBlocked(12, 12, 192, 2)!) }
+[Benchmark]
+fn M6a_K12x12x192_Blocked_B4() -> Void { Print(M6MeasureBlocked(12, 12, 192, 4)!) }
+[Benchmark]
+fn M6a_K12x12x192_Blocked_B8() -> Void { Print(M6MeasureBlocked(12, 12, 192, 8)!) }
+[Benchmark]
+fn M6a_K12x12x192_Blocked_B16() -> Void { Print(M6MeasureBlocked(12, 12, 192, 16)!) }
+[Benchmark]
+fn M6a_K12x12x192_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(12, 12, 192, 4)!) }
+[Benchmark]
+fn M6a_K12x12x192_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(12, 12, 192, 8)!) }
+[Benchmark]
+fn M6a_K12x12x192_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(12, 12, 192, 16)!) }
+[Benchmark]
+fn M6a_K12x12x192_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(12, 12, 192, 32)!) }
+[Benchmark]
+fn M6a_K16x16x384_SingleCall() -> Void { Print(M6MeasureSingleCall(16, 16, 384)!) }
+[Benchmark]
+fn M6a_K16x16x384_Blocked_B2() -> Void { Print(M6MeasureBlocked(16, 16, 384, 2)!) }
+[Benchmark]
+fn M6a_K16x16x384_Blocked_B4() -> Void { Print(M6MeasureBlocked(16, 16, 384, 4)!) }
+[Benchmark]
+fn M6a_K16x16x384_Blocked_B8() -> Void { Print(M6MeasureBlocked(16, 16, 384, 8)!) }
+[Benchmark]
+fn M6a_K16x16x384_Blocked_B16() -> Void { Print(M6MeasureBlocked(16, 16, 384, 16)!) }
+[Benchmark]
+fn M6a_K16x16x384_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(16, 16, 384, 4)!) }
+[Benchmark]
+fn M6a_K16x16x384_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(16, 16, 384, 8)!) }
+[Benchmark]
+fn M6a_K16x16x384_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(16, 16, 384, 16)!) }
+[Benchmark]
+fn M6a_K16x16x384_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(16, 16, 384, 32)!) }
+[Benchmark]
+fn M6a_K16x16x512_SingleCall() -> Void { Print(M6MeasureSingleCall(16, 16, 512)!) }
+[Benchmark]
+fn M6a_K16x16x512_Blocked_B2() -> Void { Print(M6MeasureBlocked(16, 16, 512, 2)!) }
+[Benchmark]
+fn M6a_K16x16x512_Blocked_B4() -> Void { Print(M6MeasureBlocked(16, 16, 512, 4)!) }
+[Benchmark]
+fn M6a_K16x16x512_Blocked_B8() -> Void { Print(M6MeasureBlocked(16, 16, 512, 8)!) }
+[Benchmark]
+fn M6a_K16x16x512_Blocked_B16() -> Void { Print(M6MeasureBlocked(16, 16, 512, 16)!) }
+[Benchmark]
+fn M6a_K16x16x512_KDecomposition_K4() -> Void { Print(M6MeasureKDecomposition(16, 16, 512, 4)!) }
+[Benchmark]
+fn M6a_K16x16x512_KDecomposition_K8() -> Void { Print(M6MeasureKDecomposition(16, 16, 512, 8)!) }
+[Benchmark]
+fn M6a_K16x16x512_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(16, 16, 512, 16)!) }
+[Benchmark]
+fn M6a_K16x16x512_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(16, 16, 512, 32)!) }
 
 fn StrategyLabel(strategy: MatMulStrategy) -> String {
     return switch strategy {
