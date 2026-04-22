@@ -18,12 +18,14 @@
 #endif
 
 #include <vulkan/vulkan.h>
+#include "reactor_vulkan_tiled_spirv.h"
 
 #define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
 #define PROMETHEUS_MAX_TRACKED_HANDLES 256
 
 #define PROM_VK_LOCAL_SIZE_X 8u
 #define PROM_VK_LOCAL_SIZE_Y 8u
+#define PROM_VK_TILE_K 8u
 
 typedef struct prom_vk_buffer {
   VkBuffer buffer;
@@ -37,6 +39,11 @@ typedef enum prom_vk_path_mode {
   PROM_VK_PATH_STAGED_UPLOAD = 2,
   PROM_VK_PATH_STAGED_UPLOAD_READBACK = 3,
 } prom_vk_path_mode;
+
+typedef enum prom_vk_compute_mode {
+  PROM_VK_COMPUTE_BASELINE = 1,
+  PROM_VK_COMPUTE_TILED = 2,
+} prom_vk_compute_mode;
 
 typedef struct prometheus_runtime {
   uint32_t magic;
@@ -58,6 +65,7 @@ typedef struct prometheus_runtime {
   VkFence submit_fence;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
+  VkPipeline tiled_pipeline;
   prom_vk_buffer direct_a;
   prom_vk_buffer direct_b;
   prom_vk_buffer direct_c;
@@ -90,6 +98,7 @@ enum {
   PROM_VK_PUSH_FIELD_OFFSET_K = 8,
   PROM_VK_SHADER_PUSH_BYTES = 12,
   PROM_VK_STAGING_WORK_THRESHOLD = 16384,
+  PROM_VK_TILED_WORK_THRESHOLD = 131072,
 };
 
 /*
@@ -652,6 +661,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDeviceWaitIdle(rt->device);
   }
   destroy_all_execution_buffers(rt);
+  if (rt->tiled_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->tiled_pipeline, NULL);
+    rt->tiled_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
@@ -878,6 +891,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
   memset(&shader_info, 0, sizeof(shader_info));
   shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_info.codeSize = sizeof(k_prom_sgemm_spirv);
@@ -897,13 +914,31 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
-    vkDestroyShaderModule(rt->device, shader_module, NULL);
-    return VK_ERROR_INITIALIZATION_FAILED;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
+  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
   }
 
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_tiled_spirv);
+  shader_info.pCode = k_prom_sgemm_tiled_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = shader_module;
+  stage_info.pName = "main";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->tiled_pipeline);
   vkDestroyShaderModule(rt->device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
@@ -1053,9 +1088,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t can_direct;
   uint32_t allow_fallback;
   uint32_t readback_required;
+  uint32_t tiled_shape;
   uint32_t fallback_used = 0u;
   prom_vk_path_mode selected_path;
   prom_vk_path_mode requested_path;
+  prom_vk_compute_mode compute_mode;
+  VkPipeline selected_pipeline;
   int final_detail = 0;
 
   set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
@@ -1114,6 +1152,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
   work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
   small_shape = work_units < (uint64_t)PROM_VK_STAGING_WORK_THRESHOLD ? 1u : 0u;
+  tiled_shape = (work_units >= (uint64_t)PROM_VK_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
+                 n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
+                    ? 1u
+                    : 0u;
 
   if ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) {
     requested_path = PROM_VK_PATH_DIRECT;
@@ -1168,6 +1210,21 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_b = &rt->staged_device_b;
     shader_c = &rt->staged_device_c;
     final_detail = selected_path == PROM_VK_PATH_STAGED_UPLOAD ? PROM_DETAIL_PATH_STAGED_UPLOAD : PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK;
+  }
+
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u && selected_path == PROM_VK_PATH_DIRECT) {
+    compute_mode = PROM_VK_COMPUTE_TILED;
+  } else if (selected_path == PROM_VK_PATH_DIRECT && tiled_shape != 0u) {
+    compute_mode = PROM_VK_COMPUTE_TILED;
+  } else {
+    compute_mode = PROM_VK_COMPUTE_BASELINE;
+  }
+
+  if (compute_mode == PROM_VK_COMPUTE_TILED) {
+    selected_pipeline = rt->tiled_pipeline;
+    final_detail = PROM_DETAIL_PATH_TILED;
+  } else {
+    selected_pipeline = rt->pipeline;
   }
 
   memset(buffer_infos, 0, sizeof(buffer_infos));
@@ -1289,7 +1346,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                          NULL);
   }
 
-  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_pipeline);
   vkCmdBindDescriptorSets(rt->command_buffer,
                           VK_PIPELINE_BIND_POINT_COMPUTE,
                           rt->pipeline_layout,

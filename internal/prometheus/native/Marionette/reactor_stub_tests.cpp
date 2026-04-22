@@ -47,8 +47,10 @@ namespace
     bool is_success_detail_code(int detail)
     {
         return detail == PROM_DETAIL_PATH_DIRECT || detail == PROM_DETAIL_PATH_STAGED_UPLOAD ||
-            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT;
+            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT ||
+            detail == PROM_DETAIL_PATH_TILED;
     }
+
 }
 
 FACT(PrometheusReactor_ABIVersionIsStable)
@@ -458,6 +460,69 @@ FACT(PrometheusReactor_ForcedStagedUploadReadbackPathIsObservable)
         ASSERT_NEAR(expected[i], c[i], 1e-4f, "staged-readback path should preserve SGEMM correctness");
     }
 
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_ForcedTiledPathCoversExactAndNonMultipleShapes)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FORCE_TILED_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; forced tiled path cannot be asserted");
+    }
+
+    const ShapeCase shapes[] = {
+        {"exact_multiple", 32u, 32u, 32u},
+        {"non_multiple", 35u, 29u, 19u},
+        {"rectangular", 64u, 8u, 13u},
+    };
+
+    for (const ShapeCase& shape : shapes) {
+        const std::vector<float> a = deterministic_matrix(shape.m, shape.k);
+        const std::vector<float> b = deterministic_matrix(shape.k, shape.n);
+        const std::vector<float> expected = cpu_oracle(shape.m, shape.n, shape.k, a, b);
+        std::vector<float> c(shape.m * shape.n, 0.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail), "forced tiled SGEMM should succeed");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "forced tiled SGEMM should complete transfer-out stage");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_TILED, detail, "forced tiled SGEMM should expose tiled path selection");
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            ASSERT_NEAR(expected[i], c[i], 1e-4f, "forced tiled SGEMM should match CPU oracle");
+        }
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_AutoPolicyKeepsSmallShapesOnNonTiledPath)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; small-shape fallback cannot be asserted");
+    }
+
+    const std::vector<float> a = deterministic_matrix(2u, 2u);
+    const std::vector<float> b = deterministic_matrix(2u, 2u);
+    std::vector<float> c(4u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 2u, 2u, 2u, &stage, &detail), "small-shape SGEMM should succeed");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_TILED, "small shapes should not auto-select tiled path");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
