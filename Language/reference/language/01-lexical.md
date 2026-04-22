@@ -18,6 +18,7 @@ Whitespace separates tokens.
 - Bool literals are `true` and `false`.
 - Dimension suffixes attach to numeric literals (`5m`, `2.5s`, `90deg`, `22C`).
 - `//` comments continue to end of line.
+- Arrow tokens accept both `->` and `=>` spellings in arrow positions; parser semantics are identical.
 
 ## Examples
 

@@ -1,0 +1,85 @@
+package Main
+
+fn ThroughThin(x: Int) -> Int {
+    return x + 1
+}
+
+fn ThroughFat(x: Int) => Int {
+    return x + 1
+}
+
+fn AcceptsFunctionTypeThin(f: fn(Int) -> Int) -> Int {
+    return 6
+}
+
+fn AcceptsFunctionTypeFat(f: fn(Int) => Int) => Int {
+    return 6
+}
+
+fn MatchThin() -> Int ! Error {
+    match Ok() {
+        ok(v) -> { return v }
+        err(e) -> { return 0 }
+    }
+}
+
+fn MatchFat() => Int ! Error {
+    match Ok() {
+        ok(v) => { return v }
+        err(e) => { return 0 }
+    }
+}
+
+fn Ok() -> Int ! Error {
+    return 7
+}
+
+fn SwitchThin(x: Int) -> Int {
+    return switch x {
+        case 7 -> 3
+        else -> 4
+    }
+}
+
+fn SwitchFat(x: Int) -> Int {
+    return switch x {
+        case 7 => 3
+        else => 4
+    }
+}
+
+flow Router(flag: Bool) => Int {
+    state Start {
+        when {
+            case flag => goto Hit
+            else => goto Miss
+        }
+    }
+
+    state Hit {
+        return 9
+    }
+
+    state Miss {
+        return 5
+    }
+}
+
+[Fact]
+fn arrow_surface_parity_mx102() -> Void {
+    Assert.Equal(6, ThroughThin(5), "thin signature")
+    Assert.Equal(6, ThroughFat(5), "fat signature")
+    Assert.Equal(6, AcceptsFunctionTypeThin(ThroughThin), "thin function type")
+    Assert.Equal(6, AcceptsFunctionTypeFat(ThroughFat), "fat function type")
+    Assert.Equal(7, MatchThin()!, "thin match")
+    Assert.Equal(7, MatchFat()!, "fat match")
+    Assert.Equal(3, SwitchThin(7), "thin switch")
+    Assert.Equal(3, SwitchFat(7), "fat switch")
+
+    let hit = Router(true)
+    let miss = Router(false)
+    Step(hit)
+    Step(miss)
+    Assert.Equal(9, Result(hit), "fat flow and when")
+    Assert.Equal(5, Result(miss), "fat flow and when else")
+}

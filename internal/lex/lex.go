@@ -66,7 +66,6 @@ const (
 	Colon        TokenKind = "Colon"
 	Assign       TokenKind = "Assign"
 	Arrow        TokenKind = "Arrow"
-	FatArrow     TokenKind = "FatArrow"
 	DotDot       TokenKind = "DotDot"
 	Question     TokenKind = "Question"
 	Bang         TokenKind = "Bang"
@@ -225,7 +224,7 @@ func (l *lexer) nextToken() (Token, error) {
 	case '=':
 		l.advanceRune()
 		if l.matchString(">") {
-			return Token{Kind: FatArrow, Lexeme: "=>", Line: line, Column: column}, nil
+			return Token{Kind: Arrow, Lexeme: "=>", Line: line, Column: column}, nil
 		}
 		if l.matchString("=") {
 			return Token{Kind: EqualEqual, Lexeme: "==", Line: line, Column: column}, nil

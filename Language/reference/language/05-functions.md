@@ -9,8 +9,8 @@ Fallibility is part of the function signature.
 
 ## Rules
 
-- Declaration form is `fn Name(params) -> ReturnType { ... }`.
-- Fallible declaration form is `fn Name(...) -> T ! Error { ... }`.
+- Declaration form is `fn Name(params) -> ReturnType { ... }` (source also accepts `=>` as the arrow spelling).
+- Fallible declaration form is `fn Name(...) -> T ! Error { ... }` (source also accepts `=>` as the arrow spelling).
 - Every parameter has an explicit type.
 - Every function has an explicit return type.
 - Non-`Void` functions must return a value on every path.

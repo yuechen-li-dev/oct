@@ -49,6 +49,20 @@ func TestFormatSourcePreservesComments(t *testing.T) {
 	mustContain(t, out, "// ordinary comment")
 }
 
+func TestFormatSourceNormalizesUnifiedArrowsToThinArrow(t *testing.T) {
+	input := "package Main\nfn Main()=>Int{return switch 1 { case 1 => 2 else -> 3 }}\n"
+	out, err := FormatSource(input)
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if strings.Contains(out, "=>") {
+		t.Fatalf("expected formatter to normalize all arrows to '->', got:\n%s", out)
+	}
+	mustContain(t, out, "fn Main() -> Int")
+	mustContain(t, out, "case 1 -> 2")
+	mustContain(t, out, "else -> 3")
+}
+
 func TestFormatPathDirectory(t *testing.T) {
 	dir := t.TempDir()
 	f1 := filepath.Join(dir, "a.oct")
