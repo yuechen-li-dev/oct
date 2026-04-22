@@ -1,0 +1,230 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn SafeScalarLayoutConsistentOrdering() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "safe scalar",
+        0,
+        0,
+        0,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutConsistent, "scalar-only explicit layout should be consistent")
+    Assert.True(LayoutOutcomeSignals(outcome).StructurallyValid, "safe scalar layout should be structurally valid")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch == false, "safe scalar layout should not mismatch")
+}
+
+[Fact]
+fn SafeExplicitPaddingStableUnderAppendEvolution() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "append explicit padding",
+        0,
+        0,
+        1,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutConsistent, "explicit padding with stable ordering should remain consistent")
+    Assert.True(LayoutOutcomeSignals(outcome).FragileLayout == false, "explicitly padded stable layout should not be fragile")
+    Assert.True(LayoutOutcomeMetrics(outcome).ExplicitPaddingFields == 1, "explicit padding field count should be visible")
+}
+
+[Fact]
+fn SafeAppendOnlyEvolutionPreservesCompatibility() -> Void {
+    let baseline = EvaluateLayoutScenario(MakeLayoutScenario(
+        "baseline",
+        0,
+        0,
+        1,
+        0,
+        0,
+        false
+    ))
+
+    let appendOnly = EvaluateLayoutScenario(MakeLayoutScenario(
+        "append-only",
+        0,
+        0,
+        1,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(baseline).LayoutConsistent, "baseline should be consistent")
+    Assert.True(LayoutOutcomeSignals(appendOnly).LayoutConsistent, "append-only evolution should preserve consistency")
+    Assert.True(LayoutOutcomeMetrics(appendOnly).CompatibilityBreakCount == 0, "append-only pattern should not break compatibility in this model")
+}
+
+[Fact]
+fn SafeHostShaderDefinitionsRemainIdentical() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "host equals shader",
+        0,
+        0,
+        0,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).DefinitionDrift == false, "identical definitions should not drift")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch == false, "identical definitions should not mismatch")
+}
+
+[Fact]
+fn UnsafeHostShaderFieldOrderMismatch() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "order mismatch",
+        1,
+        0,
+        0,
+        0,
+        1,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).OrderingHazard, "host/shader ordering mismatch must be flagged")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch, "ordering mismatch should produce layout mismatch")
+    Assert.True(LayoutOutcomeSignals(outcome).DefinitionDrift, "order mismatch across definitions should be drift")
+}
+
+[Fact]
+fn UnsafeImplicitPaddingReliedUponForCorrectness() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "implicit padding",
+        0,
+        1,
+        0,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).ImplicitPaddingHazard, "implicit padding reliance must be explicit hazard")
+    Assert.True(LayoutOutcomeSignals(outcome).FragileLayout, "implicit padding design should be fragile")
+    Assert.True(LayoutOutcomeMetrics(outcome).AmbiguityCount == 1, "implicit padding should produce ambiguity signal")
+}
+
+[Fact]
+fn UnsafeInsertionInMiddleBreaksLayout() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "insert in middle",
+        2,
+        0,
+        0,
+        1,
+        1,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).EvolutionHazard, "insert-in-middle must be evolution hazard")
+    Assert.True(LayoutOutcomeSignals(outcome).OrderingHazard, "insert-in-middle should imply ordering hazard")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch, "insert-in-middle should break compatibility")
+}
+
+[Fact]
+fn UnsafeMixedWidthLayoutWithoutExplicitPadding() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "mixed width implicit",
+        0,
+        1,
+        1,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).MixedWidthPackingHazard, "mixed-width implicit packing should be hazardous")
+    Assert.True(LayoutOutcomeSignals(outcome).ImplicitPaddingHazard, "mixed-width implicit packing relies on implicit padding")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutConsistent == false, "hazardous mixed-width packing should not be layout-consistent")
+}
+
+[Fact]
+fn UnsafeMissingRequiredPaddingIsAccidentalCorrectness() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "missing padding",
+        0,
+        2,
+        1,
+        0,
+        0,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).PaddingMissing, "missing required padding must be signaled")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch, "missing padding should be treated as mismatch")
+}
+
+[Fact]
+fn UnsafeCompactLayoutBreaksAfterEvolution() -> Void {
+    let outcome = EvaluateLayoutScenario(MakeLayoutScenario(
+        "compact reorder",
+        2,
+        1,
+        2,
+        2,
+        1,
+        true
+    ))
+
+    Assert.True(LayoutOutcomeSignals(outcome).FragileLayout, "compact layout optimization should be marked fragile")
+    Assert.True(LayoutOutcomeSignals(outcome).EvolutionHazard, "reorder evolution should be hazardous")
+    Assert.True(LayoutOutcomeSignals(outcome).LayoutMismatch, "compact reordered evolution should mismatch")
+}
+
+[Fact]
+fn BoundedDoeCoversLayoutRakeAxes() -> Void {
+    let consistentExplicit = EvaluateLayoutScenario(MakeLayoutScenario(
+        "doe safe",
+        0,
+        0,
+        0,
+        0,
+        0,
+        false
+    ))
+
+    let mismatchedImplicit = EvaluateLayoutScenario(MakeLayoutScenario(
+        "doe mismatch implicit",
+        1,
+        1,
+        1,
+        1,
+        1,
+        false
+    ))
+
+    let reorderedMixedCompact = EvaluateLayoutScenario(MakeLayoutScenario(
+        "doe reordered compact",
+        2,
+        2,
+        2,
+        2,
+        1,
+        true
+    ))
+
+    let removeFieldDrift = EvaluateLayoutScenario(MakeLayoutScenario(
+        "doe remove drift",
+        0,
+        0,
+        0,
+        3,
+        1,
+        false
+    ))
+
+    Assert.True(LayoutOutcomeSignals(consistentExplicit).LayoutConsistent, "DOE safe anchor should be consistent")
+    Assert.True(LayoutOutcomeSignals(mismatchedImplicit).OrderingHazard, "DOE mismatch case should capture ordering hazard")
+    Assert.True(LayoutOutcomeSignals(mismatchedImplicit).ImplicitPaddingHazard, "DOE mismatch case should capture implicit padding hazard")
+    Assert.True(LayoutOutcomeSignals(reorderedMixedCompact).PaddingMissing, "DOE compact case should capture missing padding")
+    Assert.True(LayoutOutcomeSignals(reorderedMixedCompact).FragileLayout, "DOE compact case should capture fragility")
+    Assert.True(LayoutOutcomeSignals(removeFieldDrift).EvolutionHazard, "DOE remove-field case should capture evolution hazard")
+    Assert.True(LayoutOutcomeSignals(removeFieldDrift).DefinitionDrift, "DOE remove-field case should capture definition drift")
+}
