@@ -32,6 +32,7 @@ pushd "%ROOT_DIR%"
 
 cl /nologo /std:c11 /O2 /W4 /LD %VULKAN_INCLUDE% /DPROMETHEUS_REACTOR_BUILD_DLL ^
   "%NATIVE_DIR%\reactor_api.c" ^
+  "%NATIVE_DIR%\reactor_judgment_engine.c" ^
   "%NATIVE_DIR%\reactor_vulkan.c" ^
   /link /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 goto :fail
@@ -41,6 +42,7 @@ if errorlevel 1 goto :fail
 
 cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_ROOT="\".\"" ^
   "%NATIVE_DIR%\reactor_api.c" ^
+  "%NATIVE_DIR%\reactor_judgment_engine.c" ^
   "%NATIVE_DIR%\reactor_vulkan.c" ^
   "%NATIVE_DIR%\Marionette\test_main.cpp" ^
   "%NATIVE_DIR%\Marionette\test_harness.cpp" ^
@@ -49,6 +51,7 @@ cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_
   "%NATIVE_DIR%\Marionette\test_harness_phase1_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\test_harness_doom_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_stub_tests.cpp" ^
+  "%NATIVE_DIR%\Marionette\reactor_judgment_engine_tests.cpp" ^
   /link /OUT:"%MARIONETTE_EXE%" /PDB:"%MARIONETTE_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 goto :fail
 
