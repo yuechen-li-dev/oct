@@ -1212,9 +1212,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     final_detail = selected_path == PROM_VK_PATH_STAGED_UPLOAD ? PROM_DETAIL_PATH_STAGED_UPLOAD : PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK;
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u && selected_path == PROM_VK_PATH_DIRECT) {
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) {
     compute_mode = PROM_VK_COMPUTE_TILED;
-  } else if (selected_path == PROM_VK_PATH_DIRECT && tiled_shape != 0u) {
+  } else if (tiled_shape != 0u) {
     compute_mode = PROM_VK_COMPUTE_TILED;
   } else {
     compute_mode = PROM_VK_COMPUTE_BASELINE;
@@ -1222,7 +1222,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     selected_pipeline = rt->tiled_pipeline;
-    final_detail = PROM_DETAIL_PATH_TILED;
+    if (selected_path == PROM_VK_PATH_DIRECT) {
+      final_detail = PROM_DETAIL_PATH_DIRECT_TILED;
+    } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
+      final_detail = PROM_DETAIL_PATH_STAGED_UPLOAD_TILED;
+    } else {
+      final_detail = PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED;
+    }
   } else {
     selected_pipeline = rt->pipeline;
   }

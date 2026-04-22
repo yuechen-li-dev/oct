@@ -1,6 +1,7 @@
 #include "../bridge.h"
 #include "test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <thread>
@@ -48,7 +49,8 @@ namespace
     {
         return detail == PROM_DETAIL_PATH_DIRECT || detail == PROM_DETAIL_PATH_STAGED_UPLOAD ||
             detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT ||
-            detail == PROM_DETAIL_PATH_TILED;
+            detail == PROM_DETAIL_PATH_DIRECT_TILED || detail == PROM_DETAIL_PATH_STAGED_UPLOAD_TILED ||
+            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED;
     }
 
 }
@@ -494,7 +496,7 @@ FACT(PrometheusReactor_ForcedTiledPathCoversExactAndNonMultipleShapes)
 
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail), "forced tiled SGEMM should succeed");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "forced tiled SGEMM should complete transfer-out stage");
-        ASSERT_EQUAL(PROM_DETAIL_PATH_TILED, detail, "forced tiled SGEMM should expose tiled path selection");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_TILED, detail, "forced tiled SGEMM should expose direct+tiled path selection");
         for (std::size_t i = 0; i < expected.size(); ++i) {
             ASSERT_NEAR(expected[i], c[i], 1e-4f, "forced tiled SGEMM should match CPU oracle");
         }
@@ -522,7 +524,152 @@ FACT(PrometheusReactor_AutoPolicyKeepsSmallShapesOnNonTiledPath)
     int detail = 0;
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 2u, 2u, 2u, &stage, &detail), "small-shape SGEMM should succeed");
-    ASSERT_TRUE(detail != PROM_DETAIL_PATH_TILED, "small shapes should not auto-select tiled path");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_TILED, "small shapes should not auto-select direct+tiled path");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_STAGED_UPLOAD_TILED, "small shapes should not auto-select staged+tiled upload path");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, "small shapes should not auto-select staged+tiled readback path");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_StagedCapableLargeShapeAutoSelectsStagedTiledPath)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_DISABLE_STAGING_FALLBACK;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; staged+tiled auto-selection cannot be asserted");
+    }
+
+    const std::uint32_t m = 64u;
+    const std::uint32_t n = 64u;
+    const std::uint32_t k = 64u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+    if (status == PROM_ERROR && detail == PROM_DETAIL_CAPABILITY_MISMATCH) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("device-local staging unavailable in this Vulkan runtime; staged-capable auto path cannot be asserted");
+    }
+
+    ASSERT_EQUAL(PROM_OK, status, "large SGEMM should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "staged+tiled auto path should complete transfer-out stage");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, detail, "large staged-capable shape should auto-select staged+tiled readback path");
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        ASSERT_NEAR(expected[i], c[i], 1e-4f, "staged+tiled auto path should match CPU oracle");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_ForcedStagedTiledPathCoversExactNonMultipleAndRectangularShapes)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; staged+tiled correctness cannot be asserted");
+    }
+
+    const ShapeCase shapes[] = {
+        {"exact_multiple", 32u, 32u, 32u},
+        {"non_multiple", 35u, 29u, 19u},
+        {"rectangular", 64u, 8u, 13u},
+    };
+
+    for (const ShapeCase& shape : shapes) {
+        const std::vector<float> a = deterministic_matrix(shape.m, shape.k);
+        const std::vector<float> b = deterministic_matrix(shape.k, shape.n);
+        const std::vector<float> expected = cpu_oracle(shape.m, shape.n, shape.k, a, b);
+        std::vector<float> c(shape.m * shape.n, 13.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+
+        const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail);
+        if (status == PROM_ERROR && detail == PROM_DETAIL_CAPABILITY_MISMATCH) {
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+            SKIP("device-local staging unavailable in this Vulkan runtime; forced staged+tiled path cannot be asserted");
+        }
+        ASSERT_EQUAL(PROM_OK, status, "forced staged+tiled SGEMM should succeed");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "forced staged+tiled SGEMM should complete transfer-out stage");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, detail, "forced staged+tiled SGEMM should expose staged+tiled path selection");
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            ASSERT_NEAR(expected[i], c[i], 1e-4f, "forced staged+tiled SGEMM should match CPU oracle");
+        }
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_StagedTiledOutputOverwritesPriorHostBufferContents)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; staged+tiled output overwrite behavior cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 32u;
+    constexpr std::uint32_t n = 32u;
+    constexpr std::uint32_t k = 32u;
+    std::vector<float> a0 = deterministic_matrix(m, k);
+    std::vector<float> b0 = deterministic_matrix(k, n);
+    std::vector<float> a1 = deterministic_matrix(m, k);
+    std::vector<float> b1 = deterministic_matrix(k, n);
+    for (std::size_t i = 0; i < a1.size(); ++i) {
+        a1[i] = -a1[i] + 0.125f;
+    }
+    for (std::size_t i = 0; i < b1.size(); ++i) {
+        b1[i] = b1[i] * 0.5f - 0.25f;
+    }
+
+    const std::vector<float> expected0 = cpu_oracle(m, n, k, a0, b0);
+    const std::vector<float> expected1 = cpu_oracle(m, n, k, a1, b1);
+    std::vector<float> out(m * n, 77.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    int status = prometheus_reactor_runtime_sgemm(handle, a0.data(), b0.data(), out.data(), m, n, k, &stage, &detail);
+    if (status == PROM_ERROR && detail == PROM_DETAIL_CAPABILITY_MISMATCH) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("device-local staging unavailable in this Vulkan runtime; staged+tiled output overwrite cannot be asserted");
+    }
+    ASSERT_EQUAL(PROM_OK, status, "first staged+tiled call should succeed");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, detail, "first call should use staged+tiled path");
+    for (std::size_t i = 0; i < expected0.size(); ++i) {
+        ASSERT_NEAR(expected0[i], out[i], 1e-4f, "first call should match CPU oracle");
+    }
+
+    std::fill(out.begin(), out.end(), -123.0f);
+    status = prometheus_reactor_runtime_sgemm(handle, a1.data(), b1.data(), out.data(), m, n, k, &stage, &detail);
+    ASSERT_EQUAL(PROM_OK, status, "second staged+tiled call should succeed");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, detail, "second call should use staged+tiled path");
+    for (std::size_t i = 0; i < expected1.size(); ++i) {
+        ASSERT_NEAR(expected1[i], out[i], 1e-4f, "second call should overwrite output with fresh SGEMM result");
+    }
+
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
