@@ -1,0 +1,124 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn SafeRepeatedSameShapeReuseWithFullResetAndAlwaysUpdate() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateAlways(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    Assert.True(OutcomeSignals(first).ProtocolSafe, "first call should be safe")
+
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    Assert.True(OutcomeSignals(second).ProtocolSafe, "same-shape reuse should be safe with full reset and full update")
+    Assert.True(OutcomeSignals(second).ResultCorrect, "same-shape reuse should remain correct")
+}
+
+[Fact]
+fn SafeSameShapeStableBindingsWhenShapeAwareUpdateIsUsed() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateOnShapeChange(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(32, 32, 32, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(32, 32, 32, "A0", "B0", "C0"), policy, true)
+
+    Assert.True(OutcomeSignals(first).ProtocolSafe, "first call should bind and record safely")
+    Assert.True(OutcomeSignals(second).ProtocolSafe, "same shape and same buffers can safely keep binding state")
+    Assert.True(OutcomeSignals(second).MissingUpdate == false, "shape-aware update should not require an unnecessary update")
+}
+
+[Fact]
+fn SafeShapeChangeReuseWhenResetAndRebindAreBothDone() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateOnShapeChange(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(24, 8, 16, "A1", "B1", "C1"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe, "shape change is safe only after reset and shape-aware rebind")
+    Assert.True(OutcomeSignals(second).ShapeInvalidationHazard == false, "shape invalidation must be resolved")
+    Assert.True(OutcomeSignals(second).BindingHazard == false, "rebind should clear stale binding risk")
+}
+
+[Fact]
+fn UnsafeReuseWithoutResetWhenResetIsRequired() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetNone(), UpdateAlways(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe == false, "reusing persistent state without reset must be unsafe")
+    Assert.True(OutcomeSignals(second).MissingReset, "missing reset should be detected explicitly")
+    Assert.True(OutcomeSignals(second).StaleStateDetected, "missing reset should count as stale-state risk")
+}
+
+[Fact]
+fn UnsafeReuseWithStaleBindingsWhenBuffersChangeWithoutUpdate() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateOnShapeChange(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(16, 16, 16, "A1", "B1", "C1"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe == false, "same-shape new buffers require update; shape-only update policy is unsafe here")
+    Assert.True(OutcomeSignals(second).BindingHazard, "stale binding must be surfaced")
+    Assert.True(OutcomeSignals(second).MissingUpdate, "missing update should be explicit")
+}
+
+[Fact]
+fn UnsafeReuseWithStaleShapeAssumptionsWhenNeverUpdating() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateNever(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(8, 8, 8, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(8, 16, 8, "A0", "B0", "C0"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe == false, "shape change with never-update policy leaves stale assumptions")
+    Assert.True(OutcomeSignals(second).ShapeInvalidationHazard, "shape invalidation hazard should be reported")
+    Assert.True(OutcomeSignals(second).MissingUpdate, "shape change should require binding metadata refresh")
+}
+
+[Fact]
+fn UnsafeReuseWhileStillInFlightIsRejected() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetFull(), UpdateAlways(), ReuseWhileInFlight())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, false)
+    Assert.True(OutcomeRuntime(first).InFlight, "first submit should leave state in-flight")
+
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe == false, "in-flight reuse should be unsafe")
+    Assert.True(OutcomeSignals(second).ReuseRejected, "in-flight reuse should be rejected")
+    Assert.True(OutcomeSignals(second).InFlightHazard, "in-flight hazard should be explicit")
+}
+
+[Fact]
+fn UnsafePartialResetLeavesShapeChangeProtocolInvalid() -> Void {
+    let policy = MakePolicy(ModePersistent(), ResetPartial(), UpdateOnShapeChange(), ReuseOnlyWhenComplete())
+
+    let first = StepReuseProtocol(InitialReuseState(), MakeCall(16, 16, 16, "A0", "B0", "C0"), policy, true)
+    let second = StepReuseProtocol(OutcomeRuntime(first), MakeCall(32, 32, 16, "A1", "B1", "C1"), policy, true)
+
+    Assert.True(OutcomeSignals(second).ProtocolSafe == false, "partial reset is insufficient for shape-change reuse")
+    Assert.True(OutcomeSignals(second).MissingReset, "protocol should require full reset")
+    Assert.True(OutcomeSignals(second).CommandRecordingHazard, "old command recording assumptions must be treated as invalid")
+}
+
+[Fact]
+fn BoundedDoeCoversKeyReuseRegimes() -> Void {
+    let perCallPolicy = MakePolicy(ModePerCall(), ResetNone(), UpdateNever(), ReuseOnlyWhenComplete())
+    let persistentSafePolicy = MakePolicy(ModePersistent(), ResetFull(), UpdateAlways(), ReuseOnlyWhenComplete())
+    let persistentUnsafePolicy = MakePolicy(ModePersistent(), ResetNone(), UpdateNever(), ReuseOnlyWhenComplete())
+
+    let sameShapeSameBuffers = MakeCall(16, 16, 16, "A0", "B0", "C0")
+    let sameShapeDifferentBuffers = MakeCall(16, 16, 16, "A1", "B1", "C1")
+    let differentShape = MakeCall(24, 8, 12, "A2", "B2", "C2")
+
+    let perCallStep1 = StepReuseProtocol(InitialReuseState(), sameShapeSameBuffers, perCallPolicy, true)
+    let perCallStep2 = StepReuseProtocol(OutcomeRuntime(perCallStep1), differentShape, perCallPolicy, true)
+    Assert.True(OutcomeSignals(perCallStep1).ProtocolSafe and OutcomeSignals(perCallStep2).ProtocolSafe, "per-call recreation should avoid stale reuse state")
+
+    let persistentStep1 = StepReuseProtocol(InitialReuseState(), sameShapeSameBuffers, persistentSafePolicy, true)
+    let persistentStep2 = StepReuseProtocol(OutcomeRuntime(persistentStep1), sameShapeDifferentBuffers, persistentSafePolicy, true)
+    let persistentStep3 = StepReuseProtocol(OutcomeRuntime(persistentStep2), differentShape, persistentSafePolicy, true)
+    Assert.True(OutcomeSignals(persistentStep1).ProtocolSafe and OutcomeSignals(persistentStep2).ProtocolSafe and OutcomeSignals(persistentStep3).ProtocolSafe, "persistent mode should remain safe when reset/update/completion disciplines are correct")
+
+    let unsafeStep1 = StepReuseProtocol(InitialReuseState(), sameShapeSameBuffers, persistentUnsafePolicy, true)
+    let unsafeStep2 = StepReuseProtocol(OutcomeRuntime(unsafeStep1), sameShapeDifferentBuffers, persistentUnsafePolicy, true)
+    Assert.True(OutcomeSignals(unsafeStep2).ProtocolSafe == false, "persistent shortcut without reset/update should be flagged unsafe")
+    Assert.True(OutcomeSignals(unsafeStep2).StaleStateDetected, "unsafe shortcut should report stale state")
+}

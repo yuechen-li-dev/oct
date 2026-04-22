@@ -766,3 +766,89 @@ Proceed to controller formalization only after running the M6 probe on Windows-n
 ### Windows-native measurement rule and current gap
 
 M6 adds `tools/prometheus/run_m6_windows_native.ps1` to standardize the required native run path (`oct artifact` + `oct bench` capture). In this cloud environment that Windows-native path was not executed, so final boundary truth and any prune-level conclusion remain gated on that native run.
+
+## M7 scope
+
+M7 adds a pure-Oct reuse protocol lab for eliminating per-call runtime object creation in the SGEMM execution path.
+
+### Reuse protocol model (pure Oct, correctness-first)
+
+M7 models reusable runtime-owned execution state as explicit protocol state, not as Vulkan API objects.
+
+The model includes protocol equivalents for:
+
+- reusable command recording state (`HasRecordedCall`, `CachedShape`)
+- reusable binding/update state (`BoundShape`, `BoundA/B/C`)
+- submission/completion state (`InFlight` plus completion discipline)
+- reusable runtime-owned container state (`ReuseRuntimeState` lifecycle across calls)
+
+The state transition entrypoint is `StepReuseProtocol(...)`, which emits explicit `ProtocolSignals` for every scenario:
+
+- `ResultCorrect`
+- `ProtocolSafe`
+- `StaleStateDetected`
+- `MissingReset`
+- `MissingUpdate`
+- `ReuseRejected`
+- `StructurallyValid`
+- `InFlightHazard`
+- `ShapeInvalidationHazard`
+- `BindingHazard`
+- `CommandRecordingHazard`
+
+### Uncertainties tested in M7
+
+M7 `.octest` encodes the targeted reuse uncertainties:
+
+1. Reset-before-reuse (`FullReset` vs `NoReset` vs `PartialReset`)
+2. Binding staleness under buffer and/or shape changes (`AlwaysUpdate`, `UpdateOnShapeChange`, `NeverUpdate`)
+3. In-flight reuse hazard (`ReuseOnlyWhenComplete` vs `ReuseWhileInFlight`)
+4. Shape invalidation of cached assumptions (binding metadata and command recording assumptions)
+5. Partial update/reset hazards under shape and resource churn
+
+### Bounded DOE factors covered
+
+M7 scenarios explicitly vary:
+
+- lifetime mode: per-call recreate vs persistent reuse
+- reset discipline: full / none / partial
+- binding discipline: always / shape-change-only / never
+- completion discipline: complete-before-reuse vs in-flight reuse attempt
+- shape regime: repeated same shape, changed shape
+- buffer identity regime: same buffers and changed buffers
+
+The DOE is intentionally bounded to representative correctness-critical combinations rather than exhaustive cartesian expansion.
+
+### Safe shortcuts observed
+
+M7 marks these reuse paths as safe:
+
+- repeated same-shape reuse with full reset + always update
+- repeated same-shape reuse with stable buffer identity and shape-aware update policy
+- shape-change reuse only when full reset and required rebind/update are both performed
+- per-call recreation path (fresh state per submission)
+
+### Unsafe shortcuts observed
+
+M7 marks these shortcuts as unsafe:
+
+- reusing persistent execution state without required full reset
+- shape-stable path with changed buffer identity but no binding refresh
+- shape change under never-update policy (stale binding/dispatch assumptions)
+- attempting reuse while still logically in-flight
+- partial reset on shape change (command-recording assumptions remain stale)
+
+### Minimal safe protocol for future Vulkan C implementation
+
+A future Vulkan implementation should preserve this minimal protocol:
+
+1. Do not reuse runtime-owned submission resources while in flight.
+2. Before persistent reuse, perform a full reset of command-recording state.
+3. Refresh bindings when buffer identity changes, even if shape is unchanged.
+4. Treat shape changes as invalidating both command-recording assumptions and binding metadata.
+5. Reject reuse when reset/update preconditions are not met.
+6. Emit explicit safety diagnostics so stale-state causes are observable.
+
+### Inconsistency note surfaced
+
+M7 intentionally models protocol semantics rather than Vulkan API-level details. This is an intentional abstraction boundary, not a Vulkan simulator, and should not be read as a claim about specific driver-side object internals.
