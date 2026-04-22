@@ -203,40 +203,98 @@ fn ChooseStrategy(A: Matrix<Float>, B: Matrix<Float>) -> MatMulStrategy ! Error 
         return error("matmul validation failed")
     }
 
-    let m = A.rows
-    let n = B.cols
-    let k = A.cols
-    let outArea = m * n
+    return ChooseStrategyUtility(A.rows, B.cols, A.cols)
+}
 
-    if m <= 4 and n <= 4 and k <= 8 {
-        return MatMulStrategy.IKJ
+fn ChooseStrategyUtility(m: Int, n: Int, k: Int) -> MatMulStrategy {
+    return when utility {
+        case MatMulStrategy.KBlocked when true score ScoreKDecomposition(m, n, k)
+        case MatMulStrategy.Baseline when true score ScoreSingleCall(m, n, k)
+        case MatMulStrategy.Blocked when true score ScoreBlocked(m, n, k)
+        else MatMulStrategy.Baseline
     }
+}
 
+fn ScoreSingleCall(m: Int, n: Int, k: Int) -> Int {
     let maxOuter = MaxInt(m, n)
-    if k >= maxOuter * 4 {
-        return MatMulStrategy.KBlockedIKJ
+    let minOuter = MaxInt(1, MinInt(m, n))
+    let area = m * n
+    let kPressureScaled = (k * 100) / maxOuter
+    let balanceScaled = (maxOuter * 100) / minOuter
+
+    var score = 40
+    if balanceScaled <= 125 {
+        score = score + 45
+    }
+    if area >= 512 {
+        score = score + 20
+    }
+    if kPressureScaled <= 140 {
+        score = score + 15
+    }
+    if kPressureScaled >= 280 {
+        score = score - 45
+    }
+    if area <= 256 {
+        score = score - 20
     }
 
-    if outArea <= 64 {
-        return MatMulStrategy.IKJ
+    return score
+}
+
+fn ScoreBlocked(m: Int, n: Int, k: Int) -> Int {
+    let maxOuter = MaxInt(m, n)
+    let minOuter = MaxInt(1, MinInt(m, n))
+    let area = m * n
+    let kPressureScaled = (k * 100) / maxOuter
+    let balanceScaled = (maxOuter * 100) / minOuter
+    let smallThreshold = 16
+
+    var score = 25
+    if m <= smallThreshold and n <= smallThreshold and k <= smallThreshold {
+        score = score + 90
+    }
+    if area <= 256 {
+        score = score + 25
+    }
+    if balanceScaled <= 125 {
+        score = score + 10
+    }
+    if kPressureScaled >= 280 {
+        score = score - 35
+    }
+    if balanceScaled >= 200 {
+        score = score - 20
     }
 
-    if m >= 32 or n >= 32 {
-        if k >= 16 {
-            return MatMulStrategy.KBlockedIKJ
-        }
-        return MatMulStrategy.BlockedIKJ
+    return score
+}
+
+fn ScoreKDecomposition(m: Int, n: Int, k: Int) -> Int {
+    let maxOuter = MaxInt(m, n)
+    let minOuter = MaxInt(1, MinInt(m, n))
+    let area = m * n
+    let kPressureScaled = (k * 100) / maxOuter
+    let balanceScaled = (maxOuter * 100) / minOuter
+
+    var score = 35
+    if kPressureScaled >= 280 {
+        score = score + 85
+    }
+    if kPressureScaled >= 160 and kPressureScaled < 280 {
+        score = score + 25
+    }
+    if balanceScaled >= 180 {
+        score = score + 40
+    }
+    if balanceScaled <= 125 {
+        score = score - 30
+    }
+    if area <= 256 and balanceScaled <= 125 and kPressureScaled <= 140 {
+        score = score - 35
     }
 
-    if k >= 24 {
-        return MatMulStrategy.KBlocked
-    }
-
-    if outArea >= 128 and k >= 8 {
-        return MatMulStrategy.KBlocked
-    }
-
-    return MatMulStrategy.Blocked
+    return score
 }
 
 
