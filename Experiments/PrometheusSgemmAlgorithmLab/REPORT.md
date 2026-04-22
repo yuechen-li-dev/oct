@@ -934,3 +934,109 @@ A future Vulkan implementation should preserve this minimal protocol:
 ### Inconsistency note surfaced
 
 M8 uses protocol-level terms (readiness, visibility, fallback) rather than Vulkan API object vocabulary by design. This is intentional and keeps the lab aligned with its purpose: reducing protocol uncertainty before backend implementation.
+
+## M9 scope
+
+M9 adds a pure-Oct tiled SGEMM rake lab focused on shared-local-memory protocol correctness and portability, not Vulkan execution behavior.
+
+### Tiled/shared-memory protocol modeled in M9
+
+The M9 model (`M9/prometheus_sgemm_algorithm_lab_m9.oct`) encodes protocol-equivalent tiled SGEMM structure:
+
+- tile regime (`TileM`, `TileN`, `TileK`) and local cooperative-load shape (`LocalRows`, `LocalCols`)
+- tile-load and guard discipline (`GuardA`, `GuardB`, `GuardC`, `OverGuarded`)
+- synchronization discipline around tile phases (`BarrierAfterLoad`, `BarrierBetweenTiles`, redundant/asymmetric barrier signals)
+- tile-compute and tile-advance safety checks
+- row-major indexing consistency across A-load, B-load, accumulation, C-writeback, and tile offsets
+- backend-sensitive assumption regime (`ImplicitZeroFill`, `ImplicitSync`, out-of-range tolerance, lockstep assumptions)
+
+Every evaluated scenario emits explicit structural metrics and required diagnostics:
+
+- `ResultCorrect`
+- `ProtocolSafe`
+- `PartialTileHandled`
+- `BoundsHazard`
+- `MissingBarrier`
+- `SharedTileHazard`
+- `IndexingHazard`
+- `TileShapeMismatch`
+- `PortabilityHazard`
+- `StructurallyValid`
+
+### Rake buckets tested in M9
+
+M9 `.octest` explicitly covers all required hazard buckets:
+
+1. **Non-multiple dimensions**
+   - one-dimension and multi-dimension non-divisible cases (`M`, `N`, `K` tails).
+2. **Partial tiles**
+   - partial A/B/C-edge handling through guard discipline and partial-tile signals.
+3. **Bounds guards**
+   - full-guard safe cases, missing A/C guard hazards, and over-guard suppression hazard.
+4. **Barrier placement**
+   - required post-load and between-tile barriers, missing barrier failures, and asymmetric barrier assumptions.
+5. **Local-size assumptions**
+   - matching local/tile coverage, coverage deficits, duplication risks, and square-assumption mismatches.
+6. **Row-major indexing consistency**
+   - stage-specific indexing mismatches including tile-offset inconsistency.
+7. **Vendor-sensitive assumptions**
+   - permissive “works-by-accident” assumptions flagged as portability hazards.
+
+### Bounded DOE factors covered
+
+M9 keeps DOE bounded and interpretable with representative scenarios varying:
+
+- tile regime: exact multiple, single non-multiple, multi non-multiple
+- guard discipline: full, missing specific guards, over-guarded
+- barrier discipline: correct, missing post-load, missing between-tiles, asymmetric, redundant
+- tile/local agreement: matching, under-covered, square-assumption mismatch
+- indexing convention: consistent, one-stage inconsistent, tile-offset inconsistent
+- portability regime: strict portable vs permissive unsafe assumptions
+
+### Structural metrics tracked
+
+M9 tracks protocol-structure aids (not performance claims):
+
+- tile count
+- partial tile count
+- guarded element count
+- cooperative load coverage deficit/duplication
+- synchronization step count
+- conceptual shared-tile reuse count
+- tile-shape mismatch count
+- portability-risk count
+
+### Safe assumptions identified
+
+M9 marks these as safe:
+
+1. exact-multiple tiled SGEMM with full guards, explicit barriers, and consistent row-major indexing.
+2. partial-tile scenarios with complete A/B/C guards and explicit synchronization.
+3. K-non-multiple tails with preserved accumulation/indexing discipline.
+4. strict-portable regime with no implicit backend behavior assumptions.
+
+### Unsafe shortcuts identified
+
+M9 marks these as unsafe:
+
+1. missing bounds guards under partial tiles (A/B/C edge hazards).
+2. missing post-load barrier before compute.
+3. missing barrier between tile iterations.
+4. row-major inconsistency at any pipeline stage (including tile-offset mismatch).
+5. tile/local-shape mismatch causing unassigned or duplicated cooperative load responsibility.
+6. permissive portability assumptions (implicit zero-fill/sync, out-of-range tolerance, lockstep dependence).
+
+### Minimal safe tiled SGEMM protocol for future Vulkan C implementation
+
+A future Vulkan C tiled/shared-memory SGEMM implementation should preserve this minimal protocol:
+
+1. Validate tile/local shape agreement so cooperative load coverage is complete and non-duplicated.
+2. For non-multiple and edge tiles, enforce explicit A/B/C bounds guards; do not rely on implicit out-of-range behavior.
+3. Require explicit barrier after cooperative tile load and again between tile iterations when tile memory is reused.
+4. Keep row-major indexing conventions consistent across load/compute/writeback/tile-offset stages.
+5. Treat portability shortcuts (implicit zero-fill/sync/lockstep tolerance) as forbidden assumptions.
+6. Emit explicit protocol diagnostics so hazards are visible rather than silently folded into pass/fail outcomes.
+
+### Inconsistency note surfaced
+
+M9 intentionally models portable protocol invariants rather than backend scheduling or subgroup behavior. This is a deliberate abstraction choice and not a claim about any specific vendor runtime behavior.

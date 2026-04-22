@@ -1,0 +1,228 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn SafeExactMultipleTileProtocol() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "safe exact multiple",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).ResultCorrect, "exact-multiple tiled protocol should be correct")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe, "exact-multiple tiled protocol should be safe")
+    Assert.True(OutcomeMetrics(outcome).PartialTileCount == 0, "exact multiples should have zero partial-tile dimensions")
+}
+
+[Fact]
+fn SafePartialTilesWithFullGuardsAndBarriers() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "safe multi partial",
+        70, 66, 50,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).PartialTileHandled, "multi-dimension partial tiles should be handled with full guards")
+    Assert.True(OutcomeSignals(outcome).BoundsHazard == false, "full guards should prevent bounds hazards")
+    Assert.True(OutcomeSignals(outcome).ResultCorrect, "partial tiles with complete protocol should remain correct")
+}
+
+[Fact]
+fn SafeKNonMultipleWithAccumulateConsistency() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "safe k non multiple",
+        64, 64, 58,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, true, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).ResultCorrect, "k-tail tiles should accumulate correctly with full protocol")
+    Assert.True(OutcomeMetrics(outcome).SharedTileReuseCount > 0, "k-tiling should show conceptual shared tile reuse")
+    Assert.True(OutcomeMetrics(outcome).SynchronizationStepCount > 0, "safe tiled protocol should include explicit synchronization steps")
+}
+
+[Fact]
+fn UnsafeMissingBoundsGuardInPartialCase() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe missing A guard",
+        70, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        false, true, true, false,
+        true, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).BoundsHazard, "missing A guard in partial regime should be flagged")
+    Assert.True(OutcomeSignals(outcome).PartialTileHandled == false, "missing guard should break partial-tile handling")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "bounds hazard should invalidate protocol safety")
+}
+
+[Fact]
+fn UnsafeMissingBarrierAfterLoad() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe missing barrier after load",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        false, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).MissingBarrier, "barrier after load is mandatory")
+    Assert.True(OutcomeSignals(outcome).SharedTileHazard, "missing barrier should expose shared-tile hazard")
+    Assert.True(OutcomeSignals(outcome).ResultCorrect == false, "missing synchronization must not be accepted as correct")
+}
+
+[Fact]
+fn UnsafeMissingBarrierBetweenTiles() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe missing between tile barrier",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, false, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).MissingBarrier, "between-tiles barrier should be mandatory for tile reuse")
+    Assert.True(OutcomeSignals(outcome).SharedTileHazard, "tile-advance without barrier should be hazardous")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "missing between-tiles barrier should be unsafe")
+}
+
+[Fact]
+fn UnsafeRowMajorInconsistencyAcrossStages() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe indexing mismatch",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, false, false,
+        true, false, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).IndexingHazard, "mixed row-major conventions should be explicit hazard")
+    Assert.True(OutcomeSignals(outcome).ResultCorrect == false, "indexing inconsistency should break correctness")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "indexing mismatch should invalidate safe protocol")
+}
+
+[Fact]
+fn UnsafeTileLocalShapeMismatchCoverageDeficit() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe tile local mismatch",
+        64, 64, 64,
+        16, 16, 16,
+        8, 8,
+        true,
+        true, true, true, false,
+        true, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(outcome).TileShapeMismatch, "local-shape mismatch should be explicit")
+    Assert.True(OutcomeMetrics(outcome).CooperativeCoverageDeficit > 0, "mismatch should expose missing cooperative-load coverage")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "tile/local mismatch should be unsafe")
+}
+
+[Fact]
+fn UnsafePermissivePortabilityAssumptions() -> Void {
+    let outcome = EvaluateTiledScenario(MakeScenario(
+        "unsafe permissive portability",
+        70, 66, 58,
+        16, 16, 16,
+        16, 16,
+        true,
+        false, false, false, false,
+        false, false, false, false,
+        true, true, true, true, true,
+        true, true, true, true
+    ))
+
+    Assert.True(OutcomeSignals(outcome).PortabilityHazard, "implicit behavior assumptions should be flagged as portability hazards")
+    Assert.True(OutcomeMetrics(outcome).PortabilityRiskCount == 4, "all unsafe assumptions should be counted")
+    Assert.True(OutcomeSignals(outcome).StructurallyValid, "scenario can be structurally valid while still portability-unsafe")
+}
+
+[Fact]
+fn BoundedDoeCoversCoreRakeFactors() -> Void {
+    let strictSafe = EvaluateTiledScenario(MakeScenario(
+        "strict portable",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, true, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    let missingCGuard = EvaluateTiledScenario(MakeScenario(
+        "missing C guard",
+        70, 66, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, false, false,
+        true, true, false, false,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    let asymmetricBarrier = EvaluateTiledScenario(MakeScenario(
+        "asymmetric barrier",
+        64, 64, 48,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, false, true,
+        true, true, true, true, true,
+        false, false, false, false
+    ))
+
+    let tileOffsetMismatch = EvaluateTiledScenario(MakeScenario(
+        "tile offset mismatch",
+        64, 64, 64,
+        16, 16, 16,
+        16, 16,
+        true,
+        true, true, true, false,
+        true, true, false, false,
+        true, true, true, true, false,
+        false, false, false, false
+    ))
+
+    Assert.True(OutcomeSignals(strictSafe).ProtocolSafe, "strict portable baseline should be safe")
+    Assert.True(OutcomeSignals(missingCGuard).BoundsHazard, "guard discipline factor should expose bounds hazard")
+    Assert.True(OutcomeSignals(asymmetricBarrier).MissingBarrier, "barrier discipline factor should expose missing/asymmetric barrier")
+    Assert.True(OutcomeSignals(tileOffsetMismatch).IndexingHazard, "indexing factor should expose tile-offset inconsistency")
+}
