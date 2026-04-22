@@ -145,3 +145,42 @@ FACT(PrometheusJudgmentEngine_IntegrationParityWithReactorPolicyScenarios)
         ASSERT_TRUE(decision.winning_score > -100000, "winning score should be populated for diagnostics");
     }
 }
+
+FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
+{
+    {
+        prom_judgment_async_facts facts{};
+        facts.request_async = 1u;
+        facts.in_flight = 0u;
+        facts.software_vulkan = 0u;
+
+        prom_judgment_async_decision decision{};
+        prom_judgment_engine_select_async_submission(&facts, &decision);
+        ASSERT_EQUAL(1u, decision.success, "async policy should accept eligible async submissions");
+        ASSERT_EQUAL(1u, decision.execute_async, "eligible async request should be explicitly selected as async");
+    }
+
+    {
+        prom_judgment_async_facts facts{};
+        facts.request_async = 1u;
+        facts.in_flight = 1u;
+        facts.software_vulkan = 0u;
+
+        prom_judgment_async_decision decision{};
+        prom_judgment_engine_select_async_submission(&facts, &decision);
+        ASSERT_EQUAL(0u, decision.success, "in-flight overlap should reject async selection");
+        ASSERT_EQUAL(PROM_DETAIL_REUSE_IN_FLIGHT, decision.reject_detail, "in-flight overlap should expose explicit ownership hazard detail");
+    }
+
+    {
+        prom_judgment_async_facts facts{};
+        facts.request_async = 1u;
+        facts.in_flight = 0u;
+        facts.software_vulkan = 1u;
+
+        prom_judgment_async_decision decision{};
+        prom_judgment_engine_select_async_submission(&facts, &decision);
+        ASSERT_EQUAL(0u, decision.success, "software Vulkan policy should suppress async mode");
+        ASSERT_EQUAL(PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED, decision.reject_detail, "software suppression should remain explicitly observable");
+    }
+}

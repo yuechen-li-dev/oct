@@ -48,12 +48,26 @@ typedef struct prom_judgment_decision {
   int winning_score;
 } prom_judgment_decision;
 
+typedef struct prom_judgment_async_facts {
+  uint32_t request_async;
+  uint32_t in_flight;
+  uint32_t software_vulkan;
+} prom_judgment_async_facts;
+
+typedef struct prom_judgment_async_decision {
+  uint32_t success;
+  uint32_t execute_async;
+  int reject_detail;
+} prom_judgment_async_decision;
+
 enum {
   PROM_JUDGMENT_STAGING_WORK_THRESHOLD = 16384u,
   PROM_JUDGMENT_TILED_WORK_THRESHOLD = 131072u,
 };
 
 void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, prom_judgment_decision* out_decision);
+void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
+                                                  prom_judgment_async_decision* out_decision);
 
 #ifdef __cplusplus
 }

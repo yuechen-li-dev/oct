@@ -32,6 +32,35 @@ int prometheus_reactor_runtime_sgemm(void* handle,
   return prom_reactor_runtime_sgemm_impl(handle, a, b, c, m, n, k, out_stage, out_detail_code);
 }
 
+int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
+                                                  const float* a,
+                                                  const float* b,
+                                                  uint32_t m,
+                                                  uint32_t n,
+                                                  uint32_t k,
+                                                  int* out_task_id,
+                                                  uint32_t* out_stage,
+                                                  int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_submit_async_impl(handle, a, b, m, n, k, out_task_id, out_stage, out_detail_code);
+}
+
+int prometheus_reactor_runtime_sgemm_query_async(void* handle, int task_id, PrometheusAsyncStatus* out_status) {
+  return prom_reactor_runtime_sgemm_query_async_impl(handle, task_id, out_status);
+}
+
+int prometheus_reactor_runtime_sgemm_consume_async(void* handle,
+                                                   int task_id,
+                                                   float* c,
+                                                   uint32_t c_len,
+                                                   uint32_t* out_stage,
+                                                   int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_consume_async_impl(handle, task_id, c, c_len, out_stage, out_detail_code);
+}
+
+int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id) {
+  return prom_reactor_runtime_sgemm_abandon_async_impl(handle, task_id);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

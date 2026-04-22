@@ -19,6 +19,23 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                     uint32_t k,
                                     uint32_t* out_stage,
                                     int* out_detail_code);
+int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
+                                                 const float* a,
+                                                 const float* b,
+                                                 uint32_t m,
+                                                 uint32_t n,
+                                                 uint32_t k,
+                                                 int* out_task_id,
+                                                 uint32_t* out_stage,
+                                                 int* out_detail_code);
+int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, PrometheusAsyncStatus* out_status);
+int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
+                                                  int task_id,
+                                                  float* c,
+                                                  uint32_t c_len,
+                                                  uint32_t* out_stage,
+                                                  int* out_detail_code);
+int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id);
 
 #ifdef __cplusplus
 }
