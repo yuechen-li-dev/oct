@@ -1,0 +1,9 @@
+RUN  PrometheusSgemmAlgorithmLab.M4d_K16x16x512_BlockedRep (prometheus_sgemm_algorithm_lab_m4d.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1067300ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1010200ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1453500ns
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=964200ns
+131072
+0
+PASS PrometheusSgemmAlgorithmLab.M4d_K16x16x512_BlockedRep 904.023ms (prometheus_sgemm_algorithm_lab_m4d.octest)
+Result: 1 benchmark(s) passed, 0 failed

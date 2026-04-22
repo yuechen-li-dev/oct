@@ -468,3 +468,159 @@ M4c intentionally does **not**:
 ### Inconsistency/documentation gap surfaced
 
 `PrometheusMatMul(...)` is introduced as a minimal bridge surface for this experiment milestone, but `Language/reference` does not currently document this builtin. This is a language-reference gap that should be resolved explicitly in a follow-up documentation pass.
+
+## M4d scope
+
+M4d is the first truthful Windows-native hardware comparison after M4c bridge collapse.
+
+The goal was not to optimize kernels or rewrite policy. The goal was to run only the still-meaningful post-M4c families on real Prometheus-backed compute and see which families survive contact with actual hardware.
+
+### Environment used
+
+- Windows
+- native NVIDIA Vulkan environment
+- `OCT_PROMETHEUS_REACTOR=internal/prometheus/reactor/prometheus_reactor.dll`
+- `CGO_ENABLED=1`
+- `CC=C:\Users\yuech\mingw64\bin\gcc.exe`
+- `CXX=C:\Users\yuech\mingw64\bin\g++.exe`
+- fresh CLI built from current source by `tools/prometheus/run_m4d_windows_native.ps1`
+
+The checked-in repo binary `oct.exe` was stale relative to current language support and failed to parse current `Matrix.zeros<T>(...)` syntax, so M4d intentionally uses a freshly built CLI from the current source tree for truthful execution.
+
+### Retained strategy set tested
+
+M4d respects the M4c collapse and benchmarks only the three backend-distinct retained families:
+
+- **SingleCall**: full-matrix single-call delegation
+  - benchmark representative: `SingleCallRep`
+  - chooser aliases collapsed here: `Baseline`, `IKJ`, `KIJ`
+- **Blocked**: output-block decomposition
+  - benchmark representative: `BlockedRep`
+  - chooser aliases collapsed here: `Blocked`, `BlockedIKJ`
+- **KDecomposition**: K-block decomposition with accumulation
+  - benchmark representative: `KDecompositionRep`
+  - chooser aliases collapsed here: `KBlocked`, `KBlockedIKJ`, `StagedIKJ`
+
+`StagedIKJ` is therefore not measured as a separate row in M4d, because after M4c it is not a separate Prometheus execution shape.
+
+### Shape set tested
+
+The required six-shape M4b suspicious set was retained unchanged:
+
+- `16x16x16`
+- `32x32x32`
+- `16x64 * 64x8`
+- `8x128 * 128x16`
+- `8x8 * 256`
+- `16x16 * 512`
+
+### Output artifacts
+
+M4d writes its Windows-native run artifacts under:
+
+- `out/prometheus/sgemm_lab_m4d/summary.json`
+- `out/prometheus/sgemm_lab_m4d/summary.md`
+- per-run `.octagon` and stdout captures for each shape/family/run
+- copied chooser artifact: `out/prometheus/sgemm_lab_m4d/m4d_choose_strategy.octagon`
+
+### Truthfulness checks
+
+- `go run ./cmd/oct test Experiments/PrometheusSgemmAlgorithmLab/M4` passed (`7 passed, 0 failed`)
+- `go test ./cmd/oct -run TestWindowsBenchM4RetainedFamiliesUsePrometheusBackend -count=1` passed under `CGO_ENABLED=1`
+- every M4d measured row reported:
+  - `BackendUsed=prometheus`
+  - `Status=ok`
+  - `Environment=windows_native_vulkan`
+
+This confirms M4d results are not CPU-loop proxy timings and are not silent fallback data.
+
+### Results summary
+
+Per-shape fastest retained family by median `ReportedWallNs` in the measured three-run slice:
+
+- `16x16x16` -> `Blocked` (`1182200 ns`)
+- `32x32x32` -> `SingleCall` (`1017900 ns`)
+- `16x64 * 64x8` -> `KDecomposition` (`1020600 ns`)
+- `8x128 * 128x16` -> `KDecomposition` (`1023700 ns`)
+- `8x8 * 256` -> `KDecomposition` (`1155600 ns`)
+- `16x16 * 512` -> `KDecomposition` (`1018900 ns`)
+
+Chooser vs observed-fastest after M4c alias collapse:
+
+- `16x16x16`: chooser=`KDecomposition`, observed-fastest=`Blocked`
+- `32x32x32`: chooser=`KDecomposition`, observed-fastest=`SingleCall`
+- `16x64 * 64x8`: chooser=`KDecomposition`, observed-fastest=`KDecomposition`
+- `8x128 * 128x16`: chooser=`KDecomposition`, observed-fastest=`KDecomposition`
+- `8x8 * 256`: chooser=`KDecomposition`, observed-fastest=`KDecomposition`
+- `16x16 * 512`: chooser=`KDecomposition`, observed-fastest=`KDecomposition`
+
+Net result: the current chooser is directionally wrong on **2 / 6** required shapes. It still over-selects K-decomposition in the small balanced square region, but the family is much more viable on real hardware than the earlier cloud proxy results suggested.
+
+### Chooser mismatches
+
+The strongest concrete chooser errors are:
+
+- `16x16x16`: chooser overcommits to `KDecomposition`; real hardware prefers output blocking
+- `32x32x32`: chooser overcommits to `KDecomposition`; real hardware prefers the single-call family
+
+So the present heuristic is not broadly broken, but its K-dominance intuition is still too aggressive in small-to-mid square regions.
+
+### Staged viability conclusion
+
+After M4c, staged is no longer a separately measurable backend family:
+
+- `StagedIKJ` is an execution alias of `KDecomposition`
+- M4d therefore does **not** produce an independent staged score
+- staged should not remain a separate candidate dimension for M5 unless the backend path becomes structurally distinct again
+
+That means staged is no longer justified as an independently scored strategy family.
+
+### K-block usefulness conclusion
+
+K-aware decomposition is real and frequently useful on real Prometheus hardware, but it is not a universal default.
+
+Evidence from M4d:
+
+- it wins on `16x64 * 64x8`
+- it wins on `8x128 * 128x16`
+- it wins on `8x8 * 256`
+- it wins on `16x16 * 512`
+- it loses on `16x16x16`
+- it loses on `32x32x32`
+
+Conclusion:
+
+- K-decomposition remains a real candidate family
+- K-aware preference is justified on most of the M4d suspicious set, especially the rectangular and K-heavy cases
+- the current chooser still applies that preference too broadly for small balanced square shapes
+
+### Stability / variance
+
+Rankings are usable, but not cleanly stable across the whole six-shape set.
+
+- every required shape showed some winner or full-order variation across the three-run slice
+- inner-wall deltas are often sub-millisecond and should be treated as informative rather than absolute
+
+This means M5 should include a confidence or variance penalty rather than assuming every observed ranking is equally strong.
+
+### Recommended signals for M5 scoring
+
+M4d suggests the next scoring pass should use collapse-aware family signals rather than pre-M4c raw strategy names:
+
+1. single-call vs blocked vs K-decomposition family identity
+2. K-dominance, but moderated rather than treated as an automatic K-decomposition win
+3. output tiling pressure (`m`, `n`, output area, tile count)
+4. K-chunk pressure (`k`, estimated K-chunk count)
+5. rectangular aspect signals, especially the `16x64 * 64x8` style region where K-decomposition repeatedly surfaced near the front
+6. ranking confidence / variance penalty derived from repeated-run stability
+
+### Strategy family pruning / demotion recommendation
+
+M4d supports the following post-hardware conclusions:
+
+- **Keep `SingleCall`** as a real candidate family
+- **Keep `Blocked`** as a real candidate family, but as a narrow small-square specialist unless future data broadens its region
+- **Keep `KDecomposition`** as a real candidate family
+- **Demote/prune `StagedIKJ` as an independent family** from future scoring, because it is not backend-distinct after M4c
+
+No optimization or chooser rewrite is introduced in M4d. The milestone ends with truthful hardware evidence that narrows M5 to family-level utility scoring rather than raw pre-bridge strategy labels.

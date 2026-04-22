@@ -1,0 +1,176 @@
+package PrometheusSgemmAlgorithmLab
+
+record M4dCaseSelection {
+    Shape: String
+    M: Int
+    N: Int
+    K: Int
+    ChosenStrategy: String
+    ChosenFamily: String
+}
+
+[Artifact]
+fn EmitM4dChooseStrategySelections() -> Void {
+    let selections = [
+        M4dSelectionForShape("S16x16", 16, 16, 16),
+        M4dSelectionForShape("S32x32", 32, 32, 32),
+        M4dSelectionForShape("R16x64x8", 16, 8, 64),
+        M4dSelectionForShape("R8x128x16", 8, 16, 128),
+        M4dSelectionForShape("K8x8x256", 8, 8, 256),
+        M4dSelectionForShape("K16x16x512", 16, 16, 512)
+    ]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M4/m4d_choose_strategy.octagon", selections)
+}
+
+fn M4dSelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M4dCaseSelection {
+    let a = Matrix.tabulate(m, k, ProbeA)
+    let b = Matrix.tabulate(k, n, ProbeB)
+    let chosen = ChooseStrategy(a, b)!
+    return M4dCaseSelection {
+        Shape: shape
+        M: m
+        N: n
+        K: k
+        ChosenStrategy: StrategyLabel(chosen)
+        ChosenFamily: FamilyLabel(chosen)
+    }
+}
+
+fn FamilyLabel(strategy: MatMulStrategy) -> String {
+    return switch strategy {
+        case MatMulStrategy.Baseline => "SingleCall"
+        case MatMulStrategy.IKJ => "SingleCall"
+        case MatMulStrategy.KIJ => "SingleCall"
+        case MatMulStrategy.Blocked => "Blocked"
+        case MatMulStrategy.BlockedIKJ => "Blocked"
+        case MatMulStrategy.KBlocked => "KDecomposition"
+        case MatMulStrategy.KBlockedIKJ => "KDecomposition"
+        case MatMulStrategy.StagedIKJ => "KDecomposition"
+    }
+}
+
+[Benchmark]
+fn M4d_S16x16_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_S16x16_BlockedRep() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_S16x16_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(16, 16, ProbeA)
+    let b = Matrix.tabulate(16, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_S32x32_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_S32x32_BlockedRep() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_S32x32_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(32, 32, ProbeA)
+    let b = Matrix.tabulate(32, 32, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R16x64x8_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R16x64x8_BlockedRep() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R16x64x8_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R8x128x16_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R8x128x16_BlockedRep() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_R8x128x16_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(8, 128, ProbeA)
+    let b = Matrix.tabulate(128, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K8x8x256_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K8x8x256_BlockedRep() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K8x8x256_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(8, 256, ProbeA)
+    let b = Matrix.tabulate(256, 8, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K16x16x512_SingleCallRep() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Baseline, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K16x16x512_BlockedRep() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.Blocked, 8, 16)!)
+}
+
+[Benchmark]
+fn M4d_K16x16x512_KDecompositionRep() -> Void {
+    let a = Matrix.tabulate(16, 512, ProbeA)
+    let b = Matrix.tabulate(512, 16, ProbeB)
+    Print(MeasureStrategy(a, b, MatMulStrategy.KBlocked, 8, 16)!)
+}

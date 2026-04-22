@@ -1,0 +1,6 @@
+RUN  PrometheusSgemmAlgorithmLab.M4d_S16x16_KDecompositionRep (prometheus_sgemm_algorithm_lab_m4d.octest)
+backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1153500ns
+4096
+0
+PASS PrometheusSgemmAlgorithmLab.M4d_S16x16_KDecompositionRep 710.238ms (prometheus_sgemm_algorithm_lab_m4d.octest)
+Result: 1 benchmark(s) passed, 0 failed
