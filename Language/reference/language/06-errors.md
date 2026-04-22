@@ -17,7 +17,7 @@ Handling forms are `?`, `!`, and `match`.
 - `?` propagates `err` to the current fallible function.
 - `?` is invalid in an infallible function.
 - `?` requires a fallible expression.
-- `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression.
+- `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression (`->` is also accepted for the arm arrow).
 - Fallible `match` must include both `ok` and `err` arms.
 - `!` unwrap is explicit handling for a fallible expression.
 - Returning a fallible value from an infallible function is invalid.

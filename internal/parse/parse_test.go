@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -8,6 +9,52 @@ import (
 	"oct/internal/lex"
 	"oct/internal/source"
 )
+
+func TestBuildFileParsesUnifiedArrowsWithEquivalentAst(t *testing.T) {
+	tests := []struct {
+		name  string
+		left  string
+		right string
+	}{
+		{
+			name:  "function signature arrow",
+			left:  "fn Main() -> Int { return 0 }",
+			right: "fn Main() => Int { return 0 }",
+		},
+		{
+			name:  "function type arrow",
+			left:  "fn Apply(f: fn(Int) -> Int) -> Int { return f(1) }",
+			right: "fn Apply(f: fn(Int) => Int) => Int { return f(1) }",
+		},
+		{
+			name:  "match arm arrow",
+			left:  "fn Main() -> Int ! Error { match Safe() { ok(v) => { return v } err(e) => { return 0 } } }",
+			right: "fn Main() -> Int ! Error { match Safe() { ok(v) -> { return v } err(e) -> { return 0 } } }",
+		},
+		{
+			name:  "switch arrow",
+			left:  "fn Main() -> Int { return switch 1 { case 1 => 2 else => 3 } }",
+			right: "fn Main() -> Int { return switch 1 { case 1 -> 2 else -> 3 } }",
+		},
+		{
+			name:  "flow and when arrows",
+			left:  "flow Patrol(flag: Bool) -> Int { state Search { when { case flag -> goto Track else -> suspend } } state Track { return 1 } }",
+			right: "flow Patrol(flag: Bool) => Int { state Search { when { case flag => goto Track else => suspend } } state Track { return 1 } }",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			left := parseSource(t, tc.left)
+			right := parseSource(t, tc.right)
+			left.Source.Text = ""
+			right.Source.Text = ""
+			if !reflect.DeepEqual(left, right) {
+				t.Fatalf("expected equivalent AST for unified arrows\nleft: %#v\nright: %#v", left, right)
+			}
+		})
+	}
+}
 
 func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { return 0 }")
@@ -543,7 +590,7 @@ func TestBuildFileParsesConditionSwitchExpression(t *testing.T) {
 }
 
 func TestBuildFileRejectsMissingReturnType(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() { return 0 }", "expected '->' before return type")
+	assertParseErrorContains(t, "fn Main() { return 0 }", "expected arrow before return type")
 }
 
 func TestBuildFileRejectsMalformedParameterList(t *testing.T) {
@@ -613,7 +660,7 @@ func TestBuildFileParsesSwitchWithoutElse(t *testing.T) {
 }
 
 func TestBuildFileRejectsNonLiteralSwitchCase(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 + 1 => 2 else => 3 } return x }", "expected '=>' after case label")
+	assertParseErrorContains(t, "fn Main() -> Int { let x = switch 1 { case 1 + 1 => 2 else => 3 } return x }", "expected arrow after case label")
 }
 
 func TestBuildFileParsesFactInOctest(t *testing.T) {

@@ -197,7 +197,17 @@ func normalizeCode(code string) string {
 	}
 	var b strings.Builder
 	for i, tok := range tokens {
-		if i > 0 && needsSpace(tokens[i-1], tok) {
+		if tok == "=>" {
+			tok = "->"
+		}
+		prev := ""
+		if i > 0 {
+			prev = tokens[i-1]
+			if prev == "=>" {
+				prev = "->"
+			}
+		}
+		if i > 0 && needsSpace(prev, tok) {
 			b.WriteByte(' ')
 		}
 		b.WriteString(tok)

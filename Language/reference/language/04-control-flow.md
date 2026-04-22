@@ -18,6 +18,7 @@ Conditions never use implicit coercion.
 - Condition `switch` requires an `else` arm.
 - `switch` arms must produce one result type.
 - `switch` does not fall through.
+- `switch`/`when` arrow positions accept both `->` and `=>`; no semantic distinction is attached to spelling.
 - `for i in start..end` uses inclusive start and exclusive end bounds.
 - `for` bounds must be `Int`.
 - `step` is optional.

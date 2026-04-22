@@ -14,6 +14,7 @@ Formatter profiles are not supported.
 - Running the formatter twice produces no further changes.
 - Canonical spacing and indentation are enforced.
 - Declaration-adjacent comments are preserved.
+- Arrow spellings are canonicalized to `->` in formatter output (even when input uses `=>`).
 - Formatter output is the committed style.
 
 ## Examples

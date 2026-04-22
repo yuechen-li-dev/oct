@@ -12,7 +12,7 @@ Octomata and records are complementary:
 
 ## Rules
 
-- Flow declaration form is `flow Name(params) -> ReturnType { state ... }`.
+- Flow declaration form is `flow Name(params) -> ReturnType { state ... }` (source also accepts `=>` for the arrow).
 - A flow must declare at least one `state`.
 - State declaration form is `state Name { ... }`.
 - `goto StateName` transitions to a declared state.

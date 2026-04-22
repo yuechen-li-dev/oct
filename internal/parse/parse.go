@@ -488,7 +488,7 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
-	if _, err := p.expect(lex.Arrow, "expected '->' before return type"); err != nil {
+	if _, err := p.expect(lex.Arrow, "expected arrow before return type"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
 
@@ -540,7 +540,7 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
 		return ast.FlowDecl{}, err
 	}
-	if _, err := p.expect(lex.Arrow, "expected '->' before return type"); err != nil {
+	if _, err := p.expect(lex.Arrow, "expected arrow before return type"); err != nil {
 		return ast.FlowDecl{}, err
 	}
 	returnType, err := p.parseTypeRef()
@@ -659,7 +659,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		if _, err := p.expect(lex.RightParen, "expected ')' after function type parameter list"); err != nil {
 			return ast.TypeRef{}, err
 		}
-		if _, err := p.expect(lex.Arrow, "expected '->' in function type"); err != nil {
+		if _, err := p.expect(lex.Arrow, "expected arrow in function type"); err != nil {
 			return ast.TypeRef{}, err
 		}
 		returnType, err := p.parseTypeRef()
@@ -827,7 +827,7 @@ func (p *parser) parseWhenStmt() (ast.Stmt, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := p.expect(lex.Arrow, "expected '->' after case condition"); err != nil {
+			if _, err := p.expect(lex.Arrow, "expected arrow after case condition"); err != nil {
 				return nil, err
 			}
 			action, err := p.parseWhenAction()
@@ -840,7 +840,7 @@ func (p *parser) parseWhenStmt() (ast.Stmt, error) {
 				return nil, p.errorAtCurrent("when can only have one else arm")
 			}
 			p.advance()
-			if _, err := p.expect(lex.Arrow, "expected '->' after else"); err != nil {
+			if _, err := p.expect(lex.Arrow, "expected arrow after else"); err != nil {
 				return nil, err
 			}
 			action, err := p.parseWhenAction()
@@ -1154,7 +1154,7 @@ func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
 	if _, err := p.expect(lex.RightParen, fmt.Sprintf("expected ')' after %s binding", expectedName)); err != nil {
 		return "", ast.Block{}, err
 	}
-	if _, err := p.expect(lex.FatArrow, fmt.Sprintf("expected '=>' after %s arm", expectedName)); err != nil {
+	if _, err := p.expect(lex.Arrow, fmt.Sprintf("expected arrow after %s arm", expectedName)); err != nil {
 		return "", ast.Block{}, err
 	}
 	body, err := p.parseBlock()
@@ -1825,7 +1825,7 @@ func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 					return nil, err
 				}
 			}
-			if _, err := p.expect(lex.FatArrow, "expected '=>' after case label"); err != nil {
+			if _, err := p.expect(lex.Arrow, "expected arrow after case label"); err != nil {
 				return nil, err
 			}
 			value, err := p.parseExpression()
@@ -1838,7 +1838,7 @@ func (p *parser) parseSwitchExpr() (ast.Expr, error) {
 				return nil, p.errorAtCurrent("switch can only have one else arm")
 			}
 			p.advance()
-			if _, err := p.expect(lex.FatArrow, "expected '=>' after else"); err != nil {
+			if _, err := p.expect(lex.Arrow, "expected arrow after else"); err != nil {
 				return nil, err
 			}
 			value, err := p.parseExpression()
