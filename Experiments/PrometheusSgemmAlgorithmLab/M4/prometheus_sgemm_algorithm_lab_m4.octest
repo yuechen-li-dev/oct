@@ -26,35 +26,45 @@ fn StrategyDispatchMatchesBaselineOnRepresentativeShapes() -> Void {
 }
 
 [Fact]
-fn ChooseStrategyReturnsExpectedVariantsForShapeSignals() -> Void {
-    let verySmallA = matrix[[1.0, 2.0] [3.0, 4.0]]
-    let verySmallB = matrix[[5.0, 6.0] [7.0, 8.0]]
-    Assert.Equal(MatMulStrategy.IKJ, ChooseStrategy(verySmallA, verySmallB)!, "very small shape")
-
-    let tallK_A = Matrix.tabulate(8, 40, ProbeA)
-    let tallK_B = Matrix.tabulate(40, 8, ProbeB)
-    Assert.Equal(MatMulStrategy.KBlockedIKJ, ChooseStrategy(tallK_A, tallK_B)!, "k dominant shape")
-
-    let largeOutputA = Matrix.tabulate(32, 8, ProbeA)
-    let largeOutputB = Matrix.tabulate(8, 36, ProbeB)
-    Assert.Equal(MatMulStrategy.BlockedIKJ, ChooseStrategy(largeOutputA, largeOutputB)!, "large output shape")
-
-    let balancedMidA = Matrix.tabulate(12, 12, ProbeA)
-    let balancedMidB = Matrix.tabulate(12, 12, ProbeB)
-    Assert.Equal(MatMulStrategy.KBlocked, ChooseStrategy(balancedMidA, balancedMidB)!, "mid shape with larger k")
+fn ChooseStrategyFollowsM5DirectionalityOnRepresentativeShapes() -> Void {
+    Assert.Equal("SingleCall", FamilyLabel(ChooseStrategyUtility(32, 32, 32)), "32x32x32 should prefer SingleCall")
+    Assert.Equal("Blocked", FamilyLabel(ChooseStrategyUtility(16, 16, 16)), "16x16x16 should prefer Blocked")
+    Assert.Equal("KDecomposition", FamilyLabel(ChooseStrategyUtility(16, 16, 512)), "16x16x512 should prefer KDecomposition")
+    Assert.Equal("KDecomposition", FamilyLabel(ChooseStrategyUtility(16, 8, 64)), "16x64 * 64x8 should prefer KDecomposition")
 }
 
 [Fact]
 fn ChooseStrategyIsDeterministic() -> Void {
-    let a = Matrix.tabulate(14, 20, ProbeA)
-    let b = Matrix.tabulate(20, 10, ProbeB)
-
-    let first = ChooseStrategy(a, b)!
-    let second = ChooseStrategy(a, b)!
-    let third = ChooseStrategy(a, b)!
+    let first = ChooseStrategyUtility(14, 10, 20)
+    let second = ChooseStrategyUtility(14, 10, 20)
+    let third = ChooseStrategyUtility(14, 10, 20)
 
     Assert.Equal(first, second, "first and second selection")
     Assert.Equal(second, third, "second and third selection")
+}
+
+[Fact]
+fn ChooseStrategyUsesFamilyOnlyRepresentatives() -> Void {
+    let familyS32 = FamilyLabel(ChooseStrategyUtility(32, 32, 32))
+    let familyS16 = FamilyLabel(ChooseStrategyUtility(16, 16, 16))
+    let familyKHeavy = FamilyLabel(ChooseStrategyUtility(16, 16, 512))
+    let familyRect = FamilyLabel(ChooseStrategyUtility(16, 8, 64))
+
+    Assert.True(familyS32 == "SingleCall" or familyS32 == "Blocked" or familyS32 == "KDecomposition", "32x32x32 stays in retained families")
+    Assert.True(familyS16 == "SingleCall" or familyS16 == "Blocked" or familyS16 == "KDecomposition", "16x16x16 stays in retained families")
+    Assert.True(familyKHeavy == "SingleCall" or familyKHeavy == "Blocked" or familyKHeavy == "KDecomposition", "16x16x512 stays in retained families")
+    Assert.True(familyRect == "SingleCall" or familyRect == "Blocked" or familyRect == "KDecomposition", "16x64*64x8 stays in retained families")
+}
+
+[Fact]
+fn ChooseStrategyBridgeMatchesUtilityChooser() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+
+    let selectedByBridge = FamilyLabel(ChooseStrategy(a, b)!)
+    let selectedByUtility = FamilyLabel(ChooseStrategyUtility(16, 8, 64))
+
+    Assert.Equal(selectedByUtility, selectedByBridge, "matrix chooser should delegate to utility chooser")
 }
 
 [Fact]

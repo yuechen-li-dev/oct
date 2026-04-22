@@ -624,3 +624,53 @@ M4d supports the following post-hardware conclusions:
 - **Demote/prune `StagedIKJ` as an independent family** from future scoring, because it is not backend-distinct after M4c
 
 No optimization or chooser rewrite is introduced in M4d. The milestone ends with truthful hardware evidence that narrows M5 to family-level utility scoring rather than raw pre-bridge strategy labels.
+
+## M5 scope
+
+M5 replaces the old threshold `if`/`switch` style chooser heuristic with an explicit utility model:
+
+- new chooser surface: `ChooseStrategyUtility(m: Int, n: Int, k: Int) -> MatMulStrategy`
+- chooser implementation: standalone `when utility { ... }`
+- scored families only: `SingleCall`, `Blocked`, `KDecomposition`
+
+### Signals used
+
+M5 uses only M4d-justified shape signals:
+
+1. **K pressure**: integer-scaled `k / max(m, n)` signal (`kPressureScaled`) to reward K-heavy cases and penalize low-k decomposition bias.
+2. **Output area**: `m * n` (`area`) to keep `Blocked` focused on small outputs.
+3. **Shape balance**: integer-scaled `max(m, n) / min(m, n)` (`balanceScaled`) to push rectangular cases toward `KDecomposition` and square cases toward `SingleCall`.
+4. **Small-square special case**: explicit `m <= 16 && n <= 16 && k <= 16` strong positive boost for `Blocked`.
+
+### Scoring structure
+
+`when utility` now ranks three family representatives:
+
+- `case MatMulStrategy.KBlocked when true score ScoreKDecomposition(...)`
+- `case MatMulStrategy.Baseline when true score ScoreSingleCall(...)`
+- `case MatMulStrategy.Blocked when true score ScoreBlocked(...)`
+
+Each score function includes both positive and negative terms. In particular, `KDecomposition` receives explicit penalties in low-k, balanced, small-square conditions to address M4d over-selection concerns.
+
+### How M4d findings were translated
+
+- **K-heavy and rectangular wins** translate to large positive K-pressure and rectangularity bonuses for `KDecomposition`.
+- **Balanced medium squares** translate to square-shape and non-small-area bonuses for `SingleCall`.
+- **Small square niche** translates to an explicit strong boost for `Blocked`.
+- **Over-selection correction** translates to explicit square/low-k penalties against `KDecomposition`.
+
+### Where the model is uncertain
+
+- M4d still sampled a narrow shape set, so boundary behavior between “moderate” and “high” K pressure remains approximate.
+- Area/balance interactions outside tested ranges (e.g., very large but strongly rectangular outputs) need additional hardware-backed validation.
+- Current constants are intentionally coarse and interpretable; they are not claimed to be globally optimal.
+
+### Why `Staged` is excluded
+
+`StagedIKJ` remains excluded from M5 scoring because M4c collapsed it onto the same backend execution path as `KDecomposition` and M4d confirmed no backend-distinct staged row should be scored independently.
+
+### Expected failure modes
+
+- Transitional shapes near score boundaries may flip families with small shape changes.
+- Future hardware/driver/runtime updates could shift family frontiers and require retuning.
+- If future backend work reintroduces a truly distinct staged path, M5’s three-family scorer would become structurally incomplete and must be revisited explicitly.
