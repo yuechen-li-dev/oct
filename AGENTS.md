@@ -49,6 +49,7 @@ Read `primer/` before writing or editing native code (C, C++, Vulkan, etc.).
 The files in `primer/` are the authoritative coding rules for native code in this repository.
 Do not write native code that conflicts with them.
 Do not substitute your own preferred style for the primer rules.
+Do not skip testing. If Vulkan is not availble inside sandbox, attempt to download Vulkan from apt. Surface issue explicitly if testing is truly impossible. 
 
 If instructions and primers appear to disagree, surface the conflict explicitly.
 
