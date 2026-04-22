@@ -1132,3 +1132,103 @@ M10 intentionally models protocol safety via deterministic Oct/Octomata state tr
 This is consistent with the active P7 Oct-only phase and intentionally differs from historical backend-coupled timing artifacts retained elsewhere in this lab.
 
 Additionally, although the report describes named factor regimes, the executable M10 model currently encodes those regimes as bounded `Int` codes in scenario records. This keeps the model executable in this experiment path while preserving explicit factor coverage in tests, and should be revisited once named-regime ergonomics are uniformly available in this package path.
+
+## M11 scope — Push Constant / Layout Hygiene Micro Rake Lab
+
+M11 adds a pure-Oct, protocol-level layout hygiene lab for push-constant-like structs. It does **not** attempt to simulate real ABI packing or SPIR-V byte layout. Instead, it models the logical assumptions that must remain stable for host/shader interoperability.
+
+### Layout assumptions modeled in M11
+
+The M11 model (`M11/prometheus_sgemm_algorithm_lab_m11.oct`) evaluates scenarios over bounded factors:
+
+- field ordering (`consistent`, `mismatched`, `reordered`)
+- padding discipline (`explicit`, `implicit`, `missing required`)
+- field composition (`uniform scalar`, `mixed-width`, `reordered mixed`)
+- evolution pattern (`append-only`, `insert in middle`, `reorder existing`, `remove field`)
+- definition consistency (`host == shader`, `host != shader`)
+- optional compact/clever optimization intent (`CompactOptimization`)
+
+Each scenario emits explicit structural signals:
+
+- `LayoutConsistent`
+- `LayoutMismatch`
+- `ImplicitPaddingHazard`
+- `OrderingHazard`
+- `PaddingMissing`
+- `EvolutionHazard`
+- `DefinitionDrift`
+- `FragileLayout`
+- `MixedWidthPackingHazard`
+- `StructurallyValid`
+
+### Rake buckets covered in M11 `.octest`
+
+M11 `.octest` explicitly covers all requested hazards:
+
+1. **Implicit padding assumptions**
+   - `UnsafeImplicitPaddingReliedUponForCorrectness`
+2. **Field ordering mismatch**
+   - `UnsafeHostShaderFieldOrderMismatch`
+3. **Mixed-width packing hazards**
+   - `UnsafeMixedWidthLayoutWithoutExplicitPadding`
+4. **Missing explicit padding**
+   - `UnsafeMissingRequiredPaddingIsAccidentalCorrectness`
+5. **Struct evolution hazards**
+   - `UnsafeInsertionInMiddleBreaksLayout`
+   - DOE remove/reorder cases
+6. **Host/shader definition drift**
+   - explicit drift assertions in mismatch and DOE remove-field scenarios
+7. **Overly clever compact layout optimization**
+   - `UnsafeCompactLayoutBreaksAfterEvolution`
+
+Safe checklist scenarios are also covered:
+
+- scalar-only consistent layout
+- explicit-padding stable layout
+- append-only compatibility-preserving pattern
+- identical host/shader definitions
+
+### Safe patterns identified
+
+M11 marks these as safe/stable:
+
+1. identical host/shader field order and field set.
+2. explicit padding discipline where padding intent is represented in the layout contract.
+3. append-only evolution that preserves existing field order and existing offsets conceptually.
+4. clear non-compact layouts that prioritize readability and contract stability.
+
+### Unsafe patterns identified
+
+M11 marks these as unsafe/fragile:
+
+1. relying on implicit padding for correctness.
+2. host/shader order mismatch even when field names are conceptually "the same".
+3. mixed-width interleaving without explicit padding discipline.
+4. inserting/reordering/removing fields in ways that silently drift producer/consumer interpretation.
+5. compact clever layouts that depend on fragile assumptions and become unsafe under evolution.
+
+### Struct evolution impact
+
+M11 isolates evolution risk as a first-class hazard:
+
+- append-only evolution is the only modeled change pattern that preserves compatibility by default.
+- middle insertion and reordering are treated as compatibility-breaking hazards.
+- field removal is treated as compatibility risk that must be considered drift unless both sides are explicitly versioned and updated together.
+
+### Minimal safe layout contract for future Vulkan C authors
+
+M11 converges to this minimal contract for push-constant struct design:
+
+1. keep host and shader definitions identical in field list, order, and intent.
+2. make padding explicit; do not rely on implicit or compiler-inserted padding behavior.
+3. avoid mixed-width interleaving unless padding/spacing intent is explicit and reviewed.
+4. evolve structs append-only wherever possible.
+5. do not reorder or remove existing fields in compatibility paths.
+6. avoid clever compact packing that sacrifices stability/clarity.
+7. require explicit diagnostics/signals for drift and mismatch so breakage is visible, not silent.
+
+### Inconsistency surfaced
+
+M11 intentionally reasons at protocol level and therefore does not encode exact std140/std430 or vendor ABI byte rules.
+
+This is deliberate and aligned with the active Oct-only lab phase, but it is an explicit gap versus backend implementation details that a later Vulkan-native stage will still need to validate.

@@ -1,0 +1,130 @@
+package PrometheusSgemmAlgorithmLab
+
+record LayoutScenario {
+    Name: String
+    Ordering: Int
+    Padding: Int
+    Composition: Int
+    Evolution: Int
+    DefinitionConsistency: Int
+    CompactOptimization: Bool
+}
+
+record LayoutMetrics {
+    FieldCountHost: Int
+    FieldCountShader: Int
+    ExplicitPaddingFields: Int
+    CompatibilityBreakCount: Int
+    AmbiguityCount: Int
+    FragilityCount: Int
+}
+
+record LayoutSignals {
+    LayoutConsistent: Bool
+    LayoutMismatch: Bool
+    ImplicitPaddingHazard: Bool
+    OrderingHazard: Bool
+    PaddingMissing: Bool
+    EvolutionHazard: Bool
+    DefinitionDrift: Bool
+    FragileLayout: Bool
+    MixedWidthPackingHazard: Bool
+    StructurallyValid: Bool
+}
+
+record LayoutOutcome {
+    Metrics: LayoutMetrics
+    Signals: LayoutSignals
+}
+
+fn MakeLayoutScenario(
+    name: String,
+    ordering: Int,
+    padding: Int,
+    composition: Int,
+    evolution: Int,
+    definitionConsistency: Int,
+    compactOptimization: Bool
+) -> LayoutScenario {
+    return LayoutScenario {
+        Name: name
+        Ordering: ordering
+        Padding: padding
+        Composition: composition
+        Evolution: evolution
+        DefinitionConsistency: definitionConsistency
+        CompactOptimization: compactOptimization
+    }
+}
+
+fn LayoutOutcomeSignals(outcome: LayoutOutcome) -> LayoutSignals {
+    return outcome.Signals
+}
+
+fn LayoutOutcomeMetrics(outcome: LayoutOutcome) -> LayoutMetrics {
+    return outcome.Metrics
+}
+
+fn EvaluateLayoutScenario(s: LayoutScenario) -> LayoutOutcome {
+    let implicitPaddingHazard = s.Padding == 1
+    let paddingMissing = s.Padding == 2
+    let orderingHazard = s.Ordering != 0 or s.Evolution == 1 or s.Evolution == 2
+    let evolutionHazard = s.Evolution != 0
+    let definitionDrift = s.DefinitionConsistency != 0
+
+    let mixedWidth = s.Composition == 1 or s.Composition == 2
+    let reorderedMixed = s.Composition == 2
+    let mixedWidthPackingHazard = mixedWidth and (s.Padding != 0 or s.Ordering != 0 or reorderedMixed)
+
+    let fragileLayout = s.CompactOptimization or implicitPaddingHazard or (mixedWidth and s.Padding != 0)
+
+    let layoutMismatch = orderingHazard or definitionDrift or paddingMissing or mixedWidthPackingHazard or s.Evolution == 2
+
+    let layoutConsistent = layoutMismatch == false and
+        implicitPaddingHazard == false and
+        paddingMissing == false and
+        evolutionHazard == false and
+        definitionDrift == false and
+        fragileLayout == false
+
+    return LayoutOutcome {
+        Metrics: LayoutMetrics {
+            FieldCountHost: switch s.Evolution {
+                case 3 => 3
+                else => 4
+            }
+            FieldCountShader: switch {
+                case s.DefinitionConsistency == 0 and s.Evolution == 3 => 3
+                else => 4
+            }
+            ExplicitPaddingFields: switch s.Padding {
+                case 0 => 1
+                else => 0
+            }
+            CompatibilityBreakCount: switch {
+                case evolutionHazard => 1
+                else => 0
+            }
+            AmbiguityCount: switch {
+                case implicitPaddingHazard or mixedWidthPackingHazard => 1
+                else => 0
+            }
+            FragilityCount: switch {
+                case fragileLayout => 1
+                else => 0
+            }
+        }
+        Signals: LayoutSignals {
+            LayoutConsistent: layoutConsistent
+            LayoutMismatch: layoutMismatch
+            ImplicitPaddingHazard: implicitPaddingHazard
+            OrderingHazard: orderingHazard
+            PaddingMissing: paddingMissing
+            EvolutionHazard: evolutionHazard
+            DefinitionDrift: definitionDrift
+            FragileLayout: fragileLayout
+            MixedWidthPackingHazard: mixedWidthPackingHazard
+            StructurallyValid: layoutMismatch == false or definitionDrift
+        }
+    }
+}
