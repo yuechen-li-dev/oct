@@ -999,3 +999,51 @@ FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_AsyncFailureRemainsVisibleUntilExplicitAbandon)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FAIL_ASYNC_POLL;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == static_cast<std::uint32_t>(PROM_BACKEND_VULKAN_SOFTWARE)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("async path requires non-software Vulkan runtime");
+    }
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> out(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int first_task = -1;
+    int second_task = -1;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &first_task, &stage, &detail), "first async submit should succeed");
+
+    PrometheusAsyncStatus status{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, first_task, &status), "query should succeed for an active task id");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_ASYNC_STATE_FAILED), status.lifecycle_state, "injected async poll failure should surface failed lifecycle state");
+    ASSERT_EQUAL(1u, status.failed, "failed bit should remain explicitly observable");
+    ASSERT_EQUAL(PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE, status.detail_code, "failure detail should expose async poll failure");
+
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_consume_async(handle, first_task, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "consume in failed state should fail explicitly");
+    ASSERT_EQUAL(PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE, detail, "failed state should not collapse into not-ready semantics");
+    ASSERT_TRUE(detail != PROM_DETAIL_ASYNC_NOT_READY, "failed and not-ready detail channels must remain distinct");
+
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "resubmit over failed slot should be rejected");
+    ASSERT_EQUAL(PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE, detail, "resubmit rejection should preserve explicit failed detail");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, first_task), "explicit abandon should acknowledge failed slot");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "submit should succeed after explicit abandon");
+    ASSERT_TRUE(second_task > first_task, "post-abandon submission should allocate a fresh task id");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
