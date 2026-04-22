@@ -1,0 +1,316 @@
+package PrometheusSgemmAlgorithmLab
+
+record TileShape {
+    TileM: Int
+    TileN: Int
+    TileK: Int
+    LocalRows: Int
+    LocalCols: Int
+    AssumeSquareDecomposition: Bool
+}
+
+record GuardDiscipline {
+    GuardA: Bool
+    GuardB: Bool
+    GuardC: Bool
+    OverGuarded: Bool
+}
+
+record BarrierDiscipline {
+    BarrierAfterLoad: Bool
+    BarrierBetweenTiles: Bool
+    RedundantBarrier: Bool
+    AsymmetricBarrier: Bool
+}
+
+record IndexingDiscipline {
+    ALoadRowMajor: Bool
+    BLoadRowMajor: Bool
+    AccumulateRowMajor: Bool
+    CWriteRowMajor: Bool
+    TileOffsetConsistent: Bool
+}
+
+record PortabilityAssumptions {
+    ImplicitZeroFill: Bool
+    ImplicitSync: Bool
+    OutOfRangeTolerance: Bool
+    LockstepAssumed: Bool
+}
+
+record TiledScenario {
+    Name: String
+    M: Int
+    N: Int
+    K: Int
+    Tile: TileShape
+    Guards: GuardDiscipline
+    Barriers: BarrierDiscipline
+    Indexing: IndexingDiscipline
+    Portability: PortabilityAssumptions
+}
+
+record TiledStructuralMetrics {
+    TileCount: Int
+    PartialTileCount: Int
+    GuardedElementCount: Int
+    CooperativeCoverageDeficit: Int
+    CooperativeCoverageDuplicate: Int
+    SynchronizationStepCount: Int
+    SharedTileReuseCount: Int
+    TileShapeMismatchCount: Int
+    PortabilityRiskCount: Int
+}
+
+record TiledSignals {
+    ResultCorrect: Bool
+    ProtocolSafe: Bool
+    PartialTileHandled: Bool
+    BoundsHazard: Bool
+    MissingBarrier: Bool
+    SharedTileHazard: Bool
+    IndexingHazard: Bool
+    TileShapeMismatch: Bool
+    PortabilityHazard: Bool
+    StructurallyValid: Bool
+    Notes: String
+}
+
+record TiledOutcome {
+    Metrics: TiledStructuralMetrics
+    Signals: TiledSignals
+}
+
+fn OutcomeSignals(outcome: TiledOutcome) -> TiledSignals {
+    return outcome.Signals
+}
+
+fn OutcomeMetrics(outcome: TiledOutcome) -> TiledStructuralMetrics {
+    return outcome.Metrics
+}
+
+fn DivFloor(a: Int, b: Int) -> Int {
+    return a / b
+}
+
+fn Remainder(a: Int, b: Int) -> Int {
+    return a - (DivFloor(a, b) * b)
+}
+
+fn CeilDiv(a: Int, b: Int) -> Int {
+    let floor = DivFloor(a, b)
+    let rem = Remainder(a, b)
+    return switch {
+        case rem == 0 => floor
+        else => floor + 1
+    }
+}
+
+fn MaxInt(a: Int, b: Int) -> Int {
+    return switch {
+        case a > b => a
+        else => b
+    }
+}
+
+fn CountBool(a: Bool, b: Bool, c: Bool, d: Bool) -> Int {
+    var total = 0
+    if a { total = total + 1 }
+    if b { total = total + 1 }
+    if c { total = total + 1 }
+    if d { total = total + 1 }
+    return total
+}
+
+fn EvaluateTiledScenario(s: TiledScenario) -> TiledOutcome {
+    let tile = s.Tile
+    let guards = s.Guards
+    let barriers = s.Barriers
+    let indexing = s.Indexing
+    let portability = s.Portability
+
+    let validShape = s.M > 0 and s.N > 0 and s.K > 0
+    let validTile = tile.TileM > 0 and tile.TileN > 0 and tile.TileK > 0
+    let validLocal = tile.LocalRows > 0 and tile.LocalCols > 0
+    let structurallyValid = validShape and validTile and validLocal
+
+    if structurallyValid == false {
+        return TiledOutcome {
+            Metrics: TiledStructuralMetrics {
+                TileCount: 0
+                PartialTileCount: 0
+                GuardedElementCount: 0
+                CooperativeCoverageDeficit: 0
+                CooperativeCoverageDuplicate: 0
+                SynchronizationStepCount: 0
+                SharedTileReuseCount: 0
+                TileShapeMismatchCount: 0
+                PortabilityRiskCount: 0
+            }
+            Signals: TiledSignals {
+                ResultCorrect: false
+                ProtocolSafe: false
+                PartialTileHandled: false
+                BoundsHazard: false
+                MissingBarrier: false
+                SharedTileHazard: false
+                IndexingHazard: false
+                TileShapeMismatch: false
+                PortabilityHazard: false
+                StructurallyValid: false
+                Notes: "structural scenario contract violated"
+            }
+        }
+    }
+
+    let tilesM = CeilDiv(s.M, tile.TileM)
+    let tilesN = CeilDiv(s.N, tile.TileN)
+    let tilesK = CeilDiv(s.K, tile.TileK)
+
+    let partialM = Remainder(s.M, tile.TileM) != 0
+    let partialN = Remainder(s.N, tile.TileN) != 0
+    let partialK = Remainder(s.K, tile.TileK) != 0
+
+    let partialTileCount = CountBool(partialM, partialN, partialK, false)
+    let hasPartial = partialTileCount > 0
+
+    let missingAGuardHazard = hasPartial and guards.GuardA == false
+    let missingBGuardHazard = hasPartial and guards.GuardB == false
+    let missingCGuardHazard = (partialM or partialN) and guards.GuardC == false
+    let overGuardHazard = guards.OverGuarded and hasPartial
+
+    let boundsHazard = missingAGuardHazard or missingBGuardHazard or missingCGuardHazard or overGuardHazard
+    let partialTileHandled = switch {
+        case hasPartial == false => true
+        else => boundsHazard == false
+    }
+
+    let missingBarrier = barriers.BarrierAfterLoad == false or barriers.BarrierBetweenTiles == false or barriers.AsymmetricBarrier
+    let sharedTileHazard = missingBarrier or portability.ImplicitSync
+
+    let indexingHazard = indexing.ALoadRowMajor == false or
+        indexing.BLoadRowMajor == false or
+        indexing.AccumulateRowMajor == false or
+        indexing.CWriteRowMajor == false or
+        indexing.TileOffsetConsistent == false
+
+    let workers = tile.LocalRows * tile.LocalCols
+    let tileOutputCells = tile.TileM * tile.TileN
+    let coverageDeficit = MaxInt(0, tileOutputCells - workers)
+    let coverageDuplicate = MaxInt(0, workers - tileOutputCells)
+
+    let squareMismatch = tile.AssumeSquareDecomposition and (tile.TileM != tile.TileN or tile.LocalRows != tile.LocalCols)
+    let tileShapeMismatch = coverageDeficit > 0 or coverageDuplicate > 0 or squareMismatch
+
+    let portabilityRiskCount = CountBool(
+        portability.ImplicitZeroFill,
+        portability.ImplicitSync,
+        portability.OutOfRangeTolerance,
+        portability.LockstepAssumed
+    )
+    let portabilityHazard = portabilityRiskCount > 0
+
+    let synchronizationStepCount = (tilesM * tilesN * tilesK) * switch {
+        case barriers.BarrierAfterLoad and barriers.BarrierBetweenTiles => 2
+        case barriers.BarrierAfterLoad or barriers.BarrierBetweenTiles => 1
+        else => 0
+    } + switch {
+        case barriers.RedundantBarrier => 1
+        else => 0
+    }
+
+    let guardedElementCount = switch {
+        case hasPartial and (guards.GuardA or guards.GuardB or guards.GuardC) => tilesM * tilesN * tilesK
+        else => 0
+    }
+
+    let protocolSafe = boundsHazard == false and
+        missingBarrier == false and
+        indexingHazard == false and
+        tileShapeMismatch == false and
+        portabilityHazard == false
+
+    let resultCorrect = protocolSafe and partialTileHandled
+
+    return TiledOutcome {
+        Metrics: TiledStructuralMetrics {
+            TileCount: tilesM * tilesN * tilesK
+            PartialTileCount: partialTileCount
+            GuardedElementCount: guardedElementCount
+            CooperativeCoverageDeficit: coverageDeficit
+            CooperativeCoverageDuplicate: coverageDuplicate
+            SynchronizationStepCount: synchronizationStepCount
+            SharedTileReuseCount: tilesM * tilesN * MaxInt(0, tilesK - 1)
+            TileShapeMismatchCount: switch {
+                case tileShapeMismatch => 1
+                else => 0
+            }
+            PortabilityRiskCount: portabilityRiskCount
+        }
+        Signals: TiledSignals {
+            ResultCorrect: resultCorrect
+            ProtocolSafe: protocolSafe
+            PartialTileHandled: partialTileHandled
+            BoundsHazard: boundsHazard
+            MissingBarrier: missingBarrier
+            SharedTileHazard: sharedTileHazard
+            IndexingHazard: indexingHazard
+            TileShapeMismatch: tileShapeMismatch
+            PortabilityHazard: portabilityHazard
+            StructurallyValid: structurallyValid
+            Notes: s.Name
+        }
+    }
+}
+
+fn MakeScenario(
+    name: String,
+    m: Int, n: Int, k: Int,
+    tileM: Int, tileN: Int, tileK: Int,
+    localRows: Int, localCols: Int,
+    assumeSquare: Bool,
+    guardA: Bool, guardB: Bool, guardC: Bool, overGuarded: Bool,
+    barrierAfterLoad: Bool, barrierBetweenTiles: Bool, redundantBarrier: Bool, asymmetricBarrier: Bool,
+    aRowMajor: Bool, bRowMajor: Bool, accRowMajor: Bool, cRowMajor: Bool, tileOffsetConsistent: Bool,
+    implicitZeroFill: Bool, implicitSync: Bool, outOfRangeTolerance: Bool, lockstepAssumed: Bool
+) -> TiledScenario {
+    return TiledScenario {
+        Name: name
+        M: m
+        N: n
+        K: k
+        Tile: TileShape {
+            TileM: tileM
+            TileN: tileN
+            TileK: tileK
+            LocalRows: localRows
+            LocalCols: localCols
+            AssumeSquareDecomposition: assumeSquare
+        }
+        Guards: GuardDiscipline {
+            GuardA: guardA
+            GuardB: guardB
+            GuardC: guardC
+            OverGuarded: overGuarded
+        }
+        Barriers: BarrierDiscipline {
+            BarrierAfterLoad: barrierAfterLoad
+            BarrierBetweenTiles: barrierBetweenTiles
+            RedundantBarrier: redundantBarrier
+            AsymmetricBarrier: asymmetricBarrier
+        }
+        Indexing: IndexingDiscipline {
+            ALoadRowMajor: aRowMajor
+            BLoadRowMajor: bRowMajor
+            AccumulateRowMajor: accRowMajor
+            CWriteRowMajor: cRowMajor
+            TileOffsetConsistent: tileOffsetConsistent
+        }
+        Portability: PortabilityAssumptions {
+            ImplicitZeroFill: implicitZeroFill
+            ImplicitSync: implicitSync
+            OutOfRangeTolerance: outOfRangeTolerance
+            LockstepAssumed: lockstepAssumed
+        }
+    }
+}
