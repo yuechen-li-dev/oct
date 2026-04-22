@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"oct/internal/cli"
+	"oct/internal/octagon"
 )
 
 func TestOctBenchRunsDiscoveredBenchmarks(t *testing.T) {
@@ -202,40 +203,46 @@ func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
 	}
 }
 
-func TestOctBenchCPUProfileEmitsDeterministicArtifact(t *testing.T) {
+func TestOctBenchProfileDefaultsToOctagonArtifact(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { let x = 1 + 1 Print(x) }\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"bench", root, "--profile", "cpu"}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"bench", root, "--profile"}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected benchmark profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 
-	profilePath := filepath.Join(root, "bench.cpu.pprof")
-	info, err := os.Stat(profilePath)
+	octagonPath := filepath.Join(root, "bench.cpu.octagon")
+	info, err := os.Stat(octagonPath)
 	if err != nil {
-		t.Fatalf("expected cpu profile artifact at %s: %v", profilePath, err)
+		t.Fatalf("expected cpu profile octagon artifact at %s: %v", octagonPath, err)
 	}
 	if info.Size() == 0 {
-		t.Fatalf("expected non-empty cpu profile artifact at %s", profilePath)
+		t.Fatalf("expected non-empty cpu profile octagon artifact at %s", octagonPath)
+	}
+	if _, err := os.Stat(filepath.Join(root, "bench.cpu.pprof")); !os.IsNotExist(err) {
+		t.Fatalf("expected no raw pprof artifact by default, stat err=%v", err)
+	}
+	if _, err := octagon.Load(octagonPath); err != nil {
+		t.Fatalf("expected emitted profile octagon to load, got %v", err)
 	}
 }
 
-func TestOctBenchRejectsInvalidProfileMode(t *testing.T) {
+func TestOctBenchRejectsInvalidProfileFormat(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { return }\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := cli.Execute([]string{"bench", root, "--profile", "heap"}, &stdout, &stderr)
+	err := cli.Execute([]string{"bench", root, "--profile", "--profile-format", "flamegraph"}, &stdout, &stderr)
 	if err == nil {
-		t.Fatalf("expected invalid profile mode error")
+		t.Fatalf("expected invalid profile format error")
 	}
-	if !strings.Contains(err.Error(), "bench --profile must be 'cpu'") {
-		t.Fatalf("expected invalid profile mode error, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	if !strings.Contains(err.Error(), "bench --profile-format must be one of 'octagon', 'pprof', or 'both'") {
+		t.Fatalf("expected invalid profile format error, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 }
 
@@ -302,7 +309,7 @@ func TestOctBenchFilterNoMatchFailsPredictably(t *testing.T) {
 	}
 }
 
-func TestOctBenchFilterWithCPUProfileStillEmitsArtifact(t *testing.T) {
+func TestOctBenchFilterWithProfileEmitsOctagonArtifact(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{
@@ -315,7 +322,7 @@ func TestOctBenchFilterWithCPUProfileStillEmitsArtifact(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"bench", root, "--filter", "HotPath", "--profile", "cpu"}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"bench", root, "--filter", "HotPath", "--profile"}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected filtered benchmark profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 
@@ -324,12 +331,90 @@ func TestOctBenchFilterWithCPUProfileStillEmitsArtifact(t *testing.T) {
 		t.Fatalf("expected only filtered benchmark to run during profiling, got %q", output)
 	}
 
-	profilePath := filepath.Join(root, "bench.cpu.pprof")
+	profilePath := filepath.Join(root, "bench.cpu.octagon")
 	info, err := os.Stat(profilePath)
 	if err != nil {
-		t.Fatalf("expected cpu profile artifact at %s: %v", profilePath, err)
+		t.Fatalf("expected cpu profile octagon artifact at %s: %v", profilePath, err)
 	}
 	if info.Size() == 0 {
-		t.Fatalf("expected non-empty cpu profile artifact at %s", profilePath)
+		t.Fatalf("expected non-empty cpu profile octagon artifact at %s", profilePath)
+	}
+}
+
+func TestOctBenchProfileFormatPprofEmitsOnlyRawArtifact(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { let x = 1 + 1 Print(x) }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root, "--profile", "--profile-format", "pprof"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected benchmark pprof profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "bench.cpu.pprof")); err != nil {
+		t.Fatalf("expected raw pprof artifact, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "bench.cpu.octagon")); !os.IsNotExist(err) {
+		t.Fatalf("expected no octagon profile artifact in pprof mode, stat err=%v", err)
+	}
+}
+
+func TestOctBenchProfileFormatBothEmitsBothArtifacts(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { let x = 1 + 1 Print(x) }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"bench", root, "--profile", "--profile-format", "both"}, &stdout, &stderr); err != nil {
+		t.Fatalf("expected benchmark dual profiling success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "bench.cpu.pprof")); err != nil {
+		t.Fatalf("expected raw pprof artifact in both mode, got %v", err)
+	}
+	octagonPath := filepath.Join(root, "bench.cpu.octagon")
+	if _, err := os.Stat(octagonPath); err != nil {
+		t.Fatalf("expected octagon artifact in both mode, got %v", err)
+	}
+	body, err := os.ReadFile(octagonPath)
+	if err != nil {
+		t.Fatalf("read octagon artifact: %v", err)
+	}
+	if !strings.Contains(string(body), "TopFunctions") || !strings.Contains(string(body), "RawPprofPath") {
+		t.Fatalf("expected profile octagon to contain top-functions and raw-link fields, got %q", string(body))
+	}
+}
+
+func TestOctBenchProfileOctagonIsStructurallyStableAcrossRuns(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "bench.octest", "package Main\n[Benchmark]\nfn Small() -> Void { let x = 1 + 1 Print(x) }\n")
+
+	runOnce := func() string {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if err := cli.Execute([]string{"bench", root, "--profile"}, &stdout, &stderr); err != nil {
+			t.Fatalf("expected benchmark profile success, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+		}
+		path := filepath.Join(root, "bench.cpu.octagon")
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read profile octagon artifact: %v", err)
+		}
+		return string(body)
+	}
+
+	first := runOnce()
+	second := runOnce()
+	requiredFields := []string{
+		"RunID:", "Mode:", "TimestampUTC:", "DurationNs:", "SampleType:", "SampleUnit:", "Invocation:",
+		"Environment:", "Benchmarks:", "TopFunctions:", "TopModules:", "RawPprofPath:",
+	}
+	for _, field := range requiredFields {
+		if !strings.Contains(first, field) || !strings.Contains(second, field) {
+			t.Fatalf("expected profile octagon field %q in both runs", field)
+		}
 	}
 }
