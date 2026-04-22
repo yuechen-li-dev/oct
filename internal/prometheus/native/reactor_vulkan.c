@@ -32,6 +32,12 @@ typedef struct prom_vk_buffer {
   VkDeviceSize size;
 } prom_vk_buffer;
 
+typedef enum prom_vk_path_mode {
+  PROM_VK_PATH_DIRECT = 1,
+  PROM_VK_PATH_STAGED_UPLOAD = 2,
+  PROM_VK_PATH_STAGED_UPLOAD_READBACK = 3,
+} prom_vk_path_mode;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -52,15 +58,22 @@ typedef struct prometheus_runtime {
   VkFence submit_fence;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
-  prom_vk_buffer reusable_a;
-  prom_vk_buffer reusable_b;
-  prom_vk_buffer reusable_c;
-  uint32_t reusable_m;
-  uint32_t reusable_n;
-  uint32_t reusable_k;
-  uint32_t has_reusable_buffers;
-  uint32_t descriptor_bindings_valid;
-  uint32_t command_recording_valid;
+  prom_vk_buffer direct_a;
+  prom_vk_buffer direct_b;
+  prom_vk_buffer direct_c;
+  prom_vk_buffer staged_device_a;
+  prom_vk_buffer staged_device_b;
+  prom_vk_buffer staged_device_c;
+  prom_vk_buffer staged_upload_a;
+  prom_vk_buffer staged_upload_b;
+  prom_vk_buffer staged_readback_c;
+  uint32_t buffer_shape_m;
+  uint32_t buffer_shape_n;
+  uint32_t buffer_shape_k;
+  uint32_t has_direct_buffers;
+  uint32_t has_staged_buffers;
+  uint32_t has_device_local_memory;
+  uint32_t has_host_visible_memory;
   uint32_t in_flight_submit;
   uint32_t software_vulkan;
 } prometheus_runtime;
@@ -76,6 +89,7 @@ enum {
   PROM_VK_PUSH_FIELD_OFFSET_N = 4,
   PROM_VK_PUSH_FIELD_OFFSET_K = 8,
   PROM_VK_SHADER_PUSH_BYTES = 12,
+  PROM_VK_STAGING_WORK_THRESHOLD = 16384,
 };
 
 /*
@@ -86,10 +100,17 @@ enum {
  * - append-only evolution only: add new fields at the end and update both
  *   this host contract and the shader module together
  */
+#if defined(__cplusplus)
+static_assert(offsetof(prom_vk_push, m) == PROM_VK_PUSH_FIELD_OFFSET_M, "push.m offset drift");
+static_assert(offsetof(prom_vk_push, n) == PROM_VK_PUSH_FIELD_OFFSET_N, "push.n offset drift");
+static_assert(offsetof(prom_vk_push, k) == PROM_VK_PUSH_FIELD_OFFSET_K, "push.k offset drift");
+static_assert(sizeof(prom_vk_push) == PROM_VK_SHADER_PUSH_BYTES, "push struct size drift");
+#else
 _Static_assert(offsetof(prom_vk_push, m) == PROM_VK_PUSH_FIELD_OFFSET_M, "push.m offset drift");
 _Static_assert(offsetof(prom_vk_push, n) == PROM_VK_PUSH_FIELD_OFFSET_N, "push.n offset drift");
 _Static_assert(offsetof(prom_vk_push, k) == PROM_VK_PUSH_FIELD_OFFSET_K, "push.k offset drift");
 _Static_assert(sizeof(prom_vk_push) == PROM_VK_SHADER_PUSH_BYTES, "push struct size drift");
+#endif
 
 static void* g_active_handles[PROMETHEUS_MAX_TRACKED_HANDLES];
 
@@ -348,7 +369,12 @@ static uint32_t find_memory_type(VkPhysicalDevice physical_device, uint32_t type
   return UINT32_MAX;
 }
 
-static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize size, prom_vk_buffer* out_buffer) {
+static VkResult create_buffer(prometheus_runtime* rt,
+                              VkDeviceSize size,
+                              VkBufferUsageFlags usage,
+                              VkMemoryPropertyFlags memory_properties,
+                              int map_memory,
+                              prom_vk_buffer* out_buffer) {
   VkResult result;
   VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
@@ -369,7 +395,7 @@ static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize 
   memset(&buffer_info, 0, sizeof(buffer_info));
   buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   buffer_info.size = size;
-  buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  buffer_info.usage = usage;
   buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
   result = vkCreateBuffer(rt->device, &buffer_info, NULL, &out_buffer->buffer);
@@ -378,10 +404,10 @@ static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize 
   }
 
   vkGetBufferMemoryRequirements(rt->device, out_buffer->buffer, &requirements);
-  memory_type_index = find_memory_type(rt->physical_device,
-                                       requirements.memoryTypeBits,
-                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u) {
+  memory_type_index = find_memory_type(rt->physical_device, requirements.memoryTypeBits, memory_properties);
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
+      (((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
+       (memory_properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u)) {
     memory_type_index = UINT32_MAX;
   }
   if (memory_type_index == UINT32_MAX) {
@@ -403,8 +429,13 @@ static VkResult create_host_visible_buffer(prometheus_runtime* rt, VkDeviceSize 
     return result;
   }
 
-  result = vkMapMemory(rt->device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
-  return result;
+  if (map_memory != 0) {
+    result = vkMapMemory(rt->device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+  }
+  return VK_SUCCESS;
 }
 
 static void destroy_buffer(prometheus_runtime* rt, prom_vk_buffer* buffer) {
@@ -425,29 +456,41 @@ static void destroy_buffer(prometheus_runtime* rt, prom_vk_buffer* buffer) {
   }
 }
 
-static void destroy_reusable_execution_buffers(prometheus_runtime* rt) {
+static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   if (rt == NULL) {
     return;
   }
-  destroy_buffer(rt, &rt->reusable_c);
-  destroy_buffer(rt, &rt->reusable_b);
-  destroy_buffer(rt, &rt->reusable_a);
-  rt->has_reusable_buffers = 0u;
-  rt->descriptor_bindings_valid = 0u;
-  rt->command_recording_valid = 0u;
-  rt->reusable_m = 0u;
-  rt->reusable_n = 0u;
-  rt->reusable_k = 0u;
+  destroy_buffer(rt, &rt->direct_c);
+  destroy_buffer(rt, &rt->direct_b);
+  destroy_buffer(rt, &rt->direct_a);
+  destroy_buffer(rt, &rt->staged_readback_c);
+  destroy_buffer(rt, &rt->staged_upload_b);
+  destroy_buffer(rt, &rt->staged_upload_a);
+  destroy_buffer(rt, &rt->staged_device_c);
+  destroy_buffer(rt, &rt->staged_device_b);
+  destroy_buffer(rt, &rt->staged_device_a);
+  rt->has_direct_buffers = 0u;
+  rt->has_staged_buffers = 0u;
+  rt->buffer_shape_m = 0u;
+  rt->buffer_shape_n = 0u;
+  rt->buffer_shape_k = 0u;
 }
 
-static int ensure_reusable_execution_buffers(prometheus_runtime* rt,
-                                             uint32_t m,
-                                             uint32_t n,
-                                             uint32_t k,
-                                             VkDeviceSize a_buffer_size,
-                                             VkDeviceSize b_buffer_size,
-                                             VkDeviceSize c_buffer_size,
-                                             VkResult* out_result) {
+static int ensure_buffer_shape(prometheus_runtime* rt, uint32_t m, uint32_t n, uint32_t k) {
+  if (rt == NULL) {
+    return 0;
+  }
+  return rt->buffer_shape_m == m && rt->buffer_shape_n == n && rt->buffer_shape_k == k;
+}
+
+static int ensure_direct_execution_buffers(prometheus_runtime* rt,
+                                           uint32_t m,
+                                           uint32_t n,
+                                           uint32_t k,
+                                           VkDeviceSize a_buffer_size,
+                                           VkDeviceSize b_buffer_size,
+                                           VkDeviceSize c_buffer_size,
+                                           VkResult* out_result) {
   VkResult result;
   int shape_changed;
 
@@ -456,37 +499,148 @@ static int ensure_reusable_execution_buffers(prometheus_runtime* rt,
   }
 
   *out_result = VK_SUCCESS;
-  shape_changed = (rt->has_reusable_buffers == 0u) || (rt->reusable_m != m) || (rt->reusable_n != n) || (rt->reusable_k != k);
+  shape_changed = rt->has_direct_buffers == 0u || !ensure_buffer_shape(rt, m, n, k);
   if (!shape_changed) {
     return 1;
   }
 
-  destroy_reusable_execution_buffers(rt);
+  destroy_all_execution_buffers(rt);
 
-  result = create_host_visible_buffer(rt, a_buffer_size, &rt->reusable_a);
+  result = create_buffer(rt,
+                         a_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->direct_a);
   if (result != VK_SUCCESS) {
     *out_result = result;
     return 0;
   }
-  result = create_host_visible_buffer(rt, b_buffer_size, &rt->reusable_b);
+  result = create_buffer(rt,
+                         b_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->direct_b);
   if (result != VK_SUCCESS) {
     *out_result = result;
-    destroy_reusable_execution_buffers(rt);
+    destroy_all_execution_buffers(rt);
     return 0;
   }
-  result = create_host_visible_buffer(rt, c_buffer_size, &rt->reusable_c);
+  result = create_buffer(rt,
+                         c_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->direct_c);
   if (result != VK_SUCCESS) {
     *out_result = result;
-    destroy_reusable_execution_buffers(rt);
+    destroy_all_execution_buffers(rt);
     return 0;
   }
 
-  rt->reusable_m = m;
-  rt->reusable_n = n;
-  rt->reusable_k = k;
-  rt->has_reusable_buffers = 1u;
-  rt->descriptor_bindings_valid = 0u;
-  rt->command_recording_valid = 0u;
+  rt->buffer_shape_m = m;
+  rt->buffer_shape_n = n;
+  rt->buffer_shape_k = k;
+  rt->has_direct_buffers = 1u;
+  rt->has_staged_buffers = 0u;
+  return 1;
+}
+
+static int ensure_staged_execution_buffers(prometheus_runtime* rt,
+                                           uint32_t m,
+                                           uint32_t n,
+                                           uint32_t k,
+                                           VkDeviceSize a_buffer_size,
+                                           VkDeviceSize b_buffer_size,
+                                           VkDeviceSize c_buffer_size,
+                                           VkResult* out_result) {
+  VkResult result;
+  int shape_changed;
+
+  if (out_result == NULL || rt == NULL) {
+    return 0;
+  }
+
+  *out_result = VK_SUCCESS;
+  shape_changed = rt->has_staged_buffers == 0u || !ensure_buffer_shape(rt, m, n, k);
+  if (!shape_changed) {
+    return 1;
+  }
+
+  destroy_all_execution_buffers(rt);
+
+  result = create_buffer(rt,
+                         a_buffer_size,
+                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->staged_upload_a);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    return 0;
+  }
+  result = create_buffer(rt,
+                         b_buffer_size,
+                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->staged_upload_b);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_all_execution_buffers(rt);
+    return 0;
+  }
+  result = create_buffer(rt,
+                         a_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                         0,
+                         &rt->staged_device_a);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_all_execution_buffers(rt);
+    return 0;
+  }
+  result = create_buffer(rt,
+                         b_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                         0,
+                         &rt->staged_device_b);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_all_execution_buffers(rt);
+    return 0;
+  }
+  result = create_buffer(rt,
+                         c_buffer_size,
+                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                         0,
+                         &rt->staged_device_c);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_all_execution_buffers(rt);
+    return 0;
+  }
+  result = create_buffer(rt,
+                         c_buffer_size,
+                         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         1,
+                         &rt->staged_readback_c);
+  if (result != VK_SUCCESS) {
+    *out_result = result;
+    destroy_all_execution_buffers(rt);
+    return 0;
+  }
+
+  rt->buffer_shape_m = m;
+  rt->buffer_shape_n = n;
+  rt->buffer_shape_k = k;
+  rt->has_direct_buffers = 0u;
+  rt->has_staged_buffers = 1u;
   return 1;
 }
 
@@ -497,7 +651,7 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->device != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(rt->device);
   }
-  destroy_reusable_execution_buffers(rt);
+  destroy_all_execution_buffers(rt);
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
@@ -608,11 +762,27 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
   {
     VkPhysicalDeviceProperties props;
+    VkPhysicalDeviceMemoryProperties memory_props;
+    uint32_t memory_index;
     vkGetPhysicalDeviceProperties(rt->physical_device, &props);
     if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU || text_contains_llvmpipe(props.deviceName)) {
       rt->software_vulkan = 1u;
     } else {
       rt->software_vulkan = 0u;
+    }
+
+    rt->has_device_local_memory = 0u;
+    rt->has_host_visible_memory = 0u;
+    vkGetPhysicalDeviceMemoryProperties(rt->physical_device, &memory_props);
+    for (memory_index = 0u; memory_index < memory_props.memoryTypeCount; ++memory_index) {
+      VkMemoryPropertyFlags flags = memory_props.memoryTypes[memory_index].propertyFlags;
+      if ((flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u) {
+        rt->has_device_local_memory = 1u;
+      }
+      if ((flags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) ==
+          (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        rt->has_host_visible_memory = 1u;
+      }
     }
   }
 
@@ -865,14 +1035,28 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   VkDescriptorBufferInfo buffer_infos[3];
   VkCommandBufferBeginInfo begin_info;
   VkSubmitInfo submit_info;
-  VkBufferMemoryBarrier barrier;
+  VkBufferMemoryBarrier barriers[4];
+  VkBufferCopy copies[3];
   prom_vk_push push;
+  prom_vk_buffer* shader_a;
+  prom_vk_buffer* shader_b;
+  prom_vk_buffer* shader_c;
   VkDeviceSize a_buffer_size;
   VkDeviceSize b_buffer_size;
   VkDeviceSize c_buffer_size;
   size_t a_copy_size;
   size_t b_copy_size;
   size_t c_copy_size;
+  uint64_t work_units;
+  uint32_t small_shape;
+  uint32_t can_stage;
+  uint32_t can_direct;
+  uint32_t allow_fallback;
+  uint32_t readback_required;
+  uint32_t fallback_used = 0u;
+  prom_vk_path_mode selected_path;
+  prom_vk_path_mode requested_path;
+  int final_detail = 0;
 
   set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
@@ -916,151 +1100,288 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     }
   }
 
-  if (!ensure_reusable_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
-    return PROM_ERROR;
-  }
-
   if ((rt->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
     return PROM_ERROR;
   }
 
-  memcpy(rt->reusable_a.mapped, a, a_copy_size);
-  memcpy(rt->reusable_b.mapped, b, b_copy_size);
-  memset(rt->reusable_c.mapped, 0, c_copy_size);
+  can_stage = rt->has_device_local_memory;
+  can_direct = rt->has_host_visible_memory;
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
+    can_stage = 0u;
+  }
+  allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
+  readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
+  work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
+  small_shape = work_units < (uint64_t)PROM_VK_STAGING_WORK_THRESHOLD ? 1u : 0u;
 
-  memset(buffer_infos, 0, sizeof(buffer_infos));
-  buffer_infos[0].buffer = rt->reusable_a.buffer;
-  buffer_infos[0].offset = 0;
-  buffer_infos[0].range = rt->reusable_a.size;
-  buffer_infos[1].buffer = rt->reusable_b.buffer;
-  buffer_infos[1].offset = 0;
-  buffer_infos[1].range = rt->reusable_b.size;
-  buffer_infos[2].buffer = rt->reusable_c.buffer;
-  buffer_infos[2].offset = 0;
-  buffer_infos[2].range = rt->reusable_c.size;
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) {
+    requested_path = PROM_VK_PATH_DIRECT;
+  } else if ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) {
+    requested_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
+  } else if (can_stage != 0u && small_shape == 0u) {
+    requested_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
+  } else {
+    requested_path = PROM_VK_PATH_DIRECT;
+  }
+  selected_path = requested_path;
 
-  if (rt->descriptor_bindings_valid == 0u) {
-    memset(writes, 0, sizeof(writes));
-    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].dstSet = rt->descriptor_set;
-    writes[0].dstBinding = 0u;
-    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    writes[0].descriptorCount = 1u;
-    writes[0].pBufferInfo = &buffer_infos[0];
-    writes[1] = writes[0];
-    writes[1].dstBinding = 1u;
-    writes[1].pBufferInfo = &buffer_infos[1];
-    writes[2] = writes[0];
-    writes[2].dstBinding = 2u;
-    writes[2].pBufferInfo = &buffer_infos[2];
-    vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
-    rt->descriptor_bindings_valid = 1u;
-    rt->command_recording_valid = 0u;
+  if ((selected_path == PROM_VK_PATH_STAGED_UPLOAD || selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) &&
+      can_stage == 0u) {
+    if (allow_fallback != 0u && can_direct != 0u) {
+      selected_path = PROM_VK_PATH_DIRECT;
+      fallback_used = 1u;
+    } else {
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_CAPABILITY_MISMATCH);
+      return PROM_ERROR;
+    }
+  }
+  if (selected_path == PROM_VK_PATH_DIRECT && can_direct == 0u) {
+    if (can_stage != 0u) {
+      selected_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
+    } else {
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_CAPABILITY_MISMATCH);
+      return PROM_ERROR;
+    }
   }
 
-  if (rt->command_recording_valid == 0u) {
-    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-    if (vk_result != VK_SUCCESS) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+  if (selected_path == PROM_VK_PATH_DIRECT) {
+    if (!ensure_direct_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       return PROM_ERROR;
     }
-
-    memset(&begin_info, 0, sizeof(begin_info));
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-    if (vk_result != VK_SUCCESS) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    memcpy(rt->direct_a.mapped, a, a_copy_size);
+    memcpy(rt->direct_b.mapped, b, b_copy_size);
+    memset(rt->direct_c.mapped, 0, c_copy_size);
+    shader_a = &rt->direct_a;
+    shader_b = &rt->direct_b;
+    shader_c = &rt->direct_c;
+    final_detail = fallback_used != 0u ? PROM_DETAIL_PATH_FALLBACK_TO_DIRECT : PROM_DETAIL_PATH_DIRECT;
+  } else {
+    if (!ensure_staged_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       return PROM_ERROR;
     }
+    memcpy(rt->staged_upload_a.mapped, a, a_copy_size);
+    memcpy(rt->staged_upload_b.mapped, b, b_copy_size);
+    shader_a = &rt->staged_device_a;
+    shader_b = &rt->staged_device_b;
+    shader_c = &rt->staged_device_c;
+    final_detail = selected_path == PROM_VK_PATH_STAGED_UPLOAD ? PROM_DETAIL_PATH_STAGED_UPLOAD : PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK;
+  }
 
-    memset(&barrier, 0, sizeof(barrier));
-    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  memset(buffer_infos, 0, sizeof(buffer_infos));
+  buffer_infos[0].buffer = shader_a->buffer;
+  buffer_infos[0].offset = 0;
+  buffer_infos[0].range = shader_a->size;
+  buffer_infos[1].buffer = shader_b->buffer;
+  buffer_infos[1].offset = 0;
+  buffer_infos[1].range = shader_b->size;
+  buffer_infos[2].buffer = shader_c->buffer;
+  buffer_infos[2].offset = 0;
+  buffer_infos[2].range = shader_c->size;
 
-    barrier.buffer = rt->reusable_a.buffer;
-    barrier.offset = 0;
-    barrier.size = rt->reusable_a.size;
+  memset(writes, 0, sizeof(writes));
+  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[0].dstSet = rt->descriptor_set;
+  writes[0].dstBinding = 0u;
+  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  writes[0].descriptorCount = 1u;
+  writes[0].pBufferInfo = &buffer_infos[0];
+  writes[1] = writes[0];
+  writes[1].dstBinding = 1u;
+  writes[1].pBufferInfo = &buffer_infos[1];
+  writes[2] = writes[0];
+  writes[2].dstBinding = 2u;
+  writes[2].pBufferInfo = &buffer_infos[2];
+  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+
+  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+  if (vk_result != VK_SUCCESS) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+  if (vk_result != VK_SUCCESS) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  memset(barriers, 0, sizeof(barriers));
+  if (selected_path == PROM_VK_PATH_DIRECT) {
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = rt->direct_a.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->direct_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->direct_b.buffer;
+    barriers[1].size = rt->direct_b.size;
+    barriers[2] = barriers[0];
+    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[2].buffer = rt->direct_c.buffer;
+    barriers[2].size = rt->direct_c.size;
     vkCmdPipelineBarrier(rt->command_buffer,
                          VK_PIPELINE_STAGE_HOST_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          0,
                          0,
                          NULL,
-                         1,
-                         &barrier,
+                         3u,
+                         barriers,
+                         0,
+                         NULL);
+  } else {
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = rt->staged_upload_a.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->staged_upload_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->staged_upload_b.buffer;
+    barriers[1].size = rt->staged_upload_b.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0,
+                         0,
+                         NULL,
+                         2u,
+                         barriers,
                          0,
                          NULL);
 
-    barrier.buffer = rt->reusable_b.buffer;
-    barrier.size = rt->reusable_b.size;
+    memset(copies, 0, sizeof(copies));
+    copies[0].size = rt->staged_upload_a.size;
+    copies[1].size = rt->staged_upload_b.size;
+    vkCmdCopyBuffer(rt->command_buffer, rt->staged_upload_a.buffer, rt->staged_device_a.buffer, 1u, &copies[0]);
+    vkCmdCopyBuffer(rt->command_buffer, rt->staged_upload_b.buffer, rt->staged_device_b.buffer, 1u, &copies[1]);
+
+    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers[0].buffer = rt->staged_device_a.buffer;
+    barriers[0].size = rt->staged_device_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->staged_device_b.buffer;
+    barriers[1].size = rt->staged_device_b.size;
+    barriers[2] = barriers[0];
+    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[2].buffer = rt->staged_device_c.buffer;
+    barriers[2].size = rt->staged_device_c.size;
     vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          0,
                          0,
                          NULL,
-                         1,
-                         &barrier,
+                         3u,
+                         barriers,
                          0,
                          NULL);
+  }
 
-    vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
-    vkCmdBindDescriptorSets(rt->command_buffer,
-                            VK_PIPELINE_BIND_POINT_COMPUTE,
-                            rt->pipeline_layout,
-                            0u,
-                            1u,
-                            &rt->descriptor_set,
-                            0u,
-                            NULL);
+  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+  vkCmdBindDescriptorSets(rt->command_buffer,
+                          VK_PIPELINE_BIND_POINT_COMPUTE,
+                          rt->pipeline_layout,
+                          0u,
+                          1u,
+                          &rt->descriptor_set,
+                          0u,
+                          NULL);
 
-    push.m = m;
-    push.n = n;
-    push.k = k;
-    vkCmdPushConstants(rt->command_buffer,
-                       rt->pipeline_layout,
-                       VK_SHADER_STAGE_COMPUTE_BIT,
-                       0u,
-                       PROM_VK_SHADER_PUSH_BYTES,
-                       &push);
+  push.m = m;
+  push.n = n;
+  push.k = k;
+  vkCmdPushConstants(rt->command_buffer,
+                     rt->pipeline_layout,
+                     VK_SHADER_STAGE_COMPUTE_BIT,
+                     0u,
+                     PROM_VK_SHADER_PUSH_BYTES,
+                     &push);
 
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
-    if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
-      return PROM_ERROR;
-    }
+  set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
+    return PROM_ERROR;
+  }
 
-    vkCmdDispatch(rt->command_buffer,
-                  (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
-                  (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
-                  1u);
+  vkCmdDispatch(rt->command_buffer,
+                (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
+                (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
+                1u);
 
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    barrier.buffer = rt->reusable_c.buffer;
-    barrier.size = rt->reusable_c.size;
+  if (selected_path == PROM_VK_PATH_DIRECT) {
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = rt->direct_c.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->direct_c.size;
     vkCmdPipelineBarrier(rt->command_buffer,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          VK_PIPELINE_STAGE_HOST_BIT,
                          0,
                          0,
                          NULL,
-                         1,
-                         &barrier,
+                         1u,
+                         barriers,
+                         0,
+                         NULL);
+  } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = rt->staged_device_c.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->staged_device_c.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0,
+                         0,
+                         NULL,
+                         1u,
+                         barriers,
                          0,
                          NULL);
 
-    vk_result = vkEndCommandBuffer(rt->command_buffer);
-    if (vk_result != VK_SUCCESS) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    rt->command_recording_valid = 1u;
+    copies[2].size = rt->staged_readback_c.size;
+    vkCmdCopyBuffer(rt->command_buffer, rt->staged_device_c.buffer, rt->staged_readback_c.buffer, 1u, &copies[2]);
+
+    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    barriers[0].buffer = rt->staged_readback_c.buffer;
+    barriers[0].size = rt->staged_readback_c.size;
+    vkCmdPipelineBarrier(rt->command_buffer,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT,
+                         0,
+                         0,
+                         NULL,
+                         1u,
+                         barriers,
+                         0,
+                         NULL);
+  }
+
+  vk_result = vkEndCommandBuffer(rt->command_buffer);
+  if (vk_result != VK_SUCCESS) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
   }
 
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
@@ -1097,10 +1418,19 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     return PROM_ERROR;
   }
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
-  memcpy(c, rt->reusable_c.mapped, c_copy_size);
+  if (selected_path == PROM_VK_PATH_DIRECT) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
+    memcpy(c, rt->direct_c.mapped, c_copy_size);
+  } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
+    memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
+  } else {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
+  }
 
-  if (out_stage != NULL && out_detail_code != NULL && *out_stage == PROM_STAGE_TRANSFER_OUT && *out_detail_code == 0) {
+  if (out_stage != NULL &&
+      out_detail_code != NULL &&
+      ((*out_stage == PROM_STAGE_TRANSFER_OUT) || (selected_path == PROM_VK_PATH_STAGED_UPLOAD && *out_stage == PROM_STAGE_SUBMIT))) {
     return PROM_OK;
   }
   return PROM_ERROR;

@@ -43,6 +43,12 @@ namespace
         }
         return out;
     }
+
+    bool is_success_detail_code(int detail)
+    {
+        return detail == PROM_DETAIL_PATH_DIRECT || detail == PROM_DETAIL_PATH_STAGED_UPLOAD ||
+            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT;
+    }
 }
 
 FACT(PrometheusReactor_ABIVersionIsStable)
@@ -140,7 +146,7 @@ FACT(PrometheusReactor_SgemmPathMatchesCpuOracleWhenAvailable)
         const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail);
         ASSERT_EQUAL(PROM_OK, status, "sgemm should succeed when Vulkan runtime is available");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "sgemm success should report transfer-out stage");
-        ASSERT_EQUAL(0, detail, "sgemm success should produce zero detail code");
+        ASSERT_TRUE(is_success_detail_code(detail), "sgemm success should surface selected execution path detail code");
 
         ASSERT_EQUAL(expected.size(), c.size(), "output size should match expected");
         for (std::size_t i = 0; i < expected.size(); ++i) {
@@ -206,7 +212,7 @@ FACT(PrometheusReactor_SgemmSupportsManyConsecutiveCalls)
         std::vector<float> out(m * n, 0.0f);
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), out.data(), m, n, k, &stage, &detail), "consecutive SGEMM run should succeed");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "successful SGEMM should end in transfer-out stage");
-        ASSERT_EQUAL(0, detail, "successful SGEMM should report zero detail");
+        ASSERT_TRUE(is_success_detail_code(detail), "successful SGEMM should report selected path detail");
         for (std::size_t i = 0; i < expected.size(); ++i) {
             ASSERT_NEAR(expected[i], out[i], 1e-4f, "consecutive SGEMM output should remain numerically stable");
         }
@@ -350,7 +356,7 @@ FACT(PrometheusReactor_SgemmReuseHandlesShapeAndBufferChangesCorrectly)
     int detail = 0;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a0.data(), b0.data(), out0.data(), same_m, same_n, same_k, &stage, &detail), "first SGEMM call should succeed");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "first SGEMM call should complete transfer-out stage");
-    ASSERT_EQUAL(0, detail, "first SGEMM call should complete with zero detail");
+    ASSERT_TRUE(is_success_detail_code(detail), "first SGEMM call should report selected path detail");
     for (std::size_t i = 0; i < expected0.size(); ++i) {
         ASSERT_NEAR(expected0[i], out0[i], 1e-4f, "first SGEMM call should match CPU oracle");
     }
@@ -370,7 +376,7 @@ FACT(PrometheusReactor_SgemmReuseHandlesShapeAndBufferChangesCorrectly)
     std::vector<float> out1(same_m * same_n, 0.0f);
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a1_shifted.data(), b1_shifted.data(), out1.data(), same_m, same_n, same_k, &stage, &detail), "same-shape different host buffers should succeed");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "same-shape reuse should complete transfer-out stage");
-    ASSERT_EQUAL(0, detail, "same-shape reuse should complete with zero detail");
+    ASSERT_TRUE(is_success_detail_code(detail), "same-shape reuse should report selected path detail");
     for (std::size_t i = 0; i < expected1.size(); ++i) {
         ASSERT_NEAR(expected1[i], out1[i], 1e-4f, "same-shape different host buffers should not retain stale binding assumptions");
     }
@@ -384,12 +390,147 @@ FACT(PrometheusReactor_SgemmReuseHandlesShapeAndBufferChangesCorrectly)
     std::vector<float> out2(changed_m * changed_n, 0.0f);
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a2.data(), b2.data(), out2.data(), changed_m, changed_n, changed_k, &stage, &detail), "shape-change SGEMM call should succeed");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "shape-change SGEMM call should complete transfer-out stage");
-    ASSERT_EQUAL(0, detail, "shape-change SGEMM call should complete with zero detail");
+    ASSERT_TRUE(is_success_detail_code(detail), "shape-change SGEMM call should report selected path detail");
     for (std::size_t i = 0; i < expected2.size(); ++i) {
         ASSERT_NEAR(expected2[i], out2[i], 1e-4f, "shape-change SGEMM call should invalidate stale shape assumptions");
     }
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_PathSelectionAvoidsBlindStagingForTinyShapes)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; tiny-shape path selection cannot be asserted");
+    }
+
+    const std::uint32_t m = 2u;
+    const std::uint32_t n = 2u;
+    const std::uint32_t k = 2u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "tiny-shape SGEMM should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "tiny-shape path should still complete with host-visible output");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT, detail, "tiny-shape policy should prefer direct path over blunt staging");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_ForcedStagedUploadReadbackPathIsObservable)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; staged-readback path cannot be asserted");
+    }
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "forced staged path should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "staged-readback path should complete transfer-out stage");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK, detail, "staged-readback path should be explicitly observable");
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        ASSERT_NEAR(expected[i], c[i], 1e-4f, "staged-readback path should preserve SGEMM correctness");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_StagedUploadOnlyPathSkipsReadbackWhenNotRequired)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; staged upload-only path cannot be asserted");
+    }
+
+    const std::uint32_t m = 24u;
+    const std::uint32_t n = 24u;
+    const std::uint32_t k = 24u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "upload-only staged path should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_SUBMIT), stage, "upload-only path should stop before transfer-out");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD, detail, "upload-only path should be explicitly observable");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_StagedPathCapabilityFallbackAndMismatchAreExplicit)
+{
+    const std::uint32_t m = 8u;
+    const std::uint32_t n = 8u;
+    const std::uint32_t k = 8u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    PrometheusReactorConfig cfg_fallback{};
+    cfg_fallback.struct_size = sizeof(cfg_fallback);
+    cfg_fallback.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY;
+    void* fallback_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg_fallback, &fallback_handle), "runtime create should succeed for fallback case");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(fallback_handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(fallback_handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; fallback and mismatch path cannot be asserted");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(fallback_handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "forced staged path should fallback to direct when device-local memory is unavailable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "fallback path should still produce host-visible output");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_FALLBACK_TO_DIRECT, detail, "fallback-to-direct should be explicitly observable");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(fallback_handle), "runtime destroy should succeed");
+
+    PrometheusReactorConfig cfg_mismatch{};
+    cfg_mismatch.struct_size = sizeof(cfg_mismatch);
+    cfg_mismatch.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY | PROM_TESTCFG_DISABLE_STAGING_FALLBACK;
+    void* mismatch_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg_mismatch, &mismatch_handle), "runtime create should succeed for mismatch case");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(mismatch_handle, &caps), "probe should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(mismatch_handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "staged request without device-local memory and fallback should fail explicitly");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_IN), stage, "capability mismatch should be reported in transfer-in stage");
+    ASSERT_EQUAL(PROM_DETAIL_CAPABILITY_MISMATCH, detail, "capability mismatch should use explicit detail code");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(mismatch_handle), "runtime destroy should succeed");
 }
 
 FACT(PrometheusReactor_SgemmRejectsShapeSizeOverflowExplicitly)
