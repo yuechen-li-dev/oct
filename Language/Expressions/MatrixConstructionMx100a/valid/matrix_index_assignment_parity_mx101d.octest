@@ -1,0 +1,10 @@
+package Main
+
+[Fact]
+fn MatrixIndexAssignmentParityMx101d() -> Void {
+    var out = Matrix.zeros<Int>(2, 3)
+    out[0, 1] = 7
+    out[1, 2] = 9
+    Assert.Equal(7, out[0, 1], "write/read c01")
+    Assert.Equal(9, out[1, 2], "write/read c12")
+}

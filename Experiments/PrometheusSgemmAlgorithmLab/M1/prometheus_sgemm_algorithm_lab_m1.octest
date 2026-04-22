@@ -73,12 +73,12 @@ fn BlockedVariantsHandleBlockEdgeCases() -> Void {
     let blockIkj2 = MatMul_Blocked_IKJ(a, b, 2)!
     let blockIkj4 = MatMul_Blocked_IKJ(a, b, 4)!
 
-    AssertMatricesNear("block1", a.rows, b.cols, baseline, block1)
-    AssertMatricesNear("block2", a.rows, b.cols, baseline, block2)
-    AssertMatricesNear("block4", a.rows, b.cols, baseline, block4)
-    AssertMatricesNear("blockIkj1", a.rows, b.cols, baseline, blockIkj1)
-    AssertMatricesNear("blockIkj2", a.rows, b.cols, baseline, blockIkj2)
-    AssertMatricesNear("blockIkj4", a.rows, b.cols, baseline, blockIkj4)
+    AssertMatricesNear("block1", baseline, block1)
+    AssertMatricesNear("block2", baseline, block2)
+    AssertMatricesNear("block4", baseline, block4)
+    AssertMatricesNear("blockIkj1", baseline, blockIkj1)
+    AssertMatricesNear("blockIkj2", baseline, blockIkj2)
+    AssertMatricesNear("blockIkj4", baseline, blockIkj4)
 }
 
 [Fact]
@@ -109,19 +109,18 @@ fn AssertAllVariantsEqual(a: Matrix<Float>, b: Matrix<Float>, blockSize: Int) ->
     let blocked = MatMul_Blocked(a, b, blockSize)!
     let blockedIkj = MatMul_Blocked_IKJ(a, b, blockSize)!
 
-    AssertMatricesNear("ikj", a.rows, b.cols, baseline, ikj)
-    AssertMatricesNear("kij", a.rows, b.cols, baseline, kij)
-    AssertMatricesNear("blocked", a.rows, b.cols, baseline, blocked)
-    AssertMatricesNear("blockedIkj", a.rows, b.cols, baseline, blockedIkj)
+    AssertMatricesNear("ikj", baseline, ikj)
+    AssertMatricesNear("kij", baseline, kij)
+    AssertMatricesNear("blocked", baseline, blocked)
+    AssertMatricesNear("blockedIkj", baseline, blockedIkj)
 }
 
-fn AssertMatricesNear(label: String, rows: Int, cols: Int, expected: Float[], actual: Float[]) -> Void {
-    Assert.Equal(Len(expected), Len(actual), label + " matrix length")
-
-    for r in 0 .. rows {
-        for c in 0 .. cols {
-            let i = FlatIndex(r, c, cols)
-            Assert.Near(expected[i], actual[i], 0.000001, label + " matrix element")
+fn AssertMatricesNear(label: String, expected: Matrix<Float>, actual: Matrix<Float>) -> Void {
+    Assert.Equal(expected.rows, actual.rows, label + " rows")
+    Assert.Equal(expected.cols, actual.cols, label + " cols")
+    for r in 0 .. expected.rows {
+        for c in 0 .. expected.cols {
+            Assert.Near(expected[r, c], actual[r, c], 0.000001, label + " matrix element")
         }
     }
 }

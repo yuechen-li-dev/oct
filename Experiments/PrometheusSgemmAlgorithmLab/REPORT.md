@@ -133,7 +133,7 @@ M2a ports the M0 baseline and M1 variant suite to matrix-native inputs and index
 
 Two explicit gaps were surfaced during the port and left visible by design:
 
-- Matrix element **read** indexing (`m[r, c]`) is available, but mutable matrix element **assignment** is still rejected by the parser in this environment (`index assignment target must use exactly one index`).
-- Anonymous callback functions are still rejected in this environment, so generic row-major array -> matrix conversion via captured callbacks is not available.
+- Matrix element **write** parity (`m[r, c] = value`) has now been addressed by Mx101d, so M0/M1 accumulation no longer needs flat row-major output buffers.
+- Anonymous callback functions are still rejected in this environment, so generic row-major array -> matrix conversion via captured callbacks remains unavailable.
 
-Because of those limits, M0/M1 now use matrix-native inputs/reads and shape metadata, but retain flat row-major output buffers for accumulation. M2 remains unchanged and still flat-array-based by milestone scope.
+M0/M1 now use matrix-native inputs, reads, **and writes** with shape metadata. M2 remains unchanged and still flat-array-based by milestone scope.

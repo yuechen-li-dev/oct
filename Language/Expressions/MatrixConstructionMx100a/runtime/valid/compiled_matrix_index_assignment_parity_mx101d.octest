@@ -1,0 +1,9 @@
+package Main
+
+[Fact]
+fn CompiledMatrixIndexAssignmentParityMx101d() -> Void {
+    var out = Matrix.zeros<Int>(2, 2)
+    out[0, 1] = 5
+    out[1, 0] = 8
+    Assert.Equal(13, out[0, 1] + out[1, 0], "compiled matrix writes")
+}

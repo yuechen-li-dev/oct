@@ -995,12 +995,18 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		return nil, false, nil
 	}
 
+	indices := make([]ast.Expr, 0, 2)
 	index, err := p.parseExpression()
 	if err != nil {
 		return nil, false, err
 	}
-	if p.match(lex.Comma) {
-		return nil, false, p.errorAtCurrent("index assignment target must use exactly one index")
+	indices = append(indices, index)
+	for p.match(lex.Comma) {
+		nextIndex, nextErr := p.parseExpression()
+		if nextErr != nil {
+			return nil, false, nextErr
+		}
+		indices = append(indices, nextIndex)
 	}
 	if _, err := p.expect(lex.RightBracket, "expected ']' after index assignment target"); err != nil {
 		return nil, false, err
@@ -1017,7 +1023,7 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	return ast.IndexAssignStmt{Target: name.Lexeme, Index: index, Value: value}, true, nil
+	return ast.IndexAssignStmt{Target: name.Lexeme, Indices: indices, Value: value}, true, nil
 }
 
 func (p *parser) parseReturnStmt() (ast.Stmt, error) {

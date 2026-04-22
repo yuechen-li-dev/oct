@@ -683,22 +683,22 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if !targetBinding.mutable {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
 		}
-		if targetBinding.value.Kind != ValueArray {
-			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires array target")
+		if len(node.Indices) == 0 {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires at least one index")
 		}
-
-		index, err := i.evalExpr(env, pkgName, node.Index)
-		if err != nil {
-			return stmtResult{}, err
-		}
-		if index.hasError {
-			return stmtResult{value: index.errorVal, returned: true}, nil
-		}
-		if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
-			return stmtResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
-		}
-		if index.value.Int < 0 || index.value.Int >= int64(len(targetBinding.value.Array)) {
-			return stmtResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index.value.Int, len(targetBinding.value.Array))
+		indices := make([]int64, 0, len(node.Indices))
+		for _, idxExpr := range node.Indices {
+			index, err := i.evalExpr(env, pkgName, idxExpr)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			if index.hasError {
+				return stmtResult{value: index.errorVal, returned: true}, nil
+			}
+			if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
+			}
+			indices = append(indices, index.value.Int)
 		}
 
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -710,7 +710,28 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 
 		updated := targetBinding.value
-		updated.Array[index.value.Int] = value.value
+		switch updated.Kind {
+		case ValueArray:
+			if len(indices) != 1 {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: array index assignment requires exactly 1 index, got %d", len(indices))
+			}
+			if indices[0] < 0 || indices[0] >= int64(len(updated.Array)) {
+				return stmtResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", indices[0], len(updated.Array))
+			}
+			updated.Array[indices[0]] = value.value
+		case ValueMatrix:
+			if len(indices) != 2 {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: matrix index assignment requires exactly 2 indices, got %d", len(indices))
+			}
+			r := indices[0]
+			c := indices[1]
+			if r < 0 || c < 0 || r >= int64(updated.Matrix.Rows) || c >= int64(updated.Matrix.Cols) {
+				return stmtResult{}, fmt.Errorf("runtime error: index [%d, %d] out of bounds for matrix of shape %dx%d", r, c, updated.Matrix.Rows, updated.Matrix.Cols)
+			}
+			updated.Matrix.Elements[r*int64(updated.Matrix.Cols)+c] = value.value
+		default:
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires array or matrix target")
+		}
 		if !env.assign(node.Target, updated) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
 		}

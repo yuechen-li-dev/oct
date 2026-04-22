@@ -88,7 +88,7 @@ func TestM23RejectsArrayElementTypeMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected build failure")
 	}
-	if !strings.Contains(stderr, "assigned value type does not match array element type") {
+	if !strings.Contains(stderr, "assigned value type does not match indexed element type") {
 		t.Fatalf("unexpected stderr %q", stderr)
 	}
 }
@@ -109,7 +109,7 @@ func TestM23RejectsNonIntArrayIndexAssignment(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected build failure")
 	}
-	if !strings.Contains(stderr, "array index must be Int") {
+	if !strings.Contains(stderr, "index assignment indices must be Int") {
 		t.Fatalf("unexpected stderr %q", stderr)
 	}
 }

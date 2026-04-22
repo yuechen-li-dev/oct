@@ -1900,6 +1900,19 @@ fn Main() -> Int {
 			want: "12",
 		},
 		{
+			name: "matrix index assignment compiled",
+			source: `package Main
+
+fn Main() -> Matrix<Int> {
+    var out = matrix[[1, 2] [3, 4]]
+    out[0, 1] = 9
+    out[1, 0] = 8
+    return out
+}
+`,
+			want: "[[1 9] [8 4]]",
+		},
+		{
 			name: "dimensioned matrix at vector compiled",
 			source: `package Main
 

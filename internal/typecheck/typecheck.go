@@ -663,19 +663,36 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if !target.mutable {
 			return false, fmt.Errorf("function %s: cannot assign to immutable binding", ctx.name)
 		}
-		if !target.valueType.IsArray {
-			return false, fmt.Errorf("function %s: index assignment requires array type", ctx.name)
+		if len(node.Indices) == 0 {
+			return false, fmt.Errorf("function %s: index assignment requires at least one index", ctx.name)
+		}
+		for _, idxExpr := range node.Indices {
+			indexType, err := c.checkExpr(scope, idxExpr, ctx)
+			if err != nil {
+				return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
+			}
+			if indexType.Fallible {
+				return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
+			}
+			if indexType.ValueType != (Type{Base: BaseTypeInt}) {
+				return false, fmt.Errorf("function %s: index assignment indices must be Int", ctx.name)
+			}
 		}
 
-		indexType, err := c.checkExpr(scope, node.Index, ctx)
-		if err != nil {
-			return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
-		}
-		if indexType.Fallible {
-			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
-		}
-		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
-			return false, fmt.Errorf("function %s: array index must be Int", ctx.name)
+		var elementType Type
+		switch {
+		case target.valueType.IsArray:
+			if len(node.Indices) != 1 {
+				return false, fmt.Errorf("function %s: array index assignment requires exactly 1 index, got %d", ctx.name, len(node.Indices))
+			}
+			elementType = peelArrayType(target.valueType)
+		case target.valueType.IsMatrix:
+			if len(node.Indices) != 2 {
+				return false, fmt.Errorf("function %s: matrix index assignment requires exactly 2 indices, got %d", ctx.name, len(node.Indices))
+			}
+			elementType = Type{Base: target.valueType.Base, Dimension: target.valueType.Dimension}
+		default:
+			return false, fmt.Errorf("function %s: index assignment requires array or matrix type", ctx.name)
 		}
 
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
@@ -685,10 +702,8 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
 		}
-		elementType := target.valueType
-		elementType = peelArrayType(elementType)
 		if !isAssignable(valueType.ValueType, elementType) {
-			return false, fmt.Errorf("function %s: assigned value type does not match array element type", ctx.name)
+			return false, fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
 		}
 		return false, nil
 	case ast.FieldAssignStmt:
