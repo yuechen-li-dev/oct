@@ -852,3 +852,85 @@ A future Vulkan implementation should preserve this minimal protocol:
 ### Inconsistency note surfaced
 
 M7 intentionally models protocol semantics rather than Vulkan API-level details. This is an intentional abstraction boundary, not a Vulkan simulator, and should not be read as a claim about specific driver-side object internals.
+
+## M8 scope
+
+M8 adds a pure-Oct staging-buffer friction lab that models staged-memory **protocol semantics** for SGEMM path selection.
+
+This milestone is intentionally not a Vulkan simulator. It models the correctness and controller decision rules that a future Vulkan C implementation must preserve.
+
+### Staged-memory protocol modeled in M8
+
+The M8 model (`M8/prometheus_sgemm_algorithm_lab_m8.oct`) represents:
+
+- direct host-visible path (`Direct`)
+- staged upload path (`StagedUpload`)
+- staged upload + staged readback path (`StagedUploadReadback`)
+- capability regime (`DeviceLocalAvailable`, `DirectHostVisibleAvailable`, `FallbackAllowed`)
+- ordering/visibility protocol edges (`PreCopyReady`, `PostCopyVisible`, `PreReadbackVisible`, optional `OverBarrier`)
+- selection policies (`AlwaysDirect`, `AlwaysStaged`, `ThresholdStaged`, `CapabilityGatedStaged`)
+
+Each scenario emits explicit protocol signals and structural metrics so future authors can see both safety and friction.
+
+### Uncertainties tested in M8
+
+M8 `.octest` covers the five required risk buckets:
+
+1. **Copy/barrier ordering mistakes**
+   - tested with complete ordering, missing pre-copy readiness, missing pre-readback visibility, and over-barrier cases.
+2. **Memory capability mismatch + fallback behavior**
+   - staged path with and without device-local availability, with both fallback-allowed and fallback-disallowed regimes.
+3. **Small-shape staging regressions**
+   - tiny/small shape scenarios explicitly flag unnecessary staging and extra complexity.
+4. **Upload/download/readback confusion**
+   - upload-only, upload+readback, and direct paths are distinct; unnecessary readback in compute-only intent is marked hazardous.
+5. **Direct-vs-staged selection complexity**
+   - always-direct, always-staged, threshold-staged, and capability-gated policies are all exercised and validated.
+
+### Structural metrics tracked
+
+M8 exposes non-timing structural signals for decision reasoning:
+
+- upload copy phases
+- readback copy phases
+- conceptual copy volume
+- temporary buffer count
+- ordering step count
+- fallback count
+- path complexity score
+
+These are protocol/structure indicators only, not hardware performance claims.
+
+### Safe patterns identified
+
+M8 marks these as safe:
+
+1. Direct path for tiny/small cases where staging adds avoidable complexity.
+2. Staged upload when device-local path is available and required ordering edges are present.
+3. Staged upload + readback when readback is truly required and pre-readback visibility is enforced.
+4. Staged request with device-local unavailable when explicit fallback-to-direct is allowed and direct path exists.
+
+### Unsafe shortcuts identified
+
+M8 marks these as unsafe:
+
+1. Staged execution with missing pre-copy or post-copy visibility edges.
+2. Readback without pre-readback visibility guarantee.
+3. Always-staged policy on tiny/small shapes (structurally blunt and unjustified).
+4. Capability mismatch without fallback.
+5. Readback path included when immediate readback is not required.
+
+### Minimal safe staging protocol for future Vulkan C implementation
+
+A future Vulkan implementation should preserve this minimal protocol:
+
+1. Select path using capability + workload structure, not one blunt default.
+2. If staging is selected, require explicit copy/readiness/visibility ordering edges before compute and before host readback.
+3. Distinguish upload-only and upload+readback protocols; do not force readback in compute-only flows.
+4. If staged path is unavailable, perform explicit fallback-to-direct when allowed; otherwise fail clearly with capability mismatch.
+5. Treat tiny/small shapes with direct host-visible path as the default baseline unless structural signals justify staging.
+6. Emit explicit protocol diagnostics (`MissingOrdering`, `VisibilityHazard`, `ReadbackHazard`, `CapabilityMismatch`, etc.) for every decision path.
+
+### Inconsistency note surfaced
+
+M8 uses protocol-level terms (readiness, visibility, fallback) rather than Vulkan API object vocabulary by design. This is intentional and keeps the lab aligned with its purpose: reducing protocol uncertainty before backend implementation.

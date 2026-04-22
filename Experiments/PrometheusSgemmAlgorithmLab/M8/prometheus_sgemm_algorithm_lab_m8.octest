@@ -1,0 +1,225 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn SafeDirectPathForSmallShapeAvoidsUnnecessaryStaging() -> Void {
+    let scenario = MakeScenario(
+        8, 8, 8,
+        ShapeTiny(),
+        PatternRepeatedSameShape(),
+        PathDirect(),
+        false,
+        true, true, true, false,
+        true, true, true,
+        PolicyAlwaysDirect(),
+        2048
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe, "tiny direct path should be safe")
+    Assert.True(OutcomeSignals(outcome).UnnecessaryStaging == false, "direct path should avoid staging friction")
+    Assert.True(OutcomeMetrics(outcome).PathComplexityScore == 0, "direct path should stay structurally simple")
+}
+
+[Fact]
+fn SafeStagedUploadWhenDeviceLocalAndOrderingAreCorrect() -> Void {
+    let scenario = MakeScenario(
+        64, 64, 64,
+        ShapeLarge(),
+        PatternChangingShapes(),
+        PathStagedUpload(),
+        false,
+        true, true, true, false,
+        true, true, true,
+        PolicyThresholdStaged(),
+        16384
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe, "staged upload should be safe with complete ordering")
+    Assert.True(OutcomeSignals(outcome).StagingJustified, "large shape staged upload should be structurally justified")
+    Assert.True(OutcomeMetrics(outcome).UploadCopyPhases == 2, "upload path should expose explicit copy phases")
+}
+
+[Fact]
+fn SafeStagedUploadReadbackWhenReadbackIsRequired() -> Void {
+    let scenario = MakeScenario(
+        48, 48, 48,
+        ShapeMedium(),
+        PatternRepeatedSameShape(),
+        PathStagedUploadReadback(),
+        true,
+        true, true, true, true,
+        true, true, true,
+        PolicyCapabilityGatedStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe, "readback-required staged path should be safe with full visibility ordering")
+    Assert.True(OutcomeMetrics(outcome).ReadbackCopyPhases == 1, "readback path should include one explicit copy phase")
+    Assert.True(OutcomeSignals(outcome).ReadbackHazard == false, "required readback should not be treated as hazard")
+}
+
+[Fact]
+fn SafeFallbackToDirectWhenDeviceLocalUnavailable() -> Void {
+    let scenario = MakeScenario(
+        32, 32, 32,
+        ShapeSmall(),
+        PatternChangingShapes(),
+        PathStagedUpload(),
+        false,
+        true, true, true, false,
+        false, true, true,
+        PolicyCapabilityGatedStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).FallbackUsed, "missing device-local path should fallback to direct when allowed")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe, "fallback-to-direct should preserve correctness")
+    Assert.Equal(PathDirect(), outcome.EffectivePath, "fallback should select direct path")
+}
+
+[Fact]
+fn UnsafeStagedPathWithMissingOrderingSteps() -> Void {
+    let scenario = MakeScenario(
+        64, 64, 32,
+        ShapeMedium(),
+        PatternChangingShapes(),
+        PathStagedUpload(),
+        false,
+        false, true, true, false,
+        true, true, true,
+        PolicyAlwaysStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "missing pre-copy readiness should invalidate staged protocol")
+    Assert.True(OutcomeSignals(outcome).MissingOrdering, "missing ordering should be surfaced")
+    Assert.True(OutcomeSignals(outcome).VisibilityHazard, "copy/compute visibility hazard should be explicit")
+}
+
+[Fact]
+fn UnsafeReadbackWithoutPostComputeVisibility() -> Void {
+    let scenario = MakeScenario(
+        40, 40, 40,
+        ShapeMedium(),
+        PatternRepeatedSameShape(),
+        PathStagedUploadReadback(),
+        true,
+        true, true, false, false,
+        true, true, true,
+        PolicyAlwaysStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "readback without pre-readback visibility is unsafe")
+    Assert.True(OutcomeSignals(outcome).ReadbackHazard, "readback hazard should be explicit")
+    Assert.True(OutcomeSignals(outcome).MissingOrdering, "missing visibility edge should count as missing ordering")
+}
+
+[Fact]
+fn UnsafeAlwaysStagedPolicyOnTinyShapeIsMarkedUnjustified() -> Void {
+    let scenario = MakeScenario(
+        8, 8, 8,
+        ShapeTiny(),
+        PatternRepeatedSameShape(),
+        PathStagedUpload(),
+        false,
+        true, true, true, false,
+        true, true, true,
+        PolicyAlwaysStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).UnnecessaryStaging, "always-staged tiny shape should be flagged as unnecessary staging")
+    Assert.True(OutcomeSignals(outcome).SelectionPolicyValid == false, "always-staged shortcut should be marked as a blunt policy")
+    Assert.True(OutcomeMetrics(outcome).PathComplexityScore > 0, "unnecessary staging should still carry structural overhead")
+}
+
+[Fact]
+fn UnsafeCapabilityMismatchWithoutFallbackIsRejected() -> Void {
+    let scenario = MakeScenario(
+        64, 64, 64,
+        ShapeLarge(),
+        PatternChangingShapes(),
+        PathStagedUpload(),
+        false,
+        true, true, true, false,
+        false, true, false,
+        PolicyCapabilityGatedStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "staged request without capability and fallback must be unsafe")
+    Assert.True(OutcomeSignals(outcome).CapabilityMismatch, "capability mismatch should be explicit")
+    Assert.True(OutcomeSignals(outcome).ResultCorrect == false, "capability mismatch must prevent correctness claim")
+}
+
+[Fact]
+fn UnsafeUnnecessaryReadbackWhenNoImmediateReadbackRequired() -> Void {
+    let scenario = MakeScenario(
+        24, 24, 24,
+        ShapeSmall(),
+        PatternRepeatedSameShape(),
+        PathStagedUploadReadback(),
+        false,
+        true, true, true, false,
+        true, true, true,
+        PolicyAlwaysStaged(),
+        0
+    )
+
+    let outcome = ResolveEffectivePath(scenario)
+    Assert.True(OutcomeSignals(outcome).ReadbackHazard, "extra readback path should be flagged when caller does not require readback")
+    Assert.True(OutcomeSignals(outcome).ProtocolSafe == false, "unnecessary readback should invalidate protocol safety in this lab")
+    Assert.True(OutcomeMetrics(outcome).ReadbackCopyPhases == 1, "hazardous path should still expose structural readback cost")
+}
+
+[Fact]
+fn BoundedDoeCoversPolicyCapabilityOrderingAndShapeRegimes() -> Void {
+    let directTiny = ResolveEffectivePath(MakeScenario(
+        8, 8, 8,
+        ShapeTiny(),
+        PatternRepeatedSameShape(),
+        PathDirect(),
+        false,
+        true, true, true, false,
+        true, true, true,
+        PolicyAlwaysDirect(),
+        0
+    ))
+
+    let thresholdLarge = ResolveEffectivePath(MakeScenario(
+        96, 96, 64,
+        ShapeLarge(),
+        PatternChangingShapes(),
+        PathStagedUpload(),
+        false,
+        true, true, true, true,
+        true, true, true,
+        PolicyThresholdStaged(),
+        65536
+    ))
+
+    let capabilityFallback = ResolveEffectivePath(MakeScenario(
+        48, 16, 16,
+        ShapeMedium(),
+        PatternChangingShapes(),
+        PathStagedUploadReadback(),
+        true,
+        true, true, true, false,
+        false, true, true,
+        PolicyCapabilityGatedStaged(),
+        0
+    ))
+
+    Assert.True(OutcomeSignals(directTiny).ProtocolSafe, "always-direct should stay safe in tiny regime")
+    Assert.True(OutcomeSignals(thresholdLarge).ProtocolSafe, "threshold policy should allow staged path in large regime")
+    Assert.True(OutcomeSignals(capabilityFallback).FallbackUsed, "capability-gated scenario should exercise fallback path")
+    Assert.True(OutcomeSignals(capabilityFallback).StructurallyValid, "fallback scenario should remain structurally valid")
+}

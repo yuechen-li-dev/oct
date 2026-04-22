@@ -1,0 +1,337 @@
+package PrometheusSgemmAlgorithmLab
+
+record Shape3 {
+    Rows: Int
+    Cols: Int
+    Depth: Int
+}
+
+record OrderingProtocol {
+    PreCopyReady: Bool
+    PostCopyVisible: Bool
+    PreReadbackVisible: Bool
+    OverBarrier: Bool
+}
+
+record CapabilityRegime {
+    DeviceLocalAvailable: Bool
+    DirectHostVisibleAvailable: Bool
+    FallbackAllowed: Bool
+}
+
+record SelectionPolicy {
+    Mode: String
+    StagingThresholdWork: Int
+}
+
+record StagingScenario {
+    Shape: Shape3
+    ShapeRegime: String
+    ShapePattern: String
+    PathMode: String
+    ReadbackRequired: Bool
+    Ordering: OrderingProtocol
+    Capability: CapabilityRegime
+    Policy: SelectionPolicy
+}
+
+record StructuralMetrics {
+    UploadCopyPhases: Int
+    ReadbackCopyPhases: Int
+    ConceptualCopyVolume: Int
+    TemporaryBufferCount: Int
+    OrderingStepCount: Int
+    FallbackCount: Int
+    PathComplexityScore: Int
+}
+
+record StagingSignals {
+    ResultCorrect: Bool
+    ProtocolSafe: Bool
+    FallbackUsed: Bool
+    StagingJustified: Bool
+    UnnecessaryStaging: Bool
+    MissingOrdering: Bool
+    VisibilityHazard: Bool
+    ReadbackHazard: Bool
+    CapabilityMismatch: Bool
+    SelectionPolicyValid: Bool
+    StructurallyValid: Bool
+    Notes: String
+}
+
+record ScenarioOutcome {
+    EffectivePath: String
+    Metrics: StructuralMetrics
+    Signals: StagingSignals
+}
+
+fn PathDirect() -> String { return "Direct" }
+fn PathStagedUpload() -> String { return "StagedUpload" }
+fn PathStagedUploadReadback() -> String { return "StagedUploadReadback" }
+
+fn PolicyAlwaysDirect() -> String { return "AlwaysDirect" }
+fn PolicyAlwaysStaged() -> String { return "AlwaysStaged" }
+fn PolicyThresholdStaged() -> String { return "ThresholdStaged" }
+fn PolicyCapabilityGatedStaged() -> String { return "CapabilityGatedStaged" }
+
+fn ShapeTiny() -> String { return "Tiny" }
+fn ShapeSmall() -> String { return "Small" }
+fn ShapeMedium() -> String { return "Medium" }
+fn ShapeLarge() -> String { return "Large" }
+
+fn PatternRepeatedSameShape() -> String { return "RepeatedSameShape" }
+fn PatternChangingShapes() -> String { return "ChangingShapes" }
+
+fn WorkUnits(shape: Shape3) -> Int {
+    return shape.Rows * shape.Cols * shape.Depth
+}
+
+fn IsStructurallyValidScenario(s: StagingScenario) -> Bool {
+    let shape = s.Shape
+    let capabilities = s.Capability
+
+    let invalidRows = shape.Rows <= 0
+    let invalidCols = shape.Cols <= 0
+    let invalidDepth = shape.Depth <= 0
+    if invalidRows or invalidCols or invalidDepth {
+        return false
+    }
+
+    let canStage = capabilities.DeviceLocalAvailable
+    let canDirect = capabilities.DirectHostVisibleAvailable
+    if canStage == false and canDirect == false {
+        return false
+    }
+
+    return true
+}
+
+fn PolicyPreferredPath(s: StagingScenario) -> String {
+    let policy = s.Policy
+    let capabilities = s.Capability
+    let work = WorkUnits(s.Shape)
+    let stagedPath = switch {
+        case s.ReadbackRequired => PathStagedUploadReadback()
+        else => PathStagedUpload()
+    }
+
+    return switch {
+        case policy.Mode == PolicyAlwaysDirect() => PathDirect()
+        case policy.Mode == PolicyAlwaysStaged() => stagedPath
+        case policy.Mode == PolicyThresholdStaged() => switch {
+            case work >= policy.StagingThresholdWork => stagedPath
+            else => PathDirect()
+        }
+        case policy.Mode == PolicyCapabilityGatedStaged() => switch {
+            case capabilities.DeviceLocalAvailable => stagedPath
+            else => PathDirect()
+        }
+        else => PathDirect()
+    }
+}
+
+fn ResolveEffectivePath(s: StagingScenario) -> ScenarioOutcome {
+    let structurallyValid = IsStructurallyValidScenario(s)
+    if structurallyValid == false {
+        return InvalidOutcome("structural scenario contract violated")
+    }
+
+    let shape = s.Shape
+    let capabilities = s.Capability
+    let ordering = s.Ordering
+    let policy = s.Policy
+
+    let policyPreferred = PolicyPreferredPath(s)
+    let shapeIsSmall = s.ShapeRegime == ShapeTiny() or s.ShapeRegime == ShapeSmall()
+    let policyBluntForSmall = policy.Mode == PolicyAlwaysStaged() and shapeIsSmall and capabilities.DirectHostVisibleAvailable
+
+    let requested = s.PathMode
+    let wantsStaged = requested == PathStagedUpload() or requested == PathStagedUploadReadback()
+
+    let canStage = capabilities.DeviceLocalAvailable
+    let canDirect = capabilities.DirectHostVisibleAvailable
+
+    var effectivePath = requested
+    var fallbackUsed = false
+    var capabilityMismatch = false
+
+    if wantsStaged and canStage == false {
+        if capabilities.FallbackAllowed and canDirect {
+            effectivePath = PathDirect()
+            fallbackUsed = true
+        } else {
+            capabilityMismatch = true
+        }
+    }
+
+    let stagedPath = effectivePath == PathStagedUpload() or effectivePath == PathStagedUploadReadback()
+    let missingPreCopy = stagedPath and ordering.PreCopyReady == false
+    let missingPostCopyVisible = stagedPath and ordering.PostCopyVisible == false
+    let missingPreReadbackVisible = effectivePath == PathStagedUploadReadback() and ordering.PreReadbackVisible == false
+
+    let missingOrdering = missingPreCopy or missingPostCopyVisible or missingPreReadbackVisible
+    let visibilityHazard = missingPreCopy or missingPostCopyVisible
+
+    let missingReadbackPath = s.ReadbackRequired and effectivePath == PathStagedUpload()
+    let unnecessaryReadbackPath = s.ReadbackRequired == false and effectivePath == PathStagedUploadReadback()
+    let readbackHazard = missingPreReadbackVisible or missingReadbackPath or unnecessaryReadbackPath
+
+    let unnecessaryStaging = stagedPath and capabilities.DirectHostVisibleAvailable and shapeIsSmall
+    let stagingJustified = stagedPath and unnecessaryStaging == false and capabilityMismatch == false
+
+    let selectionPolicyValid = policyPreferred == requested and policyBluntForSmall == false
+
+    let protocolSafe = capabilityMismatch == false and missingOrdering == false and readbackHazard == false
+    let resultCorrect = protocolSafe
+
+    let uploadCopyPhases = switch {
+        case stagedPath => 2
+        else => 0
+    }
+
+    let readbackCopyPhases = switch {
+        case effectivePath == PathStagedUploadReadback() => 1
+        else => 0
+    }
+
+    let uploadVolume = 2 * (shape.Rows * shape.Depth + shape.Depth * shape.Cols)
+    let readbackVolume = shape.Rows * shape.Cols
+
+    let copyVolume = switch {
+        case effectivePath == PathDirect() => 0
+        case effectivePath == PathStagedUpload() => uploadVolume
+        else => uploadVolume + readbackVolume
+    }
+
+    let temporaryBufferCount = switch {
+        case effectivePath == PathDirect() => 0
+        case effectivePath == PathStagedUpload() => 2
+        else => 3
+    }
+
+    let orderingBase = switch {
+        case effectivePath == PathDirect() => 0
+        case effectivePath == PathStagedUpload() => 2
+        else => 3
+    }
+
+    let orderingStepCount = orderingBase + switch {
+        case ordering.OverBarrier => 1
+        else => 0
+    }
+
+    let pathComplexity = uploadCopyPhases + readbackCopyPhases + temporaryBufferCount + orderingStepCount + switch {
+        case fallbackUsed => 2
+        else => 0
+    }
+
+    return ScenarioOutcome {
+        EffectivePath: effectivePath
+        Metrics: StructuralMetrics {
+            UploadCopyPhases: uploadCopyPhases
+            ReadbackCopyPhases: readbackCopyPhases
+            ConceptualCopyVolume: copyVolume
+            TemporaryBufferCount: temporaryBufferCount
+            OrderingStepCount: orderingStepCount
+            FallbackCount: switch {
+                case fallbackUsed => 1
+                else => 0
+            }
+            PathComplexityScore: pathComplexity
+        }
+        Signals: StagingSignals {
+            ResultCorrect: resultCorrect
+            ProtocolSafe: protocolSafe
+            FallbackUsed: fallbackUsed
+            StagingJustified: stagingJustified
+            UnnecessaryStaging: unnecessaryStaging
+            MissingOrdering: missingOrdering
+            VisibilityHazard: visibilityHazard
+            ReadbackHazard: readbackHazard
+            CapabilityMismatch: capabilityMismatch
+            SelectionPolicyValid: selectionPolicyValid
+            StructurallyValid: structurallyValid
+            Notes: "staging protocol evaluated"
+        }
+    }
+}
+
+fn InvalidOutcome(notes: String) -> ScenarioOutcome {
+    return ScenarioOutcome {
+        EffectivePath: "Invalid"
+        Metrics: StructuralMetrics {
+            UploadCopyPhases: 0
+            ReadbackCopyPhases: 0
+            ConceptualCopyVolume: 0
+            TemporaryBufferCount: 0
+            OrderingStepCount: 0
+            FallbackCount: 0
+            PathComplexityScore: 0
+        }
+        Signals: StagingSignals {
+            ResultCorrect: false
+            ProtocolSafe: false
+            FallbackUsed: false
+            StagingJustified: false
+            UnnecessaryStaging: false
+            MissingOrdering: false
+            VisibilityHazard: false
+            ReadbackHazard: false
+            CapabilityMismatch: false
+            SelectionPolicyValid: false
+            StructurallyValid: false
+            Notes: notes
+        }
+    }
+}
+
+fn MakeScenario(
+    m: Int,
+    n: Int,
+    k: Int,
+    shapeRegime: String,
+    shapePattern: String,
+    pathMode: String,
+    readbackRequired: Bool,
+    preCopyReady: Bool,
+    postCopyVisible: Bool,
+    preReadbackVisible: Bool,
+    overBarrier: Bool,
+    deviceLocalAvailable: Bool,
+    directHostVisibleAvailable: Bool,
+    fallbackAllowed: Bool,
+    policyMode: String,
+    stagingThresholdWork: Int
+) -> StagingScenario {
+    return StagingScenario {
+        Shape: Shape3 { Rows: m Cols: n Depth: k }
+        ShapeRegime: shapeRegime
+        ShapePattern: shapePattern
+        PathMode: pathMode
+        ReadbackRequired: readbackRequired
+        Ordering: OrderingProtocol {
+            PreCopyReady: preCopyReady
+            PostCopyVisible: postCopyVisible
+            PreReadbackVisible: preReadbackVisible
+            OverBarrier: overBarrier
+        }
+        Capability: CapabilityRegime {
+            DeviceLocalAvailable: deviceLocalAvailable
+            DirectHostVisibleAvailable: directHostVisibleAvailable
+            FallbackAllowed: fallbackAllowed
+        }
+        Policy: SelectionPolicy {
+            Mode: policyMode
+            StagingThresholdWork: stagingThresholdWork
+        }
+    }
+}
+
+fn OutcomeSignals(outcome: ScenarioOutcome) -> StagingSignals {
+    return outcome.Signals
+}
+
+fn OutcomeMetrics(outcome: ScenarioOutcome) -> StructuralMetrics {
+    return outcome.Metrics
+}
