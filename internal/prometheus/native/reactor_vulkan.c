@@ -18,6 +18,7 @@
 #endif
 
 #include <vulkan/vulkan.h>
+#include "reactor_judgment_engine.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
 #define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
@@ -33,17 +34,6 @@ typedef struct prom_vk_buffer {
   void* mapped;
   VkDeviceSize size;
 } prom_vk_buffer;
-
-typedef enum prom_vk_path_mode {
-  PROM_VK_PATH_DIRECT = 1,
-  PROM_VK_PATH_STAGED_UPLOAD = 2,
-  PROM_VK_PATH_STAGED_UPLOAD_READBACK = 3,
-} prom_vk_path_mode;
-
-typedef enum prom_vk_compute_mode {
-  PROM_VK_COMPUTE_BASELINE = 1,
-  PROM_VK_COMPUTE_TILED = 2,
-} prom_vk_compute_mode;
 
 typedef struct prometheus_runtime {
   uint32_t magic;
@@ -97,8 +87,6 @@ enum {
   PROM_VK_PUSH_FIELD_OFFSET_N = 4,
   PROM_VK_PUSH_FIELD_OFFSET_K = 8,
   PROM_VK_SHADER_PUSH_BYTES = 12,
-  PROM_VK_STAGING_WORK_THRESHOLD = 16384,
-  PROM_VK_TILED_WORK_THRESHOLD = 131072,
 };
 
 /*
@@ -1083,16 +1071,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   size_t b_copy_size;
   size_t c_copy_size;
   uint64_t work_units;
-  uint32_t small_shape;
   uint32_t can_stage;
   uint32_t can_direct;
-  uint32_t allow_fallback;
-  uint32_t readback_required;
   uint32_t tiled_shape;
-  uint32_t fallback_used = 0u;
+  uint32_t readback_required;
   prom_vk_path_mode selected_path;
-  prom_vk_path_mode requested_path;
   prom_vk_compute_mode compute_mode;
+  prom_judgment_facts judgment_facts;
+  prom_judgment_decision judgment_decision;
   VkPipeline selected_pipeline;
   int final_detail = 0;
 
@@ -1148,44 +1134,34 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
     can_stage = 0u;
   }
-  allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
   readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
   work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
-  small_shape = work_units < (uint64_t)PROM_VK_STAGING_WORK_THRESHOLD ? 1u : 0u;
-  tiled_shape = (work_units >= (uint64_t)PROM_VK_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
+  tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
                     : 0u;
-
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) {
-    requested_path = PROM_VK_PATH_DIRECT;
-  } else if ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) {
-    requested_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
-  } else if (can_stage != 0u && small_shape == 0u) {
-    requested_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
-  } else {
-    requested_path = PROM_VK_PATH_DIRECT;
+  memset(&judgment_facts, 0, sizeof(judgment_facts));
+  judgment_facts.m = m;
+  judgment_facts.n = n;
+  judgment_facts.k = k;
+  judgment_facts.work_units = work_units;
+  judgment_facts.can_stage = can_stage;
+  judgment_facts.can_direct = can_direct;
+  judgment_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
+  judgment_facts.readback_required = readback_required;
+  judgment_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
+  judgment_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
+  judgment_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
+  judgment_facts.tiled_shape = tiled_shape;
+  judgment_facts.software_vulkan = rt->software_vulkan;
+  prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
+  if (judgment_decision.success == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
+    return PROM_ERROR;
   }
-  selected_path = requested_path;
-
-  if ((selected_path == PROM_VK_PATH_STAGED_UPLOAD || selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) &&
-      can_stage == 0u) {
-    if (allow_fallback != 0u && can_direct != 0u) {
-      selected_path = PROM_VK_PATH_DIRECT;
-      fallback_used = 1u;
-    } else {
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_CAPABILITY_MISMATCH);
-      return PROM_ERROR;
-    }
-  }
-  if (selected_path == PROM_VK_PATH_DIRECT && can_direct == 0u) {
-    if (can_stage != 0u) {
-      selected_path = (readback_required != 0u) ? PROM_VK_PATH_STAGED_UPLOAD_READBACK : PROM_VK_PATH_STAGED_UPLOAD;
-    } else {
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_CAPABILITY_MISMATCH);
-      return PROM_ERROR;
-    }
-  }
+  selected_path = judgment_decision.selected_path;
+  compute_mode = judgment_decision.compute_mode;
+  final_detail = judgment_decision.final_detail;
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
     if (!ensure_direct_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
@@ -1198,7 +1174,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_a = &rt->direct_a;
     shader_b = &rt->direct_b;
     shader_c = &rt->direct_c;
-    final_detail = fallback_used != 0u ? PROM_DETAIL_PATH_FALLBACK_TO_DIRECT : PROM_DETAIL_PATH_DIRECT;
   } else {
     if (!ensure_staged_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
@@ -1209,15 +1184,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_a = &rt->staged_device_a;
     shader_b = &rt->staged_device_b;
     shader_c = &rt->staged_device_c;
-    final_detail = selected_path == PROM_VK_PATH_STAGED_UPLOAD ? PROM_DETAIL_PATH_STAGED_UPLOAD : PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK;
-  }
-
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) {
-    compute_mode = PROM_VK_COMPUTE_TILED;
-  } else if (tiled_shape != 0u) {
-    compute_mode = PROM_VK_COMPUTE_TILED;
-  } else {
-    compute_mode = PROM_VK_COMPUTE_BASELINE;
   }
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
