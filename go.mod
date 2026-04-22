@@ -1,8 +1,9 @@
 module oct
 
-go 1.23.0
+go 1.24.0
 
 require (
+	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936
 	github.com/xuri/excelize/v2 v2.9.1
 	gonum.org/v1/plot v0.16.0
 )

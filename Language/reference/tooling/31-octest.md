@@ -33,8 +33,10 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.
 - `oct bench <path> --filter <pattern>` runs only benchmarks whose qualified name (`Package.Function`) contains `<pattern>`.
-- `oct bench <path> --profile cpu` emits a deterministic `bench.cpu.pprof` profile artifact for the selected benchmark run.
-- `oct bench <path> --filter <pattern> --profile cpu` emits a CPU profile for only the filtered subset.
+- `oct bench <path> --profile` emits a deterministic `bench.cpu.octagon` benchmark profile artifact by default.
+- `oct bench <path> --profile --profile-format pprof` emits raw `bench.cpu.pprof` output.
+- `oct bench <path> --profile --profile-format both` emits both `.octagon` and `.pprof`.
+- `oct bench <path> --filter <pattern> --profile` profiles only the filtered subset.
 - `oct bench` with `--filter` fails if no benchmark names match the provided pattern.
 - `.octfail` requires one header line: `expect error: "<non-empty substring>"`.
 - `.octfail` passes when compilation fails and the error contains the declared substring.
@@ -75,7 +77,8 @@ oct test Language
 oct artifact Language
 oct bench Language --octagon-out bench.octagon
 oct bench Language --filter MatrixMul
-oct bench Language --filter Signal.HotPath --profile cpu
+oct bench Language --filter Signal.HotPath --profile
+oct bench Language --profile --profile-format pprof
 ```
 
 Invalid:

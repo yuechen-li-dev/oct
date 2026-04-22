@@ -271,34 +271,75 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct prometheus-m1-async [--octagon-out <file.octagon>]\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]\n       oct prometheus-m1-async [--octagon-out <file.octagon>]\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err
 }
 
 func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, error) {
-	options := tester.BenchmarkOptions{}
-	for i := 0; i < len(args); i += 2 {
-		if i+1 >= len(args) {
-			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>] [--filter <pattern>]")
-		}
+	options := tester.BenchmarkOptions{
+		ProfileMode: "cpu",
+	}
+	for i := 0; i < len(args); i++ {
 		flag := args[i]
-		value := args[i+1]
 		switch flag {
 		case "--octagon-out":
+			if i+1 >= len(args) {
+				return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]")
+			}
+			value := args[i+1]
+			i++
 			if !strings.HasSuffix(value, ".octagon") {
 				return tester.BenchmarkOptions{}, fmt.Errorf("bench --octagon-out path must end with .octagon")
 			}
 			options.OctagonOutPath = value
 		case "--profile":
-			if value != "cpu" {
-				return tester.BenchmarkOptions{}, fmt.Errorf("bench --profile must be 'cpu'")
-			}
-			options.ProfileMode = value
-			options.ProfileOutPath = tester.DefaultCPUProfilePath(path)
+			options.ProfileEnabled = true
 		case "--filter":
+			if i+1 >= len(args) {
+				return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]")
+			}
+			i++
+			value := args[i]
 			options.Filter = value
+		case "--profile-format":
+			if i+1 >= len(args) {
+				return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]")
+			}
+			i++
+			value := args[i]
+			if value != "octagon" && value != "pprof" && value != "both" {
+				return tester.BenchmarkOptions{}, fmt.Errorf("bench --profile-format must be one of 'octagon', 'pprof', or 'both'")
+			}
+			options.ProfileFormat = value
 		default:
-			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile <cpu>] [--filter <pattern>]")
+			return tester.BenchmarkOptions{}, fmt.Errorf("usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]")
+		}
+	}
+	if options.ProfileFormat == "" {
+		options.ProfileFormat = "octagon"
+	}
+	if options.ProfileFormat != "octagon" && !options.ProfileEnabled {
+		return tester.BenchmarkOptions{}, fmt.Errorf("bench --profile-format requires --profile")
+	}
+	if options.ProfileEnabled {
+		options.Invocation = "oct bench " + path
+		if options.Filter != "" {
+			options.Invocation += " --filter " + options.Filter
+		}
+		options.Invocation += " --profile"
+		if options.ProfileFormat != "octagon" {
+			options.Invocation += " --profile-format " + options.ProfileFormat
+		}
+		switch options.ProfileFormat {
+		case "octagon":
+			options.ProfileOctagonOutPath = tester.DefaultCPUProfileOctagonPath(path)
+		case "pprof":
+			options.ProfileOutPath = tester.DefaultCPUProfilePath(path)
+			options.ProfileRawOut = options.ProfileOutPath
+		case "both":
+			options.ProfileOutPath = tester.DefaultCPUProfilePath(path)
+			options.ProfileRawOut = options.ProfileOutPath
+			options.ProfileOctagonOutPath = tester.DefaultCPUProfileOctagonPath(path)
 		}
 	}
 	return options, nil

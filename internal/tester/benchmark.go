@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
@@ -18,10 +17,15 @@ import (
 )
 
 type BenchmarkOptions struct {
-	OctagonOutPath string
-	ProfileMode    string
-	ProfileOutPath string
-	Filter         string
+	OctagonOutPath        string
+	ProfileEnabled        bool
+	ProfileFormat         string
+	ProfileMode           string
+	ProfileOctagonOutPath string
+	ProfileOutPath        string
+	ProfileRawOut         string
+	Invocation            string
+	Filter                string
 }
 
 type BenchmarkRun struct {
@@ -101,12 +105,12 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 
 	failed := 0
 	run := BenchmarkRun{Cases: make([]BenchmarkCaseResult, 0, len(benchmarks))}
-	stopProfile, err := startBenchmarkProfile(path, options)
+	profiler, err := startBenchmarkProfile(path, options)
 	if err != nil {
 		return err
 	}
-	if stopProfile != nil {
-		defer stopProfile()
+	if profiler != nil {
+		defer profiler.Stop()
 	}
 	for _, benchmark := range benchmarks {
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
@@ -139,6 +143,24 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 	_, _ = fmt.Fprintf(stdout, "Result: %d benchmark(s) passed, %d failed\n", len(benchmarks)-failed, failed)
 	if failed > 0 {
 		return fmt.Errorf("%d benchmark(s) failed", failed)
+	}
+	if profiler != nil {
+		profiler.Stop()
+		report, err := profiler.Finalize(BenchmarkProfileInputs{
+			Run:        run,
+			RootPath:   path,
+			Invocation: options.Invocation,
+			Filter:     options.Filter,
+		})
+		if err != nil {
+			return err
+		}
+		if report.OctagonPath != "" {
+			if err := interpret.WriteOctagon(report.OctagonPath, benchmarkProfileToOctagonValue(report)); err != nil {
+				return err
+			}
+		}
+		writeProfileSummary(stdout, report)
 	}
 	if options.OctagonOutPath != "" {
 		if err := interpret.WriteOctagon(options.OctagonOutPath, benchmarkRunToOctagonValue(run)); err != nil {
@@ -284,32 +306,24 @@ func DefaultCPUProfilePath(path string) string {
 	return filepath.Join(path, "bench.cpu.pprof")
 }
 
-func startBenchmarkProfile(path string, options BenchmarkOptions) (func(), error) {
-	if options.ProfileMode == "" {
+func DefaultCPUProfileOctagonPath(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		dir := filepath.Dir(path)
+		base := filepath.Base(path)
+		return filepath.Join(dir, base+".bench.cpu.octagon")
+	}
+	return filepath.Join(path, "bench.cpu.octagon")
+}
+
+func startBenchmarkProfile(path string, options BenchmarkOptions) (*benchmarkProfiler, error) {
+	if !options.ProfileEnabled {
 		return nil, nil
 	}
 	if options.ProfileMode != "cpu" {
 		return nil, fmt.Errorf("unsupported benchmark profile mode: %s", options.ProfileMode)
 	}
-	profilePath := options.ProfileOutPath
-	if profilePath == "" {
-		profilePath = DefaultCPUProfilePath(path)
-	}
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
-		return nil, err
-	}
-	file, err := os.Create(profilePath)
-	if err != nil {
-		return nil, err
-	}
-	if err := pprof.StartCPUProfile(file); err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return func() {
-		pprof.StopCPUProfile()
-		_ = file.Close()
-	}, nil
+	return newBenchmarkProfiler(path, options)
 }
 
 func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
