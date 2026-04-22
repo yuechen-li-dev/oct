@@ -137,3 +137,89 @@ Two explicit gaps were surfaced during the port and left visible by design:
 - Anonymous callback functions are still rejected in this environment, so generic row-major array -> matrix conversion via captured callbacks remains unavailable.
 
 M0/M1 now use matrix-native inputs, reads, **and writes** with shape metadata. M2 remains unchanged and still flat-array-based by milestone scope.
+
+## M3 scope
+
+M3 organizes the accumulated SGEMM variants into an explicit selection surface and introduces a first deterministic policy prototype based on matrix structure only.
+
+### Variant families (before pruning)
+
+- **Direct family**:
+  - `MatMulBaseline`
+  - `MatMul_IKJ`
+  - `MatMul_KIJ`
+  - `MatMul_Blocked`
+  - `MatMul_Blocked_IKJ`
+  - `MatMul_KBlocked`
+  - `MatMul_KBlocked_IKJ`
+- **Staged family**:
+  - `MatMul_Staged`
+  - `MatMul_Staged_IKJ`
+
+### Strategy surface introduced
+
+M3 introduces an experiment-level enum surface:
+
+- `MatMulStrategy.Baseline`
+- `MatMulStrategy.IKJ`
+- `MatMulStrategy.KIJ`
+- `MatMulStrategy.Blocked`
+- `MatMulStrategy.BlockedIKJ`
+- `MatMulStrategy.KBlocked`
+- `MatMulStrategy.KBlockedIKJ`
+- `MatMulStrategy.StagedIKJ`
+
+`MatMulWithStrategy(...)` centralizes dispatch to retained implementations and keeps per-variant behavior unchanged.
+
+### Heuristic policy prototype (`ChooseStrategy`)
+
+The initial chooser is deterministic and uses only structural matrix signals:
+
+- `m`, `n`, `k` dimensions
+- output area (`m * n`)
+- K dominance relative to outer dimensions
+
+Current policy intent:
+
+- very small problems choose `IKJ`
+- K-dominant problems choose `KBlockedIKJ`
+- larger output surfaces choose `BlockedIKJ` unless K is also large
+- medium balanced cases choose `KBlocked` when K/reduction pressure is elevated
+- fallback chooses `Blocked`
+
+No timing, hardware, or Octomata assumptions are used.
+
+### Variant pruning and justification
+
+M3 prunes `MatMul_Staged` and keeps `MatMul_Staged_IKJ` as the staged-family representative.
+
+Justification:
+
+- `MatMul_Staged` and `MatMul_Staged_IKJ` share the same staging phases (load/copy, compute, accumulate).
+- The only difference is local loop order during compute.
+- Loop-order differentiation is already represented in the direct family (`Baseline`/`IKJ`/`KIJ`) and K-blocked direct family (`KBlocked`/`KBlocked_IKJ`).
+- Retaining both staged variants duplicates that axis inside the same staged mechanism without adding a distinct structural family.
+
+This keeps staged exploration present while reducing redundant combinatorics in the selection surface.
+
+### Correctness confirmation
+
+M3 `.octest` coverage validates:
+
+- strategy-dispatch equivalence to baseline across retained strategies and representative square/rectangular shapes
+- deterministic and expected structural behavior of `ChooseStrategy(...)`
+- direct-family and staged-family cross-consistency (`KBlocked_IKJ` vs `Staged_IKJ`)
+- edge-case rejections for shape mismatch and invalid block parameters via strategy dispatch
+
+### Structural observations (non-performance)
+
+- The strategy surface makes algorithm intent explicit and gives a single integration point for future policy work.
+- Direct-family variants remain the most granular loop-structure knobs.
+- Staged-family structure remains useful as a distinct mechanism, but one representative staged kernel is sufficient at this phase.
+- Uncertainty remains around where staged paths should be selected in future policy iterations; M3 therefore keeps staged selection explicit but conservative.
+
+### Inconsistency note surfaced
+
+M2 was originally flat-array based, while M0/M1 had already moved to matrix-native inputs/shape metadata.
+
+M3 aligns M2 with matrix-native indexing and shapes to match current language-supported matrix read/write conventions and keep the lab surface consistent.
