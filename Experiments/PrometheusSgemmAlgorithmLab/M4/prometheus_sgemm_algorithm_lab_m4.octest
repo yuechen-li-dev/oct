@@ -26,21 +26,91 @@ fn StrategyDispatchMatchesBaselineOnRepresentativeShapes() -> Void {
 }
 
 [Fact]
-fn ChooseStrategyFollowsM5DirectionalityOnRepresentativeShapes() -> Void {
-    Assert.Equal("SingleCall", FamilyLabel(ChooseStrategyUtility(32, 32, 32)), "32x32x32 should prefer SingleCall")
-    Assert.Equal("Blocked", FamilyLabel(ChooseStrategyUtility(16, 16, 16)), "16x16x16 should prefer Blocked")
-    Assert.Equal("KDecomposition", FamilyLabel(ChooseStrategyUtility(16, 16, 512)), "16x16x512 should prefer KDecomposition")
-    Assert.Equal("KDecomposition", FamilyLabel(ChooseStrategyUtility(16, 8, 64)), "16x64 * 64x8 should prefer KDecomposition")
+fn ChooseDecisionFollowsM6BoundaryDirectionality() -> Void {
+    Assert.Equal("Blocked", FamilyLabel(DecisionStrategy(ChooseDecision(8, 8, 8))), "8x8x8 should prefer Blocked")
+    Assert.Equal("Blocked", FamilyLabel(DecisionStrategy(ChooseDecision(12, 12, 12))), "12x12x12 should prefer Blocked")
+    Assert.Equal("Blocked", FamilyLabel(DecisionStrategy(ChooseDecision(16, 16, 16))), "16x16x16 should prefer Blocked")
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(ChooseDecision(20, 20, 20))), "20x20x20 should prefer SingleCall")
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(ChooseDecision(24, 24, 24))), "24x24x24 should prefer SingleCall")
+
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(ChooseDecision(32, 32, 32))), "32x32x32 should prefer SingleCall")
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(ChooseDecision(40, 40, 40))), "40x40x40 should prefer SingleCall")
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(ChooseDecision(48, 48, 48))), "48x48x48 should prefer SingleCall")
+
+    Assert.Equal("KDecomposition", FamilyLabel(DecisionStrategy(ChooseDecision(16, 8, 64))), "16x64 * 64x8 should prefer KDecomposition")
+    Assert.Equal("KDecomposition", FamilyLabel(DecisionStrategy(ChooseDecision(8, 16, 128))), "8x128 * 128x16 should prefer KDecomposition")
+    Assert.Equal("KDecomposition", FamilyLabel(DecisionStrategy(ChooseDecision(8, 8, 256))), "8x8x256 should prefer KDecomposition")
+    Assert.Equal("KDecomposition", FamilyLabel(DecisionStrategy(ChooseDecision(16, 16, 512))), "16x16x512 should prefer KDecomposition")
 }
 
 [Fact]
 fn ChooseStrategyIsDeterministic() -> Void {
-    let first = ChooseStrategyUtility(14, 10, 20)
-    let second = ChooseStrategyUtility(14, 10, 20)
-    let third = ChooseStrategyUtility(14, 10, 20)
+    let first = ChooseDecision(14, 10, 20)
+    let second = ChooseDecision(14, 10, 20)
+    let third = ChooseDecision(14, 10, 20)
 
-    Assert.Equal(first, second, "first and second selection")
-    Assert.Equal(second, third, "second and third selection")
+    Assert.Equal(first.Strategy, second.Strategy, "first and second strategy")
+    Assert.Equal(first.BlockSize, second.BlockSize, "first and second block size")
+    Assert.Equal(first.KBlock, second.KBlock, "first and second k block")
+    Assert.Equal(second.Strategy, third.Strategy, "second and third strategy")
+    Assert.Equal(second.BlockSize, third.BlockSize, "second and third block size")
+    Assert.Equal(second.KBlock, third.KBlock, "second and third k block")
+}
+
+[Fact]
+fn ChooseDecisionUsesRetainedFamiliesOnly() -> Void {
+    let familyS32 = FamilyLabel(DecisionStrategy(ChooseDecision(32, 32, 32)))
+    let familyS16 = FamilyLabel(DecisionStrategy(ChooseDecision(16, 16, 16)))
+    let familyKHeavy = FamilyLabel(DecisionStrategy(ChooseDecision(16, 16, 512)))
+    let familyRect = FamilyLabel(DecisionStrategy(ChooseDecision(16, 8, 64)))
+
+    Assert.True(familyS32 == "SingleCall" or familyS32 == "Blocked" or familyS32 == "KDecomposition", "32x32x32 stays in retained families")
+    Assert.True(familyS16 == "SingleCall" or familyS16 == "Blocked" or familyS16 == "KDecomposition", "16x16x16 stays in retained families")
+    Assert.True(familyKHeavy == "SingleCall" or familyKHeavy == "Blocked" or familyKHeavy == "KDecomposition", "16x16x512 stays in retained families")
+    Assert.True(familyRect == "SingleCall" or familyRect == "Blocked" or familyRect == "KDecomposition", "16x64*64x8 stays in retained families")
+}
+
+[Fact]
+fn ChooseStrategyBridgeMatchesUtilityChooser() -> Void {
+    let a = Matrix.tabulate(16, 64, ProbeA)
+    let b = Matrix.tabulate(64, 8, ProbeB)
+
+    let selectedByBridge = FamilyLabel(ChooseStrategy(a, b)!)
+    let selectedByUtility = FamilyLabel(DecisionStrategy(ChooseDecision(16, 8, 64)))
+
+    Assert.Equal(selectedByUtility, selectedByBridge, "matrix chooser should delegate to utility chooser")
+}
+
+[Fact]
+fn ChooseDecisionEmitsSaneCoarseParameters() -> Void {
+    let single = ChooseDecision(32, 32, 32)
+    let blocked = ChooseDecision(12, 12, 12)
+    let kHeavy = ChooseDecision(16, 16, 512)
+
+    Assert.Equal("SingleCall", FamilyLabel(DecisionStrategy(single)), "32x32x32 family")
+    Assert.Equal(0, single.BlockSize, "single-call should not emit blockSize")
+    Assert.Equal(0, single.KBlock, "single-call should not emit kBlock")
+
+    Assert.Equal("Blocked", FamilyLabel(DecisionStrategy(blocked)), "12x12x12 family")
+    Assert.True(blocked.BlockSize == 2 or blocked.BlockSize == 4 or blocked.BlockSize == 8 or blocked.BlockSize == 16, "blocked block size in coarse set")
+    Assert.Equal(0, blocked.KBlock, "blocked should not emit kBlock")
+
+    Assert.Equal("KDecomposition", FamilyLabel(DecisionStrategy(kHeavy)), "16x16x512 family")
+    Assert.Equal(0, kHeavy.BlockSize, "k decomposition should not emit blockSize")
+    Assert.True(kHeavy.KBlock == 4 or kHeavy.KBlock == 8 or kHeavy.KBlock == 16 or kHeavy.KBlock == 32, "kBlock in coarse set")
+}
+
+[Fact]
+fn UtilityPolicyFieldsDoNotChangeStaticChooserOutcomeInStandaloneCalls() -> Void {
+    let plainFirst = FamilyLabel(DecisionStrategy(ChooseDecision(8, 12, 16)))
+    let plainSecond = FamilyLabel(DecisionStrategy(ChooseDecision(8, 12, 24)))
+    Assert.Equal("Blocked", plainFirst, "plain first boundary point")
+    Assert.Equal("KDecomposition", plainSecond, "plain second boundary point flips without policy")
+
+    let policyFirst = FamilyLabel(DecisionStrategy(ChooseDecisionWithPolicy(8, 12, 16, 12, 0)))
+    let policySecond = FamilyLabel(DecisionStrategy(ChooseDecisionWithPolicy(8, 12, 24, 12, 0)))
+    Assert.Equal(plainFirst, policyFirst, "policy fields should not alter static one-shot decision at first point")
+    Assert.Equal(plainSecond, policySecond, "policy fields should not alter static one-shot decision at second point")
 }
 
 [Fact]
@@ -152,6 +222,18 @@ record M4CaseSelection {
     ChosenStrategy: String
 }
 
+record M6DecisionProbeSelection {
+    Shape: String
+    M: Int
+    N: Int
+    K: Int
+    Strategy: String
+    Family: String
+    BlockSize: Int
+    KBlock: Int
+    StabilizedStrategy: String
+}
+
 [Artifact]
 fn EmitM4ChooseStrategySelections() -> Void {
     let selections = [
@@ -167,6 +249,27 @@ fn EmitM4ChooseStrategySelections() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M4/m4_choose_strategy.octagon", selections)
 }
 
+[Artifact]
+fn EmitM6DecisionProbeSelections() -> Void {
+    let selections = [
+        DecisionSelectionForShape("S8x8x8", 8, 8, 8),
+        DecisionSelectionForShape("S12x12x12", 12, 12, 12),
+        DecisionSelectionForShape("S16x16x16", 16, 16, 16),
+        DecisionSelectionForShape("S20x20x20", 20, 20, 20),
+        DecisionSelectionForShape("S24x24x24", 24, 24, 24),
+        DecisionSelectionForShape("S32x32x32", 32, 32, 32),
+        DecisionSelectionForShape("S40x40x40", 40, 40, 40),
+        DecisionSelectionForShape("S48x48x48", 48, 48, 48),
+        DecisionSelectionForShape("R16x64x8", 16, 8, 64),
+        DecisionSelectionForShape("R8x128x16", 8, 16, 128),
+        DecisionSelectionForShape("K8x8x256", 8, 8, 256),
+        DecisionSelectionForShape("K16x16x512", 16, 16, 512),
+        DecisionSelectionForShape("K12x12x192", 12, 12, 192),
+        DecisionSelectionForShape("K16x16x384", 16, 16, 384)
+    ]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M4/m6_decision_probe.octagon", selections)
+}
+
 fn SelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M4CaseSelection {
     let a = Matrix.tabulate(m, k, ProbeA)
     let b = Matrix.tabulate(k, n, ProbeB)
@@ -177,6 +280,22 @@ fn SelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M4CaseSelection {
         N: n
         K: k
         ChosenStrategy: StrategyLabel(chosen)
+    }
+}
+
+fn DecisionSelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M6DecisionProbeSelection {
+    let decision = ChooseDecision(m, n, k)
+    let stabilized = ChooseDecisionWithPolicy(m, n, k, 12, 2)
+    return M6DecisionProbeSelection {
+        Shape: shape
+        M: m
+        N: n
+        K: k
+        Strategy: decision.Strategy
+        Family: FamilyLabel(DecisionStrategy(decision))
+        BlockSize: decision.BlockSize
+        KBlock: decision.KBlock
+        StabilizedStrategy: stabilized.Strategy
     }
 }
 

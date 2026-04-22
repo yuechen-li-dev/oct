@@ -11,6 +11,12 @@ enum MatMulStrategy {
     StagedIKJ
 }
 
+record MatMulDecision {
+    Strategy: String
+    BlockSize: Int
+    KBlock: Int
+}
+
 fn PrometheusMatMulBridge(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let inputsOk = ValidateMatMulInputs(A, B)?
     if not inputsOk {
@@ -203,16 +209,119 @@ fn ChooseStrategy(A: Matrix<Float>, B: Matrix<Float>) -> MatMulStrategy ! Error 
         return error("matmul validation failed")
     }
 
-    return ChooseStrategyUtility(A.rows, B.cols, A.cols)
+    return DecisionStrategy(ChooseDecision(A.rows, B.cols, A.cols))
 }
 
 fn ChooseStrategyUtility(m: Int, n: Int, k: Int) -> MatMulStrategy {
-    return when utility {
+    return DecisionStrategy(ChooseDecision(m, n, k))
+}
+
+fn ChooseDecision(m: Int, n: Int, k: Int) -> MatMulDecision {
+    let strategy = when utility {
         case MatMulStrategy.KBlocked when true score ScoreKDecomposition(m, n, k)
         case MatMulStrategy.Baseline when true score ScoreSingleCall(m, n, k)
         case MatMulStrategy.Blocked when true score ScoreBlocked(m, n, k)
         else MatMulStrategy.Baseline
     }
+    return DecisionForStrategy(strategy, m, n, k)
+}
+
+fn ChooseDecisionWithPolicy(m: Int, n: Int, k: Int, hysteresis: Int, minCommit: Int) -> MatMulDecision {
+    let strategy = when utility { hysteresis: hysteresis min_commit: minCommit } {
+        case MatMulStrategy.KBlocked when true score ScoreKDecomposition(m, n, k)
+        case MatMulStrategy.Baseline when true score ScoreSingleCall(m, n, k)
+        case MatMulStrategy.Blocked when true score ScoreBlocked(m, n, k)
+        else MatMulStrategy.Baseline
+    }
+    return DecisionForStrategy(strategy, m, n, k)
+}
+
+fn ChooseStrategyUtilityWithPolicy(m: Int, n: Int, k: Int, hysteresis: Int, minCommit: Int) -> MatMulStrategy {
+    return DecisionStrategy(ChooseDecisionWithPolicy(m, n, k, hysteresis, minCommit))
+}
+
+fn DecisionStrategy(decision: MatMulDecision) -> MatMulStrategy {
+    return switch decision.Strategy {
+        case "Blocked" => MatMulStrategy.Blocked
+        case "KBlocked" => MatMulStrategy.KBlocked
+        else => MatMulStrategy.Baseline
+    }
+}
+
+fn DecisionForStrategy(strategy: MatMulStrategy, m: Int, n: Int, k: Int) -> MatMulDecision {
+    return switch strategy {
+        case MatMulStrategy.Blocked => MatMulDecision {
+            Strategy: "Blocked"
+            BlockSize: ChooseBlockedBlockSize(m, n, k)
+            KBlock: 0
+        }
+        case MatMulStrategy.KBlocked => MatMulDecision {
+            Strategy: "KBlocked"
+            BlockSize: 0
+            KBlock: ChooseKBlockSize(m, n, k)
+        }
+        case MatMulStrategy.Baseline => MatMulDecision {
+            Strategy: "Baseline"
+            BlockSize: 0
+            KBlock: 0
+        }
+        case MatMulStrategy.IKJ => MatMulDecision {
+            Strategy: "Baseline"
+            BlockSize: 0
+            KBlock: 0
+        }
+        case MatMulStrategy.KIJ => MatMulDecision {
+            Strategy: "Baseline"
+            BlockSize: 0
+            KBlock: 0
+        }
+        case MatMulStrategy.BlockedIKJ => MatMulDecision {
+            Strategy: "Blocked"
+            BlockSize: ChooseBlockedBlockSize(m, n, k)
+            KBlock: 0
+        }
+        case MatMulStrategy.KBlockedIKJ => MatMulDecision {
+            Strategy: "KBlocked"
+            BlockSize: 0
+            KBlock: ChooseKBlockSize(m, n, k)
+        }
+        case MatMulStrategy.StagedIKJ => MatMulDecision {
+            Strategy: "Baseline"
+            BlockSize: 0
+            KBlock: 0
+        }
+    }
+}
+
+fn ChooseBlockedBlockSize(m: Int, n: Int, k: Int) -> Int {
+    let area = m * n
+    if m <= 12 and n <= 12 and k <= 12 {
+        return 2
+    }
+    if area <= 400 {
+        return 4
+    }
+    if area <= 1024 {
+        return 8
+    }
+    return 16
+}
+
+fn ChooseKBlockSize(m: Int, n: Int, k: Int) -> Int {
+    let shapeSignal = m + n
+    if shapeSignal < 0 {
+        return 4
+    }
+    if k >= 512 {
+        return 32
+    }
+    if k >= 256 {
+        return 16
+    }
+    if k >= 128 {
+        return 8
+    }
+    return 4
 }
 
 fn ScoreSingleCall(m: Int, n: Int, k: Int) -> Int {

@@ -674,3 +674,64 @@ Each score function includes both positive and negative terms. In particular, `K
 - Transitional shapes near score boundaries may flip families with small shape changes.
 - Future hardware/driver/runtime updates could shift family frontiers and require retuning.
 - If future backend work reintroduces a truly distinct staged path, M5’s three-family scorer would become structurally incomplete and must be revisited explicitly.
+
+## M6 scope
+
+M6 refines the M5 utility chooser into a structured decision output (`family + coarse parameters`) and adds a bounded boundary-probe surface centered on likely family transition zones.
+
+### 1) Boundary probe shapes used
+
+The probe set is encoded in `EmitM6DecisionProbeSelections` and covers:
+
+- small-square: `8x8x8`, `12x12x12`, `16x16x16`, `20x20x20`, `24x24x24`
+- balanced medium-square: `24x24x24`, `32x32x32`, `40x40x40`, `48x48x48`
+- rectangular / K-heavy: `16x64*64x8`, `8x128*128x16`, `8x8x256`, `16x16x512`, plus neighbors `12x12x192`, `16x16x384`
+
+### 2) Parameter sets tested / emitted
+
+M6 introduces coarse decision-time parameter regimes:
+
+- Blocked family `blockSize` in `{2, 4, 8, 16}`
+- KDecomposition family `kBlock` in `{4, 8, 16, 32}`
+
+SingleCall emits neutral defaults (`blockSize=0`, `kBlock=0`).
+
+### 3) Family-boundary observations (from chooser + M4d context)
+
+- `Blocked` remains concentrated in very small balanced square cases (e.g., `8/12/16` cubes).
+- `SingleCall` dominates balanced medium squares (`24/32/40/48` cubes).
+- `KDecomposition` remains preferred in rectangular and K-heavy regions.
+
+This matches the M4d correction direction (reduce K over-selection in low-k balanced regions) while keeping K-heavy wins.
+
+### 4) `Blocked` survival decision
+
+`Blocked` is retained as a narrow specialist family, not a general default.
+
+### 5) Chosen coarse parameter regimes
+
+- `Blocked`: favor smaller tiles for tiny squares (`2`/`4`), move to `8`/`16` as area rises.
+- `KDecomposition`: scale `kBlock` with K pressure (`4 -> 8 -> 16 -> 32` as K increases).
+
+### 6) Optional `hysteresis` / `min_commit` evaluation
+
+M6 keeps plain `when utility` as the default chooser and adds explicit policy-evaluation entry points via:
+
+- `ChooseDecision(...)` (plain)
+- `ChooseDecisionWithPolicy(..., hysteresis, min_commit)` (optional policy fields)
+
+Focused boundary tests in this standalone chooser shape showed no material decision change versus plain utility for the tested boundary pair, so `hysteresis`/`min_commit` are not yet justified as mandatory at this milestone.
+
+### 7) What remains uncertain
+
+- Final family boundary placement and any prune decision should still be validated on Windows-native Prometheus runs.
+- The exact hysteresis/min-commit settings are not yet calibrated for production use.
+- Current parameter mapping is intentionally coarse; no fine-grained optimization is claimed.
+
+### 8) M7 recommendation
+
+Proceed to controller formalization only after running the M6 probe on Windows-native Prometheus and confirming family survival + coarse parameter regions there. Until then, treat M6 as a structured-controller precursor with explicit Windows-native validation pending.
+
+### Windows-native measurement rule and current gap
+
+M6 adds `tools/prometheus/run_m6_windows_native.ps1` to standardize the required native run path (`oct artifact` + `oct bench` capture). In this cloud environment that Windows-native path was not executed, so final boundary truth and any prune-level conclusion remain gated on that native run.
