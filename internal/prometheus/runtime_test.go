@@ -35,6 +35,9 @@ func TestRunSGEMMCPUPathPassesStarterCorrectness(t *testing.T) {
 		if !run.Correctness.Pass {
 			t.Fatalf("expected correctness pass, got %#v", run.Correctness)
 		}
+		if run.DetailName != "cpu" {
+			t.Fatalf("expected cpu detail name, got %q", run.DetailName)
+		}
 	}
 }
 
@@ -55,6 +58,9 @@ func TestRunSGEMMPrometheusUnavailableFallsBackExplicitly(t *testing.T) {
 	if run.UsedBackend != BackendCPU {
 		t.Fatalf("expected cpu fallback backend, got %s", run.UsedBackend)
 	}
+	if run.DetailName != "fallback_cpu" {
+		t.Fatalf("expected fallback detail name, got %q", run.DetailName)
+	}
 }
 
 func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
@@ -67,7 +73,7 @@ func TestRunSGEMMPrometheusBridgeInitFailureIsExplicit(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: false}, nil }),
 					reactorSymbolSGEMM: reactorSGEMM(func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error) {
@@ -107,7 +113,7 @@ func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 1}, nil
@@ -140,6 +146,9 @@ func TestRunSGEMMPrometheusPathCallsNativeSGEMMAndStaysCorrect(t *testing.T) {
 	if run.Status.Kind != RunStatusOK || !run.Correctness.Pass {
 		t.Fatalf("expected ok+correctness, got status=%s correctness=%#v", run.Status.String(), run.Correctness)
 	}
+	if run.DetailName != "not_applicable" {
+		t.Fatalf("expected default native detail name when stub omits detail, got %q", run.DetailName)
+	}
 }
 
 func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) {
@@ -153,7 +162,7 @@ func TestRunCompiledMatMulMMUsesPrometheusBackendAndReturnsMatrix(t *testing.T) 
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 2}, nil
@@ -222,7 +231,7 @@ func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 1}, nil
@@ -251,6 +260,9 @@ func TestRunSGEMMPrometheusNativeSGEMMFailureIsExplicit(t *testing.T) {
 	if run.Status.Kind != RunStatusError || run.Status.ErrorStage != StageSubmit || run.Status.ErrorCode != -77 {
 		t.Fatalf("expected explicit submit error, got %s", run.Status.String())
 	}
+	if run.DetailCode != -77 || run.DetailName != "detail_-77" {
+		t.Fatalf("expected explicit detail propagation, got code=%d name=%q", run.DetailCode, run.DetailName)
+	}
 }
 
 func TestWriteOctagonReportIncludesRequiredFields(t *testing.T) {
@@ -267,7 +279,7 @@ func TestWriteOctagonReportIncludesRequiredFields(t *testing.T) {
 		t.Fatalf("read report: %v", err)
 	}
 	text := string(body)
-	for _, required := range []string{"BackendRequested", "BackendUsed", "Status", "CorrectnessPass", "MaxAbsError", "MaxRelError", "WallTimeNs"} {
+	for _, required := range []string{"BackendRequested", "BackendUsed", "Status", "DetailCode", "DetailName", "CorrectnessPass", "MaxAbsError", "MaxRelError", "WallTimeNs"} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("report missing field token %q", required)
 		}
@@ -292,7 +304,7 @@ func TestRunSGEMMReportsSoftwareVulkanEnvironment(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 3}, nil
@@ -330,7 +342,7 @@ func TestRunSGEMMReportsWindowsNativeVulkanEnvironment(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 2}, nil
@@ -417,7 +429,7 @@ func TestRunSGEMMReportingInvariantsNoFalseFallbackOrSuccess(t *testing.T) {
 			reactorPath: {
 				symbols: map[string]any{
 					reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-					reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+					reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 					reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 					reactorSymbolProbe: reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) {
 						return reactorCaps{Available: true, BackendType: 2}, nil

@@ -40,11 +40,33 @@ Benchmark `.octagon` artifacts preserve per-case:
 `ReportedWallNs` is the inner Prometheus `wall=` value when the benchmark emits
 one; CPU cases keep it at `0`.
 
+## Current M1 validation milestone
+
+`M1` is the real-hardware validation milestone for the current reactor stack.
+
+It keeps the benchmark surface deliberately small and focuses on:
+
+- tiny direct baseline correctness
+- forced direct+tiled reachability
+- forced staged baseline reachability
+- forced staged+tiled reachability
+- non-multiple staged+tiled correctness
+- rectangular staged+tiled correctness
+- natural auto-selected staged+tiled reachability
+
+Async validation is intentionally narrow and is driven by the repo-local M1
+runner rather than by trying to encode the full async lifecycle inside ordinary
+`[Benchmark]` functions.
+
 ## Characterization runner
 
 Use the repo-local Windows runner:
 
 `tools/prometheus/run_p6c_windows_native.ps1`
+
+For M1 real-hardware validation use:
+
+`tools/prometheus/run_m1_windows_native.ps1`
 
 That runner:
 
@@ -54,8 +76,12 @@ That runner:
 - performs warmup runs plus repeated measured runs
 - stores per-run `.octagon` artifacts under `out/prometheus/native/p6c/`
 - writes aggregated summaries to:
-  - `out/prometheus/native/p6c/summary.json`
-  - `out/prometheus/native/p6c/summary.md`
+- `out/prometheus/native/p6c/summary.json`
+- `out/prometheus/native/p6c/summary.md`
+
+The M1 runner writes structured validation artifacts under:
+
+- `out/prometheus/benchmark_harness_m1/`
 
 ## Primary report
 

@@ -1,0 +1,71 @@
+package Main
+
+[Benchmark]
+fn M1_TinyDirectBaseline_M002_N002_K002() -> Void {
+    let a = Matrix.fill(2, 2, 1.25)
+    let b = Matrix.fill(2, 2, -0.75)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_ForcedDirectTiled_M032_N032_K032() -> Void {
+    let a = Matrix.fill(32, 32, 0.5)
+    let b = Matrix.fill(32, 32, -1.25)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_ForcedStagedBaseline_M016_N016_K016() -> Void {
+    let a = Matrix.fill(16, 16, 1.0)
+    let b = Matrix.fill(16, 16, 0.25)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_ForcedStagedTiled_M032_N032_K032() -> Void {
+    let a = Matrix.fill(32, 32, -0.5)
+    let b = Matrix.fill(32, 32, 1.75)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_ForcedStagedTiledTails_M035_N029_K019() -> Void {
+    let a = Matrix.fill(35, 19, 0.875)
+    let b = Matrix.fill(19, 29, -0.625)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_ForcedStagedTiledRectangular_M128_N016_K064() -> Void {
+    let a = Matrix.fill(128, 64, 1.125)
+    let b = Matrix.fill(64, 16, -0.375)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}
+
+[Benchmark]
+fn M1_NaturalAutoStagedTiled_M128_N128_K032() -> Void {
+    let a = Matrix.fill(128, 32, -1.5)
+    let b = Matrix.fill(32, 128, 0.75)
+    PROMETHEUS {
+        let c = a @ b
+        ConsumeMatrix(c)
+    }
+}

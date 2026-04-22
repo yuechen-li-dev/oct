@@ -42,6 +42,8 @@ type SGEMMRunResult struct {
 	UsedBackend      Backend
 	Shape            Shape
 	Status           RunStatus
+	DetailCode       int
+	DetailName       string
 	Correctness      CorrectnessResult
 	CPUTimeNs        int64
 	VulkanTimeNs     int64
@@ -53,6 +55,29 @@ type SGEMMRunResult struct {
 
 type CorpusReport struct {
 	Runs []SGEMMRunResult
+}
+
+type AsyncValidationResult struct {
+	RequestedBackend  Backend
+	UsedBackend       Backend
+	Shape             Shape
+	Outcome           string
+	Environment       string
+	SubmitStage       string
+	SubmitDetailCode  int
+	SubmitDetailName  string
+	QueryLifecycle    string
+	QueryReady        bool
+	QueryFailed       bool
+	QueryConsumed     bool
+	QueryOutstanding  int
+	QueryAttempts     int
+	ConsumeStage      string
+	ConsumeDetailCode int
+	ConsumeDetailName string
+	Correctness       CorrectnessResult
+	WallTimeNs        int64
+	Notes             string
 }
 
 var StarterCorpus = []Shape{
@@ -112,6 +137,8 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 		CPUTimeNs:        0,
 		VulkanTimeNs:     0,
 		VulkanEnv:        "not_applicable",
+		DetailCode:       0,
+		DetailName:       "not_applicable",
 	}
 
 	reference, cpuDuration := timedCPUSGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
@@ -122,6 +149,7 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 		result.WallTimeNs = result.CPUTimeNs
 		result.UsedBackend = BackendCPU
 		result.Status = OkStatus()
+		result.DetailName = "cpu"
 		result.Correctness = compareAgainstOracle(reference, actual)
 		if !result.Correctness.Pass {
 			return actual, result, fmt.Errorf("correctness gate failed for backend=%s", result.UsedBackend)
@@ -138,6 +166,7 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 			result.Status = FallbackStatus("prometheus_unavailable")
 			result.Notes = fmt.Sprintf("prometheus reactor unavailable; used cpu fallback: %v", err)
 			result.VulkanEnv = "unavailable"
+			result.DetailName = "fallback_cpu"
 			result.Correctness = compareAgainstOracle(reference, actual)
 			if !result.Correctness.Pass {
 				return actual, result, fmt.Errorf("correctness gate failed for fallback backend=%s", result.UsedBackend)
@@ -146,6 +175,8 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 		}
 		result.UsedBackend = BackendPrometheus
 		result.Status = ErrorStatus(StageInit, bridgeIssueStatusCode(err))
+		result.DetailCode = bridgeIssueStatusCode(err)
+		result.DetailName = detailCodeName(result.DetailCode)
 		return nil, result, err
 	}
 	defer rt.Close()
@@ -155,12 +186,14 @@ func runSGEMMWithOutput(req SGEMMRequest) ([]float32, SGEMMRunResult, error) {
 	}
 
 	start := time.Now()
-	actual, status, err := rt.SGEMM(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
+	actual, callStatus, err := rt.SGEMMWithStatus(req.Shape.M, req.Shape.N, req.Shape.K, req.A, req.B)
 	result.VulkanTimeNs = time.Since(start).Nanoseconds()
 	result.WallTimeNs = result.VulkanTimeNs
 	result.UsedBackend = BackendPrometheus
+	result.DetailCode = callStatus.DetailCode
+	result.DetailName = detailCodeName(callStatus.DetailCode)
 	if err != nil {
-		result.Status = status
+		result.Status = ErrorStatus(stageFromNativeCode(callStatus.StageCode), callStatus.DetailCode)
 		return nil, result, err
 	}
 
@@ -355,7 +388,7 @@ func reportToOctagon(report CorpusReport) interpret.Value {
 	for _, run := range report.Runs {
 		runs = append(runs, interpret.Value{Kind: interpret.ValueRecord, Record: interpret.RecordValue{
 			TypeName:   "PrometheusSgemmRun",
-			FieldOrder: []string{"BackendRequested", "BackendUsed", "M", "N", "K", "Status", "CorrectnessPass", "MaxAbsError", "MaxRelError", "FailingElementCount", "FirstFailingIndex", "FirstExpectedValue", "FirstActualValue", "CPUTimeNs", "VulkanTimeNs", "VulkanEnv", "TimingMode", "WallTimeNs", "Notes"},
+			FieldOrder: []string{"BackendRequested", "BackendUsed", "M", "N", "K", "Status", "DetailCode", "DetailName", "CorrectnessPass", "MaxAbsError", "MaxRelError", "FailingElementCount", "FirstFailingIndex", "FirstExpectedValue", "FirstActualValue", "CPUTimeNs", "VulkanTimeNs", "VulkanEnv", "TimingMode", "WallTimeNs", "Notes"},
 			Fields: map[string]interpret.Value{
 				"BackendRequested":    {Kind: interpret.ValueString, Text: string(run.RequestedBackend)},
 				"BackendUsed":         {Kind: interpret.ValueString, Text: string(run.UsedBackend)},
@@ -363,6 +396,8 @@ func reportToOctagon(report CorpusReport) interpret.Value {
 				"N":                   {Kind: interpret.ValueInt, Int: int64(run.Shape.N)},
 				"K":                   {Kind: interpret.ValueInt, Int: int64(run.Shape.K)},
 				"Status":              {Kind: interpret.ValueString, Text: run.Status.String()},
+				"DetailCode":          {Kind: interpret.ValueInt, Int: int64(run.DetailCode)},
+				"DetailName":          {Kind: interpret.ValueString, Text: run.DetailName},
 				"CorrectnessPass":     {Kind: interpret.ValueBool, Bool: run.Correctness.Pass},
 				"MaxAbsError":         {Kind: interpret.ValueFloat, Float: run.Correctness.MaxAbsError},
 				"MaxRelError":         {Kind: interpret.ValueFloat, Float: run.Correctness.MaxRelError},
@@ -394,4 +429,232 @@ func octagonFailingIndex(index int) int {
 		return 0
 	}
 	return index
+}
+
+func detailCodeName(code int) string {
+	switch code {
+	case 0:
+		return "not_applicable"
+	case -10:
+		return "reactor_load_failed"
+	case -11:
+		return "reactor_symbol_missing"
+	case -12:
+		return "reactor_abi_mismatch"
+	case -13:
+		return "reactor_create_failed"
+	case -14:
+		return "reactor_probe_failed"
+	case -6001:
+		return "injected_upload_failure"
+	case -6002:
+		return "injected_dispatch_failure"
+	case -6003:
+		return "injected_download_failure"
+	case -6004:
+		return "size_overflow"
+	case -6005:
+		return "reuse_in_flight"
+	case -6006:
+		return "capability_mismatch"
+	case 6101:
+		return "direct"
+	case 6102:
+		return "staged_upload"
+	case 6103:
+		return "staged_upload_readback"
+	case 6104:
+		return "fallback_to_direct"
+	case 6105:
+		return "direct_tiled"
+	case 6106:
+		return "staged_upload_tiled"
+	case 6107:
+		return "staged_upload_readback_tiled"
+	case -6108:
+		return "async_not_ready"
+	case -6109:
+		return "async_no_task"
+	case -6110:
+		return "async_already_consumed"
+	case -6111:
+		return "async_invalid_task"
+	case -6112:
+		return "async_submit_rejected"
+	case -6113:
+		return "async_software_suppressed"
+	case -6114:
+		return "async_failed"
+	case -6115:
+		return "async_unconsumed"
+	case -6116:
+		return "injected_async_poll_failure"
+	default:
+		return fmt.Sprintf("detail_%d", code)
+	}
+}
+
+func asyncLifecycleName(state uint32) string {
+	switch state {
+	case 0:
+		return "idle"
+	case 1:
+		return "submitted"
+	case 2:
+		return "ready"
+	case 3:
+		return "failed"
+	case 4:
+		return "consumed"
+	default:
+		return fmt.Sprintf("state_%d", state)
+	}
+}
+
+func errorStageName(stage ErrorStage) string {
+	if stage == "" {
+		return "unknown"
+	}
+	return string(stage)
+}
+
+func WriteAsyncValidationOctagon(path string, result AsyncValidationResult) error {
+	return interpret.WriteOctagon(path, asyncValidationToOctagon(result))
+}
+
+func asyncValidationToOctagon(result AsyncValidationResult) interpret.Value {
+	return interpret.Value{
+		Kind: interpret.ValueRecord,
+		Record: interpret.RecordValue{
+			TypeName: "PrometheusAsyncValidation",
+			FieldOrder: []string{
+				"BackendRequested", "BackendUsed", "M", "N", "K", "Outcome", "Environment",
+				"SubmitStage", "SubmitDetailCode", "SubmitDetailName",
+				"QueryLifecycle", "QueryReady", "QueryFailed", "QueryConsumed", "QueryOutstanding", "QueryAttempts",
+				"ConsumeStage", "ConsumeDetailCode", "ConsumeDetailName",
+				"CorrectnessPass", "MaxAbsError", "MaxRelError", "FailingElementCount",
+				"FirstFailingIndex", "FirstExpectedValue", "FirstActualValue",
+				"WallTimeNs", "Notes",
+			},
+			Fields: map[string]interpret.Value{
+				"BackendRequested":    {Kind: interpret.ValueString, Text: string(result.RequestedBackend)},
+				"BackendUsed":         {Kind: interpret.ValueString, Text: string(result.UsedBackend)},
+				"M":                   {Kind: interpret.ValueInt, Int: int64(result.Shape.M)},
+				"N":                   {Kind: interpret.ValueInt, Int: int64(result.Shape.N)},
+				"K":                   {Kind: interpret.ValueInt, Int: int64(result.Shape.K)},
+				"Outcome":             {Kind: interpret.ValueString, Text: result.Outcome},
+				"Environment":         {Kind: interpret.ValueString, Text: result.Environment},
+				"SubmitStage":         {Kind: interpret.ValueString, Text: result.SubmitStage},
+				"SubmitDetailCode":    {Kind: interpret.ValueInt, Int: int64(result.SubmitDetailCode)},
+				"SubmitDetailName":    {Kind: interpret.ValueString, Text: result.SubmitDetailName},
+				"QueryLifecycle":      {Kind: interpret.ValueString, Text: result.QueryLifecycle},
+				"QueryReady":          {Kind: interpret.ValueBool, Bool: result.QueryReady},
+				"QueryFailed":         {Kind: interpret.ValueBool, Bool: result.QueryFailed},
+				"QueryConsumed":       {Kind: interpret.ValueBool, Bool: result.QueryConsumed},
+				"QueryOutstanding":    {Kind: interpret.ValueInt, Int: int64(result.QueryOutstanding)},
+				"QueryAttempts":       {Kind: interpret.ValueInt, Int: int64(result.QueryAttempts)},
+				"ConsumeStage":        {Kind: interpret.ValueString, Text: result.ConsumeStage},
+				"ConsumeDetailCode":   {Kind: interpret.ValueInt, Int: int64(result.ConsumeDetailCode)},
+				"ConsumeDetailName":   {Kind: interpret.ValueString, Text: result.ConsumeDetailName},
+				"CorrectnessPass":     {Kind: interpret.ValueBool, Bool: result.Correctness.Pass},
+				"MaxAbsError":         {Kind: interpret.ValueFloat, Float: result.Correctness.MaxAbsError},
+				"MaxRelError":         {Kind: interpret.ValueFloat, Float: result.Correctness.MaxRelError},
+				"FailingElementCount": {Kind: interpret.ValueInt, Int: int64(result.Correctness.FailingCount)},
+				"FirstFailingIndex":   {Kind: interpret.ValueInt, Int: int64(octagonFailingIndex(result.Correctness.FirstFailingIndex))},
+				"FirstExpectedValue":  {Kind: interpret.ValueFloat, Float: float64(result.Correctness.FirstExpectedValue)},
+				"FirstActualValue":    {Kind: interpret.ValueFloat, Float: float64(result.Correctness.FirstActualValue)},
+				"WallTimeNs":          {Kind: interpret.ValueInt, Int: result.WallTimeNs},
+				"Notes":               {Kind: interpret.ValueString, Text: result.Notes},
+			},
+		},
+	}
+}
+
+func ValidateAsyncSGEMMOnHardware(shape Shape) (AsyncValidationResult, error) {
+	result := AsyncValidationResult{
+		RequestedBackend:  BackendPrometheus,
+		UsedBackend:       BackendPrometheus,
+		Shape:             shape,
+		Outcome:           "error(init,-2)",
+		Environment:       "not_applicable",
+		SubmitStage:       "unknown",
+		SubmitDetailName:  "not_applicable",
+		QueryLifecycle:    "idle",
+		ConsumeStage:      "unknown",
+		ConsumeDetailName: "not_applicable",
+	}
+
+	a := deterministicMatrix(shape.M, shape.K)
+	b := deterministicMatrix(shape.K, shape.N)
+	reference, _ := timedCPUSGEMM(shape.M, shape.N, shape.K, a, b)
+
+	rt, err := newNativeRuntime()
+	if err != nil {
+		result.UsedBackend = BackendCPU
+		result.Environment = "unavailable"
+		result.Outcome = "skipped(prometheus_unavailable)"
+		result.Notes = err.Error()
+		return result, nil
+	}
+	defer rt.Close()
+
+	result.Environment = rt.Environment()
+	if result.Environment == "software_vulkan_llvmpipe_or_cpu" {
+		result.Outcome = "skipped(async_software_suppressed)"
+		result.Notes = "software Vulkan path does not truthfully exercise async hardware validation"
+		return result, nil
+	}
+
+	start := time.Now()
+	taskID, submitStatus, err := rt.SubmitAsync(shape.M, shape.N, shape.K, a, b)
+	result.WallTimeNs = time.Since(start).Nanoseconds()
+	result.SubmitStage = errorStageName(stageFromNativeCode(submitStatus.StageCode))
+	result.SubmitDetailCode = submitStatus.DetailCode
+	result.SubmitDetailName = detailCodeName(submitStatus.DetailCode)
+	if err != nil {
+		result.Outcome = fmt.Sprintf("error(%s,%d)", result.SubmitStage, submitStatus.DetailCode)
+		return result, err
+	}
+
+	var last reactorAsyncStatus
+	for attempts := 1; attempts <= 2000; attempts++ {
+		last, err = rt.QueryAsync(taskID)
+		result.QueryAttempts = attempts
+		if err != nil {
+			result.Outcome = "error(query,-1)"
+			return result, err
+		}
+		result.QueryLifecycle = asyncLifecycleName(last.LifecycleState)
+		result.QueryReady = last.Ready
+		result.QueryFailed = last.Failed
+		result.QueryConsumed = last.Consumed
+		result.QueryOutstanding = int(last.OutstandingTasks)
+		if last.LifecycleState == 2 || last.LifecycleState == 3 {
+			break
+		}
+	}
+
+	if last.LifecycleState != 2 {
+		result.Outcome = fmt.Sprintf("error(query,%d)", last.DetailCode)
+		result.Notes = "async task did not reach ready state"
+		return result, fmt.Errorf("async task did not reach ready state: lifecycle=%s detail=%d", result.QueryLifecycle, last.DetailCode)
+	}
+
+	out := make([]float32, shape.M*shape.N)
+	consumeStatus, err := rt.ConsumeAsync(taskID, out)
+	result.ConsumeStage = errorStageName(stageFromNativeCode(consumeStatus.StageCode))
+	result.ConsumeDetailCode = consumeStatus.DetailCode
+	result.ConsumeDetailName = detailCodeName(consumeStatus.DetailCode)
+	if err != nil {
+		result.Outcome = fmt.Sprintf("error(%s,%d)", result.ConsumeStage, consumeStatus.DetailCode)
+		return result, err
+	}
+
+	result.Correctness = compareAgainstOracle(reference, out)
+	if !result.Correctness.Pass {
+		result.Outcome = "error(correctness,-1)"
+		return result, fmt.Errorf("async correctness gate failed")
+	}
+	result.Outcome = "ok"
+	return result, nil
 }

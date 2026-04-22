@@ -34,7 +34,10 @@ type BenchmarkCaseResult struct {
 	BackendRequested string
 	BackendUsed      string
 	Status           string
+	Correctness      bool
 	Environment      string
+	DetailCode       int
+	DetailName       string
 	ReportedWallNs   int64
 }
 
@@ -116,7 +119,10 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 			BackendRequested: metadata.BackendRequested,
 			BackendUsed:      metadata.BackendUsed,
 			Status:           metadata.Status,
+			Correctness:      metadata.Correctness,
 			Environment:      metadata.Environment,
+			DetailCode:       metadata.DetailCode,
+			DetailName:       metadata.DetailName,
 			ReportedWallNs:   metadata.ReportedWallNs,
 		})
 		if err != nil {
@@ -146,7 +152,10 @@ type benchmarkMetadata struct {
 	BackendRequested string
 	BackendUsed      string
 	Status           string
+	Correctness      bool
 	Environment      string
+	DetailCode       int
+	DetailName       string
 	ReportedWallNs   int64
 }
 
@@ -155,7 +164,10 @@ func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
 		BackendRequested: "cpu",
 		BackendUsed:      "cpu",
 		Status:           "ok",
+		Correctness:      true,
 		Environment:      "not_applicable",
+		DetailCode:       0,
+		DetailName:       "cpu",
 		ReportedWallNs:   0,
 	}
 	for _, line := range strings.Split(output, "\n") {
@@ -180,8 +192,17 @@ func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
 		metadata.BackendRequested = requested
 		metadata.BackendUsed = used
 		metadata.Status = status
+		if correctness, ok := values["correctness"]; ok {
+			metadata.Correctness = correctness == "true"
+		}
 		if env, ok := values["vulkan_env"]; ok && env != "" {
 			metadata.Environment = env
+		}
+		if detailCode, ok := values["detail_code"]; ok {
+			_, _ = fmt.Sscanf(detailCode, "%d", &metadata.DetailCode)
+		}
+		if detailName, ok := values["detail_name"]; ok && detailName != "" {
+			metadata.DetailName = detailName
 		}
 		if wall, ok := values["wall"]; ok && strings.HasSuffix(wall, "ns") {
 			wall = strings.TrimSuffix(wall, "ns")
@@ -298,14 +319,17 @@ func benchmarkRunToOctagonValue(run BenchmarkRun) interpret.Value {
 			Kind: interpret.ValueRecord,
 			Record: interpret.RecordValue{
 				TypeName:   "BenchmarkCaseResult",
-				FieldOrder: []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Environment", "ReportedWallNs"},
+				FieldOrder: []string{"Name", "DurationNs", "BackendRequested", "BackendUsed", "Status", "Correctness", "Environment", "DetailCode", "DetailName", "ReportedWallNs"},
 				Fields: map[string]interpret.Value{
 					"Name":             {Kind: interpret.ValueString, Text: result.Name},
 					"DurationNs":       {Kind: interpret.ValueInt, Int: result.DurationNs},
 					"BackendRequested": {Kind: interpret.ValueString, Text: result.BackendRequested},
 					"BackendUsed":      {Kind: interpret.ValueString, Text: result.BackendUsed},
 					"Status":           {Kind: interpret.ValueString, Text: result.Status},
+					"Correctness":      {Kind: interpret.ValueBool, Bool: result.Correctness},
 					"Environment":      {Kind: interpret.ValueString, Text: result.Environment},
+					"DetailCode":       {Kind: interpret.ValueInt, Int: int64(result.DetailCode)},
+					"DetailName":       {Kind: interpret.ValueString, Text: result.DetailName},
 					"ReportedWallNs":   {Kind: interpret.ValueInt, Int: result.ReportedWallNs},
 				},
 			},

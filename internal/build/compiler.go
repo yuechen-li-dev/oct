@@ -2962,8 +2962,8 @@ func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
 	if env == "not_applicable" && run.VulkanEnv != "" {
 		env = run.VulkanEnv
 	}
-	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t vulkan_env=%s wall=%dns\n",
-		run.RequestedBackend, run.UsedBackend, run.Status.String(), run.Correctness.Pass, env, run.WallTimeNs)
+	fmt.Printf("backend_requested=%s backend_used=%s status=%s correctness=%t detail_code=%d detail_name=%s vulkan_env=%s wall=%dns\n",
+		run.RequestedBackend, run.UsedBackend, run.Status.String(), run.Correctness.Pass, run.DetailCode, run.DetailName, env, run.WallTimeNs)
 	if err != nil {
 		panic(fmt.Sprintf("PrometheusMatMulMM failed: %v", err))
 	}

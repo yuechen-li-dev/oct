@@ -21,7 +21,7 @@ func TestBridgeSymbolMissingIsStructured(t *testing.T) {
 func TestBridgeABIMismatchIsStructured(t *testing.T) {
 	_, err := runtimeFromLibrary("/tmp/reactor.so", &fakeLibrary{symbols: map[string]any{
 		reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion + 1 }),
-		reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+		reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 		reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: true}, nil }),
 		reactorSymbolSGEMM: reactorSGEMM(func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error) {
@@ -40,7 +40,7 @@ func TestBridgeABIMismatchIsStructured(t *testing.T) {
 func TestBridgeSuccessfulLoadProbeViaStubLibrary(t *testing.T) {
 	rt, err := runtimeFromLibrary("/tmp/reactor.so", &fakeLibrary{symbols: map[string]any{
 		reactorSymbolABIVersion: reactorABI(func() uint32 { return reactorExpectedABIVersion }),
-		reactorSymbolCreate:     reactorCreate(func() (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
+		reactorSymbolCreate:     reactorCreate(func(reactorCreateConfig) (reactorRuntimeHandle, error) { return reactorRuntimeHandle{}, nil }),
 		reactorSymbolDestroy:    reactorDestroy(func(reactorRuntimeHandle) {}),
 		reactorSymbolProbe:      reactorProbe(func(reactorRuntimeHandle) (reactorCaps, error) { return reactorCaps{Available: true}, nil }),
 		reactorSymbolSGEMM: reactorSGEMM(func(_ reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {

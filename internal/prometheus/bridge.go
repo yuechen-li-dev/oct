@@ -6,17 +6,22 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 )
 
 const (
 	reactorEnvVar             = "OCT_PROMETHEUS_REACTOR"
 	reactorExpectedABIVersion = uint32(1)
 
-	reactorSymbolABIVersion = "prometheus_reactor_abi_version"
-	reactorSymbolCreate     = "prometheus_reactor_runtime_create"
-	reactorSymbolDestroy    = "prometheus_reactor_runtime_destroy"
-	reactorSymbolProbe      = "prometheus_reactor_runtime_probe"
-	reactorSymbolSGEMM      = "prometheus_reactor_runtime_sgemm"
+	reactorSymbolABIVersion   = "prometheus_reactor_abi_version"
+	reactorSymbolCreate       = "prometheus_reactor_runtime_create"
+	reactorSymbolDestroy      = "prometheus_reactor_runtime_destroy"
+	reactorSymbolProbe        = "prometheus_reactor_runtime_probe"
+	reactorSymbolSGEMM        = "prometheus_reactor_runtime_sgemm"
+	reactorSymbolSubmitAsync  = "prometheus_reactor_runtime_sgemm_submit_async"
+	reactorSymbolQueryAsync   = "prometheus_reactor_runtime_sgemm_query_async"
+	reactorSymbolConsumeAsync = "prometheus_reactor_runtime_sgemm_consume_async"
+	reactorSymbolAbandonAsync = "prometheus_reactor_runtime_sgemm_abandon_async"
 )
 
 type ReactorIssueCode string
@@ -64,6 +69,9 @@ func (e *ReactorIssue) Unwrap() error { return e.Err }
 type reactorRuntimeHandle struct {
 	ptr uintptr
 }
+type reactorCreateConfig struct {
+	TestFlags uint32
+}
 type reactorCaps struct {
 	Available   bool
 	BackendType uint32
@@ -73,12 +81,25 @@ type reactorCallStatus struct {
 	StageCode  uint32
 	DetailCode int
 }
+type reactorAsyncStatus struct {
+	LifecycleState   uint32
+	StageCode        uint32
+	DetailCode       int
+	Ready            bool
+	Failed           bool
+	Consumed         bool
+	OutstandingTasks uint32
+}
 
 type reactorABI func() uint32
-type reactorCreate func() (reactorRuntimeHandle, error)
+type reactorCreate func(reactorCreateConfig) (reactorRuntimeHandle, error)
 type reactorDestroy func(reactorRuntimeHandle)
 type reactorProbe func(reactorRuntimeHandle) (reactorCaps, error)
 type reactorSGEMM func(reactorRuntimeHandle, int, int, int, []float32, []float32) ([]float32, reactorCallStatus, error)
+type reactorSubmitAsync func(reactorRuntimeHandle, int, int, int, []float32, []float32) (int, reactorCallStatus, error)
+type reactorQueryAsync func(reactorRuntimeHandle, int) (reactorAsyncStatus, error)
+type reactorConsumeAsync func(reactorRuntimeHandle, int, []float32) (reactorCallStatus, error)
+type reactorAbandonAsync func(reactorRuntimeHandle, int) error
 
 type dynamicLibrary interface {
 	Resolve(symbol string) (any, error)
@@ -107,11 +128,15 @@ var newPrometheusBridge = func() *prometheusBridge {
 }
 
 type nativeRuntime struct {
-	destroy reactorDestroy
-	sgemm   reactorSGEMM
-	handle  reactorRuntimeHandle
-	caps    reactorCaps
-	lib     dynamicLibrary
+	destroy      reactorDestroy
+	sgemm        reactorSGEMM
+	submitAsync  reactorSubmitAsync
+	queryAsync   reactorQueryAsync
+	consumeAsync reactorConsumeAsync
+	abandonAsync reactorAbandonAsync
+	handle       reactorRuntimeHandle
+	caps         reactorCaps
+	lib          dynamicLibrary
 }
 
 func newNativeRuntime() (*nativeRuntime, error) {
@@ -191,7 +216,7 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolProbe, Err: fmt.Errorf("symbol has unexpected type")}
 	}
 
-	handle, err := createFn()
+	handle, err := createFn(reactorCreateConfig{TestFlags: reactorTestFlagsFromEnv()})
 	if err != nil {
 		return nil, &ReactorIssue{Code: ReactorIssueCreateFailed, Path: path, Err: err}
 	}
@@ -212,7 +237,30 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolSGEMM, Err: fmt.Errorf("symbol has unexpected type")}
 	}
 
-	return &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle, caps: caps, lib: lib}, nil
+	rt := &nativeRuntime{destroy: destroyFn, sgemm: sgemmFn, handle: handle, caps: caps, lib: lib}
+
+	if submitAny, err := lib.Resolve(reactorSymbolSubmitAsync); err == nil {
+		if submitFn, ok := submitAny.(reactorSubmitAsync); ok {
+			rt.submitAsync = submitFn
+		}
+	}
+	if queryAny, err := lib.Resolve(reactorSymbolQueryAsync); err == nil {
+		if queryFn, ok := queryAny.(reactorQueryAsync); ok {
+			rt.queryAsync = queryFn
+		}
+	}
+	if consumeAny, err := lib.Resolve(reactorSymbolConsumeAsync); err == nil {
+		if consumeFn, ok := consumeAny.(reactorConsumeAsync); ok {
+			rt.consumeAsync = consumeFn
+		}
+	}
+	if abandonAny, err := lib.Resolve(reactorSymbolAbandonAsync); err == nil {
+		if abandonFn, ok := abandonAny.(reactorAbandonAsync); ok {
+			rt.abandonAsync = abandonFn
+		}
+	}
+
+	return rt, nil
 }
 
 func (r *nativeRuntime) Close() {
@@ -241,6 +289,48 @@ func (r *nativeRuntime) SGEMM(m, n, k int, a, b []float32) ([]float32, RunStatus
 		return nil, ErrorStatus(stageFromNativeCode(nativeStatus.StageCode), nativeStatus.DetailCode), &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: err}
 	}
 	return out, OkStatus(), nil
+}
+
+func (r *nativeRuntime) SGEMMWithStatus(m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {
+	if len(a) != m*k || len(b) != k*n {
+		return nil, reactorCallStatus{StageCode: 1, DetailCode: -2}, fmt.Errorf("invalid matrix lengths")
+	}
+	if r == nil || r.sgemm == nil {
+		return nil, reactorCallStatus{StageCode: 1, DetailCode: -3}, &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: errors.New("runtime sgemm entrypoint unavailable")}
+	}
+	out, nativeStatus, err := r.sgemm(r.handle, m, n, k, a, b)
+	if err != nil {
+		return nil, nativeStatus, &ReactorIssue{Code: ReactorIssueSGEMMFailed, Err: err}
+	}
+	return out, nativeStatus, nil
+}
+
+func (r *nativeRuntime) SubmitAsync(m, n, k int, a, b []float32) (int, reactorCallStatus, error) {
+	if r == nil || r.submitAsync == nil {
+		return 0, reactorCallStatus{StageCode: 1, DetailCode: -3}, fmt.Errorf("reactor async submit entrypoint unavailable")
+	}
+	return r.submitAsync(r.handle, m, n, k, a, b)
+}
+
+func (r *nativeRuntime) QueryAsync(taskID int) (reactorAsyncStatus, error) {
+	if r == nil || r.queryAsync == nil {
+		return reactorAsyncStatus{}, fmt.Errorf("reactor async query entrypoint unavailable")
+	}
+	return r.queryAsync(r.handle, taskID)
+}
+
+func (r *nativeRuntime) ConsumeAsync(taskID int, out []float32) (reactorCallStatus, error) {
+	if r == nil || r.consumeAsync == nil {
+		return reactorCallStatus{StageCode: 1, DetailCode: -3}, fmt.Errorf("reactor async consume entrypoint unavailable")
+	}
+	return r.consumeAsync(r.handle, taskID, out)
+}
+
+func (r *nativeRuntime) AbandonAsync(taskID int) error {
+	if r == nil || r.abandonAsync == nil {
+		return fmt.Errorf("reactor async abandon entrypoint unavailable")
+	}
+	return r.abandonAsync(r.handle, taskID)
 }
 
 func (r *nativeRuntime) Environment() string {
@@ -307,6 +397,18 @@ func discoverReactorCandidates() []string {
 		add(filepath.Join(pkgDir, "..", "..", "out", "prometheus", "native", reactorLibraryBasename()))
 	}
 	return candidates
+}
+
+func reactorTestFlagsFromEnv() uint32 {
+	value := os.Getenv("OCT_PROMETHEUS_REACTOR_TEST_FLAGS")
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseUint(value, 0, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(parsed)
 }
 
 func reactorLibraryBasename() string {

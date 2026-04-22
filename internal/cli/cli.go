@@ -111,6 +111,28 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, command, runErr)
 		}
 		return nil
+	case "prometheus-m1-async":
+		octagonOut, err := parseBenchOctagonOut(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		result, runErr := prometheus.ValidateAsyncSGEMMOnHardware(prometheus.Shape{M: 64, N: 64, K: 32})
+		_, _ = fmt.Fprintf(stdout,
+			"backend_requested=%s backend_used=%s outcome=%s correctness=%t submit_stage=%s submit_detail_code=%d submit_detail_name=%s query_lifecycle=%s query_ready=%t query_failed=%t query_consumed=%t query_outstanding=%d query_attempts=%d consume_stage=%s consume_detail_code=%d consume_detail_name=%s vulkan_env=%s wall=%dns\n",
+			result.RequestedBackend, result.UsedBackend, result.Outcome, result.Correctness.Pass,
+			result.SubmitStage, result.SubmitDetailCode, result.SubmitDetailName,
+			result.QueryLifecycle, result.QueryReady, result.QueryFailed, result.QueryConsumed, result.QueryOutstanding, result.QueryAttempts,
+			result.ConsumeStage, result.ConsumeDetailCode, result.ConsumeDetailName,
+			result.Environment, result.WallTimeNs)
+		if octagonOut != "" {
+			if err := prometheus.WriteAsyncValidationOctagon(octagonOut, result); err != nil {
+				return reportCommandError(stderr, command, err)
+			}
+		}
+		if runErr != nil {
+			return reportCommandError(stderr, command, runErr)
+		}
+		return nil
 	default:
 		return writeUsage(stderr)
 	}
@@ -249,7 +271,7 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 }
 
 func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
+	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct prometheus-m1-async [--octagon-out <file.octagon>]\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err
 }
 
