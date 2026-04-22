@@ -293,3 +293,121 @@ These are exactly the kind of mismatches M4 was intended to expose before introd
 ### Inconsistency/documentation gap surfaced
 
 The M4 request asks for a direct in-language `MeasureStrategy(...) -> duration` API. Current `Language/reference` builtins do not document a timing builtin for obtaining wall-clock duration inside Oct code. M4 therefore uses `oct bench` boundary timing (`DurationNs` in `.octagon`) as the measurement source of truth and keeps `MeasureStrategy(...)` as an execution wrapper rather than an in-language timer.
+
+## M4b scope
+
+M4b is the Windows-native Prometheus reality check for the suspicious M4 shapes, with an explicit emphasis on proving what the current code can and cannot validate truthfully.
+
+### Windows-native path validation
+
+- Added `Experiments/PrometheusSgemmAlgorithmLab/M4b` as a narrow Prometheus-path benchmark surface for the six suspicious shapes:
+  - `16x16x16`
+  - `32x32x32`
+  - `16x64 * 64x8`
+  - `8x128 * 128x16`
+  - `8x8 * 256`
+  - `16x16 * 512`
+- Each benchmark executes matrix multiply inside `PROMETHEUS { ... }`, which is the only currently compiled path that lowers to native Prometheus SGEMM.
+- Native runs are intended to be executed sequentially and repeated (`>= 3`) with `OCT_PROMETHEUS_REACTOR` pointed at the built Windows DLL.
+
+### Critical architectural constraint surfaced
+
+M4 strategy kernels (`Baseline`, `IKJ`, `KIJ`, `Blocked`, `BlockedIKJ`, `KBlocked`, `KBlockedIKJ`, `StagedIKJ`) are written as pure Oct loop kernels.
+
+Current compiled-mode lowering sends work to native Prometheus only for the matrix `@` operator inside a `PROMETHEUS` block:
+
+- `internal/build/compiler.go`: `MatMulMM`
+- `internal/build/compiler.go`: `PrometheusMatMulMM`
+
+That means:
+
+- the existing M4 strategy sweep does **not** execute on the Vulkan Prometheus path
+- `oct bench Experiments/PrometheusSgemmAlgorithmLab/M4` measures compiled CPU execution for those custom kernels
+- M4b can currently validate the **Prometheus path on the suspicious shapes**, but it cannot yet produce truthful **per-strategy native Prometheus rankings** without new lowering/runtime support
+
+### Confirmed vs rejected assumptions
+
+- Confirmed: native Windows Prometheus execution is a real, testable path for the suspicious shape set when `PROMETHEUS { a @ b }` is used.
+- Rejected: the current M4 custom-strategy benchmark surface is a valid proxy for native Prometheus strategy behavior. It is not.
+
+### Updated interpretation for M5
+
+- No new strategy-family scoring signal should be inferred from “native Prometheus” unless those strategy families can actually lower into Prometheus.
+- The strongest trustworthy M4b signal today is environment/path truthfulness:
+  - `BackendUsed`
+  - `Status`
+  - `Environment`
+  - repeated wall-time behavior for the real native `@` path on suspicious shapes
+- Future `when utility` scoring should only consume strategy-vs-shape signals from a benchmark surface that genuinely runs those strategies on the intended backend.
+
+### M4b execution notes and observed results
+
+- Machine:
+  - Windows
+  - NVIDIA GeForce RTX 3070
+  - Vulkan loader present (`vulkan-1.dll`)
+- Reactor:
+  - `OCT_PROMETHEUS_REACTOR` pointed at `out/prometheus/native/prometheus_reactor.dll`
+- Go/native bridge requirement surfaced during execution:
+  - `CGO_ENABLED=1` is required on Windows for the real DLL loader path (`windows && cgo`)
+  - in this shell, `go env CGO_ENABLED` initially reported `0`
+  - with `CGO_ENABLED=0`, Prometheus reported a truthful but misleading fallback symptom for this task: `fallback(prometheus_unavailable)` with note `prometheus reactor load failed`
+  - after enabling cgo and using the UCRT GCC toolchain on `PATH`, native Prometheus execution became available and reported `BackendUsed=prometheus` with `Environment=windows_native_vulkan`
+
+### Shapes tested
+
+- `16x16x16`
+- `32x32x32`
+- `16x64 * 64x8`
+- `8x128 * 128x16`
+- `8x8 * 256`
+- `16x16 * 512`
+
+Each shape was run three times sequentially through the Prometheus `@` path in `Experiments/PrometheusSgemmAlgorithmLab/M4b`.
+
+### Native Prometheus path observations
+
+Per-shape reported native wall times (`ReportedWallNs`) across the three runs:
+
+- `16x16x16`: `501700`, `635100`, `559700`
+- `32x32x32`: `664100`, `599500`, `636500`
+- `16x64 * 64x8`: `503400`, `501500`, `1049500`
+- `8x128 * 128x16`: `1213800`, `1157600`, `681700`
+- `8x8 * 256`: `501600`, `501700`, `569500`
+- `16x16 * 512`: `684100`, `1019000`, `517900`
+
+Common metadata across all eighteen native shape runs:
+
+- `BackendUsed: prometheus`
+- `Status: ok`
+- `Environment: windows_native_vulkan`
+
+### Comparison vs cloud M4a
+
+- Confirmed:
+  - the Windows-native Prometheus path is live and stable enough to execute the suspicious-shape set repeatedly on real hardware
+  - native kernel wall times are much smaller than the end-to-end compiled benchmark `DurationNs`, so cloud and compiled boundary timings should not be treated as hardware-proxy timings
+- Rejected:
+  - the assumption that `Experiments/PrometheusSgemmAlgorithmLab/M4` already represented “Prometheus reality”
+- Still unresolved:
+  - cloud chooser-vs-observed mismatches for `KBlocked`, `KBlockedIKJ`, `KIJ`, and `Baseline`
+  - true crossover behavior among retained M3 strategies on native Prometheus
+  - staged-family competitiveness on native Prometheus
+
+### Updated interpretation of K-blocking and staged viability
+
+- `KBlocked` / `KBlockedIKJ`:
+  - M4b does **not** yet validate or reject K-block usefulness on native Prometheus, because the current native path exercises only builtin SGEMM (`@`) and not the custom M3 kernels
+- `StagedIKJ`:
+  - staged viability remains unevaluated on native Prometheus for the same reason
+  - the only trustworthy staged signal remains the cloud/compiled directional signal, which is explicitly insufficient for native policy conclusions
+
+### Candidate signals for M5 scoring after M4b
+
+- Safe to use:
+  - backend availability as an explicit gating signal
+  - environment classification (`windows_native_vulkan` vs fallback/unavailable)
+  - repeated native wall-time behavior for the builtin Prometheus SGEMM path on suspicious shapes
+- Not safe to use yet:
+  - per-strategy native scoring among `Baseline`, `IKJ`, `KIJ`, `Blocked`, `BlockedIKJ`, `KBlocked`, `KBlockedIKJ`, `StagedIKJ`
+  - any native staged penalty or K-block bonus derived from the current M4b path-validation surface
