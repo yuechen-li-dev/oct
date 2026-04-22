@@ -513,15 +513,36 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
 		case ast.IndexAssignStmt:
-			idx, _, _, err := c.lowerExpr(s.Index)
-			if err != nil {
-				return err
+			indexExprs := make([]string, 0, len(s.Indices))
+			for _, idxNode := range s.Indices {
+				idx, _, _, err := c.lowerExpr(idxNode)
+				if err != nil {
+					return err
+				}
+				indexExprs = append(indexExprs, idx)
 			}
 			val, _, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
 			}
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", s.Target, idx), Value: val})
+			targetType, ok := c.locals[s.Target]
+			if !ok {
+				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
+			}
+			switch {
+			case strings.HasPrefix(targetType, "[][]"), strings.HasPrefix(targetType, "Matrix<"):
+				if len(indexExprs) != 2 {
+					return fmt.Errorf("matrix index assignment requires exactly 2 indices, got %d", len(indexExprs))
+				}
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", s.Target, indexExprs[0], indexExprs[1]), Value: val})
+			case strings.HasPrefix(targetType, "[]"), strings.HasSuffix(targetType, "[]"):
+				if len(indexExprs) != 1 {
+					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
+				}
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", s.Target, indexExprs[0]), Value: val})
+			default:
+				return fmt.Errorf("index assignment requires array or matrix local, got %s", targetType)
+			}
 		case ast.ExprStmt:
 			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {

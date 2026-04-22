@@ -1,32 +1,31 @@
 package PrometheusSgemmAlgorithmLab
 
-fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
+fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
     for i in 0 .. A.rows {
         for j in 0 .. B.cols {
             var sum = 0.0
             for k in 0 .. A.cols {
                 sum = sum + A[i, k] * B[k, j]
             }
-            out[FlatIndex(i, j, B.cols)] = sum
+            out[i, j] = sum
         }
     }
 
     return out
 }
 
-fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
+fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
     for i in 0 .. A.rows {
         for k in 0 .. A.cols {
             let aValue = A[i, k]
             for j in 0 .. B.cols {
-                let outIndex = FlatIndex(i, j, B.cols)
-                out[outIndex] = out[outIndex] + aValue * B[k, j]
+                out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
     }
@@ -34,16 +33,15 @@ fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
     return out
 }
 
-fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
+fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
     for k in 0 .. A.cols {
         for i in 0 .. A.rows {
             let aValue = A[i, k]
             for j in 0 .. B.cols {
-                let outIndex = FlatIndex(i, j, B.cols)
-                out[outIndex] = out[outIndex] + aValue * B[k, j]
+                out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
     }
@@ -51,11 +49,11 @@ fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
     return out
 }
 
-fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Float[] ! Error {
+fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
     let _blockOk = ValidateBlockSize(blockSize)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
 
     for iBlockIndex in 0 .. A.rows {
         let iBlock = iBlockIndex * blockSize
@@ -71,7 +69,7 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Float[]
                             for k in 0 .. A.cols {
                                 sum = sum + A[i, k] * B[k, j]
                             }
-                            out[FlatIndex(i, j, B.cols)] = sum
+                            out[i, j] = sum
                         }
                     }
                 }
@@ -82,11 +80,11 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Float[]
     return out
 }
 
-fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Float[] ! Error {
+fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
     let _blockOk = ValidateBlockSize(blockSize)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
 
     for iBlockIndex in 0 .. A.rows {
         let iBlock = iBlockIndex * blockSize
@@ -100,8 +98,7 @@ fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Flo
                         for k in 0 .. A.cols {
                             let aValue = A[i, k]
                             for j in jBlock .. jEnd {
-                                let outIndex = FlatIndex(i, j, B.cols)
-                                out[outIndex] = out[outIndex] + aValue * B[k, j]
+                                out[i, j] = out[i, j] + aValue * B[k, j]
                             }
                         }
                     }
@@ -113,23 +110,11 @@ fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Flo
     return out
 }
 
-fn ZeroMatrixData(rows: Int, cols: Int) -> Float[] {
-    var out = [0.0]
-    for i in 1 .. rows * cols {
-        out = Append(out, 0.0)
-    }
-    return out
-}
-
 fn MinInt(a: Int, b: Int) -> Int {
     if a < b {
         return a
     }
     return b
-}
-
-fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
-    return row * cols + col
 }
 
 fn ValidateMatMulInputs(A: Matrix<Float>, B: Matrix<Float>) -> Bool ! Error {

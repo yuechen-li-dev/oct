@@ -394,11 +394,26 @@ func TestBuildFileParsesIndexAssignmentStatement(t *testing.T) {
 	if assignStmt.Target != "x" {
 		t.Fatalf("expected target x, got %q", assignStmt.Target)
 	}
-	if _, ok := assignStmt.Index.(ast.IntegerLiteral); !ok {
-		t.Fatalf("expected integer index, got %T", assignStmt.Index)
+	if len(assignStmt.Indices) != 1 {
+		t.Fatalf("expected one index, got %d", len(assignStmt.Indices))
+	}
+	if _, ok := assignStmt.Indices[0].(ast.IntegerLiteral); !ok {
+		t.Fatalf("expected integer index, got %T", assignStmt.Indices[0])
 	}
 	if _, ok := assignStmt.Value.(ast.IntegerLiteral); !ok {
 		t.Fatalf("expected integer value, got %T", assignStmt.Value)
+	}
+}
+
+func TestBuildFileParsesMatrixIndexAssignmentStatement(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9 return m }")
+	fn := file.Functions[0]
+	assignStmt, ok := fn.Body.Statements[1].(ast.IndexAssignStmt)
+	if !ok {
+		t.Fatalf("expected second statement to be IndexAssignStmt, got %T", fn.Body.Statements[1])
+	}
+	if len(assignStmt.Indices) != 2 {
+		t.Fatalf("expected two indices, got %d", len(assignStmt.Indices))
 	}
 }
 

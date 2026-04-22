@@ -1,32 +1,20 @@
 package PrometheusSgemmAlgorithmLab
 
-fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Float[] ! Error {
+fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
-    var out = ZeroMatrixData(A.rows, B.cols)
+    var out = Matrix.zeros<Float>(A.rows, B.cols)
     for r in 0 .. A.rows {
         for c in 0 .. B.cols {
             var sum = 0.0
             for k in 0 .. A.cols {
                 sum = sum + A[r, k] * B[k, c]
             }
-            out[FlatIndex(r, c, B.cols)] = sum
+            out[r, c] = sum
         }
     }
 
     return out
-}
-
-fn ZeroMatrixData(rows: Int, cols: Int) -> Float[] {
-    var out = [0.0]
-    for i in 1 .. rows * cols {
-        out = Append(out, 0.0)
-    }
-    return out
-}
-
-fn FlatIndex(row: Int, col: Int, cols: Int) -> Int {
-    return row * cols + col
 }
 
 fn ValidateMatMulInputs(A: Matrix<Float>, B: Matrix<Float>) -> Bool ! Error {

@@ -88,6 +88,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "record P { X: Int } fn Main() -> Int { var x = [P { X: 1 }] x[0] = P { X: 2 } return x[0].X }",
 		},
 		{
+			name: "matrix index assignment",
+			src:  "fn Main() -> Int { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9 return m[0, 1] }",
+		},
+		{
 			name: "named record arrays in signatures",
 			src:  "record Ingredient { Name: String Grams: Float } fn First(xs: Ingredient[]) -> Ingredient { return xs[0] } fn Main() -> String { let xs = [Ingredient { Name: \"Flour\" Grams: 500.0 }] return First(xs).Name }",
 		},
@@ -214,9 +218,11 @@ func TestCheckValidatesM18Assignments(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { x = 1 return 0 }", "function Main: unknown binding 'x'")
 	assertTypeErrorContains(t, "fn Main() -> Int<m> { var d = 1m d = 2s return d }", "function Main: assignment to d: expected Int<m>, got Int<s>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let x = [1, 2, 3] x[0] = 5 return x[0] }", "function Main: cannot assign to immutable binding")
-	assertTypeErrorContains(t, "fn Main() -> Int { var x = 1 x[0] = 5 return x }", "function Main: index assignment requires array type")
-	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[0] = 1.5 return x[0] }", "function Main: assigned value type does not match array element type")
-	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[true] = 1 return x[0] }", "function Main: array index must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { var x = 1 x[0] = 5 return x }", "function Main: index assignment requires array or matrix type")
+	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[0] = 1.5 return x[0] }", "function Main: assigned value type does not match indexed element type")
+	assertTypeErrorContains(t, "fn Main() -> Int { var x = [1, 2, 3] x[true] = 1 return x[0] }", "function Main: index assignment indices must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 1.5 return m }", "function Main: assigned value type does not match indexed element type")
+	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0] = 9 return m }", "function Main: matrix index assignment requires exactly 2 indices, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Void { PROMETHEUS { return } }", "function Main: PROMETHEUS blocks are only valid inside [Benchmark] functions")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } fn Main() -> Int { var board = Board { Flag: false } board.Flag = true return 0 }", "function Main: board field assignment is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } flow F(board: Board) -> Int { state S { let shadow = board shadow.Flag = true return 0 } }", "function F: only board field assignment is supported")

@@ -23,6 +23,7 @@ For indexed tensor notation and differential tensor operators, see [tensors](../
 - Matrix rows must all have equal length.
 - Vector indexing form is `v[i]` (exactly one index).
 - Matrix indexing form is `m[r, c]` (exactly two indices).
+- Matrix element assignment form is `m[r, c] = value` (exactly two `Int` indices, mutable bindings only).
 - Matrix shape accessors are `m.rows` and `m.cols` (both `Int`, read-only).
 - `+`, `-`, `*`, `/` on vectors and matrices are element-wise operations.
 - Element-wise vector operations require equal runtime lengths.
@@ -32,7 +33,7 @@ For indexed tensor notation and differential tensor operators, see [tensors](../
 - For dimension-qualified elements, `@` propagates dimensions by scalar multiplication and addition across contractions:
   - `Matrix<Float<D1>> @ Vector<Float<D2>> -> Vector<Float<D1*D2>>`
   - `Matrix<Float<D1>> @ Matrix<Float<D2>> -> Matrix<Float<D1*D2>>`
-- Vector/matrix element mutation through index assignment is not supported.
+- Vector element mutation through index assignment is not supported.
 
 ## Construction surface (Mx100a+)
 

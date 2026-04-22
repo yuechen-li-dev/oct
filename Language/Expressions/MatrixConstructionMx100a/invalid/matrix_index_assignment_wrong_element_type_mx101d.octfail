@@ -1,0 +1,9 @@
+expect error: "assigned value type does not match indexed element type"
+
+package Main
+
+fn Main() -> Matrix<Int> {
+    var m = Matrix.zeros<Int>(2, 2)
+    m[0, 1] = 1.5
+    return m
+}
