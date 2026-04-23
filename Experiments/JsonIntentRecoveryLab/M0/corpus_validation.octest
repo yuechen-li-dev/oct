@@ -1,0 +1,50 @@
+package JsonIntentRecoveryLabM0
+
+record JsonRawGraphNode {
+    Id:          Int
+    ParentId:    Int
+    Key:         String
+    Kind:        String
+    NumberValue: Float
+    StringValue: String
+    BoolValue:   Bool
+    IsNull:      Bool
+}
+
+record JsonRawGraph {
+    Nodes: JsonRawGraphNode[]
+}
+
+fn RootKind(path: String) -> String ! Error {
+    let graph = JsonLoadStructured<JsonRawGraph>(path)?
+    return graph.Nodes[0].Kind
+}
+
+[Fact]
+fn CorpusFilesLoadAsJsonAndNormalizeDeterministically() -> Void ! Error {
+    let files = [
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_06_ui_like.json",
+        "../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json"
+    ]
+
+    for i in 0 .. Len(files) {
+        let raw = JsonLoad(files[i])?
+        let normalizedA = JsonNormalize(raw)?
+        let normalizedB = JsonNormalize(raw)?
+        Assert.Equal(normalizedA, normalizedB, "normalization should be deterministic per corpus file")
+        Assert.True(Len(normalizedA) > 0, "normalized corpus json should not be empty")
+    }
+}
+
+[Fact]
+fn CorpusRepresentativeRootKindsRemainStable() -> Void ! Error {
+    Assert.Equal("object", RootKind("../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")?, "people corpus should remain object-rooted")
+    Assert.Equal("object", RootKind("../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json")?, "config corpus should remain object-rooted")
+    Assert.Equal("object", RootKind("../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json")?, "matrix corpus should remain object-rooted")
+    Assert.Equal("object", RootKind("../../Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json")?, "tagged corpus should remain object-rooted")
+}
