@@ -1,0 +1,37 @@
+{
+  "page": {
+    "id": "home",
+    "title": "Storefront Home",
+    "sections": [
+      {
+        "kind": "hero",
+        "slot": "top",
+        "content": {
+          "headline": "Spring Collection",
+          "cta_text": "Shop now",
+          "cta_href": "/collections/spring"
+        }
+      },
+      {
+        "kind": "product_grid",
+        "slot": "main",
+        "content": {
+          "columns": 3,
+          "items": [
+            {"sku": "SKU-1", "label": "Linen Shirt", "price": 59.0},
+            {"sku": "SKU-2", "label": "Cotton Pants", "price": 79.0},
+            {"sku": "SKU-3", "label": "Canvas Tote", "price": 24.0}
+          ]
+        }
+      },
+      {
+        "kind": "banner",
+        "slot": "footer",
+        "content": {
+          "text": "Free shipping over $75",
+          "theme": "accent"
+        }
+      }
+    ]
+  }
+}

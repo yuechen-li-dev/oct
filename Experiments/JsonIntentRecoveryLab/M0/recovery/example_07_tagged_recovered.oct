@@ -1,0 +1,41 @@
+package JsonIntentRecoveryLabM0
+
+record CreditOp {
+    AccountId: String
+    Amount: Float
+    Currency: String
+}
+
+record DebitOp {
+    AccountId: String
+    Amount: Float
+    Currency: String
+    Merchant: String
+}
+
+record TransferOp {
+    FromAccount: String
+    ToAccount: String
+    Amount: Float
+    Currency: String
+}
+
+record LedgerOperations {
+    Credits: CreditOp[]
+    Debits: DebitOp[]
+    Transfers: TransferOp[]
+}
+
+fn RecoveredOperations() -> LedgerOperations {
+    return LedgerOperations {
+        Credits: [
+            CreditOp { AccountId: "A-100" Amount: 250.0 Currency: "USD" }
+        ]
+        Debits: [
+            DebitOp { AccountId: "A-100" Amount: 49.5 Currency: "USD" Merchant: "Metro Cafe" }
+        ]
+        Transfers: [
+            TransferOp { FromAccount: "A-100" ToAccount: "A-210" Amount: 30.0 Currency: "USD" }
+        ]
+    }
+}

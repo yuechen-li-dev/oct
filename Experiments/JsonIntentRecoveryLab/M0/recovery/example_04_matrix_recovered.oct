@@ -1,0 +1,19 @@
+package JsonIntentRecoveryLabM0
+
+record SensorGrid {
+    Rows: Int
+    Cols: Int
+    Readings: Float[][]
+}
+
+fn RecoveredSensorGrid() -> SensorGrid {
+    return SensorGrid {
+        Rows: 3
+        Cols: 4
+        Readings: [
+            [21.5, 21.8, 22.0, 21.9],
+            [21.7, 21.9, 22.1, 22.0],
+            [21.6, 21.7, 21.9, 21.8]
+        ]
+    }
+}

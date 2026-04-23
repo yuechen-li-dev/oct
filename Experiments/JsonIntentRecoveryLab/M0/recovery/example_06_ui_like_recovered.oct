@@ -1,0 +1,57 @@
+package JsonIntentRecoveryLabM0
+
+record HeroSection {
+    Slot: String
+    Headline: String
+    CtaText: String
+    CtaHref: String
+}
+
+record ProductCard {
+    Sku: String
+    Label: String
+    Price: Float
+}
+
+record ProductGridSection {
+    Slot: String
+    Columns: Int
+    Items: ProductCard[]
+}
+
+record BannerSection {
+    Slot: String
+    Text: String
+    Theme: String
+}
+
+record HomePageLayout {
+    Id: String
+    Title: String
+    Hero: HeroSection
+    ProductGrid: ProductGridSection
+    FooterBanner: BannerSection
+}
+
+fn RecoveredHomePageLayout() -> HomePageLayout {
+    return HomePageLayout {
+        Id: "home"
+        Title: "Storefront Home"
+        Hero: HeroSection {
+            Slot: "top"
+            Headline: "Spring Collection"
+            CtaText: "Shop now"
+            CtaHref: "/collections/spring"
+        }
+        ProductGrid: ProductGridSection {
+            Slot: "main"
+            Columns: 3
+            Items: [
+                ProductCard { Sku: "SKU-1" Label: "Linen Shirt" Price: 59.0 },
+                ProductCard { Sku: "SKU-2" Label: "Cotton Pants" Price: 79.0 },
+                ProductCard { Sku: "SKU-3" Label: "Canvas Tote" Price: 24.0 }
+            ]
+        }
+        FooterBanner: BannerSection { Slot: "footer" Text: "Free shipping over $75" Theme: "accent" }
+    }
+}

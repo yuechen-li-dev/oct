@@ -1,0 +1,24 @@
+{
+  "operations": [
+    {
+      "type": "credit",
+      "account_id": "A-100",
+      "amount": 250.0,
+      "currency": "USD"
+    },
+    {
+      "type": "debit",
+      "account_id": "A-100",
+      "amount": 49.5,
+      "currency": "USD",
+      "merchant": "Metro Cafe"
+    },
+    {
+      "type": "transfer",
+      "from_account": "A-100",
+      "to_account": "A-210",
+      "amount": 30.0,
+      "currency": "USD"
+    }
+  ]
+}

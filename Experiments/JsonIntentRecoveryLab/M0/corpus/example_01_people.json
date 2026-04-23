@@ -1,0 +1,25 @@
+{
+  "people": [
+    {
+      "id": "u-100",
+      "name": "Avery Chen",
+      "role": "analyst",
+      "active": true,
+      "skills": ["sql", "python"]
+    },
+    {
+      "id": "u-101",
+      "name": "Mina Patel",
+      "role": "designer",
+      "active": false,
+      "skills": ["figma", "ux"]
+    },
+    {
+      "id": "u-102",
+      "name": "Jon Rivera",
+      "role": "analyst",
+      "active": true,
+      "skills": ["sql", "dbt"]
+    }
+  ]
+}
