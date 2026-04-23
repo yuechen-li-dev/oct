@@ -184,3 +184,29 @@ FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
         ASSERT_EQUAL(PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED, decision.reject_detail, "software suppression should remain explicitly observable");
     }
 }
+
+FACT(PrometheusJudgmentEngine_HasNoCrossCallHysteresisOrCommitmentMemory)
+{
+    prom_judgment_facts near_threshold = base_facts();
+    near_threshold.readback_required = 1u;
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD) - 1u;
+    near_threshold.tiled_shape = 0u;
+
+    prom_judgment_decision below_threshold{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &below_threshold);
+    ASSERT_EQUAL(1u, below_threshold.success, "below-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_DIRECT, below_threshold.selected_path, "below-threshold shape should select direct path");
+    ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, below_threshold.compute_mode, "below-threshold shape should stay baseline");
+
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD);
+    prom_judgment_decision at_threshold{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &at_threshold);
+    ASSERT_EQUAL(1u, at_threshold.success, "at-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_STAGED_UPLOAD_READBACK, at_threshold.selected_path, "at-threshold shape should immediately switch to staged path");
+
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD) - 1u;
+    prom_judgment_decision return_below{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &return_below);
+    ASSERT_EQUAL(1u, return_below.success, "return-below-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_DIRECT, return_below.selected_path, "return-below-threshold shape should immediately switch back to direct path");
+}
