@@ -1,0 +1,72 @@
+package JsonIntentRecoveryLabM1
+
+record PageMeta {
+    Id: String
+    Title: String
+}
+
+record SectionPlacementTable {
+    Kind: String[]
+    Slot: String[]
+}
+
+record HeroTable {
+    Slot: String
+    Headline: String
+    CtaText: String
+    CtaHref: String
+}
+
+record ProductCatalogTable {
+    Sku: String[]
+    Label: String[]
+    Price: Float[]
+}
+
+record ProductGridTable {
+    Slot: String
+    Columns: Int
+    ProductSku: String[]
+}
+
+record BannerTable {
+    Slot: String
+    Text: String
+    Theme: String
+}
+
+record HomePageCorpus {
+    Meta: PageMeta
+    SectionPlacement: SectionPlacementTable
+    Hero: HeroTable
+    ProductCatalog: ProductCatalogTable
+    ProductGrid: ProductGridTable
+    Banner: BannerTable
+}
+
+fn RecoveredHomePageCorpus() -> HomePageCorpus {
+    return HomePageCorpus {
+        Meta: PageMeta { Id: "home" Title: "Storefront Home" }
+        SectionPlacement: SectionPlacementTable {
+            Kind: ["hero", "product_grid", "banner"]
+            Slot: ["top", "main", "footer"]
+        }
+        Hero: HeroTable {
+            Slot: "top"
+            Headline: "Spring Collection"
+            CtaText: "Shop now"
+            CtaHref: "/collections/spring"
+        }
+        ProductCatalog: ProductCatalogTable {
+            Sku: ["SKU-1", "SKU-2", "SKU-3"]
+            Label: ["Linen Shirt", "Cotton Pants", "Canvas Tote"]
+            Price: [59.0, 79.0, 24.0]
+        }
+        ProductGrid: ProductGridTable {
+            Slot: "main"
+            Columns: 3
+            ProductSku: ["SKU-1", "SKU-2", "SKU-3"]
+        }
+        Banner: BannerTable { Slot: "footer" Text: "Free shipping over $75" Theme: "accent" }
+    }
+}

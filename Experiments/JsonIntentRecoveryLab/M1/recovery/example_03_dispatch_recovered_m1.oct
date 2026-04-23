@@ -1,0 +1,29 @@
+package JsonIntentRecoveryLabM1
+
+record StringDispatchTable {
+    Keys: String[]
+    Values: String[]
+}
+
+record RetryPolicyTable {
+    Events: String[]
+    Retries: Int[]
+}
+
+record DispatchCorpus {
+    Handlers: StringDispatchTable
+    RetryPolicy: RetryPolicyTable
+}
+
+fn RecoveredDispatchCorpus() -> DispatchCorpus {
+    return DispatchCorpus {
+        Handlers: StringDispatchTable {
+            Keys: ["user.created", "user.deleted", "invoice.paid", "invoice.failed"]
+            Values: ["handle_user_created", "handle_user_deleted", "handle_invoice_paid", "handle_invoice_failed"]
+        }
+        RetryPolicy: RetryPolicyTable {
+            Events: ["invoice.failed", "user.deleted"]
+            Retries: [5, 1]
+        }
+    }
+}

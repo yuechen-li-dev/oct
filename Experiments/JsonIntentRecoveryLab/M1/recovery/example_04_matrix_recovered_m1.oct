@@ -1,0 +1,35 @@
+package JsonIntentRecoveryLabM1
+
+record SensorGridTable {
+    Rows: Int
+    Cols: Int
+    Values: Float[]
+}
+
+record SensorPlacementTable {
+    Row: Int[]
+    Col: Int[]
+}
+
+record SensorGridCorpus {
+    Grid: SensorGridTable
+    Placement: SensorPlacementTable
+}
+
+fn RecoveredSensorGridCorpus() -> SensorGridCorpus {
+    return SensorGridCorpus {
+        Grid: SensorGridTable {
+            Rows: 3
+            Cols: 4
+            Values: [
+                21.5, 21.8, 22.0, 21.9,
+                21.7, 21.9, 22.1, 22.0,
+                21.6, 21.7, 21.9, 21.8
+            ]
+        }
+        Placement: SensorPlacementTable {
+            Row: [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
+            Col: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+        }
+    }
+}
