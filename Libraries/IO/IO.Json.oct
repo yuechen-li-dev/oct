@@ -1,0 +1,5 @@
+package IO
+
+fn NormalizeJson(text: String) -> String ! Error {
+    return JsonNormalize(text)?
+}

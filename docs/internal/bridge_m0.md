@@ -32,8 +32,22 @@ Bridge M0 defines the minimum internal substrate for maintainers to build curate
    - Dispatch is explicit by builtin name to typed handler functions.
 
 4. **Error mapping convention**
-   - Backend and state errors map to Oct errors as `<BuiltinName>: <message>`.
+   - Backend and state errors map to Oct errors as `<BuiltinName>: <ErrorKind>: <message>`.
    - Invalid handle/state is surfaced as fallible Oct errors, not runtime panics.
+   - Wrapper error categories are standardized (`InvalidArgument`, `InvalidHandle`, `NotFound`, `Conflict`, `InvalidData`, `BackendFailure`).
+
+5. **Wrapper call helpers**
+   - Wrapper handlers should use `wrapperCall` helpers for argument arity checks and argument decoding.
+   - Use `stringArg`, `intArg`, and `floatArg` helpers instead of ad hoc per-wrapper extraction logic.
+   - Use `wrapperIntResult` / `wrapperStringResult` for common lifted values.
+
+6. **Testing/docs shape**
+   - Each wrapper module should include Oct-level `.octest` facts with:
+     - happy path
+     - explicit error path
+     - deterministic output assertions where possible
+   - Runtime helper behavior should be unit-tested in Go (`internal/interpret/wrapper_bridge_test.go`).
+   - Library-facing wrapper docs live with the wrapper package README (see `Libraries/IO/README.md`).
 
 ## Wrapper design expectations
 
@@ -44,8 +58,9 @@ Bridge M0 defines the minimum internal substrate for maintainers to build curate
 
 ## Current proof case
 
-`IO.Xlsx` now runs on this Bridge M0 substrate for:
+`IO.Xlsx` and `IO.Json` now run on this Bridge M0 substrate for:
 
 - workbook handle allocation and lookup
 - wrapper builtin registration/dispatch
 - deterministic backend-to-Oct error mapping
+- shared wrapper call argument/result helpers

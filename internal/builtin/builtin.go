@@ -35,6 +35,7 @@ var names = map[string]struct{}{
 	"XlsxSetCellString":  {},
 	"XlsxSetCellFloat":   {},
 	"XlsxSaveWorkbook":   {},
+	"JsonNormalize":      {},
 	"PlotLine":           {},
 	"PlotScatter":        {},
 	"Step":               {},
