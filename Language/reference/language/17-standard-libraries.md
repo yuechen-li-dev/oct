@@ -24,6 +24,7 @@ Common modules in the standard-library path include:
 - `Hash.Core`
 - `Image.Core`
 - `Plot.Core`
+- `Pdf.Core`
 - `Text.Regex`
 - `Time.Core`
 
@@ -35,6 +36,7 @@ Module source locations (canonical in-repo docs/tests live with library code):
 - `Libraries/Hash/`
 - `Libraries/Image/`
 - `Libraries/Plot/`
+- `Libraries/Pdf/`
 - `Libraries/Text/`
 - `Libraries/Time/`
 
@@ -71,6 +73,16 @@ fn Main() -> Int ! Error {
     return Plot.Line([0.0, 1.0, 2.0], [0.2, 0.9, 1.7], "advanced.png", size, labels)?
 }
 ```
+
+## PDF output posture (important)
+
+`Pdf.Core` is pixel-native composition that outputs PDF:
+
+- page size uses `Int<px>`
+- text/image placement uses `Int<px>`
+- wrapper internals map pixels to PDF units
+
+Use `Pdf.Core` when you want deterministic page composition in pixel space and PDF as the sink format.
 
 ## Usage posture
 

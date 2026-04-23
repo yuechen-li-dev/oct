@@ -1,0 +1,50 @@
+package Pdf
+
+record PdfPage {
+    Handle: Int
+}
+
+record TextStyle {
+    Size: Int<px>
+    ColorR: Int
+    ColorG: Int
+    ColorB: Int
+}
+
+record ImageHandle {
+    Handle: Int
+}
+
+fn NewPage(width: Int<px>, height: Int<px>) -> PdfPage ! Error {
+    let handle = PdfNewPage(width, height)?
+    return PdfPage { Handle: handle }
+}
+
+fn DrawText(page: PdfPage, x: Int<px>, y: Int<px>, text: String) -> Int ! Error {
+    return PdfDrawText(page.Handle, x, y, text)?
+}
+
+fn DrawTextStyled(page: PdfPage, x: Int<px>, y: Int<px>, text: String, style: TextStyle) -> Int ! Error {
+    return PdfDrawTextStyled(page.Handle, x, y, text, style.Size, style.ColorR, style.ColorG, style.ColorB)?
+}
+
+fn DrawImage(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>) -> Int ! Error {
+    return PdfDrawImage(page.Handle, image.Handle, x, y)?
+}
+
+fn DrawImageSized(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>, width: Int<px>, height: Int<px>) -> Int ! Error {
+    return PdfDrawImageSized(page.Handle, image.Handle, x, y, width, height)?
+}
+
+fn Save(page: PdfPage, path: String) -> Int ! Error {
+    return PdfSave(page.Handle, path)?
+}
+
+fn DefaultTextStyle() -> TextStyle {
+    return TextStyle {
+        Size: 16px
+        ColorR: 0
+        ColorG: 0
+        ColorB: 0
+    }
+}

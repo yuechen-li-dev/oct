@@ -1,0 +1,69 @@
+package Pdf
+
+[Fact]
+fn BasicPageCreateTextAndSave() -> Void {
+    let out = "m105_pdf_text.pdf"
+    let page = NewPage(320px, 180px)!
+    let _draw = DrawText(page, 12px, 16px, "hello from Pdf.Core")!
+    let _save = Save(page, out)!
+    Assert.True(FileExists(out), "pdf output should exist")
+    let _deleted = FileDelete(out)!
+}
+
+[Fact]
+fn DrawImageAndSave() -> Void {
+    let pngPath = "m105_pdf_img_fixture.png"
+    let _plot = PlotLine([0.0, 1.0, 2.0], [0.0, 2.0, 1.0], pngPath)
+
+    let page = NewPage(400px, 280px)!
+    let imageHandle = ImageLoad(pngPath)!
+    let img = ImageHandle { Handle: imageHandle }
+    let _draw = DrawImage(page, img, 10px, 20px)!
+    let _save = Save(page, "m105_pdf_image.pdf")!
+
+    Assert.True(FileExists("m105_pdf_image.pdf"), "pdf with image should exist")
+
+    let _d1 = FileDelete("m105_pdf_image.pdf")!
+    let _d2 = FileDelete(pngPath)!
+}
+
+[Fact]
+fn DrawImageSizedAndStyledText() -> Void {
+    let pngPath = "m105_pdf_img_sized_fixture.png"
+    let _plot = PlotScatter([0.0, 1.0, 2.0], [2.0, 1.0, 3.0], pngPath)
+
+    let page = NewPage(500px, 300px)!
+    let imageHandle = ImageLoad(pngPath)!
+    let img = ImageHandle { Handle: imageHandle }
+    let _draw1 = DrawImageSized(page, img, 8px, 40px, 240px, 120px)!
+
+    let style = DefaultTextStyle()
+    let custom = TextStyle { Size: 20px ColorR: 24 ColorG: 100 ColorB: 220 }
+    let _draw2 = DrawTextStyled(page, 10px, 14px, "default", style)!
+    let _draw3 = DrawTextStyled(page, 10px, 172px, "custom", custom)!
+
+    let _save = Save(page, "m105_pdf_sized.pdf")!
+    Assert.True(FileExists("m105_pdf_sized.pdf"), "sized image pdf should exist")
+
+    let _d1 = FileDelete("m105_pdf_sized.pdf")!
+    let _d2 = FileDelete(pngPath)!
+}
+
+[Fact]
+fn SaveInvalidPathFails() -> Void {
+    let page = NewPage(120px, 80px)!
+    Assert.Error(Save(page, "/definitely/missing/m105/nope/out.pdf"), "save should fail for invalid path")
+}
+
+[Fact]
+fn InvalidPageHandleFails() -> Void {
+    let bogus = PdfPage { Handle: 99999 }
+    Assert.Error(DrawText(bogus, 1px, 1px, "x"), "invalid page handle should fail")
+}
+
+[Fact]
+fn InvalidImageHandleFails() -> Void {
+    let page = NewPage(120px, 80px)!
+    let bad = ImageHandle { Handle: 77777 }
+    Assert.Error(DrawImage(page, bad, 1px, 1px), "invalid image handle should fail")
+}
