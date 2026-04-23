@@ -106,7 +106,7 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 
 The following moved to dedicated reference pages to keep the core surface legible:
 
-- Standard-library and wrapper-backed APIs (file/path/directory/json/csv/zip/gzip/hash/regex/time/xlsx/plotting).
+- Standard-library and wrapper-backed APIs (file/path/directory/json/csv/zip/gzip/hash/image/regex/time/xlsx/plotting).
 - Backend support builtins used to implement those standard-library modules.
 - Prometheus-specific surfaces (`PROMETHEUS` blocks and `PrometheusMatMul`) which are experimental and tracked separately.
 
