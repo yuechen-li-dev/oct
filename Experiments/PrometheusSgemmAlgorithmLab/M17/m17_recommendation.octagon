@@ -1,0 +1,8 @@
+[M17Recommendation {
+    FirstImplementationCandidate: "Packed4FP32"
+    NeedsM18RakeLab: "FP16StorageFP32Accum first; then Packed4FP16StorageFP32Accum and FP16StorageFP16Arithmetic"
+    DeferredCandidates: "Packed4FP16StorageFP32Accum, FP16StorageFP16Arithmetic"
+    RejectedForNow: "none permanently; FP16StorageFP16Arithmetic rejected by default unless explicit opt-in and M18 evidence"
+    NextMilestone: "M18 precision/layout risk rake lab focused on FP16 storage roundtrip and packed-tail correctness"
+    Notes: "judgment engine should hard-gate by capability, strict precision contract, fallback availability, and controller mode"
+}]

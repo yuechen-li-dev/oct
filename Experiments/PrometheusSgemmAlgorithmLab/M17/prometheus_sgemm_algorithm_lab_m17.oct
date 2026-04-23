@@ -1,0 +1,394 @@
+package PrometheusSgemmAlgorithmLab
+
+record M17Context {
+    Name: String
+    M: Int
+    N: Int
+    KDim: Int
+    StrictFP32Correctness: Bool
+    AllowFP16StorageQuantization: Bool
+    AllowFP16ArithmeticOptIn: Bool
+    FP16StorageAvailable: Bool
+    FP16ArithmeticAvailable: Bool
+    Packed4Feasible: Bool
+    FallbackAvailable: Bool
+    DirectPathPreferred: Bool
+    TransferBoundPressure: Int
+    ControllerMode: String
+}
+
+record M17CandidateDecision {
+    Candidate: String
+    UseDisposition: String
+    Conditions: String
+    RejectionCases: String
+    TransferVolumeUnits: Int
+    PaddingWasteUnits: Int
+    ConversionCostUnits: Int
+    LayoutComplexityScore: Int
+    SharedFootprintUnits: Int
+    ArithmeticPrecisionRiskScore: Int
+    FallbackRequired: Bool
+    ImplementationComplexityScore: Int
+    CorrectnessRiskScore: Int
+    EligibilityReason: String
+}
+
+record M17CandidateTable {
+    Candidate: String[]
+    UseDisposition: String[]
+    Conditions: String[]
+    RejectionCases: String[]
+    TransferVolumeUnits: Int[]
+    PaddingWasteUnits: Int[]
+    ConversionCostUnits: Int[]
+    LayoutComplexityScore: Int[]
+    SharedFootprintUnits: Int[]
+    ArithmeticPrecisionRiskScore: Int[]
+    FallbackRequired: Bool[]
+    ImplementationComplexityScore: Int[]
+    CorrectnessRiskScore: Int[]
+    EligibilityReason: String[]
+}
+
+record M17ConditionMatrix {
+    Candidate: String[]
+    RequiresPacked4: Bool[]
+    RequiresFP16Storage: Bool[]
+    RequiresFP16Arithmetic: Bool[]
+    RequiresExplicitOptIn: Bool[]
+    RejectIfStrictFP32: Bool[]
+    DefaultModePreference: String[]
+    PrimaryFallback: String[]
+}
+
+record M17RiskHandoff {
+    Candidate: String
+    RiskLevel: String
+    RequiresM18Rake: Bool
+    M18Targets: String
+    Why: String
+    RequiredCounters: String
+}
+
+record M17Recommendation {
+    FirstImplementationCandidate: String
+    NeedsM18RakeLab: String
+    DeferredCandidates: String
+    RejectedForNow: String
+    NextMilestone: String
+    Notes: String
+}
+
+fn M17MinInt(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M17MaxInt(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+
+fn M17CeilDiv(numerator: Int, denominator: Int) -> Int {
+    if denominator <= 0 { return 0 }
+    return (numerator + denominator - 1) / denominator
+}
+
+fn M17PaddingWasteUnits(length: Int) -> Int {
+    let padded = M17CeilDiv(length, 4) * 4
+    return padded - length
+}
+
+fn M17ControllerPackedWasteBudget(mode: String) -> Int {
+    return switch {
+        case mode == "aggressive" => 35
+        case mode == "safe" => 20
+        case mode == "recovery" => 15
+        else => 20
+    }
+}
+
+fn M17Packed4AcceptedByShape(context: M17Context) -> Bool {
+    let waste = M17PaddingWasteUnits(context.M) + M17PaddingWasteUnits(context.N) + M17PaddingWasteUnits(context.KDim)
+    let budget = M17ControllerPackedWasteBudget(context.ControllerMode)
+    let area = context.M * context.N
+    let tinyShape = area < 256
+    return not tinyShape and waste <= budget
+}
+
+fn M17BaseTransferUnits(context: M17Context) -> Int {
+    let readA = context.M * context.KDim
+    let readB = context.KDim * context.N
+    let writeC = context.M * context.N
+    return readA + readB + writeC
+}
+
+fn M17SharedFootprintEstimate(context: M17Context, packed4: Bool, fp16Storage: Bool) -> Int {
+    let base = (context.M * M17MinInt(context.KDim, 64)) + (M17MinInt(context.KDim, 64) * context.N)
+    var adjusted = base
+    if packed4 { adjusted = adjusted + (base / 8) }
+    if fp16Storage { adjusted = adjusted / 2 }
+    return M17MaxInt(adjusted, 1)
+}
+
+fn M17CandidateScalarFP32(context: M17Context) -> M17CandidateDecision {
+    return M17CandidateDecision {
+        Candidate: "ScalarFP32"
+        UseDisposition: "yes"
+        Conditions: "default baseline in all controller modes; use when strict FP32 correctness is required or capability gates block alternative layouts"
+        RejectionCases: "none; this is mandatory fallback"
+        TransferVolumeUnits: M17BaseTransferUnits(context)
+        PaddingWasteUnits: 0
+        ConversionCostUnits: 0
+        LayoutComplexityScore: 1
+        SharedFootprintUnits: M17SharedFootprintEstimate(context, false, false)
+        ArithmeticPrecisionRiskScore: 1
+        FallbackRequired: false
+        ImplementationComplexityScore: 2
+        CorrectnessRiskScore: 1
+        EligibilityReason: "always eligible"
+    }
+}
+
+fn M17CandidatePacked4FP32(context: M17Context) -> M17CandidateDecision {
+    let padWaste = M17PaddingWasteUnits(context.M) + M17PaddingWasteUnits(context.N) + M17PaddingWasteUnits(context.KDim)
+    let shapeOk = M17Packed4AcceptedByShape(context)
+    let eligible = context.Packed4Feasible and context.FallbackAvailable and shapeOk
+    let disposition = switch {
+        case eligible => "yes"
+        else => "no"
+    }
+    let reason = switch {
+        case not context.Packed4Feasible => "missing packed4 capability"
+        case not context.FallbackAvailable => "fallback unavailable"
+        case not shapeOk => "padding waste too high or shape too small"
+        else => "eligible"
+    }
+    return M17CandidateDecision {
+        Candidate: "Packed4FP32"
+        UseDisposition: disposition
+        Conditions: "prefer when shape is medium/large and 4-alignment waste is within mode budget; strongest in aggressive mode under transfer pressure"
+        RejectionCases: "reject on tiny or skinny-heavy shapes with high non-multiple-of-4 waste, or when fallback path is missing"
+        TransferVolumeUnits: M17BaseTransferUnits(context)
+        PaddingWasteUnits: padWaste
+        ConversionCostUnits: 0
+        LayoutComplexityScore: 3
+        SharedFootprintUnits: M17SharedFootprintEstimate(context, true, false)
+        ArithmeticPrecisionRiskScore: 1
+        FallbackRequired: true
+        ImplementationComplexityScore: 4
+        CorrectnessRiskScore: 3
+        EligibilityReason: reason
+    }
+}
+
+fn M17CandidateFP16StorageFP32Accum(context: M17Context) -> M17CandidateDecision {
+    let baseTransfer = M17BaseTransferUnits(context)
+    let transfer = (baseTransfer * 3) / 4
+    let conversion = ((context.M * context.KDim) + (context.KDim * context.N)) / 2
+    let eligible = context.FP16StorageAvailable and context.AllowFP16StorageQuantization and context.FallbackAvailable and (not context.StrictFP32Correctness)
+    let disposition = switch {
+        case eligible => "yes"
+        else => "no"
+    }
+    let reason = switch {
+        case context.StrictFP32Correctness => "strict FP32 correctness gate"
+        case not context.FP16StorageAvailable => "missing FP16 storage capability"
+        case not context.AllowFP16StorageQuantization => "tolerance does not allow FP16 storage"
+        case not context.FallbackAvailable => "fallback unavailable"
+        else => "eligible"
+    }
+    return M17CandidateDecision {
+        Candidate: "FP16StorageFP32Accum"
+        UseDisposition: disposition
+        Conditions: "use when transfer pressure is high and storage quantization is acceptable; keep FP32 accumulation for stability"
+        RejectionCases: "reject for strict FP32 fidelity contracts, missing FP16 storage support, or uncertain tolerance"
+        TransferVolumeUnits: transfer
+        PaddingWasteUnits: 0
+        ConversionCostUnits: conversion
+        LayoutComplexityScore: 4
+        SharedFootprintUnits: M17SharedFootprintEstimate(context, false, true)
+        ArithmeticPrecisionRiskScore: 4
+        FallbackRequired: true
+        ImplementationComplexityScore: 5
+        CorrectnessRiskScore: 5
+        EligibilityReason: reason
+    }
+}
+
+fn M17CandidatePacked4FP16StorageFP32Accum(context: M17Context) -> M17CandidateDecision {
+    let padWaste = M17PaddingWasteUnits(context.M) + M17PaddingWasteUnits(context.N) + M17PaddingWasteUnits(context.KDim)
+    let baseTransfer = M17BaseTransferUnits(context)
+    let transfer = (baseTransfer * 5) / 8
+    let conversion = ((context.M * context.KDim) + (context.KDim * context.N)) / 2
+    let shapeOk = M17Packed4AcceptedByShape(context)
+    let eligible = context.Packed4Feasible and shapeOk and context.FP16StorageAvailable and context.AllowFP16StorageQuantization and context.FallbackAvailable and (not context.StrictFP32Correctness)
+    let disposition = switch {
+        case eligible => "only experimental"
+        else => "no"
+    }
+    let reason = switch {
+        case context.StrictFP32Correctness => "strict FP32 correctness gate"
+        case not context.Packed4Feasible => "missing packed4 capability"
+        case not shapeOk => "padding waste too high or shape too small"
+        case not context.FP16StorageAvailable => "missing FP16 storage capability"
+        case not context.AllowFP16StorageQuantization => "tolerance does not allow FP16 storage"
+        case not context.FallbackAvailable => "fallback unavailable"
+        else => "eligible high-risk"
+    }
+    return M17CandidateDecision {
+        Candidate: "Packed4FP16StorageFP32Accum"
+        UseDisposition: disposition
+        Conditions: "experimental candidate for high transfer pressure when packed shape is favorable and quantization tolerance is explicit"
+        RejectionCases: "reject on non-4-aligned small shapes, strict FP32 contracts, missing FP16 storage capability, or absent fallback"
+        TransferVolumeUnits: transfer
+        PaddingWasteUnits: padWaste
+        ConversionCostUnits: conversion
+        LayoutComplexityScore: 6
+        SharedFootprintUnits: M17SharedFootprintEstimate(context, true, true)
+        ArithmeticPrecisionRiskScore: 6
+        FallbackRequired: true
+        ImplementationComplexityScore: 7
+        CorrectnessRiskScore: 7
+        EligibilityReason: reason
+    }
+}
+
+fn M17CandidateFP16StorageFP16Arithmetic(context: M17Context) -> M17CandidateDecision {
+    let baseTransfer = M17BaseTransferUnits(context)
+    let transfer = baseTransfer / 2
+    let conversion = ((context.M * context.KDim) + (context.KDim * context.N) + (context.M * context.N)) / 2
+    let eligible = context.FP16StorageAvailable and context.FP16ArithmeticAvailable and context.AllowFP16StorageQuantization and context.AllowFP16ArithmeticOptIn and context.FallbackAvailable and (not context.StrictFP32Correctness)
+    let disposition = switch {
+        case eligible => "only behind explicit precision opt-in"
+        else => "no"
+    }
+    let reason = switch {
+        case context.StrictFP32Correctness => "strict FP32 correctness gate"
+        case not context.FP16StorageAvailable => "missing FP16 storage capability"
+        case not context.FP16ArithmeticAvailable => "missing FP16 arithmetic capability"
+        case not context.AllowFP16StorageQuantization => "storage quantization not allowed"
+        case not context.AllowFP16ArithmeticOptIn => "explicit FP16 arithmetic opt-in absent"
+        case not context.FallbackAvailable => "fallback unavailable"
+        else => "eligible very high-risk"
+    }
+    return M17CandidateDecision {
+        Candidate: "FP16StorageFP16Arithmetic"
+        UseDisposition: disposition
+        Conditions: "permit only in aggressive mode with explicit opt-in and loose numerical tolerance"
+        RejectionCases: "reject for strict FP32 correctness, any missing FP16 capability, or non-opted workloads"
+        TransferVolumeUnits: transfer
+        PaddingWasteUnits: 0
+        ConversionCostUnits: conversion
+        LayoutComplexityScore: 5
+        SharedFootprintUnits: M17SharedFootprintEstimate(context, false, true)
+        ArithmeticPrecisionRiskScore: 9
+        FallbackRequired: true
+        ImplementationComplexityScore: 8
+        CorrectnessRiskScore: 9
+        EligibilityReason: reason
+    }
+}
+
+fn M17EvaluateCandidates(context: M17Context) -> M17CandidateDecision[] {
+    return [
+        M17CandidateScalarFP32(context),
+        M17CandidatePacked4FP32(context),
+        M17CandidateFP16StorageFP32Accum(context),
+        M17CandidatePacked4FP16StorageFP32Accum(context),
+        M17CandidateFP16StorageFP16Arithmetic(context)
+    ]
+}
+
+fn M17CandidateColumns(decisions: M17CandidateDecision[]) -> M17CandidateTable {
+    return M17CandidateTable {
+        Candidate: [decisions[0].Candidate, decisions[1].Candidate, decisions[2].Candidate, decisions[3].Candidate, decisions[4].Candidate]
+        UseDisposition: [decisions[0].UseDisposition, decisions[1].UseDisposition, decisions[2].UseDisposition, decisions[3].UseDisposition, decisions[4].UseDisposition]
+        Conditions: [decisions[0].Conditions, decisions[1].Conditions, decisions[2].Conditions, decisions[3].Conditions, decisions[4].Conditions]
+        RejectionCases: [decisions[0].RejectionCases, decisions[1].RejectionCases, decisions[2].RejectionCases, decisions[3].RejectionCases, decisions[4].RejectionCases]
+        TransferVolumeUnits: [decisions[0].TransferVolumeUnits, decisions[1].TransferVolumeUnits, decisions[2].TransferVolumeUnits, decisions[3].TransferVolumeUnits, decisions[4].TransferVolumeUnits]
+        PaddingWasteUnits: [decisions[0].PaddingWasteUnits, decisions[1].PaddingWasteUnits, decisions[2].PaddingWasteUnits, decisions[3].PaddingWasteUnits, decisions[4].PaddingWasteUnits]
+        ConversionCostUnits: [decisions[0].ConversionCostUnits, decisions[1].ConversionCostUnits, decisions[2].ConversionCostUnits, decisions[3].ConversionCostUnits, decisions[4].ConversionCostUnits]
+        LayoutComplexityScore: [decisions[0].LayoutComplexityScore, decisions[1].LayoutComplexityScore, decisions[2].LayoutComplexityScore, decisions[3].LayoutComplexityScore, decisions[4].LayoutComplexityScore]
+        SharedFootprintUnits: [decisions[0].SharedFootprintUnits, decisions[1].SharedFootprintUnits, decisions[2].SharedFootprintUnits, decisions[3].SharedFootprintUnits, decisions[4].SharedFootprintUnits]
+        ArithmeticPrecisionRiskScore: [decisions[0].ArithmeticPrecisionRiskScore, decisions[1].ArithmeticPrecisionRiskScore, decisions[2].ArithmeticPrecisionRiskScore, decisions[3].ArithmeticPrecisionRiskScore, decisions[4].ArithmeticPrecisionRiskScore]
+        FallbackRequired: [decisions[0].FallbackRequired, decisions[1].FallbackRequired, decisions[2].FallbackRequired, decisions[3].FallbackRequired, decisions[4].FallbackRequired]
+        ImplementationComplexityScore: [decisions[0].ImplementationComplexityScore, decisions[1].ImplementationComplexityScore, decisions[2].ImplementationComplexityScore, decisions[3].ImplementationComplexityScore, decisions[4].ImplementationComplexityScore]
+        CorrectnessRiskScore: [decisions[0].CorrectnessRiskScore, decisions[1].CorrectnessRiskScore, decisions[2].CorrectnessRiskScore, decisions[3].CorrectnessRiskScore, decisions[4].CorrectnessRiskScore]
+        EligibilityReason: [decisions[0].EligibilityReason, decisions[1].EligibilityReason, decisions[2].EligibilityReason, decisions[3].EligibilityReason, decisions[4].EligibilityReason]
+    }
+}
+
+fn M17DefaultContext() -> M17Context {
+    return M17Context {
+        Name: "m17-reference-medium-rectangular"
+        M: 128
+        N: 192
+        KDim: 96
+        StrictFP32Correctness: false
+        AllowFP16StorageQuantization: true
+        AllowFP16ArithmeticOptIn: false
+        FP16StorageAvailable: true
+        FP16ArithmeticAvailable: true
+        Packed4Feasible: true
+        FallbackAvailable: true
+        DirectPathPreferred: false
+        TransferBoundPressure: 72
+        ControllerMode: "safe"
+    }
+}
+
+fn M17ConditionMatrixData() -> M17ConditionMatrix {
+    return M17ConditionMatrix {
+        Candidate: ["ScalarFP32", "Packed4FP32", "FP16StorageFP32Accum", "Packed4FP16StorageFP32Accum", "FP16StorageFP16Arithmetic"]
+        RequiresPacked4: [false, true, false, true, false]
+        RequiresFP16Storage: [false, false, true, true, true]
+        RequiresFP16Arithmetic: [false, false, false, false, true]
+        RequiresExplicitOptIn: [false, false, false, false, true]
+        RejectIfStrictFP32: [false, false, true, true, true]
+        DefaultModePreference: ["all", "aggressive/safe", "safe/aggressive", "aggressive experimental", "aggressive opt-in only"]
+        PrimaryFallback: ["none", "ScalarFP32", "ScalarFP32", "FP16StorageFP32Accum then ScalarFP32", "FP16StorageFP32Accum then ScalarFP32"]
+    }
+}
+
+fn M17RiskHandoffData() -> M17RiskHandoff[] {
+    return [
+        M17RiskHandoff {
+            Candidate: "FP16StorageFP32Accum"
+            RiskLevel: "high"
+            RequiresM18Rake: true
+            M18Targets: "conversion roundtrip drift, tolerance ambiguity, CPU/GPU mismatch, large/small magnitude edge sweeps"
+            Why: "bandwidth gains are attractive but quantization can silently bias accumulation-sensitive workloads"
+            RequiredCounters: "quantization_error_l1, quantization_error_max, tolerated_vs_observed_threshold, fallback_trigger_count"
+        },
+        M17RiskHandoff {
+            Candidate: "Packed4FP16StorageFP32Accum"
+            RiskLevel: "very-high"
+            RequiresM18Rake: true
+            M18Targets: "padding + precision compounded faults, conversion/layout ordering bugs, non-multiple-of-4 bounds safety"
+            Why: "combined layout and precision complexity increases correctness and diagnosability risk"
+            RequiredCounters: "padding_waste_ratio, packed_tail_guard_violations, conversion_order_mismatch_count, fallback_trigger_count"
+        },
+        M17RiskHandoff {
+            Candidate: "FP16StorageFP16Arithmetic"
+            RiskLevel: "critical"
+            RequiresM18Rake: true
+            M18Targets: "numerical drift growth by shape, non-associativity amplification, silent degradation under loose tolerances"
+            Why: "changes arithmetic semantics and can fail silently without strict observability"
+            RequiredCounters: "reference_delta_ulps, error_growth_vs_k, strict_contract_violation_count, explicit_opt_in_audit_failures"
+        },
+        M17RiskHandoff {
+            Candidate: "Packed4FP32"
+            RiskLevel: "medium"
+            RequiresM18Rake: false
+            M18Targets: "padding/bounds correctness and row-major indexing drift checks"
+            Why: "precision-safe but still vulnerable to non-multiple-of-4 edge indexing mistakes"
+            RequiredCounters: "padding_waste_ratio, tail_lane_mask_applied_count, out_of_bounds_prevented_count"
+        }
+    ]
+}
+
+fn M17RecommendationSummary() -> M17Recommendation {
+    return M17Recommendation {
+        FirstImplementationCandidate: "Packed4FP32"
+        NeedsM18RakeLab: "FP16StorageFP32Accum first; then Packed4FP16StorageFP32Accum and FP16StorageFP16Arithmetic"
+        DeferredCandidates: "Packed4FP16StorageFP32Accum, FP16StorageFP16Arithmetic"
+        RejectedForNow: "none permanently; FP16StorageFP16Arithmetic rejected by default unless explicit opt-in and M18 evidence"
+        NextMilestone: "M18 precision/layout risk rake lab focused on FP16 storage roundtrip and packed-tail correctness"
+        Notes: "judgment engine should hard-gate by capability, strict precision contract, fallback availability, and controller mode"
+    }
+}

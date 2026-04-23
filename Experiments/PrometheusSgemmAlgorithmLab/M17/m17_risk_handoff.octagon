@@ -1,0 +1,29 @@
+[M17RiskHandoff {
+    Candidate: "FP16StorageFP32Accum"
+    RiskLevel: "high"
+    RequiresM18Rake: true
+    M18Targets: "conversion roundtrip drift, tolerance ambiguity, CPU/GPU mismatch, large/small magnitude edge sweeps"
+    Why: "bandwidth gains are attractive but quantization can silently bias accumulation-sensitive workloads"
+    RequiredCounters: "quantization_error_l1, quantization_error_max, tolerated_vs_observed_threshold, fallback_trigger_count"
+}, M17RiskHandoff {
+    Candidate: "Packed4FP16StorageFP32Accum"
+    RiskLevel: "very-high"
+    RequiresM18Rake: true
+    M18Targets: "padding + precision compounded faults, conversion/layout ordering bugs, non-multiple-of-4 bounds safety"
+    Why: "combined layout and precision complexity increases correctness and diagnosability risk"
+    RequiredCounters: "padding_waste_ratio, packed_tail_guard_violations, conversion_order_mismatch_count, fallback_trigger_count"
+}, M17RiskHandoff {
+    Candidate: "FP16StorageFP16Arithmetic"
+    RiskLevel: "critical"
+    RequiresM18Rake: true
+    M18Targets: "numerical drift growth by shape, non-associativity amplification, silent degradation under loose tolerances"
+    Why: "changes arithmetic semantics and can fail silently without strict observability"
+    RequiredCounters: "reference_delta_ulps, error_growth_vs_k, strict_contract_violation_count, explicit_opt_in_audit_failures"
+}, M17RiskHandoff {
+    Candidate: "Packed4FP32"
+    RiskLevel: "medium"
+    RequiresM18Rake: false
+    M18Targets: "padding/bounds correctness and row-major indexing drift checks"
+    Why: "precision-safe but still vulnerable to non-multiple-of-4 edge indexing mistakes"
+    RequiredCounters: "padding_waste_ratio, tail_lane_mask_applied_count, out_of_bounds_prevented_count"
+}]
