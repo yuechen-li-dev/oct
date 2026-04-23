@@ -131,6 +131,7 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t chunk_min;
   uint32_t chunk_max;
   uint32_t waste_budget_units;
+  uint32_t pending_waste_units;
   uint32_t wasted_work_units_last;
   uint64_t wasted_work_units_total;
   uint64_t decision_count;

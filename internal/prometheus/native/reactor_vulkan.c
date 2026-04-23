@@ -414,8 +414,8 @@ static prom_sgemm_controller_defaults prom_sgemm_default_config(void) {
   return defaults;
 }
 
-static uint32_t prom_abs_diff_u32(uint32_t left, uint32_t right) {
-  return left >= right ? left - right : right - left;
+static uint32_t prom_subtract_saturating_u32(uint32_t left, uint32_t right) {
+  return left > right ? left - right : 0u;
 }
 
 static uint32_t prom_sgemm_shape_signature(uint32_t m, uint32_t n, uint32_t k) {
@@ -569,7 +569,7 @@ static prom_policy_mode prom_sgemm_controller_step(prom_sgemm_controller_state* 
   if (state->pending_waste_units >= waste_budget) {
     state->budget_depletion_count += 1u;
   }
-  state->pending_waste_units = prom_abs_diff_u32(state->pending_waste_units, waste_units);
+  state->pending_waste_units = prom_subtract_saturating_u32(state->pending_waste_units, waste_units);
   state->last_shape_signature = signature;
   state->last_shape_m = m;
   state->last_shape_n = n;
@@ -1469,6 +1469,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
   if (judgment_facts.force_direct == 0u && policy_mode == PROM_POLICY_MODE_SAFE &&
       (rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) == 0u && (rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) == 0u) {
+    /* SAFE mode currently biases to direct+baseline for conservative behavior.
+     * This can suppress direct+tiled on large shapes; keep unchanged in this pass
+     * and revisit with real GPU validation data before any policy relaxation. */
     judgment_facts.force_direct = 1u;
   }
   judgment_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
@@ -1980,6 +1983,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->chunk_min = defaults.chunk_min;
   out_diag->chunk_max = defaults.chunk_max;
   out_diag->waste_budget_units = defaults.waste_budget_units;
+  out_diag->pending_waste_units = rt->sgemm_controller.pending_waste_units;
   out_diag->wasted_work_units_last = rt->sgemm_controller.wasted_work_units_last;
   out_diag->wasted_work_units_total = rt->sgemm_controller.wasted_work_units_total;
   out_diag->decision_count = rt->sgemm_controller.decision_count;
