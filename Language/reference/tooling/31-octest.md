@@ -27,6 +27,7 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - Theory case names use zero-based row indices: `Package.Function[0]`, `Package.Function[1]`, ...
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
 - `oct test` executes `.octest` functions through the interpreter path (source execution).
+- `.octest` and `.oct` use the same package import resolver and repository package-root search order.
 - `oct test` does not build or run a compiled `.octbin` test artifact.
 - Compiled parity for `.octest` helper behavior is not a current contract.
 - `oct test` does not run `[Artifact]` or `[Benchmark]` functions.
