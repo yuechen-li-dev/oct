@@ -2207,7 +2207,7 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	if callee == "PlotLine" || callee == "PlotScatter" {
+	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -4073,44 +4073,119 @@ func isPrintableType(valueType Type) bool {
 }
 
 func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	if len(arguments) != 3 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
+	intType := Type{Base: BaseTypeInt}
+	stringType := Type{Base: BaseTypeString}
+	pixelIntType := Type{Base: BaseTypeInt, Dimension: uiPixelDimension}
+	if callee == "PlotLine" || callee == "PlotScatter" {
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
+		}
+		xType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if xType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
+			return ExprType{}, err
+		}
+		yType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if yType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
+			return ExprType{}, err
+		}
+		pathType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if pathType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if pathType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, pathType.ValueType)
+		}
+		return ExprType{ValueType: intType}, nil
 	}
-
-	xType, err := c.checkExpr(scope, arguments[0], ctx)
+	if callee == "PlotRenderLine" || callee == "PlotRenderScatter" {
+		if len(arguments) != 9 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 9 arguments, got %d", callee, len(arguments))
+		}
+		xType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if xType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
+			return ExprType{}, err
+		}
+		yType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if yType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
+			return ExprType{}, err
+		}
+		for idx, expected := range []Type{stringType, pixelIntType, pixelIntType, stringType, stringType, stringType, stringType} {
+			current, err := c.checkExpr(scope, arguments[idx+2], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != expected {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+3, expected, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	}
+	if len(arguments) != 9 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 9 arguments, got %d", callee, len(arguments))
+	}
+	valuesType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
-	if xType.Fallible {
+	if valuesType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
+	if err := requirePlotArrayType(callee, 1, valuesType.ValueType); err != nil {
 		return ExprType{}, err
 	}
-
-	yType, err := c.checkExpr(scope, arguments[1], ctx)
+	binsType, err := c.checkExpr(scope, arguments[1], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
-	if yType.Fallible {
+	if binsType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
-		return ExprType{}, err
+	if binsType.ValueType != intType {
+		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Int, got %s", callee, binsType.ValueType)
 	}
-
-	pathType, err := c.checkExpr(scope, arguments[2], ctx)
-	if err != nil {
-		return ExprType{}, err
+	for idx, expected := range []Type{stringType, pixelIntType, pixelIntType, stringType, stringType, stringType, stringType} {
+		current, err := c.checkExpr(scope, arguments[idx+2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if current.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if current.ValueType != expected {
+			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+3, expected, current.ValueType)
+		}
 	}
-	if pathType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
-	}
-	if pathType.ValueType != (Type{Base: BaseTypeString}) {
-		return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, pathType.ValueType)
-	}
-
-	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	return ExprType{ValueType: intType, Fallible: true}, nil
 }
 
 func requirePlotArrayType(functionName string, index int, valueType Type) error {

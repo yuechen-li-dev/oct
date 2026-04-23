@@ -110,6 +110,11 @@ The following moved to dedicated reference pages to keep the core surface legibl
 - Backend support builtins used to implement those standard-library modules.
 - Prometheus-specific surfaces (`PROMETHEUS` blocks and `PrometheusMatMul`) which are experimental and tracked separately.
 
+### Plotting note
+
+- `PlotLine` and `PlotScatter` remain builtin convenience plotting helpers and do **not** require any library import.
+- For advanced plotting controls (size/labels/histogram), use `Plot.Core` from [17 standard libraries](./17-standard-libraries.md).
+
 ## Compiled mode support (core surface)
 
 Source of truth used here:

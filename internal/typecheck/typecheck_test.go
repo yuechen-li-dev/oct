@@ -311,6 +311,9 @@ func TestCheckValidatesM10PlotBuiltins(t *testing.T) {
 		"fn Main() -> Int { return PlotLine([0.0, 1.0], [0.0, 1.0], \"line.png\") }",
 		"fn Main() -> Int { return PlotScatter([0, 1, 2], [0, 1, 4], \"scatter.png\") }",
 		"fn Main() -> Int { return PlotLine([0, 1, 2], [0.0, 1.0, 4.0], \"mixed.png\") }",
+		"fn Main() -> Int ! Error { return PlotRenderLine([0.0, 1.0], [0.0, 1.0], \"line.png\", 640px, 480px, \"Demo\", \"x\", \"y\", \"series\")? }",
+		"fn Main() -> Int ! Error { return PlotRenderScatter([0, 1, 2], [0, 1, 4], \"scatter.png\", 400px, 300px, \"Scatter\", \"time\", \"value\", \"samples\")? }",
+		"fn Main() -> Int ! Error { return PlotRenderHistogram([0.1, 0.2, 0.3], 5, \"hist.png\", 512px, 384px, \"Histogram\", \"value\", \"count\", \"distribution\")? }",
 	}
 
 	for _, src := range validPrograms {
@@ -327,6 +330,9 @@ func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1m], [2m], \"x.png\") }", "function Main: function 'PlotLine' does not accept dimensioned arrays")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotLine([1], [2], 3) }", "function Main: function 'PlotLine' argument 3 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PlotScatter([1], [2]) }", "function Main: function 'PlotScatter' expects 3 arguments, got 2")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PlotRenderLine([1], [2], \"x.png\", 640, 480px, \"t\", \"x\", \"y\", \"s\")? }", "function Main: function 'PlotRenderLine' argument 4 expects Int<px>, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PlotRenderHistogram([1], 3.5, \"x.png\", 640px, 480px, \"t\", \"x\", \"y\", \"s\")? }", "function Main: function 'PlotRenderHistogram' argument 2 expects Int, got Float")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PlotRenderScatter([1], [2], \"x.png\", 640px, 480px, \"t\", \"x\", \"y\", \"s\") }", "function Main: return value must not be fallible; handle it with '?', '!', or match")
 	assertTypeErrorContains(t, "fn PlotLine(x: Int[], y: Int[], path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function PlotLine: cannot redeclare built-in function")
 }
 
