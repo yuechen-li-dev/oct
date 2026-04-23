@@ -70,6 +70,7 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 	}
 	builder := builder{
 		root:             root,
+		repoRoot:         detectRepoRoot(root),
 		includeTests:     includeTests,
 		requireManifests: requireManifests,
 		packages:         make(map[string]Package),
@@ -90,6 +91,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 	}
 	builder := builder{
 		root:             root,
+		repoRoot:         detectRepoRoot(root),
 		includeTests:     includeTests,
 		requireManifests: requireManifests,
 		packages:         make(map[string]Package),
@@ -129,6 +131,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 
 type builder struct {
 	root             string
+	repoRoot         string
 	includeTests     bool
 	requireManifests bool
 	packages         map[string]Package
@@ -349,32 +352,72 @@ func (b *builder) validateManifest(packageName string, directory string) (map[st
 }
 
 func (b *builder) resolveImportDirectory(packageName string, importName string) (string, error) {
-	localDir := filepath.Join(b.root, importName)
-	files, err := loadPackageFiles(localDir, b.includeTests)
-	if err != nil {
-		return "", err
-	}
-	if len(files) > 0 {
-		return localDir, nil
+	searched := make([]string, 0, 4)
+	for _, searchRoot := range b.importSearchRoots() {
+		candidateDir := filepath.Join(searchRoot, importName)
+		searched = append(searched, candidateDir)
+		files, err := loadPackageFiles(candidateDir, b.includeTests)
+		if err != nil {
+			return "", err
+		}
+		if len(files) > 0 {
+			return candidateDir, nil
+		}
 	}
 	if !b.requireManifests {
-		return localDir, nil
+		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s)",
+			importName,
+			packageName,
+			b.root,
+			strings.Join(searched, ", "),
+		)
 	}
 	deps := b.manifestDeps[packageName]
 	if deps == nil {
-		return "", fmt.Errorf("unknown package '%s'", importName)
+		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s; manifest mode: enabled; dependency declaration: missing)",
+			importName,
+			packageName,
+			b.root,
+			strings.Join(searched, ", "),
+		)
 	}
 	if _, declared := deps[importName]; !declared {
-		return "", fmt.Errorf("unknown package '%s'", importName)
+		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s; manifest mode: enabled; dependency declaration: missing)",
+			importName,
+			packageName,
+			b.root,
+			strings.Join(searched, ", "),
+		)
 	}
 	cachedDir, ok, err := b.resolveCachedDependencyDir(importName)
 	if err != nil {
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("package '%s' declared as dependency in manifest but not available in local project or package cache", importName)
+		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s; manifest mode: enabled; dependency declaration: present; package cache: miss)",
+			importName,
+			packageName,
+			b.root,
+			strings.Join(searched, ", "),
+		)
 	}
 	return cachedDir, nil
+}
+
+func (b *builder) importSearchRoots() []string {
+	roots := []string{b.root}
+	if b.repoRoot == "" {
+		return roots
+	}
+	for _, name := range []string{"Libraries", "Packages"} {
+		root := filepath.Join(b.repoRoot, name)
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		roots = append(roots, root)
+	}
+	return dedupePaths(roots)
 }
 
 func (b *builder) resolveCachedDependencyDir(importName string) (string, bool, error) {
@@ -447,6 +490,45 @@ func detectSinglePackageName(root string, includeTests bool) (string, error) {
 		}
 	}
 	return packageName, nil
+}
+
+func detectRepoRoot(start string) string {
+	current := start
+	for {
+		if hasRepoImportRoots(current) {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return ""
+		}
+		current = parent
+	}
+}
+
+func hasRepoImportRoots(root string) bool {
+	for _, name := range []string{"Libraries", "Packages"} {
+		path := filepath.Join(root, name)
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func dedupePaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		clean := filepath.Clean(path)
+		if _, exists := seen[clean]; exists {
+			continue
+		}
+		seen[clean] = struct{}{}
+		out = append(out, clean)
+	}
+	return out
 }
 
 func parseFile(path string) (ast.File, error) {

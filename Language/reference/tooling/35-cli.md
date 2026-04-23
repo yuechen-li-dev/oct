@@ -10,6 +10,7 @@
 
 - `oct run <path>` executes an Oct entry file.
 - `oct build <path>` compiles and writes an artifact at `<path>.octbin`.
+- `run`, `build`, `test`, and `artifact` share one canonical package import resolver.
 - `.octbin` is the compiled binary artifact produced by `oct build`.
 - `oct run` executes program behavior and does not require a prebuilt `.octbin`.
 - `oct test <path>` runs `.octest` and `.octfail` suites.
