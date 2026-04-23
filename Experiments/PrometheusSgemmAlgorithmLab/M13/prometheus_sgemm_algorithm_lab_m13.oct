@@ -1,0 +1,368 @@
+package PrometheusSgemmAlgorithmLab
+
+record M13Regime {
+    Name: String
+    WorkUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+}
+
+record M13PredictiveMetrics {
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    PredictionHits: Int
+    FalsePositives: Int
+    FalseNegatives: Int
+    PredictionDecisions: Int
+    AverageLookahead: Int
+    LookaheadTransitions: Int
+    PredictionVarianceMilli: Int
+    ConfidenceCorrectCorrelationPct: Int
+}
+
+record M13CaseResult {
+    Regime: String
+    Predictor: String
+    ChunkSize: Int
+    MaxLookahead: Int
+    OutstandingDepth: Int
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    PredictionHitRatePct: Int
+    FalsePositiveRatePct: Int
+    FalseNegativeRatePct: Int
+    AverageLookahead: Int
+    AdaptiveBehaviorStability: Int
+    PredictionVarianceMilli: Int
+    ConfidenceCorrectCorrelationPct: Int
+}
+
+record M13ScopeMap {
+    PredictedSignals: String
+    PolicyMapping: String
+    KalmanIntegration: String
+    Baselines: String
+    SuccessMetrics: String
+}
+
+record M13KalmanState {
+    X: Float
+    P: Float
+    Q: Float
+    R: Float
+}
+
+fn M13Scope() -> M13ScopeMap {
+    return M13ScopeMap {
+        PredictedSignals: "primary signal: near-term staging desirability (whether next chunk should be prefetched now); secondary signal: short-horizon transfer pressure relative to compute window"
+        PolicyMapping: "predicted desirability controls speculative stage yes/no and bounded lookahead (0..2); higher confidence enables larger lookahead, lower confidence collapses to conservative"
+        KalmanIntegration: "scalar Kalman state (x,p) is predicted and corrected each chunk using observed desirability; prediction output and covariance drive decision threshold and confidence"
+        Baselines: "no-prediction control, fixed heuristic lookahead, moving-average adaptive predictor, and Kalman estimator"
+        SuccessMetrics: "total completion time, stall/idle, total and wasted transfer work, hit/fp/fn rates, average lookahead, lookahead transition count (stability), and confidence-correctness correlation"
+    }
+}
+
+fn M13MinInt(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M13MaxInt(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M13ClampInt(v: Int, low: Int, high: Int) -> Int {
+    return switch {
+        case v < low => low
+        case v > high => high
+        else => v
+    }
+}
+
+fn M13TransferTime(units: Int, regime: M13Regime) -> Int { return regime.TransferSetup + (units * regime.TransferPerUnit) }
+fn M13ComputeTime(units: Int, regime: M13Regime) -> Int { return units * regime.ComputePerUnit }
+
+fn M13MakeRegime(name: String, workUnits: Int, transferSetup: Int, transferPerUnit: Int, computePerUnit: Int) -> M13Regime {
+    return M13Regime { Name: name WorkUnits: workUnits TransferSetup: transferSetup TransferPerUnit: transferPerUnit ComputePerUnit: computePerUnit }
+}
+
+fn M13RegimeTransferBound() -> M13Regime { return M13MakeRegime("transfer-bound", 512, 14, 5, 2) }
+fn M13RegimeComputeBound() -> M13Regime { return M13MakeRegime("compute-bound", 512, 6, 1, 6) }
+fn M13RegimeBalanced() -> M13Regime { return M13MakeRegime("balanced", 512, 8, 2, 3) }
+fn M13RegimePredictabilitySensitive() -> M13Regime { return M13MakeRegime("predictability-sensitive", 512, 10, 3, 2) }
+
+fn M13KalmanPredict(kf: M13KalmanState) -> M13KalmanState {
+    return M13KalmanState {
+        X: kf.X
+        P: kf.P + kf.Q
+        Q: kf.Q
+        R: kf.R
+    }
+}
+
+fn M13KalmanCorrect(kf: M13KalmanState, measurement: Float) -> M13KalmanState {
+    let gain = kf.P / (kf.P + kf.R)
+    let innovation = measurement - kf.X
+    let xNew = kf.X + gain * innovation
+    let pNew = (1.0 - gain) * kf.P
+    return M13KalmanState { X: xNew P: pNew Q: kf.Q R: kf.R }
+}
+
+fn M13PredictorNoPrediction() -> String { return "none" }
+fn M13PredictorFixedHeuristic() -> String { return "fixed-heuristic" }
+fn M13PredictorMovingAverage() -> String { return "moving-average" }
+fn M13PredictorKalman() -> String { return "kalman" }
+
+fn SimulateM13Policy(regime: M13Regime, predictor: String, chunkSize: Int, maxLookahead: Int, outstandingDepth: Int) -> M13PredictiveMetrics {
+    var remaining = regime.WorkUnits
+    let safeChunk = M13MaxInt(chunkSize, 1)
+    let safeDepth = M13MaxInt(outstandingDepth, 1)
+
+    var totalTime = 0
+    var transferStall = 0
+    var computeIdle = 0
+    var totalTransferWork = 0
+    var wastedTransferWork = 0
+
+    var readyPool = 0
+    var overlapCarry = 0
+
+    var predictionHits = 0
+    var falsePositives = 0
+    var falseNegatives = 0
+    var predictionDecisions = 0
+
+    var lookaheadSum = 0
+    var lookaheadTicks = 0
+    var lookaheadTransitions = 0
+    var previousLookahead = -1
+
+    var historyOne = 0.5
+    var historyTwo = 0.5
+    var kalman = M13KalmanState { X: 0.5 P: 1.0 Q: 0.04 R: 0.16 }
+
+    var confidenceCorrectSamples = 0
+    var confidenceCorrectHits = 0
+    var varianceAccumMilli = 0
+    var varianceSamples = 0
+
+    for _step in 0 .. 4096 {
+        if remaining <= 0 {
+            if readyPool > 0 {
+                wastedTransferWork = wastedTransferWork + (readyPool * safeChunk)
+            }
+            return M13PredictiveMetrics {
+                TotalCompletionTime: totalTime
+                TransferStallTime: transferStall
+                ComputeIdleTime: computeIdle
+                TotalTransferWork: totalTransferWork
+                WastedTransferWork: wastedTransferWork
+                PredictionHits: predictionHits
+                FalsePositives: falsePositives
+                FalseNegatives: falseNegatives
+                PredictionDecisions: predictionDecisions
+                AverageLookahead: switch { case lookaheadTicks == 0 => 0 else => lookaheadSum / lookaheadTicks }
+                LookaheadTransitions: lookaheadTransitions
+                PredictionVarianceMilli: switch { case varianceSamples == 0 => 0 else => varianceAccumMilli / varianceSamples }
+                ConfidenceCorrectCorrelationPct: switch {
+                    case confidenceCorrectSamples == 0 => 0
+                    else => (confidenceCorrectHits * 100) / confidenceCorrectSamples
+                }
+            }
+        }
+
+        let stepChunk = M13MinInt(safeChunk, remaining)
+        let computeSlice = M13ComputeTime(stepChunk, regime)
+        let nextTransfer = M13TransferTime(stepChunk, regime)
+        let actualNeedSoon = nextTransfer > (computeSlice + overlapCarry)
+
+        var predictedNeed = false
+        var confidenceScore = 0
+        var lookahead = 0
+
+        if predictor == M13PredictorNoPrediction() {
+            predictedNeed = false
+            confidenceScore = 0
+            lookahead = 0
+        }
+        if predictor == M13PredictorFixedHeuristic() {
+            predictedNeed = true
+            confidenceScore = 60
+            lookahead = M13ClampInt(1, 0, maxLookahead)
+        }
+        if predictor == M13PredictorMovingAverage() {
+            let trend = historyOne + 0.5 * (historyOne - historyTwo)
+            predictedNeed = trend >= 0.55
+            let delta = Abs(trend - 0.5)
+            confidenceScore = switch {
+                case delta >= 0.2 => 80
+                case delta >= 0.1 => 65
+                else => 50
+            }
+            lookahead = switch {
+                case confidenceScore >= 70 => M13ClampInt(2, 0, maxLookahead)
+                case confidenceScore >= 55 => M13ClampInt(1, 0, maxLookahead)
+                else => 0
+            }
+        }
+        if predictor == M13PredictorKalman() {
+            let predicted = M13KalmanPredict(kalman)
+            kalman = predicted
+            predictedNeed = predicted.X >= 0.52
+            let variance = predicted.P
+            varianceSamples = varianceSamples + 1
+            let varianceBand = switch {
+                case variance <= 0.1 => 80
+                case variance <= 0.2 => 140
+                case variance <= 0.4 => 260
+                else => 420
+            }
+            varianceAccumMilli = varianceAccumMilli + varianceBand
+            confidenceScore = switch {
+                case variance <= 0.1 => 88
+                case variance <= 0.2 => 74
+                case variance <= 0.4 => 58
+                else => 42
+            }
+            lookahead = switch {
+                case confidenceScore >= 75 => M13ClampInt(2, 0, maxLookahead)
+                case confidenceScore >= 55 => M13ClampInt(1, 0, maxLookahead)
+                else => 0
+            }
+        }
+
+        if previousLookahead >= 0 and previousLookahead != lookahead {
+            lookaheadTransitions = lookaheadTransitions + 1
+        }
+        previousLookahead = lookahead
+        lookaheadSum = lookaheadSum + lookahead
+        lookaheadTicks = lookaheadTicks + 1
+
+        predictionDecisions = predictionDecisions + 1
+        if predictedNeed and actualNeedSoon { predictionHits = predictionHits + 1 }
+        if predictedNeed and actualNeedSoon == false { falsePositives = falsePositives + 1 }
+        if predictedNeed == false and actualNeedSoon { falseNegatives = falseNegatives + 1 }
+
+        if confidenceScore >= 65 {
+            confidenceCorrectSamples = confidenceCorrectSamples + 1
+            let correct = (predictedNeed and actualNeedSoon) or (predictedNeed == false and actualNeedSoon == false)
+            if correct { confidenceCorrectHits = confidenceCorrectHits + 1 }
+        }
+
+        if readyPool > 0 {
+            readyPool = readyPool - 1
+        }
+        if readyPool <= 0 {
+            let blockingTransfer = M13TransferTime(stepChunk, regime)
+            totalTime = totalTime + blockingTransfer
+            transferStall = transferStall + blockingTransfer
+            computeIdle = computeIdle + blockingTransfer
+            totalTransferWork = totalTransferWork + stepChunk
+        }
+
+        totalTime = totalTime + computeSlice
+        remaining = remaining - stepChunk
+
+        var transferBudget = computeSlice + overlapCarry
+        var stageSlots = M13MinInt(lookahead, safeDepth)
+        if predictedNeed == false { stageSlots = 0 }
+
+        for _prefetch in 0 .. 8 {
+            if stageSlots > 0 and remaining > 0 {
+                let speculativeChunk = M13MinInt(safeChunk, remaining)
+                let tx = M13TransferTime(speculativeChunk, regime)
+                if transferBudget >= tx {
+                    transferBudget = transferBudget - tx
+                    totalTransferWork = totalTransferWork + speculativeChunk
+                    readyPool = readyPool + 1
+                    stageSlots = stageSlots - 1
+                    if actualNeedSoon == false {
+                        wastedTransferWork = wastedTransferWork + speculativeChunk
+                    }
+                }
+            }
+        }
+
+        overlapCarry = transferBudget
+
+        let observed = switch {
+            case actualNeedSoon => 1.0
+            else => 0.0
+        }
+
+        historyTwo = historyOne
+        historyOne = (0.7 * historyOne) + (0.3 * observed)
+
+        if predictor == M13PredictorKalman() {
+            kalman = M13KalmanCorrect(kalman, observed)
+        }
+
+    }
+
+    return M13PredictiveMetrics {
+        TotalCompletionTime: totalTime
+        TransferStallTime: transferStall
+        ComputeIdleTime: computeIdle
+        TotalTransferWork: totalTransferWork
+        WastedTransferWork: wastedTransferWork
+        PredictionHits: predictionHits
+        FalsePositives: falsePositives
+        FalseNegatives: falseNegatives
+        PredictionDecisions: predictionDecisions
+        AverageLookahead: switch { case lookaheadTicks == 0 => 0 else => lookaheadSum / lookaheadTicks }
+        LookaheadTransitions: lookaheadTransitions
+        PredictionVarianceMilli: switch { case varianceSamples == 0 => 0 else => varianceAccumMilli / varianceSamples }
+        ConfidenceCorrectCorrelationPct: switch {
+            case confidenceCorrectSamples == 0 => 0
+            else => (confidenceCorrectHits * 100) / confidenceCorrectSamples
+        }
+    }
+}
+
+fn EvaluateM13Case(regime: M13Regime, predictor: String, chunkSize: Int, maxLookahead: Int, outstandingDepth: Int) -> M13CaseResult {
+    let metrics = SimulateM13Policy(regime, predictor, chunkSize, maxLookahead, outstandingDepth)
+    let decisions = M13MaxInt(metrics.PredictionDecisions, 1)
+
+    return M13CaseResult {
+        Regime: regime.Name
+        Predictor: predictor
+        ChunkSize: chunkSize
+        MaxLookahead: maxLookahead
+        OutstandingDepth: outstandingDepth
+        TotalCompletionTime: metrics.TotalCompletionTime
+        TransferStallTime: metrics.TransferStallTime
+        ComputeIdleTime: metrics.ComputeIdleTime
+        TotalTransferWork: metrics.TotalTransferWork
+        WastedTransferWork: metrics.WastedTransferWork
+        PredictionHitRatePct: (metrics.PredictionHits * 100) / decisions
+        FalsePositiveRatePct: (metrics.FalsePositives * 100) / decisions
+        FalseNegativeRatePct: (metrics.FalseNegatives * 100) / decisions
+        AverageLookahead: metrics.AverageLookahead
+        AdaptiveBehaviorStability: metrics.LookaheadTransitions
+        PredictionVarianceMilli: metrics.PredictionVarianceMilli
+        ConfidenceCorrectCorrelationPct: metrics.ConfidenceCorrectCorrelationPct
+    }
+}
+
+fn M13StudyRows() -> M13CaseResult[] {
+    let regimes = [
+        M13RegimeTransferBound(),
+        M13RegimeComputeBound(),
+        M13RegimeBalanced(),
+        M13RegimePredictabilitySensitive()
+    ]
+
+    var rows = [EvaluateM13Case(regimes[0], M13PredictorNoPrediction(), 16, 2, 2)]
+
+    for i in 0 .. Len(regimes) {
+        let regime = regimes[i]
+        rows = Append(rows, EvaluateM13Case(regime, M13PredictorFixedHeuristic(), 16, 2, 2))
+        rows = Append(rows, EvaluateM13Case(regime, M13PredictorMovingAverage(), 16, 2, 2))
+        rows = Append(rows, EvaluateM13Case(regime, M13PredictorKalman(), 16, 2, 2))
+        if i > 0 {
+            rows = Append(rows, EvaluateM13Case(regime, M13PredictorNoPrediction(), 16, 2, 2))
+        }
+    }
+
+    return rows
+}

@@ -1232,3 +1232,31 @@ M11 converges to this minimal contract for push-constant struct design:
 M11 intentionally reasons at protocol level and therefore does not encode exact std140/std430 or vendor ABI byte rules.
 
 This is deliberate and aligned with the active Oct-only lab phase, but it is an explicit gap versus backend implementation details that a later Vulkan-native stage will still need to validate.
+
+## M13 scope
+
+M13 extends M12 with a bounded estimator comparison focused on miss-driven speculative waste.
+
+### Predictors compared
+
+- no-prediction control
+- fixed heuristic
+- moving-average adaptive
+- Kalman-style scalar estimator
+
+### Decision coupling
+
+Predictions now directly drive:
+
+- speculative stage/no-stage decisions
+- bounded lookahead (`0..2`) via confidence
+
+### New M13 outputs
+
+- `Experiments/PrometheusSgemmAlgorithmLab/M13/m13_predictor_comparison.octagon`
+- `Experiments/PrometheusSgemmAlgorithmLab/M13/m13_regime_summary.octagon`
+- `Experiments/PrometheusSgemmAlgorithmLab/M13/REPORT.md`
+
+### surfaced gap
+
+Direct package-level reuse of `Octomata` Kalman from this lab package is currently blocked by package resolution in this environment (`unknown package 'Octomata'`). M13 therefore carries an explicit scalar Kalman integration with the same predict/correct state pattern and reports this gap rather than silently omitting Kalman comparison.

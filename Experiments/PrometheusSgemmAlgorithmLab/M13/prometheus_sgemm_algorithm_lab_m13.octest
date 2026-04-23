@@ -1,0 +1,119 @@
+package PrometheusSgemmAlgorithmLab
+
+record M13RegimeSummary {
+    Regime: String
+    BestPredictorByTime: String
+    BestPredictorByWaste: String
+    BestTime: Int
+    BestWaste: Int
+}
+
+fn M13Summaries() -> M13RegimeSummary[] {
+    let regimes = [
+        M13RegimeTransferBound(),
+        M13RegimeComputeBound(),
+        M13RegimeBalanced(),
+        M13RegimePredictabilitySensitive()
+    ]
+
+    var out = [M13RegimeSummary {
+        Regime: "seed"
+        BestPredictorByTime: "seed"
+        BestPredictorByWaste: "seed"
+        BestTime: 0
+        BestWaste: 0
+    }]
+
+    for i in 0 .. Len(regimes) {
+        let regime = regimes[i]
+        let none = EvaluateM13Case(regime, M13PredictorNoPrediction(), 16, 2, 2)
+        let fixed = EvaluateM13Case(regime, M13PredictorFixedHeuristic(), 16, 2, 2)
+        let moving = EvaluateM13Case(regime, M13PredictorMovingAverage(), 16, 2, 2)
+        let kalman = EvaluateM13Case(regime, M13PredictorKalman(), 16, 2, 2)
+
+        var bestTime = none
+        if fixed.TotalCompletionTime < bestTime.TotalCompletionTime { bestTime = fixed }
+        if moving.TotalCompletionTime < bestTime.TotalCompletionTime { bestTime = moving }
+        if kalman.TotalCompletionTime < bestTime.TotalCompletionTime { bestTime = kalman }
+
+        var bestWaste = none
+        if fixed.WastedTransferWork < bestWaste.WastedTransferWork { bestWaste = fixed }
+        if moving.WastedTransferWork < bestWaste.WastedTransferWork { bestWaste = moving }
+        if kalman.WastedTransferWork < bestWaste.WastedTransferWork { bestWaste = kalman }
+
+        if i == 0 {
+            out[0] = M13RegimeSummary {
+                Regime: regime.Name
+                BestPredictorByTime: bestTime.Predictor
+                BestPredictorByWaste: bestWaste.Predictor
+                BestTime: bestTime.TotalCompletionTime
+                BestWaste: bestWaste.WastedTransferWork
+            }
+        }
+        if i > 0 {
+            out = Append(out, M13RegimeSummary {
+                Regime: regime.Name
+                BestPredictorByTime: bestTime.Predictor
+                BestPredictorByWaste: bestWaste.Predictor
+                BestTime: bestTime.TotalCompletionTime
+                BestWaste: bestWaste.WastedTransferWork
+            })
+        }
+    }
+
+    return out
+}
+
+[Fact]
+fn M13ScopeDeclaresPredictionPlan() -> Void {
+    let scope = M13Scope()
+    Assert.True(scope.PredictedSignals != "", "predicted signals must be explicit")
+    Assert.True(scope.PolicyMapping != "", "policy mapping must be explicit")
+    Assert.True(scope.KalmanIntegration != "", "kalman integration must be explicit")
+    Assert.True(scope.Baselines != "", "baseline set must be explicit")
+    Assert.True(scope.SuccessMetrics != "", "success metrics must be explicit")
+}
+
+[Fact]
+fn M13DeterministicGivenFixedInputs() -> Void {
+    let regime = M13RegimeBalanced()
+    let first = EvaluateM13Case(regime, M13PredictorKalman(), 16, 2, 2)
+    let second = EvaluateM13Case(regime, M13PredictorKalman(), 16, 2, 2)
+
+    Assert.Equal(first.TotalCompletionTime, second.TotalCompletionTime, "kalman simulation should be deterministic")
+    Assert.Equal(first.WastedTransferWork, second.WastedTransferWork, "waste accounting should be deterministic")
+    Assert.Equal(first.AdaptiveBehaviorStability, second.AdaptiveBehaviorStability, "lookahead transition tracking should be deterministic")
+}
+
+[Fact]
+fn M13PredictorsProduceComparableMetrics() -> Void {
+    let regime = M13RegimePredictabilitySensitive()
+    let none = EvaluateM13Case(regime, M13PredictorNoPrediction(), 16, 2, 2)
+    let fixed = EvaluateM13Case(regime, M13PredictorFixedHeuristic(), 16, 2, 2)
+    let moving = EvaluateM13Case(regime, M13PredictorMovingAverage(), 16, 2, 2)
+    let kalman = EvaluateM13Case(regime, M13PredictorKalman(), 16, 2, 2)
+
+    Assert.True(fixed.TotalTransferWork >= none.TotalTransferWork, "heuristic speculation should not transfer less than no-prediction control")
+    Assert.True(kalman.WastedTransferWork <= fixed.WastedTransferWork, "kalman should not waste more than fixed heuristic in sensitive regime")
+    Assert.True(kalman.FalsePositiveRatePct <= fixed.FalsePositiveRatePct, "kalman should reduce false positives versus fixed heuristic")
+    Assert.True(moving.AverageLookahead <= 2 and kalman.AverageLookahead <= 2, "adaptive predictors should respect bounded lookahead")
+}
+
+[Fact]
+fn M13AllRegimesHaveAllPredictors() -> Void {
+    let rows = M13StudyRows()
+
+    Assert.True(Len(rows) == 16, "study should emit four predictors across four regimes")
+}
+
+[Artifact]
+fn EmitM13PredictorComparison() -> Void {
+    let rows = M13StudyRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M13/m13_predictor_comparison.octagon", rows)
+}
+
+[Artifact]
+fn EmitM13RegimeSummary() -> Void {
+    let rows = M13Summaries()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M13/m13_regime_summary.octagon", rows)
+}
