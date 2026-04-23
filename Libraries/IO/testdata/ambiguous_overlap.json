@@ -1,0 +1,8 @@
+{
+  "records": [
+    { "type": "credit", "amount": 10 }
+  ],
+  "meta": {
+    "source": "x"
+  }
+}
