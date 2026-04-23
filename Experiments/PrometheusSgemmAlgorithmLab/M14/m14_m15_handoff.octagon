@@ -1,0 +1,21 @@
+[M14HandoffTarget {
+    Winner: "C-waste-budgeted-speculation"
+    FailureMode: "oscillation/thrash near regime boundaries"
+    WhyItMatters: "rapid mode flips can erase overlap gains and make runtime behavior hard to reason about"
+    M15RakeTest: "inject alternating transfer/compute pressure windows and measure transition bursts, completion regressions, and stability penalties"
+}, M14HandoffTarget {
+    Winner: "C-waste-budgeted-speculation"
+    FailureMode: "over-retreat or under-retreat under bad predictability"
+    WhyItMatters: "controller must cap waste without permanently collapsing to no-overlap behavior"
+    M15RakeTest: "sweep prediction quality from mostly-correct to poor and chart retreat frequency versus wasted transfer work"
+}, M14HandoffTarget {
+    Winner: "C-waste-budgeted-speculation"
+    FailureMode: "pathological chunk adaptation"
+    WhyItMatters: "chunk oscillation can inflate transfer setup costs and destabilize throughput"
+    M15RakeTest: "stress with bursty transfer setup latency and verify chunk-size boundedness, transition counts, and completion impact"
+}, M14HandoffTarget {
+    Winner: "C-waste-budgeted-speculation"
+    FailureMode: "hysteresis lag / sticky-mode stall"
+    WhyItMatters: "too-sticky control can miss opportunities when regime actually changes"
+    M15RakeTest: "use long-step regime shifts and verify recovery time, lost overlap, and retreat decay behavior"
+}]

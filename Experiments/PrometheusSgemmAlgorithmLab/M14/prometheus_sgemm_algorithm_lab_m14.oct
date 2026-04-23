@@ -1,0 +1,628 @@
+package PrometheusSgemmAlgorithmLab
+
+record M14Synthesis {
+    M12ControllerDo: String
+    M13ControllerAvoid: String
+    ProductRelevantCharacteristics: String
+    WinnerSuccessCriteria: String
+}
+
+record M14Regime {
+    Name: String
+    WorkUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+    PredictabilityQuality: Int
+}
+
+record M14Candidate {
+    Name: String
+    BaseChunk: Int
+    BaseLookahead: Int
+    BaseDepth: Int
+    WasteBudgetUnits: Int
+    RetreatThresholdPct: Int
+    RecoverThresholdPct: Int
+    HysteresisWindow: Int
+    ComplexityScore: Int
+}
+
+record M14Metrics {
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    AverageChunkSizeUsed: Int
+    ModeStability: Int
+    RetreatFrequency: Int
+}
+
+record M14CaseResult {
+    Regime: String
+    Candidate: String
+    ChunkSize: Int
+    Lookahead: Int
+    OutstandingDepth: Int
+    SpeculationBudget: Int
+    RetreatThresholdPct: Int
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    AverageChunkSizeUsed: Int
+    ModeStability: Int
+    RetreatFrequency: Int
+    ImplementationComplexityScore: Int
+    ProductScore: Int
+}
+
+record M14RegimeWinner {
+    Regime: String
+    WinnerByProductScore: String
+    WinnerScore: Int
+    BestCompletionTime: Int
+    BestWaste: Int
+}
+
+record M14HandoffTarget {
+    Winner: String
+    FailureMode: String
+    WhyItMatters: String
+    M15RakeTest: String
+}
+
+fn M14SynthesisFromM12M13() -> M14Synthesis {
+    return M14Synthesis {
+        M12ControllerDo: "use bounded overlap with modest lookahead (1..2), bounded outstanding depth, and adaptive chunk sizing with hard min/max bounds where transfer pressure is high"
+        M13ControllerAvoid: "do not depend on estimator sophistication alone; Kalman-level prediction complexity did not materially improve completion time and can increase speculative waste"
+        ProductRelevantCharacteristics: "boundedness, explainability, waste guardrails, robust cross-regime behavior, low oscillation, and implementation plausibility for Prometheus judgment control"
+        WinnerSuccessCriteria: "select candidate with strong cross-regime completion time and waste robustness, stable control transitions, explicit retreat behavior, and manageable implementation complexity"
+    }
+}
+
+fn M14MinInt(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M14MaxInt(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M14ClampInt(v: Int, low: Int, high: Int) -> Int {
+    return switch {
+        case v < low => low
+        case v > high => high
+        else => v
+    }
+}
+
+fn M14TransferTime(units: Int, regime: M14Regime) -> Int { return regime.TransferSetup + (units * regime.TransferPerUnit) }
+fn M14ComputeTime(units: Int, regime: M14Regime) -> Int { return units * regime.ComputePerUnit }
+
+fn M14MakeRegime(name: String, workUnits: Int, transferSetup: Int, transferPerUnit: Int, computePerUnit: Int, predictabilityQuality: Int) -> M14Regime {
+    return M14Regime {
+        Name: name
+        WorkUnits: workUnits
+        TransferSetup: transferSetup
+        TransferPerUnit: transferPerUnit
+        ComputePerUnit: computePerUnit
+        PredictabilityQuality: predictabilityQuality
+    }
+}
+
+fn M14RegimeTransferBound() -> M14Regime { return M14MakeRegime("transfer-bound", 512, 14, 5, 2, 2) }
+fn M14RegimeComputeBound() -> M14Regime { return M14MakeRegime("compute-bound", 512, 6, 1, 6, 1) }
+fn M14RegimeBalanced() -> M14Regime { return M14MakeRegime("balanced", 512, 8, 2, 3, 1) }
+fn M14RegimePredictabilitySensitive() -> M14Regime { return M14MakeRegime("predictability-sensitive", 512, 10, 3, 2, 3) }
+
+fn M14CandidateA() -> M14Candidate {
+    return M14Candidate {
+        Name: "A-conservative-bounded"
+        BaseChunk: 16
+        BaseLookahead: 1
+        BaseDepth: 2
+        WasteBudgetUnits: 0
+        RetreatThresholdPct: 100
+        RecoverThresholdPct: 100
+        HysteresisWindow: 0
+        ComplexityScore: 2
+    }
+}
+
+fn M14CandidateB() -> M14Candidate {
+    return M14Candidate {
+        Name: "B-adaptive-chunk"
+        BaseChunk: 16
+        BaseLookahead: 1
+        BaseDepth: 2
+        WasteBudgetUnits: 0
+        RetreatThresholdPct: 100
+        RecoverThresholdPct: 100
+        HysteresisWindow: 0
+        ComplexityScore: 3
+    }
+}
+
+fn M14CandidateC() -> M14Candidate {
+    return M14Candidate {
+        Name: "C-waste-budgeted-speculation"
+        BaseChunk: 16
+        BaseLookahead: 2
+        BaseDepth: 2
+        WasteBudgetUnits: 64
+        RetreatThresholdPct: 25
+        RecoverThresholdPct: 12
+        HysteresisWindow: 0
+        ComplexityScore: 4
+    }
+}
+
+fn M14CandidateD() -> M14Candidate {
+    return M14Candidate {
+        Name: "D-confidence-gated"
+        BaseChunk: 16
+        BaseLookahead: 2
+        BaseDepth: 2
+        WasteBudgetUnits: 0
+        RetreatThresholdPct: 35
+        RecoverThresholdPct: 75
+        HysteresisWindow: 0
+        ComplexityScore: 3
+    }
+}
+
+fn M14CandidateE() -> M14Candidate {
+    return M14Candidate {
+        Name: "E-regime-classified"
+        BaseChunk: 16
+        BaseLookahead: 1
+        BaseDepth: 2
+        WasteBudgetUnits: 48
+        RetreatThresholdPct: 30
+        RecoverThresholdPct: 70
+        HysteresisWindow: 0
+        ComplexityScore: 4
+    }
+}
+
+fn M14CandidateF() -> M14Candidate {
+    return M14Candidate {
+        Name: "F-hysteresis-regime"
+        BaseChunk: 16
+        BaseLookahead: 1
+        BaseDepth: 2
+        WasteBudgetUnits: 48
+        RetreatThresholdPct: 30
+        RecoverThresholdPct: 70
+        HysteresisWindow: 3
+        ComplexityScore: 5
+    }
+}
+
+
+fn M14IsPeriodic(value: Int, stride: Int) -> Bool {
+    if stride <= 0 { return false }
+    let q = value / stride
+    return (q * stride) == value
+}
+
+fn M14PredictionStride(quality: Int) -> Int {
+    return switch {
+        case quality <= 0 => 97
+        case quality == 1 => 7
+        case quality == 2 => 4
+        else => 2
+    }
+}
+
+fn M14PredictionOffset(quality: Int) -> Int {
+    return switch {
+        case quality <= 0 => 0
+        case quality == 1 => 1
+        case quality == 2 => 1
+        else => 0
+    }
+}
+
+fn M14PredictedNeed(stepIndex: Int, actualNeedSoon: Bool, quality: Int) -> Bool {
+    if quality <= 0 { return actualNeedSoon }
+    let stride = M14PredictionStride(quality)
+    let offset = M14PredictionOffset(quality)
+    let miss = M14IsPeriodic(stepIndex + offset, stride)
+    if miss { return actualNeedSoon == false }
+    return actualNeedSoon
+}
+
+fn M14RegimeMode(regime: M14Regime) -> String {
+    if regime.Name == "transfer-bound" { return "adaptive" }
+    if regime.Name == "compute-bound" { return "conservative" }
+    if regime.Name == "balanced" { return "balanced" }
+    return "confidence"
+}
+
+fn SimulateM14Candidate(regime: M14Regime, candidate: M14Candidate) -> M14Metrics {
+    var remaining = regime.WorkUnits
+    var chunk = candidate.BaseChunk
+    let minChunk = 8
+    let maxChunk = 32
+    var lookahead = candidate.BaseLookahead
+    var depth = candidate.BaseDepth
+
+    var totalTime = 0
+    var transferStall = 0
+    var computeIdle = 0
+    var totalTransferWork = 0
+    var wastedTransferWork = 0
+
+    var readyPool = 0
+    var overlapCarry = 0
+    var chunkSum = 0
+    var chunkTicks = 0
+
+    var stabilityTransitions = 0
+    var previousMode = "boot"
+    var retreatFrequency = 0
+
+    var recentCorrect = 0
+    var recentCount = 0
+
+    var currentMode = "conservative"
+    var candidateSteps = 0
+    var speculativeBudgetRemaining = candidate.WasteBudgetUnits
+    var hysteresisHold = 0
+
+    for _step in 0 .. 4096 {
+        if remaining <= 0 {
+            if readyPool > 0 {
+                wastedTransferWork = wastedTransferWork + (readyPool * chunk)
+            }
+            return M14Metrics {
+                TotalCompletionTime: totalTime
+                TransferStallTime: transferStall
+                ComputeIdleTime: computeIdle
+                TotalTransferWork: totalTransferWork
+                WastedTransferWork: wastedTransferWork
+                AverageChunkSizeUsed: switch { case chunkTicks == 0 => chunk else => chunkSum / chunkTicks }
+                ModeStability: stabilityTransitions
+                RetreatFrequency: retreatFrequency
+            }
+        }
+
+        let stepChunk = M14MinInt(chunk, remaining)
+        let transferNow = M14TransferTime(stepChunk, regime)
+        let computeNow = M14ComputeTime(stepChunk, regime)
+        let actualNeedSoon = transferNow > (computeNow + overlapCarry)
+        let predictedNeed = M14PredictedNeed(_step, actualNeedSoon, regime.PredictabilityQuality)
+
+        if candidate.Name == M14CandidateA().Name {
+            currentMode = "conservative"
+            lookahead = 1
+            depth = 2
+        }
+
+        if candidate.Name == M14CandidateB().Name {
+            currentMode = "adaptive"
+            lookahead = 1
+            depth = 2
+            if transferNow > computeNow + 8 { chunk = M14ClampInt(chunk + 4, minChunk, maxChunk) }
+            if computeNow > transferNow + 8 { chunk = M14ClampInt(chunk - 4, minChunk, maxChunk) }
+        }
+
+        if candidate.Name == M14CandidateC().Name {
+            currentMode = "budgeted-spec"
+            lookahead = 2
+            depth = 2
+            let wastePct = switch {
+                case totalTransferWork <= 0 => 0
+                else => (wastedTransferWork * 100) / totalTransferWork
+            }
+            if wastePct >= candidate.RetreatThresholdPct or speculativeBudgetRemaining <= 0 {
+                lookahead = 0
+                retreatFrequency = retreatFrequency + 1
+            }
+        }
+
+        if candidate.Name == M14CandidateD().Name {
+            currentMode = "confidence"
+            lookahead = 1
+            depth = 2
+            let confidencePct = switch {
+                case recentCount <= 0 => 100
+                else => (recentCorrect * 100) / recentCount
+            }
+            if confidencePct < candidate.RetreatThresholdPct {
+                lookahead = 0
+                currentMode = "retreat"
+                retreatFrequency = retreatFrequency + 1
+            }
+            if confidencePct >= candidate.RecoverThresholdPct {
+                lookahead = 2
+            }
+        }
+
+        if candidate.Name == M14CandidateE().Name or candidate.Name == M14CandidateF().Name {
+            let desiredMode = M14RegimeMode(regime)
+            if candidate.Name == M14CandidateF().Name {
+                if desiredMode != currentMode {
+                    hysteresisHold = hysteresisHold + 1
+                }
+                if desiredMode == currentMode {
+                    hysteresisHold = 0
+                }
+                if desiredMode != currentMode and hysteresisHold >= candidate.HysteresisWindow {
+                    currentMode = desiredMode
+                    hysteresisHold = 0
+                }
+            }
+            if candidate.Name == M14CandidateE().Name {
+                currentMode = desiredMode
+            }
+
+            if currentMode == "adaptive" {
+                lookahead = 2
+                depth = 2
+                chunk = M14ClampInt(chunk + 2, minChunk, maxChunk)
+            }
+            if currentMode == "conservative" {
+                lookahead = 1
+                depth = 2
+                chunk = M14ClampInt(chunk - 2, minChunk, maxChunk)
+            }
+            if currentMode == "balanced" {
+                lookahead = 1
+                depth = 2
+            }
+            if currentMode == "confidence" {
+                let confidencePct = switch {
+                    case recentCount <= 0 => 100
+                    else => (recentCorrect * 100) / recentCount
+                }
+                lookahead = switch {
+                    case confidencePct >= 75 => 2
+                    case confidencePct >= 55 => 1
+                    else => 0
+                }
+                if lookahead == 0 {
+                    retreatFrequency = retreatFrequency + 1
+                }
+            }
+        }
+
+        if previousMode != "boot" and previousMode != currentMode {
+            stabilityTransitions = stabilityTransitions + 1
+        }
+        previousMode = currentMode
+
+        if readyPool > 0 {
+            readyPool = readyPool - 1
+        }
+        if readyPool <= 0 {
+            totalTime = totalTime + transferNow
+            transferStall = transferStall + transferNow
+            computeIdle = computeIdle + transferNow
+            totalTransferWork = totalTransferWork + stepChunk
+        }
+
+        totalTime = totalTime + computeNow
+        remaining = remaining - stepChunk
+
+        chunkSum = chunkSum + stepChunk
+        chunkTicks = chunkTicks + 1
+
+        var transferBudget = computeNow + overlapCarry
+        var slots = M14MinInt(lookahead, depth)
+
+        for _prefetch in 0 .. 8 {
+            if slots > 0 and remaining > 0 {
+                let speculativeChunk = M14MinInt(chunk, remaining)
+                let tx = M14TransferTime(speculativeChunk, regime)
+                if transferBudget >= tx {
+                    transferBudget = transferBudget - tx
+                    totalTransferWork = totalTransferWork + speculativeChunk
+                    readyPool = readyPool + 1
+                    slots = slots - 1
+
+                    var speculativeAllowed = true
+                    if candidate.Name == M14CandidateA().Name {
+                        speculativeAllowed = predictedNeed
+                    }
+                    if candidate.Name == M14CandidateC().Name {
+                        speculativeAllowed = predictedNeed and speculativeBudgetRemaining > 0
+                    }
+                    if speculativeAllowed == false {
+                        wastedTransferWork = wastedTransferWork + speculativeChunk
+                    }
+                    if speculativeAllowed and actualNeedSoon == false {
+                        wastedTransferWork = wastedTransferWork + speculativeChunk
+                    }
+                    if candidate.Name == M14CandidateC().Name and (speculativeAllowed == false or actualNeedSoon == false) {
+                        speculativeBudgetRemaining = speculativeBudgetRemaining - speculativeChunk
+                    }
+                }
+            }
+        }
+
+        overlapCarry = transferBudget
+
+        let predictionCorrect = (predictedNeed and actualNeedSoon) or (predictedNeed == false and actualNeedSoon == false)
+        if recentCount < 10 {
+            recentCount = recentCount + 1
+        }
+        if predictionCorrect { recentCorrect = recentCorrect + 1 }
+
+        candidateSteps = candidateSteps + 1
+        if M14IsPeriodic(candidateSteps, 10) {
+            recentCount = 0
+            recentCorrect = 0
+        }
+    }
+
+    return M14Metrics {
+        TotalCompletionTime: totalTime
+        TransferStallTime: transferStall
+        ComputeIdleTime: computeIdle
+        TotalTransferWork: totalTransferWork
+        WastedTransferWork: wastedTransferWork
+        AverageChunkSizeUsed: switch { case chunkTicks == 0 => chunk else => chunkSum / chunkTicks }
+        ModeStability: stabilityTransitions
+        RetreatFrequency: retreatFrequency
+    }
+}
+
+fn M14ProductScore(metrics: M14Metrics, candidate: M14Candidate) -> Int {
+    let performance = metrics.TotalCompletionTime
+    let wastePenalty = metrics.WastedTransferWork * 4
+    let stabilityPenalty = metrics.ModeStability * 16
+    let retreatPenalty = metrics.RetreatFrequency * 8
+    let complexityPenalty = candidate.ComplexityScore * 24
+    return performance + wastePenalty + stabilityPenalty + retreatPenalty + complexityPenalty
+}
+
+fn EvaluateM14Case(regime: M14Regime, candidate: M14Candidate) -> M14CaseResult {
+    let metrics = SimulateM14Candidate(regime, candidate)
+    return M14CaseResult {
+        Regime: regime.Name
+        Candidate: candidate.Name
+        ChunkSize: candidate.BaseChunk
+        Lookahead: candidate.BaseLookahead
+        OutstandingDepth: candidate.BaseDepth
+        SpeculationBudget: candidate.WasteBudgetUnits
+        RetreatThresholdPct: candidate.RetreatThresholdPct
+        TotalCompletionTime: metrics.TotalCompletionTime
+        TransferStallTime: metrics.TransferStallTime
+        ComputeIdleTime: metrics.ComputeIdleTime
+        TotalTransferWork: metrics.TotalTransferWork
+        WastedTransferWork: metrics.WastedTransferWork
+        AverageChunkSizeUsed: metrics.AverageChunkSizeUsed
+        ModeStability: metrics.ModeStability
+        RetreatFrequency: metrics.RetreatFrequency
+        ImplementationComplexityScore: candidate.ComplexityScore
+        ProductScore: M14ProductScore(metrics, candidate)
+    }
+}
+
+fn M14Candidates() -> M14Candidate[] {
+    return [
+        M14CandidateA(),
+        M14CandidateB(),
+        M14CandidateC(),
+        M14CandidateD(),
+        M14CandidateE(),
+        M14CandidateF()
+    ]
+}
+
+fn M14Regimes() -> M14Regime[] {
+    return [
+        M14RegimeTransferBound(),
+        M14RegimeComputeBound(),
+        M14RegimeBalanced(),
+        M14RegimePredictabilitySensitive()
+    ]
+}
+
+fn M14StudyRows() -> M14CaseResult[] {
+    let regimes = M14Regimes()
+    let candidates = M14Candidates()
+
+    var rows = [EvaluateM14Case(regimes[0], candidates[0])]
+
+    for i in 0 .. Len(regimes) {
+        for j in 0 .. Len(candidates) {
+            if i != 0 or j != 0 {
+                rows = Append(rows, EvaluateM14Case(regimes[i], candidates[j]))
+            }
+        }
+    }
+
+    return rows
+}
+
+fn M14RegimeWinners() -> M14RegimeWinner[] {
+    let regimes = M14Regimes()
+    let candidates = M14Candidates()
+    var out = [M14RegimeWinner {
+        Regime: "seed"
+        WinnerByProductScore: "seed"
+        WinnerScore: 0
+        BestCompletionTime: 0
+        BestWaste: 0
+    }]
+
+    for i in 0 .. Len(regimes) {
+        let regime = regimes[i]
+        var best = EvaluateM14Case(regime, candidates[0])
+        var bestTime = best.TotalCompletionTime
+        var bestWaste = best.WastedTransferWork
+
+        for j in 1 .. Len(candidates) {
+            let row = EvaluateM14Case(regime, candidates[j])
+            if row.ProductScore < best.ProductScore { best = row }
+            if row.TotalCompletionTime < bestTime { bestTime = row.TotalCompletionTime }
+            if row.WastedTransferWork < bestWaste { bestWaste = row.WastedTransferWork }
+        }
+
+        let summary = M14RegimeWinner {
+            Regime: regime.Name
+            WinnerByProductScore: best.Candidate
+            WinnerScore: best.ProductScore
+            BestCompletionTime: bestTime
+            BestWaste: bestWaste
+        }
+
+        if i == 0 { out[0] = summary }
+        if i > 0 { out = Append(out, summary) }
+    }
+
+    return out
+}
+
+fn M14OverallWinner() -> String {
+    let candidates = M14Candidates()
+    let regimes = M14Regimes()
+
+    var winner = candidates[0].Name
+    var bestAggregate = 2000000000
+
+    for i in 0 .. Len(candidates) {
+        let c = candidates[i]
+        var total = 0
+        for j in 0 .. Len(regimes) {
+            let row = EvaluateM14Case(regimes[j], c)
+            total = total + row.ProductScore
+        }
+        if total < bestAggregate {
+            bestAggregate = total
+            winner = c.Name
+        }
+    }
+
+    return winner
+}
+
+fn M14M15HandoffTargets() -> M14HandoffTarget[] {
+    let winner = M14OverallWinner()
+    return [
+        M14HandoffTarget {
+            Winner: winner
+            FailureMode: "oscillation/thrash near regime boundaries"
+            WhyItMatters: "rapid mode flips can erase overlap gains and make runtime behavior hard to reason about"
+            M15RakeTest: "inject alternating transfer/compute pressure windows and measure transition bursts, completion regressions, and stability penalties"
+        },
+        M14HandoffTarget {
+            Winner: winner
+            FailureMode: "over-retreat or under-retreat under bad predictability"
+            WhyItMatters: "controller must cap waste without permanently collapsing to no-overlap behavior"
+            M15RakeTest: "sweep prediction quality from mostly-correct to poor and chart retreat frequency versus wasted transfer work"
+        },
+        M14HandoffTarget {
+            Winner: winner
+            FailureMode: "pathological chunk adaptation"
+            WhyItMatters: "chunk oscillation can inflate transfer setup costs and destabilize throughput"
+            M15RakeTest: "stress with bursty transfer setup latency and verify chunk-size boundedness, transition counts, and completion impact"
+        },
+        M14HandoffTarget {
+            Winner: winner
+            FailureMode: "hysteresis lag / sticky-mode stall"
+            WhyItMatters: "too-sticky control can miss opportunities when regime actually changes"
+            M15RakeTest: "use long-step regime shifts and verify recovery time, lost overlap, and retreat decay behavior"
+        }
+    ]
+}

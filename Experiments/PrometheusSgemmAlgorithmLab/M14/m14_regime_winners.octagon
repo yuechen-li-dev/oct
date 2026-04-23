@@ -1,0 +1,25 @@
+[M14RegimeWinner {
+    Regime: "transfer-bound"
+    WinnerByProductScore: "B-adaptive-chunk"
+    WinnerScore: (4548)
+    BestCompletionTime: (3796)
+    BestWaste: (64)
+}, M14RegimeWinner {
+    Regime: "compute-bound"
+    WinnerByProductScore: "C-waste-budgeted-speculation"
+    WinnerScore: (4324)
+    BestCompletionTime: (3094)
+    BestWaste: (64)
+}, M14RegimeWinner {
+    Regime: "balanced"
+    WinnerByProductScore: "C-waste-budgeted-speculation"
+    WinnerScore: (3384)
+    BestCompletionTime: (1736)
+    BestWaste: (80)
+}, M14RegimeWinner {
+    Regime: "predictability-sensitive"
+    WinnerByProductScore: "C-waste-budgeted-speculation"
+    WinnerScore: (3398)
+    BestCompletionTime: (2706)
+    BestWaste: (64)
+}]
