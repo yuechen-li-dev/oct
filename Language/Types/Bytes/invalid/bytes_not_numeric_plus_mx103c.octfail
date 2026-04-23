@@ -1,0 +1,9 @@
+expect error: "function Main: let _bad: operator "+" not defined for Bytes and Bytes"
+
+package Main
+
+fn Main() -> Int ! Error {
+    let payload = FileReadBytes("mx103c.bin")?
+    let _bad = payload + payload
+    return 0
+}

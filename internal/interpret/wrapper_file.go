@@ -118,11 +118,7 @@ func (i *interpreter) evalFileReadBytesBuiltin(env *environment, pkgName string,
 	if readErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, readErr)), nil
 	}
-	items := make([]Value, 0, len(contents))
-	for _, current := range contents {
-		items = append(items, Value{Kind: ValueInt, Int: int64(current)})
-	}
-	return wrapperArrayResult(items), nil
+	return wrapperBytesResult(contents), nil
 }
 
 func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
@@ -137,25 +133,12 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 	if errResult != nil {
 		return *errResult, nil
 	}
-	value, errResult, err := call.evalArg(1)
+	bytes, errResult, err := call.bytesArg(1)
 	if err != nil {
-		return evalResult{}, err
+		return wrapperErrorResult(callee, err), nil
 	}
 	if errResult != nil {
 		return *errResult, nil
-	}
-	if value.Kind != ValueArray {
-		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidArgument, "argument 2 expects Int[]")), nil
-	}
-	bytes := make([]byte, len(value.Array))
-	for idx, current := range value.Array {
-		if current.Kind != ValueInt {
-			return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidArgument, "argument 2 expects Int[]")), nil
-		}
-		if current.Int < 0 || current.Int > 255 {
-			return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidArgument, "argument 2 byte at index %d out of range [0,255]", idx)), nil
-		}
-		bytes[idx] = byte(current.Int)
 	}
 	if writeErr := os.WriteFile(path, bytes, 0o644); writeErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil

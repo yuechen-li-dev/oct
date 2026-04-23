@@ -117,6 +117,18 @@ Notes:
 - `LoadOctagon<T>(path: String) -> T[]`.
 - `WriteOctagon<T>(path: String, data: T[]) -> Int`.
 
+## 8) Wrapper-backed file I/O
+
+- `FileReadText(path: String) -> String ! Error`.
+- `FileWriteText(path: String, text: String) -> Int ! Error`.
+- `FileReadBytes(path: String) -> Bytes ! Error`.
+- `FileWriteBytes(path: String, data: Bytes) -> Int ! Error`.
+
+Notes:
+- `Bytes` is intentionally narrow and intended for binary boundary transport only.
+- `.octagon` remains the native structured data format; JSON and bytes surfaces are compatibility-oriented wrappers.
+- No `Dynamic` type is introduced by this surface.
+
 ## Compiled Mode Support (derived from corpus + compiler implementation)
 
 Source of truth used here:

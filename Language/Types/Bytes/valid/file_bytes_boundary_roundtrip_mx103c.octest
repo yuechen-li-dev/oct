@@ -1,0 +1,20 @@
+package MainValid
+
+[Fact]
+fn FileBytesBoundaryRoundTrip() -> Void {
+    let src = "language_mx103c_bytes_src.bin"
+    let dst = "language_mx103c_bytes_dst.bin"
+
+    let _seed = FileWriteText(src, "OCT")!
+    let payload = FileReadBytes(src)!
+
+    Assert.Equal(3, Len(payload), "bytes payload should expose length")
+    Assert.Equal(79, payload[0], "bytes should support indexed reads")
+
+    let _copy = FileWriteBytes(dst, payload)!
+    let copied = FileReadBytes(dst)!
+    Assert.Equal(84, copied[2], "copied payload should preserve byte values")
+
+    let _d1 = FileDelete(src)!
+    let _d2 = FileDelete(dst)!
+}

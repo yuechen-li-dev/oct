@@ -38,8 +38,8 @@ Bridge M0 defines the minimum internal substrate for maintainers to build curate
 
 5. **Wrapper call helpers**
    - Wrapper handlers should use `wrapperCall` helpers for argument arity checks and argument decoding.
-   - Use `stringArg`, `intArg`, and `floatArg` helpers instead of ad hoc per-wrapper extraction logic.
-   - Use `wrapperIntResult` / `wrapperStringResult` for common lifted values.
+   - Use `stringArg`, `intArg`, `floatArg`, and `bytesArg` helpers instead of ad hoc per-wrapper extraction logic.
+   - Use `wrapperIntResult` / `wrapperStringResult` / `wrapperBytesResult` for common lifted values.
 
 6. **Testing/docs shape**
    - Each wrapper module should include Oct-level `.octest` facts with:

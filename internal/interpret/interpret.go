@@ -30,6 +30,7 @@ const (
 	ValueArray   ValueKind = "Array"
 	ValueRange   ValueKind = "Range"
 	ValueString  ValueKind = "String"
+	ValueBytes   ValueKind = "Bytes"
 	ValueError   ValueKind = "Error"
 	ValueRecord  ValueKind = "Record"
 	ValueEnum    ValueKind = "Enum"
@@ -51,6 +52,7 @@ type Value struct {
 	Complex   complex128
 	Bool      bool
 	Text      string
+	Bytes     []byte
 	Array     []Value
 	Vector    []Value
 	Matrix    MatrixValue
@@ -142,6 +144,12 @@ func (v Value) String() string {
 		return strconv.FormatBool(v.Bool)
 	case ValueString:
 		return v.Text
+	case ValueBytes:
+		parts := make([]string, 0, len(v.Bytes))
+		for _, b := range v.Bytes {
+			parts = append(parts, strconv.FormatInt(int64(b), 10))
+		}
+		return "bytes[" + strings.Join(parts, ", ") + "]"
 	case ValueArray:
 		parts := make([]string, 0, len(v.Array))
 		for _, element := range v.Array {
@@ -1172,6 +1180,17 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", indices[0], len(target.value.Array))
 			}
 			return evalResult{value: target.value.Array[indices[0]]}, nil
+		case ValueBytes:
+			if !allIntIndices {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: bytes indexing requires Int index")
+			}
+			if len(indices) != 1 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: bytes indexing requires exactly 1 index, got %d", len(indices))
+			}
+			if indices[0] < 0 || indices[0] >= int64(len(target.value.Bytes)) {
+				return evalResult{}, fmt.Errorf("runtime error: index %d out of bounds for bytes of length %d", indices[0], len(target.value.Bytes))
+			}
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(target.value.Bytes[indices[0]])}}, nil
 		case ValueVector:
 			if !allIntIndices {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires Int index")
@@ -2846,8 +2865,11 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if argument.value.Kind == ValueString {
 			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Text))}}, nil
 		}
+		if argument.value.Kind == ValueBytes {
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Bytes))}}, nil
+		}
 		if argument.value.Kind != ValueArray {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String or Array, got %s", argument.value.Kind)
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String, Bytes, or Array, got %s", argument.value.Kind)
 		}
 		return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Array))}}, nil
 	case "Abs":
@@ -3603,7 +3625,7 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 	if operator == "+" && left.Kind == ValueString && right.Kind == ValueString {
 		return Value{Kind: ValueString, Text: left.Text + right.Text}, nil
 	}
-	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueError || right.Kind == ValueError || left.Kind == ValueEnum || right.Kind == ValueEnum || left.Kind == ValueRecord || right.Kind == ValueRecord {
+	if left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueString || right.Kind == ValueString || left.Kind == ValueBytes || right.Kind == ValueBytes || left.Kind == ValueError || right.Kind == ValueError || left.Kind == ValueEnum || right.Kind == ValueEnum || left.Kind == ValueRecord || right.Kind == ValueRecord {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if left.Kind == ValueArray || right.Kind == ValueArray {
@@ -3895,7 +3917,7 @@ func evalComplexBinaryExpr(operator string, left Value, right Value) (Value, err
 }
 
 func evalComparisonExpr(operator string, left Value, right Value) (Value, error) {
-	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
+	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueBytes || right.Kind == ValueBytes || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if (left.Kind == ValueInt || left.Kind == ValueFloat) && (right.Kind == ValueInt || right.Kind == ValueFloat) {

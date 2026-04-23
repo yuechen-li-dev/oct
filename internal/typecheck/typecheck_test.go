@@ -112,6 +112,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  `fn Main() -> Int { return Len("abc") }`,
 		},
 		{
+			name: "Len on bytes",
+			src:  `fn Main() -> Int ! Error { let payload = FileReadBytes("payload.bin")? return Len(payload) }`,
+		},
+		{
 			name: "batch expression over array",
 			src:  "fn Main() -> Int[] { return batch [1, 2, 3] as item { let next = item + 1 return next } }",
 		},
@@ -327,7 +331,7 @@ func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
 }
 
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
-	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String or array type, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int, Float, or Complex, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")
@@ -375,6 +379,11 @@ func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Len(x: Int) -> Int { return x } fn Main() -> Int { return Len(1) }", "function Len: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn Append(xs: Int[], x: Int) -> Int[] { return xs } fn Main() -> Int { return 0 }", "function Append: cannot redeclare built-in function")
 	assertTypeErrorContains(t, "fn WriteOctagon(path: String, value: Int) -> Int { return 0 } fn Main() -> Int { return 0 }", "function WriteOctagon: cannot redeclare built-in function")
+}
+
+func TestCheckFileBytesBuiltins(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { let data = FileReadBytes(\"p.bin\")? return data + data }", `function Main: operator "+" not defined for Bytes and Bytes`)
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { let _ = FileWriteBytes(\"p.bin\", [1,2,3])? return 0 }", "function Main: let _: function 'FileWriteBytes' argument 2 expects Bytes, got Int[]")
 }
 
 func TestCheckValidatesM12PrintAndWhile(t *testing.T) {

@@ -1,0 +1,8 @@
+expect error: "function Main: let _: function 'FileWriteBytes' argument 2 expects Bytes, got Int[]"
+
+package Main
+
+fn Main() -> Int ! Error {
+    let _ = FileWriteBytes("mx103c.bin", [79, 67, 84])?
+    return 0
+}
