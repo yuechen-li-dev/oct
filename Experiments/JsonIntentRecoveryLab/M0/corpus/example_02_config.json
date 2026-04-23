@@ -1,0 +1,21 @@
+{
+  "service": {
+    "name": "billing-api",
+    "environment": "staging",
+    "http": {
+      "host": "0.0.0.0",
+      "port": 8080,
+      "read_timeout_ms": 1500,
+      "write_timeout_ms": 1500
+    },
+    "features": {
+      "enable_audit_log": true,
+      "enable_retry_queue": true,
+      "enable_debug_routes": false
+    },
+    "limits": {
+      "max_connections": 200,
+      "max_payload_kb": 512
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tickets": [
+    {
+      "id": "T-9001",
+      "title": "Login page timeout",
+      "assignee": "sam",
+      "due_date": null,
+      "priority": "high",
+      "sprint": "S24"
+    },
+    {
+      "id": "T-9002",
+      "title": "Update FAQ links",
+      "assignee": null,
+      "priority": "low"
+    },
+    {
+      "id": "T-9003",
+      "title": "Billing alert copy",
+      "assignee": "nora",
+      "due_date": "2026-05-10",
+      "priority": "medium",
+      "sprint": null
+    }
+  ]
+}

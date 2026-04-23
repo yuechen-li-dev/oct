@@ -1,0 +1,51 @@
+package JsonIntentRecoveryLabM0
+
+record Ticket {
+    Id: String
+    Title: String
+    HasAssignee: Bool
+    Assignee: String
+    HasDueDate: Bool
+    DueDateIso: String
+    Priority: String
+    HasSprint: Bool
+    Sprint: String
+}
+
+fn RecoveredTickets() -> Ticket[] {
+    return [
+        Ticket {
+            Id: "T-9001"
+            Title: "Login page timeout"
+            HasAssignee: true
+            Assignee: "sam"
+            HasDueDate: false
+            DueDateIso: ""
+            Priority: "high"
+            HasSprint: true
+            Sprint: "S24"
+        },
+        Ticket {
+            Id: "T-9002"
+            Title: "Update FAQ links"
+            HasAssignee: false
+            Assignee: ""
+            HasDueDate: false
+            DueDateIso: ""
+            Priority: "low"
+            HasSprint: false
+            Sprint: ""
+        },
+        Ticket {
+            Id: "T-9003"
+            Title: "Billing alert copy"
+            HasAssignee: true
+            Assignee: "nora"
+            HasDueDate: true
+            DueDateIso: "2026-05-10"
+            Priority: "medium"
+            HasSprint: false
+            Sprint: ""
+        }
+    ]
+}

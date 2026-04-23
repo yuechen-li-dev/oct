@@ -1,0 +1,17 @@
+package JsonIntentRecoveryLabM0
+
+record Person {
+    Id: String
+    Name: String
+    Role: String
+    Active: Bool
+    Skills: String[]
+}
+
+fn RecoveredPeople() -> Person[] {
+    return [
+        Person { Id: "u-100" Name: "Avery Chen" Role: "analyst" Active: true Skills: ["sql", "python"] },
+        Person { Id: "u-101" Name: "Mina Patel" Role: "designer" Active: false Skills: ["figma", "ux"] },
+        Person { Id: "u-102" Name: "Jon Rivera" Role: "analyst" Active: true Skills: ["sql", "dbt"] }
+    ]
+}

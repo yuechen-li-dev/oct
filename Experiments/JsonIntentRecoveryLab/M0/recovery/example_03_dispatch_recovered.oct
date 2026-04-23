@@ -1,0 +1,16 @@
+package JsonIntentRecoveryLabM0
+
+record HandlerRoute {
+    Event: String
+    Handler: String
+    RetryCount: Int
+}
+
+fn RecoveredDispatchTable() -> HandlerRoute[] {
+    return [
+        HandlerRoute { Event: "user.created" Handler: "handle_user_created" RetryCount: 0 },
+        HandlerRoute { Event: "user.deleted" Handler: "handle_user_deleted" RetryCount: 1 },
+        HandlerRoute { Event: "invoice.paid" Handler: "handle_invoice_paid" RetryCount: 0 },
+        HandlerRoute { Event: "invoice.failed" Handler: "handle_invoice_failed" RetryCount: 5 }
+    ]
+}

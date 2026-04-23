@@ -1,0 +1,12 @@
+{
+  "event_handlers": {
+    "user.created": "handle_user_created",
+    "user.deleted": "handle_user_deleted",
+    "invoice.paid": "handle_invoice_paid",
+    "invoice.failed": "handle_invoice_failed"
+  },
+  "retry_policy": {
+    "invoice.failed": 5,
+    "user.deleted": 1
+  }
+}
