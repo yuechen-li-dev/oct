@@ -1,9 +1,29 @@
 package IO
 
+record JsonRawGraphNode {
+    Id:          Int
+    ParentId:    Int
+    Key:         String
+    Kind:        String
+    NumberValue: Float
+    StringValue: String
+    BoolValue:   Bool
+    IsNull:      Bool
+}
+
+record JsonRawGraph {
+    Nodes: JsonRawGraphNode[]
+}
+
 record JsonRecovered {
     Kind:      String
     Canonical: String
     Raw:       String
+}
+
+record JsonNodeLookup {
+    Found: Bool
+    Node:  JsonRawGraphNode
 }
 
 fn NormalizeJson(text: String) -> String ! Error {
@@ -30,107 +50,235 @@ fn ImportRawJson(path: String) -> String ! Error {
     return Load(path)?
 }
 
-fn ImportJson(path: String) -> JsonRecovered ! Error {
-    let raw = ImportRawJson(path)?
-    return RecoverJsonIntent(raw)
+fn ImportRawJsonGraph(path: String) -> JsonRawGraph ! Error {
+    return JsonLoadStructured<JsonRawGraph>(path)?
 }
 
-fn RecoverJsonIntent(raw: String) -> JsonRecovered {
+fn LowerJsonToRawGraph(text: String) -> JsonRawGraph ! Error {
+    return JsonLower<JsonRawGraph>(text)?
+}
+
+fn ImportJson(path: String) -> JsonRecovered ! Error {
+    let rawText = ImportRawJson(path)?
+    let rawGraph = ImportRawJsonGraph(path)?
+    return RecoverJsonIntent(rawText, rawGraph)
+}
+
+fn RecoverJsonIntent(rawText: String, rawGraph: JsonRawGraph) -> JsonRecovered {
     let recoveredKind = when utility {
-        case "table.columnar" when LooksLikeHomogeneousObjectArray(raw) score 100
-        case "mapping.table" when LooksLikeMappingObject(raw) score 95
-        case "grid.nested_array" when LooksLikeRectangularNumericGrid(raw) score 90
-        case "tagged.decomposed" when LooksLikeTaggedArray(raw) score 85
-        case "config.nested_record" when LooksLikeConfigObject(raw) score 80
+        case "table.columnar" when LooksLikeHomogeneousObjectArrayGraph(rawGraph) score 100
+        case "mapping.table" when LooksLikeMappingObjectGraph(rawGraph) score 95
+        case "grid.nested_array" when LooksLikeRectangularNumericGridGraph(rawGraph) score 90
+        case "tagged.decomposed" when LooksLikeTaggedArrayGraph(rawGraph) score 85
+        case "config.nested_record" when LooksLikeConfigObjectGraph(rawGraph) score 80
         else "record.raw"
     }
 
     let canonical = switch recoveredKind {
-        case "table.columnar" => CanonicalColumnarTable(raw)
-        case "mapping.table" => CanonicalMappingTable(raw)
-        case "grid.nested_array" => CanonicalNumericGrid(raw)
-        case "tagged.decomposed" => CanonicalTaggedSplit(raw)
-        case "config.nested_record" => CanonicalConfigRecord(raw)
-        else => CanonicalRawRecord(raw)
+        case "table.columnar" => CanonicalColumnarTable(rawGraph)
+        case "mapping.table" => CanonicalMappingTable(rawGraph)
+        case "grid.nested_array" => CanonicalNumericGrid(rawGraph)
+        case "tagged.decomposed" => CanonicalTaggedSplit(rawGraph)
+        case "config.nested_record" => CanonicalConfigRecord(rawGraph)
+        else => CanonicalRawRecord(rawGraph)
     }
 
     return JsonRecovered {
         Kind:      recoveredKind
         Canonical: canonical
-        Raw:       raw
+        Raw:       rawText
     }
 }
 
-fn LooksLikeHomogeneousObjectArray(raw: String) -> Bool {
-    return Contains(raw, "people") or Contains(raw, "tickets")
+fn RootNode(graph: JsonRawGraph) -> JsonRawGraphNode {
+    return graph.Nodes[0]
 }
 
-fn LooksLikeMappingObject(raw: String) -> Bool {
-    return Contains(raw, "event_handlers") or Contains(raw, "retry_policy")
+fn IsNodeKind(node: JsonRawGraphNode, kind: String) -> Bool {
+    return node.Kind == kind
 }
 
-fn LooksLikeRectangularNumericGrid(raw: String) -> Bool {
-    let hasReadings = Contains(raw, "readings")
-    let hasRowsCols = Contains(raw, "rows") and Contains(raw, "cols")
-    return hasReadings and hasRowsCols
+fn IsNullNode(node: JsonRawGraphNode) -> Bool {
+    return node.Kind == "null" and node.IsNull
 }
 
-fn LooksLikeConfigObject(raw: String) -> Bool {
-    let serviceShape = Contains(raw, "service") and Contains(raw, "http") and Contains(raw, "features")
-    let uiShape = Contains(raw, "page") and Contains(raw, "sections")
+fn ChildByKey(graph: JsonRawGraph, parentId: Int, key: String) -> JsonNodeLookup {
+    for i in 0 .. Len(graph.Nodes) {
+        let node = graph.Nodes[i]
+        if node.ParentId == parentId and node.Key == key {
+            return JsonNodeLookup {Found: true Node: node}
+        }
+    }
+    return JsonNodeLookup {Found: false Node: graph.Nodes[0]}
+}
+
+fn ChildCount(graph: JsonRawGraph, parentId: Int) -> Int {
+    var count = 0
+    for i in 0 .. Len(graph.Nodes) {
+        if graph.Nodes[i].ParentId == parentId {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn LooksLikeHomogeneousObjectArrayGraph(raw: JsonRawGraph) -> Bool {
+    let root = RootNode(raw)
+    if not IsNodeKind(root, "object") {
+        return false
+    }
+    let people = ChildByKey(raw, root.Id, "people")
+    if people.Found {
+        let peopleNode = people.Node
+        if IsNodeKind(peopleNode, "array") and ChildCount(raw, peopleNode.Id) > 0 {
+            return true
+        }
+    }
+    let tickets = ChildByKey(raw, root.Id, "tickets")
+    if tickets.Found {
+        let ticketsNode = tickets.Node
+        if IsNodeKind(ticketsNode, "array") and ChildCount(raw, ticketsNode.Id) > 0 {
+            return true
+        }
+    }
+    return false
+}
+
+fn LooksLikeMappingObjectGraph(raw: JsonRawGraph) -> Bool {
+    let root = RootNode(raw)
+    if not IsNodeKind(root, "object") {
+        return false
+    }
+    return ChildByKey(raw, root.Id, "event_handlers").Found or ChildByKey(raw, root.Id, "retry_policy").Found
+}
+
+fn LooksLikeRectangularNumericGridGraph(raw: JsonRawGraph) -> Bool {
+    let root = RootNode(raw)
+    let sensorGrid = ChildByKey(raw, root.Id, "sensor_grid")
+    if not sensorGrid.Found {
+        return false
+    }
+    let sensorGridNode = sensorGrid.Node
+    if not IsNodeKind(sensorGridNode, "object") {
+        return false
+    }
+    let readings = ChildByKey(raw, sensorGridNode.Id, "readings")
+    let rows = ChildByKey(raw, sensorGridNode.Id, "rows")
+    let cols = ChildByKey(raw, sensorGridNode.Id, "cols")
+    if not (readings.Found and rows.Found and cols.Found) {
+        return false
+    }
+    let readingsNode = readings.Node
+    let rowsNode = rows.Node
+    let colsNode = cols.Node
+    if not (IsNodeKind(readingsNode, "array") and IsNodeKind(rowsNode, "number") and IsNodeKind(colsNode, "number")) {
+        return false
+    }
+    return ChildCount(raw, readingsNode.Id) > 0
+}
+
+fn LooksLikeConfigObjectGraph(raw: JsonRawGraph) -> Bool {
+    let root = RootNode(raw)
+    if not IsNodeKind(root, "object") {
+        return false
+    }
+    let service = ChildByKey(raw, root.Id, "service")
+    let page = ChildByKey(raw, root.Id, "page")
+    let serviceNode = service.Node
+    let pageNode = page.Node
+    let serviceShape = service.Found and ChildByKey(raw, serviceNode.Id, "http").Found and ChildByKey(raw, serviceNode.Id, "features").Found
+    if service.Found and not IsNodeKind(serviceNode, "object") {
+        return page.Found and IsNodeKind(pageNode, "object") and ChildByKey(raw, pageNode.Id, "sections").Found
+    }
+    let uiShape = page.Found and IsNodeKind(pageNode, "object") and ChildByKey(raw, pageNode.Id, "sections").Found
     return serviceShape or uiShape
 }
 
-fn LooksLikeTaggedArray(raw: String) -> Bool {
-    return Contains(raw, "operations") and Contains(raw, "type")
+fn LooksLikeTaggedArrayGraph(raw: JsonRawGraph) -> Bool {
+    let root = RootNode(raw)
+    if not IsNodeKind(root, "object") {
+        return false
+    }
+    let operations = ChildByKey(raw, root.Id, "operations")
+    if not operations.Found {
+        return false
+    }
+    let operationsNode = operations.Node
+    if not IsNodeKind(operationsNode, "array") {
+        return false
+    }
+    if ChildCount(raw, operationsNode.Id) == 0 {
+        return false
+    }
+    for i in 0 .. Len(raw.Nodes) {
+        let node = raw.Nodes[i]
+        if node.ParentId == operationsNode.Id {
+            if IsNodeKind(node, "object") and ChildByKey(raw, node.Id, "type").Found {
+                return true
+            }
+            return false
+        }
+    }
+    return false
 }
 
-fn CanonicalColumnarTable(raw: String) -> String {
-    if Contains(raw, "people") {
+fn CanonicalColumnarTable(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    if ChildByKey(raw, root.Id, "people").Found {
         return "people: {id: [...], name: [...], role: [...], active: [...], skills: [...]}"
     }
-    if Contains(raw, "tickets") {
+    if ChildByKey(raw, root.Id, "tickets").Found {
         return "tickets: {id: [...], title: [...], assignee: [...], due_date: [...], priority: [...], sprint: [...]}"
     }
     return "table: {columns: inferred}"
 }
 
-fn CanonicalMappingTable(raw: String) -> String {
-    if Contains(raw, "event_handlers") {
+fn CanonicalMappingTable(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    if ChildByKey(raw, root.Id, "event_handlers").Found {
         return "event_handlers: {key: [...], value: [...]}"
     }
-    if Contains(raw, "retry_policy") {
+    if ChildByKey(raw, root.Id, "retry_policy").Found {
         return "retry_policy: {key: [...], value: [...]}"
     }
     return "mapping: {key: [...], value: [...]}"
 }
 
-fn CanonicalNumericGrid(raw: String) -> String {
-    if Contains(raw, "sensor_grid") {
+fn CanonicalNumericGrid(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    let sensorGrid = ChildByKey(raw, root.Id, "sensor_grid")
+    if not sensorGrid.Found {
+        return "grid: [[Float]]"
+    }
+    let sensorGridNode = sensorGrid.Node
+    if ChildByKey(raw, sensorGridNode.Id, "readings").Found {
         return "sensor_grid.readings: [[Float]]"
     }
     return "grid: [[Float]]"
 }
 
-fn CanonicalTaggedSplit(raw: String) -> String {
-    if Contains(raw, "operations") {
+fn CanonicalTaggedSplit(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    if ChildByKey(raw, root.Id, "operations").Found {
         return "operations_by_type: {credit: [...], debit: [...], transfer: [...]}"
     }
     return "tagged: split_by_tag"
 }
 
-fn CanonicalConfigRecord(raw: String) -> String {
-    if Contains(raw, "service") {
+fn CanonicalConfigRecord(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    if ChildByKey(raw, root.Id, "service").Found {
         return "service: {name, environment, http: {...}, features: {...}, limits: {...}}"
     }
-    if Contains(raw, "page") {
+    if ChildByKey(raw, root.Id, "page").Found {
         return "page: {id, title, sections: [{kind, slot, content}]}"
     }
     return "config: nested_record"
 }
 
-fn CanonicalRawRecord(raw: String) -> String {
-    if Contains(raw, "page") {
+fn CanonicalRawRecord(raw: JsonRawGraph) -> String {
+    let root = RootNode(raw)
+    if ChildByKey(raw, root.Id, "page").Found {
         return "page: {id, title, sections: [{kind, slot, content}]}"
     }
     return "raw_json"

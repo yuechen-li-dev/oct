@@ -2234,6 +2234,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "JsonLower" || callee == "JsonLoadStructured" {
+		return c.checkJSONStructuredBuiltinCallExpr(scope, callee, typeArguments, arguments, ctx)
+	}
 	if callee == "JsonParse" || callee == "JsonStringify" || callee == "JsonLoad" || callee == "JsonSave" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -3507,6 +3510,34 @@ func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
+}
+
+func (c checker) checkJSONStructuredBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	stringType := Type{Base: BaseTypeString}
+	if len(typeArguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 type argument, got %d", callee, len(typeArguments))
+	}
+	targetValueType, err := c.resolveNonReturnType(typeArguments[0])
+	if err != nil {
+		return ExprType{}, fmt.Errorf("function '%s' type argument is invalid: %w", callee, err)
+	}
+	if targetValueType != (Type{Name: "JsonRawGraph"}) && targetValueType != (Type{Name: "IO.JsonRawGraph"}) {
+		return ExprType{}, fmt.Errorf("function '%s' type argument expects JsonRawGraph, got %s", callee, targetValueType)
+	}
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+	inputType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if inputType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if inputType.ValueType != stringType {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, inputType.ValueType)
+	}
+	return ExprType{ValueType: targetValueType, Fallible: true}, nil
 }
 
 func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

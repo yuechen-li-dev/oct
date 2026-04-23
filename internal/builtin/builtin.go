@@ -39,6 +39,8 @@ var names = map[string]struct{}{
 	"JsonParse":          {},
 	"JsonStringify":      {},
 	"JsonLoad":           {},
+	"JsonLower":          {},
+	"JsonLoadStructured": {},
 	"JsonSave":           {},
 	"FileReadText":       {},
 	"FileWriteText":      {},
