@@ -1,51 +1,91 @@
-# Mx103c REPORT — Narrow Bytes Support for Wrapper Boundaries
+# Mx103c Report — Utility Wrapper Wave (Archive, Compression, Hash, Regex, Time)
 
-## 1) Mx103b inconsistency addressed
+## 1) Modules implemented
 
-Mx103b introduced wrapper-backed file byte APIs (`FileReadBytes`/`FileWriteBytes`, surfaced via `IO.ReadBytes`/`IO.WriteBytes`) but represented byte payloads as `Int[]`.
+Implemented wrapper-backed utility modules:
 
-That caused an avoidable mismatch:
-- binary boundary payloads were modeled as general numeric arrays,
-- wrapper decoding had ad hoc per-call `Int[]` validation/range logic,
-- language docs did not have a dedicated binary boundary type.
+- `Archive.Zip`
+- `Compression.Gzip`
+- `Hash.Core`
+- `Text.Regex`
+- `Time.Core`
 
-## 2) Why `Bytes` is justified
+## 2) Mx103a substrate reuse
 
-`Bytes` is introduced as a narrow transport/storage boundary type so wrapper APIs with genuinely binary payloads can expose a faithful contract (`Bytes`) rather than synthetic `Int[]`.
+All wrapper handlers reuse the existing Mx103a wrapper substrate:
 
-This improves shape clarity at boundaries without broadening Oct into byte-centric general programming.
+- invocation/arity via `newWrapperCall(...)` + `expectArity(...)`
+- argument decode via shared call helpers (`stringArg(...)`, `intArg(...)`, `bytesArg(...)`)
+- result lifting via shared helpers (`wrapperBoolResult`, `wrapperStringResult`, `wrapperStringArrayResult`, `wrapperBytesResult`, `wrapperIntResult`)
+- standardized error mapping via `wrapperErrorf(...)` + `wrapperErrorResult(...)`
+- common registry composition via `newWrapperBuiltinRegistry(...)`
 
-## 3) Why `Dynamic` remains out of scope
+No module reintroduced ad hoc wrapper error envelope behavior.
 
-This milestone does not add `Dynamic` and does not broaden JSON semantics.
+## 3) Substrate extensions needed
 
-`.octagon` remains the native structured format; JSON and bytes wrapper surfaces remain compatibility/boundary oriented.
+One narrow helper was added to the shared wrapper call substrate:
 
-## 4) Wrapper/library surfaces improved now
+- `call.stringArrayArg(index)` for consistent `String[]` decoding and element validation
 
-Implemented now:
-- `FileReadBytes(path) -> Bytes ! Error`
-- `FileWriteBytes(path, data: Bytes) -> Int ! Error`
-- `IO.ReadBytes(path) -> Bytes ! Error`
-- `IO.WriteBytes(path, data: Bytes) -> Int ! Error`
-- wrapper substrate helpers: `wrapperBytesResult(...)` and `call.bytesArg(index)`
+This was used by zip archive creation input handling so wrappers avoid per-handler bespoke list decoding.
 
-## 5) How the design keeps `Bytes` narrow
+## 4) Naming/layout consistency
 
-- No byte literals were added.
-- No numeric/operator semantics were added for `Bytes`.
-- `Bytes` is intentionally only usable through boundary-producing APIs (for now), indexing, and length queries.
-- Typechecking rejects treating `Bytes` as numeric or array-substitute in arithmetic.
+Layout follows the same convention as existing Oct library files:
 
-## 6) Audit summary: fixed now vs deferred
+- file naming: `<Package>.<Module>.oct`
+- package declaration: `package <TopLevelPackage>`
+- package directories with manifests: `Libraries/Archive`, `Libraries/Compression`, `Libraries/Hash`, `Libraries/Text`, `Libraries/Time`
 
-### Sites where lack of `Bytes` was causing awkward API shape
+Each module API uses consistent verb-oriented names (`ListEntries`, `ExtractAll`, `CompressBytes`, `Sha256Text`, `IsMatch`, `NowIso8601`).
 
-Fixed now:
-- `internal/interpret/wrapper_file.go` byte read/write builtins previously exposed/validated `Int[]`.
-- `Libraries/IO/IO.File.oct` and `Libraries/IO/README.md` previously documented `Int[]` byte payloads.
-- wrapper substrate had no shared bytes lift/decode helper, forcing per-wrapper shape handling.
+## 5) API rationale (included / excluded)
 
-Deferred:
-- no hash/compression/archive/http wrapper surfaces exist in this pass; these remain future consumers of the shared `Bytes` substrate.
-- JSON wrappers remain `String`-based compatibility wrappers by design in this milestone.
+Included minimal high-ROI surfaces:
+
+- zip listing/extraction (+ simple file-based creation for deterministic local tests)
+- gzip byte and file roundtrip helpers
+- SHA-256 byte/text/file hashing
+- regex match/find/replace/split
+- ISO-8601 + unix-seconds time helpers
+
+Excluded deliberately:
+
+- advanced zip authoring options/metadata controls
+- non-gzip compression formats
+- broad hash algorithm catalogs
+- regex engine internals/options
+- large time/date framework semantics
+
+## 6) Test coverage summary
+
+Added focused package tests for:
+
+- happy paths across all five modules
+- roundtrips for zip/gzip/time formatting sanity
+- deterministic hash output known vectors
+- regex deterministic behavior
+- error paths (missing file/archive, invalid gzip, invalid regex, invalid time)
+
+Also added command-level Go integration coverage that checks pass markers from each new package test root.
+
+## 7) Documentation updates
+
+Added README docs for each new package directory:
+
+- available functions
+- backing Go standard library package
+- common failure modes
+
+## 8) Remaining for future waves
+
+Potential future wrapper waves may add:
+
+- targeted archive entry extraction/create options
+- additional hash algorithms where justified
+- optional time parsing/format variants beyond RFC3339
+
+## Explicit inconsistency notes
+
+The user request used `Unit` in several signatures, while `Language/reference/language/02-types.md` defines `Void` (not `Unit`). For side-effecting wrapper helpers, this wave keeps the established Mx103b wrapper style (`Int ! Error`) to preserve call-site ergonomics in non-fallible facts while still remaining within the reference type surface.

@@ -1,0 +1,21 @@
+package Time
+
+fn NowIso8601() -> String {
+    return TimeNowIso8601()
+}
+
+fn ParseIso8601(text: String) -> String ! Error {
+    return TimeParseIso8601(text)?
+}
+
+fn FormatIso8601(text: String) -> String ! Error {
+    return TimeFormatIso8601(text)?
+}
+
+fn UnixSecondsNow() -> Int {
+    return TimeUnixSecondsNow()
+}
+
+fn FormatUnixSeconds(seconds: Int) -> String ! Error {
+    return TimeFormatUnixSecond(seconds)?
+}

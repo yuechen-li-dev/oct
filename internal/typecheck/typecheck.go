@@ -2267,6 +2267,36 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkCSVBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "ZipListEntries" || callee == "ZipExtractAll" || callee == "ZipCreateFromFiles" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkArchiveBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "GzipCompressBytes" || callee == "GzipDecompressBytes" || callee == "GzipCompressFile" || callee == "GzipDecompressFile" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkCompressionBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "HashSha256Bytes" || callee == "HashSha256Text" || callee == "HashSha256File" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkHashBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "RegexIsMatch" || callee == "RegexFindAll" || callee == "RegexReplaceAll" || callee == "RegexSplit" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkRegexBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "TimeNowIso8601" || callee == "TimeParseIso8601" || callee == "TimeFormatIso8601" || callee == "TimeUnixSecondsNow" || callee == "TimeFormatUnixSecond" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkTimeBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "Append" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
@@ -3635,6 +3665,172 @@ func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments 
 		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[][], got %s", callee, rowsType.ValueType)
 	}
 	return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+}
+
+func (c checker) checkArchiveBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "ZipListEntries" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1), Fallible: true})
+	}
+	if callee == "ZipExtractAll" {
+		return c.checkTwoStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+	}
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+	}
+	pathType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if pathType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if pathType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
+	}
+	pathsType, err := c.checkExpr(scope, arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if pathsType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if pathsType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[], got %s", callee, pathsType.ValueType)
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+}
+
+func (c checker) checkCompressionBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	bytesType := Type{Base: BaseTypeBytes}
+	if callee == "GzipCompressBytes" || callee == "GzipDecompressBytes" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		argType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argType.ValueType != bytesType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bytes, got %s", callee, argType.ValueType)
+		}
+		return ExprType{ValueType: bytesType, Fallible: true}, nil
+	}
+	return c.checkTwoStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+}
+
+func (c checker) checkHashBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "HashSha256Bytes" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		argType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argType.ValueType != (Type{Base: BaseTypeBytes}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bytes, got %s", callee, argType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "HashSha256Text" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}})
+	}
+	return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true})
+}
+
+func (c checker) checkRegexBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "RegexReplaceAll" {
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
+		}
+		for idx := 0; idx < 3; idx++ {
+			argType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if argType.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, argType.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true}, nil
+	}
+	if err := c.requireTwoStringArgs(scope, callee, arguments, ctx); err != nil {
+		return ExprType{}, err
+	}
+	if callee == "RegexIsMatch" {
+		return ExprType{ValueType: Type{Base: BaseTypeBool}, Fallible: true}, nil
+	}
+	if callee == "RegexFindAll" || callee == "RegexSplit" {
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1), Fallible: true}, nil
+	}
+	return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+}
+
+func (c checker) checkTimeBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "TimeNowIso8601" {
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "TimeUnixSecondsNow" {
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
+	if callee == "TimeFormatUnixSecond" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		argType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, argType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true}, nil
+	}
+	return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true})
+}
+
+func (c checker) checkTwoStringArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {
+	if err := c.requireTwoStringArgs(scope, callee, arguments, ctx); err != nil {
+		return ExprType{}, err
+	}
+	return result, nil
+}
+
+func (c checker) requireTwoStringArgs(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) error {
+	if len(arguments) != 2 {
+		return fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+	}
+	for idx := 0; idx < 2; idx++ {
+		argType, err := c.checkExpr(scope, arguments[idx], ctx)
+		if err != nil {
+			return err
+		}
+		if argType.Fallible {
+			return fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if argType.ValueType != (Type{Base: BaseTypeString}) {
+			return fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, argType.ValueType)
+		}
+	}
+	return nil
 }
 
 func (c checker) checkSingleStringArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {

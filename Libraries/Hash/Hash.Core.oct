@@ -1,0 +1,13 @@
+package Hash
+
+fn Sha256Bytes(data: Bytes) -> String {
+    return HashSha256Bytes(data)
+}
+
+fn Sha256Text(text: String) -> String {
+    return HashSha256Text(text)
+}
+
+fn Sha256File(path: String) -> String ! Error {
+    return HashSha256File(path)?
+}

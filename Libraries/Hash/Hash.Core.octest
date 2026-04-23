@@ -1,0 +1,25 @@
+package Hash
+
+[Fact]
+fn Sha256KnownValueChecks() -> Void {
+    Assert.Equal("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", Sha256Text("hello"), "sha256 text should match known vector")
+    return
+}
+
+[Fact]
+fn Sha256BytesAndFileAgree() -> Void {
+    let path = "mx103c_hash_payload.txt"
+    let _w = FileWriteText(path, "hash me")!
+    let bytes = FileReadBytes(path)!
+    let fromBytes = Sha256Bytes(bytes)
+    let fromFile = Sha256File(path)!
+    Assert.Equal(fromBytes, fromFile, "sha256 bytes and file should agree")
+    let _d = FileDelete(path)!
+    return
+}
+
+[Fact]
+fn Sha256FileMissingFails() -> Void {
+    Assert.Error(Sha256File("mx103c_missing_hash.txt"), "sha256 file should fail for missing path")
+    return
+}
