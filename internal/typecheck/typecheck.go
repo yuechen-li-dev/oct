@@ -2219,6 +2219,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkXlsxBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "JsonNormalize" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "Append" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
@@ -3419,6 +3425,23 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
+}
+
+func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+	textType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if textType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if textType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true}, nil
 }
 
 func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

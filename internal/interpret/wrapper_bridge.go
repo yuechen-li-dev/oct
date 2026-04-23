@@ -34,7 +34,7 @@ func (s *wrapperHandleStore[T]) get(handle int64) (T, error) {
 	value, ok := s.values[handle]
 	if !ok {
 		var zero T
-		return zero, fmt.Errorf("invalid %s handle %d", s.kind, handle)
+		return zero, wrapperErrorf(wrapperErrorInvalidHandle, "invalid %s handle %d", s.kind, handle)
 	}
 	return value, nil
 }
@@ -49,7 +49,13 @@ type wrapperBuiltinRegistry struct {
 	handlers map[string]wrapperBuiltinHandler
 }
 
-func newWrapperBuiltinRegistry(handlers map[string]wrapperBuiltinHandler) wrapperBuiltinRegistry {
+func newWrapperBuiltinRegistry(handlerSets ...map[string]wrapperBuiltinHandler) wrapperBuiltinRegistry {
+	handlers := make(map[string]wrapperBuiltinHandler)
+	for _, handlerSet := range handlerSets {
+		for name, handler := range handlerSet {
+			handlers[name] = handler
+		}
+	}
 	return wrapperBuiltinRegistry{handlers: handlers}
 }
 
@@ -66,12 +72,135 @@ func (r wrapperBuiltinRegistry) eval(i *interpreter, env *environment, pkgName s
 	return handler(i, env, pkgName, callee, argumentExprs)
 }
 
+type wrapperCall struct {
+	interpreter *interpreter
+	env         *environment
+	pkgName     string
+	callee      string
+	args        []ast.Expr
+}
+
+func newWrapperCall(i *interpreter, env *environment, pkgName string, callee string, args []ast.Expr) wrapperCall {
+	return wrapperCall{interpreter: i, env: env, pkgName: pkgName, callee: callee, args: args}
+}
+
+func (c wrapperCall) expectArity(expected int) error {
+	if len(c.args) != expected {
+		return fmt.Errorf("runtime invariant violation: %s expects %d arguments", c.callee, expected)
+	}
+	return nil
+}
+
+func (c wrapperCall) evalArg(index int) (Value, *evalResult, error) {
+	if index < 0 || index >= len(c.args) {
+		return Value{}, nil, fmt.Errorf("runtime invariant violation: %s missing argument %d", c.callee, index+1)
+	}
+	result, err := c.interpreter.evalExpr(c.env, c.pkgName, c.args[index])
+	if err != nil {
+		return Value{}, nil, err
+	}
+	if result.hasError {
+		errResult := evalResult{hasError: true, errorVal: result.errorVal}
+		return Value{}, &errResult, nil
+	}
+	return result.value, nil, nil
+}
+
+func (c wrapperCall) stringArg(index int) (string, *evalResult, error) {
+	value, errResult, err := c.evalArg(index)
+	if err != nil || errResult != nil {
+		return "", errResult, err
+	}
+	if value.Kind != ValueString {
+		return "", nil, fmt.Errorf("runtime invariant violation: %s argument %d expects String", c.callee, index+1)
+	}
+	return value.Text, nil, nil
+}
+
+func (c wrapperCall) intArg(index int) (int64, *evalResult, error) {
+	value, errResult, err := c.evalArg(index)
+	if err != nil || errResult != nil {
+		return 0, errResult, err
+	}
+	if value.Kind != ValueInt {
+		return 0, nil, fmt.Errorf("runtime invariant violation: %s argument %d expects Int", c.callee, index+1)
+	}
+	return value.Int, nil, nil
+}
+
+func (c wrapperCall) floatArg(index int) (float64, *evalResult, error) {
+	value, errResult, err := c.evalArg(index)
+	if err != nil || errResult != nil {
+		return 0, errResult, err
+	}
+	switch value.Kind {
+	case ValueFloat:
+		return value.Float, nil, nil
+	case ValueInt:
+		return float64(value.Int), nil, nil
+	default:
+		return 0, nil, fmt.Errorf("runtime invariant violation: %s argument %d expects Int or Float", c.callee, index+1)
+	}
+}
+
+func wrapperIntResult(value int64) evalResult {
+	return evalResult{value: Value{Kind: ValueInt, Int: value}}
+}
+
+func wrapperStringResult(value string) evalResult {
+	return evalResult{value: Value{Kind: ValueString, Text: value}}
+}
+
+type wrapperErrorKind string
+
+const (
+	wrapperErrorInvalidArgument wrapperErrorKind = "InvalidArgument"
+	wrapperErrorInvalidHandle   wrapperErrorKind = "InvalidHandle"
+	wrapperErrorNotFound        wrapperErrorKind = "NotFound"
+	wrapperErrorConflict        wrapperErrorKind = "Conflict"
+	wrapperErrorInvalidData     wrapperErrorKind = "InvalidData"
+	wrapperErrorBackendFailure  wrapperErrorKind = "BackendFailure"
+)
+
+type wrapperError struct {
+	kind    wrapperErrorKind
+	message string
+}
+
+func (e wrapperError) Error() string {
+	return fmt.Sprintf("%s: %s", e.kind, e.message)
+}
+
+func wrapperErrorf(kind wrapperErrorKind, format string, args ...any) error {
+	return wrapperError{kind: kind, message: fmt.Sprintf(format, args...)}
+}
+
 func wrapperErrorResult(callee string, err error) evalResult {
+	if err == nil {
+		return evalResult{}
+	}
+	var contractErr wrapperError
+	message := err.Error()
+	if asWrapperError(err, &contractErr) {
+		message = contractErr.Error()
+	}
 	return evalResult{
 		hasError: true,
 		errorVal: Value{
 			Kind:  ValueError,
-			Error: ErrorValue{Message: fmt.Sprintf("%s: %v", callee, err)},
+			Error: ErrorValue{Message: fmt.Sprintf("%s: %s", callee, message)},
 		},
 	}
+}
+
+func asWrapperError(err error, target *wrapperError) bool {
+	if err == nil {
+		return false
+	}
+	value, ok := err.(wrapperError)
+	if !ok {
+		return false
+	}
+	*target = value
+	return true
 }

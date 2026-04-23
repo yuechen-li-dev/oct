@@ -21,6 +21,16 @@ M0 is write-side only:
 - `SetCellString(workbook, sheet, cell, value)`
 - `SetCellFloat(workbook, sheet, cell, value)`
 - `SaveWorkbook(workbook, path)`
+- `NormalizeJson(text)`
+
+## IO.Json Mx103a golden wrapper scope
+
+Mx103a adds a tiny JSON wrapper meant to be the canonical pattern for future wrapper waves:
+
+- one builtin bridge (`JsonNormalize`)
+- one thin Oct wrapper (`NormalizeJson`)
+- deterministic fallible behavior (`String ! Error`)
+- compact golden tests for happy/error paths
 
 ## Non-goals
 
@@ -33,3 +43,5 @@ M0 does **not** include formulas, styling, charting, pivot tables, workbook read
 `IO.Xlsx` demonstrates a thin Oct-shaped wrapper over an external Go XLSX backend, focused on immediate practical output.
 
 Runtime integration now uses the internal Bridge M0 wrapper substrate (maintainer-facing handle store + wrapper builtin dispatch), while keeping the Oct surface unchanged.
+
+Mx103a extends the substrate with shared wrapper-call helpers for argument decoding, result lifting helpers, and standardized wrapper error categories.

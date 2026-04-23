@@ -270,7 +270,7 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins()),
 	}
 	for pkgName, pkg := range program.Packages {
 		for _, record := range pkg.Records {
@@ -351,7 +351,7 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins()),
 	}
 	for currentPkg, pkg := range program.Packages {
 		for _, record := range pkg.Records {
@@ -3072,20 +3072,22 @@ func xlsxWrapperBuiltins() map[string]wrapperBuiltinHandler {
 }
 
 func (i *interpreter) evalXlsxCreateWorkbookBuiltin(_ *environment, _ string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	if len(argumentExprs) != 0 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 0 arguments", callee)
+	call := newWrapperCall(i, nil, "", callee, argumentExprs)
+	if err := call.expectArity(0); err != nil {
+		return evalResult{}, err
 	}
 	file := excelize.NewFile()
 	file.DeleteSheet("Sheet1")
 	handle := i.workbooks.allocate(&xlsxWorkbook{file: file})
-	return evalResult{value: Value{Kind: ValueInt, Int: handle}}, nil
+	return wrapperIntResult(handle), nil
 }
 
 func (i *interpreter) evalXlsxAddSheetBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	if len(argumentExprs) != 2 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(2); err != nil {
+		return evalResult{}, err
 	}
-	workbook, sheetName, errResult, err := i.evalWorkbookAndSheetArgs(env, pkgName, callee, argumentExprs[0], argumentExprs[1])
+	workbook, sheetName, errResult, err := i.evalWorkbookAndSheetArgs(call, 0, 1)
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -3094,94 +3096,87 @@ func (i *interpreter) evalXlsxAddSheetBuiltin(env *environment, pkgName string, 
 	}
 	sheetIndex, sheetErr := workbook.file.GetSheetIndex(sheetName)
 	if sheetErr != nil {
-		return wrapperErrorResult(callee, sheetErr), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", sheetErr)), nil
 	}
 	if sheetIndex != -1 {
-		return wrapperErrorResult(callee, fmt.Errorf("sheet %q already exists", sheetName)), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorConflict, "sheet %q already exists", sheetName)), nil
 	}
 	if _, err := workbook.file.NewSheet(sheetName); err != nil {
-		return wrapperErrorResult(callee, err), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", err)), nil
 	}
-	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+	return wrapperIntResult(0), nil
 }
 
 func (i *interpreter) evalXlsxSetCellStringBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	if len(argumentExprs) != 4 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 4 arguments", callee)
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(4); err != nil {
+		return evalResult{}, err
 	}
-	workbook, sheetName, cell, errResult, err := i.evalWorkbookSheetCellArgs(env, pkgName, callee, argumentExprs[0], argumentExprs[1], argumentExprs[2])
+	workbook, sheetName, cell, errResult, err := i.evalWorkbookSheetCellArgs(call, 0, 1, 2)
 	if err != nil {
 		return evalResult{}, err
 	}
 	if errResult != nil {
 		return *errResult, nil
 	}
-	valueResult, err := i.evalExpr(env, pkgName, argumentExprs[3])
+	value, valueErrResult, err := call.stringArg(3)
 	if err != nil {
 		return evalResult{}, err
 	}
-	if valueResult.hasError {
-		return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
-	}
-	if valueResult.value.Kind != ValueString {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String value", callee)
+	if valueErrResult != nil {
+		return *valueErrResult, nil
 	}
 	sheetIndex, sheetErr := workbook.file.GetSheetIndex(sheetName)
 	if sheetErr != nil {
-		return wrapperErrorResult(callee, sheetErr), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", sheetErr)), nil
 	}
 	if sheetIndex == -1 {
-		return wrapperErrorResult(callee, fmt.Errorf("unknown sheet %q", sheetName)), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorNotFound, "unknown sheet %q", sheetName)), nil
 	}
-	if err := workbook.file.SetCellStr(sheetName, cell, valueResult.value.Text); err != nil {
-		return wrapperErrorResult(callee, err), nil
+	if err := workbook.file.SetCellStr(sheetName, cell, value); err != nil {
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", err)), nil
 	}
-	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+	return wrapperIntResult(0), nil
 }
 
 func (i *interpreter) evalXlsxSetCellFloatBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	if len(argumentExprs) != 4 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 4 arguments", callee)
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(4); err != nil {
+		return evalResult{}, err
 	}
-	workbook, sheetName, cell, errResult, err := i.evalWorkbookSheetCellArgs(env, pkgName, callee, argumentExprs[0], argumentExprs[1], argumentExprs[2])
+	workbook, sheetName, cell, errResult, err := i.evalWorkbookSheetCellArgs(call, 0, 1, 2)
 	if err != nil {
 		return evalResult{}, err
 	}
 	if errResult != nil {
 		return *errResult, nil
 	}
-	valueResult, err := i.evalExpr(env, pkgName, argumentExprs[3])
+	floatValue, valueErrResult, err := call.floatArg(3)
 	if err != nil {
 		return evalResult{}, err
 	}
-	if valueResult.hasError {
-		return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
-	}
-	if valueResult.value.Kind != ValueInt && valueResult.value.Kind != ValueFloat {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects Int or Float value", callee)
+	if valueErrResult != nil {
+		return *valueErrResult, nil
 	}
 	sheetIndex, sheetErr := workbook.file.GetSheetIndex(sheetName)
 	if sheetErr != nil {
-		return wrapperErrorResult(callee, sheetErr), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", sheetErr)), nil
 	}
 	if sheetIndex == -1 {
-		return wrapperErrorResult(callee, fmt.Errorf("unknown sheet %q", sheetName)), nil
-	}
-	floatValue := valueResult.value.Float
-	if valueResult.value.Kind == ValueInt {
-		floatValue = float64(valueResult.value.Int)
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorNotFound, "unknown sheet %q", sheetName)), nil
 	}
 	if err := workbook.file.SetCellFloat(sheetName, cell, floatValue, -1, 64); err != nil {
-		return wrapperErrorResult(callee, err), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%v", err)), nil
 	}
-	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+	return wrapperIntResult(0), nil
 }
 
 func (i *interpreter) evalXlsxSaveWorkbookBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	if len(argumentExprs) != 2 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(2); err != nil {
+		return evalResult{}, err
 	}
-	workbook, path, errResult, err := i.evalWorkbookAndSheetArgs(env, pkgName, callee, argumentExprs[0], argumentExprs[1])
+	workbook, path, errResult, err := i.evalWorkbookAndSheetArgs(call, 0, 1)
 	if err != nil {
 		return evalResult{}, err
 	}
@@ -3189,66 +3184,53 @@ func (i *interpreter) evalXlsxSaveWorkbookBuiltin(env *environment, pkgName stri
 		return *errResult, nil
 	}
 	if !strings.HasSuffix(path, ".xlsx") {
-		return wrapperErrorResult(callee, fmt.Errorf("path must end with .xlsx")), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidArgument, "path must end with .xlsx")), nil
 	}
 	if len(workbook.file.GetSheetList()) == 0 {
-		return wrapperErrorResult(callee, fmt.Errorf("workbook has no sheets")), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidData, "workbook has no sheets")), nil
 	}
 	if err := workbook.file.SaveAs(path); err != nil {
-		return wrapperErrorResult(callee, fmt.Errorf("%s: %w", path, err)), nil
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "%s: %v", path, err)), nil
 	}
-	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+	return wrapperIntResult(0), nil
 }
 
-func (i *interpreter) evalWorkbookAndSheetArgs(env *environment, pkgName string, callee string, workbookExpr ast.Expr, sheetExpr ast.Expr) (*xlsxWorkbook, string, *evalResult, error) {
-	workbookResult, err := i.evalExpr(env, pkgName, workbookExpr)
+func (i *interpreter) evalWorkbookAndSheetArgs(call wrapperCall, workbookArgIndex int, sheetArgIndex int) (*xlsxWorkbook, string, *evalResult, error) {
+	workbookHandle, errResult, err := call.intArg(workbookArgIndex)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	if workbookResult.hasError {
-		errResult := evalResult{hasError: true, errorVal: workbookResult.errorVal}
-		return nil, "", &errResult, nil
+	if errResult != nil {
+		return nil, "", errResult, nil
 	}
-	if workbookResult.value.Kind != ValueInt {
-		return nil, "", nil, fmt.Errorf("runtime invariant violation: %s expects Int workbook handle", callee)
-	}
-	workbook, err := i.workbookByHandle(workbookResult.value.Int)
+	workbook, err := i.workbookByHandle(workbookHandle)
 	if err != nil {
-		errResult := evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: fmt.Sprintf("%s: %v", callee, err)}}}
+		errResult := wrapperErrorResult(call.callee, err)
 		return nil, "", &errResult, nil
 	}
-
-	sheetResult, err := i.evalExpr(env, pkgName, sheetExpr)
+	sheetName, errResult, err := call.stringArg(sheetArgIndex)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	if sheetResult.hasError {
-		errResult := evalResult{hasError: true, errorVal: sheetResult.errorVal}
-		return nil, "", &errResult, nil
+	if errResult != nil {
+		return nil, "", errResult, nil
 	}
-	if sheetResult.value.Kind != ValueString {
-		return nil, "", nil, fmt.Errorf("runtime invariant violation: %s expects String sheet/path argument", callee)
-	}
-	return workbook, sheetResult.value.Text, nil, nil
+	return workbook, sheetName, nil, nil
 }
 
-func (i *interpreter) evalWorkbookSheetCellArgs(env *environment, pkgName string, callee string, workbookExpr ast.Expr, sheetExpr ast.Expr, cellExpr ast.Expr) (*xlsxWorkbook, string, string, *evalResult, error) {
-	workbook, sheetName, errResult, err := i.evalWorkbookAndSheetArgs(env, pkgName, callee, workbookExpr, sheetExpr)
+func (i *interpreter) evalWorkbookSheetCellArgs(call wrapperCall, workbookArgIndex int, sheetArgIndex int, cellArgIndex int) (*xlsxWorkbook, string, string, *evalResult, error) {
+	workbook, sheetName, errResult, err := i.evalWorkbookAndSheetArgs(call, workbookArgIndex, sheetArgIndex)
 	if err != nil || errResult != nil {
 		return nil, "", "", errResult, err
 	}
-	cellResult, err := i.evalExpr(env, pkgName, cellExpr)
+	cellValue, errResult, err := call.stringArg(cellArgIndex)
 	if err != nil {
 		return nil, "", "", nil, err
 	}
-	if cellResult.hasError {
-		errResult := evalResult{hasError: true, errorVal: cellResult.errorVal}
-		return nil, "", "", &errResult, nil
+	if errResult != nil {
+		return nil, "", "", errResult, nil
 	}
-	if cellResult.value.Kind != ValueString {
-		return nil, "", "", nil, fmt.Errorf("runtime invariant violation: %s expects String cell argument", callee)
-	}
-	return workbook, sheetName, cellResult.value.Text, nil, nil
+	return workbook, sheetName, cellValue, nil, nil
 }
 
 func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {

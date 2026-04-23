@@ -1,0 +1,12 @@
+package IO
+
+[Fact]
+fn JsonNormalizeMinifiesValidDocument() -> Void {
+    let normalized = NormalizeJson("[ 1, 2, 3 ]")!
+    Assert.Equal("[1,2,3]", normalized, "json normalization should return deterministic compact output")
+}
+
+[Fact]
+fn JsonNormalizeRejectsInvalidDocument() -> Void {
+    Assert.Error(NormalizeJson("{"), "invalid json should return a fallible error")
+}
