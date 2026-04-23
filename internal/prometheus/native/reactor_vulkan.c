@@ -35,6 +35,51 @@ typedef struct prom_vk_buffer {
   VkDeviceSize size;
 } prom_vk_buffer;
 
+typedef struct prom_sgemm_controller_defaults {
+  uint32_t lookahead_default;
+  uint32_t lookahead_min;
+  uint32_t lookahead_max;
+  uint32_t outstanding_default;
+  uint32_t outstanding_min;
+  uint32_t outstanding_max;
+  uint32_t chunk_default;
+  uint32_t chunk_min;
+  uint32_t chunk_max;
+  uint32_t waste_budget_units;
+  uint32_t retreat_permille;
+  uint32_t recover_permille;
+  uint32_t recovery_window;
+} prom_sgemm_controller_defaults;
+
+typedef struct prom_sgemm_controller_state {
+  prom_policy_memory policy_memory;
+  prom_policy_thresholds policy_thresholds;
+  prom_policy_facts policy_facts;
+  uint32_t lookahead;
+  uint32_t outstanding_depth;
+  uint32_t chunk_size;
+  uint32_t pending_waste_units;
+  uint32_t last_shape_signature;
+  uint32_t last_shape_m;
+  uint32_t last_shape_n;
+  uint32_t last_shape_k;
+  uint32_t last_mode;
+  uint32_t decision_count;
+  uint32_t retreat_count;
+  uint32_t recovery_count;
+  uint32_t transition_count;
+  uint32_t instability_count;
+  uint32_t budget_depletion_count;
+  uint32_t safe_mode_decisions;
+  uint32_t aggressive_mode_decisions;
+  uint32_t recovery_mode_decisions;
+  uint32_t lag_early_warning_count;
+  uint32_t burst_dampening_count;
+  uint32_t bound_violation_count;
+  uint64_t wasted_work_units_total;
+  uint32_t wasted_work_units_last;
+} prom_sgemm_controller_state;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -84,6 +129,7 @@ typedef struct prometheus_runtime {
   int async_final_detail;
   uint32_t async_stage;
   int async_failure_detail;
+  prom_sgemm_controller_state sgemm_controller;
 } prometheus_runtime;
 
 typedef struct prom_vk_push {
@@ -97,6 +143,23 @@ enum {
   PROM_VK_PUSH_FIELD_OFFSET_N = 4,
   PROM_VK_PUSH_FIELD_OFFSET_K = 8,
   PROM_VK_SHADER_PUSH_BYTES = 12,
+};
+
+enum {
+  PROM_SGEMM_LOOKAHEAD_DEFAULT = 2u,
+  PROM_SGEMM_LOOKAHEAD_MIN = 0u,
+  PROM_SGEMM_LOOKAHEAD_MAX = 2u,
+  PROM_SGEMM_OUTSTANDING_DEFAULT = 2u,
+  PROM_SGEMM_OUTSTANDING_MIN = 1u,
+  PROM_SGEMM_OUTSTANDING_MAX = 2u,
+  PROM_SGEMM_CHUNK_DEFAULT = 16u,
+  PROM_SGEMM_CHUNK_MIN = 8u,
+  PROM_SGEMM_CHUNK_MAX = 32u,
+  PROM_SGEMM_WASTE_BUDGET_UNITS = 64u,
+  PROM_SGEMM_RETREAT_PERMILLE = 250u,
+  PROM_SGEMM_RECOVER_PERMILLE = 120u,
+  PROM_SGEMM_RECOVERY_WINDOW = 3u,
+  PROM_SGEMM_HYSTERESIS_MARGIN = 40u,
 };
 
 /*
@@ -331,6 +394,188 @@ static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize*
   *out_copy_size = (size_t)bytes;
   *out_vk_size = (VkDeviceSize)bytes;
   return 1;
+}
+
+static prom_sgemm_controller_defaults prom_sgemm_default_config(void) {
+  prom_sgemm_controller_defaults defaults;
+  defaults.lookahead_default = PROM_SGEMM_LOOKAHEAD_DEFAULT;
+  defaults.lookahead_min = PROM_SGEMM_LOOKAHEAD_MIN;
+  defaults.lookahead_max = PROM_SGEMM_LOOKAHEAD_MAX;
+  defaults.outstanding_default = PROM_SGEMM_OUTSTANDING_DEFAULT;
+  defaults.outstanding_min = PROM_SGEMM_OUTSTANDING_MIN;
+  defaults.outstanding_max = PROM_SGEMM_OUTSTANDING_MAX;
+  defaults.chunk_default = PROM_SGEMM_CHUNK_DEFAULT;
+  defaults.chunk_min = PROM_SGEMM_CHUNK_MIN;
+  defaults.chunk_max = PROM_SGEMM_CHUNK_MAX;
+  defaults.waste_budget_units = PROM_SGEMM_WASTE_BUDGET_UNITS;
+  defaults.retreat_permille = PROM_SGEMM_RETREAT_PERMILLE;
+  defaults.recover_permille = PROM_SGEMM_RECOVER_PERMILLE;
+  defaults.recovery_window = PROM_SGEMM_RECOVERY_WINDOW;
+  return defaults;
+}
+
+static uint32_t prom_subtract_saturating_u32(uint32_t left, uint32_t right) {
+  return left > right ? left - right : 0u;
+}
+
+static uint32_t prom_sgemm_shape_signature(uint32_t m, uint32_t n, uint32_t k) {
+  return (m * 31u) ^ (n * 131u) ^ (k * 521u);
+}
+
+static uint32_t prom_sgemm_clamp_u32(uint32_t value, uint32_t min_value, uint32_t max_value) {
+  if (value < min_value) {
+    return min_value;
+  }
+  if (value > max_value) {
+    return max_value;
+  }
+  return value;
+}
+
+static uint32_t prom_sgemm_waste_proxy_units(uint64_t work_units, uint32_t shape_changed, uint32_t software_vulkan) {
+  uint32_t base_units = (uint32_t)(work_units / 65536u);
+  if (base_units > 24u) {
+    base_units = 24u;
+  }
+  if (shape_changed != 0u) {
+    base_units += 10u;
+  }
+  if (software_vulkan != 0u) {
+    base_units += 4u;
+  }
+  return base_units;
+}
+
+static void prom_sgemm_controller_init(prom_sgemm_controller_state* state) {
+  prom_sgemm_controller_defaults defaults;
+  if (state == NULL) {
+    return;
+  }
+  memset(state, 0, sizeof(*state));
+  defaults = prom_sgemm_default_config();
+  prom_policy_memory_init(&state->policy_memory, PROM_POLICY_MODE_AGGRESSIVE);
+  state->policy_thresholds.retreat_enter_permille = defaults.retreat_permille;
+  state->policy_thresholds.retreat_exit_permille =
+      defaults.recover_permille > PROM_SGEMM_HYSTERESIS_MARGIN ? defaults.recover_permille : defaults.recover_permille / 2u;
+  state->policy_thresholds.recovery_enter_permille = defaults.retreat_permille + PROM_SGEMM_HYSTERESIS_MARGIN;
+  state->policy_thresholds.recovery_exit_permille = defaults.recover_permille;
+  state->policy_thresholds.min_commit_decisions = 2u;
+  state->policy_thresholds.retreat_cooldown_decisions = defaults.recovery_window;
+  state->policy_thresholds.recovery_hold_decisions = defaults.recovery_window;
+  state->lookahead = defaults.lookahead_default;
+  state->outstanding_depth = defaults.outstanding_default;
+  state->chunk_size = defaults.chunk_default;
+  state->last_mode = PROM_POLICY_MODE_AGGRESSIVE;
+}
+
+static prom_policy_mode prom_sgemm_controller_step(prom_sgemm_controller_state* state,
+                                                   uint32_t m,
+                                                   uint32_t n,
+                                                   uint32_t k,
+                                                   uint64_t work_units,
+                                                   uint32_t software_vulkan) {
+  prom_sgemm_controller_defaults defaults;
+  uint32_t signature;
+  uint32_t shape_changed;
+  uint32_t waste_units;
+  uint32_t waste_budget;
+  prom_policy_mode mode;
+  if (state == NULL) {
+    return PROM_POLICY_MODE_AGGRESSIVE;
+  }
+
+  defaults = prom_sgemm_default_config();
+  signature = prom_sgemm_shape_signature(m, n, k);
+  shape_changed = state->last_shape_signature == 0u || state->last_shape_signature != signature ? 1u : 0u;
+
+  waste_units = prom_sgemm_waste_proxy_units(work_units, shape_changed, software_vulkan);
+  waste_budget = defaults.waste_budget_units;
+  state->wasted_work_units_last = waste_units;
+  state->wasted_work_units_total += (uint64_t)waste_units;
+  if (state->pending_waste_units > waste_budget) {
+    state->pending_waste_units = waste_budget;
+  }
+  if (shape_changed != 0u) {
+    state->pending_waste_units += 8u;
+    if (state->pending_waste_units > waste_budget) {
+      state->pending_waste_units = waste_budget;
+    }
+    if (state->decision_count != 0u) {
+      state->burst_dampening_count += 1u;
+    }
+  }
+  state->pending_waste_units += waste_units / 2u;
+  if (state->pending_waste_units > waste_budget) {
+    state->pending_waste_units = waste_budget;
+  }
+  if ((state->pending_waste_units * 1000u) / waste_budget >= defaults.retreat_permille) {
+    state->lag_early_warning_count += 1u;
+  }
+
+  state->policy_facts.waste_ratio_permille = (waste_units * 1000u) / waste_budget;
+  state->policy_facts.pending_waste_ratio_permille = (state->pending_waste_units * 1000u) / waste_budget;
+  state->policy_facts.hard_retreat_override = state->pending_waste_units >= waste_budget ? 1u : 0u;
+  state->policy_facts.hard_recovery_override = 0u;
+
+  mode = prom_judgment_engine_update_policy_mode(&state->policy_memory, &state->policy_facts, &state->policy_thresholds);
+  state->decision_count += 1u;
+  if (mode != state->last_mode) {
+    state->transition_count += 1u;
+    if (state->transition_count > 1u) {
+      state->instability_count += 1u;
+    }
+  }
+  if (mode == PROM_POLICY_MODE_AGGRESSIVE) {
+    state->aggressive_mode_decisions += 1u;
+    state->lookahead = defaults.lookahead_default;
+    state->outstanding_depth = defaults.outstanding_default;
+    state->chunk_size = defaults.chunk_default;
+  } else if (mode == PROM_POLICY_MODE_SAFE) {
+    state->safe_mode_decisions += 1u;
+    state->lookahead = 1u;
+    state->outstanding_depth = 1u;
+    state->chunk_size = shape_changed != 0u ? defaults.chunk_min : 12u;
+  } else {
+    state->recovery_mode_decisions += 1u;
+    state->lookahead = 1u;
+    state->outstanding_depth = 1u;
+    state->chunk_size = 12u;
+    if (state->policy_memory.recovery_cooldown_remaining <= 1u) {
+      state->lookahead = defaults.lookahead_default;
+      state->outstanding_depth = defaults.outstanding_default;
+    }
+  }
+  if (shape_changed != 0u && state->chunk_size > defaults.chunk_min) {
+    state->chunk_size -= 2u;
+    if (state->chunk_size < defaults.chunk_min) {
+      state->chunk_size = defaults.chunk_min;
+    }
+  }
+  state->lookahead = prom_sgemm_clamp_u32(state->lookahead, defaults.lookahead_min, defaults.lookahead_max);
+  state->outstanding_depth =
+      prom_sgemm_clamp_u32(state->outstanding_depth, defaults.outstanding_min, defaults.outstanding_max);
+  state->chunk_size = prom_sgemm_clamp_u32(state->chunk_size, defaults.chunk_min, defaults.chunk_max);
+  if (state->lookahead < defaults.lookahead_min || state->lookahead > defaults.lookahead_max ||
+      state->outstanding_depth < defaults.outstanding_min || state->outstanding_depth > defaults.outstanding_max ||
+      state->chunk_size < defaults.chunk_min || state->chunk_size > defaults.chunk_max) {
+    state->bound_violation_count += 1u;
+  }
+  if (mode == PROM_POLICY_MODE_SAFE && state->last_mode != PROM_POLICY_MODE_SAFE) {
+    state->retreat_count += 1u;
+  }
+  if (mode == PROM_POLICY_MODE_RECOVERY && state->last_mode != PROM_POLICY_MODE_RECOVERY) {
+    state->recovery_count += 1u;
+  }
+  if (state->pending_waste_units >= waste_budget) {
+    state->budget_depletion_count += 1u;
+  }
+  state->pending_waste_units = prom_subtract_saturating_u32(state->pending_waste_units, waste_units);
+  state->last_shape_signature = signature;
+  state->last_shape_m = m;
+  state->last_shape_n = n;
+  state->last_shape_k = k;
+  state->last_mode = (uint32_t)mode;
+  return mode;
 }
 
 static int registry_contains(void* handle) {
@@ -1016,6 +1261,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   memset(runtime, 0, sizeof(*runtime));
   runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
   runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+  prom_sgemm_controller_init(&runtime->sgemm_controller);
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -1126,6 +1372,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t can_direct;
   uint32_t tiled_shape;
   uint32_t readback_required;
+  prom_policy_mode policy_mode;
   prom_vk_path_mode selected_path;
   prom_vk_compute_mode compute_mode;
   prom_judgment_facts judgment_facts;
@@ -1205,6 +1452,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
   work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
+  policy_mode = prom_sgemm_controller_step(&rt->sgemm_controller, m, n, k, work_units, rt->software_vulkan);
   tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
@@ -1219,6 +1467,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
   judgment_facts.readback_required = readback_required;
   judgment_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
+  if (judgment_facts.force_direct == 0u && policy_mode == PROM_POLICY_MODE_SAFE &&
+      (rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) == 0u && (rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) == 0u) {
+    /* SAFE mode currently biases to direct+baseline for conservative behavior.
+     * This can suppress direct+tiled on large shapes; keep unchanged in this pass
+     * and revisit with real GPU validation data before any policy relaxation. */
+    judgment_facts.force_direct = 1u;
+  }
   judgment_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
   judgment_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
   judgment_facts.tiled_shape = tiled_shape;
@@ -1703,5 +1958,45 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
     return PROM_ERROR;
   }
   set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, rt->async_stage, rt->async_final_detail);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
+  const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
+  prometheus_runtime* rt;
+  if (out_diag == NULL) {
+    return PROM_ERROR;
+  }
+  memset(out_diag, 0, sizeof(*out_diag));
+  if (handle == NULL || !registry_contains(handle)) {
+    return PROM_INVALID_HANDLE;
+  }
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
+    return PROM_INVALID_HANDLE;
+  }
+
+  out_diag->current_mode = (uint32_t)rt->sgemm_controller.policy_memory.current_mode;
+  out_diag->lookahead = rt->sgemm_controller.lookahead;
+  out_diag->outstanding_depth = rt->sgemm_controller.outstanding_depth;
+  out_diag->chunk_size = rt->sgemm_controller.chunk_size;
+  out_diag->chunk_min = defaults.chunk_min;
+  out_diag->chunk_max = defaults.chunk_max;
+  out_diag->waste_budget_units = defaults.waste_budget_units;
+  out_diag->pending_waste_units = rt->sgemm_controller.pending_waste_units;
+  out_diag->wasted_work_units_last = rt->sgemm_controller.wasted_work_units_last;
+  out_diag->wasted_work_units_total = rt->sgemm_controller.wasted_work_units_total;
+  out_diag->decision_count = rt->sgemm_controller.decision_count;
+  out_diag->retreat_count = rt->sgemm_controller.retreat_count;
+  out_diag->recovery_count = rt->sgemm_controller.recovery_count;
+  out_diag->transition_count = rt->sgemm_controller.transition_count;
+  out_diag->instability_count = rt->sgemm_controller.instability_count;
+  out_diag->budget_depletion_count = rt->sgemm_controller.budget_depletion_count;
+  out_diag->safe_mode_decisions = rt->sgemm_controller.safe_mode_decisions;
+  out_diag->aggressive_mode_decisions = rt->sgemm_controller.aggressive_mode_decisions;
+  out_diag->recovery_mode_decisions = rt->sgemm_controller.recovery_mode_decisions;
+  out_diag->lag_early_warning_count = rt->sgemm_controller.lag_early_warning_count;
+  out_diag->burst_dampening_count = rt->sgemm_controller.burst_dampening_count;
+  out_diag->bound_violation_count = rt->sgemm_controller.bound_violation_count;
   return PROM_OK;
 }

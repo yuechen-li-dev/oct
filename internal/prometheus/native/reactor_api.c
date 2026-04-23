@@ -61,6 +61,10 @@ int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id) {
   return prom_reactor_runtime_sgemm_abandon_async_impl(handle, task_id);
 }
 
+int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
+  return prom_reactor_runtime_sgemm_policy_diagnostics_impl(handle, out_diag);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

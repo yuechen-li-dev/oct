@@ -1047,3 +1047,135 @@ FACT(PrometheusReactor_AsyncFailureRemainsVisibleUntilExplicitAbandon)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_SgemmCandidateCPolicyDiagnosticsExposeBoundedState)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM policy diagnostics need runnable runtime");
+    }
+
+    const std::uint32_t m = 16u;
+    const std::uint32_t n = 16u;
+    const std::uint32_t k = 16u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "sgemm run should succeed");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_TRUE(diag.current_mode == 1u || diag.current_mode == 2u || diag.current_mode == 3u,
+                "controller mode should remain in explicit bounded mode set");
+    ASSERT_TRUE(diag.lookahead <= 2u, "lookahead must remain bounded at or below 2");
+    ASSERT_TRUE(diag.outstanding_depth <= 2u, "outstanding depth must remain bounded at or below 2");
+    ASSERT_TRUE(diag.chunk_size >= 8u && diag.chunk_size <= 32u, "chunk size must remain within bounded range");
+    ASSERT_TRUE(diag.decision_count >= 1u, "controller should record decisions");
+    ASSERT_EQUAL(0u, diag.bound_violation_count, "bounded controller should report zero bound violations");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_SgemmCandidateCPolicyRetreatsAndTracksGuardrails)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM policy guardrails need runnable runtime");
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t m = 128u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 64u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+
+    for (int iter = 0; iter < 4; ++iter) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "high-pressure shape should execute");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_TRUE(diag.retreat_count >= 1u || diag.safe_mode_decisions >= 1u, "controller should retreat or spend explicit time in safe mode under pressure");
+    ASSERT_TRUE(diag.wasted_work_units_total >= diag.wasted_work_units_last, "waste counters should be monotonic and coherent");
+    ASSERT_TRUE(diag.lag_early_warning_count >= 1u, "lag-aware pending waste warnings should be observable");
+    ASSERT_TRUE(diag.budget_depletion_count <= diag.decision_count, "budget depletion count should remain bounded by decision count");
+    ASSERT_EQUAL(0u, diag.bound_violation_count, "guardrailed controller should keep bound violation count at zero");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_SgemmCandidateCPendingWasteDrainsAndSafeModeCanExit)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; pending-waste regression requires runnable runtime");
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t pressure_m = 128u;
+    const std::uint32_t pressure_n = 128u;
+    const std::uint32_t pressure_k = 64u;
+    const std::vector<float> pressure_a = deterministic_matrix(pressure_m, pressure_k);
+    const std::vector<float> pressure_b = deterministic_matrix(pressure_k, pressure_n);
+    std::vector<float> pressure_c(pressure_m * pressure_n, 0.0f);
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, pressure_a.data(), pressure_b.data(), pressure_c.data(), pressure_m, pressure_n, pressure_k, &stage, &detail), "pressure run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, pressure_a.data(), pressure_b.data(), pressure_c.data(), pressure_m, pressure_n, pressure_k, &stage, &detail), "second pressure run should push controller into safe");
+
+    const std::uint32_t drain_m = 64u;
+    const std::uint32_t drain_n = 32u;
+    const std::uint32_t drain_k = 32u;
+    const std::vector<float> drain_a = deterministic_matrix(drain_m, drain_k);
+    const std::vector<float> drain_b = deterministic_matrix(drain_k, drain_n);
+    std::vector<float> drain_c(drain_m * drain_n, 0.0f);
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, drain_a.data(), drain_b.data(), drain_c.data(), drain_m, drain_n, drain_k, &stage, &detail), "first drain run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed after first drain run");
+    const std::uint32_t pending_after_first_drain = diag.pending_waste_units;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, drain_a.data(), drain_b.data(), drain_c.data(), drain_m, drain_n, drain_k, &stage, &detail), "second drain run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed after second drain run");
+    const std::uint32_t pending_after_second_drain = diag.pending_waste_units;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, drain_a.data(), drain_b.data(), drain_c.data(), drain_m, drain_n, drain_k, &stage, &detail), "third drain run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed after third drain run");
+    const std::uint32_t pending_after_third_drain = diag.pending_waste_units;
+
+    ASSERT_TRUE(pending_after_second_drain <= pending_after_first_drain, "pending waste should not rebound during drain sequence");
+    ASSERT_TRUE(pending_after_third_drain <= pending_after_second_drain, "pending waste should continue monotonic decay under sustained low pressure");
+    ASSERT_EQUAL(0u, pending_after_third_drain, "pending waste should saturate to zero once decay overshoots");
+
+    const std::uint64_t non_safe_decisions_before_recovery_loop = diag.aggressive_mode_decisions + diag.recovery_mode_decisions;
+    for (int iter = 0; iter < 20; ++iter) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, drain_a.data(), drain_b.data(), drain_c.data(), drain_m, drain_n, drain_k, &stage, &detail), "additional drain run should succeed");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed during recovery loop");
+    }
+
+    const std::uint64_t non_safe_decisions_after_recovery_loop = diag.aggressive_mode_decisions + diag.recovery_mode_decisions;
+    ASSERT_TRUE(non_safe_decisions_after_recovery_loop > non_safe_decisions_before_recovery_loop,
+                "controller should be able to leave safe mode once pending waste has genuinely drained");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
