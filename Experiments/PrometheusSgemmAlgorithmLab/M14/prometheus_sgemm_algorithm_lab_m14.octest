@@ -1,0 +1,51 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M14SynthesisIsExplicit() -> Void {
+    let synthesis = M14SynthesisFromM12M13()
+    Assert.True(synthesis.M12ControllerDo != "", "must explicitly state M12 implications")
+    Assert.True(synthesis.M13ControllerAvoid != "", "must explicitly state what M13 rejects")
+    Assert.True(synthesis.ProductRelevantCharacteristics != "", "must explicitly state product criteria")
+    Assert.True(synthesis.WinnerSuccessCriteria != "", "must explicitly define M14 winner criteria")
+}
+
+[Fact]
+fn M14ComparesRequiredCandidateFamiliesAcrossRegimes() -> Void {
+    let rows = M14StudyRows()
+    Assert.True(Len(rows) == 24, "M14 should evaluate six candidates across four regimes")
+}
+
+[Fact]
+fn M14WinnerIsDeterministicAndNonEmpty() -> Void {
+    let first = M14OverallWinner()
+    let second = M14OverallWinner()
+    Assert.True(first != "", "overall winner must be explicit")
+    Assert.Equal(first, second, "overall winner must be deterministic")
+}
+
+[Fact]
+fn M14HandoffTargetsTrackWinner() -> Void {
+    let winner = M14OverallWinner()
+    let handoff = M14M15HandoffTargets()
+
+    Assert.True(Len(handoff) >= 4, "M15 handoff needs concrete failure-mode coverage")
+    Assert.Equal(handoff[0].Winner, winner, "handoff targets should bind to selected winner")
+}
+
+[Artifact]
+fn EmitM14CandidateComparison() -> Void {
+    let rows = M14StudyRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M14/m14_candidate_comparison.octagon", rows)
+}
+
+[Artifact]
+fn EmitM14RegimeWinners() -> Void {
+    let rows = M14RegimeWinners()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M14/m14_regime_winners.octagon", rows)
+}
+
+[Artifact]
+fn EmitM14M15Handoff() -> Void {
+    let rows = M14M15HandoffTargets()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M14/m14_m15_handoff.octagon", rows)
+}
