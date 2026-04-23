@@ -1,0 +1,9 @@
+package IO
+
+fn Read(path: String) -> String[][] ! Error {
+    return CsvRead(path)?
+}
+
+fn Write(path: String, rows: String[][]) -> Int ! Error {
+    return CsvWrite(path, rows)?
+}

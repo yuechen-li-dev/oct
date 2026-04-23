@@ -1,0 +1,25 @@
+package IO
+
+fn JoinPath(parts: String[]) -> String {
+    return PathJoin(parts)
+}
+
+fn BaseName(path: String) -> String {
+    return PathBaseName(path)
+}
+
+fn Extension(path: String) -> String {
+    return PathExtension(path)
+}
+
+fn Stem(path: String) -> String {
+    return PathStem(path)
+}
+
+fn Parent(path: String) -> String {
+    return PathParent(path)
+}
+
+fn Clean(path: String) -> String {
+    return PathClean(path)
+}
