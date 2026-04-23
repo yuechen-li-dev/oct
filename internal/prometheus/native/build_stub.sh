@@ -13,6 +13,7 @@ LIB_NAME="libprometheus_reactor.so"
 cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/reactor_api.c" \
   "$NATIVE_DIR/reactor_judgment_engine.c" \
+  "$NATIVE_DIR/reactor_policy_memory.c" \
   "$NATIVE_DIR/reactor_vulkan.c" \
   -pthread \
   -lvulkan \
@@ -24,6 +25,7 @@ c++ -std=c++23 -O2 \
   -DMARIONETTE_TEST_REPO_ROOT="\"$ROOT_DIR\"" \
   "$NATIVE_DIR/reactor_api.c" \
   "$NATIVE_DIR/reactor_judgment_engine.c" \
+  "$NATIVE_DIR/reactor_policy_memory.c" \
   "$NATIVE_DIR/reactor_vulkan.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
   -pthread \

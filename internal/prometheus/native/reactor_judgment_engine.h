@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "reactor_api.h"
+#include "reactor_policy_memory.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,6 +69,9 @@ enum {
 void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, prom_judgment_decision* out_decision);
 void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
                                                   prom_judgment_async_decision* out_decision);
+prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,
+                                                         const prom_policy_facts* facts,
+                                                         const prom_policy_thresholds* thresholds);
 
 #ifdef __cplusplus
 }
