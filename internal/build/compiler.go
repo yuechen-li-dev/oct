@@ -1010,6 +1010,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					ret = "Float"
 				}
 			}
+		case "%":
+			ret = "Int"
 		}
 		tmp := c.temp(ret)
 		op := e.Operator
@@ -1018,6 +1020,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if op == "or" {
 			op = "||"
+		}
+		if op == "%" {
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
+				Target: tmp,
+				Value:  fmt.Sprintf("func(__a int, __b int) int { if __b == 0 { panic(\"runtime error: modulo by zero\") }; __r := __a %% __b; if __r < 0 { if __b > 0 { __r += __b } else { __r -= __b } }; return __r }(%s, %s)", l, r),
+			})
+			return tmp, ret, false, nil
 		}
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s %s %s)", l, op, r)})
 		return tmp, ret, false, nil

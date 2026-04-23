@@ -3757,8 +3757,11 @@ func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {
 		return evalComplexBinaryExpr(operator, left, right)
 	}
 
-	if operator == "/" && isZero(right) {
-		return Value{}, errors.New("runtime error: division by zero")
+	if (operator == "/" || operator == "%") && isZero(right) {
+		if operator == "/" {
+			return Value{}, errors.New("runtime error: division by zero")
+		}
+		return Value{}, errors.New("runtime error: modulo by zero")
 	}
 	if (operator == "+" || operator == "-") && left.Dimension != right.Dimension {
 		return Value{}, fmt.Errorf("runtime invariant violation: cannot %s %s and %s", operatorName(operator), formatDimension(left.Dimension), formatDimension(right.Dimension))
@@ -4004,6 +4007,16 @@ func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) 
 		return Value{Kind: ValueInt, Int: left.Int * right.Int, Dimension: resultDim}, nil
 	case "/":
 		return Value{Kind: ValueInt, Int: left.Int / right.Int, Dimension: resultDim}, nil
+	case "%":
+		remainder := left.Int % right.Int
+		if remainder < 0 {
+			if right.Int > 0 {
+				remainder += right.Int
+			} else {
+				remainder -= right.Int
+			}
+		}
+		return Value{Kind: ValueInt, Int: remainder}, nil
 	default:
 		return Value{}, fmt.Errorf("runtime invariant violation: unsupported operator %q", operator)
 	}

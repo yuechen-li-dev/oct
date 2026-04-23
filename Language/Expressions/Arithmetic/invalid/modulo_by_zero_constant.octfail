@@ -1,0 +1,7 @@
+expect error: "function Main: modulo by zero"
+
+package Main
+
+fn Main() -> Int {
+    return 1 % 0
+}

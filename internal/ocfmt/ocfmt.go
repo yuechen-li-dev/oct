@@ -303,7 +303,7 @@ func needsSpace(prev string, curr string) bool {
 
 func isOperator(tok string) bool {
 	switch tok {
-	case "+", "-", "*", "/", "=", "==", "!=", "<=", ">=", "<", ">", "->", "=>", "..", "^", "and", "or", "not":
+	case "+", "-", "*", "/", "%", "=", "==", "!=", "<=", ">=", "<", ">", "->", "=>", "..", "^", "and", "or", "not":
 		return true
 	default:
 		return false

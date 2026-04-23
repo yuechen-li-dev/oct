@@ -241,6 +241,31 @@ func TestAnalyzeTokenizesComparisonOperators(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesModuloOperator(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { return 5 % 3 }"}
+
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		KeywordFn,
+		Identifier,
+		LeftParen,
+		RightParen,
+		Arrow,
+		Identifier,
+		LeftBrace,
+		KeywordReturn,
+		IntLiteral,
+		Percent,
+		IntLiteral,
+		RightBrace,
+		EOF,
+	)
+}
+
 func TestAnalyzeTokenizesBatchExpression(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Int[] { return batch [1, 2] as x { return x + 1 } }"}
 
