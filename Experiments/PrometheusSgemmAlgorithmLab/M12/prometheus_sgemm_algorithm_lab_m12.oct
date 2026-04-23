@@ -1,0 +1,363 @@
+package PrometheusSgemmAlgorithmLab
+
+record M12Regime {
+    Name: String
+    WorkUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+}
+
+record M12Metrics {
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    AverageChunkSize: Int
+    PeakOutstandingDepth: Int
+    ChunkTransitions: Int
+}
+
+record M12CaseResult {
+    Regime: String
+    Policy: String
+    ChunkSize: Int
+    Lookahead: Int
+    PredictionQuality: Int
+    OutstandingDepth: Int
+    AdaptiveEnabled: Bool
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    AverageChunkSize: Int
+    PeakOutstandingDepth: Int
+    ChunkTransitions: Int
+}
+
+record M12ScopeMap {
+    SimulatedAspects: String
+    ExcludedAspects: String
+    StateVariables: String
+    ControlKnobs: String
+    MetricsCollected: String
+}
+
+fn M12Scope() -> M12ScopeMap {
+    return M12ScopeMap {
+        SimulatedAspects: "chunked SGEMM-shaped work units, transfer setup+bandwidth costs, compute costs, overlap between compute and transfer, bounded outstanding staging depth, bounded lookahead, deterministic prediction error, and adaptive chunk-size feedback"
+        ExcludedAspects: "full unified-memory paging, cache-coherence protocols, real PCIe packetization, sparse/irregular access models, and hardware-native Vulkan/GPU execution"
+        StateVariables: "remaining work units, prefetched-ready chunk pool, overlap carry budget, chunk-size state, prediction cursor, accumulated stall/idle, and peak outstanding depth usage"
+        ControlKnobs: "policy choice (eager/jit/overlap/adaptive), chunk size, lookahead distance, prediction quality regime, and outstanding depth"
+        MetricsCollected: "total completion time, transfer stall time, compute idle time, total transfer work, wasted transfer work, average chunk size, peak outstanding depth usage, and chunk transition count"
+    }
+}
+
+fn CeilDiv(a: Int, b: Int) -> Int {
+    let floor = a / b
+    let rem = a - (floor * b)
+    return switch {
+        case rem == 0 => floor
+        else => floor + 1
+    }
+}
+
+fn MinInt(a: Int, b: Int) -> Int {
+    return switch {
+        case a < b => a
+        else => b
+    }
+}
+
+fn MaxInt(a: Int, b: Int) -> Int {
+    return switch {
+        case a > b => a
+        else => b
+    }
+}
+
+fn ClampInt(value: Int, low: Int, high: Int) -> Int {
+    return switch {
+        case value < low => low
+        case value > high => high
+        else => value
+    }
+}
+
+fn TransferTime(units: Int, regime: M12Regime) -> Int {
+    return regime.TransferSetup + (units * regime.TransferPerUnit)
+}
+
+fn ComputeTime(units: Int, regime: M12Regime) -> Int {
+    return units * regime.ComputePerUnit
+}
+
+fn PredictionStride(quality: Int) -> Int {
+    return switch quality {
+        case 0 => 97
+        case 1 => 5
+        case 2 => 3
+        case 3 => 2
+        else => 2
+    }
+}
+
+fn PredictionOffset(quality: Int) -> Int {
+    return switch quality {
+        case 0 => 0
+        case 1 => 1
+        case 2 => 1
+        case 3 => 2
+        else => 2
+    }
+}
+
+fn IsMispredict(cursor: Int, quality: Int) -> Bool {
+    let stride = PredictionStride(quality)
+    if stride <= 0 {
+        return false
+    }
+    let idx = cursor + 1
+    let floor = idx / stride
+    let rem = idx - (floor * stride)
+    return rem == 0
+}
+
+flow OutstandingPlanner(lookahead: Int, depth: Int, readyPool: Int) -> Int {
+    board {
+        Target: Int
+        BoundedLookahead: Int
+    }
+
+    state Start {
+        board.BoundedLookahead = MinInt(MaxInt(lookahead, 0), MaxInt(depth, 0))
+        goto Decide
+    }
+
+    state Decide {
+        board.Target = switch {
+            case readyPool >= board.BoundedLookahead => 0
+            else => board.BoundedLookahead - readyPool
+        }
+        return board.Target
+    }
+}
+
+fn SimulatePolicy(
+    regime: M12Regime,
+    policy: String,
+    chunkSize: Int,
+    lookahead: Int,
+    predictionQuality: Int,
+    outstandingDepth: Int,
+    adaptive: Bool,
+    adaptiveMinChunk: Int,
+    adaptiveMaxChunk: Int
+) -> M12Metrics {
+    let safeChunk = MaxInt(chunkSize, 1)
+    let safeDepth = MaxInt(outstandingDepth, 0)
+
+    if policy == "eager" {
+        let chunkCount = CeilDiv(regime.WorkUnits, safeChunk)
+        let transferred = chunkCount * safeChunk
+        let transferTimeTotal = chunkCount * TransferTime(safeChunk, regime)
+        let computeTimeTotal = chunkCount * ComputeTime(safeChunk, regime)
+        return M12Metrics {
+            TotalCompletionTime: transferTimeTotal + computeTimeTotal
+            TransferStallTime: transferTimeTotal
+            ComputeIdleTime: transferTimeTotal
+            TotalTransferWork: transferred
+            WastedTransferWork: 0
+            AverageChunkSize: safeChunk
+            PeakOutstandingDepth: safeDepth
+            ChunkTransitions: chunkCount
+        }
+    }
+
+    var remaining = regime.WorkUnits
+    var currentChunk = safeChunk
+    var totalTime = 0
+    var transferStall = 0
+    var computeIdle = 0
+    var totalTransferWork = 0
+    var wastedTransferWork = 0
+    var chunkTransitions = 0
+    var chunkAccumulator = 0
+    var readyPool = 0
+    var peakOutstanding = 0
+    var overlapCarry = 0
+    var predictionCursor = 0
+
+    for _step in 0 .. 4096 {
+        if remaining > 0 {
+            currentChunk = ClampInt(currentChunk, adaptiveMinChunk, adaptiveMaxChunk)
+            let stepChunk = MinInt(currentChunk, remaining)
+
+            if policy == "jit" {
+                let blockingTransfer = TransferTime(stepChunk, regime)
+                totalTime = totalTime + blockingTransfer
+                transferStall = transferStall + blockingTransfer
+                computeIdle = computeIdle + blockingTransfer
+                totalTransferWork = totalTransferWork + stepChunk
+            }
+            if policy != "jit" {
+                var consumedPrefetch = false
+                if readyPool > 0 {
+                    readyPool = readyPool - 1
+                    consumedPrefetch = true
+                }
+                if consumedPrefetch == false {
+                    let blockingTransfer = TransferTime(stepChunk, regime)
+                    totalTime = totalTime + blockingTransfer
+                    transferStall = transferStall + blockingTransfer
+                    computeIdle = computeIdle + blockingTransfer
+                    totalTransferWork = totalTransferWork + stepChunk
+                }
+            }
+
+            let computeSlice = ComputeTime(stepChunk, regime)
+            totalTime = totalTime + computeSlice
+
+            remaining = remaining - stepChunk
+            chunkTransitions = chunkTransitions + 1
+            chunkAccumulator = chunkAccumulator + stepChunk
+
+            if policy != "jit" {
+                let planner = OutstandingPlanner(lookahead, safeDepth, readyPool)
+                Step(planner)
+                Step(planner)
+                let planned = Result(planner)!
+
+                var transferBudget = computeSlice + overlapCarry
+                var toIssue = MinInt(planned, CeilDiv(remaining, MaxInt(stepChunk, 1)))
+                var prefetchActive = true
+
+                for _prefetch in 0 .. 64 {
+                    if prefetchActive {
+                        let speculativeChunk = MinInt(stepChunk, remaining)
+                        let tx = TransferTime(speculativeChunk, regime)
+
+                        if toIssue <= 0 or speculativeChunk <= 0 or transferBudget < tx {
+                            prefetchActive = false
+                        }
+                        if prefetchActive {
+                            transferBudget = transferBudget - tx
+                            totalTransferWork = totalTransferWork + speculativeChunk
+
+                            let mispredict = IsMispredict(predictionCursor, predictionQuality)
+                            if mispredict {
+                                let wasted = MinInt(speculativeChunk, PredictionOffset(predictionQuality) * (speculativeChunk / MaxInt(PredictionStride(predictionQuality), 1) + 1))
+                                wastedTransferWork = wastedTransferWork + MaxInt(wasted, 1)
+                            }
+                            if mispredict == false {
+                                readyPool = readyPool + 1
+                                peakOutstanding = MaxInt(peakOutstanding, readyPool)
+                            }
+
+                            predictionCursor = predictionCursor + 1
+                            toIssue = toIssue - 1
+                        }
+                    }
+                }
+
+                overlapCarry = transferBudget
+            }
+
+            if adaptive {
+                let recentTransfer = TransferTime(stepChunk, regime)
+                if recentTransfer > computeSlice and currentChunk < adaptiveMaxChunk {
+                    currentChunk = MinInt(adaptiveMaxChunk, currentChunk + adaptiveMinChunk)
+                }
+                if recentTransfer <= computeSlice and wastedTransferWork > (totalTransferWork / 5) and currentChunk > adaptiveMinChunk {
+                    currentChunk = MaxInt(adaptiveMinChunk, currentChunk - adaptiveMinChunk)
+                }
+            }
+        }
+    }
+
+    return M12Metrics {
+        TotalCompletionTime: totalTime
+        TransferStallTime: transferStall
+        ComputeIdleTime: computeIdle
+        TotalTransferWork: totalTransferWork
+        WastedTransferWork: wastedTransferWork
+        AverageChunkSize: switch {
+            case chunkTransitions == 0 => safeChunk
+            else => chunkAccumulator / chunkTransitions
+        }
+        PeakOutstandingDepth: MaxInt(peakOutstanding, readyPool)
+        ChunkTransitions: chunkTransitions
+    }
+}
+
+fn MakeRegime(name: String, workUnits: Int, transferSetup: Int, transferPerUnit: Int, computePerUnit: Int) -> M12Regime {
+    return M12Regime {
+        Name: name
+        WorkUnits: workUnits
+        TransferSetup: transferSetup
+        TransferPerUnit: transferPerUnit
+        ComputePerUnit: computePerUnit
+    }
+}
+
+fn EvaluateM12Case(
+    regime: M12Regime,
+    policy: String,
+    chunkSize: Int,
+    lookahead: Int,
+    predictionQuality: Int,
+    outstandingDepth: Int,
+    adaptive: Bool
+) -> M12CaseResult {
+    let metrics = SimulatePolicy(
+        regime,
+        policy,
+        chunkSize,
+        lookahead,
+        predictionQuality,
+        outstandingDepth,
+        adaptive,
+        8,
+        64
+    )
+
+    return M12CaseResult {
+        Regime: regime.Name
+        Policy: policy
+        ChunkSize: chunkSize
+        Lookahead: lookahead
+        PredictionQuality: predictionQuality
+        OutstandingDepth: outstandingDepth
+        AdaptiveEnabled: adaptive
+        TotalCompletionTime: metrics.TotalCompletionTime
+        TransferStallTime: metrics.TransferStallTime
+        ComputeIdleTime: metrics.ComputeIdleTime
+        TotalTransferWork: metrics.TotalTransferWork
+        WastedTransferWork: metrics.WastedTransferWork
+        AverageChunkSize: metrics.AverageChunkSize
+        PeakOutstandingDepth: metrics.PeakOutstandingDepth
+        ChunkTransitions: metrics.ChunkTransitions
+    }
+}
+
+fn M12RegimeTransferBound() -> M12Regime {
+    return MakeRegime("transfer-bound", 512, 14, 5, 2)
+}
+
+fn M12RegimeComputeBound() -> M12Regime {
+    return MakeRegime("compute-bound", 512, 6, 1, 6)
+}
+
+fn M12RegimeBalanced() -> M12Regime {
+    return MakeRegime("balanced", 512, 8, 2, 3)
+}
+
+fn M12RegimePredictabilitySensitive() -> M12Regime {
+    return MakeRegime("predictability-sensitive", 512, 10, 3, 2)
+}
+
+fn M12PolicyLabelFromResult(result: M12CaseResult) -> String {
+    return result.Policy
+}
