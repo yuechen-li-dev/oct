@@ -124,6 +124,22 @@ Notes:
 - `FileReadBytes(path: String) -> Bytes ! Error`.
 - `FileWriteBytes(path: String, data: Bytes) -> Int ! Error`.
 
+## 9) Wrapper-backed JSON compatibility + intent recovery
+
+- `JsonNormalize(text: String) -> String ! Error`.
+- `JsonParse(text: String) -> String ! Error`.
+- `JsonStringify(value: String) -> String ! Error`.
+- `JsonLoad(path: String) -> String ! Error`.
+- `JsonSave(path: String, value: String) -> Int ! Error`.
+- `JsonLower<JsonRawGraph>(text: String) -> JsonRawGraph ! Error`.
+- `JsonLoadStructured<JsonRawGraph>(path: String) -> JsonRawGraph ! Error`.
+
+Library posture (`Libraries/IO/IO.Json.oct`):
+- `ImportJson(path)` is the intended default JSON path (deterministic Oct-side intent recovery).
+- `ImportRawJson(path)`/`ImportRawJsonGraph(path)` are lower-level compatibility/debug paths.
+- Canonical recovery default is columnar for table-shaped data; true rectangular numeric grids intentionally remain nested arrays.
+- JSON `null` remains compatibility-only in raw graph nodes (no general native null semantics).
+
 Notes:
 - `Bytes` is intentionally narrow and intended for binary boundary transport only.
 - `.octagon` remains the native structured data format; JSON and bytes surfaces are compatibility-oriented wrappers.

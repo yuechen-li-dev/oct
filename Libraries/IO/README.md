@@ -46,6 +46,25 @@
 - `Stringify(value) -> String ! Error`
 - `Load(path) -> String ! Error`
 - `Save(path, value) -> Int ! Error`
+- `ImportRawJson(path) -> String ! Error` (lower-level compatibility/debug surface)
+- `ImportRawJsonGraph(path) -> JsonRawGraph ! Error` (structured raw compatibility graph)
+- `LowerJsonToRawGraph(text) -> JsonRawGraph ! Error`
+- `ImportJson(path) -> JsonRecovered ! Error` (intended default deterministic intent recovery path)
+
+#### IO.Json import posture (Mx104)
+
+- `ImportJson(...)` is the intended production JSON import path.
+- `ImportRawJson(...)`/`ImportRawJsonGraph(...)` remain available for compatibility debugging, custom recovery, and ambiguous shapes.
+- Recovery policy is deterministic and inspectable in Oct code (`IO.Json.oct`) using bounded `when utility` arbitration.
+- Canonical recovery policy:
+  - default table-shaped recovery: `table.columnar`
+  - mapping objects with simple payloads: `mapping.table`
+  - exception for true rectangular numeric grids: `grid.nested_array`
+  - nested compositional JSON: `config.nested_record`
+  - stable tagged arrays: `tagged.decomposed`
+- Ambiguous overlaps are conservative (`record.raw.ambiguous`) and direct users to raw compatibility imports.
+- JSON `null` remains compatibility-scoped in `JsonRawGraphNode` (`Kind == "null"`, `IsNull == true`) and does not introduce general native null semantics.
+- `.octagon` remains the native structured format.
 
 ### IO.Csv
 
