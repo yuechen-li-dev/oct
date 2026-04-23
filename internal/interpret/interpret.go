@@ -2046,6 +2046,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	if callee == "LoadOctagon" {
 		return i.evalLoadOctagonBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
 	}
+	if callee == "JsonLower" {
+		return i.evalJSONLowerBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
+	}
+	if callee == "JsonLoadStructured" {
+		return i.evalJSONLoadStructuredBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
+	}
 	if i.wrappers.has(callee) {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)

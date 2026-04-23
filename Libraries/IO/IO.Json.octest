@@ -12,6 +12,37 @@ fn JsonNormalizeRejectsInvalidDocument() -> Void {
 }
 
 [Fact]
+fn JsonStructuredLoweringCoversScalarsAndNull() -> Void {
+    let numberGraph = LowerJsonToRawGraph("3.25")!
+    Assert.Equal("number", RootNode(numberGraph).Kind, "number json should lower to structured number node")
+    Assert.Equal(3.25, RootNode(numberGraph).NumberValue, "number value should be preserved")
+
+    let boolGraph = LowerJsonToRawGraph("true")!
+    Assert.Equal("bool", RootNode(boolGraph).Kind, "bool json should lower to structured bool node")
+    Assert.True(RootNode(boolGraph).BoolValue, "bool value should be preserved")
+
+    let nullGraph = LowerJsonToRawGraph("null")!
+    Assert.True(IsNullNode(RootNode(nullGraph)), "null json should lower to explicit compatibility null node")
+}
+
+[Fact]
+fn JsonStructuredLoweringCoversObjectArrayAndStringValues() -> Void {
+    let graph = ImportRawJsonGraph("Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json")!
+    let root = RootNode(graph)
+    Assert.Equal("object", root.Kind, "object json should lower to object node")
+
+    let handlers = ChildByKey(graph, root.Id, "event_handlers")
+    Assert.True(handlers.Found, "quoted object key should remain addressable")
+    let handlersNode = handlers.Node
+    Assert.Equal("object", handlersNode.Kind, "nested object should remain structural")
+
+    let onUserCreated = ChildByKey(graph, handlersNode.Id, "user.created")
+    Assert.True(onUserCreated.Found, "nested key lookup should work through graph edges")
+    let onUserCreatedNode = onUserCreated.Node
+    Assert.Equal("string", onUserCreatedNode.Kind, "string child values should be preserved structurally")
+}
+
+[Fact]
 fn JsonIntentRecoveryPeopleUsesColumnarTable() -> Void {
     let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")!
     Assert.Equal("table.columnar", recovered.Kind, "people corpus case should recover as canonical columnar table")
@@ -37,6 +68,25 @@ fn JsonIntentRecoveryOptionalUsesColumnarTable() -> Void {
     let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")!
     Assert.Equal("table.columnar", recovered.Kind, "optional sparse tickets should remain table.columnar in canonical output")
     Assert.True(Contains(recovered.Canonical, "due_date"), "optional columns should remain present in canonical table")
+
+    let graph = ImportRawJsonGraph("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")!
+    let root = RootNode(graph)
+    let tickets = ChildByKey(graph, root.Id, "tickets")
+    Assert.True(tickets.Found, "tickets array should exist")
+    let ticketsNode = tickets.Node
+
+    var firstTicketId = -1
+    for i in 0 .. Len(graph.Nodes) {
+        if firstTicketId < 0 and graph.Nodes[i].ParentId == ticketsNode.Id {
+            firstTicketId = graph.Nodes[i].Id
+        }
+    }
+    Assert.True(firstTicketId > 0, "tickets array should contain at least one row")
+
+    let firstDueDate = ChildByKey(graph, firstTicketId, "due_date")
+    Assert.True(firstDueDate.Found, "first ticket should expose due_date key")
+    let firstDueDateNode = firstDueDate.Node
+    Assert.True(IsNullNode(firstDueDateNode), "optional ticket due_date should be explicit compatibility null node")
 }
 
 [Fact]
