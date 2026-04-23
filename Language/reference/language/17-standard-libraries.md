@@ -22,6 +22,7 @@ Common modules in the standard-library path include:
 - `Archive.Zip`
 - `Compression.Gzip`
 - `Hash.Core`
+- `Image.Core`
 - `Text.Regex`
 - `Time.Core`
 
@@ -31,6 +32,7 @@ Module source locations (canonical in-repo docs/tests live with library code):
 - `Libraries/Archive/`
 - `Libraries/Compression/`
 - `Libraries/Hash/`
+- `Libraries/Image/`
 - `Libraries/Text/`
 - `Libraries/Time/`
 
@@ -43,7 +45,7 @@ Module source locations (canonical in-repo docs/tests live with library code):
 ## Backend support builtins (implementation detail)
 
 Some builtins exist primarily to support standard-library modules and wrapper boundaries.
-Examples include file/path/directory/json/csv/zip/gzip/hash/regex/time/xlsx/plotting-oriented builtins.
+Examples include file/path/directory/json/csv/zip/gzip/hash/image/regex/time/xlsx/plotting-oriented builtins.
 
 These are valid runtime primitives, but they are not the primary user-level programming story.
 The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compression.*`, `Hash.*`, `Text.*`, `Time.*`).

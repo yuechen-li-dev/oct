@@ -2228,6 +2228,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkXlsxBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "ImageLoad" || callee == "ImageSave" || callee == "ImageWidth" || callee == "ImageHeight" || callee == "ImageFormat" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkImageBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "JsonNormalize" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -3540,6 +3546,74 @@ func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
+}
+
+func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	intType := Type{Base: BaseTypeInt}
+	pixelIntType := Type{Base: BaseTypeInt, Dimension: uiPixelDimension}
+	stringType := Type{Base: BaseTypeString}
+	if callee == "ImageLoad" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: intType, Fallible: true})
+	}
+	if callee == "ImageSave" {
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		handleType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if handleType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if handleType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
+		}
+		pathType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if pathType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if pathType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, pathType.ValueType)
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	}
+	if callee == "ImageWidth" || callee == "ImageHeight" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		handleType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if handleType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if handleType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
+		}
+		return ExprType{ValueType: pixelIntType}, nil
+	}
+	if callee == "ImageFormat" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		handleType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if handleType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if handleType.ValueType != intType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
+		}
+		return ExprType{ValueType: stringType}, nil
+	}
+	return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 }
 
 func (c checker) checkJSONStructuredBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"oct/internal/ast"
+	"oct/internal/dimension"
 )
 
 type wrapperHandleStore[T any] struct {
@@ -174,6 +175,10 @@ func (c wrapperCall) stringArrayArg(index int) ([]string, *evalResult, error) {
 
 func wrapperIntResult(value int64) evalResult {
 	return evalResult{value: Value{Kind: ValueInt, Int: value}}
+}
+
+func wrapperIntDimensionResult(value int64, dim dimension.Dimension) evalResult {
+	return evalResult{value: Value{Kind: ValueInt, Int: value, Dimension: dim}}
 }
 
 func wrapperBoolResult(value bool) evalResult {

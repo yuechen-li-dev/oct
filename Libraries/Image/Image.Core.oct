@@ -1,0 +1,26 @@
+package Image
+
+record ImageHandle {
+    Handle: Int
+}
+
+fn Load(path: String) -> ImageHandle ! Error {
+    let handle = ImageLoad(path)?
+    return ImageHandle { Handle: handle }
+}
+
+fn Save(image: ImageHandle, path: String) -> Int ! Error {
+    return ImageSave(image.Handle, path)?
+}
+
+fn Width(image: ImageHandle) -> Int<px> {
+    return ImageWidth(image.Handle)
+}
+
+fn Height(image: ImageHandle) -> Int<px> {
+    return ImageHeight(image.Handle)
+}
+
+fn Format(image: ImageHandle) -> String {
+    return ImageFormat(image.Handle)
+}

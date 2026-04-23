@@ -222,6 +222,7 @@ type interpreter struct {
 	flowSource     map[string]string
 	stdout         io.Writer
 	workbooks      wrapperHandleStore[*xlsxWorkbook]
+	images         wrapperHandleStore[*wrapperImage]
 	uiMounts       wrapperHandleStore[*uiMount]
 	wrappers       wrapperBuiltinRegistry
 }
@@ -277,8 +278,9 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		flowSource:     make(map[string]string),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
+		images:         newWrapperHandleStore[*wrapperImage]("image"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 	}
 	for pkgName, pkg := range program.Packages {
 		for _, record := range pkg.Records {
@@ -358,8 +360,9 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		flowSource:     make(map[string]string),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
+		images:         newWrapperHandleStore[*wrapperImage]("image"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 	}
 	for currentPkg, pkg := range program.Packages {
 		for _, record := range pkg.Records {

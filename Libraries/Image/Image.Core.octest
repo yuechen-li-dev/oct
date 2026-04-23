@@ -1,0 +1,44 @@
+package Image
+
+[Fact]
+fn LoadInspectAndSaveRoundTrip() -> Void {
+    let src = "mx103d_fixture_rect.png"
+    let png = Load(src)!
+    Assert.Equal(3px, Width(png), "png width should match fixture")
+    Assert.Equal(2px, Height(png), "png height should match fixture")
+    Assert.Equal("png", Format(png), "png format should be detected")
+
+    let jpgPath = "mx103d_roundtrip.jpg"
+    let _saved = Save(png, jpgPath)!
+
+    let jpg = Load(jpgPath)!
+    Assert.Equal(3px, Width(jpg), "jpg width should survive roundtrip")
+    Assert.Equal(2px, Height(jpg), "jpg height should survive roundtrip")
+    Assert.Equal("jpeg", Format(jpg), "jpg reload should report jpeg decoder format")
+
+    let _deleted = FileDelete(jpgPath)!
+}
+
+[Fact]
+fn MetadataMatchesJpegFixture() -> Void {
+    let jpg = Load("mx103d_fixture_rect.jpg")!
+    Assert.Equal(3px, Width(jpg), "jpeg width should match fixture")
+    Assert.Equal(2px, Height(jpg), "jpeg height should match fixture")
+    Assert.Equal("jpeg", Format(jpg), "jpeg format should be detected")
+}
+
+[Fact]
+fn LoadMissingFails() -> Void {
+    Assert.Error(Load("mx103d_fixture_missing.png"), "loading missing image should fail")
+}
+
+[Fact]
+fn LoadCorruptImageFails() -> Void {
+    Assert.Error(Load("mx103d_fixture_corrupt.img"), "loading corrupt image should fail")
+}
+
+[Fact]
+fn SaveUnsupportedExtensionFails() -> Void {
+    let img = Load("mx103d_fixture_rect.png")!
+    Assert.Error(Save(img, "mx103d_unsupported.bmp"), "unsupported extension should fail")
+}

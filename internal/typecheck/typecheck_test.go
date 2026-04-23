@@ -330,6 +330,31 @@ func TestCheckRejectsInvalidM10PlotBuiltins(t *testing.T) {
 	assertTypeErrorContains(t, "fn PlotLine(x: Int[], y: Int[], path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function PlotLine: cannot redeclare built-in function")
 }
 
+func TestCheckValidatesMx103dImageBuiltins(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int<px> ! Error { let h = ImageLoad(\"x.png\")? let _ = ImageSave(h, \"y.jpg\")? return ImageWidth(h) + ImageHeight(h) }",
+		"fn Main() -> String ! Error { let h = ImageLoad(\"x.jpeg\")? return ImageFormat(h) }",
+		"fn Main() -> Int ! Error { let h = ImageLoad(\"x.png\")? return h }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidMx103dImageBuiltins(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return ImageLoad(1)? }", "function Main: function 'ImageLoad' argument 1 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return ImageSave(\"handle\", \"x.png\")? }", "function Main: function 'ImageSave' argument 1 expects Int, got String")
+	assertTypeErrorContains(t, "fn Main() -> Int { return ImageWidth(\"h\") }", "function Main: function 'ImageWidth' argument 1 expects Int, got String")
+	assertTypeErrorContains(t, "fn Main() -> Int { return ImageHeight(1, 2) }", "function Main: function 'ImageHeight' expects 1 arguments, got 2")
+	assertTypeErrorContains(t, "fn Main() -> String { return ImageFormat(ImageLoad(\"x.png\")) }", "function Main: fallible expression must be handled explicitly")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { let h = ImageLoad(\"x.png\")? return ImageWidth(h) }", "function Main: function expects Int or Error, but return is Int<px>")
+	assertTypeErrorContains(t, "fn Main() -> Int<px> ! Error { let h = ImageLoad(\"x.png\")? return h }", "function Main: function expects Int<px> or Error, but return is Int")
+	assertTypeErrorContains(t, "fn ImageLoad(path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function ImageLoad: cannot redeclare built-in function")
+}
+
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int, Float, or Complex, got Bool")
