@@ -27,6 +27,7 @@ const (
 	BaseTypeBool    BaseType = "Bool"
 	BaseTypeRange   BaseType = "Range"
 	BaseTypeString  BaseType = "String"
+	BaseTypeBytes   BaseType = "Bytes"
 	BaseTypeError   BaseType = "Error"
 	BaseTypeVoid    BaseType = "Void"
 	BaseTypeUI      BaseType = "UI"
@@ -303,7 +304,7 @@ func (c checker) checkFile(file ast.File) error {
 }
 
 func (c checker) registerPackageDeclarations(file ast.File) error {
-	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
 
@@ -1066,6 +1067,14 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 			indexTypes = append(indexTypes, indexType.ValueType)
 		}
 		switch {
+		case targetType.ValueType == (Type{Base: BaseTypeBytes}):
+			if len(node.Indices) != 1 {
+				return ExprType{}, fmt.Errorf("bytes indexing requires exactly 1 index, got %d", len(node.Indices))
+			}
+			if indexTypes[0] != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("bytes indexing index must be Int, got %s", indexTypes[0])
+			}
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		case targetType.ValueType.IsArray:
 			if len(node.Indices) != 1 {
 				return ExprType{}, fmt.Errorf("array indexing requires exactly 1 index, got %d", len(node.Indices))
@@ -3271,8 +3280,11 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if argumentType.ValueType == (Type{Base: BaseTypeString}) {
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		}
+		if argumentType.ValueType == (Type{Base: BaseTypeBytes}) {
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		}
 		if !argumentType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String or array type, got %s", argumentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Bytes, or array type, got %s", argumentType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 	case "Abs":
@@ -3499,12 +3511,12 @@ func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments
 
 func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	stringType := Type{Base: BaseTypeString}
-	intArrayType := withArrayDepth(Type{Base: BaseTypeInt}, 1)
+	bytesType := Type{Base: BaseTypeBytes}
 	if callee == "FileReadText" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: stringType, Fallible: true})
 	}
 	if callee == "FileReadBytes" {
-		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: intArrayType, Fallible: true})
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: bytesType, Fallible: true})
 	}
 	if callee == "FileExists" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeBool}})
@@ -3536,8 +3548,8 @@ func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments
 		if callee == "FileWriteText" && valueType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, valueType.ValueType)
 		}
-		if callee == "FileWriteBytes" && valueType.ValueType != intArrayType {
-			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Int[], got %s", callee, valueType.ValueType)
+		if callee == "FileWriteBytes" && valueType.ValueType != bytesType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Bytes, got %s", callee, valueType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
 	}
@@ -3706,7 +3718,7 @@ func isOctagonRepresentableType(valueType Type) bool {
 		return true
 	}
 	switch valueType.Base {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeBytes:
 		return true
 	default:
 		return false
@@ -3756,7 +3768,7 @@ func isPrintableType(valueType Type) bool {
 	if valueType.IsVector || valueType.IsMatrix {
 		return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeComplex
 	}
-	return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeComplex || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString || valueType.Base == BaseTypeError
+	return valueType.Base == BaseTypeInt || valueType.Base == BaseTypeFloat || valueType.Base == BaseTypeComplex || valueType.Base == BaseTypeBool || valueType.Base == BaseTypeString || valueType.Base == BaseTypeBytes || valueType.Base == BaseTypeError
 }
 
 func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -4115,7 +4127,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 
 func resolveBaseType(name string) (BaseType, error) {
 	switch BaseType(name) {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeError, BaseTypeVoid, BaseTypeUI:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeBytes, BaseTypeError, BaseTypeVoid, BaseTypeUI:
 		return BaseType(name), nil
 	default:
 		return "", fmt.Errorf("unknown type: %s", name)
@@ -4138,7 +4150,7 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 	if operator == "+" && leftType == (Type{Base: BaseTypeString}) && rightType == (Type{Base: BaseTypeString}) {
 		return Type{Base: BaseTypeString}, nil
 	}
-	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
+	if leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeString || rightType.Base == BaseTypeString || leftType.Base == BaseTypeBytes || rightType.Base == BaseTypeBytes || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	if leftType.IsArray || rightType.IsArray {
@@ -4340,10 +4352,10 @@ func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType 
 }
 
 func (c checker) checkComparisonExpr(operator string, leftType Type, rightType Type) (Type, error) {
-	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString})) && leftType == rightType {
+	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || leftType == (Type{Base: BaseTypeBytes})) && leftType == rightType {
 		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
 	}
-	if leftType.IsArray || rightType.IsArray || leftType.IsVector || rightType.IsVector || leftType.IsMatrix || rightType.IsMatrix || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
+	if leftType.IsArray || rightType.IsArray || leftType.IsVector || rightType.IsVector || leftType.IsMatrix || rightType.IsMatrix || leftType.Base == BaseTypeBytes || rightType.Base == BaseTypeBytes || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 
@@ -4374,7 +4386,7 @@ func (c checker) checkComparisonExpr(operator string, leftType Type, rightType T
 		}
 	}
 
-	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || isEnumType(c, leftType)) && leftType == rightType {
+	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || leftType == (Type{Base: BaseTypeBytes}) || isEnumType(c, leftType)) && leftType == rightType {
 		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
 	}
 	return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)

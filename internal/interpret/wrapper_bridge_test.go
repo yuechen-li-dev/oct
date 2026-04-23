@@ -52,6 +52,10 @@ func TestWrapperResultHelpers(t *testing.T) {
 	if textResult.value.Kind != ValueString || textResult.value.Text != "ok" {
 		t.Fatalf("expected String result 'ok', got %+v", textResult.value)
 	}
+	bytesResult := wrapperBytesResult([]byte{79, 67, 84})
+	if bytesResult.value.Kind != ValueBytes || len(bytesResult.value.Bytes) != 3 || bytesResult.value.Bytes[2] != 84 {
+		t.Fatalf("expected Bytes result [79,67,84], got %+v", bytesResult.value)
+	}
 }
 
 func TestWrapperCallExpectArity(t *testing.T) {

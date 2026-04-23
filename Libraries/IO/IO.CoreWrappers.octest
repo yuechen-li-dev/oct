@@ -13,12 +13,17 @@ fn FileReadWriteTextAndDeleteRoundTrip() -> Void {
 
 [Fact]
 fn FileReadWriteBytesRoundTrip() -> Void {
-    let path = "io_mx103b_bytes.bin"
-    let _w = WriteBytes(path, [79, 67, 84]) !
-    let data = ReadBytes(path)!
+    let srcPath = "io_mx103b_bytes_src.bin"
+    let dstPath = "io_mx103b_bytes_dst.bin"
+    let _seed = WriteText(srcPath, "OCT") !
+    let data = ReadBytes(srcPath)!
     Assert.Equal(3, Len(data), "byte payload should preserve length")
     Assert.Equal(79, data[0], "first byte should roundtrip")
-    let _d = Delete(path)!
+    let _w = WriteBytes(dstPath, data) !
+    let copied = ReadBytes(dstPath)!
+    Assert.Equal(84, copied[2], "copied payload should preserve final byte")
+    let _d1 = Delete(srcPath)!
+    let _d2 = Delete(dstPath)!
 }
 
 [Fact]

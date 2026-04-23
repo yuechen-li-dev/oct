@@ -143,6 +143,17 @@ func (c wrapperCall) floatArg(index int) (float64, *evalResult, error) {
 	}
 }
 
+func (c wrapperCall) bytesArg(index int) ([]byte, *evalResult, error) {
+	value, errResult, err := c.evalArg(index)
+	if err != nil || errResult != nil {
+		return nil, errResult, err
+	}
+	if value.Kind != ValueBytes {
+		return nil, nil, wrapperErrorf(wrapperErrorInvalidArgument, "argument %d expects Bytes", index+1)
+	}
+	return append([]byte(nil), value.Bytes...), nil, nil
+}
+
 func wrapperIntResult(value int64) evalResult {
 	return evalResult{value: Value{Kind: ValueInt, Int: value}}
 }
@@ -153,6 +164,10 @@ func wrapperBoolResult(value bool) evalResult {
 
 func wrapperStringResult(value string) evalResult {
 	return evalResult{value: Value{Kind: ValueString, Text: value}}
+}
+
+func wrapperBytesResult(value []byte) evalResult {
+	return evalResult{value: Value{Kind: ValueBytes, Bytes: append([]byte(nil), value...)}}
 }
 
 func wrapperArrayResult(values []Value) evalResult {

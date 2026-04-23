@@ -9,10 +9,12 @@ Record and enum identity is nominal.
 
 ## Rules
 
-- Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `UI`, `Void`, and `Error`.
+- Primitive types are `Int`, `Float`, `Complex`, `Bool`, `String`, `Bytes`, `UI`, `Void`, and `Error`.
 - `UI` is an opaque builtin type for declarative UI composition.
 - `UI` values are produced/consumed by UI library functions.
 - `UI` is not a browser object and not a normal record you can reshape with fields.
+- `Bytes` is a narrow binary transport/storage boundary type intended for wrapper-backed compatibility APIs (for example file byte I/O).
+- `Bytes` is not a dynamic object container and does not imply `Dynamic` semantics.
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are homogeneous containers (`T[]`, `T[][]`, ...).
 - Record identity is defined by record name.

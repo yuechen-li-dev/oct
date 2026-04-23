@@ -18,8 +18,8 @@
 
 - `ReadText(path) -> String ! Error`
 - `WriteText(path, text) -> Int ! Error`
-- `ReadBytes(path) -> Int[] ! Error`
-- `WriteBytes(path, data) -> Int ! Error`
+- `ReadBytes(path) -> Bytes ! Error`
+- `WriteBytes(path, data: Bytes) -> Int ! Error`
 - `Exists(path) -> Bool`
 - `Delete(path) -> Int ! Error`
 
@@ -61,6 +61,6 @@
 
 All wrapper errors use standardized wrapper error kinds via the Mx103a substrate.
 
-## Note on current type surface
+## Note on type surface
 
-The language reference does not currently define `Dynamic` or `Bytes` primitives; this wrapper wave uses `String` and `Int[]` contracts for JSON and bytes payloads.
+`Bytes` is available as a narrow binary boundary type for wrapper compatibility surfaces (file payloads now, additional transport wrappers later). It is intentionally not a dynamic catch-all and does not introduce `Dynamic`.

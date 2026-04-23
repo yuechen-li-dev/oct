@@ -25,8 +25,12 @@ Use wrapper helpers instead of ad hoc extraction:
 - `floatArg(...)`
 - `wrapperIntResult(...)`
 - `wrapperStringResult(...)`
+- `wrapperBytesResult(...)`
 - `wrapperErrorf(...)`
 - `wrapperErrorResult(...)`
+
+For binary boundary arguments, use:
+- `call.bytesArg(index)` for `Bytes` decoding.
 
 ## 3. Error contract
 
