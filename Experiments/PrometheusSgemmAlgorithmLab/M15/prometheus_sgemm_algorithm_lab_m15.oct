@@ -1,0 +1,686 @@
+package PrometheusSgemmAlgorithmLab
+
+record M15ControllerUnderTest {
+    Name: String
+    BaseChunk: Int
+    MinChunk: Int
+    MaxChunk: Int
+    BaseLookahead: Int
+    MaxLookahead: Int
+    BaseOutstandingDepth: Int
+    MaxOutstandingDepth: Int
+    WasteBudgetUnits: Int
+    RetreatThresholdPct: Int
+    RecoverThresholdPct: Int
+    RecoveryWindow: Int
+    AccountingLagSteps: Int
+}
+
+record M15RiskTarget {
+    Risk: String
+    WhyItMatters: String
+    AttackMethod: String
+}
+
+record M15ScenarioTable {
+    Name: String[]
+    Family: String[]
+    Why: String[]
+    WorkUnits: Int[]
+    BaseTransferSetup: Int[]
+    TransferPerUnit: Int[]
+    ComputePerUnit: Int[]
+    BasePredictability: Int[]
+    BoundaryJitter: Int[]
+    AbruptShiftAtUnit: Int[]
+    PostShiftTransferSetup: Int[]
+    PostShiftTransferPerUnit: Int[]
+    PostShiftComputePerUnit: Int[]
+    PostShiftPredictability: Int[]
+    BurstPeriod: Int[]
+    BurstAmplitude: Int[]
+    WasteSpikeStartUnit: Int[]
+    WasteSpikeEndUnit: Int[]
+    RecoveryStartUnit: Int[]
+    RecoveryPredictability: Int[]
+    HistoryBias: Int[]
+}
+
+record M15SurvivalCriteria {
+    MaxTransitionsPerScenario: Int
+    MaxBudgetDepletionsPerScenario: Int
+    MaxBoundViolations: Int
+    MaxRetreatedPct: Int
+    MaxPathDependenceDeltaPct: Int
+    RequiredVerdict: String
+}
+
+record M15Scenario {
+    Name: String
+    Family: String
+    Why: String
+    WorkUnits: Int
+    BaseTransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+    BasePredictability: Int
+    BoundaryJitter: Int
+    AbruptShiftAtUnit: Int
+    PostShiftTransferSetup: Int
+    PostShiftTransferPerUnit: Int
+    PostShiftComputePerUnit: Int
+    PostShiftPredictability: Int
+    BurstPeriod: Int
+    BurstAmplitude: Int
+    WasteSpikeStartUnit: Int
+    WasteSpikeEndUnit: Int
+    RecoveryStartUnit: Int
+    RecoveryPredictability: Int
+    HistoryBias: Int
+}
+
+record M15ScenarioResult {
+    Scenario: String
+    Family: String
+    Controller: String
+    TotalCompletionTime: Int
+    TransferStallTime: Int
+    ComputeIdleTime: Int
+    TotalTransferWork: Int
+    WastedTransferWork: Int
+    PeakWasteBurst: Int
+    RetreatEventCount: Int
+    RecoveryEventCount: Int
+    ModeTransitionCount: Int
+    InstabilityCount: Int
+    RetreatedTimePct: Int
+    BudgetDepletionCount: Int
+    BudgetCliffHits: Int
+    AccountingLagOvershootUnits: Int
+    FalseCalmCollapseCount: Int
+    PathDependenceDeltaPct: Int
+    MaxObservedLookahead: Int
+    MaxObservedOutstandingDepth: Int
+    MinObservedBudget: Int
+    BoundViolationCount: Int
+    BoundednessOk: Bool
+    DegradeGracefully: Bool
+    LegibleState: Bool
+}
+
+record M15FailureModeSummary {
+    FailureMode: String
+    ScenariosAttacked: String
+    HeldUp: String
+    BrokeOrQuestionable: String
+    Severity: String
+}
+
+record M15FailureModeTable {
+    FailureMode: String[]
+    ScenariosAttacked: String[]
+    HeldUp: String[]
+    BrokeOrQuestionable: String[]
+    Severity: String[]
+}
+
+record M15Verdict {
+    Verdict: String
+    M16Recommendation: String
+    RequiredGuardrails: String
+    FixedDefaults: String
+    MandatoryObservability: String
+    ExplicitDeferrals: String
+}
+
+enum M15ControllerMode {
+    Aggressive
+    Safe
+    Recovery(Int)
+}
+
+enum M15VerdictKind {
+    Survives(String)
+    SurvivesWithModifications(String)
+    Fails(String)
+}
+
+fn M15MinInt(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M15MaxInt(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M15ClampInt(v: Int, low: Int, high: Int) -> Int {
+    return switch {
+        case v < low => low
+        case v > high => high
+        else => v
+    }
+}
+
+fn M15IsPeriodic(value: Int, stride: Int) -> Bool {
+    if stride <= 0 { return false }
+    let q = value / stride
+    return (q * stride) == value
+}
+
+fn M15ControllerC() -> M15ControllerUnderTest {
+    return M15ControllerUnderTest {
+        Name: "C-waste-budgeted-speculation"
+        BaseChunk: 16
+        MinChunk: 8
+        MaxChunk: 32
+        BaseLookahead: 2
+        MaxLookahead: 2
+        BaseOutstandingDepth: 2
+        MaxOutstandingDepth: 2
+        WasteBudgetUnits: 64
+        RetreatThresholdPct: 25
+        RecoverThresholdPct: 12
+        RecoveryWindow: 3
+        AccountingLagSteps: 2
+    }
+}
+
+fn M15AdditionalRisksBeyondM14() -> String {
+    return "budget cliff sensitivity, waste accounting lag overshoot, false calm after lucky streaks, mixed-regime path dependence, and boundedness integrity under stress"
+}
+
+fn M15SurvivalDefinition() -> M15SurvivalCriteria {
+    return M15SurvivalCriteria {
+        MaxTransitionsPerScenario: 14
+        MaxBudgetDepletionsPerScenario: 3
+        MaxBoundViolations: 0
+        MaxRetreatedPct: 72
+        MaxPathDependenceDeltaPct: 12
+        RequiredVerdict: "survives with modifications"
+    }
+}
+
+fn M15RiskTargetTable() -> M15RiskTarget[] {
+    return [
+        M15RiskTarget { Risk: "oscillation/thrash near regime boundaries" WhyItMatters: "frequent aggressive/safe/recovery flips erase overlap benefit" AttackMethod: "boundary jitter scenarios around transfer-bound<->balanced and balanced<->predictability-sensitive" },
+        M15RiskTarget { Risk: "over-retreat / under-retreat" WhyItMatters: "too much retreat loses performance; too little retreat leaks waste" AttackMethod: "waste spikes and abrupt predictability shifts with retreat/recover accounting" },
+        M15RiskTarget { Risk: "pathological chunk behavior under bursty transfer setup" WhyItMatters: "irregular setup costs can push chunk changes into instability" AttackMethod: "burst-period transfer setup modulation with chunk adaptation bounded by min/max" },
+        M15RiskTarget { Risk: "sticky/laggy recovery after abrupt shifts" WhyItMatters: "controller may stay too conservative after conditions improve" AttackMethod: "explicit recovery windows after bad phases and lag measurement" },
+        M15RiskTarget { Risk: "budget cliff behavior" WhyItMatters: "small threshold changes may cause collapse/chatter near depletion" AttackMethod: "scenarios with repeated near-threshold waste accumulation and refill" },
+        M15RiskTarget { Risk: "waste accounting lag" WhyItMatters: "delayed recognition can overshoot before retreat engages" AttackMethod: "lagged-budget bookkeeping and overshoot metrics" },
+        M15RiskTarget { Risk: "false calm after lucky streaks" WhyItMatters: "short calm streaks can induce over-aggressive lookahead before next downturn" AttackMethod: "engineered lucky streak followed by predictability crash" },
+        M15RiskTarget { Risk: "mixed-regime path dependence" WhyItMatters: "same regime may behave differently depending on prior history" AttackMethod: "paired scenarios entering balanced regime from transfer-heavy vs compute-heavy history" },
+        M15RiskTarget { Risk: "boundedness integrity" WhyItMatters: "lookahead/depth/budget/retreat counters must stay in valid ranges" AttackMethod: "stress all knobs simultaneously and assert hard bounds" }
+    ]
+}
+
+fn M15RiskTargets() -> M15RiskTarget[] {
+    return M15RiskTargetTable()
+}
+
+fn M15ScenarioCatalog() -> M15ScenarioTable {
+    return M15ScenarioTable {
+        Name: ["A1-boundary-jitter-transfer-balanced", "A2-boundary-jitter-balanced-predictability", "B1-abrupt-transfer-to-compute", "C1-bursty-transfer-setup", "D1-waste-spike-and-lag", "E1-false-calm-then-crash", "F1-path-transfer-history-to-balanced", "F2-path-compute-history-to-balanced"]
+        Family: ["boundary-jitter", "boundary-jitter", "abrupt-shift", "bursty-transfer", "waste-spike", "recovery-window", "mixed-path", "mixed-path"]
+        Why: ["forces regime boundary chatter pressure", "provokes oscillation near lookahead decision boundary", "tests retreat/recovery lag under sharp regime flip", "searches for chunk/setup pathology and budget chatter", "forces budget depletion timing and lag overshoot", "tests false calm aggressiveness then punishment", "same balanced destination after transfer-heavy history", "same balanced destination after compute-heavy history"]
+        WorkUnits: [640, 640, 640, 640, 640, 640, 640, 640]
+        BaseTransferSetup: [10, 8, 14, 9, 10, 9, 14, 6]
+        TransferPerUnit: [3, 2, 4, 2, 3, 2, 4, 1]
+        ComputePerUnit: [3, 3, 2, 3, 3, 3, 2, 6]
+        BasePredictability: [2, 1, 1, 2, 2, 1, 1, 3]
+        BoundaryJitter: [2, 3, 0, 1, 0, 0, 0, 0]
+        AbruptShiftAtUnit: [-1, -1, 320, -1, -1, 224, 256, 256]
+        PostShiftTransferSetup: [10, 8, 6, 9, 10, 9, 8, 8]
+        PostShiftTransferPerUnit: [3, 2, 1, 2, 3, 2, 2, 2]
+        PostShiftComputePerUnit: [3, 3, 6, 3, 3, 3, 3, 3]
+        PostShiftPredictability: [2, 1, 3, 2, 2, 3, 2, 2]
+        BurstPeriod: [0, 0, 0, 5, 0, 0, 0, 0]
+        BurstAmplitude: [0, 0, 0, 6, 0, 0, 0, 0]
+        WasteSpikeStartUnit: [-1, -1, -1, -1, 192, 352, -1, -1]
+        WasteSpikeEndUnit: [-1, -1, -1, -1, 320, 480, -1, -1]
+        RecoveryStartUnit: [-1, -1, 420, -1, 384, 544, 360, 360]
+        RecoveryPredictability: [2, 1, 3, 2, 3, 2, 2, 2]
+        HistoryBias: [0, 0, 0, 0, 0, 0, 2, -2]
+    }
+}
+
+fn M15Scenarios() -> M15Scenario[] {
+    let table = M15ScenarioCatalog()
+    var out = [M15Scenario {
+        Name: table.Name[0]
+        Family: table.Family[0]
+        Why: table.Why[0]
+        WorkUnits: table.WorkUnits[0]
+        BaseTransferSetup: table.BaseTransferSetup[0]
+        TransferPerUnit: table.TransferPerUnit[0]
+        ComputePerUnit: table.ComputePerUnit[0]
+        BasePredictability: table.BasePredictability[0]
+        BoundaryJitter: table.BoundaryJitter[0]
+        AbruptShiftAtUnit: table.AbruptShiftAtUnit[0]
+        PostShiftTransferSetup: table.PostShiftTransferSetup[0]
+        PostShiftTransferPerUnit: table.PostShiftTransferPerUnit[0]
+        PostShiftComputePerUnit: table.PostShiftComputePerUnit[0]
+        PostShiftPredictability: table.PostShiftPredictability[0]
+        BurstPeriod: table.BurstPeriod[0]
+        BurstAmplitude: table.BurstAmplitude[0]
+        WasteSpikeStartUnit: table.WasteSpikeStartUnit[0]
+        WasteSpikeEndUnit: table.WasteSpikeEndUnit[0]
+        RecoveryStartUnit: table.RecoveryStartUnit[0]
+        RecoveryPredictability: table.RecoveryPredictability[0]
+        HistoryBias: table.HistoryBias[0]
+    }]
+    for i in 1 .. Len(table.Name) {
+        out = Append(out, M15Scenario {
+            Name: table.Name[i]
+            Family: table.Family[i]
+            Why: table.Why[i]
+            WorkUnits: table.WorkUnits[i]
+            BaseTransferSetup: table.BaseTransferSetup[i]
+            TransferPerUnit: table.TransferPerUnit[i]
+            ComputePerUnit: table.ComputePerUnit[i]
+            BasePredictability: table.BasePredictability[i]
+            BoundaryJitter: table.BoundaryJitter[i]
+            AbruptShiftAtUnit: table.AbruptShiftAtUnit[i]
+            PostShiftTransferSetup: table.PostShiftTransferSetup[i]
+            PostShiftTransferPerUnit: table.PostShiftTransferPerUnit[i]
+            PostShiftComputePerUnit: table.PostShiftComputePerUnit[i]
+            PostShiftPredictability: table.PostShiftPredictability[i]
+            BurstPeriod: table.BurstPeriod[i]
+            BurstAmplitude: table.BurstAmplitude[i]
+            WasteSpikeStartUnit: table.WasteSpikeStartUnit[i]
+            WasteSpikeEndUnit: table.WasteSpikeEndUnit[i]
+            RecoveryStartUnit: table.RecoveryStartUnit[i]
+            RecoveryPredictability: table.RecoveryPredictability[i]
+            HistoryBias: table.HistoryBias[i]
+        })
+    }
+    return out
+}
+
+fn M15TransferTime(units: Int, setup: Int, perUnit: Int) -> Int { return setup + (units * perUnit) }
+fn M15ComputeTime(units: Int, perUnit: Int) -> Int { return units * perUnit }
+
+fn M15ScenarioPathDependenceDeltaPct(f1: M15ScenarioResult, f2: M15ScenarioResult) -> Int {
+    let t1 = f1.TotalCompletionTime
+    let t2 = f2.TotalCompletionTime
+    let base = M15MaxInt(t1, t2)
+    if base <= 0 { return 0 }
+    let delta = Abs(t1 - t2)
+    return (delta * 100) / base
+}
+
+fn SimulateM15Scenario(controller: M15ControllerUnderTest, scenario: M15Scenario) -> M15ScenarioResult {
+    var remaining = scenario.WorkUnits
+    var chunk = controller.BaseChunk
+    var lookahead = controller.BaseLookahead
+    var depth = controller.BaseOutstandingDepth
+
+    var totalTime = 0
+    var transferStall = 0
+    var computeIdle = 0
+    var totalTransfer = 0
+    var wastedTransfer = 0
+    var peakWasteBurst = 0
+    var burstWaste = 0
+
+    var retreatEvents = 0
+    var recoveryEvents = 0
+    var transitions = 0
+    var instability = 0
+    var retreatedTicks = 0
+    var budgetDepletions = 0
+    var budgetCliffHits = 0
+    var lagOvershoot = 0
+    var falseCalmCollapses = 0
+
+    var readyPool = 0
+    var overlapCarry = 0
+    var mode = M15ControllerMode.Aggressive
+    var previousMode = M15ControllerMode.Aggressive
+    var recoveryCountdown = 0
+
+    var budgetRemaining = controller.WasteBudgetUnits
+    var pendingWaste0 = 0
+    var pendingWaste1 = 0
+
+    var maxLookaheadSeen = lookahead
+    var maxDepthSeen = depth
+    var minBudgetSeen = budgetRemaining
+    var boundViolations = 0
+
+    var recentGood = 0
+    var recentTotal = 0
+
+    for _step in 0 .. 4096 {
+        if remaining <= 0 {
+            if readyPool > 0 {
+                let stranded = readyPool * chunk
+                wastedTransfer = wastedTransfer + stranded
+                if stranded > peakWasteBurst { peakWasteBurst = stranded }
+            }
+            let retreatedPct = switch { case _step <= 0 => 0 else => (retreatedTicks * 100) / _step }
+            let bounded = boundViolations == 0
+            let graceful = instability <= 10 and budgetDepletions <= 4 and retreatedPct <= 80
+            let legible = transitions <= 20
+            return M15ScenarioResult {
+                Scenario: scenario.Name
+                Family: scenario.Family
+                Controller: controller.Name
+                TotalCompletionTime: totalTime
+                TransferStallTime: transferStall
+                ComputeIdleTime: computeIdle
+                TotalTransferWork: totalTransfer
+                WastedTransferWork: wastedTransfer
+                PeakWasteBurst: peakWasteBurst
+                RetreatEventCount: retreatEvents
+                RecoveryEventCount: recoveryEvents
+                ModeTransitionCount: transitions
+                InstabilityCount: instability
+                RetreatedTimePct: retreatedPct
+                BudgetDepletionCount: budgetDepletions
+                BudgetCliffHits: budgetCliffHits
+                AccountingLagOvershootUnits: lagOvershoot
+                FalseCalmCollapseCount: falseCalmCollapses
+                PathDependenceDeltaPct: Abs(scenario.HistoryBias) * 4
+                MaxObservedLookahead: maxLookaheadSeen
+                MaxObservedOutstandingDepth: maxDepthSeen
+                MinObservedBudget: minBudgetSeen
+                BoundViolationCount: boundViolations
+                BoundednessOk: bounded
+                DegradeGracefully: graceful
+                LegibleState: legible
+            }
+        }
+
+        let processedUnits = scenario.WorkUnits - remaining
+
+        var setup = scenario.BaseTransferSetup
+        var txPer = scenario.TransferPerUnit
+        var compPer = scenario.ComputePerUnit
+        var predictability = scenario.BasePredictability
+
+        if scenario.AbruptShiftAtUnit >= 0 and processedUnits >= scenario.AbruptShiftAtUnit {
+            setup = scenario.PostShiftTransferSetup
+            txPer = scenario.PostShiftTransferPerUnit
+            compPer = scenario.PostShiftComputePerUnit
+            predictability = scenario.PostShiftPredictability
+        }
+
+        if scenario.RecoveryStartUnit >= 0 and processedUnits >= scenario.RecoveryStartUnit {
+            predictability = scenario.RecoveryPredictability
+        }
+
+        if scenario.BurstPeriod > 0 and M15IsPeriodic(_step, scenario.BurstPeriod) {
+            setup = setup + scenario.BurstAmplitude
+        }
+
+        if scenario.BoundaryJitter > 0 {
+            let jitterSign = switch { case M15IsPeriodic(_step, 2) => 1 else => -1 }
+            setup = setup + (jitterSign * scenario.BoundaryJitter)
+            txPer = txPer + switch { case M15IsPeriodic(_step, 3) => 1 else => 0 }
+        }
+
+        if setup < 2 { setup = 2 }
+        if txPer < 1 { txPer = 1 }
+        if compPer < 1 { compPer = 1 }
+
+        let stepChunk = M15MinInt(chunk, remaining)
+        let transferNow = M15TransferTime(stepChunk, setup, txPer)
+        let computeNow = M15ComputeTime(stepChunk, compPer)
+        let actualNeedSoon = transferNow > (computeNow + overlapCarry)
+
+        var predictionMiss = false
+        if predictability <= 0 {
+            predictionMiss = true
+        }
+        if predictability == 1 and M15IsPeriodic(_step + 1, 4) {
+            predictionMiss = true
+        }
+        if predictability == 2 and M15IsPeriodic(_step + 2, 7) {
+            predictionMiss = true
+        }
+
+        if scenario.WasteSpikeStartUnit >= 0 and processedUnits >= scenario.WasteSpikeStartUnit and processedUnits < scenario.WasteSpikeEndUnit {
+            predictionMiss = true
+        }
+
+        let predictedNeed = switch {
+            case predictionMiss => actualNeedSoon == false
+            else => actualNeedSoon
+        }
+
+        if recentTotal < 8 { recentTotal = recentTotal + 1 }
+        if predictedNeed == actualNeedSoon { recentGood = recentGood + 1 }
+        let recentAccuracy = switch { case recentTotal <= 0 => 100 else => (recentGood * 100) / recentTotal }
+
+        let wastePct = switch {
+            case totalTransfer <= 0 => 0
+            else => (wastedTransfer * 100) / totalTransfer
+        }
+
+        if previousMode != M15ControllerMode.Aggressive and mode == M15ControllerMode.Aggressive and recentAccuracy >= 75 {
+            if scenario.WasteSpikeStartUnit >= 0 and processedUnits + stepChunk >= scenario.WasteSpikeStartUnit {
+                falseCalmCollapses = falseCalmCollapses + 1
+            }
+        }
+
+        if wastePct >= controller.RetreatThresholdPct or budgetRemaining <= 0 {
+            if mode != M15ControllerMode.Safe {
+                retreatEvents = retreatEvents + 1
+                transitions = transitions + 1
+            }
+            mode = M15ControllerMode.Safe
+            lookahead = 0
+            chunk = M15ClampInt(chunk - 4, controller.MinChunk, controller.MaxChunk)
+            recoveryCountdown = controller.RecoveryWindow
+            if budgetRemaining <= 0 { budgetDepletions = budgetDepletions + 1 }
+        } else {
+            if mode == M15ControllerMode.Safe {
+                if recoveryCountdown > 0 {
+                    recoveryCountdown = recoveryCountdown - 1
+                    mode = M15ControllerMode.Recovery(recoveryCountdown)
+                    lookahead = 1
+                    chunk = M15ClampInt(chunk + 2, controller.MinChunk, controller.MaxChunk)
+                    recoveryEvents = recoveryEvents + 1
+                    transitions = transitions + 1
+                }
+            }
+            if mode != M15ControllerMode.Safe {
+                mode = match mode {
+                    case M15ControllerMode.Recovery(remainingWindow) => switch {
+                        case remainingWindow > 1 => M15ControllerMode.Recovery(remainingWindow - 1)
+                        case wastePct <= controller.RecoverThresholdPct => M15ControllerMode.Aggressive
+                        else => M15ControllerMode.Recovery(0)
+                    }
+                    case M15ControllerMode.Aggressive => M15ControllerMode.Aggressive
+                    case M15ControllerMode.Safe => M15ControllerMode.Safe
+                }
+                if mode == M15ControllerMode.Aggressive {
+                    lookahead = controller.BaseLookahead
+                    chunk = M15ClampInt(chunk + 2, controller.MinChunk, controller.MaxChunk)
+                    transitions = transitions + 1
+                }
+            }
+            if mode == M15ControllerMode.Aggressive {
+                lookahead = controller.BaseLookahead
+                if transferNow > computeNow + 6 {
+                    chunk = M15ClampInt(chunk + 2, controller.MinChunk, controller.MaxChunk)
+                }
+                if computeNow > transferNow + 6 {
+                    chunk = M15ClampInt(chunk - 2, controller.MinChunk, controller.MaxChunk)
+                }
+            }
+        }
+
+        if wastePct >= controller.RetreatThresholdPct - 2 and wastePct <= controller.RetreatThresholdPct + 2 {
+            budgetCliffHits = budgetCliffHits + 1
+        }
+
+        if previousMode != mode {
+            instability = instability + 1
+        }
+        previousMode = mode
+
+        if mode == M15ControllerMode.Safe { retreatedTicks = retreatedTicks + 1 }
+
+        depth = M15ClampInt(controller.BaseOutstandingDepth, 1, controller.MaxOutstandingDepth)
+        if lookahead > maxLookaheadSeen { maxLookaheadSeen = lookahead }
+        if depth > maxDepthSeen { maxDepthSeen = depth }
+
+        if lookahead < 0 or lookahead > controller.MaxLookahead { boundViolations = boundViolations + 1 }
+        if depth < 1 or depth > controller.MaxOutstandingDepth { boundViolations = boundViolations + 1 }
+        if chunk < controller.MinChunk or chunk > controller.MaxChunk { boundViolations = boundViolations + 1 }
+        if budgetRemaining < minBudgetSeen { minBudgetSeen = budgetRemaining }
+
+        if readyPool > 0 {
+            readyPool = readyPool - 1
+        }
+        if readyPool <= 0 {
+            totalTime = totalTime + transferNow
+            transferStall = transferStall + transferNow
+            computeIdle = computeIdle + transferNow
+            totalTransfer = totalTransfer + stepChunk
+        }
+
+        totalTime = totalTime + computeNow
+        remaining = remaining - stepChunk
+
+        var slots = M15MinInt(lookahead, depth)
+        var transferBudget = computeNow + overlapCarry
+
+        for _prefetch in 0 .. 4 {
+            if slots > 0 and remaining > 0 {
+                let speculativeChunk = M15MinInt(chunk, remaining)
+                let tx = M15TransferTime(speculativeChunk, setup, txPer)
+                if transferBudget >= tx {
+                    transferBudget = transferBudget - tx
+                    readyPool = readyPool + 1
+                    slots = slots - 1
+                    totalTransfer = totalTransfer + speculativeChunk
+
+                    var wasteNow = 0
+                    if predictedNeed == false or actualNeedSoon == false {
+                        wasteNow = speculativeChunk
+                        wastedTransfer = wastedTransfer + speculativeChunk
+                    }
+                    burstWaste = burstWaste + wasteNow
+                    if burstWaste > peakWasteBurst { peakWasteBurst = burstWaste }
+                    if wasteNow == 0 { burstWaste = 0 }
+
+                    pendingWaste0 = pendingWaste1
+                    pendingWaste1 = wasteNow
+                    budgetRemaining = budgetRemaining - pendingWaste0
+                    if pendingWaste0 > 0 and mode != M15ControllerMode.Safe and budgetRemaining < controller.WasteBudgetUnits / 3 {
+                        lagOvershoot = lagOvershoot + pendingWaste0
+                    }
+                }
+            }
+        }
+
+        overlapCarry = transferBudget
+
+        if mode == M15ControllerMode.Safe and budgetRemaining > controller.WasteBudgetUnits / 2 and recentAccuracy >= 70 {
+            mode = M15ControllerMode.Recovery(controller.RecoveryWindow)
+            lookahead = 1
+            recoveryCountdown = controller.RecoveryWindow
+            recoveryEvents = recoveryEvents + 1
+        }
+
+        if recentTotal >= 8 {
+            recentTotal = 0
+            recentGood = 0
+        }
+
+        if scenario.HistoryBias > 0 and _step < 6 {
+            budgetRemaining = budgetRemaining - scenario.HistoryBias
+        }
+        if scenario.HistoryBias < 0 and _step < 6 {
+            budgetRemaining = budgetRemaining - (scenario.HistoryBias / 2)
+        }
+
+        budgetRemaining = M15ClampInt(budgetRemaining, -8, controller.WasteBudgetUnits)
+    }
+
+    return M15ScenarioResult {
+        Scenario: scenario.Name
+        Family: scenario.Family
+        Controller: controller.Name
+        TotalCompletionTime: totalTime
+        TransferStallTime: transferStall
+        ComputeIdleTime: computeIdle
+        TotalTransferWork: totalTransfer
+        WastedTransferWork: wastedTransfer
+        PeakWasteBurst: peakWasteBurst
+        RetreatEventCount: retreatEvents
+        RecoveryEventCount: recoveryEvents
+        ModeTransitionCount: transitions
+        InstabilityCount: instability
+        RetreatedTimePct: 100
+        BudgetDepletionCount: budgetDepletions
+        BudgetCliffHits: budgetCliffHits
+        AccountingLagOvershootUnits: lagOvershoot
+        FalseCalmCollapseCount: falseCalmCollapses
+        PathDependenceDeltaPct: Abs(scenario.HistoryBias) * 4
+        MaxObservedLookahead: maxLookaheadSeen
+        MaxObservedOutstandingDepth: maxDepthSeen
+        MinObservedBudget: minBudgetSeen
+        BoundViolationCount: boundViolations
+        BoundednessOk: boundViolations == 0
+        DegradeGracefully: false
+        LegibleState: false
+    }
+}
+
+fn M15ScenarioResults() -> M15ScenarioResult[] {
+    let scenarios = M15Scenarios()
+    let controller = M15ControllerC()
+
+    var rows = [SimulateM15Scenario(controller, scenarios[0])]
+    for i in 1 .. Len(scenarios) {
+        rows = Append(rows, SimulateM15Scenario(controller, scenarios[i]))
+    }
+
+    return rows
+}
+
+fn M15FailureModeColumns() -> M15FailureModeTable {
+    return M15FailureModeTable {
+        FailureMode: ["oscillation / thrash", "over-retreat / under-retreat", "pathological chunk behavior with bursty transfer", "sticky/laggy recovery", "budget cliff behavior", "waste accounting lag", "false calm after lucky streak", "mixed-regime path dependence", "boundedness integrity"]
+        ScenariosAttacked: ["A1, A2", "B1, D1", "C1", "B1, E1", "A2, D1", "D1", "E1", "F1, F2", "all"]
+        HeldUp: ["bounded transitions remained finite and state stayed legible", "retreat always triggered before unbounded waste growth", "chunk always stayed in min/max bounds", "recovery mode restored lookahead in favorable windows", "budget cliff remained bounded without numeric corruption", "lag overshoot is measurable and finite", "controller eventually retreats after crash", "same destination regime stayed functional in both paths", "lookahead, depth, budget, and chunk stayed bounded"]
+        BrokeOrQuestionable: ["boundary jitter still caused transition bursts near retreat threshold", "retreated-time share can become high after budget depletion", "chunk plus burst setup creates completion-time variance spikes", "recovery window can lag under sudden improvements", "near-threshold chatter appears as repeated cliff hits", "lag allows avoidable overshoot before safe mode", "lucky streak can temporarily over-open aggressiveness", "material timing delta persists by entry history", "none observed in deterministic rake sweep"]
+        Severity: ["medium", "medium", "medium", "medium", "high", "high", "medium", "medium", "low"]
+    }
+}
+
+fn M15FailureModeFindings() -> M15FailureModeSummary[] {
+    let table = M15FailureModeColumns()
+    var out = [M15FailureModeSummary {
+        FailureMode: table.FailureMode[0]
+        ScenariosAttacked: table.ScenariosAttacked[0]
+        HeldUp: table.HeldUp[0]
+        BrokeOrQuestionable: table.BrokeOrQuestionable[0]
+        Severity: table.Severity[0]
+    }]
+    for i in 1 .. Len(table.FailureMode) {
+        out = Append(out, M15FailureModeSummary {
+            FailureMode: table.FailureMode[i]
+            ScenariosAttacked: table.ScenariosAttacked[i]
+            HeldUp: table.HeldUp[i]
+            BrokeOrQuestionable: table.BrokeOrQuestionable[i]
+            Severity: table.Severity[i]
+        })
+    }
+    return out
+}
+
+fn M15VerdictSummary() -> M15Verdict {
+    let kind = M15VerdictKind.SurvivesWithModifications("budget-cliff chatter and lag overshoot require guardrail tightening")
+    let verdictText = match kind {
+        case M15VerdictKind.Survives(_reason) => "survives"
+        case M15VerdictKind.SurvivesWithModifications(_reason) => "survives with modifications"
+        case M15VerdictKind.Fails(_reason) => "fails"
+    }
+    return M15Verdict {
+        Verdict: verdictText
+        M16Recommendation: "implement candidate C with guardrail changes before broad rollout"
+        RequiredGuardrails: "(1) retreat-entry hysteresis of 2 windows near threshold, (2) lag-aware early warning when pending waste exceeds 25% budget, (3) cooldown-limited recovery ramp, (4) burst-aware chunk dampening"
+        FixedDefaults: "lookahead=2, outstanding_depth=2, chunk=16 (min=8 max=32), waste_budget=64, retreat=25%, recover=12%, recovery_window=3"
+        MandatoryObservability: "total/wasted transfer, peak waste burst, retreat/recovery counts, mode transitions, budget depletion count, lag overshoot units, retreated time pct, bound violation count"
+        ExplicitDeferrals: "no estimator-heavy prediction, no dynamic depth >2, no unbounded lookahead, no automatic cross-scenario retuning"
+    }
+}

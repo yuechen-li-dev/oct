@@ -1,0 +1,15 @@
+[M15ControllerUnderTest {
+    Name: "C-waste-budgeted-speculation"
+    BaseChunk: (16)
+    MinChunk: (8)
+    MaxChunk: (32)
+    BaseLookahead: (2)
+    MaxLookahead: (2)
+    BaseOutstandingDepth: (2)
+    MaxOutstandingDepth: (2)
+    WasteBudgetUnits: (64)
+    RetreatThresholdPct: (25)
+    RecoverThresholdPct: (12)
+    RecoveryWindow: (3)
+    AccountingLagSteps: (2)
+}]

@@ -1,0 +1,37 @@
+[M15RiskTarget {
+    Risk: "oscillation/thrash near regime boundaries"
+    WhyItMatters: "frequent aggressive/safe/recovery flips erase overlap benefit"
+    AttackMethod: "boundary jitter scenarios around transfer-bound<->balanced and balanced<->predictability-sensitive"
+}, M15RiskTarget {
+    Risk: "over-retreat / under-retreat"
+    WhyItMatters: "too much retreat loses performance; too little retreat leaks waste"
+    AttackMethod: "waste spikes and abrupt predictability shifts with retreat/recover accounting"
+}, M15RiskTarget {
+    Risk: "pathological chunk behavior under bursty transfer setup"
+    WhyItMatters: "irregular setup costs can push chunk changes into instability"
+    AttackMethod: "burst-period transfer setup modulation with chunk adaptation bounded by min/max"
+}, M15RiskTarget {
+    Risk: "sticky/laggy recovery after abrupt shifts"
+    WhyItMatters: "controller may stay too conservative after conditions improve"
+    AttackMethod: "explicit recovery windows after bad phases and lag measurement"
+}, M15RiskTarget {
+    Risk: "budget cliff behavior"
+    WhyItMatters: "small threshold changes may cause collapse/chatter near depletion"
+    AttackMethod: "scenarios with repeated near-threshold waste accumulation and refill"
+}, M15RiskTarget {
+    Risk: "waste accounting lag"
+    WhyItMatters: "delayed recognition can overshoot before retreat engages"
+    AttackMethod: "lagged-budget bookkeeping and overshoot metrics"
+}, M15RiskTarget {
+    Risk: "false calm after lucky streaks"
+    WhyItMatters: "short calm streaks can induce over-aggressive lookahead before next downturn"
+    AttackMethod: "engineered lucky streak followed by predictability crash"
+}, M15RiskTarget {
+    Risk: "mixed-regime path dependence"
+    WhyItMatters: "same regime may behave differently depending on prior history"
+    AttackMethod: "paired scenarios entering balanced regime from transfer-heavy vs compute-heavy history"
+}, M15RiskTarget {
+    Risk: "boundedness integrity"
+    WhyItMatters: "lookahead/depth/budget/retreat counters must stay in valid ranges"
+    AttackMethod: "stress all knobs simultaneously and assert hard bounds"
+}]

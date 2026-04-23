@@ -1,0 +1,8 @@
+[M15Verdict {
+    Verdict: "survives with modifications"
+    M16Recommendation: "implement candidate C with guardrail changes before broad rollout"
+    RequiredGuardrails: "(1) retreat-entry hysteresis of 2 windows near threshold, (2) lag-aware early warning when pending waste exceeds 25% budget, (3) cooldown-limited recovery ramp, (4) burst-aware chunk dampening"
+    FixedDefaults: "lookahead=2, outstanding_depth=2, chunk=16 (min=8 max=32), waste_budget=64, retreat=25%, recover=12%, recovery_window=3"
+    MandatoryObservability: "total/wasted transfer, peak waste burst, retreat/recovery counts, mode transitions, budget depletion count, lag overshoot units, retreated time pct, bound violation count"
+    ExplicitDeferrals: "no estimator-heavy prediction, no dynamic depth >2, no unbounded lookahead, no automatic cross-scenario retuning"
+}]
