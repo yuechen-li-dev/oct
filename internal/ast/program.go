@@ -42,7 +42,12 @@ type RecordField struct {
 type EnumDecl struct {
 	Name     string
 	Doc      *DocComment
-	Variants []string
+	Variants []EnumVariantDecl
+}
+
+type EnumVariantDecl struct {
+	Name    string
+	Payload *TypeRef
 }
 
 type FunctionDecl struct {
@@ -392,6 +397,19 @@ type SwitchExpr struct {
 }
 
 func (SwitchExpr) exprNode() {}
+
+type MatchCase struct {
+	Variant string
+	Binding string
+	Value   Expr
+}
+
+type MatchExpr struct {
+	Subject Expr
+	Cases   []MatchCase
+}
+
+func (MatchExpr) exprNode() {}
 
 type IfExpr struct {
 	Condition Expr

@@ -97,6 +97,7 @@ type RecordValue struct {
 type EnumValue struct {
 	TypeName string
 	Variant  string
+	Payload  *Value
 }
 
 type MatrixValue struct {
@@ -183,7 +184,10 @@ func (v Value) String() string {
 		}
 		return fmt.Sprintf("%s{%s}", v.Record.TypeName, strings.Join(parts, ", "))
 	case ValueEnum:
-		return fmt.Sprintf("%s.%s", v.Enum.TypeName, v.Enum.Variant)
+		if v.Enum.Payload == nil {
+			return fmt.Sprintf("%s.%s", v.Enum.TypeName, v.Enum.Variant)
+		}
+		return fmt.Sprintf("%s.%s(%s)", v.Enum.TypeName, v.Enum.Variant, v.Enum.Payload.String())
 	case ValueFunc:
 		return v.Function.Key
 	case ValueFlow:
@@ -472,6 +476,11 @@ func cloneValue(value Value) Value {
 		copied.Record.Fields = make(map[string]Value, len(value.Record.Fields))
 		for key, fieldValue := range value.Record.Fields {
 			copied.Record.Fields[key] = cloneValue(fieldValue)
+		}
+	case ValueEnum:
+		if value.Enum.Payload != nil {
+			payloadCopy := cloneValue(*value.Enum.Payload)
+			copied.Enum.Payload = &payloadCopy
 		}
 	case ValueDiffOp:
 		if value.DiffOp.Operand != nil {
@@ -1131,15 +1140,12 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if !ok {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: unknown enum type %s", node.EnumName)
 		}
-		found := false
-		for _, variant := range enumDecl.Variants {
-			if variant == node.Variant {
-				found = true
-				break
-			}
-		}
+		variant, found := lookupEnumVariant(enumDecl, node.Variant)
 		if !found {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", node.EnumName, node.Variant)
+		}
+		if variant.Payload != nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", node.EnumName, node.Variant)
 		}
 		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Variant}}}, nil
 	case ast.IndexExpr:
@@ -1256,20 +1262,24 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		}
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, identifier.Name); enumExists {
-				for _, variant := range enumDecl.Variants {
-					if variant == node.Field {
-						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
+				variant, exists := lookupEnumVariant(enumDecl, node.Field)
+				if exists {
+					if variant.Payload != nil {
+						return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", identifier.Name, node.Field)
 					}
+					return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
 				}
 				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", identifier.Name, node.Field)
 			}
 		}
 		if enumName, ok := flattenQualifiedEnumTarget(node.Target); ok {
 			if enumDecl, enumTypeName, enumExists := i.lookupEnumDecl(pkgName, enumName); enumExists {
-				for _, variant := range enumDecl.Variants {
-					if variant == node.Field {
-						return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
+				variant, exists := lookupEnumVariant(enumDecl, node.Field)
+				if exists {
+					if variant.Payload != nil {
+						return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", enumName, node.Field)
 					}
+					return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
 				}
 				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", enumName, node.Field)
 			}
@@ -1399,6 +1409,8 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		return evalResult{value: inner.value}, nil
 	case ast.SwitchExpr:
 		return i.evalSwitchExpr(env, pkgName, node)
+	case ast.MatchExpr:
+		return i.evalMatchExpr(env, pkgName, node)
 	case ast.IfExpr:
 		return i.evalIfExpr(env, pkgName, node)
 	case ast.UtilityWhenExpr:
@@ -1702,6 +1714,33 @@ func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.S
 	return evalResult{}, fmt.Errorf("runtime invariant violation: non-exhaustive switch without else")
 }
 
+func (i interpreter) evalMatchExpr(env *environment, pkgName string, expr ast.MatchExpr) (evalResult, error) {
+	subject, err := i.evalExpr(env, pkgName, expr.Subject)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if subject.hasError {
+		return evalResult{hasError: true, errorVal: subject.errorVal}, nil
+	}
+	if subject.value.Kind != ValueEnum {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: match subject must be enum, got %s", subject.value.Kind)
+	}
+	for _, matchCase := range expr.Cases {
+		if subject.value.Enum.Variant != matchCase.Variant {
+			continue
+		}
+		caseEnv := newEnvironment(env)
+		if matchCase.Binding != "" {
+			if subject.value.Enum.Payload == nil {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: match case '%s' requested payload on tag-only variant", matchCase.Variant)
+			}
+			caseEnv.define(matchCase.Binding, *subject.value.Enum.Payload, false)
+		}
+		return i.evalExpr(caseEnv, pkgName, matchCase.Value)
+	}
+	return evalResult{}, fmt.Errorf("runtime invariant violation: non-exhaustive match over enum '%s'", subject.value.Enum.TypeName)
+}
+
 func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject Value, matchExpr ast.Expr) (bool, error) {
 	caseValueResult, err := i.evalExpr(env, pkgName, matchExpr)
 	if err != nil {
@@ -1735,6 +1774,36 @@ func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject
 }
 
 func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
+	if enumName, variantName, ok := enumVariantFromCallee(expr.Callee); ok {
+		enumDecl, enumTypeName, exists := i.lookupEnumDecl(pkgName, enumName)
+		if !exists {
+			goto regularCall
+		}
+		variant, exists := lookupEnumVariant(enumDecl, variantName)
+		if !exists {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", enumName, variantName)
+		}
+		if variant.Payload == nil {
+			if len(expr.Arguments) != 0 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' does not accept a payload", enumName, variantName)
+			}
+			return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: variantName}}}, nil
+		}
+		if len(expr.Arguments) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires exactly 1 payload argument", enumName, variantName)
+		}
+		payload, err := i.evalExpr(env, pkgName, expr.Arguments[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if payload.hasError {
+			return evalResult{hasError: true, errorVal: payload.errorVal}, nil
+		}
+		payloadValue := payload.value
+		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: variantName, Payload: &payloadValue}}}, nil
+	}
+
+regularCall:
 	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
 	if hasDirectName && calleeName == "error" {
 		if len(expr.TypeArguments) != 0 {
@@ -1986,7 +2055,17 @@ func valuesEqual(left Value, right Value) bool {
 	case ValueString:
 		return left.Text == right.Text
 	case ValueEnum:
-		return left.Enum == right.Enum
+		if left.Enum.TypeName != right.Enum.TypeName || left.Enum.Variant != right.Enum.Variant {
+			return false
+		}
+		switch {
+		case left.Enum.Payload == nil && right.Enum.Payload == nil:
+			return true
+		case left.Enum.Payload == nil || right.Enum.Payload == nil:
+			return false
+		default:
+			return valuesEqual(*left.Enum.Payload, *right.Enum.Payload)
+		}
 	default:
 		return false
 	}
@@ -2001,6 +2080,10 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 	case ValueEnum:
 		if !strings.Contains(value.Enum.TypeName, ".") {
 			value.Enum.TypeName = pkgName + "." + value.Enum.TypeName
+		}
+		if value.Enum.Payload != nil {
+			payload := qualifyCrossPackageValue(*value.Enum.Payload, pkgName)
+			value.Enum.Payload = &payload
 		}
 	case ValueArray:
 		for index := range value.Array {
@@ -3577,6 +3660,30 @@ func (i interpreter) lookupEnumDecl(currentPackage string, typeName string) (ast
 	return enumDecl, typeName, exists
 }
 
+func lookupEnumVariant(enumDecl ast.EnumDecl, variantName string) (ast.EnumVariantDecl, bool) {
+	for _, variant := range enumDecl.Variants {
+		if variant.Name == variantName {
+			return variant, true
+		}
+	}
+	return ast.EnumVariantDecl{}, false
+}
+
+func enumVariantFromCallee(expr ast.Expr) (string, string, bool) {
+	fieldAccess, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		return "", "", false
+	}
+	if identifier, ok := fieldAccess.Target.(ast.IdentifierExpr); ok {
+		return identifier.Name, fieldAccess.Field, true
+	}
+	enumName, ok := flattenQualifiedEnumTarget(fieldAccess.Target)
+	if ok {
+		return enumName, fieldAccess.Field, true
+	}
+	return "", "", false
+}
+
 func splitQualifiedTypeName(typeName string) (string, string, bool) {
 	dot := strings.Index(typeName, ".")
 	if dot <= 0 || dot == len(typeName)-1 {
@@ -3967,6 +4074,16 @@ func evalComparisonExpr(operator string, left Value, right Value) (Value, error)
 				return Value{}, fmt.Errorf("runtime invariant violation: operator %q requires matching enum types", operator)
 			}
 			equal := left.Enum.Variant == right.Enum.Variant
+			if equal {
+				switch {
+				case left.Enum.Payload == nil && right.Enum.Payload == nil:
+					// keep equal
+				case left.Enum.Payload == nil || right.Enum.Payload == nil:
+					equal = false
+				default:
+					equal = valuesEqual(*left.Enum.Payload, *right.Enum.Payload)
+				}
+			}
 			if operator == "!=" {
 				equal = !equal
 			}

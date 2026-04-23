@@ -1,0 +1,15 @@
+expect error: "enum 'ParseResult' variant 'Ok' requires payload binding syntax"
+
+package Main
+
+enum ParseResult {
+    Ok(Int)
+    Err(String)
+}
+
+fn Main(result: ParseResult) -> Int {
+    return match result {
+        case ParseResult.Ok => 1
+        case ParseResult.Err(msg) => 0
+    }
+}

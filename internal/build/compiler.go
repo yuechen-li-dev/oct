@@ -413,7 +413,11 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Records = append(module.Records, mr)
 		}
 		for _, e := range pkg.Enums {
-			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: append([]string{}, e.Variants...)})
+			variantNames := make([]string, 0, len(e.Variants))
+			for _, variant := range e.Variants {
+				variantNames = append(variantNames, variant.Name)
+			}
+			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: variantNames})
 		}
 		for _, flow := range pkg.Flows {
 			mirFlow, err := lowerFlow(pkgName, flow, pkg)
@@ -1890,7 +1894,7 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 			continue
 		}
 		for _, declaredVariant := range enumDecl.Variants {
-			if declaredVariant == variant {
+			if declaredVariant.Name == variant {
 				return fmt.Sprintf("%s_%s", enumName, variant), enumPkg + "." + enumName, true, nil
 			}
 		}

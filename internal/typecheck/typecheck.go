@@ -257,7 +257,11 @@ type recordInfo struct {
 }
 
 type enumInfo struct {
-	variants map[string]struct{}
+	variants map[string]enumVariantInfo
+}
+
+type enumVariantInfo struct {
+	payload *Type
 }
 
 type flowSignature struct {
@@ -406,12 +410,20 @@ func (c checker) registerEnum(enumDecl ast.EnumDecl) error {
 	}
 	c.typeNames[enumDecl.Name] = struct{}{}
 
-	variants := make(map[string]struct{}, len(enumDecl.Variants))
+	variants := make(map[string]enumVariantInfo, len(enumDecl.Variants))
 	for _, variant := range enumDecl.Variants {
-		if _, exists := variants[variant]; exists {
-			return fmt.Errorf("enum '%s' variant '%s' specified more than once", enumDecl.Name, variant)
+		if _, exists := variants[variant.Name]; exists {
+			return fmt.Errorf("enum '%s' variant '%s' specified more than once", enumDecl.Name, variant.Name)
 		}
-		variants[variant] = struct{}{}
+		var payloadType *Type
+		if variant.Payload != nil {
+			resolved, err := c.resolveNonReturnType(*variant.Payload)
+			if err != nil {
+				return fmt.Errorf("enum '%s' variant '%s': %w", enumDecl.Name, variant.Name, err)
+			}
+			payloadType = &resolved
+		}
+		variants[variant.Name] = enumVariantInfo{payload: payloadType}
 	}
 	c.enums[enumDecl.Name] = enumInfo{variants: variants}
 	return nil
@@ -1043,8 +1055,12 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if !ok {
 			return ExprType{}, fmt.Errorf("unknown enum type: %s", node.EnumName)
 		}
-		if _, ok := enumDecl.variants[node.Variant]; !ok {
+		variant, ok := enumDecl.variants[node.Variant]
+		if !ok {
 			return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", node.EnumName, node.Variant)
+		}
+		if variant.payload != nil {
+			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", node.EnumName, node.Variant)
 		}
 		return ExprType{ValueType: Type{Name: node.EnumName}}, nil
 	case ast.IndexExpr:
@@ -1131,8 +1147,12 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		}
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumExists := c.lookupEnum(identifier.Name); enumExists {
-				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
+				variant, variantExists := enumDecl.variants[node.Field]
+				if !variantExists {
 					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", identifier.Name, node.Field)
+				}
+				if variant.payload != nil {
+					return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", identifier.Name, node.Field)
 				}
 				return ExprType{ValueType: Type{Name: identifier.Name}}, nil
 			}
@@ -1140,8 +1160,12 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if enumName, ok := c.flattenEnumTypeName(node.Target); ok {
 			enumDecl, enumExists := c.lookupEnum(enumName)
 			if enumExists {
-				if _, variantExists := enumDecl.variants[node.Field]; !variantExists {
+				variant, variantExists := enumDecl.variants[node.Field]
+				if !variantExists {
 					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", enumName, node.Field)
+				}
+				if variant.payload != nil {
+					return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", enumName, node.Field)
 				}
 				return ExprType{ValueType: Type{Name: enumName}}, nil
 			}
@@ -1296,6 +1320,8 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		return ExprType{ValueType: innerType.ValueType}, nil
 	case ast.SwitchExpr:
 		return c.checkSwitchExpr(scope, node, ctx)
+	case ast.MatchExpr:
+		return c.checkEnumMatchExpr(scope, node, ctx)
 	case ast.IfExpr:
 		return c.checkIfExpr(scope, node, ctx)
 	case ast.BatchExpr:
@@ -1664,6 +1690,71 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 	return ExprType{ValueType: resultType}, nil
 }
 
+func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functionContext) (ExprType, error) {
+	subjectType, err := c.checkExpr(scope, expr.Subject, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("match subject: %w", err)
+	}
+	if subjectType.Fallible {
+		return ExprType{}, fmt.Errorf("match subject: fallible expression must be handled explicitly")
+	}
+	if subjectType.ValueType.Name == "" {
+		return ExprType{}, fmt.Errorf("match subject must be an enum, got %s", subjectType.ValueType)
+	}
+	enumDecl, exists := c.lookupEnum(subjectType.ValueType.Name)
+	if !exists {
+		return ExprType{}, fmt.Errorf("match subject must be an enum, got %s", subjectType.ValueType)
+	}
+	if len(expr.Cases) == 0 {
+		return ExprType{}, fmt.Errorf("match must include at least one case")
+	}
+
+	seenVariants := make(map[string]struct{}, len(expr.Cases))
+	var resultType Type
+	hasResultType := false
+	for index, matchCase := range expr.Cases {
+		variantInfo, ok := enumDecl.variants[matchCase.Variant]
+		if !ok {
+			return ExprType{}, fmt.Errorf("match case %d: enum '%s' has no variant '%s'", index+1, subjectType.ValueType.Name, matchCase.Variant)
+		}
+		if _, duplicate := seenVariants[matchCase.Variant]; duplicate {
+			return ExprType{}, fmt.Errorf("match case %d: duplicate case '%s.%s'", index+1, subjectType.ValueType.Name, matchCase.Variant)
+		}
+		seenVariants[matchCase.Variant] = struct{}{}
+		if variantInfo.payload == nil && matchCase.Binding != "" {
+			return ExprType{}, fmt.Errorf("match case %d: enum '%s' variant '%s' does not carry a payload", index+1, subjectType.ValueType.Name, matchCase.Variant)
+		}
+		if variantInfo.payload != nil && matchCase.Binding == "" {
+			return ExprType{}, fmt.Errorf("match case %d: enum '%s' variant '%s' requires payload binding syntax", index+1, subjectType.ValueType.Name, matchCase.Variant)
+		}
+
+		caseScope := newScope(scope)
+		if matchCase.Binding != "" {
+			caseScope.define(matchCase.Binding, *variantInfo.payload, false)
+		}
+		caseValueType, err := c.checkExpr(caseScope, matchCase.Value, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("match case %d: %w", index+1, err)
+		}
+		if caseValueType.Fallible {
+			return ExprType{}, fmt.Errorf("match case %d: fallible expression must be handled explicitly", index+1)
+		}
+		if !hasResultType {
+			resultType = caseValueType.ValueType
+			hasResultType = true
+			continue
+		}
+		if caseValueType.ValueType != resultType {
+			return ExprType{}, fmt.Errorf("match case %d: result type %s does not match %s", index+1, caseValueType.ValueType, resultType)
+		}
+	}
+
+	if !hasAllEnumVariantsCovered(enumDecl, seenVariants) {
+		return ExprType{}, fmt.Errorf("non-exhaustive match over enum '%s'", subjectType.ValueType.Name)
+	}
+	return ExprType{ValueType: resultType}, nil
+}
+
 func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
 	var resultType Type
 	hasResultType := false
@@ -1855,6 +1946,38 @@ func hasAllEnumVariantsCovered(info enumInfo, seen map[string]struct{}) bool {
 }
 
 func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionContext) (ExprType, error) {
+	if enumName, variantName, ok := c.enumVariantFromCallee(expr.Callee); ok {
+		enumDecl, exists := c.lookupEnum(enumName)
+		if !exists {
+			goto regularCall
+		}
+		variant, exists := enumDecl.variants[variantName]
+		if !exists {
+			return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", enumName, variantName)
+		}
+		if variant.payload == nil {
+			if len(expr.Arguments) != 0 {
+				return ExprType{}, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumName, variantName)
+			}
+			return ExprType{ValueType: Type{Name: enumName}}, nil
+		}
+		if len(expr.Arguments) != 1 {
+			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumName, variantName)
+		}
+		payloadType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if payloadType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if !isAssignable(payloadType.ValueType, *variant.payload) {
+			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' payload expects %s, got %s", enumName, variantName, *variant.payload, payloadType.ValueType)
+		}
+		return ExprType{ValueType: Type{Name: enumName}}, nil
+	}
+
+regularCall:
 	calleeName, hasDirectName := flattenDirectCallName(expr.Callee)
 	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
 		if len(expr.TypeArguments) > 0 {
@@ -1928,6 +2051,16 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", calleeType.ValueType.FunctionSignature)
 	}
 	return c.checkFunctionCallArguments(calleeType.ValueType.FunctionSignature, signature, scope, expr.Arguments, ctx)
+}
+
+func (c checker) enumVariantFromCallee(expr ast.Expr) (string, string, bool) {
+	switch node := expr.(type) {
+	case ast.FieldAccessExpr:
+		enumName, variantName, ok := flattenEnumValueExpr(node)
+		return enumName, variantName, ok
+	default:
+		return "", "", false
+	}
 }
 
 func flowInstanceType(resultType Type) Type {

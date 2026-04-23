@@ -1,0 +1,75 @@
+package EnumsAssociated
+
+enum ParseResult {
+    Ok(Int)
+    Err(String)
+}
+
+enum MaybeName {
+    None
+    Some(String)
+}
+
+enum Mode {
+    Fast
+    Safe
+}
+
+record LegacyParseEnvelope {
+    IsOk: Bool
+    Value: Int
+    Message: String
+}
+
+fn DoubleOnOk(result: ParseResult) -> Int {
+    return match result {
+        case ParseResult.Ok(v) => v * 2
+        case ParseResult.Err(msg) => -1
+    }
+}
+
+fn DisplayName(name: MaybeName) -> String {
+    return match name {
+        case MaybeName.None => "unknown"
+        case MaybeName.Some(value) => value
+    }
+}
+
+fn LegacyDouble(env: LegacyParseEnvelope) -> Int {
+    return switch env.IsOk {
+        case true => env.Value * 2
+        else => -1
+    }
+}
+
+fn ModeScore(mode: Mode) -> Int {
+    return switch mode {
+        case Mode.Fast => 2
+        case Mode.Safe => 1
+    }
+}
+
+[Fact]
+fn AssociatedEnumConstructorsAndMatchBindingWork() -> Void {
+    Assert.Equal(84, DoubleOnOk(ParseResult.Ok(42)), "Ok payload should bind and compute")
+    Assert.Equal(-1, DoubleOnOk(ParseResult.Err("bad input")), "Err branch should still select by variant")
+    Assert.Equal("Avery", DisplayName(MaybeName.Some("Avery")), "Some payload should bind as String")
+    Assert.Equal("unknown", DisplayName(MaybeName.None), "tag-only variant should still work")
+}
+
+[Fact]
+fn AssociatedEnumsReplaceLegacySentinelRecordPattern() -> Void {
+    let okLegacy = LegacyParseEnvelope{IsOk: true Value: 11 Message: ""}
+    let errLegacy = LegacyParseEnvelope{IsOk: false Value: 0 Message: "bad"}
+    Assert.Equal(22, LegacyDouble(okLegacy), "legacy sentinel-flag shape still behaves")
+    Assert.Equal(-1, LegacyDouble(errLegacy), "legacy sentinel-flag shape still needs separate flag checks")
+
+    Assert.Equal(22, DoubleOnOk(ParseResult.Ok(11)), "enum payload avoids sentinel fields for success values")
+    Assert.Equal(-1, DoubleOnOk(ParseResult.Err("bad")), "enum payload carries error data without fake numeric fields")
+}
+
+[Fact]
+fn SwitchTagOnlyEnumRegressionStillWorks() -> Void {
+    Assert.Equal(2, ModeScore(Mode.Fast), "tag-only enum switch must remain unchanged")
+    Assert.Equal(1, ModeScore(Mode.Safe), "tag-only enum switch second arm must remain unchanged")
+}

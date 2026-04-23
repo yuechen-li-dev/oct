@@ -5,10 +5,11 @@
 Error handling is explicit and typed.
 Function fallibility is declared in function signatures.
 Every fallible expression must be handled.
-Handling forms are `?`, `!`, and `match`.
+Handling forms are `?`, `!`, and fallible `match`.
 
 `?` is preferred when you only need propagation.
-`match` is preferred when `ok` and `err` need different local behavior.
+Fallible `match` remains available when `ok` and `err` need different local behavior.
+Note: enum variant payload binding uses the enum `match` form documented in [12 Enums](./12-enums.md); that is a separate control-flow surface.
 
 ## Rules
 
@@ -17,7 +18,7 @@ Handling forms are `?`, `!`, and `match`.
 - `?` propagates `err` to the current fallible function.
 - `?` is invalid in an infallible function.
 - `?` requires a fallible expression.
-- `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression (`->` is also accepted for the arm arrow).
+- Fallible `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression (`->` is also accepted for the arm arrow).
 - Fallible `match` must include both `ok` and `err` arms.
 - `!` unwrap is explicit handling for a fallible expression.
 - Returning a fallible value from an infallible function is invalid.

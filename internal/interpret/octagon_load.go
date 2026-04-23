@@ -144,7 +144,10 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 			return Value{}, fmt.Errorf("expected enum %s, got %s", expectedTypeString(expectedType), enumName)
 		}
 		for _, declaredVariant := range enumDecl.Variants {
-			if declaredVariant == enumVariant {
+			if declaredVariant.Name == enumVariant {
+				if declaredVariant.Payload != nil {
+					return Value{}, fmt.Errorf("enum %s variant %s requires payload and is not supported in octagon data literals", expectedTypeString(expectedType), enumVariant)
+				}
 				return Value{Kind: ValueEnum, Enum: EnumValue{TypeName: resolvedEnumName, Variant: enumVariant}}, nil
 			}
 		}
