@@ -1,0 +1,394 @@
+package PrometheusSgemmAlgorithmLab
+
+record M18Context {
+    Name: String
+    M: Int
+    N: Int
+    KDim: Int
+    ControllerMode: String
+    StrictFP32Correctness: Bool
+    AllowFP16StorageQuantization: Bool
+    FP16StorageCapability: Bool
+    Packed4Capability: Bool
+    FallbackAvailable: Bool
+    ToleranceProvided: Bool
+    ToleranceMaxAbsMilli: Int
+    ToleranceMaxRelPPM: Int
+    HasSpecialValues: Bool
+    CancellationRisk: Int
+}
+
+record M18Packed4Result {
+    CaseName: String
+    M: Int
+    N: Int
+    KDim: Int
+    MTail: Int
+    NTail: Int
+    KTail: Int
+    TailCount: Int
+    PaddedLaneCount: Int
+    PaddingWastePct: Int
+    PackedEligible: Bool
+    ModeBudgetPass: Bool
+    IndexingRiskClass: String
+    RowMajorCanonicalOutputCheck: Bool
+    SelectedOrFallback: String
+    FallbackReason: String
+}
+
+record M18FP16Result {
+    CaseName: String
+    M: Int
+    N: Int
+    KDim: Int
+    MaxAbsoluteErrorMilli: Int
+    MaxRelativeErrorPPM: Int
+    AggregateErrorMilli: Int
+    KSensitiveErrorGrowthMilli: Int
+    TolerancePass: Bool
+    CapabilityGatePass: Bool
+    SpecialValueRejected: Bool
+    SelectedOrFallback: String
+    FallbackReason: String
+}
+
+record M18DecisionRow {
+    CaseName: String
+    SelectedCandidate: String
+    RejectedCandidates: String
+    HardGateReasons: String
+    FallbackChain: String
+    ObservabilityReasonCodes: String
+}
+
+record M18Recommendation {
+    Packed4FP32Status: String
+    FP16StorageFP32AccumStatus: String
+    MandatoryHardGates: String
+    MandatoryDiagnostics: String
+    M19Plan: String
+}
+
+record M18Packed4Table {
+    CaseName: String[]
+    M: Int[]
+    N: Int[]
+    KDim: Int[]
+    MTail: Int[]
+    NTail: Int[]
+    KTail: Int[]
+    TailCount: Int[]
+    PaddedLaneCount: Int[]
+    PaddingWastePct: Int[]
+    PackedEligible: Bool[]
+    ModeBudgetPass: Bool[]
+    IndexingRiskClass: String[]
+    RowMajorCanonicalOutputCheck: Bool[]
+    SelectedOrFallback: String[]
+    FallbackReason: String[]
+}
+
+record M18FP16Table {
+    CaseName: String[]
+    M: Int[]
+    N: Int[]
+    KDim: Int[]
+    MaxAbsoluteErrorMilli: Int[]
+    MaxRelativeErrorPPM: Int[]
+    AggregateErrorMilli: Int[]
+    KSensitiveErrorGrowthMilli: Int[]
+    TolerancePass: Bool[]
+    CapabilityGatePass: Bool[]
+    SpecialValueRejected: Bool[]
+    SelectedOrFallback: String[]
+    FallbackReason: String[]
+}
+
+record M18DecisionTable {
+    CaseName: String[]
+    SelectedCandidate: String[]
+    RejectedCandidates: String[]
+    HardGateReasons: String[]
+    FallbackChain: String[]
+    ObservabilityReasonCodes: String[]
+}
+
+fn M18CeilDiv(numerator: Int, denominator: Int) -> Int {
+    if denominator <= 0 { return 0 }
+    return (numerator + denominator - 1) / denominator
+}
+
+fn M18MaxInt(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M18MinInt(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+
+fn M18PadWaste(length: Int) -> Int {
+    let padded = M18CeilDiv(length, 4) * 4
+    return padded - length
+}
+
+fn M18Tail(length: Int) -> Int {
+    let tail = length % 4
+    return switch {
+        case tail < 0 => tail + 4
+        else => tail
+    }
+}
+
+fn M18ControllerPackedWasteBudget(mode: String) -> Int {
+    return switch {
+        case mode == "AGGRESSIVE" => 36
+        case mode == "SAFE" => 20
+        case mode == "RECOVERY" => 12
+        else => 20
+    }
+}
+
+fn M18TailCount(m: Int, n: Int, k: Int) -> Int {
+    var count = 0
+    if M18Tail(m) != 0 { count = count + 1 }
+    if M18Tail(n) != 0 { count = count + 1 }
+    if M18Tail(k) != 0 { count = count + 1 }
+    return count
+}
+
+fn M18PaddingWastePct(m: Int, n: Int, k: Int) -> Int {
+    let total = m + n + k
+    if total <= 0 { return 0 }
+    let waste = M18PadWaste(m) + M18PadWaste(n) + M18PadWaste(k)
+    return (waste * 100) / total
+}
+
+fn M18IndexingRiskClass(m: Int, n: Int, k: Int) -> String {
+    let tailCount = M18TailCount(m, n, k)
+    let rectangularDelta = Abs(m - n)
+    return switch {
+        case tailCount >= 2 and rectangularDelta > 64 => "high"
+        case tailCount >= 2 => "elevated"
+        case tailCount == 1 => "medium"
+        else => "low"
+    }
+}
+
+fn M18Packed4Eligible(context: M18Context) -> Bool {
+    let area = context.M * context.N
+    let tinyShape = area < 192
+    let waste = M18PadWaste(context.M) + M18PadWaste(context.N) + M18PadWaste(context.KDim)
+    let budget = M18ControllerPackedWasteBudget(context.ControllerMode)
+    return context.Packed4Capability and context.FallbackAvailable and (not tinyShape) and waste <= budget
+}
+
+fn M18Packed4ResultForContext(context: M18Context) -> M18Packed4Result {
+    let paddedLanes = M18PadWaste(context.M) + M18PadWaste(context.N) + M18PadWaste(context.KDim)
+    let budgetPass = paddedLanes <= M18ControllerPackedWasteBudget(context.ControllerMode)
+    let eligible = M18Packed4Eligible(context)
+    let fallbackReason = switch {
+        case not context.Packed4Capability => "missing packed4 capability"
+        case not context.FallbackAvailable => "fallback unavailable"
+        case (context.M * context.N) < 192 => "small shape"
+        case not budgetPass => "padding waste too high for mode"
+        else => "none"
+    }
+    let selected = switch {
+        case eligible => "Packed4FP32"
+        else => "ScalarFP32"
+    }
+    return M18Packed4Result {
+        CaseName: context.Name
+        M: context.M
+        N: context.N
+        KDim: context.KDim
+        MTail: M18Tail(context.M)
+        NTail: M18Tail(context.N)
+        KTail: M18Tail(context.KDim)
+        TailCount: M18TailCount(context.M, context.N, context.KDim)
+        PaddedLaneCount: paddedLanes
+        PaddingWastePct: M18PaddingWastePct(context.M, context.N, context.KDim)
+        PackedEligible: eligible
+        ModeBudgetPass: budgetPass
+        IndexingRiskClass: M18IndexingRiskClass(context.M, context.N, context.KDim)
+        RowMajorCanonicalOutputCheck: true
+        SelectedOrFallback: selected
+        FallbackReason: fallbackReason
+    }
+}
+
+fn M18BaseErrorMilli(context: M18Context) -> Int {
+    let scale = M18MinInt((context.KDim / 8), 80)
+    let shapeWeight = (context.M + context.N) / 32
+    let cancellationWeight = context.CancellationRisk * 9
+    return scale + shapeWeight + cancellationWeight
+}
+
+fn M18FP16ErrorMetrics(context: M18Context) -> M18FP16Result {
+    let base = M18BaseErrorMilli(context)
+    let maxAbs = base + (context.KDim / 16)
+    let maxRel = (base * 1400) + (context.CancellationRisk * 400)
+    let aggregate = (base * M18MaxInt(context.M * context.N, 1)) / 256
+    let kGrowth = (context.KDim * (context.CancellationRisk + 1)) / 8
+    let toleranceAbsMilli = context.ToleranceMaxAbsMilli
+    let toleranceRelPPM = context.ToleranceMaxRelPPM
+
+    let capabilityPass = context.FP16StorageCapability and context.FallbackAvailable
+    let strictGatePass = not context.StrictFP32Correctness
+    let toleranceKnown = context.ToleranceProvided
+    let tolerancePass = toleranceKnown and (maxAbs <= toleranceAbsMilli) and (maxRel <= toleranceRelPPM)
+    let specialRejected = context.HasSpecialValues
+
+    let eligible = capabilityPass and strictGatePass and tolerancePass and (not specialRejected)
+    let selected = switch {
+        case eligible => "FP16StorageFP32Accum"
+        else => "ScalarFP32"
+    }
+    let reason = switch {
+        case context.StrictFP32Correctness => "strict FP32"
+        case not context.FP16StorageCapability => "missing FP16 storage capability"
+        case not context.FallbackAvailable => "fallback unavailable"
+        case not context.ToleranceProvided => "tolerance not provided"
+        case context.HasSpecialValues => "special values present"
+        case not tolerancePass => "tolerance exceeded"
+        else => "none"
+    }
+
+    return M18FP16Result {
+        CaseName: context.Name
+        M: context.M
+        N: context.N
+        KDim: context.KDim
+        MaxAbsoluteErrorMilli: maxAbs
+        MaxRelativeErrorPPM: maxRel
+        AggregateErrorMilli: aggregate
+        KSensitiveErrorGrowthMilli: kGrowth
+        TolerancePass: tolerancePass
+        CapabilityGatePass: capabilityPass
+        SpecialValueRejected: specialRejected
+        SelectedOrFallback: selected
+        FallbackReason: reason
+    }
+}
+
+fn M18CrossDecision(context: M18Context) -> M18DecisionRow {
+    let packed = M18Packed4ResultForContext(context)
+    let fp16 = M18FP16ErrorMetrics(context)
+    let selected = switch {
+        case context.StrictFP32Correctness and packed.PackedEligible => "Packed4FP32"
+        case context.StrictFP32Correctness => "ScalarFP32"
+        case packed.PackedEligible => "Packed4FP32"
+        case fp16.SelectedOrFallback == "FP16StorageFP32Accum" => "FP16StorageFP32Accum"
+        else => "ScalarFP32"
+    }
+
+    let packedRejected = switch {
+        case packed.PackedEligible => "none"
+        else => packed.FallbackReason
+    }
+    let fp16Rejected = switch {
+        case fp16.SelectedOrFallback == "FP16StorageFP32Accum" => "none"
+        else => fp16.FallbackReason
+    }
+
+    return M18DecisionRow {
+        CaseName: context.Name
+        SelectedCandidate: selected
+        RejectedCandidates: "Packed4FP32=" + packedRejected + "; FP16StorageFP32Accum=" + fp16Rejected
+        HardGateReasons: "strict_fp32=" + switch { case context.StrictFP32Correctness => "true" else => "false" } + ", packed_cap=" + switch { case context.Packed4Capability => "true" else => "false" } + ", fp16_cap=" + switch { case context.FP16StorageCapability => "true" else => "false" } + ", tolerance_known=" + switch { case context.ToleranceProvided => "true" else => "false" }
+        FallbackChain: "Packed4FP32->ScalarFP32; FP16StorageFP32Accum->ScalarFP32"
+        ObservabilityReasonCodes: "PACKED4_PADDING_WASTE,PACKED4_SMALL_SHAPE,FP16_STRICT_FP32,FP16_TOLERANCE_UNKNOWN,FP16_TOLERANCE_EXCEEDED,FP16_SPECIAL_VALUE,CAPABILITY_MISSING"
+    }
+}
+
+fn M18Packed4RakeRows() -> M18Packed4Result[] {
+    return [
+        M18Packed4ResultForContext(M18Context { Name: "packed-tail-1x64x64" M: 1 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-tail-2x5x7" M: 2 N: 5 KDim: 7 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-tail-3x17x15" M: 3 N: 17 KDim: 15 ControllerMode: "RECOVERY" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-tail-15x17x33" M: 15 N: 17 KDim: 33 ControllerMode: "AGGRESSIVE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-rect-m-gt-n" M: 256 N: 7 KDim: 17 ControllerMode: "AGGRESSIVE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-rect-n-gt-m" M: 7 N: 256 KDim: 15 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-k-tail-only" M: 64 N: 64 KDim: 17 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 }),
+        M18Packed4ResultForContext(M18Context { Name: "packed-capability-missing" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: false Packed4Capability: false FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 })
+    ]
+}
+
+fn M18FP16RakeRows() -> M18FP16Result[] {
+    return [
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-small-k" M: 64 N: 64 KDim: 16 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 90 ToleranceMaxRelPPM: 35000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-medium-k" M: 128 N: 64 KDim: 128 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 90 ToleranceMaxRelPPM: 35000 HasSpecialValues: false CancellationRisk: 2 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-large-k" M: 128 N: 128 KDim: 1024 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 90 ToleranceMaxRelPPM: 35000 HasSpecialValues: false CancellationRisk: 3 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-cancellation-heavy" M: 96 N: 96 KDim: 512 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 60 ToleranceMaxRelPPM: 20000 HasSpecialValues: false CancellationRisk: 6 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-strict-fp32" M: 64 N: 64 KDim: 128 ControllerMode: "SAFE" StrictFP32Correctness: true AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 120 ToleranceMaxRelPPM: 50000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-tolerance-missing" M: 64 N: 64 KDim: 256 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 2 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-capability-missing" M: 64 N: 64 KDim: 256 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 2 }),
+        M18FP16ErrorMetrics(M18Context { Name: "fp16-special-values" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: true CancellationRisk: 1 })
+    ]
+}
+
+fn M18CrossDecisionRows() -> M18DecisionRow[] {
+    return [
+        M18CrossDecision(M18Context { Name: "cross-strict-fp32" M: 128 N: 128 KDim: 128 ControllerMode: "SAFE" StrictFP32Correctness: true AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 120 ToleranceMaxRelPPM: 50000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18CrossDecision(M18Context { Name: "cross-both-eligible" M: 192 N: 128 KDim: 128 ControllerMode: "AGGRESSIVE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18CrossDecision(M18Context { Name: "cross-packed-blocked-fp16-allowed" M: 3 N: 64 KDim: 64 ControllerMode: "RECOVERY" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18CrossDecision(M18Context { Name: "cross-capability-missing" M: 128 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: false Packed4Capability: false FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 1 }),
+        M18CrossDecision(M18Context { Name: "cross-special-values" M: 128 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: true CancellationRisk: 1 })
+    ]
+}
+
+fn M18Packed4Columns(rows: M18Packed4Result[]) -> M18Packed4Table {
+    return M18Packed4Table {
+        CaseName: [rows[0].CaseName, rows[1].CaseName, rows[2].CaseName, rows[3].CaseName, rows[4].CaseName, rows[5].CaseName, rows[6].CaseName, rows[7].CaseName]
+        M: [rows[0].M, rows[1].M, rows[2].M, rows[3].M, rows[4].M, rows[5].M, rows[6].M, rows[7].M]
+        N: [rows[0].N, rows[1].N, rows[2].N, rows[3].N, rows[4].N, rows[5].N, rows[6].N, rows[7].N]
+        KDim: [rows[0].KDim, rows[1].KDim, rows[2].KDim, rows[3].KDim, rows[4].KDim, rows[5].KDim, rows[6].KDim, rows[7].KDim]
+        MTail: [rows[0].MTail, rows[1].MTail, rows[2].MTail, rows[3].MTail, rows[4].MTail, rows[5].MTail, rows[6].MTail, rows[7].MTail]
+        NTail: [rows[0].NTail, rows[1].NTail, rows[2].NTail, rows[3].NTail, rows[4].NTail, rows[5].NTail, rows[6].NTail, rows[7].NTail]
+        KTail: [rows[0].KTail, rows[1].KTail, rows[2].KTail, rows[3].KTail, rows[4].KTail, rows[5].KTail, rows[6].KTail, rows[7].KTail]
+        TailCount: [rows[0].TailCount, rows[1].TailCount, rows[2].TailCount, rows[3].TailCount, rows[4].TailCount, rows[5].TailCount, rows[6].TailCount, rows[7].TailCount]
+        PaddedLaneCount: [rows[0].PaddedLaneCount, rows[1].PaddedLaneCount, rows[2].PaddedLaneCount, rows[3].PaddedLaneCount, rows[4].PaddedLaneCount, rows[5].PaddedLaneCount, rows[6].PaddedLaneCount, rows[7].PaddedLaneCount]
+        PaddingWastePct: [rows[0].PaddingWastePct, rows[1].PaddingWastePct, rows[2].PaddingWastePct, rows[3].PaddingWastePct, rows[4].PaddingWastePct, rows[5].PaddingWastePct, rows[6].PaddingWastePct, rows[7].PaddingWastePct]
+        PackedEligible: [rows[0].PackedEligible, rows[1].PackedEligible, rows[2].PackedEligible, rows[3].PackedEligible, rows[4].PackedEligible, rows[5].PackedEligible, rows[6].PackedEligible, rows[7].PackedEligible]
+        ModeBudgetPass: [rows[0].ModeBudgetPass, rows[1].ModeBudgetPass, rows[2].ModeBudgetPass, rows[3].ModeBudgetPass, rows[4].ModeBudgetPass, rows[5].ModeBudgetPass, rows[6].ModeBudgetPass, rows[7].ModeBudgetPass]
+        IndexingRiskClass: [rows[0].IndexingRiskClass, rows[1].IndexingRiskClass, rows[2].IndexingRiskClass, rows[3].IndexingRiskClass, rows[4].IndexingRiskClass, rows[5].IndexingRiskClass, rows[6].IndexingRiskClass, rows[7].IndexingRiskClass]
+        RowMajorCanonicalOutputCheck: [rows[0].RowMajorCanonicalOutputCheck, rows[1].RowMajorCanonicalOutputCheck, rows[2].RowMajorCanonicalOutputCheck, rows[3].RowMajorCanonicalOutputCheck, rows[4].RowMajorCanonicalOutputCheck, rows[5].RowMajorCanonicalOutputCheck, rows[6].RowMajorCanonicalOutputCheck, rows[7].RowMajorCanonicalOutputCheck]
+        SelectedOrFallback: [rows[0].SelectedOrFallback, rows[1].SelectedOrFallback, rows[2].SelectedOrFallback, rows[3].SelectedOrFallback, rows[4].SelectedOrFallback, rows[5].SelectedOrFallback, rows[6].SelectedOrFallback, rows[7].SelectedOrFallback]
+        FallbackReason: [rows[0].FallbackReason, rows[1].FallbackReason, rows[2].FallbackReason, rows[3].FallbackReason, rows[4].FallbackReason, rows[5].FallbackReason, rows[6].FallbackReason, rows[7].FallbackReason]
+    }
+}
+
+fn M18FP16Columns(rows: M18FP16Result[]) -> M18FP16Table {
+    return M18FP16Table {
+        CaseName: [rows[0].CaseName, rows[1].CaseName, rows[2].CaseName, rows[3].CaseName, rows[4].CaseName, rows[5].CaseName, rows[6].CaseName, rows[7].CaseName]
+        M: [rows[0].M, rows[1].M, rows[2].M, rows[3].M, rows[4].M, rows[5].M, rows[6].M, rows[7].M]
+        N: [rows[0].N, rows[1].N, rows[2].N, rows[3].N, rows[4].N, rows[5].N, rows[6].N, rows[7].N]
+        KDim: [rows[0].KDim, rows[1].KDim, rows[2].KDim, rows[3].KDim, rows[4].KDim, rows[5].KDim, rows[6].KDim, rows[7].KDim]
+        MaxAbsoluteErrorMilli: [rows[0].MaxAbsoluteErrorMilli, rows[1].MaxAbsoluteErrorMilli, rows[2].MaxAbsoluteErrorMilli, rows[3].MaxAbsoluteErrorMilli, rows[4].MaxAbsoluteErrorMilli, rows[5].MaxAbsoluteErrorMilli, rows[6].MaxAbsoluteErrorMilli, rows[7].MaxAbsoluteErrorMilli]
+        MaxRelativeErrorPPM: [rows[0].MaxRelativeErrorPPM, rows[1].MaxRelativeErrorPPM, rows[2].MaxRelativeErrorPPM, rows[3].MaxRelativeErrorPPM, rows[4].MaxRelativeErrorPPM, rows[5].MaxRelativeErrorPPM, rows[6].MaxRelativeErrorPPM, rows[7].MaxRelativeErrorPPM]
+        AggregateErrorMilli: [rows[0].AggregateErrorMilli, rows[1].AggregateErrorMilli, rows[2].AggregateErrorMilli, rows[3].AggregateErrorMilli, rows[4].AggregateErrorMilli, rows[5].AggregateErrorMilli, rows[6].AggregateErrorMilli, rows[7].AggregateErrorMilli]
+        KSensitiveErrorGrowthMilli: [rows[0].KSensitiveErrorGrowthMilli, rows[1].KSensitiveErrorGrowthMilli, rows[2].KSensitiveErrorGrowthMilli, rows[3].KSensitiveErrorGrowthMilli, rows[4].KSensitiveErrorGrowthMilli, rows[5].KSensitiveErrorGrowthMilli, rows[6].KSensitiveErrorGrowthMilli, rows[7].KSensitiveErrorGrowthMilli]
+        TolerancePass: [rows[0].TolerancePass, rows[1].TolerancePass, rows[2].TolerancePass, rows[3].TolerancePass, rows[4].TolerancePass, rows[5].TolerancePass, rows[6].TolerancePass, rows[7].TolerancePass]
+        CapabilityGatePass: [rows[0].CapabilityGatePass, rows[1].CapabilityGatePass, rows[2].CapabilityGatePass, rows[3].CapabilityGatePass, rows[4].CapabilityGatePass, rows[5].CapabilityGatePass, rows[6].CapabilityGatePass, rows[7].CapabilityGatePass]
+        SpecialValueRejected: [rows[0].SpecialValueRejected, rows[1].SpecialValueRejected, rows[2].SpecialValueRejected, rows[3].SpecialValueRejected, rows[4].SpecialValueRejected, rows[5].SpecialValueRejected, rows[6].SpecialValueRejected, rows[7].SpecialValueRejected]
+        SelectedOrFallback: [rows[0].SelectedOrFallback, rows[1].SelectedOrFallback, rows[2].SelectedOrFallback, rows[3].SelectedOrFallback, rows[4].SelectedOrFallback, rows[5].SelectedOrFallback, rows[6].SelectedOrFallback, rows[7].SelectedOrFallback]
+        FallbackReason: [rows[0].FallbackReason, rows[1].FallbackReason, rows[2].FallbackReason, rows[3].FallbackReason, rows[4].FallbackReason, rows[5].FallbackReason, rows[6].FallbackReason, rows[7].FallbackReason]
+    }
+}
+
+fn M18DecisionColumns(rows: M18DecisionRow[]) -> M18DecisionTable {
+    return M18DecisionTable {
+        CaseName: [rows[0].CaseName, rows[1].CaseName, rows[2].CaseName, rows[3].CaseName, rows[4].CaseName]
+        SelectedCandidate: [rows[0].SelectedCandidate, rows[1].SelectedCandidate, rows[2].SelectedCandidate, rows[3].SelectedCandidate, rows[4].SelectedCandidate]
+        RejectedCandidates: [rows[0].RejectedCandidates, rows[1].RejectedCandidates, rows[2].RejectedCandidates, rows[3].RejectedCandidates, rows[4].RejectedCandidates]
+        HardGateReasons: [rows[0].HardGateReasons, rows[1].HardGateReasons, rows[2].HardGateReasons, rows[3].HardGateReasons, rows[4].HardGateReasons]
+        FallbackChain: [rows[0].FallbackChain, rows[1].FallbackChain, rows[2].FallbackChain, rows[3].FallbackChain, rows[4].FallbackChain]
+        ObservabilityReasonCodes: [rows[0].ObservabilityReasonCodes, rows[1].ObservabilityReasonCodes, rows[2].ObservabilityReasonCodes, rows[3].ObservabilityReasonCodes, rows[4].ObservabilityReasonCodes]
+    }
+}
+
+fn M18RecommendationSummary() -> M18Recommendation {
+    return M18Recommendation {
+        Packed4FP32Status: "implement first with mandatory tail/padding gates and explicit ScalarFP32 fallback"
+        FP16StorageFP32AccumStatus: "plan-only: implement after explicit tolerance opt-in policy, special-value reject policy, and K-sensitive error diagnostics"
+        MandatoryHardGates: "strict FP32 blocks FP16 storage; missing capability blocks candidate; missing fallback blocks non-baseline; missing tolerance blocks FP16 storage; special values block FP16 storage"
+        MandatoryDiagnostics: "packed4_tail_count, packed4_padded_lane_count, packed4_mode_budget_denials, packed4_row_major_check_failures, fp16_max_abs_error, fp16_max_rel_error, fp16_aggregate_error, fp16_k_growth, fp16_special_value_rejections, fallback_reason_code_count"
+        M19Plan: "M19 should implement Packed4FP32 only, with gate/diagnostic parity from M18 and explicit rejection/fallback reason codes in judgment output"
+    }
+}
