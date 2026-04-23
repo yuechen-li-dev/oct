@@ -1047,3 +1047,75 @@ FACT(PrometheusReactor_AsyncFailureRemainsVisibleUntilExplicitAbandon)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_SgemmCandidateCPolicyDiagnosticsExposeBoundedState)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM policy diagnostics need runnable runtime");
+    }
+
+    const std::uint32_t m = 16u;
+    const std::uint32_t n = 16u;
+    const std::uint32_t k = 16u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "sgemm run should succeed");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_TRUE(diag.current_mode == 1u || diag.current_mode == 2u || diag.current_mode == 3u,
+                "controller mode should remain in explicit bounded mode set");
+    ASSERT_TRUE(diag.lookahead <= 2u, "lookahead must remain bounded at or below 2");
+    ASSERT_TRUE(diag.outstanding_depth <= 2u, "outstanding depth must remain bounded at or below 2");
+    ASSERT_TRUE(diag.chunk_size >= 8u && diag.chunk_size <= 32u, "chunk size must remain within bounded range");
+    ASSERT_TRUE(diag.decision_count >= 1u, "controller should record decisions");
+    ASSERT_EQUAL(0u, diag.bound_violation_count, "bounded controller should report zero bound violations");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_SgemmCandidateCPolicyRetreatsAndTracksGuardrails)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM policy guardrails need runnable runtime");
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t m = 128u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 64u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+
+    for (int iter = 0; iter < 4; ++iter) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "high-pressure shape should execute");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_TRUE(diag.retreat_count >= 1u || diag.safe_mode_decisions >= 1u, "controller should retreat or spend explicit time in safe mode under pressure");
+    ASSERT_TRUE(diag.wasted_work_units_total >= diag.wasted_work_units_last, "waste counters should be monotonic and coherent");
+    ASSERT_TRUE(diag.lag_early_warning_count >= 1u, "lag-aware pending waste warnings should be observable");
+    ASSERT_TRUE(diag.budget_depletion_count <= diag.decision_count, "budget depletion count should remain bounded by decision count");
+    ASSERT_EQUAL(0u, diag.bound_violation_count, "guardrailed controller should keep bound violation count at zero");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
