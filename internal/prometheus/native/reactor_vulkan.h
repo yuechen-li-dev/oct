@@ -36,6 +36,7 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
                                                   uint32_t* out_stage,
                                                   int* out_detail_code);
 int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id);
+int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag);
 
 #ifdef __cplusplus
 }

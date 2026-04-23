@@ -123,6 +123,30 @@ typedef struct PrometheusAsyncStatus {
   uint32_t outstanding_tasks;
 } PrometheusAsyncStatus;
 
+typedef struct PrometheusSgemmPolicyDiagnostics {
+  uint32_t current_mode;
+  uint32_t lookahead;
+  uint32_t outstanding_depth;
+  uint32_t chunk_size;
+  uint32_t chunk_min;
+  uint32_t chunk_max;
+  uint32_t waste_budget_units;
+  uint32_t wasted_work_units_last;
+  uint64_t wasted_work_units_total;
+  uint64_t decision_count;
+  uint64_t retreat_count;
+  uint64_t recovery_count;
+  uint64_t transition_count;
+  uint64_t instability_count;
+  uint64_t budget_depletion_count;
+  uint64_t safe_mode_decisions;
+  uint64_t aggressive_mode_decisions;
+  uint64_t recovery_mode_decisions;
+  uint64_t lag_early_warning_count;
+  uint64_t burst_dampening_count;
+  uint64_t bound_violation_count;
+} PrometheusSgemmPolicyDiagnostics;
+
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
 PROM_REACTOR_API int prometheus_reactor_runtime_create(void* config, void** out_handle);
 PROM_REACTOR_API int prometheus_reactor_runtime_destroy(void* handle);
@@ -155,6 +179,8 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_consume_async(void* handle
                                                                     uint32_t* out_stage,
                                                                     int* out_detail_code);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle,
+                                                                         PrometheusSgemmPolicyDiagnostics* out_diag);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);
