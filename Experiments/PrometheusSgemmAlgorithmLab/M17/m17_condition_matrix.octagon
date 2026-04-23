@@ -1,0 +1,10 @@
+[M17ConditionMatrix {
+    Candidate: ["ScalarFP32", "Packed4FP32", "FP16StorageFP32Accum", "Packed4FP16StorageFP32Accum", "FP16StorageFP16Arithmetic"]
+    RequiresPacked4: [false, true, false, true, false]
+    RequiresFP16Storage: [false, false, true, true, true]
+    RequiresFP16Arithmetic: [false, false, false, false, true]
+    RequiresExplicitOptIn: [false, false, false, false, true]
+    RejectIfStrictFP32: [false, false, true, true, true]
+    DefaultModePreference: ["all", "aggressive/safe", "safe/aggressive", "aggressive experimental", "aggressive opt-in only"]
+    PrimaryFallback: ["none", "ScalarFP32", "ScalarFP32", "FP16StorageFP32Accum then ScalarFP32", "FP16StorageFP32Accum then ScalarFP32"]
+}]

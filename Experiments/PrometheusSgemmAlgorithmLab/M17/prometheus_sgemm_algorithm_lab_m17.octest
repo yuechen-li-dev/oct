@@ -1,0 +1,130 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M17ComparesAllRequiredCandidates() -> Void {
+    let rows = M17EvaluateCandidates(M17DefaultContext())
+    Assert.Equal(Len(rows), 5, "M17 must evaluate ScalarFP32, Packed4FP32, FP16StorageFP32Accum, Packed4FP16StorageFP32Accum, and FP16StorageFP16Arithmetic")
+}
+
+[Fact]
+fn M17ClassificationIsDeterministic() -> Void {
+    let a = M17EvaluateCandidates(M17DefaultContext())
+    let b = M17EvaluateCandidates(M17DefaultContext())
+    Assert.Equal(a[0].UseDisposition, b[0].UseDisposition, "classification should be deterministic for ScalarFP32")
+    Assert.Equal(a[1].UseDisposition, b[1].UseDisposition, "classification should be deterministic for Packed4FP32")
+    Assert.Equal(a[2].UseDisposition, b[2].UseDisposition, "classification should be deterministic for FP16StorageFP32Accum")
+    Assert.Equal(a[3].UseDisposition, b[3].UseDisposition, "classification should be deterministic for Packed4FP16StorageFP32Accum")
+    Assert.Equal(a[4].UseDisposition, b[4].UseDisposition, "classification should be deterministic for FP16StorageFP16Arithmetic")
+}
+
+[Fact]
+fn M17PaddingCalculationHandlesNonMultipleOf4() -> Void {
+    Assert.Equal(M17PaddingWasteUnits(16), 0, "already aligned lengths should have zero waste")
+    Assert.Equal(M17PaddingWasteUnits(17), 3, "length 17 should pad to 20")
+    Assert.Equal(M17PaddingWasteUnits(31), 1, "length 31 should pad to 32")
+}
+
+[Fact]
+fn M17StrictPrecisionGateDisablesFP16Paths() -> Void {
+    let ctx = M17Context {
+        Name: "strict-fp32"
+        M: 128
+        N: 192
+        KDim: 96
+        StrictFP32Correctness: true
+        AllowFP16StorageQuantization: true
+        AllowFP16ArithmeticOptIn: true
+        FP16StorageAvailable: true
+        FP16ArithmeticAvailable: true
+        Packed4Feasible: true
+        FallbackAvailable: true
+        DirectPathPreferred: false
+        TransferBoundPressure: 80
+        ControllerMode: "safe"
+    }
+    let rows = M17EvaluateCandidates(ctx)
+    Assert.Equal(rows[2].UseDisposition, "no", "strict FP32 should gate FP16 storage path")
+    Assert.Equal(rows[3].UseDisposition, "no", "strict FP32 should gate packed FP16 storage path")
+    Assert.Equal(rows[4].UseDisposition, "no", "strict FP32 should gate FP16 arithmetic path")
+}
+
+[Fact]
+fn M17FP16ArithmeticRequiresExplicitOptIn() -> Void {
+    let noOptIn = M17DefaultContext()
+    let withOptIn = M17Context {
+        Name: "opted-in"
+        M: noOptIn.M
+        N: noOptIn.N
+        KDim: noOptIn.KDim
+        StrictFP32Correctness: noOptIn.StrictFP32Correctness
+        AllowFP16StorageQuantization: noOptIn.AllowFP16StorageQuantization
+        AllowFP16ArithmeticOptIn: true
+        FP16StorageAvailable: noOptIn.FP16StorageAvailable
+        FP16ArithmeticAvailable: noOptIn.FP16ArithmeticAvailable
+        Packed4Feasible: noOptIn.Packed4Feasible
+        FallbackAvailable: noOptIn.FallbackAvailable
+        DirectPathPreferred: noOptIn.DirectPathPreferred
+        TransferBoundPressure: noOptIn.TransferBoundPressure
+        ControllerMode: "aggressive"
+    }
+    let noRows = M17EvaluateCandidates(noOptIn)
+    let yesRows = M17EvaluateCandidates(withOptIn)
+    Assert.Equal(noRows[4].UseDisposition, "no", "FP16 arithmetic must remain disabled without explicit opt-in")
+    Assert.Equal(yesRows[4].UseDisposition, "only behind explicit precision opt-in", "FP16 arithmetic stays opt-in even when enabled")
+}
+
+[Fact]
+fn M17CapabilityAndFallbackGatesHold() -> Void {
+    let noFallback = M17Context {
+        Name: "no-fallback"
+        M: 128
+        N: 192
+        KDim: 96
+        StrictFP32Correctness: false
+        AllowFP16StorageQuantization: true
+        AllowFP16ArithmeticOptIn: true
+        FP16StorageAvailable: true
+        FP16ArithmeticAvailable: true
+        Packed4Feasible: true
+        FallbackAvailable: false
+        DirectPathPreferred: false
+        TransferBoundPressure: 85
+        ControllerMode: "aggressive"
+    }
+    let rows = M17EvaluateCandidates(noFallback)
+    Assert.Equal(rows[0].UseDisposition, "yes", "ScalarFP32 remains available without fallback dependency")
+    Assert.Equal(rows[1].UseDisposition, "no", "Packed4FP32 requires fallback")
+    Assert.Equal(rows[2].UseDisposition, "no", "FP16 storage path requires fallback")
+    Assert.Equal(rows[3].UseDisposition, "no", "Packed4 + FP16 path requires fallback")
+    Assert.Equal(rows[4].UseDisposition, "no", "FP16 arithmetic path requires fallback")
+}
+
+[Fact]
+fn M17RecommendationOutputStability() -> Void {
+    let r1 = M17RecommendationSummary()
+    let r2 = M17RecommendationSummary()
+    Assert.Equal(r1.FirstImplementationCandidate, r2.FirstImplementationCandidate, "recommendation should be stable")
+    Assert.Equal(r1.NeedsM18RakeLab, r2.NeedsM18RakeLab, "M18 handoff should be stable")
+    Assert.True(r1.FirstImplementationCandidate == "Packed4FP32", "M17 must provide a concrete first implementation candidate")
+}
+
+[Artifact]
+fn EmitM17CandidateTable() -> Void {
+    let rows = M17EvaluateCandidates(M17DefaultContext())
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M17/m17_candidate_table.octagon", [M17CandidateColumns(rows)])
+}
+
+[Artifact]
+fn EmitM17ConditionMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M17/m17_condition_matrix.octagon", [M17ConditionMatrixData()])
+}
+
+[Artifact]
+fn EmitM17RiskHandoff() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M17/m17_risk_handoff.octagon", M17RiskHandoffData())
+}
+
+[Artifact]
+fn EmitM17Recommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M17/m17_recommendation.octagon", [M17RecommendationSummary()])
+}
