@@ -1,0 +1,37 @@
+package JsonIntentRecoveryLabM1
+
+record HttpConfig {
+    Host: String
+    Port: Int
+    ReadTimeoutMs: Int
+    WriteTimeoutMs: Int
+}
+
+record FeatureFlags {
+    EnableAuditLog: Bool
+    EnableRetryQueue: Bool
+    EnableDebugRoutes: Bool
+}
+
+record ServiceLimits {
+    MaxConnections: Int
+    MaxPayloadKb: Int
+}
+
+record ServiceConfig {
+    Name: String
+    Environment: String
+    Http: HttpConfig
+    Features: FeatureFlags
+    Limits: ServiceLimits
+}
+
+fn RecoveredConfigDocument() -> ServiceConfig {
+    return ServiceConfig {
+        Name: "billing-api"
+        Environment: "staging"
+        Http: HttpConfig { Host: "0.0.0.0" Port: 8080 ReadTimeoutMs: 1500 WriteTimeoutMs: 1500 }
+        Features: FeatureFlags { EnableAuditLog: true EnableRetryQueue: true EnableDebugRoutes: false }
+        Limits: ServiceLimits { MaxConnections: 200 MaxPayloadKb: 512 }
+    }
+}

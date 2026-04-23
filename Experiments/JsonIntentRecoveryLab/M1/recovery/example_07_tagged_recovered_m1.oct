@@ -1,0 +1,49 @@
+package JsonIntentRecoveryLabM1
+
+record CreditTable {
+    AccountId: String[]
+    Amount: Float[]
+    Currency: String[]
+}
+
+record DebitTable {
+    AccountId: String[]
+    Amount: Float[]
+    Currency: String[]
+    Merchant: String[]
+}
+
+record TransferTable {
+    FromAccount: String[]
+    ToAccount: String[]
+    Amount: Float[]
+    Currency: String[]
+}
+
+record LedgerCorpus {
+    Credits: CreditTable
+    Debits: DebitTable
+    Transfers: TransferTable
+}
+
+fn RecoveredLedgerCorpus() -> LedgerCorpus {
+    return LedgerCorpus {
+        Credits: CreditTable {
+            AccountId: ["A-100"]
+            Amount: [250.0]
+            Currency: ["USD"]
+        }
+        Debits: DebitTable {
+            AccountId: ["A-100"]
+            Amount: [49.5]
+            Currency: ["USD"]
+            Merchant: ["Metro Cafe"]
+        }
+        Transfers: TransferTable {
+            FromAccount: ["A-100"]
+            ToAccount: ["A-210"]
+            Amount: [30.0]
+            Currency: ["USD"]
+        }
+    }
+}

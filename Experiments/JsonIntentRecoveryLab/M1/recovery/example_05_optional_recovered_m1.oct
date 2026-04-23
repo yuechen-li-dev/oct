@@ -1,0 +1,39 @@
+package JsonIntentRecoveryLabM1
+
+record TicketTable {
+    Ids: String[]
+    Titles: String[]
+    Priorities: String[]
+}
+
+record TicketOptionalColumns {
+    AssigneePresent: Bool[]
+    AssigneeValue: String[]
+    DueDatePresent: Bool[]
+    DueDateIso: String[]
+    SprintPresent: Bool[]
+    SprintValue: String[]
+}
+
+record TicketCorpus {
+    Tickets: TicketTable
+    Optionals: TicketOptionalColumns
+}
+
+fn RecoveredTicketCorpus() -> TicketCorpus {
+    return TicketCorpus {
+        Tickets: TicketTable {
+            Ids: ["T-9001", "T-9002", "T-9003"]
+            Titles: ["Login page timeout", "Update FAQ links", "Billing alert copy"]
+            Priorities: ["high", "low", "medium"]
+        }
+        Optionals: TicketOptionalColumns {
+            AssigneePresent: [true, false, true]
+            AssigneeValue: ["sam", "", "nora"]
+            DueDatePresent: [false, false, true]
+            DueDateIso: ["", "", "2026-05-10"]
+            SprintPresent: [true, false, false]
+            SprintValue: ["S24", "", ""]
+        }
+    }
+}

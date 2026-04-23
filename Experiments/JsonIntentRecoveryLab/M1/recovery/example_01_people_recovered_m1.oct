@@ -1,0 +1,33 @@
+package JsonIntentRecoveryLabM1
+
+record PeopleTable {
+    Ids: String[]
+    Names: String[]
+    Roles: String[]
+    Active: Bool[]
+}
+
+record PersonSkillTable {
+    PersonIds: String[]
+    Skills: String[][]
+}
+
+record PeopleCorpus {
+    People: PeopleTable
+    SkillRows: PersonSkillTable
+}
+
+fn RecoveredPeopleCorpus() -> PeopleCorpus {
+    return PeopleCorpus {
+        People: PeopleTable {
+            Ids: ["u-100", "u-101", "u-102"]
+            Names: ["Avery Chen", "Mina Patel", "Jon Rivera"]
+            Roles: ["analyst", "designer", "analyst"]
+            Active: [true, false, true]
+        }
+        SkillRows: PersonSkillTable {
+            PersonIds: ["u-100", "u-101", "u-102"]
+            Skills: [["sql", "python"], ["figma", "ux"], ["sql", "dbt"]]
+        }
+    }
+}
