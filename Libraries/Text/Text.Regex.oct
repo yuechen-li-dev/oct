@@ -1,0 +1,17 @@
+package Text
+
+fn IsMatch(pattern: String, text: String) -> Bool ! Error {
+    return RegexIsMatch(pattern, text)?
+}
+
+fn FindAll(pattern: String, text: String) -> String[] ! Error {
+    return RegexFindAll(pattern, text)?
+}
+
+fn ReplaceAll(pattern: String, text: String, replacement: String) -> String ! Error {
+    return RegexReplaceAll(pattern, text, replacement)?
+}
+
+fn Split(pattern: String, text: String) -> String[] ! Error {
+    return RegexSplit(pattern, text)?
+}

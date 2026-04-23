@@ -1,0 +1,26 @@
+package Text
+
+[Fact]
+fn RegexMatchFindReplaceSplit() -> Void {
+    let text = "a1 b22 c333"
+    let matched = IsMatch("[a-z]+[0-9]+", text)!
+    Assert.True(matched, "pattern should match payload")
+
+    let found = FindAll("[a-z]+[0-9]+", text)!
+    Assert.Equal(3, Len(found), "find all should return three matches")
+    Assert.Equal("b22", found[1], "middle match should be stable")
+
+    let replaced = ReplaceAll("[0-9]+", text, "#")!
+    Assert.Equal("a# b# c#", replaced, "replace all should rewrite all number groups")
+
+    let parts = Split(" +", "one two   three")!
+    Assert.Equal(3, Len(parts), "split should collapse whitespace pattern boundaries")
+    Assert.Equal("three", parts[2], "split should preserve trailing token")
+    return
+}
+
+[Fact]
+fn RegexInvalidPatternFails() -> Void {
+    Assert.Error(IsMatch("(", "abc"), "invalid regex should fail")
+    return
+}

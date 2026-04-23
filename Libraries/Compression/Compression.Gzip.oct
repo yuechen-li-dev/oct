@@ -1,0 +1,17 @@
+package Compression
+
+fn CompressBytes(data: Bytes) -> Bytes ! Error {
+    return GzipCompressBytes(data)?
+}
+
+fn DecompressBytes(data: Bytes) -> Bytes ! Error {
+    return GzipDecompressBytes(data)?
+}
+
+fn CompressFile(inputPath: String, outputPath: String) -> Int ! Error {
+    return GzipCompressFile(inputPath, outputPath)?
+}
+
+fn DecompressFile(inputPath: String, outputPath: String) -> Int ! Error {
+    return GzipDecompressFile(inputPath, outputPath)?
+}

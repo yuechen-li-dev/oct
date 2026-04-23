@@ -1,0 +1,13 @@
+package Archive
+
+fn ListEntries(path: String) -> String[] ! Error {
+    return ZipListEntries(path)?
+}
+
+fn ExtractAll(path: String, destination: String) -> Int ! Error {
+    return ZipExtractAll(path, destination)?
+}
+
+fn CreateFromFiles(outputPath: String, paths: String[]) -> Int ! Error {
+    return ZipCreateFromFiles(outputPath, paths)?
+}

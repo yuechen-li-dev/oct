@@ -154,6 +154,24 @@ func (c wrapperCall) bytesArg(index int) ([]byte, *evalResult, error) {
 	return append([]byte(nil), value.Bytes...), nil, nil
 }
 
+func (c wrapperCall) stringArrayArg(index int) ([]string, *evalResult, error) {
+	value, errResult, err := c.evalArg(index)
+	if err != nil || errResult != nil {
+		return nil, errResult, err
+	}
+	if value.Kind != ValueArray {
+		return nil, nil, wrapperErrorf(wrapperErrorInvalidArgument, "argument %d expects String[]", index+1)
+	}
+	values := make([]string, 0, len(value.Array))
+	for elementIndex, current := range value.Array {
+		if current.Kind != ValueString {
+			return nil, nil, wrapperErrorf(wrapperErrorInvalidArgument, "argument %d expects String[] (element %d)", index+1, elementIndex)
+		}
+		values = append(values, current.Text)
+	}
+	return values, nil, nil
+}
+
 func wrapperIntResult(value int64) evalResult {
 	return evalResult{value: Value{Kind: ValueInt, Int: value}}
 }

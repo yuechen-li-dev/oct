@@ -1,0 +1,37 @@
+package Archive
+
+[Fact]
+fn ZipListEntriesAndExtractAllRoundTrip() -> Void {
+    let sourceDir = "mx103c_zip_src"
+    let outputDir = "mx103c_zip_out"
+    let zipPath = "mx103c_bundle.zip"
+    let fileA = PathJoin([sourceDir, "a.txt"])
+    let fileB = PathJoin([sourceDir, "b.txt"])
+
+    let _mk = DirectoryMakeAll(sourceDir)!
+    let _wa = FileWriteText(fileA, "A")!
+    let _wb = FileWriteText(fileB, "B")!
+    let _zip = CreateFromFiles(zipPath, [fileA, fileB])!
+
+    let entries = ListEntries(zipPath)!
+    Assert.Equal(2, Len(entries), "zip entry count should match inputs")
+    Assert.Equal("a.txt", entries[0], "zip entries should be stable and sorted")
+    Assert.Equal("b.txt", entries[1], "zip entries should include second file")
+
+    let _extract = ExtractAll(zipPath, outputDir)!
+    let extractedA = FileReadText(PathJoin([outputDir, "a.txt"]))!
+    let extractedB = FileReadText(PathJoin([outputDir, "b.txt"]))!
+    Assert.Equal("A", extractedA, "extracted first file should match")
+    Assert.Equal("B", extractedB, "extracted second file should match")
+
+    let _cleanupA = DirectoryRemoveAll(sourceDir)!
+    let _cleanupB = DirectoryRemoveAll(outputDir)!
+    let _cleanupC = FileDelete(zipPath)!
+    return
+}
+
+[Fact]
+fn ZipListEntriesMissingArchiveFails() -> Void {
+    Assert.Error(ListEntries("mx103c_missing.zip"), "listing a missing archive should fail")
+    return
+}

@@ -1,0 +1,25 @@
+package Time
+
+[Fact]
+fn TimeParseFormatIso8601Sanity() -> Void {
+    let parsed = ParseIso8601("2024-01-02T03:04:05Z")!
+    Assert.Equal("2024-01-02T03:04:05Z", parsed, "parse should normalize RFC3339 values")
+    let formatted = FormatIso8601("2024-01-02T03:04:05Z")!
+    Assert.Equal(parsed, formatted, "format helper should match parse helper")
+    return
+}
+
+[Fact]
+fn TimeUnixSecondsFormattingSanity() -> Void {
+    let now = UnixSecondsNow()
+    Assert.True(now > 0, "unix seconds now should be positive")
+    let epoch = FormatUnixSeconds(0)!
+    Assert.Equal("1970-01-01T00:00:00Z", epoch, "unix epoch should format deterministically")
+    return
+}
+
+[Fact]
+fn TimeInvalidIso8601Fails() -> Void {
+    Assert.Error(ParseIso8601("not-a-time"), "invalid iso8601 text should fail")
+    return
+}
