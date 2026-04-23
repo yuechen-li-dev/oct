@@ -5,7 +5,9 @@
 Builtin names are reserved.
 Calls are checked statically for arity and type constraints.
 
-This page documents the user-facing builtin surface and its organization.
+This page is intentionally limited to the **core builtin language/runtime surface**.
+For practical file/data/time/text/archive/compression/hash APIs, see [17 standard libraries](./17-standard-libraries.md).
+For the Prometheus experimental subsystem, see [23 Prometheus](../runtime/23-prometheus.md).
 For `.octest`-only assert helpers, see [31 octest](../tooling/31-octest.md).
 For matrix and tensor-focused language surface, see [16 vectors and matrices](./16-vectors-and-matrices.md) and [tensors](../tensors.md).
 
@@ -100,70 +102,30 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 - `Upper(s: String) -> String`.
 - `Join(parts: String[], sep: String) -> String`.
 
-## 6) Plotting
+## 6) What is intentionally *not* on this page
 
-- `PlotLine(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
-  - Rejects dimensioned arrays.
-- `PlotScatter(x: Int[]|Float[], y: Int[]|Float[], path: String) -> Int`.
-  - Rejects dimensioned arrays.
+The following moved to dedicated reference pages to keep the core surface legible:
 
-Notes:
-- Plotting is implemented via a thin runtime wrapper over `gonum/plot`, not as a core language primitive.
-- Compiled-mode behavior depends on compiled runtime wrapper support.
-- Current compiled parity corpus records plotting as not yet supported in compiled mode.
+- Standard-library and wrapper-backed APIs (file/path/directory/json/csv/zip/gzip/hash/regex/time/xlsx/plotting).
+- Backend support builtins used to implement those standard-library modules.
+- Prometheus-specific surfaces (`PROMETHEUS` blocks and `PrometheusMatMul`) which are experimental and tracked separately.
 
-## 7) Data / Octagon I/O
-
-- `LoadOctagon<T>(path: String) -> T[]`.
-- `WriteOctagon<T>(path: String, data: T[]) -> Int`.
-
-## 8) Wrapper-backed file I/O
-
-- `FileReadText(path: String) -> String ! Error`.
-- `FileWriteText(path: String, text: String) -> Int ! Error`.
-- `FileReadBytes(path: String) -> Bytes ! Error`.
-- `FileWriteBytes(path: String, data: Bytes) -> Int ! Error`.
-
-## 9) Wrapper-backed JSON compatibility + intent recovery
-
-- `JsonNormalize(text: String) -> String ! Error`.
-- `JsonParse(text: String) -> String ! Error`.
-- `JsonStringify(value: String) -> String ! Error`.
-- `JsonLoad(path: String) -> String ! Error`.
-- `JsonSave(path: String, value: String) -> Int ! Error`.
-- `JsonLower<JsonRawGraph>(text: String) -> JsonRawGraph ! Error`.
-- `JsonLoadStructured<JsonRawGraph>(path: String) -> JsonRawGraph ! Error`.
-
-Library posture (`Libraries/IO/IO.Json.oct`):
-- `ImportJson(path)` is the intended default JSON path (deterministic Oct-side intent recovery).
-- `ImportRawJson(path)`/`ImportRawJsonGraph(path)` are lower-level compatibility/debug paths.
-- Canonical recovery default is columnar for table-shaped data; true rectangular numeric grids intentionally remain nested arrays.
-- JSON `null` remains compatibility-only in raw graph nodes (no general native null semantics).
-
-Notes:
-- `Bytes` is intentionally narrow and intended for binary boundary transport only.
-- `.octagon` remains the native structured data format; JSON and bytes surfaces are compatibility-oriented wrappers.
-- No `Dynamic` type is introduced by this surface.
-
-## Compiled Mode Support (derived from corpus + compiler implementation)
+## Compiled mode support (core surface)
 
 Source of truth used here:
 - compiled parity corpus/tests in `internal/build/compiler_test.go`
 - compiled lowering support in `internal/build/compiler.go`
 
-Current status (for this builtin page scope):
+Current status (for this core-builtin page scope):
 
 - **Supported in compiled mode:**
   - `Print`, `Len`, `Append`
-  - `ToString`, `Float`
+  - `ToString`, `Float`, `FormatFloat`
   - string helpers: `Contains`, `StartsWith`, `EndsWith`, `Trim`, `Lower`, `Upper`, `Join`
-  - matrix constructor surface (see note in [16 vectors and matrices](./16-vectors-and-matrices.md) for corpus-verified vs code-implemented split)
-  - `LoadOctagon`, `WriteOctagon`
 - **Supported with restrictions in compiled mode:**
   - `Abs` on scalar `Int`/`Float`-family values supported; unsupported argument types are rejected.
 - **Interpreter-only / deferred in compiled mode (known from corpus and compiler diagnostics):**
   - math family not explicitly lowered in compiled mode (`Sqrt`, trig, exp/log, hyperbolic)
   - complex-number family (`Complex`, `ComplexPolar`, `I`, `Real`, `Imag`, `Conj`, `Arg`)
-  - plotting builtins (`PlotLine`, `PlotScatter`)
 
 When in doubt, treat the parity corpus as SSOT and validate against `internal/build/compiler.go`.
