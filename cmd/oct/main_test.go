@@ -578,7 +578,7 @@ func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
     return Len(1)
 }
 `,
-			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String or array type, got Int",
+			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int",
 		},
 		{
 			name: "abs wrong type",
@@ -706,7 +706,7 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main: function 'Len' argument 1 expects String or array type, got Int"
+		want := "build failed: function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
@@ -945,7 +945,7 @@ func TestSyntaxErrorsFailDeterministically(t *testing.T) {
 				t.Fatalf("expected failure, got success with stdout %q", stdout)
 			}
 
-			expected := command + " failed: parse " + sourcePath + ": expected '->' before return type"
+			expected := command + " failed: parse " + sourcePath + ": expected arrow before return type at 2:11 near \"{\""
 			if !strings.Contains(stderr, expected) {
 				t.Fatalf("expected deterministic syntax error %q, got %q", expected, stderr)
 			}

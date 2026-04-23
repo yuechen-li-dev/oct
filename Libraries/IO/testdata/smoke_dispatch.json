@@ -1,0 +1,1 @@
+{"event_handlers":{"user.created":"notify","user.deleted":"archive"},"version":1}
