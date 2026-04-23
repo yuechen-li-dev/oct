@@ -192,3 +192,9 @@ void prom_judgment_engine_select_async_submission(const prom_judgment_async_fact
   out_decision->execute_async = 1u;
   out_decision->reject_detail = 0;
 }
+
+prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,
+                                                         const prom_policy_facts* facts,
+                                                         const prom_policy_thresholds* thresholds) {
+  return prom_policy_memory_update(memory, facts, thresholds);
+}

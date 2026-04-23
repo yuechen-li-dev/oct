@@ -23,6 +23,29 @@ namespace
         facts.software_vulkan = 0u;
         return facts;
     }
+
+    prom_policy_thresholds base_policy_thresholds()
+    {
+        prom_policy_thresholds thresholds{};
+        thresholds.retreat_enter_permille = 240u;
+        thresholds.retreat_exit_permille = 160u;
+        thresholds.recovery_enter_permille = 420u;
+        thresholds.recovery_exit_permille = 260u;
+        thresholds.min_commit_decisions = 2u;
+        thresholds.retreat_cooldown_decisions = 2u;
+        thresholds.recovery_hold_decisions = 3u;
+        return thresholds;
+    }
+
+    prom_policy_facts base_policy_facts()
+    {
+        prom_policy_facts facts{};
+        facts.waste_ratio_permille = 120u;
+        facts.pending_waste_ratio_permille = 120u;
+        facts.hard_retreat_override = 0u;
+        facts.hard_recovery_override = 0u;
+        return facts;
+    }
 }
 
 FACT(PrometheusJudgmentEngine_DeterministicForSameFacts)
@@ -183,4 +206,131 @@ FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
         ASSERT_EQUAL(0u, decision.success, "software Vulkan policy should suppress async mode");
         ASSERT_EQUAL(PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED, decision.reject_detail, "software suppression should remain explicitly observable");
     }
+}
+
+FACT(PrometheusJudgmentEngine_HasNoCrossCallHysteresisOrCommitmentMemory)
+{
+    prom_judgment_facts near_threshold = base_facts();
+    near_threshold.readback_required = 1u;
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD) - 1u;
+    near_threshold.tiled_shape = 0u;
+
+    prom_judgment_decision below_threshold{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &below_threshold);
+    ASSERT_EQUAL(1u, below_threshold.success, "below-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_DIRECT, below_threshold.selected_path, "below-threshold shape should select direct path");
+    ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, below_threshold.compute_mode, "below-threshold shape should stay baseline");
+
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD);
+    prom_judgment_decision at_threshold{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &at_threshold);
+    ASSERT_EQUAL(1u, at_threshold.success, "at-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_STAGED_UPLOAD_READBACK, at_threshold.selected_path, "at-threshold shape should immediately switch to staged path");
+
+    near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD) - 1u;
+    prom_judgment_decision return_below{};
+    prom_judgment_engine_select_sgemm_mode(&near_threshold, &return_below);
+    ASSERT_EQUAL(1u, return_below.success, "return-below-threshold evaluation should select a mode");
+    ASSERT_EQUAL(PROM_VK_PATH_DIRECT, return_below.selected_path, "return-below-threshold shape should immediately switch back to direct path");
+}
+
+FACT(PrometheusJudgmentEngine_PolicyMemoryHysteresisAvoidsThresholdChatter)
+{
+    prom_policy_memory memory{};
+    prom_policy_thresholds thresholds = base_policy_thresholds();
+    prom_policy_facts facts = base_policy_facts();
+    prom_policy_mode mode = PROM_POLICY_MODE_AGGRESSIVE;
+
+    prom_policy_memory_init(&memory, PROM_POLICY_MODE_AGGRESSIVE);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, mode, "initial low waste should keep aggressive mode");
+
+    facts.waste_ratio_permille = 260u;
+    facts.pending_waste_ratio_permille = 260u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, mode, "min-commit should block immediate retreat on first threshold crossing");
+
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_SAFE, mode, "after min-commit dwell, threshold crossing should retreat to safe");
+
+    facts.waste_ratio_permille = 200u;
+    facts.pending_waste_ratio_permille = 200u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_SAFE, mode, "safe mode should be retained while signal stays within hysteresis band");
+}
+
+FACT(PrometheusJudgmentEngine_PolicyMemoryCooldownAndRecoveryHoldAreEnforced)
+{
+    prom_policy_memory memory{};
+    prom_policy_thresholds thresholds = base_policy_thresholds();
+    prom_policy_facts facts = base_policy_facts();
+    prom_policy_mode mode = PROM_POLICY_MODE_AGGRESSIVE;
+
+    prom_policy_memory_init(&memory, PROM_POLICY_MODE_AGGRESSIVE);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, mode, "first decision should remain aggressive at low waste");
+
+    facts.waste_ratio_permille = 280u;
+    facts.pending_waste_ratio_permille = 280u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_SAFE, mode, "aggressive should retreat to safe after dwell requirement is met");
+    ASSERT_TRUE(memory.cooldown_remaining > 0u, "retreat should set safe cooldown window");
+
+    facts.waste_ratio_permille = 80u;
+    facts.pending_waste_ratio_permille = 80u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_SAFE, mode, "cooldown should block immediate return to aggressive");
+
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, mode, "after cooldown expires, low waste should allow aggressive re-entry");
+
+    facts.hard_recovery_override = 1u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_RECOVERY, mode, "hard recovery override should force recovery mode");
+    ASSERT_TRUE(memory.recovery_cooldown_remaining > 0u, "recovery entry should set hold timer");
+
+    facts.hard_recovery_override = 0u;
+    facts.waste_ratio_permille = 0u;
+    facts.pending_waste_ratio_permille = 0u;
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_RECOVERY, mode, "recovery hold should block immediate exit");
+
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    mode = prom_judgment_engine_update_policy_mode(&memory, &facts, &thresholds);
+    ASSERT_EQUAL(PROM_POLICY_MODE_SAFE, mode, "recovery should exit to safe after hold timer expires");
+}
+
+FACT(PrometheusJudgmentEngine_PolicyMemoryDeterministicAndBoundSafe)
+{
+    prom_policy_memory first_memory{};
+    prom_policy_memory second_memory{};
+    prom_policy_thresholds thresholds = base_policy_thresholds();
+    prom_policy_facts facts = base_policy_facts();
+    prom_policy_mode first_mode = PROM_POLICY_MODE_AGGRESSIVE;
+    prom_policy_mode second_mode = PROM_POLICY_MODE_AGGRESSIVE;
+
+    prom_policy_memory_init(&first_memory, static_cast<prom_policy_mode>(999));
+    prom_policy_memory_init(&second_memory, static_cast<prom_policy_mode>(999));
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, first_memory.current_mode, "invalid initial mode should clamp to aggressive");
+    ASSERT_EQUAL(PROM_POLICY_MODE_AGGRESSIVE, second_memory.current_mode, "invalid initial mode should clamp deterministically");
+
+    first_memory.decisions_in_mode = UINT32_MAX;
+    second_memory.decisions_in_mode = UINT32_MAX;
+    first_mode = prom_judgment_engine_update_policy_mode(&first_memory, &facts, &thresholds);
+    second_mode = prom_judgment_engine_update_policy_mode(&second_memory, &facts, &thresholds);
+    ASSERT_EQUAL(first_mode, second_mode, "same memory and facts should produce same mode");
+    ASSERT_EQUAL(first_memory.current_mode, second_memory.current_mode, "mode memory should match across deterministic runs");
+    ASSERT_EQUAL(first_memory.decisions_in_mode, second_memory.decisions_in_mode, "dwell counter should match across deterministic runs");
+    ASSERT_EQUAL(UINT32_MAX, first_memory.decisions_in_mode, "dwell counter should saturate without overflow");
+
+    first_memory.cooldown_remaining = 0u;
+    second_memory.cooldown_remaining = 0u;
+    first_mode = prom_judgment_engine_update_policy_mode(&first_memory, &facts, &thresholds);
+    second_mode = prom_judgment_engine_update_policy_mode(&second_memory, &facts, &thresholds);
+    ASSERT_EQUAL(first_mode, second_mode, "determinism should hold for repeated updates");
+    ASSERT_TRUE(first_memory.cooldown_remaining <= thresholds.retreat_cooldown_decisions,
+                "cooldown counter should remain within valid non-negative bounds");
 }
