@@ -1,0 +1,129 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M12StudyRows() -> M12CaseResult[] {
+    let transferBound = M12RegimeTransferBound()
+    let computeBound = M12RegimeComputeBound()
+    let balanced = M12RegimeBalanced()
+    let predictSensitive = M12RegimePredictabilitySensitive()
+
+    return [
+        EvaluateM12Case(transferBound, "eager", 16, 0, 0, 1, false),
+        EvaluateM12Case(transferBound, "jit", 16, 0, 0, 1, false),
+        EvaluateM12Case(transferBound, "overlap", 16, 2, 0, 2, false),
+        EvaluateM12Case(transferBound, "overlap", 32, 2, 1, 3, false),
+        EvaluateM12Case(transferBound, "adaptive", 16, 2, 1, 3, true),
+
+        EvaluateM12Case(computeBound, "eager", 16, 0, 0, 1, false),
+        EvaluateM12Case(computeBound, "jit", 16, 0, 0, 1, false),
+        EvaluateM12Case(computeBound, "overlap", 16, 2, 0, 2, false),
+        EvaluateM12Case(computeBound, "adaptive", 16, 2, 1, 3, true),
+
+        EvaluateM12Case(balanced, "eager", 8, 0, 0, 1, false),
+        EvaluateM12Case(balanced, "jit", 8, 0, 0, 1, false),
+        EvaluateM12Case(balanced, "overlap", 8, 1, 0, 1, false),
+        EvaluateM12Case(balanced, "overlap", 32, 2, 1, 2, false),
+        EvaluateM12Case(balanced, "adaptive", 16, 2, 1, 3, true),
+
+        EvaluateM12Case(predictSensitive, "overlap", 16, 3, 0, 3, false),
+        EvaluateM12Case(predictSensitive, "overlap", 16, 3, 2, 3, false),
+        EvaluateM12Case(predictSensitive, "overlap", 16, 3, 3, 3, false),
+        EvaluateM12Case(predictSensitive, "adaptive", 16, 3, 2, 3, true)
+    ]
+}
+
+fn BestPolicyByRegime(regime: M12Regime) -> M12CaseResult {
+    let eager = EvaluateM12Case(regime, "eager", 16, 0, 0, 1, false)
+    let jit = EvaluateM12Case(regime, "jit", 16, 0, 0, 1, false)
+    let overlap = EvaluateM12Case(regime, "overlap", 16, 2, 1, 2, false)
+    let adaptive = EvaluateM12Case(regime, "adaptive", 16, 2, 1, 3, true)
+
+    var best = eager
+    if jit.TotalCompletionTime < best.TotalCompletionTime { best = jit }
+    if overlap.TotalCompletionTime < best.TotalCompletionTime { best = overlap }
+    if adaptive.TotalCompletionTime < best.TotalCompletionTime { best = adaptive }
+    return best
+}
+
+[Fact]
+fn M12ScopeMapExplicitlyDeclaresModelBoundary() -> Void {
+    let scope = M12Scope()
+    Assert.True(scope.SimulatedAspects != "", "simulated aspects must be explicitly declared")
+    Assert.True(scope.ExcludedAspects != "", "excluded aspects must be explicitly declared")
+    Assert.True(scope.StateVariables != "", "state variables must be explicitly declared")
+    Assert.True(scope.ControlKnobs != "", "control knobs must be explicitly declared")
+    Assert.True(scope.MetricsCollected != "", "metrics must be explicitly declared")
+}
+
+[Fact]
+fn DeterministicSimulationSameInputsSameOutputs() -> Void {
+    let regime = M12RegimeBalanced()
+    let first = EvaluateM12Case(regime, "overlap", 16, 2, 1, 2, false)
+    let second = EvaluateM12Case(regime, "overlap", 16, 2, 1, 2, false)
+
+    Assert.Equal(first.TotalCompletionTime, second.TotalCompletionTime, "simulation should be deterministic for fixed inputs")
+    Assert.Equal(first.WastedTransferWork, second.WastedTransferWork, "waste accounting should be deterministic")
+    Assert.Equal(first.PeakOutstandingDepth, second.PeakOutstandingDepth, "outstanding depth usage should be deterministic")
+}
+
+[Fact]
+fn BaselinePoliciesArePresentAndSensible() -> Void {
+    let regime = M12RegimeTransferBound()
+
+    let eager = EvaluateM12Case(regime, "eager", 16, 0, 0, 1, false)
+    let jit = EvaluateM12Case(regime, "jit", 16, 0, 0, 1, false)
+    let overlap = EvaluateM12Case(regime, "overlap", 16, 2, 0, 2, false)
+
+    Assert.True(eager.TotalCompletionTime >= jit.TotalCompletionTime, "eager should not beat JIT in this transfer-bound model")
+    Assert.True(overlap.TotalCompletionTime <= jit.TotalCompletionTime, "overlap should improve or match JIT in transfer-bound regime")
+    Assert.True(overlap.TransferStallTime <= jit.TransferStallTime, "overlap should reduce or match transfer stalls")
+}
+
+[Fact]
+fn ChunkSizeSweepShowsTradeoffs() -> Void {
+    let regime = M12RegimeBalanced()
+    let tiny = EvaluateM12Case(regime, "overlap", 8, 2, 0, 2, false)
+    let large = EvaluateM12Case(regime, "overlap", 32, 2, 0, 2, false)
+
+    Assert.True(tiny.ChunkTransitions > large.ChunkTransitions, "smaller chunks should increase transitions")
+    Assert.True(tiny.TotalTransferWork >= regime.WorkUnits, "tiny chunk run must perform transfer work")
+    Assert.True(large.AverageChunkSize >= tiny.AverageChunkSize, "average chunk size must track chosen chunk size")
+}
+
+[Fact]
+fn LookaheadAndPredictionQualityControlWaste() -> Void {
+    let regime = M12RegimePredictabilitySensitive()
+
+    let perfect = EvaluateM12Case(regime, "overlap", 16, 3, 0, 3, false)
+    let poor = EvaluateM12Case(regime, "overlap", 16, 3, 3, 3, false)
+    let zeroLookahead = EvaluateM12Case(regime, "overlap", 16, 0, 3, 3, false)
+
+    Assert.True(poor.WastedTransferWork > perfect.WastedTransferWork, "poor prediction should incur more wasted transfer work")
+    Assert.True(zeroLookahead.WastedTransferWork == 0, "zero lookahead should suppress speculative waste")
+}
+
+[Fact]
+fn OutstandingDepthAndAdaptiveChunkStayBounded() -> Void {
+    let regime = M12RegimeTransferBound()
+    let adaptive = EvaluateM12Case(regime, "adaptive", 16, 2, 1, 3, true)
+
+    Assert.True(adaptive.AverageChunkSize >= 8, "adaptive policy should stay within configured minimum chunk")
+    Assert.True(adaptive.AverageChunkSize <= 64, "adaptive policy should stay within configured maximum chunk")
+    Assert.True(adaptive.PeakOutstandingDepth <= 3, "outstanding depth should respect configured bound")
+}
+
+[Fact]
+fn BestPolicyComputedPerRegime() -> Void {
+    let transferBest = BestPolicyByRegime(M12RegimeTransferBound())
+    let computeBest = BestPolicyByRegime(M12RegimeComputeBound())
+    let balancedBest = BestPolicyByRegime(M12RegimeBalanced())
+
+    Assert.True(M12PolicyLabelFromResult(transferBest) != "", "transfer-bound regime should produce a best policy")
+    Assert.True(M12PolicyLabelFromResult(computeBest) != "", "compute-bound regime should produce a best policy")
+    Assert.True(M12PolicyLabelFromResult(balancedBest) != "", "balanced regime should produce a best policy")
+}
+
+[Artifact]
+fn EmitM12PredictiveStagingStudy() -> Void {
+    let rows = M12StudyRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M12/m12_predictive_staging_study.octagon", rows)
+}
