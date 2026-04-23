@@ -1,0 +1,15 @@
+expect error: "enum 'MaybeName' variant 'None' does not carry a payload"
+
+package Main
+
+enum MaybeName {
+    None
+    Some(String)
+}
+
+fn Main(value: MaybeName) -> String {
+    return match value {
+        case MaybeName.None(v) => v
+        case MaybeName.Some(name) => name
+    }
+}

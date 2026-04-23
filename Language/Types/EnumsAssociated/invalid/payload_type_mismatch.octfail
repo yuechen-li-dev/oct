@@ -1,0 +1,12 @@
+expect error: "enum 'ParseResult' variant 'Ok' payload expects Int, got String"
+
+package Main
+
+enum ParseResult {
+    Ok(Int)
+    Err(String)
+}
+
+fn Main() -> ParseResult {
+    return ParseResult.Ok("bad")
+}

@@ -445,7 +445,7 @@ func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
 		return ast.EnumDecl{}, err
 	}
 
-	var variants []string
+	var variants []ast.EnumVariantDecl
 	for p.current().Kind != lex.RightBrace {
 		if p.current().Kind == lex.EOF {
 			return ast.EnumDecl{}, p.errorAtCurrent("expected '}' to close enum declaration")
@@ -454,7 +454,18 @@ func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
 		if err != nil {
 			return ast.EnumDecl{}, err
 		}
-		variants = append(variants, variant.Lexeme)
+		var payload *ast.TypeRef
+		if p.match(lex.LeftParen) {
+			payloadType, err := p.parseTypeRef()
+			if err != nil {
+				return ast.EnumDecl{}, err
+			}
+			if _, err := p.expect(lex.RightParen, "expected ')' after enum variant payload type"); err != nil {
+				return ast.EnumDecl{}, err
+			}
+			payload = &payloadType
+		}
+		variants = append(variants, ast.EnumVariantDecl{Name: variant.Lexeme, Payload: payload})
 	}
 	p.advance()
 
@@ -1129,7 +1140,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordNot, lex.Minus:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus:
 		return true
 	default:
 		return false
@@ -1429,6 +1440,8 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseBatchExpr()
 	case lex.KeywordWhen:
 		return p.parseUtilityWhenExpr()
+	case lex.KeywordMatch:
+		return p.parseMatchExpr()
 	case lex.IntLiteral:
 		p.advance()
 		if p.current().Kind == lex.Identifier && p.current().Lexeme == "C" && tokensAdjacent(token, p.current()) && !literalSuffixContinuesAsDimensionSpec(p.peek(1)) {
@@ -1878,6 +1891,56 @@ func (p *parser) parseSwitchCaseLabel() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("switch case must use int, float, bool, string literal, or qualified enum variant")
 	}
+}
+
+func (p *parser) parseMatchExpr() (ast.Expr, error) {
+	p.advance()
+	subject, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' to start match"); err != nil {
+		return nil, err
+	}
+	cases := make([]ast.MatchCase, 0)
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, p.errorAtCurrent("expected '}' to close match")
+		}
+		if _, err := p.expect(lex.KeywordCase, "expected 'case' in match"); err != nil {
+			return nil, err
+		}
+		caseLabel, err := p.parseSwitchCaseLabel()
+		if err != nil {
+			return nil, err
+		}
+		labelAccess, ok := caseLabel.(ast.FieldAccessExpr)
+		if !ok {
+			return nil, p.errorAtCurrent("match case must use qualified enum variant")
+		}
+		variant := labelAccess.Field
+		binding := ""
+		if p.match(lex.LeftParen) {
+			bindingToken, err := p.expect(lex.Identifier, "expected payload binding name")
+			if err != nil {
+				return nil, err
+			}
+			binding = bindingToken.Lexeme
+			if _, err := p.expect(lex.RightParen, "expected ')' after payload binding name"); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := p.expect(lex.Arrow, "expected arrow after match case"); err != nil {
+			return nil, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		cases = append(cases, ast.MatchCase{Variant: variant, Binding: binding, Value: value})
+	}
+	p.advance()
+	return ast.MatchExpr{Subject: subject, Cases: cases}, nil
 }
 
 func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {

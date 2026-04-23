@@ -1,0 +1,14 @@
+expect error: "non-exhaustive match over enum 'ParseResult'"
+
+package Main
+
+enum ParseResult {
+    Ok(Int)
+    Err(String)
+}
+
+fn Main(value: ParseResult) -> Int {
+    return match value {
+        case ParseResult.Ok(v) => v
+    }
+}

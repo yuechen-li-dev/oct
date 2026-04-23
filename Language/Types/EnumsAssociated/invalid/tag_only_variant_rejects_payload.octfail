@@ -1,0 +1,12 @@
+expect error: "enum 'MaybeName' variant 'None' does not accept a payload"
+
+package Main
+
+enum MaybeName {
+    None
+    Some(String)
+}
+
+fn Main() -> MaybeName {
+    return MaybeName.None("x")
+}

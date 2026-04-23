@@ -3,7 +3,7 @@
 ## Overview
 
 Control flow is explicit and type-checked.
-`if`, `switch`, `for`, and `while` provide branching and looping.
+`if`, `switch`, `match`, `for`, and `while` provide branching and looping.
 `switch` is expression-oriented and is preferred for decision ladders.
 Conditions never use implicit coercion.
 
@@ -18,6 +18,8 @@ Conditions never use implicit coercion.
 - Condition `switch` requires an `else` arm.
 - `switch` arms must produce one result type.
 - `switch` does not fall through.
+- `match` is expression-only and is used for enum variant analysis with optional payload binding.
+- Enum `match` must be exhaustive.
 - `switch`/`when` arrow positions accept both `->` and `=>`; no semantic distinction is attached to spelling.
 - `for i in start..end` uses inclusive start and exclusive end bounds.
 - `for` bounds must be `Int`.
@@ -31,6 +33,7 @@ Outside flow state bodies, use ordinary program control flow:
 
 - `if`
 - `switch`
+- `match` (enum payload binding and variant-sensitive branching)
 - `when utility` (expression form)
 
 Inside `flow/state` bodies, use Octomata decision surfaces:
@@ -39,6 +42,12 @@ Inside `flow/state` bodies, use Octomata decision surfaces:
 - `when policy { ... } { ... }`
 
 When a flow-only form is used outside a flow state, diagnostics should steer you back to `switch` or `when utility`.
+
+Role split:
+
+- `switch`: literal/value dispatch and tag-only enum branching.
+- `match`: associated-data enum payload binding.
+- `when`: utility/policy and Octomata decision surfaces.
 
 ### Decision ladder policy
 
