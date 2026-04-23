@@ -60,7 +60,6 @@ Thumbs.db
 # Oct / repo-local generated artifacts
 # ------------------------------
 *.octbin
-*.octagon
 *.bench.cpu.pprof
 *.gen.go
 *.mir
