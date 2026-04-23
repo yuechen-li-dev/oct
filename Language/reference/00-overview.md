@@ -12,11 +12,13 @@ If this reference conflicts with implementation or tests, implementation and tes
 Choose one path based on what you are trying to do:
 
 - First Oct program (preferred when learning core syntax):
-  - [02 Types](./language/02-types.md) -> [05 Functions](./language/05-functions.md) -> [04 Control Flow](./language/04-control-flow.md) -> [09 Builtins](./language/09-builtins.md)
+  - [02 Types](./language/02-types.md) -> [05 Functions](./language/05-functions.md) -> [04 Control Flow](./language/04-control-flow.md) -> [09 Builtins](./language/09-builtins.md) -> [17 Standard Libraries](./language/17-standard-libraries.md)
 - Control/behavior authoring (use this when building modes and transitions):
   - [04 Control Flow](./language/04-control-flow.md) -> [21 Octomata](./runtime/21-octomata.md) -> [11 Records](./language/11-records.md)
 - Tooling/testing (preferred when validating contracts):
   - [31 octest](./tooling/31-octest.md) -> [32 ocfmt](./tooling/32-ocfmt.md) -> [35 CLI](./tooling/35-cli.md)
+- Prometheus experiments (explicitly non-core):
+  - [23 Prometheus](./runtime/23-prometheus.md) -> [35 CLI](./tooling/35-cli.md)
 - UI authoring (use this when building Machina UI values):
   - [02 Types](./language/02-types.md) -> [08 Units](./language/08-units.md) -> [09 Builtins](./language/09-builtins.md)
 

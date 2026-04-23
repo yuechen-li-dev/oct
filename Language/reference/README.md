@@ -28,12 +28,14 @@ Start with [00-overview.md](./00-overview.md).
 - [14 Variables](./language/14-variables.md)
 - [15 Function Values](./language/15-function-values.md)
 - [16 Vectors and Matrices](./language/16-vectors-and-matrices.md)
+- [17 Standard Libraries](./language/17-standard-libraries.md)
 - [Tensors](./tensors.md)
 
 ## Runtime
 
 - [21 Octomata](./runtime/21-octomata.md)
 - [22 Batch](./runtime/22-batch.md)
+- [23 Prometheus (Experimental)](./runtime/23-prometheus.md)
 
 ## Tooling
 
