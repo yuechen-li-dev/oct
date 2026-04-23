@@ -1,0 +1,90 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M18Packed4PaddingAndTailDeterministic() -> Void {
+    Assert.Equal(M18PadWaste(16), 0, "multiple-of-4 should have no padding")
+    Assert.Equal(M18PadWaste(17), 3, "17 should pad by 3")
+    Assert.Equal(M18PadWaste(15), 1, "15 should pad by 1")
+    Assert.Equal(M18Tail(1), 1, "tail should preserve remainder")
+    Assert.Equal(M18Tail(2), 2, "tail should preserve remainder")
+    Assert.Equal(M18Tail(3), 3, "tail should preserve remainder")
+    Assert.Equal(M18Tail(5), 1, "tail should wrap to 1")
+    Assert.Equal(M18Tail(7), 3, "tail should wrap to 3")
+    Assert.Equal(M18Tail(15), 3, "tail should wrap to 3")
+    Assert.Equal(M18Tail(17), 1, "tail should wrap to 1")
+}
+
+[Fact]
+fn M18Packed4NonMultipleOf4RakeCoversRequiredCases() -> Void {
+    let rows = M18Packed4RakeRows()
+    Assert.Equal(Len(rows), 8, "packed4 rake table should include required tail and rectangular rows")
+    Assert.True(rows[0].MTail == 1, "M tail=1 case should be present")
+    Assert.True(rows[1].MTail == 2, "M tail=2 case should be present")
+    Assert.True(rows[2].MTail == 3, "M tail=3 case should be present")
+    Assert.True(rows[3].MTail == 3 and rows[3].NTail == 1, "15 and 17 tail combination should be present")
+    Assert.True(rows[4].SelectedOrFallback == "Packed4FP32", "rectangular M>>N should still be eligible when budget permits")
+    Assert.True(rows[5].SelectedOrFallback == "Packed4FP32", "rectangular N>>M should still be eligible when budget permits")
+}
+
+[Fact]
+fn M18StrictFP32GateBlocksFP16Storage() -> Void {
+    let strict = M18FP16ErrorMetrics(M18Context { Name: "strict" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: true AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 1 })
+    Assert.Equal(strict.SelectedOrFallback, "ScalarFP32", "strict FP32 correctness must block FP16 storage path")
+    Assert.Equal(strict.FallbackReason, "strict FP32", "strict gate reason must be observable")
+}
+
+[Fact]
+fn M18FP16ToleranceGateRequiresExplicitTolerance() -> Void {
+    let missingTolerance = M18FP16ErrorMetrics(M18Context { Name: "missing-tolerance" M: 64 N: 64 KDim: 128 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 2 })
+    Assert.Equal(missingTolerance.SelectedOrFallback, "ScalarFP32", "missing tolerance must not silently enable FP16 storage")
+    Assert.Equal(missingTolerance.FallbackReason, "tolerance not provided", "missing tolerance reason must be explicit")
+}
+
+[Fact]
+fn M18CapabilityFallbackIsExplicit() -> Void {
+    let packedNoCap = M18Packed4ResultForContext(M18Context { Name: "packed-no-cap" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: false FP16StorageCapability: true Packed4Capability: false FallbackAvailable: true ToleranceProvided: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 HasSpecialValues: false CancellationRisk: 0 })
+    let fp16NoCap = M18FP16ErrorMetrics(M18Context { Name: "fp16-no-cap" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: false Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: false CancellationRisk: 1 })
+    Assert.Equal(packedNoCap.SelectedOrFallback, "ScalarFP32", "missing packed4 capability must fallback")
+    Assert.Equal(packedNoCap.FallbackReason, "missing packed4 capability", "packed4 fallback reason should be observable")
+    Assert.Equal(fp16NoCap.SelectedOrFallback, "ScalarFP32", "missing fp16 capability must fallback")
+    Assert.Equal(fp16NoCap.FallbackReason, "missing FP16 storage capability", "fp16 fallback reason should be observable")
+}
+
+[Fact]
+fn M18SpecialValuesAreConservativelyRejectedForFP16Storage() -> Void {
+    let special = M18FP16ErrorMetrics(M18Context { Name: "special" M: 64 N: 64 KDim: 64 ControllerMode: "SAFE" StrictFP32Correctness: false AllowFP16StorageQuantization: true FP16StorageCapability: true Packed4Capability: true FallbackAvailable: true ToleranceProvided: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 80000 HasSpecialValues: true CancellationRisk: 1 })
+    Assert.True(special.SpecialValueRejected, "special values should trigger conservative rejection")
+    Assert.Equal(special.SelectedOrFallback, "ScalarFP32", "special values must fallback to ScalarFP32")
+    Assert.Equal(special.FallbackReason, "special values present", "special value reason must be explicit")
+}
+
+[Fact]
+fn M18CrossCandidatePriorityAndRecommendationStable() -> Void {
+    let rows = M18CrossDecisionRows()
+    Assert.Equal(rows[0].SelectedCandidate, "Packed4FP32", "strict FP32 should still allow packed4")
+    Assert.Equal(rows[1].SelectedCandidate, "Packed4FP32", "when both are eligible packed4 should win first in M18 policy")
+    let r1 = M18RecommendationSummary()
+    let r2 = M18RecommendationSummary()
+    Assert.Equal(r1.Packed4FP32Status, r2.Packed4FP32Status, "recommendation must be deterministic")
+    Assert.Equal(r1.M19Plan, r2.M19Plan, "M19 recommendation must be deterministic")
+}
+
+[Artifact]
+fn EmitM18Packed4TailPaddingRakeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M18/m18_packed4_tail_padding_rake_table.octagon", [M18Packed4Columns(M18Packed4RakeRows())])
+}
+
+[Artifact]
+fn EmitM18FP16ErrorToleranceRakeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M18/m18_fp16_error_tolerance_rake_table.octagon", [M18FP16Columns(M18FP16RakeRows())])
+}
+
+[Artifact]
+fn EmitM18CrossCandidateDecisionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M18/m18_cross_candidate_decision_table.octagon", [M18DecisionColumns(M18CrossDecisionRows())])
+}
+
+[Artifact]
+fn EmitM18FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M18/m18_final_recommendation.octagon", [M18RecommendationSummary()])
+}

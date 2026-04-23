@@ -1,0 +1,7 @@
+[M18Recommendation {
+    Packed4FP32Status: "implement first with mandatory tail/padding gates and explicit ScalarFP32 fallback"
+    FP16StorageFP32AccumStatus: "plan-only: implement after explicit tolerance opt-in policy, special-value reject policy, and K-sensitive error diagnostics"
+    MandatoryHardGates: "strict FP32 blocks FP16 storage; missing capability blocks candidate; missing fallback blocks non-baseline; missing tolerance blocks FP16 storage; special values block FP16 storage"
+    MandatoryDiagnostics: "packed4_tail_count, packed4_padded_lane_count, packed4_mode_budget_denials, packed4_row_major_check_failures, fp16_max_abs_error, fp16_max_rel_error, fp16_aggregate_error, fp16_k_growth, fp16_special_value_rejections, fallback_reason_code_count"
+    M19Plan: "M19 should implement Packed4FP32 only, with gate/diagnostic parity from M18 and explicit rejection/fallback reason codes in judgment output"
+}]
