@@ -10,3 +10,56 @@ fn JsonNormalizeMinifiesValidDocument() -> Void {
 fn JsonNormalizeRejectsInvalidDocument() -> Void {
     Assert.Error(NormalizeJson("{"), "invalid json should return a fallible error")
 }
+
+[Fact]
+fn JsonIntentRecoveryPeopleUsesColumnarTable() -> Void {
+    let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")!
+    Assert.Equal("table.columnar", recovered.Kind, "people corpus case should recover as canonical columnar table")
+    Assert.True(Contains(recovered.Canonical, "id: [...]"), "columnar canonical should include id column")
+}
+
+[Fact]
+fn JsonIntentRecoveryDispatchUsesMappingTable() -> Void {
+    let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json")!
+    Assert.Equal("mapping.table", recovered.Kind, "dispatch corpus case should recover as mapping table")
+    Assert.True(Contains(recovered.Canonical, "key: [...]"), "mapping canonical should include key column")
+}
+
+[Fact]
+fn JsonIntentRecoveryMatrixUsesNestedGrid() -> Void {
+    let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json")!
+    Assert.Equal("grid.nested_array", recovered.Kind, "matrix corpus case should preserve nested numeric arrays")
+    Assert.True(Contains(recovered.Canonical, "[[Float]]"), "grid canonical should explicitly keep nested arrays")
+}
+
+[Fact]
+fn JsonIntentRecoveryOptionalUsesColumnarTable() -> Void {
+    let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")!
+    Assert.Equal("table.columnar", recovered.Kind, "optional sparse tickets should remain table.columnar in canonical output")
+    Assert.True(Contains(recovered.Canonical, "due_date"), "optional columns should remain present in canonical table")
+}
+
+[Fact]
+fn JsonIntentRecoveryUiAndConfigUseNestedRecord() -> Void {
+    let ui = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_06_ui_like.json")!
+    Assert.Equal("config.nested_record", ui.Kind, "ui case should recover as nested record composition")
+
+    let cfg = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json")!
+    Assert.Equal("config.nested_record", cfg.Kind, "service config should recover as nested record composition")
+}
+
+[Fact]
+fn JsonIntentRecoveryTaggedUsesDecomposition() -> Void {
+    let recovered = ImportJson("Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json")!
+    Assert.Equal("tagged.decomposed", recovered.Kind, "tagged operations should recover with deterministic per-tag decomposition")
+    Assert.True(Contains(recovered.Canonical, "credit"), "tag decomposition should expose stable tag buckets")
+}
+
+[Fact]
+fn JsonIntentRecoveryIsDeterministicForSameInput() -> Void {
+    let path = "Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json"
+    let a = ImportJson(path)!
+    let b = ImportJson(path)!
+    Assert.Equal(a.Kind, b.Kind, "recovery kind should be deterministic")
+    Assert.Equal(a.Canonical, b.Canonical, "canonical representation should be deterministic")
+}

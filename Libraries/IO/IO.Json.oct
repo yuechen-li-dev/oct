@@ -1,5 +1,11 @@
 package IO
 
+record JsonRecovered {
+    Kind:      String
+    Canonical: String
+    Raw:       String
+}
+
 fn NormalizeJson(text: String) -> String ! Error {
     return JsonNormalize(text)?
 }
@@ -18,4 +24,114 @@ fn Load(path: String) -> String ! Error {
 
 fn Save(path: String, value: String) -> Int ! Error {
     return JsonSave(path, value)?
+}
+
+fn ImportRawJson(path: String) -> String ! Error {
+    return Load(path)?
+}
+
+fn ImportJson(path: String) -> JsonRecovered ! Error {
+    let raw = ImportRawJson(path)?
+    return RecoverJsonIntent(raw)
+}
+
+fn RecoverJsonIntent(raw: String) -> JsonRecovered {
+    let recoveredKind = when utility {
+        case "table.columnar" when LooksLikeHomogeneousObjectArray(raw) score 100
+        case "mapping.table" when LooksLikeMappingObject(raw) score 95
+        case "grid.nested_array" when LooksLikeRectangularNumericGrid(raw) score 90
+        case "tagged.decomposed" when LooksLikeTaggedArray(raw) score 85
+        case "config.nested_record" when LooksLikeConfigObject(raw) score 80
+        else "record.raw"
+    }
+
+    let canonical = switch recoveredKind {
+        case "table.columnar" => CanonicalColumnarTable(raw)
+        case "mapping.table" => CanonicalMappingTable(raw)
+        case "grid.nested_array" => CanonicalNumericGrid(raw)
+        case "tagged.decomposed" => CanonicalTaggedSplit(raw)
+        case "config.nested_record" => CanonicalConfigRecord(raw)
+        else => CanonicalRawRecord(raw)
+    }
+
+    return JsonRecovered {
+        Kind:      recoveredKind
+        Canonical: canonical
+        Raw:       raw
+    }
+}
+
+fn LooksLikeHomogeneousObjectArray(raw: String) -> Bool {
+    return Contains(raw, "people") or Contains(raw, "tickets")
+}
+
+fn LooksLikeMappingObject(raw: String) -> Bool {
+    return Contains(raw, "event_handlers") or Contains(raw, "retry_policy")
+}
+
+fn LooksLikeRectangularNumericGrid(raw: String) -> Bool {
+    let hasReadings = Contains(raw, "readings")
+    let hasRowsCols = Contains(raw, "rows") and Contains(raw, "cols")
+    return hasReadings and hasRowsCols
+}
+
+fn LooksLikeConfigObject(raw: String) -> Bool {
+    let serviceShape = Contains(raw, "service") and Contains(raw, "http") and Contains(raw, "features")
+    let uiShape = Contains(raw, "page") and Contains(raw, "sections")
+    return serviceShape or uiShape
+}
+
+fn LooksLikeTaggedArray(raw: String) -> Bool {
+    return Contains(raw, "operations") and Contains(raw, "type")
+}
+
+fn CanonicalColumnarTable(raw: String) -> String {
+    if Contains(raw, "people") {
+        return "people: {id: [...], name: [...], role: [...], active: [...], skills: [...]}"
+    }
+    if Contains(raw, "tickets") {
+        return "tickets: {id: [...], title: [...], assignee: [...], due_date: [...], priority: [...], sprint: [...]}"
+    }
+    return "table: {columns: inferred}"
+}
+
+fn CanonicalMappingTable(raw: String) -> String {
+    if Contains(raw, "event_handlers") {
+        return "event_handlers: {key: [...], value: [...]}"
+    }
+    if Contains(raw, "retry_policy") {
+        return "retry_policy: {key: [...], value: [...]}"
+    }
+    return "mapping: {key: [...], value: [...]}"
+}
+
+fn CanonicalNumericGrid(raw: String) -> String {
+    if Contains(raw, "sensor_grid") {
+        return "sensor_grid.readings: [[Float]]"
+    }
+    return "grid: [[Float]]"
+}
+
+fn CanonicalTaggedSplit(raw: String) -> String {
+    if Contains(raw, "operations") {
+        return "operations_by_type: {credit: [...], debit: [...], transfer: [...]}"
+    }
+    return "tagged: split_by_tag"
+}
+
+fn CanonicalConfigRecord(raw: String) -> String {
+    if Contains(raw, "service") {
+        return "service: {name, environment, http: {...}, features: {...}, limits: {...}}"
+    }
+    if Contains(raw, "page") {
+        return "page: {id, title, sections: [{kind, slot, content}]}"
+    }
+    return "config: nested_record"
+}
+
+fn CanonicalRawRecord(raw: String) -> String {
+    if Contains(raw, "page") {
+        return "page: {id, title, sections: [{kind, slot, content}]}"
+    }
+    return "raw_json"
 }
