@@ -2088,7 +2088,7 @@ func binaryPrecedence(kind lex.TokenKind) (int, bool) {
 		return precedenceAddSub, true
 	case lex.At:
 		return precedenceMatMul, true
-	case lex.Star, lex.Slash:
+	case lex.Star, lex.Slash, lex.Percent:
 		return precedenceMulDiv, true
 	default:
 		return 0, false

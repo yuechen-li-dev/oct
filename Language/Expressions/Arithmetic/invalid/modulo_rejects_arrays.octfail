@@ -1,0 +1,7 @@
+expect error: "function Main: operator"
+
+package Main
+
+fn Main() -> Int[] {
+    return [5, 6] % [2, 3]
+}

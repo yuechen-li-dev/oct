@@ -75,6 +75,7 @@ const (
 	Minus        TokenKind = "Minus"
 	Star         TokenKind = "Star"
 	Slash        TokenKind = "Slash"
+	Percent      TokenKind = "Percent"
 	At           TokenKind = "At"
 	EqualEqual   TokenKind = "EqualEqual"
 	LeftEqual    TokenKind = "LeftEqual"
@@ -251,6 +252,9 @@ func (l *lexer) nextToken() (Token, error) {
 	case '/':
 		l.advanceRune()
 		return Token{Kind: Slash, Lexeme: "/", Line: line, Column: column}, nil
+	case '%':
+		l.advanceRune()
+		return Token{Kind: Percent, Lexeme: "%", Line: line, Column: column}, nil
 	case '-':
 		l.advanceRune()
 		if l.matchString(">") {

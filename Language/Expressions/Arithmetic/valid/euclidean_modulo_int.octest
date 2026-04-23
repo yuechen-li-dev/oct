@@ -1,0 +1,38 @@
+package MainValid
+
+[Fact]
+fn EuclideanModuloBasicSigns() -> Void {
+    Assert.Equal(2, 5 % 3, "positive modulo")
+    Assert.Equal(1, -5 % 3, "negative dividend")
+    Assert.Equal(2, 5 % -3, "negative divisor")
+    Assert.Equal(1, -5 % -3, "both operands negative")
+}
+
+[Fact]
+fn EuclideanModuloRangeInvariant() -> Void {
+    let divisors = [3, -3, 5, -5]
+    let values = [-7, -5, -1, 0, 1, 5, 7]
+    for b in 0..Len(divisors) {
+        let divisor = divisors[b]
+        for i in 0..Len(values) {
+            let a = values[i]
+            let r = a % divisor
+            Assert.Equal(true, 0 <= r and r < Abs(divisor), "range invariant holds")
+        }
+    }
+}
+
+[Fact]
+fn EuclideanModuloStabilityIdentity() -> Void {
+    let divisors = [3, -3, 5, -5]
+    let values = [-8, -5, -1, 0, 1, 5, 8]
+    for b in 0..Len(divisors) {
+        let divisor = divisors[b]
+        for i in 0..Len(values) {
+            let a = values[i]
+            let left = (a % divisor + Abs(divisor)) % divisor
+            let right = a % divisor
+            Assert.Equal(right, left, "stability identity")
+        }
+    }
+}

@@ -1237,6 +1237,11 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 		if err != nil {
 			return ExprType{}, err
 		}
+		if node.Operator == "%" {
+			if divisor, ok := staticIntegerValue(node.Right); ok && divisor == 0 {
+				return ExprType{}, fmt.Errorf("modulo by zero")
+			}
+		}
 		return ExprType{ValueType: resultType}, nil
 	case ast.UnaryExpr:
 		operandType, err := c.checkExpr(scope, node.Operand, ctx)
@@ -1539,6 +1544,19 @@ func staticIntegerValue(expr ast.Expr) (int64, bool) {
 				return 0, false
 			}
 			return left / right, true
+		case "%":
+			if right == 0 {
+				return 0, false
+			}
+			remainder := left % right
+			if remainder < 0 {
+				if right > 0 {
+					remainder += right
+				} else {
+					remainder -= right
+				}
+			}
+			return remainder, true
 		}
 	}
 	return 0, false
@@ -4811,6 +4829,14 @@ func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type)
 			resultBase = BaseTypeFloat
 		}
 		return Type{Base: resultBase, Dimension: resultDimension}, nil
+	case "%":
+		if leftType.Base != BaseTypeInt || rightType.Base != BaseTypeInt {
+			return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+		}
+		if !leftType.Dimension.IsDimensionless() || !rightType.Dimension.IsDimensionless() {
+			return Type{}, fmt.Errorf("modulo requires dimensionless Int operands")
+		}
+		return Type{Base: BaseTypeInt}, nil
 	default:
 		return Type{}, fmt.Errorf("unsupported operator %q", operator)
 	}
@@ -4962,6 +4988,9 @@ func (c checker) checkLinearAlgebraBinaryExpr(operator string, leftType Type, ri
 
 func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
 	if !leftType.IsArray || !rightType.IsArray {
+		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	}
+	if operator == "%" {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 	if leftType.ArrayDepth != rightType.ArrayDepth {

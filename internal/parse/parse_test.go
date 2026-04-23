@@ -235,6 +235,26 @@ func TestBuildFileRespectsExpressionPrecedence(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesModuloWithMultiplicativePrecedence(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { return 20 / 4 % 3 }")
+
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	expr, ok := ret.Value.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected BinaryExpr, got %T", ret.Value)
+	}
+	if expr.Operator != "%" {
+		t.Fatalf("expected top-level '%%' operator, got %q", expr.Operator)
+	}
+	left, ok := expr.Left.(ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("expected left branch BinaryExpr, got %T", expr.Left)
+	}
+	if left.Operator != "/" {
+		t.Fatalf("expected nested '/' operator, got %q", left.Operator)
+	}
+}
+
 func TestBuildFilePreservesParenthesizedExpression(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Float { return (a + b) * 2.0 }")
 
