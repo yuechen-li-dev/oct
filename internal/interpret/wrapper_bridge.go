@@ -147,8 +147,40 @@ func wrapperIntResult(value int64) evalResult {
 	return evalResult{value: Value{Kind: ValueInt, Int: value}}
 }
 
+func wrapperBoolResult(value bool) evalResult {
+	return evalResult{value: Value{Kind: ValueBool, Bool: value}}
+}
+
 func wrapperStringResult(value string) evalResult {
 	return evalResult{value: Value{Kind: ValueString, Text: value}}
+}
+
+func wrapperArrayResult(values []Value) evalResult {
+	return evalResult{value: Value{Kind: ValueArray, Array: values}}
+}
+
+func wrapperStringArrayResult(values []string) evalResult {
+	items := make([]Value, 0, len(values))
+	for _, value := range values {
+		items = append(items, Value{Kind: ValueString, Text: value})
+	}
+	return wrapperArrayResult(items)
+}
+
+func wrapperStringMatrixResult(rows [][]string) evalResult {
+	rowValues := make([]Value, 0, len(rows))
+	for _, row := range rows {
+		rowValues = append(rowValues, wrapperStringArrayValue(row))
+	}
+	return wrapperArrayResult(rowValues)
+}
+
+func wrapperStringArrayValue(values []string) Value {
+	items := make([]Value, 0, len(values))
+	for _, value := range values {
+		items = append(items, Value{Kind: ValueString, Text: value})
+	}
+	return Value{Kind: ValueArray, Array: items}
 }
 
 type wrapperErrorKind string

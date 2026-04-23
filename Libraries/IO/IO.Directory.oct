@@ -1,0 +1,17 @@
+package IO
+
+fn List(path: String) -> String[] ! Error {
+    return DirectoryList(path)?
+}
+
+fn Make(path: String) -> Int ! Error {
+    return DirectoryMake(path)?
+}
+
+fn MakeAll(path: String) -> Int ! Error {
+    return DirectoryMakeAll(path)?
+}
+
+fn RemoveAll(path: String) -> Int ! Error {
+    return DirectoryRemoveAll(path)?
+}

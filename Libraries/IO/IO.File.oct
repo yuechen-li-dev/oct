@@ -1,0 +1,25 @@
+package IO
+
+fn ReadText(path: String) -> String ! Error {
+    return FileReadText(path)?
+}
+
+fn WriteText(path: String, text: String) -> Int ! Error {
+    return FileWriteText(path, text)?
+}
+
+fn ReadBytes(path: String) -> Int[] ! Error {
+    return FileReadBytes(path)?
+}
+
+fn WriteBytes(path: String, data: Int[]) -> Int ! Error {
+    return FileWriteBytes(path, data)?
+}
+
+fn Exists(path: String) -> Bool {
+    return FileExists(path)
+}
+
+fn Delete(path: String) -> Int ! Error {
+    return FileDelete(path)?
+}

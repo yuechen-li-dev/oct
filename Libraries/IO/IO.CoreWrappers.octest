@@ -1,0 +1,94 @@
+package IO
+
+[Fact]
+fn FileReadWriteTextAndDeleteRoundTrip() -> Void {
+    let path = "io_mx103b_text.txt"
+    let _w = WriteText(path, "hello wrappers") !
+    Assert.True(Exists(path), "written file should exist")
+    let text = ReadText(path)!
+    Assert.Equal("hello wrappers", text, "text roundtrip should preserve payload")
+    let _d = Delete(path)!
+    Assert.False(Exists(path), "deleted file should not exist")
+}
+
+[Fact]
+fn FileReadWriteBytesRoundTrip() -> Void {
+    let path = "io_mx103b_bytes.bin"
+    let _w = WriteBytes(path, [79, 67, 84]) !
+    let data = ReadBytes(path)!
+    Assert.Equal(3, Len(data), "byte payload should preserve length")
+    Assert.Equal(79, data[0], "first byte should roundtrip")
+    let _d = Delete(path)!
+}
+
+[Fact]
+fn FileReadMissingFails() -> Void {
+    Assert.Error(ReadText("io_mx103b_missing.txt"), "reading a missing file should fail")
+}
+
+[Fact]
+fn PathWrappersCoverJoinAndSegments() -> Void {
+    let joined = JoinPath(["a", "b", "c.txt"])
+    Assert.Equal(Clean("a/b/c.txt"), Clean(joined), "join should compose with clean")
+    Assert.Equal("c.txt", BaseName("a/b/c.txt"), "basename should return tail")
+    Assert.Equal(".txt", Extension("a/b/c.txt"), "extension should include dot")
+    Assert.Equal("c", Stem("a/b/c.txt"), "stem should omit extension")
+    Assert.Equal(Clean("a/b"), Clean(Parent("a/b/c.txt")), "parent should remove last segment")
+}
+
+[Fact]
+fn DirectoryMakeListAndRemoveAllRoundTrip() -> Void {
+    let root = "io_mx103b_dir"
+    let nested = JoinPath([root, "nested"])
+    let filePath = JoinPath([root, "nested", "entry.txt"])
+    let _m = MakeAll(nested)!
+    let _w = WriteText(filePath, "x")!
+    let entries = List(root)!
+    Assert.Equal(1, Len(entries), "root should contain one nested folder")
+    Assert.Equal("nested", entries[0], "list should include nested folder")
+    let _rm = RemoveAll(root)!
+    Assert.False(Exists(root), "remove all should remove directory tree")
+}
+
+[Fact]
+fn DirectoryListMissingFails() -> Void {
+    Assert.Error(List("io_mx103b_missing_dir"), "listing a missing directory should fail")
+}
+
+[Fact]
+fn JsonParseStringifyAndSaveLoadRoundTrip() -> Void {
+    let parsed = Parse("[3, 2, 1]")!
+    let stringified = Stringify(parsed)!
+    Assert.Equal("[3,2,1]", stringified, "json wrappers should produce compact output")
+
+    let path = "io_mx103b_data.json"
+    let _save = Save(path, "[1,2,3]")!
+    let loaded = Load(path)!
+    Assert.Equal("[1,2,3]", loaded, "json load should return compact valid json")
+    let _delete = Delete(path)!
+}
+
+[Fact]
+fn JsonParseRejectsInvalidDocument() -> Void {
+    Assert.Error(Parse("{"), "invalid json should fail")
+}
+
+[Fact]
+fn CsvReadWriteRoundTrip() -> Void {
+    let path = "io_mx103b_table.csv"
+    let rows = [["name", "score"], ["ada", "42"], ["lin", "7"]]
+    let _w = Write(path, rows)!
+    let readBack = Read(path)!
+    Assert.Equal(3, Len(readBack), "csv should preserve row count")
+    Assert.Equal("name", readBack[0][0], "header should roundtrip")
+    Assert.Equal("7", readBack[2][1], "cell should roundtrip")
+    let _d = Delete(path)!
+}
+
+[Fact]
+fn CsvReadRejectsInvalidCsv() -> Void {
+    let path = "io_mx103b_invalid.csv"
+    let _w = Write(path, [["a", "b"], ["c"]])!
+    Assert.Error(Read(path), "invalid csv should fail")
+    let _d = Delete(path)!
+}

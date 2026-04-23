@@ -2225,6 +2225,36 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "JsonParse" || callee == "JsonStringify" || callee == "JsonLoad" || callee == "JsonSave" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "FileReadText" || callee == "FileWriteText" || callee == "FileReadBytes" || callee == "FileWriteBytes" || callee == "FileExists" || callee == "FileDelete" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkFileBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "PathJoin" || callee == "PathBaseName" || callee == "PathExtension" || callee == "PathStem" || callee == "PathParent" || callee == "PathClean" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkPathBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "DirectoryList" || callee == "DirectoryMake" || callee == "DirectoryMakeAll" || callee == "DirectoryRemoveAll" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkDirectoryBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "CsvRead" || callee == "CsvWrite" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkCSVBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "Append" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
@@ -3428,20 +3458,174 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 }
 
 func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	stringType := Type{Base: BaseTypeString}
+	switch callee {
+	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		}
+		textType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if textType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if textType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
+		}
+		return ExprType{ValueType: stringType, Fallible: true}, nil
+	case "JsonSave":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for idx := 0; idx < 2; idx++ {
+			currentType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if currentType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if currentType.ValueType != stringType {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, currentType.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+	default:
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
-	textType, err := c.checkExpr(scope, arguments[0], ctx)
+}
+
+func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	stringType := Type{Base: BaseTypeString}
+	intArrayType := withArrayDepth(Type{Base: BaseTypeInt}, 1)
+	if callee == "FileReadText" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: stringType, Fallible: true})
+	}
+	if callee == "FileReadBytes" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: intArrayType, Fallible: true})
+	}
+	if callee == "FileExists" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeBool}})
+	}
+	if callee == "FileDelete" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+	}
+	if callee == "FileWriteText" || callee == "FileWriteBytes" {
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		pathType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if pathType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if pathType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
+		}
+		valueType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if callee == "FileWriteText" && valueType.ValueType != stringType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, valueType.ValueType)
+		}
+		if callee == "FileWriteBytes" && valueType.ValueType != intArrayType {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Int[], got %s", callee, valueType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+	}
+	return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+}
+
+func (c checker) checkPathBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "PathJoin" {
+		return c.checkSingleStringArrayArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}})
+	}
+	return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}})
+}
+
+func (c checker) checkDirectoryBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	switch callee {
+	case "DirectoryList":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1), Fallible: true})
+	case "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+	default:
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+	}
+}
+
+func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	stringType := Type{Base: BaseTypeString}
+	stringMatrixType := withArrayDepth(stringType, 2)
+	if callee == "CsvRead" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: stringMatrixType, Fallible: true})
+	}
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+	}
+	pathType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
-	if textType.Fallible {
+	if pathType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
 	}
-	if textType.ValueType != (Type{Base: BaseTypeString}) {
-		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
+	if pathType.ValueType != stringType {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
 	}
-	return ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true}, nil
+	rowsType, err := c.checkExpr(scope, arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if rowsType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if rowsType.ValueType != stringMatrixType {
+		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[][], got %s", callee, rowsType.ValueType)
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+}
+
+func (c checker) checkSingleStringArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+	argType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if argType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if argType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, argType.ValueType)
+	}
+	return result, nil
+}
+
+func (c checker) checkSingleStringArrayArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+	}
+	argType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if argType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+	}
+	if argType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String[], got %s", callee, argType.ValueType)
+	}
+	return result, nil
 }
 
 func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

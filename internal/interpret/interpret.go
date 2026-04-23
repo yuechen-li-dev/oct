@@ -270,7 +270,7 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins()),
 	}
 	for pkgName, pkg := range program.Packages {
 		for _, record := range pkg.Records {
@@ -351,7 +351,7 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins()),
 	}
 	for currentPkg, pkg := range program.Packages {
 		for _, record := range pkg.Records {

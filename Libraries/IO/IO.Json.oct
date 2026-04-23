@@ -3,3 +3,19 @@ package IO
 fn NormalizeJson(text: String) -> String ! Error {
     return JsonNormalize(text)?
 }
+
+fn Parse(text: String) -> String ! Error {
+    return JsonParse(text)?
+}
+
+fn Stringify(value: String) -> String ! Error {
+    return JsonStringify(value)?
+}
+
+fn Load(path: String) -> String ! Error {
+    return JsonLoad(path)?
+}
+
+fn Save(path: String, value: String) -> Int ! Error {
+    return JsonSave(path, value)?
+}
