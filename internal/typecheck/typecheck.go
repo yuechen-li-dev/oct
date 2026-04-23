@@ -2234,6 +2234,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkImageBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "PdfNewPage" || callee == "PdfDrawText" || callee == "PdfDrawTextStyled" || callee == "PdfDrawImage" || callee == "PdfDrawImageSized" || callee == "PdfSave" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkPdfBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "JsonNormalize" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -3614,6 +3620,120 @@ func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, argument
 		return ExprType{ValueType: stringType}, nil
 	}
 	return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+}
+
+func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	intType := Type{Base: BaseTypeInt}
+	pixelIntType := Type{Base: BaseTypeInt, Dimension: uiPixelDimension}
+	stringType := Type{Base: BaseTypeString}
+
+	switch callee {
+	case "PdfNewPage":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for idx := 0; idx < 2; idx++ {
+			dimType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if dimType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if dimType.ValueType != pixelIntType {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, pixelIntType, dimType.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "PdfDrawText":
+		if len(arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", callee, len(arguments))
+		}
+		for idx, expected := range []Type{intType, pixelIntType, pixelIntType, stringType} {
+			current, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != expected {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "PdfDrawTextStyled":
+		if len(arguments) != 8 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 8 arguments, got %d", callee, len(arguments))
+		}
+		expected := []Type{intType, pixelIntType, pixelIntType, stringType, pixelIntType, intType, intType, intType}
+		for idx, want := range expected {
+			current, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != want {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, want, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "PdfDrawImage":
+		if len(arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 4 arguments, got %d", callee, len(arguments))
+		}
+		for idx, expected := range []Type{intType, intType, pixelIntType, pixelIntType} {
+			current, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != expected {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "PdfDrawImageSized":
+		if len(arguments) != 6 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 6 arguments, got %d", callee, len(arguments))
+		}
+		for idx, expected := range []Type{intType, intType, pixelIntType, pixelIntType, pixelIntType, pixelIntType} {
+			current, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != expected {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	case "PdfSave":
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for idx, expected := range []Type{intType, stringType} {
+			current, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if current.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			}
+			if current.ValueType != expected {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
+			}
+		}
+		return ExprType{ValueType: intType, Fallible: true}, nil
+	default:
+		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
+	}
 }
 
 func (c checker) checkJSONStructuredBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

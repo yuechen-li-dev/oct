@@ -361,6 +361,29 @@ func TestCheckRejectsInvalidMx103dImageBuiltins(t *testing.T) {
 	assertTypeErrorContains(t, "fn ImageLoad(path: String) -> Int { return 0 } fn Main() -> Int { return 0 }", "function ImageLoad: cannot redeclare built-in function")
 }
 
+func TestCheckValidatesM105PdfBuiltins(t *testing.T) {
+	validPrograms := []string{
+		"fn Main() -> Int ! Error { let p = PdfNewPage(640px, 480px)? let _ = PdfDrawText(p, 24px, 30px, \"Hello\")? let _ = PdfSave(p, \"out.pdf\")? return 0 }",
+		"fn Main() -> Int ! Error { let p = PdfNewPage(800px, 600px)? let img = ImageLoad(\"plot.png\")? let _ = PdfDrawImage(p, img, 8px, 12px)? let _ = PdfDrawImageSized(p, img, 16px, 18px, 200px, 100px)? return 0 }",
+		"fn Main() -> Int ! Error { let p = PdfNewPage(200px, 100px)? let _ = PdfDrawTextStyled(p, 8px, 10px, \"A\", 20px, 255, 0, 64)? return 0 }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckRejectsInvalidM105PdfBuiltins(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfNewPage(640, 480px)? }", "function Main: function 'PdfNewPage' argument 1 expects Int<px>, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawText(1, 0px, 0px, 5)? }", "function Main: function 'PdfDrawText' argument 4 expects String, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawImage(1, \"img\", 0px, 0px)? }", "function Main: function 'PdfDrawImage' argument 2 expects Int, got String")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawImageSized(1, 2, 0px, 0px, 100, 100px)? }", "function Main: function 'PdfDrawImageSized' argument 5 expects Int<px>, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawTextStyled(1, 0px, 0px, \"x\", 12px, 0, 0)? }", "function Main: function 'PdfDrawTextStyled' expects 8 arguments, got 7")
+	assertTypeErrorContains(t, "fn Main() -> Int { return PdfSave(1, \"out.pdf\") }", "function Main: return value must not be fallible; handle it with '?', '!', or match")
+}
+
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int, Float, or Complex, got Bool")
