@@ -1,0 +1,55 @@
+[M15FailureModeSummary {
+    FailureMode: "oscillation / thrash"
+    ScenariosAttacked: "A1, A2"
+    HeldUp: "bounded transitions remained finite and state stayed legible"
+    BrokeOrQuestionable: "boundary jitter still caused transition bursts near retreat threshold"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "over-retreat / under-retreat"
+    ScenariosAttacked: "B1, D1"
+    HeldUp: "retreat always triggered before unbounded waste growth"
+    BrokeOrQuestionable: "retreated-time share can become high after budget depletion"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "pathological chunk behavior with bursty transfer"
+    ScenariosAttacked: "C1"
+    HeldUp: "chunk always stayed in min/max bounds"
+    BrokeOrQuestionable: "chunk plus burst setup creates completion-time variance spikes"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "sticky/laggy recovery"
+    ScenariosAttacked: "B1, E1"
+    HeldUp: "recovery mode restored lookahead in favorable windows"
+    BrokeOrQuestionable: "recovery window can lag under sudden improvements"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "budget cliff behavior"
+    ScenariosAttacked: "A2, D1"
+    HeldUp: "budget cliff remained bounded without numeric corruption"
+    BrokeOrQuestionable: "near-threshold chatter appears as repeated cliff hits"
+    Severity: "high"
+}, M15FailureModeSummary {
+    FailureMode: "waste accounting lag"
+    ScenariosAttacked: "D1"
+    HeldUp: "lag overshoot is measurable and finite"
+    BrokeOrQuestionable: "lag allows avoidable overshoot before safe mode"
+    Severity: "high"
+}, M15FailureModeSummary {
+    FailureMode: "false calm after lucky streak"
+    ScenariosAttacked: "E1"
+    HeldUp: "controller eventually retreats after crash"
+    BrokeOrQuestionable: "lucky streak can temporarily over-open aggressiveness"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "mixed-regime path dependence"
+    ScenariosAttacked: "F1, F2"
+    HeldUp: "same destination regime stayed functional in both paths"
+    BrokeOrQuestionable: "material timing delta persists by entry history"
+    Severity: "medium"
+}, M15FailureModeSummary {
+    FailureMode: "boundedness integrity"
+    ScenariosAttacked: "all"
+    HeldUp: "lookahead, depth, budget, and chunk stayed bounded"
+    BrokeOrQuestionable: "none observed in deterministic rake sweep"
+    Severity: "low"
+}]

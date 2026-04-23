@@ -1,0 +1,7 @@
+[M15FailureModeTable {
+    FailureMode: ["oscillation / thrash", "over-retreat / under-retreat", "pathological chunk behavior with bursty transfer", "sticky/laggy recovery", "budget cliff behavior", "waste accounting lag", "false calm after lucky streak", "mixed-regime path dependence", "boundedness integrity"]
+    ScenariosAttacked: ["A1, A2", "B1, D1", "C1", "B1, E1", "A2, D1", "D1", "E1", "F1, F2", "all"]
+    HeldUp: ["bounded transitions remained finite and state stayed legible", "retreat always triggered before unbounded waste growth", "chunk always stayed in min/max bounds", "recovery mode restored lookahead in favorable windows", "budget cliff remained bounded without numeric corruption", "lag overshoot is measurable and finite", "controller eventually retreats after crash", "same destination regime stayed functional in both paths", "lookahead, depth, budget, and chunk stayed bounded"]
+    BrokeOrQuestionable: ["boundary jitter still caused transition bursts near retreat threshold", "retreated-time share can become high after budget depletion", "chunk plus burst setup creates completion-time variance spikes", "recovery window can lag under sudden improvements", "near-threshold chatter appears as repeated cliff hits", "lag allows avoidable overshoot before safe mode", "lucky streak can temporarily over-open aggressiveness", "material timing delta persists by entry history", "none observed in deterministic rake sweep"]
+    Severity: ["medium", "medium", "medium", "medium", "high", "high", "medium", "medium", "low"]
+}]

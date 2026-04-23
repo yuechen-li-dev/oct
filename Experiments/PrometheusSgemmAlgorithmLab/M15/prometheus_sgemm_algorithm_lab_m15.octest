@@ -1,0 +1,69 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M15RestatesControllerAndRisks() -> Void {
+    let c = M15ControllerC()
+    let risks = M15RiskTargets()
+    Assert.Equal(c.Name, "C-waste-budgeted-speculation", "M15 must rake-test the exact M14 winner")
+    Assert.True(Len(risks) >= 9, "M15 must include M14 handoff risks plus additional required concerns")
+}
+
+[Fact]
+fn M15RunsAllRequiredStressFamilies() -> Void {
+    let rows = M15ScenarioResults()
+    let catalog = M15ScenarioCatalog()
+    Assert.True(Len(rows) >= 8, "M15 should include boundary jitter, abrupt shifts, bursty transfer, waste spikes, recovery windows, and mixed-path cases")
+    Assert.Equal(Len(rows), Len(catalog.Name), "scenario results should stay aligned with the columnar scenario catalog")
+}
+
+[Fact]
+fn M15BoundednessRemainsIntact() -> Void {
+    let rows = M15ScenarioResults()
+    var violations = 0
+    for i in 0 .. Len(rows) {
+        violations = violations + rows[i].BoundViolationCount
+    }
+    Assert.Equal(violations, 0, "controller quantities must remain within intended bounds under stress")
+}
+
+[Fact]
+fn M15VerdictIsExplicitAndActionable() -> Void {
+    let verdict = M15VerdictSummary()
+    Assert.True(verdict.Verdict == "survives" or verdict.Verdict == "survives with modifications" or verdict.Verdict == "fails", "M15 must pick a single explicit verdict")
+    Assert.True(verdict.M16Recommendation != "", "M15 must hand off concrete M16 implementation guidance")
+}
+
+[Artifact]
+fn EmitM15ControllerSetup() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_controller_setup.octagon", [M15ControllerC()])
+}
+
+[Artifact]
+fn EmitM15RiskTargets() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_risk_targets.octagon", M15RiskTargets())
+}
+
+[Artifact]
+fn EmitM15ScenarioCatalog() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_scenario_catalog_columnar.octagon", [M15ScenarioCatalog()])
+}
+
+[Artifact]
+fn EmitM15ScenarioResults() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_rake_results.octagon", M15ScenarioResults())
+}
+
+[Artifact]
+fn EmitM15FailureModeFindings() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_failure_mode_findings.octagon", M15FailureModeFindings())
+}
+
+[Artifact]
+fn EmitM15FailureModeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_failure_mode_table_columnar.octagon", [M15FailureModeColumns()])
+}
+
+[Artifact]
+fn EmitM15Verdict() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M15/m15_verdict.octagon", [M15VerdictSummary()])
+}
