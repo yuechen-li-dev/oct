@@ -23,6 +23,7 @@ Common modules in the standard-library path include:
 - `Compression.Gzip`
 - `Hash.Core`
 - `Image.Core`
+- `Plot.Core`
 - `Text.Regex`
 - `Time.Core`
 
@@ -33,8 +34,43 @@ Module source locations (canonical in-repo docs/tests live with library code):
 - `Libraries/Compression/`
 - `Libraries/Hash/`
 - `Libraries/Image/`
+- `Libraries/Plot/`
 - `Libraries/Text/`
 - `Libraries/Time/`
+
+## Plotting tiers (important)
+
+Oct plotting is intentionally split into two tiers:
+
+- **Convenience plotting builtins (no imports):** `PlotLine` and `PlotScatter` are directly available for fast single-series PNG output.
+- **Advanced plotting library (imports required):** `Plot.Core` adds explicit plot sizing (`Int<px>`), title/axis labels, legend labels, and histogram support.
+
+Use convenience builtins when you want one-line quick output.
+Import and use `Plot.Core` once you need richer control.
+
+Convenience builtin example (no import):
+
+```oct
+package Main
+
+fn Main() -> Int {
+    return PlotLine([0.0, 1.0, 2.0], [0.0, 1.0, 4.0], "quick.png")
+}
+```
+
+Advanced library example (requires import):
+
+```oct
+package Main
+
+import Plot
+
+fn Main() -> Int ! Error {
+    let size = Plot.Size { Width: 800px Height: 600px }
+    let labels = Plot.Labels { Title: "Signal" X: "t" Y: "amplitude" Legend: "series-a" }
+    return Plot.Line([0.0, 1.0, 2.0], [0.2, 0.9, 1.7], "advanced.png", size, labels)?
+}
+```
 
 ## Usage posture
 

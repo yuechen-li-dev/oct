@@ -1,0 +1,38 @@
+package Plot
+
+record Size {
+    Width: Int<px>
+    Height: Int<px>
+}
+
+record Labels {
+    Title: String
+    X: String
+    Y: String
+    Legend: String
+}
+
+fn Line(x: Float[], y: Float[], outputPath: String, size: Size, labels: Labels) -> Int ! Error {
+    return PlotRenderLine(x, y, outputPath, size.Width, size.Height, labels.Title, labels.X, labels.Y, labels.Legend)?
+}
+
+fn Scatter(x: Float[], y: Float[], outputPath: String, size: Size, labels: Labels) -> Int ! Error {
+    return PlotRenderScatter(x, y, outputPath, size.Width, size.Height, labels.Title, labels.X, labels.Y, labels.Legend)?
+}
+
+fn Histogram(values: Float[], bins: Int, outputPath: String, size: Size, labels: Labels) -> Int ! Error {
+    return PlotRenderHistogram(values, bins, outputPath, size.Width, size.Height, labels.Title, labels.X, labels.Y, labels.Legend)?
+}
+
+fn DefaultSize() -> Size {
+    return Size { Width: 640px Height: 480px }
+}
+
+fn DefaultLabels() -> Labels {
+    return Labels {
+        Title: ""
+        X: "x"
+        Y: "y"
+        Legend: ""
+    }
+}

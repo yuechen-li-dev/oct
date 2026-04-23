@@ -1,0 +1,85 @@
+package Plot
+
+[Fact]
+fn LinePlotWritesConfiguredPng() -> Void {
+    let out = "m104_plot_line.png"
+    let _written = Line(
+        [0.0, 1.0, 2.0],
+        [0.0, 1.0, 4.0],
+        out,
+        Size { Width: 720px Height: 480px },
+        Labels { Title: "Quadratic" X: "x" Y: "y" Legend: "x^2" }
+    )!
+    Assert.True(FileExists(out), "line output should exist")
+    let _deleted = FileDelete(out)!
+}
+
+[Fact]
+fn ScatterPlotWritesConfiguredPng() -> Void {
+    let out = "m104_plot_scatter.png"
+    let _written = Scatter(
+        [0.0, 1.0, 2.0],
+        [0.1, 1.1, 3.8],
+        out,
+        DefaultSize(),
+        Labels { Title: "Samples" X: "t" Y: "value" Legend: "points" }
+    )!
+    Assert.True(FileExists(out), "scatter output should exist")
+    let _deleted = FileDelete(out)!
+}
+
+[Fact]
+fn HistogramWritesConfiguredPng() -> Void {
+    let out = "m104_plot_hist.png"
+    let _written = Histogram(
+        [0.1, 0.2, 0.25, 0.6, 0.9],
+        4,
+        out,
+        Size { Width: 600px Height: 400px },
+        Labels { Title: "Distribution" X: "value" Y: "count" Legend: "samples" }
+    )!
+    Assert.True(FileExists(out), "histogram output should exist")
+    let _deleted = FileDelete(out)!
+}
+
+[Fact]
+fn InvalidOutputPathFails() -> Void {
+    Assert.Error(
+        Line(
+            [0.0, 1.0],
+            [0.0, 1.0],
+            "m104_plot_line.jpg",
+            DefaultSize(),
+            DefaultLabels()
+        ),
+        "line output path must require .png"
+    )
+}
+
+[Fact]
+fn MismatchedDataLengthsFail() -> Void {
+    Assert.Error(
+        Scatter(
+            [0.0, 1.0],
+            [0.0],
+            "m104_plot_bad_length.png",
+            DefaultSize(),
+            DefaultLabels()
+        ),
+        "scatter should reject mismatched lengths"
+    )
+}
+
+[Fact]
+fn InvalidHistogramBinsFail() -> Void {
+    Assert.Error(
+        Histogram(
+            [0.1, 0.2],
+            0,
+            "m104_plot_bad_bins.png",
+            DefaultSize(),
+            DefaultLabels()
+        ),
+        "histogram should reject non-positive bin count"
+    )
+}

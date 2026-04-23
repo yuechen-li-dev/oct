@@ -17,7 +17,7 @@ That made ownership boundaries unclear and increased cognitive load for new read
 
 ### Moved to standard libraries ownership (`language/17-standard-libraries.md`)
 
-- Wrapper/library-backed practical modules (`IO.*`, `Archive.Zip`, `Compression.Gzip`, `Hash.Core`, `Image.Core`, `Text.Regex`, `Time.Core`, `IO.Xlsx`)
+- Wrapper/library-backed practical modules (`IO.*`, `Archive.Zip`, `Compression.Gzip`, `Hash.Core`, `Image.Core`, `Plot.Core`, `Text.Regex`, `Time.Core`, `IO.Xlsx`)
 - Backend-support builtin category explanation for wrapper machinery
 - Practical guidance to prefer module APIs over low-level wrapper calls
 
