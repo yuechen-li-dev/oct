@@ -1,0 +1,8 @@
+[M22RoundTripTable {
+    CaseName: ["roundtrip-baseline", "roundtrip-near-zero", "roundtrip-mixed"]
+    Profile: ["roundtrip-balanced", "near-zero", "mixed-magnitude"]
+    MaxAbsoluteError: [1, 2, 9]
+    MaxRelativeError: [1000000, 1000000, 1000000]
+    AggregateError: [8, 10, 22]
+    WorstCaseElementIndex: [0, 4, 6]
+}]

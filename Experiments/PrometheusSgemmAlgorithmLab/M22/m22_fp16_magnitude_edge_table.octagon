@@ -1,0 +1,8 @@
+[M22MagnitudeEdgeTable {
+    CaseName: ["edge-very-small", "edge-large", "edge-negative", "edge-mixed"]
+    Profile: ["very-small", "large", "negative-heavy", "mixed-magnitude"]
+    MaxAbsoluteError: [2, 112, 0, 9]
+    MaxRelativeError: [1000000, 1600, 0, 1000000]
+    AggregateError: [9, 520, 0, 22]
+    CancellationRisk: [800000, 1000000, 0, 1000000]
+}]

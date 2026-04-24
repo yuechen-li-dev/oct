@@ -1,0 +1,8 @@
+[M22CancellationTable {
+    CaseName: ["cancel-light", "cancel-heavy"]
+    Profile: ["mixed-magnitude", "cancellation-heavy"]
+    CancellationRisk: [1000000, 999842]
+    MaxAbsoluteError: [9, 3]
+    MaxRelativeError: [1000000, 2938]
+    AggregateError: [22, 20]
+}]

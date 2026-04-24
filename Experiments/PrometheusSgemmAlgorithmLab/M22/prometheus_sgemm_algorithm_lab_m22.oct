@@ -1,0 +1,422 @@
+package PrometheusSgemmAlgorithmLab
+
+record M22Scenario {
+    CaseName: String
+    Profile: String
+    KDim: Int
+    StrictFP32: Bool
+    ToleranceKnown: Bool
+    ToleranceMaxAbsMilli: Int
+    ToleranceMaxRelPPM: Int
+    FP16StorageCapability: Bool
+    FallbackAvailable: Bool
+    HasSpecialValues: Bool
+}
+
+record M22MetricRow {
+    CaseName: String
+    Profile: String
+    KDim: Int
+    MaxAbsoluteError: Int
+    MaxRelativeError: Int
+    AggregateError: Int
+    WorstCaseElementIndex: Int
+    KErrorGrowth: Int
+    CancellationRisk: Int
+}
+
+record M22PolicyRow {
+    CaseName: String
+    CandidateEligibility: Bool
+    StrictFP32GatePass: Bool
+    ToleranceKnownGatePass: Bool
+    TolerancePass: Bool
+    SpecialValueGatePass: Bool
+    CapabilityGatePass: Bool
+    FallbackReason: String
+    SelectedCandidate: String
+}
+
+record M22RoundTripTable {
+    CaseName: String[]
+    Profile: String[]
+    MaxAbsoluteError: Int[]
+    MaxRelativeError: Int[]
+    AggregateError: Int[]
+    WorstCaseElementIndex: Int[]
+}
+
+record M22MagnitudeEdgeTable {
+    CaseName: String[]
+    Profile: String[]
+    MaxAbsoluteError: Int[]
+    MaxRelativeError: Int[]
+    AggregateError: Int[]
+    CancellationRisk: Int[]
+}
+
+record M22KGrowthTable {
+    CaseName: String[]
+    KDim: Int[]
+    MaxAbsoluteError: Int[]
+    KErrorGrowth: Int[]
+    AggregateError: Int[]
+}
+
+record M22CancellationTable {
+    CaseName: String[]
+    Profile: String[]
+    CancellationRisk: Int[]
+    MaxAbsoluteError: Int[]
+    MaxRelativeError: Int[]
+    AggregateError: Int[]
+}
+
+record M22PolicyGateTable {
+    CaseName: String[]
+    CandidateEligibility: Bool[]
+    StrictFP32GatePass: Bool[]
+    ToleranceKnownGatePass: Bool[]
+    TolerancePass: Bool[]
+    SpecialValueGatePass: Bool[]
+    CapabilityGatePass: Bool[]
+    FallbackReason: String[]
+    SelectedCandidate: String[]
+}
+
+record M22FinalRecommendation {
+    ImplementSoon: String
+    AutomaticDefault: String
+    RequiresExplicitToleranceOptIn: String
+    MandatoryGates: String
+    MandatoryDiagnostics: String
+    NextMilestone: String
+}
+
+fn M22AbsInt(v: Int) -> Int {
+    return switch {
+        case v < 0 => -v
+        else => v
+    }
+}
+
+fn M22MaxInt(a: Int, b: Int) -> Int {
+    return switch {
+        case a > b => a
+        else => b
+    }
+}
+
+fn M22QuantStepMilli(v: Int) -> Int {
+    let a = M22AbsInt(v)
+    return switch {
+        case a <= 2 => 8
+        case a <= 64 => 4
+        case a <= 1000 => 8
+        case a <= 8000 => 32
+        case a <= 64000 => 128
+        else => 256
+    }
+}
+
+fn M22RoundNearest(v: Int, quantStep: Int) -> Int {
+    if quantStep <= 0 { return v }
+    return switch {
+        case v >= 0 => ((v + (quantStep / 2)) / quantStep) * quantStep
+        else => -(((-v + (quantStep / 2)) / quantStep) * quantStep)
+    }
+}
+
+fn M22FP16QuantizeMilli(v: Int) -> Int {
+    let a = M22AbsInt(v)
+    if a > 65504000 { return 65504000 }
+    if a < 2 { return 0 }
+    let quantStep = M22QuantStepMilli(v)
+    return M22RoundNearest(v, quantStep)
+}
+
+fn M22SampleProfile(profile: String) -> Int[] {
+    return switch {
+        case profile == "roundtrip-balanced" => [1, -1, 3, -3, 15, -15, 1000, -1000, 8193, -8193]
+        case profile == "very-small" => [0, 1, -1, 2, -2, 3, -3, 4, -4, 5]
+        case profile == "large" => [32000, -32000, 48000, -48000, 65500, -65500, 70000, -70000, 90000, -90000]
+        case profile == "mixed-magnitude" => [1, -1, 8, -8, 65, -65, 1001, -1001, 32768, -32768]
+        case profile == "near-zero" => [0, 1, -1, 0, 2, -2, 1, -1, 3, -3]
+        case profile == "negative-heavy" => [-4, -8, -16, -32, -64, -128, -256, -512, -1024, -2048]
+        case profile == "cancellation-heavy" => [1023, -1021, 2047, -2045, 4095, -4093, 8191, -8189, 16383, -16381]
+        else => [4, -4, 12, -12, 36, -36, 144, -144, 576, -576]
+    }
+}
+
+fn M22CancellationRiskPPM(samples: Int[]) -> Int {
+    var sumAbs = 0
+    var signed = 0
+    for i in 0 .. Len(samples) {
+        sumAbs = sumAbs + M22AbsInt(samples[i])
+        signed = signed + samples[i]
+    }
+    if sumAbs <= 0 { return 0 }
+    return ((sumAbs - M22AbsInt(signed)) * 1000000) / sumAbs
+}
+
+fn M22MetricsForScenario(s: M22Scenario) -> M22MetricRow {
+    let samples = M22SampleProfile(s.Profile)
+    var maxAbs = 0
+    var maxRel = 0
+    var agg = 0
+    var worst = -1
+
+    for i in 0 .. Len(samples) {
+        let original = samples[i]
+        let quant = M22FP16QuantizeMilli(original)
+        let absErr = M22AbsInt(original - quant)
+        let rel = (absErr * 1000000) / M22MaxInt(M22AbsInt(original), 1)
+        agg = agg + absErr
+        if absErr > maxAbs {
+            maxAbs = absErr
+            worst = i
+        }
+        if rel > maxRel {
+            maxRel = rel
+        }
+    }
+
+    let cancellationRisk = M22CancellationRiskPPM(samples)
+    let kGrowth = (maxAbs * M22MaxInt(s.KDim, 1) * M22MaxInt(cancellationRisk, 1)) / 1000000
+
+    return M22MetricRow {
+        CaseName: s.CaseName
+        Profile: s.Profile
+        KDim: s.KDim
+        MaxAbsoluteError: maxAbs
+        MaxRelativeError: maxRel
+        AggregateError: agg
+        WorstCaseElementIndex: worst
+        KErrorGrowth: kGrowth
+        CancellationRisk: cancellationRisk
+    }
+}
+
+fn M22FallbackReason(s: M22Scenario, metrics: M22MetricRow) -> String {
+    let strictPass = not s.StrictFP32
+    let toleranceKnown = s.ToleranceKnown
+    let tolerancePass = toleranceKnown and metrics.MaxAbsoluteError <= s.ToleranceMaxAbsMilli and metrics.MaxRelativeError <= s.ToleranceMaxRelPPM
+    let specialPass = not s.HasSpecialValues
+    let capabilityPass = s.FP16StorageCapability and s.FallbackAvailable
+
+    return switch {
+        case not strictPass => "FP16_STRICT_FP32"
+        case not toleranceKnown => "FP16_TOLERANCE_UNKNOWN"
+        case not specialPass => "FP16_SPECIAL_VALUE"
+        case not tolerancePass => "FP16_TOLERANCE_EXCEEDED"
+        case not s.FP16StorageCapability => "FP16_CAPABILITY_MISSING"
+        case not s.FallbackAvailable => "FALLBACK_REQUIRED"
+        else => "none"
+    }
+}
+
+fn M22PolicyForScenario(s: M22Scenario) -> M22PolicyRow {
+    let metrics = M22MetricsForScenario(s)
+    let strictPass = not s.StrictFP32
+    let toleranceKnown = s.ToleranceKnown
+    let tolerancePass = toleranceKnown and metrics.MaxAbsoluteError <= s.ToleranceMaxAbsMilli and metrics.MaxRelativeError <= s.ToleranceMaxRelPPM
+    let specialPass = not s.HasSpecialValues
+    let capabilityPass = s.FP16StorageCapability and s.FallbackAvailable
+
+    let eligible = strictPass and toleranceKnown and tolerancePass and specialPass and capabilityPass
+    let selected = switch {
+        case eligible => "FP16StorageFP32Accum"
+        else => "ScalarFP32"
+    }
+
+    return M22PolicyRow {
+        CaseName: s.CaseName
+        CandidateEligibility: eligible
+        StrictFP32GatePass: strictPass
+        ToleranceKnownGatePass: toleranceKnown
+        TolerancePass: tolerancePass
+        SpecialValueGatePass: specialPass
+        CapabilityGatePass: capabilityPass
+        FallbackReason: M22FallbackReason(s, metrics)
+        SelectedCandidate: selected
+    }
+}
+
+fn M22RoundTripScenarios() -> M22Scenario[] {
+    return [
+        M22Scenario { CaseName: "roundtrip-baseline" Profile: "roundtrip-balanced" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 180000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "roundtrip-near-zero" Profile: "near-zero" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 180000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "roundtrip-mixed" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 180000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false }
+    ]
+}
+
+fn M22MagnitudeEdgeScenarios() -> M22Scenario[] {
+    return [
+        M22Scenario { CaseName: "edge-very-small" Profile: "very-small" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 300000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "edge-large" Profile: "large" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 50000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "edge-negative" Profile: "negative-heavy" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 120000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "edge-mixed" Profile: "mixed-magnitude" KDim: 64 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 120000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false }
+    ]
+}
+
+fn M22KGrowthScenarios() -> M22Scenario[] {
+    return [
+        M22Scenario { CaseName: "k-small" Profile: "roundtrip-balanced" KDim: 16 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "k-medium" Profile: "roundtrip-balanced" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "k-large" Profile: "roundtrip-balanced" KDim: 512 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "k-very-large" Profile: "roundtrip-balanced" KDim: 2048 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 200 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false }
+    ]
+}
+
+fn M22CancellationScenarios() -> M22Scenario[] {
+    return [
+        M22Scenario { CaseName: "cancel-light" Profile: "mixed-magnitude" KDim: 256 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 220 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "cancel-heavy" Profile: "cancellation-heavy" KDim: 256 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 220 ToleranceMaxRelPPM: 150000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false }
+    ]
+}
+
+fn M22PolicyGateScenarios() -> M22Scenario[] {
+    return [
+        M22Scenario { CaseName: "policy-pass-explicit" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 1000 ToleranceMaxRelPPM: 1000000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "policy-strict-fp32" Profile: "mixed-magnitude" KDim: 128 StrictFP32: true ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 200000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "policy-tolerance-missing" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: false ToleranceMaxAbsMilli: 0 ToleranceMaxRelPPM: 0 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "policy-tolerance-exceeded" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 4 ToleranceMaxRelPPM: 1000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "policy-special-value" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 300 ToleranceMaxRelPPM: 200000 FP16StorageCapability: true FallbackAvailable: true HasSpecialValues: true },
+        M22Scenario { CaseName: "policy-capability-missing" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 1000 ToleranceMaxRelPPM: 1000000 FP16StorageCapability: false FallbackAvailable: true HasSpecialValues: false },
+        M22Scenario { CaseName: "policy-fallback-missing" Profile: "mixed-magnitude" KDim: 128 StrictFP32: false ToleranceKnown: true ToleranceMaxAbsMilli: 1000 ToleranceMaxRelPPM: 1000000 FP16StorageCapability: true FallbackAvailable: false HasSpecialValues: false }
+    ]
+}
+
+fn M22MetricsRows(scenarios: M22Scenario[]) -> M22MetricRow[] {
+    var rows = [M22MetricsForScenario(scenarios[0])]
+    for i in 1 .. Len(scenarios) {
+        rows = Append(rows, M22MetricsForScenario(scenarios[i]))
+    }
+    return rows
+}
+
+fn M22PolicyRows() -> M22PolicyRow[] {
+    let scenarios = M22PolicyGateScenarios()
+    var rows = [M22PolicyForScenario(scenarios[0])]
+    for i in 1 .. Len(scenarios) {
+        rows = Append(rows, M22PolicyForScenario(scenarios[i]))
+    }
+    return rows
+}
+
+fn M22RoundTripTableFrom(rows: M22MetricRow[]) -> M22RoundTripTable {
+    var names = [rows[0].CaseName]
+    var profiles = [rows[0].Profile]
+    var maxAbs = [rows[0].MaxAbsoluteError]
+    var maxRel = [rows[0].MaxRelativeError]
+    var agg = [rows[0].AggregateError]
+    var worst = [rows[0].WorstCaseElementIndex]
+    for i in 1 .. Len(rows) {
+        names = Append(names, rows[i].CaseName)
+        profiles = Append(profiles, rows[i].Profile)
+        maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
+        maxRel = Append(maxRel, rows[i].MaxRelativeError)
+        agg = Append(agg, rows[i].AggregateError)
+        worst = Append(worst, rows[i].WorstCaseElementIndex)
+    }
+    return M22RoundTripTable { CaseName: names Profile: profiles MaxAbsoluteError: maxAbs MaxRelativeError: maxRel AggregateError: agg WorstCaseElementIndex: worst }
+}
+
+fn M22MagnitudeEdgeTableFrom(rows: M22MetricRow[]) -> M22MagnitudeEdgeTable {
+    var names = [rows[0].CaseName]
+    var profiles = [rows[0].Profile]
+    var maxAbs = [rows[0].MaxAbsoluteError]
+    var maxRel = [rows[0].MaxRelativeError]
+    var agg = [rows[0].AggregateError]
+    var cancel = [rows[0].CancellationRisk]
+    for i in 1 .. Len(rows) {
+        names = Append(names, rows[i].CaseName)
+        profiles = Append(profiles, rows[i].Profile)
+        maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
+        maxRel = Append(maxRel, rows[i].MaxRelativeError)
+        agg = Append(agg, rows[i].AggregateError)
+        cancel = Append(cancel, rows[i].CancellationRisk)
+    }
+    return M22MagnitudeEdgeTable { CaseName: names Profile: profiles MaxAbsoluteError: maxAbs MaxRelativeError: maxRel AggregateError: agg CancellationRisk: cancel }
+}
+
+fn M22KGrowthTableFrom(rows: M22MetricRow[]) -> M22KGrowthTable {
+    var names = [rows[0].CaseName]
+    var k = [rows[0].KDim]
+    var maxAbs = [rows[0].MaxAbsoluteError]
+    var growth = [rows[0].KErrorGrowth]
+    var agg = [rows[0].AggregateError]
+    for i in 1 .. Len(rows) {
+        names = Append(names, rows[i].CaseName)
+        k = Append(k, rows[i].KDim)
+        maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
+        growth = Append(growth, rows[i].KErrorGrowth)
+        agg = Append(agg, rows[i].AggregateError)
+    }
+    return M22KGrowthTable { CaseName: names KDim: k MaxAbsoluteError: maxAbs KErrorGrowth: growth AggregateError: agg }
+}
+
+fn M22CancellationTableFrom(rows: M22MetricRow[]) -> M22CancellationTable {
+    var names = [rows[0].CaseName]
+    var profiles = [rows[0].Profile]
+    var risk = [rows[0].CancellationRisk]
+    var maxAbs = [rows[0].MaxAbsoluteError]
+    var maxRel = [rows[0].MaxRelativeError]
+    var agg = [rows[0].AggregateError]
+    for i in 1 .. Len(rows) {
+        names = Append(names, rows[i].CaseName)
+        profiles = Append(profiles, rows[i].Profile)
+        risk = Append(risk, rows[i].CancellationRisk)
+        maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
+        maxRel = Append(maxRel, rows[i].MaxRelativeError)
+        agg = Append(agg, rows[i].AggregateError)
+    }
+    return M22CancellationTable { CaseName: names Profile: profiles CancellationRisk: risk MaxAbsoluteError: maxAbs MaxRelativeError: maxRel AggregateError: agg }
+}
+
+fn M22PolicyGateTableFrom(rows: M22PolicyRow[]) -> M22PolicyGateTable {
+    var names = [rows[0].CaseName]
+    var eligible = [rows[0].CandidateEligibility]
+    var strict = [rows[0].StrictFP32GatePass]
+    var known = [rows[0].ToleranceKnownGatePass]
+    var pass = [rows[0].TolerancePass]
+    var special = [rows[0].SpecialValueGatePass]
+    var capability = [rows[0].CapabilityGatePass]
+    var reason = [rows[0].FallbackReason]
+    var selected = [rows[0].SelectedCandidate]
+
+    for i in 1 .. Len(rows) {
+        names = Append(names, rows[i].CaseName)
+        eligible = Append(eligible, rows[i].CandidateEligibility)
+        strict = Append(strict, rows[i].StrictFP32GatePass)
+        known = Append(known, rows[i].ToleranceKnownGatePass)
+        pass = Append(pass, rows[i].TolerancePass)
+        special = Append(special, rows[i].SpecialValueGatePass)
+        capability = Append(capability, rows[i].CapabilityGatePass)
+        reason = Append(reason, rows[i].FallbackReason)
+        selected = Append(selected, rows[i].SelectedCandidate)
+    }
+
+    return M22PolicyGateTable {
+        CaseName: names
+        CandidateEligibility: eligible
+        StrictFP32GatePass: strict
+        ToleranceKnownGatePass: known
+        TolerancePass: pass
+        SpecialValueGatePass: special
+        CapabilityGatePass: capability
+        FallbackReason: reason
+        SelectedCandidate: selected
+    }
+}
+
+fn M22FinalRecommendationSummary() -> M22FinalRecommendation {
+    return M22FinalRecommendation {
+        ImplementSoon: "Yes, but only behind explicit tolerance policy gates and deterministic diagnostics; never as implicit default."
+        AutomaticDefault: "No. Automatic selection is unsafe for strict-FP32, tolerance-unknown, and special-value contexts."
+        RequiresExplicitToleranceOptIn: "Yes. Tolerance must be explicit, known, and passed against measured FP32->FP16->FP32 drift metrics."
+        MandatoryGates: "strict_fp32_off, tolerance_known, tolerance_pass(max_abs+max_rel), special_value_reject, fp16_capability, fallback_available"
+        MandatoryDiagnostics: "MaxAbsoluteError, MaxRelativeError, AggregateError, WorstCaseElementIndex, KErrorGrowth, CancellationRisk, TolerancePass, FallbackReason, SelectedCandidate"
+        NextMilestone: "M23 should wire these gates/reason-codes into judgment-engine selection and add runtime observability parity before any implementation-by-default discussion."
+    }
+}

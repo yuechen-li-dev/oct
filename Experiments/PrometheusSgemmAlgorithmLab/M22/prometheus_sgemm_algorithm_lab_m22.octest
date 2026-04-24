@@ -1,0 +1,103 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M22FP16ConversionModelIsDeterministic() -> Void {
+    let a = M22FP16QuantizeMilli(8193)
+    let b = M22FP16QuantizeMilli(8193)
+    Assert.Equal(a, b, "same input must quantize deterministically")
+    Assert.True(M22FP16QuantizeMilli(1) == 0, "near-zero values should underflow to 0 in this conservative model")
+}
+
+[Fact]
+fn M22StrictFP32GateRejectsFP16Storage() -> Void {
+    let rows = M22PolicyRows()
+    Assert.False(rows[1].CandidateEligibility, "strict FP32 must reject FP16 storage")
+    Assert.False(rows[1].StrictFP32GatePass, "strict gate should report failure")
+    Assert.Equal(rows[1].FallbackReason, "FP16_STRICT_FP32", "strict gate reason code must be explicit")
+    Assert.Equal(rows[1].SelectedCandidate, "ScalarFP32", "strict FP32 must fallback to ScalarFP32")
+}
+
+[Fact]
+fn M22ExplicitLooseToleranceCanPass() -> Void {
+    let rows = M22PolicyRows()
+    Assert.True(rows[0].CandidateEligibility, "explicit and loose tolerance should allow FP16 storage candidate")
+    Assert.Equal(rows[0].SelectedCandidate, "FP16StorageFP32Accum", "eligible policy row should select FP16 storage candidate")
+}
+
+[Fact]
+fn M22MissingToleranceGateRejectsFP16Storage() -> Void {
+    let rows = M22PolicyRows()
+    Assert.False(rows[2].CandidateEligibility, "missing tolerance must reject FP16 storage")
+    Assert.False(rows[2].ToleranceKnownGatePass, "tolerance-known gate must fail when tolerance is missing")
+    Assert.Equal(rows[2].FallbackReason, "FP16_TOLERANCE_UNKNOWN", "missing tolerance reason code must be explicit")
+}
+
+[Fact]
+fn M22ToleranceExceededRejectsFP16Storage() -> Void {
+    let rows = M22PolicyRows()
+    Assert.False(rows[3].CandidateEligibility, "tolerance exceeded must reject FP16 storage")
+    Assert.False(rows[3].TolerancePass, "tolerance pass must be false when measured drift exceeds threshold")
+    Assert.Equal(rows[3].FallbackReason, "FP16_TOLERANCE_EXCEEDED", "tolerance-exceeded reason code must be explicit")
+}
+
+[Fact]
+fn M22SpecialValuesRejectFP16Storage() -> Void {
+    let rows = M22PolicyRows()
+    Assert.False(rows[4].CandidateEligibility, "special values must reject FP16 storage in M22")
+    Assert.False(rows[4].SpecialValueGatePass, "special-value gate should fail")
+    Assert.Equal(rows[4].FallbackReason, "FP16_SPECIAL_VALUE", "special-value reason code must be explicit")
+}
+
+[Fact]
+fn M22FallbackReasonsAreComplete() -> Void {
+    let rows = M22PolicyRows()
+    Assert.Equal(rows[1].FallbackReason, "FP16_STRICT_FP32", "strict code missing")
+    Assert.Equal(rows[2].FallbackReason, "FP16_TOLERANCE_UNKNOWN", "unknown tolerance code missing")
+    Assert.Equal(rows[3].FallbackReason, "FP16_TOLERANCE_EXCEEDED", "tolerance exceeded code missing")
+    Assert.Equal(rows[4].FallbackReason, "FP16_SPECIAL_VALUE", "special value code missing")
+    Assert.Equal(rows[5].FallbackReason, "FP16_CAPABILITY_MISSING", "capability missing code missing")
+    Assert.Equal(rows[6].FallbackReason, "FALLBACK_REQUIRED", "fallback required code missing")
+}
+
+[Fact]
+fn M22FinalRecommendationIsStable() -> Void {
+    let rec = M22FinalRecommendationSummary()
+    Assert.True(Contains(rec.AutomaticDefault, "No"), "automatic default recommendation should remain negative")
+    Assert.True(Contains(rec.RequiresExplicitToleranceOptIn, "Yes"), "explicit opt-in should remain mandatory")
+    Assert.True(Contains(rec.MandatoryGates, "tolerance_known"), "mandatory gates should keep tolerance-known requirement")
+}
+
+[Artifact]
+fn EmitM22RoundtripTable() -> Void {
+    let rows = M22MetricsRows(M22RoundTripScenarios())
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_roundtrip_table.octagon", [M22RoundTripTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM22MagnitudeEdgeTable() -> Void {
+    let rows = M22MetricsRows(M22MagnitudeEdgeScenarios())
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_magnitude_edge_table.octagon", [M22MagnitudeEdgeTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM22KGrowthTable() -> Void {
+    let rows = M22MetricsRows(M22KGrowthScenarios())
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_k_growth_table.octagon", [M22KGrowthTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM22CancellationTable() -> Void {
+    let rows = M22MetricsRows(M22CancellationScenarios())
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_cancellation_table.octagon", [M22CancellationTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM22PolicyGateTable() -> Void {
+    let rows = M22PolicyRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_policy_gate_table.octagon", [M22PolicyGateTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM22FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M22/m22_fp16_final_recommendation.octagon", [M22FinalRecommendationSummary()])
+}

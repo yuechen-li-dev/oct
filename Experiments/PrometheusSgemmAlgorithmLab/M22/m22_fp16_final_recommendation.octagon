@@ -1,0 +1,8 @@
+[M22FinalRecommendation {
+    ImplementSoon: "Yes, but only behind explicit tolerance policy gates and deterministic diagnostics; never as implicit default."
+    AutomaticDefault: "No. Automatic selection is unsafe for strict-FP32, tolerance-unknown, and special-value contexts."
+    RequiresExplicitToleranceOptIn: "Yes. Tolerance must be explicit, known, and passed against measured FP32->FP16->FP32 drift metrics."
+    MandatoryGates: "strict_fp32_off, tolerance_known, tolerance_pass(max_abs+max_rel), special_value_reject, fp16_capability, fallback_available"
+    MandatoryDiagnostics: "MaxAbsoluteError, MaxRelativeError, AggregateError, WorstCaseElementIndex, KErrorGrowth, CancellationRisk, TolerancePass, FallbackReason, SelectedCandidate"
+    NextMilestone: "M23 should wire these gates/reason-codes into judgment-engine selection and add runtime observability parity before any implementation-by-default discussion."
+}]

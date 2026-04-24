@@ -1,0 +1,7 @@
+[M22KGrowthTable {
+    CaseName: ["k-small", "k-medium", "k-large", "k-very-large"]
+    KDim: [16, 128, 512, 2048]
+    MaxAbsoluteError: [1, 1, 1, 1]
+    KErrorGrowth: [16, 128, 512, 2048]
+    AggregateError: [8, 8, 8, 8]
+}]

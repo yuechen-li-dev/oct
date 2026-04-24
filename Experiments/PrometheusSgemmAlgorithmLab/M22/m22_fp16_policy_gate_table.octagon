@@ -1,0 +1,11 @@
+[M22PolicyGateTable {
+    CaseName: ["policy-pass-explicit", "policy-strict-fp32", "policy-tolerance-missing", "policy-tolerance-exceeded", "policy-special-value", "policy-capability-missing", "policy-fallback-missing"]
+    CandidateEligibility: [true, false, false, false, false, false, false]
+    StrictFP32GatePass: [true, false, true, true, true, true, true]
+    ToleranceKnownGatePass: [true, true, false, true, true, true, true]
+    TolerancePass: [true, false, false, false, false, true, true]
+    SpecialValueGatePass: [true, true, true, true, false, true, true]
+    CapabilityGatePass: [true, true, true, true, true, false, false]
+    FallbackReason: ["none", "FP16_STRICT_FP32", "FP16_TOLERANCE_UNKNOWN", "FP16_TOLERANCE_EXCEEDED", "FP16_SPECIAL_VALUE", "FP16_CAPABILITY_MISSING", "FALLBACK_REQUIRED"]
+    SelectedCandidate: ["FP16StorageFP32Accum", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32"]
+}]
