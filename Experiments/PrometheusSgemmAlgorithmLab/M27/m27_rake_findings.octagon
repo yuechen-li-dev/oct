@@ -1,0 +1,7 @@
+[M27RakeFindings {
+    RakeName: ["false-stability", "false-noisy-detection", "detection-delay", "recovery-lag", "mode-thrash", "wip-blindness", "starvation-blindness"]
+    Finding: ["hybrid detects late bursts earlier than raw pull but still incurs some misses", "hybrid has bounded false-noisy transitions in boundary jitter", "hybrid detection delay is finite and lower than missed-only pull behavior", "recovery mode returns to stable pull with explicit dwell instead of instant flip", "mode transitions remain bounded by commitment plus dwell gates", "hybrid reduces WIP inventory-time versus fixed double in stable compute-bound regime", "hybrid starvation remains near fixed double during burst shock"]
+    EvidenceRegime: ["calm-then-burst", "boundary-jitter", "burst-shock", "burst-then-recovery", "boundary-jitter", "compute-bound-stable", "burst-shock"]
+    HybridMetric: [1, 0, 0, 0, 3, 24, 1064]
+    BaselineMetric: [0, 0, 28, 0, 0, 1968, 668]
+}]

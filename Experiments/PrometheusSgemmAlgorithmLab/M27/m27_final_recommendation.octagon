@@ -1,0 +1,12 @@
+[M27FinalRecommendation {
+    M25M26Synthesis: "M25 showed pull-lag is lean in stable windows while fixed double is robust in noise; M26 showed EWMA and control-chart help, Kalman added complexity without enough gain, and WIP separation was compressed."
+    WipSeparationFixed: "yes-wip-separation-visible"
+    HybridStableRegimeVerdict: "no-hybrid-does-not-beat-fixed-double-in-stable"
+    HybridNoisyRegimeVerdict: "no-hybrid-falls-too-far-from-fixed-double-under-noise"
+    HybridWipVsStarvationVerdict: "no-hybrid-tradeoff-not-acceptable"
+    ModeThrashVerdict: "controlled"
+    CarryHybridToM28: "no-do-not-carry-hybrid"
+    FallbackIfNot: "fixed-double-practical-default"
+    M28Direction: "M28 should pivot to fixed-double default and defer pull-lag controller path."
+    M29Direction: "M29 should implement fixed-double defaults with optional guarded pull experiments only."
+}]

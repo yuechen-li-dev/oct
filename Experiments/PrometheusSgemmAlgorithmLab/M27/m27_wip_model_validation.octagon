@@ -1,0 +1,10 @@
+[M27WipModelValidation {
+    Regime: ["stable-balanced", "compute-bound-stable", "ordinary-jitter", "burst-shock", "calm-then-burst", "burst-then-recovery", "boundary-jitter"]
+    FixedDoubleReadyIdle: [1233, 1968, 1237, 1640, 1723, 1577, 1310]
+    PullReadyIdle: [617, 24, 616, 1096, 1187, 993, 668]
+    FixedDoubleInventoryTime: [1233, 1968, 1237, 1640, 1723, 1577, 1310]
+    PullInventoryTime: [617, 24, 616, 1096, 1187, 993, 668]
+    FixedDoubleMemoryProxy: [3699, 5904, 3711, 4920, 5169, 4731, 3930]
+    PullMemoryProxy: [1851, 72, 1848, 3288, 3561, 2979, 2004]
+    SeparationPass: [true, true, true, true, true, true, true]
+}]

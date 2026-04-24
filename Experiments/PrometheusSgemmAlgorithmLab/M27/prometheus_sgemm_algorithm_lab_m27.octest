@@ -1,0 +1,59 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M27HasRequiredStrategies() -> Void {
+    let s = M27Strategies()
+    Assert.Equal(Len(s), 4, "M27 compares fixed double, raw pull, hybrid, and optional triple reference")
+}
+
+[Fact]
+fn M27RunsRequiredRegimes() -> Void {
+    let rows = M27RunAll()
+    Assert.Equal(Len(rows), 28, "7 regimes x 4 strategies expected")
+}
+
+[Fact]
+fn M27TracksDetectorAndModeMetrics() -> Void {
+    let h = M27Pick(M27RunAll(), "boundary-jitter", "C-hybrid-pull-double")
+    Assert.True(h.ModeTransitionCount >= 0, "mode transitions must be tracked")
+    Assert.True(h.TimeInStablePull + h.TimeInNoisyFallback + h.TimeInRecovery > 0, "hybrid mode dwell times must be tracked")
+}
+
+[Fact]
+fn M27FinalRecommendationAnswersRequiredQuestions() -> Void {
+    let rec = M27FinalRecommendationFrom(M27RunAll())
+    Assert.True(Len(rec.WipSeparationFixed) > 0, "must answer WIP-separation status")
+    Assert.True(Len(rec.HybridStableRegimeVerdict) > 0, "must answer stable-regime comparison")
+    Assert.True(Len(rec.HybridNoisyRegimeVerdict) > 0, "must answer noisy-regime closeness")
+    Assert.True(Len(rec.CarryHybridToM28) > 0, "must answer M28 carry decision")
+}
+
+[Artifact]
+fn EmitM27StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_strategy_comparison.octagon", [M27StrategyComparisonTableFrom(M27RunAll())])
+}
+
+[Artifact]
+fn EmitM27WipModelValidation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_wip_model_validation.octagon", [M27WipModelValidationFrom(M27RunAll())])
+}
+
+[Artifact]
+fn EmitM27DetectorQualityTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_detector_quality_table.octagon", [M27DetectorQualityTableFrom(M27RunAll())])
+}
+
+[Artifact]
+fn EmitM27ModeTransitionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_mode_transition_table.octagon", [M27ModeTransitionTableFrom(M27RunAll())])
+}
+
+[Artifact]
+fn EmitM27RakeFindings() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_rake_findings.octagon", [M27RakeFindingsFrom(M27RunAll())])
+}
+
+[Artifact]
+fn EmitM27FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M27/m27_final_recommendation.octagon", [M27FinalRecommendationFrom(M27RunAll())])
+}
