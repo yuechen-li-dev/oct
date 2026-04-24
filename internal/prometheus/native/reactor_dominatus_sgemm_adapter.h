@@ -29,6 +29,13 @@ typedef struct prom_dom_sgemm_m35_snapshot {
   uint64_t memory_budget_slots_permille;
 } prom_dom_sgemm_m35_snapshot;
 
+typedef struct prom_dom_sgemm_buffering_projection {
+  prom_buffering_selector_facts facts;
+  uint64_t visible_generation;
+  uint64_t dependent_dirty_key_mask_last_commit;
+  uint32_t from_visible_snapshot;
+} prom_dom_sgemm_buffering_projection;
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
@@ -36,6 +43,11 @@ uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
 void prom_dom_sgemm_commit(prom_dom_blackboard* board);
 
 uint32_t prom_dom_sgemm_read_visible_m35(const prom_dom_blackboard* board, prom_dom_sgemm_m35_snapshot* out_snapshot);
+
+uint32_t prom_dom_sgemm_build_buffering_selector_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_buffering_selector_facts* fallback_facts,
+    prom_dom_sgemm_buffering_projection* out_projection);
 
 #ifdef __cplusplus
 }
