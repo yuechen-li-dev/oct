@@ -1,0 +1,75 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M28CoversRequiredScenarios() -> Void {
+    let rows = M28SlotLifecycleRows()
+    Assert.True(Len(rows) >= 11, "M28 must include lifecycle coverage for scenarios A-H")
+}
+
+[Fact]
+fn M28SwapOrderGuardsHold() -> Void {
+    let t = M28SwapOrderRake()
+    Assert.Equal(t.AliasViolationCount[0] + t.AliasViolationCount[1] + t.AliasViolationCount[2], 0, "swap ordering must not alias current/next")
+    Assert.Equal(t.ConsumerWrongBufferCount[0] + t.ConsumerWrongBufferCount[1] + t.ConsumerWrongBufferCount[2], 0, "consumer must read intended completed buffer")
+}
+
+[Fact]
+fn M28InvalidationAndStaleProtectionExist() -> Void {
+    let t = M28ShapeLayoutInvalidation()
+    Assert.True(t.ShapeInvalidationCount[0] > 0, "shape transitions must invalidate")
+    Assert.True(t.LayoutInvalidationCount[1] > 0, "layout transitions must invalidate")
+    Assert.True(t.StaleBufferRejectionCount[0] + t.StaleBufferRejectionCount[1] + t.StaleBufferRejectionCount[2] > 0, "stale buffer consumption must be rejected")
+}
+
+[Fact]
+fn M28AsyncOwnershipAndWipBoundsHold() -> Void {
+    let a = M28AsyncInteraction()
+    let w = M28WipInvariants()
+    Assert.Equal(a.WrongReleaseCount[0] + a.WrongReleaseCount[1] + a.WrongReleaseCount[2], 0, "async ownership release must target the correct slot")
+    Assert.Equal(w.BoundViolationCount[0] + w.BoundViolationCount[1] + w.BoundViolationCount[2] + w.BoundViolationCount[3] + w.BoundViolationCount[4] + w.BoundViolationCount[5] + w.BoundViolationCount[6] + w.BoundViolationCount[7], 0, "WIP depth bound must never be violated")
+}
+
+[Fact]
+fn M28FinalContractAnswersRequiredQuestions() -> Void {
+    let c = M28FinalContractFrom()
+    Assert.True(Contains(c.FinalVerdict, "safe to implement"), "must answer fixed-double safety")
+    Assert.True(Contains(c.RequiredSlotStates, "empty") and Contains(c.RequiredSlotStates, "failed"), "must define required slot states")
+    Assert.True(Contains(c.MandatoryInvalidationRules, "shape") and Contains(c.MandatoryInvalidationRules, "layout"), "must define mandatory invalidation rules")
+    Assert.True(Contains(c.MandatoryAsyncOwnershipRules, "in-flight"), "must define async ownership rules")
+    Assert.True(Contains(c.MandatoryDiagnostics, "swap_count"), "must define diagnostics contract")
+}
+
+[Artifact]
+fn EmitM28SlotLifecycleTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_slot_lifecycle_table.octagon", M28SlotLifecycleRows())
+}
+
+[Artifact]
+fn EmitM28SwapOrderRakeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_swap_order_rake_table.octagon", [M28SwapOrderRake()])
+}
+
+[Artifact]
+fn EmitM28ShapeLayoutInvalidationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_shape_layout_invalidation_table.octagon", [M28ShapeLayoutInvalidation()])
+}
+
+[Artifact]
+fn EmitM28AsyncInteractionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_async_interaction_table.octagon", [M28AsyncInteraction()])
+}
+
+[Artifact]
+fn EmitM28FailureRecoveryTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_failure_recovery_table.octagon", [M28FailureRecovery()])
+}
+
+[Artifact]
+fn EmitM28WipInvariantTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_wip_invariant_table.octagon", [M28WipInvariants()])
+}
+
+[Artifact]
+fn EmitM28FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M28/m28_final_contract.octagon", [M28FinalContractFrom()])
+}

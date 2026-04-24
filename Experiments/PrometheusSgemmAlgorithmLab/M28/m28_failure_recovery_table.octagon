@@ -1,0 +1,10 @@
+[M28FailureRecoveryTable {
+    Scenario: ["E-next-failure", "F-current-failure", "G-recovery"]
+    FailureStage: ["prepare", "compute", "cleanup"]
+    FailedSlot: [1, 0, 0]
+    OtherSlotPoisoned: [false, false, false]
+    CleanupRequired: [true, true, true]
+    CleanupPerformed: [true, true, true]
+    RecoverySucceeded: [true, true, true]
+    FailureReason: ["capacity mismatch after shape change", "async compute returned failure status", "explicit slot reset and generation bump"]
+}]

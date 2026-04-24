@@ -1,0 +1,11 @@
+[M28FinalContract {
+    M27Handoff: "Hybrid rejected in M27 because it did not beat fixed double in stable regimes, did not stay close enough under jitter/burst, and could not reduce WIP without unacceptable starvation."
+    FixedDoubleDefinition: "Fixed double means exactly two slots: one current/consumed by compute and one next/prepared, with deterministic single-swap handoff and no speculative third slot."
+    RequiredSlotStates: "Slots must expose explicit states: empty, preparing, ready, current, in-flight, consumed, failed; plus generation, validity, shape/layout metadata, and required byte capacity."
+    MandatoryInvalidationRules: "Any shape/K/output/layout/precision transition must invalidate incompatible slot metadata, reject stale consumption, and trigger capacity/layout rebuild before ready->current swap."
+    MandatoryAsyncOwnershipRules: "Submitted in-flight slot remains owned until completion/failure; overwrite and double-submit are rejected; abandon/failure paths perform explicit ownership release without touching the peer slot."
+    MandatoryDiagnostics: "Diagnostics must expose current_slot, next_slot, per-slot state, swap_count, overwrite_rejection_count, stale_rejection_count, shape_invalidation_count, layout_invalidation_count, inflight_rejection_count, and failure slot/reason."
+    M29ImplementationContract: "Implement native fixed-double reactor state machine with explicit slot lifecycle + generation guardrails, deterministic swap preconditions, mandatory shape/layout invalidation gates, async ownership ledger, and failure-isolated cleanup path preserving WIP<=2 invariants."
+    FurtherRakeNeeded: "No additional pre-implementation rake is required if M29 ships all mandatory state, invalidation, async ownership, and diagnostics guardrails from this contract."
+    FinalVerdict: "Fixed double buffering is safe to implement as practical default if and only if the explicit lifecycle/invalidation/ownership contract is enforced."
+}]

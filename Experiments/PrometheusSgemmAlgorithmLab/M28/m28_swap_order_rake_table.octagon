@@ -1,0 +1,10 @@
+[M28SwapOrderRakeTable {
+    Scenario: ["A-happy-path-steady", "D-async-inflight", "H-boundary-alternating"]
+    EarlySwapRejected: [1, 0, 0]
+    LateSwapRejected: [1, 0, 0]
+    DoubleSwapRejected: [1, 1, 2]
+    MissingSwapDetected: [1, 0, 1]
+    AliasViolationCount: [0, 0, 0]
+    OverwriteRejectedCount: [0, 2, 1]
+    ConsumerWrongBufferCount: [0, 0, 0]
+}]
