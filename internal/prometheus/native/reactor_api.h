@@ -140,6 +140,12 @@ enum {
   PROM_DETAIL_FP16_CAPABILITY_MISSING = -6305,
   PROM_DETAIL_FP16_FALLBACK_REQUIRED = -6306,
   PROM_DETAIL_FP16_NOT_TOP_UTILITY = -6307,
+  PROM_DETAIL_BUFFERING_PULL_LAG_LATE_STAGE_STARVATION = -6401,
+  PROM_DETAIL_BUFFERING_PULL_LAG_MEMORY_EDGE_REJECTED = -6402,
+  PROM_DETAIL_BUFFERING_PULL_LAG_VARIANCE_MISS = -6403,
+  PROM_DETAIL_BUFFERING_PULL_LAG_COMPUTE_UNSTABLE = -6404,
+  PROM_DETAIL_BUFFERING_PULL_LAG_WIP_WASTE_EXCEEDED = -6405,
+  PROM_DETAIL_BUFFERING_NO_MODE_FEASIBLE = -6406,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -244,6 +250,40 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   int m31_transfer_failure_reason;
   uint32_t m31_upload_policy_marker;
   uint32_t m31_async_transfer_complete;
+  uint32_t m35_selected_buffering_mode;
+  uint32_t m35_fixed_feasible;
+  uint32_t m35_pull_lag_feasible;
+  uint32_t m35_serial_feasible;
+  uint32_t m35_fixed_score;
+  uint32_t m35_pull_lag_score;
+  uint32_t m35_serial_score;
+  uint32_t m35_fixed_rejected;
+  uint32_t m35_pull_lag_rejected;
+  uint32_t m35_serial_rejected;
+  uint32_t m35_reason_code;
+  uint32_t m35_transition_count;
+  uint32_t m35_rejection_count;
+  uint64_t m35_memory_budget_slots_permille;
+  uint64_t m35_required_fixed_slots_permille;
+  uint64_t m35_required_pull_lag_slots_permille;
+  uint64_t m35_required_serial_slots_permille;
+  int64_t m35_memory_headroom_slots_permille;
+  uint64_t m35_budget_rejection_count;
+  uint64_t m35_pull_lag_predicted_demand_time;
+  uint64_t m35_pull_lag_transfer_lead_time;
+  uint64_t m35_pull_lag_safety_margin;
+  uint64_t m35_pull_lag_stage_start_time;
+  uint64_t m35_pull_lag_stage_complete_time;
+  uint64_t m35_pull_lag_late_stage_count;
+  uint64_t m35_pull_lag_early_stage_count;
+  uint64_t m35_pull_lag_starvation_time;
+  uint64_t m35_pull_lag_ready_unused_time;
+  uint64_t m35_pull_lag_wip_waste_exceeded_count;
+  uint64_t m35_serial_active_slot_count;
+  uint64_t m35_serial_wip_depth;
+  uint64_t m35_serial_sequential_step_count;
+  uint64_t m35_serial_busy_retry_count;
+  uint64_t m35_serial_failure_cleanup_count;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

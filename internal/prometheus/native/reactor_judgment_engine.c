@@ -298,3 +298,96 @@ prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* mem
                                                          const prom_policy_thresholds* thresholds) {
   return prom_policy_memory_update(memory, facts, thresholds);
 }
+
+void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_facts* facts,
+                                                prom_buffering_selector_decision* out_decision) {
+  if (out_decision == NULL) {
+    return;
+  }
+
+  out_decision->success = 0u;
+  out_decision->selected_mode = PROM_BUFFERING_MODE_NONE;
+  out_decision->reason_code = PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE;
+  out_decision->fixed_feasible = 0u;
+  out_decision->pull_lag_feasible = 0u;
+  out_decision->serial_feasible = 0u;
+  out_decision->fixed_rejected = 1u;
+  out_decision->pull_lag_rejected = 1u;
+  out_decision->serial_rejected = 1u;
+  out_decision->fixed_score = -100000;
+  out_decision->pull_lag_score = -100000;
+  out_decision->serial_score = -100000;
+
+  if (facts == NULL) {
+    return;
+  }
+
+  out_decision->fixed_feasible = facts->memory_budget_slots_permille >= facts->required_fixed_slots_permille ? 1u : 0u;
+  out_decision->serial_feasible =
+      facts->fallback_available != 0u && facts->memory_budget_slots_permille >= facts->required_serial_slots_permille ? 1u : 0u;
+  out_decision->pull_lag_feasible = facts->memory_budget_slots_permille >= facts->required_pull_lag_peak_slots_permille ? 1u : 0u;
+  if (out_decision->pull_lag_feasible != 0u && facts->transfer_variance_class == PROM_VARIANCE_HIGH) {
+    out_decision->pull_lag_feasible = 0u;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_VARIANCE_MISS;
+  }
+  if (out_decision->pull_lag_feasible != 0u && facts->compute_predictability_class == PROM_PREDICTABILITY_UNSTABLE) {
+    out_decision->pull_lag_feasible = 0u;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_COMPUTE_UNSTABLE;
+  }
+  if (out_decision->pull_lag_feasible != 0u && facts->starvation_risk_high != 0u) {
+    out_decision->pull_lag_feasible = 0u;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_LATE_STAGE_STARVATION;
+  }
+  if (out_decision->pull_lag_feasible != 0u && facts->pull_lag_wip_waste_exceeded != 0u) {
+    out_decision->pull_lag_feasible = 0u;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_WIP_WASTE_EXCEEDED;
+  }
+  if (out_decision->pull_lag_feasible != 0u && facts->memory_headroom_slots_permille < 0) {
+    out_decision->pull_lag_feasible = 0u;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_MEMORY_EDGE_REJECTED;
+  }
+
+  if (out_decision->fixed_feasible != 0u) {
+    out_decision->fixed_score = 1000 + facts->memory_headroom_slots_permille;
+    out_decision->fixed_rejected = 0u;
+  } else {
+    out_decision->reason_code = PROM_BUFFERING_REASON_FIXED_DOUBLE_MEMORY_INSUFFICIENT;
+  }
+
+  if (out_decision->pull_lag_feasible != 0u) {
+    out_decision->pull_lag_score = 700 + facts->memory_headroom_slots_permille;
+    out_decision->pull_lag_rejected = 0u;
+  } else if (out_decision->reason_code == PROM_BUFFERING_REASON_NONE) {
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_MEMORY_INSUFFICIENT;
+  }
+
+  if (out_decision->serial_feasible != 0u) {
+    out_decision->serial_score = 300 + facts->memory_headroom_slots_permille;
+    out_decision->serial_rejected = 0u;
+  } else if (out_decision->reason_code == PROM_BUFFERING_REASON_NONE) {
+    out_decision->reason_code = PROM_BUFFERING_REASON_SERIAL_JIT_MEMORY_INSUFFICIENT;
+  }
+
+  if (out_decision->fixed_feasible != 0u) {
+    out_decision->success = 1u;
+    out_decision->selected_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
+    out_decision->reason_code = PROM_BUFFERING_REASON_FIXED_DOUBLE_SELECTED;
+    return;
+  }
+  if (out_decision->pull_lag_feasible != 0u) {
+    out_decision->success = 1u;
+    out_decision->selected_mode = PROM_BUFFERING_MODE_PULL_LAG_PRESSURE;
+    out_decision->reason_code = PROM_BUFFERING_REASON_PULL_LAG_SELECTED;
+    return;
+  }
+  if (out_decision->serial_feasible != 0u) {
+    out_decision->success = 1u;
+    out_decision->selected_mode = PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL;
+    out_decision->reason_code = PROM_BUFFERING_REASON_SERIAL_JIT_SELECTED;
+    return;
+  }
+
+  out_decision->success = 0u;
+  out_decision->selected_mode = PROM_BUFFERING_MODE_NONE;
+  out_decision->reason_code = PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE;
+}

@@ -452,3 +452,70 @@ FACT(PrometheusJudgmentEngine_PolicyMemoryDeterministicAndBoundSafe)
     ASSERT_TRUE(first_memory.cooldown_remaining <= thresholds.retreat_cooldown_decisions,
                 "cooldown counter should remain within valid non-negative bounds");
 }
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorFixedDoubleDefaultWhenFeasible)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 2400u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1500u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.memory_headroom_slots_permille = 900;
+    facts.transfer_variance_class = PROM_VARIANCE_LOW;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
+    facts.fallback_available = 1u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.success, "selector should succeed when fixed-double is feasible");
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT, decision.selected_mode, "fixed-double should win as default when feasible");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_FIXED_DOUBLE_SELECTED, decision.reason_code, "fixed-double selection reason should be explicit");
+    ASSERT_TRUE(decision.fixed_score > decision.pull_lag_score, "fixed-double score should dominate in normal feasible regime");
+}
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorPullLagAndSerialFallbackPaths)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 1600u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1500u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.memory_headroom_slots_permille = 100;
+    facts.transfer_variance_class = PROM_VARIANCE_MODERATE;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_TRACKED;
+    facts.fallback_available = 1u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.success, "selector should succeed when pull-lag pressure path is feasible");
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_PULL_LAG_PRESSURE, decision.selected_mode, "pull-lag should win when fixed-double is infeasible and guarded gates pass");
+
+    facts.transfer_variance_class = PROM_VARIANCE_HIGH;
+    facts.memory_budget_slots_permille = 1200u;
+    facts.memory_headroom_slots_permille = -300;
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.success, "selector should still succeed with serial fallback when pull-lag is rejected");
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL, decision.selected_mode, "serial survival should win when fixed-double and pull-lag are blocked");
+    ASSERT_TRUE(decision.pull_lag_feasible == 0u, "high-variance gate should reject pull-lag feasibility");
+}
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorHardFailureWhenNoModeFeasible)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 900u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1500u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.memory_headroom_slots_permille = -600;
+    facts.transfer_variance_class = PROM_VARIANCE_HIGH;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_UNSTABLE;
+    facts.fallback_available = 0u;
+    facts.starvation_risk_high = 1u;
+    facts.pull_lag_wip_waste_exceeded = 1u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.success, "selector must fail explicitly when all buffering modes are infeasible");
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_NONE, decision.selected_mode, "no-feasible result should not select a partial mode");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE, decision.reason_code, "hard failure reason should be explicit");
+}

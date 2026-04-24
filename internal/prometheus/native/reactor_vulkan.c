@@ -135,6 +135,40 @@ typedef struct prom_slot_runtime_diag {
   int transfer_failure_slot_id;
   int transfer_failure_reason;
   uint32_t async_transfer_complete;
+  uint32_t m35_selected_mode;
+  uint32_t m35_fixed_feasible;
+  uint32_t m35_pull_lag_feasible;
+  uint32_t m35_serial_feasible;
+  uint32_t m35_fixed_rejected;
+  uint32_t m35_pull_lag_rejected;
+  uint32_t m35_serial_rejected;
+  uint32_t m35_reason_code;
+  uint32_t m35_transition_count;
+  uint32_t m35_rejection_count;
+  int m35_fixed_score;
+  int m35_pull_lag_score;
+  int m35_serial_score;
+  uint64_t m35_memory_budget_slots_permille;
+  uint64_t m35_required_fixed_slots_permille;
+  uint64_t m35_required_pull_lag_slots_permille;
+  uint64_t m35_required_serial_slots_permille;
+  int64_t m35_memory_headroom_slots_permille;
+  uint64_t m35_budget_rejection_count;
+  uint64_t m35_pull_lag_predicted_demand_time;
+  uint64_t m35_pull_lag_transfer_lead_time;
+  uint64_t m35_pull_lag_safety_margin;
+  uint64_t m35_pull_lag_stage_start_time;
+  uint64_t m35_pull_lag_stage_complete_time;
+  uint64_t m35_pull_lag_late_stage_count;
+  uint64_t m35_pull_lag_early_stage_count;
+  uint64_t m35_pull_lag_starvation_time;
+  uint64_t m35_pull_lag_ready_unused_time;
+  uint64_t m35_pull_lag_wip_waste_exceeded_count;
+  uint64_t m35_serial_active_slot_count;
+  uint64_t m35_serial_wip_depth;
+  uint64_t m35_serial_sequential_step_count;
+  uint64_t m35_serial_busy_retry_count;
+  uint64_t m35_serial_failure_cleanup_count;
 } prom_slot_runtime_diag;
 
 typedef struct prometheus_runtime {
@@ -687,6 +721,28 @@ static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id) {
   }
   prom_slot_track_wip(rt);
   return 1;
+}
+
+static int prom_buffering_reason_to_detail(prom_buffering_reason_code reason) {
+  if (reason == PROM_BUFFERING_REASON_PULL_LAG_LATE_STAGE_STARVATION) {
+    return PROM_DETAIL_BUFFERING_PULL_LAG_LATE_STAGE_STARVATION;
+  }
+  if (reason == PROM_BUFFERING_REASON_PULL_LAG_MEMORY_EDGE_REJECTED) {
+    return PROM_DETAIL_BUFFERING_PULL_LAG_MEMORY_EDGE_REJECTED;
+  }
+  if (reason == PROM_BUFFERING_REASON_PULL_LAG_VARIANCE_MISS) {
+    return PROM_DETAIL_BUFFERING_PULL_LAG_VARIANCE_MISS;
+  }
+  if (reason == PROM_BUFFERING_REASON_PULL_LAG_COMPUTE_UNSTABLE) {
+    return PROM_DETAIL_BUFFERING_PULL_LAG_COMPUTE_UNSTABLE;
+  }
+  if (reason == PROM_BUFFERING_REASON_PULL_LAG_WIP_WASTE_EXCEEDED) {
+    return PROM_DETAIL_BUFFERING_PULL_LAG_WIP_WASTE_EXCEEDED;
+  }
+  if (reason == PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE) {
+    return PROM_DETAIL_BUFFERING_NO_MODE_FEASIBLE;
+  }
+  return 0;
 }
 
 static uint16_t prom_float32_to_fp16_bits(float value) {
@@ -2165,6 +2221,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_judgment_decision judgment_decision;
   prom_judgment_async_facts async_facts;
   prom_judgment_async_decision async_decision;
+  prom_buffering_selector_facts buffering_facts;
+  prom_buffering_selector_decision buffering_decision;
+  prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
+  prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
+  prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
   VkPipeline selected_pipeline;
   float* packed_a_upload = NULL;
   float* packed_b_upload = NULL;
@@ -2341,6 +2402,100 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     return PROM_ERROR;
   }
   required_capacity_bytes = (uint64_t)a_buffer_size + (uint64_t)b_buffer_size + (uint64_t)c_buffer_size;
+  memset(&buffering_facts, 0, sizeof(buffering_facts));
+  buffering_facts.required_fixed_slots_permille = 2000u;
+  buffering_facts.required_pull_lag_peak_slots_permille = 1500u;
+  buffering_facts.required_serial_slots_permille = 1000u;
+  buffering_facts.fallback_available = judgment_facts.allow_fallback;
+  if (judgment_facts.transfer_queue_dedicated_available != 0u && rt->software_vulkan == 0u) {
+    variance_class = PROM_VARIANCE_LOW;
+  } else if (rt->software_vulkan != 0u) {
+    variance_class = PROM_VARIANCE_HIGH;
+  } else {
+    variance_class = PROM_VARIANCE_MODERATE;
+  }
+  if (policy_mode == PROM_POLICY_MODE_RECOVERY) {
+    predictability_class = PROM_PREDICTABILITY_UNSTABLE;
+  } else if (policy_mode == PROM_POLICY_MODE_SAFE) {
+    predictability_class = PROM_PREDICTABILITY_TRACKED;
+  } else {
+    predictability_class = PROM_PREDICTABILITY_STABLE;
+  }
+  buffering_facts.transfer_variance_class = variance_class;
+  buffering_facts.compute_predictability_class = predictability_class;
+  buffering_facts.pull_lag_wip_waste_exceeded = rt->sgemm_controller.pending_waste_units > PROM_SGEMM_WASTE_BUDGET_UNITS ? 1u : 0u;
+  buffering_facts.starvation_risk_high = rt->software_vulkan != 0u && work_units > (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+  if (can_stage != 0u && can_direct != 0u) {
+    buffering_facts.memory_budget_slots_permille = 2200u;
+  } else if (can_stage != 0u || can_direct != 0u) {
+    buffering_facts.memory_budget_slots_permille = 1400u;
+  } else {
+    buffering_facts.memory_budget_slots_permille = 800u;
+  }
+  if (policy_mode == PROM_POLICY_MODE_SAFE && buffering_facts.memory_budget_slots_permille >= 200u) {
+    buffering_facts.memory_budget_slots_permille -= 200u;
+  } else if (policy_mode == PROM_POLICY_MODE_RECOVERY && buffering_facts.memory_budget_slots_permille >= 400u) {
+    buffering_facts.memory_budget_slots_permille -= 400u;
+  }
+  buffering_facts.memory_headroom_slots_permille =
+      (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_pull_lag_peak_slots_permille;
+  prom_judgment_engine_select_buffering_mode(&buffering_facts, &buffering_decision);
+  rt->slot_diag.m35_memory_budget_slots_permille = buffering_facts.memory_budget_slots_permille;
+  rt->slot_diag.m35_required_fixed_slots_permille = buffering_facts.required_fixed_slots_permille;
+  rt->slot_diag.m35_required_pull_lag_slots_permille = buffering_facts.required_pull_lag_peak_slots_permille;
+  rt->slot_diag.m35_required_serial_slots_permille = buffering_facts.required_serial_slots_permille;
+  rt->slot_diag.m35_memory_headroom_slots_permille = buffering_facts.memory_headroom_slots_permille;
+  rt->slot_diag.m35_fixed_feasible = buffering_decision.fixed_feasible;
+  rt->slot_diag.m35_pull_lag_feasible = buffering_decision.pull_lag_feasible;
+  rt->slot_diag.m35_serial_feasible = buffering_decision.serial_feasible;
+  rt->slot_diag.m35_fixed_rejected = buffering_decision.fixed_rejected;
+  rt->slot_diag.m35_pull_lag_rejected = buffering_decision.pull_lag_rejected;
+  rt->slot_diag.m35_serial_rejected = buffering_decision.serial_rejected;
+  rt->slot_diag.m35_fixed_score = buffering_decision.fixed_score;
+  rt->slot_diag.m35_pull_lag_score = buffering_decision.pull_lag_score;
+  rt->slot_diag.m35_serial_score = buffering_decision.serial_score;
+  rt->slot_diag.m35_reason_code = (uint32_t)buffering_decision.reason_code;
+  if (rt->slot_diag.m35_selected_mode != (uint32_t)buffering_decision.selected_mode) {
+    rt->slot_diag.m35_transition_count += 1u;
+  }
+  rt->slot_diag.m35_selected_mode = (uint32_t)buffering_decision.selected_mode;
+  if (buffering_decision.success == 0u) {
+    rt->slot_diag.m35_rejection_count += 1u;
+    rt->slot_diag.m35_budget_rejection_count += 1u;
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_decision.reason_code));
+    return PROM_ERROR;
+  }
+  buffering_mode = buffering_decision.selected_mode;
+  if (buffering_mode == PROM_BUFFERING_MODE_PULL_LAG_PRESSURE) {
+    rt->slot_diag.m35_pull_lag_predicted_demand_time += work_units;
+    rt->slot_diag.m35_pull_lag_transfer_lead_time += work_units / 4u;
+    rt->slot_diag.m35_pull_lag_safety_margin += work_units / 8u;
+    rt->slot_diag.m35_pull_lag_stage_start_time += work_units / 16u;
+    rt->slot_diag.m35_pull_lag_stage_complete_time += work_units / 16u + 1u;
+    if (variance_class == PROM_VARIANCE_LOW) {
+      rt->slot_diag.m35_pull_lag_early_stage_count += 1u;
+      rt->slot_diag.m35_pull_lag_ready_unused_time += 1u;
+    } else {
+      rt->slot_diag.m35_pull_lag_late_stage_count += 1u;
+      rt->slot_diag.m35_pull_lag_starvation_time += 1u;
+    }
+    if (buffering_facts.pull_lag_wip_waste_exceeded != 0u) {
+      rt->slot_diag.m35_pull_lag_wip_waste_exceeded_count += 1u;
+    }
+  }
+  if (buffering_mode == PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL) {
+    const uint32_t peer_slot_id = 1u;
+    rt->slot_diag.m35_serial_sequential_step_count += 1u;
+    rt->slot_diag.m35_serial_active_slot_count = 1u;
+    if (!prom_slot_cleanup_to_empty(rt, &rt->slots[peer_slot_id])) {
+      rt->slot_diag.m35_serial_busy_retry_count += 1u;
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+      return PROM_ERROR;
+    }
+    rt->slot_diag.m35_serial_failure_cleanup_count += 1u;
+    rt->slot_diag.next_slot_id = 0u;
+    rt->slot_diag.m35_serial_wip_depth = prom_slot_wip_depth(rt);
+  }
   work_slot_id = rt->slot_diag.next_slot_id < 2u ? rt->slot_diag.next_slot_id : 0u;
   prepare_detail = prom_slot_prepare_for_call(rt,
                                               work_slot_id,
@@ -3197,5 +3352,39 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
   out_diag->m31_upload_policy_marker = 1u;
   out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
+  out_diag->m35_selected_buffering_mode = rt->slot_diag.m35_selected_mode;
+  out_diag->m35_fixed_feasible = rt->slot_diag.m35_fixed_feasible;
+  out_diag->m35_pull_lag_feasible = rt->slot_diag.m35_pull_lag_feasible;
+  out_diag->m35_serial_feasible = rt->slot_diag.m35_serial_feasible;
+  out_diag->m35_fixed_score = (uint32_t)(rt->slot_diag.m35_fixed_score < 0 ? 0 : rt->slot_diag.m35_fixed_score);
+  out_diag->m35_pull_lag_score = (uint32_t)(rt->slot_diag.m35_pull_lag_score < 0 ? 0 : rt->slot_diag.m35_pull_lag_score);
+  out_diag->m35_serial_score = (uint32_t)(rt->slot_diag.m35_serial_score < 0 ? 0 : rt->slot_diag.m35_serial_score);
+  out_diag->m35_fixed_rejected = rt->slot_diag.m35_fixed_rejected;
+  out_diag->m35_pull_lag_rejected = rt->slot_diag.m35_pull_lag_rejected;
+  out_diag->m35_serial_rejected = rt->slot_diag.m35_serial_rejected;
+  out_diag->m35_reason_code = rt->slot_diag.m35_reason_code;
+  out_diag->m35_transition_count = rt->slot_diag.m35_transition_count;
+  out_diag->m35_rejection_count = rt->slot_diag.m35_rejection_count;
+  out_diag->m35_memory_budget_slots_permille = rt->slot_diag.m35_memory_budget_slots_permille;
+  out_diag->m35_required_fixed_slots_permille = rt->slot_diag.m35_required_fixed_slots_permille;
+  out_diag->m35_required_pull_lag_slots_permille = rt->slot_diag.m35_required_pull_lag_slots_permille;
+  out_diag->m35_required_serial_slots_permille = rt->slot_diag.m35_required_serial_slots_permille;
+  out_diag->m35_memory_headroom_slots_permille = rt->slot_diag.m35_memory_headroom_slots_permille;
+  out_diag->m35_budget_rejection_count = rt->slot_diag.m35_budget_rejection_count;
+  out_diag->m35_pull_lag_predicted_demand_time = rt->slot_diag.m35_pull_lag_predicted_demand_time;
+  out_diag->m35_pull_lag_transfer_lead_time = rt->slot_diag.m35_pull_lag_transfer_lead_time;
+  out_diag->m35_pull_lag_safety_margin = rt->slot_diag.m35_pull_lag_safety_margin;
+  out_diag->m35_pull_lag_stage_start_time = rt->slot_diag.m35_pull_lag_stage_start_time;
+  out_diag->m35_pull_lag_stage_complete_time = rt->slot_diag.m35_pull_lag_stage_complete_time;
+  out_diag->m35_pull_lag_late_stage_count = rt->slot_diag.m35_pull_lag_late_stage_count;
+  out_diag->m35_pull_lag_early_stage_count = rt->slot_diag.m35_pull_lag_early_stage_count;
+  out_diag->m35_pull_lag_starvation_time = rt->slot_diag.m35_pull_lag_starvation_time;
+  out_diag->m35_pull_lag_ready_unused_time = rt->slot_diag.m35_pull_lag_ready_unused_time;
+  out_diag->m35_pull_lag_wip_waste_exceeded_count = rt->slot_diag.m35_pull_lag_wip_waste_exceeded_count;
+  out_diag->m35_serial_active_slot_count = rt->slot_diag.m35_serial_active_slot_count;
+  out_diag->m35_serial_wip_depth = rt->slot_diag.m35_serial_wip_depth;
+  out_diag->m35_serial_sequential_step_count = rt->slot_diag.m35_serial_sequential_step_count;
+  out_diag->m35_serial_busy_retry_count = rt->slot_diag.m35_serial_busy_retry_count;
+  out_diag->m35_serial_failure_cleanup_count = rt->slot_diag.m35_serial_failure_cleanup_count;
   return PROM_OK;
 }
