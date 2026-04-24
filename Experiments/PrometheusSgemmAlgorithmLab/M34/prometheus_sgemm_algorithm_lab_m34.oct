@@ -1,0 +1,484 @@
+package PrometheusSgemmAlgorithmLab
+
+record M34PullLagTimingRow {
+    CaseName: String
+    PredictedDemandTimeMs: Int
+    EstimatedTransferLeadTimeMs: Int
+    SafetyMarginMs: Int
+    StageStartTimeMs: Int
+    StageCompletionTimeMs: Int
+    ComputeStartTimeMs: Int
+    LateStageCount: Int
+    EarlyStageCount: Int
+    StarvationTimeMs: Int
+    ReadyButUnusedTimeMs: Int
+    MemoryCommittedSlots: Int
+    MemoryCeilingSlots: Int
+    MemoryCeilingViolations: Int
+    WipDepth: Int
+    TransitionReason: String
+    FallbackReason: String
+    SelectedMode: String
+}
+
+record M34PullLagMemoryEdgeRow {
+    CaseName: String
+    MemoryBudgetSlots: Int
+    PullLagPeakRequirementSlots: Int
+    StageAllowed: Bool
+    AllocationAccepted: Bool
+    MemoryCommittedSlots: Int
+    MemoryCeilingSlots: Int
+    MemoryCeilingViolations: Int
+    FeasibilityTruthful: Bool
+    FallbackReason: String
+}
+
+record M34PullLagVarianceMissRow {
+    CaseName: String
+    ClassifiedVariance: String
+    ActualVariance: String
+    PredictedTransferLeadTimeMs: Int
+    ActualTransferLeadTimeMs: Int
+    LateStageCount: Int
+    StarvationTimeMs: Int
+    VarianceMissDetected: Bool
+    RetreatedToMode: String
+    FallbackReason: String
+}
+
+record M34SerialJitContractRow {
+    CaseName: String
+    ActiveSlotCount: Int
+    WipDepth: Int
+    CommittedMemorySlots: Int
+    SerialRequirementSlots: Int
+    SequentialStepCount: Int
+    BusyRetryCount: Int
+    FailureCount: Int
+    CleanupCount: Int
+    OverlapObserved: Bool
+    StaleReuseObserved: Bool
+    CapacityChecksApplied: Bool
+    Result: String
+}
+
+record M34CrossModeTransitionRow {
+    CaseName: String
+    EntryMode: String
+    ExitMode: String
+    FixedDoubleFeasible: Bool
+    PullLagFeasible: Bool
+    SerialJitFeasible: Bool
+    TransferVarianceClass: String
+    ComputePredictabilityClass: String
+    TransitionAllowed: Bool
+    TransitionReason: String
+    HardFailureReason: String
+}
+
+record M34PullLagTimingRakeTable {
+    CaseName: String[]
+    PredictedDemandTimeMs: Int[]
+    EstimatedTransferLeadTimeMs: Int[]
+    SafetyMarginMs: Int[]
+    StageStartTimeMs: Int[]
+    StageCompletionTimeMs: Int[]
+    ComputeStartTimeMs: Int[]
+    LateStageCount: Int[]
+    EarlyStageCount: Int[]
+    StarvationTimeMs: Int[]
+    ReadyButUnusedTimeMs: Int[]
+    MemoryCommittedSlots: Int[]
+    MemoryCeilingSlots: Int[]
+    MemoryCeilingViolations: Int[]
+    WipDepth: Int[]
+    SelectedMode: String[]
+    TransitionReason: String[]
+    FallbackReason: String[]
+}
+
+record M34PullLagMemoryEdgeTable {
+    CaseName: String[]
+    MemoryBudgetSlots: Int[]
+    PullLagPeakRequirementSlots: Int[]
+    StageAllowed: Bool[]
+    AllocationAccepted: Bool[]
+    MemoryCommittedSlots: Int[]
+    MemoryCeilingSlots: Int[]
+    MemoryCeilingViolations: Int[]
+    FeasibilityTruthful: Bool[]
+    FallbackReason: String[]
+}
+
+record M34PullLagVarianceMissTable {
+    CaseName: String[]
+    ClassifiedVariance: String[]
+    ActualVariance: String[]
+    PredictedTransferLeadTimeMs: Int[]
+    ActualTransferLeadTimeMs: Int[]
+    LateStageCount: Int[]
+    StarvationTimeMs: Int[]
+    VarianceMissDetected: Bool[]
+    RetreatedToMode: String[]
+    FallbackReason: String[]
+}
+
+record M34SerialJitContractTable {
+    CaseName: String[]
+    ActiveSlotCount: Int[]
+    WipDepth: Int[]
+    CommittedMemorySlots: Int[]
+    SerialRequirementSlots: Int[]
+    SequentialStepCount: Int[]
+    BusyRetryCount: Int[]
+    FailureCount: Int[]
+    CleanupCount: Int[]
+    OverlapObserved: Bool[]
+    StaleReuseObserved: Bool[]
+    CapacityChecksApplied: Bool[]
+    Result: String[]
+}
+
+record M34CrossModeTransitionTable {
+    CaseName: String[]
+    EntryMode: String[]
+    ExitMode: String[]
+    FixedDoubleFeasible: Bool[]
+    PullLagFeasible: Bool[]
+    SerialJitFeasible: Bool[]
+    TransferVarianceClass: String[]
+    ComputePredictabilityClass: String[]
+    TransitionAllowed: Bool[]
+    TransitionReason: String[]
+    HardFailureReason: String[]
+}
+
+record M34FinalContract {
+    M33Recap: String
+    PullLagSafetyDecision: String
+    PullLagExecutionConditions: String[]
+    PullLagFallbackTriggers: String[]
+    SerialJitSafetyDecision: String
+    SerialJitInvariants: String[]
+    LegalCrossModeTransitions: String[]
+    MandatoryReasonCodes: String[]
+    AdditionalRakeNeededBeforeImplementation: String
+    M35BuildDirection: String
+}
+
+fn M34PullLagTimingRows() -> M34PullLagTimingRow[] {
+    return [
+        M34PullLagTimingRow { CaseName: "pull-lag-steady-safe-window" PredictedDemandTimeMs: 100 EstimatedTransferLeadTimeMs: 30 SafetyMarginMs: 10 StageStartTimeMs: 60 StageCompletionTimeMs: 90 ComputeStartTimeMs: 100 LateStageCount: 0 EarlyStageCount: 0 StarvationTimeMs: 0 ReadyButUnusedTimeMs: 0 MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 WipDepth: 2 TransitionReason: "none" FallbackReason: "none" SelectedMode: "PullLagPressure" },
+        M34PullLagTimingRow { CaseName: "pull-lag-late-stage-starvation" PredictedDemandTimeMs: 100 EstimatedTransferLeadTimeMs: 18 SafetyMarginMs: 2 StageStartTimeMs: 80 StageCompletionTimeMs: 108 ComputeStartTimeMs: 100 LateStageCount: 1 EarlyStageCount: 0 StarvationTimeMs: 8 ReadyButUnusedTimeMs: 0 MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 WipDepth: 2 TransitionReason: "retreat-to-serial-after-starvation" FallbackReason: "PULL_LAG_LATE_STAGE_STARVATION" SelectedMode: "SerialJitSurvival" },
+        M34PullLagTimingRow { CaseName: "pull-lag-early-stage-wip-waste" PredictedDemandTimeMs: 100 EstimatedTransferLeadTimeMs: 55 SafetyMarginMs: 24 StageStartTimeMs: 21 StageCompletionTimeMs: 76 ComputeStartTimeMs: 100 LateStageCount: 0 EarlyStageCount: 1 StarvationTimeMs: 0 ReadyButUnusedTimeMs: 24 MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 WipDepth: 2 TransitionReason: "wip-waste-threshold-breach" FallbackReason: "PULL_LAG_WIP_WASTE_EXCEEDED" SelectedMode: "SerialJitSurvival" },
+        M34PullLagTimingRow { CaseName: "pull-lag-compute-drift" PredictedDemandTimeMs: 120 EstimatedTransferLeadTimeMs: 30 SafetyMarginMs: 10 StageStartTimeMs: 80 StageCompletionTimeMs: 110 ComputeStartTimeMs: 96 LateStageCount: 1 EarlyStageCount: 0 StarvationTimeMs: 14 ReadyButUnusedTimeMs: 0 MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 WipDepth: 2 TransitionReason: "compute-duration-drift-detected" FallbackReason: "PULL_LAG_COMPUTE_UNSTABLE" SelectedMode: "SerialJitSurvival" }
+    ]
+}
+
+fn M34PullLagMemoryEdgeRows() -> M34PullLagMemoryEdgeRow[] {
+    return [
+        M34PullLagMemoryEdgeRow { CaseName: "edge-fit-equal-budget" MemoryBudgetSlots: 2 PullLagPeakRequirementSlots: 2 StageAllowed: true AllocationAccepted: true MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 FeasibilityTruthful: true FallbackReason: "none" },
+        M34PullLagMemoryEdgeRow { CaseName: "edge-under-budget-reject-stage" MemoryBudgetSlots: 1 PullLagPeakRequirementSlots: 2 StageAllowed: false AllocationAccepted: false MemoryCommittedSlots: 1 MemoryCeilingSlots: 1 MemoryCeilingViolations: 0 FeasibilityTruthful: true FallbackReason: "PULL_LAG_MEMORY_EDGE_REJECTED" },
+        M34PullLagMemoryEdgeRow { CaseName: "edge-no-temp-overbudget" MemoryBudgetSlots: 2 PullLagPeakRequirementSlots: 3 StageAllowed: false AllocationAccepted: false MemoryCommittedSlots: 2 MemoryCeilingSlots: 2 MemoryCeilingViolations: 0 FeasibilityTruthful: true FallbackReason: "PULL_LAG_MEMORY_EDGE_REJECTED" }
+    ]
+}
+
+fn M34PullLagVarianceMissRows() -> M34PullLagVarianceMissRow[] {
+    return [
+        M34PullLagVarianceMissRow { CaseName: "classified-moderate-actual-high-spike" ClassifiedVariance: "moderate" ActualVariance: "high" PredictedTransferLeadTimeMs: 28 ActualTransferLeadTimeMs: 49 LateStageCount: 1 StarvationTimeMs: 11 VarianceMissDetected: true RetreatedToMode: "SerialJitSurvival" FallbackReason: "PULL_LAG_VARIANCE_MISS" },
+        M34PullLagVarianceMissRow { CaseName: "classified-low-actual-bursty" ClassifiedVariance: "low" ActualVariance: "high" PredictedTransferLeadTimeMs: 24 ActualTransferLeadTimeMs: 46 LateStageCount: 1 StarvationTimeMs: 7 VarianceMissDetected: true RetreatedToMode: "SerialJitSurvival" FallbackReason: "PULL_LAG_VARIANCE_MISS" },
+        M34PullLagVarianceMissRow { CaseName: "classified-moderate-actual-moderate" ClassifiedVariance: "moderate" ActualVariance: "moderate" PredictedTransferLeadTimeMs: 32 ActualTransferLeadTimeMs: 34 LateStageCount: 0 StarvationTimeMs: 0 VarianceMissDetected: false RetreatedToMode: "PullLagPressure" FallbackReason: "none" }
+    ]
+}
+
+fn M34SerialJitContractRows() -> M34SerialJitContractRow[] {
+    return [
+        M34SerialJitContractRow { CaseName: "serial-jit-steady-sequential" ActiveSlotCount: 1 WipDepth: 1 CommittedMemorySlots: 1 SerialRequirementSlots: 1 SequentialStepCount: 8 BusyRetryCount: 0 FailureCount: 0 CleanupCount: 0 OverlapObserved: false StaleReuseObserved: false CapacityChecksApplied: true Result: "pass" },
+        M34SerialJitContractRow { CaseName: "serial-jit-shape-layout-precision-churn" ActiveSlotCount: 1 WipDepth: 1 CommittedMemorySlots: 1 SerialRequirementSlots: 1 SequentialStepCount: 6 BusyRetryCount: 2 FailureCount: 0 CleanupCount: 0 OverlapObserved: false StaleReuseObserved: false CapacityChecksApplied: true Result: "pass" },
+        M34SerialJitContractRow { CaseName: "serial-jit-failure-needs-cleanup" ActiveSlotCount: 1 WipDepth: 1 CommittedMemorySlots: 1 SerialRequirementSlots: 1 SequentialStepCount: 4 BusyRetryCount: 1 FailureCount: 1 CleanupCount: 1 OverlapObserved: false StaleReuseObserved: false CapacityChecksApplied: true Result: "explicit-failure-and-cleanup" }
+    ]
+}
+
+fn M34CrossModeTransitionRows() -> M34CrossModeTransitionRow[] {
+    return [
+        M34CrossModeTransitionRow { CaseName: "pull-lag-to-serial-after-late-stage" EntryMode: "PullLagPressure" ExitMode: "SerialJitSurvival" FixedDoubleFeasible: false PullLagFeasible: true SerialJitFeasible: true TransferVarianceClass: "moderate" ComputePredictabilityClass: "stable" TransitionAllowed: true TransitionReason: "PULL_LAG_LATE_STAGE_STARVATION" HardFailureReason: "none" },
+        M34CrossModeTransitionRow { CaseName: "serial-to-pull-lag-after-headroom-recovery" EntryMode: "SerialJitSurvival" ExitMode: "PullLagPressure" FixedDoubleFeasible: false PullLagFeasible: true SerialJitFeasible: true TransferVarianceClass: "low" ComputePredictabilityClass: "stable" TransitionAllowed: true TransitionReason: "M33_GATES_RESTORED" HardFailureReason: "none" },
+        M34CrossModeTransitionRow { CaseName: "serial-to-fixed-double-when-memory-restored" EntryMode: "SerialJitSurvival" ExitMode: "FixedDoubleDefault" FixedDoubleFeasible: true PullLagFeasible: true SerialJitFeasible: true TransferVarianceClass: "high" ComputePredictabilityClass: "unstable" TransitionAllowed: true TransitionReason: "FIXED_DOUBLE_MEMORY_RESTORED" HardFailureReason: "none" },
+        M34CrossModeTransitionRow { CaseName: "all-modes-infeasible-hard-failure" EntryMode: "SerialJitSurvival" ExitMode: "NO_BUFFERING_MODE_FEASIBLE" FixedDoubleFeasible: false PullLagFeasible: false SerialJitFeasible: false TransferVarianceClass: "high" ComputePredictabilityClass: "unstable" TransitionAllowed: true TransitionReason: "NO_BUFFERING_MODE_FEASIBLE" HardFailureReason: "NO_BUFFERING_MODE_FEASIBLE" }
+    ]
+}
+
+fn M34PullLagTimingRakeTableFrom(rows: M34PullLagTimingRow[]) -> M34PullLagTimingRakeTable {
+    var caseName = [rows[0].CaseName]
+    var predictedDemandTimeMs = [rows[0].PredictedDemandTimeMs]
+    var estimatedTransferLeadTimeMs = [rows[0].EstimatedTransferLeadTimeMs]
+    var safetyMarginMs = [rows[0].SafetyMarginMs]
+    var stageStartTimeMs = [rows[0].StageStartTimeMs]
+    var stageCompletionTimeMs = [rows[0].StageCompletionTimeMs]
+    var computeStartTimeMs = [rows[0].ComputeStartTimeMs]
+    var lateStageCount = [rows[0].LateStageCount]
+    var earlyStageCount = [rows[0].EarlyStageCount]
+    var starvationTimeMs = [rows[0].StarvationTimeMs]
+    var readyButUnusedTimeMs = [rows[0].ReadyButUnusedTimeMs]
+    var memoryCommittedSlots = [rows[0].MemoryCommittedSlots]
+    var memoryCeilingSlots = [rows[0].MemoryCeilingSlots]
+    var memoryCeilingViolations = [rows[0].MemoryCeilingViolations]
+    var wipDepth = [rows[0].WipDepth]
+    var selectedMode = [rows[0].SelectedMode]
+    var transitionReason = [rows[0].TransitionReason]
+    var fallbackReason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        predictedDemandTimeMs = Append(predictedDemandTimeMs, rows[i].PredictedDemandTimeMs)
+        estimatedTransferLeadTimeMs = Append(estimatedTransferLeadTimeMs, rows[i].EstimatedTransferLeadTimeMs)
+        safetyMarginMs = Append(safetyMarginMs, rows[i].SafetyMarginMs)
+        stageStartTimeMs = Append(stageStartTimeMs, rows[i].StageStartTimeMs)
+        stageCompletionTimeMs = Append(stageCompletionTimeMs, rows[i].StageCompletionTimeMs)
+        computeStartTimeMs = Append(computeStartTimeMs, rows[i].ComputeStartTimeMs)
+        lateStageCount = Append(lateStageCount, rows[i].LateStageCount)
+        earlyStageCount = Append(earlyStageCount, rows[i].EarlyStageCount)
+        starvationTimeMs = Append(starvationTimeMs, rows[i].StarvationTimeMs)
+        readyButUnusedTimeMs = Append(readyButUnusedTimeMs, rows[i].ReadyButUnusedTimeMs)
+        memoryCommittedSlots = Append(memoryCommittedSlots, rows[i].MemoryCommittedSlots)
+        memoryCeilingSlots = Append(memoryCeilingSlots, rows[i].MemoryCeilingSlots)
+        memoryCeilingViolations = Append(memoryCeilingViolations, rows[i].MemoryCeilingViolations)
+        wipDepth = Append(wipDepth, rows[i].WipDepth)
+        selectedMode = Append(selectedMode, rows[i].SelectedMode)
+        transitionReason = Append(transitionReason, rows[i].TransitionReason)
+        fallbackReason = Append(fallbackReason, rows[i].FallbackReason)
+    }
+
+    return M34PullLagTimingRakeTable {
+        CaseName: caseName
+        PredictedDemandTimeMs: predictedDemandTimeMs
+        EstimatedTransferLeadTimeMs: estimatedTransferLeadTimeMs
+        SafetyMarginMs: safetyMarginMs
+        StageStartTimeMs: stageStartTimeMs
+        StageCompletionTimeMs: stageCompletionTimeMs
+        ComputeStartTimeMs: computeStartTimeMs
+        LateStageCount: lateStageCount
+        EarlyStageCount: earlyStageCount
+        StarvationTimeMs: starvationTimeMs
+        ReadyButUnusedTimeMs: readyButUnusedTimeMs
+        MemoryCommittedSlots: memoryCommittedSlots
+        MemoryCeilingSlots: memoryCeilingSlots
+        MemoryCeilingViolations: memoryCeilingViolations
+        WipDepth: wipDepth
+        SelectedMode: selectedMode
+        TransitionReason: transitionReason
+        FallbackReason: fallbackReason
+    }
+}
+
+fn M34PullLagMemoryEdgeTableFrom(rows: M34PullLagMemoryEdgeRow[]) -> M34PullLagMemoryEdgeTable {
+    var caseName = [rows[0].CaseName]
+    var memoryBudgetSlots = [rows[0].MemoryBudgetSlots]
+    var pullLagPeakRequirementSlots = [rows[0].PullLagPeakRequirementSlots]
+    var stageAllowed = [rows[0].StageAllowed]
+    var allocationAccepted = [rows[0].AllocationAccepted]
+    var memoryCommittedSlots = [rows[0].MemoryCommittedSlots]
+    var memoryCeilingSlots = [rows[0].MemoryCeilingSlots]
+    var memoryCeilingViolations = [rows[0].MemoryCeilingViolations]
+    var feasibilityTruthful = [rows[0].FeasibilityTruthful]
+    var fallbackReason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        memoryBudgetSlots = Append(memoryBudgetSlots, rows[i].MemoryBudgetSlots)
+        pullLagPeakRequirementSlots = Append(pullLagPeakRequirementSlots, rows[i].PullLagPeakRequirementSlots)
+        stageAllowed = Append(stageAllowed, rows[i].StageAllowed)
+        allocationAccepted = Append(allocationAccepted, rows[i].AllocationAccepted)
+        memoryCommittedSlots = Append(memoryCommittedSlots, rows[i].MemoryCommittedSlots)
+        memoryCeilingSlots = Append(memoryCeilingSlots, rows[i].MemoryCeilingSlots)
+        memoryCeilingViolations = Append(memoryCeilingViolations, rows[i].MemoryCeilingViolations)
+        feasibilityTruthful = Append(feasibilityTruthful, rows[i].FeasibilityTruthful)
+        fallbackReason = Append(fallbackReason, rows[i].FallbackReason)
+    }
+
+    return M34PullLagMemoryEdgeTable {
+        CaseName: caseName
+        MemoryBudgetSlots: memoryBudgetSlots
+        PullLagPeakRequirementSlots: pullLagPeakRequirementSlots
+        StageAllowed: stageAllowed
+        AllocationAccepted: allocationAccepted
+        MemoryCommittedSlots: memoryCommittedSlots
+        MemoryCeilingSlots: memoryCeilingSlots
+        MemoryCeilingViolations: memoryCeilingViolations
+        FeasibilityTruthful: feasibilityTruthful
+        FallbackReason: fallbackReason
+    }
+}
+
+fn M34PullLagVarianceMissTableFrom(rows: M34PullLagVarianceMissRow[]) -> M34PullLagVarianceMissTable {
+    var caseName = [rows[0].CaseName]
+    var classifiedVariance = [rows[0].ClassifiedVariance]
+    var actualVariance = [rows[0].ActualVariance]
+    var predictedTransferLeadTimeMs = [rows[0].PredictedTransferLeadTimeMs]
+    var actualTransferLeadTimeMs = [rows[0].ActualTransferLeadTimeMs]
+    var lateStageCount = [rows[0].LateStageCount]
+    var starvationTimeMs = [rows[0].StarvationTimeMs]
+    var varianceMissDetected = [rows[0].VarianceMissDetected]
+    var retreatedToMode = [rows[0].RetreatedToMode]
+    var fallbackReason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        classifiedVariance = Append(classifiedVariance, rows[i].ClassifiedVariance)
+        actualVariance = Append(actualVariance, rows[i].ActualVariance)
+        predictedTransferLeadTimeMs = Append(predictedTransferLeadTimeMs, rows[i].PredictedTransferLeadTimeMs)
+        actualTransferLeadTimeMs = Append(actualTransferLeadTimeMs, rows[i].ActualTransferLeadTimeMs)
+        lateStageCount = Append(lateStageCount, rows[i].LateStageCount)
+        starvationTimeMs = Append(starvationTimeMs, rows[i].StarvationTimeMs)
+        varianceMissDetected = Append(varianceMissDetected, rows[i].VarianceMissDetected)
+        retreatedToMode = Append(retreatedToMode, rows[i].RetreatedToMode)
+        fallbackReason = Append(fallbackReason, rows[i].FallbackReason)
+    }
+
+    return M34PullLagVarianceMissTable {
+        CaseName: caseName
+        ClassifiedVariance: classifiedVariance
+        ActualVariance: actualVariance
+        PredictedTransferLeadTimeMs: predictedTransferLeadTimeMs
+        ActualTransferLeadTimeMs: actualTransferLeadTimeMs
+        LateStageCount: lateStageCount
+        StarvationTimeMs: starvationTimeMs
+        VarianceMissDetected: varianceMissDetected
+        RetreatedToMode: retreatedToMode
+        FallbackReason: fallbackReason
+    }
+}
+
+fn M34SerialJitContractTableFrom(rows: M34SerialJitContractRow[]) -> M34SerialJitContractTable {
+    var caseName = [rows[0].CaseName]
+    var activeSlotCount = [rows[0].ActiveSlotCount]
+    var wipDepth = [rows[0].WipDepth]
+    var committedMemorySlots = [rows[0].CommittedMemorySlots]
+    var serialRequirementSlots = [rows[0].SerialRequirementSlots]
+    var sequentialStepCount = [rows[0].SequentialStepCount]
+    var busyRetryCount = [rows[0].BusyRetryCount]
+    var failureCount = [rows[0].FailureCount]
+    var cleanupCount = [rows[0].CleanupCount]
+    var overlapObserved = [rows[0].OverlapObserved]
+    var staleReuseObserved = [rows[0].StaleReuseObserved]
+    var capacityChecksApplied = [rows[0].CapacityChecksApplied]
+    var result = [rows[0].Result]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        activeSlotCount = Append(activeSlotCount, rows[i].ActiveSlotCount)
+        wipDepth = Append(wipDepth, rows[i].WipDepth)
+        committedMemorySlots = Append(committedMemorySlots, rows[i].CommittedMemorySlots)
+        serialRequirementSlots = Append(serialRequirementSlots, rows[i].SerialRequirementSlots)
+        sequentialStepCount = Append(sequentialStepCount, rows[i].SequentialStepCount)
+        busyRetryCount = Append(busyRetryCount, rows[i].BusyRetryCount)
+        failureCount = Append(failureCount, rows[i].FailureCount)
+        cleanupCount = Append(cleanupCount, rows[i].CleanupCount)
+        overlapObserved = Append(overlapObserved, rows[i].OverlapObserved)
+        staleReuseObserved = Append(staleReuseObserved, rows[i].StaleReuseObserved)
+        capacityChecksApplied = Append(capacityChecksApplied, rows[i].CapacityChecksApplied)
+        result = Append(result, rows[i].Result)
+    }
+
+    return M34SerialJitContractTable {
+        CaseName: caseName
+        ActiveSlotCount: activeSlotCount
+        WipDepth: wipDepth
+        CommittedMemorySlots: committedMemorySlots
+        SerialRequirementSlots: serialRequirementSlots
+        SequentialStepCount: sequentialStepCount
+        BusyRetryCount: busyRetryCount
+        FailureCount: failureCount
+        CleanupCount: cleanupCount
+        OverlapObserved: overlapObserved
+        StaleReuseObserved: staleReuseObserved
+        CapacityChecksApplied: capacityChecksApplied
+        Result: result
+    }
+}
+
+fn M34CrossModeTransitionTableFrom(rows: M34CrossModeTransitionRow[]) -> M34CrossModeTransitionTable {
+    var caseName = [rows[0].CaseName]
+    var entryMode = [rows[0].EntryMode]
+    var exitMode = [rows[0].ExitMode]
+    var fixedDoubleFeasible = [rows[0].FixedDoubleFeasible]
+    var pullLagFeasible = [rows[0].PullLagFeasible]
+    var serialJitFeasible = [rows[0].SerialJitFeasible]
+    var transferVarianceClass = [rows[0].TransferVarianceClass]
+    var computePredictabilityClass = [rows[0].ComputePredictabilityClass]
+    var transitionAllowed = [rows[0].TransitionAllowed]
+    var transitionReason = [rows[0].TransitionReason]
+    var hardFailureReason = [rows[0].HardFailureReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        entryMode = Append(entryMode, rows[i].EntryMode)
+        exitMode = Append(exitMode, rows[i].ExitMode)
+        fixedDoubleFeasible = Append(fixedDoubleFeasible, rows[i].FixedDoubleFeasible)
+        pullLagFeasible = Append(pullLagFeasible, rows[i].PullLagFeasible)
+        serialJitFeasible = Append(serialJitFeasible, rows[i].SerialJitFeasible)
+        transferVarianceClass = Append(transferVarianceClass, rows[i].TransferVarianceClass)
+        computePredictabilityClass = Append(computePredictabilityClass, rows[i].ComputePredictabilityClass)
+        transitionAllowed = Append(transitionAllowed, rows[i].TransitionAllowed)
+        transitionReason = Append(transitionReason, rows[i].TransitionReason)
+        hardFailureReason = Append(hardFailureReason, rows[i].HardFailureReason)
+    }
+
+    return M34CrossModeTransitionTable {
+        CaseName: caseName
+        EntryMode: entryMode
+        ExitMode: exitMode
+        FixedDoubleFeasible: fixedDoubleFeasible
+        PullLagFeasible: pullLagFeasible
+        SerialJitFeasible: serialJitFeasible
+        TransferVarianceClass: transferVarianceClass
+        ComputePredictabilityClass: computePredictabilityClass
+        TransitionAllowed: transitionAllowed
+        TransitionReason: transitionReason
+        HardFailureReason: hardFailureReason
+    }
+}
+
+fn M34FinalContractFrom() -> M34FinalContract {
+    return M34FinalContract {
+        M33Recap: "M33 fixed policy selection: FixedDoubleDefault is normal default, PullLagPressure is a guarded pressure-mode only when fixed-double is memory-infeasible and stability gates are satisfied, SerialJitSurvival is final feasible fallback, and hard failure must emit NO_BUFFERING_MODE_FEASIBLE"
+        PullLagSafetyDecision: "yes, safe to implement as a guarded mode only with explicit timing, memory-edge, variance-miss, and compute-drift diagnostics plus mandatory fallback behavior"
+        PullLagExecutionConditions: [
+            "fixed-double memory-feasible gate fails",
+            "pull-lag memory-feasible gate passes without temporary budget overshoot",
+            "transfer variance classification is low or moderate",
+            "compute predictability is stable and deadline updates track drift",
+            "slot ownership invariants hold: no overwrite-before-ready and no consume-before-ready",
+            "WIP depth never exceeds two slots in pull-lag path"
+        ]
+        PullLagFallbackTriggers: ["PULL_LAG_LATE_STAGE_STARVATION", "PULL_LAG_MEMORY_EDGE_REJECTED", "PULL_LAG_VARIANCE_MISS", "PULL_LAG_COMPUTE_UNSTABLE", "PULL_LAG_WIP_WASTE_EXCEEDED"]
+        SerialJitSafetyDecision: "yes, safe to implement as survival fallback provided strict one-at-a-time lifecycle and cleanup-before-retry contract is enforced"
+        SerialJitInvariants: [
+            "active slot count <= 1",
+            "WIP depth <= 1",
+            "committed memory <= serial requirement",
+            "no overlap between transfer/compute of different chunks",
+            "shape/layout/precision churn forces invalidation and capacity checks",
+            "failure must be explicit and require cleanup before retry"
+        ]
+        LegalCrossModeTransitions: [
+            "PullLagPressure -> SerialJitSurvival when pull-lag safety trigger fires and fixed-double remains infeasible",
+            "SerialJitSurvival -> PullLagPressure only when M33 pull-lag gates are re-satisfied",
+            "PullLagPressure or SerialJitSurvival -> FixedDoubleDefault once fixed-double feasibility recovers",
+            "Any mode -> NO_BUFFERING_MODE_FEASIBLE when all feasibility flags are false"
+        ]
+        MandatoryReasonCodes: [
+            "PULL_LAG_LATE_STAGE_STARVATION",
+            "PULL_LAG_MEMORY_EDGE_REJECTED",
+            "PULL_LAG_VARIANCE_MISS",
+            "PULL_LAG_COMPUTE_UNSTABLE",
+            "PULL_LAG_WIP_WASTE_EXCEEDED",
+            "FIXED_DOUBLE_MEMORY_RESTORED",
+            "M33_GATES_RESTORED",
+            "NO_BUFFERING_MODE_FEASIBLE"
+        ]
+        AdditionalRakeNeededBeforeImplementation: "no additional broad rake required before M35; targeted runtime instrumentation validation is enough"
+        M35BuildDirection: "implement three-mode selector with FixedDoubleDefault default, guarded PullLagPressure entry/exit contract, SerialJitSurvival fallback, and mandatory reason-coded diagnostics/telemetry fields captured in decision reports"
+    }
+}

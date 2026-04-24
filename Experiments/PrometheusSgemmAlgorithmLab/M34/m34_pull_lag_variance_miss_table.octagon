@@ -1,0 +1,12 @@
+[M34PullLagVarianceMissTable {
+    CaseName: ["classified-moderate-actual-high-spike", "classified-low-actual-bursty", "classified-moderate-actual-moderate"]
+    ClassifiedVariance: ["moderate", "low", "moderate"]
+    ActualVariance: ["high", "high", "moderate"]
+    PredictedTransferLeadTimeMs: [28, 24, 32]
+    ActualTransferLeadTimeMs: [49, 46, 34]
+    LateStageCount: [1, 1, 0]
+    StarvationTimeMs: [11, 7, 0]
+    VarianceMissDetected: [true, true, false]
+    RetreatedToMode: ["SerialJitSurvival", "SerialJitSurvival", "PullLagPressure"]
+    FallbackReason: ["PULL_LAG_VARIANCE_MISS", "PULL_LAG_VARIANCE_MISS", "none"]
+}]

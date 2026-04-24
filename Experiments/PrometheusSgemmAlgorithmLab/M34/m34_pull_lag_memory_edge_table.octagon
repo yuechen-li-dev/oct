@@ -1,0 +1,12 @@
+[M34PullLagMemoryEdgeTable {
+    CaseName: ["edge-fit-equal-budget", "edge-under-budget-reject-stage", "edge-no-temp-overbudget"]
+    MemoryBudgetSlots: [2, 1, 2]
+    PullLagPeakRequirementSlots: [2, 2, 3]
+    StageAllowed: [true, false, false]
+    AllocationAccepted: [true, false, false]
+    MemoryCommittedSlots: [2, 1, 2]
+    MemoryCeilingSlots: [2, 1, 2]
+    MemoryCeilingViolations: [0, 0, 0]
+    FeasibilityTruthful: [true, true, true]
+    FallbackReason: ["none", "PULL_LAG_MEMORY_EDGE_REJECTED", "PULL_LAG_MEMORY_EDGE_REJECTED"]
+}]
