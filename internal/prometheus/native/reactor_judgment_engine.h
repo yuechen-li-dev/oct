@@ -19,7 +19,17 @@ typedef enum prom_vk_path_mode {
 typedef enum prom_vk_compute_mode {
   PROM_VK_COMPUTE_BASELINE = 1,
   PROM_VK_COMPUTE_TILED = 2,
+  PROM_VK_COMPUTE_PACKED4_FP32 = 3,
 } prom_vk_compute_mode;
+
+typedef enum prom_packed4_reject_reason {
+  PROM_PACKED4_REJECT_NONE = 0,
+  PROM_PACKED4_REJECT_PADDING_WASTE = 1,
+  PROM_PACKED4_REJECT_SMALL_SHAPE = 2,
+  PROM_PACKED4_REJECT_CAPABILITY_MISSING = 3,
+  PROM_PACKED4_REJECT_FALLBACK_REQUIRED = 4,
+  PROM_PACKED4_REJECT_MODE_BUDGET_DENIED = 5,
+} prom_packed4_reject_reason;
 
 typedef struct prom_judgment_facts {
   uint32_t m;
@@ -35,6 +45,13 @@ typedef struct prom_judgment_facts {
   uint32_t force_tiled;
   uint32_t tiled_shape;
   uint32_t software_vulkan;
+  prom_policy_mode policy_mode;
+  uint32_t packed4_available;
+  uint32_t packed4_small_shape;
+  uint32_t packed4_padding_waste_permille;
+  uint32_t packed4_mode_budget_permille;
+  uint32_t packed4_row_major_valid;
+  uint32_t packed4_tail_valid;
 } prom_judgment_facts;
 
 typedef struct prom_judgment_decision {
@@ -47,6 +64,8 @@ typedef struct prom_judgment_decision {
   uint32_t used_fallback_to_direct;
   uint32_t winning_candidate_index;
   int winning_score;
+  uint32_t packed4_selected;
+  prom_packed4_reject_reason packed4_reject_reason;
 } prom_judgment_decision;
 
 typedef struct prom_judgment_async_facts {

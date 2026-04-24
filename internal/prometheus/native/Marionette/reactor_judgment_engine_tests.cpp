@@ -21,6 +21,13 @@ namespace
         facts.force_tiled = 0u;
         facts.tiled_shape = 0u;
         facts.software_vulkan = 0u;
+        facts.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
+        facts.packed4_available = 1u;
+        facts.packed4_small_shape = 0u;
+        facts.packed4_padding_waste_permille = 0u;
+        facts.packed4_mode_budget_permille = 380u;
+        facts.packed4_row_major_valid = 1u;
+        facts.packed4_tail_valid = 1u;
         return facts;
     }
 
@@ -77,36 +84,36 @@ FACT(PrometheusJudgmentEngine_CandidateDiscriminationCoversCurrentModeSpace)
         prom_judgment_engine_select_sgemm_mode(&facts, &decision);
         ASSERT_EQUAL(1u, decision.success, "small direct-friendly shape should select a mode");
         ASSERT_EQUAL(PROM_VK_PATH_DIRECT, decision.selected_path, "small direct-friendly shape should pick direct path");
-        ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, decision.compute_mode, "small direct-friendly shape should keep baseline compute");
-        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT, decision.final_detail, "small direct-friendly shape should expose direct detail");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_PACKED4_FP32, decision.compute_mode, "small direct-friendly shape should pick packed4 compute when all gates pass");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, decision.final_detail, "packed4 selection should be explicitly observable");
     }
 
     {
         prom_judgment_facts facts = base_facts();
-        facts.work_units = 128u * 128u * 16u;
-        facts.tiled_shape = 1u;
+        facts.work_units = 64u * 64u * 4u;
+        facts.tiled_shape = 0u;
         facts.readback_required = 1u;
 
         prom_judgment_decision decision{};
         prom_judgment_engine_select_sgemm_mode(&facts, &decision);
         ASSERT_EQUAL(1u, decision.success, "large staged-capable shape should select a mode");
-        ASSERT_EQUAL(PROM_VK_PATH_STAGED_UPLOAD_READBACK, decision.selected_path, "large staged-capable readback shape should pick staged readback path");
-        ASSERT_EQUAL(PROM_VK_COMPUTE_TILED, decision.compute_mode, "large tiled-eligible shape should pick tiled compute");
-        ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, decision.final_detail, "large staged+tiled selection should be observable");
+        ASSERT_EQUAL(PROM_VK_PATH_DIRECT, decision.selected_path, "packed4 should keep direct path when selected");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_PACKED4_FP32, decision.compute_mode, "non-tiled eligible shape should pick packed4");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, decision.final_detail, "packed4 selection should remain directly observable");
     }
 
     {
         prom_judgment_facts facts = base_facts();
-        facts.work_units = 128u * 128u * 16u;
-        facts.tiled_shape = 1u;
+        facts.work_units = 64u * 64u * 4u;
+        facts.tiled_shape = 0u;
         facts.readback_required = 0u;
 
         prom_judgment_decision decision{};
         prom_judgment_engine_select_sgemm_mode(&facts, &decision);
         ASSERT_EQUAL(1u, decision.success, "upload-only staged shape should select a mode");
-        ASSERT_EQUAL(PROM_VK_PATH_STAGED_UPLOAD, decision.selected_path, "upload-only staged shape should pick staged-upload path");
-        ASSERT_EQUAL(PROM_VK_COMPUTE_TILED, decision.compute_mode, "upload-only staged large shape should still pick tiled compute");
-        ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_TILED, decision.final_detail, "upload-only staged+tiled selection should be observable");
+        ASSERT_EQUAL(PROM_VK_PATH_DIRECT, decision.selected_path, "packed4 path should keep canonical direct row-major output path");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_PACKED4_FP32, decision.compute_mode, "upload-only staged shape should still pick packed4 when gates pass");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, decision.final_detail, "upload-only packed4 selection should be observable");
     }
 
     {
@@ -120,8 +127,8 @@ FACT(PrometheusJudgmentEngine_CandidateDiscriminationCoversCurrentModeSpace)
         prom_judgment_engine_select_sgemm_mode(&facts, &decision);
         ASSERT_EQUAL(1u, decision.success, "constrained capability shape should still select a mode when direct is available");
         ASSERT_EQUAL(PROM_VK_PATH_DIRECT, decision.selected_path, "constrained capability shape should fall back to direct path");
-        ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, decision.compute_mode, "constrained capability fallback should remain baseline compute");
-        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT, decision.final_detail, "when staging is unavailable up front the policy should remain direct without staged fallback detail");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_PACKED4_FP32, decision.compute_mode, "constrained capability shape should still allow packed4 when direct exists");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, decision.final_detail, "packed4 detail should remain explicit in constrained capability scenario");
     }
 }
 
@@ -167,6 +174,30 @@ FACT(PrometheusJudgmentEngine_IntegrationParityWithReactorPolicyScenarios)
         ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_TILED, decision.final_detail, "fallback from staged+tiled should surface direct+tiled detail after tiled selection");
         ASSERT_TRUE(decision.winning_score > -100000, "winning score should be populated for diagnostics");
     }
+
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.packed4_small_shape = 1u;
+
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(1u, decision.success, "small-shape packed4 rejection should still choose fallback scalar mode");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, decision.compute_mode, "small-shape packed4 rejection should fallback to baseline compute");
+        ASSERT_EQUAL(PROM_PACKED4_REJECT_SMALL_SHAPE, decision.packed4_reject_reason, "small-shape rejection reason should be explicit");
+    }
+
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.policy_mode = PROM_POLICY_MODE_SAFE;
+        facts.packed4_padding_waste_permille = 260u;
+        facts.packed4_mode_budget_permille = 220u;
+
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(1u, decision.success, "mode-budget packed4 rejection should still choose fallback scalar mode");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, decision.compute_mode, "mode-budget packed4 rejection should fallback to baseline compute");
+        ASSERT_EQUAL(PROM_PACKED4_REJECT_MODE_BUDGET_DENIED, decision.packed4_reject_reason, "safe-mode over-budget rejection should be explicit");
+    }
 }
 
 FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
@@ -211,6 +242,7 @@ FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
 FACT(PrometheusJudgmentEngine_HasNoCrossCallHysteresisOrCommitmentMemory)
 {
     prom_judgment_facts near_threshold = base_facts();
+    near_threshold.packed4_available = 0u;
     near_threshold.readback_required = 1u;
     near_threshold.work_units = static_cast<std::uint64_t>(PROM_JUDGMENT_STAGING_WORK_THRESHOLD) - 1u;
     near_threshold.tiled_shape = 0u;

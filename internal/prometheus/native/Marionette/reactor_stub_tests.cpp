@@ -50,7 +50,7 @@ namespace
         return detail == PROM_DETAIL_PATH_DIRECT || detail == PROM_DETAIL_PATH_STAGED_UPLOAD ||
             detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT ||
             detail == PROM_DETAIL_PATH_DIRECT_TILED || detail == PROM_DETAIL_PATH_STAGED_UPLOAD_TILED ||
-            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED;
+            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED || detail == PROM_DETAIL_PATH_DIRECT_PACKED4_FP32;
     }
 
 }
@@ -226,6 +226,117 @@ FACT(PrometheusReactor_SgemmSupportsManyConsecutiveCalls)
         previous = out;
     }
 
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_Packed4EligibleShapeSelectsPackedDetail)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; packed4 selection cannot be asserted");
+    }
+
+    const std::uint32_t m = 8u;
+    const std::uint32_t n = 8u;
+    const std::uint32_t k = 8u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "packed4-eligible shape should execute");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "packed4-eligible shape should complete transfer-out stage");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, detail, "packed4-eligible shape should emit packed4 detail code");
+    ASSERT_SEQUENCE_EQUAL(expected, c, "packed4 path output should match scalar oracle exactly");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_TRUE(diag.packed4_selection_count >= 1u, "packed4 selection counter should increase");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_Packed4TinyOrWasteFallbackReasonsAreObservable)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; packed4 fallback reason observability cannot be asserted");
+    }
+
+    {
+        const std::uint32_t m = 3u;
+        const std::uint32_t n = 3u;
+        const std::uint32_t k = 3u;
+        const std::vector<float> a = deterministic_matrix(m, k);
+        const std::vector<float> b = deterministic_matrix(k, n);
+        std::vector<float> c(m * n, 0.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "tiny shape should still execute via scalar fallback");
+        ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, "tiny shape should not select packed4 detail");
+    }
+
+    {
+        const std::uint32_t m = 4u;
+        const std::uint32_t n = 7u;
+        const std::uint32_t k = 7u;
+        const std::vector<float> a = deterministic_matrix(m, k);
+        const std::vector<float> b = deterministic_matrix(k, n);
+        std::vector<float> c(m * n, 0.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "padding-waste shape should still execute via scalar fallback");
+        ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, "padding-waste shape should not select packed4 detail");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_TRUE(diag.packed4_fallback_reason_small_shape >= 1u, "small-shape fallback counter should increment");
+    ASSERT_TRUE((diag.packed4_fallback_reason_padding_waste + diag.packed4_fallback_reason_mode_budget_denied) >= 1u,
+        "padding-budget fallback counters should increment");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_Packed4TailAndRectangularCasesMatchScalarOracle)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; packed4 tail correctness cannot be asserted");
+    }
+
+    const ShapeCase shapes[] = {
+        {"m_tail", 9u, 8u, 8u},
+        {"n_tail", 8u, 10u, 8u},
+        {"k_tail", 8u, 8u, 11u},
+        {"combined_tails", 9u, 10u, 11u},
+        {"tall_rect", 29u, 7u, 15u},
+        {"wide_rect", 7u, 29u, 15u},
+    };
+
+    for (const ShapeCase& shape : shapes) {
+        const std::vector<float> a = deterministic_matrix(shape.m, shape.k);
+        const std::vector<float> b = deterministic_matrix(shape.k, shape.n);
+        const std::vector<float> expected = cpu_oracle(shape.m, shape.n, shape.k, a, b);
+        std::vector<float> c(shape.m * shape.n, 0.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail),
+            "tail/rectangular case should execute");
+        ASSERT_SEQUENCE_EQUAL(expected, c, "tail/rectangular case must match scalar oracle exactly");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_TRUE(diag.packed4_tail_count_total >= 1u, "tail counter should reflect exercised non-multiple-of-4 shapes");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 

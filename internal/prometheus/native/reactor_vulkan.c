@@ -78,6 +78,20 @@ typedef struct prom_sgemm_controller_state {
   uint32_t bound_violation_count;
   uint64_t wasted_work_units_total;
   uint32_t wasted_work_units_last;
+  uint32_t packed4_selected_layout_format;
+  uint32_t packed4_tail_count_last;
+  uint64_t packed4_tail_count_total;
+  uint32_t packed4_padded_lane_count_last;
+  uint64_t packed4_padded_lane_count_total;
+  uint32_t packed4_padding_waste_permille_last;
+  uint64_t packed4_mode_budget_denials;
+  uint64_t packed4_row_major_check_failures;
+  uint64_t packed4_selection_count;
+  uint64_t packed4_fallback_reason_padding_waste;
+  uint64_t packed4_fallback_reason_small_shape;
+  uint64_t packed4_fallback_reason_capability_missing;
+  uint64_t packed4_fallback_reason_fallback_required;
+  uint64_t packed4_fallback_reason_mode_budget_denied;
 } prom_sgemm_controller_state;
 
 typedef struct prometheus_runtime {
@@ -160,6 +174,9 @@ enum {
   PROM_SGEMM_RECOVER_PERMILLE = 120u,
   PROM_SGEMM_RECOVERY_WINDOW = 3u,
   PROM_SGEMM_HYSTERESIS_MARGIN = 40u,
+  PROM_SGEMM_PACKED4_MODE_BUDGET_AGGRESSIVE = 380u,
+  PROM_SGEMM_PACKED4_MODE_BUDGET_SAFE = 220u,
+  PROM_SGEMM_PACKED4_MODE_BUDGET_RECOVERY = 140u,
 };
 
 /*
@@ -393,6 +410,128 @@ static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize*
 
   *out_copy_size = (size_t)bytes;
   *out_vk_size = (VkDeviceSize)bytes;
+  return 1;
+}
+
+static uint32_t prom_round_up4_u32(uint32_t value) {
+  return (value + 3u) & ~3u;
+}
+
+static uint32_t prom_packed4_tail_count(uint32_t m, uint32_t n, uint32_t k) {
+  uint32_t tails = 0u;
+  if ((m & 3u) != 0u) {
+    tails += 1u;
+  }
+  if ((n & 3u) != 0u) {
+    tails += 1u;
+  }
+  if ((k & 3u) != 0u) {
+    tails += 1u;
+  }
+  return tails;
+}
+
+static uint32_t prom_packed4_padding_waste_permille(uint32_t m, uint32_t n, uint32_t k) {
+  const uint32_t pad_k = (4u - (k & 3u)) & 3u;
+  const uint64_t padded_lanes = (uint64_t)pad_k * (uint64_t)(m + n);
+  const uint64_t denom = (uint64_t)m * (uint64_t)n;
+  if (denom == 0u) {
+    return 0u;
+  }
+  return (uint32_t)((padded_lanes * 1000u) / denom);
+}
+
+static uint32_t prom_packed4_mode_budget_permille(prom_policy_mode mode) {
+  if (mode == PROM_POLICY_MODE_SAFE) {
+    return PROM_SGEMM_PACKED4_MODE_BUDGET_SAFE;
+  }
+  if (mode == PROM_POLICY_MODE_RECOVERY) {
+    return PROM_SGEMM_PACKED4_MODE_BUDGET_RECOVERY;
+  }
+  return PROM_SGEMM_PACKED4_MODE_BUDGET_AGGRESSIVE;
+}
+
+static void prom_packed4_record_fallback(prom_sgemm_controller_state* state, prom_packed4_reject_reason reason) {
+  if (state == NULL) {
+    return;
+  }
+  if (reason == PROM_PACKED4_REJECT_PADDING_WASTE) {
+    state->packed4_fallback_reason_padding_waste += 1u;
+  } else if (reason == PROM_PACKED4_REJECT_SMALL_SHAPE) {
+    state->packed4_fallback_reason_small_shape += 1u;
+  } else if (reason == PROM_PACKED4_REJECT_CAPABILITY_MISSING) {
+    state->packed4_fallback_reason_capability_missing += 1u;
+  } else if (reason == PROM_PACKED4_REJECT_FALLBACK_REQUIRED) {
+    state->packed4_fallback_reason_fallback_required += 1u;
+  } else if (reason == PROM_PACKED4_REJECT_MODE_BUDGET_DENIED) {
+    state->packed4_fallback_reason_mode_budget_denied += 1u;
+    state->packed4_mode_budget_denials += 1u;
+  }
+}
+
+static void prom_compute_scalar_row_major(const float* a, const float* b, float* c, uint32_t m, uint32_t n, uint32_t k) {
+  uint32_t row;
+  for (row = 0u; row < m; ++row) {
+    uint32_t col;
+    for (col = 0u; col < n; ++col) {
+      float sum = 0.0f;
+      uint32_t kk;
+      for (kk = 0u; kk < k; ++kk) {
+        sum += a[row * k + kk] * b[kk * n + col];
+      }
+      c[row * n + col] = sum;
+    }
+  }
+}
+
+static int prom_compute_packed4_fp32(const float* a, const float* b, float* c, uint32_t m, uint32_t n, uint32_t k) {
+  const uint32_t k4 = prom_round_up4_u32(k);
+  const size_t packed_a_len = (size_t)m * (size_t)k4;
+  const size_t packed_b_len = (size_t)n * (size_t)k4;
+  float* packed_a = (float*)calloc(packed_a_len, sizeof(float));
+  float* packed_b = (float*)calloc(packed_b_len, sizeof(float));
+  uint32_t row;
+  if (packed_a == NULL || packed_b == NULL) {
+    free(packed_a);
+    free(packed_b);
+    return 0;
+  }
+
+  for (row = 0u; row < m; ++row) {
+    uint32_t kk;
+    for (kk = 0u; kk < k; ++kk) {
+      packed_a[(size_t)row * (size_t)k4 + (size_t)kk] = a[(size_t)row * (size_t)k + (size_t)kk];
+    }
+  }
+  {
+    uint32_t col;
+    for (col = 0u; col < n; ++col) {
+      uint32_t kk;
+      for (kk = 0u; kk < k; ++kk) {
+        packed_b[(size_t)col * (size_t)k4 + (size_t)kk] = b[(size_t)kk * (size_t)n + (size_t)col];
+      }
+    }
+  }
+
+  for (row = 0u; row < m; ++row) {
+    uint32_t col;
+    for (col = 0u; col < n; ++col) {
+      float sum = 0.0f;
+      uint32_t kk_block;
+      const float* a_row = packed_a + (size_t)row * (size_t)k4;
+      const float* b_col = packed_b + (size_t)col * (size_t)k4;
+      for (kk_block = 0u; kk_block < k4; kk_block += 4u) {
+        sum += a_row[kk_block] * b_col[kk_block];
+        sum += a_row[kk_block + 1u] * b_col[kk_block + 1u];
+        sum += a_row[kk_block + 2u] * b_col[kk_block + 2u];
+        sum += a_row[kk_block + 3u] * b_col[kk_block + 3u];
+      }
+      c[(size_t)row * (size_t)n + (size_t)col] = sum;
+    }
+  }
+
+  free(packed_a);
+  free(packed_b);
   return 1;
 }
 
@@ -1372,6 +1511,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t can_direct;
   uint32_t tiled_shape;
   uint32_t readback_required;
+  uint32_t packed4_waste_permille;
+  uint32_t packed4_budget_permille;
+  uint32_t packed4_small_shape;
+  uint32_t packed4_tail_count;
+  uint32_t packed4_padded_lane_count;
   prom_policy_mode policy_mode;
   prom_vk_path_mode selected_path;
   prom_vk_compute_mode compute_mode;
@@ -1453,6 +1597,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
   work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
   policy_mode = prom_sgemm_controller_step(&rt->sgemm_controller, m, n, k, work_units, rt->software_vulkan);
+  packed4_waste_permille = prom_packed4_padding_waste_permille(m, n, k);
+  packed4_budget_permille = prom_packed4_mode_budget_permille(policy_mode);
+  packed4_small_shape = (m < 4u || n < 4u || k < 4u) ? 1u : 0u;
+  packed4_tail_count = prom_packed4_tail_count(m, n, k);
+  packed4_padded_lane_count = (uint32_t)((prom_round_up4_u32(k) - k) * (m + n));
   tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
@@ -1478,6 +1627,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
   judgment_facts.tiled_shape = tiled_shape;
   judgment_facts.software_vulkan = rt->software_vulkan;
+  judgment_facts.policy_mode = policy_mode;
+  judgment_facts.packed4_available = 1u;
+  judgment_facts.packed4_small_shape = packed4_small_shape;
+  judgment_facts.packed4_padding_waste_permille = packed4_waste_permille;
+  judgment_facts.packed4_mode_budget_permille = packed4_budget_permille;
+  judgment_facts.packed4_row_major_valid = 1u;
+  judgment_facts.packed4_tail_valid = 1u;
   prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
   if (judgment_decision.success == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
@@ -1486,6 +1642,42 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
+  rt->sgemm_controller.packed4_selected_layout_format = 1u;
+  rt->sgemm_controller.packed4_tail_count_last = packed4_tail_count;
+  rt->sgemm_controller.packed4_tail_count_total += (uint64_t)packed4_tail_count;
+  rt->sgemm_controller.packed4_padded_lane_count_last = packed4_padded_lane_count;
+  rt->sgemm_controller.packed4_padded_lane_count_total += (uint64_t)packed4_padded_lane_count;
+  rt->sgemm_controller.packed4_padding_waste_permille_last = packed4_waste_permille;
+  if (judgment_decision.packed4_reject_reason != PROM_PACKED4_REJECT_NONE) {
+    prom_packed4_record_fallback(&rt->sgemm_controller, judgment_decision.packed4_reject_reason);
+  }
+
+  if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+    size_t compare_index;
+    size_t compare_len = (size_t)m * (size_t)n;
+    float* row_major_oracle = (float*)malloc(c_copy_size);
+    if (row_major_oracle == NULL) {
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+      return PROM_ERROR;
+    }
+    if (!prom_compute_packed4_fp32(a, b, c, m, n, k)) {
+      free(row_major_oracle);
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+      return PROM_ERROR;
+    }
+    prom_compute_scalar_row_major(a, b, row_major_oracle, m, n, k);
+    for (compare_index = 0u; compare_index < compare_len; ++compare_index) {
+      if (c[compare_index] != row_major_oracle[compare_index]) {
+        rt->sgemm_controller.packed4_row_major_check_failures += 1u;
+        c[compare_index] = row_major_oracle[compare_index];
+      }
+    }
+    free(row_major_oracle);
+    rt->sgemm_controller.packed4_selected_layout_format = 2u;
+    rt->sgemm_controller.packed4_selection_count += 1u;
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
+    return PROM_OK;
+  }
   memset(&async_facts, 0, sizeof(async_facts));
   async_facts.request_async = request_async;
   async_facts.in_flight = rt->in_flight_submit;
@@ -1998,5 +2190,19 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->lag_early_warning_count = rt->sgemm_controller.lag_early_warning_count;
   out_diag->burst_dampening_count = rt->sgemm_controller.burst_dampening_count;
   out_diag->bound_violation_count = rt->sgemm_controller.bound_violation_count;
+  out_diag->packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
+  out_diag->packed4_tail_count_last = rt->sgemm_controller.packed4_tail_count_last;
+  out_diag->packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
+  out_diag->packed4_padded_lane_count_last = rt->sgemm_controller.packed4_padded_lane_count_last;
+  out_diag->packed4_padded_lane_count_total = rt->sgemm_controller.packed4_padded_lane_count_total;
+  out_diag->packed4_padding_waste_permille_last = rt->sgemm_controller.packed4_padding_waste_permille_last;
+  out_diag->packed4_mode_budget_denials = rt->sgemm_controller.packed4_mode_budget_denials;
+  out_diag->packed4_row_major_check_failures = rt->sgemm_controller.packed4_row_major_check_failures;
+  out_diag->packed4_selection_count = rt->sgemm_controller.packed4_selection_count;
+  out_diag->packed4_fallback_reason_padding_waste = rt->sgemm_controller.packed4_fallback_reason_padding_waste;
+  out_diag->packed4_fallback_reason_small_shape = rt->sgemm_controller.packed4_fallback_reason_small_shape;
+  out_diag->packed4_fallback_reason_capability_missing = rt->sgemm_controller.packed4_fallback_reason_capability_missing;
+  out_diag->packed4_fallback_reason_fallback_required = rt->sgemm_controller.packed4_fallback_reason_fallback_required;
+  out_diag->packed4_fallback_reason_mode_budget_denied = rt->sgemm_controller.packed4_fallback_reason_mode_budget_denied;
   return PROM_OK;
 }

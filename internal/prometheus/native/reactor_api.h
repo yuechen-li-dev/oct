@@ -89,6 +89,7 @@ enum {
   PROM_DETAIL_PATH_DIRECT_TILED = 6105,
   PROM_DETAIL_PATH_STAGED_UPLOAD_TILED = 6106,
   PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED = 6107,
+  PROM_DETAIL_PATH_DIRECT_PACKED4_FP32 = 6108,
   PROM_DETAIL_ASYNC_NOT_READY = -6108,
   PROM_DETAIL_ASYNC_NO_TASK = -6109,
   PROM_DETAIL_ASYNC_ALREADY_CONSUMED = -6110,
@@ -98,6 +99,11 @@ enum {
   PROM_DETAIL_ASYNC_FAILED = -6114,
   PROM_DETAIL_ASYNC_UNCONSUMED = -6115,
   PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE = -6116,
+  PROM_DETAIL_PACKED4_PADDING_WASTE = -6201,
+  PROM_DETAIL_PACKED4_SMALL_SHAPE = -6202,
+  PROM_DETAIL_PACKED4_CAPABILITY_MISSING = -6203,
+  PROM_DETAIL_PACKED4_FALLBACK_REQUIRED = -6204,
+  PROM_DETAIL_PACKED4_MODE_BUDGET_DENIED = -6205,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -146,6 +152,20 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t lag_early_warning_count;
   uint64_t burst_dampening_count;
   uint64_t bound_violation_count;
+  uint32_t packed4_selected_layout_format;
+  uint32_t packed4_tail_count_last;
+  uint64_t packed4_tail_count_total;
+  uint32_t packed4_padded_lane_count_last;
+  uint64_t packed4_padded_lane_count_total;
+  uint32_t packed4_padding_waste_permille_last;
+  uint64_t packed4_mode_budget_denials;
+  uint64_t packed4_row_major_check_failures;
+  uint64_t packed4_selection_count;
+  uint64_t packed4_fallback_reason_padding_waste;
+  uint64_t packed4_fallback_reason_small_shape;
+  uint64_t packed4_fallback_reason_capability_missing;
+  uint64_t packed4_fallback_reason_fallback_required;
+  uint64_t packed4_fallback_reason_mode_budget_denied;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
