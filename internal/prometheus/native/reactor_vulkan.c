@@ -123,6 +123,18 @@ typedef struct prom_slot_runtime_diag {
   int failure_slot_id;
   int failure_reason;
   int async_slot_id;
+  uint32_t transfer_queue_used;
+  uint32_t transfer_policy_selected;
+  uint32_t dedicated_transfer_available;
+  uint32_t transfer_queue_family_index;
+  uint32_t compute_queue_family_index;
+  uint32_t queue_families_differ;
+  uint64_t queue_family_handoff_count;
+  uint64_t transfer_compute_wait_count;
+  uint32_t transfer_fallback_reason;
+  int transfer_failure_slot_id;
+  int transfer_failure_reason;
+  uint32_t async_transfer_complete;
 } prom_slot_runtime_diag;
 
 typedef struct prometheus_runtime {
@@ -136,13 +148,21 @@ typedef struct prometheus_runtime {
   VkPhysicalDevice physical_device;
   VkDevice device;
   uint32_t queue_family_index;
+  uint32_t transfer_queue_family_index;
+  uint32_t dedicated_transfer_available;
+  uint32_t transfer_queue_enabled;
   VkQueue compute_queue;
+  VkQueue transfer_queue;
   VkCommandPool command_pool;
+  VkCommandPool transfer_command_pool;
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkDescriptorSet descriptor_set;
   VkCommandBuffer command_buffer;
+  VkCommandBuffer transfer_command_buffer;
   VkFence submit_fence;
+  VkFence transfer_submit_fence;
+  VkSemaphore transfer_ready_semaphore;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
@@ -409,6 +429,21 @@ static int update_async_progress(prometheus_runtime* rt) {
       prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
     }
     return PROM_ERROR;
+  }
+  if (rt->slot_diag.transfer_queue_used != 0u && rt->slot_diag.async_transfer_complete == 0u) {
+    vk_result = vkGetFenceStatus(rt->device, rt->transfer_submit_fence);
+    if (vk_result == VK_SUCCESS) {
+      rt->slot_diag.async_transfer_complete = 1u;
+    } else if (vk_result == VK_NOT_READY) {
+      return PROM_OK;
+    } else {
+      rt->in_flight_submit = 0u;
+      if (rt->slot_diag.async_slot_id >= 0) {
+        prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
+      }
+      set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
   }
   vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
   if (vk_result == VK_SUCCESS) {
@@ -1548,6 +1583,18 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyFence(rt->device, rt->submit_fence, NULL);
     rt->submit_fence = VK_NULL_HANDLE;
   }
+  if (rt->transfer_submit_fence != VK_NULL_HANDLE) {
+    vkDestroyFence(rt->device, rt->transfer_submit_fence, NULL);
+    rt->transfer_submit_fence = VK_NULL_HANDLE;
+  }
+  if (rt->transfer_ready_semaphore != VK_NULL_HANDLE) {
+    vkDestroySemaphore(rt->device, rt->transfer_ready_semaphore, NULL);
+    rt->transfer_ready_semaphore = VK_NULL_HANDLE;
+  }
+  if (rt->transfer_command_pool != VK_NULL_HANDLE) {
+    vkDestroyCommandPool(rt->device, rt->transfer_command_pool, NULL);
+    rt->transfer_command_pool = VK_NULL_HANDLE;
+  }
   if (rt->command_pool != VK_NULL_HANDLE) {
     vkDestroyCommandPool(rt->device, rt->command_pool, NULL);
     rt->command_pool = VK_NULL_HANDLE;
@@ -1568,7 +1615,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   uint32_t device_count = 0u;
   VkPhysicalDevice devices[16];
   uint32_t i;
-  VkDeviceQueueCreateInfo queue_info;
+  VkDeviceQueueCreateInfo queue_infos[2];
   VkDeviceCreateInfo device_info;
   float queue_priority = 1.0f;
   VkCommandPoolCreateInfo pool_info;
@@ -1608,6 +1655,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   rt->physical_device = VK_NULL_HANDLE;
   rt->queue_family_index = UINT32_MAX;
+  rt->transfer_queue_family_index = UINT32_MAX;
+  rt->dedicated_transfer_available = 0u;
+  rt->transfer_queue_enabled = 0u;
   for (i = 0u; i < device_count; ++i) {
     uint32_t family_count = 0u;
     uint32_t family_index;
@@ -1637,6 +1687,40 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return VK_ERROR_FEATURE_NOT_PRESENT;
   }
   {
+    uint32_t family_count = 0u;
+    uint32_t family_index;
+    VkQueueFamilyProperties families[32];
+    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
+    if (family_count > 32u) {
+      family_count = 32u;
+    }
+    if (family_count > 0u) {
+      vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, families);
+    }
+    for (family_index = 0u; family_index < family_count; ++family_index) {
+      if ((families[family_index].queueFlags & VK_QUEUE_TRANSFER_BIT) == 0u) {
+        continue;
+      }
+      if ((families[family_index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0u) {
+        continue;
+      }
+      rt->transfer_queue_family_index = family_index;
+      rt->dedicated_transfer_available = 1u;
+      break;
+    }
+    if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEDICATED_TRANSFER) != 0u) {
+      rt->dedicated_transfer_available = 0u;
+      rt->transfer_queue_family_index = UINT32_MAX;
+    }
+    if ((rt->test_flags & PROM_TESTCFG_FORCE_SHARED_TRANSFER) != 0u) {
+      rt->transfer_queue_family_index = rt->queue_family_index;
+      rt->dedicated_transfer_available = 1u;
+    }
+    if (rt->dedicated_transfer_available != 0u && (rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) == 0u) {
+      rt->transfer_queue_enabled = 1u;
+    }
+  }
+  {
     VkPhysicalDeviceProperties props;
     VkPhysicalDeviceMemoryProperties memory_props;
     uint32_t memory_index;
@@ -1663,16 +1747,23 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
   rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
 
-  memset(&queue_info, 0, sizeof(queue_info));
-  queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queue_info.queueFamilyIndex = rt->queue_family_index;
-  queue_info.queueCount = 1u;
-  queue_info.pQueuePriorities = &queue_priority;
+  memset(queue_infos, 0, sizeof(queue_infos));
+  queue_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+  queue_infos[0].queueFamilyIndex = rt->queue_family_index;
+  queue_infos[0].queueCount = 1u;
+  queue_infos[0].pQueuePriorities = &queue_priority;
+  if (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) {
+    queue_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_infos[1].queueFamilyIndex = rt->transfer_queue_family_index;
+    queue_infos[1].queueCount = 1u;
+    queue_infos[1].pQueuePriorities = &queue_priority;
+  }
 
   memset(&device_info, 0, sizeof(device_info));
   device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  device_info.queueCreateInfoCount = 1u;
-  device_info.pQueueCreateInfos = &queue_info;
+  device_info.queueCreateInfoCount =
+      (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 2u : 1u;
+  device_info.pQueueCreateInfos = queue_infos;
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DEVICE_CREATE) != 0u) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -1684,6 +1775,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
 
   vkGetDeviceQueue(rt->device, rt->queue_family_index, 0u, &rt->compute_queue);
+  rt->transfer_queue = VK_NULL_HANDLE;
+  if (rt->transfer_queue_enabled != 0u) {
+    vkGetDeviceQueue(rt->device, rt->transfer_queue_family_index, 0u, &rt->transfer_queue);
+  }
 
   memset(&pool_info, 0, sizeof(pool_info));
   pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1692,6 +1787,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   result = vkCreateCommandPool(rt->device, &pool_info, NULL, &rt->command_pool);
   if (result != VK_SUCCESS) {
     return result;
+  }
+  if (rt->transfer_queue_enabled != 0u) {
+    pool_info.queueFamilyIndex = rt->transfer_queue_family_index;
+    result = vkCreateCommandPool(rt->device, &pool_info, NULL, &rt->transfer_command_pool);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
   }
 
   memset(bindings, 0, sizeof(bindings));
@@ -1865,11 +1967,34 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   if (result != VK_SUCCESS) {
     return result;
   }
+  if (rt->transfer_queue_enabled != 0u) {
+    cmd_alloc_info.commandPool = rt->transfer_command_pool;
+    result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &rt->transfer_command_buffer);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+  }
 
   memset(&fence_info, 0, sizeof(fence_info));
   fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submit_fence);
-  return result;
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  if (rt->transfer_queue_enabled != 0u) {
+    VkSemaphoreCreateInfo semaphore_info;
+    result = vkCreateFence(rt->device, &fence_info, NULL, &rt->transfer_submit_fence);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+    memset(&semaphore_info, 0, sizeof(semaphore_info));
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    result = vkCreateSemaphore(rt->device, &semaphore_info, NULL, &rt->transfer_ready_semaphore);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+  }
+  return VK_SUCCESS;
 }
 
 int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
@@ -1896,6 +2021,10 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.next_slot_id = 0u;
   runtime->slot_diag.failure_slot_id = -1;
   runtime->slot_diag.async_slot_id = -1;
+  runtime->slot_diag.transfer_queue_family_index = UINT32_MAX;
+  runtime->slot_diag.compute_queue_family_index = UINT32_MAX;
+  runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+  runtime->slot_diag.transfer_failure_slot_id = -1;
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -1914,6 +2043,17 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
       runtime->available = 1u;
       runtime->reason_code = PROM_REASON_NONE;
       runtime->init_detail_code = 0;
+      runtime->slot_diag.dedicated_transfer_available = runtime->dedicated_transfer_available;
+      runtime->slot_diag.transfer_queue_family_index = runtime->transfer_queue_family_index;
+      runtime->slot_diag.compute_queue_family_index = runtime->queue_family_index;
+      runtime->slot_diag.queue_families_differ =
+          (runtime->dedicated_transfer_available != 0u && runtime->transfer_queue_family_index != runtime->queue_family_index) ? 1u : 0u;
+      runtime->slot_diag.transfer_policy_selected = runtime->transfer_queue_enabled;
+      runtime->slot_diag.transfer_fallback_reason =
+          runtime->transfer_queue_enabled != 0u ? PROM_TRANSFER_FALLBACK_NONE
+                                                : (((runtime->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u)
+                                                       ? PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG
+                                                       : PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE);
     } else {
       runtime->available = 0u;
       runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
@@ -1989,6 +2129,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   VkDescriptorBufferInfo buffer_infos[3];
   VkCommandBufferBeginInfo begin_info;
   VkSubmitInfo submit_info;
+  VkSubmitInfo transfer_submit_info;
+  VkPipelineStageFlags wait_stage_mask;
   VkBufferMemoryBarrier barriers[4];
   VkBufferCopy copies[3];
   prom_vk_push push;
@@ -2030,6 +2172,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t* fp16_b_upload = NULL;
   int final_detail = 0;
   int prepare_detail = 0;
+  uint32_t use_dedicated_transfer_upload = 0u;
   uint32_t request_async = 0u;
   uint32_t work_slot_id = 0u;
   uint64_t required_capacity_bytes = 0u;
@@ -2155,6 +2298,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.capability_fp16_storage = rt->capability_fp16_storage;
   judgment_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
   judgment_facts.fp16_utility_score = fp16_utility_score;
+  judgment_facts.transfer_queue_dedicated_available = rt->dedicated_transfer_available;
+  judgment_facts.transfer_queue_families_differ =
+      (rt->dedicated_transfer_available != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 1u : 0u;
+  judgment_facts.transfer_queue_supported = rt->transfer_queue_enabled;
+  judgment_facts.transfer_overlap_slot_valid = 1u;
+  judgment_facts.transfer_workload_large_enough = work_units >= (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+  judgment_facts.transfer_fallback_available = 1u;
+  judgment_facts.transfer_queue_disabled_by_config = ((rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
   prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
   if (judgment_decision.success == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
@@ -2163,6 +2314,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
+  use_dedicated_transfer_upload = judgment_decision.use_dedicated_transfer_queue_upload;
+  rt->slot_diag.transfer_policy_selected = use_dedicated_transfer_upload;
+  rt->slot_diag.transfer_fallback_reason = judgment_decision.transfer_fallback_reason;
   rt->sgemm_controller.packed4_tail_count_last = packed4_tail_count;
   rt->sgemm_controller.packed4_padded_lane_count_last = packed4_padded_lane_count;
   rt->sgemm_controller.packed4_padding_waste_permille_last = packed4_waste_permille;
@@ -2339,24 +2493,151 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   writes[2].pBufferInfo = &buffer_infos[2];
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
-  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-  if (vk_result != VK_SUCCESS) {
-    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
+  if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
+    rt->slot_diag.transfer_queue_used = 1u;
+    rt->slot_diag.async_transfer_complete = 0u;
+    vk_result = vkResetCommandBuffer(rt->transfer_command_buffer, 0u);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vk_result = vkBeginCommandBuffer(rt->transfer_command_buffer, &begin_info);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    memset(barriers, 0, sizeof(barriers));
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = rt->staged_upload_a.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->staged_upload_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->staged_upload_b.buffer;
+    barriers[1].size = rt->staged_upload_b.size;
+    vkCmdPipelineBarrier(rt->transfer_command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 2u, barriers,
+                         0, NULL);
+    memset(copies, 0, sizeof(copies));
+    copies[0].size = rt->staged_upload_a.size;
+    copies[1].size = rt->staged_upload_b.size;
+    vkCmdCopyBuffer(rt->transfer_command_buffer, rt->staged_upload_a.buffer, rt->staged_device_a.buffer, 1u, &copies[0]);
+    vkCmdCopyBuffer(rt->transfer_command_buffer, rt->staged_upload_b.buffer, rt->staged_device_b.buffer, 1u, &copies[1]);
+    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers[0].dstAccessMask = 0u;
+    barriers[0].srcQueueFamilyIndex = rt->transfer_queue_family_index;
+    barriers[0].dstQueueFamilyIndex = rt->queue_family_index;
+    barriers[0].buffer = rt->staged_device_a.buffer;
+    barriers[0].size = rt->staged_device_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->staged_device_b.buffer;
+    barriers[1].size = rt->staged_device_b.size;
+    vkCmdPipelineBarrier(rt->transfer_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 2u,
+                         barriers, 0, NULL);
+    vk_result = vkEndCommandBuffer(rt->transfer_command_buffer);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    vk_result = vkResetFences(rt->device, 1u, &rt->transfer_submit_fence);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    memset(&transfer_submit_info, 0, sizeof(transfer_submit_info));
+    transfer_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    transfer_submit_info.commandBufferCount = 1u;
+    transfer_submit_info.pCommandBuffers = &rt->transfer_command_buffer;
+    transfer_submit_info.signalSemaphoreCount = 1u;
+    transfer_submit_info.pSignalSemaphores = &rt->transfer_ready_semaphore;
+    if ((rt->test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
+      prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = VK_ERROR_DEVICE_LOST;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+      return PROM_ERROR;
+    }
+    vk_result = vkQueueSubmit(rt->transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    rt->slot_diag.queue_family_handoff_count += 2u;
+    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
+    memset(barriers, 0, sizeof(barriers));
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = 0u;
+    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers[0].srcQueueFamilyIndex = rt->transfer_queue_family_index;
+    barriers[0].dstQueueFamilyIndex = rt->queue_family_index;
+    barriers[0].buffer = rt->staged_device_a.buffer;
+    barriers[0].offset = 0;
+    barriers[0].size = rt->staged_device_a.size;
+    barriers[1] = barriers[0];
+    barriers[1].buffer = rt->staged_device_b.buffer;
+    barriers[1].size = rt->staged_device_b.size;
+    barriers[2] = barriers[0];
+    barriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[2].srcAccessMask = 0u;
+    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[2].buffer = rt->staged_device_c.buffer;
+    barriers[2].size = rt->staged_device_c.size;
+    vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 3u, barriers,
+                         0, NULL);
+  } else {
+    rt->slot_diag.transfer_queue_used = 0u;
+    rt->slot_diag.async_transfer_complete = 1u;
+    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
 
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-  if (vk_result != VK_SUCCESS) {
-    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+    if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      return PROM_ERROR;
+    }
 
-  memset(barriers, 0, sizeof(barriers));
-  if (selected_path == PROM_VK_PATH_DIRECT) {
+    memset(barriers, 0, sizeof(barriers));
+    if (selected_path == PROM_VK_PATH_DIRECT) {
     barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
     barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -2382,7 +2663,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                          barriers,
                          0,
                          NULL);
-  } else {
+    } else {
     barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
     barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -2423,16 +2704,17 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     barriers[2].buffer = rt->staged_device_c.buffer;
     barriers[2].size = rt->staged_device_c.size;
     /* Staged device-local C is not pre-zeroed: current SGEMM kernels overwrite every final C element. */
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         0,
-                         0,
-                         NULL,
-                         3u,
-                         barriers,
-                         0,
-                         NULL);
+      vkCmdPipelineBarrier(rt->command_buffer,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           0,
+                           0,
+                           NULL,
+                           3u,
+                           barriers,
+                           0,
+                           NULL);
+    }
   }
 
   vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_pipeline);
@@ -2554,6 +2836,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
+  if (use_dedicated_transfer_upload != 0u) {
+    wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    submit_info.waitSemaphoreCount = 1u;
+    submit_info.pWaitSemaphores = &rt->transfer_ready_semaphore;
+    submit_info.pWaitDstStageMask = &wait_stage_mask;
+    rt->slot_diag.transfer_compute_wait_count += 1u;
+  }
   if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
@@ -2586,6 +2875,17 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
+    if (use_dedicated_transfer_upload != 0u) {
+      vk_result = vkWaitForFences(rt->device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
+      if (vk_result != VK_SUCCESS) {
+        prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
+        rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
+        rt->slot_diag.transfer_failure_reason = (int)vk_result;
+        set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+        return PROM_ERROR;
+      }
+      rt->slot_diag.async_transfer_complete = 1u;
+    }
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -2884,5 +3184,18 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
   out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
   out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
+  out_diag->m31_transfer_queue_used = rt->slot_diag.transfer_queue_used;
+  out_diag->m31_transfer_policy_selected = rt->slot_diag.transfer_policy_selected;
+  out_diag->m31_dedicated_transfer_available = rt->slot_diag.dedicated_transfer_available;
+  out_diag->m31_transfer_queue_family_index = rt->slot_diag.transfer_queue_family_index;
+  out_diag->m31_compute_queue_family_index = rt->slot_diag.compute_queue_family_index;
+  out_diag->m31_queue_families_differ = rt->slot_diag.queue_families_differ;
+  out_diag->m31_queue_family_handoff_count = rt->slot_diag.queue_family_handoff_count;
+  out_diag->m31_transfer_compute_wait_count = rt->slot_diag.transfer_compute_wait_count;
+  out_diag->m31_transfer_fallback_reason = rt->slot_diag.transfer_fallback_reason;
+  out_diag->m31_transfer_failure_slot_id = rt->slot_diag.transfer_failure_slot_id;
+  out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
+  out_diag->m31_upload_policy_marker = 1u;
+  out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
   return PROM_OK;
 }

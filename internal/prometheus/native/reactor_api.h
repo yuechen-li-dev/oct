@@ -80,6 +80,20 @@ enum {
   PROM_TESTCFG_FAIL_COMMAND_END = 1u << 20,
   PROM_TESTCFG_FAIL_RESET_FENCE = 1u << 21,
   PROM_TESTCFG_FAIL_QUEUE_SUBMIT = 1u << 22,
+  PROM_TESTCFG_DISABLE_TRANSFER_QUEUE = 1u << 23,
+  PROM_TESTCFG_FORCE_NO_DEDICATED_TRANSFER = 1u << 24,
+  PROM_TESTCFG_FORCE_SHARED_TRANSFER = 1u << 25,
+  PROM_TESTCFG_FAIL_TRANSFER_SUBMIT = 1u << 26,
+};
+
+enum {
+  PROM_TRANSFER_FALLBACK_NONE = 0,
+  PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE = 1,
+  PROM_TRANSFER_FALLBACK_PSEUDO_SHARED_QUEUE = 2,
+  PROM_TRANSFER_FALLBACK_SMALL_SHAPE_LOW_BENEFIT = 3,
+  PROM_TRANSFER_FALLBACK_SYNC_OWNERSHIP_UNSUPPORTED = 4,
+  PROM_TRANSFER_FALLBACK_REQUIRED = 5,
+  PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG = 6,
 };
 
 enum {
@@ -217,6 +231,19 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t m29_cleanup_success_count;
   int m29_failure_slot_id;
   int m29_failure_reason;
+  uint32_t m31_transfer_queue_used;
+  uint32_t m31_transfer_policy_selected;
+  uint32_t m31_dedicated_transfer_available;
+  uint32_t m31_transfer_queue_family_index;
+  uint32_t m31_compute_queue_family_index;
+  uint32_t m31_queue_families_differ;
+  uint64_t m31_queue_family_handoff_count;
+  uint64_t m31_transfer_compute_wait_count;
+  uint32_t m31_transfer_fallback_reason;
+  int m31_transfer_failure_slot_id;
+  int m31_transfer_failure_reason;
+  uint32_t m31_upload_policy_marker;
+  uint32_t m31_async_transfer_complete;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

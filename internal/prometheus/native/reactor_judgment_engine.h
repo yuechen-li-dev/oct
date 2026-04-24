@@ -71,6 +71,13 @@ typedef struct prom_judgment_facts {
   uint32_t capability_fp16_storage;
   uint32_t fallback_available;
   int fp16_utility_score;
+  uint32_t transfer_queue_dedicated_available;
+  uint32_t transfer_queue_families_differ;
+  uint32_t transfer_queue_supported;
+  uint32_t transfer_overlap_slot_valid;
+  uint32_t transfer_workload_large_enough;
+  uint32_t transfer_fallback_available;
+  uint32_t transfer_queue_disabled_by_config;
 } prom_judgment_facts;
 
 typedef struct prom_judgment_decision {
@@ -87,6 +94,8 @@ typedef struct prom_judgment_decision {
   prom_packed4_reject_reason packed4_reject_reason;
   uint32_t fp16_selected;
   prom_fp16_reject_reason fp16_reject_reason;
+  uint32_t use_dedicated_transfer_queue_upload;
+  uint32_t transfer_fallback_reason;
 } prom_judgment_decision;
 
 typedef struct prom_judgment_async_facts {
