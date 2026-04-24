@@ -1112,6 +1112,13 @@ static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   rt->buffer_shape_k = 0u;
 }
 
+static int ensure_buffer_capacity(const prom_vk_buffer* buffer, VkDeviceSize required_size) {
+  if (buffer == NULL) {
+    return 0;
+  }
+  return buffer->buffer != VK_NULL_HANDLE && buffer->memory != VK_NULL_HANDLE && buffer->size >= required_size;
+}
+
 static int ensure_buffer_shape(prometheus_runtime* rt, uint32_t m, uint32_t n, uint32_t k) {
   if (rt == NULL) {
     return 0;
@@ -1128,15 +1135,22 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
                                            VkDeviceSize c_buffer_size,
                                            VkResult* out_result) {
   VkResult result;
-  int shape_changed;
+  int must_rebuild;
 
   if (out_result == NULL || rt == NULL) {
     return 0;
   }
 
   *out_result = VK_SUCCESS;
-  shape_changed = rt->has_direct_buffers == 0u || !ensure_buffer_shape(rt, m, n, k);
-  if (!shape_changed) {
+  /* Shape-only reuse is unsafe: the same logical (m,n,k) can map to different
+   * backing byte sizes across compute/layout modes (baseline FP32, packed4,
+   * FP16-storage). Reuse is valid only when existing buffer capacity satisfies
+   * the current call's required byte sizes. */
+  must_rebuild = rt->has_direct_buffers == 0u || !ensure_buffer_shape(rt, m, n, k) ||
+                 !ensure_buffer_capacity(&rt->direct_a, a_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->direct_b, b_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->direct_c, c_buffer_size);
+  if (!must_rebuild) {
     return 1;
   }
 
@@ -1192,15 +1206,24 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
                                            VkDeviceSize c_buffer_size,
                                            VkResult* out_result) {
   VkResult result;
-  int shape_changed;
+  int must_rebuild;
 
   if (out_result == NULL || rt == NULL) {
     return 0;
   }
 
   *out_result = VK_SUCCESS;
-  shape_changed = rt->has_staged_buffers == 0u || !ensure_buffer_shape(rt, m, n, k);
-  if (!shape_changed) {
+  /* Shape-only reuse is unsafe: layout/precision mode transitions can change
+   * required upload/device/readback byte sizes without changing logical shape.
+   * Reuse staged buffers only when each existing capacity is sufficient. */
+  must_rebuild = rt->has_staged_buffers == 0u || !ensure_buffer_shape(rt, m, n, k) ||
+                 !ensure_buffer_capacity(&rt->staged_upload_a, a_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->staged_upload_b, b_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->staged_device_a, a_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->staged_device_b, b_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->staged_device_c, c_buffer_size) ||
+                 !ensure_buffer_capacity(&rt->staged_readback_c, c_buffer_size);
+  if (!must_rebuild) {
     return 1;
   }
 
@@ -1866,6 +1889,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   fp16_has_special_values = 0u;
   fp16_utility_score = -1000;
   prom_fp16_evaluate_tolerance(a, b, m, n, k, &rt->sgemm_controller, &fp16_has_special_values, &fp16_utility_score);
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
+    fp16_utility_score = 1201;
+  }
   tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
