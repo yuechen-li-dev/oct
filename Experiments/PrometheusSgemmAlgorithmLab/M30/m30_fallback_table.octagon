@@ -1,0 +1,12 @@
+[M30FallbackTable {
+    Scenario: ["no-dedicated-queue", "shared-family-pseudo-transfer", "dedicated-large-shape", "dedicated-small-shape", "dedicated-high-sync-cost"]
+    DedicatedTransferQueueAdvertised: [false, true, true, true, true]
+    IndependentTransferQueue: [false, false, true, true, true]
+    SharedComputeBottleneck: [true, true, false, false, false]
+    ShapeRegime: ["large", "large", "large", "small", "large"]
+    PolicyRequested: ["D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap"]
+    PolicySelected: ["A-single-queue-baseline", "A-single-queue-baseline", "D-transfer-fixed-double-overlap", "F-small-shape-disable", "A-single-queue-baseline"]
+    FallbackApplied: [true, true, false, true, true]
+    FallbackReason: ["no dedicated transfer queue available", "pseudo-transfer shares compute bottleneck and gives no useful overlap", "all enable gates pass", "small-shape regime: synchronization overhead dominates", "sync wait exceeds expected overlap benefit"]
+    OverclaimPrevented: [true, true, false, true, true]
+}]
