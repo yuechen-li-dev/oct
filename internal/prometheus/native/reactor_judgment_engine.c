@@ -78,6 +78,8 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
   out_decision->packed4_reject_reason = PROM_PACKED4_REJECT_NONE;
   out_decision->fp16_selected = 0u;
   out_decision->fp16_reject_reason = PROM_FP16_REJECT_NONE;
+  out_decision->use_dedicated_transfer_queue_upload = 0u;
+  out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
 
   if (facts == NULL) {
     return;
@@ -227,6 +229,37 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
   out_decision->selected_path = best_fallback != 0u ? PROM_VK_PATH_DIRECT : k_candidates[best_index].path;
   out_decision->final_detail =
       candidate_detail_code(out_decision->selected_path, out_decision->compute_mode, out_decision->used_fallback_to_direct);
+
+  if (out_decision->selected_path != PROM_VK_PATH_STAGED_UPLOAD) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+    return;
+  }
+  if (facts->transfer_queue_disabled_by_config != 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG;
+    return;
+  }
+  if (facts->transfer_queue_dedicated_available == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE;
+    return;
+  }
+  if (facts->transfer_queue_families_differ == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_PSEUDO_SHARED_QUEUE;
+    return;
+  }
+  if (facts->transfer_queue_supported == 0u || facts->transfer_overlap_slot_valid == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_SYNC_OWNERSHIP_UNSUPPORTED;
+    return;
+  }
+  if (facts->transfer_workload_large_enough == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_SMALL_SHAPE_LOW_BENEFIT;
+    return;
+  }
+  if (facts->transfer_fallback_available == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+    return;
+  }
+  out_decision->use_dedicated_transfer_queue_upload = 1u;
+  out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
 }
 
 void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
