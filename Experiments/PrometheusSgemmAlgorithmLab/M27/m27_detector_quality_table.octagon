@@ -1,0 +1,8 @@
+[M27DetectorQualityTable {
+    Regime: ["stable-balanced", "compute-bound-stable", "ordinary-jitter", "burst-shock", "calm-then-burst", "burst-then-recovery", "boundary-jitter"]
+    Strategy: ["C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double"]
+    FalseNoisyDetections: [0, 0, 0, 0, 0, 0, 0]
+    MissedBurstDetections: [0, 0, 0, 1, 1, 7, 1]
+    DetectionDelay: [0, 0, 0, 0, 0, 28, 0]
+    RecoveryDelay: [0, 0, 0, 0, 0, 0, 3]
+}]

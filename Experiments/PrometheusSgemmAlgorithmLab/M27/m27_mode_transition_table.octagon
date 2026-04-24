@@ -1,0 +1,8 @@
+[M27ModeTransitionTable {
+    Regime: ["stable-balanced", "compute-bound-stable", "ordinary-jitter", "burst-shock", "calm-then-burst", "burst-then-recovery", "boundary-jitter"]
+    Strategy: ["C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double", "C-hybrid-pull-double"]
+    ModeTransitionCount: [0, 0, 0, 3, 3, 0, 3]
+    TimeInStablePull: [1737, 2616, 1741, 1396, 1364, 2045, 1357]
+    TimeInNoisyFallback: [0, 0, 0, 374, 378, 0, 217]
+    TimeInRecovery: [0, 0, 0, 266, 341, 0, 132]
+}]

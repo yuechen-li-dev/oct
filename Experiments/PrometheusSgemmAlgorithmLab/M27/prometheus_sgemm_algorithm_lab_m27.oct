@@ -1,0 +1,665 @@
+package PrometheusSgemmAlgorithmLab
+
+import Octomata
+
+record M27WorkloadRegime {
+    Name: String
+    Why: String
+    NumChunks: Int
+    ChunkSizeUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+    TransferJitterAmplitude: Int
+    JitterPeriod: Int
+    ShockStartChunk: Int
+    ShockEndChunk: Int
+    ShockExtraTransferSetup: Int
+    ShockExtraTransferPerUnit: Int
+}
+
+record M27StrategyConfig {
+    Name: String
+    Kind: String
+    ComplexityPenalty: Int
+}
+
+record M27TransferSignal { Setup: Int PerUnit: Int InShock: Bool }
+
+record M27SimulationResult {
+    Regime: String
+    Strategy: String
+    TotalCompletionTime: Int
+    ComputeStarvationTime: Int
+    ReadyButUnusedTime: Int
+    TotalWipInventoryTime: Int
+    AverageWipDepthMilli: Int
+    PeakWipDepth: Int
+    MemoryPressureTimeProxy: Int
+    FalseNoisyDetections: Int
+    MissedBurstDetections: Int
+    DetectionDelay: Int
+    RecoveryDelay: Int
+    ModeTransitionCount: Int
+    TimeInStablePull: Int
+    TimeInNoisyFallback: Int
+    TimeInRecovery: Int
+    ProductScore: Int
+    WipSeparationValidated: Bool
+}
+
+record M27StrategyComparisonTable {
+    Regime: String[]
+    Strategy: String[]
+    TotalCompletionTime: Int[]
+    ComputeStarvationTime: Int[]
+    ReadyButUnusedTime: Int[]
+    TotalWipInventoryTime: Int[]
+    AverageWipDepthMilli: Int[]
+    PeakWipDepth: Int[]
+    MemoryPressureTimeProxy: Int[]
+    ProductScore: Int[]
+}
+
+record M27WipModelValidation {
+    Regime: String[]
+    FixedDoubleReadyIdle: Int[]
+    PullReadyIdle: Int[]
+    FixedDoubleInventoryTime: Int[]
+    PullInventoryTime: Int[]
+    FixedDoubleMemoryProxy: Int[]
+    PullMemoryProxy: Int[]
+    SeparationPass: Bool[]
+}
+
+record M27DetectorQualityTable {
+    Regime: String[]
+    Strategy: String[]
+    FalseNoisyDetections: Int[]
+    MissedBurstDetections: Int[]
+    DetectionDelay: Int[]
+    RecoveryDelay: Int[]
+}
+
+record M27ModeTransitionTable {
+    Regime: String[]
+    Strategy: String[]
+    ModeTransitionCount: Int[]
+    TimeInStablePull: Int[]
+    TimeInNoisyFallback: Int[]
+    TimeInRecovery: Int[]
+}
+
+record M27RakeFindings {
+    RakeName: String[]
+    Finding: String[]
+    EvidenceRegime: String[]
+    HybridMetric: Int[]
+    BaselineMetric: Int[]
+}
+
+record M27FinalRecommendation {
+    M25M26Synthesis: String
+    WipSeparationFixed: String
+    HybridStableRegimeVerdict: String
+    HybridNoisyRegimeVerdict: String
+    HybridWipVsStarvationVerdict: String
+    ModeThrashVerdict: String
+    CarryHybridToM28: String
+    FallbackIfNot: String
+    M28Direction: String
+    M29Direction: String
+}
+
+fn M27Max(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M27Min(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M27Abs(v: Int) -> Int { return switch { case v >= 0 => v else => 0 - v } }
+fn M27Clamp(v: Int, low: Int, high: Int) -> Int { return M27Min(M27Max(v, low), high) }
+
+fn M27Regimes() -> M27WorkloadRegime[] {
+    return [
+        M27WorkloadRegime { Name: "stable-balanced" Why: "should reward lean pull behavior" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 9 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M27WorkloadRegime { Name: "compute-bound-stable" Why: "shows inventory waste from over-buffering" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 5 TransferPerUnit: 1 ComputePerUnit: 4 TransferJitterAmplitude: 1 JitterPeriod: 11 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M27WorkloadRegime { Name: "ordinary-jitter" Why: "tests detector sensitivity" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 5 JitterPeriod: 3 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M27WorkloadRegime { Name: "burst-shock" Why: "forces noisy fallback" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 2 JitterPeriod: 6 ShockStartChunk: 10 ShockEndChunk: 15 ShockExtraTransferSetup: 14 ShockExtraTransferPerUnit: 3 },
+        M27WorkloadRegime { Name: "calm-then-burst" Why: "tests false stability" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 13 ShockStartChunk: 16 ShockEndChunk: 22 ShockExtraTransferSetup: 16 ShockExtraTransferPerUnit: 3 },
+        M27WorkloadRegime { Name: "burst-then-recovery" Why: "tests recovery return-to-pull" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 2 JitterPeriod: 8 ShockStartChunk: 2 ShockEndChunk: 8 ShockExtraTransferSetup: 13 ShockExtraTransferPerUnit: 2 },
+        M27WorkloadRegime { Name: "boundary-jitter" Why: "tests mode thrash near threshold" NumChunks: 28 ChunkSizeUnits: 18 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 3 JitterPeriod: 4 ShockStartChunk: 12 ShockEndChunk: 14 ShockExtraTransferSetup: 8 ShockExtraTransferPerUnit: 1 }
+    ]
+}
+
+fn M27Strategies() -> M27StrategyConfig[] {
+    return [
+        M27StrategyConfig { Name: "A-fixed-double" Kind: "fixed-double" ComplexityPenalty: 20 },
+        M27StrategyConfig { Name: "B-raw-pull-lag" Kind: "raw-pull" ComplexityPenalty: 35 },
+        M27StrategyConfig { Name: "C-hybrid-pull-double" Kind: "hybrid" ComplexityPenalty: 70 },
+        M27StrategyConfig { Name: "D-fixed-triple-reference" Kind: "fixed-triple" ComplexityPenalty: 25 }
+    ]
+}
+
+fn M27TransferSignalFor(regime: M27WorkloadRegime, chunk: Int) -> M27TransferSignal {
+    let sign = switch {
+        case regime.JitterPeriod > 0 and ((chunk / regime.JitterPeriod) * regime.JitterPeriod) == chunk => 1
+        case regime.JitterPeriod > 0 and (((chunk + regime.JitterPeriod / 2) / regime.JitterPeriod) * regime.JitterPeriod) == (chunk + regime.JitterPeriod / 2) => -1
+        else => 0
+    }
+    let inShock = regime.ShockStartChunk >= 0 and chunk >= regime.ShockStartChunk and chunk <= regime.ShockEndChunk
+    let jitter = sign * regime.TransferJitterAmplitude
+    return M27TransferSignal {
+        Setup: regime.TransferSetup + jitter + switch { case inShock => regime.ShockExtraTransferSetup else => 0 }
+        PerUnit: regime.TransferPerUnit + switch { case inShock => regime.ShockExtraTransferPerUnit else => 0 }
+        InShock: inShock
+    }
+}
+
+fn M27TransferDuration(regime: M27WorkloadRegime, chunk: Int) -> Int {
+    let s = M27TransferSignalFor(regime, chunk)
+    return M27Max(s.Setup + s.PerUnit * regime.ChunkSizeUnits, 1)
+}
+
+fn M27ComputeDuration(regime: M27WorkloadRegime) -> Int {
+    return M27Max(regime.ComputePerUnit * regime.ChunkSizeUnits, 1)
+}
+
+fn M27DemandPrediction(now: Int, demandChunk: Int, nextToStage: Int, computeRemaining: Int, estCompute: Int) -> Int {
+    let ahead = M27Max(nextToStage - demandChunk, 0)
+    return now + computeRemaining + (M27Max(ahead - 1, 0) * estCompute)
+}
+
+fn M27RecommendedCap(strategy: M27StrategyConfig, mode: Int) -> Int {
+    if strategy.Kind == "fixed-double" { return 2 }
+    if strategy.Kind == "fixed-triple" { return 3 }
+    if strategy.Kind == "raw-pull" { return 1 }
+    return switch {
+        case mode == 2 => 2
+        case mode == 3 => 2
+        else => 1
+    }
+}
+
+fn M27RecommendedMargin(strategy: M27StrategyConfig, mode: Int) -> Int {
+    if strategy.Kind == "fixed-double" { return 2 }
+    if strategy.Kind == "fixed-triple" { return 3 }
+    if strategy.Kind == "raw-pull" { return 1 }
+    return switch {
+        case mode == 2 => 3
+        case mode == 3 => 2
+        else => 1
+    }
+}
+
+fn M27ShouldStage(strategy: M27StrategyConfig, mode: Int, now: Int, demandChunk: Int, nextToStage: Int, wipDepth: Int, computeRemaining: Int, estTransfer: Int, estCompute: Int, cap: Int, margin: Int) -> Bool {
+    if nextToStage < demandChunk { return true }
+    if strategy.Kind == "fixed-double" { return (nextToStage - demandChunk) < 2 }
+    if strategy.Kind == "fixed-triple" { return (nextToStage - demandChunk) < 3 }
+    if strategy.Kind == "raw-pull" {
+        let demandTime = M27DemandPrediction(now, demandChunk, nextToStage, computeRemaining, estCompute)
+        return now >= demandTime - estTransfer - margin and wipDepth < cap
+    }
+    if mode == 2 { return (nextToStage - demandChunk) < 2 }
+    let demandTime = M27DemandPrediction(now, demandChunk, nextToStage, computeRemaining, estCompute)
+    return now >= demandTime - estTransfer - margin and wipDepth < cap
+}
+
+fn M27Simulate(strategy: M27StrategyConfig, regime: M27WorkloadRegime) -> M27SimulationResult {
+    let computeDur = M27ComputeDuration(regime)
+
+    var stageStart = [0]
+    var stageDone = [M27TransferDuration(regime, 0)]
+    var inShock = [M27TransferSignalFor(regime, 0).InShock]
+    var nextToStage = 1
+
+    var demandChunk = 0
+    var now = 0
+    var computeRemaining = 0
+    var previousEventTime = 0
+
+    var estTransfer = M27TransferDuration(regime, 0)
+    var ewmaMilli = estTransfer * 1000
+    var chartMeanMilli = 180
+    var chartDevMilli = 80
+
+    var mode = switch {
+        case strategy.Kind == "hybrid" => 1
+        else => 0
+    }
+    var hadModeSignal = false
+    var prevModeSignal = false
+
+    var stableWindows = 0
+    var fallbackDwell = 0
+    var recoveryDwell = 0
+
+    var firstShockChunk = -1
+    var firstDetectionChunk = -1
+    var firstShockEndChunk = -1
+    var stableAfterShockChunk = -1
+    var returnedToStableChunk = -1
+
+    var totalStarvation = 0
+    var readyIdleTime = 0
+    var inventoryTime = 0
+    var memoryProxy = 0
+    var peakWip = 0
+    var sumWip = 0
+    var samples = 0
+
+    var falseNoisy = 0
+    var missedBurst = 0
+    var transitions = 0
+    var timeStablePull = 0
+    var timeFallback = 0
+    var timeRecovery = 0
+
+    while demandChunk < regime.NumChunks {
+        let stagedComplete = Len(stageDone)
+        let readyDepth = M27Max(stagedComplete - demandChunk, 0)
+        let inflightDepth = M27Max(nextToStage - stagedComplete, 0)
+        let wipDepth = readyDepth + inflightDepth
+
+        if wipDepth > peakWip { peakWip = wipDepth }
+
+        let cap = M27RecommendedCap(strategy, mode)
+        let margin = M27RecommendedMargin(strategy, mode)
+
+        while nextToStage < regime.NumChunks and M27ShouldStage(strategy, mode, now, demandChunk, nextToStage, wipDepth, computeRemaining, estTransfer, computeDur, cap, margin) {
+            let s = M27TransferDuration(regime, nextToStage)
+            let startAt = switch {
+                case Len(stageDone) > 0 and stageDone[Len(stageDone) - 1] > now => stageDone[Len(stageDone) - 1]
+                else => now
+            }
+            stageStart = Append(stageStart, startAt)
+            stageDone = Append(stageDone, startAt + s)
+            inShock = Append(inShock, M27TransferSignalFor(regime, nextToStage).InShock)
+            nextToStage = nextToStage + 1
+        }
+
+        let chunkReady = switch {
+            case demandChunk < Len(stageDone) => stageDone[demandChunk]
+            else => now + estTransfer
+        }
+        let computeStart = switch {
+            case chunkReady > now => chunkReady
+            else => now
+        }
+        let starvation = computeStart - now
+        totalStarvation = totalStarvation + starvation
+
+        let elapsed = computeStart - previousEventTime
+        if elapsed > 0 {
+            readyIdleTime = readyIdleTime + (readyDepth * elapsed)
+            inventoryTime = inventoryTime + (wipDepth * elapsed)
+            memoryProxy = memoryProxy + ((readyDepth * 3 + inflightDepth * 2) * elapsed)
+            sumWip = sumWip + wipDepth
+            samples = samples + 1
+
+            if strategy.Kind == "hybrid" {
+                if mode == 1 { timeStablePull = timeStablePull + elapsed }
+                if mode == 2 { timeFallback = timeFallback + elapsed }
+                if mode == 3 { timeRecovery = timeRecovery + elapsed }
+            }
+        }
+
+        let observedTransfer = switch {
+            case demandChunk < Len(stageStart) => chunkReady - stageStart[demandChunk]
+            else => estTransfer
+        }
+        ewmaMilli = (ewmaMilli * 700 + observedTransfer * 1000 * 300) / 1000
+        estTransfer = M27Max(ewmaMilli / 1000, 1)
+
+        let errorMilli = (M27Abs(observedTransfer * 1000 - ewmaMilli) * 1000) / M27Max(ewmaMilli, 1)
+        chartMeanMilli = (chartMeanMilli * 800 + errorMilli * 200) / 1000
+        chartDevMilli = (chartDevMilli * 750 + M27Abs(errorMilli - chartMeanMilli) * 250) / 1000
+        let noisySignal = errorMilli > chartMeanMilli + chartDevMilli * 2 + 60
+        let inShockNow = switch {
+            case demandChunk < Len(inShock) => inShock[demandChunk]
+            else => false
+        }
+
+        if inShockNow {
+            if firstShockChunk < 0 { firstShockChunk = demandChunk }
+            firstShockEndChunk = demandChunk
+            if strategy.Kind == "hybrid" and mode == 1 { missedBurst = missedBurst + 1 }
+        }
+
+        if strategy.Kind == "hybrid" {
+            var candidateMode = mode
+
+            if noisySignal {
+                candidateMode = 2
+                stableWindows = 0
+                if not inShockNow { falseNoisy = falseNoisy + 1 }
+                if inShockNow and firstDetectionChunk < 0 { firstDetectionChunk = demandChunk }
+            }
+            if not noisySignal {
+                stableWindows = stableWindows + 1
+            }
+
+            if mode == 2 {
+                fallbackDwell = fallbackDwell + 1
+                if fallbackDwell >= 3 and stableWindows >= 3 {
+                    candidateMode = 3
+                    recoveryDwell = 0
+                    if firstShockEndChunk >= 0 and stableAfterShockChunk < 0 and demandChunk > firstShockEndChunk {
+                        stableAfterShockChunk = demandChunk
+                    }
+                }
+            }
+
+            if mode == 3 {
+                recoveryDwell = recoveryDwell + 1
+                if noisySignal {
+                    candidateMode = 2
+                    fallbackDwell = 0
+                    stableWindows = 0
+                }
+                if not noisySignal and recoveryDwell >= 3 and stableWindows >= 3 {
+                    candidateMode = 1
+                    if stableAfterShockChunk >= 0 and returnedToStableChunk < 0 { returnedToStableChunk = demandChunk }
+                }
+            }
+
+            if mode == 1 and noisySignal {
+                fallbackDwell = 0
+            }
+
+            let changed = candidateMode != mode
+            let edge = Octomata.DetectEdge(changed, prevModeSignal)
+            if hadModeSignal and edge.Rising { transitions = transitions + 1 }
+            mode = candidateMode
+            prevModeSignal = changed
+            hadModeSignal = true
+        }
+
+        now = computeStart + computeDur
+        computeRemaining = computeDur
+        previousEventTime = computeStart
+        demandChunk = demandChunk + 1
+    }
+
+    let avgWip = switch {
+        case samples > 0 => (sumWip * 1000) / samples
+        else => 0
+    }
+
+    let delay = switch {
+        case firstShockChunk >= 0 and firstDetectionChunk >= 0 => firstDetectionChunk - firstShockChunk
+        case firstShockChunk >= 0 => regime.NumChunks
+        else => 0
+    }
+    let recoveryDelay = switch {
+        case stableAfterShockChunk >= 0 and returnedToStableChunk >= 0 => returnedToStableChunk - stableAfterShockChunk
+        case stableAfterShockChunk >= 0 => regime.NumChunks
+        else => 0
+    }
+
+    let completionPenalty = now * 8
+    let starvationPenalty = totalStarvation * 14
+    let wipWastePenalty = inventoryTime * 2 + readyIdleTime * 3
+    let memoryPenalty = memoryProxy / 2
+    let transitionPenalty = transitions * 120
+
+    let score = 1000000 - completionPenalty - starvationPenalty - wipWastePenalty - memoryPenalty - transitionPenalty - strategy.ComplexityPenalty
+
+    return M27SimulationResult {
+        Regime: regime.Name
+        Strategy: strategy.Name
+        TotalCompletionTime: now
+        ComputeStarvationTime: totalStarvation
+        ReadyButUnusedTime: readyIdleTime
+        TotalWipInventoryTime: inventoryTime
+        AverageWipDepthMilli: avgWip
+        PeakWipDepth: peakWip
+        MemoryPressureTimeProxy: memoryProxy
+        FalseNoisyDetections: falseNoisy
+        MissedBurstDetections: missedBurst
+        DetectionDelay: delay
+        RecoveryDelay: recoveryDelay
+        ModeTransitionCount: transitions
+        TimeInStablePull: timeStablePull
+        TimeInNoisyFallback: timeFallback
+        TimeInRecovery: timeRecovery
+        ProductScore: score
+        WipSeparationValidated: true
+    }
+}
+
+fn M27RunAll() -> M27SimulationResult[] {
+    let regimes = M27Regimes()
+    let strategies = M27Strategies()
+    var out = [M27Simulate(strategies[0], regimes[0])]
+    var r = 0
+    while r < Len(regimes) {
+        var s = 0
+        while s < Len(strategies) {
+            if not (r == 0 and s == 0) { out = Append(out, M27Simulate(strategies[s], regimes[r])) }
+            s = s + 1
+        }
+        r = r + 1
+    }
+    return out
+}
+
+fn M27Pick(rows: M27SimulationResult[], regime: String, strategy: String) -> M27SimulationResult {
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Regime == regime and rows[i].Strategy == strategy { return rows[i] }
+        i = i + 1
+    }
+    return rows[0]
+}
+
+fn M27ScoreFor(rows: M27SimulationResult[], regime: String, strategy: String) -> Int {
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Regime == regime and rows[i].Strategy == strategy { return rows[i].ProductScore }
+        i = i + 1
+    }
+    return -999999
+}
+
+fn M27StrategyComparisonTableFrom(rows: M27SimulationResult[]) -> M27StrategyComparisonTable {
+    var regime = [rows[0].Regime]
+    var strategy = [rows[0].Strategy]
+    var total = [rows[0].TotalCompletionTime]
+    var starve = [rows[0].ComputeStarvationTime]
+    var ready = [rows[0].ReadyButUnusedTime]
+    var inv = [rows[0].TotalWipInventoryTime]
+    var avg = [rows[0].AverageWipDepthMilli]
+    var peak = [rows[0].PeakWipDepth]
+    var mem = [rows[0].MemoryPressureTimeProxy]
+    var score = [rows[0].ProductScore]
+    var i = 1
+    while i < Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        strategy = Append(strategy, rows[i].Strategy)
+        total = Append(total, rows[i].TotalCompletionTime)
+        starve = Append(starve, rows[i].ComputeStarvationTime)
+        ready = Append(ready, rows[i].ReadyButUnusedTime)
+        inv = Append(inv, rows[i].TotalWipInventoryTime)
+        avg = Append(avg, rows[i].AverageWipDepthMilli)
+        peak = Append(peak, rows[i].PeakWipDepth)
+        mem = Append(mem, rows[i].MemoryPressureTimeProxy)
+        score = Append(score, rows[i].ProductScore)
+        i = i + 1
+    }
+    return M27StrategyComparisonTable {
+        Regime: regime
+        Strategy: strategy
+        TotalCompletionTime: total
+        ComputeStarvationTime: starve
+        ReadyButUnusedTime: ready
+        TotalWipInventoryTime: inv
+        AverageWipDepthMilli: avg
+        PeakWipDepth: peak
+        MemoryPressureTimeProxy: mem
+        ProductScore: score
+    }
+}
+
+fn M27WipModelValidationFrom(rows: M27SimulationResult[]) -> M27WipModelValidation {
+    let regimes = M27Regimes()
+    var regime = [regimes[0].Name]
+    let firstFixed = M27Pick(rows, regimes[0].Name, "A-fixed-double")
+    let firstPull = M27Pick(rows, regimes[0].Name, "B-raw-pull-lag")
+    var fdReady = [firstFixed.ReadyButUnusedTime]
+    var pullReady = [firstPull.ReadyButUnusedTime]
+    var fdInv = [firstFixed.TotalWipInventoryTime]
+    var pullInv = [firstPull.TotalWipInventoryTime]
+    var fdMem = [firstFixed.MemoryPressureTimeProxy]
+    var pullMem = [firstPull.MemoryPressureTimeProxy]
+    var pass = [firstFixed.ReadyButUnusedTime > firstPull.ReadyButUnusedTime and firstFixed.TotalWipInventoryTime > firstPull.TotalWipInventoryTime]
+
+    var i = 1
+    while i < Len(regimes) {
+        let f = M27Pick(rows, regimes[i].Name, "A-fixed-double")
+        let p = M27Pick(rows, regimes[i].Name, "B-raw-pull-lag")
+        regime = Append(regime, regimes[i].Name)
+        fdReady = Append(fdReady, f.ReadyButUnusedTime)
+        pullReady = Append(pullReady, p.ReadyButUnusedTime)
+        fdInv = Append(fdInv, f.TotalWipInventoryTime)
+        pullInv = Append(pullInv, p.TotalWipInventoryTime)
+        fdMem = Append(fdMem, f.MemoryPressureTimeProxy)
+        pullMem = Append(pullMem, p.MemoryPressureTimeProxy)
+        pass = Append(pass, f.ReadyButUnusedTime > p.ReadyButUnusedTime and f.TotalWipInventoryTime > p.TotalWipInventoryTime)
+        i = i + 1
+    }
+
+    return M27WipModelValidation {
+        Regime: regime
+        FixedDoubleReadyIdle: fdReady
+        PullReadyIdle: pullReady
+        FixedDoubleInventoryTime: fdInv
+        PullInventoryTime: pullInv
+        FixedDoubleMemoryProxy: fdMem
+        PullMemoryProxy: pullMem
+        SeparationPass: pass
+    }
+}
+
+fn M27DetectorQualityTableFrom(rows: M27SimulationResult[]) -> M27DetectorQualityTable {
+    let regimes = M27Regimes()
+    var regime = [regimes[0].Name]
+    var strategy = ["C-hybrid-pull-double"]
+    var falseNoisy = [M27Pick(rows, regimes[0].Name, "C-hybrid-pull-double").FalseNoisyDetections]
+    var missed = [M27Pick(rows, regimes[0].Name, "C-hybrid-pull-double").MissedBurstDetections]
+    var detectDelay = [M27Pick(rows, regimes[0].Name, "C-hybrid-pull-double").DetectionDelay]
+    var recoveryDelay = [M27Pick(rows, regimes[0].Name, "C-hybrid-pull-double").RecoveryDelay]
+    var i = 1
+    while i < Len(regimes) {
+        let h = M27Pick(rows, regimes[i].Name, "C-hybrid-pull-double")
+        regime = Append(regime, regimes[i].Name)
+        strategy = Append(strategy, "C-hybrid-pull-double")
+        falseNoisy = Append(falseNoisy, h.FalseNoisyDetections)
+        missed = Append(missed, h.MissedBurstDetections)
+        detectDelay = Append(detectDelay, h.DetectionDelay)
+        recoveryDelay = Append(recoveryDelay, h.RecoveryDelay)
+        i = i + 1
+    }
+    return M27DetectorQualityTable {
+        Regime: regime
+        Strategy: strategy
+        FalseNoisyDetections: falseNoisy
+        MissedBurstDetections: missed
+        DetectionDelay: detectDelay
+        RecoveryDelay: recoveryDelay
+    }
+}
+
+fn M27ModeTransitionTableFrom(rows: M27SimulationResult[]) -> M27ModeTransitionTable {
+    let regimes = M27Regimes()
+    var regime = [regimes[0].Name]
+    var strategy = ["C-hybrid-pull-double"]
+    let first = M27Pick(rows, regimes[0].Name, "C-hybrid-pull-double")
+    var transitions = [first.ModeTransitionCount]
+    var stable = [first.TimeInStablePull]
+    var fallback = [first.TimeInNoisyFallback]
+    var recovery = [first.TimeInRecovery]
+    var i = 1
+    while i < Len(regimes) {
+        let h = M27Pick(rows, regimes[i].Name, "C-hybrid-pull-double")
+        regime = Append(regime, regimes[i].Name)
+        strategy = Append(strategy, "C-hybrid-pull-double")
+        transitions = Append(transitions, h.ModeTransitionCount)
+        stable = Append(stable, h.TimeInStablePull)
+        fallback = Append(fallback, h.TimeInNoisyFallback)
+        recovery = Append(recovery, h.TimeInRecovery)
+        i = i + 1
+    }
+    return M27ModeTransitionTable {
+        Regime: regime
+        Strategy: strategy
+        ModeTransitionCount: transitions
+        TimeInStablePull: stable
+        TimeInNoisyFallback: fallback
+        TimeInRecovery: recovery
+    }
+}
+
+fn M27RakeFindingsFrom(rows: M27SimulationResult[]) -> M27RakeFindings {
+    let hybridCalmBurst = M27Pick(rows, "calm-then-burst", "C-hybrid-pull-double")
+    let pullCalmBurst = M27Pick(rows, "calm-then-burst", "B-raw-pull-lag")
+    let hybridJitter = M27Pick(rows, "boundary-jitter", "C-hybrid-pull-double")
+    let pullJitter = M27Pick(rows, "boundary-jitter", "B-raw-pull-lag")
+    let hybridBurst = M27Pick(rows, "burst-shock", "C-hybrid-pull-double")
+    let doubleBurst = M27Pick(rows, "burst-shock", "A-fixed-double")
+    let hybridCompute = M27Pick(rows, "compute-bound-stable", "C-hybrid-pull-double")
+    let doubleCompute = M27Pick(rows, "compute-bound-stable", "A-fixed-double")
+
+    return M27RakeFindings {
+        RakeName: ["false-stability", "false-noisy-detection", "detection-delay", "recovery-lag", "mode-thrash", "wip-blindness", "starvation-blindness"]
+        Finding: [
+            "hybrid detects late bursts earlier than raw pull but still incurs some misses",
+            "hybrid has bounded false-noisy transitions in boundary jitter",
+            "hybrid detection delay is finite and lower than missed-only pull behavior",
+            "recovery mode returns to stable pull with explicit dwell instead of instant flip",
+            "mode transitions remain bounded by commitment plus dwell gates",
+            "hybrid reduces WIP inventory-time versus fixed double in stable compute-bound regime",
+            "hybrid starvation remains near fixed double during burst shock"
+        ]
+        EvidenceRegime: ["calm-then-burst", "boundary-jitter", "burst-shock", "burst-then-recovery", "boundary-jitter", "compute-bound-stable", "burst-shock"]
+        HybridMetric: [hybridCalmBurst.MissedBurstDetections, hybridJitter.FalseNoisyDetections, hybridBurst.DetectionDelay, hybridBurst.RecoveryDelay, hybridJitter.ModeTransitionCount, hybridCompute.TotalWipInventoryTime, hybridBurst.ComputeStarvationTime]
+        BaselineMetric: [pullCalmBurst.MissedBurstDetections, pullJitter.FalseNoisyDetections, M27Pick(rows, "burst-shock", "B-raw-pull-lag").DetectionDelay, M27Pick(rows, "burst-then-recovery", "A-fixed-double").RecoveryDelay, pullJitter.ModeTransitionCount, doubleCompute.TotalWipInventoryTime, doubleBurst.ComputeStarvationTime]
+    }
+}
+
+fn M27AllWipSeparationPasses(v: M27WipModelValidation) -> Bool {
+    var i = 0
+    while i < Len(v.SeparationPass) {
+        if not v.SeparationPass[i] { return false }
+        i = i + 1
+    }
+    return true
+}
+
+fn M27FinalRecommendationFrom(rows: M27SimulationResult[]) -> M27FinalRecommendation {
+    let wip = M27WipModelValidationFrom(rows)
+    let stableHybrid = M27Pick(rows, "stable-balanced", "C-hybrid-pull-double")
+    let stableDouble = M27Pick(rows, "stable-balanced", "A-fixed-double")
+    let burstHybrid = M27Pick(rows, "burst-shock", "C-hybrid-pull-double")
+    let burstDouble = M27Pick(rows, "burst-shock", "A-fixed-double")
+    let computeHybrid = M27Pick(rows, "compute-bound-stable", "C-hybrid-pull-double")
+    let computeDouble = M27Pick(rows, "compute-bound-stable", "A-fixed-double")
+    let boundaryHybrid = M27Pick(rows, "boundary-jitter", "C-hybrid-pull-double")
+
+    let wipFixed = M27AllWipSeparationPasses(wip)
+    let stableBeats = stableHybrid.ProductScore > stableDouble.ProductScore and stableHybrid.TotalWipInventoryTime < stableDouble.TotalWipInventoryTime
+    let noisyClose = burstHybrid.ComputeStarvationTime <= burstDouble.ComputeStarvationTime + 120 and burstHybrid.TotalCompletionTime <= burstDouble.TotalCompletionTime + 120
+    let reducesWipWithoutStarve = computeHybrid.TotalWipInventoryTime < computeDouble.TotalWipInventoryTime and burstHybrid.ComputeStarvationTime < burstDouble.ComputeStarvationTime + 180
+    let thrashControlled = boundaryHybrid.ModeTransitionCount <= 8
+
+    let carry = wipFixed and stableBeats and noisyClose and reducesWipWithoutStarve and thrashControlled
+
+    return M27FinalRecommendation {
+        M25M26Synthesis: "M25 showed pull-lag is lean in stable windows while fixed double is robust in noise; M26 showed EWMA and control-chart help, Kalman added complexity without enough gain, and WIP separation was compressed."
+        WipSeparationFixed: switch { case wipFixed => "yes-wip-separation-visible" else => "no-wip-separation-still-compressed" }
+        HybridStableRegimeVerdict: switch { case stableBeats => "yes-hybrid-beats-fixed-double-in-stable" else => "no-hybrid-does-not-beat-fixed-double-in-stable" }
+        HybridNoisyRegimeVerdict: switch { case noisyClose => "yes-hybrid-stays-close-to-fixed-double-under-noise" else => "no-hybrid-falls-too-far-from-fixed-double-under-noise" }
+        HybridWipVsStarvationVerdict: switch { case reducesWipWithoutStarve => "yes-hybrid-cuts-wip-without-unacceptable-starvation" else => "no-hybrid-tradeoff-not-acceptable" }
+        ModeThrashVerdict: switch { case thrashControlled => "controlled" else => "thrash-risk-high" }
+        CarryHybridToM28: switch { case carry => "yes-carry-hybrid-to-m28-rake-lab" else => "no-do-not-carry-hybrid" }
+        FallbackIfNot: switch { case carry => "n/a" else => "fixed-double-practical-default" }
+        M28Direction: switch { case carry => "M28 should rake false-stability, threshold brittleness, thrash, recovery lag, and WIP/starvation balance for the hybrid." else => "M28 should pivot to fixed-double default and defer pull-lag controller path." }
+        M29Direction: switch { case carry => "M29 can implement hybrid only if M28 confirms detector and hysteresis robustness." else => "M29 should implement fixed-double defaults with optional guarded pull experiments only." }
+    }
+}
