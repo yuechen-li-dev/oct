@@ -291,6 +291,10 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t m35_serial_sequential_step_count;
   uint64_t m35_serial_busy_retry_count;
   uint64_t m35_serial_failure_cleanup_count;
+  uint32_t p10_m4_last_slot_event_kind;
+  uint32_t p10_m4_last_slot_event_slot_id;
+  int32_t p10_m4_last_slot_event_reason;
+  uint32_t p10_m4_last_commit_dirty_slot_mask;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
