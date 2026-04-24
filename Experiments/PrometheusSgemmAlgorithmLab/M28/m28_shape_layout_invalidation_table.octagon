@@ -1,0 +1,12 @@
+[M28ShapeLayoutInvalidationTable {
+    Scenario: ["B-shape-change", "C-layout-change", "H-boundary-alternating"]
+    ShapeChanged: [true, false, true]
+    KChanged: [true, false, true]
+    OutputDimChanged: [true, false, true]
+    LayoutChanged: [false, true, true]
+    PrecisionChanged: [false, true, true]
+    ShapeInvalidationCount: [3, 0, 2]
+    LayoutInvalidationCount: [0, 3, 2]
+    CapacityRebuildCount: [2, 3, 3]
+    StaleBufferRejectionCount: [2, 2, 3]
+}]

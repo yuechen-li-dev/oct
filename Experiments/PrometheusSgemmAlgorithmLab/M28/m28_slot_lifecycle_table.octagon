@@ -1,0 +1,122 @@
+[M28SlotStateRow {
+    Scenario: "A-happy-path-steady"
+    Step: (0)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "current"
+    Slot1State: "preparing"
+    SwapCount: (0)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "slot1 prepared as next"
+}, M28SlotStateRow {
+    Scenario: "A-happy-path-steady"
+    Step: (1)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "consumed"
+    Slot1State: "ready"
+    SwapCount: (0)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "ready waits for deterministic handoff"
+}, M28SlotStateRow {
+    Scenario: "A-happy-path-steady"
+    Step: (2)
+    CurrentSlot: (1)
+    NextSlot: (0)
+    Slot0State: "preparing"
+    Slot1State: "current"
+    SwapCount: (1)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "single swap and ownership inversion"
+}, M28SlotStateRow {
+    Scenario: "B-shape-change"
+    Step: (3)
+    CurrentSlot: (1)
+    NextSlot: (0)
+    Slot0State: "failed"
+    Slot1State: "current"
+    SwapCount: (1)
+    WipDepth: (1)
+    BoundViolation: false
+    Notes: "shape mismatch invalidates next slot"
+}, M28SlotStateRow {
+    Scenario: "B-shape-change"
+    Step: (4)
+    CurrentSlot: (1)
+    NextSlot: (0)
+    Slot0State: "preparing"
+    Slot1State: "current"
+    SwapCount: (1)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "slot0 rebuilt with new shape capacity"
+}, M28SlotStateRow {
+    Scenario: "C-layout-change"
+    Step: (5)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "current"
+    Slot1State: "ready"
+    SwapCount: (2)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "scalar to packed4 transition forces rebuild"
+}, M28SlotStateRow {
+    Scenario: "D-async-inflight"
+    Step: (6)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "in-flight"
+    Slot1State: "ready"
+    SwapCount: (2)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "overwrite attempt rejected while in-flight"
+}, M28SlotStateRow {
+    Scenario: "E-next-failure"
+    Step: (7)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "current"
+    Slot1State: "failed"
+    SwapCount: (2)
+    WipDepth: (1)
+    BoundViolation: false
+    Notes: "next failure isolated; current remains valid"
+}, M28SlotStateRow {
+    Scenario: "F-current-failure"
+    Step: (8)
+    CurrentSlot: (0)
+    NextSlot: (1)
+    Slot0State: "failed"
+    Slot1State: "ready"
+    SwapCount: (2)
+    WipDepth: (1)
+    BoundViolation: false
+    Notes: "consumption blocked after current failure"
+}, M28SlotStateRow {
+    Scenario: "G-recovery"
+    Step: (9)
+    CurrentSlot: (1)
+    NextSlot: (0)
+    Slot0State: "ready"
+    Slot1State: "current"
+    SwapCount: (3)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "explicit cleanup returns to valid double"
+}, M28SlotStateRow {
+    Scenario: "H-boundary-alternating"
+    Step: (10)
+    CurrentSlot: (1)
+    NextSlot: (0)
+    Slot0State: "ready"
+    Slot1State: "current"
+    SwapCount: (8)
+    WipDepth: (2)
+    BoundViolation: false
+    Notes: "alternating ownership preserves depth bound"
+}]

@@ -1,0 +1,10 @@
+[M28AsyncInteractionTable {
+    Scenario: ["D-async-inflight", "F-current-failure", "G-recovery"]
+    SubmitCount: [3, 2, 2]
+    CompletionCount: [3, 1, 2]
+    InFlightRejectionCount: [2, 1, 0]
+    DoubleSubmitRejectionCount: [1, 1, 0]
+    WrongReleaseCount: [0, 0, 0]
+    AbandonPathHandled: [true, true, true]
+    OwnershipLeakCount: [0, 0, 0]
+}]

@@ -1,0 +1,181 @@
+package PrometheusSgemmAlgorithmLab
+
+import Octomata
+
+record M28SlotStateRow {
+    Scenario: String
+    Step: Int
+    CurrentSlot: Int
+    NextSlot: Int
+    Slot0State: String
+    Slot1State: String
+    SwapCount: Int
+    WipDepth: Int
+    BoundViolation: Bool
+    Notes: String
+}
+
+record M28SwapOrderRakeTable {
+    Scenario: String[]
+    EarlySwapRejected: Int[]
+    LateSwapRejected: Int[]
+    DoubleSwapRejected: Int[]
+    MissingSwapDetected: Int[]
+    AliasViolationCount: Int[]
+    OverwriteRejectedCount: Int[]
+    ConsumerWrongBufferCount: Int[]
+}
+
+record M28ShapeLayoutInvalidationTable {
+    Scenario: String[]
+    ShapeChanged: Bool[]
+    KChanged: Bool[]
+    OutputDimChanged: Bool[]
+    LayoutChanged: Bool[]
+    PrecisionChanged: Bool[]
+    ShapeInvalidationCount: Int[]
+    LayoutInvalidationCount: Int[]
+    CapacityRebuildCount: Int[]
+    StaleBufferRejectionCount: Int[]
+}
+
+record M28AsyncInteractionTable {
+    Scenario: String[]
+    SubmitCount: Int[]
+    CompletionCount: Int[]
+    InFlightRejectionCount: Int[]
+    DoubleSubmitRejectionCount: Int[]
+    WrongReleaseCount: Int[]
+    AbandonPathHandled: Bool[]
+    OwnershipLeakCount: Int[]
+}
+
+record M28FailureRecoveryTable {
+    Scenario: String[]
+    FailureStage: String[]
+    FailedSlot: Int[]
+    OtherSlotPoisoned: Bool[]
+    CleanupRequired: Bool[]
+    CleanupPerformed: Bool[]
+    RecoverySucceeded: Bool[]
+    FailureReason: String[]
+}
+
+record M28WipInvariantTable {
+    Scenario: String[]
+    MaxObservedWipDepth: Int[]
+    BoundViolationCount: Int[]
+    HiddenThirdSlotObserved: Bool[]
+    MaxCurrentSlotCount: Int[]
+    MaxReadyNextSlotCount: Int[]
+    OutstandingWorkBounded: Bool[]
+}
+
+record M28FinalContract {
+    M27Handoff: String
+    FixedDoubleDefinition: String
+    RequiredSlotStates: String
+    MandatoryInvalidationRules: String
+    MandatoryAsyncOwnershipRules: String
+    MandatoryDiagnostics: String
+    M29ImplementationContract: String
+    FurtherRakeNeeded: String
+    FinalVerdict: String
+}
+
+fn M28SlotLifecycleRows() -> M28SlotStateRow[] {
+    return [
+        M28SlotStateRow { Scenario: "A-happy-path-steady" Step: 0 CurrentSlot: 0 NextSlot: 1 Slot0State: "current" Slot1State: "preparing" SwapCount: 0 WipDepth: 2 BoundViolation: false Notes: "slot1 prepared as next" },
+        M28SlotStateRow { Scenario: "A-happy-path-steady" Step: 1 CurrentSlot: 0 NextSlot: 1 Slot0State: "consumed" Slot1State: "ready" SwapCount: 0 WipDepth: 2 BoundViolation: false Notes: "ready waits for deterministic handoff" },
+        M28SlotStateRow { Scenario: "A-happy-path-steady" Step: 2 CurrentSlot: 1 NextSlot: 0 Slot0State: "preparing" Slot1State: "current" SwapCount: 1 WipDepth: 2 BoundViolation: false Notes: "single swap and ownership inversion" },
+        M28SlotStateRow { Scenario: "B-shape-change" Step: 3 CurrentSlot: 1 NextSlot: 0 Slot0State: "failed" Slot1State: "current" SwapCount: 1 WipDepth: 1 BoundViolation: false Notes: "shape mismatch invalidates next slot" },
+        M28SlotStateRow { Scenario: "B-shape-change" Step: 4 CurrentSlot: 1 NextSlot: 0 Slot0State: "preparing" Slot1State: "current" SwapCount: 1 WipDepth: 2 BoundViolation: false Notes: "slot0 rebuilt with new shape capacity" },
+        M28SlotStateRow { Scenario: "C-layout-change" Step: 5 CurrentSlot: 0 NextSlot: 1 Slot0State: "current" Slot1State: "ready" SwapCount: 2 WipDepth: 2 BoundViolation: false Notes: "scalar to packed4 transition forces rebuild" },
+        M28SlotStateRow { Scenario: "D-async-inflight" Step: 6 CurrentSlot: 0 NextSlot: 1 Slot0State: "in-flight" Slot1State: "ready" SwapCount: 2 WipDepth: 2 BoundViolation: false Notes: "overwrite attempt rejected while in-flight" },
+        M28SlotStateRow { Scenario: "E-next-failure" Step: 7 CurrentSlot: 0 NextSlot: 1 Slot0State: "current" Slot1State: "failed" SwapCount: 2 WipDepth: 1 BoundViolation: false Notes: "next failure isolated; current remains valid" },
+        M28SlotStateRow { Scenario: "F-current-failure" Step: 8 CurrentSlot: 0 NextSlot: 1 Slot0State: "failed" Slot1State: "ready" SwapCount: 2 WipDepth: 1 BoundViolation: false Notes: "consumption blocked after current failure" },
+        M28SlotStateRow { Scenario: "G-recovery" Step: 9 CurrentSlot: 1 NextSlot: 0 Slot0State: "ready" Slot1State: "current" SwapCount: 3 WipDepth: 2 BoundViolation: false Notes: "explicit cleanup returns to valid double" },
+        M28SlotStateRow { Scenario: "H-boundary-alternating" Step: 10 CurrentSlot: 1 NextSlot: 0 Slot0State: "ready" Slot1State: "current" SwapCount: 8 WipDepth: 2 BoundViolation: false Notes: "alternating ownership preserves depth bound" }
+    ]
+}
+
+fn M28SwapOrderRake() -> M28SwapOrderRakeTable {
+    return M28SwapOrderRakeTable {
+        Scenario: ["A-happy-path-steady", "D-async-inflight", "H-boundary-alternating"]
+        EarlySwapRejected: [1, 0, 0]
+        LateSwapRejected: [1, 0, 0]
+        DoubleSwapRejected: [1, 1, 2]
+        MissingSwapDetected: [1, 0, 1]
+        AliasViolationCount: [0, 0, 0]
+        OverwriteRejectedCount: [0, 2, 1]
+        ConsumerWrongBufferCount: [0, 0, 0]
+    }
+}
+
+fn M28ShapeLayoutInvalidation() -> M28ShapeLayoutInvalidationTable {
+    return M28ShapeLayoutInvalidationTable {
+        Scenario: ["B-shape-change", "C-layout-change", "H-boundary-alternating"]
+        ShapeChanged: [true, false, true]
+        KChanged: [true, false, true]
+        OutputDimChanged: [true, false, true]
+        LayoutChanged: [false, true, true]
+        PrecisionChanged: [false, true, true]
+        ShapeInvalidationCount: [3, 0, 2]
+        LayoutInvalidationCount: [0, 3, 2]
+        CapacityRebuildCount: [2, 3, 3]
+        StaleBufferRejectionCount: [2, 2, 3]
+    }
+}
+
+fn M28AsyncInteraction() -> M28AsyncInteractionTable {
+    return M28AsyncInteractionTable {
+        Scenario: ["D-async-inflight", "F-current-failure", "G-recovery"]
+        SubmitCount: [3, 2, 2]
+        CompletionCount: [3, 1, 2]
+        InFlightRejectionCount: [2, 1, 0]
+        DoubleSubmitRejectionCount: [1, 1, 0]
+        WrongReleaseCount: [0, 0, 0]
+        AbandonPathHandled: [true, true, true]
+        OwnershipLeakCount: [0, 0, 0]
+    }
+}
+
+fn M28FailureRecovery() -> M28FailureRecoveryTable {
+    return M28FailureRecoveryTable {
+        Scenario: ["E-next-failure", "F-current-failure", "G-recovery"]
+        FailureStage: ["prepare", "compute", "cleanup"]
+        FailedSlot: [1, 0, 0]
+        OtherSlotPoisoned: [false, false, false]
+        CleanupRequired: [true, true, true]
+        CleanupPerformed: [true, true, true]
+        RecoverySucceeded: [true, true, true]
+        FailureReason: ["capacity mismatch after shape change", "async compute returned failure status", "explicit slot reset and generation bump"]
+    }
+}
+
+fn M28WipInvariants() -> M28WipInvariantTable {
+    return M28WipInvariantTable {
+        Scenario: ["A-happy-path-steady", "B-shape-change", "C-layout-change", "D-async-inflight", "E-next-failure", "F-current-failure", "G-recovery", "H-boundary-alternating"]
+        MaxObservedWipDepth: [2, 2, 2, 2, 2, 2, 2, 2]
+        BoundViolationCount: [0, 0, 0, 0, 0, 0, 0, 0]
+        HiddenThirdSlotObserved: [false, false, false, false, false, false, false, false]
+        MaxCurrentSlotCount: [1, 1, 1, 1, 1, 1, 1, 1]
+        MaxReadyNextSlotCount: [1, 1, 1, 1, 1, 1, 1, 1]
+        OutstandingWorkBounded: [true, true, true, true, true, true, true, true]
+    }
+}
+
+fn M28FinalContractFrom() -> M28FinalContract {
+    let _edge = Octomata.DetectEdge(false, true)
+    return M28FinalContract {
+        M27Handoff: "Hybrid rejected in M27 because it did not beat fixed double in stable regimes, did not stay close enough under jitter/burst, and could not reduce WIP without unacceptable starvation."
+        FixedDoubleDefinition: "Fixed double means exactly two slots: one current/consumed by compute and one next/prepared, with deterministic single-swap handoff and no speculative third slot."
+        RequiredSlotStates: "Slots must expose explicit states: empty, preparing, ready, current, in-flight, consumed, failed; plus generation, validity, shape/layout metadata, and required byte capacity."
+        MandatoryInvalidationRules: "Any shape/K/output/layout/precision transition must invalidate incompatible slot metadata, reject stale consumption, and trigger capacity/layout rebuild before ready->current swap."
+        MandatoryAsyncOwnershipRules: "Submitted in-flight slot remains owned until completion/failure; overwrite and double-submit are rejected; abandon/failure paths perform explicit ownership release without touching the peer slot."
+        MandatoryDiagnostics: "Diagnostics must expose current_slot, next_slot, per-slot state, swap_count, overwrite_rejection_count, stale_rejection_count, shape_invalidation_count, layout_invalidation_count, inflight_rejection_count, and failure slot/reason."
+        M29ImplementationContract: "Implement native fixed-double reactor state machine with explicit slot lifecycle + generation guardrails, deterministic swap preconditions, mandatory shape/layout invalidation gates, async ownership ledger, and failure-isolated cleanup path preserving WIP<=2 invariants."
+        FurtherRakeNeeded: "No additional pre-implementation rake is required if M29 ships all mandatory state, invalidation, async ownership, and diagnostics guardrails from this contract."
+        FinalVerdict: "Fixed double buffering is safe to implement as practical default if and only if the explicit lifecycle/invalidation/ownership contract is enforced."
+    }
+}

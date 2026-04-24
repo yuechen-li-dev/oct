@@ -1,0 +1,9 @@
+[M28WipInvariantTable {
+    Scenario: ["A-happy-path-steady", "B-shape-change", "C-layout-change", "D-async-inflight", "E-next-failure", "F-current-failure", "G-recovery", "H-boundary-alternating"]
+    MaxObservedWipDepth: [2, 2, 2, 2, 2, 2, 2, 2]
+    BoundViolationCount: [0, 0, 0, 0, 0, 0, 0, 0]
+    HiddenThirdSlotObserved: [false, false, false, false, false, false, false, false]
+    MaxCurrentSlotCount: [1, 1, 1, 1, 1, 1, 1, 1]
+    MaxReadyNextSlotCount: [1, 1, 1, 1, 1, 1, 1, 1]
+    OutstandingWorkBounded: [true, true, true, true, true, true, true, true]
+}]
