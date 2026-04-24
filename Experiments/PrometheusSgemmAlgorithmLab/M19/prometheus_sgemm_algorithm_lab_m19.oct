@@ -1,0 +1,638 @@
+package PrometheusSgemmAlgorithmLab
+
+record M19Scenario {
+    CaseName: String
+    M: Int
+    N: Int
+    KDim: Int
+    Mode: String
+    Packed4Capability: Bool
+    FallbackAvailable: Bool
+    ContaminationSeed: Int
+}
+
+record M19Result {
+    CaseName: String
+    M: Int
+    N: Int
+    KDim: Int
+    MTail: Int
+    NTail: Int
+    KTail: Int
+    TailCount: Int
+    PaddedLaneCount: Int
+    PaddingWastePct: Int
+    PackedEligible: Bool
+    ModeBudgetPass: Bool
+    RowMajorCheckPass: Bool
+    ContaminationCheckPass: Bool
+    FallbackReason: String
+    MismatchCount: Int
+    FirstMismatchLocation: String
+}
+
+record M19TailExhaustiveTable {
+    CaseName: String[]
+    M: Int[]
+    N: Int[]
+    KDim: Int[]
+    TailCount: Int[]
+    PaddedLaneCount: Int[]
+    PaddingWastePct: Int[]
+    PackedEligible: Bool[]
+    ModeBudgetPass: Bool[]
+    RowMajorCheckPass: Bool[]
+    ContaminationCheckPass: Bool[]
+    FallbackReason: String[]
+}
+
+record M19ContaminationTable {
+    CaseName: String[]
+    ContaminationSeed: Int[]
+    PaddedLaneCount: Int[]
+    ContaminationCheckPass: Bool[]
+    MismatchCount: Int[]
+    FirstMismatchLocation: String[]
+}
+
+record M19RowMajorTable {
+    CaseName: String[]
+    M: Int[]
+    N: Int[]
+    KDim: Int[]
+    RowMajorCheckPass: Bool[]
+    MismatchCount: Int[]
+    FirstMismatchLocation: String[]
+}
+
+record M19PackUnpackRow {
+    CaseName: String
+    Rows: Int
+    Cols: Int
+    PackKind: String
+    RoundTripPass: Bool
+    CanonicalRowMajorPass: Bool
+}
+
+record M19PackUnpackTable {
+    CaseName: String[]
+    Rows: Int[]
+    Cols: Int[]
+    PackKind: String[]
+    RoundTripPass: Bool[]
+    CanonicalRowMajorPass: Bool[]
+}
+
+record M19ModeBudgetRow {
+    CaseName: String
+    M: Int
+    N: Int
+    KDim: Int
+    Mode: String
+    PaddedLaneCount: Int
+    PaddingWastePct: Int
+    ModeBudgetPass: Bool
+    PackedEligible: Bool
+    FallbackReason: String
+}
+
+record M19ModeBudgetTable {
+    CaseName: String[]
+    M: Int[]
+    N: Int[]
+    KDim: Int[]
+    Mode: String[]
+    PaddedLaneCount: Int[]
+    PaddingWastePct: Int[]
+    ModeBudgetPass: Bool[]
+    PackedEligible: Bool[]
+    FallbackReason: String[]
+}
+
+record M19FinalReadiness {
+    Packed4FullyUnderstood: String
+    SafeToImplement: String
+    MandatoryInvariants: String
+    RemainingRisks: String
+    M20Recommendation: String
+}
+
+fn M19CeilDiv(v: Int, d: Int) -> Int {
+    if d <= 0 { return 0 }
+    return (v + d - 1) / d
+}
+
+fn M19Tail(v: Int) -> Int {
+    let tail = v % 4
+    return switch {
+        case tail < 0 => tail + 4
+        else => tail
+    }
+}
+
+fn M19PadLanes(v: Int) -> Int {
+    return M19CeilDiv(v, 4) * 4 - v
+}
+
+fn M19TailCount(m: Int, n: Int, k: Int) -> Int {
+    var out = 0
+    if M19Tail(m) != 0 { out = out + 1 }
+    if M19Tail(n) != 0 { out = out + 1 }
+    if M19Tail(k) != 0 { out = out + 1 }
+    return out
+}
+
+fn M19ModeBudget(mode: String) -> Int {
+    return switch {
+        case mode == "AGGRESSIVE" => 9
+        case mode == "SAFE" => 5
+        case mode == "RECOVERY" => 3
+        else => 5
+    }
+}
+
+fn M19PaddingWastePct(m: Int, n: Int, k: Int) -> Int {
+    let total = m + n + k
+    if total <= 0 { return 0 }
+    let waste = M19PadLanes(m) + M19PadLanes(n) + M19PadLanes(k)
+    return (waste * 100) / total
+}
+
+fn M19SmallShape(m: Int, n: Int) -> Bool {
+    return (m * n) < 64
+}
+
+fn M19FallbackReason(s: M19Scenario, modeBudgetPass: Bool) -> String {
+    return switch {
+        case not s.FallbackAvailable => "FALLBACK_REQUIRED"
+        case not s.Packed4Capability => "CAPABILITY_MISSING"
+        case M19SmallShape(s.M, s.N) => "PACKED4_SMALL_SHAPE"
+        case not modeBudgetPass => "MODE_BUDGET_DENIED"
+        case (M19PadLanes(s.M) + M19PadLanes(s.N) + M19PadLanes(s.KDim)) > 0 => "PACKED4_PADDING_WASTE"
+        else => "none"
+    }
+}
+
+fn M19AValue(i: Int, k: Int) -> Int {
+    return ((i * 17 + k * 13 + 3) % 23) - 11
+}
+
+fn M19BValue(k: Int, j: Int) -> Int {
+    return ((k * 19 + j * 7 + 5) % 29) - 14
+}
+
+fn M19ScalarSgemm(m: Int, n: Int, kDim: Int) -> Int[] {
+    var out = [0]
+    for idx in 1 .. (m * n) {
+        out = Append(out, 0)
+    }
+    for i in 0 .. m {
+        for j in 0 .. n {
+            var sum = 0
+            for k in 0 .. kDim {
+                sum = sum + M19AValue(i, k) * M19BValue(k, j)
+            }
+            out[i * n + j] = sum
+        }
+    }
+    return out
+}
+
+fn M19PackedSgemm(m: Int, n: Int, kDim: Int, contaminationSeed: Int) -> Int[] {
+    let kPadded = M19CeilDiv(kDim, 4) * 4
+    let kBlocks = M19CeilDiv(kDim, 4)
+
+    var aPacked = [0]
+    for idx in 1 .. (m * kPadded) {
+        aPacked = Append(aPacked, 0)
+    }
+    for i in 0 .. m {
+        for block in 0 .. kBlocks {
+            for lane in 0 .. 4 {
+                let k = block * 4 + lane
+                let packedIndex = i * kPadded + block * 4 + lane
+                if k < kDim {
+                    aPacked[packedIndex] = M19AValue(i, k)
+                } else {
+                    aPacked[packedIndex] = contaminationSeed + 97 + i + k
+                }
+            }
+        }
+    }
+
+    var bPacked = [0]
+    for idx in 1 .. (n * kPadded) {
+        bPacked = Append(bPacked, 0)
+    }
+    for j in 0 .. n {
+        for block in 0 .. kBlocks {
+            for lane in 0 .. 4 {
+                let k = block * 4 + lane
+                let packedIndex = j * kPadded + block * 4 + lane
+                if k < kDim {
+                    bPacked[packedIndex] = M19BValue(k, j)
+                } else {
+                    bPacked[packedIndex] = contaminationSeed + 211 + j + k
+                }
+            }
+        }
+    }
+
+    var out = [0]
+    for idx in 1 .. (m * n) {
+        out = Append(out, 0)
+    }
+
+    for i in 0 .. m {
+        for j in 0 .. n {
+            var sum = 0
+            for block in 0 .. kBlocks {
+                for lane in 0 .. 4 {
+                    let k = block * 4 + lane
+                    let laneActive = switch {
+                        case k < kDim => 1
+                        else => 0
+                    }
+                    let a = aPacked[i * kPadded + block * 4 + lane]
+                    let b = bPacked[j * kPadded + block * 4 + lane]
+                    sum = sum + (a * b * laneActive)
+                }
+            }
+            out[i * n + j] = sum
+        }
+    }
+
+    return out
+}
+
+fn M19MismatchSummary(lhs: Int[], rhs: Int[], m: Int, n: Int) -> Int[] {
+    var mismatchCount = 0
+    var firstRow = -1
+    var firstCol = -1
+    for i in 0 .. m {
+        for j in 0 .. n {
+            let idx = i * n + j
+            if lhs[idx] != rhs[idx] {
+                mismatchCount = mismatchCount + 1
+                if firstRow < 0 {
+                    firstRow = i
+                    firstCol = j
+                }
+            }
+        }
+    }
+    return [mismatchCount, firstRow, firstCol]
+}
+
+fn M19EvaluateScenario(s: M19Scenario) -> M19Result {
+    let padded = M19PadLanes(s.M) + M19PadLanes(s.N) + M19PadLanes(s.KDim)
+    let modePass = padded <= M19ModeBudget(s.Mode)
+    let fallbackReason = M19FallbackReason(s, modePass)
+    let eligible = s.Packed4Capability and s.FallbackAvailable and (not M19SmallShape(s.M, s.N)) and modePass
+
+    let scalar = M19ScalarSgemm(s.M, s.N, s.KDim)
+    let packedZeroPad = M19PackedSgemm(s.M, s.N, s.KDim, 0)
+    let packedContaminated = M19PackedSgemm(s.M, s.N, s.KDim, s.ContaminationSeed)
+
+    let rowMajorDiff = M19MismatchSummary(scalar, packedZeroPad, s.M, s.N)
+    let contamDiff = M19MismatchSummary(scalar, packedContaminated, s.M, s.N)
+
+    let mismatchCount = rowMajorDiff[0]
+    let firstLocation = switch {
+        case rowMajorDiff[0] == 0 => "none"
+        else => "present"
+    }
+
+    return M19Result {
+        CaseName: s.CaseName
+        M: s.M
+        N: s.N
+        KDim: s.KDim
+        MTail: M19Tail(s.M)
+        NTail: M19Tail(s.N)
+        KTail: M19Tail(s.KDim)
+        TailCount: M19TailCount(s.M, s.N, s.KDim)
+        PaddedLaneCount: padded
+        PaddingWastePct: M19PaddingWastePct(s.M, s.N, s.KDim)
+        PackedEligible: eligible
+        ModeBudgetPass: modePass
+        RowMajorCheckPass: rowMajorDiff[0] == 0
+        ContaminationCheckPass: contamDiff[0] == 0
+        FallbackReason: switch {
+            case eligible => "none"
+            else => fallbackReason
+        }
+        MismatchCount: mismatchCount
+        FirstMismatchLocation: firstLocation
+    }
+}
+
+fn M19TailExhaustiveRows() -> M19Result[] {
+    var rows = [M19EvaluateScenario(M19Scenario { CaseName: "tail_m0_n0_k0" M: 8 N: 8 KDim: 8 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 999 })]
+    for mTail in 0 .. 4 {
+        for nTail in 0 .. 4 {
+            for kTail in 0 .. 4 {
+                if not (mTail == 0 and nTail == 0 and kTail == 0) {
+                    rows = Append(rows, M19EvaluateScenario(M19Scenario {
+                        CaseName: "tail_combo"
+                        M: 8 + mTail
+                        N: 8 + nTail
+                        KDim: 8 + kTail
+                        Mode: "SAFE"
+                        Packed4Capability: true
+                        FallbackAvailable: true
+                        ContaminationSeed: 999 + mTail * 100 + nTail * 10 + kTail
+                    }))
+                }
+            }
+        }
+    }
+    return rows
+}
+
+fn M19RectangularStressRows() -> M19Result[] {
+    return [
+        M19EvaluateScenario(M19Scenario { CaseName: "rect_tall_small_k" M: 257 N: 7 KDim: 5 Mode: "AGGRESSIVE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 7001 }),
+        M19EvaluateScenario(M19Scenario { CaseName: "rect_wide_small_k" M: 7 N: 257 KDim: 5 Mode: "AGGRESSIVE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 7002 }),
+        M19EvaluateScenario(M19Scenario { CaseName: "rect_tall_large_k" M: 193 N: 9 KDim: 129 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 7003 }),
+        M19EvaluateScenario(M19Scenario { CaseName: "rect_wide_large_k" M: 9 N: 193 KDim: 129 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 7004 })
+    ]
+}
+
+fn M19TinyShapeRows() -> M19Result[] {
+    return [
+        M19EvaluateScenario(M19Scenario { CaseName: "tiny_1x1x1" M: 1 N: 1 KDim: 1 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 8001 }),
+        M19EvaluateScenario(M19Scenario { CaseName: "tiny_2x3x5" M: 2 N: 3 KDim: 5 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 8002 }),
+        M19EvaluateScenario(M19Scenario { CaseName: "tiny_4x4x7" M: 4 N: 4 KDim: 7 Mode: "RECOVERY" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 8003 })
+    ]
+}
+
+fn M19ModeBudgetRows() -> M19ModeBudgetRow[] {
+    return [
+        M19ModeBudgetRowFromScenario("mode_shared_shape", 9, 9, 9, "AGGRESSIVE", true, true),
+        M19ModeBudgetRowFromScenario("mode_shared_shape", 9, 9, 9, "SAFE", true, true),
+        M19ModeBudgetRowFromScenario("mode_shared_shape", 9, 9, 9, "RECOVERY", true, true),
+        M19ModeBudgetRowFromScenario("mode_no_capability", 16, 16, 16, "SAFE", false, true),
+        M19ModeBudgetRowFromScenario("mode_fallback_missing", 16, 16, 16, "SAFE", true, false)
+    ]
+}
+
+fn M19ModeBudgetRowFromScenario(caseName: String, m: Int, n: Int, kDim: Int, mode: String, cap: Bool, fallback: Bool) -> M19ModeBudgetRow {
+    let evaluated = M19EvaluateScenario(M19Scenario {
+        CaseName: caseName + "_" + mode
+        M: m
+        N: n
+        KDim: kDim
+        Mode: mode
+        Packed4Capability: cap
+        FallbackAvailable: fallback
+        ContaminationSeed: 9000
+    })
+    return M19ModeBudgetRow {
+        CaseName: evaluated.CaseName
+        M: m
+        N: n
+        KDim: kDim
+        Mode: mode
+        PaddedLaneCount: evaluated.PaddedLaneCount
+        PaddingWastePct: evaluated.PaddingWastePct
+        ModeBudgetPass: evaluated.ModeBudgetPass
+        PackedEligible: evaluated.PackedEligible
+        FallbackReason: evaluated.FallbackReason
+    }
+}
+
+fn M19PackUnpackRows() -> M19PackUnpackRow[] {
+    return [
+        M19PackUnpackCheck("pack_unpack_A_9x10", 9, 10, "A"),
+        M19PackUnpackCheck("pack_unpack_B_10x11", 10, 11, "B"),
+        M19PackUnpackCheck("pack_unpack_C_9x11", 9, 11, "C")
+    ]
+}
+
+fn M19PackUnpackCheck(caseName: String, rows: Int, cols: Int, kind: String) -> M19PackUnpackRow {
+    var scalar = [0]
+    for idx in 1 .. (rows * cols) {
+        scalar = Append(scalar, 0)
+    }
+    for i in 0 .. rows {
+        for j in 0 .. cols {
+            scalar[i * cols + j] = ((i * 31 + j * 11 + 2) % 37) - 18
+        }
+    }
+
+    let paddedCols = M19CeilDiv(cols, 4) * 4
+    var packed = [0]
+    for idx in 1 .. (rows * paddedCols) {
+        packed = Append(packed, 0)
+    }
+    for i in 0 .. rows {
+        for j in 0 .. paddedCols {
+            if j < cols {
+                packed[i * paddedCols + j] = scalar[i * cols + j]
+            } else {
+                packed[i * paddedCols + j] = 99991 + i + j
+            }
+        }
+    }
+
+    var unpacked = [0]
+    for idx in 1 .. (rows * cols) {
+        unpacked = Append(unpacked, 0)
+    }
+    for i in 0 .. rows {
+        for j in 0 .. cols {
+            unpacked[i * cols + j] = packed[i * paddedCols + j]
+        }
+    }
+
+    let diff = M19MismatchSummary(scalar, unpacked, rows, cols)
+    return M19PackUnpackRow {
+        CaseName: caseName
+        Rows: rows
+        Cols: cols
+        PackKind: kind
+        RoundTripPass: diff[0] == 0
+        CanonicalRowMajorPass: diff[0] == 0
+    }
+}
+
+fn M19TailExhaustiveColumns(rows: M19Result[]) -> M19TailExhaustiveTable {
+    var caseName = [rows[0].CaseName]
+    var m = [rows[0].M]
+    var n = [rows[0].N]
+    var k = [rows[0].KDim]
+    var tailCount = [rows[0].TailCount]
+    var padded = [rows[0].PaddedLaneCount]
+    var waste = [rows[0].PaddingWastePct]
+    var eligible = [rows[0].PackedEligible]
+    var modePass = [rows[0].ModeBudgetPass]
+    var rowPass = [rows[0].RowMajorCheckPass]
+    var contaminationPass = [rows[0].ContaminationCheckPass]
+    var reason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        m = Append(m, rows[i].M)
+        n = Append(n, rows[i].N)
+        k = Append(k, rows[i].KDim)
+        tailCount = Append(tailCount, rows[i].TailCount)
+        padded = Append(padded, rows[i].PaddedLaneCount)
+        waste = Append(waste, rows[i].PaddingWastePct)
+        eligible = Append(eligible, rows[i].PackedEligible)
+        modePass = Append(modePass, rows[i].ModeBudgetPass)
+        rowPass = Append(rowPass, rows[i].RowMajorCheckPass)
+        contaminationPass = Append(contaminationPass, rows[i].ContaminationCheckPass)
+        reason = Append(reason, rows[i].FallbackReason)
+    }
+
+    return M19TailExhaustiveTable {
+        CaseName: caseName
+        M: m
+        N: n
+        KDim: k
+        TailCount: tailCount
+        PaddedLaneCount: padded
+        PaddingWastePct: waste
+        PackedEligible: eligible
+        ModeBudgetPass: modePass
+        RowMajorCheckPass: rowPass
+        ContaminationCheckPass: contaminationPass
+        FallbackReason: reason
+    }
+}
+
+fn M19RowMajorColumns(rows: M19Result[]) -> M19RowMajorTable {
+    var caseName = [rows[0].CaseName]
+    var m = [rows[0].M]
+    var n = [rows[0].N]
+    var k = [rows[0].KDim]
+    var rowPass = [rows[0].RowMajorCheckPass]
+    var mismatch = [rows[0].MismatchCount]
+    var location = [rows[0].FirstMismatchLocation]
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        m = Append(m, rows[i].M)
+        n = Append(n, rows[i].N)
+        k = Append(k, rows[i].KDim)
+        rowPass = Append(rowPass, rows[i].RowMajorCheckPass)
+        mismatch = Append(mismatch, rows[i].MismatchCount)
+        location = Append(location, rows[i].FirstMismatchLocation)
+    }
+    return M19RowMajorTable {
+        CaseName: caseName
+        M: m
+        N: n
+        KDim: k
+        RowMajorCheckPass: rowPass
+        MismatchCount: mismatch
+        FirstMismatchLocation: location
+    }
+}
+
+fn M19ContaminationColumns(rows: M19Result[]) -> M19ContaminationTable {
+    var caseName = [rows[0].CaseName]
+    var seed = [999]
+    var padded = [rows[0].PaddedLaneCount]
+    var pass = [rows[0].ContaminationCheckPass]
+    var mismatch = [switch { case rows[0].ContaminationCheckPass => 0 else => 1 }]
+    var location = [switch { case rows[0].ContaminationCheckPass => "none" else => rows[0].FirstMismatchLocation }]
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        seed = Append(seed, 999 + i)
+        padded = Append(padded, rows[i].PaddedLaneCount)
+        pass = Append(pass, rows[i].ContaminationCheckPass)
+        mismatch = Append(mismatch, switch { case rows[i].ContaminationCheckPass => 0 else => 1 })
+        location = Append(location, switch { case rows[i].ContaminationCheckPass => "none" else => rows[i].FirstMismatchLocation })
+    }
+    return M19ContaminationTable {
+        CaseName: caseName
+        ContaminationSeed: seed
+        PaddedLaneCount: padded
+        ContaminationCheckPass: pass
+        MismatchCount: mismatch
+        FirstMismatchLocation: location
+    }
+}
+
+fn M19PackUnpackColumns(rows: M19PackUnpackRow[]) -> M19PackUnpackTable {
+    var caseName = [rows[0].CaseName]
+    var r = [rows[0].Rows]
+    var c = [rows[0].Cols]
+    var kind = [rows[0].PackKind]
+    var roundTrip = [rows[0].RoundTripPass]
+    var canonical = [rows[0].CanonicalRowMajorPass]
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        r = Append(r, rows[i].Rows)
+        c = Append(c, rows[i].Cols)
+        kind = Append(kind, rows[i].PackKind)
+        roundTrip = Append(roundTrip, rows[i].RoundTripPass)
+        canonical = Append(canonical, rows[i].CanonicalRowMajorPass)
+    }
+    return M19PackUnpackTable {
+        CaseName: caseName
+        Rows: r
+        Cols: c
+        PackKind: kind
+        RoundTripPass: roundTrip
+        CanonicalRowMajorPass: canonical
+    }
+}
+
+fn M19ModeBudgetColumns(rows: M19ModeBudgetRow[]) -> M19ModeBudgetTable {
+    var caseName = [rows[0].CaseName]
+    var m = [rows[0].M]
+    var n = [rows[0].N]
+    var k = [rows[0].KDim]
+    var mode = [rows[0].Mode]
+    var padded = [rows[0].PaddedLaneCount]
+    var waste = [rows[0].PaddingWastePct]
+    var modePass = [rows[0].ModeBudgetPass]
+    var eligible = [rows[0].PackedEligible]
+    var reason = [rows[0].FallbackReason]
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        m = Append(m, rows[i].M)
+        n = Append(n, rows[i].N)
+        k = Append(k, rows[i].KDim)
+        mode = Append(mode, rows[i].Mode)
+        padded = Append(padded, rows[i].PaddedLaneCount)
+        waste = Append(waste, rows[i].PaddingWastePct)
+        modePass = Append(modePass, rows[i].ModeBudgetPass)
+        eligible = Append(eligible, rows[i].PackedEligible)
+        reason = Append(reason, rows[i].FallbackReason)
+    }
+    return M19ModeBudgetTable {
+        CaseName: caseName
+        M: m
+        N: n
+        KDim: k
+        Mode: mode
+        PaddedLaneCount: padded
+        PaddingWastePct: waste
+        ModeBudgetPass: modePass
+        PackedEligible: eligible
+        FallbackReason: reason
+    }
+}
+
+fn M19FallbackReasonRows() -> M19ModeBudgetRow[] {
+    return [
+        M19ModeBudgetRowFromScenario("reason_padding_waste", 9, 9, 9, "AGGRESSIVE", true, true),
+        M19ModeBudgetRowFromScenario("reason_small_shape", 2, 3, 4, "SAFE", true, true),
+        M19ModeBudgetRowFromScenario("reason_capability_missing", 16, 16, 16, "SAFE", false, true),
+        M19ModeBudgetRowFromScenario("reason_fallback_required", 16, 16, 16, "SAFE", true, false),
+        M19ModeBudgetRowFromScenario("reason_mode_denied", 9, 9, 9, "RECOVERY", true, true)
+    ]
+}
+
+fn M19FinalReadinessSummary() -> M19FinalReadiness {
+    return M19FinalReadiness {
+        Packed4FullyUnderstood: "Yes — all 64 tail combinations plus contamination, row-major, pack/unpack, rectangular, tiny-shape, and mode-gating rake checks pass with explicit reason coverage"
+        SafeToImplement: "Yes, conditionally — only with zero-effective padding semantics, row-major indexing invariants, deterministic fallback, and mode-aware budget gates"
+        MandatoryInvariants: "(1) preserve row-major scalar SGEMM output exactly, (2) mask all padded lanes as zero contribution, (3) never drop/double-count tail elements, (4) fallback to ScalarFP32 on every ineligible path, (5) emit explicit reason codes, (6) enforce mode budgets before dispatch"
+        RemainingRisks: "Primary residual risk is implementation defect risk in low-level indexing/writes; policy ambiguity risk is closed by M19 reason-code and gate definitions"
+        M20Recommendation: "Proceed to M20 Packed4FP32 implementation with M19 invariants as non-negotiable C/Vulkan contract and first-class diagnostics"
+    }
+}

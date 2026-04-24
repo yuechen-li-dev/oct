@@ -1,0 +1,12 @@
+[M19ModeBudgetTable {
+    CaseName: ["mode_shared_shape_AGGRESSIVE", "mode_shared_shape_SAFE", "mode_shared_shape_RECOVERY", "mode_no_capability_SAFE", "mode_fallback_missing_SAFE"]
+    M: [9, 9, 9, 16, 16]
+    N: [9, 9, 9, 16, 16]
+    KDim: [9, 9, 9, 16, 16]
+    Mode: ["AGGRESSIVE", "SAFE", "RECOVERY", "SAFE", "SAFE"]
+    PaddedLaneCount: [9, 9, 9, 0, 0]
+    PaddingWastePct: [33, 33, 33, 0, 0]
+    ModeBudgetPass: [true, false, false, true, true]
+    PackedEligible: [true, false, false, false, false]
+    FallbackReason: ["none", "MODE_BUDGET_DENIED", "MODE_BUDGET_DENIED", "CAPABILITY_MISSING", "FALLBACK_REQUIRED"]
+}]

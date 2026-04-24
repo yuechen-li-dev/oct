@@ -1,0 +1,8 @@
+[M19PackUnpackTable {
+    CaseName: ["pack_unpack_A_9x10", "pack_unpack_B_10x11", "pack_unpack_C_9x11"]
+    Rows: [9, 10, 9]
+    Cols: [10, 11, 11]
+    PackKind: ["A", "B", "C"]
+    RoundTripPass: [true, true, true]
+    CanonicalRowMajorPass: [true, true, true]
+}]

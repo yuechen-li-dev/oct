@@ -1,0 +1,9 @@
+[M19RowMajorTable {
+    CaseName: ["rect_tall_small_k", "rect_wide_small_k", "rect_tall_large_k", "rect_wide_large_k"]
+    M: [257, 7, 193, 9]
+    N: [7, 257, 9, 193]
+    KDim: [5, 5, 129, 129]
+    RowMajorCheckPass: [true, true, true, true]
+    MismatchCount: [0, 0, 0, 0]
+    FirstMismatchLocation: ["none", "none", "none", "none"]
+}]

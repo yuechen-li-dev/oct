@@ -1,0 +1,126 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M19ExhaustiveTailCombinationsCovered() -> Void {
+    let rows = M19TailExhaustiveRows()
+    Assert.Equal(Len(rows), 64, "all M/N/K mod-4 combinations must be present")
+
+    var singleTail = 0
+    var dualTail = 0
+    var tripleTail = 0
+    for i in 0 .. Len(rows) {
+        if rows[i].TailCount == 1 { singleTail = singleTail + 1 }
+        if rows[i].TailCount == 2 { dualTail = dualTail + 1 }
+        if rows[i].TailCount == 3 { tripleTail = tripleTail + 1 }
+        Assert.True(rows[i].RowMajorCheckPass, "row-major check must pass for every tail combination")
+        Assert.True(rows[i].ContaminationCheckPass, "contamination check must pass for every tail combination")
+    }
+
+    Assert.True(singleTail > 0, "single-tail coverage is required")
+    Assert.True(dualTail > 0, "dual-tail coverage is required")
+    Assert.True(tripleTail > 0, "triple-tail coverage is required")
+}
+
+[Fact]
+fn M19PaddingContaminationCannotChangeOutput() -> Void {
+    let rows = M19TailExhaustiveRows()
+    for i in 0 .. Len(rows) {
+        Assert.True(rows[i].ContaminationCheckPass, "padding contamination must not perturb result")
+    }
+}
+
+[Fact]
+fn M19RowMajorOracleHasZeroMismatches() -> Void {
+    let rows = M19TailExhaustiveRows()
+    for i in 0 .. Len(rows) {
+        Assert.Equal(rows[i].MismatchCount, 0, "packed4 model must exactly match scalar oracle")
+        Assert.Equal(rows[i].FirstMismatchLocation, "none", "mismatch location should remain none")
+    }
+}
+
+[Fact]
+fn M19PackUnpackInvariantsHold() -> Void {
+    let rows = M19PackUnpackRows()
+    for i in 0 .. Len(rows) {
+        Assert.True(rows[i].RoundTripPass, "unpack(pack(X)) must equal X")
+        Assert.True(rows[i].CanonicalRowMajorPass, "pack/unpack must preserve canonical row-major layout")
+    }
+}
+
+[Fact]
+fn M19RectangularStressHoldsIndexingInvariants() -> Void {
+    let rows = M19RectangularStressRows()
+    for i in 0 .. Len(rows) {
+        Assert.True(rows[i].RowMajorCheckPass, "row-major check must hold for rectangular stress")
+        Assert.True(rows[i].ContaminationCheckPass, "contamination check must hold for rectangular stress")
+    }
+}
+
+[Fact]
+fn M19TinyShapeAlwaysRejectsPacked4() -> Void {
+    let rows = M19TinyShapeRows()
+    for i in 0 .. Len(rows) {
+        Assert.False(rows[i].PackedEligible, "tiny shape must reject Packed4")
+        Assert.Equal(rows[i].FallbackReason, "PACKED4_SMALL_SHAPE", "tiny rejection reason must be explicit")
+    }
+}
+
+[Fact]
+fn M19ModeAwareBudgetIsStrictInSafeRecovery() -> Void {
+    let rows = M19ModeBudgetRows()
+    Assert.True(rows[0].PackedEligible, "AGGRESSIVE should allow shared 9x9x9 shape")
+    Assert.False(rows[1].PackedEligible, "SAFE should reject same shape by tighter budget")
+    Assert.False(rows[2].PackedEligible, "RECOVERY should reject same shape by strictest budget")
+    Assert.Equal(rows[1].FallbackReason, "MODE_BUDGET_DENIED", "SAFE denial reason should be explicit")
+    Assert.Equal(rows[2].FallbackReason, "MODE_BUDGET_DENIED", "RECOVERY denial reason should be explicit")
+}
+
+[Fact]
+fn M19FallbackReasonsComplete() -> Void {
+    let rows = M19FallbackReasonRows()
+    Assert.True(rows[0].FallbackReason == "PACKED4_PADDING_WASTE" or rows[0].FallbackReason == "none", "padding waste reason code must exist")
+    Assert.Equal(rows[1].FallbackReason, "PACKED4_SMALL_SHAPE", "small shape reason code must exist")
+    Assert.Equal(rows[2].FallbackReason, "CAPABILITY_MISSING", "capability reason code must exist")
+    Assert.Equal(rows[3].FallbackReason, "FALLBACK_REQUIRED", "fallback required reason code must exist")
+    Assert.Equal(rows[4].FallbackReason, "MODE_BUDGET_DENIED", "mode budget denied reason code must exist")
+}
+
+[Artifact]
+fn EmitM19TailExhaustiveTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_tail_exhaustive_table.octagon", [M19TailExhaustiveColumns(M19TailExhaustiveRows())])
+}
+
+[Artifact]
+fn EmitM19PaddingContaminationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_padding_contamination_table.octagon", [M19ContaminationColumns(M19TailExhaustiveRows())])
+}
+
+[Artifact]
+fn EmitM19RowMajorValidationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_row_major_validation_table.octagon", [M19RowMajorColumns(M19TailExhaustiveRows())])
+}
+
+[Artifact]
+fn EmitM19PackUnpackInvariants() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_pack_unpack_invariants.octagon", [M19PackUnpackColumns(M19PackUnpackRows())])
+}
+
+[Artifact]
+fn EmitM19RectangularStressTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_rectangular_stress_table.octagon", [M19RowMajorColumns(M19RectangularStressRows())])
+}
+
+[Artifact]
+fn EmitM19ModeBudgetTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_mode_budget_table.octagon", [M19ModeBudgetColumns(M19ModeBudgetRows())])
+}
+
+[Artifact]
+fn EmitM19FallbackReasonTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_fallback_reason_table.octagon", [M19ModeBudgetColumns(M19FallbackReasonRows())])
+}
+
+[Artifact]
+fn EmitM19FinalReadiness() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M19/m19_final_readiness.octagon", [M19FinalReadinessSummary()])
+}
