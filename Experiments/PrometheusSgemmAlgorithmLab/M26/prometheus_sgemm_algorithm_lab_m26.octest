@@ -1,0 +1,61 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M26HasAllRequiredStrategies() -> Void {
+    let s = M26Strategies()
+    Assert.Equal(Len(s), 9, "M26 must compare fixed double + 8 pull-based candidates")
+}
+
+[Fact]
+fn M26RunsAllRegimesAndStrategies() -> Void {
+    let rows = M26RunAll()
+    Assert.Equal(Len(rows), 72, "8 regimes x 9 strategies expected")
+}
+
+[Fact]
+fn M26ComparesJitterAndBurstExplicitly() -> Void {
+    let rows = M26RunAll()
+    let jitter = M26ScoreFor(rows, "ordinary-jitter", "C-ewma-pull-lag")
+    let burst = M26ScoreFor(rows, "burst-shock", "C-ewma-pull-lag")
+    Assert.True(jitter != -999999, "ordinary-jitter regime must be present")
+    Assert.True(burst != -999999, "burst-shock regime must be present")
+}
+
+[Fact]
+fn M26FinalRecommendationAnswersRequiredQuestions() -> Void {
+    let rec = M26FinalRecommendationFrom(M26RunAll())
+    Assert.True(Len(rec.BestOrdinaryJitter) > 0, "must answer best ordinary jitter method")
+    Assert.True(Len(rec.BestBurstShock) > 0, "must answer best burst-shock method")
+    Assert.True(Contains(rec.KeepFixedDoubleFallback, "fallback"), "must explicitly address fixed double fallback")
+    Assert.True(Contains(rec.M27Next, "M27") or Len(rec.M27Next) > 10, "must include actionable M27 direction")
+}
+
+[Artifact]
+fn EmitM26StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_strategy_comparison.octagon", [M26StrategyComparisonTableFrom(M26RunAll())])
+}
+
+[Artifact]
+fn EmitM26NoiseFilterTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_noise_filter_table.octagon", [M26NoiseFilterTableFrom(M26RunAll())])
+}
+
+[Artifact]
+fn EmitM26BurstDetectionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_burst_detection_table.octagon", [M26BurstDetectionTableFrom(M26RunAll())])
+}
+
+[Artifact]
+fn EmitM26PiMarginTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_pi_margin_table.octagon", [M26PiMarginTableFrom(M26RunAll())])
+}
+
+[Artifact]
+fn EmitM26WipStarvationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_wip_starvation_table.octagon", [M26WipStarvationTableFrom(M26RunAll())])
+}
+
+[Artifact]
+fn EmitM26FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M26/m26_final_recommendation.octagon", [M26FinalRecommendationFrom(M26RunAll())])
+}

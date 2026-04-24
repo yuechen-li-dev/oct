@@ -18,7 +18,8 @@ fn Manifest() -> PackageManifest {
         Version: "0.1.0"
         Description: "Correctness-first SGEMM algorithm lab for Prometheus in Oct before Reactor porting"
         Dependencies: [
-            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Octomata" VersionRequirement: "0.1.0" }
         ]
     }
 }
