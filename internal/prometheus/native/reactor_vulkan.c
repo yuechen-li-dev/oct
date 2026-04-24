@@ -1664,11 +1664,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
-  rt->sgemm_controller.packed4_selected_layout_format = 1u;
   rt->sgemm_controller.packed4_tail_count_last = packed4_tail_count;
-  rt->sgemm_controller.packed4_tail_count_total += (uint64_t)packed4_tail_count;
   rt->sgemm_controller.packed4_padded_lane_count_last = packed4_padded_lane_count;
-  rt->sgemm_controller.packed4_padded_lane_count_total += (uint64_t)packed4_padded_lane_count;
   rt->sgemm_controller.packed4_padding_waste_permille_last = packed4_waste_permille;
   if (judgment_decision.packed4_reject_reason != PROM_PACKED4_REJECT_NONE) {
     prom_packed4_record_fallback(&rt->sgemm_controller, judgment_decision.packed4_reject_reason);
@@ -1749,8 +1746,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     }
   } else if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
     selected_pipeline = rt->packed4_pipeline;
-    rt->sgemm_controller.packed4_selected_layout_format = 2u;
-    rt->sgemm_controller.packed4_selection_count += 1u;
   } else {
     selected_pipeline = rt->pipeline;
   }
@@ -2037,6 +2032,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (out_stage != NULL &&
       out_detail_code != NULL &&
       ((*out_stage == PROM_STAGE_TRANSFER_OUT) || (selected_path == PROM_VK_PATH_STAGED_UPLOAD && *out_stage == PROM_STAGE_SUBMIT))) {
+    if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+      rt->sgemm_controller.packed4_selected_layout_format = 2u;
+      rt->sgemm_controller.packed4_tail_count_total += (uint64_t)packed4_tail_count;
+      rt->sgemm_controller.packed4_padded_lane_count_total += (uint64_t)packed4_padded_lane_count;
+      rt->sgemm_controller.packed4_selection_count += 1u;
+    } else {
+      rt->sgemm_controller.packed4_selected_layout_format = 1u;
+    }
     return PROM_OK;
   }
   return PROM_ERROR;
