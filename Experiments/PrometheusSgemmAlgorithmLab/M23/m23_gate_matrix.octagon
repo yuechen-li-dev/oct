@@ -1,0 +1,10 @@
+[M23GateMatrixTable {
+    CaseName: ["strict-fp32", "missing-tolerance", "tolerance-exceeded", "tolerance-passes", "special-values", "capability-missing", "fallback-unavailable", "large-k-high-growth", "cancellation-heavy", "mixed-candidate-competition"]
+    StrictFP32GatePass: [false, true, true, true, true, true, true, true, true, true]
+    ToleranceKnownGatePass: [true, false, true, true, true, true, true, true, true, true]
+    TolerancePass: [true, false, false, true, true, true, true, false, false, true]
+    SpecialValueGatePass: [true, true, true, true, false, true, true, true, true, true]
+    CapabilityGatePass: [true, true, true, true, true, false, true, true, true, true]
+    FallbackAvailableGatePass: [true, true, true, true, true, true, false, true, true, true]
+    FP16Eligible: [false, false, false, true, false, false, false, false, false, true]
+}]

@@ -1,0 +1,133 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M23Find(rows: M23DecisionResult[], caseName: String) -> M23DecisionResult {
+    for i in 0 .. Len(rows) {
+        if rows[i].CaseName == caseName {
+            return rows[i]
+        }
+    }
+    return rows[0]
+}
+
+[Fact]
+fn M23StrictFP32AlwaysFallsBackToScalar() -> Void {
+    let row = M23Find(M23DecisionRows(), "strict-fp32")
+    Assert.Equal(row.SelectedCandidate, "ScalarFP32", "strict FP32 must force ScalarFP32")
+    Assert.Equal(row.FallbackReason, "FP16_STRICT_FP32", "strict gate reason code must be explicit")
+}
+
+[Fact]
+fn M23MissingToleranceAlwaysFallsBackToScalar() -> Void {
+    let row = M23Find(M23DecisionRows(), "missing-tolerance")
+    Assert.Equal(row.SelectedCandidate, "ScalarFP32", "unknown tolerance must force ScalarFP32")
+    Assert.Equal(row.FallbackReason, "FP16_TOLERANCE_UNKNOWN", "missing tolerance reason code must be explicit")
+}
+
+[Fact]
+fn M23ToleranceExceededAlwaysFallsBackToScalar() -> Void {
+    let row = M23Find(M23DecisionRows(), "tolerance-exceeded")
+    Assert.Equal(row.SelectedCandidate, "ScalarFP32", "tolerance exceeded must force ScalarFP32")
+    Assert.Equal(row.FallbackReason, "FP16_TOLERANCE_EXCEEDED", "tolerance exceeded reason code must be explicit")
+}
+
+[Fact]
+fn M23TolerancePassAllowsFP16Selection() -> Void {
+    let row = M23Find(M23DecisionRows(), "tolerance-passes")
+    let gates = row.GateResults
+    Assert.True(gates.FP16Eligible, "tolerance passing scenario must make FP16 eligible")
+    Assert.Equal(row.SelectedCandidate, "FP16StorageFP32Accum", "FP16 may be selected only when all hard gates pass")
+}
+
+[Fact]
+fn M23SpecialValuesRejectFP16() -> Void {
+    let row = M23Find(M23DecisionRows(), "special-values")
+    let gates = row.GateResults
+    Assert.False(gates.SpecialValueGatePass, "special value gate must fail")
+    Assert.Equal(row.SelectedCandidate, "ScalarFP32", "special values must reject FP16")
+}
+
+[Fact]
+fn M23CapabilityMissingRejectsFP16() -> Void {
+    let row = M23Find(M23DecisionRows(), "capability-missing")
+    let gates = row.GateResults
+    Assert.False(gates.CapabilityGatePass, "capability gate must fail")
+    Assert.Equal(row.FallbackReason, "FP16_CAPABILITY_MISSING", "capability missing reason code must be explicit")
+}
+
+[Fact]
+fn M23FallbackUnavailableRejectsFP16() -> Void {
+    let row = M23Find(M23DecisionRows(), "fallback-unavailable")
+    let gates = row.GateResults
+    Assert.False(gates.FallbackAvailableGatePass, "fallback-available gate must fail")
+    Assert.Equal(row.FallbackReason, "FALLBACK_REQUIRED", "fallback-required reason code must be explicit")
+}
+
+[Fact]
+fn M23LargeKAndCancellationScenariosNeedExplicitTolerancePass() -> Void {
+    let largeK = M23Find(M23DecisionRows(), "large-k-high-growth")
+    let cancellation = M23Find(M23DecisionRows(), "cancellation-heavy")
+    let largeKGates = largeK.GateResults
+    let cancellationGates = cancellation.GateResults
+
+    Assert.False(largeKGates.TolerancePass, "large K growth should be rejected when tolerance does not explicitly allow")
+    Assert.False(cancellationGates.TolerancePass, "cancellation-heavy should be rejected when tolerance does not explicitly allow")
+    Assert.Equal(largeK.SelectedCandidate, "ScalarFP32", "large K growth scenario must not silently choose FP16")
+    Assert.Equal(cancellation.SelectedCandidate, "ScalarFP32", "cancellation-heavy scenario must not silently choose FP16")
+}
+
+[Fact]
+fn M23MixedCandidateCompetitionIsExplainable() -> Void {
+    let row = M23Find(M23DecisionRows(), "mixed-candidate-competition")
+    let gates = row.GateResults
+    Assert.True(gates.FP16Eligible, "mixed competition should keep FP16 eligible")
+    Assert.Equal(row.SelectedCandidate, "Packed4FP32", "Packed4 should win when utility score is higher")
+    Assert.Equal(row.FallbackReason, "FP16_NOT_TOP_UTILITY", "non-winning FP16 path must remain explicitly observable")
+}
+
+[Fact]
+fn M23DiagnosticPayloadIsComplete() -> Void {
+    let row = M23Find(M23DecisionRows(), "tolerance-passes")
+    let diag = row.DiagnosticPayload
+    Assert.True(diag.MaxAbsoluteError >= 0, "diagnostic payload must include max absolute error")
+    Assert.True(diag.MaxRelativeError >= 0, "diagnostic payload must include max relative error")
+    Assert.True(diag.AggregateError >= 0, "diagnostic payload must include aggregate error")
+    Assert.True(diag.WorstCaseElementIndex >= 0, "diagnostic payload must include worst-case index")
+    Assert.True(diag.KErrorGrowth >= 0, "diagnostic payload must include K growth")
+    Assert.True(diag.CancellationRisk >= 0, "diagnostic payload must include cancellation risk")
+    Assert.True(Contains(diag.SelectedCandidate, "FP16StorageFP32Accum"), "diagnostic payload must include selected candidate")
+}
+
+[Artifact]
+fn EmitM23PolicyDecisionTable() -> Void {
+    let rows = M23DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_policy_decision_table.octagon", [M23PolicyDecisionTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM23GateMatrixTable() -> Void {
+    let rows = M23DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_gate_matrix.octagon", [M23GateMatrixTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM23CandidateSelectionTable() -> Void {
+    let rows = M23DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_candidate_selection_table.octagon", [M23CandidateSelectionTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM23FallbackReasonTable() -> Void {
+    let rows = M23DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_fallback_reason_table.octagon", [M23FallbackReasonTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM23DiagnosticPayloadTable() -> Void {
+    let rows = M23DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_diagnostic_payload_table.octagon", [M23DiagnosticPayloadTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM23FinalPolicyContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M23/m23_final_policy_contract.octagon", [M23FinalPolicyContractSummary()])
+}

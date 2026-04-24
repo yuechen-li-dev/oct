@@ -1,0 +1,12 @@
+[M23DiagnosticPayloadTable {
+    CaseName: ["strict-fp32", "missing-tolerance", "tolerance-exceeded", "tolerance-passes", "special-values", "capability-missing", "fallback-unavailable", "large-k-high-growth", "cancellation-heavy", "mixed-candidate-competition"]
+    MaxAbsoluteError: [2, 2, 4, 2, 2, 2, 2, 4, 3, 2]
+    MaxRelativeError: [40000, 40000, 90000, 60000, 60000, 60000, 60000, 80000, 100000, 70000]
+    AggregateError: [14, 14, 20, 12, 12, 12, 12, 40, 34, 18]
+    WorstCaseElementIndex: [3, 2, 4, 6, 1, 1, 1, 7, 5, 4]
+    KErrorGrowth: [6, 6, 14, 8, 8, 8, 8, 140, 110, 50]
+    CancellationRisk: [180000, 180000, 360000, 200000, 200000, 200000, 200000, 500000, 800000, 400000]
+    TolerancePass: [true, false, false, true, true, true, true, false, false, true]
+    FallbackReason: ["FP16_STRICT_FP32", "FP16_TOLERANCE_UNKNOWN", "FP16_TOLERANCE_EXCEEDED", "none", "FP16_SPECIAL_VALUE", "FP16_CAPABILITY_MISSING", "FALLBACK_REQUIRED", "FP16_TOLERANCE_EXCEEDED", "FP16_TOLERANCE_EXCEEDED", "FP16_NOT_TOP_UTILITY"]
+    SelectedCandidate: ["ScalarFP32", "ScalarFP32", "ScalarFP32", "FP16StorageFP32Accum", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "Packed4FP32"]
+}]

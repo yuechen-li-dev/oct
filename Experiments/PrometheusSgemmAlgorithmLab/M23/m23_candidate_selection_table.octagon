@@ -1,0 +1,7 @@
+[M23CandidateSelectionTable {
+    CaseName: ["strict-fp32", "missing-tolerance", "tolerance-exceeded", "tolerance-passes", "special-values", "capability-missing", "fallback-unavailable", "large-k-high-growth", "cancellation-heavy", "mixed-candidate-competition"]
+    ScalarFP32Score: [40, 40, 40, 40, 40, 40, 40, 48, 48, 48]
+    Packed4FP32Score: [70, 70, 70, 80, 80, 80, 80, 80, 80, 80]
+    FP16StorageFP32AccumScore: [-999999, -999999, -999999, 80, -999999, -999999, -999999, -999999, -999999, 60]
+    SelectedCandidate: ["ScalarFP32", "ScalarFP32", "ScalarFP32", "FP16StorageFP32Accum", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "Packed4FP32"]
+}]
