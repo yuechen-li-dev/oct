@@ -2349,6 +2349,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_judgment_async_facts async_facts;
   prom_judgment_async_decision async_decision;
   prom_buffering_selector_facts buffering_facts;
+  prom_dom_sgemm_buffering_projection buffering_projection;
   prom_buffering_selector_decision buffering_decision;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
@@ -2570,7 +2571,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_pull_lag_peak_slots_permille;
   buffering_facts.serial_jit_headroom_slots_permille =
       (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_serial_slots_permille;
-  prom_judgment_engine_select_buffering_mode(&buffering_facts, &buffering_decision);
+  if (prom_dom_sgemm_build_buffering_selector_facts_from_visible(&rt->blackboard, &buffering_facts, &buffering_projection) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_judgment_engine_select_buffering_mode(&buffering_projection.facts, &buffering_decision);
   rt->slot_diag.m35_required_fixed_slots_permille = buffering_facts.required_fixed_slots_permille;
   rt->slot_diag.m35_required_pull_lag_slots_permille = buffering_facts.required_pull_lag_peak_slots_permille;
   rt->slot_diag.m35_required_serial_slots_permille = buffering_facts.required_serial_slots_permille;

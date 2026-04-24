@@ -1,5 +1,25 @@
 #include "reactor_dominatus_sgemm_adapter.h"
 
+static uint64_t m35_dependency_mask_last_commit(const prom_dom_blackboard* board) {
+  uint64_t mask = 0u;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_MEMORY_BUDGET) != 0u) {
+    mask |= 1ull << 0u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_MEMORY_M35_FIXED_HEADROOM) != 0u) {
+    mask |= 1ull << 1u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_MEMORY_M35_PULL_LAG_HEADROOM) != 0u) {
+    mask |= 1ull << 2u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_MEMORY_M35_SERIAL_HEADROOM) != 0u) {
+    mask |= 1ull << 3u;
+  }
+  return mask;
+}
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision) {
@@ -240,5 +260,47 @@ uint32_t prom_dom_sgemm_read_visible_m35(const prom_dom_blackboard* board, prom_
   }
   out_snapshot->memory_budget_slots_permille = u64_value;
 
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_build_buffering_selector_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_buffering_selector_facts* fallback_facts,
+    prom_dom_sgemm_buffering_projection* out_projection) {
+  prom_buffering_selector_facts facts;
+  uint64_t budget_value;
+  int32_t i32_value;
+
+  if (board == 0 || fallback_facts == 0 || out_projection == 0) {
+    return 0u;
+  }
+
+  facts = *fallback_facts;
+  out_projection->visible_generation = board->visible_generation;
+  out_projection->dependent_dirty_key_mask_last_commit = m35_dependency_mask_last_commit(board);
+  out_projection->from_visible_snapshot = 0u;
+
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_MEMORY_BUDGET, 0u, &budget_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_MEMORY_M35_FIXED_HEADROOM, 0u, &i32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.fixed_double_headroom_slots_permille = i32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_MEMORY_M35_PULL_LAG_HEADROOM, 0u, &i32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.pull_lag_headroom_slots_permille = i32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_MEMORY_M35_SERIAL_HEADROOM, 0u, &i32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.serial_jit_headroom_slots_permille = i32_value;
+  facts.memory_budget_slots_permille = (uint32_t)budget_value;
+  out_projection->from_visible_snapshot = 1u;
+  out_projection->facts = facts;
   return 1u;
 }

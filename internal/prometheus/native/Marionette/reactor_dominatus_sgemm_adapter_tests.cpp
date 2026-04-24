@@ -49,6 +49,31 @@ namespace
         decision.serial_score = 58;
         return decision;
     }
+
+    prom_buffering_selector_facts MakeBudgetFacts(std::uint32_t budget, std::int32_t fixed_headroom, std::int32_t pull_headroom, std::int32_t serial_headroom)
+    {
+        prom_buffering_selector_facts facts{};
+        facts.memory_budget_slots_permille = budget;
+        facts.required_fixed_slots_permille = 2000u;
+        facts.required_pull_lag_peak_slots_permille = 1500u;
+        facts.required_serial_slots_permille = 1000u;
+        facts.fixed_double_headroom_slots_permille = fixed_headroom;
+        facts.pull_lag_headroom_slots_permille = pull_headroom;
+        facts.serial_jit_headroom_slots_permille = serial_headroom;
+        facts.transfer_variance_class = PROM_VARIANCE_MODERATE;
+        facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
+        facts.starvation_risk_high = 0u;
+        facts.pull_lag_wip_waste_exceeded = 0u;
+        facts.fallback_available = 1u;
+        return facts;
+    }
+
+    prom_buffering_selector_decision RunBufferingDecision(const prom_buffering_selector_facts& facts)
+    {
+        prom_buffering_selector_decision decision{};
+        prom_judgment_engine_select_buffering_mode(&facts, &decision);
+        return decision;
+    }
 }
 
 FACT(PrometheusDominatusSgemmAdapter_M35StagedInvisibleUntilCommit)
@@ -125,4 +150,99 @@ FACT(PrometheusDominatusSgemmAdapter_M35TraceAndResetBehavior)
     ASSERT_EQUAL(0u, prom_dom_dirty_domains_staged(&board), "reset should clear staged domains");
     ASSERT_TRUE(prom_dom_sgemm_read_visible_m35(&board, &snapshot) == 0u,
                 "reset board should not expose committed M35 snapshot");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M5VisibleProjectionSnapshotIsolationAcrossCommitBoundary)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_buffering_projection projection{};
+    const prom_buffering_selector_facts facts_a = MakeBudgetFacts(2600u, 600, 1100, 1600);
+    const prom_buffering_selector_facts facts_b = MakeBudgetFacts(900u, -1100, -600, -100);
+    prom_buffering_selector_decision decision{};
+    prom_dom_blackboard_init(&board);
+
+    decision = RunBufferingDecision(facts_a);
+    ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts_a, &decision) == 1u, "staging A should succeed");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_b, &projection) == 1u,
+                "projection build should succeed");
+    ASSERT_EQUAL(1u, projection.from_visible_snapshot, "projection should use committed visible snapshot");
+    ASSERT_EQUAL(2600u, projection.facts.memory_budget_slots_permille, "pre-commit projection should read visible value A");
+
+    decision = RunBufferingDecision(facts_b);
+    ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts_b, &decision) == 1u, "staging B should succeed");
+
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_b, &projection) == 1u,
+                "projection build before commit should succeed");
+    ASSERT_EQUAL(2600u, projection.facts.memory_budget_slots_permille,
+                 "staged value B must not affect current visible projection before commit");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_a, &projection) == 1u,
+                "projection build after commit should succeed");
+    ASSERT_EQUAL(900u, projection.facts.memory_budget_slots_permille, "post-commit projection should read visible value B");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M5VisibleProjectionDecisionCompatibility)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_buffering_projection projection{};
+    const prom_buffering_selector_facts facts = MakeBudgetFacts(1800u, -200, 300, 800);
+    prom_buffering_selector_decision expected{};
+    prom_buffering_selector_decision projected{};
+    prom_dom_blackboard_init(&board);
+
+    expected = RunBufferingDecision(facts);
+    ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts, &expected) == 1u, "staging should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts, &projection) == 1u,
+                "projection build should succeed");
+
+    prom_judgment_engine_select_buffering_mode(&projection.facts, &projected);
+    ASSERT_EQUAL(expected.selected_mode, projected.selected_mode,
+                 "projected visible facts should preserve buffering-mode selection for migrated fields");
+    ASSERT_EQUAL(expected.final_reason_code, projected.final_reason_code,
+                 "projected visible facts should preserve final reason for migrated fields");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M5VisibleProjectionDirtyDependencyMaskAndNoInStepDrift)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_buffering_projection projection{};
+    const prom_buffering_selector_facts facts_a = MakeBudgetFacts(2400u, 400, 900, 1400);
+    const prom_buffering_selector_facts facts_b = MakeBudgetFacts(700u, -1300, -800, -300);
+    prom_buffering_selector_decision stage_decision{};
+    prom_buffering_selector_decision decision_before{};
+    prom_buffering_selector_decision decision_during{};
+    prom_dom_blackboard_init(&board);
+
+    stage_decision = RunBufferingDecision(facts_a);
+    ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts_a, &stage_decision) == 1u, "initial staging should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_b, &projection) == 1u,
+                "projection build should succeed");
+    prom_judgment_engine_select_buffering_mode(&projection.facts, &decision_before);
+
+    stage_decision = RunBufferingDecision(facts_b);
+    ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts_b, &stage_decision) == 1u, "second staging should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_b, &projection) == 1u,
+                "projection build before second commit should succeed");
+    prom_judgment_engine_select_buffering_mode(&projection.facts, &decision_during);
+    ASSERT_EQUAL(decision_before.selected_mode, decision_during.selected_mode,
+                 "decision must remain pinned to visible snapshot while new staged values exist");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_MEMORY_BUDGET) == 1u,
+                "last-commit dirty should include memory budget dependency");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_MEMORY_M35_FIXED_HEADROOM) == 1u,
+                "last-commit dirty should include fixed headroom dependency");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_MEMORY_M35_PULL_LAG_HEADROOM) == 1u,
+                "last-commit dirty should include pull-lag headroom dependency");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_MEMORY_M35_SERIAL_HEADROOM) == 1u,
+                "last-commit dirty should include serial headroom dependency");
+    ASSERT_TRUE(prom_dom_sgemm_build_buffering_selector_facts_from_visible(&board, &facts_a, &projection) == 1u,
+                "projection build after second commit should succeed");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0x0Fu), projection.dependent_dirty_key_mask_last_commit,
+                 "projection should report dirty dependency bitmask for migrated M35 visible inputs");
 }
