@@ -1,0 +1,87 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M34BeginsWithM33PolicyRecap() -> Void {
+    let finalContract = M34FinalContractFrom()
+    Assert.True(Len(finalContract.M33Recap) > 40, "M34 must restate the M33 policy conclusion before implementation details")
+}
+
+[Fact]
+fn M34PullLagRakeCapturesLateAndEarlyStagingSignals() -> Void {
+    let rows = M34PullLagTimingRows()
+    Assert.Equal(rows[1].FallbackReason, "PULL_LAG_LATE_STAGE_STARVATION", "late staging starvation must map to explicit reason code")
+    Assert.True(rows[1].StarvationTimeMs > 0, "late staging case must expose starvation time")
+    Assert.Equal(rows[2].FallbackReason, "PULL_LAG_WIP_WASTE_EXCEEDED", "early staging WIP waste must map to explicit reason code")
+    Assert.True(rows[2].ReadyButUnusedTimeMs > 0, "early staging case must expose ready-but-unused time")
+}
+
+[Fact]
+fn M34PullLagMemoryEdgeNeverOverrunsCeiling() -> Void {
+    let rows = M34PullLagMemoryEdgeRows()
+    Assert.Equal(rows[1].FallbackReason, "PULL_LAG_MEMORY_EDGE_REJECTED", "memory-edge under-budget must reject pull-lag staging")
+    Assert.Equal(rows[2].MemoryCeilingViolations, 0, "pull-lag memory edge contract disallows temporary over-budget behavior")
+    Assert.True(rows[0].FeasibilityTruthful and rows[1].FeasibilityTruthful and rows[2].FeasibilityTruthful, "feasibility flags must remain truthful at memory edge")
+}
+
+[Fact]
+fn M34PullLagVarianceMissAndComputeDriftRetreatAreExplicit() -> Void {
+    let varianceRows = M34PullLagVarianceMissRows()
+    let timingRows = M34PullLagTimingRows()
+    Assert.True(varianceRows[0].VarianceMissDetected and varianceRows[1].VarianceMissDetected, "variance spike misclassification must be detected")
+    Assert.Equal(varianceRows[0].FallbackReason, "PULL_LAG_VARIANCE_MISS", "variance-miss fallback reason must be explicit")
+    Assert.Equal(timingRows[3].FallbackReason, "PULL_LAG_COMPUTE_UNSTABLE", "compute drift fallback reason must be explicit")
+}
+
+[Fact]
+fn M34SerialJitSurvivalInvariantsStayStrict() -> Void {
+    let rows = M34SerialJitContractRows()
+    Assert.Equal(rows[0].ActiveSlotCount, 1, "serial jit must keep one active slot")
+    Assert.Equal(rows[0].WipDepth, 1, "serial jit WIP depth must stay <= 1")
+    Assert.True(not rows[1].OverlapObserved and not rows[1].StaleReuseObserved, "serial jit must reject overlap and stale reuse")
+    Assert.Equal(rows[2].FailureCount, rows[2].CleanupCount, "serial chunk failure requires cleanup before retry")
+}
+
+[Fact]
+fn M34CrossModeTransitionsAndHardFailureAreDefined() -> Void {
+    let rows = M34CrossModeTransitionRows()
+    Assert.Equal(rows[0].ExitMode, "SerialJitSurvival", "unsafe pull-lag must retreat to serial survival when fixed-double is still infeasible")
+    Assert.Equal(rows[1].TransitionReason, "M33_GATES_RESTORED", "serial->pull-lag transition must be guarded by restored M33 gates")
+    Assert.Equal(rows[2].ExitMode, "FixedDoubleDefault", "fixed double resumes once memory feasibility recovers")
+    Assert.Equal(rows[3].HardFailureReason, "NO_BUFFERING_MODE_FEASIBLE", "all infeasible modes must fail explicitly")
+}
+
+[Artifact]
+fn EmitM34PullLagTimingRake() -> Void {
+    let rows = M34PullLagTimingRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_pull_lag_timing_rake.octagon", [M34PullLagTimingRakeTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM34PullLagMemoryEdgeTable() -> Void {
+    let rows = M34PullLagMemoryEdgeRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_pull_lag_memory_edge_table.octagon", [M34PullLagMemoryEdgeTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM34PullLagVarianceMissTable() -> Void {
+    let rows = M34PullLagVarianceMissRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_pull_lag_variance_miss_table.octagon", [M34PullLagVarianceMissTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM34SerialJitContractTable() -> Void {
+    let rows = M34SerialJitContractRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_serial_jit_contract_table.octagon", [M34SerialJitContractTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM34CrossModeTransitionTable() -> Void {
+    let rows = M34CrossModeTransitionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_cross_mode_transition_table.octagon", [M34CrossModeTransitionTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM34FinalContract() -> Void {
+    let finalContract = M34FinalContractFrom()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M34/m34_final_contract.octagon", [finalContract])
+}

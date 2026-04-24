@@ -1,0 +1,13 @@
+[M34CrossModeTransitionTable {
+    CaseName: ["pull-lag-to-serial-after-late-stage", "serial-to-pull-lag-after-headroom-recovery", "serial-to-fixed-double-when-memory-restored", "all-modes-infeasible-hard-failure"]
+    EntryMode: ["PullLagPressure", "SerialJitSurvival", "SerialJitSurvival", "SerialJitSurvival"]
+    ExitMode: ["SerialJitSurvival", "PullLagPressure", "FixedDoubleDefault", "NO_BUFFERING_MODE_FEASIBLE"]
+    FixedDoubleFeasible: [false, false, true, false]
+    PullLagFeasible: [true, true, true, false]
+    SerialJitFeasible: [true, true, true, false]
+    TransferVarianceClass: ["moderate", "low", "high", "high"]
+    ComputePredictabilityClass: ["stable", "stable", "unstable", "unstable"]
+    TransitionAllowed: [true, true, true, true]
+    TransitionReason: ["PULL_LAG_LATE_STAGE_STARVATION", "M33_GATES_RESTORED", "FIXED_DOUBLE_MEMORY_RESTORED", "NO_BUFFERING_MODE_FEASIBLE"]
+    HardFailureReason: ["none", "none", "none", "NO_BUFFERING_MODE_FEASIBLE"]
+}]
