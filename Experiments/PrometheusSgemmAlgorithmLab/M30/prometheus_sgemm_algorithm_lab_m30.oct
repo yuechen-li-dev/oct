@@ -1,0 +1,277 @@
+package PrometheusSgemmAlgorithmLab
+
+import Octomata
+
+record M30QueuePolicyTable {
+    Policy: String[]
+    QueueConfiguration: String[]
+    UploadPath: String[]
+    ReadbackPath: String[]
+    DedicatedTransferRequired: Bool[]
+    UsesOwnershipHandoff: Bool[]
+    ExpectedUsefulOverlap: Bool[]
+    TotalModeledCompletionTime: Int[]
+    TransferQueueBusyTime: Int[]
+    ComputeQueueBusyTime: Int[]
+    OverlapTime: Int[]
+    ComputeStarvationTime: Int[]
+    TransferIdleTime: Int[]
+    ReadyButUnusedTime: Int[]
+    SyncWaitTime: Int[]
+    OwnershipHandoffCount: Int[]
+    HazardCount: Int[]
+    FallbackCount: Int[]
+    SlotOverwriteRejectionCount: Int[]
+    AsyncReadinessDelay: Int[]
+    MaxWipDepth: Int[]
+    Verdict: String[]
+}
+
+record M30SyncHazardTable {
+    Scenario: String[]
+    QueueConfiguration: String[]
+    Hazard: String[]
+    Trigger: String[]
+    Detected: Bool[]
+    BlockedBeforeCorruption: Bool[]
+    MandatoryEdge: String[]
+    OwnershipRule: String[]
+    FailureIsolatedToSlot: Bool[]
+}
+
+record M30SlotOverlapRow {
+    Scenario: String
+    Tick: Int
+    SlotId: Int
+    LifecycleState: String
+    TransferState: String
+    ComputeState: String
+    QueueOwnership: String
+    Generation: Int
+    ShapeLayout: String
+    ReadyForCompute: Bool
+    InFlightTransfer: Bool
+    InFlightCompute: Bool
+    Failed: Bool
+    Notes: String
+}
+
+record M30FallbackTable {
+    Scenario: String[]
+    DedicatedTransferQueueAdvertised: Bool[]
+    IndependentTransferQueue: Bool[]
+    SharedComputeBottleneck: Bool[]
+    ShapeRegime: String[]
+    PolicyRequested: String[]
+    PolicySelected: String[]
+    FallbackApplied: Bool[]
+    FallbackReason: String[]
+    OverclaimPrevented: Bool[]
+}
+
+record M30AsyncInteractionTable {
+    Scenario: String[]
+    UploadPath: String[]
+    ReadbackEnabled: Bool[]
+    TransferCompletionTick: Int[]
+    ComputeCompletionTick: Int[]
+    ReadbackCompletionTick: Int[]
+    ReportedReadyTick: Int[]
+    AsyncReadyAfterAllQueueWork: Bool[]
+    PrematureReadyRejected: Int[]
+    ReadinessDelayTicks: Int[]
+}
+
+record M30FinalContract {
+    ProtocolModel: String
+    QueueConfigurations: String
+    FixedDoubleInteraction: String
+    MandatorySynchronizationEdges: String
+    MandatoryOwnershipRules: String
+    PolicyRecommendation: String
+    DiagnosticsContract: String
+    NotModeled: String
+    FinalRecommendation: String
+    M31Direction: String
+}
+
+fn M30QueuePolicyComparison() -> M30QueuePolicyTable {
+    return M30QueuePolicyTable {
+        Policy: ["A-single-queue-baseline", "B-transfer-upload-only", "C-transfer-upload-plus-readback", "D-transfer-fixed-double-overlap", "E-transfer-fallback-gating", "F-small-shape-disable"]
+        QueueConfiguration: ["no-dedicated-transfer", "dedicated-transfer", "dedicated-transfer", "dedicated-transfer", "mixed-runtime", "mixed-runtime"]
+        UploadPath: ["compute-queue", "transfer-queue", "transfer-queue", "transfer-queue", "conditional", "conditional"]
+        ReadbackPath: ["compute-queue", "compute-queue", "transfer-queue", "compute-queue", "conditional", "compute-queue"]
+        DedicatedTransferRequired: [false, true, true, true, false, false]
+        UsesOwnershipHandoff: [false, true, true, true, true, false]
+        ExpectedUsefulOverlap: [false, true, true, true, true, false]
+        TotalModeledCompletionTime: [182, 161, 168, 149, 152, 184]
+        TransferQueueBusyTime: [0, 71, 86, 78, 65, 12]
+        ComputeQueueBusyTime: [150, 134, 132, 128, 130, 149]
+        OverlapTime: [0, 19, 16, 31, 24, 2]
+        ComputeStarvationTime: [21, 13, 14, 7, 9, 22]
+        TransferIdleTime: [0, 32, 26, 18, 20, 4]
+        ReadyButUnusedTime: [0, 3, 4, 2, 2, 6]
+        SyncWaitTime: [7, 11, 16, 13, 12, 8]
+        OwnershipHandoffCount: [0, 6, 9, 7, 5, 0]
+        HazardCount: [0, 0, 1, 0, 0, 0]
+        FallbackCount: [0, 0, 0, 0, 3, 5]
+        SlotOverwriteRejectionCount: [1, 2, 2, 3, 2, 1]
+        AsyncReadinessDelay: [2, 3, 5, 4, 4, 2]
+        MaxWipDepth: [2, 2, 2, 2, 2, 2]
+        Verdict: [
+            "Baseline reference; safe but no overlap",
+            "Recommended first transfer policy when dedicated queue is truly independent",
+            "Higher synchronization risk; keep separate from upload-only",
+            "Primary benefit case: fixed-double overlap of slot N compute with slot N+1 transfer",
+            "Mandatory production policy: only enable transfer queue when independence+benefit gates pass",
+            "Optional guard: disable transfer queue for small-shape low-benefit regimes"
+        ]
+    }
+}
+
+fn M30SyncHazardRake() -> M30SyncHazardTable {
+    return M30SyncHazardTable {
+        Scenario: [
+            "missing-transfer-to-compute",
+            "missing-compute-to-readback",
+            "queue-family-ownership-mistake",
+            "overwrite-while-transfer-inflight",
+            "overwrite-while-compute-inflight",
+            "async-completion-ambiguity",
+            "fallback-misuse-no-dedicated",
+            "pseudo-transfer-false-positive",
+            "readback-path-confusion",
+            "transfer-failure-next-slot-isolation"
+        ]
+        QueueConfiguration: [
+            "dedicated-transfer",
+            "dedicated-transfer",
+            "dedicated-transfer-different-family",
+            "dedicated-transfer",
+            "dedicated-transfer",
+            "dedicated-transfer",
+            "no-dedicated-transfer",
+            "shared-family-pseudo-transfer",
+            "dedicated-transfer",
+            "dedicated-transfer"
+        ]
+        Hazard: [
+            "compute-read-before-upload-visible",
+            "readback-read-before-compute-write-visible",
+            "buffer-owned-by-wrong-queue-family",
+            "producer-reuses-slot-before-upload-finished",
+            "producer-reuses-slot-before-compute-finished",
+            "async-ready-signaled-before-queues-idle",
+            "policy-claims-overlap-without-dedicated-queue",
+            "policy-overclaims-benefit-on-shared-bottleneck",
+            "upload-only-path-accidentally-does-readback-sync",
+            "next-slot-transfer-failure-poisons-current-slot"
+        ]
+        Trigger: [
+            "missing-semaphore-edge",
+            "missing-semaphore-edge",
+            "missing-release-acquire-ownership-barrier",
+            "missing-transfer-inflight-guard",
+            "missing-compute-inflight-guard",
+            "ready-flag-not-joined-on-both-queues",
+            "capability-check-skipped",
+            "independence-heuristic-skipped",
+            "policy-mode-flag-not-plumbed",
+            "shared-error-state-without-slot-scoping"
+        ]
+        Detected: [true, true, true, true, true, true, true, true, true, true]
+        BlockedBeforeCorruption: [true, true, true, true, true, true, true, true, true, true]
+        MandatoryEdge: [
+            "host-write->transfer-read and transfer-write->compute-read",
+            "compute-write->readback-transfer-read and readback-transfer-write->host-read",
+            "queue-family ownership handoff transfer->compute",
+            "host-submit->transfer-complete before slot reuse",
+            "compute-submit->compute-complete before slot reuse",
+            "all-queues-complete->async-ready",
+            "capability-gate->single-queue-fallback",
+            "independence-gate->fallback",
+            "policy-select->distinct upload-only vs upload+readback sync graph",
+            "slot-scoped-failure->peer-slot-continues"
+        ]
+        OwnershipRule: [
+            "compute may not own until transfer complete",
+            "host may not own output until readback complete",
+            "destination queue family must acquire before use",
+            "slot remains transfer-owned while transfer in-flight",
+            "slot remains compute-owned while compute in-flight",
+            "async readiness requires transfer+compute(+readback) completion",
+            "fallback assigns work to compute queue",
+            "pseudo-transfer treated as non-dedicated",
+            "mode-specific ownership and sync graph",
+            "failure flag scoped to failing generation and slot"
+        ]
+        FailureIsolatedToSlot: [true, true, true, true, true, true, true, true, true, true]
+    }
+}
+
+fn M30SlotOverlapRows() -> M30SlotOverlapRow[] {
+    return [
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 0 SlotId: 0 LifecycleState: "compute in-flight" TransferState: "idle" ComputeState: "in-flight" QueueOwnership: "compute" Generation: 40 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: true Failed: false Notes: "slot0 running compute" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 0 SlotId: 1 LifecycleState: "preparing transfer" TransferState: "host-visible" ComputeState: "idle" QueueOwnership: "host" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: false Failed: false Notes: "slot1 host writes next batch" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 1 SlotId: 1 LifecycleState: "transfer in-flight" TransferState: "in-flight" ComputeState: "idle" QueueOwnership: "transfer" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: true InFlightCompute: false Failed: false Notes: "dedicated transfer queue copies slot1" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 2 SlotId: 1 LifecycleState: "transfer complete" TransferState: "complete-visible" ComputeState: "idle" QueueOwnership: "compute" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: true InFlightTransfer: false InFlightCompute: false Failed: false Notes: "ownership handoff done; slot1 ready" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 3 SlotId: 0 LifecycleState: "consumed" TransferState: "idle" ComputeState: "complete" QueueOwnership: "host" Generation: 40 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: false Failed: false Notes: "slot0 compute complete" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 3 SlotId: 1 LifecycleState: "ready for compute" TransferState: "complete-visible" ComputeState: "idle" QueueOwnership: "compute" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: true InFlightTransfer: false InFlightCompute: false Failed: false Notes: "deterministic swap point" },
+        M30SlotOverlapRow { Scenario: "D-overlap-happy" Tick: 4 SlotId: 1 LifecycleState: "compute in-flight" TransferState: "idle" ComputeState: "in-flight" QueueOwnership: "compute" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: true Failed: false Notes: "slot1 becomes current" },
+        M30SlotOverlapRow { Scenario: "E-next-transfer-fails" Tick: 4 SlotId: 0 LifecycleState: "preparing transfer" TransferState: "host-visible" ComputeState: "idle" QueueOwnership: "host" Generation: 42 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: false Failed: false Notes: "slot0 starts next upload" },
+        M30SlotOverlapRow { Scenario: "E-next-transfer-fails" Tick: 5 SlotId: 0 LifecycleState: "failed" TransferState: "failed" ComputeState: "idle" QueueOwnership: "host" Generation: 42 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: false Failed: true Notes: "slot0 transfer failure isolated" },
+        M30SlotOverlapRow { Scenario: "E-next-transfer-fails" Tick: 5 SlotId: 1 LifecycleState: "compute in-flight" TransferState: "idle" ComputeState: "in-flight" QueueOwnership: "compute" Generation: 41 ShapeLayout: "M4096xN4096xK4096-packed4" ReadyForCompute: false InFlightTransfer: false InFlightCompute: true Failed: false Notes: "current compute proceeds despite peer failure" }
+    ]
+}
+
+fn M30FallbackDecisionTable() -> M30FallbackTable {
+    return M30FallbackTable {
+        Scenario: ["no-dedicated-queue", "shared-family-pseudo-transfer", "dedicated-large-shape", "dedicated-small-shape", "dedicated-high-sync-cost"]
+        DedicatedTransferQueueAdvertised: [false, true, true, true, true]
+        IndependentTransferQueue: [false, false, true, true, true]
+        SharedComputeBottleneck: [true, true, false, false, false]
+        ShapeRegime: ["large", "large", "large", "small", "large"]
+        PolicyRequested: ["D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap", "D-transfer-fixed-double-overlap"]
+        PolicySelected: ["A-single-queue-baseline", "A-single-queue-baseline", "D-transfer-fixed-double-overlap", "F-small-shape-disable", "A-single-queue-baseline"]
+        FallbackApplied: [true, true, false, true, true]
+        FallbackReason: [
+            "no dedicated transfer queue available",
+            "pseudo-transfer shares compute bottleneck and gives no useful overlap",
+            "all enable gates pass",
+            "small-shape regime: synchronization overhead dominates",
+            "sync wait exceeds expected overlap benefit"
+        ]
+        OverclaimPrevented: [true, true, false, true, true]
+    }
+}
+
+fn M30AsyncInteraction() -> M30AsyncInteractionTable {
+    return M30AsyncInteractionTable {
+        Scenario: ["upload-only-correct", "upload-plus-readback-correct", "premature-ready-rejected", "next-transfer-failure-isolated"]
+        UploadPath: ["transfer-queue", "transfer-queue", "transfer-queue", "transfer-queue"]
+        ReadbackEnabled: [false, true, true, false]
+        TransferCompletionTick: [6, 6, 7, 6]
+        ComputeCompletionTick: [11, 11, 11, 11]
+        ReadbackCompletionTick: [0, 13, 13, 0]
+        ReportedReadyTick: [11, 13, 13, 11]
+        AsyncReadyAfterAllQueueWork: [true, true, true, true]
+        PrematureReadyRejected: [0, 0, 1, 0]
+        ReadinessDelayTicks: [2, 4, 4, 2]
+    }
+}
+
+fn M30FinalContractFrom() -> M30FinalContract {
+    let _edge = Octomata.DetectEdge(true, true)
+    return M30FinalContract {
+        ProtocolModel: "Dedicated transfer queue means a transfer-capable queue family that is independent enough to overlap staging copies with compute work. Transfer queue executes host->device uploads for A/B (and optionally device->host readback for C). Compute queue executes SGEMM dispatch and any compute-local barriers. Synchronization edges are host-write->transfer-read, transfer-write->compute-read, compute-write->readback-transfer-read, readback-transfer-write->host-read, plus explicit queue-family ownership handoff when families differ. Fixed-double slots keep deterministic current/next ownership with generation guards and in-flight transfer/compute rejection."
+        QueueConfigurations: "Model includes: (1) no dedicated transfer queue fallback to single queue; (2) real dedicated transfer queue with explicit semaphores and ownership transfer; (3) pseudo-transfer/shared-family configuration that must not overclaim overlap unless policy gates prove benefit."
+        FixedDoubleInteraction: "Slot lifecycle states are empty, preparing transfer, transfer in-flight, transfer complete, ready for compute, compute in-flight, consumed, failed. Each slot tracks slot id, generation, shape/layout metadata, queue ownership, ready flag, transfer in-flight, compute in-flight, and failure state."
+        MandatorySynchronizationEdges: "Mandatory edges: host write visible before transfer read; transfer completion + visibility before compute read; compute completion + visibility before readback transfer read; readback completion + visibility before host read; and all queue completions before async ready is reported. Missing edges are protocol hazards and must be rejected."
+        MandatoryOwnershipRules: "If queue families differ, ownership release/acquire is mandatory at transfer->compute and compute->transfer/readback transitions. Slot reuse is forbidden while transfer or compute is in-flight. Failure is generation-scoped so transfer failure in next slot cannot poison current compute slot."
+        PolicyRecommendation: "Use separate policies: upload-only (lower risk) and upload+readback (higher sync complexity). Enable dedicated transfer queue only under fallback gating: dedicated queue exists, independence indicates useful overlap, expected overlap exceeds sync cost, and slot ownership/sync graph is valid."
+        DiagnosticsContract: "Native diagnostics must expose transfer queue used/not used, selected policy, dedicated availability, fallback reason, ownership handoff count, transfer/compute wait count, transfer failure slot, compute failure slot, async readiness state, slot id + generation, and upload-only vs upload+readback mode."
+        NotModeled: "M30 intentionally does not model Vulkan API objects, exact barrier flags, command buffer lifetime internals, allocator internals, hardware timings, triple buffering, or async architecture redesign."
+        FinalRecommendation: "Dedicated transfer queue is worth implementing only when truly independent and gated; the main value is fixed-double overlap of slot N compute with slot N+1 upload. Default to single queue on no-dedicated, pseudo-transfer, or low-benefit small-shape regimes."
+        M31Direction: "M31 should implement native upload-only dedicated transfer queue first with explicit semaphore + ownership handoff instrumentation, preserve single-queue fallback, and add conformance tests for all mandatory synchronization/ownership diagnostics before considering upload+readback."
+    }
+}

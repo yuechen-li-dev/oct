@@ -1,0 +1,78 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M30PolicyCoverageIncludesAtoE() -> Void {
+    let t = M30QueuePolicyComparison()
+    Assert.True(Len(t.Policy) >= 5, "M30 must compare policies A-E at minimum")
+    Assert.True(Contains(t.Policy[0], "A-") and Contains(t.Policy[4], "E-"), "policy ordering should preserve required baseline/gating checkpoints")
+}
+
+[Fact]
+fn M30HazardsAreDetectedAndBlocked() -> Void {
+    let h = M30SyncHazardRake()
+    Assert.Equal(Len(h.Scenario), 10, "M30 must rake ten required failure modes")
+    Assert.True(h.Detected[0] and h.Detected[1] and h.Detected[2] and h.Detected[3] and h.Detected[4] and h.Detected[5] and h.Detected[6] and h.Detected[7] and h.Detected[8] and h.Detected[9], "all required hazards must be detected")
+    Assert.True(h.BlockedBeforeCorruption[0] and h.BlockedBeforeCorruption[1] and h.BlockedBeforeCorruption[2] and h.BlockedBeforeCorruption[3] and h.BlockedBeforeCorruption[4] and h.BlockedBeforeCorruption[5] and h.BlockedBeforeCorruption[6] and h.BlockedBeforeCorruption[7] and h.BlockedBeforeCorruption[8] and h.BlockedBeforeCorruption[9], "hazards must be blocked before corruption")
+}
+
+[Fact]
+fn M30FixedDoubleSlotsTrackRequiredFields() -> Void {
+    let rows = M30SlotOverlapRows()
+    Assert.True(Len(rows) >= 10, "M30 must model overlap and failure-isolation traces")
+    Assert.True(rows[0].SlotId == 0 and rows[1].SlotId == 1, "fixed-double model must track both slots")
+    Assert.True(Contains(rows[0].LifecycleState, "compute") and Contains(rows[2].TransferState, "in-flight"), "slot rows must include transfer/compute lifecycle")
+}
+
+[Fact]
+fn M30FallbackDoesNotOverclaimTransferBenefits() -> Void {
+    let f = M30FallbackDecisionTable()
+    Assert.True(f.FallbackApplied[0] and f.FallbackApplied[1], "must fallback on no-dedicated and pseudo-transfer configurations")
+    Assert.True(f.OverclaimPrevented[0] and f.OverclaimPrevented[1], "must prevent false overlap claims")
+}
+
+[Fact]
+fn M30AsyncReadinessWaitsForAllQueues() -> Void {
+    let a = M30AsyncInteraction()
+    Assert.True(a.AsyncReadyAfterAllQueueWork[0] and a.AsyncReadyAfterAllQueueWork[1] and a.AsyncReadyAfterAllQueueWork[2] and a.AsyncReadyAfterAllQueueWork[3], "async ready must wait for relevant queue work")
+    Assert.True(a.PrematureReadyRejected[2] > 0, "premature readiness must be rejected")
+}
+
+[Fact]
+fn M30FinalContractAnswersRequiredQuestions() -> Void {
+    let c = M30FinalContractFrom()
+    Assert.True(Contains(c.FinalRecommendation, "worth implementing"), "must answer if dedicated transfer queue is worthwhile")
+    Assert.True(Contains(c.PolicyRecommendation, "separate policies"), "must answer upload-only vs upload+readback policy split")
+    Assert.True(Contains(c.MandatorySynchronizationEdges, "host write") and Contains(c.MandatorySynchronizationEdges, "readback"), "must define mandatory synchronization edges")
+    Assert.True(Contains(c.MandatoryOwnershipRules, "ownership") and Contains(c.MandatoryOwnershipRules, "queue families differ"), "must define mandatory ownership rules")
+    Assert.True(Contains(c.DiagnosticsContract, "fallback reason") and Contains(c.DiagnosticsContract, "slot id + generation"), "must define diagnostics contract")
+}
+
+[Artifact]
+fn EmitM30QueuePolicyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_queue_policy_table.octagon", [M30QueuePolicyComparison()])
+}
+
+[Artifact]
+fn EmitM30SyncHazardTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_sync_hazard_table.octagon", [M30SyncHazardRake()])
+}
+
+[Artifact]
+fn EmitM30SlotOverlapTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_slot_overlap_table.octagon", M30SlotOverlapRows())
+}
+
+[Artifact]
+fn EmitM30FallbackTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_fallback_table.octagon", [M30FallbackDecisionTable()])
+}
+
+[Artifact]
+fn EmitM30AsyncInteractionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_async_interaction_table.octagon", [M30AsyncInteraction()])
+}
+
+[Artifact]
+fn EmitM30FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M30/m30_final_contract.octagon", [M30FinalContractFrom()])
+}

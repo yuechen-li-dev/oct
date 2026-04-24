@@ -1,0 +1,151 @@
+[M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (0)
+    SlotId: (0)
+    LifecycleState: "compute in-flight"
+    TransferState: "idle"
+    ComputeState: "in-flight"
+    QueueOwnership: "compute"
+    Generation: (40)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: true
+    Failed: false
+    Notes: "slot0 running compute"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (0)
+    SlotId: (1)
+    LifecycleState: "preparing transfer"
+    TransferState: "host-visible"
+    ComputeState: "idle"
+    QueueOwnership: "host"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: false
+    Notes: "slot1 host writes next batch"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (1)
+    SlotId: (1)
+    LifecycleState: "transfer in-flight"
+    TransferState: "in-flight"
+    ComputeState: "idle"
+    QueueOwnership: "transfer"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: true
+    InFlightCompute: false
+    Failed: false
+    Notes: "dedicated transfer queue copies slot1"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (2)
+    SlotId: (1)
+    LifecycleState: "transfer complete"
+    TransferState: "complete-visible"
+    ComputeState: "idle"
+    QueueOwnership: "compute"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: true
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: false
+    Notes: "ownership handoff done; slot1 ready"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (3)
+    SlotId: (0)
+    LifecycleState: "consumed"
+    TransferState: "idle"
+    ComputeState: "complete"
+    QueueOwnership: "host"
+    Generation: (40)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: false
+    Notes: "slot0 compute complete"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (3)
+    SlotId: (1)
+    LifecycleState: "ready for compute"
+    TransferState: "complete-visible"
+    ComputeState: "idle"
+    QueueOwnership: "compute"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: true
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: false
+    Notes: "deterministic swap point"
+}, M30SlotOverlapRow {
+    Scenario: "D-overlap-happy"
+    Tick: (4)
+    SlotId: (1)
+    LifecycleState: "compute in-flight"
+    TransferState: "idle"
+    ComputeState: "in-flight"
+    QueueOwnership: "compute"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: true
+    Failed: false
+    Notes: "slot1 becomes current"
+}, M30SlotOverlapRow {
+    Scenario: "E-next-transfer-fails"
+    Tick: (4)
+    SlotId: (0)
+    LifecycleState: "preparing transfer"
+    TransferState: "host-visible"
+    ComputeState: "idle"
+    QueueOwnership: "host"
+    Generation: (42)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: false
+    Notes: "slot0 starts next upload"
+}, M30SlotOverlapRow {
+    Scenario: "E-next-transfer-fails"
+    Tick: (5)
+    SlotId: (0)
+    LifecycleState: "failed"
+    TransferState: "failed"
+    ComputeState: "idle"
+    QueueOwnership: "host"
+    Generation: (42)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: false
+    Failed: true
+    Notes: "slot0 transfer failure isolated"
+}, M30SlotOverlapRow {
+    Scenario: "E-next-transfer-fails"
+    Tick: (5)
+    SlotId: (1)
+    LifecycleState: "compute in-flight"
+    TransferState: "idle"
+    ComputeState: "in-flight"
+    QueueOwnership: "compute"
+    Generation: (41)
+    ShapeLayout: "M4096xN4096xK4096-packed4"
+    ReadyForCompute: false
+    InFlightTransfer: false
+    InFlightCompute: true
+    Failed: false
+    Notes: "current compute proceeds despite peer failure"
+}]

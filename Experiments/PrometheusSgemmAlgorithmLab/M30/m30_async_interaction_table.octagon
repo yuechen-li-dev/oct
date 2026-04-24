@@ -1,0 +1,12 @@
+[M30AsyncInteractionTable {
+    Scenario: ["upload-only-correct", "upload-plus-readback-correct", "premature-ready-rejected", "next-transfer-failure-isolated"]
+    UploadPath: ["transfer-queue", "transfer-queue", "transfer-queue", "transfer-queue"]
+    ReadbackEnabled: [false, true, true, false]
+    TransferCompletionTick: [6, 6, 7, 6]
+    ComputeCompletionTick: [11, 11, 11, 11]
+    ReadbackCompletionTick: [0, 13, 13, 0]
+    ReportedReadyTick: [11, 13, 13, 11]
+    AsyncReadyAfterAllQueueWork: [true, true, true, true]
+    PrematureReadyRejected: [0, 0, 1, 0]
+    ReadinessDelayTicks: [2, 4, 4, 2]
+}]
