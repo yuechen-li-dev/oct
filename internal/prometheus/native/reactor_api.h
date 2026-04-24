@@ -74,6 +74,8 @@ enum {
   PROM_TESTCFG_FORCE_TILED_PATH = 1u << 14,
   PROM_TESTCFG_FAIL_ASYNC_POLL = 1u << 15,
   PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK = 1u << 16,
+  PROM_TESTCFG_FORCE_STRICT_FP32 = 1u << 17,
+  PROM_TESTCFG_FORCE_NO_FP16_STORAGE = 1u << 18,
 };
 
 enum {
@@ -91,6 +93,7 @@ enum {
   PROM_DETAIL_PATH_STAGED_UPLOAD_TILED = 6106,
   PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED = 6107,
   PROM_DETAIL_PATH_DIRECT_PACKED4_FP32 = 6108,
+  PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM = 6109,
   PROM_DETAIL_ASYNC_NOT_READY = -6108,
   PROM_DETAIL_ASYNC_NO_TASK = -6109,
   PROM_DETAIL_ASYNC_ALREADY_CONSUMED = -6110,
@@ -105,6 +108,13 @@ enum {
   PROM_DETAIL_PACKED4_CAPABILITY_MISSING = -6203,
   PROM_DETAIL_PACKED4_FALLBACK_REQUIRED = -6204,
   PROM_DETAIL_PACKED4_MODE_BUDGET_DENIED = -6205,
+  PROM_DETAIL_FP16_STRICT_FP32 = -6301,
+  PROM_DETAIL_FP16_TOLERANCE_UNKNOWN = -6302,
+  PROM_DETAIL_FP16_TOLERANCE_EXCEEDED = -6303,
+  PROM_DETAIL_FP16_SPECIAL_VALUE = -6304,
+  PROM_DETAIL_FP16_CAPABILITY_MISSING = -6305,
+  PROM_DETAIL_FP16_FALLBACK_REQUIRED = -6306,
+  PROM_DETAIL_FP16_NOT_TOP_UTILITY = -6307,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -167,6 +177,16 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t packed4_fallback_reason_capability_missing;
   uint64_t packed4_fallback_reason_fallback_required;
   uint64_t packed4_fallback_reason_mode_budget_denied;
+  float fp16_max_absolute_error;
+  float fp16_max_relative_error;
+  float fp16_aggregate_error;
+  uint32_t fp16_worst_case_element_index;
+  float fp16_k_error_growth;
+  float fp16_cancellation_risk;
+  uint32_t fp16_tolerance_known;
+  uint32_t fp16_tolerance_pass;
+  int fp16_fallback_reason_detail;
+  uint32_t fp16_selected_candidate;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

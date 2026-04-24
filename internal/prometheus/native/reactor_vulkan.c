@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -19,6 +20,7 @@
 
 #include <vulkan/vulkan.h>
 #include "reactor_judgment_engine.h"
+#include "reactor_vulkan_fp16_spirv.h"
 #include "reactor_vulkan_packed4_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
@@ -93,6 +95,16 @@ typedef struct prom_sgemm_controller_state {
   uint64_t packed4_fallback_reason_capability_missing;
   uint64_t packed4_fallback_reason_fallback_required;
   uint64_t packed4_fallback_reason_mode_budget_denied;
+  float fp16_max_absolute_error;
+  float fp16_max_relative_error;
+  float fp16_aggregate_error;
+  uint32_t fp16_worst_case_element_index;
+  float fp16_k_error_growth;
+  float fp16_cancellation_risk;
+  uint32_t fp16_tolerance_known;
+  uint32_t fp16_tolerance_pass;
+  int fp16_fallback_reason_detail;
+  uint32_t fp16_selected_candidate;
 } prom_sgemm_controller_state;
 
 typedef struct prometheus_runtime {
@@ -117,6 +129,7 @@ typedef struct prometheus_runtime {
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
   VkPipeline packed4_pipeline;
+  VkPipeline fp16_pipeline;
   prom_vk_buffer direct_a;
   prom_vk_buffer direct_b;
   prom_vk_buffer direct_c;
@@ -135,6 +148,7 @@ typedef struct prometheus_runtime {
   uint32_t has_host_visible_memory;
   uint32_t in_flight_submit;
   uint32_t software_vulkan;
+  uint32_t capability_fp16_storage;
   uint32_t async_state;
   int async_task_id;
   uint32_t async_m;
@@ -415,6 +429,100 @@ static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize*
   return 1;
 }
 
+static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size) {
+  uint32_t elements;
+  uint64_t words;
+  uint64_t bytes;
+  if (out_vk_size == NULL || out_copy_size == NULL) {
+    return 0;
+  }
+  if (!checked_mul_u32(rows, cols, &elements)) {
+    return 0;
+  }
+  words = ((uint64_t)elements + 1u) / 2u;
+  bytes = words * (uint64_t)sizeof(uint32_t);
+  if (bytes > (uint64_t)SIZE_MAX) {
+    return 0;
+  }
+  *out_copy_size = (size_t)bytes;
+  *out_vk_size = (VkDeviceSize)bytes;
+  return 1;
+}
+
+static uint16_t prom_float32_to_fp16_bits(float value) {
+  union { float f; uint32_t u; } in;
+  uint32_t sign;
+  uint32_t exponent;
+  uint32_t mantissa;
+  in.f = value;
+  sign = (in.u >> 16u) & 0x8000u;
+  exponent = (in.u >> 23u) & 0xffu;
+  mantissa = in.u & 0x7fffffu;
+  if (exponent == 0xffu) {
+    return (uint16_t)(sign | (mantissa == 0u ? 0x7c00u : 0x7e00u));
+  }
+  if (exponent > 142u) {
+    return (uint16_t)(sign | 0x7c00u);
+  }
+  if (exponent < 113u) {
+    uint32_t shifted;
+    if (exponent < 103u) {
+      return (uint16_t)sign;
+    }
+    mantissa |= 0x800000u;
+    shifted = 125u - exponent;
+    mantissa = (mantissa + (1u << (shifted - 1u))) >> shifted;
+    return (uint16_t)(sign | mantissa);
+  }
+  exponent = exponent - 112u;
+  mantissa = mantissa + 0x1000u;
+  if ((mantissa & 0x00800000u) != 0u) {
+    mantissa = 0u;
+    exponent += 1u;
+  }
+  if (exponent >= 31u) {
+    return (uint16_t)(sign | 0x7c00u);
+  }
+  return (uint16_t)(sign | (exponent << 10u) | (mantissa >> 13u));
+}
+
+static float prom_fp16_bits_to_float32(uint16_t value) {
+  uint32_t sign = ((uint32_t)value & 0x8000u) << 16u;
+  uint32_t exponent = ((uint32_t)value >> 10u) & 0x1fu;
+  uint32_t mantissa = (uint32_t)value & 0x3ffu;
+  union { uint32_t u; float f; } out;
+  if (exponent == 0u) {
+    if (mantissa == 0u) {
+      out.u = sign;
+      return out.f;
+    }
+    exponent = 127u - 15u + 1u;
+    while ((mantissa & 0x400u) == 0u) {
+      mantissa <<= 1u;
+      exponent -= 1u;
+    }
+    mantissa &= 0x3ffu;
+    out.u = sign | (exponent << 23u) | (mantissa << 13u);
+    return out.f;
+  }
+  if (exponent == 31u) {
+    out.u = sign | 0x7f800000u | (mantissa << 13u);
+    return out.f;
+  }
+  exponent = exponent + (127u - 15u);
+  out.u = sign | (exponent << 23u) | (mantissa << 13u);
+  return out.f;
+}
+
+static void prom_pack_fp16_pairs(const float* src, uint32_t element_count, uint32_t* dst_words) {
+  uint32_t i;
+  for (i = 0u; i < element_count; i += 2u) {
+    uint16_t lo = prom_float32_to_fp16_bits(src[i]);
+    uint16_t hi = (i + 1u < element_count) ? prom_float32_to_fp16_bits(src[i + 1u]) : (uint16_t)0u;
+    dst_words[i / 2u] = (uint32_t)lo | ((uint32_t)hi << 16u);
+  }
+}
+
 static uint32_t prom_round_up4_u32(uint32_t value) {
   return (value + 3u) & ~3u;
 }
@@ -469,6 +577,104 @@ static void prom_packed4_record_fallback(prom_sgemm_controller_state* state, pro
     state->packed4_fallback_reason_mode_budget_denied += 1u;
     state->packed4_mode_budget_denials += 1u;
   }
+}
+
+static int prom_fp16_reject_reason_to_detail(prom_fp16_reject_reason reason) {
+  if (reason == PROM_FP16_REJECT_STRICT_FP32) return PROM_DETAIL_FP16_STRICT_FP32;
+  if (reason == PROM_FP16_REJECT_TOLERANCE_UNKNOWN) return PROM_DETAIL_FP16_TOLERANCE_UNKNOWN;
+  if (reason == PROM_FP16_REJECT_TOLERANCE_EXCEEDED) return PROM_DETAIL_FP16_TOLERANCE_EXCEEDED;
+  if (reason == PROM_FP16_REJECT_SPECIAL_VALUE) return PROM_DETAIL_FP16_SPECIAL_VALUE;
+  if (reason == PROM_FP16_REJECT_CAPABILITY_MISSING) return PROM_DETAIL_FP16_CAPABILITY_MISSING;
+  if (reason == PROM_FP16_REJECT_FALLBACK_REQUIRED) return PROM_DETAIL_FP16_FALLBACK_REQUIRED;
+  if (reason == PROM_FP16_REJECT_NOT_TOP_UTILITY) return PROM_DETAIL_FP16_NOT_TOP_UTILITY;
+  return 0;
+}
+
+static void prom_fp16_evaluate_tolerance(const float* a,
+                                         const float* b,
+                                         uint32_t m,
+                                         uint32_t n,
+                                         uint32_t k,
+                                         prom_sgemm_controller_state* state,
+                                         uint32_t* has_special_values,
+                                         int* utility_score) {
+  uint32_t row;
+  uint32_t col;
+  const float abs_tolerance = 0.02f;
+  const float rel_tolerance = 0.02f;
+  const float aggregate_tolerance = 0.01f;
+  float max_abs = 0.0f;
+  float max_rel = 0.0f;
+  float aggregate = 0.0f;
+  uint32_t worst_index = 0u;
+  float sign_flip_products = 0.0f;
+  float total_products = 0.0f;
+
+  if (state == NULL || has_special_values == NULL || utility_score == NULL) {
+    return;
+  }
+  *has_special_values = 0u;
+  state->fp16_tolerance_known = 1u;
+  state->fp16_tolerance_pass = 1u;
+  state->fp16_max_absolute_error = 0.0f;
+  state->fp16_max_relative_error = 0.0f;
+  state->fp16_aggregate_error = 0.0f;
+  state->fp16_worst_case_element_index = 0u;
+  state->fp16_k_error_growth = 0.0f;
+  state->fp16_cancellation_risk = 0.0f;
+
+  for (row = 0u; row < m; ++row) {
+    for (col = 0u; col < n; ++col) {
+      uint32_t kk;
+      float reference = 0.0f;
+      float fp16_value = 0.0f;
+      float prev = 0.0f;
+      for (kk = 0u; kk < k; ++kk) {
+        float av = a[row * k + kk];
+        float bv = b[kk * n + col];
+        float qav;
+        float qbv;
+        float product;
+        if (!isfinite(av) || !isfinite(bv)) {
+          *has_special_values = 1u;
+        }
+        qav = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(av));
+        qbv = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(bv));
+        reference += av * bv;
+        product = qav * qbv;
+        fp16_value += product;
+        if ((prev > 0.0f && product < 0.0f) || (prev < 0.0f && product > 0.0f)) {
+          sign_flip_products += 1.0f;
+        }
+        prev = product;
+        total_products += 1.0f;
+      }
+      {
+        float abs_err = fabsf(reference - fp16_value);
+        float denom = fmaxf(fabsf(reference), 1e-6f);
+        float rel_err = abs_err / denom;
+        aggregate += abs_err;
+        if (abs_err > max_abs) {
+          max_abs = abs_err;
+          worst_index = row * n + col;
+        }
+        if (rel_err > max_rel) {
+          max_rel = rel_err;
+        }
+      }
+    }
+  }
+  state->fp16_max_absolute_error = max_abs;
+  state->fp16_max_relative_error = max_rel;
+  state->fp16_aggregate_error = aggregate;
+  state->fp16_worst_case_element_index = worst_index;
+  state->fp16_k_error_growth = k > 0u ? max_abs / (float)k : max_abs;
+  state->fp16_cancellation_risk = total_products > 0.0f ? sign_flip_products / total_products : 0.0f;
+  if (max_abs > abs_tolerance || max_rel > rel_tolerance || (aggregate / (float)(m * n)) > aggregate_tolerance) {
+    state->fp16_tolerance_pass = 0u;
+  }
+
+  *utility_score = 900 - (int)(state->fp16_max_absolute_error * 1000.0f) - (int)(state->fp16_cancellation_risk * 200.0f);
 }
 
 static void prom_compute_scalar_row_major(const float* a, const float* b, float* c, uint32_t m, uint32_t n, uint32_t k) {
@@ -1090,6 +1296,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->packed4_pipeline, NULL);
     rt->packed4_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->fp16_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->fp16_pipeline, NULL);
+    rt->fp16_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
@@ -1223,6 +1433,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
       }
     }
   }
+  rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
 
   memset(&queue_info, 0, sizeof(queue_info));
   queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -1393,6 +1604,30 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv);
+  shader_info.pCode = k_prom_sgemm_fp16_storage_fp32accum_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = shader_module;
+  stage_info.pName = "main";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->fp16_pipeline);
+  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
   memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
   cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   cmd_alloc_info.commandPool = rt->command_pool;
@@ -1543,6 +1778,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t packed4_small_shape;
   uint32_t packed4_tail_count;
   uint32_t packed4_padded_lane_count;
+  uint32_t fp16_has_special_values;
+  int fp16_utility_score;
   prom_policy_mode policy_mode;
   prom_vk_path_mode selected_path;
   prom_vk_compute_mode compute_mode;
@@ -1553,6 +1790,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   VkPipeline selected_pipeline;
   float* packed_a_upload = NULL;
   float* packed_b_upload = NULL;
+  uint32_t* fp16_a_upload = NULL;
+  uint32_t* fp16_b_upload = NULL;
   int final_detail = 0;
   uint32_t request_async = 0u;
 
@@ -1624,6 +1863,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   packed4_small_shape = (m < 4u || n < 4u || k < 4u) ? 1u : 0u;
   packed4_tail_count = prom_packed4_tail_count(m, n, k);
   packed4_padded_lane_count = (uint32_t)((prom_round_up4_u32(k) - k) * (m + n));
+  fp16_has_special_values = 0u;
+  fp16_utility_score = -1000;
+  prom_fp16_evaluate_tolerance(a, b, m, n, k, &rt->sgemm_controller, &fp16_has_special_values, &fp16_utility_score);
   tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
@@ -1656,6 +1898,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.packed4_mode_budget_permille = packed4_budget_permille;
   judgment_facts.packed4_row_major_valid = 1u;
   judgment_facts.packed4_tail_valid = 1u;
+  judgment_facts.strict_fp32 = ((rt->test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
+  judgment_facts.tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+  judgment_facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+  judgment_facts.has_special_values = fp16_has_special_values;
+  judgment_facts.capability_fp16_storage = rt->capability_fp16_storage;
+  judgment_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
+  judgment_facts.fp16_utility_score = fp16_utility_score;
   prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
   if (judgment_decision.success == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
@@ -1670,13 +1919,19 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (judgment_decision.packed4_reject_reason != PROM_PACKED4_REJECT_NONE) {
     prom_packed4_record_fallback(&rt->sgemm_controller, judgment_decision.packed4_reject_reason);
   }
+  rt->sgemm_controller.fp16_fallback_reason_detail = prom_fp16_reject_reason_to_detail(judgment_decision.fp16_reject_reason);
+  rt->sgemm_controller.fp16_selected_candidate = judgment_decision.fp16_selected != 0u ? 3u : 1u;
 
   compute_k = compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
-  if (!checked_float_buffer_size(m, compute_k, &a_buffer_size, &a_copy_size) ||
-      !checked_float_buffer_size(compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? n : k,
-                                 compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? compute_k : n,
-                                 &b_buffer_size,
-                                 &b_copy_size) ||
+  if ((compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM &&
+       (!checked_packed_fp16_buffer_size(m, compute_k, &a_buffer_size, &a_copy_size) ||
+        !checked_packed_fp16_buffer_size(k, n, &b_buffer_size, &b_copy_size))) ||
+      (compute_mode != PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM &&
+       (!checked_float_buffer_size(m, compute_k, &a_buffer_size, &a_copy_size) ||
+        !checked_float_buffer_size(compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? n : k,
+                                   compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? compute_k : n,
+                                   &b_buffer_size,
+                                   &b_copy_size))) ||
       !checked_float_buffer_size(m, n, &c_buffer_size, &c_copy_size)) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
@@ -1693,6 +1948,19 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     }
     prom_pack_a_packed4_rowmajor(a, packed_a_upload, m, k, compute_k);
     prom_pack_b_packed4_colmajor(b, packed_b_upload, n, k, compute_k);
+  } else if (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    fp16_a_upload = (uint32_t*)malloc(a_copy_size);
+    fp16_b_upload = (uint32_t*)malloc(b_copy_size);
+    if (fp16_a_upload == NULL || fp16_b_upload == NULL) {
+      free(packed_a_upload);
+      free(packed_b_upload);
+      free(fp16_a_upload);
+      free(fp16_b_upload);
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+      return PROM_ERROR;
+    }
+    prom_pack_fp16_pairs(a, m * compute_k, fp16_a_upload);
+    prom_pack_fp16_pairs(b, compute_k * n, fp16_b_upload);
   }
   memset(&async_facts, 0, sizeof(async_facts));
   async_facts.request_async = request_async;
@@ -1702,6 +1970,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (async_decision.success == 0u) {
     free(packed_a_upload);
     free(packed_b_upload);
+    free(fp16_a_upload);
+    free(fp16_b_upload);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, async_decision.reject_detail);
     return PROM_ERROR;
   }
@@ -1711,10 +1981,18 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
       free(packed_b_upload);
+      free(fp16_a_upload);
+      free(fp16_b_upload);
       return PROM_ERROR;
     }
-    memcpy(rt->direct_a.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_a_upload : a, a_copy_size);
-    memcpy(rt->direct_b.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_b_upload : b, b_copy_size);
+    memcpy(rt->direct_a.mapped,
+           compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? (const void*)packed_a_upload
+           : (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM ? (const void*)fp16_a_upload : (const void*)a),
+           a_copy_size);
+    memcpy(rt->direct_b.mapped,
+           compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? (const void*)packed_b_upload
+           : (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM ? (const void*)fp16_b_upload : (const void*)b),
+           b_copy_size);
     memset(rt->direct_c.mapped, 0, c_copy_size);
     shader_a = &rt->direct_a;
     shader_b = &rt->direct_b;
@@ -1724,16 +2002,26 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
       free(packed_b_upload);
+      free(fp16_a_upload);
+      free(fp16_b_upload);
       return PROM_ERROR;
     }
-    memcpy(rt->staged_upload_a.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_a_upload : a, a_copy_size);
-    memcpy(rt->staged_upload_b.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_b_upload : b, b_copy_size);
+    memcpy(rt->staged_upload_a.mapped,
+           compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? (const void*)packed_a_upload
+           : (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM ? (const void*)fp16_a_upload : (const void*)a),
+           a_copy_size);
+    memcpy(rt->staged_upload_b.mapped,
+           compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? (const void*)packed_b_upload
+           : (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM ? (const void*)fp16_b_upload : (const void*)b),
+           b_copy_size);
     shader_a = &rt->staged_device_a;
     shader_b = &rt->staged_device_b;
     shader_c = &rt->staged_device_c;
   }
   free(packed_a_upload);
   free(packed_b_upload);
+  free(fp16_a_upload);
+  free(fp16_b_upload);
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     selected_pipeline = rt->tiled_pipeline;
@@ -1746,6 +2034,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     }
   } else if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
     selected_pipeline = rt->packed4_pipeline;
+  } else if (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    selected_pipeline = rt->fp16_pipeline;
   } else {
     selected_pipeline = rt->pipeline;
   }
@@ -2037,8 +2327,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       rt->sgemm_controller.packed4_tail_count_total += (uint64_t)packed4_tail_count;
       rt->sgemm_controller.packed4_padded_lane_count_total += (uint64_t)packed4_padded_lane_count;
       rt->sgemm_controller.packed4_selection_count += 1u;
+      rt->sgemm_controller.fp16_selected_candidate = 2u;
+    } else if (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+      rt->sgemm_controller.packed4_selected_layout_format = 1u;
+      rt->sgemm_controller.fp16_selected_candidate = 3u;
+      rt->sgemm_controller.fp16_fallback_reason_detail = 0;
     } else {
       rt->sgemm_controller.packed4_selected_layout_format = 1u;
+      rt->sgemm_controller.fp16_selected_candidate = 1u;
     }
     return PROM_OK;
   }
@@ -2244,5 +2540,15 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->packed4_fallback_reason_capability_missing = rt->sgemm_controller.packed4_fallback_reason_capability_missing;
   out_diag->packed4_fallback_reason_fallback_required = rt->sgemm_controller.packed4_fallback_reason_fallback_required;
   out_diag->packed4_fallback_reason_mode_budget_denied = rt->sgemm_controller.packed4_fallback_reason_mode_budget_denied;
+  out_diag->fp16_max_absolute_error = rt->sgemm_controller.fp16_max_absolute_error;
+  out_diag->fp16_max_relative_error = rt->sgemm_controller.fp16_max_relative_error;
+  out_diag->fp16_aggregate_error = rt->sgemm_controller.fp16_aggregate_error;
+  out_diag->fp16_worst_case_element_index = rt->sgemm_controller.fp16_worst_case_element_index;
+  out_diag->fp16_k_error_growth = rt->sgemm_controller.fp16_k_error_growth;
+  out_diag->fp16_cancellation_risk = rt->sgemm_controller.fp16_cancellation_risk;
+  out_diag->fp16_tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+  out_diag->fp16_tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+  out_diag->fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
+  out_diag->fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
   return PROM_OK;
 }

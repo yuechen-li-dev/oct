@@ -200,6 +200,92 @@ FACT(PrometheusJudgmentEngine_IntegrationParityWithReactorPolicyScenarios)
     }
 }
 
+FACT(PrometheusJudgmentEngine_FP16PolicyGatesAreExplicitAndDeterministic)
+{
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.strict_fp32 = 1u;
+        facts.tolerance_known = 1u;
+        facts.tolerance_pass = 1u;
+        facts.capability_fp16_storage = 1u;
+        facts.fallback_available = 1u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_STRICT_FP32, decision.fp16_reject_reason, "strict-fp32 gate must reject fp16 explicitly");
+    }
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.tolerance_known = 0u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_TOLERANCE_UNKNOWN, decision.fp16_reject_reason, "unknown tolerance must reject fp16 explicitly");
+    }
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.tolerance_known = 1u;
+        facts.tolerance_pass = 0u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_TOLERANCE_EXCEEDED, decision.fp16_reject_reason, "tolerance failure must reject fp16 explicitly");
+    }
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.tolerance_known = 1u;
+        facts.tolerance_pass = 1u;
+        facts.has_special_values = 1u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_SPECIAL_VALUE, decision.fp16_reject_reason, "special values must reject fp16 explicitly");
+    }
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.tolerance_known = 1u;
+        facts.tolerance_pass = 1u;
+        facts.capability_fp16_storage = 0u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_CAPABILITY_MISSING, decision.fp16_reject_reason, "capability-missing gate must reject fp16 explicitly");
+    }
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.tolerance_known = 1u;
+        facts.tolerance_pass = 1u;
+        facts.capability_fp16_storage = 1u;
+        facts.fallback_available = 0u;
+        facts.fp16_utility_score = 1200;
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(PROM_FP16_REJECT_FALLBACK_REQUIRED, decision.fp16_reject_reason, "fallback-available gate must reject fp16 explicitly");
+    }
+}
+
+FACT(PrometheusJudgmentEngine_FP16CanWinOnlyWhenTopUtilityAndAllGatesPass)
+{
+    prom_judgment_facts facts = base_facts();
+    facts.tolerance_known = 1u;
+    facts.tolerance_pass = 1u;
+    facts.capability_fp16_storage = 1u;
+    facts.fallback_available = 1u;
+    facts.fp16_utility_score = 1201;
+
+    prom_judgment_decision decision{};
+    prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.success, "eligible fp16 mode should still yield successful candidate selection");
+    ASSERT_EQUAL(PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM, decision.compute_mode, "fp16 should be selected only when all gates pass and utility wins");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, decision.final_detail, "fp16 selection detail must stay explicit");
+    ASSERT_EQUAL(1u, decision.fp16_selected, "fp16 selected flag must be explicit");
+
+    facts.fp16_utility_score = 800;
+    prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+    ASSERT_TRUE(decision.compute_mode != PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM, "lower utility should force deterministic fallback candidate");
+    ASSERT_EQUAL(PROM_FP16_REJECT_NOT_TOP_UTILITY, decision.fp16_reject_reason, "non-winning fp16 should still expose explicit reason code");
+}
+
 FACT(PrometheusJudgmentEngine_AsyncSubmissionPolicyIsExplicit)
 {
     {

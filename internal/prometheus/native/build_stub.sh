@@ -16,6 +16,7 @@ cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/reactor_policy_memory.c" \
   "$NATIVE_DIR/reactor_vulkan.c" \
   -pthread \
+  -lm \
   -lvulkan \
   -o "$OUT_DIR/$LIB_NAME"
 
@@ -29,6 +30,7 @@ c++ -std=c++23 -O2 \
   "$NATIVE_DIR/reactor_vulkan.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
   -pthread \
+  -lm \
   -lvulkan \
   -o "$OUT_DIR/marionette_tests"
 

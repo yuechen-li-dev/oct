@@ -20,6 +20,7 @@ typedef enum prom_vk_compute_mode {
   PROM_VK_COMPUTE_BASELINE = 1,
   PROM_VK_COMPUTE_TILED = 2,
   PROM_VK_COMPUTE_PACKED4_FP32 = 3,
+  PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM = 4,
 } prom_vk_compute_mode;
 
 typedef enum prom_packed4_reject_reason {
@@ -30,6 +31,17 @@ typedef enum prom_packed4_reject_reason {
   PROM_PACKED4_REJECT_FALLBACK_REQUIRED = 4,
   PROM_PACKED4_REJECT_MODE_BUDGET_DENIED = 5,
 } prom_packed4_reject_reason;
+
+typedef enum prom_fp16_reject_reason {
+  PROM_FP16_REJECT_NONE = 0,
+  PROM_FP16_REJECT_STRICT_FP32 = 1,
+  PROM_FP16_REJECT_TOLERANCE_UNKNOWN = 2,
+  PROM_FP16_REJECT_TOLERANCE_EXCEEDED = 3,
+  PROM_FP16_REJECT_SPECIAL_VALUE = 4,
+  PROM_FP16_REJECT_CAPABILITY_MISSING = 5,
+  PROM_FP16_REJECT_FALLBACK_REQUIRED = 6,
+  PROM_FP16_REJECT_NOT_TOP_UTILITY = 7,
+} prom_fp16_reject_reason;
 
 typedef struct prom_judgment_facts {
   uint32_t m;
@@ -52,6 +64,13 @@ typedef struct prom_judgment_facts {
   uint32_t packed4_mode_budget_permille;
   uint32_t packed4_row_major_valid;
   uint32_t packed4_tail_valid;
+  uint32_t strict_fp32;
+  uint32_t tolerance_known;
+  uint32_t tolerance_pass;
+  uint32_t has_special_values;
+  uint32_t capability_fp16_storage;
+  uint32_t fallback_available;
+  int fp16_utility_score;
 } prom_judgment_facts;
 
 typedef struct prom_judgment_decision {
@@ -66,6 +85,8 @@ typedef struct prom_judgment_decision {
   int winning_score;
   uint32_t packed4_selected;
   prom_packed4_reject_reason packed4_reject_reason;
+  uint32_t fp16_selected;
+  prom_fp16_reject_reason fp16_reject_reason;
 } prom_judgment_decision;
 
 typedef struct prom_judgment_async_facts {
