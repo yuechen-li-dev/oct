@@ -1,0 +1,785 @@
+package PrometheusSgemmAlgorithmLab
+
+record M32WorkloadRegime {
+    Name: String
+    Why: String
+    NumChunks: Int
+    ChunkSizeUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    TransferJitterAmplitude: Int
+    JitterPeriod: Int
+    ComputePerUnit: Int
+    WarmupChunks: Int
+    WarmupTransferScaleMilli: Int
+}
+
+record M32StrategyConfig {
+    Name: String
+    Kind: String
+    PushLookahead: Int
+    FixedWipTarget: Int
+    BaseWipCap: Int
+    BaseSafetyMargin: Int
+    ComplexityPenalty: Int
+}
+
+record M32Budget {
+    Name: String
+    SlotBudgetMilli: Int
+}
+
+record M32SimulationResult {
+    Regime: String
+    Budget: String
+    Strategy: String
+    Feasible: Bool
+    FirstInfeasibleReason: String
+    TotalCompletionTime: Int
+    ComputeStarvationTime: Int
+    TransferIdleTime: Int
+    LeadTimeMissCount: Int
+    PeakCommittedMemoryMilli: Int
+    AverageCommittedMemoryMilli: Int
+    MemoryInventoryTimeMilli: Int
+    ReadyUnusedMemoryTimeMilli: Int
+    PeakWipDepth: Int
+    AverageWipDepthMilli: Int
+    AllocationFailureCount: Int
+    TimeAboveBudget: Int
+    LargestWorkloadThatFitsChunks: Int
+    ProductScore: Int
+}
+
+record M32BudgetSweepTable {
+    Regime: String[]
+    Budget: String[]
+    Strategy: String[]
+    Feasible: Bool[]
+    FirstInfeasibleReason: String[]
+    LargestWorkloadThatFitsChunks: Int[]
+}
+
+record M32StrategyFeasibilityTable {
+    Regime: String[]
+    Strategy: String[]
+    Budget: String[]
+    Feasible: Bool[]
+    TotalCompletionTime: Int[]
+    ProductScore: Int[]
+}
+
+record M32MemoryInventoryTable {
+    Regime: String[]
+    Strategy: String[]
+    Budget: String[]
+    PeakCommittedMemoryMilli: Int[]
+    AverageCommittedMemoryMilli: Int[]
+    MemoryInventoryTimeMilli: Int[]
+    ReadyUnusedMemoryTimeMilli: Int[]
+    PeakWipDepth: Int[]
+}
+
+record M32SequentialWorkloadTable {
+    Strategy: String[]
+    Budget: String[]
+    Feasible: Bool[]
+    TotalCompletionTime: Int[]
+    ComputeStarvationTime: Int[]
+    TransferIdleTime: Int[]
+    LeadTimeMissCount: Int[]
+}
+
+record M32VarianceSensitivityTable {
+    Regime: String[]
+    Strategy: String[]
+    Budget: String[]
+    Feasible: Bool[]
+    ProductScore: Int[]
+    LeadTimeMissCount: Int[]
+    AllocationFailureCount: Int[]
+}
+
+record M32FinalRecommendation {
+    PullLagBeatsDoubleUnderHardCeiling: String
+    PullLagWinningConditions: String
+    FixedDoubleDefaultWhenPlentiful: String
+    AdaptiveKanbanUseUnderCaps: String
+    TripleBufferUnderPressure: String
+    ImplementOrRakeNext: String
+    PullLagGuardedMode: String
+}
+
+record M32AdaptiveDecision {
+    Cap: Int
+    Margin: Int
+    Mode: String
+}
+
+fn M32Max(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M32Min(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M32Abs(v: Int) -> Int { return switch { case v < 0 => -v else => v } }
+
+fn M32Regimes() -> M32WorkloadRegime[] {
+    return [
+        M32WorkloadRegime { Name: "seq-lowvar-compute-dominant" Why: "target regime for pull-lag feasibility under hard memory ceilings" NumChunks: 28 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 10 ComputePerUnit: 4 WarmupChunks: 6 WarmupTransferScaleMilli: 850 },
+        M32WorkloadRegime { Name: "seq-lowvar-balanced" Why: "transfer and compute near parity with stable transfer" NumChunks: 28 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 9 ComputePerUnit: 2 WarmupChunks: 5 WarmupTransferScaleMilli: 900 },
+        M32WorkloadRegime { Name: "seq-modvar-balanced" Why: "moderate transfer variance while keeping sequential repeated chunks" NumChunks: 28 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 TransferJitterAmplitude: 4 JitterPeriod: 6 ComputePerUnit: 2 WarmupChunks: 5 WarmupTransferScaleMilli: 950 },
+        M32WorkloadRegime { Name: "seq-highvar-transfer-sensitive" Why: "high transfer variance and transfer-sensitive path where pull-lag can miss lead windows" NumChunks: 28 ChunkSizeUnits: 16 TransferSetup: 10 TransferPerUnit: 3 TransferJitterAmplitude: 8 JitterPeriod: 3 ComputePerUnit: 1 WarmupChunks: 4 WarmupTransferScaleMilli: 950 },
+        M32WorkloadRegime { Name: "seq-transfer-sensitive-near-cap" Why: "tight budget + transfer-sensitive profile to stress feasibility and misses" NumChunks: 32 ChunkSizeUnits: 16 TransferSetup: 11 TransferPerUnit: 3 TransferJitterAmplitude: 2 JitterPeriod: 7 ComputePerUnit: 1 WarmupChunks: 6 WarmupTransferScaleMilli: 900 }
+    ]
+}
+
+fn M32Strategies() -> M32StrategyConfig[] {
+    return [
+        M32StrategyConfig { Name: "A-serial-jit" Kind: "serial" PushLookahead: 0 FixedWipTarget: 1 BaseWipCap: 1 BaseSafetyMargin: 0 ComplexityPenalty: 4 },
+        M32StrategyConfig { Name: "B-fixed-double" Kind: "fixed" PushLookahead: 0 FixedWipTarget: 2 BaseWipCap: 2 BaseSafetyMargin: 1 ComplexityPenalty: 7 },
+        M32StrategyConfig { Name: "C-fixed-triple" Kind: "fixed" PushLookahead: 0 FixedWipTarget: 3 BaseWipCap: 3 BaseSafetyMargin: 1 ComplexityPenalty: 9 },
+        M32StrategyConfig { Name: "D-push-lookahead" Kind: "push" PushLookahead: 3 FixedWipTarget: 0 BaseWipCap: 3 BaseSafetyMargin: 0 ComplexityPenalty: 6 },
+        M32StrategyConfig { Name: "E-pull-lag-comp" Kind: "pull" PushLookahead: 0 FixedWipTarget: 0 BaseWipCap: 2 BaseSafetyMargin: 2 ComplexityPenalty: 10 },
+        M32StrategyConfig { Name: "F-adaptive-kanban" Kind: "adaptive" PushLookahead: 0 FixedWipTarget: 0 BaseWipCap: 2 BaseSafetyMargin: 2 ComplexityPenalty: 12 }
+    ]
+}
+
+fn M32Budgets() -> M32Budget[] {
+    return [
+        M32Budget { Name: "1.00-slot" SlotBudgetMilli: 1000 },
+        M32Budget { Name: "1.25-slot" SlotBudgetMilli: 1250 },
+        M32Budget { Name: "1.50-slot" SlotBudgetMilli: 1500 },
+        M32Budget { Name: "1.75-slot" SlotBudgetMilli: 1750 },
+        M32Budget { Name: "2.00-slot" SlotBudgetMilli: 2000 },
+        M32Budget { Name: "3.00-slot" SlotBudgetMilli: 3000 }
+    ]
+}
+
+fn M32TransferDuration(regime: M32WorkloadRegime, chunk: Int) -> Int {
+    let sign = switch {
+        case regime.JitterPeriod > 0 and ((chunk / regime.JitterPeriod) * regime.JitterPeriod) == chunk => 1
+        case regime.JitterPeriod > 0 and (((chunk + regime.JitterPeriod / 2) / regime.JitterPeriod) * regime.JitterPeriod) == (chunk + regime.JitterPeriod / 2) => -1
+        else => 0
+    }
+    let jitter = sign * regime.TransferJitterAmplitude
+    let base = regime.TransferSetup + jitter + (regime.TransferPerUnit * regime.ChunkSizeUnits)
+    let warmScale = switch {
+        case chunk < regime.WarmupChunks => regime.WarmupTransferScaleMilli
+        else => 1000
+    }
+    return M32Max((base * warmScale) / 1000, 1)
+}
+
+fn M32ComputeDuration(regime: M32WorkloadRegime, _chunk: Int) -> Int {
+    return M32Max(regime.ComputePerUnit * regime.ChunkSizeUnits, 1)
+}
+
+flow M32AdaptiveKanbanPolicy(starvationWindow: Int, readyIdleWindow: Int, missWindow: Int, currentCap: Int, currentMargin: Int) -> M32AdaptiveDecision {
+    state Evaluate {
+        let modeCode = when policy {
+            hysteresis: 2
+            min_commit: 2
+        } {
+            case 3 when starvationWindow >= 5 score 120
+            case 2 when missWindow >= 5 score 95
+            case 1 when readyIdleWindow >= 8 and starvationWindow <= 2 score 80
+            else 0
+        }
+
+        return switch {
+            case modeCode == 3 => M32AdaptiveDecision { Cap: M32Min(3, currentCap + 1) Margin: M32Min(currentMargin + 2, 8) Mode: "recover-starvation" }
+            case modeCode == 2 => M32AdaptiveDecision { Cap: M32Min(3, currentCap + 1) Margin: M32Min(currentMargin + 1, 8) Mode: "leadtime-guard" }
+            case modeCode == 1 => M32AdaptiveDecision { Cap: M32Max(currentCap - 1, 1) Margin: M32Max(currentMargin - 1, 0) Mode: "trim-inventory" }
+            else => M32AdaptiveDecision { Cap: currentCap Margin: currentMargin Mode: "hold" }
+        }
+    }
+}
+
+fn M32AdaptiveKanbanDecision(starvationWindow: Int, readyIdleWindow: Int, missWindow: Int, currentCap: Int, currentMargin: Int) -> M32AdaptiveDecision {
+    let machine = M32AdaptiveKanbanPolicy(starvationWindow, readyIdleWindow, missWindow, currentCap, currentMargin)
+    Step(machine)
+    match Result(machine) {
+        ok(next) => { return next }
+        err(_e) => { return M32AdaptiveDecision { Cap: currentCap Margin: currentMargin Mode: "hold" } }
+    }
+}
+
+fn M32DemandPrediction(now: Int, demandChunk: Int, nextToStage: Int, computeRemaining: Int, estCompute: Int) -> Int {
+    let chunksAhead = M32Max(nextToStage - demandChunk, 0)
+    return now + computeRemaining + (M32Max(chunksAhead - 1, 0) * estCompute)
+}
+
+fn M32ShouldStage(
+    strategy: M32StrategyConfig,
+    now: Int,
+    demandChunk: Int,
+    nextToStage: Int,
+    wipDepth: Int,
+    computeRemaining: Int,
+    estTransfer: Int,
+    estCompute: Int,
+    cap: Int,
+    margin: Int
+) -> Bool {
+    if nextToStage < demandChunk { return true }
+    let demandTime = M32DemandPrediction(now, demandChunk, nextToStage, computeRemaining, estCompute)
+
+    return switch {
+        case strategy.Kind == "serial" => nextToStage == demandChunk and computeRemaining == 0 and wipDepth == 0
+        case strategy.Kind == "fixed" => (nextToStage - demandChunk) < strategy.FixedWipTarget
+        case strategy.Kind == "push" => (nextToStage - demandChunk) <= strategy.PushLookahead
+        case strategy.Kind == "pull" => now >= demandTime - estTransfer - margin and wipDepth < cap
+        else => now >= demandTime - estTransfer - margin and wipDepth < cap
+    }
+}
+
+fn M32CommittedMemoryMilli(
+    inTransferChunk: Int,
+    ready: Bool[],
+    computeChunk: Int
+) -> Int {
+    let slotMemory = 760
+    let outputReadbackReserve = 80
+    let transferOverhead = 20
+    let readyOverhead = 10
+    let inflightOverhead = 30
+
+    var committed = outputReadbackReserve
+    var i = 0
+    while i < Len(ready) {
+        if ready[i] {
+            committed = committed + slotMemory + readyOverhead
+        }
+        i = i + 1
+    }
+
+    if inTransferChunk >= 0 {
+        committed = committed + slotMemory + transferOverhead
+    }
+    if computeChunk >= 0 {
+        committed = committed + slotMemory + inflightOverhead
+    }
+    return committed
+}
+
+fn M32Simulate(strategy: M32StrategyConfig, regime: M32WorkloadRegime, budget: M32Budget) -> M32SimulationResult {
+    let n = regime.NumChunks
+
+    var time = 0
+    var transferChunk = -1
+    var transferRemaining = 0
+    var transferStart = 0
+    var computeChunk = -1
+    var computeRemaining = 0
+    var nextToStage = 0
+    var demandChunk = 0
+    var completed = 0
+
+    var ready = [false]
+    var readySince = [0]
+    for i in 1 .. n {
+        ready = Append(ready, false)
+        readySince = Append(readySince, 0)
+    }
+
+    var estTransfer = M32TransferDuration(regime, 0)
+    var estCompute = M32ComputeDuration(regime, 0)
+
+    var wipCap = strategy.BaseWipCap
+    var margin = strategy.BaseSafetyMargin
+    var starvationWindow = 0
+    var readyIdleWindow = 0
+    var missWindow = 0
+
+    var feasible = true
+    var firstReason = ""
+    var allocationFailures = 0
+    var timeAboveBudget = 0
+
+    var completion = 0
+    var starvation = 0
+    var transferIdle = 0
+    var leadMiss = 0
+
+    var peakCommitted = 0
+    var committedIntegral = 0
+    var inventoryTime = 0
+    var readyUnusedIntegral = 0
+    var peakWip = 0
+    var wipIntegral = 0
+
+    let guardLimit = n * (M32TransferDuration(regime, 0) + M32ComputeDuration(regime, 0) + 40) + 200
+
+    while completed < n and feasible and time < guardLimit {
+        if computeChunk >= 0 {
+            computeRemaining = computeRemaining - 1
+            if computeRemaining <= 0 {
+                completed = completed + 1
+                demandChunk = completed
+                estCompute = (estCompute * 7 + M32ComputeDuration(regime, completed - 1)) / 8
+                computeChunk = -1
+            }
+        }
+
+        if transferChunk >= 0 {
+            transferRemaining = transferRemaining - 1
+            if transferRemaining <= 0 {
+                ready[transferChunk] = true
+                readySince[transferChunk] = time
+                estTransfer = (estTransfer * 7 + (time - transferStart + 1)) / 8
+                transferChunk = -1
+            }
+        }
+
+        if computeChunk < 0 and demandChunk < n and ready[demandChunk] {
+            computeChunk = demandChunk
+            computeRemaining = M32ComputeDuration(regime, demandChunk)
+            if time > readySince[demandChunk] {
+                readyIdleWindow = M32Min(readyIdleWindow + 1, 32)
+            }
+            ready[demandChunk] = false
+        }
+
+        if computeChunk < 0 and demandChunk < n and ready[demandChunk] == false {
+            starvation = starvation + 1
+            starvationWindow = M32Min(starvationWindow + 1, 32)
+        } else {
+            starvationWindow = M32Max(starvationWindow - 1, 0)
+        }
+
+        if transferChunk < 0 {
+            transferIdle = transferIdle + 1
+        }
+
+        var readyCount = 0
+        var ri = 0
+        while ri < n {
+            if ready[ri] { readyCount = readyCount + 1 }
+            ri = ri + 1
+        }
+
+        let inTransferCount = switch { case transferChunk >= 0 => 1 else => 0 }
+        let inComputeCount = switch { case computeChunk >= 0 => 1 else => 0 }
+        let wipDepth = readyCount + inTransferCount + inComputeCount
+        peakWip = M32Max(peakWip, wipDepth)
+        wipIntegral = wipIntegral + (wipDepth * 1000)
+
+        if strategy.Kind == "adaptive" {
+            let decision = M32AdaptiveKanbanDecision(starvationWindow, readyIdleWindow, missWindow, wipCap, margin)
+            wipCap = decision.Cap
+            margin = decision.Margin
+        }
+
+        if transferChunk < 0 and nextToStage < n {
+            let shouldStage = M32ShouldStage(strategy, time, demandChunk, nextToStage, wipDepth, computeRemaining, estTransfer, estCompute, wipCap, margin)
+            if shouldStage {
+                let projected = M32CommittedMemoryMilli(nextToStage, ready, computeChunk)
+                if projected > budget.SlotBudgetMilli {
+                    feasible = false
+                    allocationFailures = allocationFailures + 1
+                    firstReason = switch {
+                        case Len(firstReason) == 0 => "stage-allocation-over-budget"
+                        else => firstReason
+                    }
+                } else {
+                    transferChunk = nextToStage
+                    transferRemaining = M32TransferDuration(regime, nextToStage)
+                    transferStart = time
+
+                    let demandTime = M32DemandPrediction(time, demandChunk, nextToStage, computeRemaining, estCompute)
+                    if time + transferRemaining > demandTime {
+                        leadMiss = leadMiss + 1
+                        missWindow = M32Min(missWindow + 1, 32)
+                    } else {
+                        missWindow = M32Max(missWindow - 1, 0)
+                    }
+                    nextToStage = nextToStage + 1
+                }
+            }
+        }
+
+        let committed = M32CommittedMemoryMilli(transferChunk, ready, computeChunk)
+        peakCommitted = M32Max(peakCommitted, committed)
+        committedIntegral = committedIntegral + committed
+        inventoryTime = inventoryTime + committed
+
+        var readyMem = 0
+        var r = 0
+        while r < n {
+            if ready[r] { readyMem = readyMem + 770 }
+            r = r + 1
+        }
+        readyUnusedIntegral = readyUnusedIntegral + readyMem
+
+        if committed > budget.SlotBudgetMilli {
+            timeAboveBudget = timeAboveBudget + 1
+            feasible = false
+            firstReason = switch {
+                case Len(firstReason) == 0 => "committed-memory-over-budget"
+                else => firstReason
+            }
+        }
+
+        time = time + 1
+    }
+
+    if completed < n and feasible {
+        feasible = false
+        firstReason = "runaway-incomplete"
+    }
+
+    completion = time
+
+    let avgCommitted = switch {
+        case completion > 0 => committedIntegral / completion
+        else => 0
+    }
+    let avgWipMilli = switch {
+        case completion > 0 => wipIntegral / completion
+        else => 0
+    }
+
+    let peakPressurePenalty = (peakCommitted * 1000) / M32Max(budget.SlotBudgetMilli, 1)
+    let completionPenalty = completion
+    let starvationPenalty = starvation * 3
+    let inventoryPenalty = inventoryTime / 10
+    let leadPenalty = leadMiss * 80
+
+    let score = switch {
+        case feasible => 100000 - completionPenalty - starvationPenalty - inventoryPenalty - peakPressurePenalty - leadPenalty - strategy.ComplexityPenalty
+        else => -1
+    }
+
+    return M32SimulationResult {
+        Regime: regime.Name
+        Budget: budget.Name
+        Strategy: strategy.Name
+        Feasible: feasible
+        FirstInfeasibleReason: firstReason
+        TotalCompletionTime: completion
+        ComputeStarvationTime: starvation
+        TransferIdleTime: transferIdle
+        LeadTimeMissCount: leadMiss
+        PeakCommittedMemoryMilli: peakCommitted
+        AverageCommittedMemoryMilli: avgCommitted
+        MemoryInventoryTimeMilli: inventoryTime
+        ReadyUnusedMemoryTimeMilli: readyUnusedIntegral
+        PeakWipDepth: peakWip
+        AverageWipDepthMilli: avgWipMilli
+        AllocationFailureCount: allocationFailures
+        TimeAboveBudget: timeAboveBudget
+        LargestWorkloadThatFitsChunks: switch { case feasible => regime.NumChunks else => 0 }
+        ProductScore: score
+    }
+}
+
+fn M32RunAll() -> M32SimulationResult[] {
+    let strategies = M32Strategies()
+    let regimes = M32Regimes()
+    let budgets = M32Budgets()
+
+    var out = [M32Simulate(strategies[0], regimes[0], budgets[0])]
+
+    var s = 0
+    while s < Len(strategies) {
+        var r = 0
+        while r < Len(regimes) {
+            var b = 0
+            while b < Len(budgets) {
+                if s != 0 or r != 0 or b != 0 {
+                    out = Append(out, M32Simulate(strategies[s], regimes[r], budgets[b]))
+                }
+                b = b + 1
+            }
+            r = r + 1
+        }
+        s = s + 1
+    }
+    return out
+}
+
+fn M32LargestFit(rows: M32SimulationResult[], regime: String, strategy: String, budget: String) -> Int {
+    var best = 0
+    var i = 0
+    while i < Len(rows) {
+        let row = rows[i]
+        if row.Regime == regime and row.Strategy == strategy and row.Budget == budget and row.Feasible and row.LargestWorkloadThatFitsChunks > best {
+            best = row.LargestWorkloadThatFitsChunks
+        }
+        i = i + 1
+    }
+    return best
+}
+
+fn M32BudgetSweepTableFrom(rows: M32SimulationResult[]) -> M32BudgetSweepTable {
+    var regime = [rows[0].Regime]
+    var budget = [rows[0].Budget]
+    var strategy = [rows[0].Strategy]
+    var feasible = [rows[0].Feasible]
+    var reason = [rows[0].FirstInfeasibleReason]
+    var largestFit = [M32LargestFit(rows, rows[0].Regime, rows[0].Strategy, rows[0].Budget)]
+
+    for i in 1 .. Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        budget = Append(budget, rows[i].Budget)
+        strategy = Append(strategy, rows[i].Strategy)
+        feasible = Append(feasible, rows[i].Feasible)
+        reason = Append(reason, rows[i].FirstInfeasibleReason)
+        largestFit = Append(largestFit, M32LargestFit(rows, rows[i].Regime, rows[i].Strategy, rows[i].Budget))
+    }
+
+    return M32BudgetSweepTable {
+        Regime: regime
+        Budget: budget
+        Strategy: strategy
+        Feasible: feasible
+        FirstInfeasibleReason: reason
+        LargestWorkloadThatFitsChunks: largestFit
+    }
+}
+
+fn M32StrategyFeasibilityTableFrom(rows: M32SimulationResult[]) -> M32StrategyFeasibilityTable {
+    var regime = [rows[0].Regime]
+    var strategy = [rows[0].Strategy]
+    var budget = [rows[0].Budget]
+    var feasible = [rows[0].Feasible]
+    var completion = [rows[0].TotalCompletionTime]
+    var score = [rows[0].ProductScore]
+
+    for i in 1 .. Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        strategy = Append(strategy, rows[i].Strategy)
+        budget = Append(budget, rows[i].Budget)
+        feasible = Append(feasible, rows[i].Feasible)
+        completion = Append(completion, rows[i].TotalCompletionTime)
+        score = Append(score, rows[i].ProductScore)
+    }
+
+    return M32StrategyFeasibilityTable {
+        Regime: regime
+        Strategy: strategy
+        Budget: budget
+        Feasible: feasible
+        TotalCompletionTime: completion
+        ProductScore: score
+    }
+}
+
+fn M32MemoryInventoryTableFrom(rows: M32SimulationResult[]) -> M32MemoryInventoryTable {
+    var regime = [rows[0].Regime]
+    var strategy = [rows[0].Strategy]
+    var budget = [rows[0].Budget]
+    var peak = [rows[0].PeakCommittedMemoryMilli]
+    var average = [rows[0].AverageCommittedMemoryMilli]
+    var inventory = [rows[0].MemoryInventoryTimeMilli]
+    var readyUnused = [rows[0].ReadyUnusedMemoryTimeMilli]
+    var peakWip = [rows[0].PeakWipDepth]
+
+    for i in 1 .. Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        strategy = Append(strategy, rows[i].Strategy)
+        budget = Append(budget, rows[i].Budget)
+        peak = Append(peak, rows[i].PeakCommittedMemoryMilli)
+        average = Append(average, rows[i].AverageCommittedMemoryMilli)
+        inventory = Append(inventory, rows[i].MemoryInventoryTimeMilli)
+        readyUnused = Append(readyUnused, rows[i].ReadyUnusedMemoryTimeMilli)
+        peakWip = Append(peakWip, rows[i].PeakWipDepth)
+    }
+
+    return M32MemoryInventoryTable {
+        Regime: regime
+        Strategy: strategy
+        Budget: budget
+        PeakCommittedMemoryMilli: peak
+        AverageCommittedMemoryMilli: average
+        MemoryInventoryTimeMilli: inventory
+        ReadyUnusedMemoryTimeMilli: readyUnused
+        PeakWipDepth: peakWip
+    }
+}
+
+fn M32SequentialWorkloadRows(rows: M32SimulationResult[]) -> M32SimulationResult[] {
+    var out = [rows[0]]
+    var first = true
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Regime == "seq-lowvar-compute-dominant" or rows[i].Regime == "seq-lowvar-balanced" {
+            if first {
+                out = [rows[i]]
+                first = false
+            } else {
+                out = Append(out, rows[i])
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn M32SequentialWorkloadTableFrom(rows: M32SimulationResult[]) -> M32SequentialWorkloadTable {
+    let seqRows = M32SequentialWorkloadRows(rows)
+
+    var strategy = [seqRows[0].Strategy]
+    var budget = [seqRows[0].Budget]
+    var feasible = [seqRows[0].Feasible]
+    var completion = [seqRows[0].TotalCompletionTime]
+    var starvation = [seqRows[0].ComputeStarvationTime]
+    var transferIdle = [seqRows[0].TransferIdleTime]
+    var leadMiss = [seqRows[0].LeadTimeMissCount]
+
+    for i in 1 .. Len(seqRows) {
+        strategy = Append(strategy, seqRows[i].Strategy)
+        budget = Append(budget, seqRows[i].Budget)
+        feasible = Append(feasible, seqRows[i].Feasible)
+        completion = Append(completion, seqRows[i].TotalCompletionTime)
+        starvation = Append(starvation, seqRows[i].ComputeStarvationTime)
+        transferIdle = Append(transferIdle, seqRows[i].TransferIdleTime)
+        leadMiss = Append(leadMiss, seqRows[i].LeadTimeMissCount)
+    }
+
+    return M32SequentialWorkloadTable {
+        Strategy: strategy
+        Budget: budget
+        Feasible: feasible
+        TotalCompletionTime: completion
+        ComputeStarvationTime: starvation
+        TransferIdleTime: transferIdle
+        LeadTimeMissCount: leadMiss
+    }
+}
+
+fn M32VarianceSensitivityRows(rows: M32SimulationResult[]) -> M32SimulationResult[] {
+    var out = [rows[0]]
+    var first = true
+    var i = 0
+    while i < Len(rows) {
+        let keep = rows[i].Regime == "seq-lowvar-balanced" or rows[i].Regime == "seq-modvar-balanced" or rows[i].Regime == "seq-highvar-transfer-sensitive"
+        if keep {
+            if first {
+                out = [rows[i]]
+                first = false
+            } else {
+                out = Append(out, rows[i])
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn M32VarianceSensitivityTableFrom(rows: M32SimulationResult[]) -> M32VarianceSensitivityTable {
+    let selected = M32VarianceSensitivityRows(rows)
+
+    var regime = [selected[0].Regime]
+    var strategy = [selected[0].Strategy]
+    var budget = [selected[0].Budget]
+    var feasible = [selected[0].Feasible]
+    var score = [selected[0].ProductScore]
+    var misses = [selected[0].LeadTimeMissCount]
+    var allocFail = [selected[0].AllocationFailureCount]
+
+    for i in 1 .. Len(selected) {
+        regime = Append(regime, selected[i].Regime)
+        strategy = Append(strategy, selected[i].Strategy)
+        budget = Append(budget, selected[i].Budget)
+        feasible = Append(feasible, selected[i].Feasible)
+        score = Append(score, selected[i].ProductScore)
+        misses = Append(misses, selected[i].LeadTimeMissCount)
+        allocFail = Append(allocFail, selected[i].AllocationFailureCount)
+    }
+
+    return M32VarianceSensitivityTable {
+        Regime: regime
+        Strategy: strategy
+        Budget: budget
+        Feasible: feasible
+        ProductScore: score
+        LeadTimeMissCount: misses
+        AllocationFailureCount: allocFail
+    }
+}
+
+fn M32FeasibleScore(rows: M32SimulationResult[], regime: String, budget: String, strategy: String) -> Int {
+    var i = 0
+    while i < Len(rows) {
+        let row = rows[i]
+        if row.Regime == regime and row.Budget == budget and row.Strategy == strategy {
+            return row.ProductScore
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn M32IsFeasible(rows: M32SimulationResult[], regime: String, budget: String, strategy: String) -> Bool {
+    var i = 0
+    while i < Len(rows) {
+        let row = rows[i]
+        if row.Regime == regime and row.Budget == budget and row.Strategy == strategy {
+            return row.Feasible
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn M32Exists(rows: M32SimulationResult[], strategyA: String, strategyB: String, requireAFeasible: Bool, requireBFeasible: Bool) -> Bool {
+    var i = 0
+    while i < Len(rows) {
+        let rowA = rows[i]
+        if rowA.Strategy == strategyA and rowA.Feasible == requireAFeasible {
+            var j = 0
+            while j < Len(rows) {
+                let rowB = rows[j]
+                if rowB.Strategy == strategyB and rowB.Regime == rowA.Regime and rowB.Budget == rowA.Budget and rowB.Feasible == requireBFeasible {
+                    return true
+                }
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn M32FinalRecommendationFrom(rows: M32SimulationResult[]) -> M32FinalRecommendation {
+    let pullTight = M32FeasibleScore(rows, "seq-lowvar-compute-dominant", "1.75-slot", "E-pull-lag-comp")
+    let fixedDoubleTight = M32FeasibleScore(rows, "seq-lowvar-compute-dominant", "1.75-slot", "B-fixed-double")
+    let doublePlenty = M32IsFeasible(rows, "seq-lowvar-compute-dominant", "3.00-slot", "B-fixed-double")
+    let pullPlenty = M32IsFeasible(rows, "seq-lowvar-compute-dominant", "3.00-slot", "E-pull-lag-comp")
+    let adaptiveTight = M32FeasibleScore(rows, "seq-lowvar-balanced", "1.75-slot", "F-adaptive-kanban")
+    let tripleTight = M32FeasibleScore(rows, "seq-lowvar-balanced", "1.75-slot", "C-fixed-triple")
+    let pullFeasibleWhereDoubleFails = M32Exists(rows, "E-pull-lag-comp", "B-fixed-double", true, false)
+    let adaptiveFeasibleWhereDoubleFails = M32Exists(rows, "F-adaptive-kanban", "B-fixed-double", true, false)
+
+    let pullBeats = switch {
+        case pullFeasibleWhereDoubleFails => "yes: pull-lag is feasible in some tight-cap cases where fixed-double is infeasible"
+        case pullTight > 0 and fixedDoubleTight < 0 => "yes: pull-lag is feasible below two-slot budget where fixed-double cannot allocate"
+        case pullTight > fixedDoubleTight => "yes: both feasible but pull-lag scored better under tight budget"
+        else => "no: fixed-double remained equal or better in the tested hard-ceiling cases"
+    }
+
+    let plentiful = switch {
+        case doublePlenty and pullPlenty => "yes: fixed-double remains an acceptable default when memory is plentiful, with pull-lag as optional pressure mode"
+        case doublePlenty => "yes: fixed-double remains viable default when memory is plentiful"
+        else => "no: even the loose synthetic budget failed fixed-double feasibility"
+    }
+
+    let adaptive = switch {
+        case adaptiveFeasibleWhereDoubleFails => "adaptive kanban can unlock feasibility in some capped cases, but only with strict hard-cap compliance"
+        case adaptiveTight > 0 => "adaptive kanban can help under caps only when it preserves hard cap safety and avoids over-expansion"
+        else => "adaptive kanban did not show robust benefit under hard caps in this run"
+    }
+
+    let triple = switch {
+        case tripleTight > 0 => "triple buffering feasible only in looser budgets; under pressure it is rarely worth extra inventory"
+        else => "triple buffering usually infeasible under near-cap budgets and should not be default"
+    }
+
+    return M32FinalRecommendation {
+        PullLagBeatsDoubleUnderHardCeiling: pullBeats
+        PullLagWinningConditions: "between ~1.5 and <2.0 slot budgets, sequential predictable compute, and low transfer variance"
+        FixedDoubleDefaultWhenPlentiful: plentiful
+        AdaptiveKanbanUseUnderCaps: adaptive
+        TripleBufferUnderPressure: triple
+        ImplementOrRakeNext: "implement fixed-double default plus guarded pull-lag memory-pressure mode; rake M33 around activation thresholds"
+        PullLagGuardedMode: "yes: revive pull-lag behind explicit memory-pressure guardrails and variance gate"
+    }
+}

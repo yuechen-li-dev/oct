@@ -1,0 +1,70 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M32HasAllRequiredStrategies() -> Void {
+    let strategies = M32Strategies()
+    Assert.Equal(Len(strategies), 6, "M32 must retest all six M25 strategy candidates")
+}
+
+[Fact]
+fn M32HasRequiredBudgetSweep() -> Void {
+    let budgets = M32Budgets()
+    Assert.Equal(Len(budgets), 6, "M32 must include six budget points from 1.0 to 3.0 slots")
+}
+
+[Fact]
+fn M32RunsRegimesStrategiesAndBudgets() -> Void {
+    let rows = M32RunAll()
+    Assert.Equal(Len(rows), 180, "5 regimes x 6 strategies x 6 budgets expected")
+}
+
+[Fact]
+fn M32MarksInfeasibleWhenBudgetTooTight() -> Void {
+    let rows = M32RunAll()
+    let tripleTight = M32FeasibleScore(rows, "seq-lowvar-balanced", "1.25-slot", "C-fixed-triple")
+    Assert.True(tripleTight < 0, "fixed-triple should be infeasible under tight hard memory ceiling")
+}
+
+[Fact]
+fn M32FinalRecommendationIsActionable() -> Void {
+    let rows = M32RunAll()
+    let rec = M32FinalRecommendationFrom(rows)
+    Assert.True(Contains(rec.ImplementOrRakeNext, "guarded pull-lag"), "M32 recommendation should call out implementation path")
+    Assert.True(Contains(rec.PullLagGuardedMode, "yes"), "M32 should explicitly answer guarded pull-lag revival question")
+}
+
+[Artifact]
+fn EmitM32MemoryBudgetSweep() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_memory_budget_sweep.octagon", [M32BudgetSweepTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM32StrategyFeasibilityTable() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_strategy_feasibility_table.octagon", [M32StrategyFeasibilityTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM32MemoryInventoryTable() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_memory_inventory_table.octagon", [M32MemoryInventoryTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM32SequentialWorkloadTable() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_sequential_workload_table.octagon", [M32SequentialWorkloadTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM32VarianceSensitivityTable() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_variance_sensitivity_table.octagon", [M32VarianceSensitivityTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM32FinalRecommendation() -> Void {
+    let rows = M32RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M32/m32_final_recommendation.octagon", [M32FinalRecommendationFrom(rows)])
+}

@@ -1,0 +1,9 @@
+[M32FinalRecommendation {
+    PullLagBeatsDoubleUnderHardCeiling: "yes: both feasible but pull-lag scored better under tight budget"
+    PullLagWinningConditions: "between ~1.5 and <2.0 slot budgets, sequential predictable compute, and low transfer variance"
+    FixedDoubleDefaultWhenPlentiful: "yes: fixed-double remains an acceptable default when memory is plentiful, with pull-lag as optional pressure mode"
+    AdaptiveKanbanUseUnderCaps: "adaptive kanban did not show robust benefit under hard caps in this run"
+    TripleBufferUnderPressure: "triple buffering usually infeasible under near-cap budgets and should not be default"
+    ImplementOrRakeNext: "implement fixed-double default plus guarded pull-lag memory-pressure mode; rake M33 around activation thresholds"
+    PullLagGuardedMode: "yes: revive pull-lag behind explicit memory-pressure guardrails and variance gate"
+}]
