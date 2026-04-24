@@ -1,0 +1,246 @@
+#include "../bridge.h"
+#include "../reactor_dominatus_slot_adapter.h"
+#include "test_harness.h"
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+namespace
+{
+std::vector<float> deterministic_matrix(std::uint32_t rows, std::uint32_t cols)
+{
+    std::vector<float> out(rows * cols, 0.0f);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const int v = static_cast<int>(i % 17u) - 8;
+        out[i] = static_cast<float>(v) / 4.0f;
+    }
+    return out;
+}
+
+prom_slot_metadata SlotMetadata(
+    std::uint32_t slotId,
+    std::uint64_t generation,
+    std::uint32_t valid,
+    int failureReason)
+{
+    prom_slot_metadata metadata{};
+    metadata.slot_id = slotId;
+    metadata.generation = generation;
+    metadata.valid = valid;
+    metadata.failure_reason = failureReason;
+    return metadata;
+}
+}
+
+FACT(PrometheusDominatusSlotAdapter_StagesEventsBeforeCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata metadata = SlotMetadata(0u, 3u, 1u, 0);
+
+    ASSERT_TRUE(
+        prom_dom_slot_stage_lifecycle(
+            &board,
+            PROM_DOM_EVENT_SLOT_READY,
+            0u,
+            PROM_SLOT_READY,
+            &metadata,
+            0u,
+            0u,
+            1u,
+            0u,
+            77) == 1u,
+        "slot stage should succeed");
+
+    ASSERT_EQUAL(1u, prom_dom_staged_event_count(&board), "slot event should be staged");
+    ASSERT_EQUAL(0u, prom_dom_committed_event_count(&board), "slot event should not be committed pre-commit");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x1u) != 0u, "staged dirty slot mask should include slot0");
+    ASSERT_EQUAL(0u, prom_dom_dirty_slots_last_commit(&board), "last-commit dirty slots should remain unchanged pre-commit");
+
+    prom_dom_slot_commit(&board);
+
+    ASSERT_EQUAL(0u, prom_dom_staged_event_count(&board), "staged event ring should clear after commit");
+    ASSERT_EQUAL(1u, prom_dom_committed_event_count(&board), "committed event ring should contain slot event");
+    ASSERT_TRUE((prom_dom_dirty_slots_last_commit(&board) & 0x1u) != 0u, "last-commit dirty slots should include slot0");
+
+    prom_dom_event committed{};
+    ASSERT_TRUE(prom_dom_committed_event_at(&board, 0u, &committed) == 1u, "committed slot event should be readable");
+    ASSERT_EQUAL(PROM_DOM_EVENT_SLOT_READY, committed.kind, "event kind should match staged kind");
+    ASSERT_EQUAL(0u, committed.slot_id, "event slot id should match staged slot");
+}
+
+FACT(PrometheusDominatusSlotAdapter_DirtySlotTrackingPerSlot)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    const prom_slot_metadata slot0 = SlotMetadata(0u, 1u, 1u, 0);
+    const prom_slot_metadata slot1 = SlotMetadata(1u, 1u, 1u, 0);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_PREPARED,
+                                              0u,
+                                              PROM_SLOT_PREPARING,
+                                              &slot0,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "slot0 stage should succeed");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x1u) != 0u, "slot0 should be marked dirty");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x2u) == 0u, "slot1 should remain clean");
+
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE((prom_dom_dirty_slots_last_commit(&board) & 0x1u) != 0u, "slot0 should remain last-commit dirty");
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_PREPARED,
+                                              1u,
+                                              PROM_SLOT_PREPARING,
+                                              &slot1,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "slot1 stage should succeed");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x2u) != 0u, "slot1 should be marked dirty");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x1u) == 0u, "slot0 should not be restaged when unchanged");
+}
+
+FACT(PrometheusDominatusSlotAdapter_RepresentativeLifecycleSequence)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    std::array<prom_dom_event_kind, 6u> expectedKinds{
+        PROM_DOM_EVENT_SLOT_PREPARED,
+        PROM_DOM_EVENT_SLOT_READY,
+        PROM_DOM_EVENT_SLOT_PROMOTED_CURRENT,
+        PROM_DOM_EVENT_SLOT_SUBMITTED,
+        PROM_DOM_EVENT_SLOT_COMPLETE,
+        PROM_DOM_EVENT_SLOT_CONSUMED,
+    };
+
+    std::array<prom_slot_state, 6u> states{
+        PROM_SLOT_PREPARING,
+        PROM_SLOT_READY,
+        PROM_SLOT_CURRENT,
+        PROM_SLOT_IN_FLIGHT,
+        PROM_SLOT_CONSUMED,
+        PROM_SLOT_EMPTY,
+    };
+
+    for (std::size_t i = 0; i < expectedKinds.size(); ++i) {
+        const prom_slot_metadata metadata = SlotMetadata(0u, static_cast<std::uint64_t>(i + 1u), i < 5u ? 1u : 0u, 0);
+        ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                                  expectedKinds[i],
+                                                  0u,
+                                                  states[i],
+                                                  &metadata,
+                                                  1u,
+                                                  0u,
+                                                  1u,
+                                                  1u,
+                                                  0) == 1u,
+                    "lifecycle stage step should succeed");
+        prom_dom_slot_commit(&board);
+    }
+
+    ASSERT_EQUAL(expectedKinds.size(), static_cast<std::size_t>(prom_dom_committed_event_count(&board)),
+                 "committed event count should match lifecycle sequence");
+
+    for (std::size_t i = 0; i < expectedKinds.size(); ++i) {
+        prom_dom_event event{};
+        ASSERT_TRUE(prom_dom_committed_event_at(&board, static_cast<std::uint32_t>(i), &event) == 1u,
+                    "committed event should be readable");
+        ASSERT_EQUAL(expectedKinds[i], event.kind, "committed kind should preserve lifecycle order");
+    }
+
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SLOT_STATE) == 1u,
+                "slot state key should be dirty in last commit");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SLOT_GENERATION) == 1u,
+                "slot generation key should be dirty in last commit");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SLOT_VALID) == 1u,
+                "slot valid key should be dirty in last commit");
+}
+
+FACT(PrometheusDominatusSlotAdapter_FailureCleanupAndTrace)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    const prom_slot_metadata failed = SlotMetadata(1u, 11u, 0u, 404);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_FAILED,
+                                              1u,
+                                              PROM_SLOT_FAILED,
+                                              &failed,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              404) == 1u,
+                "failure stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    const prom_slot_metadata cleaned = SlotMetadata(1u, 12u, 0u, 0);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_CLEANUP,
+                                              1u,
+                                              PROM_SLOT_EMPTY,
+                                              &cleaned,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "cleanup stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_commit_snapshot snapshot{};
+    ASSERT_TRUE(prom_dom_slot_read_last_commit(&board, 1u, &snapshot) == 1u, "last commit slot snapshot should be readable");
+    ASSERT_EQUAL(PROM_DOM_EVENT_SLOT_CLEANUP, snapshot.last_event.kind, "last committed slot event should be cleanup");
+    ASSERT_EQUAL(1u, snapshot.last_event.slot_id, "cleanup event should preserve slot id");
+
+    const std::uint32_t traceCount = prom_dom_trace_count(&board);
+    ASSERT_TRUE(traceCount >= 2u, "failure and cleanup should leave trace entries");
+    prom_dom_trace_entry newest{};
+    ASSERT_TRUE(prom_dom_trace_at(&board, traceCount - 1u, &newest) == 1u, "latest trace should be readable");
+    ASSERT_EQUAL(PROM_DOM_EVENT_SLOT_CLEANUP, newest.event_kind, "latest trace should represent cleanup event");
+}
+
+FACT(PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlotEvent)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; runtime slot bridge smoke cannot be asserted");
+    }
+
+    const auto a = deterministic_matrix(8u, 8u);
+    const auto b = deterministic_matrix(8u, 8u);
+    std::vector<float> c(64u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "SGEMM runtime path should succeed for slot bridge smoke");
+
+    PrometheusSgemmPolicyDiagnostics diagnostics{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diagnostics),
+                 "diagnostics should succeed");
+
+    ASSERT_TRUE(diagnostics.p10_m4_last_slot_event_kind != PROM_DOM_EVENT_NONE,
+                "runtime path should emit at least one committed slot event");
+    ASSERT_TRUE((diagnostics.p10_m4_last_commit_dirty_slot_mask & 0x3u) != 0u,
+                "runtime path should report committed dirty slot mask for one fixed-double slot");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}

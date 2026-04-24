@@ -35,6 +35,7 @@ cl /nologo /std:c11 /O2 /W4 /LD %VULKAN_INCLUDE% /DPROMETHEUS_REACTOR_BUILD_DLL 
   "%NATIVE_DIR%\reactor_judgment_engine.c" ^
   "%NATIVE_DIR%\reactor_dominatus_blackboard.c" ^
   "%NATIVE_DIR%\reactor_dominatus_sgemm_adapter.c" ^
+  "%NATIVE_DIR%\reactor_dominatus_slot_adapter.c" ^
   "%NATIVE_DIR%\reactor_policy_memory.c" ^
   "%NATIVE_DIR%\reactor_slot_hfsm.c" ^
   "%NATIVE_DIR%\reactor_vulkan.c" ^
@@ -49,6 +50,7 @@ cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_
   "%NATIVE_DIR%\reactor_judgment_engine.c" ^
   "%NATIVE_DIR%\reactor_dominatus_blackboard.c" ^
   "%NATIVE_DIR%\reactor_dominatus_sgemm_adapter.c" ^
+  "%NATIVE_DIR%\reactor_dominatus_slot_adapter.c" ^
   "%NATIVE_DIR%\reactor_policy_memory.c" ^
   "%NATIVE_DIR%\reactor_slot_hfsm.c" ^
   "%NATIVE_DIR%\reactor_vulkan.c" ^
@@ -62,6 +64,7 @@ cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_
   "%NATIVE_DIR%\Marionette\reactor_judgment_engine_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_dominatus_blackboard_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_dominatus_sgemm_adapter_tests.cpp" ^
+  "%NATIVE_DIR%\Marionette\reactor_dominatus_slot_adapter_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_slot_hfsm_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_m29_fixed_double_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_m35_buffering_selector_tests.cpp" ^

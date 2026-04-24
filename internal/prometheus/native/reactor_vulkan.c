@@ -21,6 +21,7 @@
 #include <vulkan/vulkan.h>
 #include "reactor_dominatus_blackboard.h"
 #include "reactor_dominatus_sgemm_adapter.h"
+#include "reactor_dominatus_slot_adapter.h"
 #include "reactor_judgment_engine.h"
 #include "reactor_slot_hfsm.h"
 #include "reactor_vulkan_fp16_spirv.h"
@@ -581,6 +582,41 @@ static uint32_t prom_slot_wip_depth(const prometheus_runtime* rt) {
   return depth;
 }
 
+static void prom_slot_stage_commit_event(prometheus_runtime* rt,
+                                         uint32_t slot_id,
+                                         prom_dom_event_kind event_kind,
+                                         prom_slot_state state,
+                                         int reason_code,
+                                         uint32_t has_current_slot,
+                                         uint32_t current_slot_id,
+                                         uint32_t has_next_slot,
+                                         uint32_t next_slot_id) {
+  const prom_slot_metadata* metadata;
+  if (rt == NULL || slot_id >= 2u) {
+    return;
+  }
+
+  metadata = prom_slot_hfsm_metadata(&rt->slots[slot_id]);
+  if (metadata == NULL) {
+    return;
+  }
+
+  if (prom_dom_slot_stage_lifecycle(&rt->blackboard,
+                                    event_kind,
+                                    slot_id,
+                                    state,
+                                    metadata,
+                                    has_current_slot,
+                                    current_slot_id,
+                                    has_next_slot,
+                                    next_slot_id,
+                                    reason_code) == 0u) {
+    return;
+  }
+
+  prom_dom_slot_commit(&rt->blackboard);
+}
+
 static void prom_slot_track_wip(prometheus_runtime* rt) {
   const uint64_t depth = (uint64_t)prom_slot_wip_depth(rt);
   if (depth > rt->slot_diag.max_wip_depth) {
@@ -603,6 +639,15 @@ static int prom_slot_cleanup_to_empty(prometheus_runtime* rt, prom_slot_hfsm* sl
   if (prom_slot_hfsm_cleanup(slot) == 0u) {
     return 0;
   }
+  prom_slot_stage_commit_event(rt,
+                               prom_slot_hfsm_metadata(slot)->slot_id,
+                               PROM_DOM_EVENT_SLOT_CLEANUP,
+                               PROM_SLOT_EMPTY,
+                               0,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
   if (rt != NULL) {
     rt->slot_diag.cleanup_success_count += 1u;
   }
@@ -645,6 +690,15 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
     }
     if (invalidation_reason != 0) {
       prom_slot_hfsm_mark_invalidated(slot, invalidation_reason);
+      prom_slot_stage_commit_event(rt,
+                                   slot_id,
+                                   PROM_DOM_EVENT_SLOT_INVALIDATED,
+                                   prom_slot_hfsm_current_state(slot),
+                                   invalidation_reason,
+                                   0u,
+                                   0u,
+                                   0u,
+                                   0u);
       rt->slot_diag.stale_buffer_rejection_count += 1u;
     }
   }
@@ -661,6 +715,15 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
     rt->slot_diag.overwrite_rejection_count += 1u;
     return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_PREPARED,
+                               PROM_SLOT_PREPARING,
+                               0,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
 
   metadata = *prom_slot_hfsm_metadata(slot);
   metadata.slot_id = slot_id;
@@ -679,6 +742,15 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
     rt->slot_diag.overwrite_rejection_count += 1u;
     return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_READY,
+                               PROM_SLOT_READY,
+                               0,
+                               0u,
+                               0u,
+                               1u,
+                               slot_id);
   rt->slot_diag.next_slot_id = slot_id;
   prom_slot_track_wip(rt);
   return 0;
@@ -695,6 +767,15 @@ static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot
   }
   rt->slot_diag.current_slot_id = slot_id;
   rt->slot_diag.next_slot_id = prom_slot_other_id(slot_id);
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_PROMOTED_CURRENT,
+                               PROM_SLOT_CURRENT,
+                               0,
+                               1u,
+                               slot_id,
+                               1u,
+                               rt->slot_diag.next_slot_id);
   rt->slot_diag.swap_count += 1u;
   prom_slot_track_wip(rt);
   return 1;
@@ -703,6 +784,15 @@ static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot
 static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason) {
   prom_slot_hfsm* slot = &rt->slots[slot_id];
   (void)prom_slot_hfsm_fail(slot, reason);
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_FAILED,
+                               PROM_SLOT_FAILED,
+                               reason,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
   rt->slot_diag.failure_slot_id = (int)slot_id;
   rt->slot_diag.failure_reason = reason;
 }
@@ -712,6 +802,15 @@ static int prom_slot_mark_submitted(prometheus_runtime* rt, uint32_t slot_id) {
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_IN_FLIGHT) == 0u) {
     return 0;
   }
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_SUBMITTED,
+                               PROM_SLOT_IN_FLIGHT,
+                               0,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
   rt->slot_diag.async_slot_id = (int)slot_id;
   prom_slot_track_wip(rt);
   return 1;
@@ -722,9 +821,27 @@ static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id) {
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_CONSUMED) == 0u) {
     return 0;
   }
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_COMPLETE,
+                               PROM_SLOT_CONSUMED,
+                               0,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_EMPTY) == 0u) {
     return 0;
   }
+  prom_slot_stage_commit_event(rt,
+                               slot_id,
+                               PROM_DOM_EVENT_SLOT_CONSUMED,
+                               PROM_SLOT_EMPTY,
+                               0,
+                               0u,
+                               0u,
+                               0u,
+                               0u);
   if (rt->slot_diag.async_slot_id == (int)slot_id) {
     rt->slot_diag.async_slot_id = -1;
   }
@@ -3294,6 +3411,7 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
 int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
   prom_dom_sgemm_m35_snapshot m35_snapshot;
+  prom_dom_slot_commit_snapshot slot_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
     return PROM_ERROR;
@@ -3444,5 +3562,11 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m35_serial_sequential_step_count = rt->slot_diag.m35_serial_sequential_step_count;
   out_diag->m35_serial_busy_retry_count = rt->slot_diag.m35_serial_busy_retry_count;
   out_diag->m35_serial_failure_cleanup_count = rt->slot_diag.m35_serial_failure_cleanup_count;
+  if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
+    out_diag->p10_m4_last_slot_event_kind = (uint32_t)slot_snapshot.last_event.kind;
+    out_diag->p10_m4_last_slot_event_slot_id = slot_snapshot.last_event.slot_id;
+    out_diag->p10_m4_last_slot_event_reason = slot_snapshot.last_event.reason_code;
+    out_diag->p10_m4_last_commit_dirty_slot_mask = slot_snapshot.last_commit_dirty_slot_mask;
+  }
   return PROM_OK;
 }
