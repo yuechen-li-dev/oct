@@ -1,0 +1,12 @@
+[M19ModeBudgetTable {
+    CaseName: ["reason_padding_waste_AGGRESSIVE", "reason_small_shape_SAFE", "reason_capability_missing_SAFE", "reason_fallback_required_SAFE", "reason_mode_denied_RECOVERY"]
+    M: [9, 2, 16, 16, 9]
+    N: [9, 3, 16, 16, 9]
+    KDim: [9, 4, 16, 16, 9]
+    Mode: ["AGGRESSIVE", "SAFE", "SAFE", "SAFE", "RECOVERY"]
+    PaddedLaneCount: [9, 3, 0, 0, 9]
+    PaddingWastePct: [33, 33, 0, 0, 33]
+    ModeBudgetPass: [true, true, true, true, false]
+    PackedEligible: [true, false, false, false, false]
+    FallbackReason: ["none", "PACKED4_SMALL_SHAPE", "CAPABILITY_MISSING", "FALLBACK_REQUIRED", "MODE_BUDGET_DENIED"]
+}]
