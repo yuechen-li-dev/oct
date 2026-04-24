@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -65,6 +66,31 @@ namespace
             detail == PROM_DETAIL_PATH_DIRECT_TILED || detail == PROM_DETAIL_PATH_STAGED_UPLOAD_TILED ||
             detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED || detail == PROM_DETAIL_PATH_DIRECT_PACKED4_FP32 ||
             detail == PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM;
+    }
+
+    bool matrix_matches_oracle(std::uint32_t m,
+                               std::uint32_t n,
+                               std::uint32_t k,
+                               const std::vector<float>& a,
+                               const std::vector<float>& b,
+                               const std::vector<float>& actual)
+    {
+        const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+        if (expected.size() != actual.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            if (std::isnan(expected[i])) {
+                if (!std::isnan(actual[i])) {
+                    return false;
+                }
+            } else {
+                if (std::fabs(expected[i] - actual[i]) > 1e-4f) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
 }
@@ -241,6 +267,166 @@ FACT(PrometheusReactor_FP16DiagnosticsArePopulatedAndReasonCoded)
     ASSERT_TRUE(diag.fp16_worst_case_element_index < (m * n), "FP16 worst-case index must be bounded");
     ASSERT_EQUAL(PROM_DETAIL_FP16_STRICT_FP32, diag.fp16_fallback_reason_detail, "FP16 fallback must emit strict-fp32 reason code");
     ASSERT_TRUE(diag.fp16_selected_candidate != 3u, "FP16 candidate must not be selected under strict-fp32 policy");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_BufferReuseSafety_FP16ThenBaselineSameShape)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; FP16->baseline same-shape reuse regression cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 3u;
+    constexpr std::uint32_t n = 3u;
+    constexpr std::uint32_t k = 3u;
+    const std::vector<float> a_fp16 = deterministic_matrix(m, k);
+    const std::vector<float> b_fp16 = deterministic_matrix(k, n);
+    std::vector<float> c_fp16(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_fp16.data(), b_fp16.data(), c_fp16.data(), m, n, k, &stage, &detail),
+        "first call should execute");
+    if (detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM) {
+        PrometheusSgemmPolicyDiagnostics unavailable_diag{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &unavailable_diag), "diagnostics query should succeed");
+        SKIP("FP16 path was not selected on this runtime; transition regression cannot be asserted");
+    }
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, detail, "first same-shape call should select FP16 storage mode");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_fp16, b_fp16, c_fp16), "FP16 path output should match oracle");
+
+    std::vector<float> a_baseline = deterministic_matrix(m, k);
+    std::vector<float> b_baseline = deterministic_matrix(k, n);
+    b_baseline[0] = std::numeric_limits<float>::infinity();
+    std::vector<float> c_baseline(m * n, 0.0f);
+    stage = PROM_STAGE_NONE;
+    detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_baseline.data(), b_baseline.data(), c_baseline.data(), m, n, k, &stage, &detail),
+        "second same-shape call should execute safely after FP16");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, "special-value second call must leave FP16 mode");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_baseline, b_baseline, c_baseline), "baseline fallback output should match oracle");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_DETAIL_FP16_SPECIAL_VALUE, diag.fp16_fallback_reason_detail, "second call should expose special-value FP16 fallback");
+    ASSERT_TRUE(diag.fp16_selected_candidate != 3u, "diagnostics should show non-FP16 selection after transition");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_BufferReuseSafety_BaselineThenFP16SameShape)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; baseline->FP16 same-shape reuse regression cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 3u;
+    constexpr std::uint32_t n = 3u;
+    constexpr std::uint32_t k = 3u;
+    std::vector<float> a_baseline = deterministic_matrix(m, k);
+    std::vector<float> b_baseline = deterministic_matrix(k, n);
+    a_baseline[1] = std::numeric_limits<float>::quiet_NaN();
+    std::vector<float> c_baseline(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_baseline.data(), b_baseline.data(), c_baseline.data(), m, n, k, &stage, &detail),
+        "first same-shape call should execute in baseline mode");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, "special-value first call must reject FP16");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_baseline, b_baseline, c_baseline), "baseline output should match oracle");
+
+    const std::vector<float> a_fp16 = deterministic_matrix(m, k);
+    const std::vector<float> b_fp16 = deterministic_matrix(k, n);
+    std::vector<float> c_fp16(m * n, 0.0f);
+    stage = PROM_STAGE_NONE;
+    detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_fp16.data(), b_fp16.data(), c_fp16.data(), m, n, k, &stage, &detail),
+        "second same-shape call should execute safely in FP16 mode");
+    if (detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM) {
+        PrometheusSgemmPolicyDiagnostics unavailable_diag{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &unavailable_diag), "diagnostics query should succeed");
+        SKIP("FP16 path was not selected on this runtime; reverse transition regression cannot be asserted");
+    }
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, detail, "second call should transition into FP16 mode");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_fp16, b_fp16, c_fp16), "FP16 output should match oracle");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(3u), diag.fp16_selected_candidate, "diagnostics should report FP16 as selected after transition");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_BufferReuseSafety_FP16ThenPacked4SameShape)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; FP16->packed4 same-shape transition audit cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 8u;
+    constexpr std::uint32_t n = 8u;
+    constexpr std::uint32_t k = 8u;
+    const std::vector<float> a_fp16 = deterministic_matrix(m, k);
+    const std::vector<float> b_fp16 = deterministic_matrix(k, n);
+    std::vector<float> c_fp16(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_fp16.data(), b_fp16.data(), c_fp16.data(), m, n, k, &stage, &detail),
+        "first call should execute");
+    if (detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM) {
+        PrometheusSgemmPolicyDiagnostics unavailable_diag{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &unavailable_diag), "diagnostics query should succeed");
+        SKIP("FP16 path was not selected on this runtime; layout transition regression cannot be asserted");
+    }
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, detail, "first same-shape call should select FP16");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_fp16, b_fp16, c_fp16), "FP16 output should match oracle");
+
+    std::vector<float> a_packed = deterministic_matrix(m, k);
+    std::vector<float> b_packed = deterministic_matrix(k, n);
+    a_packed[2] = std::numeric_limits<float>::quiet_NaN();
+    std::vector<float> c_packed(m * n, 0.0f);
+    stage = PROM_STAGE_NONE;
+    detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_packed.data(), b_packed.data(), c_packed.data(), m, n, k, &stage, &detail),
+        "second same-shape call should execute after layout transition");
+    ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, detail, "second call should transition into packed4 layout");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a_packed, b_packed, c_packed), "packed4 output should match oracle");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(2u), diag.packed4_selected_layout_format, "diagnostics should report packed layout after transition");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
