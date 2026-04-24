@@ -1,0 +1,7 @@
+[M26PiMarginTable {
+    Regime: ["stable-balanced", "transfer-bound", "compute-bound", "ordinary-jitter", "burst-shock", "calm-then-burst", "burst-then-recovery", "false-stability"]
+    PiFinalMargin: [0, 0, 0, 0, 0, 0, 0, 0]
+    PiOscillationCount: [0, 0, 0, 0, 0, 0, 0, 0]
+    PiAntiWindupHits: [1, 1, 1, 1, 1, 1, 1, 1]
+    SafetyMarginAvg: [0, 0, 0, 0, 0, 0, 0, 0]
+}]

@@ -1,0 +1,10 @@
+[M26FinalRecommendation {
+    BestOrdinaryJitter: "A-fixed-double-baseline"
+    BestBurstShock: "A-fixed-double-baseline"
+    KalmanHelps: "does-not-beat-raw-enough-for-default"
+    EwmaEnough: "not-enough-alone"
+    PiWorthCarrying: "defer-pi-tuning"
+    KeepFixedDoubleFallback: "yes-keep-fixed-double-fallback"
+    AdaptivePullLagWorthImplementation: "defer-until-detector-is-better"
+    M27Next: "Implement production-shaped hybrid: EWMA-smoothed pull-lag in stable mode + control-chart burst detector + fixed-double fallback gate with explicit recovery hysteresis and margin clamp."
+}]

@@ -1,0 +1,13 @@
+[M26NoiseFilterTable {
+    Strategy: ["C-ewma-pull-lag", "D-kalman-pull-lag", "E-alpha-beta-pull-lag", "F-median-mad-pull-lag"]
+    EwmFinalEstimateMilli: [40366, 40366, 40366, 40366]
+    EwmEstimateLagMilli: [3110, 3110, 3110, 3110]
+    KalmanFinalEstimateMilli: [40408, 40408, 40408, 40408]
+    KalmanVarianceMilli: [3487, 3487, 3487, 3487]
+    KalmanEstimateLagMilli: [3023, 3023, 3023, 3023]
+    AbFinalEstimateMilli: [40591, 40591, 40591, 40591]
+    AbTrendMilli: [185, 185, 185, 185]
+    AbOvershootCount: [9, 9, 9, 9]
+    MedianEstimateMilli: [40000, 40000, 40000, 40000]
+    MedianOutlierRejectCount: [0, 0, 0, 0]
+}]

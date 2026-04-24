@@ -1,0 +1,808 @@
+package PrometheusSgemmAlgorithmLab
+
+import Octomata
+
+record M26WorkloadRegime {
+    Name: String
+    Why: String
+    NumChunks: Int
+    ChunkSizeUnits: Int
+    TransferSetup: Int
+    TransferPerUnit: Int
+    ComputePerUnit: Int
+    TransferJitterAmplitude: Int
+    JitterPeriod: Int
+    ShockStartChunk: Int
+    ShockEndChunk: Int
+    ShockExtraTransferSetup: Int
+    ShockExtraTransferPerUnit: Int
+}
+
+record M26StrategyConfig {
+    Name: String
+    Kind: String
+    BaseWipCap: Int
+    BaseSafetyMargin: Int
+}
+
+record M26FilterState {
+    EwmEstimateMilli: Int
+    AbEstimateMilli: Int
+    AbTrendMilli: Int
+    KalmanEstimateMilli: Int
+    KalmanVarianceMilli: Int
+    KalmanX: Float[]
+    KalmanP: Float[]
+    MedianWindow: Int[]
+}
+
+record M26DetectorState {
+    CusumPosMilli: Int
+    CusumNegMilli: Int
+    ChartMeanMilli: Int
+    ChartDevMilli: Int
+}
+
+record M26SimulationResult {
+    Regime: String
+    Strategy: String
+    TotalCompletionTime: Int
+    ComputeStarvationTime: Int
+    ReadyButUnusedTime: Int
+    TotalWipTime: Int
+    PeakWipDepth: Int
+    AverageWipDepthMilli: Int
+    MemoryPressureProxy: Int
+    SafetyMarginAvg: Int
+    SafetyMarginMin: Int
+    SafetyMarginMax: Int
+    ModeTransitionCount: Int
+    FalseBurstDetectionCount: Int
+    MissedBurstDetectionCount: Int
+    RecoveryTimeAfterBurst: Int
+    WipCapChanges: Int
+    ProductScore: Int
+    EwmAlphaMilli: Int
+    EwmFinalEstimateMilli: Int
+    EwmEstimateLagMilli: Int
+    KalmanFinalEstimateMilli: Int
+    KalmanVarianceMilli: Int
+    KalmanUpdateCount: Int
+    KalmanEstimateLagMilli: Int
+    AbFinalEstimateMilli: Int
+    AbTrendMilli: Int
+    AbOvershootCount: Int
+    MedianEstimateMilli: Int
+    MedianOutlierRejectCount: Int
+    MedianMissedBurstCount: Int
+    DetectorCount: Int
+    DetectorFalseCount: Int
+    DetectorMissedCount: Int
+    DetectorDelaySum: Int
+    PiFinalMargin: Int
+    PiOscillationCount: Int
+    PiAntiWindupHits: Int
+}
+
+record M26StrategyComparisonTable {
+    Regime: String[]
+    Strategy: String[]
+    TotalCompletionTime: Int[]
+    ComputeStarvationTime: Int[]
+    PeakWipDepth: Int[]
+    ProductScore: Int[]
+}
+
+record M26NoiseFilterTable {
+    Strategy: String[]
+    EwmFinalEstimateMilli: Int[]
+    EwmEstimateLagMilli: Int[]
+    KalmanFinalEstimateMilli: Int[]
+    KalmanVarianceMilli: Int[]
+    KalmanEstimateLagMilli: Int[]
+    AbFinalEstimateMilli: Int[]
+    AbTrendMilli: Int[]
+    AbOvershootCount: Int[]
+    MedianEstimateMilli: Int[]
+    MedianOutlierRejectCount: Int[]
+}
+
+record M26BurstDetectionTable {
+    Strategy: String[]
+    DetectorCount: Int[]
+    DetectorFalseCount: Int[]
+    DetectorMissedCount: Int[]
+    DetectorDelaySum: Int[]
+}
+
+record M26PiMarginTable {
+    Regime: String[]
+    PiFinalMargin: Int[]
+    PiOscillationCount: Int[]
+    PiAntiWindupHits: Int[]
+    SafetyMarginAvg: Int[]
+}
+
+record M26WipStarvationTable {
+    Regime: String[]
+    Strategy: String[]
+    ComputeStarvationTime: Int[]
+    ReadyButUnusedTime: Int[]
+    AverageWipDepthMilli: Int[]
+    MemoryPressureProxy: Int[]
+}
+
+record M26FinalRecommendation {
+    BestOrdinaryJitter: String
+    BestBurstShock: String
+    KalmanHelps: String
+    EwmaEnough: String
+    PiWorthCarrying: String
+    KeepFixedDoubleFallback: String
+    AdaptivePullLagWorthImplementation: String
+    M27Next: String
+}
+
+record M26TransferSignal { Setup: Int PerUnit: Int InShock: Bool }
+
+fn M26Max(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M26Min(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M26Abs(v: Int) -> Int { return switch { case v >= 0 => v else => 0 - v } }
+fn M26Clamp(v: Int, low: Int, high: Int) -> Int { return M26Min(M26Max(v, low), high) }
+
+fn M26Regimes() -> M26WorkloadRegime[] {
+    return [
+        M26WorkloadRegime { Name: "stable-balanced" Why: "pull should run lean with minimal margin" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 9 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M26WorkloadRegime { Name: "transfer-bound" Why: "transfer lead-time dominates" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 12 TransferPerUnit: 4 ComputePerUnit: 1 TransferJitterAmplitude: 1 JitterPeriod: 8 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M26WorkloadRegime { Name: "compute-bound" Why: "buffered inventory can become waste" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 5 TransferPerUnit: 1 ComputePerUnit: 4 TransferJitterAmplitude: 1 JitterPeriod: 10 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M26WorkloadRegime { Name: "ordinary-jitter" Why: "frequent moderate transfer jitter" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 5 JitterPeriod: 3 ShockStartChunk: -1 ShockEndChunk: -1 ShockExtraTransferSetup: 0 ShockExtraTransferPerUnit: 0 },
+        M26WorkloadRegime { Name: "burst-shock" Why: "abrupt transient transfer slowdown" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 2 JitterPeriod: 6 ShockStartChunk: 10 ShockEndChunk: 14 ShockExtraTransferSetup: 13 ShockExtraTransferPerUnit: 3 },
+        M26WorkloadRegime { Name: "calm-then-burst" Why: "false confidence before burst" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 1 JitterPeriod: 12 ShockStartChunk: 15 ShockEndChunk: 20 ShockExtraTransferSetup: 15 ShockExtraTransferPerUnit: 3 },
+        M26WorkloadRegime { Name: "burst-then-recovery" Why: "recovery handling after shock" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 2 JitterPeriod: 7 ShockStartChunk: 2 ShockEndChunk: 7 ShockExtraTransferSetup: 14 ShockExtraTransferPerUnit: 2 },
+        M26WorkloadRegime { Name: "false-stability" Why: "low variance windows hide latent drift" NumChunks: 26 ChunkSizeUnits: 16 TransferSetup: 8 TransferPerUnit: 2 ComputePerUnit: 2 TransferJitterAmplitude: 0 JitterPeriod: 5 ShockStartChunk: 13 ShockEndChunk: 25 ShockExtraTransferSetup: 7 ShockExtraTransferPerUnit: 1 }
+    ]
+}
+
+fn M26Strategies() -> M26StrategyConfig[] {
+    return [
+        M26StrategyConfig { Name: "A-fixed-double-baseline" Kind: "fixed-double" BaseWipCap: 2 BaseSafetyMargin: 1 },
+        M26StrategyConfig { Name: "B-raw-pull-lag" Kind: "raw" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "C-ewma-pull-lag" Kind: "ewma" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "D-kalman-pull-lag" Kind: "kalman" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "E-alpha-beta-pull-lag" Kind: "ab" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "F-median-mad-pull-lag" Kind: "median" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "G-cusum-pull-lag" Kind: "cusum" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "H-control-chart-pull-lag" Kind: "chart" BaseWipCap: 2 BaseSafetyMargin: 2 },
+        M26StrategyConfig { Name: "I-pi-margin-pull-lag" Kind: "pi" BaseWipCap: 2 BaseSafetyMargin: 2 }
+    ]
+}
+
+fn M26TransferSignalFor(regime: M26WorkloadRegime, chunk: Int) -> M26TransferSignal {
+    let sign = switch {
+        case regime.JitterPeriod > 0 and ((chunk / regime.JitterPeriod) * regime.JitterPeriod) == chunk => 1
+        case regime.JitterPeriod > 0 and (((chunk + regime.JitterPeriod / 2) / regime.JitterPeriod) * regime.JitterPeriod) == (chunk + regime.JitterPeriod / 2) => -1
+        else => 0
+    }
+    let inShock = regime.ShockStartChunk >= 0 and chunk >= regime.ShockStartChunk and chunk <= regime.ShockEndChunk
+    let jitter = sign * regime.TransferJitterAmplitude
+
+    return M26TransferSignal {
+        Setup: regime.TransferSetup + jitter + switch { case inShock => regime.ShockExtraTransferSetup else => 0 }
+        PerUnit: regime.TransferPerUnit + switch { case inShock => regime.ShockExtraTransferPerUnit else => 0 }
+        InShock: inShock
+    }
+}
+
+fn M26TransferDuration(regime: M26WorkloadRegime, chunk: Int) -> Int {
+    let s = M26TransferSignalFor(regime, chunk)
+    return M26Max(s.Setup + s.PerUnit * regime.ChunkSizeUnits, 1)
+}
+
+fn M26ComputeDuration(regime: M26WorkloadRegime, _chunk: Int) -> Int { return M26Max(regime.ComputePerUnit * regime.ChunkSizeUnits, 1) }
+
+fn M26DemandPrediction(now: Int, demandChunk: Int, nextToStage: Int, computeRemaining: Int, estCompute: Int) -> Int {
+    let ahead = M26Max(nextToStage - demandChunk, 0)
+    return now + computeRemaining + (M26Max(ahead - 1, 0) * estCompute)
+}
+
+fn M26ShouldStage(strategy: M26StrategyConfig, now: Int, demandChunk: Int, nextToStage: Int, wipDepth: Int, computeRemaining: Int, estTransfer: Int, estCompute: Int, cap: Int, margin: Int) -> Bool {
+    if nextToStage < demandChunk { return true }
+    if strategy.Kind == "fixed-double" { return (nextToStage - demandChunk) < 2 }
+    let demandTime = M26DemandPrediction(now, demandChunk, nextToStage, computeRemaining, estCompute)
+    return now >= demandTime - estTransfer - margin and wipDepth < cap
+}
+
+fn M26Median5(window: Int[]) -> Int {
+    if Len(window) < 5 { return window[Len(window) - 1] }
+    var a = [window[Len(window) - 5], window[Len(window) - 4], window[Len(window) - 3], window[Len(window) - 2], window[Len(window) - 1]]
+    var i = 0
+    while i < 5 {
+        var j = i + 1
+        while j < 5 {
+            if a[j] < a[i] {
+                let t = a[i]
+                a[i] = a[j]
+                a[j] = t
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return a[2]
+}
+
+fn M26Mad5(window: Int[], median: Int) -> Int {
+    if Len(window) < 5 { return 0 }
+    var d = [M26Abs(window[Len(window) - 5] - median), M26Abs(window[Len(window) - 4] - median), M26Abs(window[Len(window) - 3] - median), M26Abs(window[Len(window) - 2] - median), M26Abs(window[Len(window) - 1] - median)]
+    var i = 0
+    while i < 5 {
+        var j = i + 1
+        while j < 5 {
+            if d[j] < d[i] {
+                let t = d[i]
+                d[i] = d[j]
+                d[j] = t
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return d[2]
+}
+
+fn M26KalmanUpdate(filterStateIn: M26FilterState, observed: Int) -> M26FilterState {
+    let A = [1.0]
+    let B = [0.0]
+    let Q = [1.5]
+    let H = [1.0]
+    let R = [9.0]
+    match Octomata.KalmanPredict(A, B, Q, filterStateIn.KalmanX, filterStateIn.KalmanP, [0.0], 1, 1) {
+        ok(pred) => {
+            match Octomata.KalmanCorrect(H, R, pred.XPred, pred.PPred, [Float(observed)], 1, 1) {
+                ok(corr) => {
+                    let residual = M26Abs(observed * 1000 - filterStateIn.KalmanEstimateMilli)
+                    return M26FilterState {
+                        EwmEstimateMilli: filterStateIn.EwmEstimateMilli
+                        AbEstimateMilli: filterStateIn.AbEstimateMilli
+                        AbTrendMilli: filterStateIn.AbTrendMilli
+                        KalmanEstimateMilli: (filterStateIn.KalmanEstimateMilli * 3 + observed * 1000) / 4
+                        KalmanVarianceMilli: (filterStateIn.KalmanVarianceMilli * 3 + residual) / 4
+                        KalmanX: corr.X
+                        KalmanP: corr.P
+                        MedianWindow: filterStateIn.MedianWindow
+                    }
+                }
+                err(_e2) => { return filterStateIn }
+            }
+        }
+        err(_e) => { return filterStateIn }
+    }
+}
+
+fn M26InitFilterState(initialTransfer: Int) -> M26FilterState {
+    return M26FilterState {
+        EwmEstimateMilli: initialTransfer * 1000
+        AbEstimateMilli: initialTransfer * 1000
+        AbTrendMilli: 0
+        KalmanEstimateMilli: initialTransfer * 1000
+        KalmanVarianceMilli: 10000
+        KalmanX: [Float(initialTransfer)]
+        KalmanP: [10.0]
+        MedianWindow: [initialTransfer]
+    }
+}
+
+fn M26InitDetectorState(initialTransfer: Int) -> M26DetectorState {
+    return M26DetectorState { CusumPosMilli: 0 CusumNegMilli: 0 ChartMeanMilli: initialTransfer * 1000 ChartDevMilli: 1000 }
+}
+
+fn M26Simulate(strategy: M26StrategyConfig, regime: M26WorkloadRegime) -> M26SimulationResult {
+    let n = regime.NumChunks
+    var time = 0
+
+    var transferChunk = -1
+    var transferRemaining = 0
+    var transferStart = 0
+    var transferStartChunk = -1
+
+    var computeChunk = -1
+    var computeRemaining = 0
+
+    var nextToStage = 0
+    var demandChunk = 0
+    var completed = 0
+
+    var ready = [false]
+    var readySince = [0]
+    for i in 1 .. n {
+        ready = Append(ready, false)
+        readySince = Append(readySince, 0)
+    }
+
+    let initialTransfer = M26TransferDuration(regime, 0)
+    var estTransfer = initialTransfer
+    var estCompute = M26ComputeDuration(regime, 0)
+
+    var filters = M26InitFilterState(initialTransfer)
+    var detectors = M26InitDetectorState(initialTransfer)
+
+    var wipCap = strategy.BaseWipCap
+    var margin = strategy.BaseSafetyMargin
+    var marginMin = margin
+    var marginMax = margin
+    var marginSum = 0
+    var marginTicks = 0
+
+    var starvation = 0
+    var readyIdle = 0
+    var totalWipTime = 0
+    var peakWip = 0
+    var modeTransitions = 0
+    var capChanges = 0
+
+    var falseDetect = 0
+    var missedDetect = 0
+    var detectCount = 0
+    var detectDelaySum = 0
+    var activeShock = false
+    var detectedThisShock = false
+    var shockStartTime = -1
+    var recoveryStart = -1
+    var recoveryTime = 0
+
+    var ewmaLagSum = 0
+    var ewmaLagCount = 0
+    let ewmaAlpha = 220
+
+    var kalmanLagSum = 0
+    var kalmanLagCount = 0
+    var kalmanUpdates = 0
+
+    var abOvershoot = 0
+    var medianReject = 0
+    var medianMissed = 0
+
+    var piIntegral = 0
+    var piPrevMargin = margin
+    var piOscillation = 0
+    var piAntiWindup = 0
+
+    while completed < n {
+        if computeChunk >= 0 {
+            computeRemaining = computeRemaining - 1
+            if computeRemaining <= 0 {
+                completed = completed + 1
+                demandChunk = completed
+                computeChunk = -1
+                estCompute = (estCompute * 7 + M26ComputeDuration(regime, completed - 1)) / 8
+            }
+        }
+
+        if transferChunk >= 0 {
+            transferRemaining = transferRemaining - 1
+            if transferRemaining <= 0 {
+                ready[transferChunk] = true
+                readySince[transferChunk] = time
+
+                let observed = time - transferStart
+                let trueDelay = M26TransferDuration(regime, transferStartChunk)
+                let inShock = M26TransferSignalFor(regime, transferStartChunk).InShock
+
+                let nextEwm = ((1000 - ewmaAlpha) * filters.EwmEstimateMilli + ewmaAlpha * observed * 1000) / 1000
+                filters = M26FilterState {
+                    EwmEstimateMilli: nextEwm
+                    AbEstimateMilli: filters.AbEstimateMilli
+                    AbTrendMilli: filters.AbTrendMilli
+                    KalmanEstimateMilli: filters.KalmanEstimateMilli
+                    KalmanVarianceMilli: filters.KalmanVarianceMilli
+                    KalmanX: filters.KalmanX
+                    KalmanP: filters.KalmanP
+                    MedianWindow: filters.MedianWindow
+                }
+                ewmaLagSum = ewmaLagSum + M26Abs(filters.EwmEstimateMilli - trueDelay * 1000)
+                ewmaLagCount = ewmaLagCount + 1
+
+                let predAb = filters.AbEstimateMilli + filters.AbTrendMilli
+                let err = observed * 1000 - predAb
+                let nextAbEstimate = predAb + (350 * err) / 1000
+                let nextAbTrend = filters.AbTrendMilli + (120 * err) / 1000
+                filters = M26FilterState {
+                    EwmEstimateMilli: filters.EwmEstimateMilli
+                    AbEstimateMilli: nextAbEstimate
+                    AbTrendMilli: nextAbTrend
+                    KalmanEstimateMilli: filters.KalmanEstimateMilli
+                    KalmanVarianceMilli: filters.KalmanVarianceMilli
+                    KalmanX: filters.KalmanX
+                    KalmanP: filters.KalmanP
+                    MedianWindow: filters.MedianWindow
+                }
+                if (err > 0 and filters.AbTrendMilli < 0) or (err < 0 and filters.AbTrendMilli > 0) { abOvershoot = abOvershoot + 1 }
+
+                filters = M26KalmanUpdate(filters, observed)
+                kalmanLagSum = kalmanLagSum + M26Abs(filters.KalmanEstimateMilli - trueDelay * 1000)
+                kalmanLagCount = kalmanLagCount + 1
+                kalmanUpdates = kalmanUpdates + 1
+
+                let nextMedianWindow = Append(filters.MedianWindow, observed)
+                filters = M26FilterState {
+                    EwmEstimateMilli: filters.EwmEstimateMilli
+                    AbEstimateMilli: filters.AbEstimateMilli
+                    AbTrendMilli: filters.AbTrendMilli
+                    KalmanEstimateMilli: filters.KalmanEstimateMilli
+                    KalmanVarianceMilli: filters.KalmanVarianceMilli
+                    KalmanX: filters.KalmanX
+                    KalmanP: filters.KalmanP
+                    MedianWindow: nextMedianWindow
+                }
+                let med = M26Median5(filters.MedianWindow)
+                let mad = M26Mad5(filters.MedianWindow, med)
+                let rejectOutlier = M26Abs(observed - med) > (M26Max(2 * mad, 6))
+                if rejectOutlier { medianReject = medianReject + 1 }
+                if inShock and rejectOutlier { medianMissed = medianMissed + 1 }
+
+                let nextChartMean = (detectors.ChartMeanMilli * 9 + observed * 1000) / 10
+                let nextChartDev = (detectors.ChartDevMilli * 9 + M26Abs(observed * 1000 - nextChartMean)) / 10
+                let drift = observed * 1000 - nextChartMean
+                let nextCusumPos = M26Max(0, detectors.CusumPosMilli + drift - 900)
+                let nextCusumNeg = M26Max(0, detectors.CusumNegMilli - drift - 900)
+                detectors = M26DetectorState {
+                    CusumPosMilli: nextCusumPos
+                    CusumNegMilli: nextCusumNeg
+                    ChartMeanMilli: nextChartMean
+                    ChartDevMilli: nextChartDev
+                }
+
+                var detected = false
+                if strategy.Kind == "cusum" and (detectors.CusumPosMilli > 6000 or detectors.CusumNegMilli > 6000) { detected = true }
+                if strategy.Kind == "chart" and M26Abs(drift) > detectors.ChartDevMilli * 3 and detectors.ChartDevMilli > 0 { detected = true }
+
+                if detected {
+                    detectCount = detectCount + 1
+                    if inShock and activeShock and not detectedThisShock {
+                        detectedThisShock = true
+                        detectDelaySum = detectDelaySum + (time - M26Max(shockStartTime, 0))
+                    }
+                    if not inShock { falseDetect = falseDetect + 1 }
+                    if strategy.Kind == "cusum" or strategy.Kind == "chart" {
+                        let priorCap = wipCap
+                        if wipCap < 2 { wipCap = 2 }
+                        margin = M26Clamp(margin + 2, 0, 12)
+                        if wipCap != priorCap { capChanges = capChanges + 1 }
+                        modeTransitions = modeTransitions + 1
+                    }
+                }
+
+                if strategy.Kind == "ewma" { estTransfer = M26Max(filters.EwmEstimateMilli / 1000, 1) }
+                if strategy.Kind == "kalman" { estTransfer = M26Max(filters.KalmanEstimateMilli / 1000, 1) }
+                if strategy.Kind == "ab" { estTransfer = M26Max(filters.AbEstimateMilli / 1000, 1) }
+                if strategy.Kind == "median" {
+                    estTransfer = M26Max(med, 1)
+                    if inShock and estTransfer < trueDelay { medianMissed = medianMissed + 1 }
+                }
+                if strategy.Kind == "raw" or strategy.Kind == "cusum" or strategy.Kind == "chart" or strategy.Kind == "pi" {
+                    estTransfer = (estTransfer * 7 + observed) / 8
+                }
+
+                if strategy.Kind == "pi" {
+                    let starveErr = switch { case computeChunk < 0 and demandChunk < n and not ready[demandChunk] => 1 else => 0 }
+                    let readyErr = switch { case demandChunk < n and ready[demandChunk] => 1 else => 0 }
+                    let controlErr = (starveErr * 3) - readyErr
+                    piIntegral = M26Clamp(piIntegral + controlErr, -10, 14)
+                    let delta = controlErr + (piIntegral / 2)
+                    let newMargin = M26Clamp(margin + delta, 0, 12)
+                    if (newMargin == 0 or newMargin == 12) and newMargin != margin { piAntiWindup = piAntiWindup + 1 }
+                    if (newMargin > margin and margin < piPrevMargin) or (newMargin < margin and margin > piPrevMargin) { piOscillation = piOscillation + 1 }
+                    piPrevMargin = margin
+                    margin = newMargin
+                }
+
+                if inShock and not activeShock {
+                    activeShock = true
+                    detectedThisShock = false
+                    shockStartTime = time
+                }
+                if not inShock and activeShock {
+                    if not detectedThisShock { missedDetect = missedDetect + 1 }
+                    activeShock = false
+                    recoveryStart = time
+                }
+
+                transferChunk = -1
+                transferStartChunk = -1
+            }
+        }
+
+        if computeChunk < 0 and demandChunk < n {
+            let hadReady = ready[demandChunk]
+            if hadReady {
+                let idle = time - readySince[demandChunk]
+                if idle > 0 { readyIdle = readyIdle + idle }
+                ready[demandChunk] = false
+                computeChunk = demandChunk
+                computeRemaining = M26ComputeDuration(regime, demandChunk)
+            }
+            if not hadReady { starvation = starvation + 1 }
+        }
+
+        if recoveryStart >= 0 and demandChunk < n and ready[demandChunk] and recoveryTime == 0 {
+            recoveryTime = time - recoveryStart
+        }
+
+        var inTransfer = 0
+        if transferChunk >= 0 { inTransfer = 1 }
+        var readyDepth = 0
+        var probe = demandChunk
+        while probe < nextToStage {
+            if ready[probe] { readyDepth = readyDepth + 1 }
+            probe = probe + 1
+        }
+        let wipDepth = inTransfer + readyDepth
+        totalWipTime = totalWipTime + wipDepth
+        peakWip = M26Max(peakWip, wipDepth)
+
+        marginMin = M26Min(marginMin, margin)
+        marginMax = M26Max(marginMax, margin)
+        marginSum = marginSum + margin
+        marginTicks = marginTicks + 1
+
+        if transferChunk < 0 and nextToStage < n {
+            let shouldStage = M26ShouldStage(strategy, time, demandChunk, nextToStage, wipDepth, computeRemaining, estTransfer, estCompute, wipCap, margin)
+            if shouldStage {
+                transferChunk = nextToStage
+                transferStartChunk = nextToStage
+                transferStart = time
+                transferRemaining = M26TransferDuration(regime, nextToStage)
+                nextToStage = nextToStage + 1
+            }
+        }
+
+        time = time + 1
+    }
+
+    if activeShock and not detectedThisShock { missedDetect = missedDetect + 1 }
+    let avgWipMilli = (totalWipTime * 1000) / M26Max(time, 1)
+    let marginAvg = marginSum / M26Max(marginTicks, 1)
+    let memoryPressure = peakWip * regime.ChunkSizeUnits
+    let transitionPenalty = modeTransitions * 9
+    let completionPenalty = (time - n * estCompute) / 4
+    let starvationPenalty = starvation * 6
+    let wipPenalty = readyIdle + peakWip * 10
+    let memoryPenalty = memoryPressure * 2
+    let complexityPenalty = switch {
+        case strategy.Kind == "fixed-double" => 0
+        case strategy.Kind == "raw" => 4
+        case strategy.Kind == "ewma" => 8
+        case strategy.Kind == "ab" => 9
+        case strategy.Kind == "median" => 10
+        case strategy.Kind == "cusum" => 12
+        case strategy.Kind == "chart" => 11
+        case strategy.Kind == "pi" => 13
+        case strategy.Kind == "kalman" => 17
+        else => 10
+    }
+    let robustnessPenalty = falseDetect * 10 + missedDetect * 14
+    let productScore = 1400 - completionPenalty - starvationPenalty - wipPenalty - memoryPenalty - transitionPenalty - complexityPenalty - robustnessPenalty
+
+    return M26SimulationResult {
+        Regime: regime.Name
+        Strategy: strategy.Name
+        TotalCompletionTime: time
+        ComputeStarvationTime: starvation
+        ReadyButUnusedTime: readyIdle
+        TotalWipTime: totalWipTime
+        PeakWipDepth: peakWip
+        AverageWipDepthMilli: avgWipMilli
+        MemoryPressureProxy: memoryPressure
+        SafetyMarginAvg: marginAvg
+        SafetyMarginMin: marginMin
+        SafetyMarginMax: marginMax
+        ModeTransitionCount: modeTransitions
+        FalseBurstDetectionCount: falseDetect
+        MissedBurstDetectionCount: missedDetect
+        RecoveryTimeAfterBurst: recoveryTime
+        WipCapChanges: capChanges
+        ProductScore: productScore
+        EwmAlphaMilli: ewmaAlpha
+        EwmFinalEstimateMilli: filters.EwmEstimateMilli
+        EwmEstimateLagMilli: switch { case ewmaLagCount > 0 => ewmaLagSum / ewmaLagCount else => 0 }
+        KalmanFinalEstimateMilli: filters.KalmanEstimateMilli
+        KalmanVarianceMilli: filters.KalmanVarianceMilli
+        KalmanUpdateCount: kalmanUpdates
+        KalmanEstimateLagMilli: switch { case kalmanLagCount > 0 => kalmanLagSum / kalmanLagCount else => 0 }
+        AbFinalEstimateMilli: filters.AbEstimateMilli
+        AbTrendMilli: filters.AbTrendMilli
+        AbOvershootCount: abOvershoot
+        MedianEstimateMilli: M26Median5(filters.MedianWindow) * 1000
+        MedianOutlierRejectCount: medianReject
+        MedianMissedBurstCount: medianMissed
+        DetectorCount: detectCount
+        DetectorFalseCount: falseDetect
+        DetectorMissedCount: missedDetect
+        DetectorDelaySum: detectDelaySum
+        PiFinalMargin: margin
+        PiOscillationCount: piOscillation
+        PiAntiWindupHits: piAntiWindup
+    }
+}
+
+fn M26RunAll() -> M26SimulationResult[] {
+    let regimes = M26Regimes()
+    let strategies = M26Strategies()
+    var out = [M26Simulate(strategies[0], regimes[0])]
+
+    var r = 0
+    while r < Len(regimes) {
+        var s = 0
+        while s < Len(strategies) {
+            if not (r == 0 and s == 0) { out = Append(out, M26Simulate(strategies[s], regimes[r])) }
+            s = s + 1
+        }
+        r = r + 1
+    }
+    return out
+}
+
+fn M26ScoreFor(rows: M26SimulationResult[], regime: String, strategy: String) -> Int {
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Regime == regime and rows[i].Strategy == strategy { return rows[i].ProductScore }
+        i = i + 1
+    }
+    return -999999
+}
+
+fn M26StrategyComparisonTableFrom(rows: M26SimulationResult[]) -> M26StrategyComparisonTable {
+    var regime = [rows[0].Regime]
+    var strategy = [rows[0].Strategy]
+    var total = [rows[0].TotalCompletionTime]
+    var starve = [rows[0].ComputeStarvationTime]
+    var peak = [rows[0].PeakWipDepth]
+    var score = [rows[0].ProductScore]
+    for i in 1 .. Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        strategy = Append(strategy, rows[i].Strategy)
+        total = Append(total, rows[i].TotalCompletionTime)
+        starve = Append(starve, rows[i].ComputeStarvationTime)
+        peak = Append(peak, rows[i].PeakWipDepth)
+        score = Append(score, rows[i].ProductScore)
+    }
+    return M26StrategyComparisonTable { Regime: regime Strategy: strategy TotalCompletionTime: total ComputeStarvationTime: starve PeakWipDepth: peak ProductScore: score }
+}
+
+fn M26PickOne(rows: M26SimulationResult[], strategy: String) -> M26SimulationResult {
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Strategy == strategy and rows[i].Regime == "ordinary-jitter" { return rows[i] }
+        i = i + 1
+    }
+    return rows[0]
+}
+
+fn M26NoiseFilterTableFrom(rows: M26SimulationResult[]) -> M26NoiseFilterTable {
+    let names = ["C-ewma-pull-lag", "D-kalman-pull-lag", "E-alpha-beta-pull-lag", "F-median-mad-pull-lag"]
+    var strategy = [names[0]]
+    var ewm = [M26PickOne(rows, names[0]).EwmFinalEstimateMilli]
+    var ewmLag = [M26PickOne(rows, names[0]).EwmEstimateLagMilli]
+    var kal = [M26PickOne(rows, names[0]).KalmanFinalEstimateMilli]
+    var kval = [M26PickOne(rows, names[0]).KalmanVarianceMilli]
+    var klag = [M26PickOne(rows, names[0]).KalmanEstimateLagMilli]
+    var ab = [M26PickOne(rows, names[0]).AbFinalEstimateMilli]
+    var trend = [M26PickOne(rows, names[0]).AbTrendMilli]
+    var over = [M26PickOne(rows, names[0]).AbOvershootCount]
+    var med = [M26PickOne(rows, names[0]).MedianEstimateMilli]
+    var reject = [M26PickOne(rows, names[0]).MedianOutlierRejectCount]
+    for i in 1 .. Len(names) {
+        let r = M26PickOne(rows, names[i])
+        strategy = Append(strategy, names[i])
+        ewm = Append(ewm, r.EwmFinalEstimateMilli)
+        ewmLag = Append(ewmLag, r.EwmEstimateLagMilli)
+        kal = Append(kal, r.KalmanFinalEstimateMilli)
+        kval = Append(kval, r.KalmanVarianceMilli)
+        klag = Append(klag, r.KalmanEstimateLagMilli)
+        ab = Append(ab, r.AbFinalEstimateMilli)
+        trend = Append(trend, r.AbTrendMilli)
+        over = Append(over, r.AbOvershootCount)
+        med = Append(med, r.MedianEstimateMilli)
+        reject = Append(reject, r.MedianOutlierRejectCount)
+    }
+    return M26NoiseFilterTable { Strategy: strategy EwmFinalEstimateMilli: ewm EwmEstimateLagMilli: ewmLag KalmanFinalEstimateMilli: kal KalmanVarianceMilli: kval KalmanEstimateLagMilli: klag AbFinalEstimateMilli: ab AbTrendMilli: trend AbOvershootCount: over MedianEstimateMilli: med MedianOutlierRejectCount: reject }
+}
+
+fn M26BurstDetectionTableFrom(rows: M26SimulationResult[]) -> M26BurstDetectionTable {
+    let g = M26PickOne(rows, "G-cusum-pull-lag")
+    let h = M26PickOne(rows, "H-control-chart-pull-lag")
+    return M26BurstDetectionTable {
+        Strategy: ["G-cusum-pull-lag", "H-control-chart-pull-lag"]
+        DetectorCount: [g.DetectorCount, h.DetectorCount]
+        DetectorFalseCount: [g.DetectorFalseCount, h.DetectorFalseCount]
+        DetectorMissedCount: [g.DetectorMissedCount, h.DetectorMissedCount]
+        DetectorDelaySum: [g.DetectorDelaySum, h.DetectorDelaySum]
+    }
+}
+
+fn M26PiMarginTableFrom(rows: M26SimulationResult[]) -> M26PiMarginTable {
+    let regimes = M26Regimes()
+    var regime = [regimes[0].Name]
+    var finalMargin = [0]
+    var oscillation = [0]
+    var anti = [0]
+    var avg = [0]
+
+    var i = 0
+    while i < Len(rows) {
+        if rows[i].Regime == regimes[0].Name and rows[i].Strategy == "I-pi-margin-pull-lag" {
+            finalMargin[0] = rows[i].PiFinalMargin
+            oscillation[0] = rows[i].PiOscillationCount
+            anti[0] = rows[i].PiAntiWindupHits
+            avg[0] = rows[i].SafetyMarginAvg
+        }
+        i = i + 1
+    }
+
+    for r in 1 .. Len(regimes) {
+        regime = Append(regime, regimes[r].Name)
+        var picked = rows[0]
+        var j = 0
+        while j < Len(rows) {
+            if rows[j].Regime == regimes[r].Name and rows[j].Strategy == "I-pi-margin-pull-lag" { picked = rows[j] }
+            j = j + 1
+        }
+        finalMargin = Append(finalMargin, picked.PiFinalMargin)
+        oscillation = Append(oscillation, picked.PiOscillationCount)
+        anti = Append(anti, picked.PiAntiWindupHits)
+        avg = Append(avg, picked.SafetyMarginAvg)
+    }
+
+    return M26PiMarginTable { Regime: regime PiFinalMargin: finalMargin PiOscillationCount: oscillation PiAntiWindupHits: anti SafetyMarginAvg: avg }
+}
+
+fn M26WipStarvationTableFrom(rows: M26SimulationResult[]) -> M26WipStarvationTable {
+    var regime = [rows[0].Regime]
+    var strategy = [rows[0].Strategy]
+    var starve = [rows[0].ComputeStarvationTime]
+    var ready = [rows[0].ReadyButUnusedTime]
+    var avg = [rows[0].AverageWipDepthMilli]
+    var mem = [rows[0].MemoryPressureProxy]
+    for i in 1 .. Len(rows) {
+        regime = Append(regime, rows[i].Regime)
+        strategy = Append(strategy, rows[i].Strategy)
+        starve = Append(starve, rows[i].ComputeStarvationTime)
+        ready = Append(ready, rows[i].ReadyButUnusedTime)
+        avg = Append(avg, rows[i].AverageWipDepthMilli)
+        mem = Append(mem, rows[i].MemoryPressureProxy)
+    }
+    return M26WipStarvationTable { Regime: regime Strategy: strategy ComputeStarvationTime: starve ReadyButUnusedTime: ready AverageWipDepthMilli: avg MemoryPressureProxy: mem }
+}
+
+fn M26FinalRecommendationFrom(rows: M26SimulationResult[]) -> M26FinalRecommendation {
+    let jitterNames = ["A-fixed-double-baseline", "B-raw-pull-lag", "C-ewma-pull-lag", "D-kalman-pull-lag", "E-alpha-beta-pull-lag", "F-median-mad-pull-lag", "G-cusum-pull-lag", "H-control-chart-pull-lag", "I-pi-margin-pull-lag"]
+    var jitterBest = jitterNames[0]
+    var jitterScore = -999999
+    var burstBest = jitterNames[0]
+    var burstScore = -999999
+
+    for i in 0 .. Len(jitterNames) {
+        let js = M26ScoreFor(rows, "ordinary-jitter", jitterNames[i])
+        if js > jitterScore { jitterScore = js jitterBest = jitterNames[i] }
+        let bs = M26ScoreFor(rows, "burst-shock", jitterNames[i]) + M26ScoreFor(rows, "calm-then-burst", jitterNames[i])
+        if bs > burstScore { burstScore = bs burstBest = jitterNames[i] }
+    }
+
+    let kalmanJitter = M26ScoreFor(rows, "ordinary-jitter", "D-kalman-pull-lag")
+    let rawJitter = M26ScoreFor(rows, "ordinary-jitter", "B-raw-pull-lag")
+    let ewmaJitter = M26ScoreFor(rows, "ordinary-jitter", "C-ewma-pull-lag")
+    let ewmaBurst = M26ScoreFor(rows, "burst-shock", "C-ewma-pull-lag")
+    let piBurst = M26ScoreFor(rows, "burst-shock", "I-pi-margin-pull-lag")
+    let doubleBurst = M26ScoreFor(rows, "burst-shock", "A-fixed-double-baseline")
+
+    return M26FinalRecommendation {
+        BestOrdinaryJitter: jitterBest
+        BestBurstShock: burstBest
+        KalmanHelps: switch { case kalmanJitter > rawJitter => "helps-as-estimator-under-smooth-noise-but-not-burst-dominant-winner" else => "does-not-beat-raw-enough-for-default" }
+        EwmaEnough: switch { case ewmaJitter >= rawJitter and ewmaBurst >= M26ScoreFor(rows, "burst-shock", "B-raw-pull-lag") => "enough-for-ordinary-noise-not-for-shock-alone" else => "not-enough-alone" }
+        PiWorthCarrying: switch { case piBurst >= M26ScoreFor(rows, "burst-shock", "B-raw-pull-lag") => "yes-if-clamped-tight-with-anti-windup" else => "defer-pi-tuning" }
+        KeepFixedDoubleFallback: switch { case doubleBurst >= M26ScoreFor(rows, "burst-shock", burstBest) => "yes-keep-fixed-double-fallback" else => "yes-as-guarded-fallback-anyway" }
+        AdaptivePullLagWorthImplementation: switch { case jitterBest != "A-fixed-double-baseline" => "yes-with-burst-detector-fallback" else => "defer-until-detector-is-better" }
+        M27Next: "Implement production-shaped hybrid: EWMA-smoothed pull-lag in stable mode + control-chart burst detector + fixed-double fallback gate with explicit recovery hysteresis and margin clamp." 
+    }
+}

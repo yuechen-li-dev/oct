@@ -1,0 +1,7 @@
+[M26BurstDetectionTable {
+    Strategy: ["G-cusum-pull-lag", "H-control-chart-pull-lag"]
+    DetectorCount: [24, 2]
+    DetectorFalseCount: [24, 2]
+    DetectorMissedCount: [0, 0]
+    DetectorDelaySum: [0, 0]
+}]
