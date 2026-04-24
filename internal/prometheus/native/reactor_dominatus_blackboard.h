@@ -12,7 +12,7 @@ enum {
   PROM_DOM_MAX_EVENTS = 32u,
   PROM_DOM_MAX_TRACE = 64u,
   PROM_DOM_KEY_WORDS = 1u,
-  PROM_DOM_STORAGE_CAPACITY = 26u * PROM_DOM_MAX_SLOTS,
+  PROM_DOM_STORAGE_CAPACITY = 42u * PROM_DOM_MAX_SLOTS,
 };
 
 typedef enum prom_dom_domain {
@@ -35,6 +35,17 @@ typedef enum prom_dom_key {
   PROM_DOM_KEY_SGEMM_COMPUTE_MODE = 0x0105,
   PROM_DOM_KEY_SGEMM_BUFFERING_MODE = 0x0106,
   PROM_DOM_KEY_SGEMM_FALLBACK_REASON = 0x0107,
+  PROM_DOM_KEY_SGEMM_M35_FIXED_FEASIBLE = 0x0108,
+  PROM_DOM_KEY_SGEMM_M35_PULL_LAG_FEASIBLE = 0x0109,
+  PROM_DOM_KEY_SGEMM_M35_SERIAL_FEASIBLE = 0x010A,
+  PROM_DOM_KEY_SGEMM_M35_FIXED_SCORE = 0x010B,
+  PROM_DOM_KEY_SGEMM_M35_PULL_LAG_SCORE = 0x010C,
+  PROM_DOM_KEY_SGEMM_M35_SERIAL_SCORE = 0x010D,
+  PROM_DOM_KEY_SGEMM_M35_REASON_CODE = 0x010E,
+  PROM_DOM_KEY_SGEMM_M35_FINAL_REASON_CODE = 0x010F,
+  PROM_DOM_KEY_SGEMM_M35_FIXED_REJECTION_REASON = 0x0110,
+  PROM_DOM_KEY_SGEMM_M35_PULL_LAG_REJECTION_REASON = 0x0111,
+  PROM_DOM_KEY_SGEMM_M35_SERIAL_REJECTION_REASON = 0x0112,
 
   PROM_DOM_KEY_SLOT_STATE = 0x0201,
   PROM_DOM_KEY_SLOT_GENERATION = 0x0202,
@@ -53,6 +64,9 @@ typedef enum prom_dom_key {
   PROM_DOM_KEY_MEMORY_BUDGET = 0x0402,
   PROM_DOM_KEY_MEMORY_HEADROOM = 0x0403,
   PROM_DOM_KEY_MEMORY_INVALIDATION_FLAGS = 0x0404,
+  PROM_DOM_KEY_MEMORY_M35_FIXED_HEADROOM = 0x0405,
+  PROM_DOM_KEY_MEMORY_M35_PULL_LAG_HEADROOM = 0x0406,
+  PROM_DOM_KEY_MEMORY_M35_SERIAL_HEADROOM = 0x0407,
 
   PROM_DOM_KEY_DIAGNOSTICS_REASON_CODE = 0x0501,
   PROM_DOM_KEY_DIAGNOSTICS_COUNTER = 0x0502,
@@ -196,6 +210,8 @@ void prom_dom_commit(prom_dom_blackboard* board);
 
 uint64_t prom_dom_dirty_keys_staged_word(const prom_dom_blackboard* board, uint32_t word_index);
 uint64_t prom_dom_dirty_keys_last_commit_word(const prom_dom_blackboard* board, uint32_t word_index);
+uint32_t prom_dom_dirty_key_staged(const prom_dom_blackboard* board, prom_dom_key key);
+uint32_t prom_dom_dirty_key_last_commit(const prom_dom_blackboard* board, prom_dom_key key);
 uint32_t prom_dom_dirty_domains_staged(const prom_dom_blackboard* board);
 uint32_t prom_dom_dirty_domains_last_commit(const prom_dom_blackboard* board);
 uint32_t prom_dom_dirty_slots_staged(const prom_dom_blackboard* board);
