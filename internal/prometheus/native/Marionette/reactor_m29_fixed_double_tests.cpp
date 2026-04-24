@@ -6,6 +6,9 @@
 
 namespace
 {
+constexpr std::uint32_t kPromSlotEmpty = 1u;
+constexpr std::uint32_t kPromSlotFailed = 7u;
+
 std::vector<float> deterministic_matrix(std::uint32_t rows, std::uint32_t cols)
 {
     std::vector<float> out(rows * cols, 0.0f);
@@ -136,6 +139,135 @@ FACT(PrometheusReactor_M29_FixedDouble_AsyncOwnershipAndRecovery)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics should remain queryable after recovery");
     ASSERT_TRUE(diag.m29_inflight_rejection_count <= diag.m29_overwrite_rejection_count + 1u, "inflight rejection accounting should remain bounded and truthful");
     ASSERT_TRUE(diag.m29_max_wip_depth <= 2u, "recovery path must preserve WIP <= 2");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M29_FixedDouble_BusyWaitRequiredDistinctFromOverwrite)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == PROM_BACKEND_VULKAN_SOFTWARE) {
+        SKIP("Busy/wait behavior needs non-software Vulkan async submission support");
+    }
+
+    const auto a = deterministic_matrix(8u, 8u);
+    const auto b = deterministic_matrix(8u, 8u);
+    std::vector<float> c(64u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int task_id = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), 8u, 8u, 8u, &task_id, &stage, &detail), "async submit should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail), "second call while pipeline is full should reject");
+    ASSERT_EQUAL(PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED, detail, "busy fixed-double condition must be explicit wait/retry semantics");
+    ASSERT_TRUE(detail != PROM_DETAIL_SLOT_OVERWRITE_REJECTED, "busy wait condition must not masquerade as overwrite corruption");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics should remain queryable");
+    ASSERT_TRUE(diag.m29_max_wip_depth <= 2u, "busy handling must preserve WIP <= 2");
+    ASSERT_EQUAL(0u, static_cast<std::uint32_t>(diag.m29_overwrite_rejection_count), "normal busy-full pipeline should not increment overwrite rejection counter");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, task_id), "cleanup should release slot ownership");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M29_FixedDouble_PostSwapFailureMarksSlotFailed)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FAIL_QUEUE_SUBMIT;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; submit failure path cannot be asserted");
+    }
+
+    const auto a = deterministic_matrix(8u, 8u);
+    const auto b = deterministic_matrix(8u, 8u);
+    std::vector<float> c(64u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail), "queue-submit failure hook should fail call");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.m29_failure_slot_id >= 0, "post-swap failure must record failed slot id");
+    ASSERT_TRUE(diag.m29_failure_reason != 0, "post-swap failure must record failure reason");
+    ASSERT_TRUE(diag.m29_slot0_state == kPromSlotFailed || diag.m29_slot1_state == kPromSlotFailed, "post-swap failure must move active slot into FAILED");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M29_FixedDouble_CleanupToEmptyDeterministicForSafeStates)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FAIL_DISPATCH;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; cleanup semantics cannot be asserted");
+    }
+
+    const auto a = deterministic_matrix(8u, 8u);
+    const auto b = deterministic_matrix(8u, 8u);
+    std::vector<float> c(64u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail), "dispatch failure should leave slot in recoverable failed state");
+
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &before), "diagnostics should be queryable before recovery");
+    ASSERT_TRUE(before.m29_slot0_state == kPromSlotFailed || before.m29_slot1_state == kPromSlotFailed, "setup should expose a failed slot before recovery");
+
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "second run keeps failure injection active but must still perform deterministic cleanup first");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "third run should revisit failed slot and cleanup via legal cleanup path");
+
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &after), "diagnostics should remain queryable after recovery");
+    ASSERT_TRUE(after.m29_cleanup_success_count > before.m29_cleanup_success_count, "cleanup counter should advance when recovering failed/non-inflight slot");
+    ASSERT_TRUE(after.m29_overwrite_rejection_count == before.m29_overwrite_rejection_count, "cleanup recovery should not be misreported as overwrite rejection");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M29_FixedDouble_CleanupRejectsInflightOwnership)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u || caps.backend_type == PROM_BACKEND_VULKAN_SOFTWARE) {
+        SKIP("In-flight cleanup rejection needs non-software Vulkan async submission support");
+    }
+
+    const auto a = deterministic_matrix(8u, 8u);
+    const auto b = deterministic_matrix(8u, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int task_id = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), 8u, 8u, 8u, &task_id, &stage, &detail), "async submit should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_abandon_async(handle, task_id), "abandon must reject unresolved in-flight ownership");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics should remain queryable");
+    ASSERT_TRUE(diag.m29_inflight_rejection_count >= 1u, "illegal in-flight cleanup attempt should increment in-flight rejection diagnostics");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }

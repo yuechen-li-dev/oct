@@ -1500,7 +1500,8 @@ FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &first_task, &stage, &detail), "first async submit should succeed");
     ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "second async submit during in-flight work should fail");
-    ASSERT_TRUE(detail == PROM_DETAIL_REUSE_IN_FLIGHT || detail == PROM_DETAIL_ASYNC_UNCONSUMED, "in-flight ownership hazard should be surfaced explicitly");
+    ASSERT_TRUE(detail == PROM_DETAIL_REUSE_IN_FLIGHT || detail == PROM_DETAIL_ASYNC_UNCONSUMED || detail == PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED,
+                "in-flight ownership hazard should be surfaced explicitly");
 
     PrometheusAsyncStatus status{};
     for (int attempts = 0; attempts < 2000; ++attempts) {

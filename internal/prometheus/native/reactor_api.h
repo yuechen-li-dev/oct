@@ -77,6 +77,9 @@ enum {
   PROM_TESTCFG_FORCE_STRICT_FP32 = 1u << 17,
   PROM_TESTCFG_FORCE_NO_FP16_STORAGE = 1u << 18,
   PROM_TESTCFG_FORCE_FP16_UTILITY_WIN = 1u << 19,
+  PROM_TESTCFG_FAIL_COMMAND_END = 1u << 20,
+  PROM_TESTCFG_FAIL_RESET_FENCE = 1u << 21,
+  PROM_TESTCFG_FAIL_QUEUE_SUBMIT = 1u << 22,
 };
 
 enum {
@@ -92,6 +95,7 @@ enum {
   PROM_DETAIL_SLOT_INFLIGHT_REJECTED = -6010,
   PROM_DETAIL_SLOT_INVALID_LAYOUT = -6011,
   PROM_DETAIL_SLOT_ASYNC_OWNERSHIP = -6012,
+  PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED = -6013,
   PROM_DETAIL_PATH_DIRECT = 6101,
   PROM_DETAIL_PATH_STAGED_UPLOAD = 6102,
   PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK = 6103,
@@ -210,6 +214,7 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t m29_layout_invalidation_count;
   uint64_t m29_capacity_invalidation_count;
   uint64_t m29_inflight_rejection_count;
+  uint64_t m29_cleanup_success_count;
   int m29_failure_slot_id;
   int m29_failure_reason;
 } PrometheusSgemmPolicyDiagnostics;
