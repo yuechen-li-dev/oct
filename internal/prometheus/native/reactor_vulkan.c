@@ -19,6 +19,7 @@
 
 #include <vulkan/vulkan.h>
 #include "reactor_judgment_engine.h"
+#include "reactor_vulkan_packed4_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
 #define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
@@ -115,6 +116,7 @@ typedef struct prometheus_runtime {
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
+  VkPipeline packed4_pipeline;
   prom_vk_buffer direct_a;
   prom_vk_buffer direct_b;
   prom_vk_buffer direct_c;
@@ -484,55 +486,51 @@ static void prom_compute_scalar_row_major(const float* a, const float* b, float*
   }
 }
 
-static int prom_compute_packed4_fp32(const float* a, const float* b, float* c, uint32_t m, uint32_t n, uint32_t k) {
-  const uint32_t k4 = prom_round_up4_u32(k);
-  const size_t packed_a_len = (size_t)m * (size_t)k4;
-  const size_t packed_b_len = (size_t)n * (size_t)k4;
-  float* packed_a = (float*)calloc(packed_a_len, sizeof(float));
-  float* packed_b = (float*)calloc(packed_b_len, sizeof(float));
+static void prom_pack_a_packed4_rowmajor(const float* src, float* dst, uint32_t m, uint32_t k, uint32_t k4) {
   uint32_t row;
-  if (packed_a == NULL || packed_b == NULL) {
-    free(packed_a);
-    free(packed_b);
-    return 0;
-  }
-
+  memset(dst, 0, (size_t)m * (size_t)k4 * sizeof(float));
   for (row = 0u; row < m; ++row) {
+    memcpy(dst + (size_t)row * (size_t)k4, src + (size_t)row * (size_t)k, (size_t)k * sizeof(float));
+  }
+}
+
+static void prom_pack_b_packed4_colmajor(const float* src, float* dst, uint32_t n, uint32_t k, uint32_t k4) {
+  uint32_t col;
+  memset(dst, 0, (size_t)n * (size_t)k4 * sizeof(float));
+  for (col = 0u; col < n; ++col) {
     uint32_t kk;
+    float* dst_col = dst + (size_t)col * (size_t)k4;
     for (kk = 0u; kk < k; ++kk) {
-      packed_a[(size_t)row * (size_t)k4 + (size_t)kk] = a[(size_t)row * (size_t)k + (size_t)kk];
+      dst_col[kk] = src[(size_t)kk * (size_t)n + (size_t)col];
     }
   }
-  {
-    uint32_t col;
-    for (col = 0u; col < n; ++col) {
-      uint32_t kk;
-      for (kk = 0u; kk < k; ++kk) {
-        packed_b[(size_t)col * (size_t)k4 + (size_t)kk] = b[(size_t)kk * (size_t)n + (size_t)col];
-      }
-    }
-  }
+}
 
-  for (row = 0u; row < m; ++row) {
-    uint32_t col;
-    for (col = 0u; col < n; ++col) {
-      float sum = 0.0f;
-      uint32_t kk_block;
-      const float* a_row = packed_a + (size_t)row * (size_t)k4;
-      const float* b_col = packed_b + (size_t)col * (size_t)k4;
-      for (kk_block = 0u; kk_block < k4; kk_block += 4u) {
-        sum += a_row[kk_block] * b_col[kk_block];
-        sum += a_row[kk_block + 1u] * b_col[kk_block + 1u];
-        sum += a_row[kk_block + 2u] * b_col[kk_block + 2u];
-        sum += a_row[kk_block + 3u] * b_col[kk_block + 3u];
-      }
-      c[(size_t)row * (size_t)n + (size_t)col] = sum;
+static void prom_apply_debug_row_major_oracle(prometheus_runtime* rt,
+                                              const float* a,
+                                              const float* b,
+                                              float* c,
+                                              uint32_t m,
+                                              uint32_t n,
+                                              uint32_t k) {
+  size_t compare_index;
+  size_t compare_len = (size_t)m * (size_t)n;
+  float* row_major_oracle;
+  if (rt == NULL || (rt->test_flags & PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK) == 0u) {
+    return;
+  }
+  row_major_oracle = (float*)malloc(compare_len * sizeof(float));
+  if (row_major_oracle == NULL) {
+    return;
+  }
+  prom_compute_scalar_row_major(a, b, row_major_oracle, m, n, k);
+  for (compare_index = 0u; compare_index < compare_len; ++compare_index) {
+    if (c[compare_index] != row_major_oracle[compare_index]) {
+      rt->sgemm_controller.packed4_row_major_check_failures += 1u;
+      c[compare_index] = row_major_oracle[compare_index];
     }
   }
-
-  free(packed_a);
-  free(packed_b);
-  return 1;
+  free(row_major_oracle);
 }
 
 static prom_sgemm_controller_defaults prom_sgemm_default_config(void) {
@@ -1088,6 +1086,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->tiled_pipeline, NULL);
     rt->tiled_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->packed4_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->packed4_pipeline, NULL);
+    rt->packed4_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
@@ -1367,6 +1369,30 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_packed4_spirv);
+  shader_info.pCode = k_prom_sgemm_packed4_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = shader_module;
+  stage_info.pName = "main";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->packed4_pipeline);
+  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
   memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
   cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   cmd_alloc_info.commandPool = rt->command_pool;
@@ -1506,6 +1532,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   size_t a_copy_size;
   size_t b_copy_size;
   size_t c_copy_size;
+  uint32_t compute_k;
   uint64_t work_units;
   uint32_t can_stage;
   uint32_t can_direct;
@@ -1524,6 +1551,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_judgment_async_facts async_facts;
   prom_judgment_async_decision async_decision;
   VkPipeline selected_pipeline;
+  float* packed_a_upload = NULL;
+  float* packed_b_upload = NULL;
   int final_detail = 0;
   uint32_t request_async = 0u;
 
@@ -1552,13 +1581,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
   }
-  if (!checked_float_buffer_size(m, k, &a_buffer_size, &a_copy_size) ||
-      !checked_float_buffer_size(k, n, &b_buffer_size, &b_copy_size) ||
-      !checked_float_buffer_size(m, n, &c_buffer_size, &c_copy_size)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
-    return PROM_ERROR;
-  }
-
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_async_state(rt, PROM_ASYNC_STATE_IDLE, PROM_STAGE_NONE, 0);
@@ -1652,31 +1674,28 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     prom_packed4_record_fallback(&rt->sgemm_controller, judgment_decision.packed4_reject_reason);
   }
 
+  compute_k = compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
+  if (!checked_float_buffer_size(m, compute_k, &a_buffer_size, &a_copy_size) ||
+      !checked_float_buffer_size(compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? n : k,
+                                 compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? compute_k : n,
+                                 &b_buffer_size,
+                                 &b_copy_size) ||
+      !checked_float_buffer_size(m, n, &c_buffer_size, &c_copy_size)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
+    return PROM_ERROR;
+  }
+
   if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
-    size_t compare_index;
-    size_t compare_len = (size_t)m * (size_t)n;
-    float* row_major_oracle = (float*)malloc(c_copy_size);
-    if (row_major_oracle == NULL) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+    packed_a_upload = (float*)malloc(a_copy_size);
+    packed_b_upload = (float*)malloc(b_copy_size);
+    if (packed_a_upload == NULL || packed_b_upload == NULL) {
+      free(packed_a_upload);
+      free(packed_b_upload);
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
-    if (!prom_compute_packed4_fp32(a, b, c, m, n, k)) {
-      free(row_major_oracle);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
-      return PROM_ERROR;
-    }
-    prom_compute_scalar_row_major(a, b, row_major_oracle, m, n, k);
-    for (compare_index = 0u; compare_index < compare_len; ++compare_index) {
-      if (c[compare_index] != row_major_oracle[compare_index]) {
-        rt->sgemm_controller.packed4_row_major_check_failures += 1u;
-        c[compare_index] = row_major_oracle[compare_index];
-      }
-    }
-    free(row_major_oracle);
-    rt->sgemm_controller.packed4_selected_layout_format = 2u;
-    rt->sgemm_controller.packed4_selection_count += 1u;
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
-    return PROM_OK;
+    prom_pack_a_packed4_rowmajor(a, packed_a_upload, m, k, compute_k);
+    prom_pack_b_packed4_colmajor(b, packed_b_upload, n, k, compute_k);
   }
   memset(&async_facts, 0, sizeof(async_facts));
   async_facts.request_async = request_async;
@@ -1684,32 +1703,40 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   async_facts.software_vulkan = rt->software_vulkan;
   prom_judgment_engine_select_async_submission(&async_facts, &async_decision);
   if (async_decision.success == 0u) {
+    free(packed_a_upload);
+    free(packed_b_upload);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, async_decision.reject_detail);
     return PROM_ERROR;
   }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
-    if (!ensure_direct_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+    if (!ensure_direct_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
+      free(packed_a_upload);
+      free(packed_b_upload);
       return PROM_ERROR;
     }
-    memcpy(rt->direct_a.mapped, a, a_copy_size);
-    memcpy(rt->direct_b.mapped, b, b_copy_size);
+    memcpy(rt->direct_a.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_a_upload : a, a_copy_size);
+    memcpy(rt->direct_b.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_b_upload : b, b_copy_size);
     memset(rt->direct_c.mapped, 0, c_copy_size);
     shader_a = &rt->direct_a;
     shader_b = &rt->direct_b;
     shader_c = &rt->direct_c;
   } else {
-    if (!ensure_staged_execution_buffers(rt, m, n, k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+    if (!ensure_staged_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
+      free(packed_a_upload);
+      free(packed_b_upload);
       return PROM_ERROR;
     }
-    memcpy(rt->staged_upload_a.mapped, a, a_copy_size);
-    memcpy(rt->staged_upload_b.mapped, b, b_copy_size);
+    memcpy(rt->staged_upload_a.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_a_upload : a, a_copy_size);
+    memcpy(rt->staged_upload_b.mapped, compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? packed_b_upload : b, b_copy_size);
     shader_a = &rt->staged_device_a;
     shader_b = &rt->staged_device_b;
     shader_c = &rt->staged_device_c;
   }
+  free(packed_a_upload);
+  free(packed_b_upload);
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     selected_pipeline = rt->tiled_pipeline;
@@ -1720,6 +1747,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     } else {
       final_detail = PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED;
     }
+  } else if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+    selected_pipeline = rt->packed4_pipeline;
+    rt->sgemm_controller.packed4_selected_layout_format = 2u;
+    rt->sgemm_controller.packed4_selection_count += 1u;
   } else {
     selected_pipeline = rt->pipeline;
   }
@@ -1856,7 +1887,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   push.m = m;
   push.n = n;
-  push.k = k;
+  push.k = compute_k;
   vkCmdPushConstants(rt->command_buffer,
                      rt->pipeline_layout,
                      VK_SHADER_STAGE_COMPUTE_BIT,
@@ -1988,9 +2019,15 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
+    if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+      prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->direct_c.mapped, m, n, k);
+    }
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->direct_c.mapped, c_copy_size);
   } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
+    if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+      prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->staged_readback_c.mapped, m, n, k);
+    }
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
   } else {
