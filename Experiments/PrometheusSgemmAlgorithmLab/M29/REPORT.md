@@ -102,3 +102,26 @@ M29 intentionally does **not** implement:
 - new judgment candidates or GPU perf tuning passes.
 
 This milestone remains narrow: fixed-double orchestration and safety guardrails only.
+
+## M29 follow-up (orchestration bugfix pass)
+
+This follow-up intentionally keeps the slot HFSM helper unchanged and fixes orchestration behavior layered on top of it:
+
+1. **Busy/full-pipeline slot outcome is now explicit.**  
+   Calls that cannot reuse a slot yet now surface `PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED` instead of collapsing into overwrite-style rejection.
+
+2. **Post-swap failures now mark the active slot failed.**  
+   Failure paths after `READY -> CURRENT` and before `CURRENT -> IN_FLIGHT` (including command-buffer reset/begin/end, dispatch injection, fence reset, and queue submit) now route through slot failure marking so diagnostics and ownership remain truthful.
+
+3. **Cleanup-to-empty semantics are legal for safe states.**  
+   Orchestration cleanup now uses HFSM cleanup transitions (via cleanup state) for non-in-flight states and rejects in-flight cleanup attempts.
+
+4. **Coverage proving the fixes.**  
+   Marionette M29 tests now lock:
+   - busy/wait-required detail distinct from overwrite rejection,
+   - post-swap failure slot-failed diagnostics,
+   - deterministic cleanup recovery countering from failed/safe states,
+   - illegal in-flight cleanup rejection without ownership resolution.
+
+5. **Why HFSM helper did not need redesign.**  
+   The HFSM transition authority already encoded valid lifecycle edges; defects were in orchestration return semantics and failure/cleanup call-site handling.

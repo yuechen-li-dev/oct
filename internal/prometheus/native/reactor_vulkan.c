@@ -119,6 +119,7 @@ typedef struct prom_slot_runtime_diag {
   uint64_t layout_invalidation_count;
   uint64_t capacity_invalidation_count;
   uint64_t inflight_rejection_count;
+  uint64_t cleanup_success_count;
   int failure_slot_id;
   int failure_reason;
   int async_slot_id;
@@ -509,18 +510,23 @@ static void prom_slot_track_wip(prometheus_runtime* rt) {
   }
 }
 
-static int prom_slot_cleanup_to_empty(prom_slot_hfsm* slot) {
+static int prom_slot_cleanup_to_empty(prometheus_runtime* rt, prom_slot_hfsm* slot) {
+  prom_slot_state state;
   if (slot == NULL) {
     return 0;
   }
-  if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_FAILED) {
-    return prom_slot_hfsm_cleanup(slot) != 0u ? 1 : 0;
-  }
-  if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_EMPTY) {
+  state = prom_slot_hfsm_current_state(slot);
+  if (state == PROM_SLOT_EMPTY) {
     return 1;
   }
-  if (prom_slot_hfsm_transition(slot, PROM_SLOT_EMPTY) == 0u) {
+  if (state == PROM_SLOT_IN_FLIGHT) {
     return 0;
+  }
+  if (prom_slot_hfsm_cleanup(slot) == 0u) {
+    return 0;
+  }
+  if (rt != NULL) {
+    rt->slot_diag.cleanup_success_count += 1u;
   }
   return 1;
 }
@@ -540,9 +546,8 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
   int invalidation_reason = 0;
 
   if (state == PROM_SLOT_IN_FLIGHT || state == PROM_SLOT_CURRENT) {
-    rt->slot_diag.overwrite_rejection_count += 1u;
     rt->slot_diag.inflight_rejection_count += 1u;
-    return 0;
+    return PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED;
   }
 
   slot = &rt->slots[slot_id];
@@ -566,11 +571,17 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
     }
   }
 
-  if (!prom_slot_cleanup_to_empty(slot)) {
-    return 0;
+  if (!prom_slot_cleanup_to_empty(rt, slot)) {
+    if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_IN_FLIGHT) {
+      rt->slot_diag.inflight_rejection_count += 1u;
+      return PROM_DETAIL_SLOT_INFLIGHT_REJECTED;
+    }
+    rt->slot_diag.overwrite_rejection_count += 1u;
+    return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_PREPARING) == 0u) {
-    return 0;
+    rt->slot_diag.overwrite_rejection_count += 1u;
+    return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
 
   metadata = *prom_slot_hfsm_metadata(slot);
@@ -587,11 +598,12 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
   prom_slot_hfsm_set_metadata(slot, &metadata);
 
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_READY) == 0u) {
-    return 0;
+    rt->slot_diag.overwrite_rejection_count += 1u;
+    return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
   rt->slot_diag.next_slot_id = slot_id;
   prom_slot_track_wip(rt);
-  return 1;
+  return 0;
 }
 
 static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot_id) {
@@ -2017,6 +2029,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t* fp16_a_upload = NULL;
   uint32_t* fp16_b_upload = NULL;
   int final_detail = 0;
+  int prepare_detail = 0;
   uint32_t request_async = 0u;
   uint32_t work_slot_id = 0u;
   uint64_t required_capacity_bytes = 0u;
@@ -2074,7 +2087,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       rt->in_flight_submit = 0u;
     } else {
       rt->slot_diag.inflight_rejection_count += 1u;
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
       return PROM_ERROR;
     }
   }
@@ -2175,15 +2188,16 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   required_capacity_bytes = (uint64_t)a_buffer_size + (uint64_t)b_buffer_size + (uint64_t)c_buffer_size;
   work_slot_id = rt->slot_diag.next_slot_id < 2u ? rt->slot_diag.next_slot_id : 0u;
-  if (!prom_slot_prepare_for_call(rt,
-                                  work_slot_id,
-                                  m,
-                                  n,
-                                  compute_k,
-                                  prom_slot_compute_layout_code(selected_path, compute_mode),
-                                  (uint32_t)compute_mode,
-                                  required_capacity_bytes)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_OVERWRITE_REJECTED);
+  prepare_detail = prom_slot_prepare_for_call(rt,
+                                              work_slot_id,
+                                              m,
+                                              n,
+                                              compute_k,
+                                              prom_slot_compute_layout_code(selected_path, compute_mode),
+                                              (uint32_t)compute_mode,
+                                              required_capacity_bytes);
+  if (prepare_detail != 0) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prepare_detail);
     return PROM_ERROR;
   }
   if (!prom_slot_swap_ready_to_current(rt, work_slot_id)) {
@@ -2197,6 +2211,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (packed_a_upload == NULL || packed_b_upload == NULL) {
       free(packed_a_upload);
       free(packed_b_upload);
+      prom_slot_mark_failure(rt, work_slot_id, PROM_ERROR);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
@@ -2210,6 +2225,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       free(packed_b_upload);
       free(fp16_a_upload);
       free(fp16_b_upload);
+      prom_slot_mark_failure(rt, work_slot_id, PROM_ERROR);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
@@ -2325,6 +2341,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
   if (vk_result != VK_SUCCESS) {
+    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
@@ -2333,6 +2350,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
   if (vk_result != VK_SUCCESS) {
+    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
@@ -2439,6 +2457,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+    prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     return PROM_ERROR;
   }
@@ -2507,14 +2526,26 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                          NULL);
   }
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
+    prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    return PROM_ERROR;
+  }
   vk_result = vkEndCommandBuffer(rt->command_buffer);
   if (vk_result != VK_SUCCESS) {
+    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
 
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
+    prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    return PROM_ERROR;
+  }
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
+    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
@@ -2523,8 +2554,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
+  if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
+    prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    return PROM_ERROR;
+  }
   vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
+    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
@@ -2757,7 +2794,7 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
   }
   if (rt->slot_diag.async_slot_id >= 0) {
     const uint32_t slot_id = (uint32_t)rt->slot_diag.async_slot_id;
-    if (!prom_slot_cleanup_to_empty(&rt->slots[slot_id])) {
+    if (!prom_slot_cleanup_to_empty(rt, &rt->slots[slot_id])) {
       prom_slot_mark_failure(rt, slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
       return PROM_ERROR;
     }
@@ -2844,6 +2881,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m29_layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
   out_diag->m29_capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
   out_diag->m29_inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
+  out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
   out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
   out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
   return PROM_OK;
