@@ -340,6 +340,41 @@ FACT(PrometheusReactor_Packed4TailAndRectangularCasesMatchScalarOracle)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+FACT(PrometheusReactor_Packed4AllMod4TailCombinationsMatchScalarOracle)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; packed4 mod-4 tail matrix cannot be asserted");
+    }
+
+    for (std::uint32_t m_mod = 0u; m_mod < 4u; ++m_mod) {
+        for (std::uint32_t n_mod = 0u; n_mod < 4u; ++n_mod) {
+            for (std::uint32_t k_mod = 0u; k_mod < 4u; ++k_mod) {
+                const std::uint32_t m = 8u + m_mod;
+                const std::uint32_t n = 8u + n_mod;
+                const std::uint32_t k = 8u + k_mod;
+                const std::vector<float> a = deterministic_matrix(m, k);
+                const std::vector<float> b = deterministic_matrix(k, n);
+                const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+                std::vector<float> c(m * n, 0.0f);
+                std::uint32_t stage = PROM_STAGE_NONE;
+                int detail = 0;
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                    "mod-4 tail combination should execute");
+                ASSERT_SEQUENCE_EQUAL(expected, c, "mod-4 tail combination must match scalar oracle exactly");
+            }
+        }
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_TRUE(diag.packed4_tail_count_total >= 1u, "tail counters should remain observable after mod-4 matrix sweep");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 FACT(PrometheusReactor_SgemmRejectsInvalidArguments)
 {
     std::uint32_t stage = PROM_STAGE_NONE;
