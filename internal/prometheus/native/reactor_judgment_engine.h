@@ -98,6 +98,69 @@ typedef struct prom_judgment_decision {
   uint32_t transfer_fallback_reason;
 } prom_judgment_decision;
 
+typedef enum prom_buffering_mode {
+  PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT = 1,
+  PROM_BUFFERING_MODE_PULL_LAG_PRESSURE = 2,
+  PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL = 3,
+  PROM_BUFFERING_MODE_NONE = 4,
+} prom_buffering_mode;
+
+typedef enum prom_buffering_reason_code {
+  PROM_BUFFERING_REASON_NONE = 0,
+  PROM_BUFFERING_REASON_FIXED_DOUBLE_SELECTED = 1,
+  PROM_BUFFERING_REASON_FIXED_DOUBLE_MEMORY_INSUFFICIENT = 2,
+  PROM_BUFFERING_REASON_PULL_LAG_SELECTED = 3,
+  PROM_BUFFERING_REASON_PULL_LAG_MEMORY_INSUFFICIENT = 4,
+  PROM_BUFFERING_REASON_PULL_LAG_LATE_STAGE_STARVATION = 5,
+  PROM_BUFFERING_REASON_PULL_LAG_MEMORY_EDGE_REJECTED = 6,
+  PROM_BUFFERING_REASON_PULL_LAG_VARIANCE_MISS = 7,
+  PROM_BUFFERING_REASON_PULL_LAG_COMPUTE_UNSTABLE = 8,
+  PROM_BUFFERING_REASON_PULL_LAG_WIP_WASTE_EXCEEDED = 9,
+  PROM_BUFFERING_REASON_SERIAL_JIT_SELECTED = 10,
+  PROM_BUFFERING_REASON_SERIAL_JIT_MEMORY_INSUFFICIENT = 11,
+  PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE = 12,
+} prom_buffering_reason_code;
+
+typedef enum prom_variance_class {
+  PROM_VARIANCE_LOW = 1,
+  PROM_VARIANCE_MODERATE = 2,
+  PROM_VARIANCE_HIGH = 3,
+} prom_variance_class;
+
+typedef enum prom_predictability_class {
+  PROM_PREDICTABILITY_STABLE = 1,
+  PROM_PREDICTABILITY_TRACKED = 2,
+  PROM_PREDICTABILITY_UNSTABLE = 3,
+} prom_predictability_class;
+
+typedef struct prom_buffering_selector_facts {
+  uint32_t memory_budget_slots_permille;
+  uint32_t required_fixed_slots_permille;
+  uint32_t required_pull_lag_peak_slots_permille;
+  uint32_t required_serial_slots_permille;
+  int32_t memory_headroom_slots_permille;
+  prom_variance_class transfer_variance_class;
+  prom_predictability_class compute_predictability_class;
+  uint32_t starvation_risk_high;
+  uint32_t pull_lag_wip_waste_exceeded;
+  uint32_t fallback_available;
+} prom_buffering_selector_facts;
+
+typedef struct prom_buffering_selector_decision {
+  uint32_t success;
+  prom_buffering_mode selected_mode;
+  prom_buffering_reason_code reason_code;
+  uint32_t fixed_feasible;
+  uint32_t pull_lag_feasible;
+  uint32_t serial_feasible;
+  uint32_t fixed_rejected;
+  uint32_t pull_lag_rejected;
+  uint32_t serial_rejected;
+  int fixed_score;
+  int pull_lag_score;
+  int serial_score;
+} prom_buffering_selector_decision;
+
 typedef struct prom_judgment_async_facts {
   uint32_t request_async;
   uint32_t in_flight;
@@ -121,6 +184,8 @@ void prom_judgment_engine_select_async_submission(const prom_judgment_async_fact
 prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,
                                                          const prom_policy_facts* facts,
                                                          const prom_policy_thresholds* thresholds);
+void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_facts* facts,
+                                                prom_buffering_selector_decision* out_decision);
 
 #ifdef __cplusplus
 }
