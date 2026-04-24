@@ -86,6 +86,12 @@ enum {
   PROM_DETAIL_SIZE_OVERFLOW = -6004,
   PROM_DETAIL_REUSE_IN_FLIGHT = -6005,
   PROM_DETAIL_CAPABILITY_MISMATCH = -6006,
+  PROM_DETAIL_SLOT_OVERWRITE_REJECTED = -6007,
+  PROM_DETAIL_SLOT_STALE_REJECTED = -6008,
+  PROM_DETAIL_SLOT_SWAP_REJECTED = -6009,
+  PROM_DETAIL_SLOT_INFLIGHT_REJECTED = -6010,
+  PROM_DETAIL_SLOT_INVALID_LAYOUT = -6011,
+  PROM_DETAIL_SLOT_ASYNC_OWNERSHIP = -6012,
   PROM_DETAIL_PATH_DIRECT = 6101,
   PROM_DETAIL_PATH_STAGED_UPLOAD = 6102,
   PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK = 6103,
@@ -188,6 +194,24 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t fp16_tolerance_pass;
   int fp16_fallback_reason_detail;
   uint32_t fp16_selected_candidate;
+  uint32_t m29_current_slot_id;
+  uint32_t m29_next_slot_id;
+  uint32_t m29_slot0_state;
+  uint32_t m29_slot1_state;
+  uint64_t m29_slot0_generation;
+  uint64_t m29_slot1_generation;
+  uint32_t m29_slot0_valid;
+  uint32_t m29_slot1_valid;
+  uint64_t m29_swap_count;
+  uint64_t m29_max_wip_depth;
+  uint64_t m29_overwrite_rejection_count;
+  uint64_t m29_stale_buffer_rejection_count;
+  uint64_t m29_shape_invalidation_count;
+  uint64_t m29_layout_invalidation_count;
+  uint64_t m29_capacity_invalidation_count;
+  uint64_t m29_inflight_rejection_count;
+  int m29_failure_slot_id;
+  int m29_failure_reason;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
