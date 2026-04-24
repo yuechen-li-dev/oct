@@ -1,0 +1,8 @@
+[M25FinalRecommendation {
+    BestOverallStrategy: "E-pull-lag-comp"
+    BestUnderJitter: "B-fixed-double"
+    AdaptiveKanbanWorthIt: "only-if-jitter-recovery-is-product-critical"
+    TripleBufferJustified: "no-default-double-buffer-preferred"
+    CarryForward: "Carry forward pull-based lag compensation as default controller shape with adaptive kanban escape hatch and explicit memory-pressure metric gating."
+    RejectOrDefer: "Reject serial JIT and naive push lookahead as defaults; defer triple buffering to guarded temporary mode only under sustained transfer shock."
+}]

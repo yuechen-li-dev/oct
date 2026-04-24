@@ -1,0 +1,10 @@
+[M25AdaptiveKanbanTable {
+    Regime: ["stable-balanced", "transfer-bound", "compute-bound", "jittery-transfer", "burst-shock", "calm-then-burst"]
+    AdaptiveProductScore: [-78, -628, 46, -78, -180, -248]
+    PullProductScore: [-78, -628, 65, -78, -180, -248]
+    FixedDoubleProductScore: [-78, -628, -57, -78, -180, -248]
+    AdaptiveWipCapChanges: [1, 1, 1, 1, 1, 1]
+    AdaptiveModeTransitions: [48, 48, 2, 32, 48, 48]
+    AdaptiveStarvation: [224, 1457, 22, 224, 444, 597]
+    AdaptiveReadyIdle: [0, 0, 168, 0, 0, 0]
+}]

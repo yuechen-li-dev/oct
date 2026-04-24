@@ -1,0 +1,75 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M25HasAllRequiredStrategies() -> Void {
+    let strategies = M25Strategies()
+    Assert.Equal(Len(strategies), 6, "M25 must compare six required strategies")
+}
+
+[Fact]
+fn M25RunsAllRegimesAndStrategies() -> Void {
+    let rows = M25RunAll()
+    Assert.Equal(Len(rows), 36, "6 regimes x 6 strategies expected")
+}
+
+[Fact]
+fn M25PullBeatsPushOnComputeBoundWipWaste() -> Void {
+    let rows = M25RunAll()
+    let pull = M25ScoreFor(rows, "compute-bound", "E-pull-lag-comp")
+    let push = M25ScoreFor(rows, "compute-bound", "D-push-lookahead")
+    Assert.True(pull >= push, "pull lag compensation should not underperform push lookahead on compute-bound WIP-heavy regime")
+}
+
+[Fact]
+fn M25AdaptiveRespondsToShock() -> Void {
+    let rows = M25RunAll()
+    let capChanges = M25MetricFor(rows, "calm-then-burst", "F-adaptive-kanban", "cap_changes")
+    let modeTransitions = M25MetricFor(rows, "calm-then-burst", "F-adaptive-kanban", "mode_transitions")
+    Assert.True(capChanges > 0, "adaptive kanban should change WIP cap in calm-then-burst rake")
+    Assert.True(modeTransitions > 0, "adaptive kanban should show mode transitions in calm-then-burst rake")
+}
+
+[Fact]
+fn M25FinalRecommendationIsExplicit() -> Void {
+    let rows = M25RunAll()
+    let rec = M25FinalRecommendationFrom(rows)
+    Assert.True(Len(rec.BestOverallStrategy) > 0, "best overall strategy must be explicit")
+    Assert.True(Len(rec.BestUnderJitter) > 0, "best jitter strategy must be explicit")
+    Assert.True(Contains(rec.RejectOrDefer, "Reject"), "final recommendation must explicitly reject/defer non-viable defaults")
+}
+
+[Artifact]
+fn EmitM25StrategyComparison() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_strategy_comparison.octagon", [M25StrategyComparisonTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM25WipInventoryTable() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_wip_inventory_table.octagon", [M25WipInventoryTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM25StarvationTable() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_starvation_table.octagon", [M25StarvationTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM25JitterStressTable() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_jitter_stress_table.octagon", [M25JitterStressTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM25AdaptiveKanbanTable() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_adaptive_kanban_table.octagon", [M25AdaptiveKanbanTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM25FinalRecommendation() -> Void {
+    let rows = M25RunAll()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M25/m25_final_recommendation.octagon", [M25FinalRecommendationFrom(rows)])
+}
