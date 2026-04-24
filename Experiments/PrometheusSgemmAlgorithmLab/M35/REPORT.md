@@ -64,10 +64,10 @@ No raw-flag lifecycle bypass was introduced.
 
 `PrometheusSgemmPolicyDiagnostics` now includes M35 selector observability:
 
-- selected mode, reason code, feasibility/rejection flags, per-mode scores,
+- selected mode, final reason code, per-mode rejection reasons, feasibility/rejection flags, per-mode scores,
 - transition/rejection counters,
-- memory budget/required/headroom fields,
-- pull-lag timing and safety counters,
+- memory budget/required plus candidate-specific headroom fields (`fixed_double`, `pull_lag`, `serial_jit`),
+- pull-lag proxy-unit counters (explicitly not wall-clock time),
 - serial one-at-a-time counters.
 
 ## 6) Tests added
@@ -76,16 +76,20 @@ No raw-flag lifecycle bypass was introduced.
    - fixed default selection,
    - pull-lag pressure selection,
    - serial fallback selection,
-   - explicit no-feasible-mode hard failure.
+   - explicit no-feasible-mode hard failure,
+   - candidate-specific headroom score accounting,
+   - per-mode reason preservation during serial fallback,
+   - per-mode reason population on no-feasible hard failure.
 
 2. **Runtime integration tests** (`reactor_m35_buffering_selector_tests.cpp`):
    - fixed-double remains default in feasible regime,
    - serial survival selection and WIP bound,
-   - explicit no-feasible-mode runtime failure detail.
+   - explicit no-feasible-mode runtime failure detail,
+   - exported diagnostics include candidate headroom/per-mode reasons/proxy-unit fields.
 
 ## 7) Deferred scope and follow-up notes
 
-- Pull-lag timing counters are currently lightweight runtime telemetry hooks, not a full predictive scheduler framework.
+- Pull-lag proxy-unit counters are structural work-unit telemetry, not wall-clock time or benchmark timing.
 - Memory budget facts are policy-level gating estimates, not allocator-backed hard byte accounting.
 - These deferrals are intentional and consistent with M35 non-goals.
 

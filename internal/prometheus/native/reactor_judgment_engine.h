@@ -138,7 +138,9 @@ typedef struct prom_buffering_selector_facts {
   uint32_t required_fixed_slots_permille;
   uint32_t required_pull_lag_peak_slots_permille;
   uint32_t required_serial_slots_permille;
-  int32_t memory_headroom_slots_permille;
+  int32_t fixed_double_headroom_slots_permille;
+  int32_t pull_lag_headroom_slots_permille;
+  int32_t serial_jit_headroom_slots_permille;
   prom_variance_class transfer_variance_class;
   prom_predictability_class compute_predictability_class;
   uint32_t starvation_risk_high;
@@ -150,6 +152,10 @@ typedef struct prom_buffering_selector_decision {
   uint32_t success;
   prom_buffering_mode selected_mode;
   prom_buffering_reason_code reason_code;
+  prom_buffering_reason_code final_reason_code;
+  prom_buffering_reason_code fixed_double_rejection_reason;
+  prom_buffering_reason_code pull_lag_rejection_reason;
+  prom_buffering_reason_code serial_jit_rejection_reason;
   uint32_t fixed_feasible;
   uint32_t pull_lag_feasible;
   uint32_t serial_feasible;
