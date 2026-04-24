@@ -1,0 +1,8 @@
+[M25JitterStressTable {
+    Regime: ["jittery-transfer", "jittery-transfer", "jittery-transfer", "jittery-transfer", "jittery-transfer", "jittery-transfer", "burst-shock", "burst-shock", "burst-shock", "burst-shock", "burst-shock", "burst-shock", "calm-then-burst", "calm-then-burst", "calm-then-burst", "calm-then-burst", "calm-then-burst", "calm-then-burst"]
+    Strategy: ["A-serial-jit", "B-fixed-double", "C-fixed-triple", "D-push-lookahead", "E-pull-lag-comp", "F-adaptive-kanban", "A-serial-jit", "B-fixed-double", "C-fixed-triple", "D-push-lookahead", "E-pull-lag-comp", "F-adaptive-kanban", "A-serial-jit", "B-fixed-double", "C-fixed-triple", "D-push-lookahead", "E-pull-lag-comp", "F-adaptive-kanban"]
+    ComputeStarvationTime: [960, 224, 224, 224, 224, 224, 1180, 444, 444, 444, 444, 444, 1333, 597, 597, 597, 597, 597]
+    ReadyButUnusedTime: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    SafetyMarginUsed: [0, 24, 24, 0, 48, 186, 0, 24, 24, 0, 48, 186, 0, 24, 24, 0, 48, 186]
+    ProductScore: [-406, -78, -78, -78, -78, -78, -499, -180, -180, -180, -180, -180, -563, -248, -248, -248, -248, -248]
+}]
