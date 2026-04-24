@@ -1,0 +1,52 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M33ScenarioSetIsCompactAndComplete() -> Void {
+    let scenarios = M33Scenarios()
+    Assert.Equal(Len(scenarios), 10, "M33 must stay compact with 10 required scenarios")
+}
+
+[Fact]
+fn M33FixedDoubleWinsWhenMemoryPlentiful() -> Void {
+    let rows = M33DecisionRows()
+    Assert.Equal(rows[0].SelectedMode, "FixedDoubleDefault", "plentiful + low variance should keep fixed-double default")
+    Assert.Equal(rows[1].SelectedMode, "FixedDoubleDefault", "plentiful + high variance should keep fixed-double default")
+}
+
+[Fact]
+fn M33PullLagOnlyWinsInGuardedPressureCase() -> Void {
+    let rows = M33DecisionRows()
+    Assert.Equal(rows[7].SelectedMode, "PullLagPressure", "double infeasible + predictable low variance should enable pull-lag pressure mode")
+}
+
+[Fact]
+fn M33SerialJitSurvivalAndHardFailureAreExplicit() -> Void {
+    let rows = M33DecisionRows()
+    Assert.Equal(rows[5].SelectedMode, "SerialJitSurvival", "critical memory should fall back to serial-jit survival")
+    Assert.Equal(rows[9].SelectedMode, "NO_BUFFERING_MODE_FEASIBLE", "hard failure scenario must fail explicitly")
+    Assert.Equal(rows[9].FallbackReason, "NO_BUFFERING_MODE_FEASIBLE", "hard failure reason code must be explicit")
+}
+
+[Artifact]
+fn EmitM33PolicyScenarioTable() -> Void {
+    let rows = M33DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M33/m33_policy_scenario_table.octagon", [M33PolicyScenarioTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM33ModeScoreTable() -> Void {
+    let rows = M33DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M33/m33_mode_score_table.octagon", [M33ModeScoreTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM33FallbackReasonTable() -> Void {
+    let rows = M33DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M33/m33_fallback_reason_table.octagon", [M33FallbackReasonTableFrom(rows)])
+}
+
+[Artifact]
+fn EmitM33FinalPolicyContract() -> Void {
+    let rows = M33DecisionRows()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M33/m33_final_policy_contract.octagon", [M33FinalPolicyContractFrom(rows)])
+}

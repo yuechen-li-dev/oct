@@ -1,0 +1,398 @@
+package PrometheusSgemmAlgorithmLab
+
+record M33Scenario {
+    CaseName: String
+    MemoryBudgetSlots: Int
+    RequiredDoubleSlots: Int
+    RequiredPullLagPeakSlots: Int
+    RequiredSerialSlots: Int
+    MemoryClass: String
+    TransferVarianceClass: String
+    ComputePredictabilityClass: String
+    ComputeDominanceClass: String
+    StarvationRisk: String
+    FallbackAvailable: Bool
+}
+
+record M33FeasibilityFlags {
+    FixedDoubleFeasible: Bool
+    PullLagFeasible: Bool
+    SerialJitFeasible: Bool
+}
+
+record M33ModeScores {
+    FixedDoubleDefault: Int
+    PullLagPressure: Int
+    SerialJitSurvival: Int
+}
+
+record M33DecisionResult {
+    CaseName: String
+    SelectedMode: String
+    RejectedModes: String[]
+    FallbackReason: String
+    FeasibilityFlags: M33FeasibilityFlags
+    MemoryHeadroomSlots: Int
+    TransferVarianceClass: String
+    ComputePredictabilityClass: String
+    StarvationRisk: String
+    Scores: M33ModeScores
+    DecisionRationale: String
+}
+
+record M33PolicyScenarioTable {
+    CaseName: String[]
+    MemoryBudgetSlots: Int[]
+    RequiredDoubleSlots: Int[]
+    RequiredPullLagPeakSlots: Int[]
+    RequiredSerialSlots: Int[]
+    MemoryHeadroomSlots: Int[]
+    MemoryClass: String[]
+    TransferVarianceClass: String[]
+    ComputePredictabilityClass: String[]
+    ComputeDominanceClass: String[]
+    StarvationRisk: String[]
+    FallbackAvailable: Bool[]
+    FixedDoubleFeasible: Bool[]
+    PullLagFeasible: Bool[]
+    SerialJitFeasible: Bool[]
+    SelectedMode: String[]
+}
+
+record M33ModeScoreTable {
+    CaseName: String[]
+    FixedDoubleScore: Int[]
+    PullLagScore: Int[]
+    SerialJitScore: Int[]
+    SelectedMode: String[]
+    DecisionRationale: String[]
+}
+
+record M33FallbackReasonTable {
+    CaseName: String[]
+    RejectedModes: String[][]
+    FallbackReason: String[]
+}
+
+record M33FinalPolicyContract {
+    M32Recap: String
+    FixedDoubleDefault: String
+    PullLagPressure: String
+    SerialJitSurvival: String
+    HardGates: String
+    RequiredReasonCodes: String[]
+    DiagnosticsRequired: String
+    AdditionalBroadRakeNeeded: String
+    ImplementationMilestoneBuild: String
+}
+
+fn M33Max(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+
+fn M33MemoryHeadroomSlots(s: M33Scenario) -> Int {
+    return s.MemoryBudgetSlots - s.RequiredDoubleSlots
+}
+
+fn M33FeasibilityFor(s: M33Scenario) -> M33FeasibilityFlags {
+    return M33FeasibilityFlags {
+        FixedDoubleFeasible: s.MemoryBudgetSlots >= s.RequiredDoubleSlots
+        PullLagFeasible: s.MemoryBudgetSlots >= s.RequiredPullLagPeakSlots
+        SerialJitFeasible: s.MemoryBudgetSlots >= s.RequiredSerialSlots and s.FallbackAvailable
+    }
+}
+
+fn M33TransferVariancePenalty(variance: String) -> Int {
+    return switch {
+        case variance == "low" => 0
+        case variance == "moderate" => 8
+        else => 24
+    }
+}
+
+fn M33PullLagPredictabilityPenalty(predictability: String) -> Int {
+    return switch {
+        case predictability == "stable" => 0
+        else => 16
+    }
+}
+
+fn M33FixedDoubleScore(s: M33Scenario, f: M33FeasibilityFlags) -> Int {
+    if not f.FixedDoubleFeasible { return -100000 }
+
+    let memoryBonus = switch {
+        case s.MemoryClass == "plentiful" => 34
+        case s.MemoryClass == "tight" => 14
+        else => -30
+    }
+
+    let varianceBonus = switch {
+        case s.TransferVarianceClass == "high" => 10
+        else => 4
+    }
+
+    let starvationBonus = switch {
+        case s.StarvationRisk == "high" => 6
+        else => 2
+    }
+
+    return 80 + memoryBonus + varianceBonus + starvationBonus
+}
+
+fn M33PullLagScore(s: M33Scenario, f: M33FeasibilityFlags) -> Int {
+    if not f.PullLagFeasible { return -100000 }
+
+    let memoryPressureBonus = switch {
+        case s.MemoryClass == "tight" => 8
+        case s.MemoryClass == "critical" => 18
+        else => -12
+    }
+
+    let variancePenalty = M33TransferVariancePenalty(s.TransferVarianceClass)
+    let predictabilityPenalty = M33PullLagPredictabilityPenalty(s.ComputePredictabilityClass)
+
+    let dominanceBonus = switch {
+        case s.ComputeDominanceClass == "compute_dominant" => 10
+        case s.ComputeDominanceClass == "balanced" => 4
+        else => -6
+    }
+
+    let starvationPenalty = switch {
+        case s.StarvationRisk == "high" => 12
+        case s.StarvationRisk == "moderate" => 5
+        else => 0
+    }
+
+    return 78 + memoryPressureBonus + dominanceBonus - variancePenalty - predictabilityPenalty - starvationPenalty
+}
+
+fn M33SerialJitScore(s: M33Scenario, f: M33FeasibilityFlags) -> Int {
+    if not f.SerialJitFeasible { return -100000 }
+
+    let memoryPressureBonus = switch {
+        case s.MemoryClass == "critical" => 48
+        case s.MemoryClass == "tight" => 10
+        else => -12
+    }
+
+    let transferBonus = switch {
+        case s.TransferVarianceClass == "high" => 16
+        case s.TransferVarianceClass == "moderate" => 8
+        else => 2
+    }
+
+    return 34 + memoryPressureBonus + transferBonus
+}
+
+fn M33SelectMode(s: M33Scenario, f: M33FeasibilityFlags, scores: M33ModeScores) -> String {
+    return when utility {
+        case "FixedDoubleDefault" when f.FixedDoubleFeasible score scores.FixedDoubleDefault
+        case "PullLagPressure" when f.PullLagFeasible and s.TransferVarianceClass != "high" and s.ComputePredictabilityClass == "stable" score scores.PullLagPressure
+        case "SerialJitSurvival" when f.SerialJitFeasible score scores.SerialJitSurvival
+        else "NO_BUFFERING_MODE_FEASIBLE"
+    }
+}
+
+fn M33RejectedModes(selected: String) -> String[] {
+    return switch {
+        case selected == "FixedDoubleDefault" => ["PullLagPressure", "SerialJitSurvival"]
+        case selected == "PullLagPressure" => ["FixedDoubleDefault", "SerialJitSurvival"]
+        case selected == "SerialJitSurvival" => ["FixedDoubleDefault", "PullLagPressure"]
+        else => ["FixedDoubleDefault", "PullLagPressure", "SerialJitSurvival"]
+    }
+}
+
+fn M33FallbackReason(s: M33Scenario, f: M33FeasibilityFlags, selected: String) -> String {
+    if selected == "FixedDoubleDefault" { return "none" }
+    if selected == "PullLagPressure" { return "FIXED_DOUBLE_MEMORY_INSUFFICIENT" }
+
+    return switch {
+        case not f.FixedDoubleFeasible and not f.PullLagFeasible and not f.SerialJitFeasible => "NO_BUFFERING_MODE_FEASIBLE"
+        case not f.FixedDoubleFeasible and f.PullLagFeasible and s.TransferVarianceClass == "high" => "PULL_LAG_VARIANCE_TOO_HIGH"
+        case not f.FixedDoubleFeasible and f.PullLagFeasible and s.ComputePredictabilityClass != "stable" => "PULL_LAG_COMPUTE_UNPREDICTABLE"
+        case not f.FixedDoubleFeasible and not f.PullLagFeasible and f.SerialJitFeasible => "PULL_LAG_MEMORY_INSUFFICIENT"
+        case not f.FixedDoubleFeasible and f.PullLagFeasible and f.SerialJitFeasible and s.TransferVarianceClass != "high" and s.ComputePredictabilityClass == "stable" => "PULL_LAG_NOT_TOP_UTILITY"
+        case not f.FixedDoubleFeasible => "FIXED_DOUBLE_MEMORY_INSUFFICIENT"
+        case not f.PullLagFeasible => "PULL_LAG_MEMORY_INSUFFICIENT"
+        case not f.SerialJitFeasible => "SERIAL_JIT_MEMORY_INSUFFICIENT"
+        else => "SERIAL_JIT_SURVIVAL_MODE"
+    }
+}
+
+fn M33DecisionRationale(s: M33Scenario, selected: String, reason: String) -> String {
+    return switch {
+        case selected == "FixedDoubleDefault" => "fixed double selected: memory headroom sufficient and robust normal-throughput path preferred"
+        case selected == "PullLagPressure" => "pull-lag selected: memory tight, variance not high, compute predictable, and fixed double memory gate failed"
+        case selected == "SerialJitSurvival" => "serial jit selected: survival fallback after fixed double and pull-lag were rejected (" + reason + ")"
+        else => "explicit hard failure: no buffering mode feasible under provided memory and fallback constraints"
+    }
+}
+
+fn M33DecisionForScenario(s: M33Scenario) -> M33DecisionResult {
+    let feasibility = M33FeasibilityFor(s)
+    let scores = M33ModeScores {
+        FixedDoubleDefault: M33FixedDoubleScore(s, feasibility)
+        PullLagPressure: M33PullLagScore(s, feasibility)
+        SerialJitSurvival: M33SerialJitScore(s, feasibility)
+    }
+
+    let selected = M33SelectMode(s, feasibility, scores)
+    let reason = M33FallbackReason(s, feasibility, selected)
+
+    return M33DecisionResult {
+        CaseName: s.CaseName
+        SelectedMode: selected
+        RejectedModes: M33RejectedModes(selected)
+        FallbackReason: reason
+        FeasibilityFlags: feasibility
+        MemoryHeadroomSlots: M33MemoryHeadroomSlots(s)
+        TransferVarianceClass: s.TransferVarianceClass
+        ComputePredictabilityClass: s.ComputePredictabilityClass
+        StarvationRisk: s.StarvationRisk
+        Scores: scores
+        DecisionRationale: M33DecisionRationale(s, selected, reason)
+    }
+}
+
+fn M33Scenarios() -> M33Scenario[] {
+    return [
+        M33Scenario { CaseName: "plentiful-low-variance" MemoryBudgetSlots: 4 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "plentiful" TransferVarianceClass: "low" ComputePredictabilityClass: "stable" ComputeDominanceClass: "compute_dominant" StarvationRisk: "low" FallbackAvailable: true },
+        M33Scenario { CaseName: "plentiful-high-variance" MemoryBudgetSlots: 4 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "plentiful" TransferVarianceClass: "high" ComputePredictabilityClass: "stable" ComputeDominanceClass: "balanced" StarvationRisk: "moderate" FallbackAvailable: true },
+        M33Scenario { CaseName: "tight-low-variance" MemoryBudgetSlots: 2 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "tight" TransferVarianceClass: "low" ComputePredictabilityClass: "stable" ComputeDominanceClass: "compute_dominant" StarvationRisk: "low" FallbackAvailable: true },
+        M33Scenario { CaseName: "tight-moderate-variance" MemoryBudgetSlots: 2 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "tight" TransferVarianceClass: "moderate" ComputePredictabilityClass: "stable" ComputeDominanceClass: "balanced" StarvationRisk: "moderate" FallbackAvailable: true },
+        M33Scenario { CaseName: "tight-high-variance" MemoryBudgetSlots: 2 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "tight" TransferVarianceClass: "high" ComputePredictabilityClass: "stable" ComputeDominanceClass: "transfer_sensitive" StarvationRisk: "high" FallbackAvailable: true },
+        M33Scenario { CaseName: "critical-low-variance" MemoryBudgetSlots: 1 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "critical" TransferVarianceClass: "low" ComputePredictabilityClass: "stable" ComputeDominanceClass: "compute_dominant" StarvationRisk: "moderate" FallbackAvailable: true },
+        M33Scenario { CaseName: "critical-high-variance" MemoryBudgetSlots: 1 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "critical" TransferVarianceClass: "high" ComputePredictabilityClass: "unstable" ComputeDominanceClass: "transfer_sensitive" StarvationRisk: "high" FallbackAvailable: true },
+        M33Scenario { CaseName: "double-infeasible-pull-lag-feasible" MemoryBudgetSlots: 2 RequiredDoubleSlots: 3 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "tight" TransferVarianceClass: "low" ComputePredictabilityClass: "stable" ComputeDominanceClass: "compute_dominant" StarvationRisk: "low" FallbackAvailable: true },
+        M33Scenario { CaseName: "pull-lag-infeasible-serial-feasible" MemoryBudgetSlots: 1 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 2 RequiredSerialSlots: 1 MemoryClass: "critical" TransferVarianceClass: "moderate" ComputePredictabilityClass: "stable" ComputeDominanceClass: "balanced" StarvationRisk: "moderate" FallbackAvailable: true },
+        M33Scenario { CaseName: "no-feasible-mode-hard-failure" MemoryBudgetSlots: 0 RequiredDoubleSlots: 2 RequiredPullLagPeakSlots: 1 RequiredSerialSlots: 1 MemoryClass: "critical" TransferVarianceClass: "high" ComputePredictabilityClass: "unstable" ComputeDominanceClass: "transfer_sensitive" StarvationRisk: "high" FallbackAvailable: false }
+    ]
+}
+
+fn M33DecisionRows() -> M33DecisionResult[] {
+    let scenarios = M33Scenarios()
+    var rows = [M33DecisionForScenario(scenarios[0])]
+    for i in 1 .. Len(scenarios) {
+        rows = Append(rows, M33DecisionForScenario(scenarios[i]))
+    }
+    return rows
+}
+
+fn M33PolicyScenarioTableFrom(rows: M33DecisionResult[]) -> M33PolicyScenarioTable {
+    let scenarios = M33Scenarios()
+
+    var caseName = [rows[0].CaseName]
+    var memoryBudgetSlots = [scenarios[0].MemoryBudgetSlots]
+    var requiredDoubleSlots = [scenarios[0].RequiredDoubleSlots]
+    var requiredPullLagPeakSlots = [scenarios[0].RequiredPullLagPeakSlots]
+    var requiredSerialSlots = [scenarios[0].RequiredSerialSlots]
+    var memoryHeadroomSlots = [rows[0].MemoryHeadroomSlots]
+    var memoryClass = [scenarios[0].MemoryClass]
+    var transferVarianceClass = [rows[0].TransferVarianceClass]
+    var computePredictabilityClass = [rows[0].ComputePredictabilityClass]
+    var computeDominanceClass = [scenarios[0].ComputeDominanceClass]
+    var starvationRisk = [rows[0].StarvationRisk]
+    var fallbackAvailable = [scenarios[0].FallbackAvailable]
+    var fixedDoubleFeasible = [rows[0].FeasibilityFlags.FixedDoubleFeasible]
+    var pullLagFeasible = [rows[0].FeasibilityFlags.PullLagFeasible]
+    var serialJitFeasible = [rows[0].FeasibilityFlags.SerialJitFeasible]
+    var selectedMode = [rows[0].SelectedMode]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        memoryBudgetSlots = Append(memoryBudgetSlots, scenarios[i].MemoryBudgetSlots)
+        requiredDoubleSlots = Append(requiredDoubleSlots, scenarios[i].RequiredDoubleSlots)
+        requiredPullLagPeakSlots = Append(requiredPullLagPeakSlots, scenarios[i].RequiredPullLagPeakSlots)
+        requiredSerialSlots = Append(requiredSerialSlots, scenarios[i].RequiredSerialSlots)
+        memoryHeadroomSlots = Append(memoryHeadroomSlots, rows[i].MemoryHeadroomSlots)
+        memoryClass = Append(memoryClass, scenarios[i].MemoryClass)
+        transferVarianceClass = Append(transferVarianceClass, rows[i].TransferVarianceClass)
+        computePredictabilityClass = Append(computePredictabilityClass, rows[i].ComputePredictabilityClass)
+        computeDominanceClass = Append(computeDominanceClass, scenarios[i].ComputeDominanceClass)
+        starvationRisk = Append(starvationRisk, rows[i].StarvationRisk)
+        fallbackAvailable = Append(fallbackAvailable, scenarios[i].FallbackAvailable)
+        fixedDoubleFeasible = Append(fixedDoubleFeasible, rows[i].FeasibilityFlags.FixedDoubleFeasible)
+        pullLagFeasible = Append(pullLagFeasible, rows[i].FeasibilityFlags.PullLagFeasible)
+        serialJitFeasible = Append(serialJitFeasible, rows[i].FeasibilityFlags.SerialJitFeasible)
+        selectedMode = Append(selectedMode, rows[i].SelectedMode)
+    }
+
+    return M33PolicyScenarioTable {
+        CaseName: caseName
+        MemoryBudgetSlots: memoryBudgetSlots
+        RequiredDoubleSlots: requiredDoubleSlots
+        RequiredPullLagPeakSlots: requiredPullLagPeakSlots
+        RequiredSerialSlots: requiredSerialSlots
+        MemoryHeadroomSlots: memoryHeadroomSlots
+        MemoryClass: memoryClass
+        TransferVarianceClass: transferVarianceClass
+        ComputePredictabilityClass: computePredictabilityClass
+        ComputeDominanceClass: computeDominanceClass
+        StarvationRisk: starvationRisk
+        FallbackAvailable: fallbackAvailable
+        FixedDoubleFeasible: fixedDoubleFeasible
+        PullLagFeasible: pullLagFeasible
+        SerialJitFeasible: serialJitFeasible
+        SelectedMode: selectedMode
+    }
+}
+
+fn M33ModeScoreTableFrom(rows: M33DecisionResult[]) -> M33ModeScoreTable {
+    var caseName = [rows[0].CaseName]
+    var fixedDoubleScore = [rows[0].Scores.FixedDoubleDefault]
+    var pullLagScore = [rows[0].Scores.PullLagPressure]
+    var serialJitScore = [rows[0].Scores.SerialJitSurvival]
+    var selectedMode = [rows[0].SelectedMode]
+    var rationale = [rows[0].DecisionRationale]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        fixedDoubleScore = Append(fixedDoubleScore, rows[i].Scores.FixedDoubleDefault)
+        pullLagScore = Append(pullLagScore, rows[i].Scores.PullLagPressure)
+        serialJitScore = Append(serialJitScore, rows[i].Scores.SerialJitSurvival)
+        selectedMode = Append(selectedMode, rows[i].SelectedMode)
+        rationale = Append(rationale, rows[i].DecisionRationale)
+    }
+
+    return M33ModeScoreTable {
+        CaseName: caseName
+        FixedDoubleScore: fixedDoubleScore
+        PullLagScore: pullLagScore
+        SerialJitScore: serialJitScore
+        SelectedMode: selectedMode
+        DecisionRationale: rationale
+    }
+}
+
+fn M33FallbackReasonTableFrom(rows: M33DecisionResult[]) -> M33FallbackReasonTable {
+    var caseName = [rows[0].CaseName]
+    var rejectedModes = [rows[0].RejectedModes]
+    var fallbackReason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        rejectedModes = Append(rejectedModes, rows[i].RejectedModes)
+        fallbackReason = Append(fallbackReason, rows[i].FallbackReason)
+    }
+
+    return M33FallbackReasonTable {
+        CaseName: caseName
+        RejectedModes: rejectedModes
+        FallbackReason: fallbackReason
+    }
+}
+
+fn M33FinalPolicyContractFrom(rows: M33DecisionResult[]) -> M33FinalPolicyContract {
+    let hardFailureSelected = rows[9].SelectedMode
+    let hardFailureReason = rows[9].FallbackReason
+
+    return M33FinalPolicyContract {
+        M32Recap: "M32 kept fixed-double as default, revived pull-lag only as guarded pressure mode, and retained serial-jit as survival fallback while deferring fixed-triple, push-lookahead, and broad adaptive-kanban work"
+        FixedDoubleDefault: "Select FixedDoubleDefault whenever fixed-double is feasible and memory class is plentiful or tight without hard-pressure failure"
+        PullLagPressure: "Select PullLagPressure only when fixed-double is memory-infeasible, pull-lag is memory-feasible, transfer variance is low/moderate, and compute predictability is stable"
+        SerialJitSurvival: "Select SerialJitSurvival when fixed-double and pull-lag are blocked by memory or safety gates and serial fallback remains feasible"
+        HardGates: "Reject modes on memory infeasibility first; additionally reject pull-lag on high transfer variance or unstable compute predictability"
+        RequiredReasonCodes: ["FIXED_DOUBLE_MEMORY_INSUFFICIENT", "PULL_LAG_MEMORY_INSUFFICIENT", "PULL_LAG_VARIANCE_TOO_HIGH", "PULL_LAG_COMPUTE_UNPREDICTABLE", "SERIAL_JIT_MEMORY_INSUFFICIENT", "NO_BUFFERING_MODE_FEASIBLE"]
+        DiagnosticsRequired: "Each decision must emit selected mode, rejected modes, memory feasibility flags, score per mode, starvation-risk class, and explicit fallback reason"
+        AdditionalBroadRakeNeeded: "no; compact scenario table is sufficient unless runtime telemetry contradicts these policy gates"
+        ImplementationMilestoneBuild: "runtime judgment engine that computes policy facts, evaluates when-utility gates+scores for the three retained modes, and emits mandatory reason-code diagnostics including " + hardFailureSelected + "/" + hardFailureReason + " on hard failure"
+    }
+}

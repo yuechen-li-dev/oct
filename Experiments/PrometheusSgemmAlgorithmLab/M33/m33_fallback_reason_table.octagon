@@ -1,0 +1,5 @@
+[M33FallbackReasonTable {
+    CaseName: ["plentiful-low-variance", "plentiful-high-variance", "tight-low-variance", "tight-moderate-variance", "tight-high-variance", "critical-low-variance", "critical-high-variance", "double-infeasible-pull-lag-feasible", "pull-lag-infeasible-serial-feasible", "no-feasible-mode-hard-failure"]
+    RejectedModes: [["PullLagPressure", "SerialJitSurvival"], ["PullLagPressure", "SerialJitSurvival"], ["PullLagPressure", "SerialJitSurvival"], ["PullLagPressure", "SerialJitSurvival"], ["PullLagPressure", "SerialJitSurvival"], ["FixedDoubleDefault", "PullLagPressure"], ["FixedDoubleDefault", "PullLagPressure"], ["FixedDoubleDefault", "SerialJitSurvival"], ["FixedDoubleDefault", "PullLagPressure"], ["FixedDoubleDefault", "PullLagPressure", "SerialJitSurvival"]]
+    FallbackReason: ["none", "none", "none", "none", "none", "PULL_LAG_MEMORY_INSUFFICIENT", "PULL_LAG_MEMORY_INSUFFICIENT", "FIXED_DOUBLE_MEMORY_INSUFFICIENT", "PULL_LAG_MEMORY_INSUFFICIENT", "NO_BUFFERING_MODE_FEASIBLE"]
+}]

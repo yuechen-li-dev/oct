@@ -1,0 +1,11 @@
+[M33FinalPolicyContract {
+    M32Recap: "M32 kept fixed-double as default, revived pull-lag only as guarded pressure mode, and retained serial-jit as survival fallback while deferring fixed-triple, push-lookahead, and broad adaptive-kanban work"
+    FixedDoubleDefault: "Select FixedDoubleDefault whenever fixed-double is feasible and memory class is plentiful or tight without hard-pressure failure"
+    PullLagPressure: "Select PullLagPressure only when fixed-double is memory-infeasible, pull-lag is memory-feasible, transfer variance is low/moderate, and compute predictability is stable"
+    SerialJitSurvival: "Select SerialJitSurvival when fixed-double and pull-lag are blocked by memory or safety gates and serial fallback remains feasible"
+    HardGates: "Reject modes on memory infeasibility first; additionally reject pull-lag on high transfer variance or unstable compute predictability"
+    RequiredReasonCodes: ["FIXED_DOUBLE_MEMORY_INSUFFICIENT", "PULL_LAG_MEMORY_INSUFFICIENT", "PULL_LAG_VARIANCE_TOO_HIGH", "PULL_LAG_COMPUTE_UNPREDICTABLE", "SERIAL_JIT_MEMORY_INSUFFICIENT", "NO_BUFFERING_MODE_FEASIBLE"]
+    DiagnosticsRequired: "Each decision must emit selected mode, rejected modes, memory feasibility flags, score per mode, starvation-risk class, and explicit fallback reason"
+    AdditionalBroadRakeNeeded: "no; compact scenario table is sufficient unless runtime telemetry contradicts these policy gates"
+    ImplementationMilestoneBuild: "runtime judgment engine that computes policy facts, evaluates when-utility gates+scores for the three retained modes, and emits mandatory reason-code diagnostics including NO_BUFFERING_MODE_FEASIBLE/NO_BUFFERING_MODE_FEASIBLE on hard failure"
+}]
