@@ -384,6 +384,7 @@ namespace marionette::tests
             }
 
             ++executedCount;
+            std::cout << "[RUN] " << test.name << "\n" << std::flush;
 
             TestContext context(test.name);
             test.function(context);

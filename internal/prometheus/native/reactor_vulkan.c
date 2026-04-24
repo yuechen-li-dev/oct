@@ -1991,6 +1991,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   size_t c_copy_size;
   uint32_t compute_k;
   uint64_t work_units;
+  uint32_t work_units_u32;
+  uint32_t mn_product;
   uint32_t can_stage;
   uint32_t can_direct;
   uint32_t tiled_shape;
@@ -2044,6 +2046,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
   }
+  if (!checked_mul_u32(m, k, &work_units_u32) || !checked_mul_u32(k, n, &work_units_u32) ||
+      !checked_mul_u32(m, n, &work_units_u32) || !checked_mul_u32(m, n, &mn_product) ||
+      !checked_mul_u32(mn_product, k, &work_units_u32)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
+    return PROM_ERROR;
+  }
   set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_async_state(rt, PROM_ASYNC_STATE_IDLE, PROM_STAGE_NONE, 0);
@@ -2082,7 +2090,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     can_stage = 0u;
   }
   readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
-  work_units = (uint64_t)m * (uint64_t)n * (uint64_t)k;
+  work_units = (uint64_t)work_units_u32;
   policy_mode = prom_sgemm_controller_step(&rt->sgemm_controller, m, n, k, work_units, rt->software_vulkan);
   packed4_waste_permille = prom_packed4_padding_waste_permille(m, n, k);
   packed4_budget_permille = prom_packed4_mode_budget_permille(policy_mode);
