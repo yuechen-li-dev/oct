@@ -14,6 +14,7 @@ cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/reactor_api.c" \
   "$NATIVE_DIR/reactor_judgment_engine.c" \
   "$NATIVE_DIR/reactor_policy_memory.c" \
+  "$NATIVE_DIR/reactor_slot_hfsm.c" \
   "$NATIVE_DIR/reactor_vulkan.c" \
   -pthread \
   -lm \
@@ -27,6 +28,7 @@ c++ -std=c++23 -O2 \
   "$NATIVE_DIR/reactor_api.c" \
   "$NATIVE_DIR/reactor_judgment_engine.c" \
   "$NATIVE_DIR/reactor_policy_memory.c" \
+  "$NATIVE_DIR/reactor_slot_hfsm.c" \
   "$NATIVE_DIR/reactor_vulkan.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
   -pthread \
