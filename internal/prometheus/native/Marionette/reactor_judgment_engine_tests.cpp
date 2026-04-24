@@ -460,7 +460,9 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorFixedDoubleDefaultWhenFeasibl
     facts.required_fixed_slots_permille = 2000u;
     facts.required_pull_lag_peak_slots_permille = 1500u;
     facts.required_serial_slots_permille = 1000u;
-    facts.memory_headroom_slots_permille = 900;
+    facts.fixed_double_headroom_slots_permille = 400;
+    facts.pull_lag_headroom_slots_permille = 300;
+    facts.serial_jit_headroom_slots_permille = 1400;
     facts.transfer_variance_class = PROM_VARIANCE_LOW;
     facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
     facts.fallback_available = 1u;
@@ -480,7 +482,9 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorPullLagAndSerialFallbackPaths
     facts.required_fixed_slots_permille = 2000u;
     facts.required_pull_lag_peak_slots_permille = 1500u;
     facts.required_serial_slots_permille = 1000u;
-    facts.memory_headroom_slots_permille = 100;
+    facts.fixed_double_headroom_slots_permille = -400;
+    facts.pull_lag_headroom_slots_permille = 100;
+    facts.serial_jit_headroom_slots_permille = 600;
     facts.transfer_variance_class = PROM_VARIANCE_MODERATE;
     facts.compute_predictability_class = PROM_PREDICTABILITY_TRACKED;
     facts.fallback_available = 1u;
@@ -492,7 +496,9 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorPullLagAndSerialFallbackPaths
 
     facts.transfer_variance_class = PROM_VARIANCE_HIGH;
     facts.memory_budget_slots_permille = 1200u;
-    facts.memory_headroom_slots_permille = -300;
+    facts.fixed_double_headroom_slots_permille = -800;
+    facts.pull_lag_headroom_slots_permille = -300;
+    facts.serial_jit_headroom_slots_permille = 200;
     prom_judgment_engine_select_buffering_mode(&facts, &decision);
     ASSERT_EQUAL(1u, decision.success, "selector should still succeed with serial fallback when pull-lag is rejected");
     ASSERT_EQUAL(PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL, decision.selected_mode, "serial survival should win when fixed-double and pull-lag are blocked");
@@ -506,7 +512,9 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorHardFailureWhenNoModeFeasible
     facts.required_fixed_slots_permille = 2000u;
     facts.required_pull_lag_peak_slots_permille = 1500u;
     facts.required_serial_slots_permille = 1000u;
-    facts.memory_headroom_slots_permille = -600;
+    facts.fixed_double_headroom_slots_permille = -1100;
+    facts.pull_lag_headroom_slots_permille = -600;
+    facts.serial_jit_headroom_slots_permille = -100;
     facts.transfer_variance_class = PROM_VARIANCE_HIGH;
     facts.compute_predictability_class = PROM_PREDICTABILITY_UNSTABLE;
     facts.fallback_available = 0u;
@@ -518,4 +526,78 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorHardFailureWhenNoModeFeasible
     ASSERT_EQUAL(0u, decision.success, "selector must fail explicitly when all buffering modes are infeasible");
     ASSERT_EQUAL(PROM_BUFFERING_MODE_NONE, decision.selected_mode, "no-feasible result should not select a partial mode");
     ASSERT_EQUAL(PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE, decision.reason_code, "hard failure reason should be explicit");
+}
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorHeadroomIsCandidateSpecific)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 1600u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1500u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.fixed_double_headroom_slots_permille = -400;
+    facts.pull_lag_headroom_slots_permille = 100;
+    facts.serial_jit_headroom_slots_permille = 600;
+    facts.transfer_variance_class = PROM_VARIANCE_LOW;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
+    facts.fallback_available = 1u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_PULL_LAG_PRESSURE, decision.selected_mode, "pull-lag should win in medium budget case");
+    ASSERT_EQUAL(-100000, decision.fixed_score, "infeasible fixed mode should keep sentinel score");
+    ASSERT_EQUAL(700 + 100, decision.pull_lag_score, "pull-lag score must use pull-lag headroom");
+    ASSERT_EQUAL(300 + 600, decision.serial_score, "serial score must use serial headroom");
+}
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorPreservesPerModeRejectionReasons)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 1200u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1000u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.fixed_double_headroom_slots_permille = -800;
+    facts.pull_lag_headroom_slots_permille = 200;
+    facts.serial_jit_headroom_slots_permille = 200;
+    facts.transfer_variance_class = PROM_VARIANCE_HIGH;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
+    facts.fallback_available = 1u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.success, "serial fallback should succeed");
+    ASSERT_EQUAL(PROM_BUFFERING_MODE_SERIAL_JIT_SURVIVAL, decision.selected_mode, "serial should be selected after pull-lag rejection");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_FIXED_DOUBLE_MEMORY_INSUFFICIENT, decision.fixed_double_rejection_reason,
+                 "fixed rejection reason must remain explicit");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_PULL_LAG_VARIANCE_MISS, decision.pull_lag_rejection_reason,
+                 "pull-lag variance rejection reason must be preserved");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_SERIAL_JIT_SELECTED, decision.final_reason_code,
+                 "final reason should represent the selected fallback mode");
+}
+
+FACT(PrometheusJudgmentEngine_M35_BufferingSelectorNoFeasibleIncludesPerModeReasons)
+{
+    prom_buffering_selector_facts facts{};
+    facts.memory_budget_slots_permille = 900u;
+    facts.required_fixed_slots_permille = 2000u;
+    facts.required_pull_lag_peak_slots_permille = 1500u;
+    facts.required_serial_slots_permille = 1000u;
+    facts.fixed_double_headroom_slots_permille = -1100;
+    facts.pull_lag_headroom_slots_permille = -600;
+    facts.serial_jit_headroom_slots_permille = -100;
+    facts.transfer_variance_class = PROM_VARIANCE_LOW;
+    facts.compute_predictability_class = PROM_PREDICTABILITY_STABLE;
+    facts.fallback_available = 0u;
+
+    prom_buffering_selector_decision decision{};
+    prom_judgment_engine_select_buffering_mode(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.success, "all infeasible modes must fail");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE, decision.final_reason_code, "final reason must be explicit no-feasible");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_FIXED_DOUBLE_MEMORY_INSUFFICIENT, decision.fixed_double_rejection_reason,
+                 "fixed rejection reason should be populated");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_PULL_LAG_MEMORY_INSUFFICIENT, decision.pull_lag_rejection_reason,
+                 "pull-lag rejection reason should be populated");
+    ASSERT_EQUAL(PROM_BUFFERING_REASON_SERIAL_JIT_MEMORY_INSUFFICIENT, decision.serial_jit_rejection_reason,
+                 "serial rejection reason should be populated");
 }
