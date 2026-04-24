@@ -1,0 +1,7 @@
+[M23PolicyDecisionTable {
+    CaseName: ["strict-fp32", "missing-tolerance", "tolerance-exceeded", "tolerance-passes", "special-values", "capability-missing", "fallback-unavailable", "large-k-high-growth", "cancellation-heavy", "mixed-candidate-competition"]
+    ShapeClass: ["medium", "medium", "medium", "large", "large", "large", "large", "large", "large", "large"]
+    ControllerMode: ["Aggressive", "Aggressive", "Aggressive", "Aggressive", "Aggressive", "Aggressive", "Aggressive", "Safe", "Safe", "Safe"]
+    SelectedCandidate: ["ScalarFP32", "ScalarFP32", "ScalarFP32", "FP16StorageFP32Accum", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "ScalarFP32", "Packed4FP32"]
+    FallbackReason: ["FP16_STRICT_FP32", "FP16_TOLERANCE_UNKNOWN", "FP16_TOLERANCE_EXCEEDED", "none", "FP16_SPECIAL_VALUE", "FP16_CAPABILITY_MISSING", "FALLBACK_REQUIRED", "FP16_TOLERANCE_EXCEEDED", "FP16_TOLERANCE_EXCEEDED", "FP16_NOT_TOP_UTILITY"]
+}]

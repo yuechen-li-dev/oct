@@ -1,0 +1,10 @@
+[M23FinalPolicyContract {
+    M22Handoff: "M22 provides explicit tolerance-gated acceptance with strict/special/capability/fallback hard blocks."
+    PolicySafe: "Yes. FP16StorageFP32Accum is policy-safe when all hard gates pass and utility selection remains non-default."
+    FailureModesObservable: "Yes. Every rejection path emits a stable reason code plus gate matrix and diagnostics."
+    FallbackDeterministic: "Yes. Fallback is deterministic through ordered hard-gate reason precedence and explicit selected candidate output."
+    SilentCorrectnessDegradation: "No. FP16 cannot be selected when any gate fails; tolerance pass is mandatory and observable."
+    JudgmentRepresentationSufficient: "Yes. when utility + hard gate predicates + diagnostics payload are sufficient for policy execution."
+    RequiredBeforeImplementation: "Runtime wiring must preserve these reason codes, gate outputs, and diagnostic fields verbatim."
+    DefaultPolicy: "FP16StorageFP32Accum remains non-default and explicit opt-in only."
+}]

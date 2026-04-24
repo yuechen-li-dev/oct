@@ -1,0 +1,410 @@
+package PrometheusSgemmAlgorithmLab
+
+record M23Scenario {
+    CaseName: String
+    StrictFP32: Bool
+    ToleranceKnown: Bool
+    ToleranceValue: String
+    ToleranceAbsLimit: Int
+    ToleranceRelLimitPPM: Int
+    MeasuredMaxAbsError: Int
+    MeasuredMaxRelError: Int
+    AggregateError: Int
+    WorstCaseElementIndex: Int
+    KErrorGrowth: Int
+    CancellationRisk: Int
+    HasSpecialValues: Bool
+    CapabilityFP16Storage: Bool
+    FallbackAvailable: Bool
+    ShapeClass: String
+    ControllerMode: String
+}
+
+record M23GateResults {
+    StrictFP32GatePass: Bool
+    ToleranceKnownGatePass: Bool
+    TolerancePass: Bool
+    SpecialValueGatePass: Bool
+    CapabilityGatePass: Bool
+    FallbackAvailableGatePass: Bool
+    FP16Eligible: Bool
+}
+
+record M23DiagnosticPayload {
+    MaxAbsoluteError: Int
+    MaxRelativeError: Int
+    AggregateError: Int
+    WorstCaseElementIndex: Int
+    KErrorGrowth: Int
+    CancellationRisk: Int
+    TolerancePass: Bool
+    FallbackReason: String
+    SelectedCandidate: String
+}
+
+record M23DecisionResult {
+    CaseName: String
+    SelectedCandidate: String
+    RejectedCandidates: String[]
+    FallbackReason: String
+    GateResults: M23GateResults
+    DiagnosticPayload: M23DiagnosticPayload
+}
+
+record M23PolicyDecisionTable {
+    CaseName: String[]
+    ShapeClass: String[]
+    ControllerMode: String[]
+    SelectedCandidate: String[]
+    FallbackReason: String[]
+}
+
+record M23GateMatrixTable {
+    CaseName: String[]
+    StrictFP32GatePass: Bool[]
+    ToleranceKnownGatePass: Bool[]
+    TolerancePass: Bool[]
+    SpecialValueGatePass: Bool[]
+    CapabilityGatePass: Bool[]
+    FallbackAvailableGatePass: Bool[]
+    FP16Eligible: Bool[]
+}
+
+record M23CandidateSelectionTable {
+    CaseName: String[]
+    ScalarFP32Score: Int[]
+    Packed4FP32Score: Int[]
+    FP16StorageFP32AccumScore: Int[]
+    SelectedCandidate: String[]
+}
+
+record M23FallbackReasonTable {
+    CaseName: String[]
+    FallbackReason: String[]
+}
+
+record M23DiagnosticPayloadTable {
+    CaseName: String[]
+    MaxAbsoluteError: Int[]
+    MaxRelativeError: Int[]
+    AggregateError: Int[]
+    WorstCaseElementIndex: Int[]
+    KErrorGrowth: Int[]
+    CancellationRisk: Int[]
+    TolerancePass: Bool[]
+    FallbackReason: String[]
+    SelectedCandidate: String[]
+}
+
+record M23FinalPolicyContract {
+    M22Handoff: String
+    PolicySafe: String
+    FailureModesObservable: String
+    FallbackDeterministic: String
+    SilentCorrectnessDegradation: String
+    JudgmentRepresentationSufficient: String
+    RequiredBeforeImplementation: String
+    DefaultPolicy: String
+}
+
+fn M23ShapeBonus(shapeClass: String) -> Int {
+    return switch {
+        case shapeClass == "small" => 5
+        case shapeClass == "medium" => 15
+        else => 25
+    }
+}
+
+fn M23ControllerBonus(controllerMode: String) -> Int {
+    return switch {
+        case controllerMode == "Aggressive" => 15
+        case controllerMode == "Recovery" => 2
+        else => 6
+    }
+}
+
+fn M23ScalarScore(s: M23Scenario) -> Int {
+    let safeModeBonus = switch {
+        case s.ControllerMode == "Safe" => 8
+        else => 0
+    }
+    return 40 + safeModeBonus
+}
+
+fn M23Packed4Score(s: M23Scenario) -> Int {
+    let shape = M23ShapeBonus(s.ShapeClass)
+    let mode = switch {
+        case s.ControllerMode == "Recovery" => 4
+        else => 10
+    }
+    return 45 + shape + mode
+}
+
+fn M23FP16Score(s: M23Scenario) -> Int {
+    let base = 42 + M23ShapeBonus(s.ShapeClass) + M23ControllerBonus(s.ControllerMode)
+    let riskPenalty = (s.KErrorGrowth / 5) + (s.CancellationRisk / 120000)
+    return base - riskPenalty
+}
+
+fn M23GateResultsFor(s: M23Scenario) -> M23GateResults {
+    let strictPass = not s.StrictFP32
+    let toleranceKnownPass = s.ToleranceKnown
+    let tolerancePass = toleranceKnownPass and s.MeasuredMaxAbsError <= s.ToleranceAbsLimit and s.MeasuredMaxRelError <= s.ToleranceRelLimitPPM
+    let specialValuePass = not s.HasSpecialValues
+    let capabilityPass = s.CapabilityFP16Storage
+    let fallbackPass = s.FallbackAvailable
+    let fp16Eligible = strictPass and toleranceKnownPass and tolerancePass and specialValuePass and capabilityPass and fallbackPass
+
+    return M23GateResults {
+        StrictFP32GatePass: strictPass
+        ToleranceKnownGatePass: toleranceKnownPass
+        TolerancePass: tolerancePass
+        SpecialValueGatePass: specialValuePass
+        CapabilityGatePass: capabilityPass
+        FallbackAvailableGatePass: fallbackPass
+        FP16Eligible: fp16Eligible
+    }
+}
+
+fn M23FallbackReason(gates: M23GateResults, selected: String) -> String {
+    return switch {
+        case not gates.StrictFP32GatePass => "FP16_STRICT_FP32"
+        case not gates.ToleranceKnownGatePass => "FP16_TOLERANCE_UNKNOWN"
+        case not gates.TolerancePass => "FP16_TOLERANCE_EXCEEDED"
+        case not gates.SpecialValueGatePass => "FP16_SPECIAL_VALUE"
+        case not gates.CapabilityGatePass => "FP16_CAPABILITY_MISSING"
+        case not gates.FallbackAvailableGatePass => "FALLBACK_REQUIRED"
+        case selected != "FP16StorageFP32Accum" => "FP16_NOT_TOP_UTILITY"
+        else => "none"
+    }
+}
+
+fn M23RejectedCandidates(selected: String) -> String[] {
+    return switch {
+        case selected == "ScalarFP32" => ["Packed4FP32", "FP16StorageFP32Accum"]
+        case selected == "Packed4FP32" => ["ScalarFP32", "FP16StorageFP32Accum"]
+        else => ["ScalarFP32", "Packed4FP32"]
+    }
+}
+
+fn M23SelectCandidate(s: M23Scenario, gates: M23GateResults) -> String {
+    if not gates.FP16Eligible { return "ScalarFP32" }
+    return when utility {
+        case "FP16StorageFP32Accum" when gates.FP16Eligible score M23FP16Score(s)
+        case "Packed4FP32" when true score M23Packed4Score(s)
+        case "ScalarFP32" when true score M23ScalarScore(s)
+        else "ScalarFP32"
+    }
+}
+
+fn M23DecisionForScenario(s: M23Scenario) -> M23DecisionResult {
+    let gates = M23GateResultsFor(s)
+    let selected = M23SelectCandidate(s, gates)
+    let reason = M23FallbackReason(gates, selected)
+
+    return M23DecisionResult {
+        CaseName: s.CaseName
+        SelectedCandidate: selected
+        RejectedCandidates: M23RejectedCandidates(selected)
+        FallbackReason: reason
+        GateResults: gates
+        DiagnosticPayload: M23DiagnosticPayload {
+            MaxAbsoluteError: s.MeasuredMaxAbsError
+            MaxRelativeError: s.MeasuredMaxRelError
+            AggregateError: s.AggregateError
+            WorstCaseElementIndex: s.WorstCaseElementIndex
+            KErrorGrowth: s.KErrorGrowth
+            CancellationRisk: s.CancellationRisk
+            TolerancePass: gates.TolerancePass
+            FallbackReason: reason
+            SelectedCandidate: selected
+        }
+    }
+}
+
+fn M23Scenarios() -> M23Scenario[] {
+    return [
+        M23Scenario { CaseName: "strict-fp32" StrictFP32: true ToleranceKnown: true ToleranceValue: "abs<=6, rel<=60000ppm" ToleranceAbsLimit: 6 ToleranceRelLimitPPM: 60000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 40000 AggregateError: 14 WorstCaseElementIndex: 3 KErrorGrowth: 6 CancellationRisk: 180000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "medium" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "missing-tolerance" StrictFP32: false ToleranceKnown: false ToleranceValue: "unknown" ToleranceAbsLimit: 0 ToleranceRelLimitPPM: 0 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 40000 AggregateError: 14 WorstCaseElementIndex: 2 KErrorGrowth: 6 CancellationRisk: 180000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "medium" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "tolerance-exceeded" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=2, rel<=35000ppm" ToleranceAbsLimit: 2 ToleranceRelLimitPPM: 35000 MeasuredMaxAbsError: 4 MeasuredMaxRelError: 90000 AggregateError: 20 WorstCaseElementIndex: 4 KErrorGrowth: 14 CancellationRisk: 360000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "medium" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "tolerance-passes" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=6, rel<=110000ppm" ToleranceAbsLimit: 6 ToleranceRelLimitPPM: 110000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 60000 AggregateError: 12 WorstCaseElementIndex: 6 KErrorGrowth: 8 CancellationRisk: 200000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "large" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "special-values" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=8, rel<=120000ppm" ToleranceAbsLimit: 8 ToleranceRelLimitPPM: 120000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 60000 AggregateError: 12 WorstCaseElementIndex: 1 KErrorGrowth: 8 CancellationRisk: 200000 HasSpecialValues: true CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "large" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "capability-missing" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=8, rel<=120000ppm" ToleranceAbsLimit: 8 ToleranceRelLimitPPM: 120000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 60000 AggregateError: 12 WorstCaseElementIndex: 1 KErrorGrowth: 8 CancellationRisk: 200000 HasSpecialValues: false CapabilityFP16Storage: false FallbackAvailable: true ShapeClass: "large" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "fallback-unavailable" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=8, rel<=120000ppm" ToleranceAbsLimit: 8 ToleranceRelLimitPPM: 120000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 60000 AggregateError: 12 WorstCaseElementIndex: 1 KErrorGrowth: 8 CancellationRisk: 200000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: false ShapeClass: "large" ControllerMode: "Aggressive" },
+        M23Scenario { CaseName: "large-k-high-growth" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=4, rel<=70000ppm" ToleranceAbsLimit: 4 ToleranceRelLimitPPM: 70000 MeasuredMaxAbsError: 4 MeasuredMaxRelError: 80000 AggregateError: 40 WorstCaseElementIndex: 7 KErrorGrowth: 140 CancellationRisk: 500000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "large" ControllerMode: "Safe" },
+        M23Scenario { CaseName: "cancellation-heavy" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=4, rel<=90000ppm" ToleranceAbsLimit: 4 ToleranceRelLimitPPM: 90000 MeasuredMaxAbsError: 3 MeasuredMaxRelError: 100000 AggregateError: 34 WorstCaseElementIndex: 5 KErrorGrowth: 110 CancellationRisk: 800000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "large" ControllerMode: "Safe" },
+        M23Scenario { CaseName: "mixed-candidate-competition" StrictFP32: false ToleranceKnown: true ToleranceValue: "abs<=8, rel<=140000ppm" ToleranceAbsLimit: 8 ToleranceRelLimitPPM: 140000 MeasuredMaxAbsError: 2 MeasuredMaxRelError: 70000 AggregateError: 18 WorstCaseElementIndex: 4 KErrorGrowth: 50 CancellationRisk: 400000 HasSpecialValues: false CapabilityFP16Storage: true FallbackAvailable: true ShapeClass: "large" ControllerMode: "Safe" }
+    ]
+}
+
+fn M23DecisionRows() -> M23DecisionResult[] {
+    let scenarios = M23Scenarios()
+    var rows = [M23DecisionForScenario(scenarios[0])]
+    for i in 1 .. Len(scenarios) {
+        rows = Append(rows, M23DecisionForScenario(scenarios[i]))
+    }
+    return rows
+}
+
+fn M23PolicyDecisionTableFrom(rows: M23DecisionResult[]) -> M23PolicyDecisionTable {
+    let scenarios = M23Scenarios()
+    var caseName = [rows[0].CaseName]
+    var shapeClass = [scenarios[0].ShapeClass]
+    var controllerMode = [scenarios[0].ControllerMode]
+    var selected = [rows[0].SelectedCandidate]
+    var reason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        shapeClass = Append(shapeClass, scenarios[i].ShapeClass)
+        controllerMode = Append(controllerMode, scenarios[i].ControllerMode)
+        selected = Append(selected, rows[i].SelectedCandidate)
+        reason = Append(reason, rows[i].FallbackReason)
+    }
+
+    return M23PolicyDecisionTable {
+        CaseName: caseName
+        ShapeClass: shapeClass
+        ControllerMode: controllerMode
+        SelectedCandidate: selected
+        FallbackReason: reason
+    }
+}
+
+fn M23GateMatrixTableFrom(rows: M23DecisionResult[]) -> M23GateMatrixTable {
+    let gate0 = rows[0].GateResults
+    var caseName = [rows[0].CaseName]
+    var strictPass = [gate0.StrictFP32GatePass]
+    var toleranceKnown = [gate0.ToleranceKnownGatePass]
+    var tolerancePass = [gate0.TolerancePass]
+    var specialPass = [gate0.SpecialValueGatePass]
+    var capabilityPass = [gate0.CapabilityGatePass]
+    var fallbackPass = [gate0.FallbackAvailableGatePass]
+    var eligible = [gate0.FP16Eligible]
+
+    for i in 1 .. Len(rows) {
+        let gate = rows[i].GateResults
+        caseName = Append(caseName, rows[i].CaseName)
+        strictPass = Append(strictPass, gate.StrictFP32GatePass)
+        toleranceKnown = Append(toleranceKnown, gate.ToleranceKnownGatePass)
+        tolerancePass = Append(tolerancePass, gate.TolerancePass)
+        specialPass = Append(specialPass, gate.SpecialValueGatePass)
+        capabilityPass = Append(capabilityPass, gate.CapabilityGatePass)
+        fallbackPass = Append(fallbackPass, gate.FallbackAvailableGatePass)
+        eligible = Append(eligible, gate.FP16Eligible)
+    }
+
+    return M23GateMatrixTable {
+        CaseName: caseName
+        StrictFP32GatePass: strictPass
+        ToleranceKnownGatePass: toleranceKnown
+        TolerancePass: tolerancePass
+        SpecialValueGatePass: specialPass
+        CapabilityGatePass: capabilityPass
+        FallbackAvailableGatePass: fallbackPass
+        FP16Eligible: eligible
+    }
+}
+
+fn M23CandidateSelectionTableFrom(rows: M23DecisionResult[]) -> M23CandidateSelectionTable {
+    let scenarios = M23Scenarios()
+    let gates0 = rows[0].GateResults
+    var caseName = [rows[0].CaseName]
+    var scalarScore = [M23ScalarScore(scenarios[0])]
+    var packedScore = [M23Packed4Score(scenarios[0])]
+    var fp16Score = [switch {
+        case gates0.FP16Eligible => M23FP16Score(scenarios[0])
+        else => -999999
+    }]
+    var selected = [rows[0].SelectedCandidate]
+
+    for i in 1 .. Len(rows) {
+        let s = scenarios[i]
+        let gates = rows[i].GateResults
+        caseName = Append(caseName, rows[i].CaseName)
+        scalarScore = Append(scalarScore, M23ScalarScore(s))
+        packedScore = Append(packedScore, M23Packed4Score(s))
+        fp16Score = Append(fp16Score, switch {
+            case gates.FP16Eligible => M23FP16Score(s)
+            else => -999999
+        })
+        selected = Append(selected, rows[i].SelectedCandidate)
+    }
+
+    return M23CandidateSelectionTable {
+        CaseName: caseName
+        ScalarFP32Score: scalarScore
+        Packed4FP32Score: packedScore
+        FP16StorageFP32AccumScore: fp16Score
+        SelectedCandidate: selected
+    }
+}
+
+fn M23FallbackReasonTableFrom(rows: M23DecisionResult[]) -> M23FallbackReasonTable {
+    var caseName = [rows[0].CaseName]
+    var reason = [rows[0].FallbackReason]
+
+    for i in 1 .. Len(rows) {
+        caseName = Append(caseName, rows[i].CaseName)
+        reason = Append(reason, rows[i].FallbackReason)
+    }
+
+    return M23FallbackReasonTable {
+        CaseName: caseName
+        FallbackReason: reason
+    }
+}
+
+fn M23DiagnosticPayloadTableFrom(rows: M23DecisionResult[]) -> M23DiagnosticPayloadTable {
+    let diag0 = rows[0].DiagnosticPayload
+    var caseName = [rows[0].CaseName]
+    var maxAbs = [diag0.MaxAbsoluteError]
+    var maxRel = [diag0.MaxRelativeError]
+    var agg = [diag0.AggregateError]
+    var worst = [diag0.WorstCaseElementIndex]
+    var kGrowth = [diag0.KErrorGrowth]
+    var cancelRisk = [diag0.CancellationRisk]
+    var tolerancePass = [diag0.TolerancePass]
+    var reason = [diag0.FallbackReason]
+    var selected = [diag0.SelectedCandidate]
+
+    for i in 1 .. Len(rows) {
+        let diag = rows[i].DiagnosticPayload
+        caseName = Append(caseName, rows[i].CaseName)
+        maxAbs = Append(maxAbs, diag.MaxAbsoluteError)
+        maxRel = Append(maxRel, diag.MaxRelativeError)
+        agg = Append(agg, diag.AggregateError)
+        worst = Append(worst, diag.WorstCaseElementIndex)
+        kGrowth = Append(kGrowth, diag.KErrorGrowth)
+        cancelRisk = Append(cancelRisk, diag.CancellationRisk)
+        tolerancePass = Append(tolerancePass, diag.TolerancePass)
+        reason = Append(reason, diag.FallbackReason)
+        selected = Append(selected, diag.SelectedCandidate)
+    }
+
+    return M23DiagnosticPayloadTable {
+        CaseName: caseName
+        MaxAbsoluteError: maxAbs
+        MaxRelativeError: maxRel
+        AggregateError: agg
+        WorstCaseElementIndex: worst
+        KErrorGrowth: kGrowth
+        CancellationRisk: cancelRisk
+        TolerancePass: tolerancePass
+        FallbackReason: reason
+        SelectedCandidate: selected
+    }
+}
+
+fn M23FinalPolicyContractSummary() -> M23FinalPolicyContract {
+    return M23FinalPolicyContract {
+        M22Handoff: "M22 provides explicit tolerance-gated acceptance with strict/special/capability/fallback hard blocks."
+        PolicySafe: "Yes. FP16StorageFP32Accum is policy-safe when all hard gates pass and utility selection remains non-default."
+        FailureModesObservable: "Yes. Every rejection path emits a stable reason code plus gate matrix and diagnostics."
+        FallbackDeterministic: "Yes. Fallback is deterministic through ordered hard-gate reason precedence and explicit selected candidate output."
+        SilentCorrectnessDegradation: "No. FP16 cannot be selected when any gate fails; tolerance pass is mandatory and observable."
+        JudgmentRepresentationSufficient: "Yes. when utility + hard gate predicates + diagnostics payload are sufficient for policy execution."
+        RequiredBeforeImplementation: "Runtime wiring must preserve these reason codes, gate outputs, and diagnostic fields verbatim."
+        DefaultPolicy: "FP16StorageFP32Accum remains non-default and explicit opt-in only."
+    }
+}
