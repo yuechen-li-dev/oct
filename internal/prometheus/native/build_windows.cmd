@@ -57,6 +57,7 @@ cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_
   "%NATIVE_DIR%\Marionette\reactor_stub_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_judgment_engine_tests.cpp" ^
   "%NATIVE_DIR%\Marionette\reactor_slot_hfsm_tests.cpp" ^
+  "%NATIVE_DIR%\Marionette\reactor_m29_fixed_double_tests.cpp" ^
   /link /OUT:"%MARIONETTE_EXE%" /PDB:"%MARIONETTE_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 goto :fail
 

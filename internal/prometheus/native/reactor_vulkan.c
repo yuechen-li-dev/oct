@@ -20,6 +20,7 @@
 
 #include <vulkan/vulkan.h>
 #include "reactor_judgment_engine.h"
+#include "reactor_slot_hfsm.h"
 #include "reactor_vulkan_fp16_spirv.h"
 #include "reactor_vulkan_packed4_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
@@ -107,6 +108,22 @@ typedef struct prom_sgemm_controller_state {
   uint32_t fp16_selected_candidate;
 } prom_sgemm_controller_state;
 
+typedef struct prom_slot_runtime_diag {
+  uint32_t current_slot_id;
+  uint32_t next_slot_id;
+  uint64_t swap_count;
+  uint64_t max_wip_depth;
+  uint64_t overwrite_rejection_count;
+  uint64_t stale_buffer_rejection_count;
+  uint64_t shape_invalidation_count;
+  uint64_t layout_invalidation_count;
+  uint64_t capacity_invalidation_count;
+  uint64_t inflight_rejection_count;
+  int failure_slot_id;
+  int failure_reason;
+  int async_slot_id;
+} prom_slot_runtime_diag;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -160,6 +177,8 @@ typedef struct prometheus_runtime {
   uint32_t async_stage;
   int async_failure_detail;
   prom_sgemm_controller_state sgemm_controller;
+  prom_slot_hfsm slots[2];
+  prom_slot_runtime_diag slot_diag;
 } prometheus_runtime;
 
 typedef struct prom_vk_push {
@@ -370,6 +389,9 @@ static void set_async_state(prometheus_runtime* rt, uint32_t state, uint32_t sta
   }
 }
 
+static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason);
+static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id);
+
 static int update_async_progress(prometheus_runtime* rt) {
   VkResult vk_result;
 
@@ -382,11 +404,19 @@ static int update_async_progress(prometheus_runtime* rt) {
   if ((rt->test_flags & PROM_TESTCFG_FAIL_ASYNC_POLL) != 0u) {
     rt->in_flight_submit = 0u;
     set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
+    if (rt->slot_diag.async_slot_id >= 0) {
+      prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
+    }
     return PROM_ERROR;
   }
   vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
   if (vk_result == VK_SUCCESS) {
     rt->in_flight_submit = 0u;
+    if (rt->slot_diag.async_slot_id >= 0 && !prom_slot_mark_complete(rt, (uint32_t)rt->slot_diag.async_slot_id)) {
+      prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      return PROM_ERROR;
+    }
     set_async_state(rt, PROM_ASYNC_STATE_READY, PROM_STAGE_SUBMIT, rt->async_final_detail);
     return PROM_OK;
   }
@@ -394,6 +424,9 @@ static int update_async_progress(prometheus_runtime* rt) {
     return PROM_OK;
   }
   rt->in_flight_submit = 0u;
+  if (rt->slot_diag.async_slot_id >= 0) {
+    prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
+  }
   set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, (int)vk_result);
   return PROM_ERROR;
 }
@@ -446,6 +479,166 @@ static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDevic
   }
   *out_copy_size = (size_t)bytes;
   *out_vk_size = (VkDeviceSize)bytes;
+  return 1;
+}
+
+static uint32_t prom_slot_other_id(uint32_t slot_id) {
+  return slot_id == 0u ? 1u : 0u;
+}
+
+static uint32_t prom_slot_compute_layout_code(prom_vk_path_mode path, prom_vk_compute_mode compute_mode) {
+  return ((uint32_t)path << 16u) | (uint32_t)compute_mode;
+}
+
+static uint32_t prom_slot_wip_depth(const prometheus_runtime* rt) {
+  uint32_t depth = 0u;
+  uint32_t i;
+  for (i = 0u; i < 2u; ++i) {
+    const prom_slot_state state = prom_slot_hfsm_current_state(&rt->slots[i]);
+    if (state == PROM_SLOT_PREPARING || state == PROM_SLOT_READY || state == PROM_SLOT_CURRENT || state == PROM_SLOT_IN_FLIGHT) {
+      depth += 1u;
+    }
+  }
+  return depth;
+}
+
+static void prom_slot_track_wip(prometheus_runtime* rt) {
+  const uint64_t depth = (uint64_t)prom_slot_wip_depth(rt);
+  if (depth > rt->slot_diag.max_wip_depth) {
+    rt->slot_diag.max_wip_depth = depth;
+  }
+}
+
+static int prom_slot_cleanup_to_empty(prom_slot_hfsm* slot) {
+  if (slot == NULL) {
+    return 0;
+  }
+  if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_FAILED) {
+    return prom_slot_hfsm_cleanup(slot) != 0u ? 1 : 0;
+  }
+  if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_EMPTY) {
+    return 1;
+  }
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_EMPTY) == 0u) {
+    return 0;
+  }
+  return 1;
+}
+
+static int prom_slot_prepare_for_call(prometheus_runtime* rt,
+                                      uint32_t slot_id,
+                                      uint32_t m,
+                                      uint32_t n,
+                                      uint32_t k,
+                                      uint32_t layout_code,
+                                      uint32_t precision_code,
+                                      uint64_t required_capacity_bytes) {
+  prom_slot_hfsm* slot;
+  prom_slot_metadata metadata;
+  const prom_slot_metadata* existing;
+  const prom_slot_state state = prom_slot_hfsm_current_state(&rt->slots[slot_id]);
+  int invalidation_reason = 0;
+
+  if (state == PROM_SLOT_IN_FLIGHT || state == PROM_SLOT_CURRENT) {
+    rt->slot_diag.overwrite_rejection_count += 1u;
+    rt->slot_diag.inflight_rejection_count += 1u;
+    return 0;
+  }
+
+  slot = &rt->slots[slot_id];
+  existing = prom_slot_hfsm_metadata(slot);
+  if (existing->valid != 0u) {
+    if (existing->shape.m != m || existing->shape.n != n || existing->shape.k != k) {
+      rt->slot_diag.shape_invalidation_count += 1u;
+      invalidation_reason = PROM_DETAIL_SLOT_STALE_REJECTED;
+    }
+    if (existing->layout.layout != layout_code) {
+      rt->slot_diag.layout_invalidation_count += 1u;
+      invalidation_reason = PROM_DETAIL_SLOT_INVALID_LAYOUT;
+    }
+    if (existing->required_capacity_bytes < required_capacity_bytes) {
+      rt->slot_diag.capacity_invalidation_count += 1u;
+      invalidation_reason = PROM_DETAIL_SLOT_STALE_REJECTED;
+    }
+    if (invalidation_reason != 0) {
+      prom_slot_hfsm_mark_invalidated(slot, invalidation_reason);
+      rt->slot_diag.stale_buffer_rejection_count += 1u;
+    }
+  }
+
+  if (!prom_slot_cleanup_to_empty(slot)) {
+    return 0;
+  }
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_PREPARING) == 0u) {
+    return 0;
+  }
+
+  metadata = *prom_slot_hfsm_metadata(slot);
+  metadata.slot_id = slot_id;
+  metadata.generation += 1u;
+  metadata.valid = 1u;
+  metadata.shape.m = m;
+  metadata.shape.n = n;
+  metadata.shape.k = k;
+  metadata.layout.layout = layout_code;
+  metadata.layout.precision = precision_code;
+  metadata.required_capacity_bytes = required_capacity_bytes;
+  metadata.failure_reason = 0;
+  prom_slot_hfsm_set_metadata(slot, &metadata);
+
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_READY) == 0u) {
+    return 0;
+  }
+  rt->slot_diag.next_slot_id = slot_id;
+  prom_slot_track_wip(rt);
+  return 1;
+}
+
+static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot_id) {
+  prom_slot_hfsm* slot = &rt->slots[slot_id];
+  if (prom_slot_hfsm_current_state(slot) != PROM_SLOT_READY) {
+    rt->slot_diag.stale_buffer_rejection_count += 1u;
+    return 0;
+  }
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_CURRENT) == 0u) {
+    return 0;
+  }
+  rt->slot_diag.current_slot_id = slot_id;
+  rt->slot_diag.next_slot_id = prom_slot_other_id(slot_id);
+  rt->slot_diag.swap_count += 1u;
+  prom_slot_track_wip(rt);
+  return 1;
+}
+
+static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason) {
+  prom_slot_hfsm* slot = &rt->slots[slot_id];
+  (void)prom_slot_hfsm_fail(slot, reason);
+  rt->slot_diag.failure_slot_id = (int)slot_id;
+  rt->slot_diag.failure_reason = reason;
+}
+
+static int prom_slot_mark_submitted(prometheus_runtime* rt, uint32_t slot_id) {
+  prom_slot_hfsm* slot = &rt->slots[slot_id];
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_IN_FLIGHT) == 0u) {
+    return 0;
+  }
+  rt->slot_diag.async_slot_id = (int)slot_id;
+  prom_slot_track_wip(rt);
+  return 1;
+}
+
+static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id) {
+  prom_slot_hfsm* slot = &rt->slots[slot_id];
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_CONSUMED) == 0u) {
+    return 0;
+  }
+  if (prom_slot_hfsm_transition(slot, PROM_SLOT_EMPTY) == 0u) {
+    return 0;
+  }
+  if (rt->slot_diag.async_slot_id == (int)slot_id) {
+    rt->slot_diag.async_slot_id = -1;
+  }
+  prom_slot_track_wip(rt);
   return 1;
 }
 
@@ -1685,6 +1878,12 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
   runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
   prom_sgemm_controller_init(&runtime->sgemm_controller);
+  prom_slot_hfsm_init(&runtime->slots[0], 0u);
+  prom_slot_hfsm_init(&runtime->slots[1], 1u);
+  runtime->slot_diag.current_slot_id = UINT32_MAX;
+  runtime->slot_diag.next_slot_id = 0u;
+  runtime->slot_diag.failure_slot_id = -1;
+  runtime->slot_diag.async_slot_id = -1;
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -1817,6 +2016,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t* fp16_b_upload = NULL;
   int final_detail = 0;
   uint32_t request_async = 0u;
+  uint32_t work_slot_id = 0u;
+  uint64_t required_capacity_bytes = 0u;
 
   set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
@@ -1855,6 +2056,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     return PROM_ERROR;
   }
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
+    rt->slot_diag.inflight_rejection_count += 1u;
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
@@ -1863,6 +2065,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (vk_result == VK_SUCCESS) {
       rt->in_flight_submit = 0u;
     } else {
+      rt->slot_diag.inflight_rejection_count += 1u;
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
       return PROM_ERROR;
     }
@@ -1962,6 +2165,23 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
   }
+  required_capacity_bytes = (uint64_t)a_buffer_size + (uint64_t)b_buffer_size + (uint64_t)c_buffer_size;
+  work_slot_id = rt->slot_diag.next_slot_id < 2u ? rt->slot_diag.next_slot_id : 0u;
+  if (!prom_slot_prepare_for_call(rt,
+                                  work_slot_id,
+                                  m,
+                                  n,
+                                  compute_k,
+                                  prom_slot_compute_layout_code(selected_path, compute_mode),
+                                  (uint32_t)compute_mode,
+                                  required_capacity_bytes)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_OVERWRITE_REJECTED);
+    return PROM_ERROR;
+  }
+  if (!prom_slot_swap_ready_to_current(rt, work_slot_id)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_SWAP_REJECTED);
+    return PROM_ERROR;
+  }
 
   if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
     packed_a_upload = (float*)malloc(a_copy_size);
@@ -1998,12 +2218,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     free(packed_b_upload);
     free(fp16_a_upload);
     free(fp16_b_upload);
+    prom_slot_mark_failure(rt, work_slot_id, async_decision.reject_detail);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, async_decision.reject_detail);
     return PROM_ERROR;
   }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
     if (!ensure_direct_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
       free(packed_b_upload);
@@ -2025,6 +2247,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_c = &rt->direct_c;
   } else {
     if (!ensure_staged_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
       free(packed_b_upload);
@@ -2298,6 +2521,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     return PROM_ERROR;
   }
   rt->in_flight_submit = 1u;
+  if (!prom_slot_mark_submitted(rt, work_slot_id)) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+    prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+    return PROM_ERROR;
+  }
 
   if (async_decision.execute_async != 0u) {
     rt->async_task_id += 1;
@@ -2315,11 +2543,18 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
+      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     rt->in_flight_submit = 0u;
+    if (!prom_slot_mark_complete(rt, work_slot_id)) {
+      prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      return PROM_ERROR;
+    }
   } else {
+    prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_REUSE_IN_FLIGHT);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
     return PROM_ERROR;
   }
@@ -2509,7 +2744,16 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
   }
   update_async_progress(rt);
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
+    rt->slot_diag.inflight_rejection_count += 1u;
     return PROM_ERROR;
+  }
+  if (rt->slot_diag.async_slot_id >= 0) {
+    const uint32_t slot_id = (uint32_t)rt->slot_diag.async_slot_id;
+    if (!prom_slot_cleanup_to_empty(&rt->slots[slot_id])) {
+      prom_slot_mark_failure(rt, slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      return PROM_ERROR;
+    }
+    rt->slot_diag.async_slot_id = -1;
   }
   set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, rt->async_stage, rt->async_final_detail);
   return PROM_OK;
@@ -2576,5 +2820,23 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->fp16_tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
   out_diag->fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
   out_diag->fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
+  out_diag->m29_current_slot_id = rt->slot_diag.current_slot_id;
+  out_diag->m29_next_slot_id = rt->slot_diag.next_slot_id;
+  out_diag->m29_slot0_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
+  out_diag->m29_slot1_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
+  out_diag->m29_slot0_generation = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
+  out_diag->m29_slot1_generation = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
+  out_diag->m29_slot0_valid = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
+  out_diag->m29_slot1_valid = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
+  out_diag->m29_swap_count = rt->slot_diag.swap_count;
+  out_diag->m29_max_wip_depth = rt->slot_diag.max_wip_depth;
+  out_diag->m29_overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
+  out_diag->m29_stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
+  out_diag->m29_shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
+  out_diag->m29_layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
+  out_diag->m29_capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
+  out_diag->m29_inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
+  out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
+  out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
   return PROM_OK;
 }
