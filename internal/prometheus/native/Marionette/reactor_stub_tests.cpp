@@ -63,7 +63,8 @@ namespace
         return detail == PROM_DETAIL_PATH_DIRECT || detail == PROM_DETAIL_PATH_STAGED_UPLOAD ||
             detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK || detail == PROM_DETAIL_PATH_FALLBACK_TO_DIRECT ||
             detail == PROM_DETAIL_PATH_DIRECT_TILED || detail == PROM_DETAIL_PATH_STAGED_UPLOAD_TILED ||
-            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED || detail == PROM_DETAIL_PATH_DIRECT_PACKED4_FP32;
+            detail == PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED || detail == PROM_DETAIL_PATH_DIRECT_PACKED4_FP32 ||
+            detail == PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM;
     }
 
 }
@@ -201,6 +202,46 @@ FACT(PrometheusReactor_SgemmDeterministicAcrossRepeatedRuns)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), second.data(), m, n, k, &stage, &detail), "second SGEMM run should succeed");
 
     ASSERT_SEQUENCE_EQUAL(first, second, "repeated SGEMM runs should remain deterministic");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_FP16DiagnosticsArePopulatedAndReasonCoded)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; FP16 diagnostics observability cannot be asserted");
+    }
+
+    constexpr std::uint32_t m = 8u;
+    constexpr std::uint32_t n = 8u;
+    constexpr std::uint32_t k = 8u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "SGEMM should still execute with strict-fp32 policy");
+    ASSERT_TRUE(detail != PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM, "strict-fp32 policy must block FP16 execution path");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(1u), diag.fp16_tolerance_known, "FP16 tolerance must be computed deterministically");
+    ASSERT_TRUE(diag.fp16_max_absolute_error >= 0.0f, "FP16 max absolute error must be populated");
+    ASSERT_TRUE(diag.fp16_max_relative_error >= 0.0f, "FP16 max relative error must be populated");
+    ASSERT_TRUE(diag.fp16_aggregate_error >= 0.0f, "FP16 aggregate error must be populated");
+    ASSERT_TRUE(diag.fp16_worst_case_element_index < (m * n), "FP16 worst-case index must be bounded");
+    ASSERT_EQUAL(PROM_DETAIL_FP16_STRICT_FP32, diag.fp16_fallback_reason_detail, "FP16 fallback must emit strict-fp32 reason code");
+    ASSERT_TRUE(diag.fp16_selected_candidate != 3u, "FP16 candidate must not be selected under strict-fp32 policy");
+
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 

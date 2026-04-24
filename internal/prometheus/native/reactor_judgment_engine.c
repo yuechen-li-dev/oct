@@ -11,6 +11,9 @@ static int candidate_detail_code(prom_vk_path_mode path, prom_vk_compute_mode co
   if (compute == PROM_VK_COMPUTE_PACKED4_FP32) {
     return PROM_DETAIL_PATH_DIRECT_PACKED4_FP32;
   }
+  if (compute == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    return PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM;
+  }
   if (compute == PROM_VK_COMPUTE_TILED) {
     if (path == PROM_VK_PATH_DIRECT) {
       return PROM_DETAIL_PATH_DIRECT_TILED;
@@ -73,6 +76,8 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
   out_decision->winning_score = -100000;
   out_decision->packed4_selected = 0u;
   out_decision->packed4_reject_reason = PROM_PACKED4_REJECT_NONE;
+  out_decision->fp16_selected = 0u;
+  out_decision->fp16_reject_reason = PROM_FP16_REJECT_NONE;
 
   if (facts == NULL) {
     return;
@@ -89,6 +94,20 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
   }
   out_decision->requested_path = requested_path;
 
+  if (facts->strict_fp32 != 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_STRICT_FP32;
+  } else if (facts->tolerance_known == 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_TOLERANCE_UNKNOWN;
+  } else if (facts->tolerance_pass == 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_TOLERANCE_EXCEEDED;
+  } else if (facts->has_special_values != 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_SPECIAL_VALUE;
+  } else if (facts->capability_fp16_storage == 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_CAPABILITY_MISSING;
+  } else if (facts->fallback_available == 0u) {
+    out_decision->fp16_reject_reason = PROM_FP16_REJECT_FALLBACK_REQUIRED;
+  }
+
   if (facts->force_direct != 0u || facts->force_staged != 0u || facts->force_tiled != 0u || facts->tiled_shape != 0u) {
     out_decision->packed4_reject_reason = PROM_PACKED4_REJECT_FALLBACK_REQUIRED;
   } else if (facts->packed4_available == 0u) {
@@ -103,7 +122,22 @@ void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, pr
     out_decision->packed4_reject_reason =
         facts->policy_mode == PROM_POLICY_MODE_AGGRESSIVE ? PROM_PACKED4_REJECT_PADDING_WASTE
                                                           : PROM_PACKED4_REJECT_MODE_BUDGET_DENIED;
+  } else if (out_decision->fp16_reject_reason == PROM_FP16_REJECT_NONE && facts->fp16_utility_score > 1000) {
+    out_decision->success = 1u;
+    out_decision->error_detail = 0;
+    out_decision->requested_path = PROM_VK_PATH_DIRECT;
+    out_decision->selected_path = PROM_VK_PATH_DIRECT;
+    out_decision->compute_mode = PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM;
+    out_decision->final_detail = PROM_DETAIL_PATH_DIRECT_FP16_STORAGE_FP32_ACCUM;
+    out_decision->used_fallback_to_direct = 0u;
+    out_decision->winning_candidate_index = UINT32_MAX;
+    out_decision->winning_score = facts->fp16_utility_score;
+    out_decision->fp16_selected = 1u;
+    return;
   } else {
+    if (out_decision->fp16_reject_reason == PROM_FP16_REJECT_NONE) {
+      out_decision->fp16_reject_reason = PROM_FP16_REJECT_NOT_TOP_UTILITY;
+    }
     out_decision->success = 1u;
     out_decision->error_detail = 0;
     out_decision->requested_path = PROM_VK_PATH_DIRECT;
