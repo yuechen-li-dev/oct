@@ -431,3 +431,181 @@ FACT(PrometheusDominatusSgemmAdapter_M6DirtyCoverageAndCompatibilityMirrorNoDrif
     ASSERT_TRUE(prom_dom_sgemm_stage_m35(&board, &facts_b, &decision_b) == 1u, "same-value stage should still succeed");
     ASSERT_EQUAL(0u, prom_dom_dirty_keys_staged_word(&board, 0u), "same-value write must not dirty staged keys");
 }
+
+namespace
+{
+    prom_dom_transfer_queue_facts MakeTransferFacts(std::uint32_t dedicated, std::uint32_t differs, std::uint32_t disabled, std::uint32_t large_workload)
+    {
+        prom_dom_transfer_queue_facts facts{};
+        facts.dedicated_transfer_available = dedicated;
+        facts.transfer_queue_family_index = dedicated != 0u ? 7u : 3u;
+        facts.compute_queue_family_index = 3u;
+        facts.queue_families_differ = differs;
+        facts.transfer_queue_supported = dedicated;
+        facts.transfer_queue_disabled_by_config = disabled;
+        facts.transfer_workload_large_enough = large_workload;
+        facts.transfer_sync_ownership_supported = dedicated;
+        facts.transfer_fallback_available = 1u;
+        facts.upload_only_policy_eligible = 1u;
+        facts.upload_readback_supported = 0u;
+        return facts;
+    }
+
+    prom_judgment_decision RunTransferDecision(const prom_dom_transfer_queue_facts& transfer)
+    {
+        prom_judgment_facts facts{};
+        prom_judgment_decision decision{};
+        facts.m = 96u;
+        facts.n = 96u;
+        facts.k = 96u;
+        facts.work_units = static_cast<std::uint64_t>(96u) * 96u * 96u;
+        facts.can_stage = 1u;
+        facts.can_direct = 1u;
+        facts.allow_fallback = 1u;
+        facts.readback_required = 0u;
+        facts.force_staged = 1u;
+        facts.fallback_available = 1u;
+        facts.transfer_queue_dedicated_available = transfer.dedicated_transfer_available;
+        facts.transfer_queue_families_differ = transfer.queue_families_differ;
+        facts.transfer_queue_supported = transfer.transfer_queue_supported;
+        facts.transfer_overlap_slot_valid = transfer.transfer_sync_ownership_supported;
+        facts.transfer_workload_large_enough = transfer.transfer_workload_large_enough;
+        facts.transfer_fallback_available = transfer.transfer_fallback_available;
+        facts.transfer_queue_disabled_by_config = transfer.transfer_queue_disabled_by_config;
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        return decision;
+    }
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M7TransferInputSnapshotIsolation)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_queue_projection projection{};
+    const prom_dom_transfer_queue_facts facts_a = MakeTransferFacts(1u, 1u, 0u, 1u);
+    const prom_dom_transfer_queue_facts facts_b = MakeTransferFacts(0u, 0u, 1u, 0u);
+    prom_dom_blackboard_init(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_a) == 1u, "staging transfer facts A should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_b) == 1u, "staging transfer facts B should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_build_transfer_queue_facts_from_visible(&board, &facts_b, &projection) == 1u,
+                "projection build before commit should succeed");
+    ASSERT_EQUAL(facts_a.dedicated_transfer_available, projection.facts.dedicated_transfer_available,
+                 "projection before commit must remain pinned to visible A");
+    ASSERT_EQUAL(facts_a.transfer_queue_disabled_by_config, projection.facts.transfer_queue_disabled_by_config,
+                 "projection before commit must keep visible config gate");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_transfer_queue_facts_from_visible(&board, &facts_a, &projection) == 1u,
+                "projection build after commit should succeed");
+    ASSERT_EQUAL(facts_b.dedicated_transfer_available, projection.facts.dedicated_transfer_available,
+                 "projection after commit must read committed B facts");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M7TransferInputsAffectDecisionOnlyAfterCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_queue_projection projection{};
+    const prom_dom_transfer_queue_facts base = MakeTransferFacts(1u, 1u, 0u, 1u);
+    const prom_dom_transfer_queue_facts disabled = MakeTransferFacts(1u, 1u, 1u, 1u);
+    prom_judgment_decision before{};
+    prom_judgment_decision during{};
+    prom_judgment_decision after{};
+    prom_dom_blackboard_init(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &base) == 1u, "baseline transfer facts should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_transfer_queue_facts_from_visible(&board, &base, &projection) == 1u,
+                "baseline projection should succeed");
+    before = RunTransferDecision(projection.facts);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &disabled) == 1u, "changed transfer facts should stage");
+    ASSERT_TRUE(prom_dom_sgemm_build_transfer_queue_facts_from_visible(&board, &disabled, &projection) == 1u,
+                "projection before commit should succeed");
+    during = RunTransferDecision(projection.facts);
+    ASSERT_EQUAL(before.use_dedicated_transfer_queue_upload, during.use_dedicated_transfer_queue_upload,
+                 "staged transfer fact change must not affect decision before commit");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_transfer_queue_facts_from_visible(&board, &base, &projection) == 1u,
+                "projection after commit should succeed");
+    after = RunTransferDecision(projection.facts);
+    ASSERT_EQUAL(0u, after.use_dedicated_transfer_queue_upload, "committed disabled transfer fact must affect next decision");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG), after.transfer_fallback_reason,
+                 "committed transfer fact must update fallback reason");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M7TransferDecisionOutputStagingVisibility)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_queue_snapshot snapshot{};
+    const prom_dom_transfer_queue_facts facts = MakeTransferFacts(1u, 1u, 0u, 1u);
+    prom_dom_transfer_queue_decision decision_a{};
+    prom_dom_transfer_queue_decision decision_b{};
+    prom_dom_blackboard_init(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts) == 1u, "facts stage should succeed");
+    prom_dom_sgemm_commit(&board);
+
+    decision_a.transfer_policy_selected = 1u;
+    decision_a.selected_transfer_policy = 1u;
+    decision_a.transfer_queue_used = 1u;
+    decision_a.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
+    decision_b = decision_a;
+    decision_b.transfer_queue_used = 0u;
+    decision_b.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision_a) == 1u, "decision A staging should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &snapshot) == 1u, "visible decision A should read");
+    ASSERT_EQUAL(decision_a.transfer_queue_used, snapshot.transfer_queue_used, "decision A should be visible after commit");
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision_b) == 1u, "decision B staging should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &snapshot) == 1u, "pre-commit visible read should succeed");
+    ASSERT_EQUAL(decision_a.transfer_queue_used, snapshot.transfer_queue_used, "staged decision B must not affect visible state");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &snapshot) == 1u, "post-commit visible read should succeed");
+    ASSERT_EQUAL(decision_b.transfer_queue_used, snapshot.transfer_queue_used, "decision B must be visible after commit");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M7TransferDirtyCoverageAndMirrorNoDrift)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_queue_snapshot visible_a{};
+    prom_dom_transfer_queue_snapshot visible_b{};
+    const prom_dom_transfer_queue_facts facts_a = MakeTransferFacts(1u, 1u, 0u, 1u);
+    const prom_dom_transfer_queue_facts facts_b = MakeTransferFacts(0u, 0u, 1u, 0u);
+    prom_dom_transfer_queue_decision decision{};
+    prom_dom_blackboard_init(&board);
+
+    decision.transfer_policy_selected = 1u;
+    decision.selected_transfer_policy = 1u;
+    decision.transfer_queue_used = 1u;
+    decision.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_a) == 1u, "initial transfer facts stage should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision) == 1u, "initial transfer decision stage should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &visible_a) == 1u, "visible A should be readable");
+
+    decision.transfer_policy_selected = 0u;
+    decision.selected_transfer_policy = 0u;
+    decision.transfer_queue_used = 0u;
+    decision.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG;
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_b) == 1u, "mutated transfer facts stage should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision) == 1u, "mutated transfer decision stage should succeed");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE) == 1u, "dedicated key should be staged dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_QUEUE_TRANSFER_DISABLED_BY_CONFIG) == 1u, "disabled key should be staged dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_QUEUE_TRANSFER_POLICY_SELECTED) == 1u, "policy-selected key should be staged dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_REASON) == 1u, "fallback key should be staged dirty");
+
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &visible_b) == 1u, "visible pre-commit read should succeed");
+    ASSERT_EQUAL(visible_a.transfer_queue_used, visible_b.transfer_queue_used, "mirror must stay pinned to visible pre-commit state");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE) == 1u, "dedicated key should be dirty at commit");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_QUEUE_TRANSFER_POLICY_SELECTED) == 1u,
+                "policy-selected key should be dirty at commit");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&board, &visible_b) == 1u, "visible post-commit read should succeed");
+    ASSERT_EQUAL(decision.transfer_queue_used, visible_b.transfer_queue_used, "visible state should update after commit");
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_b) == 1u, "same-value facts stage should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision) == 1u, "same-value decision stage should succeed");
+    ASSERT_EQUAL(0u, prom_dom_dirty_keys_staged_word(&board, 0u), "same-value writes must not dirty staged keys");
+}
