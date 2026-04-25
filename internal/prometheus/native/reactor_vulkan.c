@@ -2571,21 +2571,22 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_pull_lag_peak_slots_permille;
   buffering_facts.serial_jit_headroom_slots_permille =
       (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_serial_slots_permille;
+  if (prom_dom_sgemm_stage_m35_facts(&rt->blackboard, &buffering_facts) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_build_buffering_selector_facts_from_visible(&rt->blackboard, &buffering_facts, &buffering_projection) == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_judgment_engine_select_buffering_mode(&buffering_projection.facts, &buffering_decision);
-  rt->slot_diag.m35_required_fixed_slots_permille = buffering_facts.required_fixed_slots_permille;
-  rt->slot_diag.m35_required_pull_lag_slots_permille = buffering_facts.required_pull_lag_peak_slots_permille;
-  rt->slot_diag.m35_required_serial_slots_permille = buffering_facts.required_serial_slots_permille;
-  rt->slot_diag.m35_fixed_rejected = buffering_decision.fixed_rejected;
-  rt->slot_diag.m35_pull_lag_rejected = buffering_decision.pull_lag_rejected;
-  rt->slot_diag.m35_serial_rejected = buffering_decision.serial_rejected;
   if (rt->slot_diag.m35_selected_mode != (uint32_t)buffering_decision.selected_mode) {
     rt->slot_diag.m35_transition_count += 1u;
   }
-  if (prom_dom_sgemm_stage_m35(&rt->blackboard, &buffering_facts, &buffering_decision) == 0u) {
+  if (prom_dom_sgemm_stage_m35_decision(&rt->blackboard,
+                                        &buffering_decision,
+                                        (uint32_t)prom_buffering_reason_to_detail(buffering_decision.final_reason_code)) == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
@@ -2600,6 +2601,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->slot_diag.m35_fixed_feasible = m35_snapshot.fixed_feasible;
     rt->slot_diag.m35_pull_lag_feasible = m35_snapshot.pull_lag_feasible;
     rt->slot_diag.m35_serial_feasible = m35_snapshot.serial_feasible;
+    rt->slot_diag.m35_fixed_rejected = m35_snapshot.fixed_rejected;
+    rt->slot_diag.m35_pull_lag_rejected = m35_snapshot.pull_lag_rejected;
+    rt->slot_diag.m35_serial_rejected = m35_snapshot.serial_rejected;
     rt->slot_diag.m35_fixed_score = m35_snapshot.fixed_score;
     rt->slot_diag.m35_pull_lag_score = m35_snapshot.pull_lag_score;
     rt->slot_diag.m35_serial_score = m35_snapshot.serial_score;
@@ -2609,6 +2613,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->slot_diag.m35_pull_lag_rejection_reason = m35_snapshot.pull_lag_rejection_reason;
     rt->slot_diag.m35_serial_jit_rejection_reason = m35_snapshot.serial_jit_rejection_reason;
     rt->slot_diag.m35_memory_budget_slots_permille = m35_snapshot.memory_budget_slots_permille;
+    rt->slot_diag.m35_required_fixed_slots_permille = m35_snapshot.required_fixed_slots_permille;
+    rt->slot_diag.m35_required_pull_lag_slots_permille = m35_snapshot.required_pull_lag_peak_slots_permille;
+    rt->slot_diag.m35_required_serial_slots_permille = m35_snapshot.required_serial_slots_permille;
     rt->slot_diag.m35_fixed_double_headroom_slots_permille = (int64_t)m35_snapshot.fixed_double_headroom_slots_permille;
     rt->slot_diag.m35_pull_lag_headroom_slots_permille = (int64_t)m35_snapshot.pull_lag_headroom_slots_permille;
     rt->slot_diag.m35_serial_jit_headroom_slots_permille = (int64_t)m35_snapshot.serial_jit_headroom_slots_permille;
@@ -3513,6 +3520,9 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m35_fixed_feasible = m35_snapshot.fixed_feasible;
     out_diag->m35_pull_lag_feasible = m35_snapshot.pull_lag_feasible;
     out_diag->m35_serial_feasible = m35_snapshot.serial_feasible;
+    out_diag->m35_fixed_rejected = m35_snapshot.fixed_rejected;
+    out_diag->m35_pull_lag_rejected = m35_snapshot.pull_lag_rejected;
+    out_diag->m35_serial_rejected = m35_snapshot.serial_rejected;
     out_diag->m35_fixed_score = (uint32_t)(m35_snapshot.fixed_score < 0 ? 0 : m35_snapshot.fixed_score);
     out_diag->m35_pull_lag_score = (uint32_t)(m35_snapshot.pull_lag_score < 0 ? 0 : m35_snapshot.pull_lag_score);
     out_diag->m35_serial_score = (uint32_t)(m35_snapshot.serial_score < 0 ? 0 : m35_snapshot.serial_score);
@@ -3522,6 +3532,9 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m35_pull_lag_rejection_reason = m35_snapshot.pull_lag_rejection_reason;
     out_diag->m35_serial_jit_rejection_reason = m35_snapshot.serial_jit_rejection_reason;
     out_diag->m35_memory_budget_slots_permille = m35_snapshot.memory_budget_slots_permille;
+    out_diag->m35_required_fixed_slots_permille = m35_snapshot.required_fixed_slots_permille;
+    out_diag->m35_required_pull_lag_slots_permille = m35_snapshot.required_pull_lag_peak_slots_permille;
+    out_diag->m35_required_serial_slots_permille = m35_snapshot.required_serial_slots_permille;
     out_diag->m35_fixed_double_headroom_slots_permille = (int64_t)m35_snapshot.fixed_double_headroom_slots_permille;
     out_diag->m35_pull_lag_headroom_slots_permille = (int64_t)m35_snapshot.pull_lag_headroom_slots_permille;
     out_diag->m35_serial_jit_headroom_slots_permille = (int64_t)m35_snapshot.serial_jit_headroom_slots_permille;
@@ -3530,6 +3543,9 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m35_fixed_feasible = rt->slot_diag.m35_fixed_feasible;
     out_diag->m35_pull_lag_feasible = rt->slot_diag.m35_pull_lag_feasible;
     out_diag->m35_serial_feasible = rt->slot_diag.m35_serial_feasible;
+    out_diag->m35_fixed_rejected = rt->slot_diag.m35_fixed_rejected;
+    out_diag->m35_pull_lag_rejected = rt->slot_diag.m35_pull_lag_rejected;
+    out_diag->m35_serial_rejected = rt->slot_diag.m35_serial_rejected;
     out_diag->m35_fixed_score = (uint32_t)(rt->slot_diag.m35_fixed_score < 0 ? 0 : rt->slot_diag.m35_fixed_score);
     out_diag->m35_pull_lag_score = (uint32_t)(rt->slot_diag.m35_pull_lag_score < 0 ? 0 : rt->slot_diag.m35_pull_lag_score);
     out_diag->m35_serial_score = (uint32_t)(rt->slot_diag.m35_serial_score < 0 ? 0 : rt->slot_diag.m35_serial_score);
@@ -3539,18 +3555,15 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m35_pull_lag_rejection_reason = rt->slot_diag.m35_pull_lag_rejection_reason;
     out_diag->m35_serial_jit_rejection_reason = rt->slot_diag.m35_serial_jit_rejection_reason;
     out_diag->m35_memory_budget_slots_permille = rt->slot_diag.m35_memory_budget_slots_permille;
+    out_diag->m35_required_fixed_slots_permille = rt->slot_diag.m35_required_fixed_slots_permille;
+    out_diag->m35_required_pull_lag_slots_permille = rt->slot_diag.m35_required_pull_lag_slots_permille;
+    out_diag->m35_required_serial_slots_permille = rt->slot_diag.m35_required_serial_slots_permille;
     out_diag->m35_fixed_double_headroom_slots_permille = rt->slot_diag.m35_fixed_double_headroom_slots_permille;
     out_diag->m35_pull_lag_headroom_slots_permille = rt->slot_diag.m35_pull_lag_headroom_slots_permille;
     out_diag->m35_serial_jit_headroom_slots_permille = rt->slot_diag.m35_serial_jit_headroom_slots_permille;
   }
-  out_diag->m35_fixed_rejected = rt->slot_diag.m35_fixed_rejected;
-  out_diag->m35_pull_lag_rejected = rt->slot_diag.m35_pull_lag_rejected;
-  out_diag->m35_serial_rejected = rt->slot_diag.m35_serial_rejected;
   out_diag->m35_transition_count = rt->slot_diag.m35_transition_count;
   out_diag->m35_rejection_count = rt->slot_diag.m35_rejection_count;
-  out_diag->m35_required_fixed_slots_permille = rt->slot_diag.m35_required_fixed_slots_permille;
-  out_diag->m35_required_pull_lag_slots_permille = rt->slot_diag.m35_required_pull_lag_slots_permille;
-  out_diag->m35_required_serial_slots_permille = rt->slot_diag.m35_required_serial_slots_permille;
   out_diag->m35_budget_rejection_count = rt->slot_diag.m35_budget_rejection_count;
   out_diag->m35_pull_lag_predicted_demand_proxy_units = rt->slot_diag.m35_pull_lag_predicted_demand_proxy_units;
   out_diag->m35_pull_lag_transfer_lead_proxy_units = rt->slot_diag.m35_pull_lag_transfer_lead_proxy_units;

@@ -11,10 +11,15 @@ extern "C" {
 #endif
 
 typedef struct prom_dom_sgemm_m35_snapshot {
+  uint32_t success;
   uint32_t selected_mode;
   uint32_t fixed_feasible;
   uint32_t pull_lag_feasible;
   uint32_t serial_feasible;
+  uint32_t fixed_rejected;
+  uint32_t pull_lag_rejected;
+  uint32_t serial_rejected;
+  uint32_t no_feasible_mode_detail;
   int32_t fixed_score;
   int32_t pull_lag_score;
   int32_t serial_score;
@@ -27,6 +32,14 @@ typedef struct prom_dom_sgemm_m35_snapshot {
   int32_t pull_lag_headroom_slots_permille;
   int32_t serial_jit_headroom_slots_permille;
   uint64_t memory_budget_slots_permille;
+  uint32_t required_fixed_slots_permille;
+  uint32_t required_pull_lag_peak_slots_permille;
+  uint32_t required_serial_slots_permille;
+  uint32_t transfer_variance_class;
+  uint32_t compute_predictability_class;
+  uint32_t starvation_risk_high;
+  uint32_t pull_lag_wip_waste_exceeded;
+  uint32_t fallback_available;
 } prom_dom_sgemm_m35_snapshot;
 
 typedef struct prom_dom_sgemm_buffering_projection {
@@ -39,6 +52,10 @@ typedef struct prom_dom_sgemm_buffering_projection {
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
+uint32_t prom_dom_sgemm_stage_m35_facts(prom_dom_blackboard* board, const prom_buffering_selector_facts* facts);
+uint32_t prom_dom_sgemm_stage_m35_decision(prom_dom_blackboard* board,
+                                           const prom_buffering_selector_decision* decision,
+                                           uint32_t no_feasible_mode_detail);
 
 void prom_dom_sgemm_commit(prom_dom_blackboard* board);
 
