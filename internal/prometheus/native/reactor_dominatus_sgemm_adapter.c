@@ -44,6 +44,47 @@ static uint64_t m35_dependency_mask_last_commit(const prom_dom_blackboard* board
   return mask;
 }
 
+static uint64_t transfer_queue_dependency_mask_last_commit(const prom_dom_blackboard* board) {
+  uint64_t mask = 0u;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE) != 0u) {
+    mask |= 1ull << 0u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAMILY) != 0u) {
+    mask |= 1ull << 1u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_COMPUTE_FAMILY) != 0u) {
+    mask |= 1ull << 2u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_FAMILIES_DIFFER) != 0u) {
+    mask |= 1ull << 3u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_SUPPORTED) != 0u) {
+    mask |= 1ull << 4u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_DISABLED_BY_CONFIG) != 0u) {
+    mask |= 1ull << 5u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_WORKLOAD_LARGE_ENOUGH) != 0u) {
+    mask |= 1ull << 6u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_SYNC_OWNERSHIP_SUPPORTED) != 0u) {
+    mask |= 1ull << 7u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_AVAILABLE) != 0u) {
+    mask |= 1ull << 8u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_ONLY_ELIGIBLE) != 0u) {
+    mask |= 1ull << 9u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_READBACK_SUPPORTED) != 0u) {
+    mask |= 1ull << 10u;
+  }
+  return mask;
+}
+
 uint32_t prom_dom_sgemm_stage_m35_facts(prom_dom_blackboard* board, const prom_buffering_selector_facts* facts) {
   if (board == 0 || facts == 0) {
     return 0u;
@@ -539,5 +580,266 @@ uint32_t prom_dom_sgemm_build_buffering_selector_facts_from_visible(
   facts.memory_budget_slots_permille = (uint32_t)budget_value;
   out_projection->from_visible_snapshot = 1u;
   out_projection->facts = facts;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_queue_facts(prom_dom_blackboard* board, const prom_dom_transfer_queue_facts* facts) {
+  if (board == 0 || facts == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE,
+                       0u,
+                       facts->dedicated_transfer_available,
+                       (int32_t)facts->dedicated_transfer_available) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_FAMILY,
+                       0u,
+                       facts->transfer_queue_family_index,
+                       (int32_t)facts->transfer_queue_family_index) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_COMPUTE_FAMILY,
+                       0u,
+                       facts->compute_queue_family_index,
+                       (int32_t)facts->compute_queue_family_index) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_FAMILIES_DIFFER,
+                       0u,
+                       facts->queue_families_differ,
+                       (int32_t)facts->queue_families_differ) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_SUPPORTED,
+                       0u,
+                       facts->transfer_queue_supported,
+                       (int32_t)facts->transfer_queue_supported) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_DISABLED_BY_CONFIG,
+                       0u,
+                       facts->transfer_queue_disabled_by_config,
+                       (int32_t)facts->transfer_queue_disabled_by_config) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_WORKLOAD_LARGE_ENOUGH,
+                       0u,
+                       facts->transfer_workload_large_enough,
+                       (int32_t)facts->transfer_workload_large_enough) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_SYNC_OWNERSHIP_SUPPORTED,
+                       0u,
+                       facts->transfer_sync_ownership_supported,
+                       (int32_t)facts->transfer_sync_ownership_supported) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_AVAILABLE,
+                       0u,
+                       facts->transfer_fallback_available,
+                       (int32_t)facts->transfer_fallback_available) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_ONLY_ELIGIBLE,
+                       0u,
+                       facts->upload_only_policy_eligible,
+                       (int32_t)facts->upload_only_policy_eligible) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_POLICY,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_READBACK_SUPPORTED,
+                       0u,
+                       facts->upload_readback_supported,
+                       (int32_t)facts->upload_readback_supported) == 0u) {
+    return 0u;
+  }
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_build_transfer_queue_facts_from_visible(const prom_dom_blackboard* board,
+                                                                const prom_dom_transfer_queue_facts* fallback_facts,
+                                                                prom_dom_transfer_queue_projection* out_projection) {
+  prom_dom_transfer_queue_facts facts;
+  uint32_t u32_value;
+  if (board == 0 || fallback_facts == 0 || out_projection == 0) {
+    return 0u;
+  }
+  facts = *fallback_facts;
+  out_projection->visible_generation = board->visible_generation;
+  out_projection->dependent_dirty_key_mask_last_commit = transfer_queue_dependency_mask_last_commit(board);
+  out_projection->from_visible_snapshot = 0u;
+
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.dedicated_transfer_available = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAMILY, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_queue_family_index = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_COMPUTE_FAMILY, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.compute_queue_family_index = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_FAMILIES_DIFFER, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.queue_families_differ = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_SUPPORTED, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_queue_supported = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_DISABLED_BY_CONFIG, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_queue_disabled_by_config = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_WORKLOAD_LARGE_ENOUGH, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_workload_large_enough = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_SYNC_OWNERSHIP_SUPPORTED, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_sync_ownership_supported = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_AVAILABLE, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.transfer_fallback_available = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_ONLY_ELIGIBLE, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.upload_only_policy_eligible = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_READBACK_SUPPORTED, 0u, &u32_value) == 0u) {
+    out_projection->facts = facts;
+    return 1u;
+  }
+  facts.upload_readback_supported = u32_value;
+  out_projection->from_visible_snapshot = 1u;
+  out_projection->facts = facts;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_queue_decision(prom_dom_blackboard* board,
+                                                      const prom_dom_transfer_queue_decision* decision) {
+  if (board == 0 || decision == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_POLICY,
+                       0u,
+                       decision->selected_transfer_policy,
+                       (int32_t)decision->transfer_fallback_reason) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_POLICY_SELECTED,
+                       0u,
+                       decision->transfer_policy_selected,
+                       (int32_t)decision->transfer_fallback_reason) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_REASON,
+                       0u,
+                       decision->transfer_fallback_reason,
+                       (int32_t)decision->transfer_fallback_reason) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_QUEUE_USED,
+                       0u,
+                       decision->transfer_queue_used,
+                       (int32_t)decision->transfer_fallback_reason) == 0u) {
+    return 0u;
+  }
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_read_visible_transfer_queue_diagnostics(const prom_dom_blackboard* board,
+                                                                prom_dom_transfer_queue_snapshot* out_snapshot) {
+  uint32_t u32_value;
+  if (board == 0 || out_snapshot == 0) {
+    return 0u;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_POLICY_SELECTED, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->transfer_policy_selected = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_POLICY, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->selected_transfer_policy = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_QUEUE_USED, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->transfer_queue_used = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_REASON, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->transfer_fallback_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_DEDICATED_AVAILABLE, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->dedicated_transfer_available = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAMILY, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->transfer_queue_family_index = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_COMPUTE_FAMILY, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->compute_queue_family_index = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_FAMILIES_DIFFER, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->queue_families_differ = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_SUPPORTED, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->transfer_queue_supported = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_ONLY_ELIGIBLE, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->upload_only_policy_eligible = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_UPLOAD_READBACK_SUPPORTED, 0u, &u32_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->upload_readback_supported = u32_value;
   return 1u;
 }

@@ -511,6 +511,24 @@ static int update_async_progress(prometheus_runtime* rt) {
   return PROM_ERROR;
 }
 
+static uint32_t sync_transfer_diag_from_visible(prometheus_runtime* rt) {
+  prom_dom_transfer_queue_snapshot snapshot;
+  if (rt == NULL) {
+    return 0u;
+  }
+  if (prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&rt->blackboard, &snapshot) == 0u) {
+    return 0u;
+  }
+  rt->slot_diag.transfer_policy_selected = snapshot.transfer_policy_selected;
+  rt->slot_diag.transfer_queue_used = snapshot.transfer_queue_used;
+  rt->slot_diag.transfer_fallback_reason = snapshot.transfer_fallback_reason;
+  rt->slot_diag.dedicated_transfer_available = snapshot.dedicated_transfer_available;
+  rt->slot_diag.transfer_queue_family_index = snapshot.transfer_queue_family_index;
+  rt->slot_diag.compute_queue_family_index = snapshot.compute_queue_family_index;
+  rt->slot_diag.queue_families_differ = snapshot.queue_families_differ;
+  return 1u;
+}
+
 static int checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value) {
   if (out_value == NULL) {
     return 0;
@@ -2223,20 +2241,40 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   } else {
     result = vk_runtime_init(runtime);
     if (result == VK_SUCCESS) {
+      prom_dom_transfer_queue_facts transfer_facts;
+      prom_dom_transfer_queue_decision transfer_decision;
       runtime->available = 1u;
       runtime->reason_code = PROM_REASON_NONE;
       runtime->init_detail_code = 0;
-      runtime->slot_diag.dedicated_transfer_available = runtime->dedicated_transfer_available;
-      runtime->slot_diag.transfer_queue_family_index = runtime->transfer_queue_family_index;
-      runtime->slot_diag.compute_queue_family_index = runtime->queue_family_index;
-      runtime->slot_diag.queue_families_differ =
+      memset(&transfer_facts, 0, sizeof(transfer_facts));
+      transfer_facts.dedicated_transfer_available = runtime->dedicated_transfer_available;
+      transfer_facts.transfer_queue_family_index = runtime->transfer_queue_family_index;
+      transfer_facts.compute_queue_family_index = runtime->queue_family_index;
+      transfer_facts.queue_families_differ =
           (runtime->dedicated_transfer_available != 0u && runtime->transfer_queue_family_index != runtime->queue_family_index) ? 1u : 0u;
-      runtime->slot_diag.transfer_policy_selected = runtime->transfer_queue_enabled;
-      runtime->slot_diag.transfer_fallback_reason =
+      transfer_facts.transfer_queue_supported = runtime->transfer_queue_enabled;
+      transfer_facts.transfer_queue_disabled_by_config = ((runtime->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+      transfer_facts.transfer_workload_large_enough = 1u;
+      transfer_facts.transfer_sync_ownership_supported = runtime->transfer_queue_enabled;
+      transfer_facts.transfer_fallback_available = 1u;
+      transfer_facts.upload_only_policy_eligible = 1u;
+      transfer_facts.upload_readback_supported = 0u;
+      if (prom_dom_sgemm_stage_transfer_queue_facts(&runtime->blackboard, &transfer_facts) != 0u) {
+        prom_dom_sgemm_commit(&runtime->blackboard);
+      }
+      memset(&transfer_decision, 0, sizeof(transfer_decision));
+      transfer_decision.transfer_policy_selected = runtime->transfer_queue_enabled;
+      transfer_decision.selected_transfer_policy = runtime->transfer_queue_enabled != 0u ? 1u : 0u;
+      transfer_decision.transfer_queue_used = runtime->transfer_queue_enabled;
+      transfer_decision.transfer_fallback_reason =
           runtime->transfer_queue_enabled != 0u ? PROM_TRANSFER_FALLBACK_NONE
                                                 : (((runtime->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u)
                                                        ? PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG
                                                        : PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE);
+      if (prom_dom_sgemm_stage_transfer_queue_decision(&runtime->blackboard, &transfer_decision) != 0u) {
+        prom_dom_sgemm_commit(&runtime->blackboard);
+      }
+      sync_transfer_diag_from_visible(runtime);
     } else {
       runtime->available = 0u;
       runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
@@ -2351,6 +2389,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_buffering_selector_facts buffering_facts;
   prom_dom_sgemm_buffering_projection buffering_projection;
   prom_buffering_selector_decision buffering_decision;
+  prom_dom_transfer_queue_facts transfer_queue_facts;
+  prom_dom_transfer_queue_projection transfer_queue_projection;
+  prom_dom_transfer_queue_decision transfer_queue_decision;
+  prom_dom_transfer_queue_snapshot transfer_queue_snapshot;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
   prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
@@ -2487,14 +2529,35 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.capability_fp16_storage = rt->capability_fp16_storage;
   judgment_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
   judgment_facts.fp16_utility_score = fp16_utility_score;
-  judgment_facts.transfer_queue_dedicated_available = rt->dedicated_transfer_available;
-  judgment_facts.transfer_queue_families_differ =
+  memset(&transfer_queue_facts, 0, sizeof(transfer_queue_facts));
+  transfer_queue_facts.dedicated_transfer_available = rt->dedicated_transfer_available;
+  transfer_queue_facts.transfer_queue_family_index = rt->transfer_queue_family_index;
+  transfer_queue_facts.compute_queue_family_index = rt->queue_family_index;
+  transfer_queue_facts.queue_families_differ =
       (rt->dedicated_transfer_available != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 1u : 0u;
-  judgment_facts.transfer_queue_supported = rt->transfer_queue_enabled;
-  judgment_facts.transfer_overlap_slot_valid = 1u;
-  judgment_facts.transfer_workload_large_enough = work_units >= (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
-  judgment_facts.transfer_fallback_available = 1u;
-  judgment_facts.transfer_queue_disabled_by_config = ((rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+  transfer_queue_facts.transfer_queue_supported = rt->transfer_queue_enabled;
+  transfer_queue_facts.transfer_queue_disabled_by_config = ((rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+  transfer_queue_facts.transfer_workload_large_enough = work_units >= (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+  transfer_queue_facts.transfer_sync_ownership_supported = rt->transfer_queue_enabled;
+  transfer_queue_facts.transfer_fallback_available = 1u;
+  transfer_queue_facts.upload_only_policy_eligible = readback_required == 0u ? 1u : 0u;
+  transfer_queue_facts.upload_readback_supported = 0u;
+  if (prom_dom_sgemm_stage_transfer_queue_facts(&rt->blackboard, &transfer_queue_facts) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_build_transfer_queue_facts_from_visible(&rt->blackboard, &transfer_queue_facts, &transfer_queue_projection) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  judgment_facts.transfer_queue_dedicated_available = transfer_queue_projection.facts.dedicated_transfer_available;
+  judgment_facts.transfer_queue_families_differ = transfer_queue_projection.facts.queue_families_differ;
+  judgment_facts.transfer_queue_supported = transfer_queue_projection.facts.transfer_queue_supported;
+  judgment_facts.transfer_overlap_slot_valid = transfer_queue_projection.facts.transfer_sync_ownership_supported;
+  judgment_facts.transfer_workload_large_enough = transfer_queue_projection.facts.transfer_workload_large_enough;
+  judgment_facts.transfer_fallback_available = transfer_queue_projection.facts.transfer_fallback_available;
+  judgment_facts.transfer_queue_disabled_by_config = transfer_queue_projection.facts.transfer_queue_disabled_by_config;
   prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
   if (judgment_decision.success == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
@@ -2503,9 +2566,22 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
-  use_dedicated_transfer_upload = judgment_decision.use_dedicated_transfer_queue_upload;
-  rt->slot_diag.transfer_policy_selected = use_dedicated_transfer_upload;
-  rt->slot_diag.transfer_fallback_reason = judgment_decision.transfer_fallback_reason;
+  memset(&transfer_queue_decision, 0, sizeof(transfer_queue_decision));
+  transfer_queue_decision.transfer_policy_selected = judgment_decision.use_dedicated_transfer_queue_upload;
+  transfer_queue_decision.selected_transfer_policy = judgment_decision.use_dedicated_transfer_queue_upload != 0u ? 1u : 0u;
+  transfer_queue_decision.transfer_queue_used = judgment_decision.use_dedicated_transfer_queue_upload;
+  transfer_queue_decision.transfer_fallback_reason = judgment_decision.transfer_fallback_reason;
+  if (prom_dom_sgemm_stage_transfer_queue_decision(&rt->blackboard, &transfer_queue_decision) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&rt->blackboard, &transfer_queue_snapshot) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  use_dedicated_transfer_upload = transfer_queue_snapshot.transfer_queue_used;
+  sync_transfer_diag_from_visible(rt);
   rt->sgemm_controller.packed4_tail_count_last = packed4_tail_count;
   rt->sgemm_controller.packed4_padded_lane_count_last = packed4_padded_lane_count;
   rt->sgemm_controller.packed4_padding_waste_permille_last = packed4_waste_permille;
@@ -3423,6 +3499,7 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
 int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
   prom_dom_sgemm_m35_snapshot m35_snapshot;
+  prom_dom_transfer_queue_snapshot transfer_snapshot;
   prom_dom_slot_commit_snapshot slot_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
@@ -3502,18 +3579,29 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
   out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
   out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
-  out_diag->m31_transfer_queue_used = rt->slot_diag.transfer_queue_used;
-  out_diag->m31_transfer_policy_selected = rt->slot_diag.transfer_policy_selected;
-  out_diag->m31_dedicated_transfer_available = rt->slot_diag.dedicated_transfer_available;
-  out_diag->m31_transfer_queue_family_index = rt->slot_diag.transfer_queue_family_index;
-  out_diag->m31_compute_queue_family_index = rt->slot_diag.compute_queue_family_index;
-  out_diag->m31_queue_families_differ = rt->slot_diag.queue_families_differ;
+  if (prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&rt->blackboard, &transfer_snapshot) != 0u) {
+    out_diag->m31_transfer_queue_used = transfer_snapshot.transfer_queue_used;
+    out_diag->m31_transfer_policy_selected = transfer_snapshot.transfer_policy_selected;
+    out_diag->m31_dedicated_transfer_available = transfer_snapshot.dedicated_transfer_available;
+    out_diag->m31_transfer_queue_family_index = transfer_snapshot.transfer_queue_family_index;
+    out_diag->m31_compute_queue_family_index = transfer_snapshot.compute_queue_family_index;
+    out_diag->m31_queue_families_differ = transfer_snapshot.queue_families_differ;
+    out_diag->m31_transfer_fallback_reason = transfer_snapshot.transfer_fallback_reason;
+    out_diag->m31_upload_policy_marker = transfer_snapshot.upload_only_policy_eligible;
+  } else {
+    out_diag->m31_transfer_queue_used = rt->slot_diag.transfer_queue_used;
+    out_diag->m31_transfer_policy_selected = rt->slot_diag.transfer_policy_selected;
+    out_diag->m31_dedicated_transfer_available = rt->slot_diag.dedicated_transfer_available;
+    out_diag->m31_transfer_queue_family_index = rt->slot_diag.transfer_queue_family_index;
+    out_diag->m31_compute_queue_family_index = rt->slot_diag.compute_queue_family_index;
+    out_diag->m31_queue_families_differ = rt->slot_diag.queue_families_differ;
+    out_diag->m31_transfer_fallback_reason = rt->slot_diag.transfer_fallback_reason;
+    out_diag->m31_upload_policy_marker = 1u;
+  }
   out_diag->m31_queue_family_handoff_count = rt->slot_diag.queue_family_handoff_count;
   out_diag->m31_transfer_compute_wait_count = rt->slot_diag.transfer_compute_wait_count;
-  out_diag->m31_transfer_fallback_reason = rt->slot_diag.transfer_fallback_reason;
   out_diag->m31_transfer_failure_slot_id = rt->slot_diag.transfer_failure_slot_id;
   out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
-  out_diag->m31_upload_policy_marker = 1u;
   out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
   if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &m35_snapshot) != 0u) {
     out_diag->m35_selected_buffering_mode = m35_snapshot.selected_mode;
