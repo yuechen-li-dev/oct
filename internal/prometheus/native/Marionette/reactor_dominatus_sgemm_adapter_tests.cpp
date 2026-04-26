@@ -2,6 +2,7 @@
 #include "test_harness.h"
 
 #include <cstdint>
+#include <vulkan/vulkan.h>
 
 namespace
 {
@@ -608,4 +609,90 @@ FACT(PrometheusDominatusSgemmAdapter_M7TransferDirtyCoverageAndMirrorNoDrift)
     ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_facts(&board, &facts_b) == 1u, "same-value facts stage should succeed");
     ASSERT_TRUE(prom_dom_sgemm_stage_transfer_queue_decision(&board, &decision) == 1u, "same-value decision stage should succeed");
     ASSERT_EQUAL(0u, prom_dom_dirty_keys_staged_word(&board, 0u), "same-value writes must not dirty staged keys");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M8TransferTelemetryHandoffWaitStagedVisibility)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_runtime_telemetry telemetry{};
+    prom_dom_blackboard_init(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_handoff(&board, 4u, 0u, 0) == 1u, "initial handoff should stage");
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_wait(&board, 2u, 0u, 0) == 1u, "initial wait should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "visible telemetry should read");
+    ASSERT_EQUAL(4u, telemetry.queue_family_handoff_count, "initial handoff should be visible");
+    ASSERT_EQUAL(2u, telemetry.transfer_compute_wait_count, "initial wait should be visible");
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_handoff(&board, 8u, 0u, 0) == 1u, "updated handoff should stage");
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_wait(&board, 5u, 0u, 0) == 1u, "updated wait should stage");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "pre-commit visible telemetry should read");
+    ASSERT_EQUAL(4u, telemetry.queue_family_handoff_count, "staged handoff must remain invisible before commit");
+    ASSERT_EQUAL(2u, telemetry.transfer_compute_wait_count, "staged wait must remain invisible before commit");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "post-commit visible telemetry should read");
+    ASSERT_EQUAL(8u, telemetry.queue_family_handoff_count, "committed handoff should become visible");
+    ASSERT_EQUAL(5u, telemetry.transfer_compute_wait_count, "committed wait should become visible");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M8TransferFailureTelemetryTracksDirtyAndEventMetadata)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_runtime_telemetry telemetry{};
+    prom_dom_event event{};
+    prom_dom_trace_entry trace{};
+    prom_dom_blackboard_init(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_handoff(&board, 0u, 0u, 0) == 1u, "baseline handoff should stage");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_failure(&board, 1, VK_ERROR_DEVICE_LOST, 1u) == 1u, "failure telemetry should stage");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON) == 1u,
+                "failure reason key should be dirty while staged");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u,
+                "pre-commit visible telemetry read should still succeed from baseline");
+    ASSERT_EQUAL(-1, telemetry.transfer_failure_slot_id, "staged failure slot id must remain invisible before commit");
+    ASSERT_EQUAL(0, telemetry.transfer_failure_reason, "staged failure reason must remain invisible before commit");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u,
+                "failure telemetry should be visible after commit");
+    ASSERT_EQUAL(1, telemetry.transfer_failure_slot_id, "failure slot id should be visible after commit");
+    ASSERT_EQUAL(static_cast<std::int32_t>(VK_ERROR_DEVICE_LOST), telemetry.transfer_failure_reason,
+                 "failure reason should be visible after commit");
+    ASSERT_EQUAL(1u, telemetry.transfer_failure_count, "failure count should be visible after commit");
+    ASSERT_TRUE((prom_dom_dirty_domains_last_commit(&board) & DomainBit(PROM_DOM_DOMAIN_QUEUE)) != 0u,
+                "queue domain should be dirty at commit");
+    ASSERT_TRUE(prom_dom_committed_event_count(&board) > 0u, "failure staging should emit a committed event");
+    ASSERT_TRUE(prom_dom_committed_event_at(&board, prom_dom_committed_event_count(&board) - 1u, &event) == 1u,
+                "latest committed event should be readable");
+    ASSERT_EQUAL(PROM_DOM_EVENT_TRANSFER_FAILED, event.kind, "latest committed event should be transfer failed");
+    ASSERT_EQUAL(1u, event.slot_id, "failed event should carry slot metadata");
+    ASSERT_EQUAL(static_cast<std::int32_t>(VK_ERROR_DEVICE_LOST), event.reason_code, "failed event should carry reason metadata");
+    ASSERT_TRUE(prom_dom_trace_count(&board) > 0u, "failure staging should emit trace entries");
+    ASSERT_TRUE(prom_dom_trace_at(&board, prom_dom_trace_count(&board) - 1u, &trace) == 1u, "latest trace should be readable");
+    ASSERT_EQUAL(PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON, trace.key, "last trace key should track failure event metadata");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M8TransferAsyncCompletionCommitBoundary)
+{
+    prom_dom_blackboard board{};
+    prom_dom_transfer_runtime_telemetry telemetry{};
+    prom_dom_blackboard_init(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_handoff(&board, 0u, 0u, 0) == 1u, "baseline handoff should stage");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_complete(&board, 0u, 10u, 0u, 0) == 1u, "stage incomplete marker should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "visible telemetry should read");
+    ASSERT_EQUAL(0u, telemetry.async_transfer_complete, "incomplete marker should be visible after commit");
+    ASSERT_EQUAL(10u, telemetry.async_transfer_completion_generation, "completion generation should be visible after commit");
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_transfer_complete(&board, 1u, 11u, 0u, 0) == 1u, "stage completion marker should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "pre-commit visible telemetry should read");
+    ASSERT_EQUAL(0u, telemetry.async_transfer_complete, "staged completion marker must remain invisible before commit");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_transfer_runtime_telemetry(&board, &telemetry) == 1u, "post-commit visible telemetry should read");
+    ASSERT_EQUAL(1u, telemetry.async_transfer_complete, "completion marker should become visible after commit");
+    ASSERT_EQUAL(11u, telemetry.async_transfer_completion_generation, "completion generation should advance after commit");
 }

@@ -89,7 +89,24 @@ typedef struct prom_dom_transfer_queue_snapshot {
   uint32_t transfer_queue_supported;
   uint32_t upload_only_policy_eligible;
   uint32_t upload_readback_supported;
+  uint64_t queue_family_handoff_count;
+  uint64_t transfer_compute_wait_count;
+  int32_t transfer_failure_slot_id;
+  int32_t transfer_failure_reason;
+  uint64_t transfer_failure_count;
+  uint32_t async_transfer_complete;
+  uint64_t async_transfer_completion_generation;
 } prom_dom_transfer_queue_snapshot;
+
+typedef struct prom_dom_transfer_runtime_telemetry {
+  uint64_t queue_family_handoff_count;
+  uint64_t transfer_compute_wait_count;
+  int32_t transfer_failure_slot_id;
+  int32_t transfer_failure_reason;
+  uint64_t transfer_failure_count;
+  uint32_t async_transfer_complete;
+  uint64_t async_transfer_completion_generation;
+} prom_dom_transfer_runtime_telemetry;
 
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
@@ -116,6 +133,25 @@ uint32_t prom_dom_sgemm_stage_transfer_queue_decision(prom_dom_blackboard* board
                                                       const prom_dom_transfer_queue_decision* decision);
 uint32_t prom_dom_sgemm_read_visible_transfer_queue_diagnostics(const prom_dom_blackboard* board,
                                                                 prom_dom_transfer_queue_snapshot* out_snapshot);
+uint32_t prom_dom_sgemm_stage_transfer_handoff(prom_dom_blackboard* board,
+                                               uint64_t handoff_count,
+                                               uint32_t slot_id,
+                                               int32_t reason_code);
+uint32_t prom_dom_sgemm_stage_transfer_wait(prom_dom_blackboard* board,
+                                            uint64_t wait_count,
+                                            uint32_t slot_id,
+                                            int32_t reason_code);
+uint32_t prom_dom_sgemm_stage_transfer_failure(prom_dom_blackboard* board,
+                                               int32_t slot_id,
+                                               int32_t reason_code,
+                                               uint64_t failure_count);
+uint32_t prom_dom_sgemm_stage_transfer_complete(prom_dom_blackboard* board,
+                                                uint32_t async_transfer_complete,
+                                                uint64_t completion_generation,
+                                                uint32_t slot_id,
+                                                int32_t reason_code);
+uint32_t prom_dom_sgemm_read_visible_transfer_runtime_telemetry(const prom_dom_blackboard* board,
+                                                                prom_dom_transfer_runtime_telemetry* out_snapshot);
 
 #ifdef __cplusplus
 }

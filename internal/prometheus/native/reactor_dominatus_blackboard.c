@@ -53,21 +53,27 @@ enum {
   PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_POLICY_SELECTED = 47,
   PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_FALLBACK_REASON = 48,
   PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_QUEUE_USED = 49,
-  PROM_DOM_KEY_INDEX_MEMORY_REQUIRED_CAPACITY = 50,
-  PROM_DOM_KEY_INDEX_MEMORY_BUDGET = 51,
-  PROM_DOM_KEY_INDEX_MEMORY_HEADROOM = 52,
-  PROM_DOM_KEY_INDEX_MEMORY_INVALIDATION_FLAGS = 53,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_FIXED_HEADROOM = 54,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_PULL_LAG_HEADROOM = 55,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_SERIAL_HEADROOM = 56,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_FIXED = 57,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_PULL_LAG = 58,
-  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_SERIAL = 59,
-  PROM_DOM_KEY_INDEX_DIAGNOSTICS_REASON_CODE = 60,
-  PROM_DOM_KEY_INDEX_DIAGNOSTICS_COUNTER = 61,
-  PROM_DOM_KEY_INDEX_DIAGNOSTICS_LAST_TRANSITION = 62,
-  PROM_DOM_KEY_INDEX_FFT_RESERVED = 63,
-  PROM_DOM_KEY_INDEX_COUNT = 64,
+  PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT = 50,
+  PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_FAILURE_SLOT_ID = 51,
+  PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_FAILURE_REASON = 52,
+  PROM_DOM_KEY_INDEX_QUEUE_TRANSFER_FAILURE_COUNT = 53,
+  PROM_DOM_KEY_INDEX_QUEUE_ASYNC_TRANSFER_COMPLETE = 54,
+  PROM_DOM_KEY_INDEX_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION = 55,
+  PROM_DOM_KEY_INDEX_MEMORY_REQUIRED_CAPACITY = 56,
+  PROM_DOM_KEY_INDEX_MEMORY_BUDGET = 57,
+  PROM_DOM_KEY_INDEX_MEMORY_HEADROOM = 58,
+  PROM_DOM_KEY_INDEX_MEMORY_INVALIDATION_FLAGS = 59,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_FIXED_HEADROOM = 60,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_PULL_LAG_HEADROOM = 61,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_SERIAL_HEADROOM = 62,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_FIXED = 63,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_PULL_LAG = 64,
+  PROM_DOM_KEY_INDEX_MEMORY_M35_REQUIRED_SERIAL = 65,
+  PROM_DOM_KEY_INDEX_DIAGNOSTICS_REASON_CODE = 66,
+  PROM_DOM_KEY_INDEX_DIAGNOSTICS_COUNTER = 67,
+  PROM_DOM_KEY_INDEX_DIAGNOSTICS_LAST_TRANSITION = 68,
+  PROM_DOM_KEY_INDEX_FFT_RESERVED = 69,
+  PROM_DOM_KEY_INDEX_COUNT = 70,
 };
 
 typedef struct prom_dom_key_info {
@@ -127,6 +133,12 @@ static const prom_dom_key_info k_key_info[PROM_DOM_KEY_INDEX_COUNT] = {
     {PROM_DOM_KEY_QUEUE_TRANSFER_POLICY_SELECTED, PROM_DOM_DOMAIN_QUEUE, 0u},
     {PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_REASON, PROM_DOM_DOMAIN_QUEUE, 0u},
     {PROM_DOM_KEY_QUEUE_TRANSFER_QUEUE_USED, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_SLOT_ID, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_COUNT, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETE, PROM_DOM_DOMAIN_QUEUE, 0u},
+    {PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION, PROM_DOM_DOMAIN_QUEUE, 0u},
     {PROM_DOM_KEY_MEMORY_REQUIRED_CAPACITY, PROM_DOM_DOMAIN_MEMORY, 0u},
     {PROM_DOM_KEY_MEMORY_BUDGET, PROM_DOM_DOMAIN_MEMORY, 0u},
     {PROM_DOM_KEY_MEMORY_HEADROOM, PROM_DOM_DOMAIN_MEMORY, 0u},
@@ -226,8 +238,12 @@ static prom_dom_domain key_domain(prom_dom_key key) {
   return k_key_info[key_index].domain;
 }
 
+static uint32_t key_word_index(uint32_t key_index) {
+  return key_index / 64u;
+}
+
 static uint64_t key_bit(uint32_t key_index) {
-  return 1ull << key_index;
+  return 1ull << (key_index % 64u);
 }
 
 static void recompute_domain_and_slot_dirty(prom_dom_blackboard* board) {
@@ -237,7 +253,8 @@ static void recompute_domain_and_slot_dirty(prom_dom_blackboard* board) {
 
   for (key_index = 0u; key_index < PROM_DOM_KEY_INDEX_COUNT; ++key_index) {
     const uint64_t bit = key_bit(key_index);
-    if ((board->dirty_keys_staged[0] & bit) == 0u) {
+    const uint32_t word_index = key_word_index(key_index);
+    if (word_index >= PROM_DOM_KEY_WORDS || (board->dirty_keys_staged[word_index] & bit) == 0u) {
       continue;
     }
 
@@ -268,9 +285,15 @@ static void update_dirty_tracking_for_value(prom_dom_blackboard* board, uint32_t
   }
 
   if (has_diff != 0u) {
-    board->dirty_keys_staged[0] |= key_bit(key_index);
+    const uint32_t word_index = key_word_index(key_index);
+    if (word_index < PROM_DOM_KEY_WORDS) {
+      board->dirty_keys_staged[word_index] |= key_bit(key_index);
+    }
   } else {
-    board->dirty_keys_staged[0] &= ~key_bit(key_index);
+    const uint32_t word_index = key_word_index(key_index);
+    if (word_index < PROM_DOM_KEY_WORDS) {
+      board->dirty_keys_staged[word_index] &= ~key_bit(key_index);
+    }
   }
 
   recompute_domain_and_slot_dirty(board);
@@ -535,11 +558,11 @@ void prom_dom_commit(prom_dom_blackboard* board) {
 
   memcpy(board->visible_values, board->staged_values, sizeof(board->visible_values));
 
-  board->dirty_keys_last_commit[0] = board->dirty_keys_staged[0];
+  memcpy(board->dirty_keys_last_commit, board->dirty_keys_staged, sizeof(board->dirty_keys_last_commit));
   board->dirty_domains_last_commit = board->dirty_domains_staged;
   board->dirty_slots_last_commit = board->dirty_slots_staged;
 
-  board->dirty_keys_staged[0] = 0u;
+  memset(board->dirty_keys_staged, 0, sizeof(board->dirty_keys_staged));
   board->dirty_domains_staged = 0u;
   board->dirty_slots_staged = 0u;
 
@@ -579,7 +602,13 @@ uint32_t prom_dom_dirty_key_staged(const prom_dom_blackboard* board, prom_dom_ke
   if (board == 0 || key_to_index(key, &key_index) == 0u) {
     return 0u;
   }
-  return (board->dirty_keys_staged[0] & key_bit(key_index)) != 0u ? 1u : 0u;
+  {
+    const uint32_t word_index = key_word_index(key_index);
+    if (word_index >= PROM_DOM_KEY_WORDS) {
+      return 0u;
+    }
+    return (board->dirty_keys_staged[word_index] & key_bit(key_index)) != 0u ? 1u : 0u;
+  }
 }
 
 uint32_t prom_dom_dirty_key_last_commit(const prom_dom_blackboard* board, prom_dom_key key) {
@@ -587,7 +616,13 @@ uint32_t prom_dom_dirty_key_last_commit(const prom_dom_blackboard* board, prom_d
   if (board == 0 || key_to_index(key, &key_index) == 0u) {
     return 0u;
   }
-  return (board->dirty_keys_last_commit[0] & key_bit(key_index)) != 0u ? 1u : 0u;
+  {
+    const uint32_t word_index = key_word_index(key_index);
+    if (word_index >= PROM_DOM_KEY_WORDS) {
+      return 0u;
+    }
+    return (board->dirty_keys_last_commit[word_index] & key_bit(key_index)) != 0u ? 1u : 0u;
+  }
 }
 
 uint32_t prom_dom_dirty_domains_staged(const prom_dom_blackboard* board) {
