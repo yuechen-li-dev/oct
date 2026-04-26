@@ -794,6 +794,8 @@ uint32_t prom_dom_sgemm_stage_transfer_queue_decision(prom_dom_blackboard* board
 uint32_t prom_dom_sgemm_read_visible_transfer_queue_diagnostics(const prom_dom_blackboard* board,
                                                                 prom_dom_transfer_queue_snapshot* out_snapshot) {
   uint32_t u32_value;
+  uint64_t u64_value;
+  int32_t i32_value;
   if (board == 0 || out_snapshot == 0) {
     return 0u;
   }
@@ -841,5 +843,185 @@ uint32_t prom_dom_sgemm_read_visible_transfer_queue_diagnostics(const prom_dom_b
     return 0u;
   }
   out_snapshot->upload_readback_supported = u32_value;
+  out_snapshot->queue_family_handoff_count = 0u;
+  out_snapshot->transfer_compute_wait_count = 0u;
+  out_snapshot->transfer_failure_slot_id = -1;
+  out_snapshot->transfer_failure_reason = 0;
+  out_snapshot->transfer_failure_count = 0u;
+  out_snapshot->async_transfer_complete = 0u;
+  out_snapshot->async_transfer_completion_generation = 0u;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_HANDOFF_COUNT, 0u, &u64_value) != 0u) {
+    out_snapshot->queue_family_handoff_count = u64_value;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT, 0u, &u64_value) != 0u) {
+    out_snapshot->transfer_compute_wait_count = u64_value;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_SLOT_ID, 0u, &i32_value) != 0u) {
+    out_snapshot->transfer_failure_slot_id = i32_value;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON, 0u, &i32_value) != 0u) {
+    out_snapshot->transfer_failure_reason = i32_value;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_COUNT, 0u, &u64_value) != 0u) {
+    out_snapshot->transfer_failure_count = u64_value;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETE, 0u, &u32_value) != 0u) {
+    out_snapshot->async_transfer_complete = u32_value;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION, 0u, &u64_value) != 0u) {
+    out_snapshot->async_transfer_completion_generation = u64_value;
+  }
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_handoff(prom_dom_blackboard* board,
+                                               uint64_t handoff_count,
+                                               uint32_t slot_id,
+                                               int32_t reason_code) {
+  prom_dom_event event;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_QUEUE, PROM_DOM_KEY_QUEUE_HANDOFF_COUNT, 0u, handoff_count, reason_code) == 0u) {
+    return 0u;
+  }
+  event.generation = board->staged_generation + 1u;
+  event.sequence = board->sequence_counter + 1u;
+  event.kind = PROM_DOM_EVENT_QUEUE_HANDOFF;
+  event.source = PROM_DOM_SOURCE_QUEUE;
+  event.domain = PROM_DOM_DOMAIN_QUEUE;
+  event.key = PROM_DOM_KEY_QUEUE_HANDOFF_COUNT;
+  event.slot_id = slot_id;
+  event.reason_code = reason_code;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_wait(prom_dom_blackboard* board,
+                                            uint64_t wait_count,
+                                            uint32_t slot_id,
+                                            int32_t reason_code) {
+  prom_dom_event event;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT,
+                       0u,
+                       wait_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  event.generation = board->staged_generation + 1u;
+  event.sequence = board->sequence_counter + 1u;
+  event.kind = PROM_DOM_EVENT_TRANSFER_WAIT;
+  event.source = PROM_DOM_SOURCE_QUEUE;
+  event.domain = PROM_DOM_DOMAIN_QUEUE;
+  event.key = PROM_DOM_KEY_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT;
+  event.slot_id = slot_id;
+  event.reason_code = reason_code;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_failure(prom_dom_blackboard* board,
+                                               int32_t slot_id,
+                                               int32_t reason_code,
+                                               uint64_t failure_count) {
+  prom_dom_event event;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_QUEUE, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_SLOT_ID, 0u, slot_id, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_QUEUE, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON, 0u, reason_code, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_QUEUE, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_COUNT, 0u, failure_count, reason_code) == 0u) {
+    return 0u;
+  }
+  event.generation = board->staged_generation + 1u;
+  event.sequence = board->sequence_counter + 1u;
+  event.kind = PROM_DOM_EVENT_TRANSFER_FAILED;
+  event.source = PROM_DOM_SOURCE_QUEUE;
+  event.domain = PROM_DOM_DOMAIN_QUEUE;
+  event.key = PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON;
+  event.slot_id = slot_id < 0 ? 0u : (uint32_t)slot_id;
+  event.reason_code = reason_code;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_stage_transfer_complete(prom_dom_blackboard* board,
+                                                uint32_t async_transfer_complete,
+                                                uint64_t completion_generation,
+                                                uint32_t slot_id,
+                                                int32_t reason_code) {
+  prom_dom_event event;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETE,
+                       0u,
+                       async_transfer_complete,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_QUEUE,
+                       PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION,
+                       0u,
+                       completion_generation,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  event.generation = board->staged_generation + 1u;
+  event.sequence = board->sequence_counter + 1u;
+  event.kind = PROM_DOM_EVENT_TRANSFER_COMPLETE;
+  event.source = PROM_DOM_SOURCE_QUEUE;
+  event.domain = PROM_DOM_DOMAIN_QUEUE;
+  event.key = PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETE;
+  event.slot_id = slot_id;
+  event.reason_code = reason_code;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_read_visible_transfer_runtime_telemetry(const prom_dom_blackboard* board,
+                                                                prom_dom_transfer_runtime_telemetry* out_snapshot) {
+  uint64_t u64_value;
+  uint32_t u32_value;
+  int32_t i32_value;
+  if (board == 0 || out_snapshot == 0) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_HANDOFF_COUNT, 0u, &u64_value) == 0u) {
+    return 0u;
+  }
+  out_snapshot->queue_family_handoff_count = u64_value;
+  out_snapshot->transfer_compute_wait_count = 0u;
+  out_snapshot->transfer_failure_slot_id = -1;
+  out_snapshot->transfer_failure_reason = 0;
+  out_snapshot->transfer_failure_count = 0u;
+  out_snapshot->async_transfer_complete = 0u;
+  out_snapshot->async_transfer_completion_generation = 0u;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_TRANSFER_COMPUTE_WAIT_COUNT, 0u, &u64_value) != 0u) {
+    out_snapshot->transfer_compute_wait_count = u64_value;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_SLOT_ID, 0u, &i32_value) != 0u) {
+    out_snapshot->transfer_failure_slot_id = i32_value;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_REASON, 0u, &i32_value) != 0u) {
+    out_snapshot->transfer_failure_reason = i32_value;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_TRANSFER_FAILURE_COUNT, 0u, &u64_value) != 0u) {
+    out_snapshot->transfer_failure_count = u64_value;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETE, 0u, &u32_value) != 0u) {
+    out_snapshot->async_transfer_complete = u32_value;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION, 0u, &u64_value) != 0u) {
+    out_snapshot->async_transfer_completion_generation = u64_value;
+  }
   return 1u;
 }

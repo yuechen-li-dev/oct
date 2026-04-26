@@ -137,7 +137,9 @@ typedef struct prom_slot_runtime_diag {
   uint32_t transfer_fallback_reason;
   int transfer_failure_slot_id;
   int transfer_failure_reason;
+  uint64_t transfer_failure_count;
   uint32_t async_transfer_complete;
+  uint64_t async_transfer_completion_generation;
   uint32_t m35_selected_mode;
   uint32_t m35_fixed_feasible;
   uint32_t m35_pull_lag_feasible;
@@ -456,6 +458,8 @@ static void set_async_state(prometheus_runtime* rt, uint32_t state, uint32_t sta
 
 static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason);
 static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id);
+static void stage_transfer_complete_telemetry(prometheus_runtime* rt, uint32_t complete, uint32_t slot_id, int reason_code);
+static void stage_transfer_failure_telemetry(prometheus_runtime* rt, uint32_t slot_id, int reason_code);
 
 static int update_async_progress(prometheus_runtime* rt) {
   VkResult vk_result;
@@ -477,11 +481,14 @@ static int update_async_progress(prometheus_runtime* rt) {
   if (rt->slot_diag.transfer_queue_used != 0u && rt->slot_diag.async_transfer_complete == 0u) {
     vk_result = vkGetFenceStatus(rt->device, rt->transfer_submit_fence);
     if (vk_result == VK_SUCCESS) {
-      rt->slot_diag.async_transfer_complete = 1u;
+      stage_transfer_complete_telemetry(rt, 1u, rt->slot_diag.async_slot_id < 0 ? 0u : (uint32_t)rt->slot_diag.async_slot_id, 0);
     } else if (vk_result == VK_NOT_READY) {
       return PROM_OK;
     } else {
       rt->in_flight_submit = 0u;
+      if (rt->slot_diag.async_slot_id >= 0) {
+        stage_transfer_failure_telemetry(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
+      }
       if (rt->slot_diag.async_slot_id >= 0) {
         prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
       }
@@ -526,7 +533,77 @@ static uint32_t sync_transfer_diag_from_visible(prometheus_runtime* rt) {
   rt->slot_diag.transfer_queue_family_index = snapshot.transfer_queue_family_index;
   rt->slot_diag.compute_queue_family_index = snapshot.compute_queue_family_index;
   rt->slot_diag.queue_families_differ = snapshot.queue_families_differ;
+  rt->slot_diag.queue_family_handoff_count = snapshot.queue_family_handoff_count;
+  rt->slot_diag.transfer_compute_wait_count = snapshot.transfer_compute_wait_count;
+  rt->slot_diag.transfer_failure_slot_id = snapshot.transfer_failure_slot_id;
+  rt->slot_diag.transfer_failure_reason = snapshot.transfer_failure_reason;
+  rt->slot_diag.transfer_failure_count = snapshot.transfer_failure_count;
+  rt->slot_diag.async_transfer_complete = snapshot.async_transfer_complete;
+  rt->slot_diag.async_transfer_completion_generation = snapshot.async_transfer_completion_generation;
   return 1u;
+}
+
+static void commit_transfer_runtime_telemetry(prometheus_runtime* rt) {
+  if (rt == NULL) {
+    return;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  sync_transfer_diag_from_visible(rt);
+}
+
+static void stage_transfer_complete_telemetry(prometheus_runtime* rt, uint32_t complete, uint32_t slot_id, int reason_code) {
+  if (rt == NULL) {
+    return;
+  }
+  if (complete != 0u) {
+    rt->slot_diag.async_transfer_completion_generation += 1u;
+  }
+  if (prom_dom_sgemm_stage_transfer_complete(&rt->blackboard,
+                                             complete,
+                                             rt->slot_diag.async_transfer_completion_generation,
+                                             slot_id,
+                                             reason_code) == 0u) {
+    return;
+  }
+  commit_transfer_runtime_telemetry(rt);
+}
+
+static void stage_transfer_handoff_telemetry(prometheus_runtime* rt, uint32_t slot_id, int reason_code, uint64_t handoff_delta) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->slot_diag.queue_family_handoff_count += handoff_delta;
+  if (prom_dom_sgemm_stage_transfer_handoff(&rt->blackboard, rt->slot_diag.queue_family_handoff_count, slot_id, reason_code) == 0u) {
+    return;
+  }
+  commit_transfer_runtime_telemetry(rt);
+}
+
+static void stage_transfer_wait_telemetry(prometheus_runtime* rt, uint32_t slot_id, int reason_code) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->slot_diag.transfer_compute_wait_count += 1u;
+  if (prom_dom_sgemm_stage_transfer_wait(&rt->blackboard, rt->slot_diag.transfer_compute_wait_count, slot_id, reason_code) == 0u) {
+    return;
+  }
+  commit_transfer_runtime_telemetry(rt);
+}
+
+static void stage_transfer_failure_telemetry(prometheus_runtime* rt, uint32_t slot_id, int reason_code) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->slot_diag.transfer_failure_slot_id = (int)slot_id;
+  rt->slot_diag.transfer_failure_reason = reason_code;
+  rt->slot_diag.transfer_failure_count += 1u;
+  if (prom_dom_sgemm_stage_transfer_failure(&rt->blackboard,
+                                            rt->slot_diag.transfer_failure_slot_id,
+                                            rt->slot_diag.transfer_failure_reason,
+                                            rt->slot_diag.transfer_failure_count) == 0u) {
+    return;
+  }
+  commit_transfer_runtime_telemetry(rt);
 }
 
 static int checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value) {
@@ -2226,6 +2303,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.compute_queue_family_index = UINT32_MAX;
   runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
   runtime->slot_diag.transfer_failure_slot_id = -1;
+  runtime->slot_diag.transfer_failure_reason = 0;
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -2272,6 +2350,12 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
                                                        ? PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG
                                                        : PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE);
       if (prom_dom_sgemm_stage_transfer_queue_decision(&runtime->blackboard, &transfer_decision) != 0u) {
+        prom_dom_sgemm_commit(&runtime->blackboard);
+      }
+      if (prom_dom_sgemm_stage_transfer_handoff(&runtime->blackboard, 0u, 0u, 0) != 0u &&
+          prom_dom_sgemm_stage_transfer_wait(&runtime->blackboard, 0u, 0u, 0) != 0u &&
+          prom_dom_sgemm_stage_transfer_failure(&runtime->blackboard, -1, 0, 0u) != 0u &&
+          prom_dom_sgemm_stage_transfer_complete(&runtime->blackboard, 1u, 0u, 0u, 0) != 0u) {
         prom_dom_sgemm_commit(&runtime->blackboard);
       }
       sync_transfer_diag_from_visible(runtime);
@@ -2886,13 +2970,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
   if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
-    rt->slot_diag.transfer_queue_used = 1u;
-    rt->slot_diag.async_transfer_complete = 0u;
+    stage_transfer_complete_telemetry(rt, 0u, work_slot_id, 0);
     vk_result = vkResetCommandBuffer(rt->transfer_command_buffer, 0u);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
@@ -2901,8 +2983,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkBeginCommandBuffer(rt->transfer_command_buffer, &begin_info);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
@@ -2939,16 +3020,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkEndCommandBuffer(rt->transfer_command_buffer);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     vk_result = vkResetFences(rt->device, 1u, &rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
@@ -2960,20 +3039,18 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     transfer_submit_info.pSignalSemaphores = &rt->transfer_ready_semaphore;
     if ((rt->test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
       prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = VK_ERROR_DEVICE_LOST;
+      stage_transfer_failure_telemetry(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
       return PROM_ERROR;
     }
     vk_result = vkQueueSubmit(rt->transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-      rt->slot_diag.transfer_failure_reason = (int)vk_result;
+      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
-    rt->slot_diag.queue_family_handoff_count += 2u;
+    stage_transfer_handoff_telemetry(rt, work_slot_id, 0, 2u);
     vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -3010,8 +3087,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 3u, barriers,
                          0, NULL);
   } else {
-    rt->slot_diag.transfer_queue_used = 0u;
-    rt->slot_diag.async_transfer_complete = 1u;
+    stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
     vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -3233,7 +3309,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     submit_info.waitSemaphoreCount = 1u;
     submit_info.pWaitSemaphores = &rt->transfer_ready_semaphore;
     submit_info.pWaitDstStageMask = &wait_stage_mask;
-    rt->slot_diag.transfer_compute_wait_count += 1u;
+    stage_transfer_wait_telemetry(rt, work_slot_id, 0);
   }
   if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
@@ -3271,12 +3347,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       vk_result = vkWaitForFences(rt->device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
       if (vk_result != VK_SUCCESS) {
         prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-        rt->slot_diag.transfer_failure_slot_id = (int)work_slot_id;
-        rt->slot_diag.transfer_failure_reason = (int)vk_result;
+        stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
         set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
         return PROM_ERROR;
       }
-      rt->slot_diag.async_transfer_complete = 1u;
+      stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
     }
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
@@ -3588,6 +3663,11 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m31_queue_families_differ = transfer_snapshot.queue_families_differ;
     out_diag->m31_transfer_fallback_reason = transfer_snapshot.transfer_fallback_reason;
     out_diag->m31_upload_policy_marker = transfer_snapshot.upload_only_policy_eligible;
+    out_diag->m31_queue_family_handoff_count = transfer_snapshot.queue_family_handoff_count;
+    out_diag->m31_transfer_compute_wait_count = transfer_snapshot.transfer_compute_wait_count;
+    out_diag->m31_transfer_failure_slot_id = transfer_snapshot.transfer_failure_slot_id;
+    out_diag->m31_transfer_failure_reason = transfer_snapshot.transfer_failure_reason;
+    out_diag->m31_async_transfer_complete = transfer_snapshot.async_transfer_complete;
   } else {
     out_diag->m31_transfer_queue_used = rt->slot_diag.transfer_queue_used;
     out_diag->m31_transfer_policy_selected = rt->slot_diag.transfer_policy_selected;
@@ -3597,12 +3677,12 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m31_queue_families_differ = rt->slot_diag.queue_families_differ;
     out_diag->m31_transfer_fallback_reason = rt->slot_diag.transfer_fallback_reason;
     out_diag->m31_upload_policy_marker = 1u;
+    out_diag->m31_queue_family_handoff_count = rt->slot_diag.queue_family_handoff_count;
+    out_diag->m31_transfer_compute_wait_count = rt->slot_diag.transfer_compute_wait_count;
+    out_diag->m31_transfer_failure_slot_id = rt->slot_diag.transfer_failure_slot_id;
+    out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
+    out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
   }
-  out_diag->m31_queue_family_handoff_count = rt->slot_diag.queue_family_handoff_count;
-  out_diag->m31_transfer_compute_wait_count = rt->slot_diag.transfer_compute_wait_count;
-  out_diag->m31_transfer_failure_slot_id = rt->slot_diag.transfer_failure_slot_id;
-  out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
-  out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
   if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &m35_snapshot) != 0u) {
     out_diag->m35_selected_buffering_mode = m35_snapshot.selected_mode;
     out_diag->m35_fixed_feasible = m35_snapshot.fixed_feasible;
