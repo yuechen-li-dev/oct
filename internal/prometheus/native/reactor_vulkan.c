@@ -687,6 +687,7 @@ static void prom_slot_stage_commit_event(prometheus_runtime* rt,
                                          uint32_t has_next_slot,
                                          uint32_t next_slot_id) {
   const prom_slot_metadata* metadata;
+  prom_dom_slot_runtime_diag_snapshot diag_snapshot;
   if (rt == NULL || slot_id >= 2u) {
     return;
   }
@@ -706,6 +707,30 @@ static void prom_slot_stage_commit_event(prometheus_runtime* rt,
                                     has_next_slot,
                                     next_slot_id,
                                     reason_code) == 0u) {
+    return;
+  }
+
+  memset(&diag_snapshot, 0, sizeof(diag_snapshot));
+  diag_snapshot.current_slot_id = rt->slot_diag.current_slot_id;
+  diag_snapshot.next_slot_id = rt->slot_diag.next_slot_id;
+  diag_snapshot.slot_state[0] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
+  diag_snapshot.slot_state[1] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
+  diag_snapshot.slot_generation[0] = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
+  diag_snapshot.slot_generation[1] = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
+  diag_snapshot.slot_valid[0] = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
+  diag_snapshot.slot_valid[1] = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
+  diag_snapshot.swap_count = rt->slot_diag.swap_count;
+  diag_snapshot.max_wip_depth = rt->slot_diag.max_wip_depth;
+  diag_snapshot.overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
+  diag_snapshot.stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
+  diag_snapshot.shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
+  diag_snapshot.layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
+  diag_snapshot.capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
+  diag_snapshot.inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
+  diag_snapshot.cleanup_success_count = rt->slot_diag.cleanup_success_count;
+  diag_snapshot.failure_slot_id = rt->slot_diag.failure_slot_id;
+  diag_snapshot.failure_reason = rt->slot_diag.failure_reason;
+  if (prom_dom_slot_stage_runtime_diag(&rt->blackboard, &diag_snapshot, reason_code) == 0u) {
     return;
   }
 
@@ -734,6 +759,9 @@ static int prom_slot_cleanup_to_empty(prometheus_runtime* rt, prom_slot_hfsm* sl
   if (prom_slot_hfsm_cleanup(slot) == 0u) {
     return 0;
   }
+  if (rt != NULL) {
+    rt->slot_diag.cleanup_success_count += 1u;
+  }
   prom_slot_stage_commit_event(rt,
                                prom_slot_hfsm_metadata(slot)->slot_id,
                                PROM_DOM_EVENT_SLOT_CLEANUP,
@@ -743,9 +771,6 @@ static int prom_slot_cleanup_to_empty(prometheus_runtime* rt, prom_slot_hfsm* sl
                                0u,
                                0u,
                                0u);
-  if (rt != NULL) {
-    rt->slot_diag.cleanup_success_count += 1u;
-  }
   return 1;
 }
 
@@ -837,6 +862,8 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
     rt->slot_diag.overwrite_rejection_count += 1u;
     return PROM_DETAIL_SLOT_OVERWRITE_REJECTED;
   }
+  rt->slot_diag.next_slot_id = slot_id;
+  prom_slot_track_wip(rt);
   prom_slot_stage_commit_event(rt,
                                slot_id,
                                PROM_DOM_EVENT_SLOT_READY,
@@ -846,8 +873,6 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
                                0u,
                                1u,
                                slot_id);
-  rt->slot_diag.next_slot_id = slot_id;
-  prom_slot_track_wip(rt);
   return 0;
 }
 
@@ -862,6 +887,8 @@ static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot
   }
   rt->slot_diag.current_slot_id = slot_id;
   rt->slot_diag.next_slot_id = prom_slot_other_id(slot_id);
+  rt->slot_diag.swap_count += 1u;
+  prom_slot_track_wip(rt);
   prom_slot_stage_commit_event(rt,
                                slot_id,
                                PROM_DOM_EVENT_SLOT_PROMOTED_CURRENT,
@@ -871,14 +898,14 @@ static int prom_slot_swap_ready_to_current(prometheus_runtime* rt, uint32_t slot
                                slot_id,
                                1u,
                                rt->slot_diag.next_slot_id);
-  rt->slot_diag.swap_count += 1u;
-  prom_slot_track_wip(rt);
   return 1;
 }
 
 static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason) {
   prom_slot_hfsm* slot = &rt->slots[slot_id];
   (void)prom_slot_hfsm_fail(slot, reason);
+  rt->slot_diag.failure_slot_id = (int)slot_id;
+  rt->slot_diag.failure_reason = reason;
   prom_slot_stage_commit_event(rt,
                                slot_id,
                                PROM_DOM_EVENT_SLOT_FAILED,
@@ -888,8 +915,6 @@ static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int
                                0u,
                                0u,
                                0u);
-  rt->slot_diag.failure_slot_id = (int)slot_id;
-  rt->slot_diag.failure_reason = reason;
 }
 
 static int prom_slot_mark_submitted(prometheus_runtime* rt, uint32_t slot_id) {
@@ -897,6 +922,7 @@ static int prom_slot_mark_submitted(prometheus_runtime* rt, uint32_t slot_id) {
   if (prom_slot_hfsm_transition(slot, PROM_SLOT_IN_FLIGHT) == 0u) {
     return 0;
   }
+  prom_slot_track_wip(rt);
   prom_slot_stage_commit_event(rt,
                                slot_id,
                                PROM_DOM_EVENT_SLOT_SUBMITTED,
@@ -907,7 +933,6 @@ static int prom_slot_mark_submitted(prometheus_runtime* rt, uint32_t slot_id) {
                                0u,
                                0u);
   rt->slot_diag.async_slot_id = (int)slot_id;
-  prom_slot_track_wip(rt);
   return 1;
 }
 
@@ -2304,6 +2329,23 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
   runtime->slot_diag.transfer_failure_slot_id = -1;
   runtime->slot_diag.transfer_failure_reason = 0;
+  {
+    prom_dom_slot_runtime_diag_snapshot diag_snapshot;
+    memset(&diag_snapshot, 0, sizeof(diag_snapshot));
+    diag_snapshot.current_slot_id = runtime->slot_diag.current_slot_id;
+    diag_snapshot.next_slot_id = runtime->slot_diag.next_slot_id;
+    diag_snapshot.slot_state[0] = (uint32_t)prom_slot_hfsm_current_state(&runtime->slots[0]);
+    diag_snapshot.slot_state[1] = (uint32_t)prom_slot_hfsm_current_state(&runtime->slots[1]);
+    diag_snapshot.slot_generation[0] = prom_slot_hfsm_metadata(&runtime->slots[0])->generation;
+    diag_snapshot.slot_generation[1] = prom_slot_hfsm_metadata(&runtime->slots[1])->generation;
+    diag_snapshot.slot_valid[0] = prom_slot_hfsm_metadata(&runtime->slots[0])->valid;
+    diag_snapshot.slot_valid[1] = prom_slot_hfsm_metadata(&runtime->slots[1])->valid;
+    diag_snapshot.failure_slot_id = runtime->slot_diag.failure_slot_id;
+    diag_snapshot.failure_reason = runtime->slot_diag.failure_reason;
+    if (prom_dom_slot_stage_runtime_diag(&runtime->blackboard, &diag_snapshot, 0) != 0u) {
+      prom_dom_slot_commit(&runtime->blackboard);
+    }
+  }
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -3703,6 +3745,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   prom_dom_transfer_queue_snapshot transfer_snapshot;
   prom_dom_sgemm_layout_precision_snapshot layout_precision_snapshot;
   prom_dom_slot_commit_snapshot slot_snapshot;
+  prom_dom_slot_runtime_diag_snapshot slot_diag_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
     return PROM_ERROR;
@@ -3789,25 +3832,61 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
     out_diag->fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
   }
-  out_diag->m29_current_slot_id = rt->slot_diag.current_slot_id;
-  out_diag->m29_next_slot_id = rt->slot_diag.next_slot_id;
-  out_diag->m29_slot0_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
-  out_diag->m29_slot1_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
-  out_diag->m29_slot0_generation = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
-  out_diag->m29_slot1_generation = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
-  out_diag->m29_slot0_valid = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
-  out_diag->m29_slot1_valid = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
-  out_diag->m29_swap_count = rt->slot_diag.swap_count;
-  out_diag->m29_max_wip_depth = rt->slot_diag.max_wip_depth;
-  out_diag->m29_overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
-  out_diag->m29_stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
-  out_diag->m29_shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
-  out_diag->m29_layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
-  out_diag->m29_capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
-  out_diag->m29_inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
-  out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
-  out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
-  out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
+  if (prom_dom_slot_read_visible_runtime_diag(&rt->blackboard, &slot_diag_snapshot) != 0u) {
+    out_diag->m29_current_slot_id = slot_diag_snapshot.current_slot_id;
+    out_diag->m29_next_slot_id = slot_diag_snapshot.next_slot_id;
+    out_diag->m29_slot0_state = slot_diag_snapshot.slot_state[0];
+    out_diag->m29_slot1_state = slot_diag_snapshot.slot_state[1];
+    out_diag->m29_slot0_generation = slot_diag_snapshot.slot_generation[0];
+    out_diag->m29_slot1_generation = slot_diag_snapshot.slot_generation[1];
+    out_diag->m29_slot0_valid = slot_diag_snapshot.slot_valid[0];
+    out_diag->m29_slot1_valid = slot_diag_snapshot.slot_valid[1];
+    out_diag->m29_swap_count = slot_diag_snapshot.swap_count;
+    out_diag->m29_max_wip_depth = slot_diag_snapshot.max_wip_depth;
+    out_diag->m29_overwrite_rejection_count = slot_diag_snapshot.overwrite_rejection_count;
+    out_diag->m29_stale_buffer_rejection_count = slot_diag_snapshot.stale_buffer_rejection_count;
+    out_diag->m29_shape_invalidation_count = slot_diag_snapshot.shape_invalidation_count;
+    out_diag->m29_layout_invalidation_count = slot_diag_snapshot.layout_invalidation_count;
+    out_diag->m29_capacity_invalidation_count = slot_diag_snapshot.capacity_invalidation_count;
+    out_diag->m29_inflight_rejection_count = slot_diag_snapshot.inflight_rejection_count;
+    out_diag->m29_cleanup_success_count = slot_diag_snapshot.cleanup_success_count;
+    out_diag->m29_failure_slot_id = slot_diag_snapshot.failure_slot_id;
+    out_diag->m29_failure_reason = slot_diag_snapshot.failure_reason;
+
+    rt->slot_diag.current_slot_id = slot_diag_snapshot.current_slot_id;
+    rt->slot_diag.next_slot_id = slot_diag_snapshot.next_slot_id;
+    rt->slot_diag.swap_count = slot_diag_snapshot.swap_count;
+    rt->slot_diag.max_wip_depth = slot_diag_snapshot.max_wip_depth;
+    rt->slot_diag.overwrite_rejection_count = slot_diag_snapshot.overwrite_rejection_count;
+    rt->slot_diag.stale_buffer_rejection_count = slot_diag_snapshot.stale_buffer_rejection_count;
+    rt->slot_diag.shape_invalidation_count = slot_diag_snapshot.shape_invalidation_count;
+    rt->slot_diag.layout_invalidation_count = slot_diag_snapshot.layout_invalidation_count;
+    rt->slot_diag.capacity_invalidation_count = slot_diag_snapshot.capacity_invalidation_count;
+    rt->slot_diag.inflight_rejection_count = slot_diag_snapshot.inflight_rejection_count;
+    rt->slot_diag.cleanup_success_count = slot_diag_snapshot.cleanup_success_count;
+    rt->slot_diag.failure_slot_id = slot_diag_snapshot.failure_slot_id;
+    rt->slot_diag.failure_reason = slot_diag_snapshot.failure_reason;
+  } else {
+    out_diag->m29_current_slot_id = rt->slot_diag.current_slot_id;
+    out_diag->m29_next_slot_id = rt->slot_diag.next_slot_id;
+    out_diag->m29_slot0_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
+    out_diag->m29_slot1_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
+    out_diag->m29_slot0_generation = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
+    out_diag->m29_slot1_generation = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
+    out_diag->m29_slot0_valid = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
+    out_diag->m29_slot1_valid = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
+    out_diag->m29_swap_count = rt->slot_diag.swap_count;
+    out_diag->m29_max_wip_depth = rt->slot_diag.max_wip_depth;
+    out_diag->m29_overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
+    out_diag->m29_stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
+    out_diag->m29_shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
+    out_diag->m29_layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
+    out_diag->m29_capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
+    out_diag->m29_inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
+    out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
+    out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
+    out_diag->m29_failure_reason = rt->slot_diag.failure_reason;
+  }
   if (prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&rt->blackboard, &transfer_snapshot) != 0u) {
     out_diag->m31_transfer_queue_used = transfer_snapshot.transfer_queue_used;
     out_diag->m31_transfer_policy_selected = transfer_snapshot.transfer_policy_selected;
