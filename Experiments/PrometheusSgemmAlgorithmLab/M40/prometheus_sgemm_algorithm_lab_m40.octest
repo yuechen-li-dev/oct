@@ -1,0 +1,121 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M40Determinism() -> Void {
+    let s = M40BaseScenario("det", "heavy-tail", M40PolicyRoundRobin())
+    let a = M40RunBatch(s)
+    let b = M40RunBatch(s)
+    Assert.Equal(a.TotalCompletionTime, b.TotalCompletionTime, "same scenario must be deterministic")
+    Assert.Equal(a.ProductScore, b.ProductScore, "score must be deterministic")
+}
+
+[Fact]
+fn M40EffectiveWorkerCaps() -> Void {
+    let hw = M40EffectiveWorkerCount(6, 3, 2147483648, 268435456)
+    let mem = M40EffectiveWorkerCount(6, 8, 805306368, 268435456)
+    let one = M40EffectiveWorkerCount(4, 1, 2147483648, 268435456)
+    Assert.Equal(hw.EffectiveWorkers, 3, "hardware queue cap must apply")
+    Assert.Equal(mem.EffectiveWorkers, 3, "memory budget cap must apply")
+    Assert.Equal(one.EffectiveWorkers, 1, "single queue must degrade to one worker")
+}
+
+[Fact]
+fn M40RoundRobinVsContiguous() -> Void {
+    let moderateRr = M40RunBatch(M40BaseScenario("mod-rr", "moderate-variable", M40PolicyRoundRobin()))
+    let moderateCc = M40RunBatch(M40BaseScenario("mod-cc", "moderate-variable", M40PolicyContiguous()))
+    let clusteredEntries = M40BatchEntries("shape-clustered", 24)
+    let clusteredRr = M40RunBatch(M40BaseScenario("cl-rr", "shape-clustered", M40PolicyRoundRobin()))
+    let clusteredCc = M40RunBatch(M40BaseScenario("cl-cc", "shape-clustered", M40PolicyContiguous()))
+    let rrLocality = M40ShapeLocalityScore(clusteredEntries, 24, clusteredRr.EffectiveWorkers, M40PolicyRoundRobin())
+    let ccLocality = M40ShapeLocalityScore(clusteredEntries, 24, clusteredCc.EffectiveWorkers, M40PolicyContiguous())
+    Assert.True(moderateRr.LoadImbalance <= moderateCc.LoadImbalance, "round-robin should reduce imbalance for moderate variability")
+    Assert.True(ccLocality >= rrLocality, "contiguous should preserve better shape locality for clustered shapes")
+}
+
+[Fact]
+fn M40OrderedOutputPreserved() -> Void {
+    let s = M40BaseScenario("ordered", "moderate-variable", M40PolicyRoundRobin())
+    let r = M40RunBatch(s)
+    Assert.True(M40JoinInt(r.CompletionOrderEntryIds) != M40JoinInt(r.OrderedOutputEntryIds), "workers should complete out of order")
+    Assert.Equal(Len(r.OrderedOutputEntryIds), s.BatchSize, "all outputs should be present on success")
+    Assert.Equal(r.OrderedOutputEntryIds[0], 0, "ordered output begins with entry 0")
+}
+
+[Fact]
+fn M40AtomicFailureBeforeSubmit() -> Void {
+    let s = M40FailureScenario("fail-before", "before-submit", false)
+    let r = M40RunBatch(s)
+    Assert.Equal(r.BatchState, M40StateFailed(), "failure before submit must fail batch")
+    Assert.Equal(r.OutputCommitStatus, "uncommitted-on-failure", "failed batch must not commit outputs")
+    Assert.True(r.FailureStage == "before-submit", "failure stage should be recorded")
+}
+
+[Fact]
+fn M40AtomicFailureAfterSubmitDrain() -> Void {
+    let s = M40FailureScenario("fail-after", "after-submit", false)
+    let r = M40RunBatch(s)
+    Assert.Equal(r.BatchState, M40StateFailed(), "after submit failure must fail batch")
+    Assert.True(r.DrainLatencyAfterFailure >= 0, "drain latency must be recorded")
+    Assert.Equal(r.OutputCommitStatus, "uncommitted-on-failure", "outputs remain uncommitted on failure")
+}
+
+[Fact]
+fn M40WorkersDoNotRunJudgment() -> Void {
+    let entries = M40BatchEntries("uniform", 8)
+    let plans = M40BuildPlans(entries)
+    let r = M40RunBatch(M40BaseScenario("plan-exec", "uniform", M40PolicyRoundRobin()))
+    Assert.True(plans[0].SelectedPath != "" and plans[0].ComputeMode != "" and plans[0].FailurePolicy != "", "plan must contain policy decisions")
+    Assert.True(r.PlanGeneration == 40, "workers execute pre-built immutable generation")
+}
+
+[Fact]
+fn M40EventRingOverflowPolicy() -> Void {
+    let s = M40Scenario { Name: "overflow" WorkloadKind: "moderate-variable" PartitionPolicy: M40PolicyRoundRobin() BatchSize: 24 RequestedWorkers: 4 HardwareQueueCount: 4 MemoryBudgetBytes: 1073741824 PerWorkerArenaBytes: 268435456 SlotBudgetPerWorker: 2 EventRingCapacity: 6 EventDrainUnitCost: 1 FailureCase: "none" FailureEntryId: 0 FailureDuringDrain: false }
+    let r = M40RunBatch(s)
+    Assert.True(r.CriticalOverflowFailedBatch, "critical overflow must fail batch explicitly")
+    Assert.True(r.EventOverflowCount > 0, "overflow count must be tracked")
+}
+
+[Fact]
+fn M40MemoryCappedWorkerCount() -> Void {
+    let s = M40Scenario { Name: "memory-capped" WorkloadKind: "memory-limited" PartitionPolicy: M40PolicyRoundRobin() BatchSize: 24 RequestedWorkers: 5 HardwareQueueCount: 8 MemoryBudgetBytes: 536870912 PerWorkerArenaBytes: 268435456 SlotBudgetPerWorker: 2 EventRingCapacity: 128 EventDrainUnitCost: 1 FailureCase: "none" FailureEntryId: 0 FailureDuringDrain: false }
+    let r = M40RunBatch(s)
+    Assert.Equal(r.EffectiveWorkers, 2, "per-worker arena bytes must cap effective workers")
+}
+
+[Fact]
+fn M40RecommendationIsComputed() -> Void {
+    let rec = M40RecommendationFromMetrics()
+    Assert.True(rec.FirstImplementationPolicy == M40PolicyRoundRobin() or rec.FirstImplementationPolicy == M40PolicyContiguous(), "recommendation must come from measured policy outcomes")
+    Assert.True(rec.RecommendationDerivedFromMetrics, "recommendation must be model-derived")
+}
+
+[Artifact]
+fn EmitM40PartitionComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_partition_comparison.octagon", [M40PartitionComparisonTable()])
+}
+
+[Artifact]
+fn EmitM40WorkerCountContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_worker_count_contract.octagon", [M40WorkerCountContractTable()])
+}
+
+[Artifact]
+fn EmitM40OrderedOutputTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_ordered_output_table.octagon", [M40OrderedOutputContractTable()])
+}
+
+[Artifact]
+fn EmitM40FailureAtomicityTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_failure_atomicity_table.octagon", [M40FailureAtomicityContractTable()])
+}
+
+[Artifact]
+fn EmitM40EventRingTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_event_ring_table.octagon", [M40EventRingContractTable()])
+}
+
+[Artifact]
+fn EmitM40FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M40/m40_final_contract.octagon", [M40RecommendationFromMetrics()])
+}

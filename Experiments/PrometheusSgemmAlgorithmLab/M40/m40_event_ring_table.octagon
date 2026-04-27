@@ -1,0 +1,9 @@
+[M40EventRingTable {
+    Scenario: ["event-normal", "event-near", "event-overflow"]
+    Policy: ["round-robin", "round-robin", "round-robin"]
+    RingCapacity: [128, 20, 6]
+    EventCount: [92, 92, 92]
+    CriticalOverflowFailedBatch: [false, false, true]
+    EventOverflowCount: [0, 0, 48]
+    DiagnosticsDropped: [0, 0, 0]
+}]

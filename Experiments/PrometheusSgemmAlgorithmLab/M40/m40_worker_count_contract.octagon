@@ -1,0 +1,8 @@
+[M40WorkerCountTable {
+    Scenario: ["queue-capped", "memory-capped", "single-queue"]
+    RequestedWorkers: [6, 6, 4]
+    HardwareQueues: [3, 8, 1]
+    MemoryBudgetWorkers: [8, 3, 8]
+    EffectiveWorkers: [3, 3, 1]
+    CapReason: ["capped-by-hardware-queue-topology", "capped-by-memory-budget", "single-worker-batch-path"]
+}]

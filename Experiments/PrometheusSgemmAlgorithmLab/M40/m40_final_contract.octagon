@@ -1,0 +1,17 @@
+[M40FinalContract {
+    LabelP11: "P11 M5"
+    LabelLab: "PrometheusSgemmAlgorithmLab M40"
+    DispatchPlanContains: "EntryId,M,N,K,WorkUnits,InputOffset,OutputOffset,SelectedPath,ComputeMode,BufferingMode,TransferPolicy,LayoutPrecisionMode,ArenaRequiredBytes,ExpectedOutputElements,PlanGeneration,FailurePolicy"
+    FirstImplementationPolicy: "round-robin"
+    AlsoSupportContiguous: "optional-not-default"
+    EffectiveWorkerCountRule: "effective_workers=min(requested_workers,hardware_compute_queue_count,floor(memory_budget_bytes/per_worker_arena_bytes)); if <=1 use single-worker batch path"
+    OrderedOutputRule: "workers may complete out of order but join commits ordered-by-entry-id output only on success"
+    AtomicFailureStates: "PENDING->RUNNING->FAILING->DRAINING->FAILED or PENDING->RUNNING->SUCCEEDED"
+    DrainRule: "after first failure workers stop taking new plans; in-flight plans drain; outputs remain uncommitted on failure"
+    EventOverflowPolicy: "critical-event overflow fails batch explicitly; diagnostics overflow is counted and may be lossy"
+    ArenaConstraintRule: "worker arenas and slots are worker-local; no cross-worker arena use; arena bytes cap effective workers"
+    DominatusIntegrationRule: "policy reads visible snapshot and builds immutable plans; workers execute plans and emit ring events only; commit/drain layer stages then commits blackboard updates"
+    M6ShouldImplement: "native central-policy immutable-plan execution with round-robin static partition, worker event rings, atomic batch join/failure-drain path"
+    DeferredScope: "SPMC shared queue, work stealing, MPMC/lock-free queues, parallel judgment, N-slot stealing runtime"
+    RecommendationDerivedFromMetrics: true
+}]
