@@ -32,6 +32,15 @@ int prometheus_reactor_runtime_sgemm(void* handle,
   return prom_reactor_runtime_sgemm_impl(handle, a, b, c, m, n, k, out_stage, out_detail_code);
 }
 
+int prometheus_reactor_runtime_sgemm_batch(void* handle,
+                                           const PrometheusSgemmBatchEntry* entries,
+                                           uint32_t entry_count,
+                                           uint32_t flags,
+                                           uint32_t* out_stage,
+                                           int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_batch_impl(handle, entries, entry_count, flags, out_stage, out_detail_code);
+}
+
 int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
                                                   const float* a,
                                                   const float* b,
@@ -63,6 +72,10 @@ int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id) {
 
 int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   return prom_reactor_runtime_sgemm_policy_diagnostics_impl(handle, out_diag);
+}
+
+int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle, PrometheusSgemmBatchDiagnostics* out_diag) {
+  return prom_reactor_runtime_sgemm_batch_diagnostics_impl(handle, out_diag);
 }
 
 int prometheus_runtime_create(void* config, void** out_handle) {
