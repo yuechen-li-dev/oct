@@ -1,0 +1,15 @@
+[M38LayoutPrecisionChurnTable {
+    Transition: ["scalar-fp32-to-packed4-fp32", "packed4-fp32-to-scalar-fp32", "scalar-fp32-to-scalar-fp16storage", "packed4-fp16storage-to-packed4-fp32", "same-layout-same-precision"]
+    NamespaceDelta: ["layout", "layout", "precision-storage", "precision-storage", "none"]
+    CompatibleReuseAllowed: ["no", "no", "no", "no", "yes-if-capacity-sufficient"]
+    RequiredAction: ["invalidate-affected-roles", "invalidate-affected-roles", "invalidate-affected-roles", "invalidate-affected-roles", "reuse-or-grow"]
+    MismatchRejectionsObserved: [22, 20, 18, 22, 0]
+    MissedInvalidationHazardCount: [0, 0, 0, 0, 0]
+    Notes: [
+        "same logical shape cannot bypass layout namespace",
+        "packed-lane representation mismatch rejected",
+        "byte-width namespace mismatch rejected",
+        "fp16-storage compatibility requires explicit namespace equality",
+        "safe fast-path for exact namespace equality"
+    ]
+}]

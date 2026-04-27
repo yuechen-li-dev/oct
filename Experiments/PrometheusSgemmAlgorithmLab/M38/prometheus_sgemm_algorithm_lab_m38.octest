@@ -1,0 +1,58 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M38ProvidesExecutableSimulationBackstopForReportClaims() -> Void {
+    let table = M38ArenaPolicyComparisonFrom()
+    Assert.True(Len(table.Policy) == 5, "M38 must compare policies A-E")
+    Assert.True(table.Recommendation[1] == "winner-implement-first", "policy B should remain the first implementation recommendation")
+}
+
+[Fact]
+fn M38RejectsExactFitRebuildAsPrimaryPolicyDueToThrash() -> Void {
+    let table = M38ArenaPolicyComparisonFrom()
+    Assert.True(table.RebuildCount[2] > table.RebuildCount[1], "exact-fit rebuild must show higher rebuild churn than hysteresis")
+    Assert.True(table.ReuseCount[2] < table.ReuseCount[0], "exact-fit rebuild should produce lower reuse than grow-only")
+}
+
+[Fact]
+fn M38CompatibilityNamespacesPreventUnsafeRepresentationReuse() -> Void {
+    let table = M38ArenaPolicyComparisonFrom()
+    Assert.True(table.LayoutPrecisionMismatchRejectionCount[0] > 0, "layout/precision mismatch rejection must be explicit")
+    Assert.True(table.MissedInvalidationHazardCount[0] == 0 and table.MissedInvalidationHazardCount[4] == 0, "no missed invalidation hazard is allowed")
+}
+
+[Fact]
+fn M38RakeMatrixCoversRequiredScenarioSet() -> Void {
+    let rake = M38WorkloadRakeMatrixFrom()
+    Assert.True(Len(rake.Scenario) == 40, "M38 rake matrix must cover 10 scenarios x 4 active policies")
+    Assert.True(rake.Scenario[0] == "steady-same-shape" and rake.Scenario[39] == "budget-pressure-failure", "matrix must include steady and budget-failure endpoints")
+}
+
+[Fact]
+fn M38RakeMatrixKeepsOwnershipSafeAndBudgetFailuresExplicit() -> Void {
+    let rake = M38WorkloadRakeMatrixFrom()
+    Assert.True(rake.OwnershipViolationCount[0] == 0 and rake.OwnershipViolationCount[39] == 0, "no slot ownership violations are permitted")
+    Assert.True(rake.BudgetFailureCount[36] > 0 and rake.BudgetFailureCount[39] > 0, "budget pressure scenario must trigger explicit failures")
+}
+
+[Fact]
+fn M38ContractStatesExactReuseAndFailureRules() -> Void {
+    let contract = M38ImplementationContractFrom()
+    Assert.True(Len(contract.ReuseCondition) == 1 and Len(contract.FailureCondition) == 1, "M38 must produce explicit single-source contract strings")
+    Assert.True(contract.FirstImplementationPolicy[0] == "typed-arenas-grow-with-conservative-hysteresis-shrink", "contract should align with policy winner")
+}
+
+[Artifact]
+fn EmitM38ArenaPolicyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_arena_policy_comparison.octagon", [M38ArenaPolicyComparisonFrom()])
+}
+
+[Artifact]
+fn EmitM38WorkloadRakeMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_workload_rake_matrix.octagon", [M38WorkloadRakeMatrixFrom()])
+}
+
+[Artifact]
+fn EmitM38ImplementationContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_final_contract.octagon", [M38ImplementationContractFrom()])
+}

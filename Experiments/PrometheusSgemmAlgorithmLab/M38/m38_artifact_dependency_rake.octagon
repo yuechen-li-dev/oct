@@ -1,0 +1,18 @@
+[M38ArtifactDependencyRake {
+    Scenario: ["steady-same-shape", "m-only-churn", "n-only-churn", "k-only-churn", "layout-churn", "precision-churn", "budget-pressure"]
+    ArtifactAKeyCompatibleReuse: ["yes", "no-when-m-or-k-change", "yes", "no", "no-on-layout-change", "no-on-precision-change", "conditional"]
+    ArtifactBKeyCompatibleReuse: ["yes", "yes", "no-when-n-or-k-change", "no", "no-on-layout-change", "no-on-precision-change", "conditional"]
+    ArtifactCKeyCompatibleReuse: ["yes", "no-when-m-or-n-change", "no", "yes", "no-on-layout-change", "no-on-precision-change", "conditional"]
+    P10DirtyKeyCompatibility: ["match", "match", "match", "match", "match", "match", "match"]
+    FalseInvalidationAvoided: ["high", "high", "high", "medium", "high", "high", "medium"]
+    MissedInvalidationHazard: ["none", "none", "none", "none", "none", "none", "none"]
+    Notes: [
+        "single-grow then stable reuse",
+        "A-and-C invalidate only when dependency key changes",
+        "B-and-C invalidate only when dependency key changes",
+        "A-and-B invalidate; C remains reusable if output namespace stable",
+        "layout namespace included in compatibility key",
+        "precision/storage namespace included in compatibility key",
+        "budget rejection reports explicit policy action"
+    ]
+}]

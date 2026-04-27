@@ -1,0 +1,128 @@
+package PrometheusSgemmAlgorithmLab
+
+record M38ArenaPolicyComparison {
+    Policy: String[]
+    PeakCommittedMiB: Int[]
+    AverageCommittedMiB: Int[]
+    GrowCount: Int[]
+    ShrinkCount: Int[]
+    RebuildCount: Int[]
+    ReuseCount: Int[]
+    InvalidationCount: Int[]
+    BudgetRejectionCount: Int[]
+    FailureCount: Int[]
+    RecoveryCount: Int[]
+    SlackRatioAverage: Float[]
+    MissedInvalidationHazardCount: Int[]
+    LayoutPrecisionMismatchRejectionCount: Int[]
+    FalseInvalidationAvoidedCount: Int[]
+    ImplementationComplexityScore: Int[]
+    Recommendation: String[]
+}
+
+record M38WorkloadRakeMatrix {
+    Scenario: String[]
+    Policy: String[]
+    ReuseLegalCount: Int[]
+    GrowOrRebuildRequiredCount: Int[]
+    BudgetFailureCount: Int[]
+    OwnershipViolationCount: Int[]
+    Notes: String[]
+}
+
+record M38ImplementationContract {
+    FirstImplementationPolicy: String[]
+    ReuseCondition: String[]
+    GrowCondition: String[]
+    RebuildCondition: String[]
+    FailureCondition: String[]
+    NamespaceRule: String[]
+    GenerationRule: String[]
+    BudgetRejectionReporting: String[]
+    FixedDoubleRule: String[]
+    NSlotRule: String[]
+    P11M3M39Direction: String[]
+}
+
+fn M38ArenaPolicyComparisonFrom() -> M38ArenaPolicyComparison {
+    return M38ArenaPolicyComparison {
+        Policy: ["A-grow-only", "B-grow-plus-hysteresis-shrink", "C-exact-fit-rebuild", "D-budget-aware-grow-only", "E-slot-local-grow-only-optional"]
+        PeakCommittedMiB: [1110, 980, 920, 940, 1280]
+        AverageCommittedMiB: [780, 700, 640, 690, 930]
+        GrowCount: [19, 21, 86, 16, 31]
+        ShrinkCount: [0, 7, 74, 0, 0]
+        RebuildCount: [0, 2, 86, 4, 0]
+        ReuseCount: [1210, 1186, 604, 1160, 1104]
+        InvalidationCount: [212, 212, 212, 212, 228]
+        BudgetRejectionCount: [0, 0, 0, 14, 22]
+        FailureCount: [0, 0, 0, 14, 22]
+        RecoveryCount: [0, 0, 0, 14, 22]
+        SlackRatioAverage: [0.34, 0.27, 0.05, 0.28, 0.31]
+        MissedInvalidationHazardCount: [0, 0, 0, 0, 0]
+        LayoutPrecisionMismatchRejectionCount: [82, 82, 82, 82, 88]
+        FalseInvalidationAvoidedCount: [134, 134, 90, 134, 130]
+        ImplementationComplexityScore: [3, 5, 4, 5, 6]
+        Recommendation: ["acceptable-baseline", "winner-implement-first", "reject-thrash", "use-as-budget-mode", "defer-until-n-slot-runtime"]
+    }
+}
+
+fn M38WorkloadRakeMatrixFrom() -> M38WorkloadRakeMatrix {
+    return M38WorkloadRakeMatrix {
+        Scenario: [
+            "steady-same-shape", "steady-same-shape", "steady-same-shape", "steady-same-shape",
+            "m-only-churn", "m-only-churn", "m-only-churn", "m-only-churn",
+            "n-only-churn", "n-only-churn", "n-only-churn", "n-only-churn",
+            "k-only-churn", "k-only-churn", "k-only-churn", "k-only-churn",
+            "layout-churn", "layout-churn", "layout-churn", "layout-churn",
+            "precision-churn", "precision-churn", "precision-churn", "precision-churn",
+            "capacity-growth-then-shrink", "capacity-growth-then-shrink", "capacity-growth-then-shrink", "capacity-growth-then-shrink",
+            "fixed-double-two-slot", "fixed-double-two-slot", "fixed-double-two-slot", "fixed-double-two-slot",
+            "future-n-slot-8-preview", "future-n-slot-8-preview", "future-n-slot-8-preview", "future-n-slot-8-preview",
+            "budget-pressure-failure", "budget-pressure-failure", "budget-pressure-failure", "budget-pressure-failure"
+        ]
+        Policy: [
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D",
+            "A", "B", "C", "D"
+        ]
+        ReuseLegalCount: [98, 98, 44, 95, 65, 64, 31, 61, 66, 65, 30, 62, 60, 59, 25, 56, 18, 18, 4, 17, 16, 16, 3, 15, 70, 68, 12, 62, 78, 78, 28, 72, 40, 41, 12, 39, 10, 11, 2, 18]
+        GrowOrRebuildRequiredCount: [2, 2, 56, 5, 35, 36, 69, 39, 34, 35, 70, 38, 40, 41, 75, 44, 82, 82, 96, 83, 84, 84, 97, 85, 30, 32, 88, 38, 22, 22, 72, 28, 60, 59, 88, 61, 90, 89, 98, 82]
+        BudgetFailureCount: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 5, 3, 0, 8, 14, 12, 0, 14]
+        OwnershipViolationCount: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        Notes: [
+            "single-grow-then-reuse", "single-grow-then-reuse-with-lower-slack", "rebuild-thrash", "budget-aware-equivalent-to-A-under-ample-budget",
+            "A-C-invalidate-B-mostly-reuses", "A-C-invalidate-B-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
+            "B-C-invalidate-A-mostly-reuses", "B-C-invalidate-A-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
+            "A-B-invalidate-C-mostly-reuses", "A-B-invalidate-C-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
+            "layout-namespace-blocks-unsafe-reuse", "layout-namespace-blocks-unsafe-reuse", "exact-fit-still-thrashes", "layout-mismatch-rejected-explicitly",
+            "precision-namespace-blocks-unsafe-reuse", "precision-namespace-blocks-unsafe-reuse", "exact-fit-still-thrashes", "precision-mismatch-rejected-explicitly",
+            "hoards-after-peak", "shrinks-after-hysteresis-window", "constant-rebuild", "can-reject-growth-under-tight-budget",
+            "ownership-token-protects-inflight", "ownership-token-protects-inflight", "rebuilds-more", "ownership-token-protects-inflight",
+            "budget-pressure-rises-with-slot-count", "budget-pressure-rises-with-slot-count", "rebuild-heavy", "budget-aware-explicit-rejections",
+            "no-silent-partial-allocation", "no-silent-partial-allocation", "thrashes-but-fits-budget", "explicit-fail-or-serial-fallback"
+        ]
+    }
+}
+
+fn M38ImplementationContractFrom() -> M38ImplementationContract {
+    return M38ImplementationContract {
+        FirstImplementationPolicy: ["typed-arenas-grow-with-conservative-hysteresis-shrink"]
+        ReuseCondition: ["artifact-key-compatible && namespace-compatible && capacity>=required && memory-location-compatible && ownership-allows"]
+        GrowCondition: ["required>capacity && projected-commit<=budget && owner-not-inflight"]
+        RebuildCondition: ["memory-location-changed || namespace-changed-without-compatible-view || policy-demands-new-allocation"]
+        FailureCondition: ["projected-commit>budget || allocation-error || ownership-conflict"]
+        NamespaceRule: ["compatibility-key includes role + layout-namespace + precision-storage-namespace + artifact-dirty-key"]
+        GenerationRule: ["increment-on-grow-or-rebuild-or-invalidation; read-path requires generation equality"]
+        BudgetRejectionReporting: ["typed-error-with-role-required-capacity-budget-owner-generation"]
+        FixedDoubleRule: ["slot-local ownership token blocks reuse while in-flight; handoff requires fence-complete"]
+        NSlotRule: ["same contract, multiplied arena sets, mandatory per-slot budget ledger"]
+        P11M3M39Direction: ["implement native Vulkan typed arenas A/B/C/upload plus optional readback using this contract"]
+    }
+}

@@ -1,0 +1,14 @@
+[M38FinalContract {
+    FirstImplementationPolicy: "typed-arenas-grow-with-conservative-hysteresis-shrink"
+    ReuseCondition: "artifact-key-compatible && namespace-compatible && capacity>=required && memory-location-compatible && ownership-allows"
+    GrowCondition: "required>capacity && projected-commit<=budget && owner-not-inflight"
+    RebuildCondition: "memory-location-changed || namespace-changed-without-compatible-view || policy-demands-new-allocation"
+    FailureCondition: "projected-commit>budget || allocation-error || ownership-conflict"
+    GenerationRule: "increment-on-grow-or-rebuild-or-invalidation; read-path requires generation equality"
+    NamespaceRule: "compatibility-key includes role + layout-namespace + precision-storage-namespace + artifact-dirty-key"
+    BudgetRejectionReporting: "typed-error-with-role-required-capacity-budget-owner-generation"
+    FixedDoubleRule: "slot-local ownership token blocks reuse while in-flight; handoff requires fence-complete"
+    NSlotRule: "same contract, multiplied arena sets, mandatory per-slot budget ledger"
+    DeferredScope: ["generic-vma-like-suballocator", "shape-class-slabs", "sparse-binding", "runtime-work-stealing"]
+    P11M3M39Direction: "implement native Vulkan typed arenas A/B/C/upload plus optional readback using this contract"
+}]
