@@ -1,0 +1,6 @@
+[M41ThreadSafetyTable {
+    Candidate: ["legal-worker-path", "illegal-worker-access"]
+    IllegalAccessCount: [0, 2]
+    RequiredSeam: ["workers may touch immutable plan + worker-local state only; drain/join is the only Dominatus bridge", "workers may touch immutable plan + worker-local state only; drain/join is the only Dominatus bridge"]
+    WorkerForbiddenRule: ["workers must not run judgment, mutate policy memory, write Dominatus directly, or touch other worker arena without explicit shared lock", "workers must not run judgment, mutate policy memory, write Dominatus directly, or touch other worker arena without explicit shared lock"]
+}]

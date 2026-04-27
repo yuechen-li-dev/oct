@@ -1,0 +1,10 @@
+[M41CandidateComparison {
+    Candidate: ["A-lane-simulated", "B-real-threads-serialized-vulkan", "C-real-threads-per-worker-queues", "D-real-threads-shared-arena", "E-work-stealing-reference"]
+    EffectiveWorkers: [4, 4, 2, 2, 2]
+    CompletionTime: [84, 156, 162, 210, 162]
+    EventOverflowCount: [0, 0, 48, 48, 48]
+    IllegalAccessCount: [0, 0, 0, 0, 0]
+    OwnershipConflictCount: [0, 0, 0, 0, 0]
+    ProductScore: [98032, 97736, 97052, 96868, 96862]
+    Recommended: [false, true, false, false, false]
+}]

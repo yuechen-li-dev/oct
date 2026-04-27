@@ -1,0 +1,11 @@
+[M41FailureDrainTable {
+    Candidate: ["B-real-threads-serialized-vulkan", "B-real-threads-serialized-vulkan"]
+    FailureMode: ["after-submit", "dual"]
+    FirstFailureEntryId: [8, 3]
+    FirstFailureWorkerId: [0, 3]
+    BatchState: ["FAILED", "FAILED"]
+    FailurePropagationLatency: [8, 8]
+    DrainLatency: [21, 21]
+    OutputCommitStatus: ["uncommitted-on-failure", "uncommitted-on-failure"]
+    DrainRule: ["first failure wins; workers stop new plan starts; in-flight work drains; output remains uncommitted", "first failure wins; workers stop new plan starts; in-flight work drains; output remains uncommitted"]
+}]

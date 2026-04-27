@@ -1,0 +1,327 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M41WorkersCannotTouchPolicyOrDominatus() -> Void {
+    let base = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let r = M41RunScenario(M41Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        EventRingCapacity: base.EventRingCapacity
+        EventDrainInterval: base.EventDrainInterval
+        DispatchDistribution: base.DispatchDistribution
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        FailureMode: base.FailureMode
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureProbabilityMilli: base.FailureProbabilityMilli
+        MutexCost: base.MutexCost
+        QueueSerializationCost: base.QueueSerializationCost
+        DominatusCommitCost: base.DominatusCommitCost
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        InjectIllegalPolicyMutation: true
+        InjectIllegalDominatusWrite: true
+        DispatchBaseCost: base.DispatchBaseCost
+    })
+    Assert.True(r.IllegalAccessCount >= 2, "illegal worker access must be flagged")
+    Assert.Equal(r.BatchState, "FAILED", "illegal worker access must fail readiness run")
+}
+
+[Fact]
+fn M41SingleQueueDoesNotClaimParallelism() -> Void {
+    let r = M41RunScenario(M41Scenario {
+        Name: "single-queue"
+        Candidate: "B-real-threads-serialized-vulkan"
+        BatchSize: 24
+        WorkerCount: 4
+        HardwareQueueCount: 1
+        MemoryBudgetBytes: 1073741824
+        PerWorkerArenaBytes: 268435456
+        EventRingCapacity: 24
+        EventDrainInterval: 4
+        DispatchDistribution: "moderate-variable"
+        CriticalEventsPerTask: 2
+        DiagnosticsEventsPerTask: 2
+        FailureMode: "none"
+        FailureEntryId: 5
+        SecondaryFailureEntryId: 7
+        FailureProbabilityMilli: 0
+        MutexCost: 2
+        QueueSerializationCost: 3
+        DominatusCommitCost: 20
+        OutputStagingBytesPerEntry: 4096
+        SharedArenaEnabled: false
+        SharedArenaLockHeld: true
+        InjectIllegalPolicyMutation: false
+        InjectIllegalDominatusWrite: false
+        DispatchBaseCost: 1
+    })
+    Assert.True(r.QueueSerializationOverhead > 0, "single queue bridge must serialize Vulkan execution")
+    Assert.True(not r.ClaimedHardwareParallelism and not r.ActualHardwareParallelism, "single queue must not claim hardware parallelism")
+}
+
+[Fact]
+fn M41CriticalOverflowFailsBatch() -> Void {
+    let base = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let r = M41RunScenario(M41Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        EventRingCapacity: 3
+        EventDrainInterval: base.EventDrainInterval
+        DispatchDistribution: base.DispatchDistribution
+        CriticalEventsPerTask: 3
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        FailureMode: base.FailureMode
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureProbabilityMilli: base.FailureProbabilityMilli
+        MutexCost: base.MutexCost
+        QueueSerializationCost: base.QueueSerializationCost
+        DominatusCommitCost: base.DominatusCommitCost
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        InjectIllegalPolicyMutation: base.InjectIllegalPolicyMutation
+        InjectIllegalDominatusWrite: base.InjectIllegalDominatusWrite
+        DispatchBaseCost: base.DispatchBaseCost
+    })
+    Assert.True(r.CriticalOverflowCount > 0, "critical overflow must be counted")
+    Assert.Equal(r.BatchState, "FAILED", "critical overflow must fail batch")
+}
+
+[Fact]
+fn M41DiagnosticsOverflowCounted() -> Void {
+    let base = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let r = M41RunScenario(M41Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        EventRingCapacity: 10
+        EventDrainInterval: base.EventDrainInterval
+        DispatchDistribution: base.DispatchDistribution
+        CriticalEventsPerTask: 1
+        DiagnosticsEventsPerTask: 6
+        FailureMode: base.FailureMode
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureProbabilityMilli: base.FailureProbabilityMilli
+        MutexCost: base.MutexCost
+        QueueSerializationCost: base.QueueSerializationCost
+        DominatusCommitCost: base.DominatusCommitCost
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        InjectIllegalPolicyMutation: base.InjectIllegalPolicyMutation
+        InjectIllegalDominatusWrite: base.InjectIllegalDominatusWrite
+        DispatchBaseCost: base.DispatchBaseCost
+    })
+    Assert.True(r.DiagnosticsOverflowCount > 0, "diagnostics overflow must be counted")
+    Assert.True(r.EventOverflowCount >= r.DiagnosticsOverflowCount, "overflow summary includes diagnostics drops")
+}
+
+[Fact]
+fn M41FirstFailureWins() -> Void {
+    let base = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let r = M41RunScenario(M41Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        EventRingCapacity: base.EventRingCapacity
+        EventDrainInterval: base.EventDrainInterval
+        DispatchDistribution: base.DispatchDistribution
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        FailureMode: "dual"
+        FailureEntryId: 3
+        SecondaryFailureEntryId: 11
+        FailureProbabilityMilli: base.FailureProbabilityMilli
+        MutexCost: base.MutexCost
+        QueueSerializationCost: base.QueueSerializationCost
+        DominatusCommitCost: base.DominatusCommitCost
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        InjectIllegalPolicyMutation: base.InjectIllegalPolicyMutation
+        InjectIllegalDominatusWrite: base.InjectIllegalDominatusWrite
+        DispatchBaseCost: base.DispatchBaseCost
+    })
+    Assert.Equal(r.FirstFailureEntryId, 3, "first failure entry must be preserved")
+    Assert.Equal(r.FirstFailureDetail, "first-failure-wins", "failure detail must preserve winner contract")
+}
+
+[Fact]
+fn M41FailureDrainsActiveWorkers() -> Void {
+    let base = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let r = M41RunScenario(M41Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        EventRingCapacity: base.EventRingCapacity
+        EventDrainInterval: base.EventDrainInterval
+        DispatchDistribution: base.DispatchDistribution
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        FailureMode: "after-submit"
+        FailureEntryId: 7
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureProbabilityMilli: base.FailureProbabilityMilli
+        MutexCost: base.MutexCost
+        QueueSerializationCost: base.QueueSerializationCost
+        DominatusCommitCost: base.DominatusCommitCost
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        InjectIllegalPolicyMutation: base.InjectIllegalPolicyMutation
+        InjectIllegalDominatusWrite: base.InjectIllegalDominatusWrite
+        DispatchBaseCost: base.DispatchBaseCost
+    })
+    Assert.True(r.DrainLatency >= 0 and r.FailurePropagationLatency > 0, "failure path must record propagation and drain latency")
+    Assert.Equal(r.OutputCommitStatus, "uncommitted-on-failure", "failed batch must not commit output")
+}
+
+[Fact]
+fn M41OrderedOutputAfterOutOfOrderCompletion() -> Void {
+    let r = M41RunScenario(M41BaseScenario("C-real-threads-per-worker-queues"))
+    Assert.True(r.CompletionOrder != r.OrderedOutput, "completion can be out-of-order")
+    Assert.Equal(r.OutputCommitStatus, "committed-atomically-in-entry-order", "success must commit in entry order")
+}
+
+[Fact]
+fn M41SharedArenaLockRequired() -> Void {
+    let r = M41RunScenario(M41Scenario {
+        Name: "shared-unlocked"
+        Candidate: "D-real-threads-shared-arena"
+        BatchSize: 24
+        WorkerCount: 4
+        HardwareQueueCount: 2
+        MemoryBudgetBytes: 805306368
+        PerWorkerArenaBytes: 268435456
+        EventRingCapacity: 24
+        EventDrainInterval: 4
+        DispatchDistribution: "moderate-variable"
+        CriticalEventsPerTask: 2
+        DiagnosticsEventsPerTask: 2
+        FailureMode: "none"
+        FailureEntryId: 5
+        SecondaryFailureEntryId: 7
+        FailureProbabilityMilli: 0
+        MutexCost: 3
+        QueueSerializationCost: 3
+        DominatusCommitCost: 20
+        OutputStagingBytesPerEntry: 4096
+        SharedArenaEnabled: true
+        SharedArenaLockHeld: false
+        InjectIllegalPolicyMutation: false
+        InjectIllegalDominatusWrite: false
+        DispatchBaseCost: 1
+    })
+    Assert.True(r.OwnershipConflictCount > 0, "shared arena access without lock must be rejected")
+    Assert.Equal(r.BatchState, "FAILED", "ownership conflict must fail run")
+}
+
+[Fact]
+fn M41PerWorkerArenaMemoryCapsWorkers() -> Void {
+    let r = M41RunScenario(M41Scenario {
+        Name: "memory-cap"
+        Candidate: "C-real-threads-per-worker-queues"
+        BatchSize: 24
+        WorkerCount: 5
+        HardwareQueueCount: 8
+        MemoryBudgetBytes: 536870912
+        PerWorkerArenaBytes: 268435456
+        EventRingCapacity: 24
+        EventDrainInterval: 4
+        DispatchDistribution: "moderate-variable"
+        CriticalEventsPerTask: 2
+        DiagnosticsEventsPerTask: 2
+        FailureMode: "none"
+        FailureEntryId: 5
+        SecondaryFailureEntryId: 7
+        FailureProbabilityMilli: 0
+        MutexCost: 2
+        QueueSerializationCost: 3
+        DominatusCommitCost: 20
+        OutputStagingBytesPerEntry: 4096
+        SharedArenaEnabled: false
+        SharedArenaLockHeld: true
+        InjectIllegalPolicyMutation: false
+        InjectIllegalDominatusWrite: false
+        DispatchBaseCost: 1
+    })
+    Assert.Equal(r.EffectiveWorkers, 2, "memory budget must cap workers")
+}
+
+[Fact]
+fn M41RecommendationComputed() -> Void {
+    let rec = M41RecommendationFromMetrics()
+    Assert.True(rec.FirstImplementationCandidate == "B-real-threads-serialized-vulkan" or rec.FirstImplementationCandidate == "C-real-threads-per-worker-queues" or rec.FirstImplementationCandidate == "A-lane-simulated", "recommendation must come from computed candidates")
+    Assert.True(rec.RecommendationComputed, "recommendation must be model-derived")
+}
+
+[Fact]
+fn M41Determinism() -> Void {
+    let s = M41BaseScenario("B-real-threads-serialized-vulkan")
+    let a = M41RunScenario(s)
+    let b = M41RunScenario(s)
+    Assert.Equal(a.ProductScore, b.ProductScore, "same scenario must be deterministic")
+    Assert.Equal(a.CompletionTime, b.CompletionTime, "completion time must be deterministic")
+}
+
+[Artifact]
+fn EmitM41CandidateComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_execution_candidate_comparison.octagon", [M41CandidateComparisonTable()])
+}
+
+[Artifact]
+fn EmitM41ThreadSafetyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_thread_safety_table.octagon", [M41ThreadSafetyContractTable()])
+}
+
+[Artifact]
+fn EmitM41EventRingPressureTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_event_ring_pressure_table.octagon", [M41EventRingPressureContractTable()])
+}
+
+[Artifact]
+fn EmitM41FailureDrainTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_failure_drain_table.octagon", [M41FailureDrainContractTable()])
+}
+
+[Artifact]
+fn EmitM41QueueTopologyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_queue_topology_table.octagon", [M41QueueTopologyContractTable()])
+}
+
+[Artifact]
+fn EmitM41ArenaOwnershipTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_arena_ownership_table.octagon", [M41ArenaOwnershipContractTable()])
+}
+
+[Artifact]
+fn EmitM41FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M41/m41_final_contract.octagon", [M41RecommendationFromMetrics()])
+}

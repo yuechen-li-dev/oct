@@ -1,0 +1,9 @@
+[M41EventRingPressureTable {
+    Candidate: ["normal-ring", "tiny-ring-overflow"]
+    RingCapacity: [24, 4]
+    CriticalOverflowCount: [0, 32]
+    DiagnosticsOverflowCount: [0, 48]
+    EventOverflowCount: [0, 80]
+    BatchState: ["SUCCEEDED", "FAILED"]
+    EventPolicyRule: ["critical overflow fails batch; diagnostics overflow may be lossy only when counted", "critical overflow fails batch; diagnostics overflow may be lossy only when counted"]
+}]

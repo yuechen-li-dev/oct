@@ -1,0 +1,14 @@
+[M41FinalContract {
+    Label: "P11 M9 / PrometheusSgemmAlgorithmLab M41"
+    ReadyForRealWorkers: true
+    FirstImplementationCandidate: "B-real-threads-serialized-vulkan"
+    M10Direction: "implement real worker threads first with serialized Vulkan execution bridge"
+    WorkerForbidden: "workers must not run judgment, mutate policy memory, write Dominatus directly, or touch other worker arena without explicit shared lock"
+    EventOverflowPolicy: "critical overflow fails batch; diagnostics overflow may be lossy only when counted"
+    FailureDrainPolicy: "first failure wins; workers stop new plan starts; in-flight work drains; output remains uncommitted"
+    OrderedCommitPolicy: "workers may complete out-of-order internally; publish caller-visible outputs only via single atomic commit in entry-id order"
+    SingleQueueDegradeRule: "with one compute queue, keep real worker threads if desired but serialize queue submit or collapse effective Vulkan workers to one and do not claim hardware parallelism"
+    ArenaOwnershipRule: "per-worker arenas are exclusive in local mode; shared bank requires explicit ownership lock"
+    DeferredScope: "work stealing, SPMC/MPMC shared queues, lock-free runtime queues, parallel judgment, cross-worker arena borrowing without lock"
+    RecommendationComputed: true
+}]
