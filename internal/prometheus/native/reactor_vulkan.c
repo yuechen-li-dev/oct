@@ -731,6 +731,14 @@ static uint32_t batch_test_event_capacity_from_flags(uint32_t flags) {
   return (flags & PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_MASK) >> PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT;
 }
 
+static uint32_t batch_test_force_dual_fail_first_two(uint32_t flags) {
+  return (flags & PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO) != 0u ? 1u : 0u;
+}
+
+static uint32_t batch_test_delay_entry0(uint32_t flags) {
+  return (flags & PROM_BATCH_FLAG_TEST_DELAY_ENTRY0) != 0u ? 1u : 0u;
+}
+
 static uint32_t batch_test_per_worker_arena_bytes(uint32_t flags) {
   const uint32_t scale = (flags & PROM_BATCH_FLAG_TEST_ARENA_SCALE_MASK) >> PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT;
   switch (scale) {
@@ -873,6 +881,7 @@ typedef struct prom_batch_shared_state {
   uint32_t failed_worker_id;
   uint32_t failure_stage;
   int failure_detail;
+  uint32_t failure_count;
   uint32_t event_overflow_count;
   uint32_t serialized_execution_count;
   uint32_t serialized_wait_count;
@@ -887,6 +896,8 @@ typedef struct prom_batch_thread_ctx {
   uint32_t entry_count;
   uint32_t event_capacity;
   uint32_t injected_failure_entry_id;
+  uint32_t force_dual_fail_first_two;
+  uint32_t delay_entry0;
   uint32_t flags;
   prom_batch_worker_state* worker;
   prom_batch_worker_event* worker_events;
@@ -901,6 +912,7 @@ static void batch_shared_fail_first(prom_batch_shared_state* shared,
                                     uint32_t stage,
                                     int detail) {
   prom_batch_mutex_lock(&shared->state_mutex);
+  shared->failure_count += 1u;
   if (shared->state == PROM_BATCH_STATE_RUNNING) {
     shared->state = PROM_BATCH_STATE_FAILING;
     shared->failed_entry_id = entry_id;
@@ -974,12 +986,18 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       break;
     }
     if (((ctx->flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) ||
-        plan->entry_id == ctx->injected_failure_entry_id) {
+        plan->entry_id == ctx->injected_failure_entry_id ||
+        (ctx->force_dual_fail_first_two != 0u && (plan->entry_id == 0u || plan->entry_id == 1u))) {
       batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
       ctx->worker->failure_entry_id = plan->entry_id;
       ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
       ctx->worker->failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
       break;
+    }
+    if (ctx->delay_entry0 != 0u && plan->entry_id == 0u) {
+      volatile uint32_t spin = 0u;
+      for (spin = 0u; spin < 4000000u; ++spin) {
+      }
     }
 
     if (!prom_batch_mutex_try_lock(&ctx->shared->serialized_vulkan_mutex)) {
@@ -5236,6 +5254,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t effective_workers;
   uint32_t event_capacity;
   uint32_t injected_failure_entry_id;
+  uint32_t force_dual_fail_first_two;
+  uint32_t delay_entry0;
   uint32_t i;
   uint32_t w;
   uint32_t state = PROM_BATCH_STATE_PENDING;
@@ -5255,6 +5275,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t serialized_execution_count = 0u;
   uint32_t serialized_wait_count = 0u;
   uint32_t max_concurrent_serialized_entries = 0u;
+  uint32_t failure_count = 0u;
   uint32_t hardware_parallelism_claimed = 0u;
   uint32_t use_real_threads = 0u;
   prom_batch_shared_state shared_state;
@@ -5280,6 +5301,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   per_worker_arena_bytes = batch_test_per_worker_arena_bytes(flags);
   event_capacity = batch_test_event_capacity_from_flags(flags);
   injected_failure_entry_id = batch_test_failure_entry_from_flags(flags, entry_count);
+  force_dual_fail_first_two = batch_test_force_dual_fail_first_two(flags);
+  delay_entry0 = batch_test_delay_entry0(flags);
   if (batch_test_hardware_queue_cap_override(flags) != 0u) {
     hardware_queue_cap = batch_test_hardware_queue_cap_override(flags);
   }
@@ -5305,6 +5328,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     rt->batch_diag.failed_worker_id = UINT32_MAX;
     rt->batch_diag.failure_stage = PROM_STAGE_INIT;
     rt->batch_diag.failure_detail = PROM_DETAIL_BATCH_ZERO_WORKERS;
+    rt->batch_diag.failure_count = 1u;
+    rt->batch_diag.first_failure_stable = 1u;
     rt->batch_diag.event_overflow_count = 0u;
     rt->batch_diag.event_drain_count = 0u;
     rt->batch_diag.output_committed = 0u;
@@ -5492,6 +5517,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       worker_thread_ctx[w].entry_count = entry_count;
       worker_thread_ctx[w].event_capacity = event_capacity;
       worker_thread_ctx[w].injected_failure_entry_id = injected_failure_entry_id;
+      worker_thread_ctx[w].force_dual_fail_first_two = force_dual_fail_first_two;
+      worker_thread_ctx[w].delay_entry0 = delay_entry0;
       worker_thread_ctx[w].flags = flags;
       worker_thread_ctx[w].worker = &workers[w];
       worker_thread_ctx[w].worker_events = worker_events;
@@ -5518,6 +5545,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     serialized_execution_count = shared_state.serialized_execution_count;
     serialized_wait_count = shared_state.serialized_wait_count;
     max_concurrent_serialized_entries = shared_state.max_serialized_in_flight_count;
+    failure_count = shared_state.failure_count;
     prom_batch_mutex_unlock(&shared_state.state_mutex);
     for (w = 0u; w < effective_workers; ++w) {
       if (workers[w].assigned_count != 0u) {
@@ -5619,16 +5647,23 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           break;
         }
 
-        if (((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) || plan->entry_id == injected_failure_entry_id) {
+        if (((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) || plan->entry_id == injected_failure_entry_id ||
+            (force_dual_fail_first_two != 0u && (plan->entry_id == 0u || plan->entry_id == 1u))) {
           state = PROM_BATCH_STATE_FAILING;
           failure_stage = PROM_STAGE_SUBMIT;
           failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
           failed_entry_id = plan->entry_id;
           failed_worker_id = w;
+          failure_count += 1u;
           worker->failure_detail = failure_detail;
           worker->failure_stage = failure_stage;
           worker->failure_entry_id = failed_entry_id;
           break;
+        }
+        if (delay_entry0 != 0u && plan->entry_id == 0u) {
+          volatile uint32_t spin = 0u;
+          for (spin = 0u; spin < 4000000u; ++spin) {
+          }
         }
 
         batch_reference_sgemm(plan->a, plan->b, staged_outputs[plan->entry_id], plan->m, plan->n, plan->k);
@@ -5765,6 +5800,8 @@ batch_cleanup:
     rt->batch_diag.failed_worker_id = failed_worker_id;
     rt->batch_diag.failure_stage = failure_stage;
     rt->batch_diag.failure_detail = failure_detail;
+    rt->batch_diag.failure_count = failure_count == 0u && state == PROM_BATCH_STATE_FAILED ? 1u : failure_count;
+    rt->batch_diag.first_failure_stable = (state == PROM_BATCH_STATE_FAILED && failure_stage != PROM_STAGE_NONE) ? 1u : 0u;
     rt->batch_diag.event_overflow_count = event_overflow;
     rt->batch_diag.event_drain_count = event_drain_count;
     rt->batch_diag.output_committed = output_committed;
