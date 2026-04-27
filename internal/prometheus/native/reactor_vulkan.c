@@ -270,6 +270,7 @@ typedef struct prometheus_runtime {
   VkDevice device;
   uint32_t queue_family_index;
   uint32_t transfer_queue_family_index;
+  /* Legacy-owned init-time capability constant; Dominatus mirrors derived queue-policy facts per commit. */
   uint32_t dedicated_transfer_available;
   uint32_t transfer_queue_enabled;
   VkQueue compute_queue;
@@ -313,8 +314,11 @@ typedef struct prometheus_runtime {
   uint32_t has_device_local_memory;
   uint32_t has_host_visible_memory;
   uint32_t in_flight_submit;
+  /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
+  /* Legacy-owned init-time capability constant; Dominatus consumes this via staged layout/precision facts. */
   uint32_t capability_fp16_storage;
+  /* Legacy-owned atomic async runtime internals; Dominatus remains the observability/export surface. */
   uint32_t async_state;
   int async_task_id;
   uint32_t async_m;
@@ -325,6 +329,7 @@ typedef struct prometheus_runtime {
   int async_final_detail;
   uint32_t async_stage;
   int async_failure_detail;
+  /* Legacy-owned controller integrator internals; Dominatus owns staged facts/decisions emitted from this state. */
   prom_sgemm_controller_state sgemm_controller;
   prom_slot_hfsm slots[2];
   prom_slot_runtime_diag slot_diag;
@@ -3173,14 +3178,22 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.transfer_fallback_available = transfer_queue_projection.facts.transfer_fallback_available;
   judgment_facts.transfer_queue_disabled_by_config = transfer_queue_projection.facts.transfer_queue_disabled_by_config;
   layout_precision_path_guard_dirty_mask = 0u;
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 0u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 1u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 2u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 3u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 5u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 6u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 11u));
-  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 13u));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_M));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_N));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_K));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_WORK_UNITS));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_CAN_DIRECT));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_ALLOW_FALLBACK));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE));
+  layout_precision_path_guard_dirty_mask |=
+      (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << PROM_DOM_PATH_COMPUTE_DEP_POLICY_MODE));
   layout_precision_dependency_dirty_mask =
       layout_precision_projection.dependent_dirty_key_mask_last_commit | layout_precision_path_guard_dirty_mask;
 

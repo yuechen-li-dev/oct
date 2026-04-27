@@ -118,20 +118,20 @@ static uint64_t layout_precision_dependency_mask_last_commit(const prom_dom_blac
 static uint64_t path_compute_dependency_mask_last_commit(const prom_dom_blackboard* board) {
   uint64_t mask = 0u;
   if (board == 0) return 0u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M) != 0u) mask |= 1ull << 0u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N) != 0u) mask |= 1ull << 1u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K) != 0u) mask |= 1ull << 2u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS) != 0u) mask |= 1ull << 3u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE) != 0u) mask |= 1ull << 4u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT) != 0u) mask |= 1ull << 5u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK) != 0u) mask |= 1ull << 6u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED) != 0u) mask |= 1ull << 7u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) != 0u) mask |= 1ull << 8u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED) != 0u) mask |= 1ull << 9u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED) != 0u) mask |= 1ull << 10u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE) != 0u) mask |= 1ull << 11u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN) != 0u) mask |= 1ull << 12u;
-  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE) != 0u) mask |= 1ull << 13u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_M;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_N;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_SHAPE_K;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_WORK_UNITS;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_CAN_STAGE;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_CAN_DIRECT;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_ALLOW_FALLBACK;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_READBACK_REQUIRED;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_STAGED;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_TILED;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_SOFTWARE_VULKAN;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_POLICY_MODE;
   return mask;
 }
 

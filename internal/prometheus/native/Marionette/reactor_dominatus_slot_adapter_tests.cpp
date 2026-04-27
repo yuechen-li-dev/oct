@@ -424,13 +424,22 @@ FACT(PrometheusDominatusSlotAdapter_M16DuplicateReadyCoalescingAndBoundaryAdvanc
     ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
     ASSERT_TRUE((readiness.attention_slot_mask & 0x1u) != 0u, "duplicate ready should still yield one attention bit");
     ASSERT_TRUE(readiness.duplicate_ready_event_count >= 1u, "duplicate ready counter should increment");
+    const std::uint32_t priorOverflowSpillCount = readiness.overflow_spill_count;
+    const std::uint64_t priorDuplicateReadyCount = readiness.duplicate_ready_event_count;
+    const std::uint64_t priorEmptyBoundaryCommitCount = readiness.empty_boundary_commit_count;
 
     const std::uint64_t priorGeneration = readiness.boundary_generation;
     prom_dom_slot_readiness_clear_boundary(&board);
     ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable after clear");
     ASSERT_EQUAL(priorGeneration + 1u, readiness.boundary_generation, "boundary generation should advance on clear");
     ASSERT_EQUAL(0u, readiness.dirty_slot_mask, "dirty mask should clear at boundary advance");
+    ASSERT_EQUAL(0u, readiness.ready_slot_mask, "ready mask should clear at boundary advance");
+    ASSERT_EQUAL(0u, readiness.failed_slot_mask, "failed mask should clear at boundary advance");
+    ASSERT_EQUAL(0u, readiness.invalidated_slot_mask, "invalidated mask should clear at boundary advance");
     ASSERT_EQUAL(0u, readiness.attention_slot_mask, "attention mask should clear at boundary advance");
+    ASSERT_EQUAL(priorOverflowSpillCount, readiness.overflow_spill_count, "overflow counter should persist across boundary clear");
+    ASSERT_EQUAL(priorDuplicateReadyCount, readiness.duplicate_ready_event_count, "duplicate-ready counter should persist across boundary clear");
+    ASSERT_EQUAL(priorEmptyBoundaryCommitCount, readiness.empty_boundary_commit_count, "empty-boundary counter should persist across boundary clear");
 }
 
 FACT(PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlotEvent)
