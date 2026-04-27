@@ -167,6 +167,53 @@ typedef struct prom_dom_sgemm_layout_precision_snapshot {
   prom_dom_sgemm_layout_precision_decision decision;
 } prom_dom_sgemm_layout_precision_snapshot;
 
+typedef struct prom_dom_sgemm_path_compute_facts {
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint64_t work_units;
+  uint32_t can_stage;
+  uint32_t can_direct;
+  uint32_t allow_fallback;
+  uint32_t readback_required;
+  uint32_t force_direct;
+  uint32_t force_staged;
+  uint32_t force_tiled;
+  uint32_t tiled_shape;
+  uint32_t software_vulkan;
+  uint32_t policy_mode;
+} prom_dom_sgemm_path_compute_facts;
+
+typedef struct prom_dom_sgemm_path_compute_projection {
+  prom_dom_sgemm_path_compute_facts facts;
+  uint64_t visible_generation;
+  uint64_t dependent_dirty_key_mask_last_commit;
+  uint32_t from_visible_snapshot;
+} prom_dom_sgemm_path_compute_projection;
+
+typedef struct prom_dom_sgemm_path_compute_decision {
+  uint32_t success;
+  int32_t error_detail;
+  uint32_t requested_path;
+  uint32_t selected_path;
+  uint32_t compute_mode;
+  int32_t final_detail;
+  uint32_t used_fallback_to_direct;
+  uint32_t winning_candidate_index;
+  int32_t winning_score;
+} prom_dom_sgemm_path_compute_decision;
+
+typedef struct prom_dom_sgemm_path_compute_snapshot {
+  prom_dom_sgemm_path_compute_facts facts;
+  prom_dom_sgemm_path_compute_decision decision;
+  uint32_t packed4_selected;
+  uint32_t packed4_reject_reason;
+  uint32_t fp16_selected;
+  uint32_t fp16_reject_reason;
+  uint32_t use_dedicated_transfer_queue_upload;
+  uint32_t transfer_fallback_reason;
+} prom_dom_sgemm_path_compute_snapshot;
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
@@ -221,6 +268,16 @@ uint32_t prom_dom_sgemm_stage_layout_precision_decision(prom_dom_blackboard* boa
                                                         const prom_dom_sgemm_layout_precision_decision* decision);
 uint32_t prom_dom_sgemm_read_visible_layout_precision_diagnostics(const prom_dom_blackboard* board,
                                                                   prom_dom_sgemm_layout_precision_snapshot* out_snapshot);
+uint32_t prom_dom_sgemm_stage_path_compute_facts(prom_dom_blackboard* board,
+                                                 const prom_dom_sgemm_path_compute_facts* facts);
+uint32_t prom_dom_sgemm_build_path_compute_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_dom_sgemm_path_compute_facts* fallback_facts,
+    prom_dom_sgemm_path_compute_projection* out_projection);
+uint32_t prom_dom_sgemm_stage_path_compute_decision(prom_dom_blackboard* board,
+                                                    const prom_dom_sgemm_path_compute_decision* decision);
+uint32_t prom_dom_sgemm_read_visible_path_compute_diagnostics(const prom_dom_blackboard* board,
+                                                              prom_dom_sgemm_path_compute_snapshot* out_snapshot);
 
 #ifdef __cplusplus
 }

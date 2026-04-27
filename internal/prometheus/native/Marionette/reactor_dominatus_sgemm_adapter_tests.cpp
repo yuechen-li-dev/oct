@@ -757,3 +757,157 @@ FACT(PrometheusDominatusSgemmAdapter_M9LayoutPrecisionDecisionStagingVisibilityA
     ASSERT_EQUAL(2u, snapshot.decision.packed4_selected_layout_format, "visible packed4 layout format should match commit");
     ASSERT_EQUAL(1u, prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED), "last-commit dirty should include packed4 selected");
 }
+
+FACT(PrometheusDominatusSgemmAdapter_M10PathComputeInputSnapshotIsolation)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_path_compute_facts a{};
+    prom_dom_sgemm_path_compute_facts b{};
+    prom_dom_sgemm_path_compute_projection projection{};
+    prom_dom_blackboard_init(&board);
+    a.m = 128u; a.n = 128u; a.k = 64u; a.work_units = 1048576u; a.can_stage = 1u; a.can_direct = 1u;
+    a.allow_fallback = 1u; a.readback_required = 1u; a.force_direct = 0u; a.force_staged = 0u; a.force_tiled = 0u;
+    a.tiled_shape = 1u; a.software_vulkan = 0u; a.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
+    b = a;
+    b.m = 32u; b.work_units = 32768u; b.can_stage = 0u; b.force_direct = 1u; b.tiled_shape = 0u; b.policy_mode = PROM_POLICY_MODE_SAFE;
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &a) == 1u, "staging facts A should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &b) == 1u, "staging facts B should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &b, &projection) == 1u, "pre-commit projection should build");
+    ASSERT_EQUAL(a.m, projection.facts.m, "pre-commit projection should preserve visible A");
+    ASSERT_EQUAL(a.force_direct, projection.facts.force_direct, "pre-commit projection should preserve visible A force-direct");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &a, &projection) == 1u, "post-commit projection should build");
+    ASSERT_EQUAL(b.m, projection.facts.m, "post-commit projection should read committed B");
+    ASSERT_EQUAL(b.force_direct, projection.facts.force_direct, "post-commit projection should read committed B force-direct");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M10PathComputeFactsAffectDecisionOnlyAfterCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_path_compute_facts base{};
+    prom_dom_sgemm_path_compute_facts changed{};
+    prom_dom_sgemm_path_compute_projection projection{};
+    prom_judgment_facts facts{};
+    prom_judgment_decision before{};
+    prom_judgment_decision during{};
+    prom_judgment_decision after{};
+    prom_dom_blackboard_init(&board);
+    base.m = 128u; base.n = 128u; base.k = 64u; base.work_units = 1048576u; base.can_stage = 1u; base.can_direct = 1u;
+    base.allow_fallback = 1u; base.readback_required = 1u; base.force_direct = 0u; base.force_staged = 0u; base.force_tiled = 1u;
+    base.tiled_shape = 1u; base.software_vulkan = 0u; base.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
+    changed = base; changed.force_direct = 1u; changed.force_staged = 0u; changed.force_tiled = 0u; changed.tiled_shape = 0u;
+    changed.readback_required = 0u; changed.can_stage = 0u; changed.software_vulkan = 1u;
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &base) == 1u, "baseline facts should stage");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &base, &projection) == 1u, "baseline projection should build");
+    facts.can_stage = projection.facts.can_stage; facts.can_direct = projection.facts.can_direct; facts.allow_fallback = projection.facts.allow_fallback;
+    facts.readback_required = projection.facts.readback_required; facts.force_direct = projection.facts.force_direct;
+    facts.force_staged = projection.facts.force_staged; facts.force_tiled = projection.facts.force_tiled; facts.tiled_shape = projection.facts.tiled_shape;
+    facts.software_vulkan = projection.facts.software_vulkan; facts.policy_mode = static_cast<prom_policy_mode>(projection.facts.policy_mode);
+    facts.work_units = projection.facts.work_units; facts.fallback_available = 1u; facts.transfer_fallback_available = 1u;
+    facts.transfer_queue_supported = 1u; facts.transfer_overlap_slot_valid = 1u; facts.transfer_workload_large_enough = 1u;
+    facts.transfer_queue_dedicated_available = 1u; facts.transfer_queue_families_differ = 1u;
+    facts.packed4_available = 0u; facts.capability_fp16_storage = 0u;
+    prom_judgment_engine_select_sgemm_mode(&facts, &before);
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &changed) == 1u, "changed facts should stage");
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &changed, &projection) == 1u, "pre-commit projection should build");
+    facts.can_stage = projection.facts.can_stage; facts.readback_required = projection.facts.readback_required; facts.force_direct = projection.facts.force_direct;
+    facts.force_tiled = projection.facts.force_tiled; facts.tiled_shape = projection.facts.tiled_shape; facts.software_vulkan = projection.facts.software_vulkan;
+    prom_judgment_engine_select_sgemm_mode(&facts, &during);
+    ASSERT_EQUAL(before.selected_path, during.selected_path, "staged path/compute mutations must not affect decision before commit");
+    ASSERT_EQUAL(before.compute_mode, during.compute_mode, "staged path/compute mutations must not affect compute mode before commit");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &base, &projection) == 1u, "post-commit projection should build");
+    facts.can_stage = projection.facts.can_stage; facts.readback_required = projection.facts.readback_required; facts.force_direct = projection.facts.force_direct;
+    facts.force_tiled = projection.facts.force_tiled; facts.tiled_shape = projection.facts.tiled_shape; facts.software_vulkan = projection.facts.software_vulkan;
+    prom_judgment_engine_select_sgemm_mode(&facts, &after);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_PATH_DIRECT), static_cast<std::uint32_t>(after.selected_path), "committed force-direct should affect next decision");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_COMPUTE_BASELINE), static_cast<std::uint32_t>(after.compute_mode), "committed tiled/path flags should affect next decision");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M10PathComputeDecisionOutputStaging)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_path_compute_facts facts{};
+    prom_dom_sgemm_path_compute_decision decision_a{};
+    prom_dom_sgemm_path_compute_decision decision_b{};
+    prom_dom_sgemm_path_compute_snapshot snapshot{};
+    prom_dom_blackboard_init(&board);
+    facts.m = 64u; facts.n = 64u; facts.k = 64u; facts.work_units = 262144u; facts.can_stage = 1u; facts.can_direct = 1u;
+    facts.allow_fallback = 1u; facts.readback_required = 1u; facts.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &facts) == 1u, "facts stage should succeed");
+    prom_dom_sgemm_commit(&board);
+    decision_a.success = 1u; decision_a.requested_path = PROM_VK_PATH_STAGED_UPLOAD_READBACK; decision_a.selected_path = PROM_VK_PATH_STAGED_UPLOAD_READBACK;
+    decision_a.compute_mode = PROM_VK_COMPUTE_TILED; decision_a.final_detail = PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED;
+    decision_a.winning_candidate_index = 5u; decision_a.winning_score = 530;
+    decision_b = decision_a; decision_b.selected_path = PROM_VK_PATH_DIRECT; decision_b.compute_mode = PROM_VK_COMPUTE_BASELINE; decision_b.winning_score = 205;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision_a) == 1u, "decision A stage should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &snapshot) == 1u, "decision A should be visible after commit");
+    ASSERT_EQUAL(decision_a.winning_score, snapshot.decision.winning_score, "decision A winning score should round-trip");
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision_b) == 1u, "decision B stage should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &snapshot) == 1u, "pre-commit visible read should succeed");
+    ASSERT_EQUAL(decision_a.winning_score, snapshot.decision.winning_score, "staged decision B must remain invisible before commit");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &snapshot) == 1u, "decision B should be visible after commit");
+    ASSERT_EQUAL(decision_b.winning_score, snapshot.decision.winning_score, "decision B should be visible after commit");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M10PathComputeDirtyCoverage)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_path_compute_facts a{};
+    prom_dom_sgemm_path_compute_facts b{};
+    prom_dom_sgemm_path_compute_decision decision{};
+    prom_dom_sgemm_path_compute_projection projection{};
+    prom_dom_blackboard_init(&board);
+    a.m = 64u; a.n = 64u; a.k = 64u; a.work_units = 262144u; a.can_stage = 1u; a.can_direct = 1u; a.allow_fallback = 1u;
+    b = a; b.force_direct = 1u; b.readback_required = 1u; b.tiled_shape = 1u; b.software_vulkan = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &a) == 1u, "initial facts should stage");
+    prom_dom_sgemm_commit(&board);
+    decision.success = 1u; decision.requested_path = PROM_VK_PATH_DIRECT; decision.selected_path = PROM_VK_PATH_DIRECT;
+    decision.compute_mode = PROM_VK_COMPUTE_BASELINE; decision.final_detail = PROM_DETAIL_PATH_DIRECT; decision.winning_score = 25;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &b) == 1u, "mutated facts should stage");
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision) == 1u, "decision should stage");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) == 1u, "force-direct key should be staged dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE) == 1u, "winning-score key should be staged dirty");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) == 1u, "force-direct key should be dirty on commit");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE) == 1u, "winning-score key should be dirty on commit");
+    ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &a, &projection) == 1u, "projection should build");
+    ASSERT_TRUE(projection.dependent_dirty_key_mask_last_commit != 0u, "path/compute dependency dirty mask should be non-zero");
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &b) == 1u, "same-value facts should stage");
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision) == 1u, "same-value decision should stage");
+    ASSERT_EQUAL(0u, prom_dom_dirty_keys_staged_word(&board, 0u), "same-value writes should not dirty staged mask word 0");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M10PathComputeCompatibilityMirrorNoDrift)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_path_compute_facts facts{};
+    prom_dom_sgemm_path_compute_decision decision{};
+    prom_dom_sgemm_path_compute_snapshot before{};
+    prom_dom_sgemm_path_compute_snapshot after{};
+    prom_dom_blackboard_init(&board);
+    facts.m = 128u; facts.n = 64u; facts.k = 64u; facts.work_units = 524288u; facts.can_stage = 1u; facts.can_direct = 1u; facts.allow_fallback = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &facts) == 1u, "facts should stage");
+    prom_dom_sgemm_commit(&board);
+    decision.success = 1u; decision.requested_path = PROM_VK_PATH_STAGED_UPLOAD; decision.selected_path = PROM_VK_PATH_STAGED_UPLOAD;
+    decision.compute_mode = PROM_VK_COMPUTE_BASELINE; decision.final_detail = PROM_DETAIL_PATH_STAGED_UPLOAD; decision.winning_score = 501;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision) == 1u, "decision should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &before) == 1u, "baseline visible snapshot should read");
+    decision.selected_path = PROM_VK_PATH_DIRECT; decision.compute_mode = PROM_VK_COMPUTE_TILED; decision.final_detail = PROM_DETAIL_PATH_DIRECT_TILED;
+    ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision) == 1u, "mutated decision should stage");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &after) == 1u, "pre-commit visible snapshot should read");
+    ASSERT_EQUAL(before.decision.selected_path, after.decision.selected_path, "visible mirror must remain pinned before commit");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &after) == 1u, "post-commit visible snapshot should read");
+    ASSERT_EQUAL(decision.selected_path, after.decision.selected_path, "visible mirror should advance after commit");
+}

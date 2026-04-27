@@ -2480,6 +2480,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_dom_sgemm_layout_precision_facts layout_precision_facts;
   prom_dom_sgemm_layout_precision_projection layout_precision_projection;
   prom_dom_sgemm_layout_precision_decision layout_precision_decision;
+  prom_dom_sgemm_path_compute_facts path_compute_facts;
+  prom_dom_sgemm_path_compute_projection path_compute_projection;
+  prom_dom_sgemm_path_compute_decision path_compute_decision;
+  prom_dom_sgemm_path_compute_snapshot path_compute_snapshot;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
   prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
@@ -2581,28 +2585,52 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
                     : 0u;
-  memset(&judgment_facts, 0, sizeof(judgment_facts));
-  judgment_facts.m = m;
-  judgment_facts.n = n;
-  judgment_facts.k = k;
-  judgment_facts.work_units = work_units;
-  judgment_facts.can_stage = can_stage;
-  judgment_facts.can_direct = can_direct;
-  judgment_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
-  judgment_facts.readback_required = readback_required;
-  judgment_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
-  if (judgment_facts.force_direct == 0u && policy_mode == PROM_POLICY_MODE_SAFE &&
+  memset(&path_compute_facts, 0, sizeof(path_compute_facts));
+  path_compute_facts.m = m;
+  path_compute_facts.n = n;
+  path_compute_facts.k = k;
+  path_compute_facts.work_units = work_units;
+  path_compute_facts.can_stage = can_stage;
+  path_compute_facts.can_direct = can_direct;
+  path_compute_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
+  path_compute_facts.readback_required = readback_required;
+  path_compute_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
+  if (path_compute_facts.force_direct == 0u && policy_mode == PROM_POLICY_MODE_SAFE &&
       (rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) == 0u && (rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) == 0u) {
     /* SAFE mode currently biases to direct+baseline for conservative behavior.
      * This can suppress direct+tiled on large shapes; keep unchanged in this pass
      * and revisit with real GPU validation data before any policy relaxation. */
-    judgment_facts.force_direct = 1u;
+    path_compute_facts.force_direct = 1u;
   }
-  judgment_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
-  judgment_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
-  judgment_facts.tiled_shape = tiled_shape;
-  judgment_facts.software_vulkan = rt->software_vulkan;
-  judgment_facts.policy_mode = policy_mode;
+  path_compute_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
+  path_compute_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
+  path_compute_facts.tiled_shape = tiled_shape;
+  path_compute_facts.software_vulkan = rt->software_vulkan;
+  path_compute_facts.policy_mode = (uint32_t)policy_mode;
+  if (prom_dom_sgemm_stage_path_compute_facts(&rt->blackboard, &path_compute_facts) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_build_path_compute_facts_from_visible(&rt->blackboard, &path_compute_facts, &path_compute_projection) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  memset(&judgment_facts, 0, sizeof(judgment_facts));
+  judgment_facts.m = path_compute_projection.facts.m;
+  judgment_facts.n = path_compute_projection.facts.n;
+  judgment_facts.k = path_compute_projection.facts.k;
+  judgment_facts.work_units = path_compute_projection.facts.work_units;
+  judgment_facts.can_stage = path_compute_projection.facts.can_stage;
+  judgment_facts.can_direct = path_compute_projection.facts.can_direct;
+  judgment_facts.allow_fallback = path_compute_projection.facts.allow_fallback;
+  judgment_facts.readback_required = path_compute_projection.facts.readback_required;
+  judgment_facts.force_direct = path_compute_projection.facts.force_direct;
+  judgment_facts.force_staged = path_compute_projection.facts.force_staged;
+  judgment_facts.force_tiled = path_compute_projection.facts.force_tiled;
+  judgment_facts.tiled_shape = path_compute_projection.facts.tiled_shape;
+  judgment_facts.software_vulkan = path_compute_projection.facts.software_vulkan;
+  judgment_facts.policy_mode = (prom_policy_mode)path_compute_projection.facts.policy_mode;
   memset(&layout_precision_facts, 0, sizeof(layout_precision_facts));
   layout_precision_facts.packed4_available = 1u;
   layout_precision_facts.packed4_small_shape = packed4_small_shape;
@@ -2615,7 +2643,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   layout_precision_facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
   layout_precision_facts.has_special_values = fp16_has_special_values;
   layout_precision_facts.capability_fp16_storage = rt->capability_fp16_storage;
-  layout_precision_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
+  layout_precision_facts.fallback_available = (path_compute_projection.facts.allow_fallback != 0u && path_compute_projection.facts.can_direct != 0u) ? 1u : 0u;
   layout_precision_facts.fp16_utility_score = fp16_utility_score;
   if (prom_dom_sgemm_stage_layout_precision_facts(&rt->blackboard, &layout_precision_facts) == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
@@ -2673,6 +2701,34 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
     return PROM_ERROR;
   }
+  memset(&path_compute_decision, 0, sizeof(path_compute_decision));
+  path_compute_decision.success = judgment_decision.success;
+  path_compute_decision.error_detail = judgment_decision.error_detail;
+  path_compute_decision.requested_path = (uint32_t)judgment_decision.requested_path;
+  path_compute_decision.selected_path = (uint32_t)judgment_decision.selected_path;
+  path_compute_decision.compute_mode = (uint32_t)judgment_decision.compute_mode;
+  path_compute_decision.final_detail = judgment_decision.final_detail;
+  path_compute_decision.used_fallback_to_direct = judgment_decision.used_fallback_to_direct;
+  path_compute_decision.winning_candidate_index = judgment_decision.winning_candidate_index;
+  path_compute_decision.winning_score = judgment_decision.winning_score;
+  if (prom_dom_sgemm_stage_path_compute_decision(&rt->blackboard, &path_compute_decision) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_read_visible_path_compute_diagnostics(&rt->blackboard, &path_compute_snapshot) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  judgment_decision.success = path_compute_snapshot.decision.success;
+  judgment_decision.error_detail = path_compute_snapshot.decision.error_detail;
+  judgment_decision.requested_path = (prom_vk_path_mode)path_compute_snapshot.decision.requested_path;
+  judgment_decision.selected_path = (prom_vk_path_mode)path_compute_snapshot.decision.selected_path;
+  judgment_decision.compute_mode = (prom_vk_compute_mode)path_compute_snapshot.decision.compute_mode;
+  judgment_decision.final_detail = path_compute_snapshot.decision.final_detail;
+  judgment_decision.used_fallback_to_direct = path_compute_snapshot.decision.used_fallback_to_direct;
+  judgment_decision.winning_candidate_index = path_compute_snapshot.decision.winning_candidate_index;
+  judgment_decision.winning_score = path_compute_snapshot.decision.winning_score;
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
