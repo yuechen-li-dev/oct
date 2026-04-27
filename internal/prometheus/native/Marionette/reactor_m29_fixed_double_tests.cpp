@@ -398,6 +398,39 @@ FACT(PrometheusReactor_P11_M3_TypedArenas_GrowIncrementsGenerationAndGrowCounter
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
+FACT(PrometheusReactor_P11_M3_TypedArenas_RebuildPassDoesNotAlsoShrinkRole)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; rebuild-vs-shrink transition checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 64u, 64u, 64u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 256u, 64u, 64u), "M-only grow should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.p11_m3_arena_a_grow_count > before.p11_m3_arena_a_grow_count, "A should report a grow transition");
+    ASSERT_TRUE(after.p11_m3_arena_c_grow_count > before.p11_m3_arena_c_grow_count, "C should report a grow transition");
+    ASSERT_EQUAL(before.p11_m3_arena_a_shrink_count, after.p11_m3_arena_a_shrink_count,
+                 "A must not report a shrink in the same pass as a rebuild/grow");
+    ASSERT_EQUAL(before.p11_m3_arena_c_shrink_count, after.p11_m3_arena_c_shrink_count,
+                 "C must not report a shrink in the same pass as a rebuild/grow");
+    ASSERT_EQUAL(before.p11_m3_arena_a_generation + static_cast<std::uint64_t>(1), after.p11_m3_arena_a_generation,
+                 "A generation should advance exactly once for the grow transition");
+    ASSERT_EQUAL(before.p11_m3_arena_c_generation + static_cast<std::uint64_t>(1), after.p11_m3_arena_c_generation,
+                 "C generation should advance exactly once for the grow transition");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
 FACT(PrometheusReactor_P11_M3_TypedArenas_GrowOnlyFallbackKeepsShrinkDisabled)
 {
     PrometheusReactorConfig config{};
@@ -447,6 +480,35 @@ FACT(PrometheusReactor_P11_M3_TypedArenas_NoShrinkWhileInflight)
     ASSERT_TRUE(read_diag(handle, diag), "diagnostics should succeed");
     ASSERT_EQUAL(static_cast<std::uint64_t>(0), diag.p11_m3_arena_shrink_count, "forced in-flight arena policy should block shrink");
     ASSERT_TRUE(diag.p11_m3_arena_budget_limit_bytes > 0u, "arena diagnostics should remain populated under forced in-flight mode");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_StagedPairsRemainSymmetricAcrossReuseAndShrinkChecks)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_FORCE_STAGED_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; staged paired-buffer invariants cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 512u, 512u, 512u), "staged baseline should succeed");
+    for (std::uint32_t i = 0u; i < 6u; ++i) {
+        ASSERT_TRUE(run_sgemm_checked(handle, 128u, 128u, 128u), "reuse epochs should succeed");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_TRUE(read_diag(handle, diag), "diagnostics should succeed");
+
+    ASSERT_EQUAL(diag.p11_m3_arena_a_required_bytes, diag.p11_m3_arena_a_capacity_bytes,
+                 "staged A pair contract requires upload/device required bytes to stay symmetric");
+    ASSERT_EQUAL(diag.p11_m3_arena_b_required_bytes, diag.p11_m3_arena_b_capacity_bytes,
+                 "staged B pair contract requires upload/device required bytes to stay symmetric");
+    ASSERT_EQUAL(diag.p11_m3_arena_c_required_bytes, diag.p11_m3_arena_c_capacity_bytes,
+                 "staged C pair contract requires device/readback required bytes to stay symmetric");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
