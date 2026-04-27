@@ -151,8 +151,67 @@ enum {
   PROM_DETAIL_ARENA_BUDGET_REJECTED = -6501,
   PROM_DETAIL_ARENA_OWNERSHIP_REJECTED = -6502,
   PROM_DETAIL_ARENA_NAMESPACE_MISMATCH = -6503,
+  PROM_DETAIL_BATCH_ZERO_WORKERS = -6601,
+  PROM_DETAIL_BATCH_PLAN_INVALID = -6602,
+  PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW = -6603,
+  PROM_DETAIL_BATCH_EXECUTION_FAILED = -6604,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
+};
+
+typedef struct PrometheusSgemmBatchEntry {
+  const float* a;
+  const float* b;
+  float* c;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+} PrometheusSgemmBatchEntry;
+
+typedef struct PrometheusSgemmBatchDiagnostics {
+  uint32_t last_batch_entry_count;
+  uint32_t requested_workers;
+  uint32_t effective_workers;
+  uint32_t hardware_queue_cap;
+  uint32_t memory_worker_cap;
+  uint32_t worker_cap_reason;
+  uint32_t partition_policy;
+  uint32_t batch_state;
+  uint32_t failed_entry_id;
+  uint32_t failed_worker_id;
+  uint32_t failure_stage;
+  int32_t failure_detail;
+  uint32_t event_overflow_count;
+  uint32_t event_drain_count;
+  uint32_t output_committed;
+  uint32_t plan_generation;
+  uint32_t worker_judgment_count;
+} PrometheusSgemmBatchDiagnostics;
+
+enum {
+  PROM_BATCH_FLAG_PARTITION_CONTIGUOUS = 1u << 8,
+  PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT = 1u << 9,
+};
+
+enum {
+  PROM_BATCH_PARTITION_ROUND_ROBIN = 1u,
+  PROM_BATCH_PARTITION_CONTIGUOUS = 2u,
+};
+
+enum {
+  PROM_BATCH_STATE_PENDING = 1u,
+  PROM_BATCH_STATE_RUNNING = 2u,
+  PROM_BATCH_STATE_FAILING = 3u,
+  PROM_BATCH_STATE_DRAINING = 4u,
+  PROM_BATCH_STATE_FAILED = 5u,
+  PROM_BATCH_STATE_SUCCEEDED = 6u,
+};
+
+enum {
+  PROM_BATCH_CAP_REASON_NONE = 0u,
+  PROM_BATCH_CAP_REASON_HARDWARE_QUEUE = 1u,
+  PROM_BATCH_CAP_REASON_MEMORY_BUDGET = 2u,
+  PROM_BATCH_CAP_REASON_SINGLE_QUEUE_CONSERVATIVE = 3u,
 };
 
 typedef struct PrometheusCaps {
@@ -398,6 +457,12 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       uint32_t k,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch(void* handle,
+                                                            const PrometheusSgemmBatchEntry* entries,
+                                                            uint32_t entry_count,
+                                                            uint32_t flags,
+                                                            uint32_t* out_stage,
+                                                            int* out_detail_code);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
                                                                    const float* a,
                                                                    const float* b,
@@ -419,6 +484,8 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_consume_async(void* handle
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle,
                                                                          PrometheusSgemmPolicyDiagnostics* out_diag);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle,
+                                                                        PrometheusSgemmBatchDiagnostics* out_diag);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);
