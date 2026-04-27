@@ -2,6 +2,7 @@
 #include "test_harness.h"
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace
@@ -17,6 +18,22 @@ std::vector<float> deterministic_matrix(std::uint32_t rows, std::uint32_t cols)
         out[i] = static_cast<float>(v) / 5.0f;
     }
     return out;
+}
+
+bool run_sgemm_checked(void* handle, std::uint32_t m, std::uint32_t n, std::uint32_t k)
+{
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    return prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail) == PROM_OK;
+}
+
+bool read_diag(void* handle, PrometheusSgemmPolicyDiagnostics& out_diag)
+{
+    out_diag = {};
+    return prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &out_diag) == PROM_OK;
 }
 }
 
@@ -88,6 +105,155 @@ FACT(PrometheusReactor_M29_FixedDouble_InvalidationAndCapacityCounters)
     ASSERT_TRUE(diag.m29_shape_invalidation_count >= 1u, "shape transition should increment shape invalidation counter");
     ASSERT_TRUE(diag.m29_layout_invalidation_count <= diag.m29_stale_buffer_rejection_count, "layout invalidations should be reflected in stale counter");
     ASSERT_TRUE(diag.m29_capacity_invalidation_count <= diag.m29_stale_buffer_rejection_count, "capacity invalidations should be reflected in stale counter");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M14_BufferArtifacts_MOnlyChangeInvalidatesAAndCButCanReuseB)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; M14 M-only invalidation cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 3u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 5u, 3u, 3u), "m-only changed run should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.m14_a_invalidation_count > before.m14_a_invalidation_count, "m-only change should invalidate A artifact");
+    ASSERT_TRUE(after.m14_c_invalidation_count > before.m14_c_invalidation_count, "m-only change should invalidate C artifact");
+    ASSERT_TRUE(after.m14_b_reuse_count > before.m14_b_reuse_count, "m-only change should allow B artifact reuse when compatible");
+    ASSERT_TRUE(after.m14_false_invalidation_avoided_count > before.m14_false_invalidation_avoided_count,
+                "m-only change should avoid at least one false invalidation");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M14_BufferArtifacts_NOnlyChangeInvalidatesBAndCButCanReuseA)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; M14 N-only invalidation cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 3u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 5u, 3u), "n-only changed run should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.m14_b_invalidation_count > before.m14_b_invalidation_count, "n-only change should invalidate B artifact");
+    ASSERT_TRUE(after.m14_c_invalidation_count > before.m14_c_invalidation_count, "n-only change should invalidate C artifact");
+    ASSERT_TRUE(after.m14_a_reuse_count > before.m14_a_reuse_count, "n-only change should allow A artifact reuse when compatible");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M14_BufferArtifacts_KOnlyChangeInvalidatesAAndBWhileCCanReuse)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; M14 K-only invalidation cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 3u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 5u), "k-only changed run should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.m14_a_invalidation_count > before.m14_a_invalidation_count, "k-only change should invalidate A artifact");
+    ASSERT_TRUE(after.m14_b_invalidation_count > before.m14_b_invalidation_count, "k-only change should invalidate B artifact");
+    ASSERT_TRUE(after.m14_c_reuse_count > before.m14_c_reuse_count, "k-only change should allow C reuse when representation/capacity are stable");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M14_BufferArtifacts_LayoutTransitionInvalidatesArtifactNamespace)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; M14 layout transition invalidation cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 8u, 8u, 8u), "packed4-eligible baseline should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 3u), "scalar-compatible followup should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.m14_layout_precision_invalidation_count > before.m14_layout_precision_invalidation_count,
+                "layout namespace transition should count as layout/precision invalidation");
+    ASSERT_TRUE(after.m14_a_last_invalidation_reason == 3u || after.m14_b_last_invalidation_reason == 3u,
+                "at least one input artifact should report layout/precision invalidation reason");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_M14_BufferArtifacts_PrecisionTransitionAndCapacitySafety)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; M14 precision transition invalidation cannot be asserted");
+    }
+
+    const std::uint32_t m = 8u;
+    const std::uint32_t n = 8u;
+    const std::uint32_t k = 8u;
+    std::vector<float> a = deterministic_matrix(m, k);
+    std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                 "first precision candidate call should succeed");
+    PrometheusSgemmPolicyDiagnostics before{};
+    ASSERT_TRUE(read_diag(handle, before), "diagnostics should succeed");
+
+    a[0] = std::numeric_limits<float>::quiet_NaN();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                 "same-shape precision fallback call should succeed");
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_TRUE(read_diag(handle, after), "diagnostics should succeed");
+
+    ASSERT_TRUE(after.m14_a_invalidation_count > before.m14_a_invalidation_count || after.m14_b_invalidation_count > before.m14_b_invalidation_count,
+                "precision transition must invalidate at least one input artifact");
+    ASSERT_TRUE(after.m14_a_last_invalidation_reason != 0u || after.m14_b_last_invalidation_reason != 0u,
+                "precision transition should emit a concrete invalidation reason for an input artifact");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
