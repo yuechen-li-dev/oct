@@ -214,6 +214,27 @@ typedef struct prom_dom_sgemm_path_compute_snapshot {
   uint32_t transfer_fallback_reason;
 } prom_dom_sgemm_path_compute_snapshot;
 
+typedef struct prom_dom_async_snapshot {
+  int32_t task_id;
+  uint32_t lifecycle_state;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t ready;
+  uint32_t failed;
+  uint32_t consumed;
+  uint32_t outstanding_tasks;
+  uint32_t failure_stage;
+  int32_t failure_detail;
+  int32_t submit_detail;
+  int32_t query_detail;
+  int32_t slot_id;
+  uint64_t slot_generation;
+  uint32_t owns_slot;
+  uint32_t transfer_complete;
+  uint32_t compute_complete;
+  uint32_t readback_complete;
+} prom_dom_async_snapshot;
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
@@ -278,6 +299,11 @@ uint32_t prom_dom_sgemm_stage_path_compute_decision(prom_dom_blackboard* board,
                                                     const prom_dom_sgemm_path_compute_decision* decision);
 uint32_t prom_dom_sgemm_read_visible_path_compute_diagnostics(const prom_dom_blackboard* board,
                                                               prom_dom_sgemm_path_compute_snapshot* out_snapshot);
+uint32_t prom_dom_sgemm_stage_async_snapshot(prom_dom_blackboard* board,
+                                             const prom_dom_async_snapshot* snapshot,
+                                             prom_dom_event_kind event_kind,
+                                             int32_t reason_code);
+uint32_t prom_dom_sgemm_read_visible_async_snapshot(const prom_dom_blackboard* board, prom_dom_async_snapshot* out_snapshot);
 
 #ifdef __cplusplus
 }

@@ -911,3 +911,72 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeCompatibilityMirrorNoDrift)
     ASSERT_TRUE(prom_dom_sgemm_read_visible_path_compute_diagnostics(&board, &after) == 1u, "post-commit visible snapshot should read");
     ASSERT_EQUAL(decision.selected_path, after.decision.selected_path, "visible mirror should advance after commit");
 }
+
+FACT(PrometheusDominatusSgemmAdapter_M12AsyncSnapshotIsolation)
+{
+    prom_dom_blackboard board{};
+    prom_dom_async_snapshot state_a{};
+    prom_dom_async_snapshot state_b{};
+    prom_dom_async_snapshot visible{};
+    prom_dom_blackboard_init(&board);
+
+    state_a.task_id = 7;
+    state_a.lifecycle_state = PROM_ASYNC_STATE_SUBMITTED;
+    state_a.stage = PROM_STAGE_SUBMIT;
+    state_a.detail_code = PROM_DETAIL_PATH_DIRECT;
+    state_a.outstanding_tasks = 1u;
+    state_a.slot_id = 1;
+    state_a.owns_slot = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_async_snapshot(&board, &state_a, PROM_DOM_EVENT_ASYNC_SUBMITTED, 0) == 1u, "async state A should stage");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_async_snapshot(&board, &visible) == 1u, "visible async snapshot should read");
+    ASSERT_EQUAL(state_a.task_id, visible.task_id, "visible snapshot should match committed A");
+
+    state_b = state_a;
+    state_b.lifecycle_state = PROM_ASYNC_STATE_READY;
+    state_b.ready = 1u;
+    state_b.outstanding_tasks = 0u;
+    state_b.compute_complete = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_async_snapshot(&board, &state_b, PROM_DOM_EVENT_ASYNC_READY, 0) == 1u, "async state B should stage");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_async_snapshot(&board, &visible) == 1u, "pre-commit visible snapshot should read");
+    ASSERT_EQUAL(state_a.lifecycle_state, visible.lifecycle_state, "staged B must be invisible before commit");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_async_snapshot(&board, &visible) == 1u, "post-commit visible snapshot should read");
+    ASSERT_EQUAL(state_b.lifecycle_state, visible.lifecycle_state, "committed B should become visible");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M12AsyncTransitionAndTransferReadinessFields)
+{
+    prom_dom_blackboard board{};
+    prom_dom_async_snapshot snapshot{};
+    prom_dom_blackboard_init(&board);
+
+    snapshot.task_id = 9;
+    snapshot.lifecycle_state = PROM_ASYNC_STATE_SUBMITTED;
+    snapshot.stage = PROM_STAGE_SUBMIT;
+    snapshot.detail_code = PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK;
+    snapshot.outstanding_tasks = 1u;
+    snapshot.slot_id = 0;
+    snapshot.slot_generation = 5u;
+    snapshot.owns_slot = 1u;
+    snapshot.transfer_complete = 0u;
+    snapshot.compute_complete = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_async_snapshot(&board, &snapshot, PROM_DOM_EVENT_ASYNC_SUBMITTED, 0) == 1u, "submitted state should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_async_snapshot(&board, &snapshot) == 1u, "submitted snapshot should read");
+    ASSERT_EQUAL(0u, snapshot.ready, "compute-only completion should not force ready");
+    ASSERT_EQUAL(0u, snapshot.transfer_complete, "transfer completion should remain explicit");
+
+    snapshot.lifecycle_state = PROM_ASYNC_STATE_READY;
+    snapshot.ready = 1u;
+    snapshot.outstanding_tasks = 0u;
+    snapshot.transfer_complete = 1u;
+    snapshot.compute_complete = 1u;
+    snapshot.readback_complete = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_async_snapshot(&board, &snapshot, PROM_DOM_EVENT_ASYNC_READY, 0) == 1u, "ready state should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_async_snapshot(&board, &snapshot) == 1u, "ready snapshot should read");
+    ASSERT_EQUAL(1u, snapshot.ready, "ready flag should be explicit");
+    ASSERT_EQUAL(1u, snapshot.transfer_complete, "ready snapshot should retain transfer completion marker");
+}

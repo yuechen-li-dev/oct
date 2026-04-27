@@ -1080,6 +1080,78 @@ uint32_t prom_dom_sgemm_read_visible_transfer_runtime_telemetry(const prom_dom_b
   return 1u;
 }
 
+uint32_t prom_dom_sgemm_stage_async_snapshot(prom_dom_blackboard* board,
+                                             const prom_dom_async_snapshot* snapshot,
+                                             prom_dom_event_kind event_kind,
+                                             int32_t reason_code) {
+  prom_dom_event event;
+  if (board == 0 || snapshot == 0) {
+    return 0u;
+  }
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_TASK_ID, 0u, snapshot->task_id, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_LIFECYCLE_STATE, 0u, snapshot->lifecycle_state, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_STAGE, 0u, snapshot->stage, reason_code) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_DETAIL, 0u, snapshot->detail_code, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_READY, 0u, snapshot->ready, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_FAILED, 0u, snapshot->failed, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_CONSUMED, 0u, snapshot->consumed, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_OUTSTANDING_TASKS, 0u, snapshot->outstanding_tasks, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_FAILURE_STAGE, 0u, snapshot->failure_stage, reason_code) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_FAILURE_DETAIL, 0u, snapshot->failure_detail, reason_code) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_SUBMIT_DETAIL, 0u, snapshot->submit_detail, reason_code) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_QUERY_DETAIL, 0u, snapshot->query_detail, reason_code) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_SLOT_ID, 0u, snapshot->slot_id, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_SLOT_GENERATION, 0u, snapshot->slot_generation, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_OWNS_SLOT, 0u, snapshot->owns_slot, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_TRANSFER_COMPLETE, 0u, snapshot->transfer_complete, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_COMPUTE_COMPLETE, 0u, snapshot->compute_complete, reason_code) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_REACTOR, PROM_DOM_KEY_ASYNC_READBACK_COMPLETE, 0u, snapshot->readback_complete, reason_code) == 0u) return 0u;
+  event.generation = board->staged_generation + 1u;
+  event.sequence = board->sequence_counter + 1u;
+  event.kind = event_kind;
+  event.source = PROM_DOM_SOURCE_REACTOR;
+  event.domain = PROM_DOM_DOMAIN_ASYNC;
+  event.key = PROM_DOM_KEY_ASYNC_LIFECYCLE_STATE;
+  event.slot_id = snapshot->slot_id < 0 ? 0u : (uint32_t)snapshot->slot_id;
+  event.reason_code = reason_code;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_read_visible_async_snapshot(const prom_dom_blackboard* board, prom_dom_async_snapshot* out_snapshot) {
+  int32_t i32_value;
+  uint32_t u32_value;
+  uint64_t u64_value;
+  if (board == 0 || out_snapshot == 0) {
+    return 0u;
+  }
+  memset(out_snapshot, 0, sizeof(*out_snapshot));
+  out_snapshot->task_id = -1;
+  out_snapshot->slot_id = -1;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_TASK_ID, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->task_id = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_LIFECYCLE_STATE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->lifecycle_state = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_STAGE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->stage = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_DETAIL, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->detail_code = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_READY, 0u, &u32_value) != 0u) out_snapshot->ready = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_FAILED, 0u, &u32_value) != 0u) out_snapshot->failed = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_CONSUMED, 0u, &u32_value) != 0u) out_snapshot->consumed = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_OUTSTANDING_TASKS, 0u, &u32_value) != 0u) out_snapshot->outstanding_tasks = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_FAILURE_STAGE, 0u, &u32_value) != 0u) out_snapshot->failure_stage = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_FAILURE_DETAIL, 0u, &i32_value) != 0u) out_snapshot->failure_detail = i32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_SUBMIT_DETAIL, 0u, &i32_value) != 0u) out_snapshot->submit_detail = i32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_QUERY_DETAIL, 0u, &i32_value) != 0u) out_snapshot->query_detail = i32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_ASYNC_SLOT_ID, 0u, &i32_value) != 0u) out_snapshot->slot_id = i32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_ASYNC_SLOT_GENERATION, 0u, &u64_value) != 0u) out_snapshot->slot_generation = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_OWNS_SLOT, 0u, &u32_value) != 0u) out_snapshot->owns_slot = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_TRANSFER_COMPLETE, 0u, &u32_value) != 0u) out_snapshot->transfer_complete = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_COMPUTE_COMPLETE, 0u, &u32_value) != 0u) out_snapshot->compute_complete = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_ASYNC_READBACK_COMPLETE, 0u, &u32_value) != 0u) out_snapshot->readback_complete = u32_value;
+  return 1u;
+}
+
 uint32_t prom_dom_sgemm_stage_layout_precision_facts(prom_dom_blackboard* board,
                                                      const prom_dom_sgemm_layout_precision_facts* facts) {
   if (board == 0 || facts == 0) return 0u;
