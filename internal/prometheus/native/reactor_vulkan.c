@@ -182,6 +182,32 @@ typedef struct prom_slot_runtime_diag {
   uint64_t m35_serial_failure_cleanup_count;
 } prom_slot_runtime_diag;
 
+typedef struct prom_selector_cache_m35 {
+  uint32_t valid;
+  uint32_t last_decision_reused;
+  uint64_t visible_generation_when_computed;
+  uint64_t dependency_mask;
+  uint64_t last_dirty_dependency_mask;
+  uint64_t reuse_count;
+  uint64_t recompute_count;
+  uint64_t invalidation_count;
+  prom_buffering_selector_decision decision;
+  uint32_t no_feasible_mode_detail;
+} prom_selector_cache_m35;
+
+typedef struct prom_selector_cache_transfer {
+  uint32_t valid;
+  uint32_t last_decision_reused;
+  uint64_t visible_generation_when_computed;
+  uint64_t dependency_mask;
+  uint64_t last_dirty_dependency_mask;
+  uint64_t reuse_count;
+  uint64_t recompute_count;
+  uint64_t invalidation_count;
+  uint32_t selected_path;
+  prom_dom_transfer_queue_decision decision;
+} prom_selector_cache_transfer;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -245,6 +271,8 @@ typedef struct prometheus_runtime {
   prom_sgemm_controller_state sgemm_controller;
   prom_slot_hfsm slots[2];
   prom_slot_runtime_diag slot_diag;
+  prom_selector_cache_m35 m35_selector_cache;
+  prom_selector_cache_transfer transfer_selector_cache;
   prom_dom_blackboard blackboard;
 } prometheus_runtime;
 
@@ -441,6 +469,77 @@ static void set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage
   if (out_detail_code != NULL) {
     *out_detail_code = detail;
   }
+}
+
+static uint32_t selector_cache_enabled(const prometheus_runtime* rt) {
+  if (rt == NULL) {
+    return 0u;
+  }
+  return ((rt->test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) == 0u) ? 1u : 0u;
+}
+
+static void invalidate_selector_caches(prometheus_runtime* rt) {
+  if (rt == NULL) {
+    return;
+  }
+  if (rt->m35_selector_cache.valid != 0u) {
+    rt->m35_selector_cache.invalidation_count += 1u;
+  }
+  rt->m35_selector_cache.valid = 0u;
+  rt->m35_selector_cache.last_decision_reused = 0u;
+
+  if (rt->transfer_selector_cache.valid != 0u) {
+    rt->transfer_selector_cache.invalidation_count += 1u;
+  }
+  rt->transfer_selector_cache.valid = 0u;
+  rt->transfer_selector_cache.last_decision_reused = 0u;
+}
+
+static void select_transfer_queue_policy(const prom_judgment_decision* judgment_decision,
+                                         const prom_dom_transfer_queue_facts* facts,
+                                         prom_dom_transfer_queue_decision* out_decision) {
+  if (out_decision == NULL) {
+    return;
+  }
+  memset(out_decision, 0, sizeof(*out_decision));
+  if (judgment_decision == NULL || facts == NULL) {
+    return;
+  }
+  out_decision->transfer_policy_selected = 0u;
+  out_decision->selected_transfer_policy = 0u;
+  out_decision->transfer_queue_used = 0u;
+  out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+  if (judgment_decision->selected_path != PROM_VK_PATH_STAGED_UPLOAD) {
+    return;
+  }
+  if (facts->transfer_queue_disabled_by_config != 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG;
+    return;
+  }
+  if (facts->dedicated_transfer_available == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE;
+    return;
+  }
+  if (facts->queue_families_differ == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_PSEUDO_SHARED_QUEUE;
+    return;
+  }
+  if (facts->transfer_queue_supported == 0u || facts->transfer_sync_ownership_supported == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_SYNC_OWNERSHIP_UNSUPPORTED;
+    return;
+  }
+  if (facts->transfer_workload_large_enough == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_SMALL_SHAPE_LOW_BENEFIT;
+    return;
+  }
+  if (facts->transfer_fallback_available == 0u) {
+    out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+    return;
+  }
+  out_decision->transfer_policy_selected = 1u;
+  out_decision->selected_transfer_policy = 1u;
+  out_decision->transfer_queue_used = 1u;
+  out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
 }
 
 static void mirror_async_from_visible(prometheus_runtime* rt) {
@@ -2384,6 +2483,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.failure_slot_id = -1;
   runtime->slot_diag.async_slot_id = -1;
   runtime->slot_diag.transfer_queue_family_index = UINT32_MAX;
+  invalidate_selector_caches(runtime);
   runtime->slot_diag.compute_queue_family_index = UINT32_MAX;
   runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
   runtime->slot_diag.transfer_failure_slot_id = -1;
@@ -2840,10 +2940,29 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
   memset(&transfer_queue_decision, 0, sizeof(transfer_queue_decision));
-  transfer_queue_decision.transfer_policy_selected = judgment_decision.use_dedicated_transfer_queue_upload;
-  transfer_queue_decision.selected_transfer_policy = judgment_decision.use_dedicated_transfer_queue_upload != 0u ? 1u : 0u;
-  transfer_queue_decision.transfer_queue_used = judgment_decision.use_dedicated_transfer_queue_upload;
-  transfer_queue_decision.transfer_fallback_reason = judgment_decision.transfer_fallback_reason;
+  rt->transfer_selector_cache.last_dirty_dependency_mask = transfer_queue_projection.dependent_dirty_key_mask_last_commit;
+  rt->transfer_selector_cache.dependency_mask = transfer_queue_projection.dependent_dirty_key_mask_last_commit;
+  rt->transfer_selector_cache.last_decision_reused = 0u;
+  if (selector_cache_enabled(rt) != 0u && transfer_queue_projection.from_visible_snapshot != 0u &&
+      rt->transfer_selector_cache.valid != 0u && transfer_queue_projection.dependent_dirty_key_mask_last_commit == 0u &&
+      rt->transfer_selector_cache.selected_path == (uint32_t)judgment_decision.selected_path) {
+    transfer_queue_decision = rt->transfer_selector_cache.decision;
+    rt->transfer_selector_cache.reuse_count += 1u;
+    rt->transfer_selector_cache.last_decision_reused = 1u;
+  } else {
+    if (rt->transfer_selector_cache.valid != 0u && transfer_queue_projection.dependent_dirty_key_mask_last_commit != 0u) {
+      rt->transfer_selector_cache.invalidation_count += 1u;
+      rt->transfer_selector_cache.valid = 0u;
+    }
+    select_transfer_queue_policy(&judgment_decision, &transfer_queue_projection.facts, &transfer_queue_decision);
+    rt->transfer_selector_cache.valid = 1u;
+    rt->transfer_selector_cache.visible_generation_when_computed = transfer_queue_projection.visible_generation;
+    rt->transfer_selector_cache.selected_path = (uint32_t)judgment_decision.selected_path;
+    rt->transfer_selector_cache.decision = transfer_queue_decision;
+    rt->transfer_selector_cache.recompute_count += 1u;
+  }
+  judgment_decision.use_dedicated_transfer_queue_upload = transfer_queue_decision.transfer_queue_used;
+  judgment_decision.transfer_fallback_reason = transfer_queue_decision.transfer_fallback_reason;
   if (prom_dom_sgemm_stage_transfer_queue_decision(&rt->blackboard, &transfer_queue_decision) == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
@@ -2963,13 +3082,30 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
-  prom_judgment_engine_select_buffering_mode(&buffering_projection.facts, &buffering_decision);
+  rt->m35_selector_cache.last_dirty_dependency_mask = buffering_projection.dependent_dirty_key_mask_last_commit;
+  rt->m35_selector_cache.dependency_mask = buffering_projection.dependent_dirty_key_mask_last_commit;
+  rt->m35_selector_cache.last_decision_reused = 0u;
+  if (selector_cache_enabled(rt) != 0u && buffering_projection.from_visible_snapshot != 0u && rt->m35_selector_cache.valid != 0u &&
+      buffering_projection.dependent_dirty_key_mask_last_commit == 0u) {
+    buffering_decision = rt->m35_selector_cache.decision;
+    rt->m35_selector_cache.reuse_count += 1u;
+    rt->m35_selector_cache.last_decision_reused = 1u;
+  } else {
+    if (rt->m35_selector_cache.valid != 0u && buffering_projection.dependent_dirty_key_mask_last_commit != 0u) {
+      rt->m35_selector_cache.invalidation_count += 1u;
+      rt->m35_selector_cache.valid = 0u;
+    }
+    prom_judgment_engine_select_buffering_mode(&buffering_projection.facts, &buffering_decision);
+    rt->m35_selector_cache.valid = 1u;
+    rt->m35_selector_cache.visible_generation_when_computed = buffering_projection.visible_generation;
+    rt->m35_selector_cache.decision = buffering_decision;
+    rt->m35_selector_cache.no_feasible_mode_detail = (uint32_t)prom_buffering_reason_to_detail(buffering_decision.final_reason_code);
+    rt->m35_selector_cache.recompute_count += 1u;
+  }
   if (rt->slot_diag.m35_selected_mode != (uint32_t)buffering_decision.selected_mode) {
     rt->slot_diag.m35_transition_count += 1u;
   }
-  if (prom_dom_sgemm_stage_m35_decision(&rt->blackboard,
-                                        &buffering_decision,
-                                        (uint32_t)prom_buffering_reason_to_detail(buffering_decision.final_reason_code)) == 0u) {
+  if (prom_dom_sgemm_stage_m35_decision(&rt->blackboard, &buffering_decision, rt->m35_selector_cache.no_feasible_mode_detail) == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
@@ -4069,5 +4205,21 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->p10_m4_last_slot_event_reason = slot_snapshot.last_event.reason_code;
     out_diag->p10_m4_last_commit_dirty_slot_mask = slot_snapshot.last_commit_dirty_slot_mask;
   }
+  out_diag->p10_m13_m35_selector_cache_enabled = selector_cache_enabled(rt);
+  out_diag->p10_m13_m35_selector_cache_valid = rt->m35_selector_cache.valid;
+  out_diag->p10_m13_m35_selector_reuse_count = rt->m35_selector_cache.reuse_count;
+  out_diag->p10_m13_m35_selector_recompute_count = rt->m35_selector_cache.recompute_count;
+  out_diag->p10_m13_m35_selector_invalidation_count = rt->m35_selector_cache.invalidation_count;
+  out_diag->p10_m13_m35_selector_last_dirty_dependency_mask = rt->m35_selector_cache.last_dirty_dependency_mask;
+  out_diag->p10_m13_m35_selector_last_visible_generation = rt->m35_selector_cache.visible_generation_when_computed;
+  out_diag->p10_m13_m35_selector_last_decision_reused = rt->m35_selector_cache.last_decision_reused;
+  out_diag->p10_m13_transfer_selector_cache_enabled = selector_cache_enabled(rt);
+  out_diag->p10_m13_transfer_selector_cache_valid = rt->transfer_selector_cache.valid;
+  out_diag->p10_m13_transfer_selector_reuse_count = rt->transfer_selector_cache.reuse_count;
+  out_diag->p10_m13_transfer_selector_recompute_count = rt->transfer_selector_cache.recompute_count;
+  out_diag->p10_m13_transfer_selector_invalidation_count = rt->transfer_selector_cache.invalidation_count;
+  out_diag->p10_m13_transfer_selector_last_dirty_dependency_mask = rt->transfer_selector_cache.last_dirty_dependency_mask;
+  out_diag->p10_m13_transfer_selector_last_visible_generation = rt->transfer_selector_cache.visible_generation_when_computed;
+  out_diag->p10_m13_transfer_selector_last_decision_reused = rt->transfer_selector_cache.last_decision_reused;
   return PROM_OK;
 }
