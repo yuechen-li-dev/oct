@@ -183,3 +183,55 @@ FACT(PrometheusReactor_M31_TransferSubmitFailureMarksSlotFailure)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
+
+FACT(PrometheusReactor_M31_TransferPolicyDirtyKeyCache_ReusesAndInvalidatesOnDependencyChange)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = static_cast<std::uint32_t>(sizeof(cfg));
+    cfg.test_flags = PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan unavailable; transfer selector cache integration cannot be asserted");
+    }
+
+    const auto a = matrix(96u, 96u);
+    const auto b = matrix(96u, 96u);
+    std::vector<float> c(96u * 96u, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 96u, 96u, 96u, &stage, &detail),
+                 "first run should succeed");
+    PrometheusSgemmPolicyDiagnostics first{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &first), "first diagnostics query should succeed");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1), first.p10_m13_transfer_selector_recompute_count, "first run should recompute transfer policy");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0), first.p10_m13_transfer_selector_reuse_count, "first run should not reuse transfer policy");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 96u, 96u, 96u, &stage, &detail),
+                 "second run should succeed");
+    PrometheusSgemmPolicyDiagnostics second{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &second), "second diagnostics query should succeed");
+    ASSERT_TRUE(second.p10_m13_transfer_selector_reuse_count >= static_cast<std::uint64_t>(1), "second run should reuse transfer policy when dependencies are unchanged");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0), second.p10_m13_transfer_selector_last_dirty_dependency_mask, "unchanged transfer dependencies should report zero dirty mask");
+    ASSERT_EQUAL(first.m31_transfer_queue_used, second.m31_transfer_queue_used, "reused transfer decision must match prior result");
+
+    const auto a_small = matrix(8u, 8u);
+    const auto b_small = matrix(8u, 8u);
+    std::vector<float> c_small(8u * 8u, 0.0f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a_small.data(), b_small.data(), c_small.data(), 8u, 8u, 8u, &stage, &detail),
+                 "small-shape run should succeed");
+    PrometheusSgemmPolicyDiagnostics dep_changed{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &dep_changed),
+                 "dependency-change diagnostics query should succeed");
+    ASSERT_TRUE(dep_changed.p10_m13_transfer_selector_last_dirty_dependency_mask != static_cast<std::uint64_t>(0),
+                "changed transfer dependency should produce a non-zero dirty mask");
+    ASSERT_TRUE(dep_changed.p10_m13_transfer_selector_recompute_count >= static_cast<std::uint64_t>(2),
+                "dependency change should force transfer-policy recompute");
+    ASSERT_TRUE(dep_changed.p10_m13_transfer_selector_invalidation_count >= static_cast<std::uint64_t>(1),
+                "dependency change should invalidate previously cached transfer decision");
+    ASSERT_EQUAL(0u, dep_changed.m31_transfer_queue_used, "small-shape gate should force transfer fallback policy");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}

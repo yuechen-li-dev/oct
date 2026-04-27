@@ -84,6 +84,7 @@ enum {
   PROM_TESTCFG_FORCE_NO_DEDICATED_TRANSFER = 1u << 24,
   PROM_TESTCFG_FORCE_SHARED_TRANSFER = 1u << 25,
   PROM_TESTCFG_FAIL_TRANSFER_SUBMIT = 1u << 26,
+  PROM_TESTCFG_DISABLE_SELECTOR_CACHE = 1u << 27,
 };
 
 enum {
@@ -295,6 +296,22 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p10_m4_last_slot_event_slot_id;
   int32_t p10_m4_last_slot_event_reason;
   uint32_t p10_m4_last_commit_dirty_slot_mask;
+  uint32_t p10_m13_m35_selector_cache_enabled;
+  uint32_t p10_m13_m35_selector_cache_valid;
+  uint64_t p10_m13_m35_selector_reuse_count;
+  uint64_t p10_m13_m35_selector_recompute_count;
+  uint64_t p10_m13_m35_selector_invalidation_count;
+  uint64_t p10_m13_m35_selector_last_dirty_dependency_mask;
+  uint64_t p10_m13_m35_selector_last_visible_generation;
+  uint32_t p10_m13_m35_selector_last_decision_reused;
+  uint32_t p10_m13_transfer_selector_cache_enabled;
+  uint32_t p10_m13_transfer_selector_cache_valid;
+  uint64_t p10_m13_transfer_selector_reuse_count;
+  uint64_t p10_m13_transfer_selector_recompute_count;
+  uint64_t p10_m13_transfer_selector_invalidation_count;
+  uint64_t p10_m13_transfer_selector_last_dirty_dependency_mask;
+  uint64_t p10_m13_transfer_selector_last_visible_generation;
+  uint32_t p10_m13_transfer_selector_last_decision_reused;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
