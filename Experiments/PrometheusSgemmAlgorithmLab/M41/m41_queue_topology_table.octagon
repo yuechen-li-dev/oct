@@ -1,0 +1,9 @@
+[M41QueueTopologyTable {
+    Topology: ["one-compute-queue", "two-compute-queues", "four-compute-queues", "compute+transfer"]
+    Candidate: ["B-real-threads-serialized-vulkan", "C-real-threads-per-worker-queues", "C-real-threads-per-worker-queues", "C-real-threads-per-worker-queues"]
+    HardwareQueues: [1, 2, 4, 2]
+    EffectiveWorkers: [4, 2, 4, 2]
+    ClaimedHardwareParallelism: [false, true, true, true]
+    ActualHardwareParallelism: [false, true, true, true]
+    QueueContract: ["single queue: real threads allowed but Vulkan submit must serialize and diagnostics must not claim hardware parallelism", "two queues: true parallel execution may be claimed only up to queue count and memory cap", "four queues: true parallel execution may be claimed up to effective worker cap", "compute+transfer: compute parallelism remains compute-queue bounded"]
+}]

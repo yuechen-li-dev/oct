@@ -1,0 +1,9 @@
+[M41ArenaOwnershipTable {
+    Candidate: ["C-real-threads-per-worker-queues", "D-real-threads-shared-arena", "D-real-threads-shared-arena"]
+    SharedArenaEnabled: [false, true, true]
+    LockHeld: [true, true, false]
+    OwnershipConflictCount: [0, 0, 1]
+    ThreadLockOverhead: [0, 72, 72]
+    MemoryPressureMilli: [500, 666, 666]
+    ArenaRule: ["worker-local arena ownership by default; shared bank requires explicit lock", "worker-local arena ownership by default; shared bank requires explicit lock", "worker-local arena ownership by default; shared bank requires explicit lock"]
+}]
