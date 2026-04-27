@@ -153,3 +153,166 @@ uint32_t prom_dom_slot_read_last_commit(const prom_dom_blackboard* board,
 
   return prom_dom_committed_event_at(board, committed_event_count - 1u, &out_snapshot->last_event);
 }
+
+uint32_t prom_dom_slot_stage_runtime_diag(prom_dom_blackboard* board,
+                                          const prom_dom_slot_runtime_diag_snapshot* snapshot,
+                                          int32_t reason_code) {
+  if (board == 0 || snapshot == 0) {
+    return 0u;
+  }
+
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_CURRENT_ID, 0u, snapshot->current_slot_id, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_NEXT_ID, 0u, snapshot->next_slot_id, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_STATE, 0u, snapshot->slot_state[0], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_STATE, 1u, snapshot->slot_state[1], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_GENERATION, 0u, snapshot->slot_generation[0], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_GENERATION, 1u, snapshot->slot_generation[1], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_bool(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_VALID, 0u, snapshot->slot_valid[0], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_bool(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_VALID, 1u, snapshot->slot_valid[1], reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_SWAP_COUNT, 0u, snapshot->swap_count, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_MAX_WIP_DEPTH, 0u, snapshot->max_wip_depth, reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_OVERWRITE_REJECTION_COUNT,
+                       0u,
+                       snapshot->overwrite_rejection_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_STALE_BUFFER_REJECTION_COUNT,
+                       0u,
+                       snapshot->stale_buffer_rejection_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_SHAPE_INVALIDATION_COUNT,
+                       0u,
+                       snapshot->shape_invalidation_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_LAYOUT_INVALIDATION_COUNT,
+                       0u,
+                       snapshot->layout_invalidation_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_CAPACITY_INVALIDATION_COUNT,
+                       0u,
+                       snapshot->capacity_invalidation_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_INFLIGHT_REJECTION_COUNT,
+                       0u,
+                       snapshot->inflight_rejection_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_u64(board,
+                       PROM_DOM_SOURCE_SLOT_HFSM,
+                       PROM_DOM_KEY_SLOT_CLEANUP_SUCCESS_COUNT,
+                       0u,
+                       snapshot->cleanup_success_count,
+                       reason_code) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_FAILURE_SLOT_ID, 0u, snapshot->failure_slot_id, reason_code) == 0u) {
+    return 0u;
+  }
+  return prom_dom_set_i32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_FAILURE_REASON_GLOBAL, 0u, snapshot->failure_reason, reason_code);
+}
+
+uint32_t prom_dom_slot_read_visible_runtime_diag(const prom_dom_blackboard* board,
+                                                 prom_dom_slot_runtime_diag_snapshot* out_snapshot) {
+  if (board == 0 || out_snapshot == 0) {
+    return 0u;
+  }
+
+  memset(out_snapshot, 0, sizeof(*out_snapshot));
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SLOT_CURRENT_ID, 0u, &out_snapshot->current_slot_id) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SLOT_NEXT_ID, 0u, &out_snapshot->next_slot_id) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SLOT_STATE, 0u, &out_snapshot->slot_state[0]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SLOT_STATE, 1u, &out_snapshot->slot_state[1]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_GENERATION, 0u, &out_snapshot->slot_generation[0]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_GENERATION, 1u, &out_snapshot->slot_generation[1]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_bool(board, PROM_DOM_KEY_SLOT_VALID, 0u, &out_snapshot->slot_valid[0]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_bool(board, PROM_DOM_KEY_SLOT_VALID, 1u, &out_snapshot->slot_valid[1]) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_SWAP_COUNT, 0u, &out_snapshot->swap_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_MAX_WIP_DEPTH, 0u, &out_snapshot->max_wip_depth) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_OVERWRITE_REJECTION_COUNT, 0u, &out_snapshot->overwrite_rejection_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_STALE_BUFFER_REJECTION_COUNT, 0u, &out_snapshot->stale_buffer_rejection_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_SHAPE_INVALIDATION_COUNT, 0u, &out_snapshot->shape_invalidation_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_LAYOUT_INVALIDATION_COUNT, 0u, &out_snapshot->layout_invalidation_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_CAPACITY_INVALIDATION_COUNT, 0u, &out_snapshot->capacity_invalidation_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_INFLIGHT_REJECTION_COUNT, 0u, &out_snapshot->inflight_rejection_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SLOT_CLEANUP_SUCCESS_COUNT, 0u, &out_snapshot->cleanup_success_count) == 0u) {
+    return 0u;
+  }
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SLOT_FAILURE_SLOT_ID, 0u, &out_snapshot->failure_slot_id) == 0u) {
+    return 0u;
+  }
+  return prom_dom_get_i32(board, PROM_DOM_KEY_SLOT_FAILURE_REASON_GLOBAL, 0u, &out_snapshot->failure_reason);
+}

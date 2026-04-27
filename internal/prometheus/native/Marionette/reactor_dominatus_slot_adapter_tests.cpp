@@ -299,3 +299,98 @@ FACT(PrometheusDominatusSlotAdapter_LastSlotEventSurvivesLaterNonSlotCommit)
     ASSERT_TRUE((snapshot.last_commit_dirty_slot_mask & 0x1u) != 0u,
                 "slot snapshot dirty mask should include slot touched by retained slot lifecycle event");
 }
+
+FACT(PrometheusDominatusSlotAdapter_RuntimeDiagStagedVisibleIsolation)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    prom_dom_slot_runtime_diag_snapshot a{};
+    a.current_slot_id = 0u;
+    a.next_slot_id = 1u;
+    a.slot_state[0] = PROM_SLOT_READY;
+    a.slot_state[1] = PROM_SLOT_EMPTY;
+    a.slot_generation[0] = 3u;
+    a.slot_generation[1] = 9u;
+    a.slot_valid[0] = 1u;
+    a.slot_valid[1] = 0u;
+    a.swap_count = 7u;
+    a.max_wip_depth = 2u;
+    a.failure_slot_id = -1;
+    ASSERT_TRUE(prom_dom_slot_stage_runtime_diag(&board, &a, 0) == 1u, "stage snapshot A should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_runtime_diag_snapshot visible{};
+    ASSERT_TRUE(prom_dom_slot_read_visible_runtime_diag(&board, &visible) == 1u, "read visible A should succeed");
+    ASSERT_EQUAL(7u, visible.swap_count, "visible should expose committed snapshot A");
+
+    prom_dom_slot_runtime_diag_snapshot b = a;
+    b.swap_count = 11u;
+    b.current_slot_id = 1u;
+    ASSERT_TRUE(prom_dom_slot_stage_runtime_diag(&board, &b, 0) == 1u, "stage snapshot B should succeed");
+    ASSERT_TRUE(prom_dom_slot_read_visible_runtime_diag(&board, &visible) == 1u, "pre-commit visible read should still succeed");
+    ASSERT_EQUAL(7u, visible.swap_count, "staged snapshot B must remain invisible before commit");
+
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_read_visible_runtime_diag(&board, &visible) == 1u, "post-commit visible read should succeed");
+    ASSERT_EQUAL(11u, visible.swap_count, "snapshot B should become visible after commit");
+    ASSERT_EQUAL(1u, visible.current_slot_id, "snapshot B current slot should become visible after commit");
+}
+
+FACT(PrometheusDominatusSlotAdapter_RuntimeDiagDirtyAndSameValueBehavior)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    prom_dom_slot_runtime_diag_snapshot snapshot{};
+    snapshot.current_slot_id = 0u;
+    snapshot.next_slot_id = 1u;
+    snapshot.slot_state[0] = PROM_SLOT_PREPARING;
+    snapshot.slot_state[1] = PROM_SLOT_READY;
+    snapshot.slot_generation[0] = 1u;
+    snapshot.slot_generation[1] = 2u;
+    snapshot.slot_valid[0] = 1u;
+    snapshot.slot_valid[1] = 1u;
+    snapshot.overwrite_rejection_count = 5u;
+    snapshot.failure_slot_id = -1;
+
+    ASSERT_TRUE(prom_dom_slot_stage_runtime_diag(&board, &snapshot, 0) == 1u, "initial stage should succeed");
+    ASSERT_TRUE((prom_dom_dirty_slots_staged(&board) & 0x3u) == 0x3u, "per-slot state writes should mark both slots dirty");
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SLOT_OVERWRITE_REJECTION_COUNT) == 1u,
+                "counter key should be marked dirty after change");
+
+    ASSERT_TRUE(prom_dom_slot_stage_runtime_diag(&board, &snapshot, 0) == 1u, "same-value stage should succeed");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SLOT_OVERWRITE_REJECTION_COUNT) == 0u,
+                "same-value counter write must not restage dirty key");
+}
+
+FACT(PrometheusDominatusSlotAdapter_RuntimeDiagFailureVisibilityAfterCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    prom_dom_slot_runtime_diag_snapshot snapshot{};
+    snapshot.current_slot_id = 0u;
+    snapshot.next_slot_id = 1u;
+    snapshot.slot_state[0] = PROM_SLOT_FAILED;
+    snapshot.slot_state[1] = PROM_SLOT_EMPTY;
+    snapshot.slot_generation[0] = 5u;
+    snapshot.slot_generation[1] = 1u;
+    snapshot.slot_valid[0] = 0u;
+    snapshot.slot_valid[1] = 0u;
+    snapshot.failure_slot_id = 0;
+    snapshot.failure_reason = 404;
+
+    ASSERT_TRUE(prom_dom_slot_stage_runtime_diag(&board, &snapshot, 404) == 1u, "failure snapshot stage should succeed");
+
+    prom_dom_slot_runtime_diag_snapshot visible{};
+    ASSERT_TRUE(prom_dom_slot_read_visible_runtime_diag(&board, &visible) == 0u,
+                "failure slot diagnostics should remain invisible until first commit");
+
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_read_visible_runtime_diag(&board, &visible) == 1u,
+                "failure slot diagnostics should become visible after commit");
+    ASSERT_EQUAL(0, visible.failure_slot_id, "visible failure slot id should match committed snapshot");
+    ASSERT_EQUAL(404, visible.failure_reason, "visible failure reason should match committed snapshot");
+}
