@@ -1,0 +1,10 @@
+[M40PartitionComparison {
+    Workload: ["uniform", "uniform", "moderate-variable", "moderate-variable", "heavy-tail", "heavy-tail", "shape-clustered", "shape-clustered", "small-fast", "small-fast", "large-slow", "large-slow", "memory-limited", "memory-limited"]
+    Policy: ["round-robin", "contiguous", "round-robin", "contiguous", "round-robin", "contiguous", "round-robin", "contiguous", "round-robin", "contiguous", "round-robin", "contiguous", "round-robin", "contiguous"]
+    EffectiveWorkers: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    CompletionTime: [3078, 3078, 8941, 15418, 67206, 67206, 25038, 54438, 268, 288, 195315, 198187, 36029, 37188]
+    LoadImbalance: [0, 0, 1976, 13577, 63360, 63360, 6144, 52840, 16, 54, 4392, 14651, 6121, 10689]
+    WorkerUtilizationMilli: [1000, 1000, 878, 510, 528, 528, 880, 404, 972, 905, 986, 972, 925, 897]
+    ShapeLocalityScore: [19, 19, 7, 16, 5, 4, 11, 19, 20, 20, 3, 5, 19, 19]
+    ProductScore: [84570, 84555, 34328, -121984, -870054, -870069, -85782, -772381, 98469, 97962, -924888, -1014763, -136673, -174663]
+}]

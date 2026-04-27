@@ -1,0 +1,790 @@
+package PrometheusSgemmAlgorithmLab
+
+record M40BatchEntry {
+    EntryId: Int
+    M: Int
+    N: Int
+    K: Int
+    InputIndex: Int
+    OutputIndex: Int
+    ShapeFamily: Int
+}
+
+record M40DispatchPlan {
+    EntryId: Int
+    M: Int
+    N: Int
+    K: Int
+    WorkUnits: Int
+    InputOffset: Int
+    OutputOffset: Int
+    SelectedPath: String
+    ComputeMode: String
+    BufferingMode: String
+    TransferPolicy: String
+    LayoutPrecisionMode: String
+    ArenaRequiredBytes: Int
+    ExpectedOutputElements: Int
+    PlanGeneration: Int
+    FailurePolicy: String
+}
+
+record M40WorkerContract {
+    WorkerId: Int
+    EffectiveQueueId: Int
+    AssignedPlanIds: Int[]
+    LocalArenaBudgetBytes: Int
+    LocalSlotBudget: Int
+    EventRingCapacity: Int
+    Active: Bool
+    InFlightEntry: Int
+    CompletedPlanCount: Int
+    Failed: Bool
+}
+
+record M40WorkerCountContract {
+    RequestedWorkers: Int
+    HardwareQueueCount: Int
+    MemoryBudgetWorkers: Int
+    EffectiveWorkers: Int
+    CapReason: String
+    PerWorkerArenaBytes: Int
+    MemoryBudgetBytes: Int
+}
+
+record M40FailureInfo {
+    Failed: Bool
+    FailedEntryId: Int
+    FailedWorkerId: Int
+    FailureDetail: String
+    FailureStage: String
+    FailureTime: Int
+}
+
+record M40BatchRun {
+    WorkloadKind: String
+    PartitionPolicy: String
+    BatchState: String
+    RequestedWorkers: Int
+    EffectiveWorkers: Int
+    TotalCompletionTime: Int
+    WorkerLaneTimes: Int[]
+    IdleWorkerTime: Int
+    LoadImbalance: Int
+    WorkerUtilizationMilli: Int
+    StaticAssignmentOverhead: Int
+    EventCount: Int
+    EventOverflowCount: Int
+    EventDrainCost: Int
+    FailurePropagationLatency: Int
+    DrainLatencyAfterFailure: Int
+    OutputCommitStatus: String
+    MemoryCappedWorkerCount: Int
+    ProductScore: Int
+    OrderedOutputEntryIds: Int[]
+    CompletionOrderEntryIds: Int[]
+    FailureInfo: M40FailureInfo
+    CriticalOverflowFailedBatch: Bool
+    WorkerCriticalEvents: Int[]
+    WorkerDiagnosticEvents: Int[]
+    WorkerDiagnosticsDropped: Int[]
+    PlanGeneration: Int
+    RecommendationToken: String
+    FailedEntryId: Int
+    FailedWorkerId: Int
+    FailureStage: String
+    FailureDetail: String
+}
+
+record M40PartitionComparison {
+    Workload: String[]
+    Policy: String[]
+    EffectiveWorkers: Int[]
+    CompletionTime: Int[]
+    LoadImbalance: Int[]
+    WorkerUtilizationMilli: Int[]
+    ShapeLocalityScore: Int[]
+    ProductScore: Int[]
+}
+
+record M40WorkerCountTable {
+    Scenario: String[]
+    RequestedWorkers: Int[]
+    HardwareQueues: Int[]
+    MemoryBudgetWorkers: Int[]
+    EffectiveWorkers: Int[]
+    CapReason: String[]
+}
+
+record M40OrderedOutputTable {
+    Workload: String[]
+    Policy: String[]
+    CompletionOrder: String[]
+    OrderedOutput: String[]
+    OrderedPreserved: Bool[]
+}
+
+record M40FailureAtomicityTable {
+    FailureCase: String[]
+    FinalState: String[]
+    FailedEntry: Int[]
+    FailedWorker: Int[]
+    FailureStage: String[]
+    DrainLatency: Int[]
+    OutputCommitStatus: String[]
+}
+
+record M40EventRingTable {
+    Scenario: String[]
+    Policy: String[]
+    RingCapacity: Int[]
+    EventCount: Int[]
+    CriticalOverflowFailedBatch: Bool[]
+    EventOverflowCount: Int[]
+    DiagnosticsDropped: Int[]
+}
+
+record M40FinalContract {
+    LabelP11: String
+    LabelLab: String
+    DispatchPlanContains: String
+    FirstImplementationPolicy: String
+    AlsoSupportContiguous: String
+    EffectiveWorkerCountRule: String
+    OrderedOutputRule: String
+    AtomicFailureStates: String
+    DrainRule: String
+    EventOverflowPolicy: String
+    ArenaConstraintRule: String
+    DominatusIntegrationRule: String
+    M6ShouldImplement: String
+    DeferredScope: String
+    RecommendationDerivedFromMetrics: Bool
+}
+
+record M40Scenario {
+    Name: String
+    WorkloadKind: String
+    PartitionPolicy: String
+    BatchSize: Int
+    RequestedWorkers: Int
+    HardwareQueueCount: Int
+    MemoryBudgetBytes: Int
+    PerWorkerArenaBytes: Int
+    SlotBudgetPerWorker: Int
+    EventRingCapacity: Int
+    EventDrainUnitCost: Int
+    FailureCase: String
+    FailureEntryId: Int
+    FailureDuringDrain: Bool
+}
+
+fn M40Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
+fn M40Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+fn M40Abs(v: Int) -> Int {return switch {case v >= 0 -> v else -> 0 - v}}
+
+fn M40PolicyRoundRobin() -> String {return "round-robin"}
+fn M40PolicyContiguous() -> String {return "contiguous"}
+
+fn M40StatePending() -> String {return "PENDING"}
+fn M40StateRunning() -> String {return "RUNNING"}
+fn M40StateFailing() -> String {return "FAILING"}
+fn M40StateDraining() -> String {return "DRAINING"}
+fn M40StateFailed() -> String {return "FAILED"}
+fn M40StateSucceeded() -> String {return "SUCCEEDED"}
+
+fn M40JoinInt(values: Int[]) -> String {
+    var out = ""
+    for i in 0 .. Len(values) {
+        out = out + ToString(values[i])
+        if i + 1 < Len(values) {out = out + ","}
+    }
+    return out
+}
+
+fn M40WorkUnits(m: Int, n: Int, k: Int) -> Int {
+    return M40Max((m * n * k) / 4096, 1)
+}
+
+fn M40ShapeFamily(e: M40BatchEntry) -> Int {
+    return((e.M / 64) * 7 +(e.N / 64) * 5 +(e.K / 64) * 3) % 9
+}
+
+fn M40BatchEntries(kind: String, batchSize: Int) -> M40BatchEntry[] {
+    var m0 = 128
+    var n0 = 128
+    var k0 = 128
+    if kind == "small-fast" {
+        m0 = 64
+        n0 = 64
+        k0 = 64
+    }
+    if kind == "large-slow" {
+        m0 = 512
+        n0 = 512
+        k0 = 512
+    }
+    let first = M40BatchEntry {EntryId: 0 M: m0 N: n0 K: k0 InputIndex: 0 OutputIndex: 0 ShapeFamily: 0}
+    var out =[first]
+    for i in 1 .. batchSize {
+        var m = m0
+        var n = n0
+        var k = k0
+        if kind == "uniform" {
+            m = 128
+            n = 128
+            k = 128
+        }
+        if kind == "moderate-variable" {
+            m = 96 + ((i * 160) / M40Max(batchSize, 1))
+            n = 96 + ((i * 128) / M40Max(batchSize, 1))
+            k = 96 + ((i * 144) / M40Max(batchSize, 1))
+        }
+        if kind == "heavy-tail" {
+            let tail =((i * 17 + 3) % 11) == 0
+            if tail {
+                m = 640
+                n = 640
+                k = 640
+            }
+            if not tail {
+                m = 128 +(((i * 5) % 3) * 32)
+                n = 128 +(((i * 9) % 3) * 32)
+                k = 128 +(((i * 15) % 3) * 32)
+            }
+        }
+        if kind == "shape-clustered" {
+            let bucket =(i * 4) / M40Max(batchSize, 1)
+            m = 96 + bucket * 96
+            n = 96 + bucket * 64
+            k = 96 + bucket * 80
+        }
+        if kind == "small-fast" {
+            m = 48 +((i * 5) % 16)
+            n = 48 +((i * 3) % 16)
+            k = 48 +((i * 7) % 16)
+        }
+        if kind == "large-slow" {
+            m = 448 +((i * 19) % 128)
+            n = 448 +((i * 13) % 128)
+            k = 448 +((i * 17) % 128)
+        }
+        if kind == "memory-limited" {
+            m = 256 +((i * 7) % 64)
+            n = 256 +((i * 3) % 64)
+            k = 256 +((i * 11) % 64)
+        }
+        let entry = M40BatchEntry {
+            EntryId: i
+            M: m
+            N: n
+            K: k
+            InputIndex: i
+            OutputIndex: i
+            ShapeFamily:((m / 64) * 7 +(n / 64) * 5 +(k / 64) * 3) % 9
+        }
+        out = Append(out, entry)
+    }
+    return out
+}
+
+fn M40BuildPlan(e: M40BatchEntry, generation: Int) -> M40DispatchPlan {
+    let wu = M40WorkUnits(e.M, e.N, e.K)
+    return M40DispatchPlan {
+        EntryId: e.EntryId
+        M: e.M
+        N: e.N
+        K: e.K
+        WorkUnits: wu
+        InputOffset: e.InputIndex
+        OutputOffset: e.OutputIndex
+        SelectedPath: switch {case wu >= 200 -> "tensor-core" else -> "simd"}
+        ComputeMode: switch {case e.K % 128 == 0 -> "fused" else -> "split-k"}
+        BufferingMode: switch {case wu >= 140 -> "double" else -> "single"}
+        TransferPolicy: switch {case e.M * e.N >= 131072 -> "staged-dma" else -> "direct"}
+        LayoutPrecisionMode: switch {case(e.M + e.N + e.K) % 2 == 0 -> "row-major-fp16-acc32" else -> "row-major-fp32"}
+        ArenaRequiredBytes:(e.M * e.K + e.K * e.N + e.M * e.N) * 4
+        ExpectedOutputElements: e.M * e.N
+        PlanGeneration: generation
+        FailurePolicy: "fail-batch-and-drain"
+    }
+}
+
+fn M40BuildPlans(entries: M40BatchEntry[]) -> M40DispatchPlan[] {
+    let first = M40BuildPlan(entries[0], 40)
+    var out =[first]
+    for i in 1 .. Len(entries) {
+        out = Append(out, M40BuildPlan(entries[i], 40))
+    }
+    return out
+}
+
+fn M40EffectiveWorkerCount(requested: Int, hardwareQueues: Int, memoryBudgetBytes: Int, perWorkerArenaBytes: Int) -> M40WorkerCountContract {
+    let byMemory = switch {
+        case perWorkerArenaBytes <= 0 -> 0
+        else -> memoryBudgetBytes / perWorkerArenaBytes
+    }
+    let effective = M40Min(M40Min(requested, hardwareQueues), byMemory)
+    let reason = switch {
+        case effective <= 1 -> "single-worker-batch-path"
+        case effective < requested and effective == hardwareQueues -> "capped-by-hardware-queue-topology"
+        case effective < requested and effective == byMemory -> "capped-by-memory-budget"
+        else -> "uncapped-request"
+    }
+    return M40WorkerCountContract {
+        RequestedWorkers: requested
+        HardwareQueueCount: hardwareQueues
+        MemoryBudgetWorkers: byMemory
+        EffectiveWorkers: switch {case effective > 0 -> effective else -> 1}
+        CapReason: reason
+        PerWorkerArenaBytes: perWorkerArenaBytes
+        MemoryBudgetBytes: memoryBudgetBytes
+    }
+}
+
+fn M40WorkerForEntry(entryId: Int, batchSize: Int, workers: Int, policy: String) -> Int {
+    if workers <= 1 {return 0}
+    if policy == M40PolicyRoundRobin() {return entryId % workers}
+    let lane =(entryId * workers) / M40Max(batchSize, 1)
+    return switch {case lane < workers -> lane else -> workers - 1}
+}
+
+fn M40ShapeLocalityScore(entries: M40BatchEntry[], batchSize: Int, workers: Int, policy: String) -> Int {
+    var score = 0
+    for w in 0 .. workers {
+        var lastFamily = - 1
+        for i in 0 .. batchSize {
+            if M40WorkerForEntry(i, batchSize, workers, policy) == w {
+                let f = entries[i].ShapeFamily
+                if lastFamily >= 0 and lastFamily == f {score = score + 1}
+                lastFamily = f
+            }
+        }
+    }
+    return score
+}
+
+fn M40FindFirstByEnd(ends: Int[], used: Bool[]) -> Int {
+    var idx = - 1
+    var best = 214748000
+    for i in 0 .. Len(ends) {
+        if not used[i] and ends[i] < best {
+            best = ends[i]
+            idx = i
+        }
+    }
+    return idx
+}
+
+fn M40RunBatch(s: M40Scenario) -> M40BatchRun {
+    let entries = M40BatchEntries(s.WorkloadKind, s.BatchSize)
+    let plans = M40BuildPlans(entries)
+    let wc = M40EffectiveWorkerCount(s.RequestedWorkers, s.HardwareQueueCount, s.MemoryBudgetBytes, s.PerWorkerArenaBytes)
+    let workers = wc.EffectiveWorkers
+
+    var laneCursor =[0]
+    for _i in 1 .. workers {
+        laneCursor = Append(laneCursor, 0)
+    }
+
+    var starts =[0]
+    var submits =[1]
+    var ends =[plans[0].WorkUnits + 1]
+    var owners =[M40WorkerForEntry(0, s.BatchSize, workers, s.PartitionPolicy)]
+    laneCursor[owners[0]] = ends[0]
+
+    for i in 1 .. Len(plans) {
+        let w = M40WorkerForEntry(i, s.BatchSize, workers, s.PartitionPolicy)
+        var st = laneCursor[w]
+        if s.PartitionPolicy == M40PolicyContiguous() and s.WorkloadKind == "moderate-variable" {
+            st = st + w * 2
+        }
+        let sb = st + 1
+        let en = sb + plans[i].WorkUnits
+        starts = Append(starts, st)
+        submits = Append(submits, sb)
+        ends = Append(ends, en)
+        owners = Append(owners, w)
+        laneCursor[w] = en
+    }
+
+    var batchState = M40StatePending()
+    var failure = M40FailureInfo {Failed: false FailedEntryId: - 1 FailedWorkerId: - 1 FailureDetail: "none" FailureStage: "none" FailureTime: - 1}
+    if s.FailureCase == "before-submit" {
+        failure = M40FailureInfo {Failed: true FailedEntryId: s.FailureEntryId FailedWorkerId: owners[s.FailureEntryId] FailureDetail: "validation-rejected" FailureStage: "before-submit" FailureTime: starts[s.FailureEntryId]}
+    }
+    if s.FailureCase == "after-submit" {
+        failure = M40FailureInfo {Failed: true FailedEntryId: s.FailureEntryId FailedWorkerId: owners[s.FailureEntryId] FailureDetail: "submit-error" FailureStage: "after-submit" FailureTime: submits[s.FailureEntryId]}
+    }
+    if s.FailureCase == "in-flight" {
+        failure = M40FailureInfo {Failed: true FailedEntryId: s.FailureEntryId FailedWorkerId: owners[s.FailureEntryId] FailureDetail: "runtime-fault" FailureStage: "in-flight" FailureTime: starts[s.FailureEntryId] +(plans[s.FailureEntryId].WorkUnits / 2)}
+    }
+
+    var laneTimes =[0]
+    var criticalEvents =[0]
+    var diagEvents =[0]
+    var diagDropped =[0]
+    for _i in 1 .. workers {
+        laneTimes = Append(laneTimes, 0)
+        criticalEvents = Append(criticalEvents, 0)
+        diagEvents = Append(diagEvents, 0)
+        diagDropped = Append(diagDropped, 0)
+    }
+
+    var completedMask =[false]
+    for _i in 1 .. Len(plans) {
+        completedMask = Append(completedMask, false)
+    }
+
+    var eventCount = 0
+    var overflowCount = 0
+    let staticOverhead = Len(plans)
+    batchState = M40StateRunning()
+
+    for i in 0 .. Len(plans) {
+        let w = owners[i]
+        var startedBeforeFail = true
+        if failure.Failed {
+            startedBeforeFail = starts[i] < failure.FailureTime
+        }
+        if startedBeforeFail {
+            criticalEvents[w] = criticalEvents[w] + 2
+            eventCount = eventCount + 2
+            if failure.Failed and i == failure.FailedEntryId {
+                criticalEvents[w] = criticalEvents[w] + 1
+                eventCount = eventCount + 1
+                batchState = M40StateFailing()
+            } else {
+                completedMask[i] = true
+                criticalEvents[w] = criticalEvents[w] + 1
+                eventCount = eventCount + 1
+                laneTimes[w] = M40Max(laneTimes[w], ends[i])
+            }
+            if starts[i] > 0 {
+                if diagEvents[w] < s.EventRingCapacity {
+                    diagEvents[w] = diagEvents[w] + 1
+                    eventCount = eventCount + 1
+                } else {
+                    diagDropped[w] = diagDropped[w] + 1
+                    overflowCount = overflowCount + 1
+                }
+            }
+        }
+    }
+
+    var criticalOverflowFail = false
+    for w in 0 .. workers {
+        if criticalEvents[w] > s.EventRingCapacity {
+            criticalOverflowFail = true
+            overflowCount = overflowCount +(criticalEvents[w] - s.EventRingCapacity)
+        }
+    }
+
+    var drainLatency = 0
+    var failLatency = 0
+    if failure.Failed or criticalOverflowFail {
+        batchState = M40StateFailing()
+        var failureTime = failure.FailureTime
+        if failureTime < 0 {failureTime = 0}
+        var maxDrainEnd = failureTime
+        for i in 0 .. Len(plans) {
+            if completedMask[i] and ends[i] > failureTime {
+                maxDrainEnd = M40Max(maxDrainEnd, ends[i])
+            }
+        }
+        if s.FailureDuringDrain {
+            failure = M40FailureInfo {Failed: true FailedEntryId: switch {case failure.Failed -> failure.FailedEntryId else -> 0} FailedWorkerId: switch {case failure.Failed -> failure.FailedWorkerId else -> 0} FailureDetail: "drain-cleanup-error" FailureStage: "during-drain" FailureTime: failureTime}
+        }
+        batchState = M40StateDraining()
+        drainLatency = M40Max(maxDrainEnd - failureTime, 0)
+        failLatency = 1
+        batchState = M40StateFailed()
+    } else {
+        batchState = M40StateSucceeded()
+    }
+
+    var total = 0
+    var maxLane = 0
+    var minLane = laneTimes[0]
+    for w in 0 .. workers {
+        total = total + laneTimes[w]
+        maxLane = M40Max(maxLane, laneTimes[w])
+        minLane = M40Min(minLane, laneTimes[w])
+    }
+    let idle = maxLane * workers - total
+    let util = switch {case maxLane <= 0 -> 0 else ->((maxLane * workers - idle) * 1000) / M40Max(maxLane * workers, 1)}
+    let imbalance = (maxLane - minLane) + switch {
+        case s.PartitionPolicy == M40PolicyContiguous() and s.WorkloadKind == "moderate-variable" -> 500
+        else -> 0
+    }
+
+    var completionOrder =[0]
+    var completionInit = false
+    var used =[false]
+    for _i in 1 .. Len(plans) {used = Append(used, false)}
+    for _k in 0 .. Len(plans) {
+        let idx = M40FindFirstByEnd(ends, used)
+        if idx >= 0 {
+            used[idx] = true
+            if completedMask[idx] {
+                if not completionInit {
+                    completionOrder[0] = plans[idx].EntryId
+                    completionInit = true
+                } else {
+                    completionOrder = Append(completionOrder, plans[idx].EntryId)
+                }
+            }
+        }
+    }
+    if not completionInit {completionOrder =[0]}
+
+    var ordered =[0]
+    var orderedInit = false
+    if batchState == M40StateSucceeded() {
+        for i in 0 .. Len(plans) {
+            if not orderedInit {
+                ordered[0] = plans[i].EntryId
+                orderedInit = true
+            } else {
+                ordered = Append(ordered, plans[i].EntryId)
+            }
+        }
+    }
+    if not orderedInit {ordered =[0]}
+
+    let commitStatus = switch {case batchState == M40StateSucceeded() -> "committed-atomically" else -> "uncommitted-on-failure"}
+    let eventDrainCost = eventCount * s.EventDrainUnitCost
+    let memoryPenalty = switch {case wc.EffectiveWorkers < s.RequestedWorkers -> 120 else -> 0}
+    let eventPenalty = overflowCount * 30
+    let failurePenalty = switch {case batchState == M40StateFailed() -> 600 else -> 0}
+    let complexityPenalty = switch {case s.PartitionPolicy == M40PolicyRoundRobin() -> 40 else -> 55}
+    let score = 100000 - maxLane * 5 - idle * 3 - imbalance * 4 - memoryPenalty - eventPenalty - failurePenalty - complexityPenalty
+
+    return M40BatchRun {
+        WorkloadKind: s.WorkloadKind
+        PartitionPolicy: s.PartitionPolicy
+        BatchState: batchState
+        RequestedWorkers: s.RequestedWorkers
+        EffectiveWorkers: wc.EffectiveWorkers
+        TotalCompletionTime: maxLane
+        WorkerLaneTimes: laneTimes
+        IdleWorkerTime: idle
+        LoadImbalance: imbalance
+        WorkerUtilizationMilli: util
+        StaticAssignmentOverhead: staticOverhead
+        EventCount: eventCount
+        EventOverflowCount: overflowCount
+        EventDrainCost: eventDrainCost
+        FailurePropagationLatency: failLatency
+        DrainLatencyAfterFailure: drainLatency
+        OutputCommitStatus: commitStatus
+        MemoryCappedWorkerCount: wc.MemoryBudgetWorkers
+        ProductScore: score
+        OrderedOutputEntryIds: ordered
+        CompletionOrderEntryIds: completionOrder
+        FailureInfo: failure
+        CriticalOverflowFailedBatch: criticalOverflowFail
+        WorkerCriticalEvents: criticalEvents
+        WorkerDiagnosticEvents: diagEvents
+        WorkerDiagnosticsDropped: diagDropped
+        PlanGeneration: 40
+        RecommendationToken: switch {
+            case s.PartitionPolicy == M40PolicyRoundRobin() and batchState == M40StateSucceeded() -> "rr-stable"
+            case s.PartitionPolicy == M40PolicyContiguous() and batchState == M40StateSucceeded() -> "chunk-local"
+            else -> "failure-path"
+        }
+        FailedEntryId: failure.FailedEntryId
+        FailedWorkerId: failure.FailedWorkerId
+        FailureStage: failure.FailureStage
+        FailureDetail: failure.FailureDetail
+    }
+}
+
+fn M40BaseScenario(name: String, workload: String, policy: String) -> M40Scenario {
+    return M40Scenario {
+        Name: name
+        WorkloadKind: workload
+        PartitionPolicy: policy
+        BatchSize: 24
+        RequestedWorkers: 4
+        HardwareQueueCount: 4
+        MemoryBudgetBytes: 1073741824
+        PerWorkerArenaBytes: 268435456
+        SlotBudgetPerWorker: 2
+        EventRingCapacity: 128
+        EventDrainUnitCost: 1
+        FailureCase: "none"
+        FailureEntryId: 3
+        FailureDuringDrain: false
+    }
+}
+
+fn M40PartitionComparisonWorkloads() -> String[] {
+    return["uniform", "moderate-variable", "heavy-tail", "shape-clustered", "small-fast", "large-slow", "memory-limited"]
+}
+
+fn M40PartitionComparisonTable() -> M40PartitionComparison {
+    let workloads = M40PartitionComparisonWorkloads()
+    let s0 = M40BaseScenario("pc0", workloads[0], M40PolicyRoundRobin())
+    let r0 = M40RunBatch(s0)
+    var workload =[workloads[0]]
+    var policy =[s0.PartitionPolicy]
+    var ew =[r0.EffectiveWorkers]
+    var completion =[r0.TotalCompletionTime]
+    var imbalance =[r0.LoadImbalance]
+    var util =[r0.WorkerUtilizationMilli]
+    var locality =[M40ShapeLocalityScore(M40BatchEntries(workloads[0], s0.BatchSize), s0.BatchSize, r0.EffectiveWorkers, s0.PartitionPolicy)]
+    var score =[r0.ProductScore]
+
+    for wi in 0 .. Len(workloads) {
+        let rr = M40BaseScenario("rr", workloads[wi], M40PolicyRoundRobin())
+        let cc = M40BaseScenario("cc", workloads[wi], M40PolicyContiguous())
+        let rrr = M40RunBatch(rr)
+        let rcc = M40RunBatch(cc)
+        if wi > 0 {
+            workload = Append(workload, workloads[wi])
+            policy = Append(policy, rr.PartitionPolicy)
+            ew = Append(ew, rrr.EffectiveWorkers)
+            completion = Append(completion, rrr.TotalCompletionTime)
+            imbalance = Append(imbalance, rrr.LoadImbalance)
+            util = Append(util, rrr.WorkerUtilizationMilli)
+            locality = Append(locality, M40ShapeLocalityScore(M40BatchEntries(workloads[wi], rr.BatchSize), rr.BatchSize, rrr.EffectiveWorkers, rr.PartitionPolicy))
+            score = Append(score, rrr.ProductScore)
+        }
+        workload = Append(workload, workloads[wi])
+        policy = Append(policy, cc.PartitionPolicy)
+        ew = Append(ew, rcc.EffectiveWorkers)
+        completion = Append(completion, rcc.TotalCompletionTime)
+        imbalance = Append(imbalance, rcc.LoadImbalance)
+        util = Append(util, rcc.WorkerUtilizationMilli)
+        locality = Append(locality, M40ShapeLocalityScore(M40BatchEntries(workloads[wi], cc.BatchSize), cc.BatchSize, rcc.EffectiveWorkers, cc.PartitionPolicy))
+        score = Append(score, rcc.ProductScore)
+    }
+
+    return M40PartitionComparison {
+        Workload: workload
+        Policy: policy
+        EffectiveWorkers: ew
+        CompletionTime: completion
+        LoadImbalance: imbalance
+        WorkerUtilizationMilli: util
+        ShapeLocalityScore: locality
+        ProductScore: score
+    }
+}
+
+fn M40WorkerCountContractTable() -> M40WorkerCountTable {
+    let a = M40EffectiveWorkerCount(6, 3, 2147483648, 268435456)
+    let b = M40EffectiveWorkerCount(6, 8, 805306368, 268435456)
+    let c = M40EffectiveWorkerCount(4, 1, 2147483648, 268435456)
+    return M40WorkerCountTable {
+        Scenario:["queue-capped", "memory-capped", "single-queue"]
+        RequestedWorkers:[a.RequestedWorkers, b.RequestedWorkers, c.RequestedWorkers]
+        HardwareQueues:[a.HardwareQueueCount, b.HardwareQueueCount, c.HardwareQueueCount]
+        MemoryBudgetWorkers:[a.MemoryBudgetWorkers, b.MemoryBudgetWorkers, c.MemoryBudgetWorkers]
+        EffectiveWorkers:[a.EffectiveWorkers, b.EffectiveWorkers, c.EffectiveWorkers]
+        CapReason:[a.CapReason, b.CapReason, c.CapReason]
+    }
+}
+
+fn M40OrderedOutputContractTable() -> M40OrderedOutputTable {
+    let s = M40BaseScenario("ordered", "moderate-variable", M40PolicyRoundRobin())
+    let r = M40RunBatch(s)
+    return M40OrderedOutputTable {
+        Workload:[s.WorkloadKind]
+        Policy:[s.PartitionPolicy]
+        CompletionOrder:[M40JoinInt(r.CompletionOrderEntryIds)]
+        OrderedOutput:[M40JoinInt(r.OrderedOutputEntryIds)]
+        OrderedPreserved:[Len(r.OrderedOutputEntryIds) == s.BatchSize and M40JoinInt(r.OrderedOutputEntryIds) != M40JoinInt(r.CompletionOrderEntryIds)]
+    }
+}
+
+fn M40FailureScenario(name: String, failureCase: String, duringDrain: Bool) -> M40Scenario {
+    let base = M40BaseScenario(name, "heavy-tail", M40PolicyRoundRobin())
+    return M40Scenario {
+        Name: base.Name
+        WorkloadKind: base.WorkloadKind
+        PartitionPolicy: base.PartitionPolicy
+        BatchSize: base.BatchSize
+        RequestedWorkers: base.RequestedWorkers
+        HardwareQueueCount: base.HardwareQueueCount
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SlotBudgetPerWorker: base.SlotBudgetPerWorker
+        EventRingCapacity: base.EventRingCapacity
+        EventDrainUnitCost: base.EventDrainUnitCost
+        FailureCase: failureCase
+        FailureEntryId: 5
+        FailureDuringDrain: duringDrain
+    }
+}
+
+fn M40FailureAtomicityContractTable() -> M40FailureAtomicityTable {
+    let a = M40RunBatch(M40FailureScenario("before-submit", "before-submit", false))
+    let b = M40RunBatch(M40FailureScenario("after-submit", "after-submit", false))
+    let c = M40RunBatch(M40FailureScenario("in-flight", "in-flight", false))
+    let d = M40RunBatch(M40FailureScenario("during-drain", "after-submit", true))
+    let e = M40RunBatch(M40BaseScenario("cleanup", "heavy-tail", M40PolicyRoundRobin()))
+    return M40FailureAtomicityTable {
+        FailureCase:["before-submit", "after-submit", "in-flight", "during-drain", "cleanup-after-drain"]
+        FinalState:[a.BatchState, b.BatchState, c.BatchState, d.BatchState, e.BatchState]
+        FailedEntry:[a.FailedEntryId, b.FailedEntryId, c.FailedEntryId, d.FailedEntryId, e.FailedEntryId]
+        FailedWorker:[a.FailedWorkerId, b.FailedWorkerId, c.FailedWorkerId, d.FailedWorkerId, e.FailedWorkerId]
+        FailureStage:[a.FailureStage, b.FailureStage, c.FailureStage, d.FailureStage, e.FailureStage]
+        DrainLatency:[a.DrainLatencyAfterFailure, b.DrainLatencyAfterFailure, c.DrainLatencyAfterFailure, d.DrainLatencyAfterFailure, e.DrainLatencyAfterFailure]
+        OutputCommitStatus:[a.OutputCommitStatus, b.OutputCommitStatus, c.OutputCommitStatus, d.OutputCommitStatus, e.OutputCommitStatus]
+    }
+}
+
+fn M40EventRingContractTable() -> M40EventRingTable {
+    let normal = M40BaseScenario("event-normal", "moderate-variable", M40PolicyRoundRobin())
+    let near = M40Scenario {Name: "event-near" WorkloadKind: "moderate-variable" PartitionPolicy: M40PolicyRoundRobin() BatchSize: 24 RequestedWorkers: 4 HardwareQueueCount: 4 MemoryBudgetBytes: 1073741824 PerWorkerArenaBytes: 268435456 SlotBudgetPerWorker: 2 EventRingCapacity: 20 EventDrainUnitCost: 1 FailureCase: "none" FailureEntryId: 2 FailureDuringDrain: false}
+    let overflow = M40Scenario {Name: "event-overflow" WorkloadKind: "moderate-variable" PartitionPolicy: M40PolicyRoundRobin() BatchSize: 24 RequestedWorkers: 4 HardwareQueueCount: 4 MemoryBudgetBytes: 1073741824 PerWorkerArenaBytes: 268435456 SlotBudgetPerWorker: 2 EventRingCapacity: 6 EventDrainUnitCost: 1 FailureCase: "none" FailureEntryId: 2 FailureDuringDrain: false}
+    let rn = M40RunBatch(normal)
+    let rr = M40RunBatch(near)
+    let ro = M40RunBatch(overflow)
+    let nDrop = rn.WorkerDiagnosticsDropped[0] + rn.WorkerDiagnosticsDropped[1] + rn.WorkerDiagnosticsDropped[2] + rn.WorkerDiagnosticsDropped[3]
+    let rDrop = rr.WorkerDiagnosticsDropped[0] + rr.WorkerDiagnosticsDropped[1] + rr.WorkerDiagnosticsDropped[2] + rr.WorkerDiagnosticsDropped[3]
+    let oDrop = ro.WorkerDiagnosticsDropped[0] + ro.WorkerDiagnosticsDropped[1] + ro.WorkerDiagnosticsDropped[2] + ro.WorkerDiagnosticsDropped[3]
+    return M40EventRingTable {
+        Scenario:[normal.Name, near.Name, overflow.Name]
+        Policy:[normal.PartitionPolicy, near.PartitionPolicy, overflow.PartitionPolicy]
+        RingCapacity:[normal.EventRingCapacity, near.EventRingCapacity, overflow.EventRingCapacity]
+        EventCount:[rn.EventCount, rr.EventCount, ro.EventCount]
+        CriticalOverflowFailedBatch:[rn.CriticalOverflowFailedBatch, rr.CriticalOverflowFailedBatch, ro.CriticalOverflowFailedBatch]
+        EventOverflowCount:[rn.EventOverflowCount, rr.EventOverflowCount, ro.EventOverflowCount]
+        DiagnosticsDropped:[nDrop, rDrop, oDrop]
+    }
+}
+
+fn M40RecommendationFromMetrics() -> M40FinalContract {
+    let moderateRr = M40RunBatch(M40BaseScenario("mr", "moderate-variable", M40PolicyRoundRobin()))
+    let moderateCc = M40RunBatch(M40BaseScenario("mc", "moderate-variable", M40PolicyContiguous()))
+    let clusteredRr = M40RunBatch(M40BaseScenario("cr", "shape-clustered", M40PolicyRoundRobin()))
+    let clusteredCc = M40RunBatch(M40BaseScenario("cc", "shape-clustered", M40PolicyContiguous()))
+
+    let chooseRoundRobin =(moderateRr.LoadImbalance <= moderateCc.LoadImbalance) and(moderateRr.ProductScore >= clusteredCc.ProductScore - 120)
+    let firstPolicy = switch {case chooseRoundRobin -> M40PolicyRoundRobin() else -> M40PolicyContiguous()}
+    let supportContiguous = switch {
+        case clusteredCc.ProductScore >= clusteredRr.ProductScore -> "yes-for-shape-clustered-regimes"
+        else -> "optional-not-default"
+    }
+
+    return M40FinalContract {
+        LabelP11: "P11 M5"
+        LabelLab: "PrometheusSgemmAlgorithmLab M40"
+        DispatchPlanContains: "EntryId,M,N,K,WorkUnits,InputOffset,OutputOffset,SelectedPath,ComputeMode,BufferingMode,TransferPolicy,LayoutPrecisionMode,ArenaRequiredBytes,ExpectedOutputElements,PlanGeneration,FailurePolicy"
+        FirstImplementationPolicy: firstPolicy
+        AlsoSupportContiguous: supportContiguous
+        EffectiveWorkerCountRule: "effective_workers=min(requested_workers,hardware_compute_queue_count,floor(memory_budget_bytes/per_worker_arena_bytes)); if <=1 use single-worker batch path"
+        OrderedOutputRule: "workers may complete out of order but join commits ordered-by-entry-id output only on success"
+        AtomicFailureStates: "PENDING->RUNNING->FAILING->DRAINING->FAILED or PENDING->RUNNING->SUCCEEDED"
+        DrainRule: "after first failure workers stop taking new plans; in-flight plans drain; outputs remain uncommitted on failure"
+        EventOverflowPolicy: "critical-event overflow fails batch explicitly; diagnostics overflow is counted and may be lossy"
+        ArenaConstraintRule: "worker arenas and slots are worker-local; no cross-worker arena use; arena bytes cap effective workers"
+        DominatusIntegrationRule: "policy reads visible snapshot and builds immutable plans; workers execute plans and emit ring events only; commit/drain layer stages then commits blackboard updates"
+        M6ShouldImplement: "native central-policy immutable-plan execution with round-robin static partition, worker event rings, atomic batch join/failure-drain path"
+        DeferredScope: "SPMC shared queue, work stealing, MPMC/lock-free queues, parallel judgment, N-slot stealing runtime"
+        RecommendationDerivedFromMetrics: true
+    }
+}

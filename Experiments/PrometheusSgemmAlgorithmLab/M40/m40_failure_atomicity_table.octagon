@@ -1,0 +1,9 @@
+[M40FailureAtomicityTable {
+    FailureCase: ["before-submit", "after-submit", "in-flight", "during-drain", "cleanup-after-drain"]
+    FinalState: ["FAILED", "FAILED", "FAILED", "FAILED", "SUCCEEDED"]
+    FailedEntry: [5, 5, 5, 5, -1]
+    FailedWorker: [1, 1, 1, 1, -1]
+    FailureStage: ["before-submit", "after-submit", "in-flight", "during-drain", "none"]
+    DrainLatency: [513, 512, 33668, 512, 0]
+    OutputCommitStatus: ["uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "committed-atomically"]
+}]
