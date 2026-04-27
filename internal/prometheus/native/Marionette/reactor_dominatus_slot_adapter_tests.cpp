@@ -239,8 +239,63 @@ FACT(PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlot
 
     ASSERT_TRUE(diagnostics.p10_m4_last_slot_event_kind != PROM_DOM_EVENT_NONE,
                 "runtime path should emit at least one committed slot event");
+    ASSERT_TRUE(diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_PREPARED ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_READY ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_SUBMITTED ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_COMPLETE ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_FAILED ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_PROMOTED_CURRENT ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_CONSUMED ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_CLEANUP ||
+                    diagnostics.p10_m4_last_slot_event_kind == PROM_DOM_EVENT_SLOT_INVALIDATED,
+                "runtime path should report a slot lifecycle event kind");
+    ASSERT_TRUE(diagnostics.p10_m4_last_slot_event_slot_id < 2u,
+                "runtime path should report slot id within fixed-double ownership domain");
     ASSERT_TRUE((diagnostics.p10_m4_last_commit_dirty_slot_mask & 0x3u) != 0u,
                 "runtime path should report committed dirty slot mask for one fixed-double slot");
+    ASSERT_TRUE((diagnostics.p10_m4_last_commit_dirty_slot_mask &
+                 (1u << diagnostics.p10_m4_last_slot_event_slot_id)) != 0u,
+                "dirty slot mask should include the reported slot lifecycle event slot");
+    ASSERT_TRUE(diagnostics.packed4_selected_layout_format != 0u,
+                "packed4 diagnostics should remain visible after slot event commit churn");
+    ASSERT_TRUE(diagnostics.fp16_tolerance_known != 0u, "fp16 diagnostics should remain visible after slot event commit churn");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusDominatusSlotAdapter_LastSlotEventSurvivesLaterNonSlotCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    const prom_slot_metadata metadata = SlotMetadata(0u, 33u, 1u, 0);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &metadata,
+                                              1u,
+                                              0u,
+                                              1u,
+                                              1u,
+                                              0) == 1u,
+                "slot stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    ASSERT_TRUE(prom_dom_set_u32(&board,
+                                 PROM_DOM_SOURCE_JUDGMENT,
+                                 PROM_DOM_KEY_SGEMM_PACKED4_AVAILABLE,
+                                 0u,
+                                 1u,
+                                 0) == 1u,
+                "non-slot stage should succeed");
+    prom_dom_commit(&board);
+
+    prom_dom_slot_commit_snapshot snapshot{};
+    ASSERT_TRUE(prom_dom_slot_read_last_commit(&board, 0u, &snapshot) == 1u, "slot snapshot should remain queryable");
+    ASSERT_EQUAL(PROM_DOM_EVENT_SLOT_READY, snapshot.last_event.kind,
+                 "slot snapshot should retain most recent committed slot lifecycle event after non-slot commit");
+    ASSERT_EQUAL(0u, snapshot.last_event.slot_id, "slot snapshot should preserve slot id");
+    ASSERT_TRUE((snapshot.last_commit_dirty_slot_mask & 0x1u) != 0u,
+                "slot snapshot dirty mask should include slot touched by retained slot lifecycle event");
 }
