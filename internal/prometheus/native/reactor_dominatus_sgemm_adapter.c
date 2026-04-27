@@ -1,4 +1,5 @@
 #include "reactor_dominatus_sgemm_adapter.h"
+#include <string.h>
 
 static uint64_t m35_dependency_mask_last_commit(const prom_dom_blackboard* board) {
   uint64_t mask = 0u;
@@ -83,6 +84,39 @@ static uint64_t transfer_queue_dependency_mask_last_commit(const prom_dom_blackb
     mask |= 1ull << 10u;
   }
   return mask;
+}
+
+static uint64_t layout_precision_dependency_mask_last_commit(const prom_dom_blackboard* board) {
+  uint64_t mask = 0u;
+  if (board == 0) {
+    return 0u;
+  }
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_AVAILABLE) != 0u) mask |= 1ull << 0u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_SMALL_SHAPE) != 0u) mask |= 1ull << 1u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_PADDING_WASTE_PERMILLE) != 0u) mask |= 1ull << 2u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_MODE_BUDGET_PERMILLE) != 0u) mask |= 1ull << 3u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_ROW_MAJOR_VALID) != 0u) mask |= 1ull << 4u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_PACKED4_TAIL_VALID) != 0u) mask |= 1ull << 5u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_STRICT_FP32) != 0u) mask |= 1ull << 6u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_KNOWN) != 0u) mask |= 1ull << 7u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_PASS) != 0u) mask |= 1ull << 8u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_HAS_SPECIAL_VALUES) != 0u) mask |= 1ull << 9u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_CAPABILITY_STORAGE) != 0u) mask |= 1ull << 10u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_FALLBACK_AVAILABLE) != 0u) mask |= 1ull << 11u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FP16_UTILITY_SCORE) != 0u) mask |= 1ull << 12u;
+  return mask;
+}
+
+static uint32_t float_to_bits(float value) {
+  uint32_t bits = 0u;
+  memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
+static float bits_to_float(uint32_t bits) {
+  float value = 0.0f;
+  memcpy(&value, &bits, sizeof(value));
+  return value;
 }
 
 uint32_t prom_dom_sgemm_stage_m35_facts(prom_dom_blackboard* board, const prom_buffering_selector_facts* facts) {
@@ -1023,5 +1057,196 @@ uint32_t prom_dom_sgemm_read_visible_transfer_runtime_telemetry(const prom_dom_b
   if (prom_dom_get_u64(board, PROM_DOM_KEY_QUEUE_ASYNC_TRANSFER_COMPLETION_GENERATION, 0u, &u64_value) != 0u) {
     out_snapshot->async_transfer_completion_generation = u64_value;
   }
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_layout_precision_facts(prom_dom_blackboard* board,
+                                                     const prom_dom_sgemm_layout_precision_facts* facts) {
+  if (board == 0 || facts == 0) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_AVAILABLE, 0u, facts->packed4_available, (int32_t)facts->packed4_available) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_SMALL_SHAPE, 0u, facts->packed4_small_shape, (int32_t)facts->packed4_small_shape) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_PADDING_WASTE_PERMILLE, 0u, facts->packed4_padding_waste_permille, (int32_t)facts->packed4_padding_waste_permille) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_MODE_BUDGET_PERMILLE, 0u, facts->packed4_mode_budget_permille, (int32_t)facts->packed4_mode_budget_permille) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_ROW_MAJOR_VALID, 0u, facts->packed4_row_major_valid, (int32_t)facts->packed4_row_major_valid) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_TAIL_VALID, 0u, facts->packed4_tail_valid, (int32_t)facts->packed4_tail_valid) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_STRICT_FP32, 0u, facts->strict_fp32, (int32_t)facts->strict_fp32) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_KNOWN, 0u, facts->tolerance_known, (int32_t)facts->tolerance_known) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_PASS, 0u, facts->tolerance_pass, (int32_t)facts->tolerance_pass) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_HAS_SPECIAL_VALUES, 0u, facts->has_special_values, (int32_t)facts->has_special_values) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_CAPABILITY_STORAGE, 0u, facts->capability_fp16_storage, (int32_t)facts->capability_fp16_storage) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_FALLBACK_AVAILABLE, 0u, facts->fallback_available, (int32_t)facts->fallback_available) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_UTILITY_SCORE, 0u, facts->fp16_utility_score, facts->fp16_utility_score) == 0u) return 0u;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_build_layout_precision_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_dom_sgemm_layout_precision_facts* fallback_facts,
+    prom_dom_sgemm_layout_precision_projection* out_projection) {
+  prom_dom_sgemm_layout_precision_facts facts;
+  uint32_t u32_value;
+  int32_t i32_value;
+  if (board == 0 || fallback_facts == 0 || out_projection == 0) return 0u;
+  facts = *fallback_facts;
+  out_projection->visible_generation = board->visible_generation;
+  out_projection->dependent_dirty_key_mask_last_commit = layout_precision_dependency_mask_last_commit(board);
+  out_projection->from_visible_snapshot = 0u;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_AVAILABLE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_available = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_SMALL_SHAPE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_small_shape = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_PADDING_WASTE_PERMILLE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_padding_waste_permille = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_MODE_BUDGET_PERMILLE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_mode_budget_permille = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_ROW_MAJOR_VALID, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_row_major_valid = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_TAIL_VALID, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.packed4_tail_valid = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_STRICT_FP32, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.strict_fp32 = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_KNOWN, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.tolerance_known = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_PASS, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.tolerance_pass = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_HAS_SPECIAL_VALUES, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.has_special_values = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_CAPABILITY_STORAGE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.capability_fp16_storage = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_FALLBACK_AVAILABLE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.fallback_available = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SGEMM_FP16_UTILITY_SCORE, 0u, &i32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.fp16_utility_score = i32_value;
+  out_projection->from_visible_snapshot = 1u;
+  out_projection->facts = facts;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_layout_precision_decision(prom_dom_blackboard* board,
+                                                        const prom_dom_sgemm_layout_precision_decision* decision) {
+  if (board == 0 || decision == 0) return 0u;
+#define SETU32(src,key,val,reason) if (prom_dom_set_u32(board, src, key, 0u, val, reason) == 0u) return 0u
+#define SETU64(src,key,val,reason) if (prom_dom_set_u64(board, src, key, 0u, val, reason) == 0u) return 0u
+  SETU32(PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED, decision->packed4_selected, (int32_t)decision->packed4_reject_reason);
+  SETU32(PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_PACKED4_REJECT_REASON, decision->packed4_reject_reason, (int32_t)decision->packed4_reject_reason);
+  SETU32(PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_SELECTED, decision->fp16_selected, (int32_t)decision->fp16_reject_reason);
+  SETU32(PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FP16_REJECT_REASON, decision->fp16_reject_reason, (int32_t)decision->fp16_reject_reason);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_SELECTED_LAYOUT_FORMAT, decision->packed4_selected_layout_format, (int32_t)decision->packed4_reject_reason);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_TAIL_COUNT_LAST, decision->packed4_tail_count_last, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_TAIL_COUNT_TOTAL, decision->packed4_tail_count_total, 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDED_LANE_COUNT_LAST, decision->packed4_padded_lane_count_last, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDED_LANE_COUNT_TOTAL, decision->packed4_padded_lane_count_total, 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDING_WASTE_PERMILLE_LAST, decision->packed4_padding_waste_permille_last, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_MODE_BUDGET_DENIALS, decision->packed4_mode_budget_denials, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_ROW_MAJOR_CHECK_FAILURES, decision->packed4_row_major_check_failures, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_SELECTION_COUNT, decision->packed4_selection_count, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_PADDING_WASTE, decision->packed4_fallback_reason_padding_waste, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_SMALL_SHAPE, decision->packed4_fallback_reason_small_shape, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_CAPABILITY_MISSING, decision->packed4_fallback_reason_capability_missing, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_FALLBACK_REQUIRED, decision->packed4_fallback_reason_fallback_required, 0);
+  SETU64(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_MODE_BUDGET_DENIED, decision->packed4_fallback_reason_mode_budget_denied, 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_MAX_ABSOLUTE_ERROR_BITS, float_to_bits(decision->fp16_max_absolute_error), 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_MAX_RELATIVE_ERROR_BITS, float_to_bits(decision->fp16_max_relative_error), 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_AGGREGATE_ERROR_BITS, float_to_bits(decision->fp16_aggregate_error), 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_WORST_CASE_ELEMENT_INDEX, decision->fp16_worst_case_element_index, 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_K_ERROR_GROWTH_BITS, float_to_bits(decision->fp16_k_error_growth), 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_CANCELLATION_RISK_BITS, float_to_bits(decision->fp16_cancellation_risk), 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_TOLERANCE_KNOWN, decision->fp16_tolerance_known, 0);
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_TOLERANCE_PASS, decision->fp16_tolerance_pass, 0);
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_FALLBACK_REASON_DETAIL, 0u, decision->fp16_fallback_reason_detail, decision->fp16_fallback_reason_detail) == 0u) return 0u;
+  SETU32(PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_DIAGNOSTICS_FP16_SELECTED_CANDIDATE, decision->fp16_selected_candidate, decision->fp16_fallback_reason_detail);
+#undef SETU32
+#undef SETU64
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_read_visible_layout_precision_diagnostics(const prom_dom_blackboard* board,
+                                                                  prom_dom_sgemm_layout_precision_snapshot* out_snapshot) {
+  uint32_t u32_value;
+  uint64_t u64_value;
+  int32_t i32_value;
+  if (board == 0 || out_snapshot == 0) return 0u;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_AVAILABLE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_available = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_SMALL_SHAPE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_small_shape = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_PADDING_WASTE_PERMILLE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_padding_waste_permille = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_MODE_BUDGET_PERMILLE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_mode_budget_permille = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_ROW_MAJOR_VALID, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_row_major_valid = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_TAIL_VALID, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.packed4_tail_valid = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_STRICT_FP32, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.strict_fp32 = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_KNOWN, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.tolerance_known = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_TOLERANCE_PASS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.tolerance_pass = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_HAS_SPECIAL_VALUES, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.has_special_values = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_CAPABILITY_STORAGE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.capability_fp16_storage = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_FALLBACK_AVAILABLE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.fallback_available = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SGEMM_FP16_UTILITY_SCORE, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->facts.fp16_utility_score = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_selected = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_REJECT_REASON, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_reject_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_SELECTED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_selected = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_REJECT_REASON, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_reject_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_SELECTED_LAYOUT_FORMAT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_selected_layout_format = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_TAIL_COUNT_LAST, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_tail_count_last = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_TAIL_COUNT_TOTAL, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_tail_count_total = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDED_LANE_COUNT_LAST, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_padded_lane_count_last = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDED_LANE_COUNT_TOTAL, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_padded_lane_count_total = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_PADDING_WASTE_PERMILLE_LAST, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_padding_waste_permille_last = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_MODE_BUDGET_DENIALS, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_mode_budget_denials = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_ROW_MAJOR_CHECK_FAILURES, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_row_major_check_failures = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_SELECTION_COUNT, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_selection_count = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_PADDING_WASTE, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_fallback_reason_padding_waste = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_SMALL_SHAPE, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_fallback_reason_small_shape = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_CAPABILITY_MISSING, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_fallback_reason_capability_missing = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_FALLBACK_REQUIRED, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_fallback_reason_fallback_required = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_DIAGNOSTICS_PACKED4_FALLBACK_REASON_MODE_BUDGET_DENIED, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->decision.packed4_fallback_reason_mode_budget_denied = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_MAX_ABSOLUTE_ERROR_BITS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_max_absolute_error = bits_to_float(u32_value);
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_MAX_RELATIVE_ERROR_BITS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_max_relative_error = bits_to_float(u32_value);
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_AGGREGATE_ERROR_BITS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_aggregate_error = bits_to_float(u32_value);
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_WORST_CASE_ELEMENT_INDEX, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_worst_case_element_index = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_K_ERROR_GROWTH_BITS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_k_error_growth = bits_to_float(u32_value);
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_CANCELLATION_RISK_BITS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_cancellation_risk = bits_to_float(u32_value);
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_TOLERANCE_KNOWN, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_tolerance_known = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_TOLERANCE_PASS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_tolerance_pass = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_FALLBACK_REASON_DETAIL, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_fallback_reason_detail = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_SELECTED_CANDIDATE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.fp16_selected_candidate = u32_value;
   return 1u;
 }
