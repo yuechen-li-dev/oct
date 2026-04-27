@@ -88,6 +88,7 @@ enum {
   PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT = 1u << 28,
   PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS = 1u << 29,
   PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED = 1u << 30,
+  PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER = 1u << 31,
 };
 
 enum {
@@ -157,6 +158,7 @@ enum {
   PROM_DETAIL_BATCH_PLAN_INVALID = -6602,
   PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW = -6603,
   PROM_DETAIL_BATCH_EXECUTION_FAILED = -6604,
+  PROM_DETAIL_BATCH_RESOURCE_OWNERSHIP_VIOLATION = -6605,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -192,17 +194,33 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t worker_judgment_count;
   uint32_t execution_mode;
   uint32_t worker_resource_mode;
+  uint32_t queue_topology_classification;
+  uint32_t queue_mapping_mode;
   uint32_t lane_worker_count;
   uint32_t real_worker_thread_count;
   uint32_t serialized_vulkan;
+  uint32_t serialized_bridge_enter_count;
   uint32_t serialized_execution_count;
   uint32_t serialized_wait_count;
   uint32_t max_concurrent_serialized_entries;
   uint32_t hardware_parallelism_claimed;
+  uint32_t resource_ownership_violation_count;
   uint32_t worker_active_mask;
   uint32_t worker_assigned_count[8];
   uint32_t worker_completed_count[8];
   uint32_t worker_event_count[8];
+  uint32_t worker_queue_index[8];
+  uint32_t worker_submit_count[8];
+  uint32_t worker_wait_count[8];
+  uint32_t worker_in_flight[8];
+  uint32_t worker_slot_id[8];
+  uint32_t worker_output_staging_id[8];
+  uint32_t worker_arena_bank_id[8];
+  uint32_t worker_command_pool_id[8];
+  uint32_t worker_command_buffer_id[8];
+  uint32_t worker_fence_id[8];
+  uint32_t worker_failure_stage[8];
+  int32_t worker_failure_detail[8];
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -261,6 +279,21 @@ enum {
   PROM_BATCH_WORKER_RESOURCE_DEDICATED = 1u,
   PROM_BATCH_WORKER_RESOURCE_SHARED = 2u,
   PROM_BATCH_WORKER_RESOURCE_SIMULATED = 3u,
+  PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER = PROM_BATCH_WORKER_RESOURCE_DEDICATED,
+  PROM_BATCH_WORKER_RESOURCE_MODE_SHARED = PROM_BATCH_WORKER_RESOURCE_SHARED,
+  PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER = PROM_BATCH_WORKER_RESOURCE_SIMULATED,
+};
+
+enum {
+  PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE = 1u,
+  PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED = 2u,
+  PROM_BATCH_QUEUE_TOPOLOGY_PARALLEL_ELIGIBLE = 3u,
+};
+
+enum {
+  PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED = 1u,
+  PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED = 2u,
+  PROM_BATCH_QUEUE_MAPPING_PARALLEL_ELIGIBLE_DISABLED = 3u,
 };
 
 typedef struct PrometheusCaps {

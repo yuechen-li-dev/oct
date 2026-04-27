@@ -558,6 +558,7 @@ FACT(PrometheusReactor_P11_M10_RealThreadsSerializedVulkanModeAndDiagnostics)
     ASSERT_EQUAL(workers, diag.real_worker_thread_count, "diagnostics should expose created worker threads");
     ASSERT_EQUAL(0u, diag.lane_worker_count, "lane workers should be zero in real-thread mode");
     ASSERT_EQUAL(1u, diag.serialized_vulkan, "real-thread mode should mark serialized Vulkan bridge");
+    ASSERT_TRUE(diag.serialized_bridge_enter_count >= 1u, "serialized bridge enter count should be tracked");
     ASSERT_TRUE(diag.serialized_execution_count >= 1u, "serialized execution count should record bridge entries");
     ASSERT_TRUE(diag.max_concurrent_serialized_entries <= 1u, "serialized bridge must admit at most one entry at a time");
     ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "serialized Vulkan mode must not claim hardware parallelism");
@@ -955,6 +956,89 @@ FACT(PrometheusReactor_P11_M11_WorkerRestrictionsRemainEnforcedAndDiagnosticsTru
     ASSERT_TRUE(diag.serialized_execution_count >= entry_count, "serialized bridge entries should be counted");
     ASSERT_TRUE(diag.max_concurrent_serialized_entries <= 1u, "serialized bridge should not run concurrent submit");
     ASSERT_EQUAL(40u, diag.plan_generation, "plan generation must remain unchanged");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M13_PerWorkerCommandResourceIdentityAndQueueMappingDiagnostics)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t entry_count = 8u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<std::vector<float>> a(entry_count), b(entry_count), c(entry_count, std::vector<float>(m * n, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 0.11f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 0.31f + static_cast<float>(i) * 0.1f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, flags, &stage, &detail),
+                 "M13 per-worker resource diagnostics run should succeed");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER, diag.worker_resource_mode, "resource mode should be explicit");
+    ASSERT_EQUAL(PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED, diag.queue_topology_classification, "queue topology classification should be explicit");
+    ASSERT_EQUAL(PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED, diag.queue_mapping_mode, "queue mapping mode should be explicit");
+    for (std::uint32_t w = 0; w < workers; ++w) {
+        ASSERT_EQUAL(w, diag.worker_slot_id[w], "slot identity should be stable per worker");
+        ASSERT_EQUAL(w, diag.worker_output_staging_id[w], "staging identity should be stable per worker");
+        ASSERT_EQUAL(w, diag.worker_arena_bank_id[w], "arena identity should be stable per worker");
+        ASSERT_TRUE(diag.worker_submit_count[w] >= 1u, "worker submit count should be tracked");
+        ASSERT_TRUE(diag.worker_command_pool_id[w] != 0u, "command pool identity should be present");
+        ASSERT_TRUE(diag.worker_command_buffer_id[w] != 0u, "command buffer identity should be present");
+        ASSERT_TRUE(diag.worker_fence_id[w] != 0u, "fence identity should be present");
+    }
+    ASSERT_TRUE(diag.worker_command_buffer_id[0] != diag.worker_command_buffer_id[1], "worker command buffers must not alias");
+    ASSERT_TRUE(diag.worker_command_pool_id[0] != diag.worker_command_pool_id[1], "worker command pools must not alias");
+    ASSERT_TRUE(diag.worker_fence_id[0] != diag.worker_fence_id[1], "worker fences must not alias");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M13_WrongOwnerCommandResourceUseRejected)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    const std::uint32_t m = 3u;
+    const std::uint32_t n = 3u;
+    const std::uint32_t k = 3u;
+    std::vector<float> a = make_matrix(m, k, 0.2f);
+    std::vector<float> b = make_matrix(k, n, 0.4f);
+    std::vector<float> c(m * n, 5.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR,
+                 prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u,
+                                                        workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                            (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                        &stage, &detail),
+                 "wrong-owner resource use should be rejected");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_RESOURCE_OWNERSHIP_VIOLATION, detail, "wrong-owner rejection detail should be explicit");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_TRUE(diag.resource_ownership_violation_count >= 1u, "ownership violations should be counted");
+    ASSERT_EQUAL(0u, diag.output_committed, "wrong-owner failure should remain uncommitted");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
