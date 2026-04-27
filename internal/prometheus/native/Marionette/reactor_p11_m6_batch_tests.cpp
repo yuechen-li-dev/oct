@@ -53,6 +53,11 @@ std::uint32_t contiguous_worker_for_entry(std::uint32_t entry, std::uint32_t ent
     return static_cast<std::uint32_t>((static_cast<std::uint64_t>(entry) * static_cast<std::uint64_t>(workers)) /
                                       static_cast<std::uint64_t>(entry_count));
 }
+
+std::uint32_t round_robin_worker_for_entry(std::uint32_t entry, std::uint32_t workers)
+{
+    return workers == 0u ? 0u : (entry % workers);
+}
 }
 
 FACT(PrometheusReactor_P11_M6_BatchRoundRobinAndDiagnostics)
@@ -421,6 +426,95 @@ FACT(PrometheusReactor_P11_M7_DiagnosticsTruthfulnessForSuccessfulBatch)
     ASSERT_EQUAL(1u, diag.output_committed, "success should commit output");
     ASSERT_EQUAL(40u, diag.plan_generation, "plan generation should remain 40");
     ASSERT_EQUAL(0u, diag.worker_judgment_count, "workers should not run judgment");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M8_MultiWorkerAssignmentAndLaneExecutionDiagnostics)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    const std::uint32_t entry_count = 8u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<std::vector<float>> a(entry_count);
+    std::vector<std::vector<float>> b(entry_count);
+    std::vector<std::vector<float>> c(entry_count, std::vector<float>(m * n, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 0.21f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 0.41f + static_cast<float>(i) * 0.05f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, flags, &stage, &detail), "multi-worker run should succeed");
+    ASSERT_EQUAL(PROM_STAGE_TRANSFER_OUT, stage, "success should report transfer-out stage");
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        ASSERT_TRUE(nearly_equal(cpu_oracle(m, n, k, a[i], b[i]), c[i]), "multi-worker run should preserve output correctness");
+    }
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(workers, diag.effective_workers, "effective workers should honor test hardware override");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_LANE_SIMULATED, diag.execution_mode, "multi-worker M8 execution should be lane-simulated");
+    ASSERT_EQUAL(PROM_BATCH_WORKER_RESOURCE_SIMULATED, diag.worker_resource_mode, "worker resource ownership should be explicit");
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        const std::uint32_t worker = round_robin_worker_for_entry(i, workers);
+        ASSERT_TRUE(diag.worker_assigned_count[worker] > 0u, "each planned worker should receive static round-robin assignments");
+    }
+    for (std::uint32_t w = 0; w < workers; ++w) {
+        ASSERT_EQUAL(diag.worker_assigned_count[w], diag.worker_completed_count[w], "completed count should match assigned count on success");
+        ASSERT_TRUE(diag.worker_event_count[w] >= diag.worker_completed_count[w], "event count should include completion lifecycle events");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M8_ContiguousAssignmentAndFailureDrainAcrossWorkers)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    const std::uint32_t entry_count = 8u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 3u;
+    const std::uint32_t n = 3u;
+    const std::uint32_t k = 3u;
+    std::vector<std::vector<float>> a(entry_count);
+    std::vector<std::vector<float>> b(entry_count);
+    std::vector<std::vector<float>> c(entry_count, std::vector<float>(m * n, 6.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 0.51f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 0.71f + static_cast<float>(i) * 0.05f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    const std::uint32_t fail_entry = 5u;
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = workers | PROM_BATCH_FLAG_PARTITION_CONTIGUOUS | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                ((fail_entry + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, flags, &stage, &detail), "worker failure should fail full batch");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_EXECUTION_FAILED, detail, "failure detail should be explicit");
+    for (const auto& out : c) {
+        ASSERT_EQUAL(6.0f, out[0], "failed batch must not partially commit caller-visible outputs");
+    }
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_STATE_FAILED, diag.batch_state, "failed multi-worker batch should terminate failed");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed multi-worker batch should remain uncommitted");
+    ASSERT_EQUAL(fail_entry, diag.failed_entry_id, "failed entry should remain explicit");
+    ASSERT_EQUAL(contiguous_worker_for_entry(fail_entry, entry_count, workers), diag.failed_worker_id, "failed worker should follow contiguous assignment");
+    ASSERT_TRUE(diag.event_drain_count > 0u, "failure path should still drain worker events");
+    ASSERT_TRUE(diag.worker_event_count[diag.failed_worker_id] > 0u, "failed worker ring should contain failure lifecycle events");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

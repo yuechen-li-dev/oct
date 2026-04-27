@@ -354,6 +354,20 @@ typedef struct prom_batch_worker_event {
   int32_t detail;
 } prom_batch_worker_event;
 
+typedef struct prom_batch_worker_state {
+  uint32_t worker_id;
+  uint32_t assigned_count;
+  uint32_t completed_count;
+  uint32_t event_count;
+  uint32_t next_scan_index;
+  uint32_t active;
+  uint32_t failure_observed;
+  uint32_t failure_entry_id;
+  uint32_t failure_stage;
+  int32_t failure_detail;
+  uint32_t resource_mode;
+} prom_batch_worker_state;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -765,6 +779,30 @@ static void batch_drain_worker_events(const prom_batch_worker_event* worker_even
       }
     }
   }
+}
+
+static int batch_worker_emit_event(prom_batch_worker_event* worker_events,
+                                   uint32_t* worker_event_counts,
+                                   uint32_t worker_id,
+                                   uint32_t event_capacity,
+                                   uint32_t kind,
+                                   uint32_t entry_id,
+                                   uint32_t stage,
+                                   int32_t detail) {
+  uint32_t ring_index;
+  if (worker_events == NULL || worker_event_counts == NULL || event_capacity == 0u) {
+    return 0;
+  }
+  if (worker_event_counts[worker_id] >= event_capacity) {
+    return 0;
+  }
+  ring_index = worker_id * event_capacity + worker_event_counts[worker_id];
+  worker_events[ring_index].kind = kind;
+  worker_events[ring_index].entry_id = entry_id;
+  worker_events[ring_index].stage = stage;
+  worker_events[ring_index].detail = detail;
+  worker_event_counts[worker_id] += 1u;
+  return 1;
 }
 
 static uint32_t selector_cache_enabled(const prometheus_runtime* rt) {
@@ -4946,6 +4984,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t* output_sizes = NULL;
   prom_batch_worker_event* worker_events = NULL;
   uint32_t* worker_event_counts = NULL;
+  prom_batch_worker_state* workers = NULL;
   uint32_t requested_workers;
   uint32_t hardware_queue_cap = 1u;
   uint32_t memory_worker_cap;
@@ -4964,6 +5003,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t event_overflow = 0u;
   uint32_t event_drain_count = 0u;
   uint32_t cap_reason = PROM_BATCH_CAP_REASON_NONE;
+  uint32_t execution_mode = PROM_BATCH_EXECUTION_SINGLE_WORKER;
+  uint32_t worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_SIMULATED;
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
 
@@ -5007,10 +5048,29 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     rt->batch_diag.effective_workers = 0u;
     rt->batch_diag.worker_cap_reason = cap_reason;
     rt->batch_diag.batch_state = PROM_BATCH_STATE_FAILED;
+    rt->batch_diag.failed_entry_id = UINT32_MAX;
+    rt->batch_diag.failed_worker_id = UINT32_MAX;
     rt->batch_diag.failure_stage = PROM_STAGE_INIT;
     rt->batch_diag.failure_detail = PROM_DETAIL_BATCH_ZERO_WORKERS;
+    rt->batch_diag.event_overflow_count = 0u;
+    rt->batch_diag.event_drain_count = 0u;
+    rt->batch_diag.output_committed = 0u;
+    rt->batch_diag.plan_generation = 40u;
+    rt->batch_diag.worker_judgment_count = 0u;
+    rt->batch_diag.execution_mode = execution_mode;
+    rt->batch_diag.worker_resource_mode = worker_resource_mode;
+    rt->batch_diag.worker_active_mask = 0u;
+    for (i = 0u; i < 8u; ++i) {
+      rt->batch_diag.worker_assigned_count[i] = 0u;
+      rt->batch_diag.worker_completed_count[i] = 0u;
+      rt->batch_diag.worker_event_count[i] = 0u;
+    }
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
     return PROM_ERROR;
+  }
+
+  if (effective_workers > 1u) {
+    execution_mode = PROM_BATCH_EXECUTION_LANE_SIMULATED;
   }
 
   if (event_capacity == 0u) {
@@ -5022,10 +5082,17 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   output_sizes = (uint32_t*)calloc((size_t)entry_count, sizeof(uint32_t));
   worker_events = (prom_batch_worker_event*)calloc((size_t)(effective_workers * event_capacity), sizeof(prom_batch_worker_event));
   worker_event_counts = (uint32_t*)calloc((size_t)effective_workers, sizeof(uint32_t));
-  if (plans == NULL || staged_outputs == NULL || output_sizes == NULL || worker_events == NULL || worker_event_counts == NULL) {
+  workers = (prom_batch_worker_state*)calloc((size_t)effective_workers, sizeof(prom_batch_worker_state));
+  if (plans == NULL || staged_outputs == NULL || output_sizes == NULL || worker_events == NULL || worker_event_counts == NULL || workers == NULL) {
     failure_stage = PROM_STAGE_INIT;
     failure_detail = PROM_ERROR;
     goto batch_cleanup;
+  }
+
+  for (w = 0u; w < effective_workers; ++w) {
+    workers[w].worker_id = w;
+    workers[w].failure_entry_id = UINT32_MAX;
+    workers[w].resource_mode = worker_resource_mode;
   }
 
   state = PROM_BATCH_STATE_RUNNING;
@@ -5133,43 +5200,86 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       state = PROM_BATCH_STATE_FAILING;
       break;
     }
+    workers[worker_id].assigned_count += 1u;
   }
 
-  for (w = 0u; w < effective_workers && state == PROM_BATCH_STATE_RUNNING; ++w) {
-    for (i = 0u; i < entry_count; ++i) {
-      uint32_t ring_index;
-      prom_batch_plan* plan = &plans[i];
-      if (plan->worker_id != w) {
+  while (state == PROM_BATCH_STATE_RUNNING) {
+    uint32_t progress = 0u;
+    for (w = 0u; w < effective_workers && state == PROM_BATCH_STATE_RUNNING; ++w) {
+      prom_batch_worker_state* worker = &workers[w];
+      uint32_t index = worker->next_scan_index;
+      prom_batch_plan* plan = NULL;
+
+      while (index < entry_count) {
+        if (plans[index].worker_id == w) {
+          plan = &plans[index];
+          worker->next_scan_index = index + 1u;
+          break;
+        }
+        index += 1u;
+      }
+      if (plan == NULL) {
+        if (worker->assigned_count != 0u) {
+          if (!batch_worker_emit_event(worker_events,
+                                       worker_event_counts,
+                                       w,
+                                       event_capacity,
+                                       PROM_BATCH_EVENT_WORKER_IDLE,
+                                       UINT32_MAX,
+                                       PROM_STAGE_NONE,
+                                       0)) {
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_CLEANUP;
+            failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
+            failed_entry_id = UINT32_MAX;
+            failed_worker_id = w;
+            event_overflow += 1u;
+            break;
+          }
+        }
         continue;
       }
-      ring_index = w * event_capacity + worker_event_counts[w];
-      if (worker_event_counts[w] >= event_capacity) {
+
+      progress = 1u;
+      worker->active = 1u;
+      if (!batch_worker_emit_event(worker_events,
+                                   worker_event_counts,
+                                   w,
+                                   event_capacity,
+                                   PROM_BATCH_EVENT_PLAN_STARTED,
+                                   plan->entry_id,
+                                   PROM_STAGE_TRANSFER_IN,
+                                   0)) {
         state = PROM_BATCH_STATE_FAILING;
         failure_stage = PROM_STAGE_SUBMIT;
         failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
         failed_entry_id = plan->entry_id;
         failed_worker_id = w;
         event_overflow += 1u;
+        worker->failure_detail = failure_detail;
+        worker->failure_stage = failure_stage;
+        worker->failure_entry_id = failed_entry_id;
         break;
       }
-      worker_events[ring_index].kind = PROM_BATCH_EVENT_PLAN_STARTED;
-      worker_events[ring_index].entry_id = plan->entry_id;
-      worker_events[ring_index].stage = PROM_STAGE_TRANSFER_IN;
-      worker_event_counts[w] += 1u;
-      ring_index = w * event_capacity + worker_event_counts[w];
-      if (worker_event_counts[w] >= event_capacity) {
+      if (!batch_worker_emit_event(worker_events,
+                                   worker_event_counts,
+                                   w,
+                                   event_capacity,
+                                   PROM_BATCH_EVENT_PLAN_SUBMITTED,
+                                   plan->entry_id,
+                                   PROM_STAGE_SUBMIT,
+                                   0)) {
         state = PROM_BATCH_STATE_FAILING;
         failure_stage = PROM_STAGE_SUBMIT;
         failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
         failed_entry_id = plan->entry_id;
         failed_worker_id = w;
         event_overflow += 1u;
+        worker->failure_detail = failure_detail;
+        worker->failure_stage = failure_stage;
+        worker->failure_entry_id = failed_entry_id;
         break;
       }
-      worker_events[ring_index].kind = PROM_BATCH_EVENT_PLAN_SUBMITTED;
-      worker_events[ring_index].entry_id = plan->entry_id;
-      worker_events[ring_index].stage = PROM_STAGE_SUBMIT;
-      worker_event_counts[w] += 1u;
 
       if (((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) || plan->entry_id == injected_failure_entry_id) {
         state = PROM_BATCH_STATE_FAILING;
@@ -5177,27 +5287,69 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
         failed_entry_id = plan->entry_id;
         failed_worker_id = w;
+        worker->failure_detail = failure_detail;
+        worker->failure_stage = failure_stage;
+        worker->failure_entry_id = failed_entry_id;
         break;
       }
+
       batch_reference_sgemm(plan->a, plan->b, staged_outputs[plan->entry_id], plan->m, plan->n, plan->k);
-      ring_index = w * event_capacity + worker_event_counts[w];
-      if (worker_event_counts[w] >= event_capacity) {
+      if (!batch_worker_emit_event(worker_events,
+                                   worker_event_counts,
+                                   w,
+                                   event_capacity,
+                                   PROM_BATCH_EVENT_PLAN_COMPLETED,
+                                   plan->entry_id,
+                                   PROM_STAGE_TRANSFER_OUT,
+                                   0)) {
         state = PROM_BATCH_STATE_FAILING;
         failure_stage = PROM_STAGE_TRANSFER_OUT;
         failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
         failed_entry_id = plan->entry_id;
         failed_worker_id = w;
         event_overflow += 1u;
+        worker->failure_detail = failure_detail;
+        worker->failure_stage = failure_stage;
+        worker->failure_entry_id = failed_entry_id;
         break;
       }
-      worker_events[ring_index].kind = PROM_BATCH_EVENT_PLAN_COMPLETED;
-      worker_events[ring_index].entry_id = plan->entry_id;
-      worker_events[ring_index].stage = PROM_STAGE_TRANSFER_OUT;
-      worker_event_counts[w] += 1u;
+      worker->completed_count += 1u;
+      worker->active = 0u;
+    }
+    if (state != PROM_BATCH_STATE_RUNNING) {
+      break;
+    }
+    if (progress == 0u) {
+      break;
     }
   }
 
   if (state == PROM_BATCH_STATE_FAILING) {
+    for (w = 0u; w < effective_workers; ++w) {
+      prom_batch_worker_state* worker = &workers[w];
+      worker->active = 0u;
+      if (worker->failure_entry_id == UINT32_MAX) {
+        worker->failure_observed = 1u;
+        batch_worker_emit_event(worker_events,
+                               worker_event_counts,
+                               w,
+                               event_capacity,
+                               PROM_BATCH_EVENT_BATCH_FAILURE_OBSERVED,
+                               failed_entry_id,
+                               failure_stage,
+                               failure_detail);
+      }
+      if (!batch_worker_emit_event(worker_events,
+                                   worker_event_counts,
+                                   w,
+                                   event_capacity,
+                                   PROM_BATCH_EVENT_WORKER_DRAINED,
+                                   failed_entry_id,
+                                   PROM_STAGE_CLEANUP,
+                                   failure_detail)) {
+        event_overflow += 1u;
+      }
+    }
     state = PROM_BATCH_STATE_DRAINING;
     batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
     event_drain_count = drain_summary.drained_events;
@@ -5208,12 +5360,39 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     for (i = 0u; i < entry_count; ++i) {
       memcpy(entries[i].c, staged_outputs[i], (size_t)output_sizes[i] * sizeof(float));
     }
-    output_committed = 1u;
-    state = PROM_BATCH_STATE_SUCCEEDED;
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
-    batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
-    event_drain_count = drain_summary.drained_events;
-    final_status = PROM_OK;
+    for (w = 0u; w < effective_workers; ++w) {
+      if (!batch_worker_emit_event(worker_events,
+                                   worker_event_counts,
+                                   w,
+                                   event_capacity,
+                                   PROM_BATCH_EVENT_WORKER_DRAINED,
+                                   UINT32_MAX,
+                                   PROM_STAGE_CLEANUP,
+                                   0)) {
+        state = PROM_BATCH_STATE_FAILING;
+        failure_stage = PROM_STAGE_CLEANUP;
+        failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
+        failed_entry_id = UINT32_MAX;
+        failed_worker_id = w;
+        event_overflow += 1u;
+        break;
+      }
+    }
+    if (state == PROM_BATCH_STATE_FAILING) {
+      state = PROM_BATCH_STATE_DRAINING;
+      batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
+      event_drain_count = drain_summary.drained_events;
+      state = PROM_BATCH_STATE_FAILED;
+      set_status(out_stage, out_detail_code, failure_stage, failure_detail);
+      final_status = PROM_ERROR;
+    } else {
+      output_committed = 1u;
+      state = PROM_BATCH_STATE_SUCCEEDED;
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
+      batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
+      event_drain_count = drain_summary.drained_events;
+      final_status = PROM_OK;
+    }
   }
 
 batch_cleanup:
@@ -5252,12 +5431,31 @@ batch_cleanup:
     rt->batch_diag.output_committed = output_committed;
     rt->batch_diag.plan_generation = 40u;
     rt->batch_diag.worker_judgment_count = 0u;
+    rt->batch_diag.execution_mode = execution_mode;
+    rt->batch_diag.worker_resource_mode = worker_resource_mode;
+    rt->batch_diag.worker_active_mask = 0u;
+    for (i = 0u; i < 8u; ++i) {
+      rt->batch_diag.worker_assigned_count[i] = 0u;
+      rt->batch_diag.worker_completed_count[i] = 0u;
+      rt->batch_diag.worker_event_count[i] = 0u;
+    }
+    if (workers != NULL && worker_event_counts != NULL) {
+      for (w = 0u; w < effective_workers && w < 8u; ++w) {
+        rt->batch_diag.worker_assigned_count[w] = workers[w].assigned_count;
+        rt->batch_diag.worker_completed_count[w] = workers[w].completed_count;
+        rt->batch_diag.worker_event_count[w] = worker_event_counts[w];
+        if (workers[w].active != 0u) {
+          rt->batch_diag.worker_active_mask |= (1u << w);
+        }
+      }
+    }
   }
   if (staged_outputs != NULL) {
     for (i = 0u; i < entry_count; ++i) {
       free(staged_outputs[i]);
     }
   }
+  free(workers);
   free(worker_event_counts);
   free(worker_events);
   free(output_sizes);
