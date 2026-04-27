@@ -425,6 +425,7 @@ void prom_dom_slot_readiness_clear_boundary(prom_dom_blackboard* board) {
     return;
   }
 
+  /* Boundary-scoped readiness state resets here; lifetime diagnostics counters are preserved intentionally. */
   board->slot_readiness_boundary_generation += 1u;
   board->slot_readiness_dirty_slot_mask = 0u;
   board->slot_readiness_ready_slot_mask = 0u;

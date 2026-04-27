@@ -184,6 +184,27 @@ typedef struct prom_dom_sgemm_path_compute_facts {
   uint32_t policy_mode;
 } prom_dom_sgemm_path_compute_facts;
 
+/*
+ * Dependency-bit index contract for prom_dom_sgemm_path_compute_projection::dependent_dirty_key_mask_last_commit.
+ * Keep this enum aligned with path_compute_dependency_mask_last_commit(...) in reactor_dominatus_sgemm_adapter.c.
+ */
+typedef enum prom_dom_sgemm_path_compute_dependency_bit {
+  PROM_DOM_PATH_COMPUTE_DEP_SHAPE_M = 0,
+  PROM_DOM_PATH_COMPUTE_DEP_SHAPE_N = 1,
+  PROM_DOM_PATH_COMPUTE_DEP_SHAPE_K = 2,
+  PROM_DOM_PATH_COMPUTE_DEP_WORK_UNITS = 3,
+  PROM_DOM_PATH_COMPUTE_DEP_CAN_STAGE = 4,
+  PROM_DOM_PATH_COMPUTE_DEP_CAN_DIRECT = 5,
+  PROM_DOM_PATH_COMPUTE_DEP_ALLOW_FALLBACK = 6,
+  PROM_DOM_PATH_COMPUTE_DEP_READBACK_REQUIRED = 7,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT = 8,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_STAGED = 9,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_TILED = 10,
+  PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE = 11,
+  PROM_DOM_PATH_COMPUTE_DEP_SOFTWARE_VULKAN = 12,
+  PROM_DOM_PATH_COMPUTE_DEP_POLICY_MODE = 13,
+} prom_dom_sgemm_path_compute_dependency_bit;
+
 typedef struct prom_dom_sgemm_path_compute_projection {
   prom_dom_sgemm_path_compute_facts facts;
   uint64_t visible_generation;

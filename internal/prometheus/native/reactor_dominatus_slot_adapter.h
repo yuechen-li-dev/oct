@@ -42,12 +42,14 @@ typedef struct prom_dom_slot_runtime_diag_snapshot {
 } prom_dom_slot_runtime_diag_snapshot;
 
 typedef struct prom_dom_slot_readiness_snapshot {
+  /* Boundary-scoped generation and masks reset by prom_dom_slot_readiness_clear_boundary(...). */
   uint64_t boundary_generation;
   uint32_t dirty_slot_mask;
   uint32_t ready_slot_mask;
   uint32_t failed_slot_mask;
   uint32_t invalidated_slot_mask;
   uint32_t attention_slot_mask;
+  /* Lifetime diagnostics counters intentionally persist across boundary clears. */
   uint32_t overflow_spill_count;
   uint64_t duplicate_ready_event_count;
   uint64_t empty_boundary_commit_count;
@@ -76,6 +78,11 @@ uint32_t prom_dom_slot_read_visible_runtime_diag(const prom_dom_blackboard* boar
                                                  prom_dom_slot_runtime_diag_snapshot* out_snapshot);
 uint32_t prom_dom_slot_readiness_read_visible(const prom_dom_blackboard* board,
                                               prom_dom_slot_readiness_snapshot* out_snapshot);
+/*
+ * Clears only boundary-scoped readiness masks and advances boundary_generation.
+ * Lifetime counters (overflow_spill_count, duplicate_ready_event_count, empty_boundary_commit_count)
+ * are intentionally retained as cumulative diagnostics.
+ */
 void prom_dom_slot_readiness_clear_boundary(prom_dom_blackboard* board);
 
 #ifdef __cplusplus
