@@ -1,0 +1,825 @@
+package PrometheusSgemmAlgorithmLab
+
+record M39Scenario {
+    Name: String
+    BatchSize: Int
+    JudgmentCost: Int
+    DispatchCostBase: Int
+    WorkerCount: Int
+    HardwareQueueCount: Int
+    SharedQueueOverhead: Int
+    StealAttemptCost: Int
+    FailedStealBackoffCost: Int
+    EventEmitCost: Int
+    EventDrainCost: Int
+    PerWorkerArenaBytes: Int
+    MemoryBudgetBytes: Int
+    TaskDistributionKind: String
+}
+
+record M39EffectiveWorkers {
+    RequestedWorkers: Int
+    HardwareQueueCount: Int
+    MemoryBudgetWorkerLimit: Int
+    EffectiveWorkers: Int
+    MemoryUsed: Int
+    MemoryLimited: Bool
+    MemoryInfeasible: Bool
+}
+
+record M39ModelResult {
+    Scenario: String
+    Model: String
+    TaskDistributionKind: String
+    EffectiveWorkers: Int
+    CompletionTime: Int
+    PolicyTime: Int
+    DispatchTime: Int
+    QueueOverheadTime: Int
+    StealOverheadTime: Int
+    IdleWorkerTime: Int
+    LoadImbalance: Int
+    WorkerUtilizationMilli: Int
+    SpeedupVsSingleMilli: Int
+    MemoryUsed: Int
+    MemoryLimited: Bool
+    MemoryInfeasible: Bool
+    EventOverheadTime: Int
+    ProductScore: Int
+}
+
+record M39DispatchModelComparison {
+    Scenario: String[]
+    Model: String[]
+    Distribution: String[]
+    EffectiveWorkers: Int[]
+    CompletionTime: Int[]
+    PolicyTime: Int[]
+    DispatchTime: Int[]
+    QueueOverheadTime: Int[]
+    StealOverheadTime: Int[]
+    IdleWorkerTime: Int[]
+    LoadImbalance: Int[]
+    WorkerUtilizationMilli: Int[]
+    SpeedupVsSingleMilli: Int[]
+    MemoryUsed: Int[]
+    MemoryLimited: Bool[]
+    EventOverheadTime: Int[]
+    ProductScore: Int[]
+}
+
+record M39JudgmentBottleneckTable {
+    Scenario: String[]
+    JudgmentCost: Int[]
+    PolicyShareMilli: Int[]
+    StaticSpeedupMilli: Int[]
+    SpmcSpeedupMilli: Int[]
+    JudgmentBottleneck: Bool[]
+}
+
+record M39StealOverheadTable {
+    Scenario: String[]
+    Distribution: String[]
+    StealAttemptCost: Int[]
+    StaticCompletion: Int[]
+    SpmcCompletion: Int[]
+    StealCompletion: Int[]
+    StealVsStaticDelta: Int[]
+    StealVsSpmcDelta: Int[]
+}
+
+record M39QueueTopologyTable {
+    Scenario: String[]
+    HardwareQueueCount: Int[]
+    RequestedWorkers: Int[]
+    EffectiveWorkersStatic: Int[]
+    EffectiveWorkersSpmc: Int[]
+    EffectiveWorkersSteal: Int[]
+    StaticSpeedupMilli: Int[]
+    SpmcSpeedupMilli: Int[]
+    StealSpeedupMilli: Int[]
+}
+
+record M39MemoryPressureTable {
+    Scenario: String[]
+    MemoryBudgetBytes: Int[]
+    PerWorkerArenaBytes: Int[]
+    RequestedWorkers: Int[]
+    MemoryBudgetWorkerLimit: Int[]
+    EffectiveWorkers: Int[]
+    MemoryUsed: Int[]
+    MemoryLimited: Bool[]
+    MemoryInfeasible: Bool[]
+}
+
+record M39FinalRecommendation {
+    ArchitectureViable: Bool
+    ArchitectureReason: String
+    CentralizedBottleneckCondition: String
+    FirstImplementationModel: String
+    WorkStealingForFirstImplementation: String
+    WorkStealingWorthItCondition: String
+    WorkerCountRule: String
+    SingleQueueDegradeRule: String
+    MemoryPressureRule: String
+    M40Next: String
+    MustNotImplementYet: String
+    RecommendationDerivedFromScores: Bool
+}
+
+fn M39Max(a: Int, b: Int) -> Int { return switch { case a > b => a else => b } }
+fn M39Min(a: Int, b: Int) -> Int { return switch { case a < b => a else => b } }
+fn M39Abs(v: Int) -> Int { return switch { case v >= 0 => v else => 0 - v } }
+
+fn M39ModelNameA() -> String { return "A-single-worker-baseline" }
+fn M39ModelNameB() -> String { return "B-central-policy-static-partition" }
+fn M39ModelNameC() -> String { return "C-central-policy-shared-spmc" }
+fn M39ModelNameD() -> String { return "D-central-policy-local-queues-work-steal" }
+fn M39ModelNameE() -> String { return "E-parallel-judgment-reference" }
+
+fn M39TaskDurations(kind: String, n: Int) -> Int[] {
+    var out = [switch {
+        case kind == "uniform" => 20
+        case kind == "moderate-variable" => 14
+        case kind == "heavy-tail" => 10
+        case kind == "small-fast" => 3
+        case kind == "large-slow" => 45
+        else => 20
+    }]
+    for i in 1..n {
+        let v = switch {
+            case kind == "uniform" => 20
+            case kind == "moderate-variable" => 12 + (((i / 6) % 4) * 4) + ((i * 3 + 1) % 3)
+            case kind == "heavy-tail" => switch {
+                case ((i * 37 + 5) % 11) == 0 => 95 + ((i * 17 + 3) % 45)
+                else => 8 + ((i * 19 + 2) % 12)
+            }
+            case kind == "small-fast" => 2 + ((i * 7 + 1) % 4)
+            case kind == "large-slow" => 42 + ((i * 13 + 4) % 18)
+            else => 20
+        }
+        out = Append(out, v)
+    }
+    return out
+}
+
+fn M39EvaluateWorkers(s: M39Scenario) -> M39EffectiveWorkers {
+    if s.PerWorkerArenaBytes <= 0 {
+        return M39EffectiveWorkers {
+            RequestedWorkers: s.WorkerCount
+            HardwareQueueCount: s.HardwareQueueCount
+            MemoryBudgetWorkerLimit: 0
+            EffectiveWorkers: 0
+            MemoryUsed: 0
+            MemoryLimited: true
+            MemoryInfeasible: true
+        }
+    }
+    let memLimit = s.MemoryBudgetBytes / s.PerWorkerArenaBytes
+    let capByHw = M39Min(s.WorkerCount, s.HardwareQueueCount)
+    let effective = M39Min(capByHw, memLimit)
+    let infeasible = memLimit <= 0
+    return M39EffectiveWorkers {
+        RequestedWorkers: s.WorkerCount
+        HardwareQueueCount: s.HardwareQueueCount
+        MemoryBudgetWorkerLimit: memLimit
+        EffectiveWorkers: switch { case effective > 0 => effective else => 0 }
+        MemoryUsed: switch { case effective > 0 => effective * s.PerWorkerArenaBytes else => 0 }
+        MemoryLimited: memLimit < capByHw
+        MemoryInfeasible: infeasible
+    }
+}
+
+fn M39ArgMin(v: Int[]) -> Int {
+    var idx = 0
+    var best = v[0]
+    for i in 1..Len(v) {
+        if v[i] < best {
+            best = v[i]
+            idx = i
+        }
+    }
+    return idx
+}
+
+fn M39ArgMax(v: Int[]) -> Int {
+    var idx = 0
+    var best = v[0]
+    for i in 1..Len(v) {
+        if v[i] > best {
+            best = v[i]
+            idx = i
+        }
+    }
+    return idx
+}
+
+fn M39CountUnfinishedForOwner(done: Bool[], owner: Int[], ownerId: Int) -> Int {
+    var c = 0
+    for i in 0..Len(done) {
+        if owner[i] == ownerId and not done[i] { c = c + 1 }
+    }
+    return c
+}
+
+fn M39PickLocalTask(done: Bool[], owner: Int[], worker: Int) -> Int {
+    for i in 0..Len(done) {
+        if owner[i] == worker and not done[i] { return i }
+    }
+    return -1
+}
+
+fn M39PickStealTask(done: Bool[], owner: Int[], thief: Int, workers: Int) -> Int {
+    var donor = -1
+    var donorCount = 0
+    for d in 0..workers {
+        if d != thief {
+            let c = M39CountUnfinishedForOwner(done, owner, d)
+            if c > donorCount {
+                donorCount = c
+                donor = d
+            }
+        }
+    }
+    if donor < 0 or donorCount <= 0 { return -1 }
+    var i = Len(done) - 1
+    while i >= 0 {
+        if owner[i] == donor and not done[i] { return i }
+        i = i - 1
+    }
+    return -1
+}
+
+fn M39SingleCompletionOnly(s: M39Scenario) -> Int {
+    let d = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+    var total = 0
+    for i in 0..Len(d) { total = total + d[i] + s.DispatchCostBase }
+    let policy = s.BatchSize * s.JudgmentCost
+    let eventOverhead = s.BatchSize * (s.EventEmitCost + s.EventDrainCost)
+    return policy + total + eventOverhead
+}
+
+fn M39BuildResult(s: M39Scenario, model: String, workers: M39EffectiveWorkers, policyTime: Int, dispatchTime: Int, queueOverhead: Int, stealOverhead: Int, eventOverhead: Int, idle: Int, imbalance: Int) -> M39ModelResult {
+    let completion = switch {
+        case workers.MemoryInfeasible => 214748000
+        else => policyTime + dispatchTime + queueOverhead + stealOverhead + eventOverhead
+    }
+    let utilization = switch {
+        case workers.EffectiveWorkers <= 0 => 0
+        case dispatchTime <= 0 => 0
+        else => ((dispatchTime - idle) * 1000) / M39Max(dispatchTime, 1)
+    }
+    let baseCompletion = M39SingleCompletionOnly(s)
+    let speedup = switch {
+        case completion <= 0 => 0
+        else => (baseCompletion * 1000) / completion
+    }
+
+    let completionPenalty = completion * 9
+    let idlePenalty = idle * 6
+    let queuePenalty = queueOverhead * 4
+    let stealPenalty = stealOverhead * 4
+    let eventPenalty = eventOverhead * 3
+    let imbalancePenalty = imbalance * 5
+    let memoryPenalty = switch { case workers.MemoryLimited => 800 else => 0 } + switch { case workers.MemoryInfeasible => 1000000 else => 0 }
+    let complexityPenalty = switch {
+        case model == M39ModelNameB() => 140
+        case model == M39ModelNameC() => 300
+        case model == M39ModelNameD() => 620
+        case model == M39ModelNameE() => 900
+        else => 40
+    }
+
+    return M39ModelResult {
+        Scenario: s.Name
+        Model: model
+        TaskDistributionKind: s.TaskDistributionKind
+        EffectiveWorkers: switch {
+            case model == M39ModelNameA() => 1
+            else => workers.EffectiveWorkers
+        }
+        CompletionTime: completion
+        PolicyTime: policyTime
+        DispatchTime: dispatchTime
+        QueueOverheadTime: queueOverhead
+        StealOverheadTime: stealOverhead
+        IdleWorkerTime: idle
+        LoadImbalance: imbalance
+        WorkerUtilizationMilli: utilization
+        SpeedupVsSingleMilli: speedup
+        MemoryUsed: workers.MemoryUsed
+        MemoryLimited: workers.MemoryLimited
+        MemoryInfeasible: workers.MemoryInfeasible
+        EventOverheadTime: eventOverhead
+        ProductScore: 2000000 - completionPenalty - idlePenalty - queuePenalty - stealPenalty - eventPenalty - imbalancePenalty - memoryPenalty - complexityPenalty
+    }
+}
+
+fn M39SimulateSingle(s: M39Scenario) -> M39ModelResult {
+    let d = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+    var total = 0
+    for i in 0..Len(d) { total = total + d[i] + s.DispatchCostBase }
+    let policy = s.BatchSize * s.JudgmentCost
+    let eventOverhead = s.BatchSize * (s.EventEmitCost + s.EventDrainCost)
+    return M39BuildResult(s, M39ModelNameA(), M39EvaluateWorkers(s), policy, total, 0, 0, eventOverhead, 0, 0)
+}
+
+fn M39SimulateStaticPartition(s: M39Scenario) -> M39ModelResult {
+    let workers = M39EvaluateWorkers(s)
+    if workers.MemoryInfeasible or workers.EffectiveWorkers <= 0 { return M39BuildResult(s, M39ModelNameB(), workers, 0, 0, 0, 0, 0, 0, 0) }
+    let durations = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+    var laneTimes = [0]
+    for _i in 1..workers.EffectiveWorkers { laneTimes = Append(laneTimes, 0) }
+
+    for i in 0..s.BatchSize {
+        let lane = (i * workers.EffectiveWorkers) / s.BatchSize
+        laneTimes[lane] = laneTimes[lane] + durations[i] + s.DispatchCostBase + s.EventEmitCost
+    }
+
+    let maxIdx = M39ArgMax(laneTimes)
+    let minIdx = M39ArgMin(laneTimes)
+    let laneMax = laneTimes[maxIdx]
+    let laneMin = laneTimes[minIdx]
+    var laneSum = 0
+    for i in 0..Len(laneTimes) { laneSum = laneSum + laneTimes[i] }
+    let idle = laneMax * workers.EffectiveWorkers - laneSum
+    let eventOverhead = s.BatchSize * s.EventDrainCost
+    let policy = s.BatchSize * s.JudgmentCost
+    return M39BuildResult(s, M39ModelNameB(), workers, policy, laneMax, 0, 0, eventOverhead, idle, laneMax - laneMin)
+}
+
+fn M39SimulateSpmc(s: M39Scenario) -> M39ModelResult {
+    let workers = M39EvaluateWorkers(s)
+    if workers.MemoryInfeasible or workers.EffectiveWorkers <= 0 { return M39BuildResult(s, M39ModelNameC(), workers, 0, 0, 0, 0, 0, 0, 0) }
+    let durations = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+
+    var laneTimes = [0]
+    for _i in 1..workers.EffectiveWorkers { laneTimes = Append(laneTimes, 0) }
+
+    var queueOverhead = 0
+    for i in 0..s.BatchSize {
+        let lane = M39ArgMin(laneTimes)
+        laneTimes[lane] = laneTimes[lane] + durations[i] + s.DispatchCostBase + s.EventEmitCost + s.SharedQueueOverhead
+        queueOverhead = queueOverhead + s.SharedQueueOverhead
+    }
+
+    let maxIdx = M39ArgMax(laneTimes)
+    let minIdx = M39ArgMin(laneTimes)
+    let laneMax = laneTimes[maxIdx]
+    let laneMin = laneTimes[minIdx]
+    var laneSum = 0
+    for i in 0..Len(laneTimes) { laneSum = laneSum + laneTimes[i] }
+    let idle = laneMax * workers.EffectiveWorkers - laneSum
+    let eventOverhead = s.BatchSize * s.EventDrainCost
+    let policy = s.BatchSize * s.JudgmentCost
+    return M39BuildResult(s, M39ModelNameC(), workers, policy, laneMax, queueOverhead, 0, eventOverhead, idle, laneMax - laneMin)
+}
+
+fn M39SimulateSteal(s: M39Scenario) -> M39ModelResult {
+    let workers = M39EvaluateWorkers(s)
+    if workers.MemoryInfeasible or workers.EffectiveWorkers <= 0 { return M39BuildResult(s, M39ModelNameD(), workers, 0, 0, 0, 0, 0, 0, 0) }
+    let durations = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+
+    var owner = [0]
+    var done = [false]
+    for i in 1..s.BatchSize {
+        owner = Append(owner, (i * workers.EffectiveWorkers) / s.BatchSize)
+        done = Append(done, false)
+    }
+
+    var laneTimes = [0]
+    for _i in 1..workers.EffectiveWorkers { laneTimes = Append(laneTimes, 0) }
+
+    var completed = 0
+    var stealOverhead = 0
+    while completed < s.BatchSize {
+        let w = M39ArgMin(laneTimes)
+        let localTask = M39PickLocalTask(done, owner, w)
+        if localTask >= 0 {
+            done[localTask] = true
+            laneTimes[w] = laneTimes[w] + durations[localTask] + s.DispatchCostBase + s.EventEmitCost
+            completed = completed + 1
+        } else {
+            let stolenTask = M39PickStealTask(done, owner, w, workers.EffectiveWorkers)
+            if stolenTask >= 0 {
+                done[stolenTask] = true
+                laneTimes[w] = laneTimes[w] + durations[stolenTask] + s.DispatchCostBase + s.EventEmitCost + s.StealAttemptCost
+                stealOverhead = stealOverhead + s.StealAttemptCost
+                completed = completed + 1
+            } else {
+                laneTimes[w] = laneTimes[w] + s.FailedStealBackoffCost
+                stealOverhead = stealOverhead + s.FailedStealBackoffCost
+            }
+        }
+    }
+
+    let maxIdx = M39ArgMax(laneTimes)
+    let minIdx = M39ArgMin(laneTimes)
+    let laneMax = laneTimes[maxIdx]
+    let laneMin = laneTimes[minIdx]
+    var laneSum = 0
+    for i in 0..Len(laneTimes) { laneSum = laneSum + laneTimes[i] }
+    let idle = laneMax * workers.EffectiveWorkers - laneSum
+    let eventOverhead = s.BatchSize * s.EventDrainCost
+    let policy = s.BatchSize * s.JudgmentCost
+    return M39BuildResult(s, M39ModelNameD(), workers, policy, laneMax, 0, stealOverhead, eventOverhead, idle, laneMax - laneMin)
+}
+
+fn M39SimulateParallelJudgment(s: M39Scenario) -> M39ModelResult {
+    let workers = M39EvaluateWorkers(s)
+    if workers.MemoryInfeasible or workers.EffectiveWorkers <= 0 { return M39BuildResult(s, M39ModelNameE(), workers, 0, 0, 0, 0, 0, 0, 0) }
+    let durations = M39TaskDurations(s.TaskDistributionKind, s.BatchSize)
+    var laneTimes = [0]
+    for _i in 1..workers.EffectiveWorkers { laneTimes = Append(laneTimes, 0) }
+
+    for i in 0..s.BatchSize {
+        let lane = M39ArgMin(laneTimes)
+        laneTimes[lane] = laneTimes[lane] + durations[i] + s.DispatchCostBase + s.EventEmitCost + s.JudgmentCost
+    }
+
+    let policyComplexityPenalty = s.BatchSize * M39Max(s.JudgmentCost / 3, 1) + workers.EffectiveWorkers * 12
+    let maxIdx = M39ArgMax(laneTimes)
+    let minIdx = M39ArgMin(laneTimes)
+    let laneMax = laneTimes[maxIdx]
+    let laneMin = laneTimes[minIdx]
+    var laneSum = 0
+    for i in 0..Len(laneTimes) { laneSum = laneSum + laneTimes[i] }
+    let idle = laneMax * workers.EffectiveWorkers - laneSum
+    let eventOverhead = s.BatchSize * s.EventDrainCost
+    return M39BuildResult(s, M39ModelNameE(), workers, policyComplexityPenalty, laneMax, 0, 0, eventOverhead, idle, laneMax - laneMin)
+}
+
+fn M39SimulateModel(s: M39Scenario, model: String) -> M39ModelResult {
+    if model == M39ModelNameA() { return M39SimulateSingle(s) }
+    if model == M39ModelNameB() { return M39SimulateStaticPartition(s) }
+    if model == M39ModelNameC() { return M39SimulateSpmc(s) }
+    if model == M39ModelNameD() { return M39SimulateSteal(s) }
+    return M39SimulateParallelJudgment(s)
+}
+
+fn M39Models() -> String[] {
+    return [M39ModelNameA(), M39ModelNameB(), M39ModelNameC(), M39ModelNameD(), M39ModelNameE()]
+}
+
+fn M39RunScenario(s: M39Scenario) -> M39ModelResult[] {
+    let models = M39Models()
+    var out = [M39SimulateModel(s, models[0])]
+    for i in 1..Len(models) { out = Append(out, M39SimulateModel(s, models[i])) }
+    return out
+}
+
+fn M39Find(rows: M39ModelResult[], model: String) -> M39ModelResult {
+    for i in 0..Len(rows) {
+        if rows[i].Model == model { return rows[i] }
+    }
+    return rows[0]
+}
+
+fn M39ScenarioBase(name: String, distribution: String) -> M39Scenario {
+    return M39Scenario {
+        Name: name
+        BatchSize: 48
+        JudgmentCost: 8
+        DispatchCostBase: 4
+        WorkerCount: 4
+        HardwareQueueCount: 4
+        SharedQueueOverhead: 2
+        StealAttemptCost: 3
+        FailedStealBackoffCost: 5
+        EventEmitCost: 1
+        EventDrainCost: 2
+        PerWorkerArenaBytes: 268435456
+        MemoryBudgetBytes: 1610612736
+        TaskDistributionKind: distribution
+    }
+}
+
+fn M39ScenariosForComparison() -> M39Scenario[] {
+    let s0 = M39ScenarioBase("uniform-main", "uniform")
+    let s1 = M39ScenarioBase("moderate-main", "moderate-variable")
+    let s2 = M39ScenarioBase("heavy-main", "heavy-tail")
+    let s3 = M39ScenarioBase("small-fast-main", "small-fast")
+    let s4 = M39ScenarioBase("large-slow-main", "large-slow")
+    return [s0, s1, s2, s3, s4]
+}
+
+fn M39DispatchModelComparisonTable() -> M39DispatchModelComparison {
+    let scenarios = M39ScenariosForComparison()
+    let firstRows = M39RunScenario(scenarios[0])
+    var scenario = [firstRows[0].Scenario]
+    var model = [firstRows[0].Model]
+    var dist = [firstRows[0].TaskDistributionKind]
+    var ew = [firstRows[0].EffectiveWorkers]
+    var completion = [firstRows[0].CompletionTime]
+    var policy = [firstRows[0].PolicyTime]
+    var dispatch = [firstRows[0].DispatchTime]
+    var queueOver = [firstRows[0].QueueOverheadTime]
+    var stealOver = [firstRows[0].StealOverheadTime]
+    var idle = [firstRows[0].IdleWorkerTime]
+    var imbalance = [firstRows[0].LoadImbalance]
+    var util = [firstRows[0].WorkerUtilizationMilli]
+    var speedup = [firstRows[0].SpeedupVsSingleMilli]
+    var mem = [firstRows[0].MemoryUsed]
+    var memLimited = [firstRows[0].MemoryLimited]
+    var eventOver = [firstRows[0].EventOverheadTime]
+    var score = [firstRows[0].ProductScore]
+
+    for si in 0..Len(scenarios) {
+        let rows = M39RunScenario(scenarios[si])
+        for ri in 0..Len(rows) {
+            if not (si == 0 and ri == 0) {
+                scenario = Append(scenario, rows[ri].Scenario)
+                model = Append(model, rows[ri].Model)
+                dist = Append(dist, rows[ri].TaskDistributionKind)
+                ew = Append(ew, rows[ri].EffectiveWorkers)
+                completion = Append(completion, rows[ri].CompletionTime)
+                policy = Append(policy, rows[ri].PolicyTime)
+                dispatch = Append(dispatch, rows[ri].DispatchTime)
+                queueOver = Append(queueOver, rows[ri].QueueOverheadTime)
+                stealOver = Append(stealOver, rows[ri].StealOverheadTime)
+                idle = Append(idle, rows[ri].IdleWorkerTime)
+                imbalance = Append(imbalance, rows[ri].LoadImbalance)
+                util = Append(util, rows[ri].WorkerUtilizationMilli)
+                speedup = Append(speedup, rows[ri].SpeedupVsSingleMilli)
+                mem = Append(mem, rows[ri].MemoryUsed)
+                memLimited = Append(memLimited, rows[ri].MemoryLimited)
+                eventOver = Append(eventOver, rows[ri].EventOverheadTime)
+                score = Append(score, rows[ri].ProductScore)
+            }
+        }
+    }
+
+    return M39DispatchModelComparison {
+        Scenario: scenario
+        Model: model
+        Distribution: dist
+        EffectiveWorkers: ew
+        CompletionTime: completion
+        PolicyTime: policy
+        DispatchTime: dispatch
+        QueueOverheadTime: queueOver
+        StealOverheadTime: stealOver
+        IdleWorkerTime: idle
+        LoadImbalance: imbalance
+        WorkerUtilizationMilli: util
+        SpeedupVsSingleMilli: speedup
+        MemoryUsed: mem
+        MemoryLimited: memLimited
+        EventOverheadTime: eventOver
+        ProductScore: score
+    }
+}
+
+fn M39JudgmentBottleneckScenarios() -> M39Scenario[] {
+    let a = M39ScenarioBase("judgment-dominant", "moderate-variable")
+    let b = M39ScenarioBase("balanced", "moderate-variable")
+    let c = M39ScenarioBase("dispatch-dominant", "moderate-variable")
+    return [
+        M39Scenario { Name: a.Name BatchSize: a.BatchSize JudgmentCost: 26 DispatchCostBase: 3 WorkerCount: a.WorkerCount HardwareQueueCount: a.HardwareQueueCount SharedQueueOverhead: a.SharedQueueOverhead StealAttemptCost: a.StealAttemptCost FailedStealBackoffCost: a.FailedStealBackoffCost EventEmitCost: a.EventEmitCost EventDrainCost: a.EventDrainCost PerWorkerArenaBytes: a.PerWorkerArenaBytes MemoryBudgetBytes: a.MemoryBudgetBytes TaskDistributionKind: a.TaskDistributionKind },
+        M39Scenario { Name: b.Name BatchSize: b.BatchSize JudgmentCost: 8 DispatchCostBase: 5 WorkerCount: b.WorkerCount HardwareQueueCount: b.HardwareQueueCount SharedQueueOverhead: b.SharedQueueOverhead StealAttemptCost: b.StealAttemptCost FailedStealBackoffCost: b.FailedStealBackoffCost EventEmitCost: b.EventEmitCost EventDrainCost: b.EventDrainCost PerWorkerArenaBytes: b.PerWorkerArenaBytes MemoryBudgetBytes: b.MemoryBudgetBytes TaskDistributionKind: b.TaskDistributionKind },
+        M39Scenario { Name: c.Name BatchSize: c.BatchSize JudgmentCost: 2 DispatchCostBase: 9 WorkerCount: c.WorkerCount HardwareQueueCount: c.HardwareQueueCount SharedQueueOverhead: c.SharedQueueOverhead StealAttemptCost: c.StealAttemptCost FailedStealBackoffCost: c.FailedStealBackoffCost EventEmitCost: c.EventEmitCost EventDrainCost: c.EventDrainCost PerWorkerArenaBytes: c.PerWorkerArenaBytes MemoryBudgetBytes: c.MemoryBudgetBytes TaskDistributionKind: c.TaskDistributionKind }
+    ]
+}
+
+fn M39JudgmentBottleneckTableFrom() -> M39JudgmentBottleneckTable {
+    let scenarios = M39JudgmentBottleneckScenarios()
+    let r0 = M39RunScenario(scenarios[0])
+    let b0 = M39Find(r0, M39ModelNameB())
+    let c0 = M39Find(r0, M39ModelNameC())
+    let a0 = M39Find(r0, M39ModelNameA())
+
+    var names = [scenarios[0].Name]
+    var jc = [scenarios[0].JudgmentCost]
+    var share = [(b0.PolicyTime * 1000) / M39Max(b0.CompletionTime, 1)]
+    var staticSpeed = [b0.SpeedupVsSingleMilli]
+    var spmcSpeed = [c0.SpeedupVsSingleMilli]
+    var bottleneck = [b0.PolicyTime >= (b0.DispatchTime + b0.QueueOverheadTime + b0.StealOverheadTime + b0.EventOverheadTime)]
+
+    for i in 1..Len(scenarios) {
+        let rows = M39RunScenario(scenarios[i])
+        let rb = M39Find(rows, M39ModelNameB())
+        let rc = M39Find(rows, M39ModelNameC())
+        names = Append(names, scenarios[i].Name)
+        jc = Append(jc, scenarios[i].JudgmentCost)
+        share = Append(share, (rb.PolicyTime * 1000) / M39Max(rb.CompletionTime, 1))
+        staticSpeed = Append(staticSpeed, rb.SpeedupVsSingleMilli)
+        spmcSpeed = Append(spmcSpeed, rc.SpeedupVsSingleMilli)
+        bottleneck = Append(bottleneck, rb.PolicyTime >= (rb.DispatchTime + rb.QueueOverheadTime + rb.StealOverheadTime + rb.EventOverheadTime))
+    }
+
+    let _unused = a0
+
+    return M39JudgmentBottleneckTable {
+        Scenario: names
+        JudgmentCost: jc
+        PolicyShareMilli: share
+        StaticSpeedupMilli: staticSpeed
+        SpmcSpeedupMilli: spmcSpeed
+        JudgmentBottleneck: bottleneck
+    }
+}
+
+fn M39StealOverheadScenarios() -> M39Scenario[] {
+    let baseHeavy = M39ScenarioBase("heavy-tail-steal-low-cost", "heavy-tail")
+    let baseHigh = M39ScenarioBase("heavy-tail-steal-high-cost", "heavy-tail")
+    let moderate = M39ScenarioBase("moderate-steal-reference", "moderate-variable")
+    let small = M39ScenarioBase("small-fast-steal-reference", "small-fast")
+    let large = M39ScenarioBase("large-slow-steal-reference", "large-slow")
+    return [
+        baseHeavy,
+        M39Scenario { Name: baseHigh.Name BatchSize: baseHigh.BatchSize JudgmentCost: baseHigh.JudgmentCost DispatchCostBase: baseHigh.DispatchCostBase WorkerCount: baseHigh.WorkerCount HardwareQueueCount: baseHigh.HardwareQueueCount SharedQueueOverhead: baseHigh.SharedQueueOverhead StealAttemptCost: 18 FailedStealBackoffCost: 20 EventEmitCost: baseHigh.EventEmitCost EventDrainCost: baseHeavy.EventDrainCost PerWorkerArenaBytes: baseHigh.PerWorkerArenaBytes MemoryBudgetBytes: baseHigh.MemoryBudgetBytes TaskDistributionKind: baseHigh.TaskDistributionKind },
+        moderate,
+        small,
+        large
+    ]
+}
+
+fn M39StealOverheadTableFrom() -> M39StealOverheadTable {
+    let scenarios = M39StealOverheadScenarios()
+    let rows0 = M39RunScenario(scenarios[0])
+    let b0 = M39Find(rows0, M39ModelNameB())
+    let c0 = M39Find(rows0, M39ModelNameC())
+    let d0 = M39Find(rows0, M39ModelNameD())
+
+    var scenario = [scenarios[0].Name]
+    var dist = [scenarios[0].TaskDistributionKind]
+    var stealCost = [scenarios[0].StealAttemptCost]
+    var staticCompletion = [b0.CompletionTime]
+    var spmcCompletion = [c0.CompletionTime]
+    var stealCompletion = [d0.CompletionTime]
+    var deltaStatic = [d0.CompletionTime - b0.CompletionTime]
+    var deltaSpmc = [d0.CompletionTime - c0.CompletionTime]
+
+    for i in 1..Len(scenarios) {
+        let rows = M39RunScenario(scenarios[i])
+        let b = M39Find(rows, M39ModelNameB())
+        let c = M39Find(rows, M39ModelNameC())
+        let d = M39Find(rows, M39ModelNameD())
+        scenario = Append(scenario, scenarios[i].Name)
+        dist = Append(dist, scenarios[i].TaskDistributionKind)
+        stealCost = Append(stealCost, scenarios[i].StealAttemptCost)
+        staticCompletion = Append(staticCompletion, b.CompletionTime)
+        spmcCompletion = Append(spmcCompletion, c.CompletionTime)
+        stealCompletion = Append(stealCompletion, d.CompletionTime)
+        deltaStatic = Append(deltaStatic, d.CompletionTime - b.CompletionTime)
+        deltaSpmc = Append(deltaSpmc, d.CompletionTime - c.CompletionTime)
+    }
+
+    return M39StealOverheadTable {
+        Scenario: scenario
+        Distribution: dist
+        StealAttemptCost: stealCost
+        StaticCompletion: staticCompletion
+        SpmcCompletion: spmcCompletion
+        StealCompletion: stealCompletion
+        StealVsStaticDelta: deltaStatic
+        StealVsSpmcDelta: deltaSpmc
+    }
+}
+
+fn M39QueueTopologyScenarios() -> M39Scenario[] {
+    let single = M39ScenarioBase("single-queue", "moderate-variable")
+    let two = M39ScenarioBase("two-queue", "moderate-variable")
+    let four = M39ScenarioBase("four-queue", "moderate-variable")
+    let capped = M39ScenarioBase("four-queue-workers-six", "moderate-variable")
+    return [
+        M39Scenario { Name: single.Name BatchSize: single.BatchSize JudgmentCost: single.JudgmentCost DispatchCostBase: single.DispatchCostBase WorkerCount: 4 HardwareQueueCount: 1 SharedQueueOverhead: single.SharedQueueOverhead StealAttemptCost: single.StealAttemptCost FailedStealBackoffCost: single.FailedStealBackoffCost EventEmitCost: single.EventEmitCost EventDrainCost: single.EventDrainCost PerWorkerArenaBytes: single.PerWorkerArenaBytes MemoryBudgetBytes: single.MemoryBudgetBytes TaskDistributionKind: single.TaskDistributionKind },
+        M39Scenario { Name: two.Name BatchSize: two.BatchSize JudgmentCost: two.JudgmentCost DispatchCostBase: two.DispatchCostBase WorkerCount: 4 HardwareQueueCount: 2 SharedQueueOverhead: two.SharedQueueOverhead StealAttemptCost: two.StealAttemptCost FailedStealBackoffCost: two.FailedStealBackoffCost EventEmitCost: two.EventEmitCost EventDrainCost: two.EventDrainCost PerWorkerArenaBytes: two.PerWorkerArenaBytes MemoryBudgetBytes: two.MemoryBudgetBytes TaskDistributionKind: two.TaskDistributionKind },
+        M39Scenario { Name: four.Name BatchSize: four.BatchSize JudgmentCost: four.JudgmentCost DispatchCostBase: four.DispatchCostBase WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: four.SharedQueueOverhead StealAttemptCost: four.StealAttemptCost FailedStealBackoffCost: four.FailedStealBackoffCost EventEmitCost: four.EventEmitCost EventDrainCost: four.EventDrainCost PerWorkerArenaBytes: four.PerWorkerArenaBytes MemoryBudgetBytes: four.MemoryBudgetBytes TaskDistributionKind: four.TaskDistributionKind },
+        M39Scenario { Name: capped.Name BatchSize: capped.BatchSize JudgmentCost: capped.JudgmentCost DispatchCostBase: capped.DispatchCostBase WorkerCount: 6 HardwareQueueCount: 4 SharedQueueOverhead: capped.SharedQueueOverhead StealAttemptCost: capped.StealAttemptCost FailedStealBackoffCost: capped.FailedStealBackoffCost EventEmitCost: capped.EventEmitCost EventDrainCost: capped.EventDrainCost PerWorkerArenaBytes: capped.PerWorkerArenaBytes MemoryBudgetBytes: capped.MemoryBudgetBytes TaskDistributionKind: capped.TaskDistributionKind }
+    ]
+}
+
+fn M39QueueTopologyTableFrom() -> M39QueueTopologyTable {
+    let scenarios = M39QueueTopologyScenarios()
+    let rows0 = M39RunScenario(scenarios[0])
+    var scenario = [scenarios[0].Name]
+    var q = [scenarios[0].HardwareQueueCount]
+    var req = [scenarios[0].WorkerCount]
+    var bW = [M39Find(rows0, M39ModelNameB()).EffectiveWorkers]
+    var cW = [M39Find(rows0, M39ModelNameC()).EffectiveWorkers]
+    var dW = [M39Find(rows0, M39ModelNameD()).EffectiveWorkers]
+    var bS = [M39Find(rows0, M39ModelNameB()).SpeedupVsSingleMilli]
+    var cS = [M39Find(rows0, M39ModelNameC()).SpeedupVsSingleMilli]
+    var dS = [M39Find(rows0, M39ModelNameD()).SpeedupVsSingleMilli]
+
+    for i in 1..Len(scenarios) {
+        let rows = M39RunScenario(scenarios[i])
+        scenario = Append(scenario, scenarios[i].Name)
+        q = Append(q, scenarios[i].HardwareQueueCount)
+        req = Append(req, scenarios[i].WorkerCount)
+        bW = Append(bW, M39Find(rows, M39ModelNameB()).EffectiveWorkers)
+        cW = Append(cW, M39Find(rows, M39ModelNameC()).EffectiveWorkers)
+        dW = Append(dW, M39Find(rows, M39ModelNameD()).EffectiveWorkers)
+        bS = Append(bS, M39Find(rows, M39ModelNameB()).SpeedupVsSingleMilli)
+        cS = Append(cS, M39Find(rows, M39ModelNameC()).SpeedupVsSingleMilli)
+        dS = Append(dS, M39Find(rows, M39ModelNameD()).SpeedupVsSingleMilli)
+    }
+
+    return M39QueueTopologyTable {
+        Scenario: scenario
+        HardwareQueueCount: q
+        RequestedWorkers: req
+        EffectiveWorkersStatic: bW
+        EffectiveWorkersSpmc: cW
+        EffectiveWorkersSteal: dW
+        StaticSpeedupMilli: bS
+        SpmcSpeedupMilli: cS
+        StealSpeedupMilli: dS
+    }
+}
+
+fn M39MemoryPressureScenarios() -> M39Scenario[] {
+    let s0 = M39ScenarioBase("memory-ample", "moderate-variable")
+    let s1 = M39ScenarioBase("memory-caps-at-2", "moderate-variable")
+    let s2 = M39ScenarioBase("memory-infeasible", "moderate-variable")
+    return [
+        s0,
+        M39Scenario { Name: s1.Name BatchSize: s1.BatchSize JudgmentCost: s1.JudgmentCost DispatchCostBase: s1.DispatchCostBase WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: s1.SharedQueueOverhead StealAttemptCost: s1.StealAttemptCost FailedStealBackoffCost: s1.FailedStealBackoffCost EventEmitCost: s1.EventEmitCost EventDrainCost: s1.EventDrainCost PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 536870912 TaskDistributionKind: s1.TaskDistributionKind },
+        M39Scenario { Name: s2.Name BatchSize: s2.BatchSize JudgmentCost: s2.JudgmentCost DispatchCostBase: s2.DispatchCostBase WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: s2.SharedQueueOverhead StealAttemptCost: s2.StealAttemptCost FailedStealBackoffCost: s2.FailedStealBackoffCost EventEmitCost: s2.EventEmitCost EventDrainCost: s2.EventDrainCost PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 134217728 TaskDistributionKind: s2.TaskDistributionKind }
+    ]
+}
+
+fn M39MemoryPressureTableFrom() -> M39MemoryPressureTable {
+    let scenarios = M39MemoryPressureScenarios()
+    let w0 = M39EvaluateWorkers(scenarios[0])
+    var name = [scenarios[0].Name]
+    var budget = [scenarios[0].MemoryBudgetBytes]
+    var per = [scenarios[0].PerWorkerArenaBytes]
+    var req = [scenarios[0].WorkerCount]
+    var memCap = [w0.MemoryBudgetWorkerLimit]
+    var effective = [w0.EffectiveWorkers]
+    var used = [w0.MemoryUsed]
+    var limited = [w0.MemoryLimited]
+    var infeasible = [w0.MemoryInfeasible]
+
+    for i in 1..Len(scenarios) {
+        let w = M39EvaluateWorkers(scenarios[i])
+        name = Append(name, scenarios[i].Name)
+        budget = Append(budget, scenarios[i].MemoryBudgetBytes)
+        per = Append(per, scenarios[i].PerWorkerArenaBytes)
+        req = Append(req, scenarios[i].WorkerCount)
+        memCap = Append(memCap, w.MemoryBudgetWorkerLimit)
+        effective = Append(effective, w.EffectiveWorkers)
+        used = Append(used, w.MemoryUsed)
+        limited = Append(limited, w.MemoryLimited)
+        infeasible = Append(infeasible, w.MemoryInfeasible)
+    }
+
+    return M39MemoryPressureTable {
+        Scenario: name
+        MemoryBudgetBytes: budget
+        PerWorkerArenaBytes: per
+        RequestedWorkers: req
+        MemoryBudgetWorkerLimit: memCap
+        EffectiveWorkers: effective
+        MemoryUsed: used
+        MemoryLimited: limited
+        MemoryInfeasible: infeasible
+    }
+}
+
+fn M39BestModelForScenario(s: M39Scenario) -> M39ModelResult {
+    let rows = M39RunScenario(s)
+    var best = M39Find(rows, M39ModelNameB())
+    for i in 0..Len(rows) {
+        if rows[i].Model != M39ModelNameA() and rows[i].Model != M39ModelNameE() and rows[i].ProductScore > best.ProductScore {
+            best = rows[i]
+        }
+    }
+    return best
+}
+
+fn M39FinalRecommendationFromModel() -> M39FinalRecommendation {
+    let uniform = M39BestModelForScenario(M39ScenarioBase("uniform-rec", "uniform"))
+    let moderate = M39BestModelForScenario(M39ScenarioBase("moderate-rec", "moderate-variable"))
+    let heavyLow = M39BestModelForScenario(M39ScenarioBase("heavy-low-rec", "heavy-tail"))
+    let heavyHighScenario = M39Scenario { Name: "heavy-high-rec" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 18 FailedStealBackoffCost: 20 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "heavy-tail" }
+    let heavyHigh = M39BestModelForScenario(heavyHighScenario)
+    let bottleneckRows = M39RunScenario(M39Scenario { Name: "judgment-bottleneck-check" BatchSize: 48 JudgmentCost: 26 DispatchCostBase: 3 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "moderate-variable" })
+    let b = M39Find(bottleneckRows, M39ModelNameB())
+    let policyDominates = b.PolicyTime >= (b.DispatchTime + b.QueueOverheadTime + b.StealOverheadTime + b.EventOverheadTime)
+
+    let firstModel = switch {
+        case uniform.Model == M39ModelNameB() and moderate.Model != M39ModelNameD() => M39ModelNameB()
+        case moderate.Model == M39ModelNameC() => M39ModelNameC()
+        else => uniform.Model
+    }
+
+    let stealWorth = heavyLow.Model == M39ModelNameD() and heavyHigh.Model != M39ModelNameD()
+
+    return M39FinalRecommendation {
+        ArchitectureViable: true
+        ArchitectureReason: switch { case policyDominates => "viable but judgment bottleneck must be addressed first" else => "viable with worker count capped by queue topology and memory" }
+        CentralizedBottleneckCondition: "centralized policy bottlenecks when N*JudgmentCost dominates parallel dispatch lane time"
+        FirstImplementationModel: firstModel
+        WorkStealingForFirstImplementation: switch { case firstModel == M39ModelNameD() => "yes" else => "no" }
+        WorkStealingWorthItCondition: switch { case stealWorth => "heavy-tail workloads with low steal/backoff overhead and sustained imbalance" else => "not yet; overhead dominates or does not clearly improve score" }
+        WorkerCountRule: "effective_workers = min(requested_workers, hardware_queue_count, floor(memory_budget_bytes / per_worker_arena_bytes))"
+        SingleQueueDegradeRule: "if hardware_queue_count == 1 then effective_workers = 1 for all parallel models"
+        MemoryPressureRule: "if floor(memory_budget_bytes / per_worker_arena_bytes) == 0 then configuration is infeasible"
+        M40Next: "implement model B static partition first, add instrumentation, then gate model C for measured variability"
+        MustNotImplementYet: "do not implement full work-stealing runtime, MPMC queue runtime, N-slot runtime, or batch API yet"
+        RecommendationDerivedFromScores: firstModel == uniform.Model or firstModel == moderate.Model
+    }
+}

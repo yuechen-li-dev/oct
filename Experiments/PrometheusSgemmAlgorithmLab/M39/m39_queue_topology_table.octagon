@@ -1,21 +1,11 @@
 [M39QueueTopologyTable {
-    Regime: [
-        "single-compute-queue",
-        "two-compute-queues",
-        "four-compute-queues",
-        "four-compute-plus-transfer"
-    ]
-    ComputeQueuesQ: [1, 2, 4, 4]
-    TransferQueue: ["no", "no", "no", "yes"]
-    CandidateWorkerCountsW: [4, 4, 6, 6]
-    EffectiveDispatchWorkersMinWQ: [1, 2, 4, 4]
-    WastedWorkersFromTopology: [3, 2, 2, 2]
-    BestFirstModel: ["A-or-B-with-W1", "B-or-C", "C-then-D-if-needed", "C-with-transfer-overlap"]
-    FalseScalingRisk: ["high", "medium", "medium", "medium"]
-    Guidance: [
-        "force graceful W=1 collapse",
-        "cap worker pool at 2",
-        "cap worker pool at 4 unless memory budget allows staging helpers",
-        "compute workers still capped at 4; treat transfer as overlap lane only"
-    ]
+    Scenario: ["single-queue", "two-queue", "four-queue", "four-queue-workers-six"]
+    HardwareQueueCount: [1, 2, 4, 4]
+    RequestedWorkers: [4, 4, 4, 6]
+    EffectiveWorkersStatic: [1, 2, 4, 4]
+    EffectiveWorkersSpmc: [1, 2, 4, 4]
+    EffectiveWorkersSteal: [1, 2, 4, 4]
+    StaticSpeedupMilli: [1000, 1544, 2001, 2001]
+    SpmcSpeedupMilli: [894, 1359, 1820, 1820]
+    StealSpeedupMilli: [1000, 1544, 2043, 2043]
 }]

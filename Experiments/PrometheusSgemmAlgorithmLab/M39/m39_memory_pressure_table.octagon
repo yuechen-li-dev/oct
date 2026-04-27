@@ -1,18 +1,11 @@
 [M39MemoryPressureTable {
-    BudgetMiB: [2048, 2048, 2048, 1536, 1024]
-    ArenaBasePerWorkerMiB: [180, 180, 180, 180, 180]
-    ArenaMultiplier: [1.0, 1.25, 1.5, 1.5, 1.75]
-    WorkerCountW: [1, 2, 4, 4, 4]
-    TotalArenaFootprintMiB: [180, 450, 1080, 1080, 1260]
-    EventRingPerWorkerMiB: [8, 8, 8, 8, 8]
-    TotalEventRingMiB: [8, 16, 32, 32, 32]
-    RemainingForModelPayloadMiB: [1860, 1582, 936, 424, -268]
-    MemoryPressureLevel: ["low", "low", "medium", "high", "infeasible"]
-    WorkerCapRecommendation: [
-        "W1",
-        "W2",
-        "W4",
-        "W2-or-reduce-arena-multiplier",
-        "W1-with-budget-reduction-mode"
-    ]
+    Scenario: ["memory-ample", "memory-caps-at-2", "memory-infeasible"]
+    MemoryBudgetBytes: [1610612736, 536870912, 134217728]
+    PerWorkerArenaBytes: [268435456, 268435456, 268435456]
+    RequestedWorkers: [4, 4, 4]
+    MemoryBudgetWorkerLimit: [6, 2, 0]
+    EffectiveWorkers: [4, 2, 0]
+    MemoryUsed: [1073741824, 536870912, 0]
+    MemoryLimited: [false, true, true]
+    MemoryInfeasible: [false, false, true]
 }]
