@@ -5335,10 +5335,10 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   shared_state.failed_worker_id = UINT32_MAX;
   prom_batch_mutex_init(&shared_state.state_mutex);
   prom_batch_mutex_init(&shared_state.serialized_vulkan_mutex);
-  use_real_threads = ((rt->test_flags & PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS) != 0u || rt->test_flags != 0u) ? 1u : 0u;
-  if ((rt->test_flags & PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED) != 0u) {
-    use_real_threads = 0u;
-  }
+  use_real_threads = ((rt->test_flags & PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS) != 0u &&
+                      (rt->test_flags & PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED) == 0u)
+                         ? 1u
+                         : 0u;
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;

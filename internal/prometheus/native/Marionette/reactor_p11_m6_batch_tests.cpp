@@ -626,3 +626,61 @@ FACT(PrometheusReactor_P11_M10_FirstFailureWinsAndLaneFallbackStillAvailable)
     ASSERT_EQUAL(0u, diag.serialized_vulkan, "lane fallback should not mark serialized Vulkan thread bridge");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(lane_handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_P11_M10_RealThreadEnablementGateIsExplicitAndForceLaneWins)
+{
+    const std::uint32_t entry_count = 4u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 2u;
+    const std::uint32_t n = 2u;
+    const std::uint32_t k = 2u;
+    std::vector<std::vector<float>> a(entry_count);
+    std::vector<std::vector<float>> b(entry_count);
+    std::vector<std::vector<float>> c(entry_count, std::vector<float>(m * n, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 2.11f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 2.41f + static_cast<float>(i) * 0.05f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+    const std::uint32_t flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    PrometheusSgemmBatchDiagnostics diag{};
+
+    PrometheusReactorConfig unrelated_cfg{};
+    unrelated_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    unrelated_cfg.test_flags = PROM_TESTCFG_DISABLE_SELECTOR_CACHE;
+    void* unrelated_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&unrelated_cfg, &unrelated_handle), "runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(unrelated_handle, entries.data(), entry_count, flags, &stage, &detail),
+                 "unrelated test flag batch run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(unrelated_handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_LANE_SIMULATED, diag.execution_mode, "unrelated test flags must not enable real-thread mode");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(unrelated_handle), "runtime destroy should succeed");
+
+    PrometheusReactorConfig explicit_cfg{};
+    explicit_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    explicit_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* explicit_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&explicit_cfg, &explicit_handle), "runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(explicit_handle, entries.data(), entry_count, flags, &stage, &detail),
+                 "explicit real-thread batch run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(explicit_handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN, diag.execution_mode,
+                 "explicit real-thread flag should enable real-thread mode");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(explicit_handle), "runtime destroy should succeed");
+
+    PrometheusReactorConfig forced_lane_cfg{};
+    forced_lane_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    forced_lane_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED;
+    void* forced_lane_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&forced_lane_cfg, &forced_lane_handle), "runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(forced_lane_handle, entries.data(), entry_count, flags, &stage, &detail),
+                 "forced-lane batch run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(forced_lane_handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_LANE_SIMULATED, diag.execution_mode,
+                 "force-lane flag must override explicit real-thread enablement");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(forced_lane_handle), "runtime destroy should succeed");
+}

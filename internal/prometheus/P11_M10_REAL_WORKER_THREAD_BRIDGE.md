@@ -14,6 +14,8 @@ M10 adds a controlled real-thread execution mode for batch dispatch when:
 
 Otherwise the M8 lane-simulated path remains active.
 
+Follow-up alignment: enablement now matches this contract exactly (unrelated `test_flags` do not implicitly enable real-thread mode).
+
 ## 3) Worker thread model
 
 Workers still execute immutable `prom_batch_plan` records produced centrally in the planning phase. M10 adds:
