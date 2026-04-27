@@ -1,0 +1,268 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M42SingleQueueCannotClaimParallelism() -> Void {
+    let r = M42RunScenario(M42BaseScenario("C-true-per-worker-queues", "single-compute"))
+    Assert.True(not r.ClaimedHardwareParallelism and not r.ActualHardwareParallelism, "single queue must not claim hardware parallelism")
+    Assert.Equal(r.EffectiveWorkers, 1, "candidate C collapses to one worker on single compute queue")
+}
+
+[Fact]
+fn M42TwoQueueSupportsLimitedParallelism() -> Void {
+    let r = M42RunScenario(M42BaseScenario("C-true-per-worker-queues", "two-compute"))
+    Assert.True(r.ClaimedHardwareParallelism and r.ActualHardwareParallelism, "two independent queues should allow true parallelism")
+    Assert.True(r.EffectiveWorkers <= 2, "parallel workers capped by queue count")
+}
+
+[Fact]
+fn M42QueueMappingOneWorkerPerAssignedQueue() -> Void {
+    let r = M42RunScenario(M42BaseScenario("C-true-per-worker-queues", "four-compute"))
+    Assert.True(r.WorkerQueueMapping == "0,1,2,3", "worker to queue mapping must be deterministic and valid")
+}
+
+[Fact]
+fn M42CommandOwnershipViolationRejected() -> Void {
+    let base = M42BaseScenario("C-true-per-worker-queues", "two-compute")
+    let r = M42RunScenario(M42Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        QueueTopology: base.QueueTopology
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        ComputeQueueCount: base.ComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        QueuesIndependent: base.QueuesIndependent
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        EventRingCapacity: base.EventRingCapacity
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        QueueSerializationCost: base.QueueSerializationCost
+        LockContentionCost: base.LockContentionCost
+        TransferOverlapBenefit: base.TransferOverlapBenefit
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        DominatusCommitCost: base.DominatusCommitCost
+        FailureMode: base.FailureMode
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureWorkerId: base.FailureWorkerId
+        InjectCommandOwnershipViolation: true
+        InjectQueueOwnershipViolation: false
+        InjectFenceOwnershipViolation: false
+        InjectOutputOwnershipViolation: false
+        InjectDominatusDirectMutation: false
+        InjectArenaAccessWithoutLock: false
+    })
+    Assert.Equal(r.FirstFailureDetail, "command-resource-ownership-violation", "command ownership conflict must be rejected")
+    Assert.Equal(r.BatchFinalState, "FAILED", "ownership violation fails scenario")
+}
+
+[Fact]
+fn M42SharedArenaRequiresLock() -> Void {
+    let base = M42BaseScenario("E-shared-arena-lock", "two-compute")
+    let r = M42RunScenario(M42Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        QueueTopology: base.QueueTopology
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        ComputeQueueCount: base.ComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        QueuesIndependent: base.QueuesIndependent
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SharedArenaEnabled: true
+        SharedArenaLockHeld: false
+        EventRingCapacity: base.EventRingCapacity
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        QueueSerializationCost: base.QueueSerializationCost
+        LockContentionCost: base.LockContentionCost
+        TransferOverlapBenefit: base.TransferOverlapBenefit
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        DominatusCommitCost: base.DominatusCommitCost
+        FailureMode: base.FailureMode
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureWorkerId: base.FailureWorkerId
+        InjectCommandOwnershipViolation: false
+        InjectQueueOwnershipViolation: false
+        InjectFenceOwnershipViolation: false
+        InjectOutputOwnershipViolation: false
+        InjectDominatusDirectMutation: false
+        InjectArenaAccessWithoutLock: true
+    })
+    Assert.Equal(r.FirstFailureDetail, "shared-arena-lock-required", "shared arena access without lock must fail")
+}
+
+[Fact]
+fn M42FirstFailureWinsAcrossQueues() -> Void {
+    let base = M42BaseScenario("C-true-per-worker-queues", "two-compute")
+    let r = M42RunScenario(M42Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        QueueTopology: base.QueueTopology
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        ComputeQueueCount: base.ComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        QueuesIndependent: base.QueuesIndependent
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        EventRingCapacity: base.EventRingCapacity
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        QueueSerializationCost: base.QueueSerializationCost
+        LockContentionCost: base.LockContentionCost
+        TransferOverlapBenefit: base.TransferOverlapBenefit
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        DominatusCommitCost: base.DominatusCommitCost
+        FailureMode: "dual-failure"
+        FailureEntryId: 3
+        SecondaryFailureEntryId: 9
+        FailureWorkerId: base.FailureWorkerId
+        InjectCommandOwnershipViolation: false
+        InjectQueueOwnershipViolation: false
+        InjectFenceOwnershipViolation: false
+        InjectOutputOwnershipViolation: false
+        InjectDominatusDirectMutation: false
+        InjectArenaAccessWithoutLock: false
+    })
+    Assert.Equal(r.FirstFailureEntryId, 3, "first failure entry metadata must be preserved")
+    Assert.Equal(r.FirstFailureDetail, "first-failure-wins", "first-failure metadata should dominate")
+}
+
+[Fact]
+fn M42FailureDrainsAllQueuesBeforeReuse() -> Void {
+    let base = M42BaseScenario("C-true-per-worker-queues", "two-compute")
+    let r = M42RunScenario(M42Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        QueueTopology: base.QueueTopology
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        ComputeQueueCount: base.ComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        QueuesIndependent: base.QueuesIndependent
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        EventRingCapacity: base.EventRingCapacity
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        QueueSerializationCost: base.QueueSerializationCost
+        LockContentionCost: base.LockContentionCost
+        TransferOverlapBenefit: base.TransferOverlapBenefit
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        DominatusCommitCost: base.DominatusCommitCost
+        FailureMode: "after-submit"
+        FailureEntryId: 6
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureWorkerId: 1
+        InjectCommandOwnershipViolation: false
+        InjectQueueOwnershipViolation: false
+        InjectFenceOwnershipViolation: false
+        InjectOutputOwnershipViolation: false
+        InjectDominatusDirectMutation: false
+        InjectArenaAccessWithoutLock: false
+    })
+    Assert.True(r.QueueDrainCount >= 2, "drain must cover compute queues")
+    Assert.True(not r.OutputCommitted, "failed batch cannot commit output")
+}
+
+[Fact]
+fn M42DeviceLostDominatesFailureState() -> Void {
+    let base = M42BaseScenario("C-true-per-worker-queues", "two-compute")
+    let r = M42RunScenario(M42Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        QueueTopology: base.QueueTopology
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        ComputeQueueCount: base.ComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        QueuesIndependent: base.QueuesIndependent
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        SharedArenaEnabled: base.SharedArenaEnabled
+        SharedArenaLockHeld: base.SharedArenaLockHeld
+        EventRingCapacity: base.EventRingCapacity
+        CriticalEventsPerTask: base.CriticalEventsPerTask
+        DiagnosticsEventsPerTask: base.DiagnosticsEventsPerTask
+        QueueSerializationCost: base.QueueSerializationCost
+        LockContentionCost: base.LockContentionCost
+        TransferOverlapBenefit: base.TransferOverlapBenefit
+        OutputStagingBytesPerEntry: base.OutputStagingBytesPerEntry
+        DominatusCommitCost: base.DominatusCommitCost
+        FailureMode: "device-lost"
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        FailureWorkerId: base.FailureWorkerId
+        InjectCommandOwnershipViolation: false
+        InjectQueueOwnershipViolation: false
+        InjectFenceOwnershipViolation: false
+        InjectOutputOwnershipViolation: false
+        InjectDominatusDirectMutation: false
+        InjectArenaAccessWithoutLock: false
+    })
+    Assert.Equal(r.FirstFailureDetail, "device-lost-global", "device lost must dominate failure class")
+    Assert.True(not r.OutputCommitted, "device lost must force uncommitted output")
+}
+
+[Fact]
+fn M42TransferInteractionPreservesOwnership() -> Void {
+    let r = M42RunScenario(M42BaseScenario("D-per-worker-plus-transfer", "compute-plus-transfer"))
+    Assert.True(r.BatchFinalState == "SUCCEEDED", "transfer overlap path should succeed when ownership is valid")
+    Assert.True(r.FirstFailureDetail != "queue-submit-ownership-violation", "transfer path must not violate compute queue ownership")
+}
+
+[Fact]
+fn M42RecommendationIsComputed() -> Void {
+    let rec = M42RecommendationFromMetrics()
+    Assert.True(rec.RecommendationComputed, "recommendation must be computed from model metrics")
+    Assert.True(rec.FirstImplementationCandidateForM13 != "", "computed recommendation must select a candidate")
+}
+
+[Fact]
+fn M42Determinism() -> Void {
+    let s = M42BaseScenario("C-true-per-worker-queues", "two-compute")
+    let a = M42RunScenario(s)
+    let b = M42RunScenario(s)
+    Assert.Equal(a.ProductScore, b.ProductScore, "same scenario should produce stable score")
+    Assert.Equal(a.WorkerQueueMapping, b.WorkerQueueMapping, "same scenario should produce same queue mapping")
+}
+
+[Fact]
+fn EmitM42CandidateComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_candidate_comparison.octagon", [M42CandidateComparisonTable()])
+}
+
+[Fact]
+fn EmitM42QueueTopologyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_queue_topology_table.octagon", [M42QueueTopologyContractTable()])
+}
+
+[Fact]
+fn EmitM42ResourceOwnershipContractTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_resource_ownership_table.octagon", [M42ResourceOwnershipContractTable()])
+}
+
+[Fact]
+fn EmitM42FailureDrainTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_failure_drain_table.octagon", [M42FailureDrainContractTable()])
+}
+
+[Fact]
+fn EmitM42TransferInteractionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_transfer_interaction_table.octagon", [M42TransferInteractionContractTable()])
+}
+
+[Fact]
+fn EmitM42FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_final_contract.octagon", [M42RecommendationFromMetrics()])
+}

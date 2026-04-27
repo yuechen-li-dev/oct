@@ -1,0 +1,12 @@
+[M42CandidateComparison {
+    Candidate: ["A-serialized-bridge-baseline", "B-per-worker-command-single-queue", "C-true-per-worker-queues", "D-per-worker-plus-transfer", "E-shared-arena-lock"]
+    QueueTopology: ["single-compute", "single-compute", "two-compute", "compute-plus-transfer", "two-compute"]
+    EffectiveWorkers: [4, 4, 2, 2, 2]
+    ClaimedHardwareParallelism: [false, false, true, true, true]
+    CompletionTime: [150, 150, 150, 138, 198]
+    MemoryPressureMilli: [1000, 1000, 500, 500, 500]
+    CorrectnessRiskScore: [140, 190, 500, 580, 700]
+    ImplementationComplexityScore: [120, 180, 520, 620, 700]
+    ProductScore: [750, 650, 450, 262, -18]
+    RecommendedForM13: [false, true, false, false, false]
+}]
