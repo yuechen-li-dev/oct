@@ -324,6 +324,14 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t p10_m13_transfer_selector_last_dirty_dependency_mask;
   uint64_t p10_m13_transfer_selector_last_visible_generation;
   uint32_t p10_m13_transfer_selector_last_decision_reused;
+  uint32_t p10_m15_layout_precision_selector_cache_enabled;
+  uint32_t p10_m15_layout_precision_selector_cache_valid;
+  uint64_t p10_m15_layout_precision_selector_reuse_count;
+  uint64_t p10_m15_layout_precision_selector_recompute_count;
+  uint64_t p10_m15_layout_precision_selector_invalidation_count;
+  uint64_t p10_m15_layout_precision_selector_last_dirty_dependency_mask;
+  uint64_t p10_m15_layout_precision_selector_last_visible_generation;
+  uint32_t p10_m15_layout_precision_selector_last_decision_reused;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

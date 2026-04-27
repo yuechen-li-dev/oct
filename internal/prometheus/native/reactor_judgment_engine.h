@@ -98,6 +98,13 @@ typedef struct prom_judgment_decision {
   uint32_t transfer_fallback_reason;
 } prom_judgment_decision;
 
+typedef struct prom_judgment_layout_precision_decision {
+  uint32_t packed4_selected;
+  prom_packed4_reject_reason packed4_reject_reason;
+  uint32_t fp16_selected;
+  prom_fp16_reject_reason fp16_reject_reason;
+} prom_judgment_layout_precision_decision;
+
 typedef enum prom_buffering_mode {
   PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT = 1,
   PROM_BUFFERING_MODE_PULL_LAG_PRESSURE = 2,
@@ -185,6 +192,12 @@ enum {
 };
 
 void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, prom_judgment_decision* out_decision);
+void prom_judgment_engine_select_layout_precision(const prom_judgment_facts* facts,
+                                                  prom_judgment_layout_precision_decision* out_decision);
+void prom_judgment_engine_select_sgemm_mode_with_layout_precision(
+    const prom_judgment_facts* facts,
+    const prom_judgment_layout_precision_decision* layout_precision_decision,
+    prom_judgment_decision* out_decision);
 void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
                                                   prom_judgment_async_decision* out_decision);
 prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,

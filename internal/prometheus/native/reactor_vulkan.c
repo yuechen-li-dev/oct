@@ -245,6 +245,19 @@ typedef struct prom_selector_cache_transfer {
   prom_dom_transfer_queue_decision decision;
 } prom_selector_cache_transfer;
 
+typedef struct prom_selector_cache_layout_precision {
+  uint32_t valid;
+  uint32_t last_decision_reused;
+  uint64_t visible_generation_when_computed;
+  uint64_t dependency_mask;
+  uint64_t last_dirty_dependency_mask;
+  uint64_t reuse_count;
+  uint64_t recompute_count;
+  uint64_t invalidation_count;
+  uint64_t layout_precision_invalidation_count_when_computed;
+  prom_judgment_layout_precision_decision decision;
+} prom_selector_cache_layout_precision;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -317,6 +330,7 @@ typedef struct prometheus_runtime {
   prom_slot_runtime_diag slot_diag;
   prom_selector_cache_m35 m35_selector_cache;
   prom_selector_cache_transfer transfer_selector_cache;
+  prom_selector_cache_layout_precision layout_precision_selector_cache;
   prom_dom_blackboard blackboard;
 } prometheus_runtime;
 
@@ -537,6 +551,12 @@ static void invalidate_selector_caches(prometheus_runtime* rt) {
   }
   rt->transfer_selector_cache.valid = 0u;
   rt->transfer_selector_cache.last_decision_reused = 0u;
+
+  if (rt->layout_precision_selector_cache.valid != 0u) {
+    rt->layout_precision_selector_cache.invalidation_count += 1u;
+  }
+  rt->layout_precision_selector_cache.valid = 0u;
+  rt->layout_precision_selector_cache.last_decision_reused = 0u;
 }
 
 static void select_transfer_queue_policy(const prom_judgment_decision* judgment_decision,
@@ -2915,6 +2935,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_vk_compute_mode compute_mode;
   prom_judgment_facts judgment_facts;
   prom_judgment_decision judgment_decision;
+  prom_judgment_layout_precision_decision layout_precision_selector_decision;
   prom_judgment_async_facts async_facts;
   prom_judgment_async_decision async_decision;
   prom_buffering_selector_facts buffering_facts;
@@ -2945,6 +2966,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t request_async = 0u;
   uint32_t work_slot_id = 0u;
   uint64_t required_capacity_bytes = 0u;
+  uint64_t layout_precision_dependency_dirty_mask = 0u;
+  uint64_t layout_precision_path_guard_dirty_mask = 0u;
   uint32_t artifact_layout_code = 0u;
   uint32_t artifact_precision_code = 0u;
   prom_buffer_artifact_key artifact_a_key;
@@ -3149,7 +3172,44 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.transfer_workload_large_enough = transfer_queue_projection.facts.transfer_workload_large_enough;
   judgment_facts.transfer_fallback_available = transfer_queue_projection.facts.transfer_fallback_available;
   judgment_facts.transfer_queue_disabled_by_config = transfer_queue_projection.facts.transfer_queue_disabled_by_config;
-  prom_judgment_engine_select_sgemm_mode(&judgment_facts, &judgment_decision);
+  layout_precision_path_guard_dirty_mask = 0u;
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 0u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 1u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 2u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 3u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 5u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 6u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 11u));
+  layout_precision_path_guard_dirty_mask |= (path_compute_projection.dependent_dirty_key_mask_last_commit & (1ull << 13u));
+  layout_precision_dependency_dirty_mask =
+      layout_precision_projection.dependent_dirty_key_mask_last_commit | layout_precision_path_guard_dirty_mask;
+
+  memset(&layout_precision_selector_decision, 0, sizeof(layout_precision_selector_decision));
+  rt->layout_precision_selector_cache.last_dirty_dependency_mask = layout_precision_dependency_dirty_mask;
+  rt->layout_precision_selector_cache.dependency_mask = layout_precision_dependency_dirty_mask;
+  rt->layout_precision_selector_cache.last_decision_reused = 0u;
+  if (selector_cache_enabled(rt) != 0u && layout_precision_projection.from_visible_snapshot != 0u &&
+      rt->layout_precision_selector_cache.valid != 0u && layout_precision_dependency_dirty_mask == 0u &&
+      rt->layout_precision_selector_cache.layout_precision_invalidation_count_when_computed == rt->slot_diag.m14_layout_precision_invalidation_count) {
+    layout_precision_selector_decision = rt->layout_precision_selector_cache.decision;
+    rt->layout_precision_selector_cache.reuse_count += 1u;
+    rt->layout_precision_selector_cache.last_decision_reused = 1u;
+  } else {
+    if (rt->layout_precision_selector_cache.valid != 0u &&
+        (layout_precision_dependency_dirty_mask != 0u ||
+         rt->layout_precision_selector_cache.layout_precision_invalidation_count_when_computed != rt->slot_diag.m14_layout_precision_invalidation_count)) {
+      rt->layout_precision_selector_cache.invalidation_count += 1u;
+      rt->layout_precision_selector_cache.valid = 0u;
+    }
+    prom_judgment_engine_select_layout_precision(&judgment_facts, &layout_precision_selector_decision);
+    rt->layout_precision_selector_cache.valid = 1u;
+    rt->layout_precision_selector_cache.visible_generation_when_computed = layout_precision_projection.visible_generation;
+    rt->layout_precision_selector_cache.layout_precision_invalidation_count_when_computed =
+        rt->slot_diag.m14_layout_precision_invalidation_count;
+    rt->layout_precision_selector_cache.decision = layout_precision_selector_decision;
+    rt->layout_precision_selector_cache.recompute_count += 1u;
+  }
+  prom_judgment_engine_select_sgemm_mode_with_layout_precision(&judgment_facts, &layout_precision_selector_decision, &judgment_decision);
   if (judgment_decision.success == 0u) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
     return PROM_ERROR;
@@ -3229,10 +3289,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   rt->sgemm_controller.fp16_fallback_reason_detail = prom_fp16_reject_reason_to_detail(judgment_decision.fp16_reject_reason);
   rt->sgemm_controller.fp16_selected_candidate = judgment_decision.fp16_selected != 0u ? 3u : 1u;
   memset(&layout_precision_decision, 0, sizeof(layout_precision_decision));
-  layout_precision_decision.packed4_selected = judgment_decision.packed4_selected;
-  layout_precision_decision.packed4_reject_reason = (uint32_t)judgment_decision.packed4_reject_reason;
-  layout_precision_decision.fp16_selected = judgment_decision.fp16_selected;
-  layout_precision_decision.fp16_reject_reason = (uint32_t)judgment_decision.fp16_reject_reason;
+  layout_precision_decision.packed4_selected = layout_precision_selector_decision.packed4_selected;
+  layout_precision_decision.packed4_reject_reason = (uint32_t)layout_precision_selector_decision.packed4_reject_reason;
+  layout_precision_decision.fp16_selected = layout_precision_selector_decision.fp16_selected;
+  layout_precision_decision.fp16_reject_reason = (uint32_t)layout_precision_selector_decision.fp16_reject_reason;
   layout_precision_decision.packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
   layout_precision_decision.packed4_tail_count_last = rt->sgemm_controller.packed4_tail_count_last;
   layout_precision_decision.packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
@@ -4519,5 +4579,15 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p10_m13_transfer_selector_last_dirty_dependency_mask = rt->transfer_selector_cache.last_dirty_dependency_mask;
   out_diag->p10_m13_transfer_selector_last_visible_generation = rt->transfer_selector_cache.visible_generation_when_computed;
   out_diag->p10_m13_transfer_selector_last_decision_reused = rt->transfer_selector_cache.last_decision_reused;
+  out_diag->p10_m15_layout_precision_selector_cache_enabled = selector_cache_enabled(rt);
+  out_diag->p10_m15_layout_precision_selector_cache_valid = rt->layout_precision_selector_cache.valid;
+  out_diag->p10_m15_layout_precision_selector_reuse_count = rt->layout_precision_selector_cache.reuse_count;
+  out_diag->p10_m15_layout_precision_selector_recompute_count = rt->layout_precision_selector_cache.recompute_count;
+  out_diag->p10_m15_layout_precision_selector_invalidation_count = rt->layout_precision_selector_cache.invalidation_count;
+  out_diag->p10_m15_layout_precision_selector_last_dirty_dependency_mask =
+      rt->layout_precision_selector_cache.last_dirty_dependency_mask;
+  out_diag->p10_m15_layout_precision_selector_last_visible_generation =
+      rt->layout_precision_selector_cache.visible_generation_when_computed;
+  out_diag->p10_m15_layout_precision_selector_last_decision_reused = rt->layout_precision_selector_cache.last_decision_reused;
   return PROM_OK;
 }
