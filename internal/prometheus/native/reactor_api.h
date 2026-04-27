@@ -86,6 +86,8 @@ enum {
   PROM_TESTCFG_FAIL_TRANSFER_SUBMIT = 1u << 26,
   PROM_TESTCFG_DISABLE_SELECTOR_CACHE = 1u << 27,
   PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT = 1u << 28,
+  PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS = 1u << 29,
+  PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED = 1u << 30,
 };
 
 enum {
@@ -188,6 +190,13 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t worker_judgment_count;
   uint32_t execution_mode;
   uint32_t worker_resource_mode;
+  uint32_t lane_worker_count;
+  uint32_t real_worker_thread_count;
+  uint32_t serialized_vulkan;
+  uint32_t serialized_execution_count;
+  uint32_t serialized_wait_count;
+  uint32_t max_concurrent_serialized_entries;
+  uint32_t hardware_parallelism_claimed;
   uint32_t worker_active_mask;
   uint32_t worker_assigned_count[8];
   uint32_t worker_completed_count[8];
@@ -239,6 +248,7 @@ enum {
 enum {
   PROM_BATCH_EXECUTION_SINGLE_WORKER = 1u,
   PROM_BATCH_EXECUTION_LANE_SIMULATED = 2u,
+  PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN = 3u,
 };
 
 enum {
