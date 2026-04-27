@@ -41,6 +41,18 @@ typedef struct prom_dom_slot_runtime_diag_snapshot {
   int32_t failure_reason;
 } prom_dom_slot_runtime_diag_snapshot;
 
+typedef struct prom_dom_slot_readiness_snapshot {
+  uint64_t boundary_generation;
+  uint32_t dirty_slot_mask;
+  uint32_t ready_slot_mask;
+  uint32_t failed_slot_mask;
+  uint32_t invalidated_slot_mask;
+  uint32_t attention_slot_mask;
+  uint32_t overflow_spill_count;
+  uint64_t duplicate_ready_event_count;
+  uint64_t empty_boundary_commit_count;
+} prom_dom_slot_readiness_snapshot;
+
 uint32_t prom_dom_slot_stage_lifecycle(prom_dom_blackboard* board,
                                        prom_dom_event_kind event_kind,
                                        uint32_t slot_id,
@@ -62,6 +74,9 @@ uint32_t prom_dom_slot_stage_runtime_diag(prom_dom_blackboard* board,
                                           int32_t reason_code);
 uint32_t prom_dom_slot_read_visible_runtime_diag(const prom_dom_blackboard* board,
                                                  prom_dom_slot_runtime_diag_snapshot* out_snapshot);
+uint32_t prom_dom_slot_readiness_read_visible(const prom_dom_blackboard* board,
+                                              prom_dom_slot_readiness_snapshot* out_snapshot);
+void prom_dom_slot_readiness_clear_boundary(prom_dom_blackboard* board);
 
 #ifdef __cplusplus
 }

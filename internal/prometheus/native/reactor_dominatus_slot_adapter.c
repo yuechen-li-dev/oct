@@ -2,6 +2,74 @@
 
 #include <string.h>
 
+static uint32_t slot_mask_for_slot_id(const prom_dom_blackboard* board, uint32_t slot_id) {
+  if (board == 0) {
+    return 0u;
+  }
+  if (slot_id < 32u) {
+    return 1u << slot_id;
+  }
+  return 0u;
+}
+
+static void apply_slot_readiness_event(prom_dom_blackboard* board, const prom_dom_event* event) {
+  uint32_t slot_mask;
+  if (board == 0 || event == 0) {
+    return;
+  }
+  if (event->source != PROM_DOM_SOURCE_SLOT_HFSM || event->domain != PROM_DOM_DOMAIN_SLOT) {
+    return;
+  }
+
+  slot_mask = slot_mask_for_slot_id(board, event->slot_id);
+  if (slot_mask == 0u) {
+    board->slot_readiness_overflow_spill_count += 1u;
+    return;
+  }
+
+  board->slot_readiness_dirty_slot_mask |= slot_mask;
+
+  if (event->kind == PROM_DOM_EVENT_SLOT_READY) {
+    if ((board->slot_readiness_ready_slot_mask & slot_mask) != 0u) {
+      board->slot_readiness_duplicate_ready_event_count += 1u;
+    }
+    board->slot_readiness_ready_slot_mask |= slot_mask;
+    board->slot_readiness_attention_slot_mask |= slot_mask;
+    return;
+  }
+
+  if (event->kind == PROM_DOM_EVENT_SLOT_SUBMITTED || event->kind == PROM_DOM_EVENT_SLOT_PROMOTED_CURRENT ||
+      event->kind == PROM_DOM_EVENT_SLOT_COMPLETE || event->kind == PROM_DOM_EVENT_SLOT_CONSUMED ||
+      event->kind == PROM_DOM_EVENT_SLOT_PREPARED) {
+    board->slot_readiness_ready_slot_mask &= ~slot_mask;
+    board->slot_readiness_attention_slot_mask =
+        (board->slot_readiness_ready_slot_mask | board->slot_readiness_failed_slot_mask | board->slot_readiness_invalidated_slot_mask);
+    return;
+  }
+
+  if (event->kind == PROM_DOM_EVENT_SLOT_FAILED) {
+    board->slot_readiness_ready_slot_mask &= ~slot_mask;
+    board->slot_readiness_failed_slot_mask |= slot_mask;
+    board->slot_readiness_attention_slot_mask |= slot_mask;
+    return;
+  }
+
+  if (event->kind == PROM_DOM_EVENT_SLOT_INVALIDATED) {
+    board->slot_readiness_ready_slot_mask &= ~slot_mask;
+    board->slot_readiness_invalidated_slot_mask |= slot_mask;
+    board->slot_readiness_attention_slot_mask |= slot_mask;
+    return;
+  }
+
+  if (event->kind == PROM_DOM_EVENT_SLOT_CLEANUP) {
+    board->slot_readiness_ready_slot_mask &= ~slot_mask;
+    board->slot_readiness_failed_slot_mask &= ~slot_mask;
+    board->slot_readiness_invalidated_slot_mask &= ~slot_mask;
+    board->slot_readiness_attention_slot_mask =
+        (board->slot_readiness_ready_slot_mask | board->slot_readiness_failed_slot_mask | board->slot_readiness_invalidated_slot_mask);
+  }
+}
+
 uint32_t prom_dom_slot_stage_lifecycle(prom_dom_blackboard* board,
                                        prom_dom_event_kind event_kind,
                                        uint32_t slot_id,
@@ -91,11 +159,27 @@ uint32_t prom_dom_slot_stage_lifecycle(prom_dom_blackboard* board,
 }
 
 void prom_dom_slot_commit(prom_dom_blackboard* board) {
+  uint32_t prior_committed_event_count;
+  uint32_t i;
+  prom_dom_event committed_event;
+
   if (board == 0) {
     return;
   }
 
+  prior_committed_event_count = prom_dom_committed_event_count(board);
   prom_dom_commit(board);
+
+  for (i = prior_committed_event_count; i < prom_dom_committed_event_count(board); ++i) {
+    if (prom_dom_committed_event_at(board, i, &committed_event) == 0u) {
+      continue;
+    }
+    apply_slot_readiness_event(board, &committed_event);
+  }
+
+  if (prior_committed_event_count == prom_dom_committed_event_count(board)) {
+    board->slot_readiness_empty_boundary_commit_count += 1u;
+  }
 }
 
 uint32_t prom_dom_slot_read_last_commit(const prom_dom_blackboard* board,
@@ -315,4 +399,36 @@ uint32_t prom_dom_slot_read_visible_runtime_diag(const prom_dom_blackboard* boar
     return 0u;
   }
   return prom_dom_get_i32(board, PROM_DOM_KEY_SLOT_FAILURE_REASON_GLOBAL, 0u, &out_snapshot->failure_reason);
+}
+
+uint32_t prom_dom_slot_readiness_read_visible(const prom_dom_blackboard* board,
+                                              prom_dom_slot_readiness_snapshot* out_snapshot) {
+  if (board == 0 || out_snapshot == 0) {
+    return 0u;
+  }
+
+  memset(out_snapshot, 0, sizeof(*out_snapshot));
+  out_snapshot->boundary_generation = board->slot_readiness_boundary_generation;
+  out_snapshot->dirty_slot_mask = board->slot_readiness_dirty_slot_mask;
+  out_snapshot->ready_slot_mask = board->slot_readiness_ready_slot_mask;
+  out_snapshot->failed_slot_mask = board->slot_readiness_failed_slot_mask;
+  out_snapshot->invalidated_slot_mask = board->slot_readiness_invalidated_slot_mask;
+  out_snapshot->attention_slot_mask = board->slot_readiness_attention_slot_mask;
+  out_snapshot->overflow_spill_count = board->slot_readiness_overflow_spill_count;
+  out_snapshot->duplicate_ready_event_count = board->slot_readiness_duplicate_ready_event_count;
+  out_snapshot->empty_boundary_commit_count = board->slot_readiness_empty_boundary_commit_count;
+  return 1u;
+}
+
+void prom_dom_slot_readiness_clear_boundary(prom_dom_blackboard* board) {
+  if (board == 0) {
+    return;
+  }
+
+  board->slot_readiness_boundary_generation += 1u;
+  board->slot_readiness_dirty_slot_mask = 0u;
+  board->slot_readiness_ready_slot_mask = 0u;
+  board->slot_readiness_failed_slot_mask = 0u;
+  board->slot_readiness_invalidated_slot_mask = 0u;
+  board->slot_readiness_attention_slot_mask = 0u;
 }

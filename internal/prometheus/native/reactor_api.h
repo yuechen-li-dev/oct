@@ -308,6 +308,15 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p10_m4_last_slot_event_slot_id;
   int32_t p10_m4_last_slot_event_reason;
   uint32_t p10_m4_last_commit_dirty_slot_mask;
+  uint64_t p10_m16_slot_readiness_boundary_generation;
+  uint32_t p10_m16_slot_readiness_dirty_slot_mask;
+  uint32_t p10_m16_slot_readiness_ready_slot_mask;
+  uint32_t p10_m16_slot_readiness_failed_slot_mask;
+  uint32_t p10_m16_slot_readiness_invalidated_slot_mask;
+  uint32_t p10_m16_slot_readiness_attention_slot_mask;
+  uint32_t p10_m16_slot_readiness_overflow_spill_count;
+  uint64_t p10_m16_slot_readiness_duplicate_ready_event_count;
+  uint64_t p10_m16_slot_readiness_empty_boundary_commit_count;
   uint32_t p10_m13_m35_selector_cache_enabled;
   uint32_t p10_m13_m35_selector_cache_valid;
   uint64_t p10_m13_m35_selector_reuse_count;

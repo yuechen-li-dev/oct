@@ -4298,6 +4298,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   prom_dom_sgemm_layout_precision_snapshot layout_precision_snapshot;
   prom_dom_slot_commit_snapshot slot_snapshot;
   prom_dom_slot_runtime_diag_snapshot slot_diag_snapshot;
+  prom_dom_slot_readiness_snapshot slot_readiness_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
     return PROM_ERROR;
@@ -4562,6 +4563,17 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->p10_m4_last_slot_event_slot_id = slot_snapshot.last_event.slot_id;
     out_diag->p10_m4_last_slot_event_reason = slot_snapshot.last_event.reason_code;
     out_diag->p10_m4_last_commit_dirty_slot_mask = slot_snapshot.last_commit_dirty_slot_mask;
+  }
+  if (prom_dom_slot_readiness_read_visible(&rt->blackboard, &slot_readiness_snapshot) != 0u) {
+    out_diag->p10_m16_slot_readiness_boundary_generation = slot_readiness_snapshot.boundary_generation;
+    out_diag->p10_m16_slot_readiness_dirty_slot_mask = slot_readiness_snapshot.dirty_slot_mask;
+    out_diag->p10_m16_slot_readiness_ready_slot_mask = slot_readiness_snapshot.ready_slot_mask;
+    out_diag->p10_m16_slot_readiness_failed_slot_mask = slot_readiness_snapshot.failed_slot_mask;
+    out_diag->p10_m16_slot_readiness_invalidated_slot_mask = slot_readiness_snapshot.invalidated_slot_mask;
+    out_diag->p10_m16_slot_readiness_attention_slot_mask = slot_readiness_snapshot.attention_slot_mask;
+    out_diag->p10_m16_slot_readiness_overflow_spill_count = slot_readiness_snapshot.overflow_spill_count;
+    out_diag->p10_m16_slot_readiness_duplicate_ready_event_count = slot_readiness_snapshot.duplicate_ready_event_count;
+    out_diag->p10_m16_slot_readiness_empty_boundary_commit_count = slot_readiness_snapshot.empty_boundary_commit_count;
   }
   out_diag->p10_m13_m35_selector_cache_enabled = selector_cache_enabled(rt);
   out_diag->p10_m13_m35_selector_cache_valid = rt->m35_selector_cache.valid;
