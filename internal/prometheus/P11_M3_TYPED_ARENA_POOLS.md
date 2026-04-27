@@ -86,17 +86,20 @@ Compatibility gate (reuse legal only when all pass):
 - grow/rebuild when incompatibility or short capacity occurs and budget projection allows,
 - explicit budget rejection on projected over-budget growth.
 
-### 5.2 Conservative hysteresis shrink status
+### 5.2 Hardening update: shrink gating and paired staged invariants
 
-The current runtime keeps shrink **disabled** and uses explicit grow/rebuild fallback semantics.
+The hardening pass applies two allocator-edge fixes:
 
-What is still implemented now:
+1. **No same-pass grow/rebuild + shrink on the same role**
+   - shrink checks now run only for roles that were reused in the current ensure pass,
+   - roles that rebuilt/grew are excluded from shrink evaluation until later passes.
 
-- hysteresis state tracking fields are maintained,
-- in-flight shrink suppression path is preserved,
-- shrink counters stay zero under the tested runtime policy.
+2. **Paired staged-buffer shrink now carries an explicit symmetric-size contract**
+   - paired shrink helper now receives first/second required byte sizes,
+   - helper explicitly guards the current invariant that paired staged buffers must have equal required bytes,
+   - mismatch is treated as a guarded failure path (no partial shrink mutation).
 
-This is an intentional follow-up stop to preserve diagnosable behavior while avoiding unsafe mid-flight/storage churn in the current Vulkan ownership path.
+This keeps shrink bookkeeping coherent with structural transitions and makes the staged-pair assumption explicit instead of implicit.
 
 ## 6. Budget ledger behavior
 
@@ -108,7 +111,14 @@ Arena ledger tracks:
 - projected committed bytes,
 - explicit rejection reason/detail.
 
-Budget rejection emits explicit typed detail (`PROM_DETAIL_ARENA_BUDGET_REJECTED`) and avoids partial allocation.
+Hardening update:
+
+- budget projection is now computed over an **active role mask**:
+  - direct path: `A + B + C`
+  - staged path: `A + B + C + upload`
+- direct-path checks no longer charge inactive upload arena retained capacity.
+
+Budget rejection still emits explicit typed detail (`PROM_DETAIL_ARENA_BUDGET_REJECTED`) and avoids partial allocation.
 
 ## 7. Generation semantics
 
@@ -158,11 +168,25 @@ Added or strengthened native Marionette tests for:
 9. fixed-double ownership safety compatibility,
 10. diagnostics truthfulness.
 
+Hardening-specific additions:
+
+11. rebuild/grow pass does not also report shrink on the same role and generation remains single-step for the structural transition,
+12. staged paired-buffer symmetry invariants remain explicit in diagnostics coverage.
+
 ## 11. Validation status
 
 - targeted `PrometheusReactor_P11_M3_TypedArenas*` tests pass,
 - existing `PrometheusReactor_M14_BufferArtifacts*` behavior remains intact,
 - full Marionette native suite passes in this environment (with existing backend-dependent skips where expected).
+
+Hardening follow-up also re-runs:
+
+- `PrometheusReactor_P11_M3_TypedArenas`,
+- `PrometheusReactor_M14_BufferArtifacts`,
+- `M29_FixedDouble`,
+- `Packed4`,
+- `FP16`,
+- full `marionette_tests`.
 
 ## 12. Deferred scope
 
