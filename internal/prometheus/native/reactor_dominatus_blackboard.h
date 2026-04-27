@@ -295,6 +295,15 @@ typedef struct prom_dom_blackboard {
   uint32_t dirty_domains_last_commit;
   uint32_t dirty_slots_staged;
   uint32_t dirty_slots_last_commit;
+  uint64_t slot_readiness_boundary_generation;
+  uint32_t slot_readiness_dirty_slot_mask;
+  uint32_t slot_readiness_ready_slot_mask;
+  uint32_t slot_readiness_failed_slot_mask;
+  uint32_t slot_readiness_invalidated_slot_mask;
+  uint32_t slot_readiness_attention_slot_mask;
+  uint32_t slot_readiness_overflow_spill_count;
+  uint64_t slot_readiness_duplicate_ready_event_count;
+  uint64_t slot_readiness_empty_boundary_commit_count;
   prom_dom_event staged_events[PROM_DOM_MAX_EVENTS];
   uint32_t staged_event_count;
   prom_dom_event committed_events[PROM_DOM_MAX_EVENTS];

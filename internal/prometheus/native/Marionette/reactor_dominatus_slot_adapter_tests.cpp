@@ -212,6 +212,227 @@ FACT(PrometheusDominatusSlotAdapter_FailureCleanupAndTrace)
     ASSERT_EQUAL(PROM_DOM_EVENT_SLOT_CLEANUP, newest.event_kind, "latest trace should represent cleanup event");
 }
 
+FACT(PrometheusDominatusSlotAdapter_M16SingleReadyTransitionTracksReadinessMasks)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+
+    const prom_slot_metadata metadata = SlotMetadata(0u, 9u, 1u, 0);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &metadata,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "slot ready stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.dirty_slot_mask & 0x1u) != 0u, "dirty mask should include slot0");
+    ASSERT_TRUE((readiness.ready_slot_mask & 0x1u) != 0u, "ready mask should include slot0");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x1u) != 0u, "attention mask should include slot0");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x2u) == 0u, "attention mask should not include unrelated slot1");
+}
+
+FACT(PrometheusDominatusSlotAdapter_M16MultipleSlotsReadyInBoundary)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata slot0Ready = SlotMetadata(0u, 3u, 1u, 0);
+    const prom_slot_metadata slot1Ready = SlotMetadata(1u, 4u, 1u, 0);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &slot0Ready,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "slot0 ready stage should succeed");
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              1u,
+                                              PROM_SLOT_READY,
+                                              &slot1Ready,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "slot1 ready stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.ready_slot_mask & 0x3u) == 0x3u, "ready mask should include both slots");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x3u) == 0x3u, "attention mask should include both slots");
+}
+
+FACT(PrometheusDominatusSlotAdapter_M16FailureDominatesAttention)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata ready = SlotMetadata(0u, 8u, 1u, 0);
+    const prom_slot_metadata failed = SlotMetadata(0u, 8u, 0u, 404);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &ready,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "ready stage should succeed");
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_FAILED,
+                                              0u,
+                                              PROM_SLOT_FAILED,
+                                              &failed,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              404) == 1u,
+                "failure stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.failed_slot_mask & 0x1u) != 0u, "failed mask should include slot0");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x1u) != 0u, "attention mask should include slot0 failure");
+    ASSERT_TRUE((readiness.ready_slot_mask & 0x1u) == 0u, "ready mask should clear slot0 after failure");
+}
+
+FACT(PrometheusDominatusSlotAdapter_M16InvalidationSurvivesNonSlotCommit)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata invalidated = SlotMetadata(1u, 19u, 0u, PROM_DETAIL_SLOT_STALE_REJECTED);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_INVALIDATED,
+                                              1u,
+                                              PROM_SLOT_READY,
+                                              &invalidated,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              PROM_DETAIL_SLOT_STALE_REJECTED) == 1u,
+                "invalidated stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    ASSERT_TRUE(prom_dom_set_u32(&board,
+                                 PROM_DOM_SOURCE_JUDGMENT,
+                                 PROM_DOM_KEY_SGEMM_JUDGMENT_SUCCESS,
+                                 0u,
+                                 1u,
+                                 0) == 1u,
+                "non-slot staged write should succeed");
+    prom_dom_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.invalidated_slot_mask & 0x2u) != 0u, "invalidated mask should retain slot1");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x2u) != 0u, "attention mask should retain invalidated slot1");
+}
+
+FACT(PrometheusDominatusSlotAdapter_M16CleanupToEmptyClearsFailureAttentionButKeepsDirty)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata failed = SlotMetadata(1u, 22u, 0u, 500);
+    const prom_slot_metadata cleaned = SlotMetadata(1u, 23u, 0u, 0);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_FAILED,
+                                              1u,
+                                              PROM_SLOT_FAILED,
+                                              &failed,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              500) == 1u,
+                "failure stage should succeed");
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_CLEANUP,
+                                              1u,
+                                              PROM_SLOT_EMPTY,
+                                              &cleaned,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "cleanup stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.failed_slot_mask & 0x2u) == 0u, "cleanup-to-empty should clear failed mask for slot1");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x2u) == 0u, "cleanup-to-empty should clear attention slot1");
+    ASSERT_TRUE((readiness.dirty_slot_mask & 0x2u) != 0u, "cleanup transition should preserve dirty tracking for slot1");
+}
+
+FACT(PrometheusDominatusSlotAdapter_M16DuplicateReadyCoalescingAndBoundaryAdvance)
+{
+    prom_dom_blackboard board{};
+    prom_dom_blackboard_init(&board);
+    const prom_slot_metadata ready = SlotMetadata(0u, 30u, 1u, 0);
+
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &ready,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "first ready stage should succeed");
+    prom_dom_slot_commit(&board);
+    ASSERT_TRUE(prom_dom_slot_stage_lifecycle(&board,
+                                              PROM_DOM_EVENT_SLOT_READY,
+                                              0u,
+                                              PROM_SLOT_READY,
+                                              &ready,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0u,
+                                              0) == 1u,
+                "duplicate ready stage should succeed");
+    prom_dom_slot_commit(&board);
+
+    prom_dom_slot_readiness_snapshot readiness{};
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable");
+    ASSERT_TRUE((readiness.attention_slot_mask & 0x1u) != 0u, "duplicate ready should still yield one attention bit");
+    ASSERT_TRUE(readiness.duplicate_ready_event_count >= 1u, "duplicate ready counter should increment");
+
+    const std::uint64_t priorGeneration = readiness.boundary_generation;
+    prom_dom_slot_readiness_clear_boundary(&board);
+    ASSERT_TRUE(prom_dom_slot_readiness_read_visible(&board, &readiness) == 1u, "readiness snapshot should be readable after clear");
+    ASSERT_EQUAL(priorGeneration + 1u, readiness.boundary_generation, "boundary generation should advance on clear");
+    ASSERT_EQUAL(0u, readiness.dirty_slot_mask, "dirty mask should clear at boundary advance");
+    ASSERT_EQUAL(0u, readiness.attention_slot_mask, "attention mask should clear at boundary advance");
+}
+
 FACT(PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlotEvent)
 {
     void* handle = nullptr;
@@ -256,6 +477,13 @@ FACT(PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlot
     ASSERT_TRUE((diagnostics.p10_m4_last_commit_dirty_slot_mask &
                  (1u << diagnostics.p10_m4_last_slot_event_slot_id)) != 0u,
                 "dirty slot mask should include the reported slot lifecycle event slot");
+    ASSERT_TRUE((diagnostics.p10_m16_slot_readiness_dirty_slot_mask & 0x3u) != 0u,
+                "M16 readiness dirty mask should include at least one fixed-double slot");
+    ASSERT_EQUAL(diagnostics.p10_m16_slot_readiness_attention_slot_mask,
+                 diagnostics.p10_m16_slot_readiness_ready_slot_mask |
+                     diagnostics.p10_m16_slot_readiness_failed_slot_mask |
+                     diagnostics.p10_m16_slot_readiness_invalidated_slot_mask,
+                 "M16 attention mask should remain union of ready/failed/invalidated");
     ASSERT_TRUE(diagnostics.packed4_selected_layout_format != 0u,
                 "packed4 diagnostics should remain visible after slot event commit churn");
     ASSERT_TRUE(diagnostics.fp16_tolerance_known != 0u, "fp16 diagnostics should remain visible after slot event commit churn");
