@@ -1,0 +1,10 @@
+[M36SlotReadinessTable {
+    Scenario: ["one-slot-becomes-ready", "multiple-slots-ready-same-boundary", "one-slot-fails-others-continue", "slot-invalidates-due-shape-layout", "no-slot-changes", "repeated-ready-state-same", "n-slot-scan-vs-dirty-set-lookup", "dirty-slot-mask-overflow-limit", "multiple-commits-before-decision-boundary"]
+    DirtySlotMask: ["0b0001", "0b0110", "0b1001", "0b0010", "0b0000", "0b0000", "dirty-set:{2,7,11}", "overflow-flag + spill-list:{9,10}", "coalesced-mask:0b0101"]
+    ReadySlotSet: ["{0}", "{1,2}", "{2}", "{}", "{}", "{1}", "{2,7,11}", "{0..7}", "{0,2}"]
+    FailedSlotSet: ["{}", "{}", "{0}", "{1}", "{}", "{}", "{}", "{}", "{}"]
+    SchedulerAttentionSlots: ["{0}", "{1,2}", "{0,2}", "{1}", "{}", "{}", "{2,7,11}", "{spill-list}", "{0,2}"]
+    PollingWorkAvoided: [1, 0, 1, 1, 2, 2, 13, 6, 2]
+    MissedReadinessHazard: ["if ready transition not marked slot can starve", "if one bit dropped scheduler underutilizes available work", "if fail bit missed slot may be reused unsafely", "if invalidation bit missed stale shape/layout leaks", "none", "none", "if dirty set stale O(N) scan fallback required", "if overflow unhandled updates can be dropped", "if coalescing loses latest generation readiness may be stale"]
+    DuplicateReadinessHazard: ["duplicate ready event can double-dispatch", "duplicate mask bits can trigger redundant scheduling", "duplicate failure handling can over-cleanup", "duplicate invalidation can inflate churn counters", "none", "none", "duplicate dirty entries cause repeated checks", "overflow replay can duplicate scheduler work", "boundary replay can emit same slot twice"]
+}]

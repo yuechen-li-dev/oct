@@ -1,0 +1,303 @@
+package PrometheusSgemmAlgorithmLab
+
+record M36BufferInvalidationTable {
+    Scenario: String[]
+    DirtyKeys: String[]
+    InvalidateA: Bool[]
+    InvalidateB: Bool[]
+    InvalidateC: Bool[]
+    SafeReuse: String[]
+    FalseInvalidationCount: Int[]
+    MissedInvalidationCount: Int[]
+    RequiredImplementationRule: String[]
+}
+
+record M36JudgmentDependencyTable {
+    Selector: String[]
+    DependencyKeys: String[]
+    RecomputeCost: String[]
+    CacheSafeNow: Bool[]
+    CacheRecommendation: String[]
+    StaleDecisionHazard: String[]
+}
+
+record M36SelectorCacheRakeTable {
+    Selector: String[]
+    Scenario: String[]
+    DependentDirtyMask: String[]
+    RecomputeOrReuse: String[]
+    ExpectedCachedValidity: String[]
+    StaleDecisionHazard: String[]
+    RecommendedCacheStatus: String[]
+}
+
+record M36SlotReadinessTable {
+    Scenario: String[]
+    DirtySlotMask: String[]
+    ReadySlotSet: String[]
+    FailedSlotSet: String[]
+    SchedulerAttentionSlots: String[]
+    PollingWorkAvoided: Int[]
+    MissedReadinessHazard: String[]
+    DuplicateReadinessHazard: String[]
+}
+
+record M36FinalRecommendation {
+    CurrentDirtyTrackingState: String[]
+    BufferInvalidationContract: String[]
+    SelectorCachingContract: String[]
+    SlotReadinessContract: String[]
+    NextMilestoneOrdering: String[]
+    DeferredScope: String[]
+}
+
+fn M36BufferInvalidationTableFrom() -> M36BufferInvalidationTable {
+    return M36BufferInvalidationTable {
+        Scenario: [
+            "only-m-changes",
+            "only-n-changes",
+            "only-k-changes",
+            "layout-changes",
+            "precision-changes",
+            "capacity-changes-no-logical-shape-change",
+            "shape-repeats-storage-size-changes",
+            "packed4-fp16-transition-back-to-scalar"
+        ]
+        DirtyKeys: [
+            "shape.m",
+            "shape.n",
+            "shape.k",
+            "layout.inputA,inputB,outputC",
+            "precision.storage,precision.compute",
+            "capacity.required_bytes",
+            "capacity.required_bytes,shape.repeat",
+            "layout.format,precision.storage_mode"
+        ]
+        InvalidateA: [true, false, true, true, true, true, true, true]
+        InvalidateB: [false, true, true, true, true, true, true, true]
+        InvalidateC: [true, true, false, true, true, true, true, true]
+        SafeReuse: [
+            "reuse-B-only",
+            "reuse-A-only",
+            "reuse-C-only",
+            "none",
+            "none",
+            "none-if-capacity-grows reuse-all-if-capacity-unchanged",
+            "none",
+            "none"
+        ]
+        FalseInvalidationCount: [1, 1, 1, 0, 0, 0, 0, 0]
+        MissedInvalidationCount: [0, 0, 0, 0, 0, 0, 0, 0]
+        RequiredImplementationRule: [
+            "A depends on m+k+layout+precision+capacity, B ignores m",
+            "B depends on n+k+layout+precision+capacity, A ignores n",
+            "k dirties A and B; C only dirties when output representation changes",
+            "layout is per-artifact; any participating artifact layout change invalidates that artifact",
+            "precision/storage mode change invalidates artifacts that change bytes or interpretation",
+            "capacity shortfall must invalidate even when logical shape hash is unchanged",
+            "reuse key must include byte capacity class not only logical dimensions",
+            "packed/fp16/scalar mode transitions require representation-specific cache namespace"
+        ]
+    }
+}
+
+fn M36JudgmentDependencyTableFrom() -> M36JudgmentDependencyTable {
+    return M36JudgmentDependencyTable {
+        Selector: [
+            "M35 buffering selector",
+            "transfer-policy selector",
+            "layout/precision selector",
+            "full path/compute selector"
+        ]
+        DependencyKeys: [
+            "memory-budget,m35-required-slots,m35-headroom,variance,predictability,starvation-risk,wip-waste,fallback-available",
+            "queue-families,dedicated-available,transfer-supported,disabled-by-config,workload-threshold,sync-ownership,fallback-available,upload-policy-flags",
+            "sgemm-layout,sgemm-precision,packed4/fp16 eligibility,tolerance facts,fallback-available,shape-family",
+            "shape facts,path policy mode,direct/staged gates,readback flags,queue policy outcome,layout/precision outcome,buffering outcome"
+        ]
+        RecomputeCost: ["medium", "low", "medium", "high"]
+        CacheSafeNow: [true, true, false, false]
+        CacheRecommendation: [
+            "already safe",
+            "already safe",
+            "safe to implement next",
+            "defer"
+        ]
+        StaleDecisionHazard: [
+            "wrong buffering mode and headroom misclassification",
+            "wrong queue handoff policy and fallback mismatch",
+            "wrong packed4/fp16 pick causing invalid layout or error-budget breach",
+            "composed stale decision can violate path legality and mask fallback reasons"
+        ]
+    }
+}
+
+fn M36SelectorCacheRakeTableFrom() -> M36SelectorCacheRakeTable {
+    return M36SelectorCacheRakeTable {
+        Selector: [
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute",
+            "M35","Transfer","LayoutPrecision","PathCompute"
+        ]
+        Scenario: [
+            "unrelated-slot-key-change","unrelated-slot-key-change","unrelated-slot-key-change","unrelated-slot-key-change",
+            "queue-fact-change","queue-fact-change","queue-fact-change","queue-fact-change",
+            "memory-budget-change","memory-budget-change","memory-budget-change","memory-budget-change",
+            "shape-change","shape-change","shape-change","shape-change",
+            "layout-precision-fact-change","layout-precision-fact-change","layout-precision-fact-change","layout-precision-fact-change",
+            "policy-mode-change","policy-mode-change","policy-mode-change","policy-mode-change",
+            "same-value-write","same-value-write","same-value-write","same-value-write",
+            "multiple-commits-in-one-step","multiple-commits-in-one-step","multiple-commits-in-one-step","multiple-commits-in-one-step",
+            "generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key"
+        ]
+        DependentDirtyMask: [
+            "0","0","0","0",
+            "0","queue.*","0","queue.*",
+            "m35.memory.*","0","0","memory.*",
+            "0","0","shape.*","shape.*",
+            "0","0","layout|precision.*","layout|precision.*",
+            "0","queue.policy-mode","layout.policy-mode","policy-mode|composed-slice",
+            "0","0","0","0",
+            "depends-on-last-commit-mask","depends-on-last-commit-mask","depends-on-last-commit-mask","depends-on-last-commit-mask",
+            "0","0","0","0"
+        ]
+        RecomputeOrReuse: [
+            "reuse","reuse","reuse","reuse",
+            "reuse","recompute","reuse","recompute",
+            "recompute","reuse","reuse","recompute",
+            "reuse","reuse","recompute","recompute",
+            "reuse","reuse","recompute","recompute",
+            "reuse","recompute","recompute","recompute",
+            "reuse","reuse","reuse","reuse",
+            "recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse",
+            "reuse","reuse","reuse","reuse"
+        ]
+        ExpectedCachedValidity: [
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid","valid","valid","valid",
+            "valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate",
+            "valid","valid","valid","valid"
+        ]
+        StaleDecisionHazard: [
+            "low","low","medium","high",
+            "low","medium","low","high",
+            "high","low","low","high",
+            "low","low","high","high",
+            "low","low","high","high",
+            "low","medium","high","high",
+            "low","low","low","medium",
+            "medium","medium","high","high",
+            "low","low","low","medium"
+        ]
+        RecommendedCacheStatus: [
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer",
+            "already-safe","already-safe","safe-next","defer"
+        ]
+    }
+}
+
+fn M36SlotReadinessTableFrom() -> M36SlotReadinessTable {
+    return M36SlotReadinessTable {
+        Scenario: [
+            "one-slot-becomes-ready",
+            "multiple-slots-ready-same-boundary",
+            "one-slot-fails-others-continue",
+            "slot-invalidates-due-shape-layout",
+            "no-slot-changes",
+            "repeated-ready-state-same",
+            "n-slot-scan-vs-dirty-set-lookup",
+            "dirty-slot-mask-overflow-limit",
+            "multiple-commits-before-decision-boundary"
+        ]
+        DirtySlotMask: [
+            "0b0001",
+            "0b0110",
+            "0b1001",
+            "0b0010",
+            "0b0000",
+            "0b0000",
+            "dirty-set:{2,7,11}",
+            "overflow-flag + spill-list:{9,10}",
+            "coalesced-mask:0b0101"
+        ]
+        ReadySlotSet: ["{0}","{1,2}","{2}","{}","{}","{1}","{2,7,11}","{0..7}","{0,2}"]
+        FailedSlotSet: ["{}","{}","{0}","{1}","{}","{}","{}","{}","{}"]
+        SchedulerAttentionSlots: ["{0}","{1,2}","{0,2}","{1}","{}","{}","{2,7,11}","{spill-list}","{0,2}"]
+        PollingWorkAvoided: [1,0,1,1,2,2,13,6,2]
+        MissedReadinessHazard: [
+            "if ready transition not marked slot can starve",
+            "if one bit dropped scheduler underutilizes available work",
+            "if fail bit missed slot may be reused unsafely",
+            "if invalidation bit missed stale shape/layout leaks",
+            "none",
+            "none",
+            "if dirty set stale O(N) scan fallback required",
+            "if overflow unhandled updates can be dropped",
+            "if coalescing loses latest generation readiness may be stale"
+        ]
+        DuplicateReadinessHazard: [
+            "duplicate ready event can double-dispatch",
+            "duplicate mask bits can trigger redundant scheduling",
+            "duplicate failure handling can over-cleanup",
+            "duplicate invalidation can inflate churn counters",
+            "none",
+            "none",
+            "duplicate dirty entries cause repeated checks",
+            "overflow replay can duplicate scheduler work",
+            "boundary replay can emit same slot twice"
+        ]
+    }
+}
+
+fn M36FinalRecommendationFrom() -> M36FinalRecommendation {
+    return M36FinalRecommendation {
+        CurrentDirtyTrackingState: [
+            "Dominatus tracks key-level dirty masks, domain-level dirty masks, slot-scoped dirty state, and last-commit dirty key queries with staged/visible commit boundaries",
+            "M13 already caches M35 buffering and transfer selectors using dependency dirty masks, visible projection guards, and non-zero-mask invalidation",
+            "Remaining high-value applications are distinct: buffer invalidation controls allocation lifetime, selector caching controls judgment recompute lifetime, slot readiness controls scheduler polling lifetime"
+        ]
+        BufferInvalidationContract: [
+            "use per-artifact dependency masks: A=(m,k,padded-k,layout,precision,capacity), B=(k,n,padded-k,layout,precision,capacity), C=(m,n,layout,precision,capacity)",
+            "dimension-specific invalidation is required; changing n must not dirty A and changing m must not dirty B",
+            "always include required-byte-capacity and representation mode in cache key to prevent undersized reuse"
+        ]
+        SelectorCachingContract: [
+            "keep M35 and transfer cache as-is",
+            "implement layout/precision selector cache next with explicit mask over layout/precision/tolerance/shape-family keys",
+            "defer full path/compute cache until composed dependency proof and multi-commit coalescing guards are implemented"
+        ]
+        SlotReadinessContract: [
+            "represent readiness changes as per-boundary dirty-slot mask plus optional spill-list for N > mask width",
+            "track transitions preparing->ready, in-flight->consumed, fail, cleanup->empty, and explicit invalidation",
+            "coalesce multiple commits per decision boundary while preserving highest generation and terminal failure/invalid states"
+        ]
+        NextMilestoneOrdering: [
+            "next: native buffer artifact dependency invalidation (A/B/C scoped masks + capacity-class keys)",
+            "then: layout/precision selector cache extension",
+            "in parallel design-only: slot-ready dirty mask ABI finalized before N-slot/work-stealing implementation"
+        ]
+        DeferredScope: [
+            "defer full path/compute caching until composed-slice migration stabilizes",
+            "defer scheduler/work-stealing implementation until slot readiness dirty contract is wired and validated",
+            "defer allocator redesign and concurrency changes"
+        ]
+    }
+}

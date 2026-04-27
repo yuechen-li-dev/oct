@@ -1,0 +1,11 @@
+[M36BufferInvalidationTable {
+    Scenario: ["only-m-changes", "only-n-changes", "only-k-changes", "layout-changes", "precision-changes", "capacity-changes-no-logical-shape-change", "shape-repeats-storage-size-changes", "packed4-fp16-transition-back-to-scalar"]
+    DirtyKeys: ["shape.m", "shape.n", "shape.k", "layout.inputA,inputB,outputC", "precision.storage,precision.compute", "capacity.required_bytes", "capacity.required_bytes,shape.repeat", "layout.format,precision.storage_mode"]
+    InvalidateA: [true, false, true, true, true, true, true, true]
+    InvalidateB: [false, true, true, true, true, true, true, true]
+    InvalidateC: [true, true, false, true, true, true, true, true]
+    SafeReuse: ["reuse-B-only", "reuse-A-only", "reuse-C-only", "none", "none", "none-if-capacity-grows reuse-all-if-capacity-unchanged", "none", "none"]
+    FalseInvalidationCount: [1, 1, 1, 0, 0, 0, 0, 0]
+    MissedInvalidationCount: [0, 0, 0, 0, 0, 0, 0, 0]
+    RequiredImplementationRule: ["A depends on m+k+layout+precision+capacity, B ignores m", "B depends on n+k+layout+precision+capacity, A ignores n", "k dirties A and B; C only dirties when output representation changes", "layout is per-artifact; any participating artifact layout change invalidates that artifact", "precision/storage mode change invalidates artifacts that change bytes or interpretation", "capacity shortfall must invalidate even when logical shape hash is unchanged", "reuse key must include byte capacity class not only logical dimensions", "packed/fp16/scalar mode transitions require representation-specific cache namespace"]
+}]

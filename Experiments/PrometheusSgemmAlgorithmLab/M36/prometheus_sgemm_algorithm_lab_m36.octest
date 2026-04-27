@@ -1,0 +1,57 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M36RestatesCurrentDirtyTrackingStateBeforeModeling() -> Void {
+    let finalRecommendation = M36FinalRecommendationFrom()
+    Assert.True(Len(finalRecommendation.CurrentDirtyTrackingState) == 3, "M36 must restate current Dominatus dirty-tracking status and M13 cache state")
+}
+
+[Fact]
+fn M36BufferInvalidationRakeCoversRequiredSequences() -> Void {
+    let table = M36BufferInvalidationTableFrom()
+    Assert.True(Len(table.Scenario) == 8, "Track A must include all required invalidation sequences")
+    Assert.True(table.InvalidateA[1] == false and table.InvalidateB[0] == false, "dimension-specific invalidation must avoid dirtying unrelated A/B artifacts")
+    Assert.True(table.MissedInvalidationCount[0] == 0 and table.MissedInvalidationCount[7] == 0, "M36 contracts must prevent missed invalidation in all modeled sequences")
+}
+
+[Fact]
+fn M36SelectorRakeSeparatesSafeAndDeferredCaches() -> Void {
+    let deps = M36JudgmentDependencyTableFrom()
+    Assert.True(deps.CacheSafeNow[0] and deps.CacheSafeNow[1], "M35 and transfer selector caches must remain safe-now")
+    Assert.True(not deps.CacheSafeNow[2] and not deps.CacheSafeNow[3], "layout/precision and path/compute caches should not be marked safe-now")
+
+    let rake = M36SelectorCacheRakeTableFrom()
+    Assert.True(Len(rake.Selector) == 36, "Track B rake must cover selector x scenario matrix")
+}
+
+[Fact]
+fn M36SlotReadinessRakeCoversFixedDoubleAndNslotCases() -> Void {
+    let table = M36SlotReadinessTableFrom()
+    Assert.True(Len(table.Scenario) == 9, "Track C must include all readiness scenarios")
+    Assert.True(table.PollingWorkAvoided[6] > table.PollingWorkAvoided[0], "N-slot dirty-set lookup should avoid more polling than fixed-double scan")
+}
+
+[Artifact]
+fn EmitM36BufferInvalidationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M36/m36_buffer_invalidation_table.octagon", [M36BufferInvalidationTableFrom()])
+}
+
+[Artifact]
+fn EmitM36JudgmentDependencyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M36/m36_judgment_dependency_table.octagon", [M36JudgmentDependencyTableFrom()])
+}
+
+[Artifact]
+fn EmitM36SelectorCacheRakeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M36/m36_selector_cache_rake_table.octagon", [M36SelectorCacheRakeTableFrom()])
+}
+
+[Artifact]
+fn EmitM36SlotReadinessTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M36/m36_slot_readiness_table.octagon", [M36SlotReadinessTableFrom()])
+}
+
+[Artifact]
+fn EmitM36FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M36/m36_final_recommendation.octagon", [M36FinalRecommendationFrom()])
+}
