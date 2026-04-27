@@ -443,7 +443,56 @@ static void set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage
   }
 }
 
+static void mirror_async_from_visible(prometheus_runtime* rt) {
+  prom_dom_async_snapshot snapshot;
+  if (rt == NULL) {
+    return;
+  }
+  if (prom_dom_sgemm_read_visible_async_snapshot(&rt->blackboard, &snapshot) == 0u) {
+    return;
+  }
+  rt->async_task_id = snapshot.task_id;
+  rt->async_state = snapshot.lifecycle_state;
+  rt->async_stage = snapshot.stage;
+  rt->async_failure_detail = snapshot.failure_detail;
+}
+
+static void stage_commit_async_snapshot(prometheus_runtime* rt, prom_dom_event_kind event_kind, int reason_code) {
+  prom_dom_async_snapshot snapshot;
+  uint64_t slot_generation = 0u;
+  if (rt == NULL) {
+    return;
+  }
+  memset(&snapshot, 0, sizeof(snapshot));
+  snapshot.task_id = rt->async_task_id;
+  snapshot.lifecycle_state = rt->async_state;
+  snapshot.stage = rt->async_stage;
+  snapshot.detail_code = rt->async_state == PROM_ASYNC_STATE_FAILED ? rt->async_failure_detail : rt->async_final_detail;
+  snapshot.ready = rt->async_state == PROM_ASYNC_STATE_READY ? 1u : 0u;
+  snapshot.failed = rt->async_state == PROM_ASYNC_STATE_FAILED ? 1u : 0u;
+  snapshot.consumed = rt->async_state == PROM_ASYNC_STATE_CONSUMED ? 1u : 0u;
+  snapshot.outstanding_tasks = rt->async_state == PROM_ASYNC_STATE_SUBMITTED ? 1u : 0u;
+  snapshot.failure_stage = rt->async_state == PROM_ASYNC_STATE_FAILED ? rt->async_stage : PROM_STAGE_NONE;
+  snapshot.failure_detail = rt->async_failure_detail;
+  snapshot.submit_detail = rt->async_final_detail;
+  snapshot.query_detail = snapshot.detail_code;
+  snapshot.slot_id = rt->slot_diag.async_slot_id;
+  if (snapshot.slot_id >= 0 && (uint32_t)snapshot.slot_id < 2u) {
+    slot_generation = prom_slot_hfsm_metadata(&rt->slots[snapshot.slot_id])->generation;
+  }
+  snapshot.slot_generation = slot_generation;
+  snapshot.owns_slot = rt->slot_diag.async_slot_id >= 0 ? 1u : 0u;
+  snapshot.transfer_complete = rt->slot_diag.async_transfer_complete;
+  snapshot.compute_complete = rt->in_flight_submit == 0u ? 1u : 0u;
+  snapshot.readback_complete = (snapshot.compute_complete != 0u && snapshot.ready != 0u) ? 1u : 0u;
+  if (prom_dom_sgemm_stage_async_snapshot(&rt->blackboard, &snapshot, event_kind, reason_code) != 0u) {
+    prom_dom_sgemm_commit(&rt->blackboard);
+    mirror_async_from_visible(rt);
+  }
+}
+
 static void set_async_state(prometheus_runtime* rt, uint32_t state, uint32_t stage, int detail) {
+  prom_dom_event_kind event_kind = PROM_DOM_EVENT_NONE;
   if (rt == NULL) {
     return;
   }
@@ -454,6 +503,16 @@ static void set_async_state(prometheus_runtime* rt, uint32_t state, uint32_t sta
   } else {
     rt->async_failure_detail = 0;
   }
+  if (state == PROM_ASYNC_STATE_SUBMITTED) {
+    event_kind = PROM_DOM_EVENT_ASYNC_SUBMITTED;
+  } else if (state == PROM_ASYNC_STATE_READY) {
+    event_kind = PROM_DOM_EVENT_ASYNC_READY;
+  } else if (state == PROM_ASYNC_STATE_FAILED) {
+    event_kind = PROM_DOM_EVENT_ASYNC_FAILED;
+  } else if (state == PROM_ASYNC_STATE_CONSUMED) {
+    event_kind = PROM_DOM_EVENT_ASYNC_CONSUMED;
+  }
+  stage_commit_async_snapshot(rt, event_kind, detail);
 }
 
 static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int reason);
@@ -2329,6 +2388,10 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
   runtime->slot_diag.transfer_failure_slot_id = -1;
   runtime->slot_diag.transfer_failure_reason = 0;
+  runtime->async_task_id = -1;
+  runtime->async_state = PROM_ASYNC_STATE_IDLE;
+  runtime->async_stage = PROM_STAGE_NONE;
+  runtime->async_failure_detail = 0;
   {
     prom_dom_slot_runtime_diag_snapshot diag_snapshot;
     memset(&diag_snapshot, 0, sizeof(diag_snapshot));
@@ -2346,6 +2409,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
       prom_dom_slot_commit(&runtime->blackboard);
     }
   }
+  stage_commit_async_snapshot(runtime, PROM_DOM_EVENT_NONE, 0);
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
@@ -2586,6 +2650,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
     rt->slot_diag.inflight_rejection_count += 1u;
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
   if (rt->in_flight_submit != 0u) {
@@ -3619,6 +3684,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
 
 int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, PrometheusAsyncStatus* out_status) {
   prometheus_runtime* rt;
+  prom_dom_async_snapshot async_snapshot;
 
   if (out_status == NULL) {
     return PROM_ERROR;
@@ -3629,23 +3695,31 @@ int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, Prome
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
+  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     return PROM_INVALID_HANDLE;
   }
   if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
     out_status->lifecycle_state = PROM_ASYNC_STATE_IDLE;
     out_status->detail_code = PROM_DETAIL_ASYNC_NO_TASK;
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_NO_TASK);
     return PROM_ERROR;
   }
 
   update_async_progress(rt);
-  out_status->lifecycle_state = rt->async_state;
-  out_status->stage = rt->async_stage;
-  out_status->detail_code = rt->async_state == PROM_ASYNC_STATE_FAILED ? rt->async_failure_detail : rt->async_final_detail;
-  out_status->ready = rt->async_state == PROM_ASYNC_STATE_READY ? 1u : 0u;
-  out_status->failed = rt->async_state == PROM_ASYNC_STATE_FAILED ? 1u : 0u;
-  out_status->consumed = rt->async_state == PROM_ASYNC_STATE_CONSUMED ? 1u : 0u;
-  out_status->outstanding_tasks = rt->async_state == PROM_ASYNC_STATE_SUBMITTED ? 1u : 0u;
+  if (prom_dom_sgemm_read_visible_async_snapshot(&rt->blackboard, &async_snapshot) == 0u) {
+    return PROM_ERROR;
+  }
+  out_status->lifecycle_state = async_snapshot.lifecycle_state;
+  out_status->stage = async_snapshot.stage;
+  out_status->detail_code = async_snapshot.detail_code;
+  out_status->ready = async_snapshot.ready;
+  out_status->failed = async_snapshot.failed;
+  out_status->consumed = async_snapshot.consumed;
+  out_status->outstanding_tasks = async_snapshot.outstanding_tasks;
+  if (async_snapshot.lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_NOT_READY, PROM_DETAIL_ASYNC_NOT_READY);
+  }
   return PROM_OK;
 }
 
@@ -3664,17 +3738,20 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
+  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_INVALID_TASK);
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_INVALID_TASK);
     return PROM_ERROR;
   }
   update_async_progress(rt);
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_NOT_READY);
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_NOT_READY, PROM_DETAIL_ASYNC_NOT_READY);
     return PROM_ERROR;
   }
   if (rt->async_state == PROM_ASYNC_STATE_FAILED) {
@@ -3683,6 +3760,7 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
   }
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ALREADY_CONSUMED, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
     return PROM_ERROR;
   }
   if (c == NULL) {
@@ -3716,15 +3794,18 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
+  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     return PROM_INVALID_HANDLE;
   }
   if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_INVALID_TASK);
     return PROM_ERROR;
   }
   update_async_progress(rt);
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
     rt->slot_diag.inflight_rejection_count += 1u;
+    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
   if (rt->slot_diag.async_slot_id >= 0) {
@@ -3736,6 +3817,7 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
     rt->slot_diag.async_slot_id = -1;
   }
   set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, rt->async_stage, rt->async_final_detail);
+  stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ABANDONED, rt->async_final_detail);
   return PROM_OK;
 }
 
