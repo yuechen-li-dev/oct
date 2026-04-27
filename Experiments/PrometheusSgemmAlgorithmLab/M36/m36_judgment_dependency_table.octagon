@@ -1,0 +1,8 @@
+[M36JudgmentDependencyTable {
+    Selector: ["M35 buffering selector", "transfer-policy selector", "layout/precision selector", "full path/compute selector"]
+    DependencyKeys: ["memory-budget,m35-required-slots,m35-headroom,variance,predictability,starvation-risk,wip-waste,fallback-available", "queue-families,dedicated-available,transfer-supported,disabled-by-config,workload-threshold,sync-ownership,fallback-available,upload-policy-flags", "sgemm-layout,sgemm-precision,packed4/fp16 eligibility,tolerance facts,fallback-available,shape-family", "shape facts,path policy mode,direct/staged gates,readback flags,queue policy outcome,layout/precision outcome,buffering outcome"]
+    RecomputeCost: ["medium", "low", "medium", "high"]
+    CacheSafeNow: [true, true, false, false]
+    CacheRecommendation: ["already safe", "already safe", "safe to implement next", "defer"]
+    StaleDecisionHazard: ["wrong buffering mode and headroom misclassification", "wrong queue handoff policy and fallback mismatch", "wrong packed4/fp16 pick causing invalid layout or error-budget breach", "composed stale decision can violate path legality and mask fallback reasons"]
+}]
