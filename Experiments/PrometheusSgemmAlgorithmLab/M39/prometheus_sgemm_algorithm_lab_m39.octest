@@ -1,0 +1,135 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M39ModelDeterminism() -> Void {
+    let s = M39ScenarioBase("determinism", "heavy-tail")
+    let a = M39RunScenario(s)
+    let b = M39RunScenario(s)
+    Assert.Equal(M39Find(a, M39ModelNameB()).CompletionTime, M39Find(b, M39ModelNameB()).CompletionTime, "static model must be deterministic")
+    Assert.Equal(M39Find(a, M39ModelNameC()).CompletionTime, M39Find(b, M39ModelNameC()).CompletionTime, "spmc model must be deterministic")
+    Assert.Equal(M39Find(a, M39ModelNameD()).CompletionTime, M39Find(b, M39ModelNameD()).CompletionTime, "steal model must be deterministic")
+}
+
+[Fact]
+fn M39SingleQueueDegradation() -> Void {
+    let s = M39Scenario { Name: "single-queue-check" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 1 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "moderate-variable" }
+    let rows = M39RunScenario(s)
+    let b = M39Find(rows, M39ModelNameB())
+    let c = M39Find(rows, M39ModelNameC())
+    let d = M39Find(rows, M39ModelNameD())
+    Assert.Equal(b.EffectiveWorkers, 1, "static partition must collapse to one worker on single queue hardware")
+    Assert.Equal(c.EffectiveWorkers, 1, "spmc must collapse to one worker on single queue hardware")
+    Assert.Equal(d.EffectiveWorkers, 1, "steal model must collapse to one worker on single queue hardware")
+    Assert.True(b.SpeedupVsSingleMilli <= 1000 and c.SpeedupVsSingleMilli <= 1000 and d.SpeedupVsSingleMilli <= 1000, "single queue must not claim parallel speedup")
+}
+
+[Fact]
+fn M39JudgmentBottleneckBehavior() -> Void {
+    let hiJ = M39Scenario { Name: "judgment-high" BatchSize: 48 JudgmentCost: 26 DispatchCostBase: 3 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "moderate-variable" }
+    let loJ = M39Scenario { Name: "judgment-low" BatchSize: 48 JudgmentCost: 2 DispatchCostBase: 9 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "moderate-variable" }
+    let highRows = M39RunScenario(hiJ)
+    let lowRows = M39RunScenario(loJ)
+    let highB = M39Find(highRows, M39ModelNameB())
+    let lowB = M39Find(lowRows, M39ModelNameB())
+    Assert.True(highB.PolicyTime > highB.DispatchTime, "high judgment scenario should be policy dominated")
+    Assert.True(highB.SpeedupVsSingleMilli < lowB.SpeedupVsSingleMilli, "policy bottleneck should reduce parallel speedup")
+}
+
+[Fact]
+fn M39StaticCompetitiveOnUniformTasks() -> Void {
+    let s = M39ScenarioBase("uniform-check", "uniform")
+    let rows = M39RunScenario(s)
+    let b = M39Find(rows, M39ModelNameB())
+    let c = M39Find(rows, M39ModelNameC())
+    let d = M39Find(rows, M39ModelNameD())
+    Assert.True(b.CompletionTime <= c.CompletionTime + 40, "static should be competitive with spmc on uniform tasks")
+    Assert.True(b.CompletionTime <= d.CompletionTime + 40, "static should be competitive with steal on uniform tasks")
+}
+
+[Fact]
+fn M39SpmcHelpsModerateVariability() -> Void {
+    let s = M39ScenarioBase("moderate-check", "moderate-variable")
+    let rows = M39RunScenario(s)
+    let b = M39Find(rows, M39ModelNameB())
+    let c = M39Find(rows, M39ModelNameC())
+    Assert.True(c.LoadImbalance < b.LoadImbalance, "spmc should reduce imbalance for moderate variability")
+}
+
+[Fact]
+fn M39StealHelpsHeavyTailWithLowCost() -> Void {
+    let lowCost = M39ScenarioBase("heavy-low-cost", "heavy-tail")
+    let highCost = M39Scenario { Name: "heavy-high-cost" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 18 FailedStealBackoffCost: 20 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "heavy-tail" }
+    let lowRows = M39RunScenario(lowCost)
+    let highRows = M39RunScenario(highCost)
+    let lowD = M39Find(lowRows, M39ModelNameD())
+    let lowB = M39Find(lowRows, M39ModelNameB())
+    let highD = M39Find(highRows, M39ModelNameD())
+    let highB = M39Find(highRows, M39ModelNameB())
+    Assert.True(lowD.CompletionTime <= lowB.CompletionTime, "stealing should help or tie under heavy-tail with low steal cost")
+    Assert.True(highD.CompletionTime >= highB.CompletionTime, "stealing should lose or tie when steal cost is high")
+}
+
+[Fact]
+fn M39StealOverheadCliff() -> Void {
+    let low = M39ScenarioBase("cliff-low", "heavy-tail")
+    let high = M39Scenario { Name: "cliff-high" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 24 FailedStealBackoffCost: 26 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "heavy-tail" }
+    let lowRows = M39RunScenario(low)
+    let highRows = M39RunScenario(high)
+    Assert.True(M39Find(highRows, M39ModelNameD()).StealOverheadTime > M39Find(lowRows, M39ModelNameD()).StealOverheadTime, "higher steal cost must raise steal overhead")
+    Assert.True(M39Find(highRows, M39ModelNameD()).ProductScore < M39Find(lowRows, M39ModelNameD()).ProductScore, "higher steal cost should reduce stealing score")
+}
+
+[Fact]
+fn M39MemoryPressureCapsWorkers() -> Void {
+    let s = M39Scenario { Name: "memory-cap-check" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 1 EventDrainCost: 2 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 536870912 TaskDistributionKind: "moderate-variable" }
+    let rows = M39RunScenario(s)
+    Assert.Equal(M39Find(rows, M39ModelNameB()).EffectiveWorkers, 2, "memory budget that supports two arenas must cap workers to two")
+    Assert.True(M39Find(rows, M39ModelNameB()).MemoryLimited, "memory-limited flag should be set")
+}
+
+[Fact]
+fn M39EventOverheadMatters() -> Void {
+    let low = M39ScenarioBase("event-low", "moderate-variable")
+    let high = M39Scenario { Name: "event-high" BatchSize: 48 JudgmentCost: 8 DispatchCostBase: 4 WorkerCount: 4 HardwareQueueCount: 4 SharedQueueOverhead: 2 StealAttemptCost: 3 FailedStealBackoffCost: 5 EventEmitCost: 9 EventDrainCost: 18 PerWorkerArenaBytes: 268435456 MemoryBudgetBytes: 1610612736 TaskDistributionKind: "moderate-variable" }
+    let lowRows = M39RunScenario(low)
+    let highRows = M39RunScenario(high)
+    Assert.True(M39Find(highRows, M39ModelNameD()).EventOverheadTime > M39Find(lowRows, M39ModelNameD()).EventOverheadTime, "high event costs should increase event overhead")
+    Assert.True(M39Find(highRows, M39ModelNameD()).ProductScore < M39Find(lowRows, M39ModelNameD()).ProductScore, "high event overhead should reduce product score")
+}
+
+[Fact]
+fn M39RecommendationIsComputed() -> Void {
+    let rec = M39FinalRecommendationFromModel()
+    Assert.True(rec.FirstImplementationModel == M39ModelNameB() or rec.FirstImplementationModel == M39ModelNameC(), "recommendation should be selected from computed model scores")
+    Assert.True(rec.RecommendationDerivedFromScores, "recommendation must be score-derived")
+}
+
+[Artifact]
+fn EmitM39DispatchModelComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_dispatch_model_comparison.octagon", [M39DispatchModelComparisonTable()])
+}
+
+[Artifact]
+fn EmitM39JudgmentBottleneckTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_judgment_bottleneck_table.octagon", [M39JudgmentBottleneckTableFrom()])
+}
+
+[Artifact]
+fn EmitM39StealOverheadTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_steal_overhead_table.octagon", [M39StealOverheadTableFrom()])
+}
+
+[Artifact]
+fn EmitM39QueueTopologyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_queue_topology_table.octagon", [M39QueueTopologyTableFrom()])
+}
+
+[Artifact]
+fn EmitM39MemoryPressureTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_memory_pressure_table.octagon", [M39MemoryPressureTableFrom()])
+}
+
+[Artifact]
+fn EmitM39FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M39/m39_final_recommendation.octagon", [M39FinalRecommendationFromModel()])
+}

@@ -1,22 +1,8 @@
 [M39JudgmentBottleneckTable {
-    Scenario: [
-        "judgment-dominant",
-        "balanced",
-        "dispatch-dominant"
-    ]
-    N: [256, 256, 256]
-    Jus: [22, 8, 2]
-    Dus: [6, 8, 18]
-    W: [4, 4, 4]
-    Q: [4, 4, 4]
-    EffectiveWorkers: [4, 4, 4]
-    PolicyTimeUs: [5632, 2048, 512]
-    DispatchLowerBoundUs: [384, 512, 1152]
-    ThroughputBoundMaxUs: [5632, 2048, 1152]
-    ParallelDispatchBenefitVsA: ["negligible", "moderate", "high"]
-    Conclusion: [
-        "judgment bottleneck rake fires",
-        "mixed bottleneck",
-        "dispatch parallelism worthwhile"
-    ]
+    Scenario: ["judgment-dominant", "balanced", "dispatch-dominant"]
+    JudgmentCost: [26, 8, 2]
+    PolicyShareMilli: [748, 463, 163]
+    StaticSpeedupMilli: [1468, 2030, 2695]
+    SpmcSpeedupMilli: [1400, 1849, 2369]
+    JudgmentBottleneck: [true, false, false]
 }]

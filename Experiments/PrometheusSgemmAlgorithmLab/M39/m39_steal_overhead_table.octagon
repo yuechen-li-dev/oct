@@ -1,29 +1,10 @@
 [M39StealOverheadTable {
-    WorkloadClass: [
-        "uniform",
-        "moderately-variable",
-        "heavy-tailed",
-        "small-fast-tasks",
-        "large-slow-tasks"
-    ]
-    ImbalanceLossStaticPct: [2, 9, 28, 6, 12]
-    SharedQueueOverheadPct: [5, 7, 8, 16, 3]
-    StealAttemptCostUs: [3, 3, 3, 3, 3]
-    FailedStealBackoffUs: [5, 5, 5, 5, 5]
-    NetBenefitSPMCVsStaticPct: [0, 4, 11, -8, 6]
-    NetBenefitStealVsSPMCPct: [-3, 2, 9, -12, 2]
-    WinnerByClass: [
-        "B-static",
-        "C-shared-spmc",
-        "D-work-steal",
-        "B-static",
-        "C-shared-spmc"
-    ]
-    RakeOutcome: [
-        "steal-overhead-cliff",
-        "steal-optional",
-        "steal-worth-it-threshold-crossed",
-        "queue-and-steal-overhead-dominates",
-        "dynamic-balance-helps-without-steal"
-    ]
+    Scenario: ["heavy-tail-steal-low-cost", "heavy-tail-steal-high-cost", "moderate-steal-reference", "small-fast-steal-reference", "large-slow-steal-reference"]
+    Distribution: ["heavy-tail", "heavy-tail", "moderate-variable", "small-fast", "large-slow"]
+    StealAttemptCost: [3, 18, 3, 3, 3]
+    StaticCompletion: [820, 820, 816, 582, 1158]
+    SpmcCompletion: [968, 968, 897, 708, 1281]
+    StealCompletion: [820, 865, 799, 582, 1158]
+    StealVsStaticDelta: [0, 45, -17, 0, 0]
+    StealVsSpmcDelta: [-148, -103, -98, -126, -123]
 }]

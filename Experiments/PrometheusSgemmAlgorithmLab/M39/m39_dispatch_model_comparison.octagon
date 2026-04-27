@@ -1,24 +1,19 @@
 [M39DispatchModelComparison {
-    Model: [
-        "A-single-worker-baseline",
-        "B-central-policy-static-partition",
-        "C-central-policy-shared-spmc",
-        "D-central-policy-local-queues-work-steal",
-        "E-parallel-judgment-reference"
-    ]
-    PolicyOwnershipSafety: ["high", "high", "high", "high", "low"]
-    DominatusSnapshotComplexity: ["low", "low", "low", "medium", "high"]
-    QueueOverheadClass: ["none", "none", "medium", "high", "none"]
-    LoadBalancingStrength: ["none", "low", "medium", "high", "medium"]
-    HeavyTailResilience: ["none", "low", "medium", "high", "medium"]
-    ImplementationComplexityScore: [1, 3, 5, 8, 9]
-    PolicyContentionRisk: ["none", "low", "medium", "medium", "high"]
-    EventDrainComplexity: ["low", "medium", "medium", "high", "high"]
-    FirstImplementationFit: [
-        "baseline-only",
-        "primary-candidate",
-        "secondary-candidate",
-        "defer-until-proven-needed",
-        "reference-only-not-for-product"
-    ]
+    Scenario: ["uniform-main", "uniform-main", "uniform-main", "uniform-main", "uniform-main", "moderate-main", "moderate-main", "moderate-main", "moderate-main", "moderate-main", "heavy-main", "heavy-main", "heavy-main", "heavy-main", "heavy-main", "small-fast-main", "small-fast-main", "small-fast-main", "small-fast-main", "small-fast-main", "large-slow-main", "large-slow-main", "large-slow-main", "large-slow-main", "large-slow-main"]
+    Model: ["A-single-worker-baseline", "B-central-policy-static-partition", "C-central-policy-shared-spmc", "D-central-policy-local-queues-work-steal", "E-parallel-judgment-reference", "A-single-worker-baseline", "B-central-policy-static-partition", "C-central-policy-shared-spmc", "D-central-policy-local-queues-work-steal", "E-parallel-judgment-reference", "A-single-worker-baseline", "B-central-policy-static-partition", "C-central-policy-shared-spmc", "D-central-policy-local-queues-work-steal", "E-parallel-judgment-reference", "A-single-worker-baseline", "B-central-policy-static-partition", "C-central-policy-shared-spmc", "D-central-policy-local-queues-work-steal", "E-parallel-judgment-reference", "A-single-worker-baseline", "B-central-policy-static-partition", "C-central-policy-shared-spmc", "D-central-policy-local-queues-work-steal", "E-parallel-judgment-reference"]
+    Distribution: ["uniform", "uniform", "uniform", "uniform", "uniform", "moderate-variable", "moderate-variable", "moderate-variable", "moderate-variable", "moderate-variable", "heavy-tail", "heavy-tail", "heavy-tail", "heavy-tail", "heavy-tail", "small-fast", "small-fast", "small-fast", "small-fast", "small-fast", "large-slow", "large-slow", "large-slow", "large-slow", "large-slow"]
+    EffectiveWorkers: [1, 4, 4, 4, 4, 1, 4, 4, 4, 4, 1, 4, 4, 4, 4, 1, 4, 4, 4, 4, 1, 4, 4, 4, 4]
+    CompletionTime: [1680, 780, 900, 780, 636, 1633, 816, 897, 799, 633, 1778, 820, 968, 820, 690, 888, 582, 708, 582, 446, 3137, 1158, 1281, 1158, 1017]
+    PolicyTime: [384, 384, 384, 384, 144, 384, 384, 384, 384, 144, 384, 384, 384, 384, 144, 384, 384, 384, 384, 144, 384, 384, 384, 384, 144]
+    DispatchTime: [1152, 300, 324, 300, 396, 1105, 336, 321, 307, 393, 1250, 340, 392, 334, 450, 360, 102, 132, 102, 206, 2609, 678, 705, 678, 777]
+    QueueOverheadTime: [0, 0, 96, 0, 0, 0, 0, 96, 0, 0, 0, 0, 96, 0, 0, 0, 0, 96, 0, 0, 0, 0, 96, 0, 0]
+    StealOverheadTime: [0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    IdleWorkerTime: [0, 0, 0, 0, 0, 0, 191, 35, 63, 35, 0, 62, 174, 32, 118, 0, 0, 24, 0, 32, 0, 55, 67, 55, 67]
+    LoadImbalance: [0, 0, 0, 0, 0, 0, 96, 17, 31, 17, 0, 31, 65, 16, 45, 0, 0, 12, 0, 16, 0, 19, 53, 19, 55]
+    WorkerUtilizationMilli: [1000, 1000, 1000, 1000, 1000, 1000, 431, 890, 794, 910, 1000, 817, 556, 904, 737, 1000, 1000, 818, 1000, 844, 1000, 918, 904, 918, 913]
+    SpeedupVsSingleMilli: [1000, 2153, 1866, 2153, 2641, 1000, 2001, 1820, 2043, 2579, 1000, 2168, 1836, 2168, 2576, 1000, 1525, 1254, 1525, 1991, 1000, 2708, 2448, 2708, 3084]
+    MemoryUsed: [1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824, 1073741824]
+    MemoryLimited: [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+    EventOverheadTime: [144, 96, 96, 96, 96, 144, 96, 96, 96, 96, 144, 96, 96, 96, 96, 144, 96, 96, 96, 96, 144, 96, 96, 96, 96]
+    ProductScore: [1984408, 1992552, 1990928, 1992072, 1993088, 1984831, 1990602, 1990660, 1991320, 1992820, 1983526, 1991665, 1988947, 1991416, 1991669, 1991536, 1994334, 1992452, 1993854, 1994526, 1971295, 1988725, 1986832, 1988245, 1988982]
 }]
