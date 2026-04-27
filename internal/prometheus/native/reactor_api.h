@@ -186,6 +186,12 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t output_committed;
   uint32_t plan_generation;
   uint32_t worker_judgment_count;
+  uint32_t execution_mode;
+  uint32_t worker_resource_mode;
+  uint32_t worker_active_mask;
+  uint32_t worker_assigned_count[8];
+  uint32_t worker_completed_count[8];
+  uint32_t worker_event_count[8];
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -228,6 +234,17 @@ enum {
   PROM_BATCH_CAP_REASON_HARDWARE_QUEUE = 1u,
   PROM_BATCH_CAP_REASON_MEMORY_BUDGET = 2u,
   PROM_BATCH_CAP_REASON_SINGLE_QUEUE_CONSERVATIVE = 3u,
+};
+
+enum {
+  PROM_BATCH_EXECUTION_SINGLE_WORKER = 1u,
+  PROM_BATCH_EXECUTION_LANE_SIMULATED = 2u,
+};
+
+enum {
+  PROM_BATCH_WORKER_RESOURCE_DEDICATED = 1u,
+  PROM_BATCH_WORKER_RESOURCE_SHARED = 2u,
+  PROM_BATCH_WORKER_RESOURCE_SIMULATED = 3u,
 };
 
 typedef struct PrometheusCaps {
