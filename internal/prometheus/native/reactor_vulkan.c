@@ -2477,6 +2477,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_dom_transfer_queue_projection transfer_queue_projection;
   prom_dom_transfer_queue_decision transfer_queue_decision;
   prom_dom_transfer_queue_snapshot transfer_queue_snapshot;
+  prom_dom_sgemm_layout_precision_facts layout_precision_facts;
+  prom_dom_sgemm_layout_precision_projection layout_precision_projection;
+  prom_dom_sgemm_layout_precision_decision layout_precision_decision;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
   prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
@@ -2600,19 +2603,42 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_facts.tiled_shape = tiled_shape;
   judgment_facts.software_vulkan = rt->software_vulkan;
   judgment_facts.policy_mode = policy_mode;
-  judgment_facts.packed4_available = 1u;
-  judgment_facts.packed4_small_shape = packed4_small_shape;
-  judgment_facts.packed4_padding_waste_permille = packed4_waste_permille;
-  judgment_facts.packed4_mode_budget_permille = packed4_budget_permille;
-  judgment_facts.packed4_row_major_valid = 1u;
-  judgment_facts.packed4_tail_valid = 1u;
-  judgment_facts.strict_fp32 = ((rt->test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
-  judgment_facts.tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
-  judgment_facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
-  judgment_facts.has_special_values = fp16_has_special_values;
-  judgment_facts.capability_fp16_storage = rt->capability_fp16_storage;
-  judgment_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
-  judgment_facts.fp16_utility_score = fp16_utility_score;
+  memset(&layout_precision_facts, 0, sizeof(layout_precision_facts));
+  layout_precision_facts.packed4_available = 1u;
+  layout_precision_facts.packed4_small_shape = packed4_small_shape;
+  layout_precision_facts.packed4_padding_waste_permille = packed4_waste_permille;
+  layout_precision_facts.packed4_mode_budget_permille = packed4_budget_permille;
+  layout_precision_facts.packed4_row_major_valid = 1u;
+  layout_precision_facts.packed4_tail_valid = 1u;
+  layout_precision_facts.strict_fp32 = ((rt->test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
+  layout_precision_facts.tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+  layout_precision_facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+  layout_precision_facts.has_special_values = fp16_has_special_values;
+  layout_precision_facts.capability_fp16_storage = rt->capability_fp16_storage;
+  layout_precision_facts.fallback_available = (judgment_facts.allow_fallback != 0u && judgment_facts.can_direct != 0u) ? 1u : 0u;
+  layout_precision_facts.fp16_utility_score = fp16_utility_score;
+  if (prom_dom_sgemm_stage_layout_precision_facts(&rt->blackboard, &layout_precision_facts) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_build_layout_precision_facts_from_visible(&rt->blackboard, &layout_precision_facts, &layout_precision_projection) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  judgment_facts.packed4_available = layout_precision_projection.facts.packed4_available;
+  judgment_facts.packed4_small_shape = layout_precision_projection.facts.packed4_small_shape;
+  judgment_facts.packed4_padding_waste_permille = layout_precision_projection.facts.packed4_padding_waste_permille;
+  judgment_facts.packed4_mode_budget_permille = layout_precision_projection.facts.packed4_mode_budget_permille;
+  judgment_facts.packed4_row_major_valid = layout_precision_projection.facts.packed4_row_major_valid;
+  judgment_facts.packed4_tail_valid = layout_precision_projection.facts.packed4_tail_valid;
+  judgment_facts.strict_fp32 = layout_precision_projection.facts.strict_fp32;
+  judgment_facts.tolerance_known = layout_precision_projection.facts.tolerance_known;
+  judgment_facts.tolerance_pass = layout_precision_projection.facts.tolerance_pass;
+  judgment_facts.has_special_values = layout_precision_projection.facts.has_special_values;
+  judgment_facts.capability_fp16_storage = layout_precision_projection.facts.capability_fp16_storage;
+  judgment_facts.fallback_available = layout_precision_projection.facts.fallback_available;
+  judgment_facts.fp16_utility_score = layout_precision_projection.facts.fp16_utility_score;
   memset(&transfer_queue_facts, 0, sizeof(transfer_queue_facts));
   transfer_queue_facts.dedicated_transfer_available = rt->dedicated_transfer_available;
   transfer_queue_facts.transfer_queue_family_index = rt->transfer_queue_family_index;
@@ -2674,6 +2700,40 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   rt->sgemm_controller.fp16_fallback_reason_detail = prom_fp16_reject_reason_to_detail(judgment_decision.fp16_reject_reason);
   rt->sgemm_controller.fp16_selected_candidate = judgment_decision.fp16_selected != 0u ? 3u : 1u;
+  memset(&layout_precision_decision, 0, sizeof(layout_precision_decision));
+  layout_precision_decision.packed4_selected = judgment_decision.packed4_selected;
+  layout_precision_decision.packed4_reject_reason = (uint32_t)judgment_decision.packed4_reject_reason;
+  layout_precision_decision.fp16_selected = judgment_decision.fp16_selected;
+  layout_precision_decision.fp16_reject_reason = (uint32_t)judgment_decision.fp16_reject_reason;
+  layout_precision_decision.packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
+  layout_precision_decision.packed4_tail_count_last = rt->sgemm_controller.packed4_tail_count_last;
+  layout_precision_decision.packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
+  layout_precision_decision.packed4_padded_lane_count_last = rt->sgemm_controller.packed4_padded_lane_count_last;
+  layout_precision_decision.packed4_padded_lane_count_total = rt->sgemm_controller.packed4_padded_lane_count_total;
+  layout_precision_decision.packed4_padding_waste_permille_last = rt->sgemm_controller.packed4_padding_waste_permille_last;
+  layout_precision_decision.packed4_mode_budget_denials = rt->sgemm_controller.packed4_mode_budget_denials;
+  layout_precision_decision.packed4_row_major_check_failures = rt->sgemm_controller.packed4_row_major_check_failures;
+  layout_precision_decision.packed4_selection_count = rt->sgemm_controller.packed4_selection_count;
+  layout_precision_decision.packed4_fallback_reason_padding_waste = rt->sgemm_controller.packed4_fallback_reason_padding_waste;
+  layout_precision_decision.packed4_fallback_reason_small_shape = rt->sgemm_controller.packed4_fallback_reason_small_shape;
+  layout_precision_decision.packed4_fallback_reason_capability_missing = rt->sgemm_controller.packed4_fallback_reason_capability_missing;
+  layout_precision_decision.packed4_fallback_reason_fallback_required = rt->sgemm_controller.packed4_fallback_reason_fallback_required;
+  layout_precision_decision.packed4_fallback_reason_mode_budget_denied = rt->sgemm_controller.packed4_fallback_reason_mode_budget_denied;
+  layout_precision_decision.fp16_max_absolute_error = rt->sgemm_controller.fp16_max_absolute_error;
+  layout_precision_decision.fp16_max_relative_error = rt->sgemm_controller.fp16_max_relative_error;
+  layout_precision_decision.fp16_aggregate_error = rt->sgemm_controller.fp16_aggregate_error;
+  layout_precision_decision.fp16_worst_case_element_index = rt->sgemm_controller.fp16_worst_case_element_index;
+  layout_precision_decision.fp16_k_error_growth = rt->sgemm_controller.fp16_k_error_growth;
+  layout_precision_decision.fp16_cancellation_risk = rt->sgemm_controller.fp16_cancellation_risk;
+  layout_precision_decision.fp16_tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+  layout_precision_decision.fp16_tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+  layout_precision_decision.fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
+  layout_precision_decision.fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
+  if (prom_dom_sgemm_stage_layout_precision_decision(&rt->blackboard, &layout_precision_decision) == 0u) {
+    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
 
   compute_k = compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
   if ((compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM &&
@@ -3409,6 +3469,16 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       rt->sgemm_controller.packed4_selected_layout_format = 1u;
       rt->sgemm_controller.fp16_selected_candidate = 1u;
     }
+    layout_precision_decision.packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
+    layout_precision_decision.packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
+    layout_precision_decision.packed4_padded_lane_count_total = rt->sgemm_controller.packed4_padded_lane_count_total;
+    layout_precision_decision.packed4_selection_count = rt->sgemm_controller.packed4_selection_count;
+    layout_precision_decision.fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
+    layout_precision_decision.fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
+    if ((compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 || compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) &&
+        prom_dom_sgemm_stage_layout_precision_decision(&rt->blackboard, &layout_precision_decision) != 0u) {
+      prom_dom_sgemm_commit(&rt->blackboard);
+    }
     return PROM_OK;
   }
   return PROM_ERROR;
@@ -3575,6 +3645,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
   prom_dom_sgemm_m35_snapshot m35_snapshot;
   prom_dom_transfer_queue_snapshot transfer_snapshot;
+  prom_dom_sgemm_layout_precision_snapshot layout_precision_snapshot;
   prom_dom_slot_commit_snapshot slot_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
@@ -3611,30 +3682,57 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->lag_early_warning_count = rt->sgemm_controller.lag_early_warning_count;
   out_diag->burst_dampening_count = rt->sgemm_controller.burst_dampening_count;
   out_diag->bound_violation_count = rt->sgemm_controller.bound_violation_count;
-  out_diag->packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
-  out_diag->packed4_tail_count_last = rt->sgemm_controller.packed4_tail_count_last;
-  out_diag->packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
-  out_diag->packed4_padded_lane_count_last = rt->sgemm_controller.packed4_padded_lane_count_last;
-  out_diag->packed4_padded_lane_count_total = rt->sgemm_controller.packed4_padded_lane_count_total;
-  out_diag->packed4_padding_waste_permille_last = rt->sgemm_controller.packed4_padding_waste_permille_last;
-  out_diag->packed4_mode_budget_denials = rt->sgemm_controller.packed4_mode_budget_denials;
-  out_diag->packed4_row_major_check_failures = rt->sgemm_controller.packed4_row_major_check_failures;
-  out_diag->packed4_selection_count = rt->sgemm_controller.packed4_selection_count;
-  out_diag->packed4_fallback_reason_padding_waste = rt->sgemm_controller.packed4_fallback_reason_padding_waste;
-  out_diag->packed4_fallback_reason_small_shape = rt->sgemm_controller.packed4_fallback_reason_small_shape;
-  out_diag->packed4_fallback_reason_capability_missing = rt->sgemm_controller.packed4_fallback_reason_capability_missing;
-  out_diag->packed4_fallback_reason_fallback_required = rt->sgemm_controller.packed4_fallback_reason_fallback_required;
-  out_diag->packed4_fallback_reason_mode_budget_denied = rt->sgemm_controller.packed4_fallback_reason_mode_budget_denied;
-  out_diag->fp16_max_absolute_error = rt->sgemm_controller.fp16_max_absolute_error;
-  out_diag->fp16_max_relative_error = rt->sgemm_controller.fp16_max_relative_error;
-  out_diag->fp16_aggregate_error = rt->sgemm_controller.fp16_aggregate_error;
-  out_diag->fp16_worst_case_element_index = rt->sgemm_controller.fp16_worst_case_element_index;
-  out_diag->fp16_k_error_growth = rt->sgemm_controller.fp16_k_error_growth;
-  out_diag->fp16_cancellation_risk = rt->sgemm_controller.fp16_cancellation_risk;
-  out_diag->fp16_tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
-  out_diag->fp16_tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
-  out_diag->fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
-  out_diag->fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
+  if (prom_dom_sgemm_read_visible_layout_precision_diagnostics(&rt->blackboard, &layout_precision_snapshot) != 0u) {
+    out_diag->packed4_selected_layout_format = layout_precision_snapshot.decision.packed4_selected_layout_format;
+    out_diag->packed4_tail_count_last = layout_precision_snapshot.decision.packed4_tail_count_last;
+    out_diag->packed4_tail_count_total = layout_precision_snapshot.decision.packed4_tail_count_total;
+    out_diag->packed4_padded_lane_count_last = layout_precision_snapshot.decision.packed4_padded_lane_count_last;
+    out_diag->packed4_padded_lane_count_total = layout_precision_snapshot.decision.packed4_padded_lane_count_total;
+    out_diag->packed4_padding_waste_permille_last = layout_precision_snapshot.decision.packed4_padding_waste_permille_last;
+    out_diag->packed4_mode_budget_denials = layout_precision_snapshot.decision.packed4_mode_budget_denials;
+    out_diag->packed4_row_major_check_failures = layout_precision_snapshot.decision.packed4_row_major_check_failures;
+    out_diag->packed4_selection_count = layout_precision_snapshot.decision.packed4_selection_count;
+    out_diag->packed4_fallback_reason_padding_waste = layout_precision_snapshot.decision.packed4_fallback_reason_padding_waste;
+    out_diag->packed4_fallback_reason_small_shape = layout_precision_snapshot.decision.packed4_fallback_reason_small_shape;
+    out_diag->packed4_fallback_reason_capability_missing = layout_precision_snapshot.decision.packed4_fallback_reason_capability_missing;
+    out_diag->packed4_fallback_reason_fallback_required = layout_precision_snapshot.decision.packed4_fallback_reason_fallback_required;
+    out_diag->packed4_fallback_reason_mode_budget_denied = layout_precision_snapshot.decision.packed4_fallback_reason_mode_budget_denied;
+    out_diag->fp16_max_absolute_error = layout_precision_snapshot.decision.fp16_max_absolute_error;
+    out_diag->fp16_max_relative_error = layout_precision_snapshot.decision.fp16_max_relative_error;
+    out_diag->fp16_aggregate_error = layout_precision_snapshot.decision.fp16_aggregate_error;
+    out_diag->fp16_worst_case_element_index = layout_precision_snapshot.decision.fp16_worst_case_element_index;
+    out_diag->fp16_k_error_growth = layout_precision_snapshot.decision.fp16_k_error_growth;
+    out_diag->fp16_cancellation_risk = layout_precision_snapshot.decision.fp16_cancellation_risk;
+    out_diag->fp16_tolerance_known = layout_precision_snapshot.decision.fp16_tolerance_known;
+    out_diag->fp16_tolerance_pass = layout_precision_snapshot.decision.fp16_tolerance_pass;
+    out_diag->fp16_fallback_reason_detail = layout_precision_snapshot.decision.fp16_fallback_reason_detail;
+    out_diag->fp16_selected_candidate = layout_precision_snapshot.decision.fp16_selected_candidate;
+  } else {
+    out_diag->packed4_selected_layout_format = rt->sgemm_controller.packed4_selected_layout_format;
+    out_diag->packed4_tail_count_last = rt->sgemm_controller.packed4_tail_count_last;
+    out_diag->packed4_tail_count_total = rt->sgemm_controller.packed4_tail_count_total;
+    out_diag->packed4_padded_lane_count_last = rt->sgemm_controller.packed4_padded_lane_count_last;
+    out_diag->packed4_padded_lane_count_total = rt->sgemm_controller.packed4_padded_lane_count_total;
+    out_diag->packed4_padding_waste_permille_last = rt->sgemm_controller.packed4_padding_waste_permille_last;
+    out_diag->packed4_mode_budget_denials = rt->sgemm_controller.packed4_mode_budget_denials;
+    out_diag->packed4_row_major_check_failures = rt->sgemm_controller.packed4_row_major_check_failures;
+    out_diag->packed4_selection_count = rt->sgemm_controller.packed4_selection_count;
+    out_diag->packed4_fallback_reason_padding_waste = rt->sgemm_controller.packed4_fallback_reason_padding_waste;
+    out_diag->packed4_fallback_reason_small_shape = rt->sgemm_controller.packed4_fallback_reason_small_shape;
+    out_diag->packed4_fallback_reason_capability_missing = rt->sgemm_controller.packed4_fallback_reason_capability_missing;
+    out_diag->packed4_fallback_reason_fallback_required = rt->sgemm_controller.packed4_fallback_reason_fallback_required;
+    out_diag->packed4_fallback_reason_mode_budget_denied = rt->sgemm_controller.packed4_fallback_reason_mode_budget_denied;
+    out_diag->fp16_max_absolute_error = rt->sgemm_controller.fp16_max_absolute_error;
+    out_diag->fp16_max_relative_error = rt->sgemm_controller.fp16_max_relative_error;
+    out_diag->fp16_aggregate_error = rt->sgemm_controller.fp16_aggregate_error;
+    out_diag->fp16_worst_case_element_index = rt->sgemm_controller.fp16_worst_case_element_index;
+    out_diag->fp16_k_error_growth = rt->sgemm_controller.fp16_k_error_growth;
+    out_diag->fp16_cancellation_risk = rt->sgemm_controller.fp16_cancellation_risk;
+    out_diag->fp16_tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+    out_diag->fp16_tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+    out_diag->fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
+    out_diag->fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
+  }
   out_diag->m29_current_slot_id = rt->slot_diag.current_slot_id;
   out_diag->m29_next_slot_id = rt->slot_diag.next_slot_id;
   out_diag->m29_slot0_state = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);

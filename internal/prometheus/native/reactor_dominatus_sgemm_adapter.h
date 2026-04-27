@@ -108,6 +108,65 @@ typedef struct prom_dom_transfer_runtime_telemetry {
   uint64_t async_transfer_completion_generation;
 } prom_dom_transfer_runtime_telemetry;
 
+typedef struct prom_dom_sgemm_layout_precision_facts {
+  uint32_t packed4_available;
+  uint32_t packed4_small_shape;
+  uint32_t packed4_padding_waste_permille;
+  uint32_t packed4_mode_budget_permille;
+  uint32_t packed4_row_major_valid;
+  uint32_t packed4_tail_valid;
+  uint32_t strict_fp32;
+  uint32_t tolerance_known;
+  uint32_t tolerance_pass;
+  uint32_t has_special_values;
+  uint32_t capability_fp16_storage;
+  uint32_t fallback_available;
+  int32_t fp16_utility_score;
+} prom_dom_sgemm_layout_precision_facts;
+
+typedef struct prom_dom_sgemm_layout_precision_projection {
+  prom_dom_sgemm_layout_precision_facts facts;
+  uint64_t visible_generation;
+  uint64_t dependent_dirty_key_mask_last_commit;
+  uint32_t from_visible_snapshot;
+} prom_dom_sgemm_layout_precision_projection;
+
+typedef struct prom_dom_sgemm_layout_precision_decision {
+  uint32_t packed4_selected;
+  uint32_t packed4_reject_reason;
+  uint32_t fp16_selected;
+  uint32_t fp16_reject_reason;
+  uint32_t packed4_selected_layout_format;
+  uint32_t packed4_tail_count_last;
+  uint64_t packed4_tail_count_total;
+  uint32_t packed4_padded_lane_count_last;
+  uint64_t packed4_padded_lane_count_total;
+  uint32_t packed4_padding_waste_permille_last;
+  uint64_t packed4_mode_budget_denials;
+  uint64_t packed4_row_major_check_failures;
+  uint64_t packed4_selection_count;
+  uint64_t packed4_fallback_reason_padding_waste;
+  uint64_t packed4_fallback_reason_small_shape;
+  uint64_t packed4_fallback_reason_capability_missing;
+  uint64_t packed4_fallback_reason_fallback_required;
+  uint64_t packed4_fallback_reason_mode_budget_denied;
+  float fp16_max_absolute_error;
+  float fp16_max_relative_error;
+  float fp16_aggregate_error;
+  uint32_t fp16_worst_case_element_index;
+  float fp16_k_error_growth;
+  float fp16_cancellation_risk;
+  uint32_t fp16_tolerance_known;
+  uint32_t fp16_tolerance_pass;
+  int32_t fp16_fallback_reason_detail;
+  uint32_t fp16_selected_candidate;
+} prom_dom_sgemm_layout_precision_decision;
+
+typedef struct prom_dom_sgemm_layout_precision_snapshot {
+  prom_dom_sgemm_layout_precision_facts facts;
+  prom_dom_sgemm_layout_precision_decision decision;
+} prom_dom_sgemm_layout_precision_snapshot;
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
@@ -152,6 +211,16 @@ uint32_t prom_dom_sgemm_stage_transfer_complete(prom_dom_blackboard* board,
                                                 int32_t reason_code);
 uint32_t prom_dom_sgemm_read_visible_transfer_runtime_telemetry(const prom_dom_blackboard* board,
                                                                 prom_dom_transfer_runtime_telemetry* out_snapshot);
+uint32_t prom_dom_sgemm_stage_layout_precision_facts(prom_dom_blackboard* board,
+                                                     const prom_dom_sgemm_layout_precision_facts* facts);
+uint32_t prom_dom_sgemm_build_layout_precision_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_dom_sgemm_layout_precision_facts* fallback_facts,
+    prom_dom_sgemm_layout_precision_projection* out_projection);
+uint32_t prom_dom_sgemm_stage_layout_precision_decision(prom_dom_blackboard* board,
+                                                        const prom_dom_sgemm_layout_precision_decision* decision);
+uint32_t prom_dom_sgemm_read_visible_layout_precision_diagnostics(const prom_dom_blackboard* board,
+                                                                  prom_dom_sgemm_layout_precision_snapshot* out_snapshot);
 
 #ifdef __cplusplus
 }

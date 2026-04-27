@@ -696,3 +696,64 @@ FACT(PrometheusDominatusSgemmAdapter_M8TransferAsyncCompletionCommitBoundary)
     ASSERT_EQUAL(1u, telemetry.async_transfer_complete, "completion marker should become visible after commit");
     ASSERT_EQUAL(11u, telemetry.async_transfer_completion_generation, "completion generation should advance after commit");
 }
+
+FACT(PrometheusDominatusSgemmAdapter_M9LayoutPrecisionInputSnapshotIsolation)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_layout_precision_facts a{};
+    prom_dom_sgemm_layout_precision_facts b{};
+    prom_dom_sgemm_layout_precision_projection projection{};
+    prom_dom_blackboard_init(&board);
+
+    a.packed4_available = 1u; a.packed4_small_shape = 0u; a.packed4_padding_waste_permille = 30u; a.packed4_mode_budget_permille = 120u;
+    a.packed4_row_major_valid = 1u; a.packed4_tail_valid = 1u; a.strict_fp32 = 0u; a.tolerance_known = 1u; a.tolerance_pass = 1u;
+    a.has_special_values = 0u; a.capability_fp16_storage = 1u; a.fallback_available = 1u; a.fp16_utility_score = 700;
+    b = a; b.packed4_padding_waste_permille = 410u; b.strict_fp32 = 1u; b.fp16_utility_score = -22;
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_layout_precision_facts(&board, &a) == 1u, "stage A facts should succeed");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_stage_layout_precision_facts(&board, &b) == 1u, "stage B facts should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_build_layout_precision_facts_from_visible(&board, &b, &projection) == 1u, "visible projection should build");
+    ASSERT_EQUAL(30u, projection.facts.packed4_padding_waste_permille, "projection before commit should retain A");
+    ASSERT_EQUAL(0u, projection.facts.strict_fp32, "projection before commit should retain A strict flag");
+
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_layout_precision_facts_from_visible(&board, &a, &projection) == 1u, "projection after commit should build");
+    ASSERT_EQUAL(410u, projection.facts.packed4_padding_waste_permille, "projection after commit should read B");
+    ASSERT_EQUAL(1u, projection.facts.strict_fp32, "projection after commit should read B strict flag");
+}
+
+FACT(PrometheusDominatusSgemmAdapter_M9LayoutPrecisionDecisionStagingVisibilityAndDirty)
+{
+    prom_dom_blackboard board{};
+    prom_dom_sgemm_layout_precision_facts facts{};
+    prom_dom_sgemm_layout_precision_decision decision{};
+    prom_dom_sgemm_layout_precision_snapshot snapshot{};
+    prom_dom_blackboard_init(&board);
+    facts.packed4_available = 1u; facts.packed4_tail_valid = 1u; facts.capability_fp16_storage = 1u; facts.fallback_available = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_layout_precision_facts(&board, &facts) == 1u, "fact stage should succeed");
+    prom_dom_sgemm_commit(&board);
+
+    decision.packed4_selected = 1u;
+    decision.packed4_reject_reason = PROM_PACKED4_REJECT_NONE;
+    decision.fp16_selected = 0u;
+    decision.fp16_reject_reason = PROM_FP16_REJECT_TOLERANCE_EXCEEDED;
+    decision.packed4_selected_layout_format = 2u;
+    decision.packed4_tail_count_last = 3u;
+    decision.packed4_tail_count_total = 7u;
+    decision.packed4_padded_lane_count_last = 8u;
+    decision.packed4_padded_lane_count_total = 22u;
+    decision.packed4_padding_waste_permille_last = 120u;
+    decision.fp16_selected_candidate = 1u;
+    decision.fp16_fallback_reason_detail = PROM_DETAIL_FP16_TOLERANCE_EXCEEDED;
+    ASSERT_TRUE(prom_dom_sgemm_stage_layout_precision_decision(&board, &decision) == 1u, "decision stage should succeed");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_layout_precision_diagnostics(&board, &snapshot) == 0u,
+                "pre-commit visible snapshot should remain unavailable for staged decision");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED) == 1u, "packed4 decision key should be dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_DIAGNOSTICS_FP16_SELECTED_CANDIDATE) == 1u, "fp16 diagnostics key should be dirty");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_layout_precision_diagnostics(&board, &snapshot) == 1u, "post-commit snapshot should be visible");
+    ASSERT_EQUAL(1u, snapshot.decision.packed4_selected, "visible decision should match commit");
+    ASSERT_EQUAL(2u, snapshot.decision.packed4_selected_layout_format, "visible packed4 layout format should match commit");
+    ASSERT_EQUAL(1u, prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED), "last-commit dirty should include packed4 selected");
+}
