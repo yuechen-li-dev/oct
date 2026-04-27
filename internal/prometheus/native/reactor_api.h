@@ -159,6 +159,11 @@ enum {
   PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW = -6603,
   PROM_DETAIL_BATCH_EXECUTION_FAILED = -6604,
   PROM_DETAIL_BATCH_RESOURCE_OWNERSHIP_VIOLATION = -6605,
+  PROM_DETAIL_BATCH_COMMAND_RESOURCE_CREATE_FAILED = -6606,
+  PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED = -6607,
+  PROM_DETAIL_BATCH_FENCE_RESET_FAILED = -6608,
+  PROM_DETAIL_BATCH_FENCE_WAIT_FAILED = -6609,
+  PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED = -6610,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -205,6 +210,7 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t max_concurrent_serialized_entries;
   uint32_t hardware_parallelism_claimed;
   uint32_t resource_ownership_violation_count;
+  uint32_t resource_creation_failure_count;
   uint32_t worker_active_mask;
   uint32_t worker_assigned_count[8];
   uint32_t worker_completed_count[8];
@@ -219,6 +225,11 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t worker_command_pool_id[8];
   uint32_t worker_command_buffer_id[8];
   uint32_t worker_fence_id[8];
+  uint32_t worker_command_pool_valid[8];
+  uint32_t worker_command_buffer_valid[8];
+  uint32_t worker_fence_valid[8];
+  uint32_t worker_reset_count[8];
+  uint32_t worker_record_count[8];
   uint32_t worker_failure_stage[8];
   int32_t worker_failure_detail[8];
 } PrometheusSgemmBatchDiagnostics;
