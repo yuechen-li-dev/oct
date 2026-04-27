@@ -183,6 +183,8 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t failed_worker_id;
   uint32_t failure_stage;
   int32_t failure_detail;
+  uint32_t failure_count;
+  uint32_t first_failure_stable;
   uint32_t event_overflow_count;
   uint32_t event_drain_count;
   uint32_t output_committed;
@@ -211,7 +213,9 @@ enum {
    * Layout:
    *   bits 10..13: hardware queue cap override (0 keeps runtime default cap)
    *   bits 14..15: per-worker arena bytes scale (0=64MiB, 1=32MiB, 2=16MiB, 3=8MiB)
-   *   bits 16..23: worker event ring capacity override (0 keeps default 64)
+   *   bits 16..21: worker event ring capacity override (0 keeps default 64)
+   *   bit 22: force dual failure for entry 0 and entry 1 (if present)
+   *   bit 23: delay entry 0 execution to force out-of-order completion in tests
    *   bits 24..31: fail-on-entry-id+1 injection (0 disables targeted failure)
    */
   PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT = 10u,
@@ -219,7 +223,9 @@ enum {
   PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT = 14u,
   PROM_BATCH_FLAG_TEST_ARENA_SCALE_MASK = 0x3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT,
   PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT = 16u,
-  PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_MASK = 0xFFu << PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT,
+  PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_MASK = 0x3Fu << PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT,
+  PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO = 1u << 22,
+  PROM_BATCH_FLAG_TEST_DELAY_ENTRY0 = 1u << 23,
   PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT = 24u,
   PROM_BATCH_FLAG_TEST_FAIL_ENTRY_MASK = 0xFFu << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT,
 };
