@@ -191,6 +191,22 @@ typedef struct PrometheusSgemmBatchDiagnostics {
 enum {
   PROM_BATCH_FLAG_PARTITION_CONTIGUOUS = 1u << 8,
   PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT = 1u << 9,
+  /*
+   * Test-only hook bits for M7 hardening coverage.
+   * Layout:
+   *   bits 10..13: hardware queue cap override (0 keeps runtime default cap)
+   *   bits 14..15: per-worker arena bytes scale (0=64MiB, 1=32MiB, 2=16MiB, 3=8MiB)
+   *   bits 16..23: worker event ring capacity override (0 keeps default 64)
+   *   bits 24..31: fail-on-entry-id+1 injection (0 disables targeted failure)
+   */
+  PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT = 10u,
+  PROM_BATCH_FLAG_TEST_HW_CAP_MASK = 0xFu << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT,
+  PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT = 14u,
+  PROM_BATCH_FLAG_TEST_ARENA_SCALE_MASK = 0x3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT,
+  PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT = 16u,
+  PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_MASK = 0xFFu << PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT,
+  PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT = 24u,
+  PROM_BATCH_FLAG_TEST_FAIL_ENTRY_MASK = 0xFFu << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT,
 };
 
 enum {
