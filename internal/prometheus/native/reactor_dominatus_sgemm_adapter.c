@@ -107,6 +107,26 @@ static uint64_t layout_precision_dependency_mask_last_commit(const prom_dom_blac
   return mask;
 }
 
+static uint64_t path_compute_dependency_mask_last_commit(const prom_dom_blackboard* board) {
+  uint64_t mask = 0u;
+  if (board == 0) return 0u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M) != 0u) mask |= 1ull << 0u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N) != 0u) mask |= 1ull << 1u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K) != 0u) mask |= 1ull << 2u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS) != 0u) mask |= 1ull << 3u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE) != 0u) mask |= 1ull << 4u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT) != 0u) mask |= 1ull << 5u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK) != 0u) mask |= 1ull << 6u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED) != 0u) mask |= 1ull << 7u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) != 0u) mask |= 1ull << 8u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED) != 0u) mask |= 1ull << 9u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED) != 0u) mask |= 1ull << 10u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE) != 0u) mask |= 1ull << 11u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN) != 0u) mask |= 1ull << 12u;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE) != 0u) mask |= 1ull << 13u;
+  return mask;
+}
+
 static uint32_t float_to_bits(float value) {
   uint32_t bits = 0u;
   memcpy(&bits, &value, sizeof(bits));
@@ -1248,5 +1268,199 @@ uint32_t prom_dom_sgemm_read_visible_layout_precision_diagnostics(const prom_dom
   out_snapshot->decision.fp16_fallback_reason_detail = i32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_DIAGNOSTICS_FP16_SELECTED_CANDIDATE, 0u, &u32_value) == 0u) return 0u;
   out_snapshot->decision.fp16_selected_candidate = u32_value;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_path_compute_facts(prom_dom_blackboard* board,
+                                                 const prom_dom_sgemm_path_compute_facts* facts) {
+  if (board == 0 || facts == 0) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M, 0u, facts->m, (int32_t)facts->m) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N, 0u, facts->n, (int32_t)facts->n) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K, 0u, facts->k, (int32_t)facts->k) == 0u) return 0u;
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS, 0u, facts->work_units, (int32_t)facts->k) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE, 0u, facts->can_stage, (int32_t)facts->can_stage) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT, 0u, facts->can_direct, (int32_t)facts->can_direct) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK, 0u, facts->allow_fallback, (int32_t)facts->allow_fallback) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED,
+                       0u,
+                       facts->readback_required,
+                       (int32_t)facts->readback_required) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, facts->force_direct, (int32_t)facts->force_direct) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, facts->force_staged, (int32_t)facts->force_staged) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, facts->force_tiled, (int32_t)facts->force_tiled) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE, 0u, facts->tiled_shape, (int32_t)facts->tiled_shape) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN,
+                       0u,
+                       facts->software_vulkan,
+                       (int32_t)facts->software_vulkan) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_POLICY, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE, 0u, facts->policy_mode, (int32_t)facts->policy_mode) == 0u) return 0u;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_build_path_compute_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_dom_sgemm_path_compute_facts* fallback_facts,
+    prom_dom_sgemm_path_compute_projection* out_projection) {
+  prom_dom_sgemm_path_compute_facts facts;
+  uint32_t u32_value;
+  uint64_t u64_value;
+  if (board == 0 || fallback_facts == 0 || out_projection == 0) return 0u;
+  facts = *fallback_facts;
+  out_projection->visible_generation = board->visible_generation;
+  out_projection->dependent_dirty_key_mask_last_commit = path_compute_dependency_mask_last_commit(board);
+  out_projection->from_visible_snapshot = 0u;
+
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.m = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.n = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.k = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS, 0u, &u64_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.work_units = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.can_stage = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.can_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.allow_fallback = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.readback_required = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.force_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.force_staged = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.force_tiled = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.tiled_shape = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.software_vulkan = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.policy_mode = u32_value;
+  out_projection->from_visible_snapshot = 1u;
+  out_projection->facts = facts;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_path_compute_decision(prom_dom_blackboard* board,
+                                                    const prom_dom_sgemm_path_compute_decision* decision) {
+  if (board == 0 || decision == 0) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_JUDGMENT_SUCCESS, 0u, decision->success, decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_JUDGMENT_ERROR_DETAIL, 0u, decision->error_detail, decision->error_detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_REQUESTED_PATH,
+                       0u,
+                       decision->requested_path,
+                       decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_SELECTED_PATH,
+                       0u,
+                       decision->selected_path,
+                       decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_COMPUTE_MODE,
+                       0u,
+                       decision->compute_mode,
+                       decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_i32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_JUDGMENT_FINAL_DETAIL, 0u, decision->final_detail, decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_USED_FALLBACK_TO_DIRECT,
+                       0u,
+                       decision->used_fallback_to_direct,
+                       decision->final_detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_CANDIDATE_INDEX,
+                       0u,
+                       decision->winning_candidate_index,
+                       decision->winning_score) == 0u) return 0u;
+  if (prom_dom_set_i32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE,
+                       0u,
+                       decision->winning_score,
+                       decision->winning_score) == 0u) return 0u;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_read_visible_path_compute_diagnostics(const prom_dom_blackboard* board,
+                                                              prom_dom_sgemm_path_compute_snapshot* out_snapshot) {
+  uint32_t u32_value;
+  uint64_t u64_value;
+  int32_t i32_value;
+  if (board == 0 || out_snapshot == 0) return 0u;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_M, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.m = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_N, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.n = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SHAPE_K, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.k = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_FACT_WORK_UNITS, 0u, &u64_value) == 0u) return 0u;
+  out_snapshot->facts.work_units = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_CAN_STAGE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.can_stage = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_CAN_DIRECT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.can_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.allow_fallback = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.readback_required = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.force_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.force_staged = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.force_tiled = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.tiled_shape = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_SOFTWARE_VULKAN, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.software_vulkan = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_POLICY_MODE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.policy_mode = u32_value;
+
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_SUCCESS, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.success = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_ERROR_DETAIL, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->decision.error_detail = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_REQUESTED_PATH, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.requested_path = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_SELECTED_PATH, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.selected_path = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_COMPUTE_MODE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.compute_mode = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_FINAL_DETAIL, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->decision.final_detail = i32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_USED_FALLBACK_TO_DIRECT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.used_fallback_to_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_CANDIDATE_INDEX, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.winning_candidate_index = u32_value;
+  if (prom_dom_get_i32(board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE, 0u, &i32_value) == 0u) return 0u;
+  out_snapshot->decision.winning_score = i32_value;
+
+  out_snapshot->packed4_selected = 0u;
+  out_snapshot->packed4_reject_reason = 0u;
+  out_snapshot->fp16_selected = 0u;
+  out_snapshot->fp16_reject_reason = 0u;
+  out_snapshot->use_dedicated_transfer_queue_upload = 0u;
+  out_snapshot->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_SELECTED, 0u, &u32_value) != 0u) out_snapshot->packed4_selected = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_PACKED4_REJECT_REASON, 0u, &u32_value) != 0u) out_snapshot->packed4_reject_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_SELECTED, 0u, &u32_value) != 0u) out_snapshot->fp16_selected = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FP16_REJECT_REASON, 0u, &u32_value) != 0u) out_snapshot->fp16_reject_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_QUEUE_USED, 0u, &u32_value) != 0u) {
+    out_snapshot->use_dedicated_transfer_queue_upload = u32_value;
+  }
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_QUEUE_TRANSFER_FALLBACK_REASON, 0u, &u32_value) != 0u) {
+    out_snapshot->transfer_fallback_reason = u32_value;
+  }
   return 1u;
 }
