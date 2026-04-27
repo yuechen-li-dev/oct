@@ -102,6 +102,8 @@ uint32_t prom_dom_slot_read_last_commit(const prom_dom_blackboard* board,
                                         uint32_t slot_id,
                                         prom_dom_slot_commit_snapshot* out_snapshot) {
   uint32_t committed_event_count;
+  uint32_t i;
+  prom_dom_event candidate;
 
   if (board == 0 || out_snapshot == 0) {
     return 0u;
@@ -132,6 +134,21 @@ uint32_t prom_dom_slot_read_last_commit(const prom_dom_blackboard* board,
   if (committed_event_count == 0u) {
     memset(&out_snapshot->last_event, 0, sizeof(out_snapshot->last_event));
     return 1u;
+  }
+
+  for (i = committed_event_count; i > 0u; --i) {
+    if (prom_dom_committed_event_at(board, i - 1u, &candidate) == 0u) {
+      return 0u;
+    }
+    if (candidate.source == PROM_DOM_SOURCE_SLOT_HFSM && candidate.domain == PROM_DOM_DOMAIN_SLOT) {
+      out_snapshot->last_event = candidate;
+      if (candidate.slot_id < 32u) {
+        out_snapshot->last_commit_dirty_slot_mask = (1u << candidate.slot_id);
+      } else {
+        out_snapshot->last_commit_dirty_slot_mask = 0u;
+      }
+      return 1u;
+    }
   }
 
   return prom_dom_committed_event_at(board, committed_event_count - 1u, &out_snapshot->last_event);

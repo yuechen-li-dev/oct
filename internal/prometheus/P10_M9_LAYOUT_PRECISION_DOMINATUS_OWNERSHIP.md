@@ -151,3 +151,24 @@ Deferred explicitly:
 ## 13) inconsistency callout
 
 M9 stores FP16 float diagnostics in Dominatus as explicit `uint32` bit-pattern keys (`*_BITS`) because the blackboard value system is integer-typed. This is intentional and preserves exact payload values, but it is a representational documentation gap versus the public float diagnostics fields.
+
+## 14) follow-up: M4 slot event observability regression after M9
+
+Post-M9, Marionette smoke `PrometheusDominatusSlotAdapter_RuntimeSmokeFixedDoubleProducesCommittedSlotEvent` failed even though slot lifecycle bridge emission still occurred.
+
+Root cause:
+
+- SGEMM now performs additional Dominatus commits for migrated layout/precision facts + decisions.
+- `prom_dom_dirty_slots_last_commit(...)` is a per-commit window, so later non-slot commits can clear dirty-slot bits.
+- runtime diagnostics previously exported slot dirty mask directly from that last-commit window.
+
+Resulting behavior:
+
+- slot events remained staged and committed in the committed event ring,
+- but the exported dirty-slot mask could be `0` when queried after later non-slot commits.
+
+Follow-up contract/fix:
+
+- `prom_dom_slot_read_last_commit(...)` now scans committed events backward and returns the latest slot lifecycle event (`source=slot_hfsm`, `domain=slot`).
+- for runtime slot diagnostics, the dirty-slot mask is aligned with that retained slot event slot id, keeping slot observability stable across multi-commit SGEMM calls.
+- Marionette coverage now verifies this behavior and also checks that migrated Packed4/FP16 diagnostics remain visible in the same runtime call.
