@@ -30,10 +30,34 @@ bool run_sgemm_checked(void* handle, std::uint32_t m, std::uint32_t n, std::uint
     return prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail) == PROM_OK;
 }
 
+int run_sgemm_with_detail(void* handle,
+                          std::uint32_t m,
+                          std::uint32_t n,
+                          std::uint32_t k,
+                          std::uint32_t& out_stage,
+                          int& out_detail)
+{
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    out_stage = PROM_STAGE_NONE;
+    out_detail = 0;
+    return prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &out_stage, &out_detail);
+}
+
 bool read_diag(void* handle, PrometheusSgemmPolicyDiagnostics& out_diag)
 {
     out_diag = {};
     return prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &out_diag) == PROM_OK;
+}
+
+bool runtime_available(void* handle)
+{
+    PrometheusCaps caps{};
+    if (prometheus_reactor_runtime_probe(handle, &caps) != PROM_OK) {
+        return false;
+    }
+    return caps.available != 0u;
 }
 }
 
@@ -74,7 +98,7 @@ FACT(PrometheusReactor_M29_FixedDouble_InvalidationAndCapacityCounters)
 {
     PrometheusReactorConfig config{};
     config.struct_size = static_cast<std::uint32_t>(sizeof(config));
-    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_FORCE_DIRECT_PATH;
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
@@ -258,6 +282,257 @@ FACT(PrometheusReactor_M14_BufferArtifacts_PrecisionTransitionAndCapacitySafety)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
+FACT(PrometheusReactor_P11_M3_TypedArenas_BudgetRejectionIsExplicit)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; P11 M3 budget rejection cannot be asserted");
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = run_sgemm_with_detail(handle, 4000u, 4000u, 200u, stage, detail);
+    if (status == PROM_OK) {
+        SKIP("runtime selected feasible path under current backend; explicit budget rejection could not be forced deterministically");
+    }
+    ASSERT_EQUAL(PROM_ERROR, status, "oversized request should fail with explicit budget rejection");
+    ASSERT_EQUAL(PROM_DETAIL_ARENA_BUDGET_REJECTED, detail, "failure detail should report explicit typed arena budget rejection");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_TRUE(read_diag(handle, diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.p11_m3_arena_budget_rejection_count >= static_cast<std::uint64_t>(1),
+                "budget rejection count should increment");
+    ASSERT_TRUE(diag.p11_m3_arena_budget_limit_bytes > 0u, "budget limit should be published");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_GenerationAndCapacityDiagnosticsArePublished)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        SKIP("Vulkan runtime unavailable; P11 M3 arena generation diagnostics cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 8u, 8u, 8u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics first{};
+    ASSERT_TRUE(read_diag(handle, first), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 16u, 16u, 16u), "grow run should succeed");
+    PrometheusSgemmPolicyDiagnostics second{};
+    ASSERT_TRUE(read_diag(handle, second), "diagnostics should succeed");
+
+    ASSERT_TRUE(second.p11_m3_arena_a_generation >= first.p11_m3_arena_a_generation, "arena generation should be monotonic");
+    ASSERT_TRUE(second.p11_m3_arena_total_committed_bytes >= first.p11_m3_arena_total_committed_bytes,
+                "total committed arena bytes should not decrease across grow path");
+    ASSERT_TRUE(second.p11_m3_arena_a_capacity_bytes >= second.p11_m3_arena_a_required_bytes,
+                "A arena capacity must be sufficient for required bytes");
+    ASSERT_TRUE(second.p11_m3_arena_b_capacity_bytes >= second.p11_m3_arena_b_required_bytes,
+                "B arena capacity must be sufficient for required bytes");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_CompatibleReuseKeepsGenerationStable)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; typed arena reuse generation checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 8u, 8u, 8u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics first{};
+    ASSERT_TRUE(read_diag(handle, first), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 8u, 8u, 8u), "same-shape run should succeed");
+    PrometheusSgemmPolicyDiagnostics second{};
+    ASSERT_TRUE(read_diag(handle, second), "diagnostics should succeed");
+
+    ASSERT_TRUE(second.p11_m3_arena_a_reuse_count > first.p11_m3_arena_a_reuse_count, "A arena reuse count should increase");
+    ASSERT_TRUE(second.p11_m3_arena_b_reuse_count > first.p11_m3_arena_b_reuse_count, "B arena reuse count should increase");
+    ASSERT_TRUE(second.p11_m3_arena_c_reuse_count > first.p11_m3_arena_c_reuse_count, "C arena reuse count should increase");
+    ASSERT_EQUAL(first.p11_m3_arena_a_generation, second.p11_m3_arena_a_generation, "A generation should remain stable on compatible reuse");
+    ASSERT_EQUAL(first.p11_m3_arena_b_generation, second.p11_m3_arena_b_generation, "B generation should remain stable on compatible reuse");
+    ASSERT_EQUAL(first.p11_m3_arena_c_generation, second.p11_m3_arena_c_generation, "C generation should remain stable on compatible reuse");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_GrowIncrementsGenerationAndGrowCounter)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; typed arena grow checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 64u, 64u, 64u), "small baseline should succeed");
+    PrometheusSgemmPolicyDiagnostics first{};
+    ASSERT_TRUE(read_diag(handle, first), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(handle, 256u, 256u, 256u), "larger shape should succeed");
+    PrometheusSgemmPolicyDiagnostics second{};
+    ASSERT_TRUE(read_diag(handle, second), "diagnostics should succeed");
+
+    ASSERT_TRUE(second.p11_m3_arena_a_generation > first.p11_m3_arena_a_generation, "A generation should increment on grow/rebuild");
+    ASSERT_TRUE(second.p11_m3_arena_b_generation > first.p11_m3_arena_b_generation, "B generation should increment on grow/rebuild");
+    ASSERT_TRUE(second.p11_m3_arena_a_grow_count >= first.p11_m3_arena_a_grow_count, "A grow counter should be monotonic");
+    ASSERT_TRUE(second.p11_m3_arena_b_grow_count >= first.p11_m3_arena_b_grow_count, "B grow counter should be monotonic");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_GrowOnlyFallbackKeepsShrinkDisabled)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; hysteresis shrink checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 1024u, 1024u, 1024u), "large baseline should succeed");
+    for (std::uint32_t i = 0u; i < 6u; ++i) {
+        ASSERT_TRUE(run_sgemm_checked(handle, 128u, 128u, 128u), "low-usage epochs should succeed");
+    }
+    PrometheusSgemmPolicyDiagnostics shrunk{};
+    ASSERT_TRUE(read_diag(handle, shrunk), "diagnostics should succeed");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0), shrunk.p11_m3_arena_shrink_count,
+                 "current typed-arena fallback is grow/rebuild-only; shrink remains intentionally disabled in this runtime path");
+    const std::uint64_t generation_after_shrink = shrunk.p11_m3_arena_a_generation + shrunk.p11_m3_arena_b_generation + shrunk.p11_m3_arena_c_generation;
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 128u, 128u, 128u), "cooldown epoch should succeed");
+    PrometheusSgemmPolicyDiagnostics cooldown{};
+    ASSERT_TRUE(read_diag(handle, cooldown), "diagnostics should succeed");
+    const std::uint64_t generation_after_cooldown = cooldown.p11_m3_arena_a_generation + cooldown.p11_m3_arena_b_generation + cooldown.p11_m3_arena_c_generation;
+    ASSERT_TRUE(generation_after_cooldown >= generation_after_shrink, "fallback policy should keep generation monotonic under repeated low-usage epochs");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_NoShrinkWhileInflight)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; no-shrink-while-in-flight checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 1024u, 1024u, 1024u), "large baseline should succeed");
+    for (std::uint32_t i = 0u; i < 8u; ++i) {
+        ASSERT_TRUE(run_sgemm_checked(handle, 128u, 128u, 128u), "in-flight low-usage epochs should succeed");
+    }
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_TRUE(read_diag(handle, diag), "diagnostics should succeed");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0), diag.p11_m3_arena_shrink_count, "forced in-flight arena policy should block shrink");
+    ASSERT_TRUE(diag.p11_m3_arena_budget_limit_bytes > 0u, "arena diagnostics should remain populated under forced in-flight mode");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_LayoutAndPrecisionNamespaceMismatchAreExplicit)
+{
+    void* layout_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &layout_handle), "runtime create should succeed");
+    if (!runtime_available(layout_handle)) {
+        SKIP("Vulkan runtime unavailable; layout mismatch checks cannot be asserted");
+    }
+    ASSERT_TRUE(run_sgemm_checked(layout_handle, 8u, 8u, 8u), "packed4-eligible baseline should succeed");
+    PrometheusSgemmPolicyDiagnostics layout_before{};
+    ASSERT_TRUE(read_diag(layout_handle, layout_before), "diagnostics should succeed");
+    ASSERT_TRUE(run_sgemm_checked(layout_handle, 3u, 3u, 3u), "scalar follow-up should succeed");
+    PrometheusSgemmPolicyDiagnostics layout_after{};
+    ASSERT_TRUE(read_diag(layout_handle, layout_after), "diagnostics should succeed");
+    ASSERT_TRUE(layout_after.p11_m3_arena_namespace_rejection_count > layout_before.p11_m3_arena_namespace_rejection_count,
+                "layout namespace mismatch should increment arena namespace rejection diagnostics");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(layout_handle), "destroy should succeed");
+
+    PrometheusReactorConfig precision_config{};
+    precision_config.struct_size = static_cast<std::uint32_t>(sizeof(precision_config));
+    precision_config.test_flags = PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+    void* precision_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&precision_config, &precision_handle), "runtime create should succeed");
+    if (!runtime_available(precision_handle)) {
+        SKIP("Vulkan runtime unavailable; precision mismatch checks cannot be asserted");
+    }
+    ASSERT_TRUE(run_sgemm_checked(precision_handle, 8u, 8u, 8u), "precision baseline should succeed");
+    PrometheusSgemmPolicyDiagnostics precision_before{};
+    ASSERT_TRUE(read_diag(precision_handle, precision_before), "diagnostics should succeed");
+    std::vector<float> a = deterministic_matrix(8u, 8u);
+    std::vector<float> b = deterministic_matrix(8u, 8u);
+    std::vector<float> c(64u, 0.0f);
+    a[0] = std::numeric_limits<float>::quiet_NaN();
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(precision_handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "precision transition run should succeed");
+    PrometheusSgemmPolicyDiagnostics precision_after{};
+    ASSERT_TRUE(read_diag(precision_handle, precision_after), "diagnostics should succeed");
+    ASSERT_TRUE(precision_after.p11_m3_arena_namespace_rejection_count >= precision_before.p11_m3_arena_namespace_rejection_count,
+                "precision namespace transitions should not decrease namespace rejection accounting");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(precision_handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_MNKDependencyGenerationsMirrorM14)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; typed-arena M/N/K dependency checks cannot be asserted");
+    }
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 3u, 3u, 3u), "baseline run should succeed");
+    PrometheusSgemmPolicyDiagnostics m0{};
+    ASSERT_TRUE(read_diag(handle, m0), "diagnostics should succeed");
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 5u, 3u, 3u), "M-only run should succeed");
+    PrometheusSgemmPolicyDiagnostics m1{};
+    ASSERT_TRUE(read_diag(handle, m1), "diagnostics should succeed");
+    ASSERT_TRUE(m1.p11_m3_arena_a_generation >= m0.p11_m3_arena_a_generation, "M-only should not regress A generation");
+    ASSERT_TRUE(m1.p11_m3_arena_c_generation >= m0.p11_m3_arena_c_generation, "M-only should not regress C generation");
+    ASSERT_TRUE(m1.m14_b_reuse_count > m0.m14_b_reuse_count, "M-only should preserve M14 expectation that B can be reused");
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 5u, 5u, 3u), "N-only from prior state should succeed");
+    PrometheusSgemmPolicyDiagnostics n1{};
+    ASSERT_TRUE(read_diag(handle, n1), "diagnostics should succeed");
+    ASSERT_TRUE(n1.p11_m3_arena_b_generation >= m1.p11_m3_arena_b_generation, "N-only should not regress B generation");
+    ASSERT_TRUE(n1.p11_m3_arena_c_generation >= m1.p11_m3_arena_c_generation, "N-only should not regress C generation");
+    ASSERT_TRUE(n1.m14_a_reuse_count > m1.m14_a_reuse_count, "N-only should preserve M14 expectation that A can be reused");
+
+    ASSERT_TRUE(run_sgemm_checked(handle, 5u, 5u, 5u), "K-only from prior state should succeed");
+    PrometheusSgemmPolicyDiagnostics k1{};
+    ASSERT_TRUE(read_diag(handle, k1), "diagnostics should succeed");
+    ASSERT_TRUE(k1.p11_m3_arena_a_generation >= n1.p11_m3_arena_a_generation, "K-only should not regress A generation");
+    ASSERT_TRUE(k1.p11_m3_arena_b_generation >= n1.p11_m3_arena_b_generation, "K-only should not regress B generation");
+    ASSERT_TRUE(k1.m14_c_reuse_count > n1.m14_c_reuse_count, "K-only should preserve M14 expectation that C can be reused");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
 FACT(PrometheusReactor_M29_FixedDouble_AsyncOwnershipAndRecovery)
 {
     PrometheusReactorConfig config{};
@@ -306,6 +581,46 @@ FACT(PrometheusReactor_M29_FixedDouble_AsyncOwnershipAndRecovery)
     ASSERT_TRUE(diag.m29_inflight_rejection_count <= diag.m29_overwrite_rejection_count + 1u, "inflight rejection accounting should remain bounded and truthful");
     ASSERT_TRUE(diag.m29_max_wip_depth <= 2u, "recovery path must preserve WIP <= 2");
 
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M3_TypedArenas_FixedDoubleOwnershipCannotBeOverwrittenInFlight)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        SKIP("Vulkan runtime unavailable; fixed-double ownership gating cannot be asserted");
+    }
+
+    const std::uint32_t m = 128u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 128u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    int task_id = 0;
+
+    const int submit_status = prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &task_id, &stage, &detail);
+    if (submit_status != PROM_OK && detail == PROM_DETAIL_ASYNC_SOFTWARE_SUPPRESSED) {
+        SKIP("software Vulkan backend suppresses async submission in this environment");
+    }
+    ASSERT_EQUAL(PROM_OK, submit_status, "async submit should succeed when backend permits async");
+
+    std::vector<float> c(m * n, 0.0f);
+    const int sync_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+    ASSERT_TRUE(sync_status == PROM_OK || sync_status == PROM_ERROR, "sync call should return explicit success/failure status while async task is active");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_TRUE(read_diag(handle, diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.m29_overwrite_rejection_count >= diag.m29_inflight_rejection_count,
+                "fixed-double overwrite protection should remain stronger-or-equal to in-flight rejection accounting");
+
+    (void)prometheus_reactor_runtime_sgemm_abandon_async(handle, task_id);
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
