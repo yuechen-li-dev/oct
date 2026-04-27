@@ -1,15 +1,7 @@
 [M38NSlotPreviewTable {
-    SlotCount: [2, 4, 8]
-    ArenaSets: ["fixed-double", "preview", "preview"]
-    TotalArenasABCSUploadReadback: [10, 20, 40]
-    PeakCommittedMiBGrowOnly: [820, 1320, 2320]
-    PeakCommittedMiBHysteresis: [790, 1210, 2060]
-    BudgetRejectionRiskGrowOnly: ["low", "medium", "high"]
-    BudgetRejectionRiskHysteresis: ["low", "medium", "medium-high"]
-    OwnershipViolationObserved: [0, 0, 0]
-    Notes: [
-        "fixed-double remains straightforward with slot ownership tokens",
-        "4-slot remains tractable with role-local generation tracking",
-        "8-slot requires stricter budget guardrails and retirement ordering"
-    ]
+    Policy: ["", "A", "A", "B", "B", "C", "C", "D", "D"]
+    SlotCount: [0, 4, 8, 4, 8, 4, 8, 4, 8]
+    PeakCommittedMiB: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    OwnershipRejectionCount: [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    BudgetRejectionCount: [0, 0, 0, 0, 0, 0, 0, 0, 0]
 }]

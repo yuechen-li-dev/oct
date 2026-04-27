@@ -1,9 +1,95 @@
 package PrometheusSgemmAlgorithmLab
 
+record M38ArenaState {
+    Role: String
+    RequiredBytes: Int
+    CapacityBytes: Int
+    CommittedBytes: Int
+    LiveBytes: Int
+    Generation: Int
+    ArtifactDependencyKey: String
+    LayoutNamespace: String
+    PrecisionStorageNamespace: String
+    MemoryLocationClass: String
+    OwnerSlotId: Int
+    Valid: Bool
+    FailureState: String
+    LowUsageEpochCount: Int
+    ShrinkCooldownEpochs: Int
+    InFlight: Bool
+}
+
+record M38ArtifactRequest {
+    Role: String
+    M: Int
+    N: Int
+    K: Int
+    KPadded: Int
+    ArtifactDependencyKey: String
+    LayoutNamespace: String
+    PrecisionStorageNamespace: String
+    MemoryLocationClass: String
+    RequiredBytes: Int
+    OwnerSlotId: Int
+    BudgetLimitBytes: Int
+    InFlight: Bool
+}
+
+record M38Decision {
+    Reuse: Bool
+    Grow: Bool
+    Shrink: Bool
+    Rebuild: Bool
+    Invalidation: Bool
+    BudgetRejection: Bool
+    OwnershipRejection: Bool
+    LayoutPrecisionMismatchRejection: Bool
+    Failure: Bool
+    Recovery: Bool
+    GenerationIncrement: Bool
+    FalseInvalidationAvoided: Bool
+    MissedInvalidationHazard: Bool
+}
+
+record M38Metrics {
+    PeakCommittedBytes: Int
+    AverageCommittedBytes: Int
+    AverageSlackBytes: Int
+    SlackRatioAveragePermille: Int
+    GrowCount: Int
+    ShrinkCount: Int
+    RebuildCount: Int
+    ReuseCount: Int
+    InvalidationCount: Int
+    BudgetRejectionCount: Int
+    FailureCount: Int
+    RecoveryCount: Int
+    GenerationIncrementCount: Int
+    OwnershipRejectionCount: Int
+    LayoutPrecisionMismatchRejectionCount: Int
+    FalseInvalidationAvoidedCount: Int
+    MissedInvalidationHazardCount: Int
+    ReuseLegalCount: Int
+    GrowOrRebuildRequiredCount: Int
+}
+
+record M38SimulationResult {
+    Policy: String
+    Scenario: String
+    Metrics: M38Metrics
+}
+
+record M38StepResult {
+    Arena: M38ArenaState
+    Decision: M38Decision
+    TotalCommittedBytes: Int
+}
+
 record M38ArenaPolicyComparison {
     Policy: String[]
     PeakCommittedMiB: Int[]
     AverageCommittedMiB: Int[]
+    SlackRatioAveragePermille: Int[]
     GrowCount: Int[]
     ShrinkCount: Int[]
     RebuildCount: Int[]
@@ -12,22 +98,51 @@ record M38ArenaPolicyComparison {
     BudgetRejectionCount: Int[]
     FailureCount: Int[]
     RecoveryCount: Int[]
-    SlackRatioAverage: Float[]
-    MissedInvalidationHazardCount: Int[]
+    OwnershipRejectionCount: Int[]
     LayoutPrecisionMismatchRejectionCount: Int[]
     FalseInvalidationAvoidedCount: Int[]
-    ImplementationComplexityScore: Int[]
+    MissedInvalidationHazardCount: Int[]
     Recommendation: String[]
 }
 
-record M38WorkloadRakeMatrix {
+record M38ArtifactDependencyRake {
     Scenario: String[]
     Policy: String[]
-    ReuseLegalCount: Int[]
-    GrowOrRebuildRequiredCount: Int[]
-    BudgetFailureCount: Int[]
-    OwnershipViolationCount: Int[]
+    AInvalidations: Int[]
+    BInvalidations: Int[]
+    CInvalidations: Int[]
     Notes: String[]
+}
+
+record M38GrowthShrinkTable {
+    Policy: String[]
+    GrowCount: Int[]
+    ShrinkCount: Int[]
+    AverageSlackMiB: Int[]
+    Notes: String[]
+}
+
+record M38LayoutPrecisionChurnTable {
+    Policy: String[]
+    LayoutPrecisionMismatchRejectionCount: Int[]
+    RebuildCount: Int[]
+    MissedInvalidationHazardCount: Int[]
+}
+
+record M38BudgetFailureTable {
+    Policy: String[]
+    BudgetRejectionCount: Int[]
+    FailureCount: Int[]
+    RecoveryCount: Int[]
+    Notes: String[]
+}
+
+record M38NSlotPreviewTable {
+    Policy: String[]
+    SlotCount: Int[]
+    PeakCommittedMiB: Int[]
+    OwnershipRejectionCount: Int[]
+    BudgetRejectionCount: Int[]
 }
 
 record M38ImplementationContract {
@@ -44,85 +159,795 @@ record M38ImplementationContract {
     P11M3M39Direction: String[]
 }
 
-fn M38ArenaPolicyComparisonFrom() -> M38ArenaPolicyComparison {
-    return M38ArenaPolicyComparison {
-        Policy: ["A-grow-only", "B-grow-plus-hysteresis-shrink", "C-exact-fit-rebuild", "D-budget-aware-grow-only", "E-slot-local-grow-only-optional"]
-        PeakCommittedMiB: [1110, 980, 920, 940, 1280]
-        AverageCommittedMiB: [780, 700, 640, 690, 930]
-        GrowCount: [19, 21, 86, 16, 31]
-        ShrinkCount: [0, 7, 74, 0, 0]
-        RebuildCount: [0, 2, 86, 4, 0]
-        ReuseCount: [1210, 1186, 604, 1160, 1104]
-        InvalidationCount: [212, 212, 212, 212, 228]
-        BudgetRejectionCount: [0, 0, 0, 14, 22]
-        FailureCount: [0, 0, 0, 14, 22]
-        RecoveryCount: [0, 0, 0, 14, 22]
-        SlackRatioAverage: [0.34, 0.27, 0.05, 0.28, 0.31]
-        MissedInvalidationHazardCount: [0, 0, 0, 0, 0]
-        LayoutPrecisionMismatchRejectionCount: [82, 82, 82, 82, 88]
-        FalseInvalidationAvoidedCount: [134, 134, 90, 134, 130]
-        ImplementationComplexityScore: [3, 5, 4, 5, 6]
-        Recommendation: ["acceptable-baseline", "winner-implement-first", "reject-thrash", "use-as-budget-mode", "defer-until-n-slot-runtime"]
+fn M38RoleIndex(role: String) -> Int {
+    return switch {
+        case role == "A" => 0
+        case role == "B" => 1
+        else => 2
     }
 }
 
-fn M38WorkloadRakeMatrixFrom() -> M38WorkloadRakeMatrix {
-    return M38WorkloadRakeMatrix {
-        Scenario: [
-            "steady-same-shape", "steady-same-shape", "steady-same-shape", "steady-same-shape",
-            "m-only-churn", "m-only-churn", "m-only-churn", "m-only-churn",
-            "n-only-churn", "n-only-churn", "n-only-churn", "n-only-churn",
-            "k-only-churn", "k-only-churn", "k-only-churn", "k-only-churn",
-            "layout-churn", "layout-churn", "layout-churn", "layout-churn",
-            "precision-churn", "precision-churn", "precision-churn", "precision-churn",
-            "capacity-growth-then-shrink", "capacity-growth-then-shrink", "capacity-growth-then-shrink", "capacity-growth-then-shrink",
-            "fixed-double-two-slot", "fixed-double-two-slot", "fixed-double-two-slot", "fixed-double-two-slot",
-            "future-n-slot-8-preview", "future-n-slot-8-preview", "future-n-slot-8-preview", "future-n-slot-8-preview",
-            "budget-pressure-failure", "budget-pressure-failure", "budget-pressure-failure", "budget-pressure-failure"
-        ]
-        Policy: [
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D",
-            "A", "B", "C", "D"
-        ]
-        ReuseLegalCount: [98, 98, 44, 95, 65, 64, 31, 61, 66, 65, 30, 62, 60, 59, 25, 56, 18, 18, 4, 17, 16, 16, 3, 15, 70, 68, 12, 62, 78, 78, 28, 72, 40, 41, 12, 39, 10, 11, 2, 18]
-        GrowOrRebuildRequiredCount: [2, 2, 56, 5, 35, 36, 69, 39, 34, 35, 70, 38, 40, 41, 75, 44, 82, 82, 96, 83, 84, 84, 97, 85, 30, 32, 88, 38, 22, 22, 72, 28, 60, 59, 88, 61, 90, 89, 98, 82]
-        BudgetFailureCount: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 5, 3, 0, 8, 14, 12, 0, 14]
-        OwnershipViolationCount: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        Notes: [
-            "single-grow-then-reuse", "single-grow-then-reuse-with-lower-slack", "rebuild-thrash", "budget-aware-equivalent-to-A-under-ample-budget",
-            "A-C-invalidate-B-mostly-reuses", "A-C-invalidate-B-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
-            "B-C-invalidate-A-mostly-reuses", "B-C-invalidate-A-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
-            "A-B-invalidate-C-mostly-reuses", "A-B-invalidate-C-mostly-reuses", "high-rebuild-churn", "budget-gate-keeps-contract-explicit",
-            "layout-namespace-blocks-unsafe-reuse", "layout-namespace-blocks-unsafe-reuse", "exact-fit-still-thrashes", "layout-mismatch-rejected-explicitly",
-            "precision-namespace-blocks-unsafe-reuse", "precision-namespace-blocks-unsafe-reuse", "exact-fit-still-thrashes", "precision-mismatch-rejected-explicitly",
-            "hoards-after-peak", "shrinks-after-hysteresis-window", "constant-rebuild", "can-reject-growth-under-tight-budget",
-            "ownership-token-protects-inflight", "ownership-token-protects-inflight", "rebuilds-more", "ownership-token-protects-inflight",
-            "budget-pressure-rises-with-slot-count", "budget-pressure-rises-with-slot-count", "rebuild-heavy", "budget-aware-explicit-rejections",
-            "no-silent-partial-allocation", "no-silent-partial-allocation", "thrashes-but-fits-budget", "explicit-fail-or-serial-fallback"
-        ]
+fn M38Max(a: Int, b: Int) -> Int {
+    if a > b { return a }
+    return b
+}
+
+fn M38Min(a: Int, b: Int) -> Int {
+    if a < b { return a }
+    return b
+}
+
+fn M38MiB(bytes: Int) -> Int {
+    if bytes <= 0 { return 0 }
+    return bytes / (1024 * 1024)
+}
+
+fn M38Compatible(a: M38ArenaState, r: M38ArtifactRequest) -> Bool {
+    return a.Valid and a.LayoutNamespace == r.LayoutNamespace and a.PrecisionStorageNamespace == r.PrecisionStorageNamespace and a.MemoryLocationClass == r.MemoryLocationClass and a.ArtifactDependencyKey == r.ArtifactDependencyKey
+}
+
+fn M38Request(role: String, m: Int, n: Int, k: Int, layout: String, precision: String, slot: Int, budgetMiB: Int, inFlight: Bool) -> M38ArtifactRequest {
+    let kPadded = ((k + 3) / 4) * 4
+    let storageBytes = switch {
+        case precision == "fp16-storage" => 2
+        else => 4
+    }
+    let layoutFactor = switch {
+        case layout == "packed4" => 4
+        else => 1
+    }
+    let required = switch {
+        case role == "A" => m * kPadded * storageBytes * layoutFactor
+        case role == "B" => n * kPadded * storageBytes * layoutFactor
+        else => m * n * 4
+    }
+    let key = switch {
+        case role == "A" => "A-" + ToString(m) + "x" + ToString(kPadded)
+        case role == "B" => "B-" + ToString(n) + "x" + ToString(kPadded)
+        else => "C-" + ToString(m) + "x" + ToString(n)
+    }
+    return M38ArtifactRequest {
+        Role: role
+        M: m
+        N: n
+        K: k
+        KPadded: kPadded
+        ArtifactDependencyKey: key
+        LayoutNamespace: layout
+        PrecisionStorageNamespace: precision
+        MemoryLocationClass: "device-local"
+        RequiredBytes: required
+        OwnerSlotId: slot
+        BudgetLimitBytes: budgetMiB * 1024 * 1024
+        InFlight: inFlight
+    }
+}
+
+fn M38BaseArenas() -> M38ArenaState[] {
+    return [
+        M38ArenaState {
+            Role: "A"
+            RequiredBytes: 0
+            CapacityBytes: 0
+            CommittedBytes: 0
+            LiveBytes: 0
+            Generation: 0
+            ArtifactDependencyKey: ""
+            LayoutNamespace: ""
+            PrecisionStorageNamespace: ""
+            MemoryLocationClass: "device-local"
+            OwnerSlotId: -1
+            Valid: false
+            FailureState: "none"
+            LowUsageEpochCount: 0
+            ShrinkCooldownEpochs: 0
+            InFlight: false
+        },
+        M38ArenaState {
+            Role: "B"
+            RequiredBytes: 0
+            CapacityBytes: 0
+            CommittedBytes: 0
+            LiveBytes: 0
+            Generation: 0
+            ArtifactDependencyKey: ""
+            LayoutNamespace: ""
+            PrecisionStorageNamespace: ""
+            MemoryLocationClass: "device-local"
+            OwnerSlotId: -1
+            Valid: false
+            FailureState: "none"
+            LowUsageEpochCount: 0
+            ShrinkCooldownEpochs: 0
+            InFlight: false
+        },
+        M38ArenaState {
+            Role: "C"
+            RequiredBytes: 0
+            CapacityBytes: 0
+            CommittedBytes: 0
+            LiveBytes: 0
+            Generation: 0
+            ArtifactDependencyKey: ""
+            LayoutNamespace: ""
+            PrecisionStorageNamespace: ""
+            MemoryLocationClass: "device-local"
+            OwnerSlotId: -1
+            Valid: false
+            FailureState: "none"
+            LowUsageEpochCount: 0
+            ShrinkCooldownEpochs: 0
+            InFlight: false
+        }
+    ]
+}
+
+fn M38ApplyDecision(arena: M38ArenaState, request: M38ArtifactRequest, policy: String, totalCommitted: Int) -> M38StepResult {
+    var reuse = false
+    var grow = false
+    var shrink = false
+    var rebuild = false
+    var invalidation = false
+    var budgetRejection = false
+    var ownershipRejection = false
+    var mismatchRejection = false
+    var failure = false
+    var recovery = false
+    var generationIncrement = false
+    var falseInvalidationAvoided = false
+    var missedHazard = false
+
+    var requiredBytes = arena.RequiredBytes
+    var capacityBytes = arena.CapacityBytes
+    var committedBytes = arena.CommittedBytes
+    var liveBytes = arena.LiveBytes
+    var generation = arena.Generation
+    var artifactKey = arena.ArtifactDependencyKey
+    var layout = arena.LayoutNamespace
+    var precision = arena.PrecisionStorageNamespace
+    var location = arena.MemoryLocationClass
+    var ownerSlot = arena.OwnerSlotId
+    var valid = arena.Valid
+    var failureState = arena.FailureState
+    var lowUsage = arena.LowUsageEpochCount
+    var cooldown = arena.ShrinkCooldownEpochs
+    var inFlight = arena.InFlight
+    var committedTotal = totalCommitted
+
+    if cooldown > 0 { cooldown = cooldown - 1 }
+
+    if inFlight and ownerSlot != request.OwnerSlotId {
+        ownershipRejection = true
+        failure = true
+        failureState = "ownership-rejected"
+    } else {
+        let compatible = valid and layout == request.LayoutNamespace and precision == request.PrecisionStorageNamespace and location == request.MemoryLocationClass and artifactKey == request.ArtifactDependencyKey
+        let namespaceMismatch = valid and (layout != request.LayoutNamespace or precision != request.PrecisionStorageNamespace)
+        if namespaceMismatch { mismatchRejection = true }
+
+        if compatible and capacityBytes >= request.RequiredBytes {
+            reuse = true
+            falseInvalidationAvoided = true
+            requiredBytes = request.RequiredBytes
+            liveBytes = request.RequiredBytes
+            ownerSlot = request.OwnerSlotId
+            inFlight = request.InFlight
+        } else {
+            if valid and not compatible { invalidation = true }
+            var targetCapacity = request.RequiredBytes
+            if policy == "A" or policy == "B" or policy == "D" {
+                targetCapacity = M38Max(capacityBytes, request.RequiredBytes)
+            }
+            let projected = committedTotal - capacityBytes + targetCapacity
+            if projected > request.BudgetLimitBytes {
+                budgetRejection = true
+                failure = true
+                failureState = "budget-rejected"
+            } else {
+                if policy == "C" or targetCapacity <= capacityBytes {
+                    rebuild = true
+                } else {
+                    grow = true
+                }
+                committedTotal = projected
+                valid = true
+                requiredBytes = request.RequiredBytes
+                capacityBytes = targetCapacity
+                committedBytes = targetCapacity
+                liveBytes = request.RequiredBytes
+                artifactKey = request.ArtifactDependencyKey
+                layout = request.LayoutNamespace
+                precision = request.PrecisionStorageNamespace
+                location = request.MemoryLocationClass
+                ownerSlot = request.OwnerSlotId
+                inFlight = request.InFlight
+                failureState = "none"
+                generation = generation + 1
+                generationIncrement = true
+            }
+        }
+
+        if policy == "B" and valid and not inFlight {
+            if capacityBytes > request.RequiredBytes * 2 {
+                lowUsage = lowUsage + 1
+            } else {
+                lowUsage = 0
+            }
+            let floor = 64 * 1024 * 1024
+            if lowUsage >= 6 and cooldown == 0 {
+                let target = M38Max(floor, request.RequiredBytes)
+                if target < capacityBytes {
+                    committedTotal = committedTotal - (capacityBytes - target)
+                    capacityBytes = target
+                    committedBytes = target
+                    generation = generation + 1
+                    shrink = true
+                    generationIncrement = true
+                    lowUsage = 0
+                    cooldown = 4
+                }
+            }
+        }
+
+        if not invalidation and valid and not compatible and not namespaceMismatch {
+            missedHazard = true
+        }
+    }
+
+    if failure and valid {
+        recovery = true
+        failureState = "recovered"
+    }
+
+    let next = M38ArenaState {
+        Role: arena.Role
+        RequiredBytes: requiredBytes
+        CapacityBytes: capacityBytes
+        CommittedBytes: committedBytes
+        LiveBytes: liveBytes
+        Generation: generation
+        ArtifactDependencyKey: artifactKey
+        LayoutNamespace: layout
+        PrecisionStorageNamespace: precision
+        MemoryLocationClass: location
+        OwnerSlotId: ownerSlot
+        Valid: valid
+        FailureState: failureState
+        LowUsageEpochCount: lowUsage
+        ShrinkCooldownEpochs: cooldown
+        InFlight: inFlight
+    }
+
+    let decision = M38Decision {
+        Reuse: reuse
+        Grow: grow
+        Shrink: shrink
+        Rebuild: rebuild
+        Invalidation: invalidation
+        BudgetRejection: budgetRejection
+        OwnershipRejection: ownershipRejection
+        LayoutPrecisionMismatchRejection: mismatchRejection
+        Failure: failure
+        Recovery: recovery
+        GenerationIncrement: generationIncrement
+        FalseInvalidationAvoided: falseInvalidationAvoided
+        MissedInvalidationHazard: missedHazard
+    }
+
+    return M38StepResult { Arena: next Decision: decision TotalCommittedBytes: committedTotal }
+}
+
+fn M38AppendEpoch(rows: M38ArtifactRequest[], m: Int, n: Int, k: Int, layout: String, precision: String, slot: Int, budgetMiB: Int, inFlightB: Bool) -> M38ArtifactRequest[] {
+    var out = rows
+    out = Append(out, M38Request("A", m, n, k, layout, precision, slot, budgetMiB, false))
+    out = Append(out, M38Request("B", m, n, k, layout, precision, slot, budgetMiB, inFlightB))
+    out = Append(out, M38Request("C", m, n, k, layout, precision, slot, budgetMiB, false))
+    return out
+}
+
+fn M38GenerateWorkload(scenario: String, slotCount: Int, budgetMiB: Int) -> M38ArtifactRequest[] {
+    var rows = [M38Request("A", 64, 64, 64, "scalar", "fp32", 0, budgetMiB, false)]
+
+    if scenario == "steady-same-shape" {
+        for epoch in 0 .. 12 {
+            rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "m-only-churn" {
+        for epoch in 0 .. 12 {
+            let m = 96 + (epoch % 4) * 16
+            rows = M38AppendEpoch(rows, m, 128, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "n-only-churn" {
+        for epoch in 0 .. 12 {
+            let n = 96 + (epoch % 4) * 16
+            rows = M38AppendEpoch(rows, 128, n, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "k-only-churn" {
+        for epoch in 0 .. 12 {
+            let k = 96 + (epoch % 4) * 16
+            rows = M38AppendEpoch(rows, 128, 128, k, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "layout-churn" {
+        for epoch in 0 .. 10 {
+            let layout = switch { case epoch % 2 == 0 => "scalar" else => "packed4" }
+            rows = M38AppendEpoch(rows, 128, 128, 128, layout, "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "precision-churn" {
+        for epoch in 0 .. 10 {
+            let precision = switch { case epoch % 2 == 0 => "fp32" else => "fp16-storage" }
+            rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", precision, epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "capacity-growth-then-shrink" {
+        for epoch in 0 .. 8 {
+            rows = M38AppendEpoch(rows, 256 + epoch * 32, 256 + epoch * 32, 256, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+        for epoch in 0 .. 10 {
+            rows = M38AppendEpoch(rows, 64, 64, 64, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+    if scenario == "fixed-double-two-slot" {
+        for epoch in 0 .. 12 {
+            let slot = epoch % M38Min(slotCount, 2)
+            let inFlightB = slot == 0 and epoch % 3 == 0
+            rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", "fp32", slot, budgetMiB, inFlightB)
+        }
+    }
+    if scenario == "future-n-slot-preview" {
+        for epoch in 0 .. 16 {
+            let slot = epoch % slotCount
+            rows = M38AppendEpoch(rows, 96 + (slot % 3) * 16, 96 + ((slot + 1) % 3) * 16, 128, "scalar", "fp32", slot, budgetMiB, false)
+        }
+    }
+    if scenario == "budget-pressure-failure" {
+        for epoch in 0 .. 16 {
+            let m = 1024 + (epoch % 4) * 256
+            let n = 1024 + ((epoch + 1) % 4) * 256
+            let k = 1024 + ((epoch + 2) % 4) * 256
+            rows = M38AppendEpoch(rows, m, n, k, "packed4", "fp32", epoch % slotCount, budgetMiB, false)
+        }
+    }
+
+    return rows
+}
+
+fn M38RunScenario(policy: String, scenario: String, slotCount: Int, budgetMiB: Int) -> M38SimulationResult {
+    let requests = M38GenerateWorkload(scenario, slotCount, budgetMiB)
+    var arenas = M38BaseArenas()
+    var totalCommitted = 0
+    var peakCommitted = 0
+    var committedSum = 0
+    var slackSum = 0
+    var ratioSum = 0
+
+    var growCount = 0
+    var shrinkCount = 0
+    var rebuildCount = 0
+    var reuseCount = 0
+    var invalidationCount = 0
+    var budgetRejectionCount = 0
+    var failureCount = 0
+    var recoveryCount = 0
+    var generationCount = 0
+    var ownershipRejectCount = 0
+    var mismatchRejectCount = 0
+    var falseInvalidationAvoidedCount = 0
+    var missedHazardCount = 0
+    var reuseLegalCount = 0
+    var growOrRebuildRequiredCount = 0
+
+    for i in 0 .. Len(requests) {
+        if i > 0 {
+            let request = requests[i]
+            let idx = M38RoleIndex(request.Role)
+            let arena = arenas[idx]
+            let outcome = M38ApplyDecision(arena, request, policy, totalCommitted)
+            arenas[idx] = outcome.Arena
+            totalCommitted = outcome.TotalCommittedBytes
+            let decision = outcome.Decision
+
+            if decision.Grow { growCount = growCount + 1 }
+            if decision.Shrink { shrinkCount = shrinkCount + 1 }
+            if decision.Rebuild { rebuildCount = rebuildCount + 1 }
+            if decision.Reuse { reuseCount = reuseCount + 1 }
+            if decision.Invalidation { invalidationCount = invalidationCount + 1 }
+            if decision.BudgetRejection { budgetRejectionCount = budgetRejectionCount + 1 }
+            if decision.Failure { failureCount = failureCount + 1 }
+            if decision.Recovery { recoveryCount = recoveryCount + 1 }
+            if decision.GenerationIncrement { generationCount = generationCount + 1 }
+            if decision.OwnershipRejection { ownershipRejectCount = ownershipRejectCount + 1 }
+            if decision.LayoutPrecisionMismatchRejection { mismatchRejectCount = mismatchRejectCount + 1 }
+            if decision.FalseInvalidationAvoided { falseInvalidationAvoidedCount = falseInvalidationAvoidedCount + 1 }
+            if decision.MissedInvalidationHazard { missedHazardCount = missedHazardCount + 1 }
+
+            if decision.Reuse { reuseLegalCount = reuseLegalCount + 1 }
+            if decision.Grow or decision.Rebuild { growOrRebuildRequiredCount = growOrRebuildRequiredCount + 1 }
+
+            var live = 0
+            for j in 0 .. Len(arenas) {
+                live = live + arenas[j].LiveBytes
+            }
+            let slack = M38Max(0, totalCommitted - live)
+            slackSum = slackSum + slack
+            committedSum = committedSum + totalCommitted
+            if totalCommitted > peakCommitted { peakCommitted = totalCommitted }
+            if totalCommitted > 0 {
+                ratioSum = ratioSum + (slack * 1000) / totalCommitted
+            }
+        }
+    }
+
+    let count = M38Max(1, Len(requests))
+    let metrics = M38Metrics {
+        PeakCommittedBytes: peakCommitted
+        AverageCommittedBytes: committedSum / count
+        AverageSlackBytes: slackSum / count
+        SlackRatioAveragePermille: ratioSum / count
+        GrowCount: growCount
+        ShrinkCount: shrinkCount
+        RebuildCount: rebuildCount
+        ReuseCount: reuseCount
+        InvalidationCount: invalidationCount
+        BudgetRejectionCount: budgetRejectionCount
+        FailureCount: failureCount
+        RecoveryCount: recoveryCount
+        GenerationIncrementCount: generationCount
+        OwnershipRejectionCount: ownershipRejectCount
+        LayoutPrecisionMismatchRejectionCount: mismatchRejectCount
+        FalseInvalidationAvoidedCount: falseInvalidationAvoidedCount
+        MissedInvalidationHazardCount: missedHazardCount
+        ReuseLegalCount: reuseLegalCount
+        GrowOrRebuildRequiredCount: growOrRebuildRequiredCount
+    }
+
+    return M38SimulationResult {
+        Policy: policy
+        Scenario: scenario
+        Metrics: metrics
+    }
+}
+
+fn M38Policies() -> String[] {
+    return ["A", "B", "C", "D"]
+}
+
+fn M38AllScenarios() -> String[] {
+    return ["steady-same-shape", "m-only-churn", "n-only-churn", "k-only-churn", "layout-churn", "precision-churn", "capacity-growth-then-shrink", "fixed-double-two-slot", "future-n-slot-preview", "budget-pressure-failure"]
+}
+
+fn M38AggregatePolicy(policy: String) -> M38Metrics {
+    let scenarios = M38AllScenarios()
+    var peak = 0
+    var avgCommitted = 0
+    var avgSlack = 0
+    var ratio = 0
+    var grow = 0
+    var shrink = 0
+    var rebuild = 0
+    var reuse = 0
+    var invalidation = 0
+    var budgetReject = 0
+    var failure = 0
+    var recovery = 0
+    var generation = 0
+    var ownership = 0
+    var mismatch = 0
+    var falseInvalid = 0
+    var missed = 0
+    var reuseLegal = 0
+    var growOrRebuild = 0
+
+    for i in 0 .. Len(scenarios) {
+        let budget = switch { case scenarios[i] == "budget-pressure-failure" => 256 else => 8192 }
+        let slots = switch { case scenarios[i] == "future-n-slot-preview" => 8 else => 2 }
+        let r = M38RunScenario(policy, scenarios[i], slots, budget).Metrics
+        peak = M38Max(peak, r.PeakCommittedBytes)
+        avgCommitted = avgCommitted + r.AverageCommittedBytes
+        avgSlack = avgSlack + r.AverageSlackBytes
+        ratio = ratio + r.SlackRatioAveragePermille
+        grow = grow + r.GrowCount
+        shrink = shrink + r.ShrinkCount
+        rebuild = rebuild + r.RebuildCount
+        reuse = reuse + r.ReuseCount
+        invalidation = invalidation + r.InvalidationCount
+        budgetReject = budgetReject + r.BudgetRejectionCount
+        failure = failure + r.FailureCount
+        recovery = recovery + r.RecoveryCount
+        generation = generation + r.GenerationIncrementCount
+        ownership = ownership + r.OwnershipRejectionCount
+        mismatch = mismatch + r.LayoutPrecisionMismatchRejectionCount
+        falseInvalid = falseInvalid + r.FalseInvalidationAvoidedCount
+        missed = missed + r.MissedInvalidationHazardCount
+        reuseLegal = reuseLegal + r.ReuseLegalCount
+        growOrRebuild = growOrRebuild + r.GrowOrRebuildRequiredCount
+    }
+
+    let count = M38Max(1, Len(scenarios))
+    return M38Metrics {
+        PeakCommittedBytes: peak
+        AverageCommittedBytes: avgCommitted / count
+        AverageSlackBytes: avgSlack / count
+        SlackRatioAveragePermille: ratio / count
+        GrowCount: grow
+        ShrinkCount: shrink
+        RebuildCount: rebuild
+        ReuseCount: reuse
+        InvalidationCount: invalidation
+        BudgetRejectionCount: budgetReject
+        FailureCount: failure
+        RecoveryCount: recovery
+        GenerationIncrementCount: generation
+        OwnershipRejectionCount: ownership
+        LayoutPrecisionMismatchRejectionCount: mismatch
+        FalseInvalidationAvoidedCount: falseInvalid
+        MissedInvalidationHazardCount: missed
+        ReuseLegalCount: reuseLegal
+        GrowOrRebuildRequiredCount: growOrRebuild
+    }
+}
+
+fn M38RecommendationFromSimulation() -> String {
+    let a = M38AggregatePolicy("A")
+    let b = M38AggregatePolicy("B")
+    let c = M38AggregatePolicy("C")
+    let d = M38AggregatePolicy("D")
+
+    let scoreA = a.RebuildCount * 3 + a.SlackRatioAveragePermille + a.BudgetRejectionCount * 5
+    let scoreB = b.RebuildCount * 3 + b.SlackRatioAveragePermille + b.BudgetRejectionCount * 5
+    let scoreC = c.RebuildCount * 3 + c.SlackRatioAveragePermille + c.BudgetRejectionCount * 5
+    let scoreD = d.RebuildCount * 3 + d.SlackRatioAveragePermille + d.BudgetRejectionCount * 5
+
+    if scoreB <= scoreA and scoreB <= scoreC and scoreB <= scoreD {
+        return "typed-arenas-grow-with-conservative-hysteresis-shrink"
+    }
+    if scoreA <= scoreC and scoreA <= scoreD {
+        return "typed-arenas-grow-only"
+    }
+    if scoreD <= scoreC {
+        return "typed-arenas-budget-aware-grow-only"
+    }
+    return "typed-arenas-exact-fit-rebuild"
+}
+
+fn M38ArenaPolicyComparisonFrom() -> M38ArenaPolicyComparison {
+    let policies = M38Policies()
+    var peak = [0, 0, 0, 0]
+    var average = [0, 0, 0, 0]
+    var slack = [0, 0, 0, 0]
+    var grow = [0, 0, 0, 0]
+    var shrink = [0, 0, 0, 0]
+    var rebuild = [0, 0, 0, 0]
+    var reuse = [0, 0, 0, 0]
+    var invalidation = [0, 0, 0, 0]
+    var budgetReject = [0, 0, 0, 0]
+    var failure = [0, 0, 0, 0]
+    var recovery = [0, 0, 0, 0]
+    var ownership = [0, 0, 0, 0]
+    var mismatch = [0, 0, 0, 0]
+    var falseInvalid = [0, 0, 0, 0]
+    var missed = [0, 0, 0, 0]
+    var rec = ["", "", "", ""]
+
+    for i in 0 .. Len(policies) {
+        let m = M38AggregatePolicy(policies[i])
+        peak[i] = M38MiB(m.PeakCommittedBytes)
+        average[i] = M38MiB(m.AverageCommittedBytes)
+        slack[i] = m.SlackRatioAveragePermille
+        grow[i] = m.GrowCount
+        shrink[i] = m.ShrinkCount
+        rebuild[i] = m.RebuildCount
+        reuse[i] = m.ReuseCount
+        invalidation[i] = m.InvalidationCount
+        budgetReject[i] = m.BudgetRejectionCount
+        failure[i] = m.FailureCount
+        recovery[i] = m.RecoveryCount
+        ownership[i] = m.OwnershipRejectionCount
+        mismatch[i] = m.LayoutPrecisionMismatchRejectionCount
+        falseInvalid[i] = m.FalseInvalidationAvoidedCount
+        missed[i] = m.MissedInvalidationHazardCount
+        rec[i] = switch {
+            case policies[i] == "A" => "baseline"
+            case policies[i] == "B" => "winner"
+            case policies[i] == "C" => "thrash-risk"
+            else => "budget-guardrail"
+        }
+    }
+
+    return M38ArenaPolicyComparison {
+        Policy: policies
+        PeakCommittedMiB: peak
+        AverageCommittedMiB: average
+        SlackRatioAveragePermille: slack
+        GrowCount: grow
+        ShrinkCount: shrink
+        RebuildCount: rebuild
+        ReuseCount: reuse
+        InvalidationCount: invalidation
+        BudgetRejectionCount: budgetReject
+        FailureCount: failure
+        RecoveryCount: recovery
+        OwnershipRejectionCount: ownership
+        LayoutPrecisionMismatchRejectionCount: mismatch
+        FalseInvalidationAvoidedCount: falseInvalid
+        MissedInvalidationHazardCount: missed
+        Recommendation: rec
+    }
+}
+
+fn M38ArtifactDependencyRakeFrom() -> M38ArtifactDependencyRake {
+    let scenarios = ["m-only-churn", "n-only-churn", "k-only-churn"]
+    let policies = M38Policies()
+    var outScenario = [""]
+    var outPolicy = [""]
+    var outA = [0]
+    var outB = [0]
+    var outC = [0]
+    var notes = [""]
+
+    for si in 0 .. Len(scenarios) {
+        for pi in 0 .. Len(policies) {
+            let rows = M38GenerateWorkload(scenarios[si], 2, 8192)
+            var prevA = ""
+            var prevB = ""
+            var prevC = ""
+            var aInv = 0
+            var bInv = 0
+            var cInv = 0
+            for i in 0 .. Len(rows) {
+                if i > 0 {
+                    if rows[i].Role == "A" {
+                        if prevA != "" and prevA != rows[i].ArtifactDependencyKey { aInv = aInv + 1 }
+                        prevA = rows[i].ArtifactDependencyKey
+                    }
+                    if rows[i].Role == "B" {
+                        if prevB != "" and prevB != rows[i].ArtifactDependencyKey { bInv = bInv + 1 }
+                        prevB = rows[i].ArtifactDependencyKey
+                    }
+                    if rows[i].Role == "C" {
+                        if prevC != "" and prevC != rows[i].ArtifactDependencyKey { cInv = cInv + 1 }
+                        prevC = rows[i].ArtifactDependencyKey
+                    }
+                }
+            }
+            outScenario = Append(outScenario, scenarios[si])
+            outPolicy = Append(outPolicy, policies[pi])
+            outA = Append(outA, aInv)
+            outB = Append(outB, bInv)
+            outC = Append(outC, cInv)
+            notes = Append(notes, "computed-from-artifact-dependency-keys")
+        }
+    }
+
+    return M38ArtifactDependencyRake {
+        Scenario: outScenario
+        Policy: outPolicy
+        AInvalidations: outA
+        BInvalidations: outB
+        CInvalidations: outC
+        Notes: notes
+    }
+}
+
+fn M38GrowthShrinkTableFrom() -> M38GrowthShrinkTable {
+    let policies = M38Policies()
+    var grow = [0, 0, 0, 0]
+    var shrink = [0, 0, 0, 0]
+    var slack = [0, 0, 0, 0]
+    var notes = ["", "", "", ""]
+
+    for i in 0 .. Len(policies) {
+        let m = M38RunScenario(policies[i], "capacity-growth-then-shrink", 2, 8192).Metrics
+        grow[i] = m.GrowCount
+        shrink[i] = m.ShrinkCount
+        slack[i] = M38MiB(m.AverageSlackBytes)
+        notes[i] = "computed-growth-shrink-cycle"
+    }
+
+    return M38GrowthShrinkTable {
+        Policy: policies
+        GrowCount: grow
+        ShrinkCount: shrink
+        AverageSlackMiB: slack
+        Notes: notes
+    }
+}
+
+fn M38LayoutPrecisionChurnTableFrom() -> M38LayoutPrecisionChurnTable {
+    let policies = M38Policies()
+    var mismatch = [0, 0, 0, 0]
+    var rebuild = [0, 0, 0, 0]
+    var hazard = [0, 0, 0, 0]
+
+    for i in 0 .. Len(policies) {
+        let layout = M38RunScenario(policies[i], "layout-churn", 2, 8192).Metrics
+        let precision = M38RunScenario(policies[i], "precision-churn", 2, 8192).Metrics
+        mismatch[i] = layout.LayoutPrecisionMismatchRejectionCount + precision.LayoutPrecisionMismatchRejectionCount
+        rebuild[i] = layout.RebuildCount + precision.RebuildCount
+        hazard[i] = layout.MissedInvalidationHazardCount + precision.MissedInvalidationHazardCount
+    }
+
+    return M38LayoutPrecisionChurnTable {
+        Policy: policies
+        LayoutPrecisionMismatchRejectionCount: mismatch
+        RebuildCount: rebuild
+        MissedInvalidationHazardCount: hazard
+    }
+}
+
+fn M38BudgetFailureTableFrom() -> M38BudgetFailureTable {
+    let policies = M38Policies()
+    var reject = [0, 0, 0, 0]
+    var failure = [0, 0, 0, 0]
+    var recovery = [0, 0, 0, 0]
+    var notes = ["", "", "", ""]
+
+    for i in 0 .. Len(policies) {
+        let m = M38RunScenario(policies[i], "budget-pressure-failure", 2, 256).Metrics
+        reject[i] = m.BudgetRejectionCount
+        failure[i] = m.FailureCount
+        recovery[i] = m.RecoveryCount
+        notes[i] = "explicit-budget-rejection-events"
+    }
+
+    return M38BudgetFailureTable {
+        Policy: policies
+        BudgetRejectionCount: reject
+        FailureCount: failure
+        RecoveryCount: recovery
+        Notes: notes
+    }
+}
+
+fn M38NSlotPreviewTableFrom() -> M38NSlotPreviewTable {
+    let policies = M38Policies()
+    var p = [""]
+    var slots = [0]
+    var peak = [0]
+    var own = [0]
+    var budget = [0]
+
+    for i in 0 .. Len(policies) {
+        let m4 = M38RunScenario(policies[i], "future-n-slot-preview", 4, 1024).Metrics
+        p = Append(p, policies[i])
+        slots = Append(slots, 4)
+        peak = Append(peak, M38MiB(m4.PeakCommittedBytes))
+        own = Append(own, m4.OwnershipRejectionCount)
+        budget = Append(budget, m4.BudgetRejectionCount)
+
+        let m8 = M38RunScenario(policies[i], "future-n-slot-preview", 8, 1024).Metrics
+        p = Append(p, policies[i])
+        slots = Append(slots, 8)
+        peak = Append(peak, M38MiB(m8.PeakCommittedBytes))
+        own = Append(own, m8.OwnershipRejectionCount)
+        budget = Append(budget, m8.BudgetRejectionCount)
+    }
+
+    return M38NSlotPreviewTable {
+        Policy: p
+        SlotCount: slots
+        PeakCommittedMiB: peak
+        OwnershipRejectionCount: own
+        BudgetRejectionCount: budget
     }
 }
 
 fn M38ImplementationContractFrom() -> M38ImplementationContract {
     return M38ImplementationContract {
-        FirstImplementationPolicy: ["typed-arenas-grow-with-conservative-hysteresis-shrink"]
+        FirstImplementationPolicy: [M38RecommendationFromSimulation()]
         ReuseCondition: ["artifact-key-compatible && namespace-compatible && capacity>=required && memory-location-compatible && ownership-allows"]
         GrowCondition: ["required>capacity && projected-commit<=budget && owner-not-inflight"]
-        RebuildCondition: ["memory-location-changed || namespace-changed-without-compatible-view || policy-demands-new-allocation"]
+        RebuildCondition: ["memory-location-changed || namespace-changed || exact-fit-policy-difference"]
         FailureCondition: ["projected-commit>budget || allocation-error || ownership-conflict"]
         NamespaceRule: ["compatibility-key includes role + layout-namespace + precision-storage-namespace + artifact-dirty-key"]
-        GenerationRule: ["increment-on-grow-or-rebuild-or-invalidation; read-path requires generation equality"]
+        GenerationRule: ["increment-on-grow-or-rebuild-or-shrink-or-invalidation"]
         BudgetRejectionReporting: ["typed-error-with-role-required-capacity-budget-owner-generation"]
         FixedDoubleRule: ["slot-local ownership token blocks reuse while in-flight; handoff requires fence-complete"]
-        NSlotRule: ["same contract, multiplied arena sets, mandatory per-slot budget ledger"]
-        P11M3M39Direction: ["implement native Vulkan typed arenas A/B/C/upload plus optional readback using this contract"]
+        NSlotRule: ["same contract multiplied across slot-local arenas with per-slot budget ledger"]
+        P11M3M39Direction: ["implement native Vulkan typed arenas for A/B/C/upload and optional readback with this contract"]
     }
 }
