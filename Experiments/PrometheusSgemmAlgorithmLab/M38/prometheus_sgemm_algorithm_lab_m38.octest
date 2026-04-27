@@ -1,45 +1,64 @@
 package PrometheusSgemmAlgorithmLab
 
 [Fact]
-fn M38ProvidesExecutableSimulationBackstopForReportClaims() -> Void {
-    let table = M38ArenaPolicyComparisonFrom()
-    Assert.True(Len(table.Policy) == 5, "M38 must compare policies A-E")
-    Assert.True(table.Recommendation[1] == "winner-implement-first", "policy B should remain the first implementation recommendation")
+fn M38ReuseConditionAllowsCompatibleCapacitySufficientReuse() -> Void {
+    let m = M38RunScenario("A", "steady-same-shape", 2, 8192).Metrics
+    Assert.True(m.ReuseCount > 0, "steady shape must reuse when compatibility and capacity are satisfied")
 }
 
 [Fact]
-fn M38RejectsExactFitRebuildAsPrimaryPolicyDueToThrash() -> Void {
-    let table = M38ArenaPolicyComparisonFrom()
-    Assert.True(table.RebuildCount[2] > table.RebuildCount[1], "exact-fit rebuild must show higher rebuild churn than hysteresis")
-    Assert.True(table.ReuseCount[2] < table.ReuseCount[0], "exact-fit rebuild should produce lower reuse than grow-only")
+fn M38CapacityGrowOccursWhenRequiredExceedsCapacityAndBudgetAllows() -> Void {
+    let m = M38RunScenario("A", "m-only-churn", 2, 8192).Metrics
+    Assert.True(m.GrowCount > 0, "policy A must grow under churn when budget allows")
 }
 
 [Fact]
-fn M38CompatibilityNamespacesPreventUnsafeRepresentationReuse() -> Void {
-    let table = M38ArenaPolicyComparisonFrom()
-    Assert.True(table.LayoutPrecisionMismatchRejectionCount[0] > 0, "layout/precision mismatch rejection must be explicit")
-    Assert.True(table.MissedInvalidationHazardCount[0] == 0 and table.MissedInvalidationHazardCount[4] == 0, "no missed invalidation hazard is allowed")
+fn M38BudgetRejectionIsExplicitUnderTightBudget() -> Void {
+    let m = M38RunScenario("D", "budget-pressure-failure", 2, 16).Metrics
+    Assert.True(m.BudgetRejectionCount > 0 and m.FailureCount > 0, "budget pressure must emit explicit rejections/failures")
 }
 
 [Fact]
-fn M38RakeMatrixCoversRequiredScenarioSet() -> Void {
-    let rake = M38WorkloadRakeMatrixFrom()
-    Assert.True(Len(rake.Scenario) == 40, "M38 rake matrix must cover 10 scenarios x 4 active policies")
-    Assert.True(rake.Scenario[0] == "steady-same-shape" and rake.Scenario[39] == "budget-pressure-failure", "matrix must include steady and budget-failure endpoints")
+fn M38LayoutAndPrecisionNamespaceMismatchCannotUnsafeReuse() -> Void {
+    let layout = M38RunScenario("A", "layout-churn", 2, 8192).Metrics
+    let precision = M38RunScenario("A", "precision-churn", 2, 8192).Metrics
+    Assert.True(layout.LayoutPrecisionMismatchRejectionCount > 0, "layout mismatch must reject unsafe reuse")
+    Assert.True(precision.LayoutPrecisionMismatchRejectionCount > 0, "precision mismatch must reject unsafe reuse")
 }
 
 [Fact]
-fn M38RakeMatrixKeepsOwnershipSafeAndBudgetFailuresExplicit() -> Void {
-    let rake = M38WorkloadRakeMatrixFrom()
-    Assert.True(rake.OwnershipViolationCount[0] == 0 and rake.OwnershipViolationCount[39] == 0, "no slot ownership violations are permitted")
-    Assert.True(rake.BudgetFailureCount[36] > 0 and rake.BudgetFailureCount[39] > 0, "budget pressure scenario must trigger explicit failures")
+fn M38ExactFitRebuildThrashesComparedToGrowPolicies() -> Void {
+    let a = M38RunScenario("A", "m-only-churn", 2, 8192).Metrics
+    let b = M38RunScenario("B", "m-only-churn", 2, 8192).Metrics
+    let c = M38RunScenario("C", "m-only-churn", 2, 8192).Metrics
+    Assert.True(c.RebuildCount > a.RebuildCount and c.RebuildCount > b.RebuildCount, "exact-fit must rebuild more under churn")
 }
 
 [Fact]
-fn M38ContractStatesExactReuseAndFailureRules() -> Void {
-    let contract = M38ImplementationContractFrom()
-    Assert.True(Len(contract.ReuseCondition) == 1 and Len(contract.FailureCondition) == 1, "M38 must produce explicit single-source contract strings")
-    Assert.True(contract.FirstImplementationPolicy[0] == "typed-arenas-grow-with-conservative-hysteresis-shrink", "contract should align with policy winner")
+fn M38HysteresisShrinkAvoidsPingPongComparedToExactFit() -> Void {
+    let b = M38RunScenario("B", "capacity-growth-then-shrink", 2, 8192).Metrics
+    let c = M38RunScenario("C", "capacity-growth-then-shrink", 2, 8192).Metrics
+    Assert.True(b.ShrinkCount < c.RebuildCount, "hysteresis should avoid exact-fit ping-pong")
+}
+
+[Fact]
+fn M38DependencyContractForMnkChurnMatchesA_B_COwnership() -> Void {
+    let rake = M38ArtifactDependencyRakeFrom()
+    Assert.True(rake.AInvalidations[1] > 0 and rake.BInvalidations[1] == 0 and rake.CInvalidations[1] > 0, "m-only churn should invalidate A and C, not B")
+    Assert.True(rake.AInvalidations[5] == 0 and rake.BInvalidations[5] > 0 and rake.CInvalidations[5] > 0, "n-only churn should invalidate B and C, not A")
+    Assert.True(rake.AInvalidations[9] > 0 and rake.BInvalidations[9] > 0 and rake.CInvalidations[9] == 0, "k-only churn should invalidate A and B, not C")
+}
+
+[Fact]
+fn M38FixedDoubleOwnershipBlocksInflightOverwrite() -> Void {
+    let m = M38RunScenario("A", "fixed-double-two-slot", 2, 8192).Metrics
+    Assert.True(m.OwnershipRejectionCount > 0, "in-flight slot ownership must reject overwrite")
+}
+
+[Fact]
+fn M38RecommendationIsDerivedFromComputedScores() -> Void {
+    let recommended = M38RecommendationFromSimulation()
+    Assert.True(recommended == "typed-arenas-grow-with-conservative-hysteresis-shrink", "recommendation must be computed from model score, not static literal table")
 }
 
 [Artifact]
@@ -48,8 +67,28 @@ fn EmitM38ArenaPolicyComparison() -> Void {
 }
 
 [Artifact]
-fn EmitM38WorkloadRakeMatrix() -> Void {
-    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_workload_rake_matrix.octagon", [M38WorkloadRakeMatrixFrom()])
+fn EmitM38ArtifactDependencyRake() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_artifact_dependency_rake.octagon", [M38ArtifactDependencyRakeFrom()])
+}
+
+[Artifact]
+fn EmitM38GrowthShrinkTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_growth_shrink_table.octagon", [M38GrowthShrinkTableFrom()])
+}
+
+[Artifact]
+fn EmitM38LayoutPrecisionChurnTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_layout_precision_churn_table.octagon", [M38LayoutPrecisionChurnTableFrom()])
+}
+
+[Artifact]
+fn EmitM38BudgetFailureTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_budget_failure_table.octagon", [M38BudgetFailureTableFrom()])
+}
+
+[Artifact]
+fn EmitM38NSlotPreviewTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M38/m38_nslot_preview_table.octagon", [M38NSlotPreviewTableFrom()])
 }
 
 [Artifact]

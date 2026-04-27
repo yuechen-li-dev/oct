@@ -1,14 +1,7 @@
 [M38GrowthShrinkTable {
-    Workload: ["steady", "large-to-small", "oscillating-small-large", "burst-large", "mixed-churn"]
-    PolicyAEvents: ["grow1-reuse", "grow3-retain", "grow6-retain", "grow2-retain", "grow9-retain"]
-    PolicyBEvents: ["grow1-reuse", "grow3-shrink1-after-6-low-epochs", "grow7-shrink2-hysteresis", "grow2-no-shrink", "grow10-shrink2"]
-    PolicyCEvents: ["rebuild-each-epoch", "rebuild-each-transition", "rebuild-thrash", "rebuild-each-burst", "rebuild-constant"]
-    ShrinkTriggerRuleB: [
-        "unused-when-capacity<=1.5x-required",
-        "shrink-if-capacity>2x-required-for-6-epochs",
-        "cooldown-4-epochs-between-shrinks",
-        "min-shrink-floor-64MiB-per-role",
-        "never-shrink-while-owned-inflight"
-    ]
-    ThrashAssessment: ["low", "low", "policyC-high", "low", "policyC-high"]
+    Policy: ["A", "B", "C", "D"]
+    GrowCount: [24, 24, 0, 24]
+    ShrinkCount: [0, 0, 0, 0]
+    AverageSlackMiB: [0, 0, 0, 0]
+    Notes: ["computed-growth-shrink-cycle", "computed-growth-shrink-cycle", "computed-growth-shrink-cycle", "computed-growth-shrink-cycle"]
 }]

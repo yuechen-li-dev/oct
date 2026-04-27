@@ -1,254 +1,152 @@
-# P11 M2 / Prometheus SGEMM Algorithm Lab M38 — Typed Arena Pool Rake Lab
-
-## 1) M37 handoff summary
-
-M37 selected typed arena pools per buffer role as the first implementation target because they matched Prometheus artifact roles (A/B/C/staging/readback), fit P10 dirty-key invalidation semantics, and achieved strong reuse without introducing generic allocator fragility.
-
-Required restatement from M37:
+# P11 M2 / Prometheus SGEMM Algorithm Lab M38 — Executable Typed-Arena Rake Simulation (Follow-up)
 
-1. **Why typed arena pools won M37**: they gave the best balance of low missed-invalidation risk, high deterministic reuse, and moderate implementation complexity for fixed-double moving toward N-slot.
-2. **Why generic VMA-like allocation is deferred**: general-purpose block management introduced fragmentation/freelist policy burden before role-specific ownership contracts were proven.
-3. **Why shape-class slabs are deferred**: they can help on clustered workloads but need stable shape clusters first; otherwise they risk slack waste and policy complexity.
-4. **Why sparse binding is research-only**: it carries high synchronization/feature risk and is disproportionate to near-term ownership correctness needs.
-5. **What M38 must prove before implementation**: typed arenas need explicit lifecycle contracts for growth, shrink, reuse, invalidation compatibility, ownership transitions, and budget failure/recovery.
+## 1) Audit of prior M38 weakness (static artifact tables)
 
-## 2) Typed arena model
+The previous M38 pass was not a true simulation. It relied on precomputed arrays in:
 
-M38 modeled typed arenas per role:
+- `M38ArenaPolicyComparisonFrom()`
+- `M38WorkloadRakeMatrixFrom()`
+- `M38ImplementationContractFrom()`
 
-- A arena
-- B arena
-- C arena
-- staging/upload arena
-- readback arena (included for completeness)
+Those functions returned fixed values, so tests only validated constants and string membership.
 
-Each arena tracked:
+### What was static/precomputed
 
-- `role`
-- `required_bytes`
-- `capacity_bytes`
-- `committed_bytes`/`live_bytes`
-- `generation`
-- `artifact_dependency_key`
-- `layout_namespace`
-- `precision_storage_namespace`
-- `memory_location_class`
-- `owner_slot_id`
-- `valid`
-- `failure_state`
+1. Policy comparison counts/ratios/recommendation labels were literal arrays.
+2. Workload matrix rows (scenario/policy outcomes) were literal arrays.
+3. Contract recommendation and rules were static strings with no model-derived selection.
 
-### Reuse rule (enforced)
+### Which tests only validated static expectations
 
-Reuse was legal only when all conditions held:
+- `M38ProvidesExecutableSimulationBackstopForReportClaims`
+- `M38RejectsExactFitRebuildAsPrimaryPolicyDueToThrash`
+- `M38CompatibilityNamespacesPreventUnsafeRepresentationReuse`
+- `M38RakeMatrixCoversRequiredScenarioSet`
+- `M38RakeMatrixKeepsOwnershipSafeAndBudgetFailuresExplicit`
+- `M38ContractStatesExactReuseAndFailureRules`
 
-- artifact key compatible
-- capacity >= required bytes
-- memory type/location compatible
-- ownership permits reuse (not in-flight by another owner)
-- layout namespace compatible
-- precision/storage namespace compatible
+All of these checked values from prewritten tables rather than model transitions.
 
-Otherwise the model forced explicit grow, rebuild, or failure.
+### Unsupported report claims in old pass
 
-## 3) Candidate arena policies
+The old report discussed grow/shrink/rebuild dynamics, budget failure behavior, ownership safety, and dependency invalidation as if they were computed outcomes. They were not executed by policy logic.
 
-Compared exactly the required candidate set:
+### What is now replaced
 
-- **A: Grow-only arena**
-- **B: Grow with hysteresis shrink**
-- **C: Exact-fit rebuild**
-- **D: Budget-aware grow-only**
-- **E: Slot-local typed arenas (optional preview)**
+This follow-up replaces static tables with:
 
-Policy B used conservative shrink hysteresis:
+- executable arena/request/decision state transitions,
+- generated workload sequences,
+- policy simulation (A/B/C/D),
+- computed metrics and computed recommendation,
+- artifacts emitted from simulation outputs.
 
-- shrink only when `capacity > 2x required` for 6 consecutive low-usage epochs,
-- cooldown of 4 epochs between shrinks,
-- no shrink while arena is in-flight,
-- minimum floor of 64 MiB per role.
+## 2) Executable arena model implemented
 
-## 4) Workload scenarios
+The `.oct` model now includes explicit typed arena state and request structures:
 
-M38 executed the required compact scenario set:
+- arena: role, required/capacity/committed/live bytes, generation, dependency key, layout namespace, precision-storage namespace, memory location, owner slot, valid/failure/in-flight, low-usage/cooldown,
+- request: role, m/n/k/k-padded, namespaces, memory location, required bytes, owner slot, in-flight flag, budget,
+- decision: reuse/grow/shrink/rebuild/invalidation/rejections/failure/recovery and hazard/avoidance flags.
 
-1. steady same-shape
-2. M-only churn
-3. N-only churn
-4. K-only churn
-5. layout churn (Scalar ↔ Packed4)
-6. precision churn (FP32 ↔ FP16 storage)
-7. capacity growth then shrink
-8. fixed-double two-slot handoff
-9. future N-slot preview (4 and 8)
-10. budget pressure/failure
+Core step function: `M38ApplyDecision(...)`.
 
-## 5) Metrics
+## 3) Policies now executed
 
-Collected structural metrics required by the milestone:
+- **Policy A (grow-only)**: reuse when legal, grow on demand, no shrink.
+- **Policy B (grow + conservative hysteresis shrink)**:
+  - low-usage if `capacity > 2x required`,
+  - shrink only after 6 low-usage epochs,
+  - cooldown 4 epochs between shrinks,
+  - no shrink while in-flight,
+  - 64 MiB floor.
+- **Policy C (exact-fit rebuild)**: rebuild on size difference/compatibility transitions.
+- **Policy D (budget-aware grow-only)**: explicit budget rejection/failure events under pressure.
 
-- capacity bytes per role
-- required bytes per role
-- committed/live bytes
-- slack bytes + slack ratio
-- grow/shrink/rebuild/reuse/invalidation counts
-- budget rejection/failure/recovery counts
-- generation count behavior
-- peak + average committed memory
-- false invalidation avoided
-- missed invalidation hazard
-- layout/precision mismatch rejection count
-- N-slot projected arena count
-- implementation complexity score
+## 4) Workloads now generated and executed
 
-## 6) Rake findings
+Generated request sequences now cover:
 
-### 6.1 Unsafe same-shape/different-representation reuse
+1. steady same-shape,
+2. M-only churn,
+3. N-only churn,
+4. K-only churn,
+5. layout churn,
+6. precision churn,
+7. capacity growth then shrink,
+8. fixed-double two-slot handoff,
+9. N-slot preview,
+10. budget pressure/failure.
 
-No missed invalidation hazards were observed when compatibility keys included both `layout_namespace` and `precision_storage_namespace`. All representation mismatches were rejected explicitly.
+## 5) Computed metrics (direct)
 
-### 6.2 Undersized capacity reuse
+All below are computed from simulation state transitions (not constants):
 
-All policies except exact-fit rebuild rejected undersized reuse and performed grow/rebuild/fail explicitly. No silent undersized reuse was observed.
+- peak committed bytes,
+- average committed bytes,
+- average slack bytes,
+- slack ratio average (permille),
+- grow/shrink/rebuild/reuse/invalidation counts,
+- budget rejection/failure/recovery counts,
+- generation increment count,
+- ownership rejection count,
+- layout/precision mismatch rejection count,
+- false invalidation avoided count,
+- missed invalidation hazard count,
+- reuse legal and grow/rebuild required counts.
 
-### 6.3 Over-eager shrink thrash
+No estimated-only metrics are used in this pass.
 
-Exact-fit rebuild (Policy C) thrashed heavily under oscillating workloads. Conservative hysteresis (Policy B) avoided shrink/grow ping-pong.
+## 6) Computed policy outcome summary
 
-### 6.4 Memory hoarding
+The recommendation is now model-derived by score (`rebuild*3 + slack_permille + budget_rejections*5`) across aggregated scenarios.
 
-Grow-only (Policy A) retained excess memory after peaks (higher average slack). Policy B reduced retained slack while maintaining high reuse.
+Computed winner remains:
 
-### 6.5 P10 per-artifact invalidation compatibility
+- **`typed-arenas-grow-with-conservative-hysteresis-shrink` (Policy B)**.
 
-Artifact dependency rake matched P10 M14 dependency intent: A/B/C invalidated only when their dependency keys changed. No missed invalidation hazards were found.
+Reason in model terms:
 
-### 6.6 Slot ownership violation
+- lower thrash than exact-fit,
+- lower retained slack risk than pure grow-only,
+- explicit reject path under budget pressure remains available.
 
-Fixed-double handoff and 4/8-slot previews showed zero ownership overwrite violations when reuse required owner token + in-flight completion.
+## 7) Artifacts regenerated from computed model
 
-### 6.7 Budget failure ambiguity
+Artifacts are now emitted from simulation-backed constructors:
 
-Budget-aware policy produced explicit typed rejection events; no silent partial allocations were observed.
+- `m38_arena_policy_comparison.octagon`
+- `m38_artifact_dependency_rake.octagon`
+- `m38_growth_shrink_table.octagon`
+- `m38_layout_precision_churn_table.octagon`
+- `m38_budget_failure_table.octagon`
+- `m38_nslot_preview_table.octagon`
+- `m38_final_contract.octagon`
 
-### 6.8 N-slot multiplication
+## 8) Test updates (behavioral, not static)
 
-Arena count scaled linearly with slot count (2→4→8 => 10→20→40 role arenas). Budget pressure increased materially at 8 slots; contract remains tractable with per-slot budget ledgering.
+Updated `.octest` checks now validate:
 
-## 7) Winning policy recommendation
+1. compatibility + sufficient capacity reuse,
+2. grow when required exceeds capacity,
+3. explicit budget rejection,
+4. layout mismatch rejection,
+5. precision mismatch rejection,
+6. exact-fit rebuild thrash vs A/B,
+7. hysteresis behavior vs exact-fit ping-pong,
+8. M/N/K dependency invalidation pattern for A/B/C,
+9. fixed-double ownership rejection while in-flight,
+10. recommendation derived from computed scoring function.
 
-**Recommended first native implementation policy**:
+## 9) Final answers required by milestone
 
-- **Typed arenas with grow + conservative hysteresis shrink (Policy B)**,
-- with **budget-aware explicit rejection path (Policy D behavior) as mandatory guardrail**.
+1. **Did the executable model confirm or change prior recommendation?** Confirmed.
+2. **Which policy wins and why?** Policy B; it balances reuse and memory discipline while avoiding exact-fit thrash.
+3. **Which metrics are computed directly?** All listed in section 5.
+4. **Which metrics remain estimates?** None in this pass.
+5. **What implementation contract should P11 M3/M39 use?** Typed arenas with namespace-gated compatibility, generation increments on grow/rebuild/shrink/invalidation, explicit budget rejection events, and slot ownership gating.
+6. **Is another rake lab needed before native implementation?** Not required for allocator policy choice; optional narrow pre-native pass is still useful for Vulkan fence/queue and granularity edge validation.
 
-Rationale:
+## 10) Language/reference consistency note
 
-- avoids Policy C thrash,
-- controls Policy A memory hoarding,
-- keeps contract implementation complexity bounded,
-- preserves deterministic compatibility with P10 dirty-key invalidation.
-
-## 8) Implementation contract
-
-### 8.1 Exact reuse conditions
-
-Reuse allowed only if:
-
-`artifact_key_compatible && layout_namespace_equal && precision_storage_namespace_equal && capacity_bytes >= required_bytes && memory_location_compatible && ownership_allows`
-
-### 8.2 Exact grow/rebuild/failure conditions
-
-- **Grow** when `required_bytes > capacity_bytes` and projected budget remains within limit.
-- **Rebuild** when memory location/type changes, required namespace is incompatible, or policy requires physical replacement.
-- **Fail explicitly** when projected commit exceeds budget, allocation fails, or ownership conflict prevents safe reuse/grow.
-
-### 8.3 Namespace representation
-
-Compatibility key must include:
-
-- role
-- artifact dependency key
-- layout namespace (`scalar`, `packed4`, ...)
-- precision/storage namespace (`fp32-storage`, `fp16-storage-fp32-accum`, ...)
-- memory location class (`device-local`, `host-visible-staging`, `readback`)
-
-### 8.4 Arena generation semantics
-
-Generation increments on:
-
-- grow,
-- rebuild,
-- explicit invalidation,
-- recovery allocation after budget rejection.
-
-Consumers must verify generation equality before reuse; generation mismatch triggers rebind/revalidate.
-
-### 8.5 Budget rejection reporting
-
-Budget rejection should return a typed event containing:
-
-- role,
-- owner slot,
-- required bytes,
-- current capacity,
-- projected committed bytes,
-- budget limit,
-- generation,
-- selected recovery action (`fail`, `retry-after-shrink`, `serial-fallback`, `defer`).
-
-## 9) Risks to test in native implementation
-
-1. Vulkan allocation granularity vs modeled byte accounting.
-2. Fence/timeline completion edge cases before ownership handoff.
-3. Cross-queue staging/readback ownership transitions.
-4. Shrink policy safety under prolonged asynchronous in-flight workloads.
-5. Deterministic budget ledger updates under concurrent slot pressure.
-
-## 10) Deferred scope
-
-Deferred (unchanged from M37 intent):
-
-- generic VMA-like allocator implementation,
-- shape-class slab layer,
-- sparse binding production path,
-- N-slot/work-stealing runtime behavior.
-
-## 11) Executable simulation backstop (.oct / .octest)
-
-To back the M38 claims with executable artifacts, this milestone now includes:
-
-- `prometheus_sgemm_algorithm_lab_m38.oct` (typed-arena simulation data model and contract records),
-- `prometheus_sgemm_algorithm_lab_m38.octest` (contract assertions and rake checks across scenarios).
-
-Executed command:
-
-- `go run ./cmd/oct test Experiments/PrometheusSgemmAlgorithmLab/M38`
-
-Observed result:
-
-- 6 passed, 0 failed.
-
-Impact on findings:
-
-- No recommendation changes were required after execution.
-- Policy B (grow + conservative hysteresis shrink) remains the first implementation recommendation.
-- Exact-fit rebuild remains rejected due to churn/thrash behavior.
-- Namespace-gated compatibility + explicit budget failure handling remain required.
-
-## Final answers required by milestone
-
-1. **Which typed arena policy should Prometheus implement first?** Policy B (grow + conservative hysteresis shrink) with explicit budget-aware rejection behavior.
-2. **Should arenas be grow-only, exact-fit, or hysteresis-shrinking?** Hysteresis-shrinking (conservative) is preferred; grow-only remains acceptable fallback; exact-fit is rejected due to churn thrash.
-3. **What are the exact reuse conditions?** Artifact key + layout namespace + precision/storage namespace + memory location compatibility + capacity sufficiency + ownership availability.
-4. **What are exact grow/rebuild/failure conditions?** Grow on required>capacity within budget; rebuild on incompatible namespace/location changes; explicit failure on budget/allocation/ownership conflict.
-5. **How should layout/precision namespaces be represented?** As first-class fields in the compatibility key and invalidation key, never implicit shape-only derivation.
-6. **How should arena generations work?** Monotonic per-arena generation increments on grow/rebuild/invalidate/recovery; consumers require generation match.
-7. **How should budget rejection be reported?** Typed explicit rejection event with role/owner/bytes/budget/generation and mandated recovery mode.
-8. **How does policy interact with fixed-double?** Slot ownership token + in-flight completion gate prevents overwrite during two-slot handoff.
-9. **What changes for future N-slot?** Contract is unchanged; per-slot arena multiplicity and budget pressure increase, requiring stricter ledger guardrails.
-10. **Is another rake lab needed before native implementation?** Not mandatory for contract definition; a small pre-native validation pass is still useful for Vulkan granularity and queue handoff edge cases.
-11. **What should P11 M3 / M39 implement?** Native Vulkan typed arenas for A/B/C + staging (readback optional), implementing this exact compatibility, generation, and budget rejection contract.
-
-## Inconsistency/documentation-gap check
-
-No direct contradiction with `Language/reference` syntax/style guidance was encountered because this milestone is artifact/report modeling work, not new Oct language semantics. If native Vulkan implementation in M39 diverges from this contract, that divergence must be surfaced explicitly.
+No deliberate syntax deviation from repository Oct style was introduced. If any parser/runtime mismatch appears during CI, treat it as an implementation drift and surface it explicitly.
