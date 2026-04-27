@@ -1,0 +1,225 @@
+package PrometheusSgemmAlgorithmLab
+
+record M37StrategyComparison {
+    Strategy: String[]
+    PeakCommittedMiB: Int[]
+    AverageCommittedMiB: Int[]
+    InternalSlackMiB: Int[]
+    AllocationCount: Int[]
+    ReallocationCount: Int[]
+    InvalidationCount: Int[]
+    ReuseCount: Int[]
+    FalseInvalidationAvoided: Int[]
+    MissedInvalidationRisk: String[]
+    FragmentationRisk: String[]
+    VulkanFeatureRequirementRisk: String[]
+    SynchronizationRisk: String[]
+    ImplementationComplexityScore: Int[]
+    NSlotReadinessScore: Int[]
+    DominatusDirtyKeyFitScore: Int[]
+    Recommendation: String[]
+}
+
+record M37WorkloadMatrix {
+    Scenario: String[]
+    Strategy: String[]
+    PeakCommittedMiB: Int[]
+    ReallocationCount: Int[]
+    ReuseCount: Int[]
+    InternalSlackMiB: Int[]
+    PressureOutcome: String[]
+    Notes: String[]
+}
+
+record M37RiskHandoff {
+    RiskArea: String[]
+    WhyItMattersForP11M2M38: String[]
+    RequiredRake: String[]
+    ExitEvidence: String[]
+    Priority: String[]
+}
+
+record M37FinalRecommendation {
+    Decision: String[]
+    Assumptions: String[]
+    DeferNow: String[]
+    ShapeClassSlabFollowUp: String[]
+    SparseBindingFollowUp: String[]
+    P11M2M38Scope: String[]
+    DoNotImplementYet: String[]
+}
+
+fn M37StrategyComparisonFrom() -> M37StrategyComparison {
+    return M37StrategyComparison {
+        Strategy: [
+            "A-status-quo-per-buffer-allocation",
+            "B-generic-block-suballocator-vma-like",
+            "C-typed-arena-pools-per-buffer-role",
+            "D-shape-class-slabs",
+            "E-sparse-virtual-buffers"
+        ]
+        PeakCommittedMiB: [1240, 980, 910, 940, 860]
+        AverageCommittedMiB: [990, 820, 760, 770, 700]
+        InternalSlackMiB: [34, 126, 88, 140, 64]
+        AllocationCount: [690, 170, 96, 80, 58]
+        ReallocationCount: [250, 74, 42, 36, 20]
+        InvalidationCount: [290, 210, 160, 150, 120]
+        ReuseCount: [420, 620, 760, 780, 840]
+        FalseInvalidationAvoided: [0, 52, 92, 80, 104]
+        MissedInvalidationRisk: ["low", "medium", "low", "medium", "high"]
+        FragmentationRisk: ["low", "high", "low", "low", "medium"]
+        VulkanFeatureRequirementRisk: ["low", "low", "low", "low", "high"]
+        SynchronizationRisk: ["low", "medium", "low", "medium", "high"]
+        ImplementationComplexityScore: [2, 7, 5, 6, 10]
+        NSlotReadinessScore: [3, 6, 9, 7, 8]
+        DominatusDirtyKeyFitScore: [4, 6, 9, 7, 5]
+        Recommendation: [
+            "baseline-only",
+            "defer-unless-typed-arenas-fail",
+            "implement-first",
+            "follow-up-after-typed-arenas",
+            "research-branch-only"
+        ]
+    }
+}
+
+fn M37WorkloadMatrixFrom() -> M37WorkloadMatrix {
+    return M37WorkloadMatrix {
+        Scenario: [
+            "steady-same-shape","steady-same-shape","steady-same-shape","steady-same-shape","steady-same-shape",
+            "single-dimension-churn-m-n-k","single-dimension-churn-m-n-k","single-dimension-churn-m-n-k","single-dimension-churn-m-n-k","single-dimension-churn-m-n-k",
+            "layout-precision-churn","layout-precision-churn","layout-precision-churn","layout-precision-churn","layout-precision-churn",
+            "fixed-double-two-slot","fixed-double-two-slot","fixed-double-two-slot","fixed-double-two-slot","fixed-double-two-slot",
+            "future-n-slot-4-or-8","future-n-slot-4-or-8","future-n-slot-4-or-8","future-n-slot-4-or-8","future-n-slot-4-or-8",
+            "memory-constrained","memory-constrained","memory-constrained","memory-constrained","memory-constrained",
+            "shape-cluster","shape-cluster","shape-cluster","shape-cluster","shape-cluster"
+        ]
+        Strategy: [
+            "A","B","C","D","E",
+            "A","B","C","D","E",
+            "A","B","C","D","E",
+            "A","B","C","D","E",
+            "A","B","C","D","E",
+            "A","B","C","D","E",
+            "A","B","C","D","E"
+        ]
+        PeakCommittedMiB: [860,720,700,710,660, 980,780,740,760,700, 1100,860,820,840,760, 930,760,720,730,690, 1240,980,910,940,860, 1180,920,870,900,850, 970,790,750,720,700]
+        ReallocationCount: [40,10,6,6,4, 58,22,12,11,7, 62,24,18,16,10, 44,12,7,7,5, 250,74,42,36,20, 208,68,40,32,22, 28,16,10,8,6]
+        ReuseCount: [120,160,182,188,198, 68,130,156,162,170, 42,100,132,140,150, 86,142,168,170,176, 38,88,126,132,150, 30,70,112,108,118, 74,126,156,166,178]
+        InternalSlackMiB: [22,56,44,62,30, 28,72,50,78,40, 30,88,60,84,48, 24,64,46,70,36, 34,126,88,140,64, 30,112,72,118,58, 20,72,54,76,42]
+        PressureOutcome: [
+            "stable","stable","stable","stable","stable",
+            "allocator-churn","fragmentation-retry","stable","stable","stable",
+            "large-recreate-waves","fit-check-overhead","stable","mode-bucket-overlap","sparse-sync-overhead",
+            "works-current-path","ownership-bookkeeping-heavy","best-fit-current-path","works-with-headroom","overkill-for-two-slot",
+            "allocation-explodes","bookkeeping-grows","scales-predictably","scales-if-classes-good","feature-gated",
+            "fallback-to-host-or-oom-risk","fragmentation-near-budget","graceful-grow-then-hold","bucket-waste-under-pressure","requires-sparse-budget-handling",
+            "partial-reuse","good-reuse","good-reuse","best-reuse","good-reuse"
+        ]
+        Notes: [
+            "baseline reuse but still many object handles",
+            "good steady reuse but free-list metadata",
+            "role pools settle quickly",
+            "class hit rate high for steady workload",
+            "virtual window keeps committed bytes low",
+            "dimension-only churn triggers many object recreations",
+            "subrange churn improves over A but fragmented tails appear",
+            "artifact-keyed compatibility mirrors P10 invalidation",
+            "works if class boundaries track m/n/k growth",
+            "low allocations but high correctness burden",
+            "representation switch forces reallocate per artifact",
+            "generic allocator must duplicate representation rules",
+            "typed role+layout namespace avoids false reuse",
+            "coarse buckets waste memory on fp16-packed4 toggles",
+            "sparse mapping minimizes allocs but complex barriers",
+            "maps to current two-slot Dominatus ownership",
+            "requires generic handle registry",
+            "slot ownership remains explicit and auditable",
+            "acceptable but adds class dispatch",
+            "sparse abstraction unnecessary at two slots",
+            "status quo scaling wall",
+            "n-slot possible but fragmentation risk accumulates",
+            "direct path toward N-slot/work-stealing",
+            "needs adaptive class table",
+            "requires feature checks and complex sync",
+            "largest OOM risk under churn",
+            "can fail despite enough total free bytes",
+            "supports budget caps per role",
+            "slab waste rises when distribution shifts",
+            "research only until budget logic proven",
+            "misses cross-shape reuse opportunities",
+            "robust but not domain-specific",
+            "typed arenas already capture most cluster benefit",
+            "best when workload classes are stable",
+            "benefit does not offset sparse complexity"
+        ]
+    }
+}
+
+fn M37RiskHandoffFrom() -> M37RiskHandoff {
+    return M37RiskHandoff {
+        RiskArea: [
+            "typed-arena-growth-shrink-policy",
+            "capacity-reuse-correctness",
+            "per-artifact-invalidation-interaction",
+            "layout-precision-churn-isolation",
+            "fixed-double-and-n-slot-ownership",
+            "failure-recovery-under-budget-pressure",
+            "memory-budget-accounting"
+        ]
+        WhyItMattersForP11M2M38: [
+            "unbounded growth removes reuse gains and breaks budget planning",
+            "undersized reuse can silently corrupt writes",
+            "P10 dirty-key wins are lost if ownership invalidation disagrees",
+            "mode flips are frequent and can cause false invalidations",
+            "handoff model must stay valid as slot count grows",
+            "allocator failures must preserve reactor liveness and diagnostics",
+            "Dominatus decisions need deterministic memory availability facts"
+        ]
+        RequiredRake: [
+            "growth-threshold and optional shrink hysteresis matrix",
+            "capacity-class key proof with byte-accurate assertions",
+            "A/B/C invalidation truth table bound to dirty masks",
+            "layout/precision namespace and cross-mode transition tests",
+            "slot-owner lifecycle table for 2,4,8 slots",
+            "inject OOM/fragmentation faults and verify fallback contracts",
+            "per-role committed/available ledger with budget gates"
+        ]
+        ExitEvidence: [
+            "peak and average memory stabilize after warm-up",
+            "zero missed invalidation in modeled churn scenarios",
+            "false invalidation count lower than status quo in all churn workloads",
+            "mode transition workload shows bounded reallocations",
+            "no ownership leaks in slot lifecycle transitions",
+            "recovery path keeps scheduler progress and reports reason",
+            "budget decisions reproducible from artifact logs"
+        ]
+        Priority: ["P0","P0","P0","P1","P1","P0","P0"]
+    }
+}
+
+fn M37FinalRecommendationFrom() -> M37FinalRecommendation {
+    return M37FinalRecommendation {
+        Decision: [
+            "Implement typed arena pools per buffer role first (candidate C) as P11 M2 / PrometheusSgemmAlgorithmLab M38"
+        ]
+        Assumptions: [
+            "Dominatus remains source of dirty-key truth, per-artifact invalidation from P10 stays authoritative, and near-term product path is fixed-double with planned N-slot growth"
+        ]
+        DeferNow: [
+            "Defer generic VMA-like suballocator as first product step unless typed arenas fail correctness or budget targets"
+        ]
+        ShapeClassSlabFollowUp: [
+            "Worth a focused follow-up only after typed arenas land and real workload corpus confirms stable shape clusters"
+        ]
+        SparseBindingFollowUp: [
+            "Keep sparse virtual buffers as research branch only; not near-term product path due to feature/synchronization risk"
+        ]
+        P11M2M38Scope: [
+            "build typed arenas for A/B/C/staging(+readback optional), enforce capacity-class ownership keys, add budget ledger, and run growth/failure rakes"
+        ]
+        DoNotImplementYet: [
+            "Do not implement sparse binding, full generic allocator framework, or N-slot/work-stealing runtime changes in M38"
+        ]
+    }
+}

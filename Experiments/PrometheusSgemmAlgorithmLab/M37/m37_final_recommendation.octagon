@@ -1,0 +1,9 @@
+[M37FinalRecommendation {
+    Decision: ["Implement typed arena pools per buffer role first (candidate C) as P11 M2 / PrometheusSgemmAlgorithmLab M38"]
+    Assumptions: ["Dominatus remains source of dirty-key truth, per-artifact invalidation from P10 stays authoritative, and near-term product path is fixed-double with planned N-slot growth"]
+    DeferNow: ["Defer generic VMA-like suballocator as first product step unless typed arenas fail correctness or budget targets"]
+    ShapeClassSlabFollowUp: ["Worth a focused follow-up only after typed arenas land and real workload corpus confirms stable shape clusters"]
+    SparseBindingFollowUp: ["Keep sparse virtual buffers as research branch only; not near-term product path due to feature/synchronization risk"]
+    P11M2M38Scope: ["build typed arenas for A/B/C/staging(+readback optional), enforce capacity-class ownership keys, add budget ledger, and run growth/failure rakes"]
+    DoNotImplementYet: ["Do not implement sparse binding, full generic allocator framework, or N-slot/work-stealing runtime changes in M38"]
+}]
