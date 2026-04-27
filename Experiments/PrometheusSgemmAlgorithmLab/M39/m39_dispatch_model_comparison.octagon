@@ -1,0 +1,24 @@
+[M39DispatchModelComparison {
+    Model: [
+        "A-single-worker-baseline",
+        "B-central-policy-static-partition",
+        "C-central-policy-shared-spmc",
+        "D-central-policy-local-queues-work-steal",
+        "E-parallel-judgment-reference"
+    ]
+    PolicyOwnershipSafety: ["high", "high", "high", "high", "low"]
+    DominatusSnapshotComplexity: ["low", "low", "low", "medium", "high"]
+    QueueOverheadClass: ["none", "none", "medium", "high", "none"]
+    LoadBalancingStrength: ["none", "low", "medium", "high", "medium"]
+    HeavyTailResilience: ["none", "low", "medium", "high", "medium"]
+    ImplementationComplexityScore: [1, 3, 5, 8, 9]
+    PolicyContentionRisk: ["none", "low", "medium", "medium", "high"]
+    EventDrainComplexity: ["low", "medium", "medium", "high", "high"]
+    FirstImplementationFit: [
+        "baseline-only",
+        "primary-candidate",
+        "secondary-candidate",
+        "defer-until-proven-needed",
+        "reference-only-not-for-product"
+    ]
+}]
