@@ -380,8 +380,14 @@ typedef struct prom_batch_worker_resources {
   uint32_t arena_bank_id;
   uint32_t submit_count;
   uint32_t wait_count;
+  uint32_t reset_count;
+  uint32_t record_count;
+  uint32_t physical_valid;
   uint32_t in_flight;
   uint32_t failed;
+  VkCommandPool command_pool;
+  VkCommandBuffer command_buffer;
+  VkFence fence;
 } prom_batch_worker_resources;
 
 typedef struct prom_batch_shared_state prom_batch_shared_state;
@@ -918,6 +924,7 @@ struct prom_batch_shared_state {
   uint32_t serialized_in_flight_count;
   uint32_t max_serialized_in_flight_count;
   uint32_t resource_ownership_violation_count;
+  uint32_t resource_creation_failure_count;
   prom_batch_mutex state_mutex;
   prom_batch_mutex serialized_vulkan_mutex;
 };
@@ -939,6 +946,7 @@ static uint32_t batch_verify_worker_resource_owner(prom_batch_shared_state* shar
 }
 
 typedef struct prom_batch_thread_ctx {
+  prometheus_runtime* rt;
   const prom_batch_plan* plans;
   uint32_t entry_count;
   uint32_t event_capacity;
@@ -955,6 +963,86 @@ typedef struct prom_batch_thread_ctx {
   float** staged_outputs;
   prom_batch_shared_state* shared;
 } prom_batch_thread_ctx;
+
+static int batch_create_physical_worker_resources(prometheus_runtime* rt,
+                                                  prom_batch_worker_resources* worker_resources,
+                                                  uint32_t effective_workers,
+                                                  uint32_t* out_failed_worker_id) {
+  uint32_t w;
+  if (out_failed_worker_id != NULL) {
+    *out_failed_worker_id = UINT32_MAX;
+  }
+  if (rt == NULL || worker_resources == NULL || effective_workers == 0u) {
+    return 0;
+  }
+  for (w = 0u; w < effective_workers; ++w) {
+    VkCommandPoolCreateInfo pool_info;
+    VkCommandBufferAllocateInfo alloc_info;
+    VkFenceCreateInfo fence_info;
+    VkResult vk_result;
+    memset(&pool_info, 0, sizeof(pool_info));
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = rt->queue_family_index;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    vk_result = vkCreateCommandPool(rt->device, &pool_info, NULL, &worker_resources[w].command_pool);
+    if (vk_result != VK_SUCCESS) {
+      if (out_failed_worker_id != NULL) {
+        *out_failed_worker_id = w;
+      }
+      return 0;
+    }
+
+    memset(&alloc_info, 0, sizeof(alloc_info));
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = worker_resources[w].command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1u;
+    vk_result = vkAllocateCommandBuffers(rt->device, &alloc_info, &worker_resources[w].command_buffer);
+    if (vk_result != VK_SUCCESS) {
+      if (out_failed_worker_id != NULL) {
+        *out_failed_worker_id = w;
+      }
+      return 0;
+    }
+
+    memset(&fence_info, 0, sizeof(fence_info));
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = 0u;
+    vk_result = vkCreateFence(rt->device, &fence_info, NULL, &worker_resources[w].fence);
+    if (vk_result != VK_SUCCESS) {
+      if (out_failed_worker_id != NULL) {
+        *out_failed_worker_id = w;
+      }
+      return 0;
+    }
+    worker_resources[w].physical_valid = 1u;
+    worker_resources[w].command_pool_id = 1000u + w;
+    worker_resources[w].command_buffer_id = 2000u + w;
+    worker_resources[w].fence_id = 3000u + w;
+  }
+  return 1;
+}
+
+static void batch_destroy_physical_worker_resources(prometheus_runtime* rt,
+                                                    prom_batch_worker_resources* worker_resources,
+                                                    uint32_t effective_workers) {
+  uint32_t w;
+  if (rt == NULL || worker_resources == NULL) {
+    return;
+  }
+  for (w = 0u; w < effective_workers; ++w) {
+    if (worker_resources[w].fence != VK_NULL_HANDLE) {
+      vkDestroyFence(rt->device, worker_resources[w].fence, NULL);
+      worker_resources[w].fence = VK_NULL_HANDLE;
+    }
+    if (worker_resources[w].command_pool != VK_NULL_HANDLE) {
+      vkDestroyCommandPool(rt->device, worker_resources[w].command_pool, NULL);
+      worker_resources[w].command_pool = VK_NULL_HANDLE;
+      worker_resources[w].command_buffer = VK_NULL_HANDLE;
+    }
+    worker_resources[w].physical_valid = 0u;
+  }
+}
 
 static void batch_shared_fail_first(prom_batch_shared_state* shared,
                                     uint32_t entry_id,
@@ -1094,8 +1182,94 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       ctx->shared->max_serialized_in_flight_count = ctx->shared->serialized_in_flight_count;
     }
     prom_batch_mutex_unlock(&ctx->shared->state_mutex);
-    resources->submit_count += 1u;
     resources->in_flight = 1u;
+    if (resources->physical_valid != 0u) {
+      VkCommandBufferBeginInfo begin_info;
+      VkSubmitInfo submit_info;
+      VkResult vk_result;
+      memset(&begin_info, 0, sizeof(begin_info));
+      begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      vk_result = vkResetFences(ctx->rt->device, 1u, &resources->fence);
+      if (vk_result != VK_SUCCESS || (ctx->rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_FENCE_RESET_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_FENCE_RESET_FAILED;
+        resources->in_flight = 0u;
+        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+        has_lock = 0u;
+        break;
+      }
+      resources->reset_count += 1u;
+      vk_result = vkResetCommandBuffer(resources->command_buffer, 0u);
+      if (vk_result != VK_SUCCESS) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
+        resources->in_flight = 0u;
+        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+        has_lock = 0u;
+        break;
+      }
+      resources->reset_count += 1u;
+      vk_result = vkBeginCommandBuffer(resources->command_buffer, &begin_info);
+      if (vk_result != VK_SUCCESS) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
+        resources->in_flight = 0u;
+        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+        has_lock = 0u;
+        break;
+      }
+      vk_result = vkEndCommandBuffer(resources->command_buffer);
+      if (vk_result != VK_SUCCESS || (ctx->rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
+        resources->in_flight = 0u;
+        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+        has_lock = 0u;
+        break;
+      }
+      resources->record_count += 1u;
+      memset(&submit_info, 0, sizeof(submit_info));
+      submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submit_info.commandBufferCount = 1u;
+      submit_info.pCommandBuffers = &resources->command_buffer;
+      vk_result = vkQueueSubmit(ctx->rt->compute_queue, 1u, &submit_info, resources->fence);
+      if (vk_result != VK_SUCCESS || (ctx->rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED;
+        resources->in_flight = 0u;
+        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+        has_lock = 0u;
+        break;
+      }
+      resources->submit_count += 1u;
+      if ((ctx->rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
+        vk_result = vkWaitForFences(ctx->rt->device, 1u, &resources->fence, VK_TRUE, UINT64_MAX);
+        if (vk_result != VK_SUCCESS) {
+          batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_FENCE_WAIT_FAILED);
+          ctx->worker->failure_entry_id = plan->entry_id;
+          ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+          ctx->worker->failure_detail = PROM_DETAIL_BATCH_FENCE_WAIT_FAILED;
+          resources->in_flight = 0u;
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+          break;
+        }
+        resources->wait_count += 1u;
+      }
+    } else {
+      resources->submit_count += 1u;
+    }
 
     batch_reference_sgemm(plan->a, plan->b, ctx->staged_outputs[plan->entry_id], plan->m, plan->n, plan->k);
 
@@ -5366,6 +5540,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t failure_count = 0u;
   uint32_t hardware_parallelism_claimed = 0u;
   uint32_t resource_ownership_violation_count = 0u;
+  uint32_t resource_creation_failure_count = 0u;
   uint32_t use_real_threads = 0u;
   uint32_t force_wrong_resource_owner = 0u;
   prom_batch_shared_state shared_state;
@@ -5438,6 +5613,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     rt->batch_diag.max_concurrent_serialized_entries = 0u;
     rt->batch_diag.hardware_parallelism_claimed = hardware_parallelism_claimed;
     rt->batch_diag.resource_ownership_violation_count = 0u;
+    rt->batch_diag.resource_creation_failure_count = 0u;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -5453,6 +5629,11 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       rt->batch_diag.worker_command_pool_id[i] = 0u;
       rt->batch_diag.worker_command_buffer_id[i] = 0u;
       rt->batch_diag.worker_fence_id[i] = 0u;
+      rt->batch_diag.worker_command_pool_valid[i] = 0u;
+      rt->batch_diag.worker_command_buffer_valid[i] = 0u;
+      rt->batch_diag.worker_fence_valid[i] = 0u;
+      rt->batch_diag.worker_reset_count[i] = 0u;
+      rt->batch_diag.worker_record_count[i] = 0u;
       rt->batch_diag.worker_failure_stage[i] = 0u;
       rt->batch_diag.worker_failure_detail[i] = 0;
     }
@@ -5481,7 +5662,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;
-    resource_mode = PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER;
+    resource_mode = PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER;
     real_worker_thread_count = effective_workers;
     serialized_vulkan = 1u;
     hardware_parallelism_claimed = 0u;
@@ -5529,6 +5710,20 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     worker_resources[w].slot_id = w;
     worker_resources[w].output_staging_id = w;
     worker_resources[w].arena_bank_id = w;
+  }
+  if (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN && rt->device != VK_NULL_HANDLE &&
+      rt->compute_queue != VK_NULL_HANDLE) {
+    uint32_t resource_failed_worker_id = UINT32_MAX;
+    if (!batch_create_physical_worker_resources(rt, worker_resources, effective_workers, &resource_failed_worker_id)) {
+      resource_creation_failure_count += 1u;
+      state = PROM_BATCH_STATE_FAILING;
+      failure_stage = PROM_STAGE_INIT;
+      failure_detail = PROM_DETAIL_BATCH_COMMAND_RESOURCE_CREATE_FAILED;
+      failed_entry_id = UINT32_MAX;
+      failed_worker_id = resource_failed_worker_id;
+      goto batch_cleanup;
+    }
+    resource_mode = PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER;
   }
 
   state = PROM_BATCH_STATE_RUNNING;
@@ -5643,6 +5838,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     shared_state.state = PROM_BATCH_STATE_RUNNING;
     for (w = 0u; w < effective_workers; ++w) {
       worker_thread_ctx[w].plans = plans;
+      worker_thread_ctx[w].rt = rt;
       worker_thread_ctx[w].entry_count = entry_count;
       worker_thread_ctx[w].event_capacity = event_capacity;
       worker_thread_ctx[w].injected_failure_entry_id = injected_failure_entry_id;
@@ -5679,6 +5875,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     serialized_wait_count = shared_state.serialized_wait_count;
     max_concurrent_serialized_entries = shared_state.max_serialized_in_flight_count;
     resource_ownership_violation_count = shared_state.resource_ownership_violation_count;
+    resource_creation_failure_count = shared_state.resource_creation_failure_count + resource_creation_failure_count;
     failure_count = shared_state.failure_count;
     prom_batch_mutex_unlock(&shared_state.state_mutex);
     for (w = 0u; w < effective_workers; ++w) {
@@ -5859,6 +6056,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   }
 
   resource_ownership_violation_count = shared_state.resource_ownership_violation_count;
+  resource_creation_failure_count += shared_state.resource_creation_failure_count;
   if (state == PROM_BATCH_STATE_FAILING) {
     for (w = 0u; w < effective_workers; ++w) {
       prom_batch_worker_state* worker = &workers[w];
@@ -5981,6 +6179,7 @@ batch_cleanup:
     rt->batch_diag.max_concurrent_serialized_entries = max_concurrent_serialized_entries;
     rt->batch_diag.hardware_parallelism_claimed = hardware_parallelism_claimed;
     rt->batch_diag.resource_ownership_violation_count = resource_ownership_violation_count;
+    rt->batch_diag.resource_creation_failure_count = resource_creation_failure_count;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -5996,6 +6195,11 @@ batch_cleanup:
       rt->batch_diag.worker_command_pool_id[i] = 0u;
       rt->batch_diag.worker_command_buffer_id[i] = 0u;
       rt->batch_diag.worker_fence_id[i] = 0u;
+      rt->batch_diag.worker_command_pool_valid[i] = 0u;
+      rt->batch_diag.worker_command_buffer_valid[i] = 0u;
+      rt->batch_diag.worker_fence_valid[i] = 0u;
+      rt->batch_diag.worker_reset_count[i] = 0u;
+      rt->batch_diag.worker_record_count[i] = 0u;
       rt->batch_diag.worker_failure_stage[i] = 0u;
       rt->batch_diag.worker_failure_detail[i] = 0;
     }
@@ -6014,6 +6218,11 @@ batch_cleanup:
         rt->batch_diag.worker_command_pool_id[w] = worker_resources[w].command_pool_id;
         rt->batch_diag.worker_command_buffer_id[w] = worker_resources[w].command_buffer_id;
         rt->batch_diag.worker_fence_id[w] = worker_resources[w].fence_id;
+        rt->batch_diag.worker_command_pool_valid[w] = worker_resources[w].physical_valid;
+        rt->batch_diag.worker_command_buffer_valid[w] = worker_resources[w].physical_valid;
+        rt->batch_diag.worker_fence_valid[w] = worker_resources[w].physical_valid;
+        rt->batch_diag.worker_reset_count[w] = worker_resources[w].reset_count;
+        rt->batch_diag.worker_record_count[w] = worker_resources[w].record_count;
         rt->batch_diag.worker_failure_stage[w] = workers[w].failure_stage;
         rt->batch_diag.worker_failure_detail[w] = workers[w].failure_detail;
         if (workers[w].active != 0u) {
@@ -6030,6 +6239,7 @@ batch_cleanup:
   free(worker_thread_ctx);
   free(worker_threads);
   free(workers);
+  batch_destroy_physical_worker_resources(rt, worker_resources, effective_workers);
   free(worker_resources);
   free(worker_event_counts);
   free(worker_events);

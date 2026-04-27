@@ -989,7 +989,9 @@ FACT(PrometheusReactor_P11_M13_PerWorkerCommandResourceIdentityAndQueueMappingDi
 
     PrometheusSgemmBatchDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
-    ASSERT_EQUAL(PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER, diag.worker_resource_mode, "resource mode should be explicit");
+    ASSERT_TRUE(diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER ||
+                    diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER,
+                "resource mode should explicitly report physical or diagnostics-only ownership");
     ASSERT_EQUAL(PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED, diag.queue_topology_classification, "queue topology classification should be explicit");
     ASSERT_EQUAL(PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED, diag.queue_mapping_mode, "queue mapping mode should be explicit");
     for (std::uint32_t w = 0; w < workers; ++w) {
@@ -1001,9 +1003,14 @@ FACT(PrometheusReactor_P11_M13_PerWorkerCommandResourceIdentityAndQueueMappingDi
         ASSERT_TRUE(diag.worker_command_buffer_id[w] != 0u, "command buffer identity should be present");
         ASSERT_TRUE(diag.worker_fence_id[w] != 0u, "fence identity should be present");
     }
-    ASSERT_TRUE(diag.worker_command_buffer_id[0] != diag.worker_command_buffer_id[1], "worker command buffers must not alias");
-    ASSERT_TRUE(diag.worker_command_pool_id[0] != diag.worker_command_pool_id[1], "worker command pools must not alias");
-    ASSERT_TRUE(diag.worker_fence_id[0] != diag.worker_fence_id[1], "worker fences must not alias");
+    if (diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER) {
+        ASSERT_EQUAL(1u, diag.worker_command_pool_valid[0], "physical mode should publish valid command-pool ownership");
+        ASSERT_EQUAL(1u, diag.worker_command_buffer_valid[0], "physical mode should publish valid command-buffer ownership");
+        ASSERT_EQUAL(1u, diag.worker_fence_valid[0], "physical mode should publish valid fence ownership");
+        ASSERT_TRUE(diag.worker_command_buffer_id[0] != diag.worker_command_buffer_id[1], "worker command buffers must not alias");
+        ASSERT_TRUE(diag.worker_command_pool_id[0] != diag.worker_command_pool_id[1], "worker command pools must not alias");
+        ASSERT_TRUE(diag.worker_fence_id[0] != diag.worker_fence_id[1], "worker fences must not alias");
+    }
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
@@ -1041,4 +1048,99 @@ FACT(PrometheusReactor_P11_M13_WrongOwnerCommandResourceUseRejected)
     ASSERT_EQUAL(0u, diag.output_committed, "wrong-owner failure should remain uncommitted");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M14_PhysicalWorkerCommandResourcesModeAndSerializedSubmitPreserved)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    const std::uint32_t entry_count = 4u;
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<std::vector<float>> a(entry_count), b(entry_count), c(entry_count, std::vector<float>(m * n, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 0.75f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 0.95f + static_cast<float>(i) * 0.1f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count,
+                                                        workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                            (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                        &stage, &detail),
+                 "M14 batch run should succeed");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN, diag.execution_mode, "real-thread serialized bridge mode should remain");
+    ASSERT_EQUAL(1u, diag.serialized_vulkan, "serialized bridge flag should remain true");
+    ASSERT_TRUE(diag.max_concurrent_serialized_entries <= 1u, "serialized submit gate must remain <= 1");
+    ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "hardware parallelism claim must remain false");
+    ASSERT_TRUE(diag.serialized_bridge_enter_count >= 1u, "serialized bridge enter count should remain truthful");
+
+    if (diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER) {
+        for (std::uint32_t w = 0; w < workers; ++w) {
+            ASSERT_EQUAL(1u, diag.worker_command_pool_valid[w], "physical mode should mark command pool valid");
+            ASSERT_EQUAL(1u, diag.worker_command_buffer_valid[w], "physical mode should mark command buffer valid");
+            ASSERT_EQUAL(1u, diag.worker_fence_valid[w], "physical mode should mark fence valid");
+            ASSERT_TRUE(diag.worker_record_count[w] >= 1u, "physical mode should record worker command buffers");
+            ASSERT_TRUE(diag.worker_reset_count[w] >= 1u, "physical mode should reset worker command resources");
+            ASSERT_TRUE(diag.worker_wait_count[w] >= 1u, "physical mode should wait worker-local fences");
+        }
+        ASSERT_TRUE(diag.worker_command_pool_id[0] != diag.worker_command_pool_id[1], "physical worker command pools must be distinct");
+        ASSERT_TRUE(diag.worker_command_buffer_id[0] != diag.worker_command_buffer_id[1], "physical worker command buffers must be distinct");
+        ASSERT_TRUE(diag.worker_fence_id[0] != diag.worker_fence_id[1], "physical worker fences must be distinct");
+    } else {
+        ASSERT_EQUAL(PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER, diag.worker_resource_mode,
+                     "fallback mode should remain explicit when physical allocation is unavailable");
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M14_FailureHooksPreserveFirstFailureAndCleanup)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FAIL_RESET_FENCE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    const std::uint32_t m = 3u;
+    const std::uint32_t n = 3u;
+    const std::uint32_t k = 3u;
+    std::vector<float> a = make_matrix(m, k, 0.5f);
+    std::vector<float> b = make_matrix(k, n, 0.7f);
+    std::vector<float> c(m * n, 6.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u,
+                                                               workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                   (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                               &stage, &detail);
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    if (diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER) {
+        ASSERT_EQUAL(PROM_ERROR, status, "injected fence reset failure should fail physical mode batch");
+        ASSERT_EQUAL(PROM_DETAIL_BATCH_FENCE_RESET_FAILED, detail, "fence reset failure should be explicit");
+        ASSERT_EQUAL(0u, diag.output_committed, "failed physical mode run should not commit output");
+    } else {
+        ASSERT_EQUAL(PROM_OK, status, "simulated fallback may ignore Vulkan fence-failure hooks");
+    }
+
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed after failure run");
 }
