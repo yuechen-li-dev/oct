@@ -1,0 +1,22 @@
+[M39JudgmentBottleneckTable {
+    Scenario: [
+        "judgment-dominant",
+        "balanced",
+        "dispatch-dominant"
+    ]
+    N: [256, 256, 256]
+    Jus: [22, 8, 2]
+    Dus: [6, 8, 18]
+    W: [4, 4, 4]
+    Q: [4, 4, 4]
+    EffectiveWorkers: [4, 4, 4]
+    PolicyTimeUs: [5632, 2048, 512]
+    DispatchLowerBoundUs: [384, 512, 1152]
+    ThroughputBoundMaxUs: [5632, 2048, 1152]
+    ParallelDispatchBenefitVsA: ["negligible", "moderate", "high"]
+    Conclusion: [
+        "judgment bottleneck rake fires",
+        "mixed bottleneck",
+        "dispatch parallelism worthwhile"
+    ]
+}]
