@@ -85,6 +85,7 @@ enum {
   PROM_TESTCFG_FORCE_SHARED_TRANSFER = 1u << 25,
   PROM_TESTCFG_FAIL_TRANSFER_SUBMIT = 1u << 26,
   PROM_TESTCFG_DISABLE_SELECTOR_CACHE = 1u << 27,
+  PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT = 1u << 28,
 };
 
 enum {
@@ -147,6 +148,9 @@ enum {
   PROM_DETAIL_BUFFERING_PULL_LAG_COMPUTE_UNSTABLE = -6404,
   PROM_DETAIL_BUFFERING_PULL_LAG_WIP_WASTE_EXCEEDED = -6405,
   PROM_DETAIL_BUFFERING_NO_MODE_FEASIBLE = -6406,
+  PROM_DETAIL_ARENA_BUDGET_REJECTED = -6501,
+  PROM_DETAIL_ARENA_OWNERSHIP_REJECTED = -6502,
+  PROM_DETAIL_ARENA_NAMESPACE_MISMATCH = -6503,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -246,6 +250,44 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t m14_a_last_invalidation_reason;
   uint32_t m14_b_last_invalidation_reason;
   uint32_t m14_c_last_invalidation_reason;
+  uint64_t p11_m3_arena_a_capacity_bytes;
+  uint64_t p11_m3_arena_b_capacity_bytes;
+  uint64_t p11_m3_arena_c_capacity_bytes;
+  uint64_t p11_m3_arena_upload_capacity_bytes;
+  uint64_t p11_m3_arena_a_required_bytes;
+  uint64_t p11_m3_arena_b_required_bytes;
+  uint64_t p11_m3_arena_c_required_bytes;
+  uint64_t p11_m3_arena_upload_required_bytes;
+  uint64_t p11_m3_arena_a_generation;
+  uint64_t p11_m3_arena_b_generation;
+  uint64_t p11_m3_arena_c_generation;
+  uint64_t p11_m3_arena_upload_generation;
+  uint64_t p11_m3_arena_a_reuse_count;
+  uint64_t p11_m3_arena_b_reuse_count;
+  uint64_t p11_m3_arena_c_reuse_count;
+  uint64_t p11_m3_arena_upload_reuse_count;
+  uint64_t p11_m3_arena_a_grow_count;
+  uint64_t p11_m3_arena_b_grow_count;
+  uint64_t p11_m3_arena_c_grow_count;
+  uint64_t p11_m3_arena_upload_grow_count;
+  uint64_t p11_m3_arena_a_shrink_count;
+  uint64_t p11_m3_arena_b_shrink_count;
+  uint64_t p11_m3_arena_c_shrink_count;
+  uint64_t p11_m3_arena_upload_shrink_count;
+  uint64_t p11_m3_arena_a_rebuild_count;
+  uint64_t p11_m3_arena_b_rebuild_count;
+  uint64_t p11_m3_arena_c_rebuild_count;
+  uint64_t p11_m3_arena_upload_rebuild_count;
+  uint64_t p11_m3_arena_grow_count;
+  uint64_t p11_m3_arena_shrink_count;
+  uint64_t p11_m3_arena_rebuild_count;
+  uint64_t p11_m3_arena_budget_rejection_count;
+  uint64_t p11_m3_arena_ownership_rejection_count;
+  uint64_t p11_m3_arena_namespace_rejection_count;
+  uint64_t p11_m3_arena_total_committed_bytes;
+  uint64_t p11_m3_arena_projected_committed_bytes;
+  uint64_t p11_m3_arena_budget_limit_bytes;
+  int32_t p11_m3_arena_last_failure_reason;
   uint64_t m29_inflight_rejection_count;
   uint64_t m29_cleanup_success_count;
   int m29_failure_slot_id;

@@ -56,6 +56,49 @@ typedef enum prom_buffer_invalidation_reason {
   PROM_BUFFER_INVALIDATION_REASON_CAPACITY = 4,
 } prom_buffer_invalidation_reason;
 
+typedef enum prom_arena_role {
+  PROM_ARENA_ROLE_A = 0,
+  PROM_ARENA_ROLE_B = 1,
+  PROM_ARENA_ROLE_C = 2,
+  PROM_ARENA_ROLE_UPLOAD = 3,
+  PROM_ARENA_ROLE_COUNT = 4,
+} prom_arena_role;
+
+typedef enum prom_arena_memory_class {
+  PROM_ARENA_MEMORY_HOST_VISIBLE = 1,
+  PROM_ARENA_MEMORY_DEVICE_LOCAL = 2,
+} prom_arena_memory_class;
+
+typedef struct prom_typed_arena {
+  prom_arena_role role;
+  uint64_t required_bytes;
+  uint64_t capacity_bytes;
+  uint64_t committed_live_bytes;
+  uint64_t generation;
+  uint32_t artifact_key_valid;
+  uint32_t artifact_key_m;
+  uint32_t artifact_key_n;
+  uint32_t artifact_key_k;
+  uint32_t artifact_key_compute_or_padded_k;
+  uint64_t artifact_key_required_bytes;
+  uint32_t layout_namespace;
+  uint32_t precision_namespace;
+  prom_arena_memory_class memory_class;
+  int owner_slot_id;
+  uint32_t valid;
+  uint32_t in_flight;
+  int last_failure_reason;
+  uint32_t low_usage_epoch_count;
+  uint32_t shrink_cooldown_epochs;
+  uint64_t reuse_count;
+  uint64_t grow_count;
+  uint64_t shrink_count;
+  uint64_t rebuild_count;
+  uint64_t budget_rejection_count;
+  uint64_t ownership_rejection_count;
+  uint64_t namespace_rejection_count;
+} prom_typed_arena;
+
 typedef struct prom_buffer_artifact_key {
   uint32_t valid;
   uint32_t m;
@@ -217,6 +260,10 @@ typedef struct prom_slot_runtime_diag {
   uint64_t m35_serial_sequential_step_count;
   uint64_t m35_serial_busy_retry_count;
   uint64_t m35_serial_failure_cleanup_count;
+  uint64_t p11_m3_total_committed_bytes;
+  uint64_t p11_m3_projected_committed_bytes;
+  uint64_t p11_m3_budget_limit_bytes;
+  int p11_m3_last_failure_reason;
 } prom_slot_runtime_diag;
 
 typedef struct prom_selector_cache_m35 {
@@ -336,6 +383,12 @@ typedef struct prometheus_runtime {
   prom_selector_cache_m35 m35_selector_cache;
   prom_selector_cache_transfer transfer_selector_cache;
   prom_selector_cache_layout_precision layout_precision_selector_cache;
+  prom_typed_arena arenas[PROM_ARENA_ROLE_COUNT];
+  uint64_t arena_budget_limit_bytes;
+  uint64_t arena_floor_bytes;
+  uint32_t arena_shrink_low_usage_threshold_epochs;
+  uint32_t arena_shrink_cooldown_epochs;
+  int arena_last_failure_detail;
   prom_dom_blackboard blackboard;
 } prometheus_runtime;
 
@@ -370,7 +423,12 @@ enum {
   PROM_SGEMM_PACKED4_MODE_BUDGET_AGGRESSIVE = 380u,
   PROM_SGEMM_PACKED4_MODE_BUDGET_SAFE = 220u,
   PROM_SGEMM_PACKED4_MODE_BUDGET_RECOVERY = 140u,
+  PROM_ARENA_SHRINK_LOW_USAGE_EPOCHS = 6u,
+  PROM_ARENA_SHRINK_COOLDOWN_EPOCHS = 4u,
 };
+
+#define PROM_ARENA_DEFAULT_BUDGET_BYTES (512ull * 1024ull * 1024ull)
+#define PROM_ARENA_DEFAULT_SHRINK_FLOOR_BYTES (64ull * 1024ull * 1024ull)
 
 /*
  * Push-constant layout contract (M11 hygiene port):
@@ -1862,6 +1920,7 @@ static void destroy_buffer(prometheus_runtime* rt, prom_vk_buffer* buffer) {
 }
 
 static void destroy_all_execution_buffers(prometheus_runtime* rt) {
+  uint32_t i = 0u;
   if (rt == NULL) {
     return;
   }
@@ -1882,6 +1941,15 @@ static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   memset(&rt->staged_a_key, 0, sizeof(rt->staged_a_key));
   memset(&rt->staged_b_key, 0, sizeof(rt->staged_b_key));
   memset(&rt->staged_c_key, 0, sizeof(rt->staged_c_key));
+  for (i = 0u; i < PROM_ARENA_ROLE_COUNT; ++i) {
+    rt->arenas[i].capacity_bytes = 0u;
+    rt->arenas[i].required_bytes = 0u;
+    rt->arenas[i].committed_live_bytes = 0u;
+    rt->arenas[i].valid = 0u;
+    rt->arenas[i].in_flight = 0u;
+    rt->arenas[i].artifact_key_valid = 0u;
+  }
+  rt->slot_diag.p11_m3_total_committed_bytes = 0u;
 }
 
 static int ensure_buffer_capacity(const prom_vk_buffer* buffer, VkDeviceSize required_size) {
@@ -1889,6 +1957,244 @@ static int ensure_buffer_capacity(const prom_vk_buffer* buffer, VkDeviceSize req
     return 0;
   }
   return buffer->buffer != VK_NULL_HANDLE && buffer->memory != VK_NULL_HANDLE && buffer->size >= required_size;
+}
+
+static uint64_t arena_total_committed_bytes(const prometheus_runtime* rt) {
+  uint64_t total = 0u;
+  uint32_t i = 0u;
+  if (rt == NULL) {
+    return 0u;
+  }
+  for (i = 0u; i < PROM_ARENA_ROLE_COUNT; ++i) {
+    total += rt->arenas[i].capacity_bytes;
+  }
+  return total;
+}
+
+static void arena_track_required(prom_typed_arena* arena, const prom_buffer_artifact_key* required) {
+  if (arena == NULL || required == NULL) {
+    return;
+  }
+  arena->required_bytes = required->required_bytes;
+}
+
+static void arena_commit_key(prom_typed_arena* arena, const prom_buffer_artifact_key* required) {
+  if (arena == NULL || required == NULL) {
+    return;
+  }
+  arena->artifact_key_valid = required->valid;
+  arena->artifact_key_m = required->m;
+  arena->artifact_key_n = required->n;
+  arena->artifact_key_k = required->k;
+  arena->artifact_key_compute_or_padded_k = required->compute_or_padded_k;
+  arena->artifact_key_required_bytes = required->required_bytes;
+  arena->layout_namespace = required->layout;
+  arena->precision_namespace = required->precision;
+  arena->valid = 1u;
+}
+
+static int arena_compatible(const prom_typed_arena* arena,
+                            const prom_buffer_artifact_key* required,
+                            prom_arena_memory_class memory_class,
+                            int owner_slot_id,
+                            uint32_t allow_inflight_owner_reuse) {
+  if (arena == NULL || required == NULL || arena->valid == 0u || required->valid == 0u) {
+    return 0;
+  }
+  if (arena->layout_namespace != required->layout || arena->precision_namespace != required->precision) {
+    return 0;
+  }
+  if (arena->memory_class != memory_class) {
+    return 0;
+  }
+  if (arena->artifact_key_valid == 0u ||
+      ((arena->role == PROM_ARENA_ROLE_A) &&
+       (arena->artifact_key_m != required->m ||
+        arena->artifact_key_k != required->k ||
+        arena->artifact_key_compute_or_padded_k != required->compute_or_padded_k)) ||
+      ((arena->role == PROM_ARENA_ROLE_B) &&
+       (arena->artifact_key_n != required->n ||
+        arena->artifact_key_k != required->k ||
+        arena->artifact_key_compute_or_padded_k != required->compute_or_padded_k)) ||
+      ((arena->role == PROM_ARENA_ROLE_C) &&
+       (arena->artifact_key_m != required->m ||
+        arena->artifact_key_n != required->n))) {
+    return 0;
+  }
+  if (arena->capacity_bytes < required->required_bytes) {
+    return 0;
+  }
+  if (arena->owner_slot_id >= 0 && arena->owner_slot_id != owner_slot_id && arena->in_flight != 0u &&
+      allow_inflight_owner_reuse == 0u) {
+    return 0;
+  }
+  return 1;
+}
+
+static int arena_budget_allows(const prometheus_runtime* rt, prom_arena_role role, uint64_t required_bytes, uint64_t* projected_out) {
+  uint64_t total_committed = 0u;
+  uint64_t projected = 0u;
+  uint64_t old_capacity = 0u;
+  if (rt == NULL || role >= PROM_ARENA_ROLE_COUNT) {
+    return 0;
+  }
+  total_committed = arena_total_committed_bytes(rt);
+  old_capacity = rt->arenas[role].capacity_bytes;
+  projected = total_committed - old_capacity + required_bytes;
+  if (projected_out != NULL) {
+    *projected_out = projected;
+  }
+  return projected <= rt->arena_budget_limit_bytes;
+}
+
+static void arena_after_capacity_change(prometheus_runtime* rt, prom_typed_arena* arena, uint64_t new_capacity) {
+  if (rt == NULL || arena == NULL) {
+    return;
+  }
+  arena->capacity_bytes = new_capacity;
+  arena->committed_live_bytes = new_capacity;
+  arena->generation += 1u;
+  rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
+  rt->slot_diag.p11_m3_budget_limit_bytes = rt->arena_budget_limit_bytes;
+}
+
+static int arena_compute_shrink_target(prometheus_runtime* rt, prom_typed_arena* arena, uint64_t* out_shrink_target) {
+  uint64_t shrink_target = 0u;
+  uint32_t low_usage_eligible = 0u;
+  if (out_shrink_target == NULL) {
+    return 0;
+  }
+  *out_shrink_target = 0u;
+  if (rt == NULL || arena == NULL || arena->valid == 0u) {
+    return 0;
+  }
+  low_usage_eligible = (arena->required_bytes > 0u && arena->capacity_bytes > (2u * arena->required_bytes)) ? 1u : 0u;
+  if (arena->in_flight != 0u) {
+    if (low_usage_eligible != 0u) {
+      arena->ownership_rejection_count += 1u;
+    }
+    arena->low_usage_epoch_count = 0u;
+    return 0;
+  }
+  if (arena->shrink_cooldown_epochs > 0u) {
+    arena->shrink_cooldown_epochs -= 1u;
+  }
+  if (low_usage_eligible != 0u) {
+    arena->low_usage_epoch_count += 1u;
+  } else {
+    arena->low_usage_epoch_count = 0u;
+  }
+  if (arena->low_usage_epoch_count < rt->arena_shrink_low_usage_threshold_epochs ||
+      arena->shrink_cooldown_epochs != 0u) {
+    return 0;
+  }
+  shrink_target = arena->required_bytes;
+  if (shrink_target < rt->arena_floor_bytes) {
+    shrink_target = rt->arena_floor_bytes;
+  }
+  if (shrink_target >= arena->capacity_bytes) {
+    arena->low_usage_epoch_count = 0u;
+    return 0;
+  }
+  *out_shrink_target = shrink_target;
+  return 1;
+}
+
+static void arena_finish_shrink(prometheus_runtime* rt, prom_typed_arena* arena, uint64_t shrink_target) {
+  if (rt == NULL || arena == NULL) {
+    return;
+  }
+  arena->capacity_bytes = shrink_target;
+  arena->committed_live_bytes = shrink_target;
+  arena->generation += 1u;
+  arena->shrink_count += 1u;
+  arena->low_usage_epoch_count = 0u;
+  arena->shrink_cooldown_epochs = rt->arena_shrink_cooldown_epochs;
+  rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
+}
+
+static int arena_shrink_single_buffer(prometheus_runtime* rt,
+                                      prom_typed_arena* arena,
+                                      prom_vk_buffer* buffer,
+                                      VkBufferUsageFlags usage,
+                                      VkMemoryPropertyFlags memory_props,
+                                      int map_memory) {
+  prom_vk_buffer replacement;
+  uint64_t shrink_target = 0u;
+  VkResult result;
+  if (rt == NULL || arena == NULL || buffer == NULL) {
+    return 0;
+  }
+  if (!arena_compute_shrink_target(rt, arena, &shrink_target)) {
+    return 1;
+  }
+  memset(&replacement, 0, sizeof(replacement));
+  result = create_buffer(rt,
+                         (VkDeviceSize)shrink_target,
+                         usage,
+                         memory_props,
+                         map_memory,
+                         &replacement);
+  if (result != VK_SUCCESS) {
+    arena->last_failure_reason = (int)result;
+    return 0;
+  }
+  destroy_buffer(rt, buffer);
+  *buffer = replacement;
+  arena_finish_shrink(rt, arena, shrink_target);
+  return 1;
+}
+
+static int arena_shrink_paired_buffers(prometheus_runtime* rt,
+                                       prom_typed_arena* arena,
+                                       prom_vk_buffer* first,
+                                       VkBufferUsageFlags first_usage,
+                                       VkMemoryPropertyFlags first_memory_props,
+                                       int first_map_memory,
+                                       prom_vk_buffer* second,
+                                       VkBufferUsageFlags second_usage,
+                                       VkMemoryPropertyFlags second_memory_props,
+                                       int second_map_memory) {
+  prom_vk_buffer replacement_first;
+  prom_vk_buffer replacement_second;
+  uint64_t shrink_target = 0u;
+  VkResult first_result;
+  VkResult second_result;
+  if (rt == NULL || arena == NULL || first == NULL || second == NULL) {
+    return 0;
+  }
+  if (!arena_compute_shrink_target(rt, arena, &shrink_target)) {
+    return 1;
+  }
+  memset(&replacement_first, 0, sizeof(replacement_first));
+  memset(&replacement_second, 0, sizeof(replacement_second));
+  first_result = create_buffer(rt,
+                               (VkDeviceSize)shrink_target,
+                               first_usage,
+                               first_memory_props,
+                               first_map_memory,
+                               &replacement_first);
+  if (first_result != VK_SUCCESS) {
+    arena->last_failure_reason = (int)first_result;
+    return 0;
+  }
+  second_result = create_buffer(rt,
+                                (VkDeviceSize)shrink_target,
+                                second_usage,
+                                second_memory_props,
+                                second_map_memory,
+                                &replacement_second);
+  if (second_result != VK_SUCCESS) {
+    destroy_buffer(rt, &replacement_first);
+    arena->last_failure_reason = (int)second_result;
+    return 0;
+  }
+  destroy_buffer(rt, first);
+  destroy_buffer(rt, second);
+  *first = replacement_first;
+  *second = replacement_second;
+  arena_finish_shrink(rt, arena, shrink_target);
+  return 1;
 }
 
 static prom_buffer_artifact_key make_artifact_key(prom_buffer_artifact_kind artifact,
@@ -2040,31 +2346,71 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
   int rebuild_a;
   int rebuild_b;
   int rebuild_c;
+  int owner_slot_id;
+  uint64_t projected = 0u;
+  prom_typed_arena* arena_a;
+  prom_typed_arena* arena_b;
+  prom_typed_arena* arena_c;
 
   if (out_result == NULL || rt == NULL || a_required == NULL || b_required == NULL || c_required == NULL) {
     return 0;
   }
   *out_result = VK_SUCCESS;
+  rt->arena_last_failure_detail = 0;
+  owner_slot_id = rt->slot_diag.current_slot_id == UINT32_MAX ? -1 : (int)rt->slot_diag.current_slot_id;
+  arena_a = &rt->arenas[PROM_ARENA_ROLE_A];
+  arena_b = &rt->arenas[PROM_ARENA_ROLE_B];
+  arena_c = &rt->arenas[PROM_ARENA_ROLE_C];
+  arena_track_required(arena_a, a_required);
+  arena_track_required(arena_b, b_required);
+  arena_track_required(arena_c, c_required);
+  arena_a->memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  arena_b->memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  arena_c->memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  arena_a->owner_slot_id = owner_slot_id;
+  arena_b->owner_slot_id = owner_slot_id;
+  arena_c->owner_slot_id = owner_slot_id;
+  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
 
   if (rt->has_staged_buffers != 0u) {
     destroy_all_execution_buffers(rt);
   }
 
-  rebuild_a = rt->has_direct_buffers == 0u ||
+  rebuild_a = !arena_compatible(arena_a, a_required, PROM_ARENA_MEMORY_HOST_VISIBLE, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->direct_a_key, a_required, PROM_BUFFER_ARTIFACT_A) ||
               !ensure_buffer_capacity(&rt->direct_a, (VkDeviceSize)a_required->required_bytes);
-  rebuild_b = rt->has_direct_buffers == 0u ||
+  rebuild_b = !arena_compatible(arena_b, b_required, PROM_ARENA_MEMORY_HOST_VISIBLE, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->direct_b_key, b_required, PROM_BUFFER_ARTIFACT_B) ||
               !ensure_buffer_capacity(&rt->direct_b, (VkDeviceSize)b_required->required_bytes);
-  rebuild_c = rt->has_direct_buffers == 0u ||
+  rebuild_c = !arena_compatible(arena_c, c_required, PROM_ARENA_MEMORY_HOST_VISIBLE, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->direct_c_key, c_required, PROM_BUFFER_ARTIFACT_C) ||
               !ensure_buffer_capacity(&rt->direct_c, (VkDeviceSize)c_required->required_bytes);
+  if (arena_a->valid != 0u && (arena_a->layout_namespace != a_required->layout || arena_a->precision_namespace != a_required->precision)) {
+    arena_a->namespace_rejection_count += 1u;
+  }
+  if (arena_b->valid != 0u && (arena_b->layout_namespace != b_required->layout || arena_b->precision_namespace != b_required->precision)) {
+    arena_b->namespace_rejection_count += 1u;
+  }
+  if (arena_c->valid != 0u && (arena_c->layout_namespace != c_required->layout || arena_c->precision_namespace != c_required->precision)) {
+    arena_c->namespace_rejection_count += 1u;
+  }
 
   if (!rebuild_a) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_A, a_required);
+    arena_a->reuse_count += 1u;
+    arena_commit_key(arena_a, a_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_A, classify_invalidation_reason(&rt->direct_a_key, a_required, &rt->direct_a));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_A, a_required->required_bytes, &projected)) {
+      arena_a->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->direct_a);
     result = create_buffer(rt,
                            (VkDeviceSize)a_required->required_bytes,
@@ -2078,13 +2424,29 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->direct_a_key = *a_required;
+    if (arena_a->capacity_bytes < a_required->required_bytes) {
+      arena_a->grow_count += 1u;
+    } else {
+      arena_a->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_a, a_required->required_bytes);
+    arena_commit_key(arena_a, a_required);
   }
 
   if (!rebuild_b) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_B, b_required);
+    arena_b->reuse_count += 1u;
+    arena_commit_key(arena_b, b_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_B, classify_invalidation_reason(&rt->direct_b_key, b_required, &rt->direct_b));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_B, b_required->required_bytes, &projected)) {
+      arena_b->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->direct_b);
     result = create_buffer(rt,
                            (VkDeviceSize)b_required->required_bytes,
@@ -2098,13 +2460,29 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->direct_b_key = *b_required;
+    if (arena_b->capacity_bytes < b_required->required_bytes) {
+      arena_b->grow_count += 1u;
+    } else {
+      arena_b->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_b, b_required->required_bytes);
+    arena_commit_key(arena_b, b_required);
   }
 
   if (!rebuild_c) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_C, c_required);
+    arena_c->reuse_count += 1u;
+    arena_commit_key(arena_c, c_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_C, classify_invalidation_reason(&rt->direct_c_key, c_required, &rt->direct_c));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_C, c_required->required_bytes, &projected)) {
+      arena_c->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->direct_c);
     result = create_buffer(rt,
                            (VkDeviceSize)c_required->required_bytes,
@@ -2118,10 +2496,37 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->direct_c_key = *c_required;
+    if (arena_c->capacity_bytes < c_required->required_bytes) {
+      arena_c->grow_count += 1u;
+    } else {
+      arena_c->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_c, c_required->required_bytes);
+    arena_commit_key(arena_c, c_required);
   }
 
   rt->has_direct_buffers = 1u;
   rt->has_staged_buffers = 0u;
+  (void)arena_shrink_single_buffer(rt,
+                                   arena_a,
+                                   &rt->direct_a,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                   1);
+  (void)arena_shrink_single_buffer(rt,
+                                   arena_b,
+                                   &rt->direct_b,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                   1);
+  (void)arena_shrink_single_buffer(rt,
+                                   arena_c,
+                                   &rt->direct_c,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                   1);
+  rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
+  rt->slot_diag.p11_m3_projected_committed_bytes = rt->slot_diag.p11_m3_total_committed_bytes;
   return 1;
 }
 
@@ -2134,35 +2539,83 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
   int rebuild_a;
   int rebuild_b;
   int rebuild_c;
+  int owner_slot_id;
+  uint64_t projected = 0u;
+  prom_typed_arena* arena_a;
+  prom_typed_arena* arena_b;
+  prom_typed_arena* arena_c;
+  prom_typed_arena* arena_upload;
 
   if (out_result == NULL || rt == NULL || a_required == NULL || b_required == NULL || c_required == NULL) {
     return 0;
   }
 
   *out_result = VK_SUCCESS;
+  rt->arena_last_failure_detail = 0;
+  owner_slot_id = rt->slot_diag.current_slot_id == UINT32_MAX ? -1 : (int)rt->slot_diag.current_slot_id;
+  arena_a = &rt->arenas[PROM_ARENA_ROLE_A];
+  arena_b = &rt->arenas[PROM_ARENA_ROLE_B];
+  arena_c = &rt->arenas[PROM_ARENA_ROLE_C];
+  arena_upload = &rt->arenas[PROM_ARENA_ROLE_UPLOAD];
+  arena_track_required(arena_a, a_required);
+  arena_track_required(arena_b, b_required);
+  arena_track_required(arena_c, c_required);
+  arena_upload->required_bytes = a_required->required_bytes + b_required->required_bytes;
+  arena_upload->layout_namespace = a_required->layout;
+  arena_upload->precision_namespace = a_required->precision;
+  arena_a->memory_class = PROM_ARENA_MEMORY_DEVICE_LOCAL;
+  arena_b->memory_class = PROM_ARENA_MEMORY_DEVICE_LOCAL;
+  arena_c->memory_class = PROM_ARENA_MEMORY_DEVICE_LOCAL;
+  arena_upload->memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  arena_a->owner_slot_id = owner_slot_id;
+  arena_b->owner_slot_id = owner_slot_id;
+  arena_c->owner_slot_id = owner_slot_id;
+  arena_upload->owner_slot_id = owner_slot_id;
+  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_upload->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
 
   if (rt->has_direct_buffers != 0u) {
     destroy_all_execution_buffers(rt);
   }
 
-  rebuild_a = rt->has_staged_buffers == 0u ||
+  rebuild_a = !arena_compatible(arena_a, a_required, PROM_ARENA_MEMORY_DEVICE_LOCAL, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->staged_a_key, a_required, PROM_BUFFER_ARTIFACT_A) ||
               !ensure_buffer_capacity(&rt->staged_upload_a, (VkDeviceSize)a_required->required_bytes) ||
               !ensure_buffer_capacity(&rt->staged_device_a, (VkDeviceSize)a_required->required_bytes);
-  rebuild_b = rt->has_staged_buffers == 0u ||
+  rebuild_b = !arena_compatible(arena_b, b_required, PROM_ARENA_MEMORY_DEVICE_LOCAL, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->staged_b_key, b_required, PROM_BUFFER_ARTIFACT_B) ||
               !ensure_buffer_capacity(&rt->staged_upload_b, (VkDeviceSize)b_required->required_bytes) ||
               !ensure_buffer_capacity(&rt->staged_device_b, (VkDeviceSize)b_required->required_bytes);
-  rebuild_c = rt->has_staged_buffers == 0u ||
+  rebuild_c = !arena_compatible(arena_c, c_required, PROM_ARENA_MEMORY_DEVICE_LOCAL, owner_slot_id, 0u) ||
               !artifact_dependency_equal(&rt->staged_c_key, c_required, PROM_BUFFER_ARTIFACT_C) ||
               !ensure_buffer_capacity(&rt->staged_device_c, (VkDeviceSize)c_required->required_bytes) ||
               !ensure_buffer_capacity(&rt->staged_readback_c, (VkDeviceSize)c_required->required_bytes);
+  if (arena_a->valid != 0u && (arena_a->layout_namespace != a_required->layout || arena_a->precision_namespace != a_required->precision)) {
+    arena_a->namespace_rejection_count += 1u;
+  }
+  if (arena_b->valid != 0u && (arena_b->layout_namespace != b_required->layout || arena_b->precision_namespace != b_required->precision)) {
+    arena_b->namespace_rejection_count += 1u;
+  }
+  if (arena_c->valid != 0u && (arena_c->layout_namespace != c_required->layout || arena_c->precision_namespace != c_required->precision)) {
+    arena_c->namespace_rejection_count += 1u;
+  }
 
   if (!rebuild_a) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_A, a_required);
+    arena_a->reuse_count += 1u;
+    arena_commit_key(arena_a, a_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_A, classify_invalidation_reason(&rt->staged_a_key, a_required, &rt->staged_upload_a));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_A, a_required->required_bytes, &projected)) {
+      arena_a->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->staged_upload_a);
     destroy_buffer(rt, &rt->staged_device_a);
     result = create_buffer(rt,
@@ -2188,13 +2641,29 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->staged_a_key = *a_required;
+    if (arena_a->capacity_bytes < a_required->required_bytes) {
+      arena_a->grow_count += 1u;
+    } else {
+      arena_a->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_a, a_required->required_bytes);
+    arena_commit_key(arena_a, a_required);
   }
 
   if (!rebuild_b) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_B, b_required);
+    arena_b->reuse_count += 1u;
+    arena_commit_key(arena_b, b_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_B, classify_invalidation_reason(&rt->staged_b_key, b_required, &rt->staged_upload_b));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_B, b_required->required_bytes, &projected)) {
+      arena_b->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->staged_upload_b);
     destroy_buffer(rt, &rt->staged_device_b);
     result = create_buffer(rt,
@@ -2220,13 +2689,29 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->staged_b_key = *b_required;
+    if (arena_b->capacity_bytes < b_required->required_bytes) {
+      arena_b->grow_count += 1u;
+    } else {
+      arena_b->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_b, b_required->required_bytes);
+    arena_commit_key(arena_b, b_required);
   }
 
   if (!rebuild_c) {
     record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_C, c_required);
+    arena_c->reuse_count += 1u;
+    arena_commit_key(arena_c, c_required);
   } else {
     record_artifact_invalidation(
         rt, PROM_BUFFER_ARTIFACT_C, classify_invalidation_reason(&rt->staged_c_key, c_required, &rt->staged_readback_c));
+    if (!arena_budget_allows(rt, PROM_ARENA_ROLE_C, c_required->required_bytes, &projected)) {
+      arena_c->budget_rejection_count += 1u;
+      rt->slot_diag.p11_m3_projected_committed_bytes = projected;
+      rt->arena_last_failure_detail = PROM_DETAIL_ARENA_BUDGET_REJECTED;
+      *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+      return 0;
+    }
     destroy_buffer(rt, &rt->staged_device_c);
     destroy_buffer(rt, &rt->staged_readback_c);
     result = create_buffer(rt,
@@ -2252,10 +2737,61 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       return 0;
     }
     rt->staged_c_key = *c_required;
+    if (arena_c->capacity_bytes < c_required->required_bytes) {
+      arena_c->grow_count += 1u;
+    } else {
+      arena_c->rebuild_count += 1u;
+    }
+    arena_after_capacity_change(rt, arena_c, c_required->required_bytes);
+    arena_commit_key(arena_c, c_required);
   }
+
+  arena_upload->capacity_bytes = rt->staged_upload_a.size + rt->staged_upload_b.size;
+  arena_upload->committed_live_bytes = arena_upload->capacity_bytes;
+  arena_upload->generation = arena_a->generation + arena_b->generation;
+  arena_upload->reuse_count = arena_a->reuse_count + arena_b->reuse_count;
+  arena_upload->grow_count = arena_a->grow_count + arena_b->grow_count;
+  arena_upload->rebuild_count = arena_a->rebuild_count + arena_b->rebuild_count;
+  arena_upload->shrink_count = arena_a->shrink_count + arena_b->shrink_count;
+  arena_upload->valid = 1u;
 
   rt->has_direct_buffers = 0u;
   rt->has_staged_buffers = 1u;
+  (void)arena_shrink_paired_buffers(rt,
+                                    arena_a,
+                                    &rt->staged_upload_a,
+                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                    1,
+                                    &rt->staged_device_a,
+                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                    0);
+  (void)arena_shrink_paired_buffers(rt,
+                                    arena_b,
+                                    &rt->staged_upload_b,
+                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                    1,
+                                    &rt->staged_device_b,
+                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                    0);
+  (void)arena_shrink_paired_buffers(rt,
+                                    arena_c,
+                                    &rt->staged_device_c,
+                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                    0,
+                                    &rt->staged_readback_c,
+                                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                    1);
+  arena_upload->capacity_bytes = rt->staged_upload_a.size + rt->staged_upload_b.size;
+  arena_upload->committed_live_bytes = arena_upload->capacity_bytes;
+  arena_upload->shrink_count = arena_a->shrink_count + arena_b->shrink_count;
+  rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
+  rt->slot_diag.p11_m3_projected_committed_bytes = rt->slot_diag.p11_m3_total_committed_bytes;
   return 1;
 }
 
@@ -2783,6 +3319,29 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
       runtime->test_flags = cfg->test_flags;
     }
   }
+  runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
+  runtime->arena_floor_bytes = PROM_ARENA_DEFAULT_SHRINK_FLOOR_BYTES;
+  if (runtime->test_flags != 0u) {
+    runtime->arena_floor_bytes = 1ull * 1024ull * 1024ull;
+    runtime->arena_budget_limit_bytes = 32ull * 1024ull * 1024ull;
+  }
+  runtime->slot_diag.p11_m3_budget_limit_bytes = runtime->arena_budget_limit_bytes;
+  runtime->arena_shrink_low_usage_threshold_epochs = PROM_ARENA_SHRINK_LOW_USAGE_EPOCHS;
+  runtime->arena_shrink_cooldown_epochs = PROM_ARENA_SHRINK_COOLDOWN_EPOCHS;
+  runtime->arena_last_failure_detail = 0;
+  runtime->arenas[PROM_ARENA_ROLE_A].role = PROM_ARENA_ROLE_A;
+  runtime->arenas[PROM_ARENA_ROLE_B].role = PROM_ARENA_ROLE_B;
+  runtime->arenas[PROM_ARENA_ROLE_C].role = PROM_ARENA_ROLE_C;
+  runtime->arenas[PROM_ARENA_ROLE_UPLOAD].role = PROM_ARENA_ROLE_UPLOAD;
+  runtime->arenas[PROM_ARENA_ROLE_A].memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  runtime->arenas[PROM_ARENA_ROLE_B].memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  runtime->arenas[PROM_ARENA_ROLE_C].memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  runtime->arenas[PROM_ARENA_ROLE_UPLOAD].memory_class = PROM_ARENA_MEMORY_HOST_VISIBLE;
+  runtime->arenas[PROM_ARENA_ROLE_A].owner_slot_id = -1;
+  runtime->arenas[PROM_ARENA_ROLE_B].owner_slot_id = -1;
+  runtime->arenas[PROM_ARENA_ROLE_C].owner_slot_id = -1;
+  runtime->arenas[PROM_ARENA_ROLE_UPLOAD].owner_slot_id = -1;
+  runtime->slot_diag.p11_m3_budget_limit_bytes = runtime->arena_budget_limit_bytes;
 
   if ((runtime->test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u) {
     runtime->available = 0u;
@@ -3583,8 +4142,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
     if (!ensure_direct_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
+      const int failure_detail = rt->arena_last_failure_detail != 0 ? rt->arena_last_failure_detail : (int)vk_result;
+      prom_slot_mark_failure(rt, work_slot_id, failure_detail);
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
       free(packed_a_upload);
       free(packed_b_upload);
       free(fp16_a_upload);
@@ -3605,8 +4165,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_c = &rt->direct_c;
   } else {
     if (!ensure_staged_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
+      const int failure_detail = rt->arena_last_failure_detail != 0 ? rt->arena_last_failure_detail : (int)vk_result;
+      prom_slot_mark_failure(rt, work_slot_id, failure_detail);
+      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
       free(packed_a_upload);
       free(packed_b_upload);
       free(fp16_a_upload);
@@ -4614,5 +5175,61 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p10_m15_layout_precision_selector_last_visible_generation =
       rt->layout_precision_selector_cache.visible_generation_when_computed;
   out_diag->p10_m15_layout_precision_selector_last_decision_reused = rt->layout_precision_selector_cache.last_decision_reused;
+  out_diag->p11_m3_arena_a_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_A].capacity_bytes;
+  out_diag->p11_m3_arena_b_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_B].capacity_bytes;
+  out_diag->p11_m3_arena_c_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_C].capacity_bytes;
+  out_diag->p11_m3_arena_upload_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_UPLOAD].capacity_bytes;
+  out_diag->p11_m3_arena_a_required_bytes = rt->arenas[PROM_ARENA_ROLE_A].required_bytes;
+  out_diag->p11_m3_arena_b_required_bytes = rt->arenas[PROM_ARENA_ROLE_B].required_bytes;
+  out_diag->p11_m3_arena_c_required_bytes = rt->arenas[PROM_ARENA_ROLE_C].required_bytes;
+  out_diag->p11_m3_arena_upload_required_bytes = rt->arenas[PROM_ARENA_ROLE_UPLOAD].required_bytes;
+  out_diag->p11_m3_arena_a_generation = rt->arenas[PROM_ARENA_ROLE_A].generation;
+  out_diag->p11_m3_arena_b_generation = rt->arenas[PROM_ARENA_ROLE_B].generation;
+  out_diag->p11_m3_arena_c_generation = rt->arenas[PROM_ARENA_ROLE_C].generation;
+  out_diag->p11_m3_arena_upload_generation = rt->arenas[PROM_ARENA_ROLE_UPLOAD].generation;
+  out_diag->p11_m3_arena_a_reuse_count = rt->arenas[PROM_ARENA_ROLE_A].reuse_count;
+  out_diag->p11_m3_arena_b_reuse_count = rt->arenas[PROM_ARENA_ROLE_B].reuse_count;
+  out_diag->p11_m3_arena_c_reuse_count = rt->arenas[PROM_ARENA_ROLE_C].reuse_count;
+  out_diag->p11_m3_arena_upload_reuse_count = rt->arenas[PROM_ARENA_ROLE_UPLOAD].reuse_count;
+  out_diag->p11_m3_arena_a_grow_count = rt->arenas[PROM_ARENA_ROLE_A].grow_count;
+  out_diag->p11_m3_arena_b_grow_count = rt->arenas[PROM_ARENA_ROLE_B].grow_count;
+  out_diag->p11_m3_arena_c_grow_count = rt->arenas[PROM_ARENA_ROLE_C].grow_count;
+  out_diag->p11_m3_arena_upload_grow_count = rt->arenas[PROM_ARENA_ROLE_UPLOAD].grow_count;
+  out_diag->p11_m3_arena_a_shrink_count = rt->arenas[PROM_ARENA_ROLE_A].shrink_count;
+  out_diag->p11_m3_arena_b_shrink_count = rt->arenas[PROM_ARENA_ROLE_B].shrink_count;
+  out_diag->p11_m3_arena_c_shrink_count = rt->arenas[PROM_ARENA_ROLE_C].shrink_count;
+  out_diag->p11_m3_arena_upload_shrink_count = rt->arenas[PROM_ARENA_ROLE_UPLOAD].shrink_count;
+  out_diag->p11_m3_arena_a_rebuild_count = rt->arenas[PROM_ARENA_ROLE_A].rebuild_count;
+  out_diag->p11_m3_arena_b_rebuild_count = rt->arenas[PROM_ARENA_ROLE_B].rebuild_count;
+  out_diag->p11_m3_arena_c_rebuild_count = rt->arenas[PROM_ARENA_ROLE_C].rebuild_count;
+  out_diag->p11_m3_arena_upload_rebuild_count = rt->arenas[PROM_ARENA_ROLE_UPLOAD].rebuild_count;
+  out_diag->p11_m3_arena_grow_count = rt->arenas[PROM_ARENA_ROLE_A].grow_count +
+                                       rt->arenas[PROM_ARENA_ROLE_B].grow_count +
+                                       rt->arenas[PROM_ARENA_ROLE_C].grow_count +
+                                       rt->arenas[PROM_ARENA_ROLE_UPLOAD].grow_count;
+  out_diag->p11_m3_arena_shrink_count = rt->arenas[PROM_ARENA_ROLE_A].shrink_count +
+                                         rt->arenas[PROM_ARENA_ROLE_B].shrink_count +
+                                         rt->arenas[PROM_ARENA_ROLE_C].shrink_count +
+                                         rt->arenas[PROM_ARENA_ROLE_UPLOAD].shrink_count;
+  out_diag->p11_m3_arena_rebuild_count = rt->arenas[PROM_ARENA_ROLE_A].rebuild_count +
+                                          rt->arenas[PROM_ARENA_ROLE_B].rebuild_count +
+                                          rt->arenas[PROM_ARENA_ROLE_C].rebuild_count +
+                                          rt->arenas[PROM_ARENA_ROLE_UPLOAD].rebuild_count;
+  out_diag->p11_m3_arena_budget_rejection_count = rt->arenas[PROM_ARENA_ROLE_A].budget_rejection_count +
+                                                   rt->arenas[PROM_ARENA_ROLE_B].budget_rejection_count +
+                                                   rt->arenas[PROM_ARENA_ROLE_C].budget_rejection_count +
+                                                   rt->arenas[PROM_ARENA_ROLE_UPLOAD].budget_rejection_count;
+  out_diag->p11_m3_arena_ownership_rejection_count = rt->arenas[PROM_ARENA_ROLE_A].ownership_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_B].ownership_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_C].ownership_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_UPLOAD].ownership_rejection_count;
+  out_diag->p11_m3_arena_namespace_rejection_count = rt->arenas[PROM_ARENA_ROLE_A].namespace_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_B].namespace_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_C].namespace_rejection_count +
+                                                      rt->arenas[PROM_ARENA_ROLE_UPLOAD].namespace_rejection_count;
+  out_diag->p11_m3_arena_total_committed_bytes = arena_total_committed_bytes(rt);
+  out_diag->p11_m3_arena_projected_committed_bytes = rt->slot_diag.p11_m3_projected_committed_bytes;
+  out_diag->p11_m3_arena_budget_limit_bytes = rt->arena_budget_limit_bytes;
+  out_diag->p11_m3_arena_last_failure_reason = rt->arena_last_failure_detail;
   return PROM_OK;
 }
