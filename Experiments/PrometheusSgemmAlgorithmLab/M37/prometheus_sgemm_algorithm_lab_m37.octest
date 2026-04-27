@@ -1,0 +1,49 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M37StartsByStatingWhyThisLabExists() -> Void {
+    let rec = M37FinalRecommendationFrom()
+    Assert.True(Len(rec.Decision) == 1, "M37 must produce a single actionable first-step decision")
+    Assert.True(Len(rec.Assumptions) == 1, "M37 must declare assumptions behind recommendation")
+}
+
+[Fact]
+fn M37ComparesAllRequiredStrategies() -> Void {
+    let table = M37StrategyComparisonFrom()
+    Assert.True(Len(table.Strategy) == 5, "M37 must compare five ownership candidates")
+    Assert.True(table.Recommendation[2] == "implement-first", "typed arena pools should be selected when evidence supports")
+}
+
+[Fact]
+fn M37CoversRequiredWorkloadSet() -> Void {
+    let matrix = M37WorkloadMatrixFrom()
+    Assert.True(Len(matrix.Scenario) == 35, "M37 workload matrix must include 7 scenarios x 5 strategies")
+    Assert.True(matrix.Scenario[0] == "steady-same-shape" and matrix.Scenario[30] == "shape-cluster", "M37 must include steady and shape-cluster scenarios")
+}
+
+[Fact]
+fn M37CapturesP11M2RiskRakeTargets() -> Void {
+    let handoff = M37RiskHandoffFrom()
+    Assert.True(Len(handoff.RiskArea) == 7, "M37 must hand off explicit risk/rake areas for M38")
+    Assert.True(handoff.Priority[0] == "P0" and handoff.Priority[6] == "P0", "critical correctness and budget risks must stay highest priority")
+}
+
+[Artifact]
+fn EmitM37StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M37/m37_strategy_comparison.octagon", [M37StrategyComparisonFrom()])
+}
+
+[Artifact]
+fn EmitM37WorkloadMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M37/m37_workload_matrix.octagon", [M37WorkloadMatrixFrom()])
+}
+
+[Artifact]
+fn EmitM37RiskHandoff() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M37/m37_risk_handoff.octagon", [M37RiskHandoffFrom()])
+}
+
+[Artifact]
+fn EmitM37FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M37/m37_final_recommendation.octagon", [M37FinalRecommendationFrom()])
+}
