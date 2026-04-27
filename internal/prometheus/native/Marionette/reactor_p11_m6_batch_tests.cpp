@@ -452,7 +452,8 @@ FACT(PrometheusReactor_P11_M8_MultiWorkerAssignmentAndLaneExecutionDiagnostics)
 
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;
-    const std::uint32_t flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT);
+    const std::uint32_t flags =
+        workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, flags, &stage, &detail), "multi-worker run should succeed");
     ASSERT_EQUAL(PROM_STAGE_TRANSFER_OUT, stage, "success should report transfer-out stage");
     for (std::uint32_t i = 0; i < entry_count; ++i) {
@@ -517,4 +518,111 @@ FACT(PrometheusReactor_P11_M8_ContiguousAssignmentAndFailureDrainAcrossWorkers)
     ASSERT_TRUE(diag.worker_event_count[diag.failed_worker_id] > 0u, "failed worker ring should contain failure lifecycle events");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M10_RealThreadsSerializedVulkanModeAndDiagnostics)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t entry_count = 8u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<std::vector<float>> a(entry_count);
+    std::vector<std::vector<float>> b(entry_count);
+    std::vector<std::vector<float>> c(entry_count, std::vector<float>(m * n, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 0.91f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 0.61f + static_cast<float>(i) * 0.05f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t fail_entry = 2u;
+    const std::uint32_t flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT) |
+                                ((fail_entry + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, flags, &stage, &detail),
+                 "real-thread run with injected failure should fail");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN, diag.execution_mode, "real-thread mode should be explicit");
+    ASSERT_EQUAL(workers, diag.real_worker_thread_count, "diagnostics should expose created worker threads");
+    ASSERT_EQUAL(0u, diag.lane_worker_count, "lane workers should be zero in real-thread mode");
+    ASSERT_EQUAL(1u, diag.serialized_vulkan, "real-thread mode should mark serialized Vulkan bridge");
+    ASSERT_TRUE(diag.serialized_execution_count >= 1u, "serialized execution count should record bridge entries");
+    ASSERT_TRUE(diag.max_concurrent_serialized_entries <= 1u, "serialized bridge must admit at most one entry at a time");
+    ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "serialized Vulkan mode must not claim hardware parallelism");
+    ASSERT_EQUAL(0u, diag.worker_judgment_count, "workers must not run judgment");
+    ASSERT_EQUAL(0u, diag.output_committed, "injected failure should keep outputs uncommitted");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M10_FirstFailureWinsAndLaneFallbackStillAvailable)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t entry_count = 8u;
+    const std::uint32_t workers = 4u;
+    const std::uint32_t m = 3u;
+    const std::uint32_t n = 3u;
+    const std::uint32_t k = 3u;
+    std::vector<std::vector<float>> a(entry_count);
+    std::vector<std::vector<float>> b(entry_count);
+    std::vector<std::vector<float>> c(entry_count, std::vector<float>(m * n, 8.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(m, k, 1.11f + static_cast<float>(i) * 0.1f);
+        b[i] = make_matrix(k, n, 1.41f + static_cast<float>(i) * 0.05f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), m, n, k};
+    }
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t fail_entry = 3u;
+    const std::uint32_t fail_flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                     (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT) |
+                                     ((fail_entry + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count, fail_flags, &stage, &detail),
+                 "real-thread injected failure should fail batch");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_EXECUTION_FAILED, detail, "real-thread failure detail should be explicit");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_STATE_FAILED, diag.batch_state, "real-thread failure should terminate in failed state");
+    ASSERT_EQUAL(fail_entry, diag.failed_entry_id, "first injected failure must be preserved");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed real-thread run must not commit output");
+    ASSERT_TRUE(diag.event_drain_count > 0u, "failed real-thread run should still drain events");
+    ASSERT_TRUE(diag.serialized_wait_count >= 0u, "serialized bridge wait diagnostic should be present");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+
+    PrometheusReactorConfig lane_cfg{};
+    lane_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    lane_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED;
+    void* lane_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&lane_cfg, &lane_handle), "runtime create should succeed for lane fallback");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(lane_handle, entries.data(), entry_count,
+                                                                 workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                     (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                 &stage, &detail),
+                 "lane fallback run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(lane_handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_LANE_SIMULATED, diag.execution_mode, "force-lane test flag should preserve M8 fallback mode");
+    ASSERT_EQUAL(workers, diag.lane_worker_count, "lane worker count should reflect effective workers in fallback");
+    ASSERT_EQUAL(0u, diag.real_worker_thread_count, "lane fallback should not spawn real threads");
+    ASSERT_EQUAL(0u, diag.serialized_vulkan, "lane fallback should not mark serialized Vulkan thread bridge");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(lane_handle), "runtime destroy should succeed");
 }
