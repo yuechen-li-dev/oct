@@ -213,6 +213,28 @@ Deferred (unchanged from M37 intent):
 - sparse binding production path,
 - N-slot/work-stealing runtime behavior.
 
+## 11) Executable simulation backstop (.oct / .octest)
+
+To back the M38 claims with executable artifacts, this milestone now includes:
+
+- `prometheus_sgemm_algorithm_lab_m38.oct` (typed-arena simulation data model and contract records),
+- `prometheus_sgemm_algorithm_lab_m38.octest` (contract assertions and rake checks across scenarios).
+
+Executed command:
+
+- `go run ./cmd/oct test Experiments/PrometheusSgemmAlgorithmLab/M38`
+
+Observed result:
+
+- 6 passed, 0 failed.
+
+Impact on findings:
+
+- No recommendation changes were required after execution.
+- Policy B (grow + conservative hysteresis shrink) remains the first implementation recommendation.
+- Exact-fit rebuild remains rejected due to churn/thrash behavior.
+- Namespace-gated compatibility + explicit budget failure handling remain required.
+
 ## Final answers required by milestone
 
 1. **Which typed arena policy should Prometheus implement first?** Policy B (grow + conservative hysteresis shrink) with explicit budget-aware rejection behavior.
