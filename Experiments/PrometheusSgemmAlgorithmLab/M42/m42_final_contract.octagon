@@ -1,0 +1,16 @@
+[M42FinalContract {
+    Label: "P11 M12 / PrometheusSgemmAlgorithmLab M42"
+    ReadyForTruePerWorkerQueueResources: true
+    FirstImplementationCandidateForM13: "B-per-worker-command-single-queue"
+    CommandResourceOwnershipNeededFirst: true
+    SingleQueueFallbackRule: "single-compute or pseudo/shared topology stays serialized bridge mode; no hardware parallelism claim"
+    HardwareParallelismRequirement: "claim hardware parallelism only with >=2 independent compute queues plus per-worker ownership and memory budget headroom"
+    MandatoryPerWorkerResources: "worker must own queue id/family, command pool/buffer, submit fence/timeline, event ring, output staging, slot identity, arena bank or shared-lock handle"
+    FailureDrainRule: "first-failure-wins across queues; stop new starts; drain or fail all in-flight queues before reuse"
+    DominatusRule: "workers emit events only; drain/join layer stages and commits Dominatus"
+    TransferInteractionRule: "dedicated transfer overlap is optional and ownership-gated; transfer does not grant compute queue ownership"
+    DiagnosticsContract: "publish execution mode, topology class, hardware queue count, effective workers, worker->queue map, per-worker in-flight/fence/event/failure states, queue drain counts/timeouts, lock contention count, output committed flag"
+    SharedArenaDirection: "M13 should implement local per-worker arenas first; keep shared arena lock mode as deferred fallback for memory pressure"
+    DeferredScope: "work stealing, SPMC/MPMC, lock-free queues, parallel judgment, broad scheduler redesign, native multi-queue implementation"
+    RecommendationComputed: true
+}]

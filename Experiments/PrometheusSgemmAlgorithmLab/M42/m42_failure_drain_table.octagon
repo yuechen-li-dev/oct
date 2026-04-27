@@ -1,0 +1,11 @@
+[M42FailureDrainTable {
+    FailureMode: ["before-submit", "after-submit", "dual-failure", "fence-wait-failure", "device-lost", "drain-timeout"]
+    BatchFinalState: ["FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED"]
+    FirstFailureDetail: ["before-submit", "after-submit", "first-failure-wins", "fence-wait-failure", "device-lost-global", "drain-timeout"]
+    QueueDrainCount: [2, 2, 2, 2, 2, 2]
+    DrainTimeoutCount: [0, 0, 0, 0, 0, 1]
+    DrainLatency: [75, 75, 75, 75, 75, 125]
+    ResourcesSafeToReuse: [true, true, true, true, true, false]
+    OutputCommitted: [false, false, false, false, false, false]
+    CleanupActionRequired: [true, true, true, true, true, true]
+}]

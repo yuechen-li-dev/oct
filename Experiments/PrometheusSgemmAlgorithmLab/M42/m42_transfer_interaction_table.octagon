@@ -1,0 +1,9 @@
+[M42TransferInteractionTable {
+    Candidate: ["D-per-worker-plus-transfer", "D-per-worker-plus-transfer"]
+    QueueTopology: ["compute-plus-transfer", "compute-plus-transfer"]
+    TransferQueueCount: [2, 2]
+    TransferOverlapAllowed: [true, false]
+    ComputeOwnershipPreserved: [true, false]
+    QueueOwnershipViolationCount: [0, 1]
+    CompletionTime: [138, 150]
+}]

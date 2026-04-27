@@ -1,0 +1,9 @@
+[M42QueueTopologyTable {
+    QueueTopology: ["single-compute", "two-compute", "four-compute", "compute-plus-transfer", "pseudo-shared"]
+    Candidate: ["C-true-per-worker-queues", "C-true-per-worker-queues", "C-true-per-worker-queues", "D-per-worker-plus-transfer", "C-true-per-worker-queues"]
+    HardwareQueueCount: [1, 2, 4, 3, 1]
+    EffectiveWorkers: [1, 2, 4, 2, 1]
+    ClaimedHardwareParallelism: [false, true, true, true, false]
+    ActualHardwareParallelism: [false, true, true, true, false]
+    QueueContract: ["single compute queue => no hardware parallelism claim; candidate C collapses to 1 effective worker", "two independent compute queues => claim parallelism up to two workers", "four independent compute queues => cap by worker count + memory budget", "compute + transfer queue => transfer overlap allowed only with explicit ownership", "pseudo/shared queues => treat as serialized and claim no hardware parallelism"]
+}]

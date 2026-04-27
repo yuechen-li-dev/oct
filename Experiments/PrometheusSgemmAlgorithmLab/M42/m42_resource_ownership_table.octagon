@@ -1,0 +1,10 @@
+[M42ResourceOwnershipTable {
+    Candidate: ["C-true-per-worker-queues", "C-true-per-worker-queues", "E-shared-arena-lock"]
+    QueueTopology: ["two-compute", "two-compute", "two-compute"]
+    CommandOwnershipValid: [true, false, true]
+    QueueOwnershipValid: [true, true, true]
+    FenceOwnershipValid: [true, true, true]
+    OutputOwnershipValid: [true, true, true]
+    ArenaOwnershipValid: [true, true, false]
+    RequiredResourceContract: ["worker must own queue id/family, command pool/buffer, submit fence/timeline, event ring, output staging, slot identity, arena bank or shared-lock handle", "worker must own queue id/family, command pool/buffer, submit fence/timeline, event ring, output staging, slot identity, arena bank or shared-lock handle", "worker must own queue id/family, command pool/buffer, submit fence/timeline, event ring, output staging, slot identity, arena bank or shared-lock handle"]
+}]
