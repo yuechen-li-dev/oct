@@ -234,6 +234,18 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t m29_shape_invalidation_count;
   uint64_t m29_layout_invalidation_count;
   uint64_t m29_capacity_invalidation_count;
+  uint64_t m14_a_invalidation_count;
+  uint64_t m14_b_invalidation_count;
+  uint64_t m14_c_invalidation_count;
+  uint64_t m14_a_reuse_count;
+  uint64_t m14_b_reuse_count;
+  uint64_t m14_c_reuse_count;
+  uint64_t m14_false_invalidation_avoided_count;
+  uint64_t m14_capacity_invalidation_count;
+  uint64_t m14_layout_precision_invalidation_count;
+  uint32_t m14_a_last_invalidation_reason;
+  uint32_t m14_b_last_invalidation_reason;
+  uint32_t m14_c_last_invalidation_reason;
   uint64_t m29_inflight_rejection_count;
   uint64_t m29_cleanup_success_count;
   int m29_failure_slot_id;

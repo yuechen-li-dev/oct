@@ -42,6 +42,31 @@ typedef struct prom_vk_buffer {
   VkDeviceSize size;
 } prom_vk_buffer;
 
+typedef enum prom_buffer_artifact_kind {
+  PROM_BUFFER_ARTIFACT_A = 1,
+  PROM_BUFFER_ARTIFACT_B = 2,
+  PROM_BUFFER_ARTIFACT_C = 3,
+} prom_buffer_artifact_kind;
+
+typedef enum prom_buffer_invalidation_reason {
+  PROM_BUFFER_INVALIDATION_REASON_NONE = 0,
+  PROM_BUFFER_INVALIDATION_REASON_UNINITIALIZED = 1,
+  PROM_BUFFER_INVALIDATION_REASON_DEPENDENCY = 2,
+  PROM_BUFFER_INVALIDATION_REASON_LAYOUT_PRECISION = 3,
+  PROM_BUFFER_INVALIDATION_REASON_CAPACITY = 4,
+} prom_buffer_invalidation_reason;
+
+typedef struct prom_buffer_artifact_key {
+  uint32_t valid;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t compute_or_padded_k;
+  uint32_t layout;
+  uint32_t precision;
+  uint64_t required_bytes;
+} prom_buffer_artifact_key;
+
 typedef struct prom_sgemm_controller_defaults {
   uint32_t lookahead_default;
   uint32_t lookahead_min;
@@ -121,6 +146,18 @@ typedef struct prom_slot_runtime_diag {
   uint64_t shape_invalidation_count;
   uint64_t layout_invalidation_count;
   uint64_t capacity_invalidation_count;
+  uint64_t m14_a_invalidation_count;
+  uint64_t m14_b_invalidation_count;
+  uint64_t m14_c_invalidation_count;
+  uint64_t m14_a_reuse_count;
+  uint64_t m14_b_reuse_count;
+  uint64_t m14_c_reuse_count;
+  uint64_t m14_false_invalidation_avoided_count;
+  uint64_t m14_capacity_invalidation_count;
+  uint64_t m14_layout_precision_invalidation_count;
+  uint32_t m14_a_last_invalidation_reason;
+  uint32_t m14_b_last_invalidation_reason;
+  uint32_t m14_c_last_invalidation_reason;
   uint64_t inflight_rejection_count;
   uint64_t cleanup_success_count;
   int failure_slot_id;
@@ -248,9 +285,16 @@ typedef struct prometheus_runtime {
   prom_vk_buffer staged_upload_a;
   prom_vk_buffer staged_upload_b;
   prom_vk_buffer staged_readback_c;
-  uint32_t buffer_shape_m;
-  uint32_t buffer_shape_n;
-  uint32_t buffer_shape_k;
+  prom_buffer_artifact_key direct_a_key;
+  prom_buffer_artifact_key direct_b_key;
+  prom_buffer_artifact_key direct_c_key;
+  prom_buffer_artifact_key staged_a_key;
+  prom_buffer_artifact_key staged_b_key;
+  prom_buffer_artifact_key staged_c_key;
+  uint32_t last_execution_shape_valid;
+  uint32_t last_execution_m;
+  uint32_t last_execution_n;
+  uint32_t last_execution_k;
   uint32_t has_direct_buffers;
   uint32_t has_staged_buffers;
   uint32_t has_device_local_memory;
@@ -1807,9 +1851,12 @@ static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   destroy_buffer(rt, &rt->staged_device_a);
   rt->has_direct_buffers = 0u;
   rt->has_staged_buffers = 0u;
-  rt->buffer_shape_m = 0u;
-  rt->buffer_shape_n = 0u;
-  rt->buffer_shape_k = 0u;
+  memset(&rt->direct_a_key, 0, sizeof(rt->direct_a_key));
+  memset(&rt->direct_b_key, 0, sizeof(rt->direct_b_key));
+  memset(&rt->direct_c_key, 0, sizeof(rt->direct_c_key));
+  memset(&rt->staged_a_key, 0, sizeof(rt->staged_a_key));
+  memset(&rt->staged_b_key, 0, sizeof(rt->staged_b_key));
+  memset(&rt->staged_c_key, 0, sizeof(rt->staged_c_key));
 }
 
 static int ensure_buffer_capacity(const prom_vk_buffer* buffer, VkDeviceSize required_size) {
@@ -1819,188 +1866,382 @@ static int ensure_buffer_capacity(const prom_vk_buffer* buffer, VkDeviceSize req
   return buffer->buffer != VK_NULL_HANDLE && buffer->memory != VK_NULL_HANDLE && buffer->size >= required_size;
 }
 
-static int ensure_buffer_shape(prometheus_runtime* rt, uint32_t m, uint32_t n, uint32_t k) {
-  if (rt == NULL) {
+static prom_buffer_artifact_key make_artifact_key(prom_buffer_artifact_kind artifact,
+                                                   uint32_t m,
+                                                   uint32_t n,
+                                                   uint32_t k,
+                                                   uint32_t compute_or_padded_k,
+                                                   uint32_t layout,
+                                                   uint32_t precision,
+                                                   VkDeviceSize required_bytes) {
+  prom_buffer_artifact_key key;
+  memset(&key, 0, sizeof(key));
+  key.valid = 1u;
+  key.layout = layout;
+  key.precision = precision;
+  key.required_bytes = (uint64_t)required_bytes;
+  if (artifact == PROM_BUFFER_ARTIFACT_A) {
+    key.m = m;
+    key.k = k;
+    key.compute_or_padded_k = compute_or_padded_k;
+  } else if (artifact == PROM_BUFFER_ARTIFACT_B) {
+    key.n = n;
+    key.k = k;
+    key.compute_or_padded_k = compute_or_padded_k;
+  } else {
+    key.m = m;
+    key.n = n;
+  }
+  return key;
+}
+
+static int artifact_dependency_equal(const prom_buffer_artifact_key* current,
+                                     const prom_buffer_artifact_key* required,
+                                     prom_buffer_artifact_kind artifact) {
+  if (current == NULL || required == NULL || current->valid == 0u || required->valid == 0u) {
     return 0;
   }
-  return rt->buffer_shape_m == m && rt->buffer_shape_n == n && rt->buffer_shape_k == k;
+  if (current->layout != required->layout || current->precision != required->precision) {
+    return 0;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_A) {
+    return current->m == required->m && current->k == required->k &&
+           current->compute_or_padded_k == required->compute_or_padded_k;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_B) {
+    return current->n == required->n && current->k == required->k &&
+           current->compute_or_padded_k == required->compute_or_padded_k;
+  }
+  return current->m == required->m && current->n == required->n;
+}
+
+static uint64_t* artifact_counter_ptr(prom_slot_runtime_diag* diag, prom_buffer_artifact_kind artifact, int reuse_counter) {
+  if (diag == NULL) {
+    return NULL;
+  }
+  if (reuse_counter != 0) {
+    if (artifact == PROM_BUFFER_ARTIFACT_A) {
+      return &diag->m14_a_reuse_count;
+    }
+    if (artifact == PROM_BUFFER_ARTIFACT_B) {
+      return &diag->m14_b_reuse_count;
+    }
+    return &diag->m14_c_reuse_count;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_A) {
+    return &diag->m14_a_invalidation_count;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_B) {
+    return &diag->m14_b_invalidation_count;
+  }
+  return &diag->m14_c_invalidation_count;
+}
+
+static uint32_t* artifact_last_reason_ptr(prom_slot_runtime_diag* diag, prom_buffer_artifact_kind artifact) {
+  if (diag == NULL) {
+    return NULL;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_A) {
+    return &diag->m14_a_last_invalidation_reason;
+  }
+  if (artifact == PROM_BUFFER_ARTIFACT_B) {
+    return &diag->m14_b_last_invalidation_reason;
+  }
+  return &diag->m14_c_last_invalidation_reason;
+}
+
+static void record_artifact_reuse(prometheus_runtime* rt,
+                                  prom_buffer_artifact_kind artifact,
+                                  const prom_buffer_artifact_key* required) {
+  uint64_t* reuse_counter;
+  if (rt == NULL || required == NULL) {
+    return;
+  }
+  reuse_counter = artifact_counter_ptr(&rt->slot_diag, artifact, 1);
+  if (reuse_counter != NULL) {
+    *reuse_counter += 1u;
+  }
+  if (rt->last_execution_shape_valid != 0u &&
+      (rt->last_execution_m != required->m || rt->last_execution_n != required->n || rt->last_execution_k != required->k)) {
+    rt->slot_diag.m14_false_invalidation_avoided_count += 1u;
+  }
+}
+
+static prom_buffer_invalidation_reason classify_invalidation_reason(const prom_buffer_artifact_key* current,
+                                                                    const prom_buffer_artifact_key* required,
+                                                                    const prom_vk_buffer* buffer) {
+  if (current == NULL || current->valid == 0u || required == NULL) {
+    return PROM_BUFFER_INVALIDATION_REASON_UNINITIALIZED;
+  }
+  if (!ensure_buffer_capacity(buffer, (VkDeviceSize)required->required_bytes)) {
+    return PROM_BUFFER_INVALIDATION_REASON_CAPACITY;
+  }
+  if (current->layout != required->layout || current->precision != required->precision) {
+    return PROM_BUFFER_INVALIDATION_REASON_LAYOUT_PRECISION;
+  }
+  return PROM_BUFFER_INVALIDATION_REASON_DEPENDENCY;
+}
+
+static void record_artifact_invalidation(prometheus_runtime* rt,
+                                         prom_buffer_artifact_kind artifact,
+                                         prom_buffer_invalidation_reason reason) {
+  uint64_t* invalidation_counter;
+  uint32_t* last_reason;
+  if (rt == NULL) {
+    return;
+  }
+  invalidation_counter = artifact_counter_ptr(&rt->slot_diag, artifact, 0);
+  if (invalidation_counter != NULL) {
+    *invalidation_counter += 1u;
+  }
+  if (reason == PROM_BUFFER_INVALIDATION_REASON_CAPACITY) {
+    rt->slot_diag.m14_capacity_invalidation_count += 1u;
+  }
+  if (reason == PROM_BUFFER_INVALIDATION_REASON_LAYOUT_PRECISION) {
+    rt->slot_diag.m14_layout_precision_invalidation_count += 1u;
+  }
+  last_reason = artifact_last_reason_ptr(&rt->slot_diag, artifact);
+  if (last_reason != NULL) {
+    *last_reason = (uint32_t)reason;
+  }
 }
 
 static int ensure_direct_execution_buffers(prometheus_runtime* rt,
-                                           uint32_t m,
-                                           uint32_t n,
-                                           uint32_t k,
-                                           VkDeviceSize a_buffer_size,
-                                           VkDeviceSize b_buffer_size,
-                                           VkDeviceSize c_buffer_size,
+                                           const prom_buffer_artifact_key* a_required,
+                                           const prom_buffer_artifact_key* b_required,
+                                           const prom_buffer_artifact_key* c_required,
                                            VkResult* out_result) {
   VkResult result;
-  int must_rebuild;
+  int rebuild_a;
+  int rebuild_b;
+  int rebuild_c;
 
-  if (out_result == NULL || rt == NULL) {
+  if (out_result == NULL || rt == NULL || a_required == NULL || b_required == NULL || c_required == NULL) {
     return 0;
   }
-
   *out_result = VK_SUCCESS;
-  /* Shape-only reuse is unsafe: the same logical (m,n,k) can map to different
-   * backing byte sizes across compute/layout modes (baseline FP32, packed4,
-   * FP16-storage). Reuse is valid only when existing buffer capacity satisfies
-   * the current call's required byte sizes. */
-  must_rebuild = rt->has_direct_buffers == 0u || !ensure_buffer_shape(rt, m, n, k) ||
-                 !ensure_buffer_capacity(&rt->direct_a, a_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->direct_b, b_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->direct_c, c_buffer_size);
-  if (!must_rebuild) {
-    return 1;
-  }
 
-  destroy_all_execution_buffers(rt);
-
-  result = create_buffer(rt,
-                         a_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->direct_a);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    return 0;
-  }
-  result = create_buffer(rt,
-                         b_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->direct_b);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
+  if (rt->has_staged_buffers != 0u) {
     destroy_all_execution_buffers(rt);
-    return 0;
-  }
-  result = create_buffer(rt,
-                         c_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->direct_c);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
   }
 
-  rt->buffer_shape_m = m;
-  rt->buffer_shape_n = n;
-  rt->buffer_shape_k = k;
+  rebuild_a = rt->has_direct_buffers == 0u ||
+              !artifact_dependency_equal(&rt->direct_a_key, a_required, PROM_BUFFER_ARTIFACT_A) ||
+              !ensure_buffer_capacity(&rt->direct_a, (VkDeviceSize)a_required->required_bytes);
+  rebuild_b = rt->has_direct_buffers == 0u ||
+              !artifact_dependency_equal(&rt->direct_b_key, b_required, PROM_BUFFER_ARTIFACT_B) ||
+              !ensure_buffer_capacity(&rt->direct_b, (VkDeviceSize)b_required->required_bytes);
+  rebuild_c = rt->has_direct_buffers == 0u ||
+              !artifact_dependency_equal(&rt->direct_c_key, c_required, PROM_BUFFER_ARTIFACT_C) ||
+              !ensure_buffer_capacity(&rt->direct_c, (VkDeviceSize)c_required->required_bytes);
+
+  if (!rebuild_a) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_A, a_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_A, classify_invalidation_reason(&rt->direct_a_key, a_required, &rt->direct_a));
+    destroy_buffer(rt, &rt->direct_a);
+    result = create_buffer(rt,
+                           (VkDeviceSize)a_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->direct_a);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->direct_a_key = *a_required;
+  }
+
+  if (!rebuild_b) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_B, b_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_B, classify_invalidation_reason(&rt->direct_b_key, b_required, &rt->direct_b));
+    destroy_buffer(rt, &rt->direct_b);
+    result = create_buffer(rt,
+                           (VkDeviceSize)b_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->direct_b);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->direct_b_key = *b_required;
+  }
+
+  if (!rebuild_c) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_C, c_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_C, classify_invalidation_reason(&rt->direct_c_key, c_required, &rt->direct_c));
+    destroy_buffer(rt, &rt->direct_c);
+    result = create_buffer(rt,
+                           (VkDeviceSize)c_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->direct_c);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->direct_c_key = *c_required;
+  }
+
   rt->has_direct_buffers = 1u;
   rt->has_staged_buffers = 0u;
   return 1;
 }
 
 static int ensure_staged_execution_buffers(prometheus_runtime* rt,
-                                           uint32_t m,
-                                           uint32_t n,
-                                           uint32_t k,
-                                           VkDeviceSize a_buffer_size,
-                                           VkDeviceSize b_buffer_size,
-                                           VkDeviceSize c_buffer_size,
+                                           const prom_buffer_artifact_key* a_required,
+                                           const prom_buffer_artifact_key* b_required,
+                                           const prom_buffer_artifact_key* c_required,
                                            VkResult* out_result) {
   VkResult result;
-  int must_rebuild;
+  int rebuild_a;
+  int rebuild_b;
+  int rebuild_c;
 
-  if (out_result == NULL || rt == NULL) {
+  if (out_result == NULL || rt == NULL || a_required == NULL || b_required == NULL || c_required == NULL) {
     return 0;
   }
 
   *out_result = VK_SUCCESS;
-  /* Shape-only reuse is unsafe: layout/precision mode transitions can change
-   * required upload/device/readback byte sizes without changing logical shape.
-   * Reuse staged buffers only when each existing capacity is sufficient. */
-  must_rebuild = rt->has_staged_buffers == 0u || !ensure_buffer_shape(rt, m, n, k) ||
-                 !ensure_buffer_capacity(&rt->staged_upload_a, a_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->staged_upload_b, b_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->staged_device_a, a_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->staged_device_b, b_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->staged_device_c, c_buffer_size) ||
-                 !ensure_buffer_capacity(&rt->staged_readback_c, c_buffer_size);
-  if (!must_rebuild) {
-    return 1;
+
+  if (rt->has_direct_buffers != 0u) {
+    destroy_all_execution_buffers(rt);
   }
 
-  destroy_all_execution_buffers(rt);
+  rebuild_a = rt->has_staged_buffers == 0u ||
+              !artifact_dependency_equal(&rt->staged_a_key, a_required, PROM_BUFFER_ARTIFACT_A) ||
+              !ensure_buffer_capacity(&rt->staged_upload_a, (VkDeviceSize)a_required->required_bytes) ||
+              !ensure_buffer_capacity(&rt->staged_device_a, (VkDeviceSize)a_required->required_bytes);
+  rebuild_b = rt->has_staged_buffers == 0u ||
+              !artifact_dependency_equal(&rt->staged_b_key, b_required, PROM_BUFFER_ARTIFACT_B) ||
+              !ensure_buffer_capacity(&rt->staged_upload_b, (VkDeviceSize)b_required->required_bytes) ||
+              !ensure_buffer_capacity(&rt->staged_device_b, (VkDeviceSize)b_required->required_bytes);
+  rebuild_c = rt->has_staged_buffers == 0u ||
+              !artifact_dependency_equal(&rt->staged_c_key, c_required, PROM_BUFFER_ARTIFACT_C) ||
+              !ensure_buffer_capacity(&rt->staged_device_c, (VkDeviceSize)c_required->required_bytes) ||
+              !ensure_buffer_capacity(&rt->staged_readback_c, (VkDeviceSize)c_required->required_bytes);
 
-  result = create_buffer(rt,
-                         a_buffer_size,
-                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->staged_upload_a);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    return 0;
-  }
-  result = create_buffer(rt,
-                         b_buffer_size,
-                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->staged_upload_b);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
-  }
-  result = create_buffer(rt,
-                         a_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                         0,
-                         &rt->staged_device_a);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
-  }
-  result = create_buffer(rt,
-                         b_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                         0,
-                         &rt->staged_device_b);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
-  }
-  result = create_buffer(rt,
-                         c_buffer_size,
-                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                         0,
-                         &rt->staged_device_c);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
-  }
-  result = create_buffer(rt,
-                         c_buffer_size,
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         1,
-                         &rt->staged_readback_c);
-  if (result != VK_SUCCESS) {
-    *out_result = result;
-    destroy_all_execution_buffers(rt);
-    return 0;
+  if (!rebuild_a) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_A, a_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_A, classify_invalidation_reason(&rt->staged_a_key, a_required, &rt->staged_upload_a));
+    destroy_buffer(rt, &rt->staged_upload_a);
+    destroy_buffer(rt, &rt->staged_device_a);
+    result = create_buffer(rt,
+                           (VkDeviceSize)a_required->required_bytes,
+                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->staged_upload_a);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    result = create_buffer(rt,
+                           (VkDeviceSize)a_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                           0,
+                           &rt->staged_device_a);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->staged_a_key = *a_required;
   }
 
-  rt->buffer_shape_m = m;
-  rt->buffer_shape_n = n;
-  rt->buffer_shape_k = k;
+  if (!rebuild_b) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_B, b_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_B, classify_invalidation_reason(&rt->staged_b_key, b_required, &rt->staged_upload_b));
+    destroy_buffer(rt, &rt->staged_upload_b);
+    destroy_buffer(rt, &rt->staged_device_b);
+    result = create_buffer(rt,
+                           (VkDeviceSize)b_required->required_bytes,
+                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->staged_upload_b);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    result = create_buffer(rt,
+                           (VkDeviceSize)b_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                           0,
+                           &rt->staged_device_b);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->staged_b_key = *b_required;
+  }
+
+  if (!rebuild_c) {
+    record_artifact_reuse(rt, PROM_BUFFER_ARTIFACT_C, c_required);
+  } else {
+    record_artifact_invalidation(
+        rt, PROM_BUFFER_ARTIFACT_C, classify_invalidation_reason(&rt->staged_c_key, c_required, &rt->staged_readback_c));
+    destroy_buffer(rt, &rt->staged_device_c);
+    destroy_buffer(rt, &rt->staged_readback_c);
+    result = create_buffer(rt,
+                           (VkDeviceSize)c_required->required_bytes,
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                           0,
+                           &rt->staged_device_c);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    result = create_buffer(rt,
+                           (VkDeviceSize)c_required->required_bytes,
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           1,
+                           &rt->staged_readback_c);
+    if (result != VK_SUCCESS) {
+      *out_result = result;
+      destroy_all_execution_buffers(rt);
+      return 0;
+    }
+    rt->staged_c_key = *c_required;
+  }
+
   rt->has_direct_buffers = 0u;
   rt->has_staged_buffers = 1u;
   return 1;
+}
+
+static void note_last_execution_shape(prometheus_runtime* rt, uint32_t m, uint32_t n, uint32_t k) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->last_execution_shape_valid = 1u;
+  rt->last_execution_m = m;
+  rt->last_execution_n = n;
+  rt->last_execution_k = k;
 }
 
 static void vk_runtime_cleanup(prometheus_runtime* rt) {
@@ -2704,6 +2945,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   uint32_t request_async = 0u;
   uint32_t work_slot_id = 0u;
   uint64_t required_capacity_bytes = 0u;
+  uint32_t artifact_layout_code = 0u;
+  uint32_t artifact_precision_code = 0u;
+  prom_buffer_artifact_key artifact_a_key;
+  prom_buffer_artifact_key artifact_b_key;
+  prom_buffer_artifact_key artifact_c_key;
 
   set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
@@ -3031,6 +3277,32 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
   }
+  artifact_layout_code = prom_slot_compute_layout_code(selected_path, compute_mode);
+  artifact_precision_code = (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) ? 16u : 32u;
+  artifact_a_key = make_artifact_key(PROM_BUFFER_ARTIFACT_A,
+                                     m,
+                                     n,
+                                     k,
+                                     compute_k,
+                                     artifact_layout_code,
+                                     artifact_precision_code,
+                                     a_buffer_size);
+  artifact_b_key = make_artifact_key(PROM_BUFFER_ARTIFACT_B,
+                                     m,
+                                     n,
+                                     k,
+                                     compute_k,
+                                     artifact_layout_code,
+                                     artifact_precision_code,
+                                     b_buffer_size);
+  artifact_c_key = make_artifact_key(PROM_BUFFER_ARTIFACT_C,
+                                     m,
+                                     n,
+                                     k,
+                                     compute_k,
+                                     (uint32_t)PROM_VK_PATH_DIRECT,
+                                     32u,
+                                     c_buffer_size);
   required_capacity_bytes = (uint64_t)a_buffer_size + (uint64_t)b_buffer_size + (uint64_t)c_buffer_size;
   memset(&buffering_facts, 0, sizeof(buffering_facts));
   buffering_facts.required_fixed_slots_permille = 2000u;
@@ -3237,7 +3509,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
-    if (!ensure_direct_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+    if (!ensure_direct_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
@@ -3259,7 +3531,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     shader_b = &rt->direct_b;
     shader_c = &rt->direct_c;
   } else {
-    if (!ensure_staged_execution_buffers(rt, m, n, compute_k, a_buffer_size, b_buffer_size, c_buffer_size, &vk_result)) {
+    if (!ensure_staged_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, (int)vk_result);
       free(packed_a_upload);
@@ -3696,6 +3968,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->async_c_copy_size = c_copy_size;
     rt->async_selected_path = selected_path;
     rt->async_final_detail = final_detail;
+    note_last_execution_shape(rt, m, n, k);
     set_async_state(rt, PROM_ASYNC_STATE_SUBMITTED, PROM_STAGE_SUBMIT, 0);
     set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
     return PROM_OK;
@@ -3778,6 +4051,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
         prom_dom_sgemm_stage_layout_precision_decision(&rt->blackboard, &layout_precision_decision) != 0u) {
       prom_dom_sgemm_commit(&rt->blackboard);
     }
+    note_last_execution_shape(rt, m, n, k);
     return PROM_OK;
   }
   return PROM_ERROR;
@@ -4066,6 +4340,18 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m29_shape_invalidation_count = slot_diag_snapshot.shape_invalidation_count;
     out_diag->m29_layout_invalidation_count = slot_diag_snapshot.layout_invalidation_count;
     out_diag->m29_capacity_invalidation_count = slot_diag_snapshot.capacity_invalidation_count;
+    out_diag->m14_a_invalidation_count = rt->slot_diag.m14_a_invalidation_count;
+    out_diag->m14_b_invalidation_count = rt->slot_diag.m14_b_invalidation_count;
+    out_diag->m14_c_invalidation_count = rt->slot_diag.m14_c_invalidation_count;
+    out_diag->m14_a_reuse_count = rt->slot_diag.m14_a_reuse_count;
+    out_diag->m14_b_reuse_count = rt->slot_diag.m14_b_reuse_count;
+    out_diag->m14_c_reuse_count = rt->slot_diag.m14_c_reuse_count;
+    out_diag->m14_false_invalidation_avoided_count = rt->slot_diag.m14_false_invalidation_avoided_count;
+    out_diag->m14_capacity_invalidation_count = rt->slot_diag.m14_capacity_invalidation_count;
+    out_diag->m14_layout_precision_invalidation_count = rt->slot_diag.m14_layout_precision_invalidation_count;
+    out_diag->m14_a_last_invalidation_reason = rt->slot_diag.m14_a_last_invalidation_reason;
+    out_diag->m14_b_last_invalidation_reason = rt->slot_diag.m14_b_last_invalidation_reason;
+    out_diag->m14_c_last_invalidation_reason = rt->slot_diag.m14_c_last_invalidation_reason;
     out_diag->m29_inflight_rejection_count = slot_diag_snapshot.inflight_rejection_count;
     out_diag->m29_cleanup_success_count = slot_diag_snapshot.cleanup_success_count;
     out_diag->m29_failure_slot_id = slot_diag_snapshot.failure_slot_id;
@@ -4100,6 +4386,18 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
     out_diag->m29_shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
     out_diag->m29_layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
     out_diag->m29_capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
+    out_diag->m14_a_invalidation_count = rt->slot_diag.m14_a_invalidation_count;
+    out_diag->m14_b_invalidation_count = rt->slot_diag.m14_b_invalidation_count;
+    out_diag->m14_c_invalidation_count = rt->slot_diag.m14_c_invalidation_count;
+    out_diag->m14_a_reuse_count = rt->slot_diag.m14_a_reuse_count;
+    out_diag->m14_b_reuse_count = rt->slot_diag.m14_b_reuse_count;
+    out_diag->m14_c_reuse_count = rt->slot_diag.m14_c_reuse_count;
+    out_diag->m14_false_invalidation_avoided_count = rt->slot_diag.m14_false_invalidation_avoided_count;
+    out_diag->m14_capacity_invalidation_count = rt->slot_diag.m14_capacity_invalidation_count;
+    out_diag->m14_layout_precision_invalidation_count = rt->slot_diag.m14_layout_precision_invalidation_count;
+    out_diag->m14_a_last_invalidation_reason = rt->slot_diag.m14_a_last_invalidation_reason;
+    out_diag->m14_b_last_invalidation_reason = rt->slot_diag.m14_b_last_invalidation_reason;
+    out_diag->m14_c_last_invalidation_reason = rt->slot_diag.m14_c_last_invalidation_reason;
     out_diag->m29_inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
     out_diag->m29_cleanup_success_count = rt->slot_diag.cleanup_success_count;
     out_diag->m29_failure_slot_id = rt->slot_diag.failure_slot_id;
