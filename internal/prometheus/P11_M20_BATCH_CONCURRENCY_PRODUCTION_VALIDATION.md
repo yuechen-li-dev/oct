@@ -157,3 +157,37 @@ M20 status: **Success**.
 - failure atomicity and no-partial-commit behavior are preserved,
 - diagnostics remain truthful at validated boundaries,
 - no single-SGEMM semantic change introduced.
+
+## 13) Post-M20 hardening follow-up (audit issue closure)
+
+Audit follow-up status:
+
+1. **Batch facts hardcoded placeholders** — **confirmed and fixed**.
+   - Batch planning now derives path/layout/precision and buffering facts from runtime state and existing selector formulas (capabilities, transfer topology, packed4/FP16/tolerance and policy-mode inputs) instead of fixed `can_stage=1`, `can_direct=1`, and fixed budget placeholders.
+2. **`arena_required_bytes` FP32-only sizing** — **confirmed and fixed**.
+   - Batch plans now compute required arena bytes from selected compute mode:
+     - FP32 baseline/tiled uses float storage for A/B/C,
+     - FP16-storage mode uses packed fp16 storage for A/B with fp32 C,
+     - Packed4 uses padded K/layout sizing.
+   - Explicit overflow checks now fail with `PROM_DETAIL_SIZE_OVERFLOW`.
+3. **Thread-start failure joining unstarted threads** — **confirmed and fixed**.
+   - Real-thread startup now tracks `started_worker_count` and joins only started workers.
+4. **Staged outputs early-failure leak risk** — **cleaned up defensively**.
+   - Cleanup now uses explicit staged-output free helper that frees every non-null entry before array free.
+   - Existing zero-init behavior already prevented most partial-init hazards; helper makes cleanup path explicit and auditable.
+5. **Lane-simulated slot double-advance** — **confirmed and fixed**.
+   - Lane worker pickup now transitions slot to in-flight state instead of re-writing preparing+ready.
+
+Added tests:
+
+- deterministic thread-start failure injection with safe destroy and no commit,
+- deterministic staged-output allocation failure during planning with no commit and preserved caller buffers,
+- lane lifecycle transition test proving slot advances beyond preparing and ready clears.
+
+Issues determined not to apply:
+
+- The staged-output leak was not observed as a crashing leak path in current zero-initialized array flow, but cleanup correctness was hardened anyway for explicitness and future-proofing.
+
+Deferred:
+
+- No scheduler redesign, no work stealing/SPMC/MPMC/N-slot widening, no SGEMM numerical behavior changes, and no performance claims (unchanged deferred scope).

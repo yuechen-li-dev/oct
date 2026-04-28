@@ -764,6 +764,10 @@ static void set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage
   }
 }
 
+static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
+static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
+static uint32_t prom_round_up4_u32(uint32_t value);
+
 static uint32_t batch_requested_workers_from_flags(uint32_t flags) {
   const uint32_t requested = (flags & 0xffu);
   return requested == 0u ? 1u : requested;
@@ -831,6 +835,72 @@ static uint32_t batch_test_invalidate_first_ready_slot(uint32_t test_flags) {
 
 static uint32_t batch_test_fail_first_slot_before_submit(uint32_t test_flags) {
   return ((test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) != 0u && (test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) ? 1u : 0u;
+}
+
+static uint32_t batch_test_inject_thread_start_failure(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS) != 0u &&
+          (test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) != 0u &&
+          (test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u)
+             ? 1u
+             : 0u;
+}
+
+static uint32_t batch_test_inject_staged_output_alloc_failure(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u &&
+          (test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u)
+             ? 1u
+             : 0u;
+}
+
+static void batch_free_staged_outputs(float** staged_outputs, uint32_t entry_count) {
+  uint32_t i;
+  if (staged_outputs == NULL) {
+    return;
+  }
+  for (i = 0u; i < entry_count; ++i) {
+    free(staged_outputs[i]);
+    staged_outputs[i] = NULL;
+  }
+}
+
+static int batch_compute_plan_arena_required_bytes(uint32_t m,
+                                                   uint32_t n,
+                                                   uint32_t k,
+                                                   prom_vk_compute_mode compute_mode,
+                                                   uint64_t* out_required_bytes) {
+  uint32_t compute_k;
+  VkDeviceSize a_size;
+  VkDeviceSize b_size;
+  VkDeviceSize c_size;
+  size_t ignored_copy_size = 0u;
+  uint64_t required_bytes;
+  if (out_required_bytes == NULL) {
+    return 0;
+  }
+  compute_k = compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
+  if ((compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM &&
+       (!checked_packed_fp16_buffer_size(m, compute_k, &a_size, &ignored_copy_size) ||
+        !checked_packed_fp16_buffer_size(k, n, &b_size, &ignored_copy_size))) ||
+      (compute_mode != PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM &&
+       (!checked_float_buffer_size(m, compute_k, &a_size, &ignored_copy_size) ||
+        !checked_float_buffer_size(compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? n : k,
+                                   compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? compute_k : n,
+                                   &b_size,
+                                   &ignored_copy_size))) ||
+      !checked_float_buffer_size(m, n, &c_size, &ignored_copy_size)) {
+    return 0;
+  }
+  required_bytes = (uint64_t)a_size;
+  if (UINT64_MAX - required_bytes < (uint64_t)b_size) {
+    return 0;
+  }
+  required_bytes += (uint64_t)b_size;
+  if (UINT64_MAX - required_bytes < (uint64_t)c_size) {
+    return 0;
+  }
+  required_bytes += (uint64_t)c_size;
+  *out_required_bytes = required_bytes;
+  return 1;
 }
 
 static uint32_t batch_worker_partition(uint32_t entry_id, uint32_t entry_count, uint32_t workers, uint32_t flags) {
@@ -5716,6 +5786,9 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t force_wrong_resource_owner = 0u;
   uint32_t inject_invalidated_ready_slot = 0u;
   uint32_t inject_presubmit_slot_failure = 0u;
+  uint32_t inject_thread_start_failure = 0u;
+  uint32_t inject_staged_output_alloc_failure = 0u;
+  uint32_t started_worker_count = 0u;
   prom_batch_shared_state shared_state;
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
@@ -5928,6 +6001,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   force_wrong_resource_owner = (rt->test_flags & PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER) != 0u ? 1u : 0u;
   inject_invalidated_ready_slot = batch_test_invalidate_first_ready_slot(rt->test_flags);
   inject_presubmit_slot_failure = batch_test_fail_first_slot_before_submit(rt->test_flags);
+  inject_thread_start_failure = batch_test_inject_thread_start_failure(rt->test_flags);
+  inject_staged_output_alloc_failure = batch_test_inject_staged_output_alloc_failure(rt->test_flags);
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;
@@ -6072,7 +6147,20 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     prom_judgment_decision judgment_decision;
     prom_buffering_selector_facts buffering_facts;
     prom_buffering_selector_decision buffering_decision;
+    prom_dom_transfer_queue_facts transfer_queue_facts;
     uint64_t work_units;
+    uint32_t can_stage;
+    uint32_t can_direct;
+    uint32_t readback_required;
+    uint32_t packed4_budget_permille;
+    uint32_t packed4_waste_permille;
+    uint32_t packed4_small_shape;
+    uint32_t fp16_has_special_values;
+    int fp16_utility_score;
+    prom_policy_mode policy_mode;
+    prom_variance_class variance_class;
+    prom_predictability_class predictability_class;
+    uint64_t plan_arena_required_bytes = 0u;
     uint32_t worker_id = batch_worker_partition(i, entry_count, effective_workers, flags);
     size_t output_elements;
     if (worker_id >= effective_workers) {
@@ -6105,39 +6193,132 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     if (work_units == 0u) {
       work_units = 1u;
     }
+    can_stage = rt->has_device_local_memory;
+    can_direct = rt->has_host_visible_memory;
+    if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
+      can_stage = 0u;
+    }
+    readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
+    policy_mode = rt->sgemm_controller.policy_memory.current_mode;
+    packed4_waste_permille = prom_packed4_padding_waste_permille(entries[i].m, entries[i].n, entries[i].k);
+    packed4_budget_permille = prom_packed4_mode_budget_permille(policy_mode);
+    packed4_small_shape = (entries[i].m < 4u || entries[i].n < 4u || entries[i].k < 4u) ? 1u : 0u;
+    fp16_has_special_values = 0u;
+    fp16_utility_score = -1000;
+    prom_fp16_evaluate_tolerance(entries[i].a,
+                                 entries[i].b,
+                                 entries[i].m,
+                                 entries[i].n,
+                                 entries[i].k,
+                                 &rt->sgemm_controller,
+                                 &fp16_has_special_values,
+                                 &fp16_utility_score);
+    if ((rt->test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
+      fp16_utility_score = 1201;
+    }
     memset(&facts, 0, sizeof(facts));
     facts.m = entries[i].m;
     facts.n = entries[i].n;
     facts.k = entries[i].k;
     facts.work_units = work_units;
-    facts.can_stage = 1u;
-    facts.can_direct = 1u;
-    facts.allow_fallback = 1u;
+    facts.can_stage = can_stage;
+    facts.can_direct = can_direct;
+    facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
+    facts.readback_required = readback_required;
+    facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
+    facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
+    facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
+    facts.tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && entries[i].m >= PROM_VK_LOCAL_SIZE_X &&
+                         entries[i].n >= PROM_VK_LOCAL_SIZE_Y && entries[i].k >= PROM_VK_TILE_K)
+                            ? 1u
+                            : 0u;
     facts.software_vulkan = rt->software_vulkan;
-    facts.policy_mode = rt->sgemm_controller.policy_memory.current_mode;
+    facts.policy_mode = policy_mode;
     facts.packed4_available = 1u;
+    facts.packed4_small_shape = packed4_small_shape;
+    facts.packed4_padding_waste_permille = packed4_waste_permille;
+    facts.packed4_mode_budget_permille = packed4_budget_permille;
     facts.packed4_row_major_valid = 1u;
     facts.packed4_tail_valid = 1u;
-    facts.packed4_mode_budget_permille = 1000u;
-    facts.tolerance_known = 1u;
-    facts.tolerance_pass = 1u;
+    facts.strict_fp32 = ((rt->test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
+    facts.tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
+    facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
+    facts.has_special_values = fp16_has_special_values;
     facts.capability_fp16_storage = rt->capability_fp16_storage;
-    facts.fallback_available = 1u;
-    facts.fp16_utility_score = 1;
+    facts.fallback_available = (facts.allow_fallback != 0u && can_direct != 0u) ? 1u : 0u;
+    facts.fp16_utility_score = fp16_utility_score;
+    memset(&transfer_queue_facts, 0, sizeof(transfer_queue_facts));
+    transfer_queue_facts.dedicated_transfer_available = rt->dedicated_transfer_available;
+    transfer_queue_facts.transfer_queue_family_index = rt->transfer_queue_family_index;
+    transfer_queue_facts.compute_queue_family_index = rt->queue_family_index;
+    transfer_queue_facts.queue_families_differ =
+        (rt->dedicated_transfer_available != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 1u : 0u;
+    transfer_queue_facts.transfer_queue_supported = rt->transfer_queue_enabled;
+    transfer_queue_facts.transfer_queue_disabled_by_config = ((rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+    transfer_queue_facts.transfer_workload_large_enough = work_units >= (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+    transfer_queue_facts.transfer_sync_ownership_supported = rt->transfer_queue_enabled;
+    transfer_queue_facts.transfer_fallback_available = 1u;
+    transfer_queue_facts.upload_only_policy_eligible = readback_required == 0u ? 1u : 0u;
+    transfer_queue_facts.upload_readback_supported = 0u;
+    facts.transfer_queue_dedicated_available = transfer_queue_facts.dedicated_transfer_available;
+    facts.transfer_queue_families_differ = transfer_queue_facts.queue_families_differ;
+    facts.transfer_queue_supported = transfer_queue_facts.transfer_queue_supported;
+    facts.transfer_overlap_slot_valid = transfer_queue_facts.transfer_sync_ownership_supported;
+    facts.transfer_workload_large_enough = transfer_queue_facts.transfer_workload_large_enough;
+    facts.transfer_fallback_available = transfer_queue_facts.transfer_fallback_available;
+    facts.transfer_queue_disabled_by_config = transfer_queue_facts.transfer_queue_disabled_by_config;
     prom_judgment_engine_select_layout_precision(&facts, &layout_precision_decision);
     prom_judgment_engine_select_sgemm_mode_with_layout_precision(&facts, &layout_precision_decision, &judgment_decision);
+    if (judgment_decision.success == 0u) {
+      failure_stage = PROM_STAGE_TRANSFER_IN;
+      failure_detail = judgment_decision.error_detail;
+      failed_entry_id = i;
+      failed_worker_id = worker_id;
+      state = PROM_BATCH_STATE_FAILING;
+      break;
+    }
 
     memset(&buffering_facts, 0, sizeof(buffering_facts));
-    buffering_facts.memory_budget_slots_permille = 1000u;
-    buffering_facts.required_fixed_slots_permille = 500u;
-    buffering_facts.required_pull_lag_peak_slots_permille = 700u;
-    buffering_facts.required_serial_slots_permille = 300u;
-    buffering_facts.fixed_double_headroom_slots_permille = 500;
-    buffering_facts.pull_lag_headroom_slots_permille = 300;
-    buffering_facts.serial_jit_headroom_slots_permille = 700;
-    buffering_facts.transfer_variance_class = PROM_VARIANCE_MODERATE;
-    buffering_facts.compute_predictability_class = PROM_PREDICTABILITY_TRACKED;
-    buffering_facts.fallback_available = 1u;
+    buffering_facts.required_fixed_slots_permille = 2000u;
+    buffering_facts.required_pull_lag_peak_slots_permille = 1500u;
+    buffering_facts.required_serial_slots_permille = 1000u;
+    if (facts.transfer_queue_dedicated_available != 0u && rt->software_vulkan == 0u) {
+      variance_class = PROM_VARIANCE_LOW;
+    } else if (rt->software_vulkan != 0u) {
+      variance_class = PROM_VARIANCE_HIGH;
+    } else {
+      variance_class = PROM_VARIANCE_MODERATE;
+    }
+    if (policy_mode == PROM_POLICY_MODE_RECOVERY) {
+      predictability_class = PROM_PREDICTABILITY_UNSTABLE;
+    } else if (policy_mode == PROM_POLICY_MODE_SAFE) {
+      predictability_class = PROM_PREDICTABILITY_TRACKED;
+    } else {
+      predictability_class = PROM_PREDICTABILITY_STABLE;
+    }
+    buffering_facts.transfer_variance_class = variance_class;
+    buffering_facts.compute_predictability_class = predictability_class;
+    buffering_facts.pull_lag_wip_waste_exceeded = rt->sgemm_controller.pending_waste_units > PROM_SGEMM_WASTE_BUDGET_UNITS ? 1u : 0u;
+    buffering_facts.starvation_risk_high = rt->software_vulkan != 0u && work_units > (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+    if (can_stage != 0u && can_direct != 0u) {
+      buffering_facts.memory_budget_slots_permille = 2200u;
+    } else if (can_stage != 0u || can_direct != 0u) {
+      buffering_facts.memory_budget_slots_permille = 1400u;
+    } else {
+      buffering_facts.memory_budget_slots_permille = 800u;
+    }
+    if (policy_mode == PROM_POLICY_MODE_SAFE && buffering_facts.memory_budget_slots_permille >= 200u) {
+      buffering_facts.memory_budget_slots_permille -= 200u;
+    } else if (policy_mode == PROM_POLICY_MODE_RECOVERY && buffering_facts.memory_budget_slots_permille >= 400u) {
+      buffering_facts.memory_budget_slots_permille -= 400u;
+    }
+    buffering_facts.fixed_double_headroom_slots_permille =
+        (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_fixed_slots_permille;
+    buffering_facts.pull_lag_headroom_slots_permille =
+        (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_pull_lag_peak_slots_permille;
+    buffering_facts.serial_jit_headroom_slots_permille =
+        (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_serial_slots_permille;
+    buffering_facts.fallback_available = facts.allow_fallback;
     prom_judgment_engine_select_buffering_mode(&buffering_facts, &buffering_decision);
 
     plans[i].entry_id = i;
@@ -6154,9 +6335,19 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     plans[i].buffering_mode = (uint32_t)buffering_decision.selected_mode;
     plans[i].transfer_policy = judgment_decision.use_dedicated_transfer_queue_upload;
     plans[i].layout_precision_mode = layout_precision_decision.packed4_selected != 0u ? 2u : (layout_precision_decision.fp16_selected != 0u ? 3u : 1u);
-    plans[i].arena_required_bytes = (uint64_t)entries[i].m * (uint64_t)entries[i].k * sizeof(float) +
-                                    (uint64_t)entries[i].k * (uint64_t)entries[i].n * sizeof(float) +
-                                    (uint64_t)entries[i].m * (uint64_t)entries[i].n * sizeof(float);
+    if (!batch_compute_plan_arena_required_bytes(entries[i].m,
+                                                 entries[i].n,
+                                                 entries[i].k,
+                                                 (prom_vk_compute_mode)plans[i].compute_mode,
+                                                 &plan_arena_required_bytes)) {
+      failure_stage = PROM_STAGE_TRANSFER_IN;
+      failure_detail = PROM_DETAIL_SIZE_OVERFLOW;
+      failed_entry_id = i;
+      failed_worker_id = worker_id;
+      state = PROM_BATCH_STATE_FAILING;
+      break;
+    }
+    plans[i].arena_required_bytes = plan_arena_required_bytes;
     plans[i].expected_output_elements = (uint32_t)output_elements;
     plans[i].plan_generation = 40u;
     plans[i].slot_id = worker_id * effective_slots_per_worker + (worker_slot_refill_cursor[worker_id] % effective_slots_per_worker);
@@ -6190,7 +6381,11 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         }
       }
     }
-    staged_outputs[i] = (float*)malloc(output_elements * sizeof(float));
+    if (inject_staged_output_alloc_failure != 0u && i == 1u) {
+      staged_outputs[i] = NULL;
+    } else {
+      staged_outputs[i] = (float*)malloc(output_elements * sizeof(float));
+    }
     output_sizes[i] = (uint32_t)output_elements;
     if (staged_outputs[i] == NULL) {
       failure_stage = PROM_STAGE_TRANSFER_IN;
@@ -6203,8 +6398,9 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     workers[worker_id].assigned_count += 1u;
   }
 
-  if (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN ||
-      execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE) {
+  if (state == PROM_BATCH_STATE_RUNNING &&
+      (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN ||
+       execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE)) {
     shared_state.state = PROM_BATCH_STATE_RUNNING;
     for (w = 0u; w < effective_workers; ++w) {
       worker_thread_ctx[w].plans = plans;
@@ -6224,14 +6420,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       worker_thread_ctx[w].worker_event_counts = worker_event_counts;
       worker_thread_ctx[w].staged_outputs = staged_outputs;
       worker_thread_ctx[w].shared = &shared_state;
-      if (!prom_batch_thread_start(&worker_threads[w], batch_worker_thread_main, &worker_thread_ctx[w])) {
+      if ((inject_thread_start_failure != 0u && w == 1u) ||
+          !prom_batch_thread_start(&worker_threads[w], batch_worker_thread_main, &worker_thread_ctx[w])) {
         batch_shared_fail_first(&shared_state, UINT32_MAX, w, PROM_STAGE_INIT, PROM_ERROR);
         failure_stage = PROM_STAGE_INIT;
         failure_detail = PROM_ERROR;
         break;
       }
+      started_worker_count += 1u;
     }
-    for (w = 0u; w < effective_workers; ++w) {
+    for (w = 0u; w < started_worker_count; ++w) {
       prom_batch_thread_join(worker_threads[w]);
     }
     prom_batch_mutex_lock(&shared_state.state_mutex);
@@ -6363,12 +6561,12 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         }
         if (plan->slot_id < total_slot_count) {
           prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
-          slot->state = PROM_BATCH_SLOT_STATE_PREPARING;
-          slot->ready = 1u;
-          slot->in_flight = 0u;
+          slot->state = PROM_BATCH_SLOT_STATE_IN_FLIGHT;
+          slot->ready = 0u;
+          slot->in_flight = 1u;
           if (plan->slot_id < 32u) {
             slot_dirty_mask |= (1u << plan->slot_id);
-            slot_ready_mask |= (1u << plan->slot_id);
+            slot_ready_mask &= ~(1u << plan->slot_id);
           }
         }
         if (!batch_worker_emit_event(worker_events,
@@ -6409,17 +6607,6 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           worker->failure_entry_id = failed_entry_id;
           break;
         }
-        if (plan->slot_id < total_slot_count) {
-          prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
-          slot->state = PROM_BATCH_SLOT_STATE_IN_FLIGHT;
-          slot->in_flight = 1u;
-          slot->ready = 0u;
-          if (plan->slot_id < 32u) {
-            slot_dirty_mask |= (1u << plan->slot_id);
-            slot_ready_mask &= ~(1u << plan->slot_id);
-          }
-        }
-
         if (((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) || plan->entry_id == injected_failure_entry_id ||
             (force_dual_fail_first_two != 0u && (plan->entry_id == 0u || plan->entry_id == 1u))) {
           state = PROM_BATCH_STATE_FAILING;
@@ -6801,11 +6988,7 @@ batch_cleanup:
       }
     }
   }
-  if (staged_outputs != NULL) {
-    for (i = 0u; i < entry_count; ++i) {
-      free(staged_outputs[i]);
-    }
-  }
+  batch_free_staged_outputs(staged_outputs, entry_count);
   free(worker_thread_ctx);
   free(worker_threads);
   free(workers);
