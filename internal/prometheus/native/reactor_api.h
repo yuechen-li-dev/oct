@@ -386,6 +386,16 @@ enum {
   PROM_BATCH_FALLBACK_REASON_QUEUE_FAMILY_OWNERSHIP_HANDOFF_REQUIRED = 10u,
 };
 
+enum {
+  PROM_SGEMM_GPU_TIMING_FAILURE_NONE = 0u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED = 1u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE = 2u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD = 3u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE = 4u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER = 5u,
+  PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED = 6u,
+};
+
 typedef struct PrometheusCaps {
   uint32_t available;
   uint32_t backend_type;
@@ -584,6 +594,12 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p13_m2_occupancy_clamp_reason;
   uint32_t p13_m2_occupancy_override_used;
   uint32_t p13_m2_occupancy_fallback_used;
+  uint32_t p13_m5_timestamp_available;
+  uint32_t p13_m5_last_gpu_timing_valid;
+  uint32_t p13_m5_last_gpu_timing_failure_reason;
+  uint64_t p13_m5_last_gpu_duration_ns;
+  uint32_t p13_m5_timestamp_valid_bits;
+  float p13_m5_timestamp_period_ns;
   uint32_t p10_m4_last_slot_event_kind;
   uint32_t p10_m4_last_slot_event_slot_id;
   int32_t p10_m4_last_slot_event_reason;
