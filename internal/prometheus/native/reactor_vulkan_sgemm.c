@@ -449,6 +449,7 @@ typedef struct prometheus_runtime {
   VkFence submit_fence;
   VkFence transfer_submit_fence;
   VkSemaphore transfer_ready_semaphore;
+  VkQueryPool sgemm_timestamp_query_pool;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
@@ -484,6 +485,12 @@ typedef struct prometheus_runtime {
   uint32_t occupancy_max_workgroup_class;
   uint32_t occupancy_queue_capability_class;
   uint32_t occupancy_has_exact_profile;
+  uint32_t timestamp_query_supported;
+  uint32_t timestamp_valid_bits;
+  float timestamp_period_ns;
+  uint32_t last_gpu_timing_valid;
+  uint32_t last_gpu_timing_failure_reason;
+  uint64_t last_gpu_duration_ns;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -3717,6 +3724,15 @@ static void note_last_execution_shape(prometheus_runtime* rt, uint32_t m, uint32
   rt->last_execution_k = k;
 }
 
+static void reset_last_gpu_timing(prometheus_runtime* rt, uint32_t failure_reason) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->last_gpu_timing_valid = 0u;
+  rt->last_gpu_duration_ns = 0u;
+  rt->last_gpu_timing_failure_reason = failure_reason;
+}
+
 static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt == NULL) {
     return;
@@ -3752,6 +3768,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->descriptor_pool != VK_NULL_HANDLE) {
     vkDestroyDescriptorPool(rt->device, rt->descriptor_pool, NULL);
     rt->descriptor_pool = VK_NULL_HANDLE;
+  }
+  if (rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    vkDestroyQueryPool(rt->device, rt->sgemm_timestamp_query_pool, NULL);
+    rt->sgemm_timestamp_query_pool = VK_NULL_HANDLE;
   }
   if (rt->submit_fence != VK_NULL_HANDLE) {
     vkDestroyFence(rt->device, rt->submit_fence, NULL);
@@ -3810,6 +3830,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
   VkCommandBufferAllocateInfo cmd_alloc_info;
   VkFenceCreateInfo fence_info;
+  VkQueryPoolCreateInfo query_pool_info;
 
   memset(&instance_info, 0, sizeof(instance_info));
   instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -3910,6 +3931,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     VkPhysicalDeviceMemoryProperties memory_props;
     uint32_t memory_index;
     vkGetPhysicalDeviceProperties(rt->physical_device, &props);
+    rt->timestamp_period_ns = props.limits.timestampPeriod;
     if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU || text_contains_llvmpipe(props.deviceName)) {
       rt->software_vulkan = 1u;
     } else {
@@ -3950,6 +3972,21 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     }
     rt->occupancy_queue_capability_class = rt->dedicated_transfer_available != 0u ? 4u : 3u;
   }
+  {
+    uint32_t family_count = 0u;
+    VkQueueFamilyProperties families[32];
+    rt->timestamp_valid_bits = 0u;
+    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
+    if (family_count > 32u) {
+      family_count = 32u;
+    }
+    if (family_count > 0u) {
+      vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, families);
+      if (rt->queue_family_index < family_count) {
+        rt->timestamp_valid_bits = families[rt->queue_family_index].timestampValidBits;
+      }
+    }
+  }
   rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
 
   memset(queue_infos, 0, sizeof(queue_infos));
@@ -3977,6 +4014,29 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   result = vkCreateDevice(rt->physical_device, &device_info, NULL, &rt->device);
   if (result != VK_SUCCESS) {
     return result;
+  }
+
+  rt->timestamp_query_supported = 0u;
+  if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+    memset(&query_pool_info, 0, sizeof(query_pool_info));
+    query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    query_pool_info.queryCount = 2u;
+    result = vkCreateQueryPool(rt->device, &query_pool_info, NULL, &rt->sgemm_timestamp_query_pool);
+    if (result == VK_SUCCESS) {
+      rt->timestamp_query_supported = 1u;
+    } else {
+      rt->sgemm_timestamp_query_pool = VK_NULL_HANDLE;
+    }
+  }
+  if (rt->timestamp_query_supported != 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_NONE);
+  } else if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE);
+  } else if (rt->timestamp_period_ns <= 0.0f) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
+  } else {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED);
   }
 
   vkGetDeviceQueue(rt->device, rt->queue_family_index, 0u, &rt->compute_queue);
@@ -4529,6 +4589,15 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (rt->available == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
+  }
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
+  } else if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE);
+  } else if (rt->timestamp_period_ns <= 0.0f) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
+  } else {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED);
   }
   if (!prom_vk_checked_mul_u32(m, k, &work_units_u32) || !prom_vk_checked_mul_u32(k, n, &work_units_u32) ||
       !prom_vk_checked_mul_u32(m, n, &work_units_u32) || !prom_vk_checked_mul_u32(m, n, &mn_product) ||
@@ -5461,9 +5530,15 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     return PROM_ERROR;
+  }
+
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    vkCmdResetQueryPool(rt->command_buffer, rt->sgemm_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
   }
 
   /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
@@ -5471,6 +5546,9 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                 (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
                 (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
                 1u);
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
+  }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
     barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -5531,24 +5609,28 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkEndCommandBuffer(rt->command_buffer);
   if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
@@ -5566,12 +5648,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     stage_transfer_wait_telemetry(rt, work_slot_id, 0);
   }
   if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
@@ -5610,9 +5694,37 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     }
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
+      reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
+    }
+    if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+      uint64_t timestamps[2];
+      vk_result = vkGetQueryPoolResults(rt->device,
+                                        rt->sgemm_timestamp_query_pool,
+                                        0u,
+                                        2u,
+                                        sizeof(timestamps),
+                                        timestamps,
+                                        sizeof(uint64_t),
+                                        VK_QUERY_RESULT_64_BIT);
+      if (vk_result != VK_SUCCESS) {
+        reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
+      } else if (rt->timestamp_period_ns <= 0.0f) {
+        reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
+      } else if (timestamps[1] <= timestamps[0]) {
+        reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
+      } else {
+        const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->timestamp_period_ns;
+        if (duration <= 0.0) {
+          reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
+        } else {
+          rt->last_gpu_timing_valid = 1u;
+          rt->last_gpu_timing_failure_reason = PROM_SGEMM_GPU_TIMING_FAILURE_NONE;
+          rt->last_gpu_duration_ns = (uint64_t)duration;
+        }
+      }
     }
     rt->in_flight_submit = 0u;
     if (!prom_slot_mark_complete(rt, work_slot_id)) {
@@ -7450,6 +7562,12 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p13_m2_occupancy_clamp_reason = rt->slot_diag.p13_m2_occupancy_clamp_reason;
   out_diag->p13_m2_occupancy_override_used = rt->slot_diag.p13_m2_occupancy_override_used;
   out_diag->p13_m2_occupancy_fallback_used = rt->slot_diag.p13_m2_occupancy_fallback_used;
+  out_diag->p13_m5_timestamp_available = rt->timestamp_query_supported;
+  out_diag->p13_m5_last_gpu_timing_valid = rt->last_gpu_timing_valid;
+  out_diag->p13_m5_last_gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
+  out_diag->p13_m5_last_gpu_duration_ns = rt->last_gpu_duration_ns;
+  out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
+  out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
     out_diag->p10_m4_last_slot_event_kind = (uint32_t)slot_snapshot.last_event.kind;
     out_diag->p10_m4_last_slot_event_slot_id = slot_snapshot.last_event.slot_id;

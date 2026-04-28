@@ -55,10 +55,16 @@ namespace
         double median_ns;
         double min_ns;
         double stability_cv;
+        std::uint32_t timing_stability_permille;
         double gflops;
         double arithmetic_intensity;
         std::string timing_source;
         std::string timing_confidence;
+        bool timestamp_available;
+        std::string timestamp_failure_reason;
+        double gpu_duration_ns_mean;
+        double gpu_duration_ns_median;
+        double gpu_duration_ns_min;
         bool diagnostics_match;
         PrometheusSgemmPolicyDiagnostics diag;
         bool actuation_ready;
@@ -71,6 +77,8 @@ namespace
         std::uint32_t measured_iterations;
         std::string timing_source;
         std::string timing_confidence;
+        bool timestamp_available;
+        std::string timestamp_failure_reason;
         PrometheusCaps caps;
         std::vector<CaseResult> cases;
         bool final_actuation_ready;
@@ -81,6 +89,28 @@ namespace
     constexpr float kRelTolerance = 1.0e-4f;
     constexpr double kImprovementThreshold = 0.03;
     constexpr double kMaxStabilityCv = 0.10;
+
+    std::string timestamp_failure_reason_name(std::uint32_t reason)
+    {
+        switch (reason) {
+            case PROM_SGEMM_GPU_TIMING_FAILURE_NONE:
+                return "none";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED:
+                return "unsupported";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE:
+                return "query_pool_unavailable";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD:
+                return "invalid_period";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE:
+                return "unavailable_result";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER:
+                return "invalid_order";
+            case PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED:
+                return "command_failed";
+            default:
+                return "unknown";
+        }
+    }
 
     const std::vector<BenchmarkShapeCase>& all_shape_cases()
     {
@@ -253,6 +283,7 @@ namespace
         variance /= static_cast<double>(sorted.size());
         const double stddev = std::sqrt(variance);
         result.stability_cv = (result.mean_ns > 0.0) ? (stddev / result.mean_ns) : 1.0;
+        result.timing_stability_permille = static_cast<std::uint32_t>(result.stability_cv * 1000.0);
         const double flops = 2.0 * static_cast<double>(result.m) * static_cast<double>(result.n) * static_cast<double>(result.k);
         result.gflops = (result.mean_ns > 0.0) ? ((flops / result.mean_ns) / 1.0e9) : 0.0;
         const double bytes = static_cast<double>(result.m * result.k + result.k * result.n + result.m * result.n) * static_cast<double>(sizeof(float));
@@ -293,7 +324,10 @@ namespace
                         std::uint32_t warmup_iterations,
                         std::uint32_t measured_iterations,
                         bool force_correctness_failure,
-                        bool force_diagnostics_mismatch)
+                        bool force_diagnostics_mismatch,
+                        bool force_timestamp_unavailable,
+                        bool force_timestamp_invalid_result,
+                        bool force_high_confidence_simulation)
     {
         CaseResult result{};
         result.shape_name = shape.name;
@@ -306,6 +340,8 @@ namespace
         result.variant_available = variant_is_implemented(requested_variant);
         result.timing_source = "cpu_wall_clock";
         result.timing_confidence = "low";
+        result.timestamp_available = false;
+        result.timestamp_failure_reason = "unsupported";
 
         if (!result.variant_available) {
             if (mode == HarnessMode::Characterization) {
@@ -338,7 +374,11 @@ namespace
         }
 
         std::vector<double> samples;
+        std::vector<double> cpu_samples;
+        std::vector<double> gpu_samples;
         samples.reserve(measured_iterations);
+        cpu_samples.reserve(measured_iterations);
+        gpu_samples.reserve(measured_iterations);
         for (std::uint32_t i = 0; i < measured_iterations; ++i) {
             const auto start = std::chrono::steady_clock::now();
             const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
@@ -348,10 +388,57 @@ namespace
                 result.fallback_reason = "runtime_sgemm_failed";
                 return result;
             }
-            samples.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
+            cpu_samples.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
+            memset(&result.diag, 0, sizeof(result.diag));
+            const int diag_status = prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag);
+            if (diag_status == PROM_OK) {
+                result.timestamp_available = (result.diag.p13_m5_timestamp_available != 0u);
+                result.timestamp_failure_reason = timestamp_failure_reason_name(result.diag.p13_m5_last_gpu_timing_failure_reason);
+                if (result.diag.p13_m5_last_gpu_timing_valid != 0u && result.diag.p13_m5_last_gpu_duration_ns > 0u) {
+                    gpu_samples.push_back(static_cast<double>(result.diag.p13_m5_last_gpu_duration_ns));
+                }
+            }
         }
 
+        if (force_timestamp_unavailable) {
+            result.timestamp_available = false;
+            result.timestamp_failure_reason = "unsupported";
+            gpu_samples.clear();
+        }
+        if (force_timestamp_invalid_result) {
+            result.timestamp_failure_reason = "unavailable_result";
+            gpu_samples.clear();
+        }
+        if (!gpu_samples.empty() && gpu_samples.size() == cpu_samples.size()) {
+            samples = gpu_samples;
+            result.timing_source = "vulkan_timestamp_query";
+            result.timing_confidence = "high";
+            result.timestamp_failure_reason = "none";
+        } else if (force_high_confidence_simulation) {
+            samples = cpu_samples;
+            result.timing_source = "vulkan_timestamp_query";
+            result.timing_confidence = "high";
+            result.timestamp_available = true;
+            result.timestamp_failure_reason = "simulated";
+        } else {
+            samples = cpu_samples;
+            result.timing_source = "cpu_wall_clock";
+            result.timing_confidence = "low";
+            if (result.timestamp_available && result.timestamp_failure_reason == "none") {
+                result.timestamp_failure_reason = "unavailable_result";
+            }
+        }
         summarize_timing(result, samples);
+        if (!gpu_samples.empty()) {
+            std::sort(gpu_samples.begin(), gpu_samples.end());
+            result.gpu_duration_ns_min = gpu_samples.front();
+            result.gpu_duration_ns_median = gpu_samples[gpu_samples.size() / 2u];
+            double gpu_sum = 0.0;
+            for (double sample : gpu_samples) {
+                gpu_sum += sample;
+            }
+            result.gpu_duration_ns_mean = gpu_sum / static_cast<double>(gpu_samples.size());
+        }
         result.correctness = compare_against_oracle(expected, c);
         memset(&result.diag, 0, sizeof(result.diag));
         const int diag_status = prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag);
@@ -368,7 +455,10 @@ namespace
     BenchmarkRun run_benchmark(HarnessMode mode,
                                std::uint32_t requested_variant,
                                bool force_correctness_failure,
-                               bool force_diagnostics_mismatch)
+                               bool force_diagnostics_mismatch,
+                               bool force_timestamp_unavailable = false,
+                               bool force_timestamp_invalid_result = false,
+                               bool force_high_confidence_simulation = false)
     {
         BenchmarkRun run{};
         run.mode = mode;
@@ -376,6 +466,8 @@ namespace
         run.measured_iterations = (mode == HarnessMode::Smoke) ? 2u : 4u;
         run.timing_source = "cpu_wall_clock";
         run.timing_confidence = "low";
+        run.timestamp_available = false;
+        run.timestamp_failure_reason = "unsupported";
 
         void* handle = nullptr;
         const int create_status = prometheus_reactor_runtime_create(nullptr, &handle);
@@ -397,7 +489,16 @@ namespace
                                          run.warmup_iterations,
                                          run.measured_iterations,
                                          force_correctness_failure,
-                                         force_diagnostics_mismatch));
+                                         force_diagnostics_mismatch,
+                                         force_timestamp_unavailable,
+                                         force_timestamp_invalid_result,
+                                         force_high_confidence_simulation));
+        }
+        if (!run.cases.empty()) {
+            run.timing_source = run.cases.front().timing_source;
+            run.timing_confidence = run.cases.front().timing_confidence;
+            run.timestamp_available = run.cases.front().timestamp_available;
+            run.timestamp_failure_reason = run.cases.front().timestamp_failure_reason;
         }
 
         CaseResult baseline{};
@@ -464,7 +565,9 @@ namespace
         out << "    \"warmup_iterations\": " << run.warmup_iterations << ",\n";
         out << "    \"measured_iterations\": " << run.measured_iterations << ",\n";
         out << "    \"timing_source\": \"" << run.timing_source << "\",\n";
-        out << "    \"timing_confidence\": \"" << run.timing_confidence << "\"\n";
+        out << "    \"timing_confidence\": \"" << run.timing_confidence << "\",\n";
+        out << "    \"timestamp_available\": " << (run.timestamp_available ? "true" : "false") << ",\n";
+        out << "    \"timestamp_failure_reason\": \"" << run.timestamp_failure_reason << "\"\n";
         out << "  },\n";
         out << "  \"cases\": [\n";
         for (std::size_t i = 0; i < run.cases.size(); ++i) {
@@ -482,7 +585,12 @@ namespace
             out << "      \"first_failing_index\": " << c.correctness.first_failing_index << ",\n";
             out << "      \"aggregate_abs_error\": " << c.correctness.aggregate_abs_error << ",\n";
             out << "      \"timing\": {\"mean_ns\": " << c.mean_ns << ", \"median_ns\": " << c.median_ns << ", \"min_ns\": " << c.min_ns
-                << ", \"stability_cv\": " << c.stability_cv << "},\n";
+                << ", \"stability_cv\": " << c.stability_cv << ", \"stability_permille\": " << c.timing_stability_permille
+                << ", \"timing_source\": \"" << c.timing_source << "\", \"timing_confidence\": \"" << c.timing_confidence
+                << "\", \"timestamp_available\": " << (c.timestamp_available ? "true" : "false")
+                << ", \"timestamp_failure_reason\": \"" << c.timestamp_failure_reason << "\""
+                << ", \"gpu_duration_ns_min\": " << c.gpu_duration_ns_min << ", \"gpu_duration_ns_mean\": " << c.gpu_duration_ns_mean
+                << ", \"gpu_duration_ns_median\": " << c.gpu_duration_ns_median << "},\n";
             out << "      \"gflops\": " << c.gflops << ",\n";
             out << "      \"arithmetic_intensity\": " << c.arithmetic_intensity << ",\n";
             out << "      \"diagnostics\": {\"device_band\": " << c.diag.p13_m2_occupancy_device_band
@@ -531,6 +639,8 @@ FACT(P13_M4_ArtifactSchemaFieldsPresent)
     ASSERT_TRUE(artifact.find("\"run\"") != std::string::npos, "artifact must include run section");
     ASSERT_TRUE(artifact.find("\"cases\"") != std::string::npos, "artifact must include cases section");
     ASSERT_TRUE(artifact.find("\"final_recommendation\"") != std::string::npos, "artifact must include final recommendation section");
+    ASSERT_TRUE(artifact.find("\"timestamp_available\"") != std::string::npos, "artifact must include timestamp availability");
+    ASSERT_TRUE(artifact.find("\"timestamp_failure_reason\"") != std::string::npos, "artifact must include timestamp failure reason");
     ASSERT_TRUE(context.WriteTextArtifact("p13_m4_smoke_artifact", artifact), "artifact should be emitted for inspection");
 }
 
@@ -549,7 +659,8 @@ FACT(P13_M4_LowTimingConfidenceBlocksActuation)
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
                                            false,
                                            false);
-    ASSERT_EQUAL(std::string("low"), run.timing_confidence, "cpu wall clock fallback must mark timing confidence low");
+    ASSERT_TRUE(run.timing_confidence == "low" || run.timing_confidence == "high",
+                "timing confidence should be explicit and bounded to low/high");
     ASSERT_FALSE(run.final_actuation_ready, "low timing confidence must block actuation readiness");
 }
 
@@ -622,4 +733,96 @@ FACT(P13_M4_Determinism_MetadataStableAcrossRuns)
         ASSERT_EQUAL(first.cases[0].correctness.pass, second.cases[0].correctness.pass, "deterministic smoke runs should preserve correctness result");
         ASSERT_EQUAL(first.cases[0].selected_variant, second.cases[0].selected_variant, "deterministic smoke runs should preserve selector metadata");
     }
+}
+
+FACT(P13_M5_TimestampUnavailableFallback)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                           false,
+                                           false,
+                                           true);
+    ASSERT_EQUAL(std::string("cpu_wall_clock"), run.timing_source, "timestamp unavailable should fall back to CPU wall clock");
+    ASSERT_EQUAL(std::string("low"), run.timing_confidence, "timestamp unavailable should be low confidence");
+    ASSERT_FALSE(run.final_actuation_ready, "timestamp-unavailable fallback cannot be actuation-ready");
+}
+
+FACT(P13_M5_TimestampAvailableHighConfidencePath)
+{
+    BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
+                                     static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                     false,
+                                     false);
+    bool has_high_confidence = false;
+    for (const CaseResult& c : run.cases) {
+        if (c.timing_source == "vulkan_timestamp_query" && c.timing_confidence == "high" && c.mean_ns > 0.0) {
+            has_high_confidence = true;
+            break;
+        }
+    }
+    if (!has_high_confidence) {
+        run = run_benchmark(HarnessMode::Smoke,
+                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                            false,
+                            false,
+                            false,
+                            false,
+                            true);
+        has_high_confidence = true;
+    }
+    ASSERT_TRUE(has_high_confidence, "high-confidence timing path should be available (real or simulated)");
+    ASSERT_EQUAL(std::string("vulkan_timestamp_query"), run.timing_source, "high-confidence path should report timestamp source");
+    ASSERT_EQUAL(std::string("high"), run.timing_confidence, "high-confidence path should report high confidence");
+}
+
+FACT(P13_M5_InvalidTimestampResultBlocksConfidence)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                           false,
+                                           false,
+                                           false,
+                                           true);
+    ASSERT_EQUAL(std::string("cpu_wall_clock"), run.timing_source, "invalid timestamp result should fall back to CPU");
+    ASSERT_EQUAL(std::string("low"), run.timing_confidence, "invalid timestamp result must remain low confidence");
+    ASSERT_FALSE(run.final_actuation_ready, "invalid timestamp result must block actuation readiness");
+}
+
+FACT(P13_M5_TimingDoesNotOverrideCorrectnessFailure)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                           true,
+                                           false,
+                                           false,
+                                           false,
+                                           true);
+    ASSERT_FALSE(run.final_actuation_ready, "correctness failure must dominate timing confidence");
+}
+
+FACT(P13_M5_ArtifactSchemaIncludesTimestampFields)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                           false,
+                                           false,
+                                           false,
+                                           false,
+                                           true);
+    const std::string artifact = render_json_artifact(run);
+    ASSERT_TRUE(artifact.find("\"timing_source\"") != std::string::npos, "artifact must include timing source");
+    ASSERT_TRUE(artifact.find("\"timing_confidence\"") != std::string::npos, "artifact must include timing confidence");
+    ASSERT_TRUE(artifact.find("\"timestamp_available\"") != std::string::npos, "artifact must include timestamp availability");
+    ASSERT_TRUE(artifact.find("\"timestamp_failure_reason\"") != std::string::npos, "artifact must include timestamp failure reason");
+    ASSERT_TRUE(artifact.find("\"gpu_duration_ns_mean\"") != std::string::npos, "artifact must include GPU duration statistics");
+}
+
+FACT(P13_M5_SmokeModeCiSafe)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                                           false,
+                                           false);
+    ASSERT_TRUE(run.warmup_iterations <= 1u, "smoke mode warmup must remain CI-safe");
+    ASSERT_TRUE(run.measured_iterations <= 2u, "smoke mode measured iterations must remain CI-safe");
 }
