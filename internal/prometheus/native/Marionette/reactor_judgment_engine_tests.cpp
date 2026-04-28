@@ -701,3 +701,58 @@ FACT(PrometheusJudgmentEngine_P13M2_OccupancySelectorClampAndOverrideRules)
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED), decision.clamp_reason,
                  "rejected override should have explicit reason");
 }
+
+FACT(PrometheusJudgmentEngine_P13M9_ResourceLeaseDecisionReasonsAndLookaheadBound)
+{
+    prom_resource_lease_facts facts{};
+    facts.worker_id = 2u;
+    facts.slot_id = 1u;
+    facts.entry_id = 77u;
+    facts.selected_recipe_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4);
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.current_outstanding_depth = 1u;
+    facts.max_outstanding_depth = 3u;
+    facts.lookahead_requested = 1u;
+    facts.lookahead_limit = 3u;
+    facts.transfer_overlap_available = 1u;
+    facts.true_multi_queue_selected = 1u;
+
+    prom_resource_lease_decision decision{};
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "safe lease facts should grant");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_GRANTED), decision.lease_state, "safe lease should be granted");
+    ASSERT_EQUAL(1u, decision.lookahead_allowed, "lookahead should be allowed under cap");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_GRANTED), decision.deny_reason, "grant reason should be explicit");
+
+    facts.failed_slot_mask = (1u << facts.slot_id);
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "failed slot should deny lease");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_SLOT_FAILED), decision.deny_reason, "failed-slot deny reason should be explicit");
+
+    facts.failed_slot_mask = 0u;
+    facts.invalidated_slot_mask = (1u << facts.slot_id);
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "invalidated slot should deny lease");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED), decision.deny_reason,
+                 "invalidated-slot deny reason should be explicit");
+
+    facts.invalidated_slot_mask = 0u;
+    facts.unsafe_to_reuse = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "unsafe runtime should deny lease");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME), decision.deny_reason,
+                 "unsafe runtime deny reason should be explicit");
+
+    facts.unsafe_to_reuse = 0u;
+    facts.current_outstanding_depth = facts.max_outstanding_depth;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "outstanding depth at cap should deny lease");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT), decision.deny_reason,
+                 "outstanding limit deny reason should be explicit");
+    ASSERT_EQUAL(0u, decision.lookahead_allowed, "lookahead should be blocked at cap");
+
+    facts.current_outstanding_depth = 1u;
+    facts.yield_requested = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_YIELDED), decision.lease_state, "yield request should emit yielded state");
+}
