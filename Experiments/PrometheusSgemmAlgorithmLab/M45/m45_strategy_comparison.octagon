@@ -1,0 +1,11 @@
+[M45TableStrategyComparison {
+    Strategy: ["no-selection", "device-band", "per-device-profile", "runtime-autotune", "manual-override"]
+    Variant: ["baseline-scalar", "balanced-2x2-accum4", "balanced-2x2-accum4", "balanced-2x2-accum4", "balanced-2x2-accum4"]
+    ThroughputScore: [66, 100, 100, 100, 100]
+    OccupancyRisk: [28, 0, 0, 0, 0]
+    TuningCost: [0, 8, 35, 43, 10]
+    PortabilityRisk: [1, 2, 2, 2, 2]
+    Complexity: [3, 10, 15, 14, 11]
+    MaintenanceCost: [4, 10, 36, 20, 12]
+    ProductScore: [97, 156, 98, 114, 151]
+}]
