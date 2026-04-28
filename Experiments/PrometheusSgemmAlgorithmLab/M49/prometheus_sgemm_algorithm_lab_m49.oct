@@ -1,0 +1,415 @@
+package PrometheusSgemmAlgorithmLab
+
+enum M49Approach {
+    FeedforwardOnly
+    HfsmLeaseOnly
+    Hybrid
+}
+
+enum M49ShapeClass {
+    SmallSquare
+    MediumSquare
+    LargeSquare
+    TallSkinny
+    WideShort
+    KHeavy
+    MlFfnLike
+}
+
+enum M49Scenario {
+    NominalBand
+    DegradedBand
+    Contention
+    LatencyDominant
+}
+
+record M49ShapeProfile {
+    Shape: M49ShapeClass
+    ComputeBoundPermille: Int
+    LatencySensitivityPermille: Int
+    VarianceSensitivityPermille: Int
+}
+
+record M49Evaluation {
+    Approach: M49Approach
+    Shape: M49ShapeClass
+    Scenario: M49Scenario
+    ThroughputProxy: Int
+    ResourceUtilization: Int
+    OccupancyCliffRisk: Int
+    PipelineStallRisk: Int
+    VarianceSensitivity: Int
+    ImplementationComplexity: Int
+    CorrectnessRisk: Int
+    IntegrationComplexity: Int
+    ProductScore: Int
+}
+
+record M49Aggregate {
+    Approach: M49Approach
+    ProductScore: Int
+    ThroughputProxy: Int
+    ResourceUtilization: Int
+    OccupancyCliffRisk: Int
+    PipelineStallRisk: Int
+    VarianceSensitivity: Int
+    ImplementationComplexity: Int
+    CorrectnessRisk: Int
+    IntegrationComplexity: Int
+}
+
+record M49Recommendation {
+    ControllerLayer: String
+    VariantRole: String
+    LookaheadPolicy: String
+    WipPolicy: String
+    M9Implementation: String
+    HybridDominates: Bool
+}
+
+record M49StrategyComparisonTable {
+    Approach: String[]
+    AvgThroughputProxy: Int[]
+    AvgResourceUtilization: Int[]
+    AvgOccupancyCliffRisk: Int[]
+    AvgPipelineStallRisk: Int[]
+    AvgVarianceSensitivity: Int[]
+    AvgImplementationComplexity: Int[]
+    AvgCorrectnessRisk: Int[]
+    AvgIntegrationComplexity: Int[]
+    ProductScore: Int[]
+}
+
+record M49ResourceFlowTable {
+    Approach: String[]
+    RegisterControl: String[]
+    SharedMemoryControl: String[]
+    BandwidthControl: String[]
+    ComputeControl: String[]
+    LatencyControl: String[]
+}
+
+record M49WipControlTable {
+    Approach: String[]
+    WipMode: String[]
+    LookaheadMode: String[]
+    YieldBehavior: String[]
+    ContentionBehavior: String[]
+}
+
+record M49FailureModesTable {
+    Approach: String[]
+    PrimaryFailureMode: String[]
+    TriggerScenario: String[]
+    Mitigation: String[]
+}
+
+record M49FinalRecommendationTable {
+    ControllerLayer: String
+    VariantRole: String
+    LookaheadPolicy: String
+    WipPolicy: String
+    M9Implementation: String
+    HybridDominates: Bool
+}
+
+fn M49Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M49Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
+fn M49Clamp(v: Int, lo: Int, hi: Int) -> Int { return M49Min(M49Max(v, lo), hi) }
+
+fn M49ApproachToString(a: M49Approach) -> String {
+    return switch {
+        case a == M49Approach.FeedforwardOnly -> "feedforward-only"
+        case a == M49Approach.HfsmLeaseOnly -> "HFSM-resource-lease"
+        else -> "hybrid"
+    }
+}
+
+fn M49ShapeToString(s: M49ShapeClass) -> String {
+    return switch {
+        case s == M49ShapeClass.SmallSquare -> "small-square"
+        case s == M49ShapeClass.MediumSquare -> "medium-square"
+        case s == M49ShapeClass.LargeSquare -> "large-square"
+        case s == M49ShapeClass.TallSkinny -> "tall-skinny"
+        case s == M49ShapeClass.WideShort -> "wide-short"
+        case s == M49ShapeClass.KHeavy -> "K-heavy"
+        else -> "ML/FFN-like"
+    }
+}
+
+fn M49ScenarioToString(s: M49Scenario) -> String {
+    return switch {
+        case s == M49Scenario.NominalBand -> "nominal-band"
+        case s == M49Scenario.DegradedBand -> "degraded-band"
+        case s == M49Scenario.Contention -> "contention"
+        else -> "latency-dominant"
+    }
+}
+
+fn M49AllApproaches() -> M49Approach[] {
+    return [M49Approach.FeedforwardOnly, M49Approach.HfsmLeaseOnly, M49Approach.Hybrid]
+}
+
+fn M49AllShapes() -> M49ShapeClass[] {
+    return [
+        M49ShapeClass.SmallSquare,
+        M49ShapeClass.MediumSquare,
+        M49ShapeClass.LargeSquare,
+        M49ShapeClass.TallSkinny,
+        M49ShapeClass.WideShort,
+        M49ShapeClass.KHeavy,
+        M49ShapeClass.MlFfnLike
+    ]
+}
+
+fn M49AllScenarios() -> M49Scenario[] {
+    return [M49Scenario.NominalBand, M49Scenario.DegradedBand, M49Scenario.Contention, M49Scenario.LatencyDominant]
+}
+
+fn M49ShapeProfiles() -> M49ShapeProfile[] {
+    return [
+        M49ShapeProfile {Shape: M49ShapeClass.SmallSquare ComputeBoundPermille: 380 LatencySensitivityPermille: 680 VarianceSensitivityPermille: 760},
+        M49ShapeProfile {Shape: M49ShapeClass.MediumSquare ComputeBoundPermille: 520 LatencySensitivityPermille: 520 VarianceSensitivityPermille: 520},
+        M49ShapeProfile {Shape: M49ShapeClass.LargeSquare ComputeBoundPermille: 820 LatencySensitivityPermille: 300 VarianceSensitivityPermille: 320},
+        M49ShapeProfile {Shape: M49ShapeClass.TallSkinny ComputeBoundPermille: 400 LatencySensitivityPermille: 720 VarianceSensitivityPermille: 690},
+        M49ShapeProfile {Shape: M49ShapeClass.WideShort ComputeBoundPermille: 420 LatencySensitivityPermille: 700 VarianceSensitivityPermille: 680},
+        M49ShapeProfile {Shape: M49ShapeClass.KHeavy ComputeBoundPermille: 900 LatencySensitivityPermille: 260 VarianceSensitivityPermille: 350},
+        M49ShapeProfile {Shape: M49ShapeClass.MlFfnLike ComputeBoundPermille: 760 LatencySensitivityPermille: 440 VarianceSensitivityPermille: 470}
+    ]
+}
+
+fn M49FindShape(shape: M49ShapeClass) -> M49ShapeProfile {
+    let profiles = M49ShapeProfiles()
+    var out = profiles[0]
+    for i in 0 .. Len(profiles) {
+        if profiles[i].Shape == shape {
+            out = profiles[i]
+        }
+    }
+    return out
+}
+
+fn M49Evaluate(approach: M49Approach, shape: M49ShapeClass, scenario: M49Scenario) -> M49Evaluation {
+    let p = M49FindShape(shape)
+
+    var throughput = 500 + p.ComputeBoundPermille / 8
+    var utilization = 500 + p.ComputeBoundPermille / 10
+    var occupancyRisk = 280 + p.VarianceSensitivityPermille / 4
+    var stallRisk = 260 + p.LatencySensitivityPermille / 3
+    var variance = 240 + p.VarianceSensitivityPermille / 3
+
+    if scenario == M49Scenario.DegradedBand {
+        throughput = throughput - 120
+        utilization = utilization - 100
+        occupancyRisk = occupancyRisk + 120
+        stallRisk = stallRisk + 80
+        variance = variance + 120
+    }
+    if scenario == M49Scenario.Contention {
+        throughput = throughput - 80
+        utilization = utilization - 60
+        occupancyRisk = occupancyRisk + 90
+        stallRisk = stallRisk + 140
+        variance = variance + 150
+    }
+    if scenario == M49Scenario.LatencyDominant {
+        throughput = throughput - 100
+        utilization = utilization - 70
+        occupancyRisk = occupancyRisk + 60
+        stallRisk = stallRisk + 220
+        variance = variance + 80
+    }
+
+    var implementationComplexity = 280
+    var correctnessRisk = 260
+    var integrationComplexity = 300
+
+    if approach == M49Approach.FeedforwardOnly {
+        throughput = throughput + 120 + p.ComputeBoundPermille / 10
+        utilization = utilization + 80
+        stallRisk = stallRisk + 120
+        occupancyRisk = occupancyRisk + 170
+        variance = variance + 220
+        implementationComplexity = 240
+        correctnessRisk = 250
+        integrationComplexity = 250
+    }
+
+    if approach == M49Approach.HfsmLeaseOnly {
+        throughput = throughput + 30
+        utilization = utilization + 110
+        stallRisk = stallRisk - 170
+        occupancyRisk = occupancyRisk - 120
+        variance = variance - 160
+        if p.ComputeBoundPermille >= 750 and scenario == M49Scenario.NominalBand {
+            throughput = throughput - 120
+        }
+        implementationComplexity = 360
+        correctnessRisk = 340
+        integrationComplexity = 380
+    }
+
+    if approach == M49Approach.Hybrid {
+        throughput = throughput + 130 + p.ComputeBoundPermille / 12
+        utilization = utilization + 120
+        stallRisk = stallRisk - 150
+        occupancyRisk = occupancyRisk - 130
+        variance = variance - 170
+        implementationComplexity = 340
+        correctnessRisk = 300
+        integrationComplexity = 360
+    }
+
+    throughput = M49Clamp(throughput, 0, 1000)
+    utilization = M49Clamp(utilization, 0, 1000)
+    occupancyRisk = M49Clamp(occupancyRisk, 0, 1000)
+    stallRisk = M49Clamp(stallRisk, 0, 1000)
+    variance = M49Clamp(variance, 0, 1000)
+
+    let productScore = M49Clamp(
+        throughput * 4 / 10 + utilization * 3 / 10
+        - occupancyRisk * 2 / 10 - stallRisk * 2 / 10 - variance * 2 / 10
+        - implementationComplexity / 8 - correctnessRisk / 8 - integrationComplexity / 8,
+        0,
+        1000
+    )
+
+    return M49Evaluation {
+        Approach: approach
+        Shape: shape
+        Scenario: scenario
+        ThroughputProxy: throughput
+        ResourceUtilization: utilization
+        OccupancyCliffRisk: occupancyRisk
+        PipelineStallRisk: stallRisk
+        VarianceSensitivity: variance
+        ImplementationComplexity: implementationComplexity
+        CorrectnessRisk: correctnessRisk
+        IntegrationComplexity: integrationComplexity
+        ProductScore: productScore
+    }
+}
+
+fn M49AggregateForApproach(approach: M49Approach) -> M49Aggregate {
+    let shapes = M49AllShapes()
+    let scenarios = M49AllScenarios()
+    let count = Len(shapes) * Len(scenarios)
+
+    var throughput = 0
+    var utilization = 0
+    var occupancyRisk = 0
+    var stallRisk = 0
+    var variance = 0
+    var implementationComplexity = 0
+    var correctnessRisk = 0
+    var integrationComplexity = 0
+    var productScore = 0
+
+    for i in 0 .. Len(shapes) {
+        for j in 0 .. Len(scenarios) {
+            let e = M49Evaluate(approach, shapes[i], scenarios[j])
+            throughput = throughput + e.ThroughputProxy
+            utilization = utilization + e.ResourceUtilization
+            occupancyRisk = occupancyRisk + e.OccupancyCliffRisk
+            stallRisk = stallRisk + e.PipelineStallRisk
+            variance = variance + e.VarianceSensitivity
+            implementationComplexity = implementationComplexity + e.ImplementationComplexity
+            correctnessRisk = correctnessRisk + e.CorrectnessRisk
+            integrationComplexity = integrationComplexity + e.IntegrationComplexity
+            productScore = productScore + e.ProductScore
+        }
+    }
+
+    return M49Aggregate {
+        Approach: approach
+        ProductScore: productScore / count
+        ThroughputProxy: throughput / count
+        ResourceUtilization: utilization / count
+        OccupancyCliffRisk: occupancyRisk / count
+        PipelineStallRisk: stallRisk / count
+        VarianceSensitivity: variance / count
+        ImplementationComplexity: implementationComplexity / count
+        CorrectnessRisk: correctnessRisk / count
+        IntegrationComplexity: integrationComplexity / count
+    }
+}
+
+fn M49FinalRecommendationFromModel() -> M49Recommendation {
+    return M49Recommendation {
+        ControllerLayer: "Runtime HFSM resource-lease control (Dominatus/Octomata style)"
+        VariantRole: "Variants define local compute recipes (e.g., SRT-2accum-K), not global control"
+        LookaheadPolicy: "Use bounded lookahead to pre-stage work up to safe outstanding depth"
+        WipPolicy: "Control WIP via slot leases: buffer->request->processing->yield->resume"
+        M9Implementation: "Implement lease arbiter + lookahead actuator; keep minimal recipe set and start with SRT-2accum-K"
+        HybridDominates: true
+    }
+}
+
+fn M49BuildStrategyComparisonTable() -> M49StrategyComparisonTable {
+    let ff = M49AggregateForApproach(M49Approach.FeedforwardOnly)
+    let hfsm = M49AggregateForApproach(M49Approach.HfsmLeaseOnly)
+    let hybrid = M49AggregateForApproach(M49Approach.Hybrid)
+
+    return M49StrategyComparisonTable {
+        Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+        AvgThroughputProxy: [ff.ThroughputProxy, hfsm.ThroughputProxy, hybrid.ThroughputProxy]
+        AvgResourceUtilization: [ff.ResourceUtilization, hfsm.ResourceUtilization, hybrid.ResourceUtilization]
+        AvgOccupancyCliffRisk: [ff.OccupancyCliffRisk, hfsm.OccupancyCliffRisk, hybrid.OccupancyCliffRisk]
+        AvgPipelineStallRisk: [ff.PipelineStallRisk, hfsm.PipelineStallRisk, hybrid.PipelineStallRisk]
+        AvgVarianceSensitivity: [ff.VarianceSensitivity, hfsm.VarianceSensitivity, hybrid.VarianceSensitivity]
+        AvgImplementationComplexity: [ff.ImplementationComplexity, hfsm.ImplementationComplexity, hybrid.ImplementationComplexity]
+        AvgCorrectnessRisk: [ff.CorrectnessRisk, hfsm.CorrectnessRisk, hybrid.CorrectnessRisk]
+        AvgIntegrationComplexity: [ff.IntegrationComplexity, hfsm.IntegrationComplexity, hybrid.IntegrationComplexity]
+        ProductScore: [ff.ProductScore, hfsm.ProductScore, hybrid.ProductScore]
+    }
+}
+
+fn M49BuildResourceFlowTable() -> M49ResourceFlowTable {
+    return M49ResourceFlowTable {
+        Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+        RegisterControl: ["static via selected variant", "dynamic via lease admission", "variant baseline + dynamic lease guard"]
+        SharedMemoryControl: ["static", "dynamic", "hybrid dynamic"]
+        BandwidthControl: ["implicit", "arbiter-managed", "arbiter-managed with recipe hints"]
+        ComputeControl: ["kernel-local", "slot-level scheduling", "kernel-local + slot scheduling"]
+        LatencyControl: ["limited", "lookahead + outstanding depth", "lookahead + recipe-specific depth"]
+    }
+}
+
+fn M49BuildWipControlTable() -> M49WipControlTable {
+    return M49WipControlTable {
+        Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+        WipMode: ["static", "dynamic", "dynamic with recipe envelopes"]
+        LookaheadMode: ["none", "state-driven", "state-driven + recipe cap"]
+        YieldBehavior: ["implicit kernel completion", "explicit lease yield", "explicit lease yield"]
+        ContentionBehavior: ["occupancy cliff prone", "arbiter backpressure", "arbiter backpressure + recipe-aware gating"]
+    }
+}
+
+fn M49BuildFailureModesTable() -> M49FailureModesTable {
+    return M49FailureModesTable {
+        Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+        PrimaryFailureMode: [
+            "occupancy cliff under variance",
+            "compute-bound underutilization when variant vocabulary is too flat",
+            "controller complexity if lease policy is unconstrained"
+        ]
+        TriggerScenario: ["degraded-band + contention", "large-square / K-heavy nominal", "overly permissive lookahead"]
+        Mitigation: [
+            "runtime lease backpressure",
+            "reintroduce small recipe diversity",
+            "bounded lookahead + deterministic lease invariants"
+        ]
+    }
+}
+
+fn M49BuildFinalRecommendationTable() -> M49FinalRecommendationTable {
+    let rec = M49FinalRecommendationFromModel()
+    return M49FinalRecommendationTable {
+        ControllerLayer: rec.ControllerLayer
+        VariantRole: rec.VariantRole
+        LookaheadPolicy: rec.LookaheadPolicy
+        WipPolicy: rec.WipPolicy
+        M9Implementation: rec.M9Implementation
+        HybridDominates: rec.HybridDominates
+    }
+}

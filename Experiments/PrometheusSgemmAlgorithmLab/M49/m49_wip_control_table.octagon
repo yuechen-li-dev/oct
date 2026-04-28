@@ -1,0 +1,7 @@
+[M49WipControlTable {
+    Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+    WipMode: ["static", "dynamic", "dynamic with recipe envelopes"]
+    LookaheadMode: ["none", "state-driven", "state-driven + recipe cap"]
+    YieldBehavior: ["implicit kernel completion", "explicit lease yield", "explicit lease yield"]
+    ContentionBehavior: ["occupancy cliff prone", "arbiter backpressure", "arbiter backpressure + recipe-aware gating"]
+}]

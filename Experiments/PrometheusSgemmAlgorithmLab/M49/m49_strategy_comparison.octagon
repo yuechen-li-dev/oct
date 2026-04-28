@@ -1,0 +1,12 @@
+[M49StrategyComparisonTable {
+    Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+    AvgThroughputProxy: [679, 516, 679]
+    AvgResourceUtilization: [582, 612, 622]
+    AvgOccupancyCliffRisk: [652, 362, 352]
+    AvgPipelineStallRisk: [662, 372, 392]
+    AvgVarianceSensitivity: [727, 347, 337]
+    AvgImplementationComplexity: [240, 360, 340]
+    AvgCorrectnessRisk: [250, 340, 300]
+    AvgIntegrationComplexity: [250, 380, 360]
+    ProductScore: [12, 51, 118]
+}]
