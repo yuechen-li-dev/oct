@@ -1026,6 +1026,21 @@ func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
 			want: "Method.Euler\n",
 		},
 		{
+			name: "record field typed as enum",
+			source: "enum PolicyMode {\n" +
+				"    Safe\n" +
+				"    Fast\n" +
+				"}\n" +
+				"record Scenario {\n" +
+				"    Mode: PolicyMode\n" +
+				"}\n" +
+				"fn Main() -> PolicyMode {\n" +
+				"    let scenario = Scenario { Mode: PolicyMode.Safe }\n" +
+				"    return scenario.Mode\n" +
+				"}\n",
+			want: "PolicyMode.Safe\n",
+		},
+		{
 			name: "call expression statements remain allowed",
 			source: "fn Main() -> Int {\n" +
 				"    Print(1)\n" +
@@ -1117,6 +1132,17 @@ func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
 			source: "enum Method { Euler Euler }\n" +
 				"fn Main() -> Int { return 0 }\n",
 			wantMessage: "enum 'Method' variant 'Euler' specified more than once",
+		},
+		{
+			name: "record enum field type mismatch",
+			source: "enum PolicyMode { Safe Fast }\n" +
+				"enum OtherMode { Turbo }\n" +
+				"record Scenario { Mode: PolicyMode }\n" +
+				"fn Main() -> PolicyMode {\n" +
+				"    let scenario = Scenario { Mode: OtherMode.Turbo }\n" +
+				"    return scenario.Mode\n" +
+				"}\n",
+			wantMessage: "record 'Scenario' field 'Mode' expects PolicyMode, got OtherMode",
 		},
 		{
 			name: "expr stmt cleanup",
