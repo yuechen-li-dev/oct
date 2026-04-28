@@ -1,0 +1,7 @@
+[M47TableSafetyMargins {
+    Variant: ["memory-conservative", "memory-conservative", "memory-conservative", "memory-conservative", "memory-conservative", "small-register-tile", "small-register-tile", "small-register-tile", "small-register-tile", "small-register-tile", "balanced-2x2-accum4", "balanced-2x2-accum4", "balanced-2x2-accum4", "balanced-2x2-accum4", "balanced-2x2-accum4", "aggressive-4x4-accum8", "aggressive-4x4-accum8", "aggressive-4x4-accum8", "aggressive-4x4-accum8", "aggressive-4x4-accum8"]
+    Scenario: ["balanced-nominal", "balanced-low-margin", "compute-rich-reg-reduced", "memory-rich-shared-reduced", "register-constrained-low-end", "balanced-nominal", "balanced-low-margin", "compute-rich-reg-reduced", "memory-rich-shared-reduced", "register-constrained-low-end", "balanced-nominal", "balanced-low-margin", "compute-rich-reg-reduced", "memory-rich-shared-reduced", "register-constrained-low-end", "balanced-nominal", "balanced-low-margin", "compute-rich-reg-reduced", "memory-rich-shared-reduced", "register-constrained-low-end"]
+    Safe: [true, true, true, true, true, true, true, true, true, true, true, true, false, true, false, false, false, false, false, false]
+    CliffRisk: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 100, 100, 100]
+    VariancePenalty: [10, 48, 46, 45, 68, 15, 53, 51, 50, 73, 20, 58, 56, 55, 78, 25, 63, 61, 60, 83]
+}]

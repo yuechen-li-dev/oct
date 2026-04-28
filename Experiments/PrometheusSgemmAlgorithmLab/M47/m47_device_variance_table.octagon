@@ -1,0 +1,10 @@
+[M47TableDeviceVariance {
+    Scenario: ["balanced-nominal", "balanced-low-margin", "compute-rich-reg-reduced", "memory-rich-shared-reduced", "register-constrained-low-end"]
+    Band: ["balanced", "balanced", "compute-rich", "memory-rich", "register-constrained"]
+    RegisterBudgetPermille: [1000, 820, 790, 900, 760]
+    SharedBudgetPermille: [1000, 850, 900, 760, 850]
+    BandwidthPermille: [1000, 900, 920, 1020, 830]
+    ComputePermille: [1000, 900, 1030, 920, 780]
+    OccupancyHeadroomPermille: [1000, 760, 740, 780, 700]
+    DriverOverheadPermille: [100, 130, 120, 120, 140]
+}]

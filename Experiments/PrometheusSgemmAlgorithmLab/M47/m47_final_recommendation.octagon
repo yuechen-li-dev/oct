@@ -1,0 +1,11 @@
+[M47TableFinalRecommendation {
+    Strategy: "small-register-first"
+    FirstImplementationVariants: "small-register-tile"
+    ShouldImplementPair: false
+    PreserveManualOverrideSeam: true
+    RecommendationComputed: true
+    P13M7Direction: "Implement recommended recipe as benchmark-only with safety clamps; keep selector diagnostics path and fallback-to-baseline unchanged."
+    RequiredSafetyMargins: "Apply >=120permille guard bands on registers/shared/occupancy; clamp balanced->small-register and aggressive->balanced/memory-conservative under degraded budgets."
+    TooRiskyNow: "aggressive-4x4-accum8 first-pass actuation and exact-per-gpu tuning dependent strategies"
+    DeferredScope: "real-hardware benchmark commissioning, per-GPU Pareto fitting, runtime autotune, and dispatch actuation"
+}]
