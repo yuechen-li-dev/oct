@@ -1,0 +1,9 @@
+[M46TableFinalRecommendation {
+    ActuationReady: false
+    CorrectnessGate: true
+    TimingGate: true
+    StabilityGate: true
+    DiagnosticsGate: true
+    TimingConfidenceGate: true
+    Reason: "fallback_baseline_not_actuated"
+}]

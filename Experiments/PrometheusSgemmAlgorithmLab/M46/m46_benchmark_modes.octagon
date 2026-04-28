@@ -1,0 +1,8 @@
+[M46TableBenchmarkModes {
+    Mode: ["smoke", "characterization", "comparison"]
+    WarmupIterations: [1, 5, 4]
+    MeasuredIterations: [3, 15, 12]
+    RequireTimestampQuery: [false, true, true]
+    AllowFallbackToBaseline: [true, false, true]
+    Cifriendly: [true, false, false]
+}]
