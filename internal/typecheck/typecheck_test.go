@@ -100,6 +100,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "enum Phase { Solid Liquid Gas } fn Allowed() -> Phase[] { return [Phase.Solid, Phase.Liquid] } fn Main() -> Bool { let phases = Allowed() return phases[1] == Phase.Liquid }",
 		},
 		{
+			name: "record field typed as enum in single-file check path",
+			src:  "enum PolicyMode { Safe Fast } record Scenario { Mode: PolicyMode } fn Main() -> PolicyMode { let scenario = Scenario { Mode: PolicyMode.Safe } return scenario.Mode }",
+		},
+		{
 			name: "whole value record reassignment",
 			src:  "record Point { X: Int Y: Int } fn Main() -> Point { var p = Point { X: 1 Y: 2 } p = Point { X: 3 Y: 4 } return p }",
 		},
@@ -168,6 +172,7 @@ func TestCheckAllowsMixedNumericExpressions(t *testing.T) {
 func TestCheckRejectsUnknownTypes(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Number { return 1 }", "function Main: unknown type: Number")
 	assertTypeErrorContains(t, "fn Main(x: Number) -> Int { return 1 }", "function Main: parameter x: unknown type: Number")
+	assertTypeErrorContains(t, "enum PolicyMode { Safe Fast } enum OtherMode { Turbo } record Scenario { Mode: PolicyMode } fn Main() -> PolicyMode { let scenario = Scenario { Mode: OtherMode.Turbo } return scenario.Mode }", "function Main: let scenario: record 'Scenario' field 'Mode' expects PolicyMode, got OtherMode")
 }
 
 func TestCheckRejectsMissingReturnStatement(t *testing.T) {

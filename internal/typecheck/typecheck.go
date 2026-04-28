@@ -301,6 +301,9 @@ func (c checker) checkFile(file ast.File) error {
 	if err := c.registerPackageDeclarations(file); err != nil {
 		return err
 	}
+	if err := c.rebindRecordTypes(file); err != nil {
+		return err
+	}
 	if err := c.registerFunctionSignatures(file); err != nil {
 		return err
 	}
@@ -310,6 +313,18 @@ func (c checker) checkFile(file ast.File) error {
 func (c checker) registerPackageDeclarations(file ast.File) error {
 	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
 		c.typeNames[builtinTypeName] = struct{}{}
+	}
+	for _, record := range file.Records {
+		if _, exists := c.typeNames[record.Name]; exists {
+			return fmt.Errorf("duplicate type: %s", record.Name)
+		}
+		c.typeNames[record.Name] = struct{}{}
+	}
+	for _, enumDecl := range file.Enums {
+		if _, exists := c.typeNames[enumDecl.Name]; exists {
+			return fmt.Errorf("duplicate type: %s", enumDecl.Name)
+		}
+		c.typeNames[enumDecl.Name] = struct{}{}
 	}
 
 	for _, record := range file.Records {
@@ -379,11 +394,6 @@ func (c checker) checkPackageFunctions(file ast.File) error {
 }
 
 func (c checker) registerRecord(record ast.RecordDecl) error {
-	if _, exists := c.typeNames[record.Name]; exists {
-		return fmt.Errorf("duplicate type: %s", record.Name)
-	}
-	c.typeNames[record.Name] = struct{}{}
-
 	fields := make(map[string]Type, len(record.Fields))
 	fieldOrder := make([]string, 0, len(record.Fields))
 	for _, field := range record.Fields {
@@ -402,13 +412,9 @@ func (c checker) registerRecord(record ast.RecordDecl) error {
 }
 
 func (c checker) registerEnum(enumDecl ast.EnumDecl) error {
-	if _, exists := c.typeNames[enumDecl.Name]; exists {
-		return fmt.Errorf("duplicate type: %s", enumDecl.Name)
-	}
 	if len(enumDecl.Variants) == 0 {
 		return fmt.Errorf("enum '%s' must declare at least one variant", enumDecl.Name)
 	}
-	c.typeNames[enumDecl.Name] = struct{}{}
 
 	variants := make(map[string]enumVariantInfo, len(enumDecl.Variants))
 	for _, variant := range enumDecl.Variants {
@@ -4749,7 +4755,9 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 	if err != nil {
 		if _, isRecord := c.records[typeRef.Name]; !isRecord {
 			if _, isEnum := c.enums[typeRef.Name]; !isEnum {
-				return Type{}, err
+				if _, isDeclaredType := c.typeNames[typeRef.Name]; !isDeclaredType {
+					return Type{}, err
+				}
 			}
 		}
 		if typeRef.HasUnit {
