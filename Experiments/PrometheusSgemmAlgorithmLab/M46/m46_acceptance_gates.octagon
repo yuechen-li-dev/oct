@@ -1,0 +1,5 @@
+[M46TableAcceptanceGates {
+    Gate: ["correctness", "timing", "stability", "diagnostics", "timing_confidence", "actuation_readiness"]
+    Pass: [true, true, true, true, true, false]
+    Evidence: ["CPU oracle absolute/relative tolerance and finite checks", "speedup vs baseline threshold", "coefficient-of-variation threshold", "band/shape/variant/clamp diagnostics alignment", "timestamp-query availability and timing source", "fallback_baseline_not_actuated"]
+}]

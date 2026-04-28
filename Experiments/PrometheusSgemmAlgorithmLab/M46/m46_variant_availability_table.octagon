@@ -1,0 +1,4 @@
+[M46TableVariantAvailability {
+    Variant: ["baseline-scalar", "memory-conservative", "small-register-tile", "balanced-2x2-accum4", "aggressive-4x4-accum8"]
+    Implemented: [true, false, false, false, false]
+}]

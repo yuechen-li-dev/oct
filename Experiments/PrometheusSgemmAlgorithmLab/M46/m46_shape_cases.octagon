@@ -1,0 +1,8 @@
+[M46TableShapeCases {
+    ShapeClass: ["small-square", "medium-square", "large-square", "tall-skinny", "wide-short", "k-heavy", "ml-ffn-like"]
+    CaseName: ["small-square-128", "medium-square-512", "large-square-2048", "tall-skinny-2048x256x512", "wide-short-256x2048x512", "k-heavy-512x512x4096", "ml-ffn-4096x11008x4096"]
+    Rows: [128, 512, 2048, 2048, 256, 512, 4096]
+    Cols: [128, 512, 2048, 256, 2048, 512, 11008]
+    Depth: [128, 512, 2048, 512, 512, 4096, 4096]
+    SmokeEligible: [true, true, false, true, true, false, false]
+}]

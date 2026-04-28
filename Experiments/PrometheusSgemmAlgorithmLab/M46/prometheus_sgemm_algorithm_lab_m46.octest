@@ -1,0 +1,183 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M46DefaultDevice(timestampAvailable: Bool) -> M46DeviceInfo {
+    return M46DeviceInfo {Name: "m46-reference-gpu" VendorId: 4318 DeviceId: 101 DriverVersion: "lab" OccupancyBand: "compute-rich" RegisterFileClass: 5 SharedMemoryClass: 4 MemoryBandwidthClass: 4 Fp32ThroughputClass: 5 MaxWorkgroupClass: 4 QueueCapabilityClass: 4 TimestampQueryAvailable: timestampAvailable}
+}
+
+fn M46BaseConfig(modeName: String) -> M46RunConfig {
+    let mode = M46ModeByName(modeName)
+    return M46RunConfig {ModeName: mode.Name WarmupIterations: mode.WarmupIterations MeasuredIterations: mode.MeasuredIterations RequireTimestampQuery: mode.RequireTimestampQuery AllowFallbackToBaseline: mode.AllowFallbackToBaseline ImprovementThresholdPermille: 1070.0 MaxStabilityCvPermille: 120 AbsTolerance: 0.0005 RelTolerance: 0.001}
+}
+
+fn M46GoodDiagnostics(device: M46DeviceInfo, shape: M46ShapeCase, variant: String) -> M46Diagnostics {
+    return M46Diagnostics {ReportedBand: device.OccupancyBand ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: variant ClampReason: "none" FallbackReason: "none"}
+}
+
+[Fact]
+fn M46SmokeModeIsSmallAndCISafe() -> Void {
+    let smoke = M46ModeByName("smoke")
+    let shapes = M46ShapeCasesForMode(smoke)
+    Assert.True(smoke.Cifriendly, "smoke mode must be CI-friendly")
+    Assert.True(Len(shapes) <= 4, "smoke mode should stay compact")
+    Assert.True(smoke.MeasuredIterations <= 3, "smoke mode should keep repetition count small")
+}
+
+[Fact]
+fn M46CharacterizationModeIncludesAllM45ShapeClasses() -> Void {
+    let cases = M46ShapeCasesForMode(M46ModeByName("characterization"))
+    var foundSmall = false
+    var foundMedium = false
+    var foundLarge = false
+    var foundTall = false
+    var foundWide = false
+    var foundKheavy = false
+    var foundFfn = false
+    for i in 0 .. Len(cases) {
+        if cases[i].ShapeClass == "small-square" { foundSmall = true }
+        if cases[i].ShapeClass == "medium-square" { foundMedium = true }
+        if cases[i].ShapeClass == "large-square" { foundLarge = true }
+        if cases[i].ShapeClass == "tall-skinny" { foundTall = true }
+        if cases[i].ShapeClass == "wide-short" { foundWide = true }
+        if cases[i].ShapeClass == "k-heavy" { foundKheavy = true }
+        if cases[i].ShapeClass == "ml-ffn-like" { foundFfn = true }
+    }
+    Assert.True(foundSmall and foundMedium and foundLarge and foundTall and foundWide and foundKheavy and foundFfn, "characterization mode must include all required M45 classes")
+}
+
+[Fact]
+fn M46UnavailableVariantCannotPassAsSuccessfulBenchmark() -> Void {
+    let config = M46BaseConfig("characterization")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[2]
+    let selected = "aggressive-4x4-accum8"
+    let measurement = M46BuildCaseMeasurement(config, device, shape, selected, "", M46VariantAvailabilityTable(), 1.0, 1.4, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, selected))
+    Assert.Equal(measurement.TestedVariant, "unavailable", "unimplemented variant in strict characterization mode should be skipped")
+    Assert.True(measurement.Correct == false, "unavailable variant cannot be scored as correctness pass")
+}
+
+[Fact]
+fn M46CorrectnessFailureBlocksActuation() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 0.8, 1.2, 0.1, 0.2, 17, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    Assert.True(rec.ActuationReady == false, "correctness failure must block actuation")
+    Assert.Equal(rec.Reason, "correctness_gate_failed", "correctness gate should be explicit")
+}
+
+[Fact]
+fn M46LowTimingConfidenceBlocksActuation() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(false)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 0.7, 1.3, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    Assert.True(measurement.TimingConfidence == "low", "timestamp-query absence should mark low confidence")
+    Assert.True(rec.ActuationReady == false, "low timing confidence should block actuation")
+}
+
+[Fact]
+fn M46VariantMustBeatBaselineThresholdToBeActuated() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.2, 1.0, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    Assert.True(measurement.SpeedupVsBaselinePermille < config.ImprovementThresholdPermille, "case should miss speedup threshold")
+    Assert.True(rec.ActuationReady == false, "slower variant cannot be actuation-ready")
+}
+
+[Fact]
+fn M46DiagnosticsMismatchBlocksActuation() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let badDiag = M46Diagnostics {ReportedBand: "balanced" ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: "baseline-scalar" ClampReason: "none" FallbackReason: "none"}
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 0.6, 1.0, 0.0, 0.0, -1, false, badDiag)
+    let rec = M46EvaluateCase(config, measurement)
+    Assert.True(measurement.DiagnosticsMatch == false, "mismatched diagnostics should be detected")
+    Assert.True(rec.ActuationReady == false, "diagnostics mismatch should block actuation")
+}
+
+[Fact]
+fn M46ArtifactSchemaContainsRequiredFields() -> Void {
+    let table = M46ArtifactSchemaFieldTable()
+    Assert.Equal(table.RequiredField[0], "schema", "schema field must be required")
+    Assert.Equal(table.RequiredField[1], "cases", "cases field must be required")
+    Assert.True(Len(table.RequiredField) >= 8, "schema table should enumerate required contract fields")
+}
+
+
+[Fact]
+fn M46ManualOverrideVariantIsRepresented() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "memory-conservative", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "memory-conservative"))
+    Assert.Equal(measurement.ManualOverrideRequestedVariant, "memory-conservative", "override request should be captured in metadata")
+    Assert.Equal(measurement.SelectedVariant, "memory-conservative", "override should become selected variant for evaluation")
+}
+
+[Fact]
+fn M46RecommendationIsComputed() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    Assert.True(rec.Reason != "", "recommendation reason should be derived by logic")
+    Assert.True(rec.ActuationReady == false, "baseline fallback should not be actuation-ready")
+}
+
+[Fact]
+fn M46Determinism() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let diagnostics = M46GoodDiagnostics(device, shape, "baseline-scalar")
+    let a = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, diagnostics)
+    let b = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, diagnostics)
+    Assert.Equal(a.SpeedupVsBaselinePermille, b.SpeedupVsBaselinePermille, "same inputs should keep speedup deterministic")
+    Assert.Equal(a.Gflops, b.Gflops, "same inputs should keep gflops deterministic")
+}
+
+[Artifact]
+fn EmitM46BenchmarkModes() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_benchmark_modes.octagon", [M46BenchmarkModesTable()])
+}
+
+[Artifact]
+fn EmitM46ShapeCases() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_shape_cases.octagon", [M46ShapeCasesTable()])
+}
+
+[Artifact]
+fn EmitM46ArtifactSchema() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_artifact_schema.octagon", [M46ArtifactSchemaFieldTable()])
+}
+
+[Artifact]
+fn EmitM46VariantAvailability() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_variant_availability_table.octagon", [M46VariantAvailabilityColumnar()])
+}
+
+[Artifact]
+fn EmitM46AcceptanceGates() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_acceptance_gates.octagon", [M46AcceptanceGateTable(rec)])
+}
+
+[Artifact]
+fn EmitM46FinalRecommendation() -> Void {
+    let config = M46BaseConfig("comparison")
+    let device = M46DefaultDevice(true)
+    let shape = M46ShapeCases()[0]
+    let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 1.0, 1.2, 0.0, 0.0, -1, false, M46GoodDiagnostics(device, shape, "baseline-scalar"))
+    let rec = M46EvaluateCase(config, measurement)
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M46/m46_final_recommendation.octagon", [M46FinalRecommendationTable(rec)])
+}

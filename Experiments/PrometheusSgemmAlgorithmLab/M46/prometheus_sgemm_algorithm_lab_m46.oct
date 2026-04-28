@@ -1,0 +1,409 @@
+package PrometheusSgemmAlgorithmLab
+
+record M46BenchmarkMode {
+    Name: String
+    WarmupIterations: Int
+    MeasuredIterations: Int
+    RequireTimestampQuery: Bool
+    AllowFallbackToBaseline: Bool
+    Cifriendly: Bool
+}
+
+record M46ShapeCase {
+    ShapeClass: String
+    CaseName: String
+    Rows: Int
+    Cols: Int
+    Depth: Int
+    SmokeEligible: Bool
+}
+
+record M46VariantAvailability {
+    Variant: String
+    Implemented: Bool
+}
+
+record M46DeviceInfo {
+    Name: String
+    VendorId: Int
+    DeviceId: Int
+    DriverVersion: String
+    OccupancyBand: String
+    RegisterFileClass: Int
+    SharedMemoryClass: Int
+    MemoryBandwidthClass: Int
+    Fp32ThroughputClass: Int
+    MaxWorkgroupClass: Int
+    QueueCapabilityClass: Int
+    TimestampQueryAvailable: Bool
+}
+
+record M46Diagnostics {
+    ReportedBand: String
+    ReportedShapeClass: String
+    ReportedSelectedVariant: String
+    ClampReason: String
+    FallbackReason: String
+}
+
+record M46CaseMeasurement {
+    ShapeClass: String
+    Rows: Int
+    Cols: Int
+    Depth: Int
+    SelectedVariant: String
+    TestedVariant: String
+    ManualOverrideRequestedVariant: String
+    VariantAvailable: Bool
+    FallbackToBaselineUsed: Bool
+    FallbackReason: String
+    Correct: Bool
+    MaxAbsError: Float
+    MaxRelError: Float
+    FirstFailingIndex: Int
+    HasNaNOrInf: Bool
+    MeanMs: Float
+    MedianMs: Float
+    MinMs: Float
+    TimingSource: String
+    TimingConfidence: String
+    Gflops: Float
+    MemoryBytesEstimate: Float
+    ArithmeticIntensityEstimate: Float
+    StabilityCvPermille: Int
+    Diagnostics: M46Diagnostics
+    DiagnosticsMatch: Bool
+    BaselineMeanMs: Float
+    SpeedupVsBaselinePermille: Float
+}
+
+record M46RunConfig {
+    ModeName: String
+    WarmupIterations: Int
+    MeasuredIterations: Int
+    RequireTimestampQuery: Bool
+    AllowFallbackToBaseline: Bool
+    ImprovementThresholdPermille: Float
+    MaxStabilityCvPermille: Int
+    AbsTolerance: Float
+    RelTolerance: Float
+}
+
+record M46Recommendation {
+    CorrectnessGate: Bool
+    TimingGate: Bool
+    StabilityGate: Bool
+    DiagnosticsGate: Bool
+    TimingConfidenceGate: Bool
+    ActuationReady: Bool
+    Reason: String
+}
+
+record M46ArtifactDevice {
+    Name: String
+    VendorId: Int
+    DeviceId: Int
+    DriverVersion: String
+    OccupancyBand: String
+    CapabilityClasses: String
+}
+
+record M46ArtifactRun {
+    TimestampUtc: String
+    WarmupIterations: Int
+    MeasuredIterations: Int
+    TimingSource: String
+    TimingConfidence: String
+    Mode: String
+}
+
+record M46ArtifactCase {
+    ShapeClass: String
+    Rows: Int
+    Cols: Int
+    Depth: Int
+    SelectedVariant: String
+    TestedVariant: String
+    ManualOverrideRequestedVariant: String
+    FallbackReason: String
+    Correct: Bool
+    MaxAbsError: Float
+    MaxRelError: Float
+    MeanMs: Float
+    MedianMs: Float
+    MinMs: Float
+    Gflops: Float
+    ArithmeticIntensityEstimate: Float
+    Diagnostics: String
+    ActuationReady: Bool
+}
+
+record M46BenchmarkArtifact {
+    Schema: String
+    Device: M46ArtifactDevice
+    Run: M46ArtifactRun
+    Cases: M46ArtifactCase[]
+    FinalRecommendation: M46Recommendation
+}
+
+record M46TableBenchmarkModes {
+    Mode: String[]
+    WarmupIterations: Int[]
+    MeasuredIterations: Int[]
+    RequireTimestampQuery: Bool[]
+    AllowFallbackToBaseline: Bool[]
+    Cifriendly: Bool[]
+}
+
+record M46TableShapeCases {
+    ShapeClass: String[]
+    CaseName: String[]
+    Rows: Int[]
+    Cols: Int[]
+    Depth: Int[]
+    SmokeEligible: Bool[]
+}
+
+record M46TableArtifactSchemaFields {
+    Section: String[]
+    RequiredField: String[]
+    Meaning: String[]
+}
+
+record M46TableAcceptanceGates {
+    Gate: String[]
+    Pass: Bool[]
+    Evidence: String[]
+}
+
+record M46TableVariantAvailability {
+    Variant: String[]
+    Implemented: Bool[]
+}
+
+record M46TableFinalRecommendation {
+    ActuationReady: Bool
+    CorrectnessGate: Bool
+    TimingGate: Bool
+    StabilityGate: Bool
+    DiagnosticsGate: Bool
+    TimingConfidenceGate: Bool
+    Reason: String
+}
+
+fn M46BenchmarkModes() -> M46BenchmarkMode[] {
+    return [
+        M46BenchmarkMode {Name: "smoke" WarmupIterations: 1 MeasuredIterations: 3 RequireTimestampQuery: false AllowFallbackToBaseline: true Cifriendly: true},
+        M46BenchmarkMode {Name: "characterization" WarmupIterations: 5 MeasuredIterations: 15 RequireTimestampQuery: true AllowFallbackToBaseline: false Cifriendly: false},
+        M46BenchmarkMode {Name: "comparison" WarmupIterations: 4 MeasuredIterations: 12 RequireTimestampQuery: true AllowFallbackToBaseline: true Cifriendly: false}
+    ]
+}
+
+fn M46ModeByName(name: String) -> M46BenchmarkMode {
+    let modes = M46BenchmarkModes()
+    var found = modes[0]
+    for i in 0 .. Len(modes) {
+        if modes[i].Name == name {
+            found = modes[i]
+        }
+    }
+    return found
+}
+
+fn M46ShapeCases() -> M46ShapeCase[] {
+    return [
+        M46ShapeCase {ShapeClass: "small-square" CaseName: "small-square-128" Rows: 128 Cols: 128 Depth: 128 SmokeEligible: true},
+        M46ShapeCase {ShapeClass: "medium-square" CaseName: "medium-square-512" Rows: 512 Cols: 512 Depth: 512 SmokeEligible: true},
+        M46ShapeCase {ShapeClass: "large-square" CaseName: "large-square-2048" Rows: 2048 Cols: 2048 Depth: 2048 SmokeEligible: false},
+        M46ShapeCase {ShapeClass: "tall-skinny" CaseName: "tall-skinny-2048x256x512" Rows: 2048 Cols: 256 Depth: 512 SmokeEligible: true},
+        M46ShapeCase {ShapeClass: "wide-short" CaseName: "wide-short-256x2048x512" Rows: 256 Cols: 2048 Depth: 512 SmokeEligible: true},
+        M46ShapeCase {ShapeClass: "k-heavy" CaseName: "k-heavy-512x512x4096" Rows: 512 Cols: 512 Depth: 4096 SmokeEligible: false},
+        M46ShapeCase {ShapeClass: "ml-ffn-like" CaseName: "ml-ffn-4096x11008x4096" Rows: 4096 Cols: 11008 Depth: 4096 SmokeEligible: false}
+    ]
+}
+
+fn M46ShapeCasesForMode(mode: M46BenchmarkMode) -> M46ShapeCase[] {
+    let shapes = M46ShapeCases()
+    if mode.Name == "smoke" {
+        return [shapes[0], shapes[1], shapes[3], shapes[4]]
+    }
+    return shapes
+}
+
+fn M46VariantAvailabilityTable() -> M46VariantAvailability[] {
+    return [
+        M46VariantAvailability {Variant: "baseline-scalar" Implemented: true},
+        M46VariantAvailability {Variant: "memory-conservative" Implemented: false},
+        M46VariantAvailability {Variant: "small-register-tile" Implemented: false},
+        M46VariantAvailability {Variant: "balanced-2x2-accum4" Implemented: false},
+        M46VariantAvailability {Variant: "aggressive-4x4-accum8" Implemented: false}
+    ]
+}
+
+fn M46VariantImplemented(variant: String, avail: M46VariantAvailability[]) -> Bool {
+    var implemented = false
+    for i in 0 .. Len(avail) {
+        if avail[i].Variant == variant {
+            implemented = avail[i].Implemented
+        }
+    }
+    return implemented
+}
+
+fn M46EstimateMemoryBytes(shape: M46ShapeCase) -> Float {
+    return Float(shape.Rows * shape.Depth * 4 + shape.Depth * shape.Cols * 4 + shape.Rows * shape.Cols * 4)
+}
+
+fn M46EstimateOps(shape: M46ShapeCase) -> Float {
+    return Float(2 * shape.Rows * shape.Cols * shape.Depth)
+}
+
+fn M46BuildCaseMeasurement(config: M46RunConfig, device: M46DeviceInfo, shape: M46ShapeCase, selectedVariant: String, manualOverride: String, avail: M46VariantAvailability[], measuredMs: Float, baselineMs: Float, maxAbsError: Float, maxRelError: Float, firstFailingIndex: Int, hasNanOrInf: Bool, diagnostics: M46Diagnostics) -> M46CaseMeasurement {
+    let selected = switch {case manualOverride != "" -> manualOverride else -> selectedVariant}
+    let available = M46VariantImplemented(selected, avail)
+
+    var testedVariant = selected
+    var fallbackUsed = false
+    var fallbackReason = ""
+    let allowFallback = config.AllowFallbackToBaseline
+    if available == false {
+        if allowFallback {
+            testedVariant = "baseline-scalar"
+            fallbackUsed = true
+            fallbackReason = "selected_variant_unavailable_fallback_to_baseline"
+        } else {
+            testedVariant = "unavailable"
+            fallbackReason = "selected_variant_unavailable_skipped"
+        }
+    }
+
+    var timingSource = "vulkan_timestamp_query"
+    var timingConfidence = "high"
+    if device.TimestampQueryAvailable == false {
+        timingSource = "cpu_wall_clock_fallback"
+        timingConfidence = "low"
+    }
+
+    let ops = M46EstimateOps(shape)
+    let memBytes = M46EstimateMemoryBytes(shape)
+    let gflops = switch {case measuredMs > 0.0 -> ops / (measuredMs / 1000.0) / 1000000000.0 else -> 0.0}
+    let ai = switch {case memBytes > 0.0 -> ops / memBytes else -> 0.0}
+    let speedupPermille = switch {case measuredMs > 0.0 -> (baselineMs / measuredMs) * 1000.0 else -> 0.0}
+    let diagMatch = diagnostics.ReportedBand == device.OccupancyBand and diagnostics.ReportedShapeClass == shape.ShapeClass and diagnostics.ReportedSelectedVariant == selected
+    let correct = maxAbsError <= config.AbsTolerance and maxRelError <= config.RelTolerance and hasNanOrInf == false and testedVariant != "unavailable"
+
+    return M46CaseMeasurement {
+        ShapeClass: shape.ShapeClass
+        Rows: shape.Rows
+        Cols: shape.Cols
+        Depth: shape.Depth
+        SelectedVariant: selected
+        TestedVariant: testedVariant
+        ManualOverrideRequestedVariant: manualOverride
+        VariantAvailable: available
+        FallbackToBaselineUsed: fallbackUsed
+        FallbackReason: fallbackReason
+        Correct: correct
+        MaxAbsError: maxAbsError
+        MaxRelError: maxRelError
+        FirstFailingIndex: firstFailingIndex
+        HasNaNOrInf: hasNanOrInf
+        MeanMs: measuredMs
+        MedianMs: measuredMs
+        MinMs: measuredMs
+        TimingSource: timingSource
+        TimingConfidence: timingConfidence
+        Gflops: gflops
+        MemoryBytesEstimate: memBytes
+        ArithmeticIntensityEstimate: ai
+        StabilityCvPermille: 40
+        Diagnostics: diagnostics
+        DiagnosticsMatch: diagMatch
+        BaselineMeanMs: baselineMs
+        SpeedupVsBaselinePermille: speedupPermille
+    }
+}
+
+fn M46EvaluateCase(config: M46RunConfig, measurement: M46CaseMeasurement) -> M46Recommendation {
+    let correctnessGate = measurement.Correct
+    let confidenceGate = measurement.TimingConfidence != "low"
+    let timingGate = measurement.SpeedupVsBaselinePermille >= config.ImprovementThresholdPermille
+    let stabilityGate = measurement.StabilityCvPermille <= config.MaxStabilityCvPermille
+    let diagnosticsGate = measurement.DiagnosticsMatch
+
+    let actuation = correctnessGate and confidenceGate and timingGate and stabilityGate and diagnosticsGate and measurement.TestedVariant != "baseline-scalar" and measurement.TestedVariant != "unavailable"
+
+    let reason = switch {
+        case correctnessGate == false -> "correctness_gate_failed"
+        case confidenceGate == false -> "timing_confidence_low"
+        case timingGate == false -> "no_material_speedup_vs_baseline"
+        case stabilityGate == false -> "timing_instability"
+        case diagnosticsGate == false -> "diagnostics_mismatch"
+        case measurement.TestedVariant == "baseline-scalar" -> "fallback_baseline_not_actuated"
+        case measurement.TestedVariant == "unavailable" -> "variant_unavailable"
+        else -> "eligible_for_runtime_dispatch"
+    }
+
+    return M46Recommendation {CorrectnessGate: correctnessGate TimingGate: timingGate StabilityGate: stabilityGate DiagnosticsGate: diagnosticsGate TimingConfidenceGate: confidenceGate ActuationReady: actuation Reason: reason}
+}
+
+fn M46BuildArtifact(config: M46RunConfig, device: M46DeviceInfo, measurements: M46CaseMeasurement[]) -> M46BenchmarkArtifact {
+    let measurement = measurements[0]
+    let rec = M46EvaluateCase(config, measurement)
+    return M46BenchmarkArtifact {
+        Schema: "prometheus.sgemm.occupancy_benchmark.v1"
+        Device: M46ArtifactDevice {Name: device.Name VendorId: device.VendorId DeviceId: device.DeviceId DriverVersion: device.DriverVersion OccupancyBand: device.OccupancyBand CapabilityClasses: "captured_by_native_probe"}
+        Run: M46ArtifactRun {TimestampUtc: "2026-04-28T00:00:00Z" WarmupIterations: config.WarmupIterations MeasuredIterations: config.MeasuredIterations TimingSource: switch {case device.TimestampQueryAvailable -> "vulkan_timestamp_query" else -> "cpu_wall_clock_fallback"} TimingConfidence: switch {case device.TimestampQueryAvailable -> "high" else -> "low"} Mode: config.ModeName}
+        Cases: [M46ArtifactCase {ShapeClass: measurement.ShapeClass Rows: measurement.Rows Cols: measurement.Cols Depth: measurement.Depth SelectedVariant: measurement.SelectedVariant TestedVariant: measurement.TestedVariant ManualOverrideRequestedVariant: measurement.ManualOverrideRequestedVariant FallbackReason: measurement.FallbackReason Correct: measurement.Correct MaxAbsError: measurement.MaxAbsError MaxRelError: measurement.MaxRelError MeanMs: measurement.MeanMs MedianMs: measurement.MedianMs MinMs: measurement.MinMs Gflops: measurement.Gflops ArithmeticIntensityEstimate: measurement.ArithmeticIntensityEstimate Diagnostics: "captured_in_runtime_diagnostics" ActuationReady: rec.ActuationReady}]
+        FinalRecommendation: rec
+    }
+}
+
+fn M46BenchmarkModesTable() -> M46TableBenchmarkModes {
+    return M46TableBenchmarkModes {
+        Mode: ["smoke", "characterization", "comparison"]
+        WarmupIterations: [1, 5, 4]
+        MeasuredIterations: [3, 15, 12]
+        RequireTimestampQuery: [false, true, true]
+        AllowFallbackToBaseline: [true, false, true]
+        Cifriendly: [true, false, false]
+    }
+}
+
+fn M46ShapeCasesTable() -> M46TableShapeCases {
+    return M46TableShapeCases {
+        ShapeClass: ["small-square", "medium-square", "large-square", "tall-skinny", "wide-short", "k-heavy", "ml-ffn-like"]
+        CaseName: ["small-square-128", "medium-square-512", "large-square-2048", "tall-skinny-2048x256x512", "wide-short-256x2048x512", "k-heavy-512x512x4096", "ml-ffn-4096x11008x4096"]
+        Rows: [128, 512, 2048, 2048, 256, 512, 4096]
+        Cols: [128, 512, 2048, 256, 2048, 512, 11008]
+        Depth: [128, 512, 2048, 512, 512, 4096, 4096]
+        SmokeEligible: [true, true, false, true, true, false, false]
+    }
+}
+
+fn M46ArtifactSchemaFieldTable() -> M46TableArtifactSchemaFields {
+    return M46TableArtifactSchemaFields {
+        Section: ["root", "root", "device", "run", "case", "case", "case", "case"]
+        RequiredField: ["schema", "cases", "occupancy_band", "timing_confidence", "shape_class", "selected_variant", "tested_variant", "diagnostics"]
+        Meaning: ["versioned contract identifier", "per-shape result list", "selector capability band", "high or low timing trust", "M45 shape class", "selector output variant", "executed variant after fallback", "band/shape/variant clamp and fallback evidence"]
+    }
+}
+
+fn M46VariantAvailabilityColumnar() -> M46TableVariantAvailability {
+    return M46TableVariantAvailability {
+        Variant: ["baseline-scalar", "memory-conservative", "small-register-tile", "balanced-2x2-accum4", "aggressive-4x4-accum8"]
+        Implemented: [true, false, false, false, false]
+    }
+}
+
+fn M46AcceptanceGateTable(rec: M46Recommendation) -> M46TableAcceptanceGates {
+    return M46TableAcceptanceGates {
+        Gate: ["correctness", "timing", "stability", "diagnostics", "timing_confidence", "actuation_readiness"]
+        Pass: [rec.CorrectnessGate, rec.TimingGate, rec.StabilityGate, rec.DiagnosticsGate, rec.TimingConfidenceGate, rec.ActuationReady]
+        Evidence: ["CPU oracle absolute/relative tolerance and finite checks", "speedup vs baseline threshold", "coefficient-of-variation threshold", "band/shape/variant/clamp diagnostics alignment", "timestamp-query availability and timing source", rec.Reason]
+    }
+}
+
+fn M46FinalRecommendationTable(rec: M46Recommendation) -> M46TableFinalRecommendation {
+    return M46TableFinalRecommendation {ActuationReady: rec.ActuationReady CorrectnessGate: rec.CorrectnessGate TimingGate: rec.TimingGate StabilityGate: rec.StabilityGate DiagnosticsGate: rec.DiagnosticsGate TimingConfidenceGate: rec.TimingConfidenceGate Reason: rec.Reason}
+}

@@ -1,0 +1,5 @@
+[M46TableArtifactSchemaFields {
+    Section: ["root", "root", "device", "run", "case", "case", "case", "case"]
+    RequiredField: ["schema", "cases", "occupancy_band", "timing_confidence", "shape_class", "selected_variant", "tested_variant", "diagnostics"]
+    Meaning: ["versioned contract identifier", "per-shape result list", "selector capability band", "high or low timing trust", "M45 shape class", "selector output variant", "executed variant after fallback", "band/shape/variant clamp and fallback evidence"]
+}]
