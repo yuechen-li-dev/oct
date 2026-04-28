@@ -1,0 +1,8 @@
+[M48TableSafetyMargin {
+    SafetyMarginPermille: [80, 120, 160, 200]
+    BaselineControl: [788, 753, 718, 673]
+    Srt1x2Row: [718, 683, 638, 593]
+    Srt2x1Col: [297, 262, 227, 192]
+    Srt2AccumK: [1167, 1132, 1097, 1062]
+    Srt2x2: [-426, -461, -496, -531]
+}]

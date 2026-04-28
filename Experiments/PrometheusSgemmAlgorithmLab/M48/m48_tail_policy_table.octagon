@@ -1,0 +1,6 @@
+[M48TableTailPolicy {
+    Recipe: ["baseline-control", "SRT-1x2-row", "SRT-2x1-col", "SRT-2accum-K", "SRT-2x2"]
+    TailPolicy: ["baseline scalar policy", "masked N-tail stores + baseline fallback for mixed M/N tails", "masked M-tail stores + baseline fallback for mixed tails", "no output-tail specialization needed; baseline handles edge launch constraints", "requires dual-dimension masking and aggressive fallback guard"]
+    TailDimension: ["none", "N-only", "M-only", "none", "M+N"]
+    ComplexityClass: ["low", "medium", "medium", "low", "high"]
+}]

@@ -1,0 +1,8 @@
+[M48TableShapeRecipeMatrix {
+    ShapeClass: ["small-square", "medium-square", "large-square", "tall-skinny", "wide-short", "K-heavy", "ML/FFN-like"]
+    BaselineControl: [64, 73, 82, 72, 72, 86, 93]
+    Srt1x2Row: [39, 57, 74, 48, 61, 73, 88]
+    Srt2x1Col: [-10, 7, 24, 11, -2, 24, 34]
+    Srt2AccumK: [85, 112, 135, 102, 102, 167, 164]
+    Srt2x2: [-126, -94, -65, -101, -101, -61, -46]
+}]
