@@ -1252,3 +1252,215 @@ FACT(PrometheusReactor_P11_M16_TransferQueueNotCountedAsComputeLane)
     ASSERT_TRUE(diag.transfer_compute_sync_wait_count >= 0u, "transfer sync wait counter should be populated");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_P11_M17_FailureAfterSubmitDrainsAndStaysUncommitted)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    std::vector<std::vector<float>> a(2u), b(2u), c(2u, std::vector<float>(16u, 9.0f));
+    PrometheusSgemmBatchEntry entries[2];
+    for (std::uint32_t i = 0; i < 2u; ++i) {
+        a[i] = make_matrix(4u, 4u, 0.11f + static_cast<float>(i) * 0.2f);
+        b[i] = make_matrix(4u, 4u, 0.33f + static_cast<float>(i) * 0.2f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), 4u, 4u, 4u};
+    }
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = workers | PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, flags, &stage, &detail), "post-submit injected failure should fail");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_EXECUTION_FAILED, detail, "post-submit failure detail should be explicit");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed run must remain uncommitted");
+    ASSERT_EQUAL(PROM_BATCH_STATE_FAILED, diag.batch_state, "batch should finish failed");
+    ASSERT_TRUE(diag.queue_drain_count >= 1u, "drain count should be recorded");
+    ASSERT_EQUAL(1u, diag.first_failure_stable, "first failure metadata should remain stable");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M17_WorkerFenceResetAndWaitFailuresRemainWorkerScoped)
+{
+    const std::uint32_t workers = 2u;
+    const std::uint32_t run_flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.6f);
+    std::vector<float> c(16u, 5.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    PrometheusReactorConfig reset_cfg{};
+    reset_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    reset_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FAIL_RESET_FENCE;
+    void* reset_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&reset_cfg, &reset_handle), "reset-failure runtime create should succeed");
+    (void)prometheus_reactor_runtime_sgemm_batch(reset_handle, &entry, 1u, run_flags, &stage, &detail);
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(reset_handle, &diag), "reset diagnostics should succeed");
+    if (diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER) {
+        ASSERT_EQUAL(PROM_DETAIL_BATCH_FENCE_RESET_FAILED, detail, "reset failure hook should surface explicit detail");
+        ASSERT_EQUAL(0u, diag.output_committed, "reset failure must remain uncommitted");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(reset_handle), "reset runtime destroy should succeed");
+
+    PrometheusReactorConfig wait_cfg{};
+    wait_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    wait_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH;
+    void* wait_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&wait_cfg, &wait_handle), "wait-failure runtime create should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(wait_handle, &entry, 1u, run_flags, &stage, &detail), "wait failure hook should fail");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_FENCE_WAIT_FAILED, detail, "wait failure detail should be explicit");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(wait_handle, &diag), "wait diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "wait failure must remain uncommitted");
+    ASSERT_TRUE(diag.failed_worker_id < workers, "wait failure should preserve failing worker id");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(wait_handle), "wait runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M17_DrainTimeoutMarksUnsafeToReuse)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH |
+                     PROM_TESTCFG_DISABLE_SELECTOR_CACHE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.4f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.9f);
+    std::vector<float> c(16u, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u,
+                                                                     2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                         (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                     &stage, &detail),
+                 "forced drain-timeout hook should fail");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_DRAIN_TIMEOUT, detail, "drain timeout detail should be explicit");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.drain_timeout_count >= 1u, "drain timeout count should increment");
+    ASSERT_EQUAL(1u, diag.unsafe_to_reuse, "drain timeout should mark runtime unsafe");
+    ASSERT_EQUAL(0u, diag.output_committed, "drain timeout path must remain uncommitted");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M17_DeviceLostDominatesAndMarksUnsafe)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_UPLOAD_ONLY | PROM_TESTCFG_DISABLE_STAGING_FALLBACK;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.25f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.45f);
+    std::vector<float> c(16u, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u,
+                                                                     2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                         (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                     &stage, &detail),
+                 "device lost hook should fail batch");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_DEVICE_LOST, detail, "device lost detail should be explicit");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(1u, diag.unsafe_to_reuse, "device lost should mark runtime unsafe");
+    ASSERT_EQUAL(0u, diag.output_committed, "device lost path must not commit output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M17_RepeatedTrueMultiBatchesAndMappingStayStable)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.1f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t success_flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, success_flags, &stage, &detail), "first success should pass");
+    PrometheusSgemmBatchDiagnostics d0{}, d1{}, d2{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &d0), "first diagnostics should succeed");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, success_flags | PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT, &stage, &detail),
+                 "middle failure should fail");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &d1), "middle diagnostics should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, success_flags, &stage, &detail), "final success should pass");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &d2), "final diagnostics should succeed");
+    ASSERT_EQUAL(d0.worker_queue_index[0], d2.worker_queue_index[0], "mapping should stay stable");
+    ASSERT_EQUAL(d0.worker_queue_index[1], d2.worker_queue_index[1], "mapping should stay stable");
+    ASSERT_EQUAL(1u, d2.output_committed, "final success should commit output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M17_FallbackReasonsRemainTruthfulAcrossGateTransitions)
+{
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    PrometheusSgemmBatchDiagnostics diag{};
+
+    PrometheusReactorConfig mem_cfg{};
+    mem_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    mem_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* mem_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&mem_cfg, &mem_handle), "memory-cap runtime create should succeed");
+    (void)prometheus_reactor_runtime_sgemm_batch(mem_handle, &entry, 1u,
+                                                 4u | (4u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                     (1u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                 &stage, &detail);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(mem_handle, &diag), "memory-cap diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.true_multi_queue_selected, "memory cap should force fallback");
+    ASSERT_TRUE(diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_MEMORY_CAP ||
+                    diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_EFFECTIVE_WORKERS_LT_2,
+                "fallback reason should be one of the memory gates");
+    ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "fallback should not claim hardware parallelism");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(mem_handle), "memory-cap runtime destroy should succeed");
+
+    PrometheusReactorConfig forced_cfg{};
+    forced_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    forced_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED;
+    void* forced_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&forced_cfg, &forced_handle), "forced-serialized runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(forced_handle, &entry, 1u,
+                                                                 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                     (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                 &stage, &detail),
+                 "forced serialized run should still execute");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(forced_handle, &diag), "forced diagnostics should succeed");
+    ASSERT_TRUE(diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_FORCED_SERIALIZED ||
+                    diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_COMMAND_RESOURCES_INVALID,
+                "forced-serialized topology should publish a concrete blocking gate reason");
+    ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "forced serialized must not claim parallelism");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(forced_handle), "forced runtime destroy should succeed");
+
+    PrometheusReactorConfig cmd_cfg{};
+    cmd_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cmd_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_SKIP_VULKAN_INIT;
+    void* cmd_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cmd_cfg, &cmd_handle), "command-resource runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(cmd_handle, &entry, 1u,
+                                                                 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                     (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                 &stage, &detail),
+                 "command-resource fallback should still execute through serialized bridge");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(cmd_handle, &diag), "command-resource diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.true_multi_queue_selected, "command-resource gate failure should not select true multi");
+    ASSERT_EQUAL(PROM_BATCH_FALLBACK_REASON_COMMAND_RESOURCES_INVALID, diag.serialized_fallback_reason,
+                 "command-resource gate should publish explicit fallback reason");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(cmd_handle), "command-resource runtime destroy should succeed");
+}

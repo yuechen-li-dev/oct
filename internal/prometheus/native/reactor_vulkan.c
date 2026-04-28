@@ -791,6 +791,21 @@ static uint32_t batch_test_failure_entry_from_flags(uint32_t flags, uint32_t ent
   return encoded - 1u;
 }
 
+static uint32_t batch_test_inject_fence_wait_failure(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u && (test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
+}
+
+static uint32_t batch_test_inject_device_lost(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) != 0u &&
+          (test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) != 0u)
+             ? 1u
+             : 0u;
+}
+
+static uint32_t batch_test_inject_drain_timeout(uint32_t test_flags) {
+  return (batch_test_inject_fence_wait_failure(test_flags) != 0u && (test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) != 0u) ? 1u : 0u;
+}
+
 static uint32_t batch_worker_partition(uint32_t entry_id, uint32_t entry_count, uint32_t workers, uint32_t flags) {
   if ((flags & PROM_BATCH_FLAG_PARTITION_CONTIGUOUS) != 0u) {
     if (entry_count == 0u || workers == 0u) {
@@ -1133,8 +1148,7 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       ctx->worker->failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
       break;
     }
-    if (((ctx->flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) ||
-        plan->entry_id == ctx->injected_failure_entry_id ||
+    if (plan->entry_id == ctx->injected_failure_entry_id ||
         (ctx->force_dual_fail_first_two != 0u && (plan->entry_id == 0u || plan->entry_id == 1u))) {
       batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
       ctx->worker->failure_entry_id = plan->entry_id;
@@ -1279,9 +1293,31 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         break;
       }
       resources->submit_count += 1u;
+      if ((ctx->flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
+        break;
+      }
+      if (batch_test_inject_device_lost(ctx->rt->test_flags) != 0u && ctx->worker->worker_id == 0u) {
+        batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_DEVICE_LOST);
+        ctx->worker->failure_entry_id = plan->entry_id;
+        ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+        ctx->worker->failure_detail = PROM_DETAIL_BATCH_DEVICE_LOST;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
+        break;
+      }
       if ((ctx->rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
         vk_result = vkWaitForFences(ctx->rt->device, 1u, &resources->fence, VK_TRUE, UINT64_MAX);
-        if (vk_result != VK_SUCCESS) {
+        if (vk_result != VK_SUCCESS || batch_test_inject_fence_wait_failure(ctx->rt->test_flags) != 0u) {
           batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_FENCE_WAIT_FAILED);
           ctx->worker->failure_entry_id = plan->entry_id;
           ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
@@ -6262,6 +6298,15 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       }
     }
     state = PROM_BATCH_STATE_DRAINING;
+    if (batch_test_inject_drain_timeout(rt->test_flags) != 0u) {
+      drain_timeout_count += 1u;
+      failure_detail = PROM_DETAIL_BATCH_DRAIN_TIMEOUT;
+      set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, failure_detail);
+      final_status = PROM_ERROR;
+      state = PROM_BATCH_STATE_FAILED;
+      queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
+      goto batch_cleanup;
+    }
     batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
     event_drain_count = drain_summary.drained_events;
     state = PROM_BATCH_STATE_FAILED;
@@ -6328,7 +6373,8 @@ batch_cleanup:
   }
   if (rt != NULL) {
     if (state == PROM_BATCH_STATE_FAILED &&
-        (failure_detail == PROM_DETAIL_BATCH_FENCE_WAIT_FAILED || failure_detail == PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED)) {
+        (failure_detail == PROM_DETAIL_BATCH_FENCE_WAIT_FAILED || failure_detail == PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED ||
+         failure_detail == PROM_DETAIL_BATCH_DRAIN_TIMEOUT || failure_detail == PROM_DETAIL_BATCH_DEVICE_LOST)) {
       unsafe_to_reuse = 1u;
     }
     queue_family_ownership_handoff_count = (uint32_t)rt->slot_diag.queue_family_handoff_count;
