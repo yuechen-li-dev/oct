@@ -1697,3 +1697,38 @@ FACT(PrometheusReactor_SgemmCandidateCPendingWasteDrainsAndSafeModeCanExit)
                 "controller should be able to leave safe mode once pending waste has genuinely drained");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; occupancy diagnostics path cannot be asserted");
+    }
+
+    const std::uint32_t m = 256u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 512u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                 "SGEMM should execute with occupancy selector diagnostics enabled");
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a, b, c), "occupancy selector integration must not change SGEMM output behavior");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_TRUE(diag.p13_m2_occupancy_device_band >= 1u, "occupancy diagnostics should expose a device band");
+    ASSERT_TRUE(diag.p13_m2_occupancy_shape_class >= 1u, "occupancy diagnostics should expose a shape class");
+    ASSERT_TRUE(diag.p13_m2_occupancy_selected_variant >= 1u, "occupancy diagnostics should expose a selected variant");
+    ASSERT_TRUE(diag.p13_m2_occupancy_unclamped_variant >= 1u, "occupancy diagnostics should expose the unclamped variant");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}

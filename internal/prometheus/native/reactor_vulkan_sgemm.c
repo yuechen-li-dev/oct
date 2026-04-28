@@ -272,6 +272,13 @@ typedef struct prom_slot_runtime_diag {
   uint64_t m35_serial_sequential_step_count;
   uint64_t m35_serial_busy_retry_count;
   uint64_t m35_serial_failure_cleanup_count;
+  uint32_t p13_m2_occupancy_device_band;
+  uint32_t p13_m2_occupancy_shape_class;
+  uint32_t p13_m2_occupancy_selected_variant;
+  uint32_t p13_m2_occupancy_unclamped_variant;
+  uint32_t p13_m2_occupancy_clamp_reason;
+  uint32_t p13_m2_occupancy_override_used;
+  uint32_t p13_m2_occupancy_fallback_used;
   uint64_t p11_m3_total_committed_bytes;
   uint64_t p11_m3_projected_committed_bytes;
   uint64_t p11_m3_budget_limit_bytes;
@@ -470,6 +477,13 @@ typedef struct prometheus_runtime {
   uint32_t has_staged_buffers;
   uint32_t has_device_local_memory;
   uint32_t has_host_visible_memory;
+  uint32_t occupancy_register_file_class;
+  uint32_t occupancy_shared_memory_class;
+  uint32_t occupancy_memory_bandwidth_class;
+  uint32_t occupancy_fp32_throughput_class;
+  uint32_t occupancy_max_workgroup_class;
+  uint32_t occupancy_queue_capability_class;
+  uint32_t occupancy_has_exact_profile;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -2741,6 +2755,14 @@ static int text_contains_llvmpipe(const char* value) {
   return 0;
 }
 
+static uint32_t classify_capability_bucket(uint32_t value, uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
+  if (value <= t1) return 1u;
+  if (value <= t2) return 2u;
+  if (value <= t3) return 3u;
+  if (value <= t4) return 4u;
+  return 5u;
+}
+
 static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   uint32_t i = 0u;
   if (rt == NULL) {
@@ -3893,6 +3915,25 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     } else {
       rt->software_vulkan = 0u;
     }
+    rt->occupancy_shared_memory_class =
+        classify_capability_bucket(props.limits.maxComputeSharedMemorySize, 32768u, 65536u, 98304u, 131072u);
+    rt->occupancy_max_workgroup_class =
+        classify_capability_bucket(props.limits.maxComputeWorkGroupInvocations, 128u, 256u, 512u, 1024u);
+    rt->occupancy_register_file_class = rt->occupancy_max_workgroup_class;
+    rt->occupancy_has_exact_profile = 0u;
+    if (rt->software_vulkan != 0u) {
+      rt->occupancy_memory_bandwidth_class = 1u;
+      rt->occupancy_fp32_throughput_class = 1u;
+    } else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+      rt->occupancy_memory_bandwidth_class = 4u;
+      rt->occupancy_fp32_throughput_class = 4u;
+    } else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+      rt->occupancy_memory_bandwidth_class = 3u;
+      rt->occupancy_fp32_throughput_class = 3u;
+    } else {
+      rt->occupancy_memory_bandwidth_class = 2u;
+      rt->occupancy_fp32_throughput_class = 2u;
+    }
 
     rt->has_device_local_memory = 0u;
     rt->has_host_visible_memory = 0u;
@@ -3907,6 +3948,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
         rt->has_host_visible_memory = 1u;
       }
     }
+    rt->occupancy_queue_capability_class = rt->dedicated_transfer_available != 0u ? 4u : 3u;
   }
   rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
 
@@ -4428,6 +4470,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_buffering_selector_facts buffering_facts;
   prom_dom_sgemm_buffering_projection buffering_projection;
   prom_buffering_selector_decision buffering_decision;
+  prom_occupancy_selector_facts occupancy_facts;
+  prom_occupancy_selector_decision occupancy_decision;
   prom_dom_transfer_queue_facts transfer_queue_facts;
   prom_dom_transfer_queue_projection transfer_queue_projection;
   prom_dom_transfer_queue_decision transfer_queue_decision;
@@ -4548,6 +4592,28 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                  n >= PROM_VK_LOCAL_SIZE_Y && k >= PROM_VK_TILE_K)
                     ? 1u
                     : 0u;
+  memset(&occupancy_facts, 0, sizeof(occupancy_facts));
+  occupancy_facts.register_file_class = rt->occupancy_register_file_class;
+  occupancy_facts.shared_memory_class = rt->occupancy_shared_memory_class;
+  occupancy_facts.memory_bandwidth_class = rt->occupancy_memory_bandwidth_class;
+  occupancy_facts.fp32_throughput_class = rt->occupancy_fp32_throughput_class;
+  occupancy_facts.max_workgroup_class = rt->occupancy_max_workgroup_class;
+  occupancy_facts.queue_capability_class = rt->occupancy_queue_capability_class;
+  occupancy_facts.has_exact_profile = rt->occupancy_has_exact_profile;
+  occupancy_facts.manual_override_enabled = 0u;
+  occupancy_facts.manual_override_variant = 0u;
+  occupancy_facts.m = m;
+  occupancy_facts.n = n;
+  occupancy_facts.k = k;
+  occupancy_facts.work_units = work_units;
+  prom_judgment_engine_select_occupancy_variant(&occupancy_facts, &occupancy_decision);
+  rt->slot_diag.p13_m2_occupancy_device_band = occupancy_decision.device_band;
+  rt->slot_diag.p13_m2_occupancy_shape_class = occupancy_decision.shape_class;
+  rt->slot_diag.p13_m2_occupancy_selected_variant = occupancy_decision.selected_variant;
+  rt->slot_diag.p13_m2_occupancy_unclamped_variant = occupancy_decision.unclamped_variant;
+  rt->slot_diag.p13_m2_occupancy_clamp_reason = occupancy_decision.clamp_reason;
+  rt->slot_diag.p13_m2_occupancy_override_used = occupancy_decision.override_used;
+  rt->slot_diag.p13_m2_occupancy_fallback_used = occupancy_decision.fallback_used;
   memset(&path_compute_facts, 0, sizeof(path_compute_facts));
   path_compute_facts.m = m;
   path_compute_facts.n = n;
@@ -7377,6 +7443,13 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->m35_serial_sequential_step_count = rt->slot_diag.m35_serial_sequential_step_count;
   out_diag->m35_serial_busy_retry_count = rt->slot_diag.m35_serial_busy_retry_count;
   out_diag->m35_serial_failure_cleanup_count = rt->slot_diag.m35_serial_failure_cleanup_count;
+  out_diag->p13_m2_occupancy_device_band = rt->slot_diag.p13_m2_occupancy_device_band;
+  out_diag->p13_m2_occupancy_shape_class = rt->slot_diag.p13_m2_occupancy_shape_class;
+  out_diag->p13_m2_occupancy_selected_variant = rt->slot_diag.p13_m2_occupancy_selected_variant;
+  out_diag->p13_m2_occupancy_unclamped_variant = rt->slot_diag.p13_m2_occupancy_unclamped_variant;
+  out_diag->p13_m2_occupancy_clamp_reason = rt->slot_diag.p13_m2_occupancy_clamp_reason;
+  out_diag->p13_m2_occupancy_override_used = rt->slot_diag.p13_m2_occupancy_override_used;
+  out_diag->p13_m2_occupancy_fallback_used = rt->slot_diag.p13_m2_occupancy_fallback_used;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
     out_diag->p10_m4_last_slot_event_kind = (uint32_t)slot_snapshot.last_event.kind;
     out_diag->p10_m4_last_slot_event_slot_id = slot_snapshot.last_event.slot_id;
