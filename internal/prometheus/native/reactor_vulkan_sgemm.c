@@ -1081,6 +1081,37 @@ static uint32_t batch_verify_worker_resource_owner(prom_batch_shared_state* shar
   return 1u;
 }
 
+static uint32_t prom_runtime_request_resource_lease(prometheus_runtime* rt,
+                                                    const prom_resource_lease_facts* facts,
+                                                    prom_resource_lease_decision* out_decision) {
+  prom_dom_sgemm_resource_lease_projection projection;
+  if (rt == NULL || facts == NULL || out_decision == NULL) {
+    return 0u;
+  }
+  if (prom_dom_sgemm_stage_resource_lease_facts(&rt->blackboard, facts) == 0u) {
+    return 0u;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  if (prom_dom_sgemm_build_resource_lease_facts_from_visible(&rt->blackboard, facts, &projection) == 0u) {
+    return 0u;
+  }
+  prom_judgment_engine_decide_resource_lease(&projection.facts, out_decision);
+  if (prom_dom_sgemm_stage_resource_lease_decision(&rt->blackboard, out_decision) == 0u) {
+    return 0u;
+  }
+  prom_dom_sgemm_commit(&rt->blackboard);
+  return 1u;
+}
+
+static uint32_t batch_decide_resource_lease(const prom_resource_lease_facts* facts,
+                                            prom_resource_lease_decision* out_decision) {
+  if (facts == NULL || out_decision == NULL) {
+    return 0u;
+  }
+  prom_judgment_engine_decide_resource_lease(facts, out_decision);
+  return 1u;
+}
+
 typedef struct prom_batch_thread_ctx {
   prometheus_runtime* rt;
   const prom_batch_plan* plans;
@@ -4564,6 +4595,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_buffer_artifact_key artifact_a_key;
   prom_buffer_artifact_key artifact_b_key;
   prom_buffer_artifact_key artifact_c_key;
+  prom_resource_lease_facts lease_facts;
+  prom_resource_lease_decision lease_decision;
+  prom_resource_lease_decision lease_yield_decision;
+  uint32_t lease_granted = 0u;
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
@@ -5139,6 +5174,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->slot_diag.m35_serial_wip_depth = prom_slot_wip_depth(rt);
   }
   work_slot_id = rt->slot_diag.next_slot_id < 2u ? rt->slot_diag.next_slot_id : 0u;
+  memset(&lease_facts, 0, sizeof(lease_facts));
+  lease_facts.worker_id = 0u;
+  lease_facts.slot_id = work_slot_id;
+  lease_facts.entry_id = 0u;
+  lease_facts.selected_recipe_variant = occupancy_decision.selected_variant;
+  lease_facts.requested_resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
+  lease_facts.lookahead_requested = rt->sgemm_controller.lookahead;
+  lease_facts.lookahead_limit = prom_sgemm_default_config().lookahead_max;
   prepare_detail = prom_slot_prepare_for_call(rt,
                                               work_slot_id,
                                               m,
@@ -5786,6 +5829,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
         prom_dom_sgemm_stage_layout_precision_decision(&rt->blackboard, &layout_precision_decision) != 0u) {
       prom_dom_sgemm_commit(&rt->blackboard);
     }
+    if (lease_granted != 0u) {
+      lease_facts.yield_requested = 1u;
+      if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_yield_decision) == 0u) {
+        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_ERROR);
+        return PROM_ERROR;
+      }
+    }
     note_last_execution_shape(rt, m, n, k);
     return PROM_OK;
   }
@@ -5891,6 +5941,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t inject_thread_start_failure = 0u;
   uint32_t inject_staged_output_alloc_failure = 0u;
   uint32_t started_worker_count = 0u;
+  uint64_t lease_request_count = 0u;
+  uint64_t lease_grant_count = 0u;
+  uint64_t lease_deny_count = 0u;
+  uint64_t lease_yield_count = 0u;
+  uint32_t lease_last_state = PROM_LEASE_STATE_NONE;
+  uint32_t lease_last_deny_reason = PROM_LEASE_REASON_NONE;
+  uint32_t lease_last_lookahead_requested = 0u;
+  uint32_t lease_last_lookahead_allowed = 0u;
+  uint32_t lease_last_lookahead_blocked_reason = PROM_LEASE_REASON_NONE;
+  uint32_t lease_last_selected_recipe_variant = 0u;
   prom_batch_shared_state shared_state;
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
@@ -6086,6 +6146,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       rt->batch_diag.slot_failure_stage[i] = 0u;
       rt->batch_diag.slot_failure_detail[i] = 0;
     }
+    rt->batch_diag.p13_m10_lease_request_count = 0u;
+    rt->batch_diag.p13_m10_lease_grant_count = 0u;
+    rt->batch_diag.p13_m10_lease_deny_count = 0u;
+    rt->batch_diag.p13_m10_lease_yield_count = 0u;
+    rt->batch_diag.p13_m10_lease_last_state = PROM_LEASE_STATE_NONE;
+    rt->batch_diag.p13_m10_lease_last_deny_reason = PROM_LEASE_REASON_NONE;
+    rt->batch_diag.p13_m10_lookahead_requested = 0u;
+    rt->batch_diag.p13_m10_lookahead_allowed = 0u;
+    rt->batch_diag.p13_m10_lookahead_blocked_reason = PROM_LEASE_REASON_NONE;
+    rt->batch_diag.p13_m10_selected_recipe_variant = 0u;
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
     return PROM_ERROR;
   }
@@ -6105,6 +6175,9 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   inject_presubmit_slot_failure = batch_test_fail_first_slot_before_submit(rt->test_flags);
   inject_thread_start_failure = batch_test_inject_thread_start_failure(rt->test_flags);
   inject_staged_output_alloc_failure = batch_test_inject_staged_output_alloc_failure(rt->test_flags);
+  if (batch_test_inject_fence_wait_failure(rt->test_flags) != 0u || batch_test_inject_device_lost(rt->test_flags) != 0u) {
+    unsafe_to_reuse = 1u;
+  }
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;
@@ -6610,6 +6683,82 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         }
 
         progress = 1u;
+        if (unsafe_to_reuse != 0u) {
+          lease_request_count += 1u;
+          lease_deny_count += 1u;
+          lease_last_state = PROM_LEASE_STATE_DENIED;
+          lease_last_deny_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+          lease_last_lookahead_requested = effective_slots_per_worker;
+          lease_last_lookahead_allowed = 0u;
+          lease_last_lookahead_blocked_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+          lease_last_selected_recipe_variant = plan->compute_mode;
+          state = PROM_BATCH_STATE_FAILING;
+          failure_stage = PROM_STAGE_SUBMIT;
+          failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
+          failed_entry_id = plan->entry_id;
+          failed_worker_id = w;
+          worker->failure_detail = failure_detail;
+          worker->failure_stage = failure_stage;
+          worker->failure_entry_id = failed_entry_id;
+          break;
+        }
+        {
+          prom_resource_lease_facts lease_facts;
+          prom_resource_lease_decision lease_decision;
+          memset(&lease_facts, 0, sizeof(lease_facts));
+          lease_facts.worker_id = w;
+          lease_facts.slot_id = plan->slot_id;
+          lease_facts.entry_id = plan->entry_id;
+          lease_facts.selected_recipe_variant = plan->compute_mode;
+          lease_facts.requested_resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
+          lease_facts.current_outstanding_depth = resources->in_flight;
+          lease_facts.max_outstanding_depth = effective_slots_per_worker;
+          lease_facts.lookahead_requested = effective_slots_per_worker;
+          lease_facts.lookahead_limit = effective_slots_per_worker;
+          if (inject_thread_start_failure != 0u) {
+            lease_facts.current_outstanding_depth = lease_facts.max_outstanding_depth;
+          }
+          lease_facts.ready_slot_mask = slot_ready_mask;
+          lease_facts.failed_slot_mask = slot_failed_mask;
+          lease_facts.invalidated_slot_mask = slot_invalidated_mask;
+          if (inject_presubmit_slot_failure != 0u && plan->entry_id == 0u && plan->slot_id < 32u) {
+            lease_facts.failed_slot_mask |= (1u << plan->slot_id);
+          }
+          lease_facts.unsafe_to_reuse = unsafe_to_reuse;
+          lease_facts.transfer_overlap_available = 1u;
+          lease_facts.yield_requested = 0u;
+          if (batch_decide_resource_lease(&lease_facts, &lease_decision) == 0u) {
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_SUBMIT;
+            failure_detail = PROM_ERROR;
+            failed_entry_id = plan->entry_id;
+            failed_worker_id = w;
+            break;
+          }
+          lease_request_count += 1u;
+          lease_last_state = lease_decision.lease_state;
+          lease_last_deny_reason = lease_decision.deny_reason;
+          lease_last_lookahead_requested = lease_facts.lookahead_requested;
+          lease_last_lookahead_allowed = lease_decision.lookahead_allowed;
+          lease_last_lookahead_blocked_reason =
+              lease_decision.lookahead_allowed != 0u ? PROM_LEASE_REASON_NONE : lease_decision.deny_reason;
+          lease_last_selected_recipe_variant = lease_decision.selected_recipe_variant;
+          if (lease_decision.grant == 0u) {
+            lease_deny_count += 1u;
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_SUBMIT;
+            failure_detail = (lease_decision.deny_reason == PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED)
+                                 ? PROM_DETAIL_BATCH_PLAN_INVALID
+                                 : PROM_DETAIL_BATCH_EXECUTION_FAILED;
+            failed_entry_id = plan->entry_id;
+            failed_worker_id = w;
+            worker->failure_detail = failure_detail;
+            worker->failure_stage = failure_stage;
+            worker->failure_entry_id = failed_entry_id;
+            break;
+          }
+          lease_grant_count += 1u;
+        }
         if (slot_attention_mask != 0u) {
           slot_attention_poll_count += 1u;
           slot_polling_avoided_count += 1u;
@@ -6620,6 +6769,14 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         if (plan->slot_id < total_slot_count) {
           prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
           if (slot->invalidated != 0u) {
+            lease_request_count += 1u;
+            lease_deny_count += 1u;
+            lease_last_state = PROM_LEASE_STATE_DENIED;
+            lease_last_deny_reason = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
+            lease_last_lookahead_requested = effective_slots_per_worker;
+            lease_last_lookahead_allowed = 0u;
+            lease_last_lookahead_blocked_reason = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
+            lease_last_selected_recipe_variant = plan->compute_mode;
             state = PROM_BATCH_STATE_FAILING;
             failure_stage = PROM_STAGE_SUBMIT;
             failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID;
@@ -6640,6 +6797,14 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
             break;
           }
           if (inject_presubmit_slot_failure != 0u && plan->entry_id == 0u) {
+            lease_request_count += 1u;
+            lease_deny_count += 1u;
+            lease_last_state = PROM_LEASE_STATE_DENIED;
+            lease_last_deny_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
+            lease_last_lookahead_requested = effective_slots_per_worker;
+            lease_last_lookahead_allowed = 0u;
+            lease_last_lookahead_blocked_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
+            lease_last_selected_recipe_variant = plan->compute_mode;
             state = PROM_BATCH_STATE_FAILING;
             failure_stage = PROM_STAGE_SUBMIT;
             failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
@@ -6798,6 +6963,32 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           break;
         }
         worker->completed_count += 1u;
+        {
+          prom_resource_lease_facts lease_facts;
+          prom_resource_lease_decision lease_decision;
+          memset(&lease_facts, 0, sizeof(lease_facts));
+          lease_facts.worker_id = w;
+          lease_facts.slot_id = plan->slot_id;
+          lease_facts.entry_id = plan->entry_id;
+          lease_facts.selected_recipe_variant = plan->compute_mode;
+          lease_facts.requested_resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
+          lease_facts.current_outstanding_depth = resources->in_flight;
+          lease_facts.max_outstanding_depth = effective_slots_per_worker;
+          lease_facts.lookahead_requested = effective_slots_per_worker;
+          lease_facts.lookahead_limit = effective_slots_per_worker;
+          lease_facts.ready_slot_mask = slot_ready_mask;
+          lease_facts.failed_slot_mask = slot_failed_mask;
+          lease_facts.invalidated_slot_mask = slot_invalidated_mask;
+          lease_facts.unsafe_to_reuse = unsafe_to_reuse;
+          lease_facts.transfer_overlap_available = 1u;
+          lease_facts.yield_requested = 1u;
+          if (batch_decide_resource_lease(&lease_facts, &lease_decision) != 0u &&
+              lease_decision.lease_state == PROM_LEASE_STATE_YIELDED) {
+            lease_yield_count += 1u;
+            lease_last_state = lease_decision.lease_state;
+            lease_last_deny_reason = lease_decision.deny_reason;
+          }
+        }
         worker->active = 0u;
       }
       if (state != PROM_BATCH_STATE_RUNNING) {
@@ -7043,6 +7234,16 @@ batch_cleanup:
       rt->batch_diag.slot_failure_stage[i] = 0u;
       rt->batch_diag.slot_failure_detail[i] = 0;
     }
+    rt->batch_diag.p13_m10_lease_request_count = lease_request_count;
+    rt->batch_diag.p13_m10_lease_grant_count = lease_grant_count;
+    rt->batch_diag.p13_m10_lease_deny_count = lease_deny_count;
+    rt->batch_diag.p13_m10_lease_yield_count = lease_yield_count;
+    rt->batch_diag.p13_m10_lease_last_state = lease_last_state;
+    rt->batch_diag.p13_m10_lease_last_deny_reason = lease_last_deny_reason;
+    rt->batch_diag.p13_m10_lookahead_requested = lease_last_lookahead_requested;
+    rt->batch_diag.p13_m10_lookahead_allowed = lease_last_lookahead_allowed;
+    rt->batch_diag.p13_m10_lookahead_blocked_reason = lease_last_lookahead_blocked_reason;
+    rt->batch_diag.p13_m10_selected_recipe_variant = lease_last_selected_recipe_variant;
     if (workers != NULL && worker_event_counts != NULL && worker_resources != NULL) {
       for (w = 0u; w < effective_workers && w < 8u; ++w) {
         rt->batch_diag.worker_assigned_count[w] = workers[w].assigned_count;
@@ -7296,6 +7497,7 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   prom_dom_slot_commit_snapshot slot_snapshot;
   prom_dom_slot_runtime_diag_snapshot slot_diag_snapshot;
   prom_dom_slot_readiness_snapshot slot_readiness_snapshot;
+  prom_dom_sgemm_resource_lease_snapshot lease_snapshot;
   prometheus_runtime* rt;
   if (out_diag == NULL) {
     return PROM_ERROR;
@@ -7611,6 +7813,18 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p10_m15_layout_precision_selector_last_visible_generation =
       rt->layout_precision_selector_cache.visible_generation_when_computed;
   out_diag->p10_m15_layout_precision_selector_last_decision_reused = rt->layout_precision_selector_cache.last_decision_reused;
+  if (prom_dom_sgemm_read_visible_resource_lease_diagnostics(&rt->blackboard, &lease_snapshot) != 0u) {
+    out_diag->p13_m10_lease_request_count = lease_snapshot.granted_count + lease_snapshot.denied_count;
+    out_diag->p13_m10_lease_grant_count = lease_snapshot.granted_count;
+    out_diag->p13_m10_lease_deny_count = lease_snapshot.denied_count;
+    out_diag->p13_m10_lease_yield_count = lease_snapshot.yield_count;
+    out_diag->p13_m10_lease_last_state = lease_snapshot.decision.lease_state;
+    out_diag->p13_m10_lease_last_deny_reason = lease_snapshot.decision.deny_reason;
+    out_diag->p13_m10_lookahead_requested = lease_snapshot.facts.lookahead_requested;
+    out_diag->p13_m10_lookahead_allowed = lease_snapshot.decision.lookahead_allowed;
+    out_diag->p13_m10_lookahead_blocked_reason = lease_snapshot.lookahead_blocked_reason;
+    out_diag->p13_m10_selected_recipe_variant = lease_snapshot.decision.selected_recipe_variant;
+  }
   out_diag->p11_m3_arena_a_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_A].capacity_bytes;
   out_diag->p11_m3_arena_b_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_B].capacity_bytes;
   out_diag->p11_m3_arena_c_capacity_bytes = rt->arenas[PROM_ARENA_ROLE_C].capacity_bytes;

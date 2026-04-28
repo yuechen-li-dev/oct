@@ -275,6 +275,16 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t slot_invalidated[16];
   uint32_t slot_failure_stage[16];
   int32_t slot_failure_detail[16];
+  uint64_t p13_m10_lease_request_count;
+  uint64_t p13_m10_lease_grant_count;
+  uint64_t p13_m10_lease_deny_count;
+  uint64_t p13_m10_lease_yield_count;
+  uint32_t p13_m10_lease_last_state;
+  uint32_t p13_m10_lease_last_deny_reason;
+  uint32_t p13_m10_lookahead_requested;
+  uint32_t p13_m10_lookahead_allowed;
+  uint32_t p13_m10_lookahead_blocked_reason;
+  uint32_t p13_m10_selected_recipe_variant;
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -637,6 +647,16 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t p10_m15_layout_precision_selector_last_dirty_dependency_mask;
   uint64_t p10_m15_layout_precision_selector_last_visible_generation;
   uint32_t p10_m15_layout_precision_selector_last_decision_reused;
+  uint64_t p13_m10_lease_request_count;
+  uint64_t p13_m10_lease_grant_count;
+  uint64_t p13_m10_lease_deny_count;
+  uint64_t p13_m10_lease_yield_count;
+  uint32_t p13_m10_lease_last_state;
+  uint32_t p13_m10_lease_last_deny_reason;
+  uint32_t p13_m10_lookahead_requested;
+  uint32_t p13_m10_lookahead_allowed;
+  uint32_t p13_m10_lookahead_blocked_reason;
+  uint32_t p13_m10_selected_recipe_variant;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

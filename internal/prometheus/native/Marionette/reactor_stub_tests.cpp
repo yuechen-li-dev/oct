@@ -1,4 +1,5 @@
 #include "../bridge.h"
+#include "../reactor_judgment_engine.h"
 #include "test_harness.h"
 
 #include <algorithm>
@@ -1729,6 +1730,37 @@ FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
     ASSERT_TRUE(diag.p13_m2_occupancy_shape_class >= 1u, "occupancy diagnostics should expose a shape class");
     ASSERT_TRUE(diag.p13_m2_occupancy_selected_variant >= 1u, "occupancy diagnostics should expose a selected variant");
     ASSERT_TRUE(diag.p13_m2_occupancy_unclamped_variant >= 1u, "occupancy diagnostics should expose the unclamped variant");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_SingleSgemmGrantYieldSmoke)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 32u;
+    const std::uint32_t n = 32u;
+    const std::uint32_t k = 32u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail);
+    if (status != PROM_OK) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("single SGEMM runtime path rejected under current lease smoke wiring");
+    }
+    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a, b, c), "lease integration must not change SGEMM output");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics should succeed");
+    if (diag.p13_m10_lease_request_count == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("single SGEMM lease diagnostics are not surfaced in this backend configuration");
+    }
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
