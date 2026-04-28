@@ -1,3 +1,7 @@
+// ============================================================================
+// SGEMM Includes / Platform Glue
+// ============================================================================
+
 #include "reactor_vulkan.h"
 
 #include <stddef.h>
@@ -34,6 +38,10 @@
 #define PROM_VK_LOCAL_SIZE_X 8u
 #define PROM_VK_LOCAL_SIZE_Y 8u
 #define PROM_VK_TILE_K 8u
+
+// ============================================================================
+// SGEMM Runtime State
+// ============================================================================
 
 typedef enum prom_buffer_artifact_kind {
   PROM_BUFFER_ARTIFACT_A = 1,
@@ -748,6 +756,10 @@ static const uint32_t k_prom_sgemm_spirv[] = {
     0x000100fdu, 0x00010038u,
 };
 
+// ============================================================================
+// SGEMM Batch Dispatch / Worker Runtime
+// ============================================================================
+
 static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
 static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
 static uint32_t prom_round_up4_u32(uint32_t value);
@@ -1365,7 +1377,11 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         break;
       }
       resources->record_count += 1u;
-      memset(&submit_info, 0, sizeof(submit_info));
+    // ============================================================================
+  // SGEMM Multi-Queue Submit
+  // ============================================================================
+
+  memset(&submit_info, 0, sizeof(submit_info));
       submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submit_info.commandBufferCount = 1u;
       submit_info.pCommandBuffers = &resources->command_buffer;
@@ -1486,6 +1502,10 @@ static void* batch_worker_thread_main(void* arg) {
 }
 #endif
 
+// ============================================================================
+// SGEMM Dominatus Integration
+// ============================================================================
+
 static uint32_t selector_cache_enabled(const prometheus_runtime* rt) {
   if (rt == NULL) {
     return 0u;
@@ -1515,6 +1535,10 @@ static void invalidate_selector_caches(prometheus_runtime* rt) {
   rt->layout_precision_selector_cache.valid = 0u;
   rt->layout_precision_selector_cache.last_decision_reused = 0u;
 }
+
+// ============================================================================
+// SGEMM Transfer Queue Integration
+// ============================================================================
 
 static void select_transfer_queue_policy(const prom_judgment_decision* judgment_decision,
                                          const prom_dom_transfer_queue_facts* facts,
@@ -1784,6 +1808,10 @@ static void stage_transfer_failure_telemetry(prometheus_runtime* rt, uint32_t sl
   }
   commit_transfer_runtime_telemetry(rt);
 }
+
+// ============================================================================
+// SGEMM Typed Arena / Buffer Artifact Ownership
+// ============================================================================
 
 static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size) {
   uint32_t elements;
@@ -2159,6 +2187,10 @@ static int prom_buffering_reason_to_detail(prom_buffering_reason_code reason) {
   return 0;
 }
 
+// ============================================================================
+// SGEMM Layout Precision: Packed4 / FP16
+// ============================================================================
+
 static uint16_t prom_float32_to_fp16_bits(float value) {
   union { float f; uint32_t u; } in;
   uint32_t sign;
@@ -2449,6 +2481,10 @@ static void prom_apply_debug_row_major_oracle(prometheus_runtime* rt,
   free(row_major_oracle);
 }
 
+// ============================================================================
+// SGEMM Policy / Judgment Fact Building
+// ============================================================================
+
 static prom_sgemm_controller_defaults prom_sgemm_default_config(void) {
   prom_sgemm_controller_defaults defaults;
   defaults.lookahead_default = PROM_SGEMM_LOOKAHEAD_DEFAULT;
@@ -2671,6 +2707,10 @@ static void registry_remove(void* handle) {
   }
   registry_unlock();
 }
+
+// ============================================================================
+// Vulkan Common Integration
+// ============================================================================
 
 static int text_contains_llvmpipe(const char* value) {
   size_t i;
@@ -4132,6 +4172,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   return VK_SUCCESS;
 }
 
+// ============================================================================
+// Public SGEMM ABI Entrypoints
+// ============================================================================
+
 int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   VkResult result;
   prometheus_runtime* runtime;
@@ -4324,6 +4368,10 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
   out_caps->reason_code = runtime->reason_code;
   return PROM_OK;
 }
+
+// ============================================================================
+// SGEMM Single-Call Execution
+// ============================================================================
 
 int prom_reactor_runtime_sgemm_impl(void* handle,
                                      const float* a,
@@ -5565,6 +5613,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   return PROM_ERROR;
 }
+
+// ============================================================================
+// SGEMM Batch Dispatch / Worker Runtime
+// ============================================================================
 
 int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                                           const PrometheusSgemmBatchEntry* entries,
@@ -6876,6 +6928,10 @@ batch_cleanup:
   return final_status;
 }
 
+// ============================================================================
+// SGEMM Async Lifecycle
+// ============================================================================
+
 int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
                                                  const float* a,
                                                  const float* b,
@@ -7049,6 +7105,10 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
   stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ABANDONED, rt->async_final_detail);
   return PROM_OK;
 }
+
+// ============================================================================
+// SGEMM Diagnostics Export
+// ============================================================================
 
 int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
