@@ -1,0 +1,6 @@
+[M49FailureModesTable {
+    Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+    PrimaryFailureMode: ["occupancy cliff under variance", "compute-bound underutilization when variant vocabulary is too flat", "controller complexity if lease policy is unconstrained"]
+    TriggerScenario: ["degraded-band + contention", "large-square / K-heavy nominal", "overly permissive lookahead"]
+    Mitigation: ["runtime lease backpressure", "reintroduce small recipe diversity", "bounded lookahead + deterministic lease invariants"]
+}]

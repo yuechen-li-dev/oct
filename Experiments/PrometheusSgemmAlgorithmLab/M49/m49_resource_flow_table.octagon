@@ -1,0 +1,8 @@
+[M49ResourceFlowTable {
+    Approach: ["feedforward-only", "HFSM-resource-lease", "hybrid"]
+    RegisterControl: ["static via selected variant", "dynamic via lease admission", "variant baseline + dynamic lease guard"]
+    SharedMemoryControl: ["static", "dynamic", "hybrid dynamic"]
+    BandwidthControl: ["implicit", "arbiter-managed", "arbiter-managed with recipe hints"]
+    ComputeControl: ["kernel-local", "slot-level scheduling", "kernel-local + slot scheduling"]
+    LatencyControl: ["limited", "lookahead + outstanding depth", "lookahead + recipe-specific depth"]
+}]

@@ -1,0 +1,91 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M49HfsmReducesLatencyStallVsFeedforward() -> Void {
+    let ff = M49Evaluate(M49Approach.FeedforwardOnly, M49ShapeClass.SmallSquare, M49Scenario.LatencyDominant)
+    let hfsm = M49Evaluate(M49Approach.HfsmLeaseOnly, M49ShapeClass.SmallSquare, M49Scenario.LatencyDominant)
+    Assert.True(hfsm.PipelineStallRisk < ff.PipelineStallRisk, "HFSM lease model must reduce pipeline stall risk in latency-dominant case")
+}
+
+[Fact]
+fn M49FeedforwardOccupancyCliffUnderVariance() -> Void {
+    let ffNominal = M49Evaluate(M49Approach.FeedforwardOnly, M49ShapeClass.MediumSquare, M49Scenario.NominalBand)
+    let ffDegraded = M49Evaluate(M49Approach.FeedforwardOnly, M49ShapeClass.MediumSquare, M49Scenario.DegradedBand)
+    Assert.True(ffDegraded.OccupancyCliffRisk > ffNominal.OccupancyCliffRisk, "feedforward-only should increase occupancy cliff risk under degraded variance")
+    Assert.True(ffDegraded.VarianceSensitivity > ffNominal.VarianceSensitivity, "feedforward-only should be variance-sensitive")
+}
+
+[Fact]
+fn M49HybridStabilizesWipAndFlow() -> Void {
+    let ff = M49Evaluate(M49Approach.FeedforwardOnly, M49ShapeClass.WideShort, M49Scenario.Contention)
+    let hybrid = M49Evaluate(M49Approach.Hybrid, M49ShapeClass.WideShort, M49Scenario.Contention)
+    Assert.True(hybrid.OccupancyCliffRisk < ff.OccupancyCliffRisk, "hybrid should lower occupancy cliff risk by lease control")
+    Assert.True(hybrid.PipelineStallRisk < ff.PipelineStallRisk, "hybrid should lower stall risk by explicit request/yield control")
+}
+
+[Fact]
+fn M49HybridNeverWorseThanFeedforwardNominal() -> Void {
+    let shapes = M49AllShapes()
+    for i in 0 .. Len(shapes) {
+        let ff = M49Evaluate(M49Approach.FeedforwardOnly, shapes[i], M49Scenario.NominalBand)
+        let hybrid = M49Evaluate(M49Approach.Hybrid, shapes[i], M49Scenario.NominalBand)
+        Assert.True(hybrid.ProductScore >= ff.ProductScore, "hybrid must not be worse than feedforward-only in nominal case")
+    }
+}
+
+[Fact]
+fn M49PureHfsmUnderperformsOnComputeBoundShapes() -> Void {
+    let hfsm = M49Evaluate(M49Approach.HfsmLeaseOnly, M49ShapeClass.KHeavy, M49Scenario.NominalBand)
+    let ff = M49Evaluate(M49Approach.FeedforwardOnly, M49ShapeClass.KHeavy, M49Scenario.NominalBand)
+    Assert.True(hfsm.ThroughputProxy < ff.ThroughputProxy, "pure HFSM without variant diversity should underperform on compute-bound K-heavy shape")
+}
+
+[Fact]
+fn M49HybridBestAggregateProductScore() -> Void {
+    let ff = M49AggregateForApproach(M49Approach.FeedforwardOnly)
+    let hfsm = M49AggregateForApproach(M49Approach.HfsmLeaseOnly)
+    let hybrid = M49AggregateForApproach(M49Approach.Hybrid)
+    Assert.True(hybrid.ProductScore > ff.ProductScore and hybrid.ProductScore > hfsm.ProductScore, "hybrid should have best aggregate product score")
+}
+
+[Fact]
+fn M49Determinism() -> Void {
+    let a = M49AggregateForApproach(M49Approach.Hybrid)
+    let b = M49AggregateForApproach(M49Approach.Hybrid)
+    let ra = M49FinalRecommendationFromModel()
+    let rb = M49FinalRecommendationFromModel()
+    Assert.Equal(a.ProductScore, b.ProductScore, "aggregate score must be deterministic")
+    Assert.Equal(ra.M9Implementation, rb.M9Implementation, "final recommendation text should be deterministic")
+}
+
+[Fact]
+fn M49NoExactHardwareMeasurementDependence() -> Void {
+    let agg = M49AggregateForApproach(M49Approach.Hybrid)
+    Assert.True(agg.ThroughputProxy <= 1000 and agg.ThroughputProxy >= 0, "throughput is normalized proxy and not exact hardware measurement")
+    Assert.True(agg.ResourceUtilization <= 1000 and agg.ResourceUtilization >= 0, "resource utilization is normalized proxy")
+}
+
+[Artifact]
+fn EmitM49StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M49/m49_strategy_comparison.octagon", [M49BuildStrategyComparisonTable()])
+}
+
+[Artifact]
+fn EmitM49BuildResourceFlowTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M49/m49_resource_flow_table.octagon", [M49BuildResourceFlowTable()])
+}
+
+[Artifact]
+fn EmitM49BuildWipControlTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M49/m49_wip_control_table.octagon", [M49BuildWipControlTable()])
+}
+
+[Artifact]
+fn EmitM49FailureModes() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M49/m49_failure_modes.octagon", [M49BuildFailureModesTable()])
+}
+
+[Artifact]
+fn EmitM49FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M49/m49_final_recommendation.octagon", [M49BuildFinalRecommendationTable()])
+}

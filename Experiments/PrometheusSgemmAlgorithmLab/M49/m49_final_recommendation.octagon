@@ -1,0 +1,8 @@
+[M49FinalRecommendationTable {
+    ControllerLayer: "Runtime HFSM resource-lease control (Dominatus/Octomata style)"
+    VariantRole: "Variants define local compute recipes (e.g., SRT-2accum-K), not global control"
+    LookaheadPolicy: "Use bounded lookahead to pre-stage work up to safe outstanding depth"
+    WipPolicy: "Control WIP via slot leases: buffer->request->processing->yield->resume"
+    M9Implementation: "Implement lease arbiter + lookahead actuator; keep minimal recipe set and start with SRT-2accum-K"
+    HybridDominates: true
+}]
