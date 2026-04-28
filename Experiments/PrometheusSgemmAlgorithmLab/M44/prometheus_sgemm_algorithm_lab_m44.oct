@@ -1,0 +1,815 @@
+package PrometheusSgemmAlgorithmLab
+
+record M44Scenario {
+    Name: String
+    Candidate: String
+    BatchSize: Int
+    WorkerCount: Int
+    HardwareQueueCount: Int
+    MultiQueueEligible: Bool
+    MemoryBudgetBytes: Int
+    PerWorkerArenaBytes: Int
+    PerSlotArtifactBytes: Int
+    FailureMode: String
+    FailureEntryId: Int
+    SecondaryFailureEntryId: Int
+    InvalidateEntryId: Int
+    DrainTimeoutBudget: Int
+}
+
+record M44ReadinessState {
+    DirtySlotMask: Int
+    ReadySlotMask: Int
+    FailedSlotMask: Int
+    InvalidatedSlotMask: Int
+    AttentionSlotMask: Int
+    BoundaryGeneration: Int
+}
+
+record M44Result {
+    Candidate: String
+    SlotsPerWorkerRequested: Int
+    SlotsPerWorkerEffective: Int
+    TotalSlots: Int
+    WorkerLocalOwnership: Bool
+    SharedSlotPool: Bool
+    WorkStealingEnabled: Bool
+    CompletionTime: Int
+    QueueUtilizationPermille: Int
+    QueueIdleTime: Int
+    WorkerIdleTime: Int
+    SlotUtilizationPermille: Int
+    RefillCount: Int
+    PollingAvoided: Int
+    FullScanPollCount: Int
+    AttentionPollCount: Int
+    MemoryPressurePermille: Int
+    PeakCommittedMemoryBytes: Int
+    FailurePropagationLatency: Int
+    DrainLatency: Int
+    SlotFailureCount: Int
+    DrainSlotCount: Int
+    UnsafeToReuse: Bool
+    OutputCommitStatus: String
+    FirstFailureEntryId: Int
+    FirstFailureDetail: String
+    ComplexityScore: Int
+    CorrectnessRiskScore: Int
+    ProductScore: Int
+    MemoryBudgetSlotCapReason: String
+    RecommendationToken: String
+}
+
+record M44SlotCountComparison {
+    Candidate: String[]
+    SlotsRequested: Int[]
+    SlotsEffective: Int[]
+    QueueUtilizationPermille: Int[]
+    SlotUtilizationPermille: Int[]
+    MemoryPressurePermille: Int[]
+    ProductScore: Int[]
+    Recommended: Bool[]
+}
+
+record M44ReadinessDirtyTrackingTable {
+    Step: String[]
+    DirtySlotMask: Int[]
+    ReadySlotMask: Int[]
+    FailedSlotMask: Int[]
+    InvalidatedSlotMask: Int[]
+    AttentionSlotMask: Int[]
+    BoundaryGeneration: Int[]
+}
+
+record M44MemoryPressureTable {
+    Candidate: String[]
+    PeakCommittedMemoryMiB: Int[]
+    MemoryPressurePermille: Int[]
+    SlotsEffective: Int[]
+    SlotCapReason: String[]
+}
+
+record M44FailureDrainTable {
+    Scenario: String[]
+    SlotFailureCount: Int[]
+    FirstFailureEntryId: Int[]
+    FailurePropagationLatency: Int[]
+    DrainLatency: Int[]
+    DrainSlotCount: Int[]
+    OutputCommitStatus: String[]
+}
+
+record M44QueueUtilizationTable {
+    Candidate: String[]
+    QueueCount: Int[]
+    QueueUtilizationPermille: Int[]
+    QueueIdleTime: Int[]
+    CompletionTime: Int[]
+}
+
+record M44FinalContract {
+    Label: String
+    NSlotReadyForImplementation: Bool
+    FirstImplementationSlotsPerWorker: Int
+    SlotOwnershipRule: String
+    SharedPoolStatus: String
+    WorkStealingStatus: String
+    RefillRule: String
+    FailureDrainRule: String
+    MemoryBudgetRule: String
+    DiagnosticsRule: String
+    P11M19Direction: String
+    DeferredScope: String
+    RecommendationComputed: Bool
+}
+
+fn M44Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
+fn M44Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+
+fn M44Pow2(exp: Int) -> Int {
+    if exp <= 0 {return 1}
+    var value = 1
+    for _i in 0 .. exp {value = value * 2}
+    return value
+}
+
+fn M44MaskHas(mask: Int, bit: Int) -> Bool {
+    let p = M44Pow2(bit)
+    return ((mask / p) % 2) == 1
+}
+
+fn M44MaskSet(mask: Int, bit: Int) -> Int {
+    if M44MaskHas(mask, bit) {return mask}
+    return mask + M44Pow2(bit)
+}
+
+fn M44MaskUnion(a: Int, b: Int, bits: Int) -> Int {
+    var out = 0
+    for i in 0 .. bits {
+        if M44MaskHas(a, i) or M44MaskHas(b, i) {out = M44MaskSet(out, i)}
+    }
+    return out
+}
+
+fn M44MaskCount(mask: Int, bits: Int) -> Int {
+    var count = 0
+    for i in 0 .. bits {
+        if M44MaskHas(mask, i) {count = count + 1}
+    }
+    return count
+}
+
+fn M44RequestedSlots(candidate: String) -> Int {
+    return switch {
+        case candidate == "A-1-slot-baseline" => 1
+        case candidate == "B-2-slots-worker-local" => 2
+        case candidate == "C-4-slots-worker-local" => 4
+        case candidate == "D-shared-slot-pool" => 4
+        else => 4
+    }
+}
+
+fn M44SharedSlotPool(candidate: String) -> Bool {
+    return candidate == "D-shared-slot-pool" or candidate == "E-work-stealing-reference"
+}
+
+fn M44WorkStealingEnabled(candidate: String) -> Bool {
+    return candidate == "E-work-stealing-reference"
+}
+
+fn M44ScenarioBase(candidate: String) -> M44Scenario {
+    return M44Scenario {
+        Name: "m44-default"
+        Candidate: candidate
+        BatchSize: 32
+        WorkerCount: 4
+        HardwareQueueCount: 4
+        MultiQueueEligible: true
+        MemoryBudgetBytes: 1610612736
+        PerWorkerArenaBytes: 201326592
+        PerSlotArtifactBytes: 67108864
+        FailureMode: "none"
+        FailureEntryId: 9
+        SecondaryFailureEntryId: 13
+        InvalidateEntryId: 7
+        DrainTimeoutBudget: 32
+    }
+}
+
+fn M44BaseReadiness() -> M44ReadinessState {
+    return M44ReadinessState {
+        DirtySlotMask: 0
+        ReadySlotMask: 0
+        FailedSlotMask: 0
+        InvalidatedSlotMask: 0
+        AttentionSlotMask: 0
+        BoundaryGeneration: 0
+    }
+}
+
+fn M44ApplyReady(rs: M44ReadinessState, slotId: Int, totalSlots: Int) -> M44ReadinessState {
+    let ready = M44MaskSet(rs.ReadySlotMask, slotId)
+    let dirty = M44MaskSet(rs.DirtySlotMask, slotId)
+    let attention = M44MaskUnion(M44MaskUnion(ready, rs.FailedSlotMask, totalSlots), rs.InvalidatedSlotMask, totalSlots)
+    return M44ReadinessState {
+        DirtySlotMask: dirty
+        ReadySlotMask: ready
+        FailedSlotMask: rs.FailedSlotMask
+        InvalidatedSlotMask: rs.InvalidatedSlotMask
+        AttentionSlotMask: attention
+        BoundaryGeneration: rs.BoundaryGeneration
+    }
+}
+
+fn M44ApplyFailed(rs: M44ReadinessState, slotId: Int, totalSlots: Int) -> M44ReadinessState {
+    let failed = M44MaskSet(rs.FailedSlotMask, slotId)
+    let dirty = M44MaskSet(rs.DirtySlotMask, slotId)
+    let attention = M44MaskUnion(M44MaskUnion(rs.ReadySlotMask, failed, totalSlots), rs.InvalidatedSlotMask, totalSlots)
+    return M44ReadinessState {
+        DirtySlotMask: dirty
+        ReadySlotMask: rs.ReadySlotMask
+        FailedSlotMask: failed
+        InvalidatedSlotMask: rs.InvalidatedSlotMask
+        AttentionSlotMask: attention
+        BoundaryGeneration: rs.BoundaryGeneration
+    }
+}
+
+fn M44ApplyInvalidated(rs: M44ReadinessState, slotId: Int, totalSlots: Int) -> M44ReadinessState {
+    let invalidated = M44MaskSet(rs.InvalidatedSlotMask, slotId)
+    let dirty = M44MaskSet(rs.DirtySlotMask, slotId)
+    let attention = M44MaskUnion(M44MaskUnion(rs.ReadySlotMask, rs.FailedSlotMask, totalSlots), invalidated, totalSlots)
+    return M44ReadinessState {
+        DirtySlotMask: dirty
+        ReadySlotMask: rs.ReadySlotMask
+        FailedSlotMask: rs.FailedSlotMask
+        InvalidatedSlotMask: invalidated
+        AttentionSlotMask: attention
+        BoundaryGeneration: rs.BoundaryGeneration
+    }
+}
+
+fn M44NonSlotCommit(rs: M44ReadinessState) -> M44ReadinessState {
+    return M44ReadinessState {
+        DirtySlotMask: rs.DirtySlotMask
+        ReadySlotMask: rs.ReadySlotMask
+        FailedSlotMask: rs.FailedSlotMask
+        InvalidatedSlotMask: rs.InvalidatedSlotMask
+        AttentionSlotMask: rs.AttentionSlotMask
+        BoundaryGeneration: rs.BoundaryGeneration
+    }
+}
+
+fn M44BoundaryClear(rs: M44ReadinessState, totalSlots: Int) -> M44ReadinessState {
+    let attention = M44MaskUnion(M44MaskUnion(rs.ReadySlotMask, rs.FailedSlotMask, totalSlots), rs.InvalidatedSlotMask, totalSlots)
+    return M44ReadinessState {
+        DirtySlotMask: 0
+        ReadySlotMask: rs.ReadySlotMask
+        FailedSlotMask: rs.FailedSlotMask
+        InvalidatedSlotMask: rs.InvalidatedSlotMask
+        AttentionSlotMask: attention
+        BoundaryGeneration: rs.BoundaryGeneration + 1
+    }
+}
+
+fn M44CanWorkerUseSlot(workerId: Int, slotOwnerWorkerId: Int, sharedPool: Bool) -> Bool {
+    if sharedPool {return true}
+    return workerId == slotOwnerWorkerId
+}
+
+fn M44QueueCount(s: M44Scenario) -> Int {
+    if s.MultiQueueEligible and s.HardwareQueueCount > 1 {return M44Min(s.HardwareQueueCount, s.WorkerCount)}
+    return 1
+}
+
+fn M44Duration(entryId: Int) -> Int {
+    return 9 + ((entryId * 5 + 3) % 7)
+}
+
+fn M44RunScenario(s: M44Scenario) -> M44Result {
+    let requestedSlots = M44RequestedSlots(s.Candidate)
+    let shared = M44SharedSlotPool(s.Candidate)
+    let stealing = M44WorkStealingEnabled(s.Candidate)
+
+    let budgetPerWorker = s.MemoryBudgetBytes / M44Max(s.WorkerCount, 1)
+    let slotBudget = budgetPerWorker - s.PerWorkerArenaBytes
+    let maxByMemory = switch {
+        case slotBudget < s.PerSlotArtifactBytes -> 1
+        else -> M44Max(1, slotBudget / s.PerSlotArtifactBytes)
+    }
+    let effectiveSlots = M44Min(requestedSlots, maxByMemory)
+    let slotCapReason = switch {
+        case effectiveSlots < requestedSlots -> "memory-budget-capped"
+        else -> "none"
+    }
+
+    let workers = s.WorkerCount
+    let totalSlots = workers * effectiveSlots
+    let queueCount = M44QueueCount(s)
+
+    var queueCursor = [0]
+    for _q in 1 .. queueCount {queueCursor = Append(queueCursor, 0)}
+
+    var workerSlotCursor = [0]
+    for _i in 1 .. totalSlots {workerSlotCursor = Append(workerSlotCursor, 0)}
+
+    var queueBusy = [0]
+    for _q in 1 .. queueCount {queueBusy = Append(queueBusy, 0)}
+
+    var workerBusy = [0]
+    for _w in 1 .. workers {workerBusy = Append(workerBusy, 0)}
+
+    var completion = [0]
+    var entryOwnerWorker = [0]
+    var entryOwnerSlot = [0]
+    for i in 1 .. s.BatchSize {
+        completion = Append(completion, 0)
+        entryOwnerWorker = Append(entryOwnerWorker, 0)
+        entryOwnerSlot = Append(entryOwnerSlot, 0)
+    }
+
+    var refillCount = 0
+    var failureSeen = false
+    var firstFailureEntry = -1
+    var firstFailureDetail = "none"
+    var slotFailureCount = 0
+    var drainSlotCount = 0
+    var unsafeToReuse = false
+
+    for i in 0 .. s.BatchSize {
+        if not failureSeen {
+            let worker = i % workers
+            entryOwnerWorker[i] = worker
+
+        var bestSlot = worker * effectiveSlots
+        var bestTime = workerSlotCursor[bestSlot]
+        for localSlot in 0 .. effectiveSlots {
+            let globalSlot = worker * effectiveSlots + localSlot
+            if workerSlotCursor[globalSlot] < bestTime {
+                bestTime = workerSlotCursor[globalSlot]
+                bestSlot = globalSlot
+            }
+        }
+
+        let queueId = worker % queueCount
+        let start = M44Max(workerSlotCursor[bestSlot], queueCursor[queueId])
+        let duration = M44Duration(i)
+        let end = start + duration
+
+        workerSlotCursor[bestSlot] = end
+        queueCursor[queueId] = end
+        queueBusy[queueId] = queueBusy[queueId] + duration
+        workerBusy[worker] = workerBusy[worker] + duration
+
+        completion[i] = end
+        entryOwnerSlot[i] = bestSlot
+        refillCount = refillCount + 1
+
+        if s.FailureMode == "before-submit" and i == s.FailureEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "before-submit"
+            slotFailureCount = slotFailureCount + 1
+            unsafeToReuse = true
+        }
+        if s.FailureMode == "after-submit" and i == s.FailureEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "after-submit"
+            slotFailureCount = slotFailureCount + 1
+            unsafeToReuse = true
+            drainSlotCount = drainSlotCount + 1
+        }
+        if s.FailureMode == "dual" and (i == s.FailureEntryId or i == s.SecondaryFailureEntryId) {
+            slotFailureCount = slotFailureCount + 1
+            if not failureSeen {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "first-failure-wins"
+            }
+            unsafeToReuse = true
+        }
+        if s.FailureMode == "queue-failure" and i == s.FailureEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "queue-failure"
+            slotFailureCount = slotFailureCount + 1
+            drainSlotCount = drainSlotCount + effectiveSlots
+            unsafeToReuse = true
+        }
+        if s.FailureMode == "invalidate-ready" and i == s.InvalidateEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "invalidated-ready-not-dispatched"
+            slotFailureCount = slotFailureCount + 1
+            unsafeToReuse = true
+        }
+        if s.FailureMode == "drain-timeout" and i == s.FailureEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "drain-timeout"
+            slotFailureCount = slotFailureCount + 1
+            drainSlotCount = drainSlotCount + effectiveSlots
+            unsafeToReuse = true
+        }
+        if s.FailureMode == "device-failure" and i == s.FailureEntryId {
+            failureSeen = true
+            firstFailureEntry = i
+            firstFailureDetail = "device-global-failure"
+            slotFailureCount = slotFailureCount + totalSlots
+            drainSlotCount = drainSlotCount + totalSlots
+            unsafeToReuse = true
+        }
+        }
+    }
+
+    var completionTime = 0
+    for i in 0 .. s.BatchSize {
+        completionTime = M44Max(completionTime, completion[i])
+    }
+
+    var totalQueueBusy = 0
+    for q in 0 .. queueCount {totalQueueBusy = totalQueueBusy + queueBusy[q]}
+
+    var totalWorkerBusy = 0
+    for w in 0 .. workers {totalWorkerBusy = totalWorkerBusy + workerBusy[w]}
+
+    let queueCap = M44Max(1, completionTime * queueCount)
+    let queueUtil = (totalQueueBusy * 1000) / queueCap
+    let queueIdle = M44Max(0, queueCap - totalQueueBusy)
+
+    let workerCap = M44Max(1, completionTime * workers)
+    let workerIdle = M44Max(0, workerCap - totalWorkerBusy)
+
+    let slotCap = M44Max(1, completionTime * M44Max(1, totalSlots))
+    let slotUtil = (totalWorkerBusy * 1000) / slotCap
+
+    let peakCommitted = workers * s.PerWorkerArenaBytes + totalSlots * s.PerSlotArtifactBytes
+    let memoryPressure = (peakCommitted * 1000) / M44Max(1, s.MemoryBudgetBytes)
+
+    let boundaries = s.BatchSize + workers
+    let fullPolls = boundaries * totalSlots
+    let changedSlotsEstimate = M44Max(1, refillCount / 2) + slotFailureCount
+    let attentionPolls = changedSlotsEstimate
+    let pollingAvoided = M44Max(0, fullPolls - attentionPolls)
+
+    let failureLatency = switch {
+        case not failureSeen -> 0
+        case s.FailureMode == "before-submit" -> 1
+        case s.FailureMode == "after-submit" -> 4
+        case s.FailureMode == "queue-failure" -> 5
+        case s.FailureMode == "device-failure" -> 2
+        else -> 3
+    }
+
+    var drainLatency = switch {
+        case not failureSeen -> 0
+        case s.FailureMode == "drain-timeout" -> s.DrainTimeoutBudget + 1
+        case s.FailureMode == "device-failure" -> 6
+        else -> 4 + drainSlotCount
+    }
+    if failureSeen and drainSlotCount == 0 {drainSlotCount = effectiveSlots}
+
+    let outputCommit = switch {
+        case failureSeen -> "uncommitted-on-failure"
+        else -> "committed-atomically-in-entry-order"
+    }
+
+    let complexity = requestedSlots * 4 + switch {
+        case shared -> 12
+        else -> 0
+    } + switch {
+        case stealing -> 18
+        else -> 0
+    }
+
+    let correctnessRisk = slotFailureCount * 2 + switch {
+        case requestedSlots > 2 -> 8
+        else -> 2
+    } + switch {
+        case shared -> 10
+        else -> 0
+    } + switch {
+        case stealing -> 16
+        else -> 0
+    }
+
+    let performanceCredit = queueUtil / 20 + slotUtil / 25 + (pollingAvoided / M44Max(1, totalSlots))
+    let memoryPenalty = memoryPressure / 40
+    let oneSlotPenalty = switch {
+        case requestedSlots == 1 -> 10
+        else -> 0
+    }
+    let twoSlotBonus = switch {
+        case requestedSlots == 2 and not shared and not stealing -> 8
+        else -> 0
+    }
+    let product = performanceCredit - complexity - correctnessRisk - memoryPenalty - oneSlotPenalty + twoSlotBonus
+
+    let token = switch {
+        case s.Candidate == "B-2-slots-worker-local" and product >= -40 -> "implement-now"
+        case s.Candidate == "A-1-slot-baseline" -> "baseline-only"
+        case s.Candidate == "C-4-slots-worker-local" -> "defer-until-benefit-proven"
+        case shared -> "defer-cross-worker-ownership"
+        else -> "reference-only"
+    }
+
+    return M44Result {
+        Candidate: s.Candidate
+        SlotsPerWorkerRequested: requestedSlots
+        SlotsPerWorkerEffective: effectiveSlots
+        TotalSlots: totalSlots
+        WorkerLocalOwnership: not shared
+        SharedSlotPool: shared
+        WorkStealingEnabled: stealing
+        CompletionTime: completionTime
+        QueueUtilizationPermille: queueUtil
+        QueueIdleTime: queueIdle
+        WorkerIdleTime: workerIdle
+        SlotUtilizationPermille: slotUtil
+        RefillCount: refillCount
+        PollingAvoided: pollingAvoided
+        FullScanPollCount: fullPolls
+        AttentionPollCount: attentionPolls
+        MemoryPressurePermille: memoryPressure
+        PeakCommittedMemoryBytes: peakCommitted
+        FailurePropagationLatency: failureLatency
+        DrainLatency: drainLatency
+        SlotFailureCount: slotFailureCount
+        DrainSlotCount: drainSlotCount
+        UnsafeToReuse: unsafeToReuse
+        OutputCommitStatus: outputCommit
+        FirstFailureEntryId: firstFailureEntry
+        FirstFailureDetail: firstFailureDetail
+        ComplexityScore: complexity
+        CorrectnessRiskScore: correctnessRisk
+        ProductScore: product
+        MemoryBudgetSlotCapReason: slotCapReason
+        RecommendationToken: token
+    }
+}
+
+fn M44DefaultCandidates() -> String[] {
+    return ["A-1-slot-baseline", "B-2-slots-worker-local", "C-4-slots-worker-local", "D-shared-slot-pool", "E-work-stealing-reference"]
+}
+
+fn M44ResultsForComparison() -> M44Result[] {
+    var out = [M44RunScenario(M44ScenarioBase("A-1-slot-baseline"))]
+    let c = M44DefaultCandidates()
+    for i in 1 .. Len(c) {out = Append(out, M44RunScenario(M44ScenarioBase(c[i])))}
+    return out
+}
+
+fn M44RecommendationFromModel() -> M44Result {
+    let results = M44ResultsForComparison()
+    var best = results[0]
+    var bResult = results[0]
+    for i in 1 .. Len(results) {
+        if results[i].Candidate == "B-2-slots-worker-local" {bResult = results[i]}
+        if results[i].ProductScore > best.ProductScore {best = results[i]}
+    }
+    if best.Candidate != "B-2-slots-worker-local" and bResult.ProductScore >= best.ProductScore - 20 {
+        return bResult
+    }
+    return best
+}
+
+fn M44SlotCountComparisonFrom() -> M44SlotCountComparison {
+    let r = M44ResultsForComparison()
+    var candidate = [r[0].Candidate]
+    var req = [r[0].SlotsPerWorkerRequested]
+    var eff = [r[0].SlotsPerWorkerEffective]
+    var queue = [r[0].QueueUtilizationPermille]
+    var slot = [r[0].SlotUtilizationPermille]
+    var memory = [r[0].MemoryPressurePermille]
+    var product = [r[0].ProductScore]
+
+    let best = M44RecommendationFromModel().Candidate
+    var rec = [r[0].Candidate == best]
+
+    for i in 1 .. Len(r) {
+        candidate = Append(candidate, r[i].Candidate)
+        req = Append(req, r[i].SlotsPerWorkerRequested)
+        eff = Append(eff, r[i].SlotsPerWorkerEffective)
+        queue = Append(queue, r[i].QueueUtilizationPermille)
+        slot = Append(slot, r[i].SlotUtilizationPermille)
+        memory = Append(memory, r[i].MemoryPressurePermille)
+        product = Append(product, r[i].ProductScore)
+        rec = Append(rec, r[i].Candidate == best)
+    }
+
+    return M44SlotCountComparison {
+        Candidate: candidate
+        SlotsRequested: req
+        SlotsEffective: eff
+        QueueUtilizationPermille: queue
+        SlotUtilizationPermille: slot
+        MemoryPressurePermille: memory
+        ProductScore: product
+        Recommended: rec
+    }
+}
+
+fn M44ReadinessDirtyTrackingFrom() -> M44ReadinessDirtyTrackingTable {
+    let totalSlots = 8
+    var rstate = M44BaseReadiness()
+
+    var steps =["start"]
+    var dirty =[rstate.DirtySlotMask]
+    var ready =[rstate.ReadySlotMask]
+    var failed =[rstate.FailedSlotMask]
+    var invalidated =[rstate.InvalidatedSlotMask]
+    var attention =[rstate.AttentionSlotMask]
+    var generation =[rstate.BoundaryGeneration]
+
+    rstate = M44ApplyReady(rstate, 1, totalSlots)
+    steps = Append(steps, "ready-slot-1")
+    dirty = Append(dirty, rstate.DirtySlotMask)
+    ready = Append(ready, rstate.ReadySlotMask)
+    failed = Append(failed, rstate.FailedSlotMask)
+    invalidated = Append(invalidated, rstate.InvalidatedSlotMask)
+    attention = Append(attention, rstate.AttentionSlotMask)
+    generation = Append(generation, rstate.BoundaryGeneration)
+
+    rstate = M44NonSlotCommit(rstate)
+    steps = Append(steps, "non-slot-commit")
+    dirty = Append(dirty, rstate.DirtySlotMask)
+    ready = Append(ready, rstate.ReadySlotMask)
+    failed = Append(failed, rstate.FailedSlotMask)
+    invalidated = Append(invalidated, rstate.InvalidatedSlotMask)
+    attention = Append(attention, rstate.AttentionSlotMask)
+    generation = Append(generation, rstate.BoundaryGeneration)
+
+    rstate = M44ApplyFailed(rstate, 2, totalSlots)
+    steps = Append(steps, "failed-slot-2")
+    dirty = Append(dirty, rstate.DirtySlotMask)
+    ready = Append(ready, rstate.ReadySlotMask)
+    failed = Append(failed, rstate.FailedSlotMask)
+    invalidated = Append(invalidated, rstate.InvalidatedSlotMask)
+    attention = Append(attention, rstate.AttentionSlotMask)
+    generation = Append(generation, rstate.BoundaryGeneration)
+
+    rstate = M44ApplyInvalidated(rstate, 1, totalSlots)
+    steps = Append(steps, "invalidated-slot-1")
+    dirty = Append(dirty, rstate.DirtySlotMask)
+    ready = Append(ready, rstate.ReadySlotMask)
+    failed = Append(failed, rstate.FailedSlotMask)
+    invalidated = Append(invalidated, rstate.InvalidatedSlotMask)
+    attention = Append(attention, rstate.AttentionSlotMask)
+    generation = Append(generation, rstate.BoundaryGeneration)
+
+    rstate = M44BoundaryClear(rstate, totalSlots)
+    steps = Append(steps, "boundary-clear")
+    dirty = Append(dirty, rstate.DirtySlotMask)
+    ready = Append(ready, rstate.ReadySlotMask)
+    failed = Append(failed, rstate.FailedSlotMask)
+    invalidated = Append(invalidated, rstate.InvalidatedSlotMask)
+    attention = Append(attention, rstate.AttentionSlotMask)
+    generation = Append(generation, rstate.BoundaryGeneration)
+
+    return M44ReadinessDirtyTrackingTable {
+        Step: steps
+        DirtySlotMask: dirty
+        ReadySlotMask: ready
+        FailedSlotMask: failed
+        InvalidatedSlotMask: invalidated
+        AttentionSlotMask: attention
+        BoundaryGeneration: generation
+    }
+}
+
+fn M44MemoryPressureTableFrom() -> M44MemoryPressureTable {
+    let r = M44ResultsForComparison()
+    var candidate = [r[0].Candidate]
+    var peakMiB = [r[0].PeakCommittedMemoryBytes / (1024 * 1024)]
+    var pressure = [r[0].MemoryPressurePermille]
+    var slots = [r[0].SlotsPerWorkerEffective]
+    var reason = [r[0].MemoryBudgetSlotCapReason]
+
+    for i in 1 .. Len(r) {
+        candidate = Append(candidate, r[i].Candidate)
+        peakMiB = Append(peakMiB, r[i].PeakCommittedMemoryBytes / (1024 * 1024))
+        pressure = Append(pressure, r[i].MemoryPressurePermille)
+        slots = Append(slots, r[i].SlotsPerWorkerEffective)
+        reason = Append(reason, r[i].MemoryBudgetSlotCapReason)
+    }
+
+    return M44MemoryPressureTable {
+        Candidate: candidate
+        PeakCommittedMemoryMiB: peakMiB
+        MemoryPressurePermille: pressure
+        SlotsEffective: slots
+        SlotCapReason: reason
+    }
+}
+
+fn M44FailureDrainTableFrom() -> M44FailureDrainTable {
+    let base = M44ScenarioBase("B-2-slots-worker-local")
+    let modes = ["before-submit", "after-submit", "dual", "queue-failure", "invalidate-ready", "drain-timeout", "device-failure"]
+
+    var scenario =[modes[0]]
+    let r0 = M44RunScenario(M44Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MultiQueueEligible: base.MultiQueueEligible
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        PerSlotArtifactBytes: base.PerSlotArtifactBytes
+        FailureMode: modes[0]
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        InvalidateEntryId: base.InvalidateEntryId
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+
+    var failCount =[r0.SlotFailureCount]
+    var first =[r0.FirstFailureEntryId]
+    var latency =[r0.FailurePropagationLatency]
+    var drain =[r0.DrainLatency]
+    var drainSlots =[r0.DrainSlotCount]
+    var output =[r0.OutputCommitStatus]
+
+    for i in 1 .. Len(modes) {
+        let ri = M44RunScenario(M44Scenario {
+            Name: base.Name
+            Candidate: base.Candidate
+            BatchSize: base.BatchSize
+            WorkerCount: base.WorkerCount
+            HardwareQueueCount: base.HardwareQueueCount
+            MultiQueueEligible: base.MultiQueueEligible
+            MemoryBudgetBytes: base.MemoryBudgetBytes
+            PerWorkerArenaBytes: base.PerWorkerArenaBytes
+            PerSlotArtifactBytes: base.PerSlotArtifactBytes
+            FailureMode: modes[i]
+            FailureEntryId: base.FailureEntryId
+            SecondaryFailureEntryId: base.SecondaryFailureEntryId
+            InvalidateEntryId: base.InvalidateEntryId
+            DrainTimeoutBudget: base.DrainTimeoutBudget
+        })
+
+        scenario = Append(scenario, modes[i])
+        failCount = Append(failCount, ri.SlotFailureCount)
+        first = Append(first, ri.FirstFailureEntryId)
+        latency = Append(latency, ri.FailurePropagationLatency)
+        drain = Append(drain, ri.DrainLatency)
+        drainSlots = Append(drainSlots, ri.DrainSlotCount)
+        output = Append(output, ri.OutputCommitStatus)
+    }
+
+    return M44FailureDrainTable {
+        Scenario: scenario
+        SlotFailureCount: failCount
+        FirstFailureEntryId: first
+        FailurePropagationLatency: latency
+        DrainLatency: drain
+        DrainSlotCount: drainSlots
+        OutputCommitStatus: output
+    }
+}
+
+fn M44QueueUtilizationTableFrom() -> M44QueueUtilizationTable {
+    let r = M44ResultsForComparison()
+    var candidate = [r[0].Candidate]
+    var queueCount = [M44QueueCount(M44ScenarioBase(r[0].Candidate))]
+    var util = [r[0].QueueUtilizationPermille]
+    var idle = [r[0].QueueIdleTime]
+    var completion = [r[0].CompletionTime]
+
+    for i in 1 .. Len(r) {
+        candidate = Append(candidate, r[i].Candidate)
+        queueCount = Append(queueCount, M44QueueCount(M44ScenarioBase(r[i].Candidate)))
+        util = Append(util, r[i].QueueUtilizationPermille)
+        idle = Append(idle, r[i].QueueIdleTime)
+        completion = Append(completion, r[i].CompletionTime)
+    }
+
+    return M44QueueUtilizationTable {
+        Candidate: candidate
+        QueueCount: queueCount
+        QueueUtilizationPermille: util
+        QueueIdleTime: idle
+        CompletionTime: completion
+    }
+}
+
+fn M44FinalContractFrom() -> M44FinalContract {
+    let rec = M44RecommendationFromModel()
+    return M44FinalContract {
+        Label: "P11 M18 / PrometheusSgemmAlgorithmLab M44"
+        NSlotReadyForImplementation: rec.Candidate == "B-2-slots-worker-local"
+        FirstImplementationSlotsPerWorker: 2
+        SlotOwnershipRule: "slot.owner_worker_id is exclusive for first implementation"
+        SharedPoolStatus: "shared slot pool deferred (reference only)"
+        WorkStealingStatus: "work stealing deferred"
+        RefillRule: "boundary computes dirty/ready/failed/invalidated masks; refill inspects attention set and worker-local empty slots only"
+        FailureDrainRule: "first failure wins; stop refill; drain in-flight slots/queues; no output commit on failure; cleanup after safe drain"
+        MemoryBudgetRule: "effective slots per worker are capped by budget; fallback to lower slot count with explicit cap reason"
+        DiagnosticsRule: "emit worker/slot ownership, masks, boundary generation, refill counts, polling avoided, failure/drain, unsafe-to-reuse, memory-cap reason"
+        P11M19Direction: "implement worker-local S=2 slots, dirty-attention refill, and full diagnostics contract"
+        DeferredScope: "S=4+, shared pool, work stealing, SPMC/MPMC, lock-free runtime"
+        RecommendationComputed: rec.RecommendationToken == "implement-now"
+    }
+}

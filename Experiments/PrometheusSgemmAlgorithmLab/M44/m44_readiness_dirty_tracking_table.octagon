@@ -1,0 +1,9 @@
+[M44ReadinessDirtyTrackingTable {
+    Step: ["start", "ready-slot-1", "non-slot-commit", "failed-slot-2", "invalidated-slot-1", "boundary-clear"]
+    DirtySlotMask: [0, 2, 2, 6, 6, 0]
+    ReadySlotMask: [0, 2, 2, 2, 2, 2]
+    FailedSlotMask: [0, 0, 0, 4, 4, 4]
+    InvalidatedSlotMask: [0, 0, 0, 0, 2, 2]
+    AttentionSlotMask: [0, 2, 2, 6, 6, 6]
+    BoundaryGeneration: [0, 0, 0, 0, 0, 1]
+}]

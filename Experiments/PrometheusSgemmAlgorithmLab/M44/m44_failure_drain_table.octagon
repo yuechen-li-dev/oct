@@ -1,0 +1,9 @@
+[M44FailureDrainTable {
+    Scenario: ["before-submit", "after-submit", "dual", "queue-failure", "invalidate-ready", "drain-timeout", "device-failure"]
+    SlotFailureCount: [1, 1, 1, 1, 1, 1, 8]
+    FirstFailureEntryId: [9, 9, 9, 9, 7, 9, 9]
+    FailurePropagationLatency: [1, 4, 3, 5, 3, 3, 2]
+    DrainLatency: [4, 5, 4, 6, 4, 33, 6]
+    DrainSlotCount: [2, 1, 2, 2, 2, 2, 8]
+    OutputCommitStatus: ["uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure", "uncommitted-on-failure"]
+}]

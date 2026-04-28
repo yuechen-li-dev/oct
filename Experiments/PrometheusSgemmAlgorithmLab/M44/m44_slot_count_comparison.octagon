@@ -1,0 +1,10 @@
+[M44SlotCountComparison {
+    Candidate: ["A-1-slot-baseline", "B-2-slots-worker-local", "C-4-slots-worker-local", "D-shared-slot-pool", "E-work-stealing-reference"]
+    SlotsRequested: [1, 2, 4, 4, 4]
+    SlotsEffective: [1, 2, 3, 3, 3]
+    QueueUtilizationPermille: [974, 974, 974, 974, 974]
+    SlotUtilizationPermille: [974, 487, 324, 324, 324]
+    MemoryPressurePermille: [666, 833, 1000, 1000, 1000]
+    ProductScore: [86, 79, 45, 23, -11]
+    Recommended: [false, true, false, false, false]
+}]

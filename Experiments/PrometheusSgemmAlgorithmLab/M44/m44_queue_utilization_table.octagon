@@ -1,0 +1,7 @@
+[M44QueueUtilizationTable {
+    Candidate: ["A-1-slot-baseline", "B-2-slots-worker-local", "C-4-slots-worker-local", "D-shared-slot-pool", "E-work-stealing-reference"]
+    QueueCount: [4, 4, 4, 4, 4]
+    QueueUtilizationPermille: [974, 974, 974, 974, 974]
+    QueueIdleTime: [10, 10, 10, 10, 10]
+    CompletionTime: [99, 99, 99, 99, 99]
+}]
