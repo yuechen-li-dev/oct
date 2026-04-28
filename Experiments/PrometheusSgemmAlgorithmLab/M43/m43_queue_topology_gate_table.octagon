@@ -1,0 +1,9 @@
+[M43QueueTopologyGateTable {
+    Topology: ["single-compute", "independent-two-queue", "pseudo-shared-two-queue", "separate-compute-families", "memory-capped"]
+    IndependentComputeQueueCount: [1, 2, 2, 2, 3]
+    EffectiveWorkers: [1, 2, 1, 1, 1]
+    HardwareParallelismEligible: [false, true, false, false, false]
+    ClaimedHardwareParallelism: [false, true, false, false, false]
+    FallbackReason: ["independent_compute_queue_count_lt_2", "none", "pseudo_shared_queue_detected", "missing_queue_family_ownership_handoff", "effective_workers_lt_2"]
+    GateContract: ["single queue -> serialized fallback and no hardware parallel claim", "independent queues + resources + memory -> true multi-queue eligible", "pseudo-shared queues -> serialized fallback", "separate compute families require explicit ownership handoff", "memory budget caps workers even when queues are present"]
+}]

@@ -1,0 +1,9 @@
+[M43WorkerQueueMappingTable {
+    Topology: ["single-compute", "independent-two-queue", "compute-plus-transfer"]
+    ExecutionMode: ["serialized-submit-bridge", "true-multi-queue-submit", "true-multi-queue-with-transfer"]
+    WorkerQueueMapping: ["0", "0,1", "0,1"]
+    WorkerQueueFamily: ["compute-family-0", "compute-family-0|compute-family-0", "compute-family-0|compute-family-0"]
+    WorkerCommandPool: ["pool-w0", "pool-w0|pool-w1", "pool-w0|pool-w1"]
+    WorkerCommandBuffer: ["cmd-w0", "cmd-w0|cmd-w1", "cmd-w0|cmd-w1"]
+    WorkerFence: ["fence-w0", "fence-w0|fence-w1", "fence-w0|fence-w1"]
+}]

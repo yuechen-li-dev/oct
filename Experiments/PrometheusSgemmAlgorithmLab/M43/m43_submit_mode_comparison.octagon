@@ -1,0 +1,12 @@
+[M43SubmitModeComparison {
+    Candidate: ["A-serialized-bridge-baseline", "B-true-multi-queue-static", "C-hybrid-topology-gated", "D-multi-queue-plus-transfer", "E-nslot-reference-only"]
+    Topology: ["single-compute", "independent-two-queue", "pseudo-shared-two-queue", "compute-plus-transfer", "independent-two-queue"]
+    ExecutionMode: ["serialized-submit-bridge", "true-multi-queue-submit", "serialized-submit-bridge", "true-multi-queue-with-transfer", "serialized-submit-bridge"]
+    EffectiveWorkers: [4, 2, 1, 2, 1]
+    ClaimedHardwareParallelism: [false, true, false, true, false]
+    CompletionTime: [140, 159, 336, 165, 336]
+    CorrectnessRiskScore: [210, 410, 400, 430, 690]
+    ImplementationComplexityScore: [190, 470, 360, 520, 760]
+    ProductScore: [750, 741, 944, 585, 254]
+    RecommendedForM16: [false, false, true, false, false]
+}]

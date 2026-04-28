@@ -1,0 +1,10 @@
+[M43TransferInteractionTable {
+    Topology: ["compute-plus-transfer", "compute-plus-transfer"]
+    TransferQueueCount: [1, 1]
+    ComputeWorkers: [2, 2]
+    ClaimedHardwareParallelism: [true, true]
+    TransferComputeSyncWaitCount: [24, 24]
+    QueueOwnershipHandoffCount: [0, 0]
+    TransferOverlapBenefit: [18, 0]
+    SyncContract: ["transfer completion must precede compute reads; compute completion precedes commit", "missing transfer->compute sync is hazardous even with compute queue parallelism"]
+}]

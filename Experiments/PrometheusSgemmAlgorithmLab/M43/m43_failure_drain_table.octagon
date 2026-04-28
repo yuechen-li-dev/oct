@@ -1,0 +1,11 @@
+[M43FailureDrainTable {
+    FailureMode: ["before-submit", "fence-wait-failure", "queue-hang", "device-lost", "drain-timeout"]
+    FirstFailureDetail: ["before-submit", "fence-wait-failure", "queue-hang", "device-lost-global", "drain-timeout"]
+    QueueDrainCount: [2, 2, 2, 2, 2]
+    DrainTimeoutCount: [0, 0, 0, 0, 1]
+    DrainLatency: [67, 67, 67, 67, 147]
+    FailurePropagationLatency: [4, 4, 4, 4, 4]
+    UnsafeToReuse: [false, false, true, true, true]
+    OutputCommitted: [false, false, false, false, false]
+    CleanupAction: ["drain-and-reset-or-destroy", "drain-and-reset-or-destroy", "drain-and-reset-or-destroy", "drain-and-reset-or-destroy", "drain-and-reset-or-destroy"]
+}]
