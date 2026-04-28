@@ -1544,3 +1544,186 @@ uint32_t prom_dom_sgemm_read_visible_path_compute_diagnostics(const prom_dom_bla
   }
   return 1u;
 }
+
+uint32_t prom_dom_sgemm_stage_resource_lease_facts(prom_dom_blackboard* board, const prom_resource_lease_facts* facts) {
+  if (board == 0 || facts == 0) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_WORKER_ID, 0u, facts->worker_id, (int32_t)facts->worker_id) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_SLOT_ID, 0u, facts->slot_id, (int32_t)facts->slot_id) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_ENTRY_ID, 0u, facts->entry_id, (int32_t)facts->entry_id) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_SHAPE_CLASS, 0u, facts->shape_class, (int32_t)facts->shape_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DEVICE_BAND, 0u, facts->device_band, (int32_t)facts->device_band) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_SELECTED_RECIPE_VARIANT, 0u, facts->selected_recipe_variant,
+                       (int32_t)facts->selected_recipe_variant) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_REQUESTED_RESOURCE_CLASS, 0u, facts->requested_resource_class,
+                       (int32_t)facts->requested_resource_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_REGISTER_PRESSURE_CLASS, 0u, facts->register_pressure_class,
+                       (int32_t)facts->register_pressure_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_SHARED_MEMORY_PRESSURE_CLASS, 0u,
+                       facts->shared_memory_pressure_class, (int32_t)facts->shared_memory_pressure_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_MEMORY_BANDWIDTH_PRESSURE_CLASS, 0u,
+                       facts->memory_bandwidth_pressure_class, (int32_t)facts->memory_bandwidth_pressure_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_COMPUTE_PRESSURE_CLASS, 0u, facts->compute_pressure_class,
+                       (int32_t)facts->compute_pressure_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_PIPELINE_LATENCY_PRESSURE_CLASS, 0u,
+                       facts->pipeline_latency_pressure_class, (int32_t)facts->pipeline_latency_pressure_class) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_CURRENT_OUTSTANDING_DEPTH, 0u, facts->current_outstanding_depth,
+                       (int32_t)facts->current_outstanding_depth) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_MAX_OUTSTANDING_DEPTH, 0u, facts->max_outstanding_depth,
+                       (int32_t)facts->max_outstanding_depth) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_LOOKAHEAD_REQUESTED, 0u, facts->lookahead_requested,
+                       (int32_t)facts->lookahead_requested) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_LOOKAHEAD_LIMIT, 0u, facts->lookahead_limit,
+                       (int32_t)facts->lookahead_limit) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_SLOT_HFSM, PROM_DOM_KEY_SLOT_MAX_WIP_DEPTH, 0u, facts->max_outstanding_depth,
+                       (int32_t)facts->max_outstanding_depth) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_TRANSFER_OVERLAP_AVAILABLE, 0u, facts->transfer_overlap_available,
+                       (int32_t)facts->transfer_overlap_available) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_TRUE_MULTI_QUEUE_SELECTED, 0u, facts->true_multi_queue_selected,
+                       (int32_t)facts->true_multi_queue_selected) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_UNSAFE_TO_REUSE, 0u, facts->unsafe_to_reuse,
+                       (int32_t)facts->unsafe_to_reuse) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_YIELD_REQUESTED, 0u, facts->yield_requested,
+                       (int32_t)facts->yield_requested) == 0u)
+    return 0u;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_build_resource_lease_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_resource_lease_facts* fallback_facts,
+    prom_dom_sgemm_resource_lease_projection* out_projection) {
+  if (board == 0 || fallback_facts == 0 || out_projection == 0) return 0u;
+  memset(out_projection, 0, sizeof(*out_projection));
+  out_projection->facts = *fallback_facts;
+  out_projection->visible_generation = board->visible_generation;
+  out_projection->from_visible_snapshot = 1u;
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_WORKER_ID, 0u, &out_projection->facts.worker_id);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_SLOT_ID, 0u, &out_projection->facts.slot_id);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_ENTRY_ID, 0u, &out_projection->facts.entry_id);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_SELECTED_RECIPE_VARIANT, 0u, &out_projection->facts.selected_recipe_variant);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_CURRENT_OUTSTANDING_DEPTH, 0u, &out_projection->facts.current_outstanding_depth);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_MAX_OUTSTANDING_DEPTH, 0u, &out_projection->facts.max_outstanding_depth);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_LOOKAHEAD_REQUESTED, 0u, &out_projection->facts.lookahead_requested);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_LOOKAHEAD_LIMIT, 0u, &out_projection->facts.lookahead_limit);
+  (void)prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_UNSAFE_TO_REUSE, 0u, &out_projection->facts.unsafe_to_reuse);
+  out_projection->facts.ready_slot_mask = board->slot_readiness_ready_slot_mask;
+  out_projection->facts.failed_slot_mask = board->slot_readiness_failed_slot_mask;
+  out_projection->facts.invalidated_slot_mask = board->slot_readiness_invalidated_slot_mask;
+  out_projection->facts.slot_attention_mask = board->slot_readiness_attention_slot_mask;
+  return 1u;
+}
+
+uint32_t prom_dom_sgemm_stage_resource_lease_decision(prom_dom_blackboard* board,
+                                                      const prom_resource_lease_decision* decision) {
+  prom_dom_event event;
+  uint64_t counter = 0u;
+  prom_dom_key counter_key = PROM_DOM_KEY_SGEMM_LEASE_DIAG_GRANTED_COUNT;
+  prom_dom_event_kind event_kind = PROM_DOM_EVENT_LEASE_GRANTED;
+  if (board == 0 || decision == 0) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_SUCCESS, 0u, decision->success, decision->detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_STATE, 0u, decision->lease_state, decision->detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_GRANT, 0u, decision->grant, decision->detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_REASON, 0u, decision->deny_reason, decision->detail) == 0u) return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_ALLOWED_OUTSTANDING_DEPTH, 0u,
+                       decision->allowed_outstanding_depth, decision->detail) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_LOOKAHEAD_ALLOWED, 0u, decision->lookahead_allowed,
+                       decision->detail) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_BACKPRESSURE_APPLIED, 0u,
+                       decision->backpressure_applied, decision->detail) == 0u)
+    return 0u;
+  if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_LEASE_DECISION_YIELD_REQUIRED, 0u, decision->yield_required,
+                       decision->detail) == 0u)
+    return 0u;
+
+  if (decision->lease_state == PROM_LEASE_STATE_YIELDED) {
+    counter_key = PROM_DOM_KEY_SGEMM_LEASE_DIAG_YIELD_COUNT;
+    event_kind = PROM_DOM_EVENT_LEASE_YIELDED;
+  } else if (decision->grant == 0u) {
+    counter_key = PROM_DOM_KEY_SGEMM_LEASE_DIAG_DENIED_COUNT;
+    event_kind = PROM_DOM_EVENT_LEASE_DENIED;
+    if (decision->backpressure_applied != 0u && prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_BACKPRESSURE_COUNT, 0u, &counter) != 0u) {
+      (void)prom_dom_set_u64(board, PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_SGEMM_LEASE_DIAG_BACKPRESSURE_COUNT, 0u, counter + 1u, decision->detail);
+    } else if (decision->backpressure_applied != 0u) {
+      (void)prom_dom_set_u64(board, PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_SGEMM_LEASE_DIAG_BACKPRESSURE_COUNT, 0u, 1u, decision->detail);
+    }
+  }
+
+  if (prom_dom_get_u64(board, counter_key, 0u, &counter) == 0u) counter = 0u;
+  if (prom_dom_set_u64(board, PROM_DOM_SOURCE_DIAGNOSTICS, counter_key, 0u, counter + 1u, decision->detail) == 0u) return 0u;
+  if (decision->lookahead_allowed == 0u) {
+    if (prom_dom_set_u32(board, PROM_DOM_SOURCE_DIAGNOSTICS, PROM_DOM_KEY_SGEMM_LEASE_DIAG_LOOKAHEAD_BLOCKED_REASON, 0u, decision->deny_reason,
+                         decision->detail) == 0u)
+      return 0u;
+  }
+  memset(&event, 0, sizeof(event));
+  event.kind = event_kind;
+  event.source = PROM_DOM_SOURCE_JUDGMENT;
+  event.domain = PROM_DOM_DOMAIN_SGEMM;
+  event.key = PROM_DOM_KEY_SGEMM_LEASE_DECISION_STATE;
+  event.slot_id = decision->slot_id;
+  event.reason_code = decision->detail;
+  return prom_dom_stage_event(board, &event);
+}
+
+uint32_t prom_dom_sgemm_read_visible_resource_lease_diagnostics(const prom_dom_blackboard* board,
+                                                                prom_dom_sgemm_resource_lease_snapshot* out_snapshot) {
+  uint32_t u32_value;
+  uint64_t u64_value;
+  if (board == 0 || out_snapshot == 0) return 0u;
+  memset(out_snapshot, 0, sizeof(*out_snapshot));
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_WORKER_ID, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.worker_id = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_SLOT_ID, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.slot_id = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_ENTRY_ID, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.entry_id = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_SELECTED_RECIPE_VARIANT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.selected_recipe_variant = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_CURRENT_OUTSTANDING_DEPTH, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.current_outstanding_depth = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_MAX_OUTSTANDING_DEPTH, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.max_outstanding_depth = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_LOOKAHEAD_REQUESTED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.lookahead_requested = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DECISION_STATE, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.lease_state = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DECISION_GRANT, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.grant = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DECISION_REASON, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.deny_reason = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DECISION_ALLOWED_OUTSTANDING_DEPTH, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.allowed_outstanding_depth = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DECISION_LOOKAHEAD_ALLOWED, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->decision.lookahead_allowed = u32_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_GRANTED_COUNT, 0u, &u64_value) != 0u) out_snapshot->granted_count = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_DENIED_COUNT, 0u, &u64_value) != 0u) out_snapshot->denied_count = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_BACKPRESSURE_COUNT, 0u, &u64_value) != 0u) out_snapshot->backpressure_count = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_YIELD_COUNT, 0u, &u64_value) != 0u) out_snapshot->yield_count = u64_value;
+  if (prom_dom_get_u64(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_FAILED_COUNT, 0u, &u64_value) != 0u) out_snapshot->failed_count = u64_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_LEASE_DIAG_LOOKAHEAD_BLOCKED_REASON, 0u, &u32_value) != 0u) {
+    out_snapshot->lookahead_blocked_reason = u32_value;
+  }
+  return 1u;
+}

@@ -250,6 +250,79 @@ typedef struct prom_judgment_async_decision {
   int reject_detail;
 } prom_judgment_async_decision;
 
+typedef enum prom_lease_resource_class {
+  PROM_LEASE_RESOURCE_CLASS_COMPUTE = 1,
+  PROM_LEASE_RESOURCE_CLASS_TRANSFER = 2,
+  PROM_LEASE_RESOURCE_CLASS_MEMORY_BANDWIDTH = 3,
+} prom_lease_resource_class;
+
+typedef enum prom_lease_state {
+  PROM_LEASE_STATE_NONE = 1,
+  PROM_LEASE_STATE_REQUESTED = 2,
+  PROM_LEASE_STATE_GRANTED = 3,
+  PROM_LEASE_STATE_HELD = 4,
+  PROM_LEASE_STATE_YIELDED = 5,
+  PROM_LEASE_STATE_DENIED = 6,
+  PROM_LEASE_STATE_FAILED = 7,
+} prom_lease_state;
+
+typedef enum prom_lease_reason_code {
+  PROM_LEASE_REASON_NONE = 0,
+  PROM_LEASE_REASON_GRANTED = 1,
+  PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT = 2,
+  PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME = 3,
+  PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED = 4,
+  PROM_LEASE_REASON_DENIED_SLOT_FAILED = 5,
+  PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE = 6,
+  PROM_LEASE_REASON_DENIED_TRANSFER_UNAVAILABLE = 7,
+  PROM_LEASE_REASON_YIELDED = 8,
+  PROM_LEASE_REASON_FAILED = 9,
+} prom_lease_reason_code;
+
+typedef struct prom_resource_lease_facts {
+  uint32_t worker_id;
+  uint32_t slot_id;
+  uint32_t entry_id;
+  uint32_t shape_class;
+  uint32_t device_band;
+  uint32_t selected_recipe_variant;
+  uint32_t requested_resource_class;
+  uint32_t register_pressure_class;
+  uint32_t shared_memory_pressure_class;
+  uint32_t memory_bandwidth_pressure_class;
+  uint32_t compute_pressure_class;
+  uint32_t pipeline_latency_pressure_class;
+  uint32_t current_outstanding_depth;
+  uint32_t max_outstanding_depth;
+  uint32_t lookahead_requested;
+  uint32_t lookahead_limit;
+  uint32_t slot_attention_mask;
+  uint32_t ready_slot_mask;
+  uint32_t failed_slot_mask;
+  uint32_t invalidated_slot_mask;
+  uint32_t transfer_overlap_available;
+  uint32_t true_multi_queue_selected;
+  uint32_t unsafe_to_reuse;
+  uint32_t yield_requested;
+} prom_resource_lease_facts;
+
+typedef struct prom_resource_lease_decision {
+  uint32_t success;
+  uint32_t lease_state;
+  uint32_t grant;
+  uint32_t deny_reason;
+  uint32_t resource_class;
+  uint32_t worker_id;
+  uint32_t slot_id;
+  uint32_t entry_id;
+  uint32_t allowed_outstanding_depth;
+  uint32_t lookahead_allowed;
+  uint32_t backpressure_applied;
+  uint32_t yield_required;
+  uint32_t selected_recipe_variant;
+  int32_t detail;
+} prom_resource_lease_decision;
+
 enum {
   PROM_JUDGMENT_STAGING_WORK_THRESHOLD = 16384u,
   PROM_JUDGMENT_TILED_WORK_THRESHOLD = 131072u,
@@ -271,6 +344,8 @@ void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_fa
                                                 prom_buffering_selector_decision* out_decision);
 void prom_judgment_engine_select_occupancy_variant(const prom_occupancy_selector_facts* facts,
                                                    prom_occupancy_selector_decision* out_decision);
+void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts* facts,
+                                                prom_resource_lease_decision* out_decision);
 
 #ifdef __cplusplus
 }

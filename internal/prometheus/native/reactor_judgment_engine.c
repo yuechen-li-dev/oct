@@ -330,6 +330,105 @@ void prom_judgment_engine_select_async_submission(const prom_judgment_async_fact
   out_decision->reject_detail = 0;
 }
 
+void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts* facts,
+                                                prom_resource_lease_decision* out_decision) {
+  uint32_t slot_mask;
+  if (out_decision == NULL) {
+    return;
+  }
+
+  out_decision->success = 0u;
+  out_decision->lease_state = PROM_LEASE_STATE_FAILED;
+  out_decision->grant = 0u;
+  out_decision->deny_reason = PROM_LEASE_REASON_FAILED;
+  out_decision->resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
+  out_decision->worker_id = 0u;
+  out_decision->slot_id = 0u;
+  out_decision->entry_id = 0u;
+  out_decision->allowed_outstanding_depth = 0u;
+  out_decision->lookahead_allowed = 0u;
+  out_decision->backpressure_applied = 0u;
+  out_decision->yield_required = 0u;
+  out_decision->selected_recipe_variant = 0u;
+  out_decision->detail = PROM_LEASE_REASON_FAILED;
+
+  if (facts == NULL) {
+    return;
+  }
+
+  out_decision->success = 1u;
+  out_decision->resource_class = facts->requested_resource_class;
+  out_decision->worker_id = facts->worker_id;
+  out_decision->slot_id = facts->slot_id;
+  out_decision->entry_id = facts->entry_id;
+  out_decision->allowed_outstanding_depth = facts->max_outstanding_depth;
+  out_decision->selected_recipe_variant = facts->selected_recipe_variant;
+  out_decision->yield_required = facts->yield_requested;
+
+  if (facts->yield_requested != 0u) {
+    out_decision->lease_state = PROM_LEASE_STATE_YIELDED;
+    out_decision->deny_reason = PROM_LEASE_REASON_YIELDED;
+    out_decision->detail = PROM_LEASE_REASON_YIELDED;
+    return;
+  }
+
+  slot_mask = facts->slot_id < 32u ? (1u << facts->slot_id) : 0u;
+  if (slot_mask != 0u && (facts->failed_slot_mask & slot_mask) != 0u) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
+    return;
+  }
+  if (slot_mask != 0u && (facts->invalidated_slot_mask & slot_mask) != 0u) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
+    return;
+  }
+  if (facts->unsafe_to_reuse != 0u) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+    return;
+  }
+  if (facts->current_outstanding_depth >= facts->max_outstanding_depth) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+    return;
+  }
+  if (facts->requested_resource_class == PROM_LEASE_RESOURCE_CLASS_TRANSFER &&
+      (facts->transfer_overlap_available == 0u || facts->true_multi_queue_selected == 0u)) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_TRANSFER_UNAVAILABLE;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_TRANSFER_UNAVAILABLE;
+    return;
+  }
+  if (facts->register_pressure_class >= 4u || facts->shared_memory_pressure_class >= 4u ||
+      facts->memory_bandwidth_pressure_class >= 4u || facts->compute_pressure_class >= 4u ||
+      facts->pipeline_latency_pressure_class >= 4u) {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE;
+    out_decision->backpressure_applied = 1u;
+    out_decision->detail = PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE;
+    return;
+  }
+
+  out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
+  out_decision->grant = 1u;
+  out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
+  out_decision->lookahead_allowed = (facts->lookahead_requested != 0u &&
+                                     facts->current_outstanding_depth < facts->lookahead_limit)
+                                        ? 1u
+                                        : 0u;
+  out_decision->detail = PROM_LEASE_REASON_GRANTED;
+}
+
 prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,
                                                          const prom_policy_facts* facts,
                                                          const prom_policy_thresholds* thresholds) {

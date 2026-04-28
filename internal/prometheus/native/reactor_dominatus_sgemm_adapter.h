@@ -256,6 +256,24 @@ typedef struct prom_dom_async_snapshot {
   uint32_t readback_complete;
 } prom_dom_async_snapshot;
 
+typedef struct prom_dom_sgemm_resource_lease_projection {
+  prom_resource_lease_facts facts;
+  uint64_t visible_generation;
+  uint64_t dependent_dirty_key_mask_last_commit;
+  uint32_t from_visible_snapshot;
+} prom_dom_sgemm_resource_lease_projection;
+
+typedef struct prom_dom_sgemm_resource_lease_snapshot {
+  prom_resource_lease_facts facts;
+  prom_resource_lease_decision decision;
+  uint64_t granted_count;
+  uint64_t denied_count;
+  uint64_t backpressure_count;
+  uint64_t yield_count;
+  uint64_t failed_count;
+  uint32_t lookahead_blocked_reason;
+} prom_dom_sgemm_resource_lease_snapshot;
+
 uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
                                   const prom_buffering_selector_facts* facts,
                                   const prom_buffering_selector_decision* decision);
@@ -325,6 +343,15 @@ uint32_t prom_dom_sgemm_stage_async_snapshot(prom_dom_blackboard* board,
                                              prom_dom_event_kind event_kind,
                                              int32_t reason_code);
 uint32_t prom_dom_sgemm_read_visible_async_snapshot(const prom_dom_blackboard* board, prom_dom_async_snapshot* out_snapshot);
+uint32_t prom_dom_sgemm_stage_resource_lease_facts(prom_dom_blackboard* board, const prom_resource_lease_facts* facts);
+uint32_t prom_dom_sgemm_build_resource_lease_facts_from_visible(
+    const prom_dom_blackboard* board,
+    const prom_resource_lease_facts* fallback_facts,
+    prom_dom_sgemm_resource_lease_projection* out_projection);
+uint32_t prom_dom_sgemm_stage_resource_lease_decision(prom_dom_blackboard* board,
+                                                      const prom_resource_lease_decision* decision);
+uint32_t prom_dom_sgemm_read_visible_resource_lease_diagnostics(const prom_dom_blackboard* board,
+                                                                prom_dom_sgemm_resource_lease_snapshot* out_snapshot);
 
 #ifdef __cplusplus
 }

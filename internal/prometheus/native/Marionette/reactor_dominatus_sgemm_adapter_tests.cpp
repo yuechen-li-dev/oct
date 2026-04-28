@@ -980,3 +980,72 @@ FACT(PrometheusDominatusSgemmAdapter_M12AsyncTransitionAndTransferReadinessField
     ASSERT_EQUAL(1u, snapshot.ready, "ready flag should be explicit");
     ASSERT_EQUAL(1u, snapshot.transfer_complete, "ready snapshot should retain transfer completion marker");
 }
+
+FACT(PrometheusDominatusSgemmAdapter_P13M9_ResourceLeaseStagedVisibleAndLifecycleDiagnostics)
+{
+    prom_dom_blackboard board{};
+    prom_resource_lease_facts facts{};
+    prom_dom_sgemm_resource_lease_projection projection{};
+    prom_resource_lease_decision decision{};
+    prom_dom_sgemm_resource_lease_snapshot snapshot{};
+    prom_dom_blackboard_init(&board);
+
+    facts.worker_id = 4u;
+    facts.slot_id = 1u;
+    facts.entry_id = 31u;
+    facts.selected_recipe_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4);
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.current_outstanding_depth = 1u;
+    facts.max_outstanding_depth = 2u;
+    facts.lookahead_requested = 1u;
+    facts.lookahead_limit = 2u;
+    facts.transfer_overlap_available = 1u;
+    facts.true_multi_queue_selected = 1u;
+
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_facts(&board, &facts) == 1u, "lease facts should stage");
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_resource_lease_diagnostics(&board, &snapshot) == 0u,
+                "lease diagnostics should remain invisible before commit");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_build_resource_lease_facts_from_visible(&board, &facts, &projection) == 1u,
+                "lease facts projection should use visible snapshot");
+    prom_judgment_engine_decide_resource_lease(&projection.facts, &decision);
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_decision(&board, &decision) == 1u, "lease decision should stage");
+    prom_dom_sgemm_commit(&board);
+
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_resource_lease_diagnostics(&board, &snapshot) == 1u,
+                "lease diagnostics should be visible after decision commit");
+    ASSERT_EQUAL(1u, snapshot.decision.grant, "happy-path lease should grant");
+    ASSERT_EQUAL(1u, snapshot.granted_count, "grant counter should increment");
+    ASSERT_EQUAL(facts.selected_recipe_variant, snapshot.facts.selected_recipe_variant, "recipe variant should round-trip");
+
+    facts.current_outstanding_depth = 2u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_facts(&board, &facts) == 1u, "depth-cap facts should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_resource_lease_facts_from_visible(&board, &facts, &projection) == 1u,
+                "depth-cap projection should build");
+    prom_judgment_engine_decide_resource_lease(&projection.facts, &decision);
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_decision(&board, &decision) == 1u, "depth-cap decision should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_resource_lease_diagnostics(&board, &snapshot) == 1u, "depth-cap diagnostics should read");
+    ASSERT_EQUAL(0u, snapshot.decision.grant, "depth-cap lease should be denied");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT), snapshot.decision.deny_reason,
+                 "depth-cap deny reason should be explicit");
+    ASSERT_EQUAL(0u, snapshot.decision.lookahead_allowed, "lookahead should be blocked at cap");
+    ASSERT_EQUAL(1u, snapshot.denied_count, "deny counter should increment");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT), snapshot.lookahead_blocked_reason,
+                 "lookahead blocked reason should be visible");
+
+    facts.current_outstanding_depth = 1u;
+    facts.yield_requested = 1u;
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_facts(&board, &facts) == 1u, "yield facts should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_build_resource_lease_facts_from_visible(&board, &facts, &projection) == 1u,
+                "yield projection should build");
+    prom_judgment_engine_decide_resource_lease(&projection.facts, &decision);
+    ASSERT_TRUE(prom_dom_sgemm_stage_resource_lease_decision(&board, &decision) == 1u, "yield decision should stage");
+    prom_dom_sgemm_commit(&board);
+    ASSERT_TRUE(prom_dom_sgemm_read_visible_resource_lease_diagnostics(&board, &snapshot) == 1u, "yield diagnostics should read");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_YIELDED), snapshot.decision.lease_state, "yield state should be visible");
+    ASSERT_EQUAL(1u, snapshot.yield_count, "yield counter should increment");
+}
