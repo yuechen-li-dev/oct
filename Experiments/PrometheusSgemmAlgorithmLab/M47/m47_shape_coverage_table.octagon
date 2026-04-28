@@ -1,0 +1,5 @@
+[M47TableShapeCoverage {
+    Strategy: ["no-variant-yet", "memory-conservative-first", "small-register-first", "balanced-first", "aggressive-first", "two-stage-pair", "exact-per-gpu-tuning-first"]
+    CoveredShapeClasses: ["small-square,medium-square,large-square,tall-skinny,wide-short,k-heavy,ML/FFN-like", "small-square,medium-square,large-square,tall-skinny,wide-short,k-heavy,ML/FFN-like", "small-square,medium-square,large-square,tall-skinny,wide-short,k-heavy,ML/FFN-like", "medium-square,large-square,k-heavy,ML/FFN-like", "large-square,k-heavy,ML/FFN-like", "small-square,medium-square,large-square,tall-skinny,wide-short,k-heavy,ML/FFN-like", "medium-square,large-square,k-heavy,ML/FFN-like"]
+    CoveragePercent: [100, 100, 100, 57, 42, 100, 57]
+}]

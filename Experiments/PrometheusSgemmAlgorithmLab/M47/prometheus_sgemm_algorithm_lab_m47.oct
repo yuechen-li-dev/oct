@@ -1,0 +1,782 @@
+package PrometheusSgemmAlgorithmLab
+
+enum M47DeviceBand {
+    RegisterConstrained
+    Balanced
+    ComputeRich
+    MemoryRich
+}
+
+enum M47ShapeClass {
+    SmallSquare
+    MediumSquare
+    LargeSquare
+    TallSkinny
+    WideShort
+    KHeavy
+    MlFfnLike
+}
+
+enum M47VariantName {
+    BaselineScalar
+    MemoryConservative
+    SmallRegisterTile
+    Balanced2x2Accum4
+    Aggressive4x4Accum8
+}
+
+enum M47ImplementationComplexity {
+    Low
+    Medium
+    High
+}
+
+enum M47CandidateStrategy {
+    NoVariantYet
+    MemoryConservativeFirst
+    SmallRegisterFirst
+    BalancedFirst
+    AggressiveFirst
+    TwoStagePair
+    ExactPerGpuTuningFirst
+}
+
+record M47VariantRecipe {
+    Variant: M47VariantName
+    RegisterTileClass: Int
+    AccumulatorCount: Int
+    EstimatedRegistersPerThread: Int
+    EstimatedSharedMemoryPerWorkgroupKb: Int
+    ArithmeticIntensityClass: Int
+    IlpAdequacyClass: Int
+    OccupancyPressureClass: Int
+    ImplementationComplexity: M47ImplementationComplexity
+    SafetyFactorPermille: Int
+    MinSupportedBand: M47DeviceBand
+    AllowedShapeClasses: M47ShapeClass[]
+    ClampConditions: String
+}
+
+record M47DeviceScenario {
+    Name: String
+    Band: M47DeviceBand
+    UsableRegisterBudgetPermille: Int
+    UsableSharedMemoryBudgetPermille: Int
+    EffectiveBandwidthPermille: Int
+    EffectiveComputePermille: Int
+    OccupancyHeadroomPermille: Int
+    DriverOverheadPermille: Int
+}
+
+record M47ShapeInfluence {
+    ShapeClass: M47ShapeClass
+    IntensityBenefitClass: Int
+    RegisterToleranceClass: Int
+    SharedPressureClass: Int
+    OccupancySensitivityClass: Int
+    AggressiveLikelyUseful: Bool
+}
+
+record M47VariantScenarioResult {
+    Variant: M47VariantName
+    Scenario: String
+    Safe: Bool
+    CliffRisk: Int
+    VariancePenalty: Int
+}
+
+record M47StrategyResult {
+    Strategy: M47CandidateStrategy
+    SelectedVariants: String
+    RobustProductScore: Int
+    SafetyFactorPermille: Int
+    WorstCasePass: Bool
+    ShapeCoveragePercent: Int
+    ExpectedUsefulness: Int
+    ImplementationComplexity: Int
+    OverfittingRisk: Int
+    BenchmarkDependencyRisk: Int
+    VarianceSensitivity: Int
+    FinalRecommendation: Bool
+}
+
+record M47Recommendation {
+    Strategy: M47CandidateStrategy
+    FirstImplementationVariants: String
+    ShouldImplementPair: Bool
+    PreserveManualOverrideSeam: Bool
+    RecommendationComputed: Bool
+    P13M7Direction: String
+    RequiredSafetyMargins: String
+    TooRiskyNow: String
+    DeferredScope: String
+}
+
+record M47TableVariantRecipe {
+    Variant: String[]
+    RegisterTileClass: Int[]
+    AccumulatorCount: Int[]
+    RegistersPerThread: Int[]
+    SharedMemoryKb: Int[]
+    IntensityClass: Int[]
+    IlpAdequacyClass: Int[]
+    OccupancyPressureClass: Int[]
+    Complexity: String[]
+    SafetyFactorPermille: Int[]
+    MinSupportedBand: String[]
+    AllowedShapes: String[]
+    ClampConditions: String[]
+}
+
+record M47TableDeviceVariance {
+    Scenario: String[]
+    Band: String[]
+    RegisterBudgetPermille: Int[]
+    SharedBudgetPermille: Int[]
+    BandwidthPermille: Int[]
+    ComputePermille: Int[]
+    OccupancyHeadroomPermille: Int[]
+    DriverOverheadPermille: Int[]
+}
+
+record M47TableSafetyMargins {
+    Variant: String[]
+    Scenario: String[]
+    Safe: Bool[]
+    CliffRisk: Int[]
+    VariancePenalty: Int[]
+}
+
+record M47TableStrategyComparison {
+    Strategy: String[]
+    SelectedVariants: String[]
+    RobustProductScore: Int[]
+    SafetyFactorPermille: Int[]
+    WorstCasePass: Bool[]
+    ShapeCoveragePercent: Int[]
+    ExpectedUsefulness: Int[]
+    ImplementationComplexity: Int[]
+    OverfittingRisk: Int[]
+    BenchmarkDependencyRisk: Int[]
+    VarianceSensitivity: Int[]
+    FinalRecommendation: Bool[]
+}
+
+record M47TableShapeCoverage {
+    Strategy: String[]
+    CoveredShapeClasses: String[]
+    CoveragePercent: Int[]
+}
+
+record M47CoveredShapes {
+    CoveredShapeClasses: String
+    CoveragePercent: Int
+}
+
+record M47TableFinalRecommendation {
+    Strategy: String
+    FirstImplementationVariants: String
+    ShouldImplementPair: Bool
+    PreserveManualOverrideSeam: Bool
+    RecommendationComputed: Bool
+    P13M7Direction: String
+    RequiredSafetyMargins: String
+    TooRiskyNow: String
+    DeferredScope: String
+}
+
+fn M47Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M47Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
+fn M47Clamp(v: Int, lo: Int, hi: Int) -> Int { return M47Min(M47Max(v, lo), hi) }
+
+fn M47BandToString(band: M47DeviceBand) -> String {
+    return switch {
+        case band == M47DeviceBand.RegisterConstrained -> "register-constrained"
+        case band == M47DeviceBand.Balanced -> "balanced"
+        case band == M47DeviceBand.ComputeRich -> "compute-rich"
+        else -> "memory-rich"
+    }
+}
+
+fn M47ShapeToString(shape: M47ShapeClass) -> String {
+    return switch {
+        case shape == M47ShapeClass.SmallSquare -> "small-square"
+        case shape == M47ShapeClass.MediumSquare -> "medium-square"
+        case shape == M47ShapeClass.LargeSquare -> "large-square"
+        case shape == M47ShapeClass.TallSkinny -> "tall-skinny"
+        case shape == M47ShapeClass.WideShort -> "wide-short"
+        case shape == M47ShapeClass.KHeavy -> "k-heavy"
+        else -> "ML/FFN-like"
+    }
+}
+
+fn M47VariantToString(variant: M47VariantName) -> String {
+    return switch {
+        case variant == M47VariantName.BaselineScalar -> "baseline-scalar"
+        case variant == M47VariantName.MemoryConservative -> "memory-conservative"
+        case variant == M47VariantName.SmallRegisterTile -> "small-register-tile"
+        case variant == M47VariantName.Balanced2x2Accum4 -> "balanced-2x2-accum4"
+        else -> "aggressive-4x4-accum8"
+    }
+}
+
+fn M47ComplexityToInt(c: M47ImplementationComplexity) -> Int {
+    return switch {
+        case c == M47ImplementationComplexity.Low -> 1
+        case c == M47ImplementationComplexity.Medium -> 3
+        else -> 6
+    }
+}
+
+fn M47ComplexityToString(c: M47ImplementationComplexity) -> String {
+    return switch {
+        case c == M47ImplementationComplexity.Low -> "low"
+        case c == M47ImplementationComplexity.Medium -> "medium"
+        else -> "high"
+    }
+}
+
+fn M47StrategyToString(strategy: M47CandidateStrategy) -> String {
+    return switch {
+        case strategy == M47CandidateStrategy.NoVariantYet -> "no-variant-yet"
+        case strategy == M47CandidateStrategy.MemoryConservativeFirst -> "memory-conservative-first"
+        case strategy == M47CandidateStrategy.SmallRegisterFirst -> "small-register-first"
+        case strategy == M47CandidateStrategy.BalancedFirst -> "balanced-first"
+        case strategy == M47CandidateStrategy.AggressiveFirst -> "aggressive-first"
+        case strategy == M47CandidateStrategy.TwoStagePair -> "two-stage-pair"
+        else -> "exact-per-gpu-tuning-first"
+    }
+}
+
+fn M47AllShapes() -> M47ShapeClass[] {
+    return [
+        M47ShapeClass.SmallSquare,
+        M47ShapeClass.MediumSquare,
+        M47ShapeClass.LargeSquare,
+        M47ShapeClass.TallSkinny,
+        M47ShapeClass.WideShort,
+        M47ShapeClass.KHeavy,
+        M47ShapeClass.MlFfnLike
+    ]
+}
+
+fn M47ShapeInfluences() -> M47ShapeInfluence[] {
+    return [
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.SmallSquare IntensityBenefitClass: 1 RegisterToleranceClass: 4 SharedPressureClass: 1 OccupancySensitivityClass: 5 AggressiveLikelyUseful: false},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.MediumSquare IntensityBenefitClass: 3 RegisterToleranceClass: 3 SharedPressureClass: 2 OccupancySensitivityClass: 3 AggressiveLikelyUseful: false},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.LargeSquare IntensityBenefitClass: 5 RegisterToleranceClass: 2 SharedPressureClass: 4 OccupancySensitivityClass: 2 AggressiveLikelyUseful: true},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.TallSkinny IntensityBenefitClass: 2 RegisterToleranceClass: 4 SharedPressureClass: 2 OccupancySensitivityClass: 4 AggressiveLikelyUseful: false},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.WideShort IntensityBenefitClass: 2 RegisterToleranceClass: 4 SharedPressureClass: 2 OccupancySensitivityClass: 4 AggressiveLikelyUseful: false},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.KHeavy IntensityBenefitClass: 5 RegisterToleranceClass: 2 SharedPressureClass: 3 OccupancySensitivityClass: 3 AggressiveLikelyUseful: true},
+        M47ShapeInfluence {ShapeClass: M47ShapeClass.MlFfnLike IntensityBenefitClass: 5 RegisterToleranceClass: 2 SharedPressureClass: 4 OccupancySensitivityClass: 3 AggressiveLikelyUseful: true}
+    ]
+}
+
+fn M47FindShapeInfluence(shape: M47ShapeClass) -> M47ShapeInfluence {
+    let influences = M47ShapeInfluences()
+    var out = influences[0]
+    for i in 0 .. Len(influences) {
+        if influences[i].ShapeClass == shape {
+            out = influences[i]
+        }
+    }
+    return out
+}
+
+fn M47VariantRecipes() -> M47VariantRecipe[] {
+    let allShapes = M47AllShapes()
+    return [
+        M47VariantRecipe {Variant: M47VariantName.BaselineScalar RegisterTileClass: 1 AccumulatorCount: 1 EstimatedRegistersPerThread: 20 EstimatedSharedMemoryPerWorkgroupKb: 4 ArithmeticIntensityClass: 1 IlpAdequacyClass: 1 OccupancyPressureClass: 1 ImplementationComplexity: M47ImplementationComplexity.Low SafetyFactorPermille: 980 MinSupportedBand: M47DeviceBand.RegisterConstrained AllowedShapeClasses: allShapes ClampConditions: "never selected for first implementation; fallback floor only"},
+        M47VariantRecipe {Variant: M47VariantName.MemoryConservative RegisterTileClass: 1 AccumulatorCount: 2 EstimatedRegistersPerThread: 28 EstimatedSharedMemoryPerWorkgroupKb: 8 ArithmeticIntensityClass: 2 IlpAdequacyClass: 2 OccupancyPressureClass: 2 ImplementationComplexity: M47ImplementationComplexity.Low SafetyFactorPermille: 950 MinSupportedBand: M47DeviceBand.RegisterConstrained AllowedShapeClasses: allShapes ClampConditions: "clamp to baseline when occupancy headroom<800permille"},
+        M47VariantRecipe {Variant: M47VariantName.SmallRegisterTile RegisterTileClass: 2 AccumulatorCount: 2 EstimatedRegistersPerThread: 36 EstimatedSharedMemoryPerWorkgroupKb: 12 ArithmeticIntensityClass: 3 IlpAdequacyClass: 3 OccupancyPressureClass: 3 ImplementationComplexity: M47ImplementationComplexity.Medium SafetyFactorPermille: 900 MinSupportedBand: M47DeviceBand.RegisterConstrained AllowedShapeClasses: allShapes ClampConditions: "clamp to memory-conservative when register budget<780permille or occupancy headroom<740permille"},
+        M47VariantRecipe {Variant: M47VariantName.Balanced2x2Accum4 RegisterTileClass: 3 AccumulatorCount: 4 EstimatedRegistersPerThread: 56 EstimatedSharedMemoryPerWorkgroupKb: 24 ArithmeticIntensityClass: 4 IlpAdequacyClass: 4 OccupancyPressureClass: 4 ImplementationComplexity: M47ImplementationComplexity.Medium SafetyFactorPermille: 820 MinSupportedBand: M47DeviceBand.Balanced AllowedShapeClasses: [M47ShapeClass.MediumSquare, M47ShapeClass.LargeSquare, M47ShapeClass.KHeavy, M47ShapeClass.MlFfnLike] ClampConditions: "clamp to small-register when register budget<860permille, shared budget<860permille, or occupancy headroom<780permille"},
+        M47VariantRecipe {Variant: M47VariantName.Aggressive4x4Accum8 RegisterTileClass: 4 AccumulatorCount: 8 EstimatedRegistersPerThread: 92 EstimatedSharedMemoryPerWorkgroupKb: 48 ArithmeticIntensityClass: 5 IlpAdequacyClass: 5 OccupancyPressureClass: 5 ImplementationComplexity: M47ImplementationComplexity.High SafetyFactorPermille: 700 MinSupportedBand: M47DeviceBand.ComputeRich AllowedShapeClasses: [M47ShapeClass.LargeSquare, M47ShapeClass.KHeavy, M47ShapeClass.MlFfnLike] ClampConditions: "clamp to balanced when register budget<950permille, shared budget<930permille, driver overhead>120permille, or occupancy headroom<860permille"}
+    ]
+}
+
+fn M47FindVariantRecipe(variant: M47VariantName) -> M47VariantRecipe {
+    let variants = M47VariantRecipes()
+    var out = variants[0]
+    for i in 0 .. Len(variants) {
+        if variants[i].Variant == variant {
+            out = variants[i]
+        }
+    }
+    return out
+}
+
+fn M47DeviceScenarios() -> M47DeviceScenario[] {
+    return [
+        M47DeviceScenario {Name: "balanced-nominal" Band: M47DeviceBand.Balanced UsableRegisterBudgetPermille: 1000 UsableSharedMemoryBudgetPermille: 1000 EffectiveBandwidthPermille: 1000 EffectiveComputePermille: 1000 OccupancyHeadroomPermille: 1000 DriverOverheadPermille: 100},
+        M47DeviceScenario {Name: "balanced-low-margin" Band: M47DeviceBand.Balanced UsableRegisterBudgetPermille: 820 UsableSharedMemoryBudgetPermille: 850 EffectiveBandwidthPermille: 900 EffectiveComputePermille: 900 OccupancyHeadroomPermille: 760 DriverOverheadPermille: 130},
+        M47DeviceScenario {Name: "compute-rich-reg-reduced" Band: M47DeviceBand.ComputeRich UsableRegisterBudgetPermille: 790 UsableSharedMemoryBudgetPermille: 900 EffectiveBandwidthPermille: 920 EffectiveComputePermille: 1030 OccupancyHeadroomPermille: 740 DriverOverheadPermille: 120},
+        M47DeviceScenario {Name: "memory-rich-shared-reduced" Band: M47DeviceBand.MemoryRich UsableRegisterBudgetPermille: 900 UsableSharedMemoryBudgetPermille: 760 EffectiveBandwidthPermille: 1020 EffectiveComputePermille: 920 OccupancyHeadroomPermille: 780 DriverOverheadPermille: 120},
+        M47DeviceScenario {Name: "register-constrained-low-end" Band: M47DeviceBand.RegisterConstrained UsableRegisterBudgetPermille: 760 UsableSharedMemoryBudgetPermille: 850 EffectiveBandwidthPermille: 830 EffectiveComputePermille: 780 OccupancyHeadroomPermille: 700 DriverOverheadPermille: 140}
+    ]
+}
+
+fn M47BandRank(band: M47DeviceBand) -> Int {
+    return switch {
+        case band == M47DeviceBand.RegisterConstrained -> 1
+        case band == M47DeviceBand.Balanced -> 2
+        case band == M47DeviceBand.MemoryRich -> 3
+        else -> 4
+    }
+}
+
+fn M47IsShapeAllowed(recipe: M47VariantRecipe, shape: M47ShapeClass) -> Bool {
+    var allowed = false
+    for i in 0 .. Len(recipe.AllowedShapeClasses) {
+        if recipe.AllowedShapeClasses[i] == shape {
+            allowed = true
+        }
+    }
+    return allowed
+}
+
+fn M47VariantScenarioSafety(variant: M47VariantName, scenario: M47DeviceScenario, safetyMarginPermille: Int) -> M47VariantScenarioResult {
+    let recipe = M47FindVariantRecipe(variant)
+    let marginReg = scenario.UsableRegisterBudgetPermille - safetyMarginPermille
+    let marginShared = scenario.UsableSharedMemoryBudgetPermille - safetyMarginPermille
+    let marginOcc = scenario.OccupancyHeadroomPermille - safetyMarginPermille
+
+    let regDemand = recipe.EstimatedRegistersPerThread * 10
+    let sharedDemand = recipe.EstimatedSharedMemoryPerWorkgroupKb * 20
+    let occDemand = recipe.OccupancyPressureClass * 160
+
+    let minBandOk = M47BandRank(scenario.Band) >= M47BandRank(recipe.MinSupportedBand)
+    let regOk = marginReg >= regDemand
+    let sharedOk = marginShared >= sharedDemand
+    let occOk = marginOcc >= occDemand
+    let driverOk = scenario.DriverOverheadPermille <= (260 - recipe.OccupancyPressureClass * 20)
+
+    let cliffRisk = M47Clamp((regDemand - marginReg) / 5 + (sharedDemand - marginShared) / 7 + (occDemand - marginOcc) / 4 + M47Max(0, scenario.DriverOverheadPermille - 120), 0, 100)
+    let variancePenalty = M47Clamp(M47Max(0, 900 - scenario.UsableRegisterBudgetPermille) / 3 + M47Max(0, 900 - scenario.UsableSharedMemoryBudgetPermille) / 4 + recipe.OccupancyPressureClass * 5, 0, 100)
+
+    return M47VariantScenarioResult {
+        Variant: variant
+        Scenario: scenario.Name
+        Safe: minBandOk and regOk and sharedOk and occOk and driverOk
+        CliffRisk: cliffRisk
+        VariancePenalty: variancePenalty
+    }
+}
+
+fn M47VariantUsefulnessForShape(variant: M47VariantName, shape: M47ShapeClass) -> Int {
+    let influence = M47FindShapeInfluence(shape)
+    return switch {
+        case variant == M47VariantName.MemoryConservative -> 18 + influence.OccupancySensitivityClass * 4 + influence.IntensityBenefitClass * 2
+        case variant == M47VariantName.SmallRegisterTile -> 24 + influence.OccupancySensitivityClass * 4 + influence.IntensityBenefitClass * 3
+        case variant == M47VariantName.Balanced2x2Accum4 -> 38 + influence.IntensityBenefitClass * 6 - influence.OccupancySensitivityClass * 2
+        case variant == M47VariantName.Aggressive4x4Accum8 -> 26 + influence.IntensityBenefitClass * 8 - influence.OccupancySensitivityClass * 4
+        else -> 10
+    }
+}
+
+fn M47StrategyVariants(strategy: M47CandidateStrategy) -> M47VariantName[] {
+    return switch {
+        case strategy == M47CandidateStrategy.MemoryConservativeFirst -> [M47VariantName.MemoryConservative]
+        case strategy == M47CandidateStrategy.SmallRegisterFirst -> [M47VariantName.SmallRegisterTile]
+        case strategy == M47CandidateStrategy.BalancedFirst -> [M47VariantName.Balanced2x2Accum4]
+        case strategy == M47CandidateStrategy.AggressiveFirst -> [M47VariantName.Aggressive4x4Accum8]
+        case strategy == M47CandidateStrategy.TwoStagePair -> [M47VariantName.SmallRegisterTile, M47VariantName.Balanced2x2Accum4]
+        case strategy == M47CandidateStrategy.ExactPerGpuTuningFirst -> [M47VariantName.Balanced2x2Accum4, M47VariantName.Aggressive4x4Accum8]
+        else -> [M47VariantName.BaselineScalar]
+    }
+}
+
+fn M47StrategyRequiresExactTuning(strategy: M47CandidateStrategy) -> Bool {
+    return strategy == M47CandidateStrategy.ExactPerGpuTuningFirst
+}
+
+fn M47StrategyNeedsImmediateBenchmarkTrust(strategy: M47CandidateStrategy) -> Bool {
+    return strategy == M47CandidateStrategy.AggressiveFirst or strategy == M47CandidateStrategy.ExactPerGpuTuningFirst
+}
+
+fn M47EvaluateStrategy(strategy: M47CandidateStrategy, safetyMarginPermille: Int) -> M47StrategyResult {
+    let variants = M47StrategyVariants(strategy)
+    let scenarios = M47DeviceScenarios()
+    let shapes = M47AllShapes()
+
+    var usefulnessTotal = 0
+    var coverageCount = 0
+    var complexity = 0
+    var safetyFactor = 1000
+    var worstCasePass = true
+    var worstCaseSafety = 100
+    var varianceSensitivity = 0
+    var marginPressurePenalty = 0
+
+    for si in 0 .. Len(shapes) {
+        var covered = false
+        var bestShapeUtility = 8
+        for vi in 0 .. Len(variants) {
+            let recipe = M47FindVariantRecipe(variants[vi])
+            if M47IsShapeAllowed(recipe, shapes[si]) {
+                covered = true
+                let utility = M47VariantUsefulnessForShape(variants[vi], shapes[si])
+                if utility > bestShapeUtility {
+                    bestShapeUtility = utility
+                }
+            }
+        }
+        usefulnessTotal = usefulnessTotal + bestShapeUtility
+        if covered {
+            coverageCount = coverageCount + 1
+        }
+    }
+
+    for vi in 0 .. Len(variants) {
+        let recipe = M47FindVariantRecipe(variants[vi])
+        safetyFactor = M47Min(safetyFactor, recipe.SafetyFactorPermille)
+        complexity = complexity + M47ComplexityToInt(recipe.ImplementationComplexity)
+        marginPressurePenalty = marginPressurePenalty + safetyMarginPermille * recipe.OccupancyPressureClass / 40
+
+        for di in 0 .. Len(scenarios) {
+            let result = M47VariantScenarioSafety(variants[vi], scenarios[di], safetyMarginPermille)
+            let scenarioSafetyScore = 100 - result.CliffRisk - result.VariancePenalty / 2
+            worstCaseSafety = M47Min(worstCaseSafety, scenarioSafetyScore)
+            varianceSensitivity = varianceSensitivity + result.VariancePenalty / Len(scenarios)
+            if result.Safe == false {
+                worstCasePass = false
+            }
+        }
+    }
+
+    let coveragePercent = coverageCount * 100 / Len(shapes)
+    let overfittingRisk = switch {
+        case strategy == M47CandidateStrategy.NoVariantYet -> 0
+        case strategy == M47CandidateStrategy.ExactPerGpuTuningFirst -> 95
+        case strategy == M47CandidateStrategy.AggressiveFirst -> 62
+        case strategy == M47CandidateStrategy.BalancedFirst -> 35
+        case strategy == M47CandidateStrategy.TwoStagePair -> 28
+        else -> 18
+    }
+    let benchmarkDependencyRisk = switch {
+        case M47StrategyNeedsImmediateBenchmarkTrust(strategy) -> 90
+        case strategy == M47CandidateStrategy.BalancedFirst -> 35
+        case strategy == M47CandidateStrategy.TwoStagePair -> 40
+        else -> 14
+    }
+    let deferConstraintPenalty = switch {
+        case M47StrategyNeedsImmediateBenchmarkTrust(strategy) -> 55
+        else -> 0
+    }
+    let exactTuningPenalty = switch {
+        case M47StrategyRequiresExactTuning(strategy) -> 70
+        else -> 0
+    }
+    let worstCasePenalty = switch {
+        case worstCasePass -> 0
+        else -> 40
+    }
+
+    let robustScore = usefulnessTotal + coveragePercent - complexity * 5 + safetyFactor / 20 + worstCaseSafety - varianceSensitivity - overfittingRisk - benchmarkDependencyRisk - deferConstraintPenalty - exactTuningPenalty - worstCasePenalty - marginPressurePenalty
+
+    return M47StrategyResult {
+        Strategy: strategy
+        SelectedVariants: M47SelectedVariantsString(strategy)
+        RobustProductScore: robustScore
+        SafetyFactorPermille: safetyFactor
+        WorstCasePass: worstCasePass
+        ShapeCoveragePercent: coveragePercent
+        ExpectedUsefulness: usefulnessTotal
+        ImplementationComplexity: complexity
+        OverfittingRisk: overfittingRisk
+        BenchmarkDependencyRisk: benchmarkDependencyRisk
+        VarianceSensitivity: varianceSensitivity
+        FinalRecommendation: false
+    }
+}
+
+fn M47AllStrategyResults(safetyMarginPermille: Int) -> M47StrategyResult[] {
+    let strategies = [
+        M47CandidateStrategy.NoVariantYet,
+        M47CandidateStrategy.MemoryConservativeFirst,
+        M47CandidateStrategy.SmallRegisterFirst,
+        M47CandidateStrategy.BalancedFirst,
+        M47CandidateStrategy.AggressiveFirst,
+        M47CandidateStrategy.TwoStagePair,
+        M47CandidateStrategy.ExactPerGpuTuningFirst
+    ]
+
+    var out = [M47EvaluateStrategy(strategies[0], safetyMarginPermille)]
+    var bestScore = out[0].RobustProductScore
+    var bestIndex = 0
+
+    for i in 1 .. Len(strategies) {
+        let result = M47EvaluateStrategy(strategies[i], safetyMarginPermille)
+        out = Append(out, result)
+        if result.RobustProductScore > bestScore {
+            bestScore = result.RobustProductScore
+            bestIndex = i
+        }
+    }
+
+    if bestIndex >= 0 {
+        out[bestIndex] = out[bestIndex] with { FinalRecommendation: true }
+    }
+
+    return out
+}
+
+fn M47SelectedVariantsString(strategy: M47CandidateStrategy) -> String {
+    return switch {
+        case strategy == M47CandidateStrategy.NoVariantYet -> "baseline-scalar (diagnostic-only)"
+        case strategy == M47CandidateStrategy.MemoryConservativeFirst -> "memory-conservative"
+        case strategy == M47CandidateStrategy.SmallRegisterFirst -> "small-register-tile"
+        case strategy == M47CandidateStrategy.BalancedFirst -> "balanced-2x2-accum4"
+        case strategy == M47CandidateStrategy.AggressiveFirst -> "aggressive-4x4-accum8"
+        case strategy == M47CandidateStrategy.TwoStagePair -> "small-register-tile + balanced-2x2-accum4"
+        else -> "balanced-2x2-accum4 + aggressive-4x4-accum8 with exact tuning"
+    }
+}
+
+fn M47RecommendationFromModel() -> M47Recommendation {
+    let results = M47AllStrategyResults(120)
+    var best = results[0]
+    for i in 0 .. Len(results) {
+        if results[i].FinalRecommendation {
+            best = results[i]
+        }
+    }
+
+    return M47Recommendation {
+        Strategy: best.Strategy
+        FirstImplementationVariants: best.SelectedVariants
+        ShouldImplementPair: best.Strategy == M47CandidateStrategy.TwoStagePair
+        PreserveManualOverrideSeam: true
+        RecommendationComputed: true
+        P13M7Direction: "Implement recommended recipe as benchmark-only with safety clamps; keep selector diagnostics path and fallback-to-baseline unchanged."
+        RequiredSafetyMargins: "Apply >=120permille guard bands on registers/shared/occupancy; clamp balanced->small-register and aggressive->balanced/memory-conservative under degraded budgets."
+        TooRiskyNow: "aggressive-4x4-accum8 first-pass actuation and exact-per-gpu tuning dependent strategies"
+        DeferredScope: "real-hardware benchmark commissioning, per-GPU Pareto fitting, runtime autotune, and dispatch actuation"
+    }
+}
+
+fn M47VariantRecipeTable() -> M47TableVariantRecipe {
+    let variants = M47VariantRecipes()
+
+    var variantNames = [M47VariantToString(variants[0].Variant)]
+    var registerTile = [variants[0].RegisterTileClass]
+    var accumulators = [variants[0].AccumulatorCount]
+    var regs = [variants[0].EstimatedRegistersPerThread]
+    var smem = [variants[0].EstimatedSharedMemoryPerWorkgroupKb]
+    var intensity = [variants[0].ArithmeticIntensityClass]
+    var ilp = [variants[0].IlpAdequacyClass]
+    var occupancy = [variants[0].OccupancyPressureClass]
+    var complexity = [M47ComplexityToString(variants[0].ImplementationComplexity)]
+    var safety = [variants[0].SafetyFactorPermille]
+    var minBand = [M47BandToString(variants[0].MinSupportedBand)]
+    var allowed = [M47AllowedShapesString(variants[0].AllowedShapeClasses)]
+    var clamps = [variants[0].ClampConditions]
+
+    for i in 1 .. Len(variants) {
+        variantNames = Append(variantNames, M47VariantToString(variants[i].Variant))
+        registerTile = Append(registerTile, variants[i].RegisterTileClass)
+        accumulators = Append(accumulators, variants[i].AccumulatorCount)
+        regs = Append(regs, variants[i].EstimatedRegistersPerThread)
+        smem = Append(smem, variants[i].EstimatedSharedMemoryPerWorkgroupKb)
+        intensity = Append(intensity, variants[i].ArithmeticIntensityClass)
+        ilp = Append(ilp, variants[i].IlpAdequacyClass)
+        occupancy = Append(occupancy, variants[i].OccupancyPressureClass)
+        complexity = Append(complexity, M47ComplexityToString(variants[i].ImplementationComplexity))
+        safety = Append(safety, variants[i].SafetyFactorPermille)
+        minBand = Append(minBand, M47BandToString(variants[i].MinSupportedBand))
+        allowed = Append(allowed, M47AllowedShapesString(variants[i].AllowedShapeClasses))
+        clamps = Append(clamps, variants[i].ClampConditions)
+    }
+
+    return M47TableVariantRecipe {
+        Variant: variantNames
+        RegisterTileClass: registerTile
+        AccumulatorCount: accumulators
+        RegistersPerThread: regs
+        SharedMemoryKb: smem
+        IntensityClass: intensity
+        IlpAdequacyClass: ilp
+        OccupancyPressureClass: occupancy
+        Complexity: complexity
+        SafetyFactorPermille: safety
+        MinSupportedBand: minBand
+        AllowedShapes: allowed
+        ClampConditions: clamps
+    }
+}
+
+fn M47AllowedShapesString(shapes: M47ShapeClass[]) -> String {
+    var out = ""
+    for i in 0 .. Len(shapes) {
+        if i > 0 {
+            out = out + ","
+        }
+        out = out + M47ShapeToString(shapes[i])
+    }
+    return out
+}
+
+fn M47DeviceVarianceTable() -> M47TableDeviceVariance {
+    let scenarios = M47DeviceScenarios()
+    var names = [scenarios[0].Name]
+    var bands = [M47BandToString(scenarios[0].Band)]
+    var regs = [scenarios[0].UsableRegisterBudgetPermille]
+    var shared = [scenarios[0].UsableSharedMemoryBudgetPermille]
+    var bandwidth = [scenarios[0].EffectiveBandwidthPermille]
+    var compute = [scenarios[0].EffectiveComputePermille]
+    var headroom = [scenarios[0].OccupancyHeadroomPermille]
+    var driver = [scenarios[0].DriverOverheadPermille]
+
+    for i in 1 .. Len(scenarios) {
+        names = Append(names, scenarios[i].Name)
+        bands = Append(bands, M47BandToString(scenarios[i].Band))
+        regs = Append(regs, scenarios[i].UsableRegisterBudgetPermille)
+        shared = Append(shared, scenarios[i].UsableSharedMemoryBudgetPermille)
+        bandwidth = Append(bandwidth, scenarios[i].EffectiveBandwidthPermille)
+        compute = Append(compute, scenarios[i].EffectiveComputePermille)
+        headroom = Append(headroom, scenarios[i].OccupancyHeadroomPermille)
+        driver = Append(driver, scenarios[i].DriverOverheadPermille)
+    }
+
+    return M47TableDeviceVariance {
+        Scenario: names
+        Band: bands
+        RegisterBudgetPermille: regs
+        SharedBudgetPermille: shared
+        BandwidthPermille: bandwidth
+        ComputePermille: compute
+        OccupancyHeadroomPermille: headroom
+        DriverOverheadPermille: driver
+    }
+}
+
+fn M47SafetyMarginTable() -> M47TableSafetyMargins {
+    let scenarios = M47DeviceScenarios()
+    let variants = [M47VariantName.MemoryConservative, M47VariantName.SmallRegisterTile, M47VariantName.Balanced2x2Accum4, M47VariantName.Aggressive4x4Accum8]
+
+    let first = M47VariantScenarioSafety(variants[0], scenarios[0], 120)
+    var names = [M47VariantToString(first.Variant)]
+    var scenarioNames = [first.Scenario]
+    var safe = [first.Safe]
+    var cliff = [first.CliffRisk]
+    var variance = [first.VariancePenalty]
+
+    for vi in 0 .. Len(variants) {
+        let scenarioStart = switch { case vi == 0 -> 1 else -> 0 }
+        for si in scenarioStart .. Len(scenarios) {
+            let result = M47VariantScenarioSafety(variants[vi], scenarios[si], 120)
+            names = Append(names, M47VariantToString(result.Variant))
+            scenarioNames = Append(scenarioNames, result.Scenario)
+            safe = Append(safe, result.Safe)
+            cliff = Append(cliff, result.CliffRisk)
+            variance = Append(variance, result.VariancePenalty)
+        }
+    }
+
+    return M47TableSafetyMargins {Variant: names Scenario: scenarioNames Safe: safe CliffRisk: cliff VariancePenalty: variance}
+}
+
+fn M47StrategyComparisonTable() -> M47TableStrategyComparison {
+    let results = M47AllStrategyResults(120)
+    var strategies = [M47StrategyToString(results[0].Strategy)]
+    var variants = [results[0].SelectedVariants]
+    var score = [results[0].RobustProductScore]
+    var safety = [results[0].SafetyFactorPermille]
+    var pass = [results[0].WorstCasePass]
+    var coverage = [results[0].ShapeCoveragePercent]
+    var useful = [results[0].ExpectedUsefulness]
+    var complexity = [results[0].ImplementationComplexity]
+    var overfit = [results[0].OverfittingRisk]
+    var benchRisk = [results[0].BenchmarkDependencyRisk]
+    var variance = [results[0].VarianceSensitivity]
+    var recommended = [results[0].FinalRecommendation]
+
+    for i in 1 .. Len(results) {
+        strategies = Append(strategies, M47StrategyToString(results[i].Strategy))
+        variants = Append(variants, results[i].SelectedVariants)
+        score = Append(score, results[i].RobustProductScore)
+        safety = Append(safety, results[i].SafetyFactorPermille)
+        pass = Append(pass, results[i].WorstCasePass)
+        coverage = Append(coverage, results[i].ShapeCoveragePercent)
+        useful = Append(useful, results[i].ExpectedUsefulness)
+        complexity = Append(complexity, results[i].ImplementationComplexity)
+        overfit = Append(overfit, results[i].OverfittingRisk)
+        benchRisk = Append(benchRisk, results[i].BenchmarkDependencyRisk)
+        variance = Append(variance, results[i].VarianceSensitivity)
+        recommended = Append(recommended, results[i].FinalRecommendation)
+    }
+
+    return M47TableStrategyComparison {
+        Strategy: strategies
+        SelectedVariants: variants
+        RobustProductScore: score
+        SafetyFactorPermille: safety
+        WorstCasePass: pass
+        ShapeCoveragePercent: coverage
+        ExpectedUsefulness: useful
+        ImplementationComplexity: complexity
+        OverfittingRisk: overfit
+        BenchmarkDependencyRisk: benchRisk
+        VarianceSensitivity: variance
+        FinalRecommendation: recommended
+    }
+}
+
+fn M47ShapeCoverageTable() -> M47TableShapeCoverage {
+    let results = M47AllStrategyResults(120)
+    let firstStrategy = results[0].Strategy
+    let firstShapeData = M47CoveredShapesForStrategy(firstStrategy)
+    var strategies = [M47StrategyToString(firstStrategy)]
+    var shapes = [firstShapeData.CoveredShapeClasses]
+    var coverage = [firstShapeData.CoveragePercent]
+
+    for i in 1 .. Len(results) {
+        let strategy = results[i].Strategy
+        let covered = M47CoveredShapesForStrategy(strategy)
+
+        strategies = Append(strategies, M47StrategyToString(strategy))
+        shapes = Append(shapes, covered.CoveredShapeClasses)
+        coverage = Append(coverage, covered.CoveragePercent)
+    }
+
+    return M47TableShapeCoverage {Strategy: strategies CoveredShapeClasses: shapes CoveragePercent: coverage}
+}
+
+fn M47CoveredShapesForStrategy(strategy: M47CandidateStrategy) -> M47CoveredShapes {
+    let strategyVariants = M47StrategyVariants(strategy)
+    let allShapes = M47AllShapes()
+    var coveredText = ""
+    var coveredCount = 0
+
+    for si in 0 .. Len(allShapes) {
+        var covered = false
+        for vi in 0 .. Len(strategyVariants) {
+            let recipe = M47FindVariantRecipe(strategyVariants[vi])
+            if M47IsShapeAllowed(recipe, allShapes[si]) {
+                covered = true
+            }
+        }
+        if covered {
+            if coveredCount > 0 {
+                coveredText = coveredText + ","
+            }
+            coveredText = coveredText + M47ShapeToString(allShapes[si])
+            coveredCount = coveredCount + 1
+        }
+    }
+    return M47CoveredShapes {CoveredShapeClasses: coveredText CoveragePercent: coveredCount * 100 / Len(M47AllShapes())}
+}
+
+fn M47FinalRecommendationTable() -> M47TableFinalRecommendation {
+    let rec = M47RecommendationFromModel()
+    return M47TableFinalRecommendation {
+        Strategy: M47StrategyToString(rec.Strategy)
+        FirstImplementationVariants: rec.FirstImplementationVariants
+        ShouldImplementPair: rec.ShouldImplementPair
+        PreserveManualOverrideSeam: rec.PreserveManualOverrideSeam
+        RecommendationComputed: rec.RecommendationComputed
+        P13M7Direction: rec.P13M7Direction
+        RequiredSafetyMargins: rec.RequiredSafetyMargins
+        TooRiskyNow: rec.TooRiskyNow
+        DeferredScope: rec.DeferredScope
+    }
+}

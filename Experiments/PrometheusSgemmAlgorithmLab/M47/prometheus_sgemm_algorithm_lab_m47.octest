@@ -1,0 +1,139 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M47ResultFor(results: M47StrategyResult[], strategy: M47CandidateStrategy) -> M47StrategyResult {
+    var out = results[0]
+    for i in 0 .. Len(results) {
+        if results[i].Strategy == strategy {
+            out = results[i]
+        }
+    }
+    return out
+}
+
+[Fact]
+fn M47AggressiveFailsSafetyMarginOnConstrainedBands() -> Void {
+    let scenarios = M47DeviceScenarios()
+    let regConstrained = scenarios[4]
+    let result = M47VariantScenarioSafety(M47VariantName.Aggressive4x4Accum8, regConstrained, 120)
+    Assert.True(result.Safe == false, "aggressive variant must fail constrained band safety margin")
+    Assert.True(result.CliffRisk >= 40, "aggressive variant should show occupancy cliff risk under constrained margins")
+}
+
+[Fact]
+fn M47SmallRegisterSurvivesDegradedBands() -> Void {
+    let balancedLowMargin = M47DeviceScenarios()[1]
+    let regConstrained = M47DeviceScenarios()[4]
+    let a = M47VariantScenarioSafety(M47VariantName.SmallRegisterTile, balancedLowMargin, 80)
+    let b = M47VariantScenarioSafety(M47VariantName.SmallRegisterTile, regConstrained, 80)
+    Assert.True(a.Safe, "small-register variant should survive degraded balanced band with conservative safety margin")
+    Assert.True(b.Safe, "small-register variant should survive degraded register-constrained band with conservative safety margin")
+}
+
+[Fact]
+fn M47BalancedHigherUsefulnessButHigherRisk() -> Void {
+    let uMediumBalanced = M47VariantUsefulnessForShape(M47VariantName.Balanced2x2Accum4, M47ShapeClass.MediumSquare)
+    let uLargeBalanced = M47VariantUsefulnessForShape(M47VariantName.Balanced2x2Accum4, M47ShapeClass.LargeSquare)
+    let uFfnBalanced = M47VariantUsefulnessForShape(M47VariantName.Balanced2x2Accum4, M47ShapeClass.MlFfnLike)
+
+    let uMediumSmall = M47VariantUsefulnessForShape(M47VariantName.SmallRegisterTile, M47ShapeClass.MediumSquare)
+    let uLargeSmall = M47VariantUsefulnessForShape(M47VariantName.SmallRegisterTile, M47ShapeClass.LargeSquare)
+    let uFfnSmall = M47VariantUsefulnessForShape(M47VariantName.SmallRegisterTile, M47ShapeClass.MlFfnLike)
+
+    let s = M47DeviceScenarios()[1]
+    let riskBalanced = M47VariantScenarioSafety(M47VariantName.Balanced2x2Accum4, s, 120)
+    let riskSmall = M47VariantScenarioSafety(M47VariantName.SmallRegisterTile, s, 120)
+
+    Assert.True(uMediumBalanced > uMediumSmall and uLargeBalanced > uLargeSmall and uFfnBalanced > uFfnSmall, "balanced variant should model higher usefulness on medium/large/FFN-like shapes")
+    Assert.True(riskBalanced.VariancePenalty > riskSmall.VariancePenalty, "balanced variant should carry higher variance sensitivity")
+}
+
+[Fact]
+fn M47PerGpuExactTuningNotSelected() -> Void {
+    let results = M47AllStrategyResults(120)
+    let exact = M47ResultFor(results, M47CandidateStrategy.ExactPerGpuTuningFirst)
+    Assert.True(exact.OverfittingRisk >= 90, "per-GPU exact tuning should carry high overfitting risk")
+    Assert.True(exact.FinalRecommendation == false, "per-GPU exact tuning should not win first implementation")
+}
+
+[Fact]
+fn M47ImmediateBenchmarkDependencyPenalized() -> Void {
+    let results = M47AllStrategyResults(120)
+    let aggressive = M47ResultFor(results, M47CandidateStrategy.AggressiveFirst)
+    let small = M47ResultFor(results, M47CandidateStrategy.SmallRegisterFirst)
+    Assert.True(aggressive.BenchmarkDependencyRisk > small.BenchmarkDependencyRisk, "aggressive-first should be penalized for immediate benchmark dependency")
+    Assert.True(aggressive.RobustProductScore < small.RobustProductScore, "immediate-benchmark dependent candidate should lose under no-hardware-benchmark constraint")
+}
+
+[Fact]
+fn M47SafetyFactorChangesRecommendationPressure() -> Void {
+    let aggressiveLowMargin = M47EvaluateStrategy(M47CandidateStrategy.AggressiveFirst, 60)
+    let aggressiveHighMargin = M47EvaluateStrategy(M47CandidateStrategy.AggressiveFirst, 180)
+    Assert.True(aggressiveHighMargin.RobustProductScore < aggressiveLowMargin.RobustProductScore, "higher safety margin should make aggressive strategy less favorable")
+}
+
+[Fact]
+fn M47ManualOverrideSeamUsefulButNotDefault() -> Void {
+    let rec = M47RecommendationFromModel()
+    Assert.True(rec.PreserveManualOverrideSeam, "manual override seam should remain available")
+    Assert.True(rec.Strategy != M47CandidateStrategy.ExactPerGpuTuningFirst, "manual override or exact tuning should not become default first-implementation strategy")
+}
+
+[Fact]
+fn M47RecommendationIsComputedFromScores() -> Void {
+    let results = M47AllStrategyResults(120)
+    let rec = M47RecommendationFromModel()
+    var recommendedCount = 0
+    var topScore = -100000
+    var topStrategy = M47CandidateStrategy.NoVariantYet
+
+    for i in 0 .. Len(results) {
+        if results[i].FinalRecommendation {
+            recommendedCount = recommendedCount + 1
+        }
+        if results[i].RobustProductScore > topScore {
+            topScore = results[i].RobustProductScore
+            topStrategy = results[i].Strategy
+        }
+    }
+
+    Assert.Equal(recommendedCount, 1, "exactly one strategy should be selected as final recommendation")
+    Assert.Equal(rec.Strategy, topStrategy, "final recommendation should come from computed top score")
+}
+
+[Fact]
+fn M47Determinism() -> Void {
+    let a = M47AllStrategyResults(120)
+    let b = M47AllStrategyResults(120)
+    Assert.Equal(a[0].RobustProductScore, b[0].RobustProductScore, "same safety margin should yield deterministic strategy score")
+    Assert.Equal(a[5].SelectedVariants, b[5].SelectedVariants, "same safety margin should yield deterministic selected variants")
+}
+
+[Artifact]
+fn EmitM47VariantRecipeTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_variant_recipe_table.octagon", [M47VariantRecipeTable()])
+}
+
+[Artifact]
+fn EmitM47DeviceVarianceTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_device_variance_table.octagon", [M47DeviceVarianceTable()])
+}
+
+[Artifact]
+fn EmitM47SafetyMarginTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_safety_margin_table.octagon", [M47SafetyMarginTable()])
+}
+
+[Artifact]
+fn EmitM47StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_strategy_comparison.octagon", [M47StrategyComparisonTable()])
+}
+
+[Artifact]
+fn EmitM47ShapeCoverageTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_shape_coverage_table.octagon", [M47ShapeCoverageTable()])
+}
+
+[Artifact]
+fn EmitM47FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M47/m47_final_recommendation.octagon", [M47FinalRecommendationTable()])
+}
