@@ -35,13 +35,6 @@
 #define PROM_VK_LOCAL_SIZE_Y 8u
 #define PROM_VK_TILE_K 8u
 
-typedef struct prom_vk_buffer {
-  VkBuffer buffer;
-  VkDeviceMemory memory;
-  void* mapped;
-  VkDeviceSize size;
-} prom_vk_buffer;
-
 typedef enum prom_buffer_artifact_kind {
   PROM_BUFFER_ARTIFACT_A = 1,
   PROM_BUFFER_ARTIFACT_B = 2,
@@ -754,15 +747,6 @@ static const uint32_t k_prom_sgemm_spirv[] = {
     0x00000063u, 0x0000005bu, 0x0000001au, 0x00000061u, 0x0003003eu, 0x00000063u, 0x00000062u,
     0x000100fdu, 0x00010038u,
 };
-
-static void set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail) {
-  if (out_stage != NULL) {
-    *out_stage = stage;
-  }
-  if (out_detail_code != NULL) {
-    *out_detail_code = detail;
-  }
-}
 
 static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
 static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size);
@@ -1801,17 +1785,6 @@ static void stage_transfer_failure_telemetry(prometheus_runtime* rt, uint32_t sl
   commit_transfer_runtime_telemetry(rt);
 }
 
-static int checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value) {
-  if (out_value == NULL) {
-    return 0;
-  }
-  if (left != 0u && right > UINT32_MAX / left) {
-    return 0;
-  }
-  *out_value = left * right;
-  return 1;
-}
-
 static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize* out_vk_size, size_t* out_copy_size) {
   uint32_t elements;
   uint64_t bytes;
@@ -1819,7 +1792,7 @@ static int checked_float_buffer_size(uint32_t rows, uint32_t cols, VkDeviceSize*
   if (out_vk_size == NULL || out_copy_size == NULL) {
     return 0;
   }
-  if (!checked_mul_u32(rows, cols, &elements)) {
+  if (!prom_vk_checked_mul_u32(rows, cols, &elements)) {
     return 0;
   }
   bytes = (uint64_t)elements * (uint64_t)sizeof(float);
@@ -1839,7 +1812,7 @@ static int checked_packed_fp16_buffer_size(uint32_t rows, uint32_t cols, VkDevic
   if (out_vk_size == NULL || out_copy_size == NULL) {
     return 0;
   }
-  if (!checked_mul_u32(rows, cols, &elements)) {
+  if (!prom_vk_checked_mul_u32(rows, cols, &elements)) {
     return 0;
   }
   words = ((uint64_t)elements + 1u) / 2u;
@@ -2728,121 +2701,20 @@ static int text_contains_llvmpipe(const char* value) {
   return 0;
 }
 
-static uint32_t find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties) {
-  uint32_t i;
-  VkPhysicalDeviceMemoryProperties memory_properties;
-  vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
-  for (i = 0u; i < memory_properties.memoryTypeCount; ++i) {
-    const uint32_t bit = (1u << i);
-    if ((type_filter & bit) != 0u &&
-        (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-      return i;
-    }
-  }
-  return UINT32_MAX;
-}
-
-static VkResult create_buffer(prometheus_runtime* rt,
-                              VkDeviceSize size,
-                              VkBufferUsageFlags usage,
-                              VkMemoryPropertyFlags memory_properties,
-                              int map_memory,
-                              prom_vk_buffer* out_buffer) {
-  VkResult result;
-  VkBufferCreateInfo buffer_info;
-  VkMemoryRequirements requirements;
-  VkMemoryAllocateInfo alloc_info;
-  uint32_t memory_type_index;
-
-  if (rt == NULL || out_buffer == NULL) {
-    return VK_ERROR_INITIALIZATION_FAILED;
-  }
-
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) {
-    return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-  }
-
-  memset(out_buffer, 0, sizeof(*out_buffer));
-  out_buffer->size = size;
-
-  memset(&buffer_info, 0, sizeof(buffer_info));
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = usage;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  result = vkCreateBuffer(rt->device, &buffer_info, NULL, &out_buffer->buffer);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  vkGetBufferMemoryRequirements(rt->device, out_buffer->buffer, &requirements);
-  memory_type_index = find_memory_type(rt->physical_device, requirements.memoryTypeBits, memory_properties);
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
-      (((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
-       (memory_properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u)) {
-    memory_type_index = UINT32_MAX;
-  }
-  if (memory_type_index == UINT32_MAX) {
-    return VK_ERROR_FEATURE_NOT_PRESENT;
-  }
-
-  memset(&alloc_info, 0, sizeof(alloc_info));
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.allocationSize = requirements.size;
-  alloc_info.memoryTypeIndex = memory_type_index;
-
-  result = vkAllocateMemory(rt->device, &alloc_info, NULL, &out_buffer->memory);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = vkBindBufferMemory(rt->device, out_buffer->buffer, out_buffer->memory, 0);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  if (map_memory != 0) {
-    result = vkMapMemory(rt->device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-  }
-  return VK_SUCCESS;
-}
-
-static void destroy_buffer(prometheus_runtime* rt, prom_vk_buffer* buffer) {
-  if (rt == NULL || buffer == NULL || rt->device == VK_NULL_HANDLE) {
-    return;
-  }
-  if (buffer->mapped != NULL) {
-    vkUnmapMemory(rt->device, buffer->memory);
-    buffer->mapped = NULL;
-  }
-  if (buffer->buffer != VK_NULL_HANDLE) {
-    vkDestroyBuffer(rt->device, buffer->buffer, NULL);
-    buffer->buffer = VK_NULL_HANDLE;
-  }
-  if (buffer->memory != VK_NULL_HANDLE) {
-    vkFreeMemory(rt->device, buffer->memory, NULL);
-    buffer->memory = VK_NULL_HANDLE;
-  }
-}
-
 static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   uint32_t i = 0u;
   if (rt == NULL) {
     return;
   }
-  destroy_buffer(rt, &rt->direct_c);
-  destroy_buffer(rt, &rt->direct_b);
-  destroy_buffer(rt, &rt->direct_a);
-  destroy_buffer(rt, &rt->staged_readback_c);
-  destroy_buffer(rt, &rt->staged_upload_b);
-  destroy_buffer(rt, &rt->staged_upload_a);
-  destroy_buffer(rt, &rt->staged_device_c);
-  destroy_buffer(rt, &rt->staged_device_b);
-  destroy_buffer(rt, &rt->staged_device_a);
+  prom_vk_destroy_buffer(rt->device, &rt->direct_c);
+  prom_vk_destroy_buffer(rt->device, &rt->direct_b);
+  prom_vk_destroy_buffer(rt->device, &rt->direct_a);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_readback_c);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_upload_b);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_upload_a);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_device_c);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_device_b);
+  prom_vk_destroy_buffer(rt->device, &rt->staged_device_a);
   rt->has_direct_buffers = 0u;
   rt->has_staged_buffers = 0u;
   memset(&rt->direct_a_key, 0, sizeof(rt->direct_a_key));
@@ -3058,7 +2930,7 @@ static int arena_shrink_single_buffer(prometheus_runtime* rt,
     return 1;
   }
   memset(&replacement, 0, sizeof(replacement));
-  result = create_buffer(rt,
+  result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                          (VkDeviceSize)shrink_target,
                          usage,
                          memory_props,
@@ -3068,7 +2940,7 @@ static int arena_shrink_single_buffer(prometheus_runtime* rt,
     arena->last_failure_reason = (int)result;
     return 0;
   }
-  destroy_buffer(rt, buffer);
+  prom_vk_destroy_buffer(rt->device, buffer);
   *buffer = replacement;
   arena_finish_shrink(rt, arena, shrink_target);
   return 1;
@@ -3104,7 +2976,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
   }
   memset(&replacement_first, 0, sizeof(replacement_first));
   memset(&replacement_second, 0, sizeof(replacement_second));
-  first_result = create_buffer(rt,
+  first_result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                                (VkDeviceSize)shrink_target,
                                first_usage,
                                first_memory_props,
@@ -3114,19 +2986,19 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
     arena->last_failure_reason = (int)first_result;
     return 0;
   }
-  second_result = create_buffer(rt,
+  second_result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                                 (VkDeviceSize)shrink_target,
                                 second_usage,
                                 second_memory_props,
                                 second_map_memory,
                                 &replacement_second);
   if (second_result != VK_SUCCESS) {
-    destroy_buffer(rt, &replacement_first);
+    prom_vk_destroy_buffer(rt->device, &replacement_first);
     arena->last_failure_reason = (int)second_result;
     return 0;
   }
-  destroy_buffer(rt, first);
-  destroy_buffer(rt, second);
+  prom_vk_destroy_buffer(rt->device, first);
+  prom_vk_destroy_buffer(rt->device, second);
   *first = replacement_first;
   *second = replacement_second;
   arena_finish_shrink(rt, arena, shrink_target);
@@ -3351,8 +3223,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->direct_a);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->direct_a);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -3391,8 +3263,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->direct_b);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->direct_b);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -3431,8 +3303,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->direct_c);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->direct_c);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -3574,9 +3446,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->staged_upload_a);
-    destroy_buffer(rt, &rt->staged_device_a);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->staged_upload_a);
+    prom_vk_destroy_buffer(rt->device, &rt->staged_device_a);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -3587,7 +3459,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = create_buffer(rt,
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -3626,9 +3498,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->staged_upload_b);
-    destroy_buffer(rt, &rt->staged_device_b);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->staged_upload_b);
+    prom_vk_destroy_buffer(rt->device, &rt->staged_device_b);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -3639,7 +3511,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = create_buffer(rt,
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -3678,9 +3550,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    destroy_buffer(rt, &rt->staged_device_c);
-    destroy_buffer(rt, &rt->staged_readback_c);
-    result = create_buffer(rt,
+    prom_vk_destroy_buffer(rt->device, &rt->staged_device_c);
+    prom_vk_destroy_buffer(rt->device, &rt->staged_readback_c);
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -3691,7 +3563,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = create_buffer(rt,
+    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -4541,43 +4413,43 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   prom_buffer_artifact_key artifact_b_key;
   prom_buffer_artifact_key artifact_c_key;
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
 
   if (handle == NULL || !registry_contains(handle)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
 
   rt = (prometheus_runtime*)handle;
   request_async = (((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) && c == NULL) ? 1u : 0u;
   if (a == NULL || b == NULL || (request_async == 0u && c == NULL)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   if (m == 0u || n == 0u || k == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
     return PROM_ERROR;
   }
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   if (rt->available == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
   }
-  if (!checked_mul_u32(m, k, &work_units_u32) || !checked_mul_u32(k, n, &work_units_u32) ||
-      !checked_mul_u32(m, n, &work_units_u32) || !checked_mul_u32(m, n, &mn_product) ||
-      !checked_mul_u32(mn_product, k, &work_units_u32)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
+  if (!prom_vk_checked_mul_u32(m, k, &work_units_u32) || !prom_vk_checked_mul_u32(k, n, &work_units_u32) ||
+      !prom_vk_checked_mul_u32(m, n, &work_units_u32) || !prom_vk_checked_mul_u32(m, n, &mn_product) ||
+      !prom_vk_checked_mul_u32(mn_product, k, &work_units_u32)) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
   }
-  set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_async_state(rt, PROM_ASYNC_STATE_IDLE, PROM_STAGE_NONE, 0);
   }
   if (rt->async_state == PROM_ASYNC_STATE_FAILED) {
-    set_status(out_stage,
+    prom_vk_set_status(out_stage,
                out_detail_code,
                PROM_STAGE_SUBMIT,
                rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
@@ -4585,7 +4457,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
     rt->slot_diag.inflight_rejection_count += 1u;
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
@@ -4595,13 +4467,13 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       rt->in_flight_submit = 0u;
     } else {
       rt->slot_diag.inflight_rejection_count += 1u;
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
       return PROM_ERROR;
     }
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
     return PROM_ERROR;
   }
 
@@ -4651,12 +4523,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   path_compute_facts.software_vulkan = rt->software_vulkan;
   path_compute_facts.policy_mode = (uint32_t)policy_mode;
   if (prom_dom_sgemm_stage_path_compute_facts(&rt->blackboard, &path_compute_facts) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_build_path_compute_facts_from_visible(&rt->blackboard, &path_compute_facts, &path_compute_projection) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   memset(&judgment_facts, 0, sizeof(judgment_facts));
@@ -4689,12 +4561,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   layout_precision_facts.fallback_available = (path_compute_projection.facts.allow_fallback != 0u && path_compute_projection.facts.can_direct != 0u) ? 1u : 0u;
   layout_precision_facts.fp16_utility_score = fp16_utility_score;
   if (prom_dom_sgemm_stage_layout_precision_facts(&rt->blackboard, &layout_precision_facts) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_build_layout_precision_facts_from_visible(&rt->blackboard, &layout_precision_facts, &layout_precision_projection) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   judgment_facts.packed4_available = layout_precision_projection.facts.packed4_available;
@@ -4724,12 +4596,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   transfer_queue_facts.upload_only_policy_eligible = readback_required == 0u ? 1u : 0u;
   transfer_queue_facts.upload_readback_supported = 0u;
   if (prom_dom_sgemm_stage_transfer_queue_facts(&rt->blackboard, &transfer_queue_facts) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_build_transfer_queue_facts_from_visible(&rt->blackboard, &transfer_queue_facts, &transfer_queue_projection) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   judgment_facts.transfer_queue_dedicated_available = transfer_queue_projection.facts.dedicated_transfer_available;
@@ -4786,7 +4658,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   prom_judgment_engine_select_sgemm_mode_with_layout_precision(&judgment_facts, &layout_precision_selector_decision, &judgment_decision);
   if (judgment_decision.success == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, judgment_decision.error_detail);
     return PROM_ERROR;
   }
   memset(&path_compute_decision, 0, sizeof(path_compute_decision));
@@ -4800,12 +4672,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   path_compute_decision.winning_candidate_index = judgment_decision.winning_candidate_index;
   path_compute_decision.winning_score = judgment_decision.winning_score;
   if (prom_dom_sgemm_stage_path_compute_decision(&rt->blackboard, &path_compute_decision) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_read_visible_path_compute_diagnostics(&rt->blackboard, &path_compute_snapshot) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   judgment_decision.success = path_compute_snapshot.decision.success;
@@ -4845,12 +4717,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   judgment_decision.use_dedicated_transfer_queue_upload = transfer_queue_decision.transfer_queue_used;
   judgment_decision.transfer_fallback_reason = transfer_queue_decision.transfer_fallback_reason;
   if (prom_dom_sgemm_stage_transfer_queue_decision(&rt->blackboard, &transfer_queue_decision) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_read_visible_transfer_queue_diagnostics(&rt->blackboard, &transfer_queue_snapshot) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   use_dedicated_transfer_upload = transfer_queue_snapshot.transfer_queue_used;
@@ -4893,7 +4765,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   layout_precision_decision.fp16_fallback_reason_detail = rt->sgemm_controller.fp16_fallback_reason_detail;
   layout_precision_decision.fp16_selected_candidate = rt->sgemm_controller.fp16_selected_candidate;
   if (prom_dom_sgemm_stage_layout_precision_decision(&rt->blackboard, &layout_precision_decision) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
@@ -4909,7 +4781,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                    &b_buffer_size,
                                    &b_copy_size))) ||
       !checked_float_buffer_size(m, n, &c_buffer_size, &c_copy_size)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
   }
   artifact_layout_code = prom_slot_compute_layout_code(selected_path, compute_mode);
@@ -4981,12 +4853,12 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   buffering_facts.serial_jit_headroom_slots_permille =
       (int32_t)buffering_facts.memory_budget_slots_permille - (int32_t)buffering_facts.required_serial_slots_permille;
   if (prom_dom_sgemm_stage_m35_facts(&rt->blackboard, &buffering_facts) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   if (prom_dom_sgemm_build_buffering_selector_facts_from_visible(&rt->blackboard, &buffering_facts, &buffering_projection) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   rt->m35_selector_cache.last_dirty_dependency_mask = buffering_projection.dependent_dirty_key_mask_last_commit;
@@ -5013,14 +4885,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->slot_diag.m35_transition_count += 1u;
   }
   if (prom_dom_sgemm_stage_m35_decision(&rt->blackboard, &buffering_decision, rt->m35_selector_cache.no_feasible_mode_detail) == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   {
     prom_dom_sgemm_m35_snapshot m35_snapshot;
     if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &m35_snapshot) == 0u) {
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
     rt->slot_diag.m35_selected_mode = m35_snapshot.selected_mode;
@@ -5049,7 +4921,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   if (buffering_decision.success == 0u) {
     rt->slot_diag.m35_rejection_count += 1u;
     rt->slot_diag.m35_budget_rejection_count += 1u;
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_decision.reason_code));
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_decision.reason_code));
     return PROM_ERROR;
   }
   buffering_mode = buffering_decision.selected_mode;
@@ -5076,7 +4948,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->slot_diag.m35_serial_active_slot_count = 1u;
     if (!prom_slot_cleanup_to_empty(rt, &rt->slots[peer_slot_id])) {
       rt->slot_diag.m35_serial_busy_retry_count += 1u;
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
       return PROM_ERROR;
     }
     rt->slot_diag.m35_serial_failure_cleanup_count += 1u;
@@ -5093,11 +4965,11 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                               (uint32_t)compute_mode,
                                               required_capacity_bytes);
   if (prepare_detail != 0) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prepare_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prepare_detail);
     return PROM_ERROR;
   }
   if (!prom_slot_swap_ready_to_current(rt, work_slot_id)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_SWAP_REJECTED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_SWAP_REJECTED);
     return PROM_ERROR;
   }
 
@@ -5108,7 +4980,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       free(packed_a_upload);
       free(packed_b_upload);
       prom_slot_mark_failure(rt, work_slot_id, PROM_ERROR);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
     prom_pack_a_packed4_rowmajor(a, packed_a_upload, m, k, compute_k);
@@ -5122,7 +4994,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       free(fp16_a_upload);
       free(fp16_b_upload);
       prom_slot_mark_failure(rt, work_slot_id, PROM_ERROR);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
     prom_pack_fp16_pairs(a, m * compute_k, fp16_a_upload);
@@ -5139,7 +5011,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     free(fp16_a_upload);
     free(fp16_b_upload);
     prom_slot_mark_failure(rt, work_slot_id, async_decision.reject_detail);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, async_decision.reject_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, async_decision.reject_detail);
     return PROM_ERROR;
   }
 
@@ -5147,7 +5019,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (!ensure_direct_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
       const int failure_detail = rt->arena_last_failure_detail != 0 ? rt->arena_last_failure_detail : (int)vk_result;
       prom_slot_mark_failure(rt, work_slot_id, failure_detail);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
       free(packed_a_upload);
       free(packed_b_upload);
       free(fp16_a_upload);
@@ -5170,7 +5042,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (!ensure_staged_execution_buffers(rt, &artifact_a_key, &artifact_b_key, &artifact_c_key, &vk_result)) {
       const int failure_detail = rt->arena_last_failure_detail != 0 ? rt->arena_last_failure_detail : (int)vk_result;
       prom_slot_mark_failure(rt, work_slot_id, failure_detail);
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, failure_detail);
       free(packed_a_upload);
       free(packed_b_upload);
       free(fp16_a_upload);
@@ -5243,7 +5115,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     memset(&begin_info, 0, sizeof(begin_info));
@@ -5252,7 +5124,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     memset(barriers, 0, sizeof(barriers));
@@ -5289,14 +5161,14 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     vk_result = vkResetFences(rt->device, 1u, &rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     memset(&transfer_submit_info, 0, sizeof(transfer_submit_info));
@@ -5308,21 +5180,21 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if ((rt->test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
       prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
       stage_transfer_failure_telemetry(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
       return PROM_ERROR;
     }
     vk_result = vkQueueSubmit(rt->transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     stage_transfer_handoff_telemetry(rt, work_slot_id, 0, 2u);
     vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     memset(&begin_info, 0, sizeof(begin_info));
@@ -5330,7 +5202,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     memset(barriers, 0, sizeof(barriers));
@@ -5359,7 +5231,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
 
@@ -5368,7 +5240,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
 
@@ -5473,10 +5345,10 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                      PROM_VK_SHADER_PUSH_BYTES,
                      &push);
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     return PROM_ERROR;
   }
 
@@ -5546,25 +5418,25 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkEndCommandBuffer(rt->command_buffer);
   if (vk_result != VK_SUCCESS) {
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
 
@@ -5581,18 +5453,18 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   }
   if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
   vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
   rt->in_flight_submit = 1u;
   if (!prom_slot_mark_submitted(rt, work_slot_id)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
     return PROM_ERROR;
   }
@@ -5607,7 +5479,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     rt->async_final_detail = final_detail;
     note_last_execution_shape(rt, m, n, k);
     set_async_state(rt, PROM_ASYNC_STATE_SUBMITTED, PROM_STAGE_SUBMIT, 0);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
     return PROM_OK;
   }
 
@@ -5617,7 +5489,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       if (vk_result != VK_SUCCESS) {
         prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
         stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-        set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
         return PROM_ERROR;
       }
       stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
@@ -5625,23 +5497,23 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
     rt->in_flight_submit = 0u;
     if (!prom_slot_mark_complete(rt, work_slot_id)) {
       prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
-      set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
       return PROM_ERROR;
     }
   } else {
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_REUSE_IN_FLIGHT);
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_REUSE_IN_FLIGHT);
     return PROM_ERROR;
   }
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE);
     return PROM_ERROR;
   }
 
@@ -5649,16 +5521,16 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->direct_c.mapped, m, n, k);
     }
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->direct_c.mapped, c_copy_size);
   } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->staged_readback_c.mapped, m, n, k);
     }
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
   } else {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
   }
 
   if (out_stage != NULL &&
@@ -5793,18 +5665,18 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
   if (handle == NULL || !registry_contains(handle)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   if (entries == NULL || entry_count == 0u) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
     return PROM_ERROR;
   }
 
@@ -5984,7 +5856,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       rt->batch_diag.slot_failure_stage[i] = 0u;
       rt->batch_diag.slot_failure_detail[i] = 0;
     }
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
     return PROM_ERROR;
   }
 
@@ -6763,7 +6635,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     if (batch_test_inject_drain_timeout(rt->test_flags) != 0u) {
       drain_timeout_count += 1u;
       failure_detail = PROM_DETAIL_BATCH_DRAIN_TIMEOUT;
-      set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, failure_detail);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, failure_detail);
       final_status = PROM_ERROR;
       state = PROM_BATCH_STATE_FAILED;
       queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
@@ -6772,7 +6644,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
     event_drain_count = drain_summary.drained_events;
     state = PROM_BATCH_STATE_FAILED;
-    set_status(out_stage, out_detail_code, failure_stage == PROM_STAGE_NONE ? PROM_STAGE_SUBMIT : failure_stage, failure_detail);
+    prom_vk_set_status(out_stage, out_detail_code, failure_stage == PROM_STAGE_NONE ? PROM_STAGE_SUBMIT : failure_stage, failure_detail);
     final_status = PROM_ERROR;
     queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
   } else {
@@ -6802,13 +6674,13 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
       event_drain_count = drain_summary.drained_events;
       state = PROM_BATCH_STATE_FAILED;
-      set_status(out_stage, out_detail_code, failure_stage, failure_detail);
+      prom_vk_set_status(out_stage, out_detail_code, failure_stage, failure_detail);
       final_status = PROM_ERROR;
       queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
     } else {
       output_committed = 1u;
       state = PROM_BATCH_STATE_SUCCEEDED;
-      set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
       batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
       event_drain_count = drain_summary.drained_events;
       final_status = PROM_OK;
@@ -6831,7 +6703,7 @@ batch_cleanup:
     batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
     event_drain_count = drain_summary.drained_events;
     state = PROM_BATCH_STATE_FAILED;
-    set_status(out_stage, out_detail_code, failure_stage, failure_detail);
+    prom_vk_set_status(out_stage, out_detail_code, failure_stage, failure_detail);
   }
   if (rt != NULL) {
     if (state == PROM_BATCH_STATE_FAILED &&
@@ -7018,11 +6890,11 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
   int status;
 
   if (out_task_id == NULL) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
     return PROM_ERROR;
   }
   if (handle == NULL || !registry_contains(handle)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
 
@@ -7089,44 +6961,44 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
   prometheus_runtime* rt;
   uint32_t required_len;
 
-  set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
   if (handle == NULL || !registry_contains(handle)) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
   mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
   if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_INVALID_TASK);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_INVALID_TASK);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_INVALID_TASK);
     return PROM_ERROR;
   }
   update_async_progress(rt);
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_NOT_READY);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_NOT_READY);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_NOT_READY, PROM_DETAIL_ASYNC_NOT_READY);
     return PROM_ERROR;
   }
   if (rt->async_state == PROM_ASYNC_STATE_FAILED) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
     return PROM_ERROR;
   }
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ALREADY_CONSUMED, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
     return PROM_ERROR;
   }
   if (c == NULL) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
     return PROM_ERROR;
   }
   required_len = rt->async_m * rt->async_n;
   if (c_len < required_len) {
-    set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
     return PROM_ERROR;
   }
 
@@ -7135,13 +7007,13 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
   } else if (rt->async_selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
     memcpy(c, rt->staged_readback_c.mapped, rt->async_c_copy_size);
   } else {
-    set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_final_detail);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_final_detail);
     set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, PROM_STAGE_SUBMIT, rt->async_final_detail);
     return PROM_OK;
   }
 
   set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, PROM_STAGE_TRANSFER_OUT, rt->async_final_detail);
-  set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, rt->async_final_detail);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, rt->async_final_detail);
   return PROM_OK;
 }
 

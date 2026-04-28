@@ -2,10 +2,31 @@
 #define OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_VULKAN_H
 
 #include "reactor_api.h"
+#include <vulkan/vulkan.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct prom_vk_buffer {
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+  void* mapped;
+  VkDeviceSize size;
+} prom_vk_buffer;
+
+void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
+int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
+uint32_t prom_vk_find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties);
+VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
+                               VkDevice device,
+                               uint32_t test_flags,
+                               VkDeviceSize size,
+                               VkBufferUsageFlags usage,
+                               VkMemoryPropertyFlags memory_properties,
+                               int map_memory,
+                               prom_vk_buffer* out_buffer);
+void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer);
 
 int prom_reactor_runtime_create_impl(void* config, void** out_handle);
 int prom_reactor_runtime_destroy_impl(void* handle);
