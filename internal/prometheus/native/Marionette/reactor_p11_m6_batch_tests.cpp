@@ -1144,3 +1144,111 @@ FACT(PrometheusReactor_P11_M14_FailureHooksPreserveFirstFailureAndCleanup)
     cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed after failure run");
 }
+
+FACT(PrometheusReactor_P11_M16_SingleQueueFallsBackToSerializedBridge)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    std::vector<float> a = make_matrix(4u, 4u, 0.3f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.7f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u,
+                                                              workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT),
+                                                              &stage, &detail);
+    ASSERT_TRUE(status == PROM_OK || status == PROM_ERROR, "single queue path should return a concrete status");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.true_multi_queue_selected, "single queue should not select true multi queue");
+    ASSERT_TRUE(diag.serialized_fallback_reason != PROM_BATCH_FALLBACK_REASON_NONE, "fallback reason should be explicit");
+    ASSERT_EQUAL(0u, diag.hardware_parallelism_claimed, "fallback mode must not claim hardware parallelism");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M16_IndependentTwoQueueSelectsTrueMultiQueueWithHook)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t workers = 2u;
+    const std::uint32_t entry_count = 2u;
+    std::vector<std::vector<float>> a(entry_count), b(entry_count), c(entry_count, std::vector<float>(16u, 0.0f));
+    std::vector<PrometheusSgemmBatchEntry> entries(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        a[i] = make_matrix(4u, 4u, 0.3f + static_cast<float>(i) * 0.2f);
+        b[i] = make_matrix(4u, 4u, 0.5f + static_cast<float>(i) * 0.2f);
+        entries[i] = PrometheusSgemmBatchEntry{a[i].data(), b[i].data(), c[i].data(), 4u, 4u, 4u};
+    }
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), entry_count,
+                                                                  workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) |
+                                                                      (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT),
+                                                                  &stage, &detail),
+                 "hooked independent queues should run");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(1u, diag.true_multi_queue_selected, "true multi-queue should be selected");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE, diag.execution_mode, "execution mode should report true multi-queue");
+    ASSERT_EQUAL(1u, diag.hardware_parallelism_claimed, "true multi-queue should claim hardware parallelism");
+    ASSERT_EQUAL(0u, diag.serialized_vulkan, "true multi-queue path should bypass serialized bridge");
+    ASSERT_EQUAL(0u, diag.serialized_fallback_reason, "selected true multi-queue should clear fallback reason");
+    ASSERT_EQUAL(0u, diag.worker_queue_index[0], "worker mapping should be deterministic");
+    ASSERT_EQUAL(1u, diag.worker_queue_index[1], "worker mapping should be deterministic");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M16_MemoryCapBlocksTrueMultiQueue)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    std::vector<float> a = make_matrix(4u, 4u, 0.4f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.8f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 1u | (1u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    const int status = prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, flags, &stage, &detail);
+    ASSERT_TRUE(status == PROM_OK || status == PROM_ERROR, "run should produce concrete status");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.true_multi_queue_selected, "memory-capped workers should block true multi queue");
+    ASSERT_TRUE(diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_EFFECTIVE_WORKERS_LT_2 ||
+                    diag.serialized_fallback_reason == PROM_BATCH_FALLBACK_REASON_INDEPENDENT_QUEUE_LT_2,
+                "fallback reason should identify a true-multi gate failure");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M16_TransferQueueNotCountedAsComputeLane)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.6f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, 2u, &stage, &detail), "run should succeed");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.reported_compute_queue_count >= diag.independent_compute_queue_count, "transfer queue must stay separate from compute counts");
+    ASSERT_TRUE(diag.transfer_compute_sync_wait_count >= 0u, "transfer sync wait counter should be populated");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}

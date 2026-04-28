@@ -408,6 +408,9 @@ typedef struct prometheus_runtime {
   uint32_t dedicated_transfer_available;
   uint32_t transfer_queue_enabled;
   VkQueue compute_queue;
+  VkQueue compute_queues[8];
+  uint32_t reported_compute_queue_count;
+  uint32_t independent_compute_queue_count;
   VkQueue transfer_queue;
   VkCommandPool command_pool;
   VkCommandPool transfer_command_pool;
@@ -925,6 +928,10 @@ struct prom_batch_shared_state {
   uint32_t max_serialized_in_flight_count;
   uint32_t resource_ownership_violation_count;
   uint32_t resource_creation_failure_count;
+  uint32_t queue_drain_count;
+  uint32_t drain_timeout_count;
+  uint32_t queue_family_ownership_handoff_count;
+  uint32_t transfer_compute_sync_wait_count;
   prom_batch_mutex state_mutex;
   prom_batch_mutex serialized_vulkan_mutex;
 };
@@ -955,6 +962,7 @@ typedef struct prom_batch_thread_ctx {
   uint32_t delay_entry0;
   uint32_t force_wrong_resource_owner;
   uint32_t queue_count_for_mapping;
+  uint32_t true_multi_queue_enabled;
   uint32_t flags;
   prom_batch_worker_state* worker;
   prom_batch_worker_resources* worker_resources;
@@ -1166,22 +1174,24 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       }
     }
 
-    if (!prom_batch_mutex_try_lock(&ctx->shared->serialized_vulkan_mutex)) {
+    if (ctx->true_multi_queue_enabled == 0u) {
+      if (!prom_batch_mutex_try_lock(&ctx->shared->serialized_vulkan_mutex)) {
+        prom_batch_mutex_lock(&ctx->shared->state_mutex);
+        ctx->shared->serialized_wait_count += 1u;
+        resources->wait_count += 1u;
+        prom_batch_mutex_unlock(&ctx->shared->state_mutex);
+        prom_batch_mutex_lock(&ctx->shared->serialized_vulkan_mutex);
+      }
+      has_lock = 1u;
       prom_batch_mutex_lock(&ctx->shared->state_mutex);
-      ctx->shared->serialized_wait_count += 1u;
-      resources->wait_count += 1u;
+      ctx->shared->serialized_bridge_enter_count += 1u;
+      ctx->shared->serialized_execution_count += 1u;
+      ctx->shared->serialized_in_flight_count += 1u;
+      if (ctx->shared->serialized_in_flight_count > ctx->shared->max_serialized_in_flight_count) {
+        ctx->shared->max_serialized_in_flight_count = ctx->shared->serialized_in_flight_count;
+      }
       prom_batch_mutex_unlock(&ctx->shared->state_mutex);
-      prom_batch_mutex_lock(&ctx->shared->serialized_vulkan_mutex);
     }
-    has_lock = 1u;
-    prom_batch_mutex_lock(&ctx->shared->state_mutex);
-    ctx->shared->serialized_bridge_enter_count += 1u;
-    ctx->shared->serialized_execution_count += 1u;
-    ctx->shared->serialized_in_flight_count += 1u;
-    if (ctx->shared->serialized_in_flight_count > ctx->shared->max_serialized_in_flight_count) {
-      ctx->shared->max_serialized_in_flight_count = ctx->shared->serialized_in_flight_count;
-    }
-    prom_batch_mutex_unlock(&ctx->shared->state_mutex);
     resources->in_flight = 1u;
     if (resources->physical_valid != 0u) {
       VkCommandBufferBeginInfo begin_info;
@@ -1197,8 +1207,10 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
         ctx->worker->failure_detail = PROM_DETAIL_BATCH_FENCE_RESET_FAILED;
         resources->in_flight = 0u;
-        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-        has_lock = 0u;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
         break;
       }
       resources->reset_count += 1u;
@@ -1209,8 +1221,10 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
         ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
         resources->in_flight = 0u;
-        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-        has_lock = 0u;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
         break;
       }
       resources->reset_count += 1u;
@@ -1221,8 +1235,10 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
         ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
         resources->in_flight = 0u;
-        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-        has_lock = 0u;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
         break;
       }
       vk_result = vkEndCommandBuffer(resources->command_buffer);
@@ -1232,8 +1248,10 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
         ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
         ctx->worker->failure_detail = PROM_DETAIL_BATCH_COMMAND_RECORD_FAILED;
         resources->in_flight = 0u;
-        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-        has_lock = 0u;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
         break;
       }
       resources->record_count += 1u;
@@ -1241,15 +1259,23 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       submit_info.commandBufferCount = 1u;
       submit_info.pCommandBuffers = &resources->command_buffer;
-      vk_result = vkQueueSubmit(ctx->rt->compute_queue, 1u, &submit_info, resources->fence);
+      {
+        VkQueue queue_for_worker = ctx->rt->compute_queue;
+        if (resources->queue_index < 8u && ctx->rt->compute_queues[resources->queue_index] != VK_NULL_HANDLE) {
+          queue_for_worker = ctx->rt->compute_queues[resources->queue_index];
+        }
+        vk_result = vkQueueSubmit(queue_for_worker, 1u, &submit_info, resources->fence);
+      }
       if (vk_result != VK_SUCCESS || (ctx->rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
         batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED);
         ctx->worker->failure_entry_id = plan->entry_id;
         ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
         ctx->worker->failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED;
         resources->in_flight = 0u;
-        prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-        has_lock = 0u;
+        if (has_lock != 0u) {
+          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+          has_lock = 0u;
+        }
         break;
       }
       resources->submit_count += 1u;
@@ -1261,8 +1287,10 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
           ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
           ctx->worker->failure_detail = PROM_DETAIL_BATCH_FENCE_WAIT_FAILED;
           resources->in_flight = 0u;
-          prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-          has_lock = 0u;
+          if (has_lock != 0u) {
+            prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+            has_lock = 0u;
+          }
           break;
         }
         resources->wait_count += 1u;
@@ -1273,12 +1301,16 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
 
     batch_reference_sgemm(plan->a, plan->b, ctx->staged_outputs[plan->entry_id], plan->m, plan->n, plan->k);
 
-    prom_batch_mutex_lock(&ctx->shared->state_mutex);
-    ctx->shared->serialized_in_flight_count -= 1u;
-    prom_batch_mutex_unlock(&ctx->shared->state_mutex);
+    if (ctx->true_multi_queue_enabled == 0u) {
+      prom_batch_mutex_lock(&ctx->shared->state_mutex);
+      ctx->shared->serialized_in_flight_count -= 1u;
+      prom_batch_mutex_unlock(&ctx->shared->state_mutex);
+    }
     resources->in_flight = 0u;
-    prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
-    has_lock = 0u;
+    if (has_lock != 0u) {
+      prom_batch_mutex_unlock(&ctx->shared->serialized_vulkan_mutex);
+      has_lock = 0u;
+    }
 
     if (!batch_worker_emit_event(ctx->worker_events,
                                  ctx->worker_event_counts,
@@ -3677,7 +3709,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   uint32_t i;
   VkDeviceQueueCreateInfo queue_infos[2];
   VkDeviceCreateInfo device_info;
-  float queue_priority = 1.0f;
+  float queue_priorities[8];
+  uint32_t compute_family_queue_count = 1u;
   VkCommandPoolCreateInfo pool_info;
   VkDescriptorSetLayoutBinding bindings[3];
   VkDescriptorSetLayoutCreateInfo set_layout_info;
@@ -3690,6 +3723,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkDescriptorPoolSize pool_size;
   VkDescriptorPoolCreateInfo descriptor_pool_info;
   VkDescriptorSetAllocateInfo set_alloc_info;
+  for (i = 0u; i < 8u; ++i) {
+    queue_priorities[i] = 1.0f;
+  }
   VkCommandBufferAllocateInfo cmd_alloc_info;
   VkFenceCreateInfo fence_info;
 
@@ -3735,6 +3771,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
       if ((families[family_index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0u) {
         rt->physical_device = devices[i];
         rt->queue_family_index = family_index;
+        compute_family_queue_count = families[family_index].queueCount;
+        if (compute_family_queue_count > 8u) {
+          compute_family_queue_count = 8u;
+        }
+        if (compute_family_queue_count == 0u) {
+          compute_family_queue_count = 1u;
+        }
         break;
       }
     }
@@ -3810,13 +3853,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   memset(queue_infos, 0, sizeof(queue_infos));
   queue_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queue_infos[0].queueFamilyIndex = rt->queue_family_index;
-  queue_infos[0].queueCount = 1u;
-  queue_infos[0].pQueuePriorities = &queue_priority;
+  queue_infos[0].queueCount = compute_family_queue_count;
+  queue_infos[0].pQueuePriorities = queue_priorities;
   if (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) {
     queue_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queue_infos[1].queueFamilyIndex = rt->transfer_queue_family_index;
     queue_infos[1].queueCount = 1u;
-    queue_infos[1].pQueuePriorities = &queue_priority;
+    queue_infos[1].pQueuePriorities = queue_priorities;
   }
 
   memset(&device_info, 0, sizeof(device_info));
@@ -3835,6 +3878,18 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
 
   vkGetDeviceQueue(rt->device, rt->queue_family_index, 0u, &rt->compute_queue);
+  memset(rt->compute_queues, 0, sizeof(rt->compute_queues));
+  rt->reported_compute_queue_count = compute_family_queue_count;
+  if (rt->reported_compute_queue_count == 0u) {
+    rt->reported_compute_queue_count = 1u;
+  }
+  rt->independent_compute_queue_count = 1u;
+  for (i = 0u; i < rt->reported_compute_queue_count && i < 8u; ++i) {
+    vkGetDeviceQueue(rt->device, rt->queue_family_index, i, &rt->compute_queues[i]);
+  }
+  if (rt->compute_queues[0] != VK_NULL_HANDLE) {
+    rt->compute_queue = rt->compute_queues[0];
+  }
   rt->transfer_queue = VK_NULL_HANDLE;
   if (rt->transfer_queue_enabled != 0u) {
     vkGetDeviceQueue(rt->device, rt->transfer_queue_family_index, 0u, &rt->transfer_queue);
@@ -4088,6 +4143,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.transfer_fallback_reason = PROM_TRANSFER_FALLBACK_REQUIRED;
   runtime->slot_diag.transfer_failure_slot_id = -1;
   runtime->slot_diag.transfer_failure_reason = 0;
+  runtime->reported_compute_queue_count = 1u;
+  runtime->independent_compute_queue_count = 1u;
   runtime->async_task_id = -1;
   runtime->async_state = PROM_ASYNC_STATE_IDLE;
   runtime->async_stage = PROM_STAGE_NONE;
@@ -5529,6 +5586,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_SIMULATED;
   uint32_t queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE;
   uint32_t queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED;
+  uint32_t serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_BASELINE_SERIALIZED;
   uint32_t resource_mode = PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER;
   uint32_t lane_worker_count = 0u;
   uint32_t real_worker_thread_count = 0u;
@@ -5539,6 +5597,23 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t serialized_bridge_enter_count = 0u;
   uint32_t failure_count = 0u;
   uint32_t hardware_parallelism_claimed = 0u;
+  uint32_t hardware_parallelism_eligible = 0u;
+  uint32_t true_multi_queue_selected = 0u;
+  uint32_t reported_compute_queue_count = 1u;
+  uint32_t independent_compute_queue_count = 1u;
+  uint32_t effective_workers_for_gates = 1u;
+  uint32_t per_worker_command_resources_valid = 0u;
+  uint32_t per_worker_fences_valid = 0u;
+  uint32_t worker_queue_mapping_valid = 0u;
+  uint32_t memory_budget_supports_workers = 0u;
+  uint32_t no_pseudo_shared_queue = 0u;
+  uint32_t no_forced_serialized_flag = 0u;
+  uint32_t queue_family_ownership_handoff_if_needed = 1u;
+  uint32_t queue_drain_count = 0u;
+  uint32_t drain_timeout_count = 0u;
+  uint32_t queue_family_ownership_handoff_count = 0u;
+  uint32_t transfer_compute_sync_wait_count = 0u;
+  uint32_t unsafe_to_reuse = 0u;
   uint32_t resource_ownership_violation_count = 0u;
   uint32_t resource_creation_failure_count = 0u;
   uint32_t use_real_threads = 0u;
@@ -5581,6 +5656,47 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     effective_workers = memory_worker_cap;
     cap_reason = PROM_BATCH_CAP_REASON_MEMORY_BUDGET;
   }
+  reported_compute_queue_count = rt->reported_compute_queue_count;
+  if (reported_compute_queue_count == 0u) {
+    reported_compute_queue_count = 1u;
+  }
+  independent_compute_queue_count = rt->independent_compute_queue_count;
+  if (independent_compute_queue_count == 0u) {
+    independent_compute_queue_count = 1u;
+  }
+  if ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u && batch_test_hardware_queue_cap_override(flags) > 1u) {
+    independent_compute_queue_count = batch_test_hardware_queue_cap_override(flags);
+    if (independent_compute_queue_count > 8u) {
+      independent_compute_queue_count = 8u;
+    }
+    if (reported_compute_queue_count < independent_compute_queue_count) {
+      reported_compute_queue_count = independent_compute_queue_count;
+    }
+  }
+  memory_budget_supports_workers = memory_worker_cap >= 2u ? 1u : 0u;
+  no_forced_serialized_flag = ((rt->test_flags & PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED) == 0u) ? 1u : 0u;
+  effective_workers_for_gates = effective_workers;
+  if (effective_workers_for_gates > independent_compute_queue_count) {
+    effective_workers_for_gates = independent_compute_queue_count;
+  }
+  no_pseudo_shared_queue = (reported_compute_queue_count >= 2u && independent_compute_queue_count < 2u) ? 0u : 1u;
+  if (reported_compute_queue_count <= 1u && hardware_queue_cap > 1u && (rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) == 0u) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED;
+  } else if (reported_compute_queue_count <= 1u) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE;
+  } else if (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_COMPUTE_PLUS_TRANSFER;
+  } else if (no_pseudo_shared_queue == 0u) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED;
+  } else {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_PARALLEL_ELIGIBLE;
+  }
+  if (memory_worker_cap < requested_workers && queue_topology_classification == PROM_BATCH_QUEUE_TOPOLOGY_PARALLEL_ELIGIBLE) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_MEMORY_CAPPED;
+  }
+  if (no_forced_serialized_flag == 0u) {
+    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_FORCED_SERIALIZED;
+  }
   if (effective_workers == 0u) {
     rt->batch_diag.last_batch_entry_count = entry_count;
     rt->batch_diag.requested_workers = requested_workers;
@@ -5614,6 +5730,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     rt->batch_diag.hardware_parallelism_claimed = hardware_parallelism_claimed;
     rt->batch_diag.resource_ownership_violation_count = 0u;
     rt->batch_diag.resource_creation_failure_count = 0u;
+    rt->batch_diag.reported_compute_queue_count = reported_compute_queue_count;
+    rt->batch_diag.independent_compute_queue_count = independent_compute_queue_count;
+    rt->batch_diag.true_multi_queue_selected = 0u;
+    rt->batch_diag.hardware_parallelism_eligible = 0u;
+    rt->batch_diag.serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_EFFECTIVE_WORKERS_LT_2;
+    rt->batch_diag.queue_drain_count = 0u;
+    rt->batch_diag.drain_timeout_count = 0u;
+    rt->batch_diag.queue_family_ownership_handoff_count = 0u;
+    rt->batch_diag.transfer_compute_sync_wait_count = 0u;
+    rt->batch_diag.unsafe_to_reuse = 0u;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -5636,6 +5762,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       rt->batch_diag.worker_record_count[i] = 0u;
       rt->batch_diag.worker_failure_stage[i] = 0u;
       rt->batch_diag.worker_failure_detail[i] = 0;
+      rt->batch_diag.per_worker_queue_family[i] = 0u;
+      rt->batch_diag.per_worker_fence_state[i] = 0u;
     }
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
     return PROM_ERROR;
@@ -5652,13 +5780,6 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                          ? 1u
                          : 0u;
   force_wrong_resource_owner = (rt->test_flags & PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER) != 0u ? 1u : 0u;
-  if (hardware_queue_cap <= 1u) {
-    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE;
-    queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED;
-  } else {
-    queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED;
-    queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED;
-  }
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;
@@ -5672,6 +5793,11 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     lane_worker_count = effective_workers;
   } else {
     resource_mode = PROM_BATCH_WORKER_RESOURCE_MODE_SHARED;
+  }
+  if (queue_topology_classification == PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE) {
+    queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED;
+  } else {
+    queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED;
   }
 
   if (event_capacity == 0u) {
@@ -5702,7 +5828,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     workers[w].failure_entry_id = UINT32_MAX;
     workers[w].resource_mode = worker_resource_mode;
     worker_resources[w].worker_id = w;
-    worker_resources[w].queue_index = batch_worker_queue_index(w, hardware_queue_cap);
+    worker_resources[w].queue_index = batch_worker_queue_index(w, independent_compute_queue_count);
     worker_resources[w].queue_family_index = rt->queue_family_index;
     worker_resources[w].command_pool_id = 1000u + w;
     worker_resources[w].command_buffer_id = 2000u + w;
@@ -5724,6 +5850,56 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       goto batch_cleanup;
     }
     resource_mode = PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER;
+  }
+  worker_queue_mapping_valid = 1u;
+  for (w = 0u; w < effective_workers; ++w) {
+    if (worker_resources[w].queue_index >= independent_compute_queue_count) {
+      worker_queue_mapping_valid = 0u;
+      break;
+    }
+  }
+  per_worker_command_resources_valid =
+      (resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER && rt->device != VK_NULL_HANDLE) ? 1u : 0u;
+  per_worker_fences_valid = per_worker_command_resources_valid;
+  if (rt->transfer_queue_enabled != 0u) {
+    transfer_compute_sync_wait_count = 1u;
+  }
+  hardware_parallelism_eligible =
+      (independent_compute_queue_count >= 2u && effective_workers_for_gates >= 2u && per_worker_command_resources_valid != 0u &&
+       per_worker_fences_valid != 0u && worker_queue_mapping_valid != 0u && memory_budget_supports_workers != 0u &&
+       no_pseudo_shared_queue != 0u && no_forced_serialized_flag != 0u && queue_family_ownership_handoff_if_needed != 0u)
+          ? 1u
+          : 0u;
+  true_multi_queue_selected = (hardware_parallelism_eligible != 0u && use_real_threads != 0u) ? 1u : 0u;
+  if (true_multi_queue_selected != 0u) {
+    execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE;
+    serialized_vulkan = 0u;
+    hardware_parallelism_claimed = 1u;
+    queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_PARALLEL_STATIC_PARTITION;
+    real_worker_thread_count = effective_workers;
+    serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_NONE;
+  } else {
+    if (independent_compute_queue_count < 2u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_INDEPENDENT_QUEUE_LT_2;
+    } else if (effective_workers_for_gates < 2u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_EFFECTIVE_WORKERS_LT_2;
+    } else if (per_worker_command_resources_valid == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_COMMAND_RESOURCES_INVALID;
+    } else if (per_worker_fences_valid == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_FENCES_INVALID;
+    } else if (worker_queue_mapping_valid == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_QUEUE_MAPPING_INVALID;
+    } else if (memory_budget_supports_workers == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_MEMORY_CAP;
+    } else if (no_pseudo_shared_queue == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_PSEUDO_SHARED;
+    } else if (no_forced_serialized_flag == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_FORCED_SERIALIZED;
+    } else if (queue_family_ownership_handoff_if_needed == 0u) {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_QUEUE_FAMILY_OWNERSHIP_HANDOFF_REQUIRED;
+    } else {
+      serialized_fallback_reason = PROM_BATCH_FALLBACK_REASON_BASELINE_SERIALIZED;
+    }
   }
 
   state = PROM_BATCH_STATE_RUNNING;
@@ -5834,7 +6010,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     workers[worker_id].assigned_count += 1u;
   }
 
-  if (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN) {
+  if (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN ||
+      execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE) {
     shared_state.state = PROM_BATCH_STATE_RUNNING;
     for (w = 0u; w < effective_workers; ++w) {
       worker_thread_ctx[w].plans = plans;
@@ -5846,6 +6023,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       worker_thread_ctx[w].delay_entry0 = delay_entry0;
       worker_thread_ctx[w].force_wrong_resource_owner = force_wrong_resource_owner;
       worker_thread_ctx[w].queue_count_for_mapping = effective_workers;
+      worker_thread_ctx[w].true_multi_queue_enabled = true_multi_queue_selected;
       worker_thread_ctx[w].flags = flags;
       worker_thread_ctx[w].worker = &workers[w];
       worker_thread_ctx[w].worker_resources = worker_resources;
@@ -6089,6 +6267,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     state = PROM_BATCH_STATE_FAILED;
     set_status(out_stage, out_detail_code, failure_stage == PROM_STAGE_NONE ? PROM_STAGE_SUBMIT : failure_stage, failure_detail);
     final_status = PROM_ERROR;
+    queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
   } else {
     for (i = 0u; i < entry_count; ++i) {
       memcpy(entries[i].c, staged_outputs[i], (size_t)output_sizes[i] * sizeof(float));
@@ -6118,6 +6297,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       state = PROM_BATCH_STATE_FAILED;
       set_status(out_stage, out_detail_code, failure_stage, failure_detail);
       final_status = PROM_ERROR;
+      queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
     } else {
       output_committed = 1u;
       state = PROM_BATCH_STATE_SUCCEEDED;
@@ -6125,6 +6305,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       batch_drain_worker_events(worker_events, worker_event_counts, effective_workers, event_capacity, &drain_summary);
       event_drain_count = drain_summary.drained_events;
       final_status = PROM_OK;
+      queue_drain_count = (true_multi_queue_selected != 0u) ? independent_compute_queue_count : 1u;
     }
   }
 
@@ -6146,6 +6327,12 @@ batch_cleanup:
     set_status(out_stage, out_detail_code, failure_stage, failure_detail);
   }
   if (rt != NULL) {
+    if (state == PROM_BATCH_STATE_FAILED &&
+        (failure_detail == PROM_DETAIL_BATCH_FENCE_WAIT_FAILED || failure_detail == PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED)) {
+      unsafe_to_reuse = 1u;
+    }
+    queue_family_ownership_handoff_count = (uint32_t)rt->slot_diag.queue_family_handoff_count;
+    transfer_compute_sync_wait_count = (uint32_t)rt->slot_diag.transfer_compute_wait_count;
     rt->batch_diag.last_batch_entry_count = entry_count;
     rt->batch_diag.requested_workers = requested_workers;
     rt->batch_diag.effective_workers = effective_workers;
@@ -6180,6 +6367,16 @@ batch_cleanup:
     rt->batch_diag.hardware_parallelism_claimed = hardware_parallelism_claimed;
     rt->batch_diag.resource_ownership_violation_count = resource_ownership_violation_count;
     rt->batch_diag.resource_creation_failure_count = resource_creation_failure_count;
+    rt->batch_diag.reported_compute_queue_count = reported_compute_queue_count;
+    rt->batch_diag.independent_compute_queue_count = independent_compute_queue_count;
+    rt->batch_diag.true_multi_queue_selected = true_multi_queue_selected;
+    rt->batch_diag.hardware_parallelism_eligible = hardware_parallelism_eligible;
+    rt->batch_diag.serialized_fallback_reason = serialized_fallback_reason;
+    rt->batch_diag.queue_drain_count = queue_drain_count;
+    rt->batch_diag.drain_timeout_count = drain_timeout_count;
+    rt->batch_diag.queue_family_ownership_handoff_count = queue_family_ownership_handoff_count;
+    rt->batch_diag.transfer_compute_sync_wait_count = transfer_compute_sync_wait_count;
+    rt->batch_diag.unsafe_to_reuse = unsafe_to_reuse;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -6202,6 +6399,8 @@ batch_cleanup:
       rt->batch_diag.worker_record_count[i] = 0u;
       rt->batch_diag.worker_failure_stage[i] = 0u;
       rt->batch_diag.worker_failure_detail[i] = 0;
+      rt->batch_diag.per_worker_queue_family[i] = 0u;
+      rt->batch_diag.per_worker_fence_state[i] = 0u;
     }
     if (workers != NULL && worker_event_counts != NULL && worker_resources != NULL) {
       for (w = 0u; w < effective_workers && w < 8u; ++w) {
@@ -6225,6 +6424,8 @@ batch_cleanup:
         rt->batch_diag.worker_record_count[w] = worker_resources[w].record_count;
         rt->batch_diag.worker_failure_stage[w] = workers[w].failure_stage;
         rt->batch_diag.worker_failure_detail[w] = workers[w].failure_detail;
+        rt->batch_diag.per_worker_queue_family[w] = worker_resources[w].queue_family_index;
+        rt->batch_diag.per_worker_fence_state[w] = worker_resources[w].in_flight == 0u ? 1u : 2u;
         if (workers[w].active != 0u) {
           rt->batch_diag.worker_active_mask |= (1u << w);
         }

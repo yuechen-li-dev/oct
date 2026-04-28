@@ -232,6 +232,18 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t worker_record_count[8];
   uint32_t worker_failure_stage[8];
   int32_t worker_failure_detail[8];
+  uint32_t reported_compute_queue_count;
+  uint32_t independent_compute_queue_count;
+  uint32_t true_multi_queue_selected;
+  uint32_t hardware_parallelism_eligible;
+  uint32_t serialized_fallback_reason;
+  uint32_t per_worker_queue_family[8];
+  uint32_t per_worker_fence_state[8];
+  uint32_t queue_drain_count;
+  uint32_t drain_timeout_count;
+  uint32_t queue_family_ownership_handoff_count;
+  uint32_t transfer_compute_sync_wait_count;
+  uint32_t unsafe_to_reuse;
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -284,6 +296,7 @@ enum {
   PROM_BATCH_EXECUTION_SINGLE_WORKER = 1u,
   PROM_BATCH_EXECUTION_LANE_SIMULATED = 2u,
   PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN = 3u,
+  PROM_BATCH_EXECUTION_REAL_THREADS_TRUE_MULTI_QUEUE = 4u,
 };
 
 enum {
@@ -299,12 +312,31 @@ enum {
   PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE = 1u,
   PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED = 2u,
   PROM_BATCH_QUEUE_TOPOLOGY_PARALLEL_ELIGIBLE = 3u,
+  PROM_BATCH_QUEUE_TOPOLOGY_SEPARATE_COMPUTE_FAMILIES = 4u,
+  PROM_BATCH_QUEUE_TOPOLOGY_COMPUTE_PLUS_TRANSFER = 5u,
+  PROM_BATCH_QUEUE_TOPOLOGY_MEMORY_CAPPED = 6u,
+  PROM_BATCH_QUEUE_TOPOLOGY_FORCED_SERIALIZED = 7u,
 };
 
 enum {
   PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED = 1u,
   PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED = 2u,
   PROM_BATCH_QUEUE_MAPPING_PARALLEL_ELIGIBLE_DISABLED = 3u,
+  PROM_BATCH_QUEUE_MAPPING_PARALLEL_STATIC_PARTITION = 4u,
+};
+
+enum {
+  PROM_BATCH_FALLBACK_REASON_NONE = 0u,
+  PROM_BATCH_FALLBACK_REASON_BASELINE_SERIALIZED = 1u,
+  PROM_BATCH_FALLBACK_REASON_INDEPENDENT_QUEUE_LT_2 = 2u,
+  PROM_BATCH_FALLBACK_REASON_EFFECTIVE_WORKERS_LT_2 = 3u,
+  PROM_BATCH_FALLBACK_REASON_COMMAND_RESOURCES_INVALID = 4u,
+  PROM_BATCH_FALLBACK_REASON_FENCES_INVALID = 5u,
+  PROM_BATCH_FALLBACK_REASON_QUEUE_MAPPING_INVALID = 6u,
+  PROM_BATCH_FALLBACK_REASON_MEMORY_CAP = 7u,
+  PROM_BATCH_FALLBACK_REASON_PSEUDO_SHARED = 8u,
+  PROM_BATCH_FALLBACK_REASON_FORCED_SERIALIZED = 9u,
+  PROM_BATCH_FALLBACK_REASON_QUEUE_FAMILY_OWNERSHIP_HANDOFF_REQUIRED = 10u,
 };
 
 typedef struct PrometheusCaps {
