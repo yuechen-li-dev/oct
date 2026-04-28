@@ -1,0 +1,118 @@
+package Statistics
+
+[Fact]
+fn MinMaxRangeCoreBehavior() -> Void {
+    let xs = [4.0, 1.0, 9.0, 2.0, 7.0]
+    Assert.Near(1.0, MinOf(xs)!, 0.000001, "min should be 1.0")
+    Assert.Near(9.0, MaxOf(xs)!, 0.000001, "max should be 9.0")
+    Assert.Near(8.0, RangeOf(xs)!, 0.000001, "range should be max - min")
+}
+
+[Fact]
+fn IQRSpansFiftyPercentOfData() -> Void {
+    // Known dataset: sorted [1, 2, 3, 4, 5, 6, 7, 8]
+    // P25 = 2.75, P75 = 6.25, IQR = 3.5
+    let xs = [3.0, 1.0, 7.0, 5.0, 2.0, 8.0, 4.0, 6.0]
+    let iqr = IQR(xs)!
+    Assert.True(iqr > 0.0, "IQR should be positive for non-constant data")
+    let p25 = Percentile(xs, 25.0)!
+    let p75 = Percentile(xs, 75.0)!
+    Assert.Near(p75 - p25, iqr, 0.000001, "IQR should equal P75 - P25")
+}
+
+[Fact]
+fn ZScoresHaveZeroMeanAndUnitVariance() -> Void {
+    let xs = [2.0, 4.0, 6.0, 8.0, 10.0]
+    let zs = ZScores(xs)!
+    let zm = Mean(zs)!
+    let zv = Variance(zs)!
+    Assert.Near(0.0, zm, 0.000001, "z-scores should have zero mean")
+    Assert.Near(1.0, zv, 0.000001, "z-scores should have unit variance")
+}
+
+[Fact]
+fn ZScoresPreserveRelativeOrder() -> Void {
+    let xs = [1.0, 5.0, 3.0]
+    let zs = ZScores(xs)!
+    // Original order by value: 1 < 3 < 5 → z[0] < z[2] < z[1]
+    Assert.True(zs[0] < zs[2], "smallest original maps to smallest z")
+    Assert.True(zs[2] < zs[1], "largest original maps to largest z")
+}
+
+[Fact]
+fn ZScoresRejectConstantInput() -> Void {
+    let xs = [5.0, 5.0, 5.0, 5.0]
+    Assert.Error(ZScores(xs), "constant sequence cannot be z-scored")
+}
+
+[Fact]
+fn SummarizeProducesCoherentRecord() -> Void {
+    let xs = [3.0, 7.0, 1.0, 9.0, 5.0]
+    let s = Summarize(xs)!
+
+    Assert.Equal(5, s.N, "N should match array length")
+    Assert.Near(1.0, s.Min, 0.000001, "min")
+    Assert.Near(9.0, s.Max, 0.000001, "max")
+    Assert.Near(8.0, s.Range, 0.000001, "range")
+    Assert.Near(5.0, s.Mean, 0.000001, "mean")
+    Assert.Near(5.0, s.Median, 0.000001, "median of sorted [1,3,5,7,9]")
+    Assert.True(s.Variance > 0.0, "variance should be positive")
+    Assert.True(s.StandardDeviation > 0.0, "stddev should be positive")
+    Assert.Near(Sqrt(s.Variance), s.StandardDeviation, 0.000001, "stddev = sqrt(variance)")
+    Assert.True(s.IQR > 0.0, "IQR should be positive")
+    Assert.Near(s.P75 - s.P25, s.IQR, 0.000001, "IQR = P75 - P25")
+}
+
+[Fact]
+fn SummarizeSampleVarianceIsLargerThanPopulation() -> Void {
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let s = Summarize(xs)!
+    // Sample variance (n-1) > population variance (n) for n > 1
+    Assert.True(s.SampleVariance > s.Variance, "sample variance > population variance")
+    Assert.Near(s.Variance * 5.0 / 4.0, s.SampleVariance, 0.000001, "sample/pop ratio = n/(n-1)")
+}
+
+[Fact]
+fn SkewnessIsZeroForSymmetricData() -> Void {
+    // Symmetric around mean: skewness should be ~0
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let s = Summarize(xs)!
+    Assert.Near(0.0, s.Skewness, 0.000001, "symmetric data should have zero skewness")
+}
+
+[Fact]
+fn SkewnessIsPositiveForRightSkewedData() -> Void {
+    // Right skewed: most values small with a long right tail
+    let xs = [1.0, 1.0, 1.0, 2.0, 10.0]
+    let s = Summarize(xs)!
+    Assert.True(s.Skewness > 0.0, "right-skewed data should have positive skewness")
+}
+
+[Fact]
+fn SummarizeAndRegressionComposability() -> Void {
+    // A real workflow: summarize GPU throughput measurements, then
+    // fit a trend line against shape index to see if throughput scales
+    let shapes = [64.0, 128.0, 256.0, 512.0, 1024.0]
+    let throughput = [12.0, 28.0, 61.0, 130.0, 285.0]
+
+    let summary = Summarize(throughput)!
+    let regression = LinearRegression(shapes, throughput)!
+
+    // Throughput grows roughly linearly with shape in this toy data
+    Assert.True(regression.Slope > 0.0, "throughput should increase with shape")
+    Assert.True(regression.RSquared > 0.9, "linear fit should be decent")
+    Assert.True(summary.Skewness > 0.0, "throughput distribution is right-skewed")
+    Assert.True(summary.IQR < summary.Range, "IQR should be narrower than total range")
+
+    // Predict throughput at shape 2048
+    let predicted2048 = Predict(regression, 2048.0)
+    Assert.True(predicted2048 > summary.Max, "extrapolated prediction should exceed observed max")
+}
+
+[Fact]
+fn EdgeCasesEmptyAndSingleElement() -> Void {
+    let single = [42.0]
+    Assert.Near(42.0, MinOf(single)!, 0.000001, "min of single element")
+    Assert.Near(42.0, MaxOf(single)!, 0.000001, "max of single element")
+    Assert.Near(0.0, RangeOf(single)!, 0.000001, "range of single element is zero")
+}

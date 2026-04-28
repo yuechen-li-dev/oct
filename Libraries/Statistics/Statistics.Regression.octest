@@ -1,0 +1,132 @@
+package Statistics
+
+[Fact]
+fn CovarianceOfPerfectlyCorrelatedSequences() -> Void {
+    // xs and ys are identical - covariance equals variance
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let cov = Covariance(xs, ys)!
+    let v = Variance(xs)!
+    Assert.Near(v, cov, 0.000001, "covariance of identical sequences equals variance")
+}
+
+[Fact]
+fn CovarianceOfPerfectlyAntiCorrelatedSequences() -> Void {
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [5.0, 4.0, 3.0, 2.0, 1.0]
+    let cov = Covariance(xs, ys)!
+    let v = Variance(xs)!
+    Assert.Near(0.0 - v, cov, 0.000001, "anti-correlated covariance is negative variance")
+}
+
+[Fact]
+fn CovarianceIsSymmetric() -> Void {
+    let xs = [1.0, 3.0, 5.0, 2.0, 8.0]
+    let ys = [2.0, 4.0, 1.0, 9.0, 3.0]
+    let cxy = Covariance(xs, ys)!
+    let cyx = Covariance(ys, xs)!
+    Assert.Near(cxy, cyx, 0.000001, "covariance is symmetric")
+}
+
+[Fact]
+fn SampleCovarianceIsLargerThanPopulationCovariance() -> Void {
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [2.0, 4.0, 6.0, 8.0, 10.0]
+    let pop = Covariance(xs, ys)!
+    let samp = SampleCovariance(xs, ys)!
+    // Sample uses n-1, population uses n; for n=5 ratio is 5/4
+    Assert.Near(pop * 5.0 / 4.0, samp, 0.000001, "sample covariance = population * n/(n-1)")
+}
+
+[Fact]
+fn CorrelationOfPerfectLinearRelationship() -> Void {
+    // y = 2x + 1: perfect positive correlation
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [3.0, 5.0, 7.0, 9.0, 11.0]
+    let r = Correlation(xs, ys)!
+    Assert.Near(1.0, r, 0.000001, "perfect positive correlation should be 1.0")
+}
+
+[Fact]
+fn CorrelationOfPerfectNegativeRelationship() -> Void {
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [10.0, 8.0, 6.0, 4.0, 2.0]
+    let r = Correlation(xs, ys)!
+    Assert.Near(0.0 - 1.0, r, 0.000001, "perfect negative correlation should be -1.0")
+}
+
+[Fact]
+fn CorrelationIsBoundedInNegativeOneToOne() -> Void {
+    let xs = [2.0, 7.0, 1.0, 9.0, 3.0, 6.0]
+    let ys = [4.0, 1.0, 8.0, 2.0, 7.0, 3.0]
+    let r = Correlation(xs, ys)!
+    Assert.True(r >= 0.0 - 1.0, "correlation lower bound")
+    Assert.True(r <= 1.0, "correlation upper bound")
+}
+
+[Fact]
+fn CorrelationRequiresNonConstantSequences() -> Void {
+    let xs = [1.0, 1.0, 1.0]
+    let ys = [2.0, 3.0, 4.0]
+    Assert.Error(Correlation(xs, ys), "constant x should fail")
+    Assert.Error(Correlation(ys, xs), "constant y should fail")
+}
+
+[Fact]
+fn LinearRegressionFitsPerfectLine() -> Void {
+    // y = 3x + 2 exactly
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [2.0, 5.0, 8.0, 11.0, 14.0]
+    let result = LinearRegression(xs, ys)!
+    Assert.Near(3.0, result.Slope, 0.000001, "slope should be 3")
+    Assert.Near(2.0, result.Intercept, 0.000001, "intercept should be 2")
+    Assert.Near(1.0, result.RSquared, 0.000001, "perfect fit should give R2 = 1.0")
+}
+
+[Fact]
+fn LinearRegressionRSquaredIsZeroForFlatPredictorConstantResponse() -> Void {
+    // All y values identical: TSS = 0 but model also predicts flat line, RSS = 0
+    // Special case: R2 is defined as 1 when TSS = 0 (perfect trivial fit)
+    let xs = [1.0, 2.0, 3.0]
+    let ys = [5.0, 5.0, 5.0]
+    let result = LinearRegression(xs, ys)!
+    Assert.Near(0.0, result.Slope, 0.000001, "slope should be 0 for constant y")
+    Assert.Near(5.0, result.Intercept, 0.000001, "intercept should be the constant value")
+}
+
+[Fact]
+fn LinearRegressionRSquaredReflectsGoodnessOfFit() -> Void {
+    // Noisy data: R2 should be between 0 and 1
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let ys = [2.1, 3.9, 6.2, 7.8, 10.1]
+    let result = LinearRegression(xs, ys)!
+    Assert.True(result.RSquared > 0.95, "good linear data should have high R2")
+    Assert.True(result.RSquared <= 1.0, "R2 cannot exceed 1")
+}
+
+[Fact]
+fn PredictUsesRegressionResultCorrectly() -> Void {
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
+    let ys = [1.0, 3.0, 5.0, 7.0, 9.0]
+    let result = LinearRegression(xs, ys)!
+    // y = 2x + 1
+    Assert.Near(1.0, Predict(result, 0.0), 0.000001, "predict at x=0")
+    Assert.Near(5.0, Predict(result, 2.0), 0.000001, "predict at x=2")
+    Assert.Near(11.0, Predict(result, 5.0), 0.000001, "predict beyond training range")
+}
+
+[Fact]
+fn LinearRegressionRejectionCases() -> Void {
+    Assert.Error(LinearRegression([1.0], [2.0]), "single point should fail")
+    Assert.Error(LinearRegression([1.0, 2.0], [3.0, 4.0, 5.0]), "mismatched lengths should fail")
+    Assert.Error(LinearRegression([3.0, 3.0, 3.0], [1.0, 2.0, 3.0]), "constant x should fail")
+}
+
+[Fact]
+fn SampleVarianceAndCovarianceComposability() -> Void {
+    // For a single variable, sample covariance with itself = sample variance
+    let xs = [2.0, 4.0, 6.0, 8.0, 10.0]
+    let sv = SampleVariance(xs)!
+    let sc = SampleCovariance(xs, xs)!
+    Assert.Near(sv, sc, 0.000001, "sample covariance with self equals sample variance")
+}

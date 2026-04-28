@@ -1,0 +1,161 @@
+package Statistics
+
+// Covariance computes the population covariance of two paired samples.
+// Both arrays must have the same length.
+fn Covariance(xs: Float[], ys: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("covariance requires at least one pair")
+    }
+    if n != Len(ys) {
+        return error("covariance requires equal-length arrays")
+    }
+
+    let mx = Mean(xs)?
+    let my = Mean(ys)?
+
+    var accum = 0.0
+    for i in 0 .. n {
+        accum = accum + (xs[i] - mx) * (ys[i] - my)
+    }
+
+    return accum / n
+}
+
+// SampleCovariance computes the sample covariance (divides by n-1).
+// Requires at least two pairs.
+fn SampleCovariance(xs: Float[], ys: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n < 2 {
+        return error("sample covariance requires at least two pairs")
+    }
+    if n != Len(ys) {
+        return error("sample covariance requires equal-length arrays")
+    }
+
+    let mx = Mean(xs)?
+    let my = Mean(ys)?
+
+    var accum = 0.0
+    for i in 0 .. n {
+        accum = accum + (xs[i] - mx) * (ys[i] - my)
+    }
+
+    return accum / (n - 1)
+}
+
+// SampleVariance computes the sample variance (divides by n-1, Bessel-corrected).
+// Requires at least two values.
+fn SampleVariance(xs: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n < 2 {
+        return error("sample variance requires at least two values")
+    }
+
+    let mean = Mean(xs)?
+    var accum = 0.0
+    for i in 0 .. n {
+        let d = xs[i] - mean
+        accum = accum + d * d
+    }
+
+    return accum / (n - 1)
+}
+
+// SampleStandardDeviation computes the sample standard deviation (Bessel-corrected).
+fn SampleStandardDeviation(xs: Float[]) -> Float ! Error {
+    let v = SampleVariance(xs)?
+    return Sqrt(v)
+}
+
+// Correlation computes the Pearson correlation coefficient of two paired samples.
+// Returns a value in [-1, 1]. Returns an error if either sequence is constant.
+fn Correlation(xs: Float[], ys: Float[]) -> Float ! Error {
+    let n = Len(xs)
+    if n == 0 {
+        return error("correlation requires at least one pair")
+    }
+    if n != Len(ys) {
+        return error("correlation requires equal-length arrays")
+    }
+
+    let cov = Covariance(xs, ys)?
+    let sx = StandardDeviation(xs)?
+    let sy = StandardDeviation(ys)?
+
+    if sx == 0.0 or sy == 0.0 {
+        return error("correlation requires non-constant sequences")
+    }
+
+    return cov / (sx * sy)
+}
+
+// LinearRegressionResult holds the output of a simple linear regression y = slope * x + intercept.
+record LinearRegressionResult {
+    Slope: Float
+    Intercept: Float
+    RSquared: Float
+    ResidualSumOfSquares: Float
+    TotalSumOfSquares: Float
+    N: Int
+}
+
+// LinearRegression fits y = slope * x + intercept by ordinary least squares.
+// Returns slope, intercept, and R-squared goodness of fit.
+fn LinearRegression(xs: Float[], ys: Float[]) -> LinearRegressionResult ! Error {
+    let n = Len(xs)
+    if n < 2 {
+        return error("linear regression requires at least two points")
+    }
+    if n != Len(ys) {
+        return error("linear regression requires equal-length arrays")
+    }
+
+    let mx = Mean(xs)?
+    let my = Mean(ys)?
+
+    var num = 0.0
+    var den = 0.0
+    for i in 0 .. n {
+        let dx = xs[i] - mx
+        num = num + dx * (ys[i] - my)
+        den = den + dx * dx
+    }
+
+    if den == 0.0 {
+        return error("linear regression requires non-constant x values")
+    }
+
+    let slope = num / den
+    let intercept = my - slope * mx
+
+    // Compute R-squared: 1 - RSS/TSS
+    var rss = 0.0
+    var tss = 0.0
+    for i in 0 .. n {
+        let predicted = slope * xs[i] + intercept
+        let residual = ys[i] - predicted
+        rss = rss + residual * residual
+        let dev = ys[i] - my
+        tss = tss + dev * dev
+    }
+
+    var rsq = 0.0
+    if tss > 0.0 {
+        rsq = 1.0 - rss / tss
+    }
+
+    return LinearRegressionResult {
+        Slope: slope
+        Intercept: intercept
+        RSquared: rsq
+        ResidualSumOfSquares: rss
+        TotalSumOfSquares: tss
+        N: n
+    }
+}
+
+// Predict returns the predicted y value for a given x using regression results.
+fn Predict(result: LinearRegressionResult, x: Float) -> Float {
+    return result.Slope * x + result.Intercept
+}
