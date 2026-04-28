@@ -246,6 +246,35 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t queue_family_ownership_handoff_count;
   uint32_t transfer_compute_sync_wait_count;
   uint32_t unsafe_to_reuse;
+  uint32_t slots_per_worker_target;
+  uint32_t effective_slots_per_worker;
+  uint32_t total_slot_count;
+  uint32_t slot_cap_reason;
+  uint32_t slot_refill_count;
+  uint32_t slot_full_scan_poll_count;
+  uint32_t slot_attention_poll_count;
+  uint32_t slot_polling_avoided_count;
+  uint32_t slot_failure_count;
+  uint32_t slot_drain_count;
+  uint32_t slot_boundary_generation;
+  uint32_t slot_dirty_mask;
+  uint32_t slot_ready_mask;
+  uint32_t slot_failed_mask;
+  uint32_t slot_invalidated_mask;
+  uint32_t slot_attention_mask;
+  uint32_t slot_owner_worker_id[16];
+  uint32_t slot_state[16];
+  uint32_t slot_generation[16];
+  uint32_t slot_entry_id[16];
+  uint32_t slot_queue_id[16];
+  uint32_t slot_command_resource_id[16];
+  uint32_t slot_arena_id[16];
+  uint32_t slot_output_staging_id[16];
+  uint32_t slot_in_flight[16];
+  uint32_t slot_ready[16];
+  uint32_t slot_invalidated[16];
+  uint32_t slot_failure_stage[16];
+  int32_t slot_failure_detail[16];
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -276,6 +305,22 @@ enum {
 enum {
   PROM_BATCH_PARTITION_ROUND_ROBIN = 1u,
   PROM_BATCH_PARTITION_CONTIGUOUS = 2u,
+};
+
+enum {
+  PROM_BATCH_SLOT_STATE_EMPTY = 0u,
+  PROM_BATCH_SLOT_STATE_PREPARING = 1u,
+  PROM_BATCH_SLOT_STATE_READY = 2u,
+  PROM_BATCH_SLOT_STATE_IN_FLIGHT = 3u,
+  PROM_BATCH_SLOT_STATE_COMPLETE = 4u,
+  PROM_BATCH_SLOT_STATE_FAILED = 5u,
+  PROM_BATCH_SLOT_STATE_CLEANUP = 6u,
+  PROM_BATCH_SLOT_STATE_INVALIDATED = 7u,
+};
+
+enum {
+  PROM_BATCH_SLOT_CAP_REASON_NONE = 0u,
+  PROM_BATCH_SLOT_CAP_REASON_MEMORY_BUDGET = 1u,
 };
 
 enum {
