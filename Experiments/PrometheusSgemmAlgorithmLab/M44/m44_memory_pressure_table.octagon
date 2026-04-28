@@ -1,0 +1,7 @@
+[M44MemoryPressureTable {
+    Candidate: ["A-1-slot-baseline", "B-2-slots-worker-local", "C-4-slots-worker-local", "D-shared-slot-pool", "E-work-stealing-reference"]
+    PeakCommittedMemoryMiB: [1024, 1280, 1536, 1536, 1536]
+    MemoryPressurePermille: [666, 833, 1000, 1000, 1000]
+    SlotsEffective: [1, 2, 3, 3, 3]
+    SlotCapReason: ["none", "none", "memory-budget-capped", "memory-budget-capped", "memory-budget-capped"]
+}]

@@ -1,0 +1,15 @@
+[M44FinalContract {
+    Label: "P11 M18 / PrometheusSgemmAlgorithmLab M44"
+    NSlotReadyForImplementation: true
+    FirstImplementationSlotsPerWorker: (2)
+    SlotOwnershipRule: "slot.owner_worker_id is exclusive for first implementation"
+    SharedPoolStatus: "shared slot pool deferred (reference only)"
+    WorkStealingStatus: "work stealing deferred"
+    RefillRule: "boundary computes dirty/ready/failed/invalidated masks; refill inspects attention set and worker-local empty slots only"
+    FailureDrainRule: "first failure wins; stop refill; drain in-flight slots/queues; no output commit on failure; cleanup after safe drain"
+    MemoryBudgetRule: "effective slots per worker are capped by budget; fallback to lower slot count with explicit cap reason"
+    DiagnosticsRule: "emit worker/slot ownership, masks, boundary generation, refill counts, polling avoided, failure/drain, unsafe-to-reuse, memory-cap reason"
+    P11M19Direction: "implement worker-local S=2 slots, dirty-attention refill, and full diagnostics contract"
+    DeferredScope: "S=4+, shared pool, work stealing, SPMC/MPMC, lock-free runtime"
+    RecommendationComputed: true
+}]

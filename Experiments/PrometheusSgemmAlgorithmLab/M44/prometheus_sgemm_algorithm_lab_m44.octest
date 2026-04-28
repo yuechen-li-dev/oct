@@ -1,0 +1,164 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M44TwoSlotImprovesOrMatchesQueueUtilization() -> Void {
+    let s1 = M44RunScenario(M44ScenarioBase("A-1-slot-baseline"))
+    let s2 = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    Assert.True(s2.QueueUtilizationPermille >= s1.QueueUtilizationPermille, "S=2 should not regress queue utilization against S=1 in eligible topology")
+}
+
+[Fact]
+fn M44FourSlotMustJustifyMemoryCost() -> Void {
+    let s2 = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    let s4 = M44RunScenario(M44ScenarioBase("C-4-slots-worker-local"))
+    Assert.True((s4.ProductScore <= s2.ProductScore) or (s4.QueueUtilizationPermille > s2.QueueUtilizationPermille and s4.MemoryPressurePermille <= s2.MemoryPressurePermille + 150), "S=4 only wins when utilization gain offsets memory/complexity penalty")
+}
+
+[Fact]
+fn M44DirtyReadinessAvoidsFullScan() -> Void {
+    let s2 = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    Assert.True(s2.PollingAvoided > 0 and s2.AttentionPollCount < s2.FullScanPollCount, "attention-mask scheduling must avoid full-slot polling")
+}
+
+[Fact]
+fn M44DirtyReadinessPersistsAcrossNonSlotCommit() -> Void {
+    let totalSlots = 8
+    let r0 = M44ApplyReady(M44BaseReadiness(), 1, totalSlots)
+    let r1 = M44NonSlotCommit(r0)
+    Assert.Equal(r1.AttentionSlotMask, r0.AttentionSlotMask, "non-slot commit must not erase attention")
+    Assert.Equal(r1.DirtySlotMask, r0.DirtySlotMask, "non-slot commit must not clear dirty mask")
+}
+
+[Fact]
+fn M44FailedSlotEntersAttentionSet() -> Void {
+    let totalSlots = 8
+    let r = M44ApplyFailed(M44BaseReadiness(), 3, totalSlots)
+    Assert.True(M44MaskHas(r.AttentionSlotMask, 3) and M44MaskHas(r.FailedSlotMask, 3), "failed slot must be visible in attention and failed masks")
+}
+
+[Fact]
+fn M44InvalidatedReadySlotIsNotDispatched() -> Void {
+    let base = M44ScenarioBase("B-2-slots-worker-local")
+    let r = M44RunScenario(M44Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MultiQueueEligible: base.MultiQueueEligible
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        PerSlotArtifactBytes: base.PerSlotArtifactBytes
+        FailureMode: "invalidate-ready"
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        InvalidateEntryId: base.InvalidateEntryId
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.Equal(r.FirstFailureDetail, "invalidated-ready-not-dispatched", "invalidated ready slot must be blocked from dispatch")
+    Assert.Equal(r.OutputCommitStatus, "uncommitted-on-failure", "invalidated stale slot path must not commit")
+}
+
+[Fact]
+fn M44NoCrossWorkerSlotBorrowingForFirstImplementation() -> Void {
+    Assert.True(M44CanWorkerUseSlot(1, 1, false), "worker may use own slot")
+    Assert.True(not M44CanWorkerUseSlot(1, 2, false), "worker-local slot ownership must reject cross-worker borrowing")
+}
+
+[Fact]
+fn M44MemoryBudgetCapsSlotCount() -> Void {
+    let base = M44ScenarioBase("C-4-slots-worker-local")
+    let capped = M44RunScenario(M44Scenario {
+        Name: "budget-cap"
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MultiQueueEligible: base.MultiQueueEligible
+        MemoryBudgetBytes: 805306368
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        PerSlotArtifactBytes: base.PerSlotArtifactBytes
+        FailureMode: "none"
+        FailureEntryId: base.FailureEntryId
+        SecondaryFailureEntryId: base.SecondaryFailureEntryId
+        InvalidateEntryId: base.InvalidateEntryId
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.True(capped.SlotsPerWorkerEffective < capped.SlotsPerWorkerRequested, "tight budget must cap effective slot count")
+    Assert.Equal(capped.MemoryBudgetSlotCapReason, "memory-budget-capped", "budget cap reason must be explicit")
+}
+
+[Fact]
+fn M44FirstFailureWinsAcrossSlots() -> Void {
+    let base = M44ScenarioBase("B-2-slots-worker-local")
+    let r = M44RunScenario(M44Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        BatchSize: base.BatchSize
+        WorkerCount: base.WorkerCount
+        HardwareQueueCount: base.HardwareQueueCount
+        MultiQueueEligible: base.MultiQueueEligible
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerArenaBytes: base.PerWorkerArenaBytes
+        PerSlotArtifactBytes: base.PerSlotArtifactBytes
+        FailureMode: "dual"
+        FailureEntryId: 4
+        SecondaryFailureEntryId: 11
+        InvalidateEntryId: base.InvalidateEntryId
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.Equal(r.FirstFailureEntryId, 4, "first failure entry metadata must be preserved")
+    Assert.Equal(r.FirstFailureDetail, "first-failure-wins", "first failure metadata must dominate later failures")
+}
+
+[Fact]
+fn M44OutputOrderingRemainsAtomic() -> Void {
+    let r = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    Assert.Equal(r.OutputCommitStatus, "committed-atomically-in-entry-order", "success path must preserve atomic ordered commit")
+}
+
+[Fact]
+fn M44RecommendationIsComputedFromMetrics() -> Void {
+    let rec = M44RecommendationFromModel()
+    let contract = M44FinalContractFrom()
+    Assert.Equal(rec.Candidate, "B-2-slots-worker-local", "computed model should choose worker-local S=2 as first implementation")
+    Assert.True(contract.RecommendationComputed, "final contract must reflect computed recommendation token")
+}
+
+[Fact]
+fn M44Determinism() -> Void {
+    let a = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    let b = M44RunScenario(M44ScenarioBase("B-2-slots-worker-local"))
+    Assert.Equal(a.ProductScore, b.ProductScore, "same scenario must produce deterministic score")
+    Assert.Equal(a.CompletionTime, b.CompletionTime, "same scenario must produce deterministic completion time")
+}
+
+[Artifact]
+fn EmitM44SlotCountComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_slot_count_comparison.octagon", [M44SlotCountComparisonFrom()])
+}
+
+[Artifact]
+fn EmitM44ReadinessDirtyTrackingTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_readiness_dirty_tracking_table.octagon", [M44ReadinessDirtyTrackingFrom()])
+}
+
+[Artifact]
+fn EmitM44MemoryPressureTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_memory_pressure_table.octagon", [M44MemoryPressureTableFrom()])
+}
+
+[Artifact]
+fn EmitM44FailureDrainTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_failure_drain_table.octagon", [M44FailureDrainTableFrom()])
+}
+
+[Artifact]
+fn EmitM44QueueUtilizationTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_queue_utilization_table.octagon", [M44QueueUtilizationTableFrom()])
+}
+
+[Artifact]
+fn EmitM44FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M44/m44_final_contract.octagon", [M44FinalContractFrom()])
+}
