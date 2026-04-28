@@ -1,0 +1,130 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M48AggregateFor(results: M48RecipeAggregate[], recipe: M48RecipeName) -> M48RecipeAggregate {
+    var out = results[0]
+    for i in 0 .. Len(results) {
+        if results[i].Recipe == recipe {
+            out = results[i]
+        }
+    }
+    return out
+}
+
+[Fact]
+fn M482x2MoreAggressiveThanSmallVariants() -> Void {
+    let t22 = M48FindRecipe(M48RecipeName.Srt2x2)
+    let row = M48FindRecipe(M48RecipeName.Srt1x2Row)
+    let k2 = M48FindRecipe(M48RecipeName.Srt2AccumK)
+    Assert.True(t22.EstimatedRegistersPerThread > row.EstimatedRegistersPerThread, "SRT-2x2 must model higher register pressure than SRT-1x2-row")
+    Assert.True(t22.ImplementationComplexity > row.ImplementationComplexity and t22.ImplementationComplexity > k2.ImplementationComplexity, "SRT-2x2 must model higher implementation complexity than small first-pass candidates")
+}
+
+[Fact]
+fn M48RowVsColumnCoalescingDiffers() -> Void {
+    let row = M48FindRecipe(M48RecipeName.Srt1x2Row)
+    let col = M48FindRecipe(M48RecipeName.Srt2x1Col)
+    Assert.True(row.CoalescedStoreRisk < col.CoalescedStoreRisk, "row-major output should penalize 2x1-column store coalescing more than 1x2-row")
+    Assert.True(row.CoalescedLoadRisk != col.CoalescedLoadRisk or row.CoalescedStoreRisk != col.CoalescedStoreRisk, "row and column recipes must not be coalescing-identical")
+}
+
+[Fact]
+fn M48KHeavyFavorsKAccumRelativeToSmallSquare() -> Void {
+    let policy = M48DefaultSafetyPolicy()
+    let kHeavy = M48RecipeScoreForShape(M48RecipeName.Srt2AccumK, M48ShapeClass.KHeavy, policy).Score
+    let small = M48RecipeScoreForShape(M48RecipeName.Srt2AccumK, M48ShapeClass.SmallSquare, policy).Score
+    Assert.True(kHeavy > small, "SRT-2accum-K should score higher on K-heavy than small-square")
+}
+
+[Fact]
+fn M48WideShapesFavorRowTiling() -> Void {
+    let policy = M48DefaultSafetyPolicy()
+    let wideRow = M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, M48ShapeClass.WideShort, policy).Score
+    let smallRow = M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, M48ShapeClass.SmallSquare, policy).Score
+    let wideCol = M48RecipeScoreForShape(M48RecipeName.Srt2x1Col, M48ShapeClass.WideShort, policy).Score
+    Assert.True(wideRow > smallRow, "N-heavy wide-short should increase row-tiling suitability relative to small-square")
+    Assert.True(wideRow >= wideCol, "wide-short should favor or match row-tiling over column-tiling")
+}
+
+[Fact]
+fn M48TallShapesExposeRowLimitation() -> Void {
+    let policy = M48DefaultSafetyPolicy()
+    let tallRow = M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, M48ShapeClass.TallSkinny, policy).Score
+    let wideRow = M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, M48ShapeClass.WideShort, policy).Score
+    let tallK = M48RecipeScoreForShape(M48RecipeName.Srt2AccumK, M48ShapeClass.TallSkinny, policy).Score
+    Assert.True(tallRow < wideRow, "tall-skinny should expose weaker suitability for row-tiling than wide-short")
+    Assert.True(tallRow <= tallK + 8, "tall-skinny should keep non-row recipes competitive")
+}
+
+[Fact]
+fn M48SafetyMarginsPenalizeAggressiveRecipes() -> Void {
+    let lowMargin = M48DefaultSafetyPolicy() with { SafetyMarginPermille: 80 }
+    let highMargin = M48DefaultSafetyPolicy() with { SafetyMarginPermille: 200 }
+    let t22Low = M48AggregateRecipe(M48RecipeName.Srt2x2, lowMargin).AggregateScore
+    let t22High = M48AggregateRecipe(M48RecipeName.Srt2x2, highMargin).AggregateScore
+    Assert.True(t22High < t22Low, "larger safety margin should penalize aggressive SRT-2x2 recipe")
+}
+
+[Fact]
+fn M48TailComplexityAffectsScore() -> Void {
+    let policy = M48DefaultSafetyPolicy()
+    let wideRow = M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, M48ShapeClass.WideShort, policy).Score
+    let wide2x2 = M48RecipeScoreForShape(M48RecipeName.Srt2x2, M48ShapeClass.WideShort, policy).Score
+    Assert.True(wide2x2 < wideRow, "higher tail complexity should reduce score on non-clean wide shapes")
+}
+
+[Fact]
+fn M48RecommendationIsComputed() -> Void {
+    let policy = M48DefaultSafetyPolicy()
+    let aggregates = M48AllAggregates(policy)
+    let rec = M48FinalRecommendationFromModel()
+
+    var recommendedCount = 0
+    var topScore = -100000
+    var topRecipe = M48RecipeName.BaselineControl
+
+    for i in 0 .. Len(aggregates) {
+        if aggregates[i].Recommended {
+            recommendedCount = recommendedCount + 1
+        }
+        if aggregates[i].AggregateScore > topScore {
+            topScore = aggregates[i].AggregateScore
+            topRecipe = aggregates[i].Recipe
+        }
+    }
+
+    Assert.Equal(recommendedCount, 1, "exactly one recipe should be selected")
+    Assert.Equal(rec.RecommendedRecipe, M48RecipeToString(topRecipe), "recommendation must come from computed aggregate scores")
+}
+
+[Fact]
+fn M48Determinism() -> Void {
+    let a = M48FinalRecommendationFromModel()
+    let b = M48FinalRecommendationFromModel()
+    Assert.Equal(a.RecommendedRecipe, b.RecommendedRecipe, "same model inputs must produce deterministic recommendation")
+    Assert.Equal(a.TailPolicy, b.TailPolicy, "tail policy output should be deterministic")
+}
+
+[Artifact]
+fn EmitM48RecipeComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M48/m48_recipe_comparison.octagon", [M48RecipeComparisonTable()])
+}
+
+[Artifact]
+fn EmitM48ShapeRecipeMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M48/m48_shape_recipe_matrix.octagon", [M48ShapeRecipeMatrixTable(M48DefaultSafetyPolicy())])
+}
+
+[Artifact]
+fn EmitM48SafetyMarginTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M48/m48_safety_margin_table.octagon", [M48SafetyMarginTable()])
+}
+
+[Artifact]
+fn EmitM48TailPolicyTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M48/m48_tail_policy_table.octagon", [M48TailPolicyTable()])
+}
+
+[Artifact]
+fn EmitM48FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M48/m48_final_recommendation.octagon", [M48FinalRecommendationTable()])
+}

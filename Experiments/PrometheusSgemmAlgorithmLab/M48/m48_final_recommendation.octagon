@@ -1,0 +1,13 @@
+[M48TableFinalRecommendation {
+    RecommendedRecipe: "SRT-2accum-K"
+    BenchmarkOnly: true
+    Fp32Only: true
+    BasisPath: "existing baseline tiled SGEMM FP32 path"
+    IntegrationMode: "new benchmark-only variant id (no runtime dispatch actuation)"
+    UnavailableFallback: "if variant unavailable or guards fail, force baseline-control benchmark path and emit diagnostic reason"
+    FirstShapeClasses: "wide-short, medium-square, large-square, ML/FFN-like (defer tall-skinny-first tuning)"
+    TailPolicy: "no output-tail specialization needed; baseline handles edge launch constraints"
+    P13M8Contract: "implement recommended recipe as benchmark-only FP32 variant with safety clamps and deterministic diagnostics; keep manual override seam"
+    DeferredScope: "Vulkan shader/SPIR-V productionization, dispatch actuation, real-hardware tuning, SRT-2x2 rollout, balanced-2x2-accum4, FP16/Packed4, autotune"
+    Computed: true
+}]
