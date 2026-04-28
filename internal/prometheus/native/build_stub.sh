@@ -20,6 +20,8 @@ cc -std=c11 -fPIC -shared \
   "$NATIVE_DIR/reactor_slot_hfsm.c" \
   "$NATIVE_DIR/reactor_vulkan_common.c" \
   "$NATIVE_DIR/reactor_vulkan_sgemm.c" \
+  "$NATIVE_DIR/reactor_vulkan_fft.c" \
+  "$NATIVE_DIR/reactor_vulkan_fused_reduction.c" \
   -pthread \
   -lm \
   -lvulkan \
@@ -38,6 +40,8 @@ c++ -std=c++23 -O2 \
   "$NATIVE_DIR/reactor_slot_hfsm.c" \
   "$NATIVE_DIR/reactor_vulkan_common.c" \
   "$NATIVE_DIR/reactor_vulkan_sgemm.c" \
+  "$NATIVE_DIR/reactor_vulkan_fft.c" \
+  "$NATIVE_DIR/reactor_vulkan_fused_reduction.c" \
   "$NATIVE_DIR/Marionette"/*.cpp \
   -pthread \
   -lm \

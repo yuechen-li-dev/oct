@@ -40,6 +40,8 @@ cl /nologo /std:c11 /O2 /W4 /LD %VULKAN_INCLUDE% /DPROMETHEUS_REACTOR_BUILD_DLL 
   "%NATIVE_DIR%\reactor_slot_hfsm.c" ^
   "%NATIVE_DIR%\reactor_vulkan_common.c" ^
   "%NATIVE_DIR%\reactor_vulkan_sgemm.c" ^
+  "%NATIVE_DIR%\reactor_vulkan_fft.c" ^
+  "%NATIVE_DIR%\reactor_vulkan_fused_reduction.c" ^
   /link /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 goto :fail
 
@@ -56,6 +58,8 @@ cl /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_
   "%NATIVE_DIR%\reactor_slot_hfsm.c" ^
   "%NATIVE_DIR%\reactor_vulkan_common.c" ^
   "%NATIVE_DIR%\reactor_vulkan_sgemm.c" ^
+  "%NATIVE_DIR%\reactor_vulkan_fft.c" ^
+  "%NATIVE_DIR%\reactor_vulkan_fused_reduction.c" ^
   "%NATIVE_DIR%\Marionette\test_main.cpp" ^
   "%NATIVE_DIR%\Marionette\test_harness.cpp" ^
   "%NATIVE_DIR%\Marionette\test_doom.cpp" ^
