@@ -1,4 +1,5 @@
 #include "../bridge.h"
+#include "../reactor_judgment_engine.h"
 #include "test_harness.h"
 
 #include <cmath>
@@ -180,6 +181,145 @@ FACT(PrometheusReactor_P11_M6_BatchCriticalEventOverflowFailsExplicitly)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
     ASSERT_EQUAL(PROM_BATCH_STATE_FAILED, diag.batch_state, "overflow should drive failed final state");
     ASSERT_TRUE(diag.event_overflow_count > 0u, "overflow count should be surfaced");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_BatchGrantYieldSmoke)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<float> a0 = make_matrix(m, k, 0.2f);
+    std::vector<float> b0 = make_matrix(k, n, 0.6f);
+    std::vector<float> c0(m * n, 0.0f);
+    std::vector<float> a1 = make_matrix(m, k, 0.4f);
+    std::vector<float> b1 = make_matrix(k, n, 0.8f);
+    std::vector<float> c1(m * n, 0.0f);
+    PrometheusSgemmBatchEntry entries[2] = {
+        {a0.data(), b0.data(), c0.data(), m, n, k},
+        {a1.data(), b1.data(), c1.data(), m, n, k},
+    };
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, 1u, &stage, &detail), "batch should succeed");
+    ASSERT_TRUE(batch_outputs_match_oracle(m, n, k, {a0, a1}, {b0, b1}, {c0, c1}), "batch outputs should remain correct");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_TRUE(diag.p13_m10_lease_grant_count >= 2u, "batch path should grant leases");
+    ASSERT_TRUE(diag.p13_m10_lease_yield_count >= 2u, "batch path should yield leases");
+    ASSERT_EQUAL(0u, diag.p13_m10_lease_deny_count, "safe batch path should not deny leases");
+    ASSERT_EQUAL(0u, diag.worker_judgment_count, "workers should not directly mutate Dominatus");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_BatchFailedSlotDenied)
+{
+    void* handle = nullptr;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_NO_FP16_STORAGE | PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<float> a = make_matrix(m, k, 0.2f);
+    std::vector<float> b = make_matrix(k, n, 0.6f);
+    std::vector<float> c(m * n, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, 1u, &stage, &detail), "failed slot hook should deny lease");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed batch should not commit output");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_BatchInvalidatedSlotDenied)
+{
+    void* handle = nullptr;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_FORCE_FP16_UTILITY_WIN;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<float> a = make_matrix(m, k, 0.2f);
+    std::vector<float> b = make_matrix(k, n, 0.6f);
+    std::vector<float> c(m * n, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, 1u, &stage, &detail), "invalidated slot hook should deny lease");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "invalidated batch should not commit output");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_BatchUnsafeRuntimeDenied)
+{
+    void* handle = nullptr;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_UPLOAD_ONLY | PROM_TESTCFG_DISABLE_STAGING_FALLBACK;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<float> a = make_matrix(m, k, 0.2f);
+    std::vector<float> b = make_matrix(k, n, 0.6f);
+    std::vector<float> c(m * n, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, 1u, &stage, &detail), "unsafe runtime hook should deny lease");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "unsafe-denied batch should not commit output");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P13_M10_ResourceLease_BatchOutstandingCapBlocksLookahead)
+{
+    void* handle = nullptr;
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_DISABLE_SELECTOR_CACHE | PROM_TESTCFG_FORCE_NO_MEMORY_TYPE;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    const std::uint32_t m = 4u;
+    const std::uint32_t n = 4u;
+    const std::uint32_t k = 4u;
+    std::vector<float> a = make_matrix(m, k, 0.2f);
+    std::vector<float> b = make_matrix(k, n, 0.6f);
+    std::vector<float> c(m * n, 1.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), m, n, k};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, 1u, &stage, &detail),
+                 "outstanding-depth cap hook should deny lease");
+
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics query should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "outstanding-cap denial path should not commit output");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
