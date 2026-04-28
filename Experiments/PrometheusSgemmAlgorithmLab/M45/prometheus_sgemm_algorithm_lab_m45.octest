@@ -1,0 +1,136 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M45DeviceBandClassificationDeterministic() -> Void {
+    let device = M45RepresentativeDevices()[0]
+    let a = M45ClassifyDeviceBand(device)
+    let b = M45ClassifyDeviceBand(device)
+    Assert.Equal(a.Band, b.Band, "same features must map to same device band")
+    Assert.Equal(a.SafeAccumulatorCeiling, b.SafeAccumulatorCeiling, "derived ceilings must be deterministic")
+}
+
+[Fact]
+fn M45LowRegisterBandAvoidsAggressiveVariant() -> Void {
+    let device = M45RepresentativeDevices()[0]
+    let shape = M45RepresentativeShapes()[2]
+    let selected = M45EvaluateDeviceBand(device, shape)
+    Assert.True(selected.Variant != "aggressive-4x4-accum8", "register constrained band must avoid highest register pressure variant")
+}
+
+[Fact]
+fn M45RegisterRichBandCanSelectAggressiveVariant() -> Void {
+    let device = M45RepresentativeDevices()[2]
+    let shape = M45RepresentativeShapes()[6]
+    let selected = M45EvaluateDeviceBand(device, shape)
+    Assert.Equal(selected.Variant, "aggressive-4x4-accum8", "compute-rich register-tolerant band may select aggressive variant for FFN-like shapes")
+}
+
+[Fact]
+fn M45ShapeClassAffectsVariantChoice() -> Void {
+    let device = M45RepresentativeDevices()[1]
+    let small = M45EvaluateDeviceBand(device, M45RepresentativeShapes()[0])
+    let ffn = M45EvaluateDeviceBand(device, M45RepresentativeShapes()[6])
+    Assert.True(small.Variant != ffn.Variant, "small square and FFN-like shapes should not always map to the same variant")
+}
+
+[Fact]
+fn M45PerDeviceProfileImprovesRawButAddsCost() -> Void {
+    let device = M45RepresentativeDevices()[2]
+    let shape = M45RepresentativeShapes()[6]
+    let band = M45EvaluateDeviceBand(device, shape)
+    let profile = M45EvaluatePerDeviceProfile(device, shape)
+    Assert.True(profile.ThroughputScore >= band.ThroughputScore, "exact profile should improve or match throughput in profiled devices")
+    Assert.True(profile.TuningCost > band.TuningCost, "exact profile must carry higher tuning cost")
+}
+
+[Fact]
+fn M45RuntimeAutotuneHasStartupCost() -> Void {
+    let device = M45RepresentativeDevices()[1]
+    let shape = M45RepresentativeShapes()[5]
+    let autotune = M45EvaluateRuntimeAutotune(device, shape)
+    let band = M45EvaluateDeviceBand(device, shape)
+    Assert.True(autotune.TuningCost > band.TuningCost, "runtime autotune should include startup/tuning overhead")
+}
+
+[Fact]
+fn M45ManualOverrideSeamWorks() -> Void {
+    let profiled = M45RepresentativeDevices()[2]
+    let shape = M45RepresentativeShapes()[6]
+    let overrideSelected = M45EvaluateManualOverride(profiled, shape)
+    Assert.Equal(overrideSelected.Variant, profiled.OverrideVariantName, "explicit override should supersede band choice")
+
+    let unprofiled = M45RepresentativeDevices()[1]
+    let fallback = M45EvaluateManualOverride(unprofiled, shape)
+    let band = M45EvaluateDeviceBand(unprofiled, shape)
+    Assert.Equal(fallback.Variant, band.Variant, "missing override should fall back to device-band selection")
+}
+
+[Fact]
+fn M45BandBeatsNoSelectionBaselineAcrossMatrix() -> Void {
+    let devices = M45RepresentativeDevices()
+    let shapes = M45RepresentativeShapes()
+    var baselineTotal = 0
+    var bandTotal = 0
+
+    for di in 0 .. Len(devices) {
+        for si in 0 .. Len(shapes) {
+            baselineTotal = baselineTotal + M45EvaluateNoSelection(devices[di], shapes[si]).ProductScore
+            bandTotal = bandTotal + M45EvaluateDeviceBand(devices[di], shapes[si]).ProductScore
+        }
+    }
+
+    Assert.True(bandTotal > baselineTotal, "device-band strategy should beat static baseline on aggregate product score")
+}
+
+[Fact]
+fn M45PerDeviceProfileNotDefaultUnlessScoreJustifies() -> Void {
+    let rec = M45RecommendationFromModel()
+    Assert.True(rec.DefaultStrategy != "per-device-profile", "per-device profile should not be first default unless it wins after tuning/maintenance penalties")
+}
+
+[Fact]
+fn M45RecommendationIsComputed() -> Void {
+    let rec = M45RecommendationFromModel()
+    Assert.True(rec.RecommendationComputed, "final recommendation must be computed from model metrics")
+    Assert.True(rec.BandingViableFirst, "model should explicitly evaluate viability of device-band first strategy")
+}
+
+[Fact]
+fn M45Determinism() -> Void {
+    let device = M45RepresentativeDevices()[3]
+    let shape = M45RepresentativeShapes()[2]
+    let a = M45StrategyComparison(device, shape)
+    let b = M45StrategyComparison(device, shape)
+    Assert.Equal(a[0].ProductScore, b[0].ProductScore, "strategy outputs should be deterministic")
+    Assert.Equal(a[3].Variant, b[3].Variant, "variant selection should be deterministic")
+}
+
+[Artifact]
+fn EmitM45DeviceBandTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_device_band_table.octagon", [M45DeviceBandTable()])
+}
+
+[Artifact]
+fn EmitM45ShapeClassTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_shape_class_table.octagon", [M45ShapeClassTable()])
+}
+
+[Artifact]
+fn EmitM45VariantVocabulary() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_variant_vocabulary.octagon", [M45VariantVocabularyTable()])
+}
+
+[Artifact]
+fn EmitM45StrategyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_strategy_comparison.octagon", [M45StrategyComparisonTable()])
+}
+
+[Artifact]
+fn EmitM45BandVariantMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_band_variant_matrix.octagon", [M45BandVariantMatrixTable()])
+}
+
+[Artifact]
+fn EmitM45FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M45/m45_final_recommendation.octagon", [M45RecommendationFromModel()])
+}

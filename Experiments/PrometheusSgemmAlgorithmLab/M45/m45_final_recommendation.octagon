@@ -1,0 +1,9 @@
+[M45Recommendation {
+    DefaultStrategy: "no-selection"
+    BandingViableFirst: true
+    RuntimeAutotuneNow: false
+    PreserveManualOverrideSeam: true
+    RecommendationComputed: true
+    P13M2Direction: "implement-device-band-classifier-shape-classifier-and-variant-selector-seam"
+    DeferredScope: "per-device-response-surface-runtime-autotune-native-kernel-implementation"
+}]

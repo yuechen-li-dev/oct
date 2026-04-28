@@ -1,0 +1,11 @@
+[M45TableVariantVocabulary {
+    Variant: ["baseline-scalar", "memory-conservative", "small-register-tile", "balanced-2x2-accum4", "aggressive-4x4-accum8"]
+    RegisterTileClass: [1, 1, 2, 3, 4]
+    AccumulatorCount: [1, 2, 2, 4, 5]
+    SharedTileClass: [1, 1, 2, 3, 4]
+    RegisterPressureClass: [1, 2, 2, 3, 5]
+    SharedPressureClass: [1, 1, 2, 3, 4]
+    IntensityClass: [1, 2, 3, 4, 5]
+    OccupancyClass: [5, 5, 4, 3, 1]
+    ComplexityScore: [1, 2, 3, 4, 6]
+}]
