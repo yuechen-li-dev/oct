@@ -437,3 +437,178 @@ void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_fa
   out_decision->final_reason_code = PROM_BUFFERING_REASON_NO_BUFFERING_MODE_FEASIBLE;
   out_decision->reason_code = out_decision->final_reason_code;
 }
+
+static uint32_t occupancy_variant_valid(uint32_t variant) {
+  return variant >= (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
+                 variant <= (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8
+             ? 1u
+             : 0u;
+}
+
+static uint32_t occupancy_shape_is_small(const prom_occupancy_selector_facts* facts) {
+  return (facts->m <= 256u && facts->n <= 256u && facts->k <= 256u) ? 1u : 0u;
+}
+
+static uint32_t occupancy_shape_classify(const prom_occupancy_selector_facts* facts) {
+  const uint32_t max_mn = facts->m > facts->n ? facts->m : facts->n;
+  const uint32_t min_mn = facts->m < facts->n ? facts->m : facts->n;
+  if (max_mn >= 4u * min_mn && min_mn <= 256u) {
+    return facts->m >= facts->n ? (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_TALL_SKINNY
+                                : (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT;
+  }
+  if (facts->k >= 2u * max_mn && facts->m >= 256u && facts->n >= 256u) {
+    if ((facts->m >= 128u && facts->n >= 1024u) || (facts->n >= 128u && facts->m >= 1024u)) {
+      return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE;
+    }
+    return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY;
+  }
+  if (occupancy_shape_is_small(facts) != 0u) {
+    return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE;
+  }
+  if (facts->m >= 1536u && facts->n >= 1536u) {
+    return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE;
+  }
+  if ((facts->m >= 512u && facts->n >= 512u && facts->k >= 1024u) || (facts->m >= 1024u && facts->n >= 512u)) {
+    return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE;
+  }
+  return (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_MEDIUM_SQUARE;
+}
+
+static uint32_t occupancy_device_band_classify(const prom_occupancy_selector_facts* facts, uint32_t* fallback_used) {
+  const uint32_t known = facts->register_file_class != 0u && facts->shared_memory_class != 0u && facts->memory_bandwidth_class != 0u &&
+                         facts->fp32_throughput_class != 0u && facts->max_workgroup_class != 0u && facts->queue_capability_class != 0u;
+  const uint32_t register_tolerance = (facts->register_file_class + facts->max_workgroup_class) / 2u;
+  const uint32_t shared_tolerance = (facts->shared_memory_class + facts->queue_capability_class) / 2u;
+  const int32_t compute_vs_memory_bias = (int32_t)facts->fp32_throughput_class - (int32_t)facts->memory_bandwidth_class;
+  if (known == 0u) {
+    *fallback_used = 1u;
+    return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_BALANCED;
+  }
+  if (register_tolerance <= 2u) {
+    return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED;
+  }
+  if (compute_vs_memory_bias >= 2 && register_tolerance >= 4u) {
+    return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH;
+  }
+  if (facts->memory_bandwidth_class >= 4u && shared_tolerance >= 4u) {
+    return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_MEMORY_RICH;
+  }
+  return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_BALANCED;
+}
+
+static uint32_t occupancy_select_unclamped_variant(uint32_t band, uint32_t shape_class) {
+  if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED) {
+    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE ||
+        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_TALL_SKINNY ||
+        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT) {
+      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE;
+    }
+    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+  }
+  if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH) {
+    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
+        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY ||
+        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
+      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8;
+    }
+    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+  }
+  if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_MEMORY_RICH) {
+    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
+        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
+      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+    }
+    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+  }
+  if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE) {
+    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+  }
+  if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
+      shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY ||
+      shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
+    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+  }
+  return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+}
+
+static uint32_t occupancy_apply_safety_clamp(const prom_occupancy_selector_facts* facts,
+                                             uint32_t shape_class,
+                                             uint32_t requested_variant,
+                                             uint32_t* out_reason) {
+  uint32_t variant = requested_variant;
+  *out_reason = (uint32_t)PROM_OCCUPANCY_REASON_DEFAULT_BAND_SELECTION;
+  if (occupancy_shape_is_small(facts) != 0u && variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+    *out_reason = (uint32_t)PROM_OCCUPANCY_REASON_SHAPE_SMALL_CLAMP;
+  }
+  if ((facts->register_file_class <= 2u || facts->max_workgroup_class <= 2u) &&
+      variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+    *out_reason = (uint32_t)PROM_OCCUPANCY_REASON_LOW_REGISTER_CLAMP;
+  }
+  if (facts->shared_memory_class <= 2u && variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+    *out_reason = (uint32_t)PROM_OCCUPANCY_REASON_SHARED_MEMORY_CLAMP;
+  }
+  if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE &&
+      variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+    variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+    *out_reason = (uint32_t)PROM_OCCUPANCY_REASON_SHAPE_SMALL_CLAMP;
+  }
+  return variant;
+}
+
+void prom_judgment_engine_select_occupancy_variant(const prom_occupancy_selector_facts* facts,
+                                                   prom_occupancy_selector_decision* out_decision) {
+  uint32_t fallback_used = 0u;
+  uint32_t device_band = (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_BALANCED;
+  uint32_t shape_class = (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_MEDIUM_SQUARE;
+  uint32_t unclamped_variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+  uint32_t selected_variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+  uint32_t clamp_reason = (uint32_t)PROM_OCCUPANCY_REASON_FALLBACK_BASELINE;
+  if (out_decision == NULL) {
+    return;
+  }
+  out_decision->success = 0u;
+  out_decision->device_band = device_band;
+  out_decision->shape_class = shape_class;
+  out_decision->selected_variant = selected_variant;
+  out_decision->unclamped_variant = unclamped_variant;
+  out_decision->clamp_reason = clamp_reason;
+  out_decision->override_used = 0u;
+  out_decision->fallback_used = 1u;
+  if (facts == NULL || facts->m == 0u || facts->n == 0u || facts->k == 0u || facts->work_units == 0u) {
+    return;
+  }
+  device_band = occupancy_device_band_classify(facts, &fallback_used);
+  shape_class = occupancy_shape_classify(facts);
+  unclamped_variant = occupancy_select_unclamped_variant(device_band, shape_class);
+  selected_variant = occupancy_apply_safety_clamp(facts, shape_class, unclamped_variant, &clamp_reason);
+  if (facts->manual_override_enabled != 0u) {
+    uint32_t override_reason = (uint32_t)PROM_OCCUPANCY_REASON_NONE;
+    if (occupancy_variant_valid(facts->manual_override_variant) != 0u) {
+      const uint32_t override_variant =
+          occupancy_apply_safety_clamp(facts, shape_class, facts->manual_override_variant, &override_reason);
+      if (override_variant == facts->manual_override_variant) {
+        unclamped_variant = facts->manual_override_variant;
+        selected_variant = facts->manual_override_variant;
+        clamp_reason = (uint32_t)PROM_OCCUPANCY_REASON_MANUAL_OVERRIDE_USED;
+        out_decision->override_used = 1u;
+      } else {
+        clamp_reason = (uint32_t)PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED;
+      }
+    } else {
+      clamp_reason = (uint32_t)PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED;
+    }
+  }
+  if (fallback_used != 0u) {
+    clamp_reason = (uint32_t)PROM_OCCUPANCY_REASON_UNKNOWN_DEVICE_FALLBACK;
+  }
+  out_decision->success = 1u;
+  out_decision->device_band = device_band;
+  out_decision->shape_class = shape_class;
+  out_decision->selected_variant = selected_variant;
+  out_decision->unclamped_variant = unclamped_variant;
+  out_decision->clamp_reason = clamp_reason;
+  out_decision->fallback_used = fallback_used;
+}

@@ -601,3 +601,103 @@ FACT(PrometheusJudgmentEngine_M35_BufferingSelectorNoFeasibleIncludesPerModeReas
     ASSERT_EQUAL(PROM_BUFFERING_REASON_SERIAL_JIT_MEMORY_INSUFFICIENT, decision.serial_jit_rejection_reason,
                  "serial rejection reason should be populated");
 }
+
+FACT(PrometheusJudgmentEngine_P13M2_OccupancyBandClassificationDeterministic)
+{
+    prom_occupancy_selector_facts facts{};
+    facts.register_file_class = 3u;
+    facts.shared_memory_class = 3u;
+    facts.memory_bandwidth_class = 3u;
+    facts.fp32_throughput_class = 3u;
+    facts.max_workgroup_class = 3u;
+    facts.queue_capability_class = 3u;
+    facts.m = 512u;
+    facts.n = 512u;
+    facts.k = 512u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+
+    prom_occupancy_selector_decision a{};
+    prom_occupancy_selector_decision b{};
+    prom_judgment_engine_select_occupancy_variant(&facts, &a);
+    prom_judgment_engine_select_occupancy_variant(&facts, &b);
+    ASSERT_EQUAL(a.device_band, b.device_band, "same facts should classify to same occupancy device band");
+    ASSERT_EQUAL(a.selected_variant, b.selected_variant, "same facts should pick same variant");
+}
+
+FACT(PrometheusJudgmentEngine_P13M2_OccupancySelectorClampAndOverrideRules)
+{
+    prom_occupancy_selector_facts facts{};
+    facts.register_file_class = 1u;
+    facts.shared_memory_class = 2u;
+    facts.memory_bandwidth_class = 2u;
+    facts.fp32_throughput_class = 2u;
+    facts.max_workgroup_class = 1u;
+    facts.queue_capability_class = 2u;
+    facts.m = 2048u;
+    facts.n = 2048u;
+    facts.k = 2048u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+
+    prom_occupancy_selector_decision decision{};
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_TRUE(decision.selected_variant != static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+                "register-constrained occupancy band should not use aggressive variant");
+
+    facts.register_file_class = 5u;
+    facts.shared_memory_class = 4u;
+    facts.memory_bandwidth_class = 2u;
+    facts.fp32_throughput_class = 5u;
+    facts.max_workgroup_class = 4u;
+    facts.queue_capability_class = 4u;
+    facts.m = 1024u;
+    facts.n = 1536u;
+    facts.k = 4096u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8), decision.selected_variant,
+                 "compute-rich FFN-like shape should allow aggressive variant");
+
+    facts.m = 128u;
+    facts.n = 128u;
+    facts.k = 128u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+    prom_occupancy_selector_decision small{};
+    prom_judgment_engine_select_occupancy_variant(&facts, &small);
+    ASSERT_TRUE(small.selected_variant != decision.selected_variant, "shape class should affect occupancy variant");
+
+    facts.register_file_class = 0u;
+    facts.shared_memory_class = 0u;
+    facts.memory_bandwidth_class = 0u;
+    facts.fp32_throughput_class = 0u;
+    facts.max_workgroup_class = 0u;
+    facts.queue_capability_class = 0u;
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_UNKNOWN_DEVICE_FALLBACK), decision.clamp_reason,
+                 "unknown occupancy device should emit explicit fallback reason");
+    ASSERT_EQUAL(1u, decision.fallback_used, "unknown occupancy device should mark fallback");
+
+    facts.register_file_class = 3u;
+    facts.shared_memory_class = 3u;
+    facts.memory_bandwidth_class = 3u;
+    facts.fp32_throughput_class = 3u;
+    facts.max_workgroup_class = 3u;
+    facts.queue_capability_class = 3u;
+    facts.m = 512u;
+    facts.n = 512u;
+    facts.k = 512u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+    facts.manual_override_enabled = 1u;
+    facts.manual_override_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE);
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.override_used, "safe occupancy override should be accepted");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_MANUAL_OVERRIDE_USED), decision.clamp_reason,
+                 "accepted override should have explicit reason");
+
+    facts.register_file_class = 1u;
+    facts.max_workgroup_class = 1u;
+    facts.manual_override_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8);
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.override_used, "unsafe occupancy override should be rejected");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED), decision.clamp_reason,
+                 "rejected override should have explicit reason");
+}

@@ -174,6 +174,70 @@ typedef struct prom_buffering_selector_decision {
   int serial_score;
 } prom_buffering_selector_decision;
 
+typedef enum prom_occupancy_device_band {
+  PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED = 1,
+  PROM_OCCUPANCY_DEVICE_BAND_BALANCED = 2,
+  PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH = 3,
+  PROM_OCCUPANCY_DEVICE_BAND_MEMORY_RICH = 4,
+} prom_occupancy_device_band;
+
+typedef enum prom_occupancy_shape_class {
+  PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE = 1,
+  PROM_OCCUPANCY_SHAPE_CLASS_MEDIUM_SQUARE = 2,
+  PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE = 3,
+  PROM_OCCUPANCY_SHAPE_CLASS_TALL_SKINNY = 4,
+  PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT = 5,
+  PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY = 6,
+  PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE = 7,
+} prom_occupancy_shape_class;
+
+typedef enum prom_occupancy_kernel_variant {
+  PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR = 1,
+  PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE = 2,
+  PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE = 3,
+  PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 = 4,
+  PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8 = 5,
+} prom_occupancy_kernel_variant;
+
+typedef enum prom_occupancy_reason_code {
+  PROM_OCCUPANCY_REASON_NONE = 0,
+  PROM_OCCUPANCY_REASON_DEFAULT_BAND_SELECTION = 1,
+  PROM_OCCUPANCY_REASON_MANUAL_OVERRIDE_USED = 2,
+  PROM_OCCUPANCY_REASON_LOW_REGISTER_CLAMP = 3,
+  PROM_OCCUPANCY_REASON_SHARED_MEMORY_CLAMP = 4,
+  PROM_OCCUPANCY_REASON_SHAPE_SMALL_CLAMP = 5,
+  PROM_OCCUPANCY_REASON_FALLBACK_BASELINE = 6,
+  PROM_OCCUPANCY_REASON_UNKNOWN_DEVICE_FALLBACK = 7,
+  PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED = 8,
+} prom_occupancy_reason_code;
+
+typedef struct prom_occupancy_selector_facts {
+  uint32_t register_file_class;
+  uint32_t shared_memory_class;
+  uint32_t memory_bandwidth_class;
+  uint32_t fp32_throughput_class;
+  uint32_t max_workgroup_class;
+  uint32_t queue_capability_class;
+  uint32_t has_exact_profile;
+  uint32_t manual_override_variant;
+  uint32_t manual_override_enabled;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint64_t work_units;
+} prom_occupancy_selector_facts;
+
+typedef struct prom_occupancy_selector_decision {
+  uint32_t success;
+  uint32_t device_band;
+  uint32_t shape_class;
+  uint32_t selected_variant;
+  uint32_t unclamped_variant;
+  uint32_t clamp_reason;
+  uint32_t override_used;
+  uint32_t fallback_used;
+} prom_occupancy_selector_decision;
+
 typedef struct prom_judgment_async_facts {
   uint32_t request_async;
   uint32_t in_flight;
@@ -205,6 +269,8 @@ prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* mem
                                                          const prom_policy_thresholds* thresholds);
 void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_facts* facts,
                                                 prom_buffering_selector_decision* out_decision);
+void prom_judgment_engine_select_occupancy_variant(const prom_occupancy_selector_facts* facts,
+                                                   prom_occupancy_selector_decision* out_decision);
 
 #ifdef __cplusplus
 }

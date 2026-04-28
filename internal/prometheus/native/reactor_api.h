@@ -577,6 +577,13 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t m35_serial_sequential_step_count;
   uint64_t m35_serial_busy_retry_count;
   uint64_t m35_serial_failure_cleanup_count;
+  uint32_t p13_m2_occupancy_device_band;
+  uint32_t p13_m2_occupancy_shape_class;
+  uint32_t p13_m2_occupancy_selected_variant;
+  uint32_t p13_m2_occupancy_unclamped_variant;
+  uint32_t p13_m2_occupancy_clamp_reason;
+  uint32_t p13_m2_occupancy_override_used;
+  uint32_t p13_m2_occupancy_fallback_used;
   uint32_t p10_m4_last_slot_event_kind;
   uint32_t p10_m4_last_slot_event_slot_id;
   int32_t p10_m4_last_slot_event_reason;
