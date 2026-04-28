@@ -334,6 +334,7 @@ typedef struct prom_batch_plan {
   uint64_t arena_required_bytes;
   uint32_t expected_output_elements;
   uint32_t plan_generation;
+  uint32_t slot_id;
   int32_t failure_policy;
 } prom_batch_plan;
 
@@ -389,6 +390,24 @@ typedef struct prom_batch_worker_resources {
   VkCommandBuffer command_buffer;
   VkFence fence;
 } prom_batch_worker_resources;
+
+typedef struct prom_batch_slot_runtime {
+  uint32_t slot_id;
+  uint32_t owner_worker_id;
+  uint32_t state;
+  uint32_t generation;
+  uint32_t assigned_plan_id;
+  uint32_t assigned_entry_id;
+  uint32_t queue_id;
+  uint32_t command_resource_id;
+  uint32_t arena_id;
+  uint32_t output_staging_id;
+  uint32_t in_flight;
+  uint32_t ready;
+  uint32_t invalidated;
+  uint32_t failure_stage;
+  int32_t failure_detail;
+} prom_batch_slot_runtime;
 
 typedef struct prom_batch_shared_state prom_batch_shared_state;
 
@@ -806,6 +825,14 @@ static uint32_t batch_test_inject_drain_timeout(uint32_t test_flags) {
   return (batch_test_inject_fence_wait_failure(test_flags) != 0u && (test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) != 0u) ? 1u : 0u;
 }
 
+static uint32_t batch_test_invalidate_first_ready_slot(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u && (test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) ? 1u : 0u;
+}
+
+static uint32_t batch_test_fail_first_slot_before_submit(uint32_t test_flags) {
+  return ((test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) != 0u && (test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) ? 1u : 0u;
+}
+
 static uint32_t batch_worker_partition(uint32_t entry_id, uint32_t entry_count, uint32_t workers, uint32_t flags) {
   if ((flags & PROM_BATCH_FLAG_PARTITION_CONTIGUOUS) != 0u) {
     if (entry_count == 0u || workers == 0u) {
@@ -1105,6 +1132,7 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
     if (batch_shared_is_running(ctx->shared) == 0u) {
       break;
     }
+    resources->slot_id = plan->slot_id;
     ctx->worker->active = 1u;
     if (!batch_worker_emit_event(ctx->worker_events,
                                  ctx->worker_event_counts,
@@ -1125,6 +1153,20 @@ static void batch_worker_execute_plans(prom_batch_thread_ctx* ctx) {
       ctx->worker->failure_entry_id = plan->entry_id;
       ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
       ctx->worker->failure_detail = PROM_DETAIL_BATCH_EVENT_RING_OVERFLOW;
+      break;
+    }
+    if (batch_test_invalidate_first_ready_slot(ctx->rt->test_flags) != 0u && plan->entry_id == 0u) {
+      batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_PLAN_INVALID);
+      ctx->worker->failure_entry_id = plan->entry_id;
+      ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+      ctx->worker->failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID;
+      break;
+    }
+    if (batch_test_fail_first_slot_before_submit(ctx->rt->test_flags) != 0u && plan->entry_id == 0u) {
+      batch_shared_fail_first(ctx->shared, plan->entry_id, ctx->worker->worker_id, PROM_STAGE_SUBMIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
+      ctx->worker->failure_entry_id = plan->entry_id;
+      ctx->worker->failure_stage = PROM_STAGE_SUBMIT;
+      ctx->worker->failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
       break;
     }
     if (!batch_worker_emit_event(ctx->worker_events,
@@ -5596,6 +5638,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t* worker_event_counts = NULL;
   prom_batch_worker_state* workers = NULL;
   prom_batch_worker_resources* worker_resources = NULL;
+  prom_batch_slot_runtime* worker_slots = NULL;
+  uint32_t* worker_slot_refill_cursor = NULL;
   prom_batch_thread* worker_threads = NULL;
   prom_batch_thread_ctx* worker_thread_ctx = NULL;
   uint32_t requested_workers;
@@ -5604,6 +5648,22 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t per_worker_arena_bytes;
   uint32_t effective_workers;
   uint32_t event_capacity;
+  uint32_t slots_per_worker_target = 2u;
+  uint32_t effective_slots_per_worker = 2u;
+  uint32_t total_slot_count = 0u;
+  uint32_t slot_cap_reason = PROM_BATCH_SLOT_CAP_REASON_NONE;
+  uint32_t slot_refill_count = 0u;
+  uint32_t slot_full_scan_poll_count = 0u;
+  uint32_t slot_attention_poll_count = 0u;
+  uint32_t slot_polling_avoided_count = 0u;
+  uint32_t slot_failure_count = 0u;
+  uint32_t slot_drain_count = 0u;
+  uint32_t slot_boundary_generation = 0u;
+  uint32_t slot_dirty_mask = 0u;
+  uint32_t slot_ready_mask = 0u;
+  uint32_t slot_failed_mask = 0u;
+  uint32_t slot_invalidated_mask = 0u;
+  uint32_t slot_attention_mask = 0u;
   uint32_t injected_failure_entry_id;
   uint32_t force_dual_fail_first_two;
   uint32_t delay_entry0;
@@ -5654,6 +5714,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t resource_creation_failure_count = 0u;
   uint32_t use_real_threads = 0u;
   uint32_t force_wrong_resource_owner = 0u;
+  uint32_t inject_invalidated_ready_slot = 0u;
+  uint32_t inject_presubmit_slot_failure = 0u;
   prom_batch_shared_state shared_state;
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
@@ -5692,6 +5754,23 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     effective_workers = memory_worker_cap;
     cap_reason = PROM_BATCH_CAP_REASON_MEMORY_BUDGET;
   }
+  if (effective_workers > 0u) {
+    uint64_t slot_budget = rt->arena_budget_limit_bytes / (uint64_t)per_worker_arena_bytes;
+    uint32_t slots_budget_per_worker = (uint32_t)(slot_budget / (uint64_t)effective_workers);
+    effective_slots_per_worker = slots_per_worker_target;
+    if (slots_budget_per_worker < effective_slots_per_worker) {
+      effective_slots_per_worker = slots_budget_per_worker;
+      slot_cap_reason = PROM_BATCH_SLOT_CAP_REASON_MEMORY_BUDGET;
+    }
+    if (effective_slots_per_worker == 0u) {
+      effective_slots_per_worker = 1u;
+      slot_cap_reason = PROM_BATCH_SLOT_CAP_REASON_MEMORY_BUDGET;
+    }
+    if (effective_slots_per_worker > slots_per_worker_target) {
+      effective_slots_per_worker = slots_per_worker_target;
+    }
+  }
+  total_slot_count = effective_workers * effective_slots_per_worker;
   reported_compute_queue_count = rt->reported_compute_queue_count;
   if (reported_compute_queue_count == 0u) {
     reported_compute_queue_count = 1u;
@@ -5776,6 +5855,22 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     rt->batch_diag.queue_family_ownership_handoff_count = 0u;
     rt->batch_diag.transfer_compute_sync_wait_count = 0u;
     rt->batch_diag.unsafe_to_reuse = 0u;
+    rt->batch_diag.slots_per_worker_target = slots_per_worker_target;
+    rt->batch_diag.effective_slots_per_worker = 0u;
+    rt->batch_diag.total_slot_count = 0u;
+    rt->batch_diag.slot_cap_reason = slot_cap_reason;
+    rt->batch_diag.slot_refill_count = 0u;
+    rt->batch_diag.slot_full_scan_poll_count = 0u;
+    rt->batch_diag.slot_attention_poll_count = 0u;
+    rt->batch_diag.slot_polling_avoided_count = 0u;
+    rt->batch_diag.slot_failure_count = 0u;
+    rt->batch_diag.slot_drain_count = 0u;
+    rt->batch_diag.slot_boundary_generation = 0u;
+    rt->batch_diag.slot_dirty_mask = 0u;
+    rt->batch_diag.slot_ready_mask = 0u;
+    rt->batch_diag.slot_failed_mask = 0u;
+    rt->batch_diag.slot_invalidated_mask = 0u;
+    rt->batch_diag.slot_attention_mask = 0u;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -5801,6 +5896,21 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       rt->batch_diag.per_worker_queue_family[i] = 0u;
       rt->batch_diag.per_worker_fence_state[i] = 0u;
     }
+    for (i = 0u; i < 16u; ++i) {
+      rt->batch_diag.slot_owner_worker_id[i] = UINT32_MAX;
+      rt->batch_diag.slot_state[i] = PROM_BATCH_SLOT_STATE_EMPTY;
+      rt->batch_diag.slot_generation[i] = 0u;
+      rt->batch_diag.slot_entry_id[i] = UINT32_MAX;
+      rt->batch_diag.slot_queue_id[i] = 0u;
+      rt->batch_diag.slot_command_resource_id[i] = 0u;
+      rt->batch_diag.slot_arena_id[i] = 0u;
+      rt->batch_diag.slot_output_staging_id[i] = 0u;
+      rt->batch_diag.slot_in_flight[i] = 0u;
+      rt->batch_diag.slot_ready[i] = 0u;
+      rt->batch_diag.slot_invalidated[i] = 0u;
+      rt->batch_diag.slot_failure_stage[i] = 0u;
+      rt->batch_diag.slot_failure_detail[i] = 0;
+    }
     set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_ZERO_WORKERS);
     return PROM_ERROR;
   }
@@ -5816,6 +5926,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                          ? 1u
                          : 0u;
   force_wrong_resource_owner = (rt->test_flags & PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER) != 0u ? 1u : 0u;
+  inject_invalidated_ready_slot = batch_test_invalidate_first_ready_slot(rt->test_flags);
+  inject_presubmit_slot_failure = batch_test_fail_first_slot_before_submit(rt->test_flags);
   if (effective_workers > 1u && use_real_threads != 0u) {
     execution_mode = PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN;
     worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_DEDICATED;
@@ -5847,12 +5959,14 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   worker_event_counts = (uint32_t*)calloc((size_t)effective_workers, sizeof(uint32_t));
   workers = (prom_batch_worker_state*)calloc((size_t)effective_workers, sizeof(prom_batch_worker_state));
   worker_resources = (prom_batch_worker_resources*)calloc((size_t)effective_workers, sizeof(prom_batch_worker_resources));
+  worker_slots = (prom_batch_slot_runtime*)calloc((size_t)total_slot_count, sizeof(prom_batch_slot_runtime));
+  worker_slot_refill_cursor = (uint32_t*)calloc((size_t)effective_workers, sizeof(uint32_t));
   if (use_real_threads != 0u) {
     worker_threads = (prom_batch_thread*)calloc((size_t)effective_workers, sizeof(prom_batch_thread));
     worker_thread_ctx = (prom_batch_thread_ctx*)calloc((size_t)effective_workers, sizeof(prom_batch_thread_ctx));
   }
   if (plans == NULL || staged_outputs == NULL || output_sizes == NULL || worker_events == NULL || worker_event_counts == NULL || workers == NULL ||
-      worker_resources == NULL ||
+      worker_resources == NULL || worker_slots == NULL || worker_slot_refill_cursor == NULL ||
       (use_real_threads != 0u && (worker_threads == NULL || worker_thread_ctx == NULL))) {
     failure_stage = PROM_STAGE_INIT;
     failure_detail = PROM_ERROR;
@@ -5869,9 +5983,22 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     worker_resources[w].command_pool_id = 1000u + w;
     worker_resources[w].command_buffer_id = 2000u + w;
     worker_resources[w].fence_id = 3000u + w;
-    worker_resources[w].slot_id = w;
+    worker_resources[w].slot_id = w * effective_slots_per_worker;
     worker_resources[w].output_staging_id = w;
     worker_resources[w].arena_bank_id = w;
+    for (i = 0u; i < effective_slots_per_worker; ++i) {
+      uint32_t slot_id = w * effective_slots_per_worker + i;
+      worker_slots[slot_id].slot_id = slot_id;
+      worker_slots[slot_id].owner_worker_id = w;
+      worker_slots[slot_id].state = PROM_BATCH_SLOT_STATE_EMPTY;
+      worker_slots[slot_id].generation = 1u;
+      worker_slots[slot_id].assigned_plan_id = UINT32_MAX;
+      worker_slots[slot_id].assigned_entry_id = UINT32_MAX;
+      worker_slots[slot_id].queue_id = worker_resources[w].queue_index;
+      worker_slots[slot_id].command_resource_id = worker_resources[w].command_buffer_id + i;
+      worker_slots[slot_id].arena_id = worker_resources[w].arena_bank_id;
+      worker_slots[slot_id].output_staging_id = slot_id;
+    }
   }
   if (execution_mode == PROM_BATCH_EXECUTION_REAL_THREADS_SERIALIZED_VULKAN && rt->device != VK_NULL_HANDLE &&
       rt->compute_queue != VK_NULL_HANDLE) {
@@ -6032,7 +6159,37 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                                     (uint64_t)entries[i].m * (uint64_t)entries[i].n * sizeof(float);
     plans[i].expected_output_elements = (uint32_t)output_elements;
     plans[i].plan_generation = 40u;
+    plans[i].slot_id = worker_id * effective_slots_per_worker + (worker_slot_refill_cursor[worker_id] % effective_slots_per_worker);
     plans[i].failure_policy = PROM_BATCH_STATE_FAILING;
+    worker_slot_refill_cursor[worker_id] += 1u;
+    if (plans[i].slot_id < total_slot_count) {
+      prom_batch_slot_runtime* slot = &worker_slots[plans[i].slot_id];
+      slot->state = PROM_BATCH_SLOT_STATE_PREPARING;
+      slot->generation += 1u;
+      slot->assigned_plan_id = i;
+      slot->assigned_entry_id = plans[i].entry_id;
+      slot->queue_id = worker_resources[worker_id].queue_index;
+      slot->ready = 1u;
+      slot->invalidated = 0u;
+      slot->failure_stage = PROM_STAGE_NONE;
+      slot->failure_detail = 0;
+      slot_refill_count += 1u;
+      if (plans[i].slot_id < 32u) {
+        slot_dirty_mask |= (1u << plans[i].slot_id);
+        slot_ready_mask |= (1u << plans[i].slot_id);
+      }
+      if (inject_invalidated_ready_slot != 0u && plans[i].entry_id == 0u) {
+        slot->state = PROM_BATCH_SLOT_STATE_INVALIDATED;
+        slot->ready = 0u;
+        slot->invalidated = 1u;
+        slot->failure_stage = PROM_STAGE_SUBMIT;
+        slot->failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID;
+        if (plans[i].slot_id < 32u) {
+          slot_ready_mask &= ~(1u << plans[i].slot_id);
+          slot_invalidated_mask |= (1u << plans[i].slot_id);
+        }
+      }
+    }
     staged_outputs[i] = (float*)malloc(output_elements * sizeof(float));
     output_sizes[i] = (uint32_t)output_elements;
     if (staged_outputs[i] == NULL) {
@@ -6153,7 +6310,67 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
         }
 
         progress = 1u;
+        if (slot_attention_mask != 0u) {
+          slot_attention_poll_count += 1u;
+          slot_polling_avoided_count += 1u;
+        } else {
+          slot_full_scan_poll_count += 1u;
+        }
         worker->active = 1u;
+        if (plan->slot_id < total_slot_count) {
+          prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
+          if (slot->invalidated != 0u) {
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_SUBMIT;
+            failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID;
+            failed_entry_id = plan->entry_id;
+            failed_worker_id = w;
+            worker->failure_detail = failure_detail;
+            worker->failure_stage = failure_stage;
+            worker->failure_entry_id = failed_entry_id;
+            slot->state = PROM_BATCH_SLOT_STATE_INVALIDATED;
+            slot->in_flight = 0u;
+            slot->ready = 0u;
+            slot->failure_stage = failure_stage;
+            slot->failure_detail = failure_detail;
+            if (plan->slot_id < 32u) {
+              slot_dirty_mask |= (1u << plan->slot_id);
+              slot_invalidated_mask |= (1u << plan->slot_id);
+            }
+            break;
+          }
+          if (inject_presubmit_slot_failure != 0u && plan->entry_id == 0u) {
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_SUBMIT;
+            failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
+            failed_entry_id = plan->entry_id;
+            failed_worker_id = w;
+            worker->failure_detail = failure_detail;
+            worker->failure_stage = failure_stage;
+            worker->failure_entry_id = failed_entry_id;
+            slot->state = PROM_BATCH_SLOT_STATE_FAILED;
+            slot->in_flight = 0u;
+            slot->ready = 0u;
+            slot->failure_stage = failure_stage;
+            slot->failure_detail = failure_detail;
+            slot_failure_count += 1u;
+            if (plan->slot_id < 32u) {
+              slot_dirty_mask |= (1u << plan->slot_id);
+              slot_failed_mask |= (1u << plan->slot_id);
+            }
+            break;
+          }
+        }
+        if (plan->slot_id < total_slot_count) {
+          prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
+          slot->state = PROM_BATCH_SLOT_STATE_PREPARING;
+          slot->ready = 1u;
+          slot->in_flight = 0u;
+          if (plan->slot_id < 32u) {
+            slot_dirty_mask |= (1u << plan->slot_id);
+            slot_ready_mask |= (1u << plan->slot_id);
+          }
+        }
         if (!batch_worker_emit_event(worker_events,
                                      worker_event_counts,
                                      w,
@@ -6192,6 +6409,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           worker->failure_entry_id = failed_entry_id;
           break;
         }
+        if (plan->slot_id < total_slot_count) {
+          prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
+          slot->state = PROM_BATCH_SLOT_STATE_IN_FLIGHT;
+          slot->in_flight = 1u;
+          slot->ready = 0u;
+          if (plan->slot_id < 32u) {
+            slot_dirty_mask |= (1u << plan->slot_id);
+            slot_ready_mask &= ~(1u << plan->slot_id);
+          }
+        }
 
         if (((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && plan->entry_id == 0u) || plan->entry_id == injected_failure_entry_id ||
             (force_dual_fail_first_two != 0u && (plan->entry_id == 0u || plan->entry_id == 1u))) {
@@ -6204,6 +6431,19 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           worker->failure_detail = failure_detail;
           worker->failure_stage = failure_stage;
           worker->failure_entry_id = failed_entry_id;
+          if (plan->slot_id < total_slot_count) {
+            prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
+            slot->state = PROM_BATCH_SLOT_STATE_FAILED;
+            slot->in_flight = 0u;
+            slot->ready = 0u;
+            slot->failure_stage = failure_stage;
+            slot->failure_detail = failure_detail;
+            slot_failure_count += 1u;
+            if (plan->slot_id < 32u) {
+              slot_dirty_mask |= (1u << plan->slot_id);
+              slot_failed_mask |= (1u << plan->slot_id);
+            }
+          }
           break;
         }
         if (force_wrong_resource_owner != 0u && batch_verify_worker_resource_owner(&shared_state, resources, (w + 1u) % effective_workers) == 0u) {
@@ -6236,8 +6476,19 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
 
         resources->submit_count += 1u;
         resources->in_flight = 1u;
+        resources->slot_id = plan->slot_id;
         batch_reference_sgemm(plan->a, plan->b, staged_outputs[plan->entry_id], plan->m, plan->n, plan->k);
         resources->in_flight = 0u;
+        if (plan->slot_id < total_slot_count) {
+          prom_batch_slot_runtime* slot = &worker_slots[plan->slot_id];
+          slot->state = PROM_BATCH_SLOT_STATE_COMPLETE;
+          slot->in_flight = 0u;
+          slot->ready = 0u;
+          if (plan->slot_id < 32u) {
+            slot_dirty_mask |= (1u << plan->slot_id);
+            slot_ready_mask &= ~(1u << plan->slot_id);
+          }
+        }
         if (!batch_worker_emit_event(worker_events,
                                      worker_event_counts,
                                      w,
@@ -6271,6 +6522,29 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
 
   resource_ownership_violation_count = shared_state.resource_ownership_violation_count;
   resource_creation_failure_count += shared_state.resource_creation_failure_count;
+  if (state == PROM_BATCH_STATE_FAILING && failed_entry_id != UINT32_MAX) {
+    for (i = 0u; i < entry_count; ++i) {
+      if (plans[i].entry_id == failed_entry_id && plans[i].slot_id < total_slot_count) {
+        prom_batch_slot_runtime* slot = &worker_slots[plans[i].slot_id];
+        if (slot->state != PROM_BATCH_SLOT_STATE_INVALIDATED) {
+          slot->state = PROM_BATCH_SLOT_STATE_FAILED;
+          slot->failure_stage = failure_stage;
+          slot->failure_detail = failure_detail;
+          slot->ready = 0u;
+          slot->in_flight = 0u;
+          slot_failure_count += 1u;
+          if (plans[i].slot_id < 32u) {
+            slot_dirty_mask |= (1u << plans[i].slot_id);
+            slot_failed_mask |= (1u << plans[i].slot_id);
+            slot_ready_mask &= ~(1u << plans[i].slot_id);
+          }
+        }
+        break;
+      }
+    }
+  }
+  slot_attention_mask = (slot_ready_mask | slot_failed_mask | slot_invalidated_mask);
+  slot_boundary_generation += 1u;
   if (state == PROM_BATCH_STATE_FAILING) {
     for (w = 0u; w < effective_workers; ++w) {
       prom_batch_worker_state* worker = &workers[w];
@@ -6298,6 +6572,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
       }
     }
     state = PROM_BATCH_STATE_DRAINING;
+    slot_drain_count = total_slot_count;
     if (batch_test_inject_drain_timeout(rt->test_flags) != 0u) {
       drain_timeout_count += 1u;
       failure_detail = PROM_DETAIL_BATCH_DRAIN_TIMEOUT;
@@ -6423,6 +6698,22 @@ batch_cleanup:
     rt->batch_diag.queue_family_ownership_handoff_count = queue_family_ownership_handoff_count;
     rt->batch_diag.transfer_compute_sync_wait_count = transfer_compute_sync_wait_count;
     rt->batch_diag.unsafe_to_reuse = unsafe_to_reuse;
+    rt->batch_diag.slots_per_worker_target = slots_per_worker_target;
+    rt->batch_diag.effective_slots_per_worker = effective_slots_per_worker;
+    rt->batch_diag.total_slot_count = total_slot_count;
+    rt->batch_diag.slot_cap_reason = slot_cap_reason;
+    rt->batch_diag.slot_refill_count = slot_refill_count;
+    rt->batch_diag.slot_full_scan_poll_count = slot_full_scan_poll_count;
+    rt->batch_diag.slot_attention_poll_count = slot_attention_poll_count;
+    rt->batch_diag.slot_polling_avoided_count = slot_polling_avoided_count;
+    rt->batch_diag.slot_failure_count = slot_failure_count;
+    rt->batch_diag.slot_drain_count = slot_drain_count;
+    rt->batch_diag.slot_boundary_generation = slot_boundary_generation;
+    rt->batch_diag.slot_dirty_mask = slot_dirty_mask;
+    rt->batch_diag.slot_ready_mask = slot_ready_mask;
+    rt->batch_diag.slot_failed_mask = slot_failed_mask;
+    rt->batch_diag.slot_invalidated_mask = slot_invalidated_mask;
+    rt->batch_diag.slot_attention_mask = slot_attention_mask;
     rt->batch_diag.worker_active_mask = 0u;
     for (i = 0u; i < 8u; ++i) {
       rt->batch_diag.worker_assigned_count[i] = 0u;
@@ -6447,6 +6738,21 @@ batch_cleanup:
       rt->batch_diag.worker_failure_detail[i] = 0;
       rt->batch_diag.per_worker_queue_family[i] = 0u;
       rt->batch_diag.per_worker_fence_state[i] = 0u;
+    }
+    for (i = 0u; i < 16u; ++i) {
+      rt->batch_diag.slot_owner_worker_id[i] = UINT32_MAX;
+      rt->batch_diag.slot_state[i] = PROM_BATCH_SLOT_STATE_EMPTY;
+      rt->batch_diag.slot_generation[i] = 0u;
+      rt->batch_diag.slot_entry_id[i] = UINT32_MAX;
+      rt->batch_diag.slot_queue_id[i] = 0u;
+      rt->batch_diag.slot_command_resource_id[i] = 0u;
+      rt->batch_diag.slot_arena_id[i] = 0u;
+      rt->batch_diag.slot_output_staging_id[i] = 0u;
+      rt->batch_diag.slot_in_flight[i] = 0u;
+      rt->batch_diag.slot_ready[i] = 0u;
+      rt->batch_diag.slot_invalidated[i] = 0u;
+      rt->batch_diag.slot_failure_stage[i] = 0u;
+      rt->batch_diag.slot_failure_detail[i] = 0;
     }
     if (workers != NULL && worker_event_counts != NULL && worker_resources != NULL) {
       for (w = 0u; w < effective_workers && w < 8u; ++w) {
@@ -6477,6 +6783,23 @@ batch_cleanup:
         }
       }
     }
+    if (worker_slots != NULL) {
+      for (i = 0u; i < total_slot_count && i < 16u; ++i) {
+        rt->batch_diag.slot_owner_worker_id[i] = worker_slots[i].owner_worker_id;
+        rt->batch_diag.slot_state[i] = worker_slots[i].state;
+        rt->batch_diag.slot_generation[i] = worker_slots[i].generation;
+        rt->batch_diag.slot_entry_id[i] = worker_slots[i].assigned_entry_id;
+        rt->batch_diag.slot_queue_id[i] = worker_slots[i].queue_id;
+        rt->batch_diag.slot_command_resource_id[i] = worker_slots[i].command_resource_id;
+        rt->batch_diag.slot_arena_id[i] = worker_slots[i].arena_id;
+        rt->batch_diag.slot_output_staging_id[i] = worker_slots[i].output_staging_id;
+        rt->batch_diag.slot_in_flight[i] = worker_slots[i].in_flight;
+        rt->batch_diag.slot_ready[i] = worker_slots[i].ready;
+        rt->batch_diag.slot_invalidated[i] = worker_slots[i].invalidated;
+        rt->batch_diag.slot_failure_stage[i] = worker_slots[i].failure_stage;
+        rt->batch_diag.slot_failure_detail[i] = worker_slots[i].failure_detail;
+      }
+    }
   }
   if (staged_outputs != NULL) {
     for (i = 0u; i < entry_count; ++i) {
@@ -6487,6 +6810,8 @@ batch_cleanup:
   free(worker_threads);
   free(workers);
   batch_destroy_physical_worker_resources(rt, worker_resources, effective_workers);
+  free(worker_slot_refill_cursor);
+  free(worker_slots);
   free(worker_resources);
   free(worker_event_counts);
   free(worker_events);

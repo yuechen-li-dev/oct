@@ -1464,3 +1464,219 @@ FACT(PrometheusReactor_P11_M17_FallbackReasonsRemainTruthfulAcrossGateTransition
                  "command-resource gate should publish explicit fallback reason");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(cmd_handle), "command-resource runtime destroy should succeed");
 }
+
+FACT(PrometheusReactor_P11_M19_WorkerLocalTwoSlotOwnershipPublished)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c0(16u, 0.0f);
+    std::vector<float> c1(16u, 0.0f);
+    PrometheusSgemmBatchEntry entries[2] = {
+        {a.data(), b.data(), c0.data(), 4u, 4u, 4u},
+        {a.data(), b.data(), c1.data(), 4u, 4u, 4u},
+    };
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, flags, &stage, &detail), "batch should succeed");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(2u, diag.slots_per_worker_target, "target slots per worker should be S=2");
+    ASSERT_EQUAL(2u, diag.effective_slots_per_worker, "effective slots per worker should be S=2 under default budget");
+    ASSERT_EQUAL(diag.effective_workers * 2u, diag.total_slot_count, "total slots should be worker_count * 2");
+    ASSERT_EQUAL(0u, diag.slot_owner_worker_id[0], "slot 0 owner should be worker 0");
+    ASSERT_EQUAL(0u, diag.slot_owner_worker_id[1], "slot 1 owner should be worker 0");
+    ASSERT_EQUAL(1u, diag.slot_owner_worker_id[2], "slot 2 owner should be worker 1");
+    ASSERT_EQUAL(1u, diag.slot_owner_worker_id[3], "slot 3 owner should be worker 1");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_SlotBudgetCapReported)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_SKIP_VULKAN_INIT;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 2u | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, flags, &stage, &detail), "batch should succeed under cap");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.effective_slots_per_worker <= 2u, "effective slot count must not exceed target");
+    if (diag.effective_slots_per_worker < 2u) {
+        ASSERT_EQUAL(PROM_BATCH_SLOT_CAP_REASON_MEMORY_BUDGET, diag.slot_cap_reason, "reduced slots should report memory budget cap");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_BothSlotsUsedBySingleWorker)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c0(16u, 0.0f), c1(16u, 0.0f), c2(16u, 0.0f);
+    PrometheusSgemmBatchEntry entries[3] = {
+        {a.data(), b.data(), c0.data(), 4u, 4u, 4u},
+        {a.data(), b.data(), c1.data(), 4u, 4u, 4u},
+        {a.data(), b.data(), c2.data(), 4u, 4u, 4u},
+    };
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 1u | (1u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries, 3u, flags, &stage, &detail), "single-worker run should succeed");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(2u, diag.effective_slots_per_worker, "single worker should still expose two slots");
+    ASSERT_NOT_EQUAL(diag.slot_entry_id[0], diag.slot_entry_id[1], "two owned slots should receive distinct assignments");
+    ASSERT_TRUE(diag.slot_refill_count >= 3u, "refill count should reflect repeated slot use");
+    ASSERT_TRUE(nearly_equal(cpu_oracle(4u, 4u, 4u, a, b), c0), "entry 0 output should match oracle");
+    ASSERT_TRUE(nearly_equal(cpu_oracle(4u, 4u, 4u, a, b), c1), "entry 1 output should match oracle");
+    ASSERT_TRUE(nearly_equal(cpu_oracle(4u, 4u, 4u, a, b), c2), "entry 2 output should match oracle");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_PreSubmitFailureUpdatesFailedAndAttentionMasks)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_NO_FP16_STORAGE | PROM_TESTCFG_FORCE_FP16_UTILITY_WIN | PROM_TESTCFG_FORCE_DIRECT_PATH |
+                     PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c0(16u, 1.0f), c1(16u, 1.0f);
+    PrometheusSgemmBatchEntry entries[2] = {
+        {a.data(), b.data(), c0.data(), 4u, 4u, 4u},
+        {a.data(), b.data(), c1.data(), 4u, 4u, 4u},
+    };
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, flags, &stage, &detail),
+                 "pre-submit slot failure should fail batch");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.slot_failed_mask != 0u, "failed slot mask should record pre-submit failure");
+    ASSERT_TRUE((diag.slot_attention_mask & diag.slot_failed_mask) == diag.slot_failed_mask, "failed slots must be in attention mask");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed batch must not commit output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_InvalidatedReadySlotIsRejected)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_STRICT_FP32 | PROM_TESTCFG_FORCE_FP16_UTILITY_WIN | PROM_TESTCFG_FORCE_DIRECT_PATH |
+                     PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c0(16u, 2.0f), c1(16u, 2.0f);
+    PrometheusSgemmBatchEntry entries[2] = {
+        {a.data(), b.data(), c0.data(), 4u, 4u, 4u},
+        {a.data(), b.data(), c1.data(), 4u, 4u, 4u},
+    };
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, flags, &stage, &detail),
+                 "invalidated-ready slot should fail batch");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_PLAN_INVALID, detail, "invalidated-ready slot should report explicit invalid detail");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_TRUE(diag.slot_invalidated_mask != 0u, "invalidated slot mask should include rejected slot");
+    ASSERT_TRUE((diag.slot_attention_mask & diag.slot_invalidated_mask) == diag.slot_invalidated_mask,
+                "invalidated slots must stay in attention mask");
+    ASSERT_EQUAL(0u, diag.worker_submit_count[0], "invalidated-ready slot should not submit stale work");
+    ASSERT_EQUAL(0u, diag.output_committed, "failed invalidated batch must not commit outputs");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_OrderedOutputCommitAcrossSlots)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a0 = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b0 = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> a1 = make_matrix(4u, 4u, 0.4f);
+    std::vector<float> b1 = make_matrix(4u, 4u, 0.7f);
+    std::vector<float> c0(16u, 0.0f), c1(16u, 0.0f);
+    PrometheusSgemmBatchEntry entries[2] = {
+        {a0.data(), b0.data(), c0.data(), 4u, 4u, 4u},
+        {a1.data(), b1.data(), c1.data(), 4u, 4u, 4u},
+    };
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT) |
+                                PROM_BATCH_FLAG_TEST_DELAY_ENTRY0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries, 2u, flags, &stage, &detail),
+                 "delayed completion order run should still succeed");
+    ASSERT_TRUE(nearly_equal(cpu_oracle(4u, 4u, 4u, a0, b0), c0), "entry 0 output should commit correctly");
+    ASSERT_TRUE(nearly_equal(cpu_oracle(4u, 4u, 4u, a1, b1), c1), "entry 1 output should commit correctly");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(1u, diag.output_committed, "successful run should atomically commit all outputs");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_P11_M19_S2CompatibilityAcrossExecutionModes)
+{
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.5f);
+    std::vector<float> c(16u, 0.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    const std::uint32_t flags = 2u | (2u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    PrometheusSgemmBatchDiagnostics diag{};
+
+    PrometheusReactorConfig lane_cfg{};
+    lane_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    lane_cfg.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* lane = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&lane_cfg, &lane), "lane runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(lane, &entry, 1u, flags, &stage, &detail), "lane run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(lane, &diag), "lane diagnostics should succeed");
+    ASSERT_EQUAL(2u, diag.effective_slots_per_worker, "lane mode should expose S=2");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(lane), "lane runtime destroy should succeed");
+
+    PrometheusReactorConfig real_cfg{};
+    real_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    real_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    void* real = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&real_cfg, &real), "real-thread runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(real, &entry, 1u, flags, &stage, &detail), "real-thread run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(real, &diag), "real-thread diagnostics should succeed");
+    ASSERT_EQUAL(2u, diag.effective_slots_per_worker, "real-thread serialized mode should expose S=2");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(real), "real-thread runtime destroy should succeed");
+
+    PrometheusReactorConfig forced_cfg{};
+    forced_cfg.struct_size = sizeof(PrometheusReactorConfig);
+    forced_cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED;
+    void* forced = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&forced_cfg, &forced), "forced-fallback runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(forced, &entry, 1u, flags, &stage, &detail), "forced-fallback run should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(forced, &diag), "forced-fallback diagnostics should succeed");
+    ASSERT_EQUAL(2u, diag.effective_slots_per_worker, "fallback mode should keep S=2 slot model");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(forced), "forced-fallback runtime destroy should succeed");
+}
