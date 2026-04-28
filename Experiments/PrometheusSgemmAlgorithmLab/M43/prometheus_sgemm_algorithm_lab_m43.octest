@@ -1,0 +1,218 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M43SingleQueueFallback() -> Void {
+    let r = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "single-compute"))
+    Assert.Equal(r.ExecutionMode, "serialized-submit-bridge", "single queue must use serialized fallback")
+    Assert.True(not r.ClaimedHardwareParallelism, "single queue must not claim hardware parallelism")
+}
+
+[Fact]
+fn M43IndependentTwoQueueEligibility() -> Void {
+    let r = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue"))
+    Assert.Equal(r.ExecutionMode, "true-multi-queue-submit", "independent two queues should enable true multi-queue")
+    Assert.True(r.ClaimedHardwareParallelism and r.EffectiveWorkers >= 2, "eligible topology should claim hardware parallelism")
+}
+
+[Fact]
+fn M43PseudoSharedRejected() -> Void {
+    let r = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "pseudo-shared-two-queue"))
+    Assert.Equal(r.ExecutionMode, "serialized-submit-bridge", "pseudo-shared topology must serialize")
+    Assert.Equal(r.FallbackReason, "pseudo_shared_queue_detected", "fallback reason should identify pseudo-shared topology")
+}
+
+[Fact]
+fn M43MemoryCapBlocksTrueMultiQueue() -> Void {
+    let r = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "memory-capped"))
+    Assert.Equal(r.ExecutionMode, "serialized-submit-bridge", "memory cap to one worker must fallback to serialized")
+    Assert.Equal(r.FallbackReason, "effective_workers_lt_2", "gate should fail for effective worker count")
+}
+
+[Fact]
+fn M43WorkerQueueMappingValidity() -> Void {
+    let r = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue"))
+    Assert.Equal(r.WorkerQueueMapping, "0,1", "worker queue mapping should be deterministic")
+    Assert.True(r.WorkerCommandBuffer == "cmd-w0|cmd-w1", "each worker must own unique command buffer")
+    Assert.True(r.WorkerFence == "fence-w0|fence-w1", "each worker must own unique fence")
+}
+
+[Fact]
+fn M43TransferQueueNotCountedAsComputeLane() -> Void {
+    let r = M43RunScenario(M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer"))
+    Assert.Equal(r.EffectiveWorkers, 2, "compute workers should be limited by independent compute queues")
+    Assert.True(r.TransferQueueCount == 1 and r.IndependentComputeQueueCount == 2, "transfer queue count must remain separate from compute lane count")
+}
+
+[Fact]
+fn M43MissingQueueFamilyOwnershipHandoffHazard() -> Void {
+    let base = M43BaseScenario("C-hybrid-topology-gated", "separate-compute-families")
+    let r = M43RunScenario(M43Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        Topology: base.Topology
+        WorkerRequest: base.WorkerRequest
+        BatchSize: base.BatchSize
+        ComputeQueueCountReported: base.ComputeQueueCountReported
+        IndependentComputeQueueCount: base.IndependentComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        PseudoSharedQueue: base.PseudoSharedQueue
+        SeparateComputeFamilies: true
+        OwnershipHandoffDefined: false
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerMemoryBytes: base.PerWorkerMemoryBytes
+        PerWorkerCommandResourcesValid: base.PerWorkerCommandResourcesValid
+        PerWorkerFencesValid: base.PerWorkerFencesValid
+        WorkerQueueMappingValid: base.WorkerQueueMappingValid
+        ForcedSerializedFlag: false
+        FailureMode: base.FailureMode
+        FailureEntryPrimary: base.FailureEntryPrimary
+        FailureEntrySecondary: base.FailureEntrySecondary
+        FailureWorkerPrimary: base.FailureWorkerPrimary
+        TransferSyncValid: base.TransferSyncValid
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.Equal(r.ExecutionMode, "serialized-submit-bridge", "missing ownership handoff should block true multi-queue")
+    Assert.Equal(r.FallbackReason, "missing_queue_family_ownership_handoff", "hazard must be explicit")
+}
+
+[Fact]
+fn M43FirstFailureWinsAcrossQueues() -> Void {
+    let base = M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue")
+    let r = M43RunScenario(M43Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        Topology: base.Topology
+        WorkerRequest: base.WorkerRequest
+        BatchSize: base.BatchSize
+        ComputeQueueCountReported: base.ComputeQueueCountReported
+        IndependentComputeQueueCount: base.IndependentComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        PseudoSharedQueue: base.PseudoSharedQueue
+        SeparateComputeFamilies: base.SeparateComputeFamilies
+        OwnershipHandoffDefined: base.OwnershipHandoffDefined
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerMemoryBytes: base.PerWorkerMemoryBytes
+        PerWorkerCommandResourcesValid: base.PerWorkerCommandResourcesValid
+        PerWorkerFencesValid: base.PerWorkerFencesValid
+        WorkerQueueMappingValid: base.WorkerQueueMappingValid
+        ForcedSerializedFlag: base.ForcedSerializedFlag
+        FailureMode: "dual-failure"
+        FailureEntryPrimary: 3
+        FailureEntrySecondary: 11
+        FailureWorkerPrimary: 0
+        TransferSyncValid: base.TransferSyncValid
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.Equal(r.FirstFailureEntryId, 3, "first failure entry should be retained")
+    Assert.Equal(r.FirstFailureDetail, "first-failure-wins", "first failure detail should dominate")
+}
+
+[Fact]
+fn M43DrainWaitsAllQueues() -> Void {
+    let base = M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue")
+    let r = M43RunScenario(M43Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        Topology: base.Topology
+        WorkerRequest: base.WorkerRequest
+        BatchSize: base.BatchSize
+        ComputeQueueCountReported: base.ComputeQueueCountReported
+        IndependentComputeQueueCount: base.IndependentComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        PseudoSharedQueue: base.PseudoSharedQueue
+        SeparateComputeFamilies: base.SeparateComputeFamilies
+        OwnershipHandoffDefined: base.OwnershipHandoffDefined
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerMemoryBytes: base.PerWorkerMemoryBytes
+        PerWorkerCommandResourcesValid: base.PerWorkerCommandResourcesValid
+        PerWorkerFencesValid: base.PerWorkerFencesValid
+        WorkerQueueMappingValid: base.WorkerQueueMappingValid
+        ForcedSerializedFlag: base.ForcedSerializedFlag
+        FailureMode: "after-submit"
+        FailureEntryPrimary: 7
+        FailureEntrySecondary: base.FailureEntrySecondary
+        FailureWorkerPrimary: 1
+        TransferSyncValid: base.TransferSyncValid
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.True(r.QueueDrainCount >= 2, "drain must include all compute queues")
+    Assert.True(not r.OutputCommitted, "no output commit before all queues safely drain")
+}
+
+[Fact]
+fn M43DeviceLostDominates() -> Void {
+    let base = M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue")
+    let r = M43RunScenario(M43Scenario {
+        Name: base.Name
+        Candidate: base.Candidate
+        Topology: base.Topology
+        WorkerRequest: base.WorkerRequest
+        BatchSize: base.BatchSize
+        ComputeQueueCountReported: base.ComputeQueueCountReported
+        IndependentComputeQueueCount: base.IndependentComputeQueueCount
+        TransferQueueCount: base.TransferQueueCount
+        PseudoSharedQueue: base.PseudoSharedQueue
+        SeparateComputeFamilies: base.SeparateComputeFamilies
+        OwnershipHandoffDefined: base.OwnershipHandoffDefined
+        MemoryBudgetBytes: base.MemoryBudgetBytes
+        PerWorkerMemoryBytes: base.PerWorkerMemoryBytes
+        PerWorkerCommandResourcesValid: base.PerWorkerCommandResourcesValid
+        PerWorkerFencesValid: base.PerWorkerFencesValid
+        WorkerQueueMappingValid: base.WorkerQueueMappingValid
+        ForcedSerializedFlag: base.ForcedSerializedFlag
+        FailureMode: "device-lost"
+        FailureEntryPrimary: 0
+        FailureEntrySecondary: 0
+        FailureWorkerPrimary: 0
+        TransferSyncValid: base.TransferSyncValid
+        DrainTimeoutBudget: base.DrainTimeoutBudget
+    })
+    Assert.Equal(r.FirstFailureDetail, "device-lost-global", "device lost must dominate failure classification")
+    Assert.True(r.UnsafeToReuse and not r.OutputCommitted, "device lost must mark unsafe and prevent commit")
+}
+
+[Fact]
+fn M43RecommendationIsComputed() -> Void {
+    let rec = M43RecommendationFromMetrics()
+    Assert.True(rec.RecommendationComputed, "recommendation must be computed from model outcomes")
+    Assert.Equal(rec.RecommendedM16Direction, "C-hybrid-topology-gated", "hybrid gated path should be selected")
+}
+
+[Fact]
+fn M43Determinism() -> Void {
+    let s = M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue")
+    let a = M43RunScenario(s)
+    let b = M43RunScenario(s)
+    Assert.Equal(a.ProductScore, b.ProductScore, "same scenario should be deterministic")
+    Assert.Equal(a.WorkerQueueMapping, b.WorkerQueueMapping, "mapping should remain deterministic")
+}
+
+[Fact]
+fn EmitM43SubmitModeComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_submit_mode_comparison.octagon", [M43SubmitModeComparisonTable()])
+}
+
+[Fact]
+fn EmitM43QueueTopologyGateTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_queue_topology_gate_table.octagon", [M43QueueTopologyGateContractTable()])
+}
+
+[Fact]
+fn EmitM43WorkerQueueMappingTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_worker_queue_mapping_table.octagon", [M43WorkerQueueMappingContractTable()])
+}
+
+[Fact]
+fn EmitM43FailureDrainTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_failure_drain_table.octagon", [M43FailureDrainContractTable()])
+}
+
+[Fact]
+fn EmitM43TransferInteractionTable() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_transfer_interaction_table.octagon", [M43TransferInteractionContractTable()])
+}
+
+[Fact]
+fn EmitM43FinalContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_final_contract.octagon", [M43RecommendationFromMetrics()])
+}

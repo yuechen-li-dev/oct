@@ -1,0 +1,777 @@
+package PrometheusSgemmAlgorithmLab
+
+record M43Scenario {
+    Name: String
+    Candidate: String
+    Topology: String
+    WorkerRequest: Int
+    BatchSize: Int
+    ComputeQueueCountReported: Int
+    IndependentComputeQueueCount: Int
+    TransferQueueCount: Int
+    PseudoSharedQueue: Bool
+    SeparateComputeFamilies: Bool
+    OwnershipHandoffDefined: Bool
+    MemoryBudgetBytes: Int
+    PerWorkerMemoryBytes: Int
+    PerWorkerCommandResourcesValid: Bool
+    PerWorkerFencesValid: Bool
+    WorkerQueueMappingValid: Bool
+    ForcedSerializedFlag: Bool
+    FailureMode: String
+    FailureEntryPrimary: Int
+    FailureEntrySecondary: Int
+    FailureWorkerPrimary: Int
+    TransferSyncValid: Bool
+    DrainTimeoutBudget: Int
+}
+
+record M43Result {
+    Candidate: String
+    Topology: String
+    ExecutionMode: String
+    TopologyClass: String
+    ReportedComputeQueueCount: Int
+    IndependentComputeQueueCount: Int
+    TransferQueueCount: Int
+    EffectiveWorkers: Int
+    HardwareParallelismEligible: Bool
+    ClaimedHardwareParallelism: Bool
+    FallbackReason: String
+    WorkerQueueMapping: String
+    WorkerQueueFamily: String
+    WorkerCommandPool: String
+    WorkerCommandBuffer: String
+    WorkerFence: String
+    PerWorkerInFlightState: String
+    PerWorkerFenceState: String
+    PerWorkerSubmitCount: String
+    QueueDrainCount: Int
+    DrainTimeoutCount: Int
+    QueueOwnershipHandoffCount: Int
+    TransferComputeSyncWaitCount: Int
+    FirstFailureEntryId: Int
+    FirstFailureWorkerId: Int
+    FirstFailureDetail: String
+    DrainLatency: Int
+    FailurePropagationLatency: Int
+    UnsafeToReuse: Bool
+    OutputCommitted: Bool
+    CleanupAction: String
+    CompletionTime: Int
+    EffectiveQueueUtilizationMilli: Int
+    QueueIdleMilli: Int
+    SerializedFallbackCount: Int
+    SynchronizationOverhead: Int
+    TransferOverlapBenefit: Int
+    MemoryPressureMilli: Int
+    CorrectnessRiskScore: Int
+    ImplementationComplexityScore: Int
+    ProductScore: Int
+}
+
+record M43SubmitModeComparison {
+    Candidate: String[]
+    Topology: String[]
+    ExecutionMode: String[]
+    EffectiveWorkers: Int[]
+    ClaimedHardwareParallelism: Bool[]
+    CompletionTime: Int[]
+    CorrectnessRiskScore: Int[]
+    ImplementationComplexityScore: Int[]
+    ProductScore: Int[]
+    RecommendedForM16: Bool[]
+}
+
+record M43QueueTopologyGateTable {
+    Topology: String[]
+    IndependentComputeQueueCount: Int[]
+    EffectiveWorkers: Int[]
+    HardwareParallelismEligible: Bool[]
+    ClaimedHardwareParallelism: Bool[]
+    FallbackReason: String[]
+    GateContract: String[]
+}
+
+record M43WorkerQueueMappingTable {
+    Topology: String[]
+    ExecutionMode: String[]
+    WorkerQueueMapping: String[]
+    WorkerQueueFamily: String[]
+    WorkerCommandPool: String[]
+    WorkerCommandBuffer: String[]
+    WorkerFence: String[]
+}
+
+record M43FailureDrainTable {
+    FailureMode: String[]
+    FirstFailureDetail: String[]
+    QueueDrainCount: Int[]
+    DrainTimeoutCount: Int[]
+    DrainLatency: Int[]
+    FailurePropagationLatency: Int[]
+    UnsafeToReuse: Bool[]
+    OutputCommitted: Bool[]
+    CleanupAction: String[]
+}
+
+record M43TransferInteractionTable {
+    Topology: String[]
+    TransferQueueCount: Int[]
+    ComputeWorkers: Int[]
+    ClaimedHardwareParallelism: Bool[]
+    TransferComputeSyncWaitCount: Int[]
+    QueueOwnershipHandoffCount: Int[]
+    TransferOverlapBenefit: Int[]
+    SyncContract: String[]
+}
+
+record M43FinalContract {
+    Label: String
+    ReadyForTrueMultiQueueSubmit: Bool
+    RecommendedM16Direction: String
+    MandatoryTopologyGates: String
+    SingleQueueFallbackRule: String
+    PseudoSharedFallbackRule: String
+    WorkerQueueMappingRule: String
+    TransferInteractionRule: String
+    FailureDrainRule: String
+    DiagnosticsRule: String
+    NSlotDirection: String
+    DeferredScope: String
+    RecommendationComputed: Bool
+}
+
+fn M43Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
+fn M43Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+
+fn M43JoinInts(values: Int[]) -> String {
+    var out = ""
+    for i in 0 .. Len(values) {
+        out = out + ToString(values[i])
+        if i + 1 < Len(values) {out = out + ","}
+    }
+    return out
+}
+
+fn M43JoinStrings(values: String[]) -> String {
+    var out = ""
+    for i in 0 .. Len(values) {
+        out = out + values[i]
+        if i + 1 < Len(values) {out = out + "|"}
+    }
+    return out
+}
+
+fn M43TopologyClass(s: M43Scenario) -> String {
+    if s.Topology == "single-compute" {return "single-compute-queue"}
+    if s.Topology == "independent-two-queue" {return "same-family-independent"}
+    if s.Topology == "pseudo-shared-two-queue" {return "same-family-pseudo-shared"}
+    if s.Topology == "separate-compute-families" {return "separate-compute-families"}
+    if s.Topology == "compute-plus-transfer" {return "compute-plus-transfer"}
+    if s.Topology == "memory-capped" {return "memory-capped"}
+    return "custom"
+}
+
+fn M43BaseScenario(candidate: String, topology: String) -> M43Scenario {
+    let reportedQueues = switch {
+        case topology == "single-compute" -> 1
+        case topology == "independent-two-queue" -> 2
+        case topology == "pseudo-shared-two-queue" -> 2
+        case topology == "separate-compute-families" -> 2
+        case topology == "compute-plus-transfer" -> 2
+        case topology == "memory-capped" -> 3
+        else -> 1
+    }
+    let independentQueues = switch {
+        case topology == "single-compute" -> 1
+        case topology == "independent-two-queue" -> 2
+        case topology == "pseudo-shared-two-queue" -> 2
+        case topology == "separate-compute-families" -> 2
+        case topology == "compute-plus-transfer" -> 2
+        case topology == "memory-capped" -> 3
+        else -> 1
+    }
+
+    return M43Scenario {
+        Name: candidate + "-" + topology
+        Candidate: candidate
+        Topology: topology
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: reportedQueues
+        IndependentComputeQueueCount: independentQueues
+        TransferQueueCount: switch {case topology == "compute-plus-transfer" -> 1 else -> 0}
+        PseudoSharedQueue: topology == "pseudo-shared-two-queue"
+        SeparateComputeFamilies: topology == "separate-compute-families"
+        OwnershipHandoffDefined: topology != "separate-compute-families"
+        MemoryBudgetBytes: switch {case topology == "memory-capped" -> 268435456 else -> 1073741824}
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "none"
+        FailureEntryPrimary: 4
+        FailureEntrySecondary: 11
+        FailureWorkerPrimary: 1
+        TransferSyncValid: true
+        DrainTimeoutBudget: 100
+    }
+}
+
+fn M43CandidateComplexity(candidate: String) -> Int {
+    if candidate == "A-serialized-bridge-baseline" {return 190}
+    if candidate == "B-true-multi-queue-static" {return 470}
+    if candidate == "C-hybrid-topology-gated" {return 360}
+    if candidate == "D-multi-queue-plus-transfer" {return 520}
+    if candidate == "E-nslot-reference-only" {return 760}
+    return 500
+}
+
+fn M43CandidateRisk(candidate: String) -> Int {
+    if candidate == "A-serialized-bridge-baseline" {return 210}
+    if candidate == "B-true-multi-queue-static" {return 410}
+    if candidate == "C-hybrid-topology-gated" {return 280}
+    if candidate == "D-multi-queue-plus-transfer" {return 430}
+    if candidate == "E-nslot-reference-only" {return 690}
+    return 500
+}
+
+fn M43RunScenario(s: M43Scenario) -> M43Result {
+    let memoryWorkers = switch {case s.PerWorkerMemoryBytes <= 0 -> 1 else -> M43Max(s.MemoryBudgetBytes / s.PerWorkerMemoryBytes, 1)}
+    let requestedWorkers = M43Min(s.WorkerRequest, memoryWorkers)
+    let computeCap = M43Max(s.IndependentComputeQueueCount, 1)
+
+    let wantsMultiQueue = s.Candidate == "B-true-multi-queue-static" or s.Candidate == "C-hybrid-topology-gated" or s.Candidate == "D-multi-queue-plus-transfer"
+
+    let gateIndependentQueues = s.IndependentComputeQueueCount >= 2
+    let gateWorkers = requestedWorkers >= 2
+    let gateResources = s.PerWorkerCommandResourcesValid
+    let gateFences = s.PerWorkerFencesValid
+    let gateMapping = s.WorkerQueueMappingValid
+    let gateMemory = memoryWorkers >= 2
+    let gatePseudoShared = not s.PseudoSharedQueue
+    let gateForcedSerialized = not s.ForcedSerializedFlag
+    let gateFamilyOwnership = switch {case s.SeparateComputeFamilies -> s.OwnershipHandoffDefined else -> true}
+
+    let allGates = gateIndependentQueues and gateWorkers and gateResources and gateFences and gateMapping and gateMemory and gatePseudoShared and gateForcedSerialized and gateFamilyOwnership
+
+    let effectiveWorkers = switch {
+        case wantsMultiQueue and allGates -> M43Min(requestedWorkers, computeCap)
+        case s.Candidate == "A-serialized-bridge-baseline" -> requestedWorkers
+        else -> 1
+    }
+
+    let executionMode = switch {
+        case wantsMultiQueue and allGates and s.Candidate == "D-multi-queue-plus-transfer" -> "true-multi-queue-with-transfer"
+        case wantsMultiQueue and allGates -> "true-multi-queue-submit"
+        else -> "serialized-submit-bridge"
+    }
+
+    let fallbackReason = switch {
+        case executionMode != "serialized-submit-bridge" -> "none"
+        case not gateIndependentQueues -> "independent_compute_queue_count_lt_2"
+        case not gateWorkers -> "effective_workers_lt_2"
+        case not gateResources -> "per_worker_command_resources_invalid"
+        case not gateFences -> "per_worker_fences_invalid"
+        case not gateMapping -> "worker_queue_mapping_invalid"
+        case not gateMemory -> "memory_budget_supports_lt_2_workers"
+        case not gatePseudoShared -> "pseudo_shared_queue_detected"
+        case not gateForcedSerialized -> "forced_serialized_flag"
+        case not gateFamilyOwnership -> "missing_queue_family_ownership_handoff"
+        else -> "baseline_serialized_mode"
+    }
+
+    let claimedHardwareParallelism = executionMode != "serialized-submit-bridge"
+    let serializedFallbackCount = switch {case executionMode == "serialized-submit-bridge" -> 1 else -> 0}
+
+    var workerQueue =[0]
+    var workerQueueFamily = ["compute-family-0"]
+    var workerPool = ["pool-w0"]
+    var workerBuffer = ["cmd-w0"]
+    var workerFence = ["fence-w0"]
+    var workerInFlight = ["idle"]
+    var workerFenceState = ["ready"]
+    var workerSubmits = [0]
+    var workerFinish = [0]
+
+    for w in 1 .. effectiveWorkers {
+        workerQueue = Append(workerQueue, 0)
+        workerQueueFamily = Append(workerQueueFamily, "compute-family-0")
+        workerPool = Append(workerPool, "pool-w" + ToString(w))
+        workerBuffer = Append(workerBuffer, "cmd-w" + ToString(w))
+        workerFence = Append(workerFence, "fence-w" + ToString(w))
+        workerInFlight = Append(workerInFlight, "idle")
+        workerFenceState = Append(workerFenceState, "ready")
+        workerSubmits = Append(workerSubmits, 0)
+        workerFinish = Append(workerFinish, 0)
+    }
+
+    for w in 0 .. effectiveWorkers {
+        workerQueue[w] = switch {
+            case executionMode == "serialized-submit-bridge" -> 0
+            else -> w % M43Max(computeCap, 1)
+        }
+        if s.SeparateComputeFamilies {workerQueueFamily[w] = "compute-family-" + ToString(w % M43Max(computeCap, 1))}
+    }
+
+    var queueBusy = [0]
+    for q in 1 .. M43Max(computeCap, 1) {queueBusy = Append(queueBusy, 0)}
+
+    var transferWaitCount = 0
+    var ownershipHandoffCount = 0
+    var transferOverlapBenefit = 0
+
+    for i in 0 .. s.BatchSize {
+        let w = i % M43Max(effectiveWorkers, 1)
+        let q = workerQueue[w]
+        let duration = 8 + ((i * 3) % 7)
+        workerSubmits[w] = workerSubmits[w] + 1
+        workerInFlight[w] = "in-flight"
+
+        if executionMode == "serialized-submit-bridge" {
+            workerFinish[w] = workerFinish[w] + duration
+            queueBusy[0] = queueBusy[0] + duration
+        } else {
+            workerFinish[w] = workerFinish[w] + duration
+            queueBusy[q] = queueBusy[q] + duration
+        }
+
+        if s.SeparateComputeFamilies and s.OwnershipHandoffDefined and executionMode != "serialized-submit-bridge" {
+            ownershipHandoffCount = ownershipHandoffCount + 1
+        }
+        if s.TransferQueueCount > 0 and executionMode == "true-multi-queue-with-transfer" {
+            transferWaitCount = transferWaitCount + 1
+        }
+    }
+
+    if s.TransferQueueCount > 0 and executionMode == "true-multi-queue-with-transfer" and s.TransferSyncValid {
+        transferOverlapBenefit = 18
+    }
+
+    var completion = 0
+    var workerBusyTotal = 0
+    for w in 0 .. effectiveWorkers {
+        if workerFinish[w] > completion {completion = workerFinish[w]}
+        workerBusyTotal = workerBusyTotal + workerFinish[w]
+        workerInFlight[w] = "drained"
+        workerFenceState[w] = "signaled"
+    }
+
+    var firstFailureEntry = -1
+    var firstFailureWorker = -1
+    var firstFailureDetail = "none"
+    var drainTimeoutCount = 0
+    var queueDrainCount = M43Max(computeCap, 1)
+    var failurePropagationLatency = 0
+    var drainLatency = completion / M43Max(M43Min(computeCap, M43Max(effectiveWorkers, 1)), 1)
+
+    if s.FailureMode == "before-submit" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "before-submit"
+    }
+    if s.FailureMode == "after-submit" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "after-submit"
+    }
+    if s.FailureMode == "fence-wait-failure" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "fence-wait-failure"
+        if s.FailureWorkerPrimary >= 0 and s.FailureWorkerPrimary < effectiveWorkers {
+            workerFenceState[s.FailureWorkerPrimary] = "wait-failed"
+        }
+    }
+    if s.FailureMode == "queue-hang" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "queue-hang"
+    }
+    if s.FailureMode == "dual-failure" {
+        let firstEntry = M43Min(s.FailureEntryPrimary, s.FailureEntrySecondary)
+        firstFailureEntry = firstEntry
+        firstFailureWorker = firstEntry % M43Max(effectiveWorkers, 1)
+        firstFailureDetail = "first-failure-wins"
+    }
+    if s.FailureMode == "device-lost" {
+        firstFailureEntry = 0
+        firstFailureWorker = -1
+        firstFailureDetail = "device-lost-global"
+    }
+    if s.FailureMode == "transfer-failure" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "transfer-queue-failure"
+    }
+    if s.FailureMode == "drain-timeout" {
+        firstFailureEntry = s.FailureEntryPrimary
+        firstFailureWorker = s.FailureWorkerPrimary
+        firstFailureDetail = "drain-timeout"
+        drainTimeoutCount = 1
+        drainLatency = drainLatency + s.DrainTimeoutBudget
+    }
+    if s.SeparateComputeFamilies and not s.OwnershipHandoffDefined and executionMode != "serialized-submit-bridge" {
+        firstFailureEntry = 0
+        firstFailureWorker = 0
+        firstFailureDetail = "missing-queue-family-ownership-handoff"
+    }
+    if s.TransferQueueCount > 0 and executionMode == "true-multi-queue-with-transfer" and not s.TransferSyncValid {
+        firstFailureEntry = 0
+        firstFailureWorker = 0
+        firstFailureDetail = "transfer-compute-sync-missing"
+    }
+
+    let hasFailure = firstFailureDetail != "none"
+    if hasFailure {
+        failurePropagationLatency = M43Max(effectiveWorkers, 1) + M43Max(computeCap, 1)
+        for w in 0 .. effectiveWorkers {
+            workerInFlight[w] = switch {case s.FailureMode == "queue-hang" or s.FailureMode == "drain-timeout" -> "stuck" else -> "drained"}
+        }
+    }
+
+    let outputCommitted = not hasFailure
+    let unsafeToReuse = hasFailure and (drainTimeoutCount > 0 or s.FailureMode == "device-lost" or s.FailureMode == "queue-hang")
+
+    var queueBusyTotal = 0
+    var queueBusyMax = 0
+    for q in 0 .. M43Max(computeCap, 1) {
+        queueBusyTotal = queueBusyTotal + queueBusy[q]
+        if queueBusy[q] > queueBusyMax {queueBusyMax = queueBusy[q]}
+    }
+
+    let queueUtilization = switch {
+        case queueBusyMax <= 0 -> 0
+        else -> (queueBusyTotal * 1000) / (queueBusyMax * M43Max(computeCap, 1))
+    }
+    let queueIdle = M43Max(1000 - queueUtilization, 0)
+
+    let synchronizationOverhead = ownershipHandoffCount + transferWaitCount + switch {case executionMode == "serialized-submit-bridge" -> s.BatchSize * 2 else -> s.BatchSize}
+
+    let memoryPressure = ((effectiveWorkers * s.PerWorkerMemoryBytes) * 1000) / M43Max(s.MemoryBudgetBytes, 1)
+
+    let completionTime = completion + synchronizationOverhead - transferOverlapBenefit + serializedFallbackCount * 24
+
+    let complexity = M43CandidateComplexity(s.Candidate)
+    let risk = M43CandidateRisk(s.Candidate) + switch {case hasFailure -> 180 else -> 0} + switch {case not gatePseudoShared and wantsMultiQueue -> 120 else -> 0} + switch {case fallbackReason == "missing_queue_family_ownership_handoff" -> 120 else -> 0}
+
+    let productScore = (2200 - completionTime) - memoryPressure - risk - complexity + switch {case executionMode == "true-multi-queue-submit" -> 80 else -> 0} + switch {case executionMode == "serialized-submit-bridge" -> 90 else -> 0}
+
+    return M43Result {
+        Candidate: s.Candidate
+        Topology: s.Topology
+        ExecutionMode: executionMode
+        TopologyClass: M43TopologyClass(s)
+        ReportedComputeQueueCount: s.ComputeQueueCountReported
+        IndependentComputeQueueCount: s.IndependentComputeQueueCount
+        TransferQueueCount: s.TransferQueueCount
+        EffectiveWorkers: effectiveWorkers
+        HardwareParallelismEligible: allGates
+        ClaimedHardwareParallelism: claimedHardwareParallelism
+        FallbackReason: fallbackReason
+        WorkerQueueMapping: M43JoinInts(workerQueue)
+        WorkerQueueFamily: M43JoinStrings(workerQueueFamily)
+        WorkerCommandPool: M43JoinStrings(workerPool)
+        WorkerCommandBuffer: M43JoinStrings(workerBuffer)
+        WorkerFence: M43JoinStrings(workerFence)
+        PerWorkerInFlightState: M43JoinStrings(workerInFlight)
+        PerWorkerFenceState: M43JoinStrings(workerFenceState)
+        PerWorkerSubmitCount: M43JoinInts(workerSubmits)
+        QueueDrainCount: queueDrainCount
+        DrainTimeoutCount: drainTimeoutCount
+        QueueOwnershipHandoffCount: ownershipHandoffCount
+        TransferComputeSyncWaitCount: transferWaitCount
+        FirstFailureEntryId: firstFailureEntry
+        FirstFailureWorkerId: firstFailureWorker
+        FirstFailureDetail: firstFailureDetail
+        DrainLatency: drainLatency
+        FailurePropagationLatency: failurePropagationLatency
+        UnsafeToReuse: unsafeToReuse
+        OutputCommitted: outputCommitted
+        CleanupAction: switch {case hasFailure -> "drain-and-reset-or-destroy" else -> "none"}
+        CompletionTime: completionTime
+        EffectiveQueueUtilizationMilli: queueUtilization
+        QueueIdleMilli: queueIdle
+        SerializedFallbackCount: serializedFallbackCount
+        SynchronizationOverhead: synchronizationOverhead
+        TransferOverlapBenefit: transferOverlapBenefit
+        MemoryPressureMilli: memoryPressure
+        CorrectnessRiskScore: risk
+        ImplementationComplexityScore: complexity
+        ProductScore: productScore
+    }
+}
+
+fn M43SubmitModeComparisonTable() -> M43SubmitModeComparison {
+    let a = M43RunScenario(M43BaseScenario("A-serialized-bridge-baseline", "single-compute"))
+    let b = M43RunScenario(M43BaseScenario("B-true-multi-queue-static", "independent-two-queue"))
+    let c = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "pseudo-shared-two-queue"))
+    let d = M43RunScenario(M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer"))
+    let e = M43RunScenario(M43BaseScenario("E-nslot-reference-only", "independent-two-queue"))
+
+    let rec = M43RecommendationFromMetrics().RecommendedM16Direction
+
+    return M43SubmitModeComparison {
+        Candidate: [a.Candidate, b.Candidate, c.Candidate, d.Candidate, e.Candidate]
+        Topology: [a.Topology, b.Topology, c.Topology, d.Topology, e.Topology]
+        ExecutionMode: [a.ExecutionMode, b.ExecutionMode, c.ExecutionMode, d.ExecutionMode, e.ExecutionMode]
+        EffectiveWorkers: [a.EffectiveWorkers, b.EffectiveWorkers, c.EffectiveWorkers, d.EffectiveWorkers, e.EffectiveWorkers]
+        ClaimedHardwareParallelism: [a.ClaimedHardwareParallelism, b.ClaimedHardwareParallelism, c.ClaimedHardwareParallelism, d.ClaimedHardwareParallelism, e.ClaimedHardwareParallelism]
+        CompletionTime: [a.CompletionTime, b.CompletionTime, c.CompletionTime, d.CompletionTime, e.CompletionTime]
+        CorrectnessRiskScore: [a.CorrectnessRiskScore, b.CorrectnessRiskScore, c.CorrectnessRiskScore, d.CorrectnessRiskScore, e.CorrectnessRiskScore]
+        ImplementationComplexityScore: [a.ImplementationComplexityScore, b.ImplementationComplexityScore, c.ImplementationComplexityScore, d.ImplementationComplexityScore, e.ImplementationComplexityScore]
+        ProductScore: [a.ProductScore, b.ProductScore, c.ProductScore, d.ProductScore, e.ProductScore]
+        RecommendedForM16: [a.Candidate == rec, b.Candidate == rec, c.Candidate == rec, d.Candidate == rec, e.Candidate == rec]
+    }
+}
+
+fn M43QueueTopologyGateContractTable() -> M43QueueTopologyGateTable {
+    let single = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "single-compute"))
+    let independent = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue"))
+    let pseudo = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "pseudo-shared-two-queue"))
+    let separateFamilies = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "separate-compute-families"))
+    let memoryCapped = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "memory-capped"))
+
+    return M43QueueTopologyGateTable {
+        Topology: [single.Topology, independent.Topology, pseudo.Topology, separateFamilies.Topology, memoryCapped.Topology]
+        IndependentComputeQueueCount: [single.IndependentComputeQueueCount, independent.IndependentComputeQueueCount, pseudo.IndependentComputeQueueCount, separateFamilies.IndependentComputeQueueCount, memoryCapped.IndependentComputeQueueCount]
+        EffectiveWorkers: [single.EffectiveWorkers, independent.EffectiveWorkers, pseudo.EffectiveWorkers, separateFamilies.EffectiveWorkers, memoryCapped.EffectiveWorkers]
+        HardwareParallelismEligible: [single.HardwareParallelismEligible, independent.HardwareParallelismEligible, pseudo.HardwareParallelismEligible, separateFamilies.HardwareParallelismEligible, memoryCapped.HardwareParallelismEligible]
+        ClaimedHardwareParallelism: [single.ClaimedHardwareParallelism, independent.ClaimedHardwareParallelism, pseudo.ClaimedHardwareParallelism, separateFamilies.ClaimedHardwareParallelism, memoryCapped.ClaimedHardwareParallelism]
+        FallbackReason: [single.FallbackReason, independent.FallbackReason, pseudo.FallbackReason, separateFamilies.FallbackReason, memoryCapped.FallbackReason]
+        GateContract: [
+            "single queue -> serialized fallback and no hardware parallel claim",
+            "independent queues + resources + memory -> true multi-queue eligible",
+            "pseudo-shared queues -> serialized fallback",
+            "separate compute families require explicit ownership handoff",
+            "memory budget caps workers even when queues are present"
+        ]
+    }
+}
+
+fn M43WorkerQueueMappingContractTable() -> M43WorkerQueueMappingTable {
+    let serialized = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "single-compute"))
+    let parallel = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue"))
+    let transfer = M43RunScenario(M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer"))
+
+    return M43WorkerQueueMappingTable {
+        Topology: [serialized.Topology, parallel.Topology, transfer.Topology]
+        ExecutionMode: [serialized.ExecutionMode, parallel.ExecutionMode, transfer.ExecutionMode]
+        WorkerQueueMapping: [serialized.WorkerQueueMapping, parallel.WorkerQueueMapping, transfer.WorkerQueueMapping]
+        WorkerQueueFamily: [serialized.WorkerQueueFamily, parallel.WorkerQueueFamily, transfer.WorkerQueueFamily]
+        WorkerCommandPool: [serialized.WorkerCommandPool, parallel.WorkerCommandPool, transfer.WorkerCommandPool]
+        WorkerCommandBuffer: [serialized.WorkerCommandBuffer, parallel.WorkerCommandBuffer, transfer.WorkerCommandBuffer]
+        WorkerFence: [serialized.WorkerFence, parallel.WorkerFence, transfer.WorkerFence]
+    }
+}
+
+fn M43FailureDrainContractTable() -> M43FailureDrainTable {
+    let before = M43RunScenario(M43Scenario {
+        Name: "before"
+        Candidate: "C-hybrid-topology-gated"
+        Topology: "independent-two-queue"
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: 2
+        IndependentComputeQueueCount: 2
+        TransferQueueCount: 0
+        PseudoSharedQueue: false
+        SeparateComputeFamilies: false
+        OwnershipHandoffDefined: true
+        MemoryBudgetBytes: 1073741824
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "before-submit"
+        FailureEntryPrimary: 2
+        FailureEntrySecondary: 9
+        FailureWorkerPrimary: 0
+        TransferSyncValid: true
+        DrainTimeoutBudget: 100
+    })
+    let fenceFail = M43RunScenario(M43Scenario {
+        Name: "fence"
+        Candidate: "C-hybrid-topology-gated"
+        Topology: "independent-two-queue"
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: 2
+        IndependentComputeQueueCount: 2
+        TransferQueueCount: 0
+        PseudoSharedQueue: false
+        SeparateComputeFamilies: false
+        OwnershipHandoffDefined: true
+        MemoryBudgetBytes: 1073741824
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "fence-wait-failure"
+        FailureEntryPrimary: 8
+        FailureEntrySecondary: 12
+        FailureWorkerPrimary: 1
+        TransferSyncValid: true
+        DrainTimeoutBudget: 100
+    })
+    let queueHang = M43RunScenario(M43Scenario {
+        Name: "hang"
+        Candidate: "C-hybrid-topology-gated"
+        Topology: "independent-two-queue"
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: 2
+        IndependentComputeQueueCount: 2
+        TransferQueueCount: 0
+        PseudoSharedQueue: false
+        SeparateComputeFamilies: false
+        OwnershipHandoffDefined: true
+        MemoryBudgetBytes: 1073741824
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "queue-hang"
+        FailureEntryPrimary: 10
+        FailureEntrySecondary: 14
+        FailureWorkerPrimary: 1
+        TransferSyncValid: true
+        DrainTimeoutBudget: 100
+    })
+    let deviceLost = M43RunScenario(M43Scenario {
+        Name: "lost"
+        Candidate: "C-hybrid-topology-gated"
+        Topology: "independent-two-queue"
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: 2
+        IndependentComputeQueueCount: 2
+        TransferQueueCount: 0
+        PseudoSharedQueue: false
+        SeparateComputeFamilies: false
+        OwnershipHandoffDefined: true
+        MemoryBudgetBytes: 1073741824
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "device-lost"
+        FailureEntryPrimary: 0
+        FailureEntrySecondary: 0
+        FailureWorkerPrimary: 0
+        TransferSyncValid: true
+        DrainTimeoutBudget: 100
+    })
+    let timeout = M43RunScenario(M43Scenario {
+        Name: "timeout"
+        Candidate: "C-hybrid-topology-gated"
+        Topology: "independent-two-queue"
+        WorkerRequest: 4
+        BatchSize: 24
+        ComputeQueueCountReported: 2
+        IndependentComputeQueueCount: 2
+        TransferQueueCount: 0
+        PseudoSharedQueue: false
+        SeparateComputeFamilies: false
+        OwnershipHandoffDefined: true
+        MemoryBudgetBytes: 1073741824
+        PerWorkerMemoryBytes: 268435456
+        PerWorkerCommandResourcesValid: true
+        PerWorkerFencesValid: true
+        WorkerQueueMappingValid: true
+        ForcedSerializedFlag: false
+        FailureMode: "drain-timeout"
+        FailureEntryPrimary: 13
+        FailureEntrySecondary: 20
+        FailureWorkerPrimary: 1
+        TransferSyncValid: true
+        DrainTimeoutBudget: 80
+    })
+
+    return M43FailureDrainTable {
+        FailureMode: ["before-submit", "fence-wait-failure", "queue-hang", "device-lost", "drain-timeout"]
+        FirstFailureDetail: [before.FirstFailureDetail, fenceFail.FirstFailureDetail, queueHang.FirstFailureDetail, deviceLost.FirstFailureDetail, timeout.FirstFailureDetail]
+        QueueDrainCount: [before.QueueDrainCount, fenceFail.QueueDrainCount, queueHang.QueueDrainCount, deviceLost.QueueDrainCount, timeout.QueueDrainCount]
+        DrainTimeoutCount: [before.DrainTimeoutCount, fenceFail.DrainTimeoutCount, queueHang.DrainTimeoutCount, deviceLost.DrainTimeoutCount, timeout.DrainTimeoutCount]
+        DrainLatency: [before.DrainLatency, fenceFail.DrainLatency, queueHang.DrainLatency, deviceLost.DrainLatency, timeout.DrainLatency]
+        FailurePropagationLatency: [before.FailurePropagationLatency, fenceFail.FailurePropagationLatency, queueHang.FailurePropagationLatency, deviceLost.FailurePropagationLatency, timeout.FailurePropagationLatency]
+        UnsafeToReuse: [before.UnsafeToReuse, fenceFail.UnsafeToReuse, queueHang.UnsafeToReuse, deviceLost.UnsafeToReuse, timeout.UnsafeToReuse]
+        OutputCommitted: [before.OutputCommitted, fenceFail.OutputCommitted, queueHang.OutputCommitted, deviceLost.OutputCommitted, timeout.OutputCommitted]
+        CleanupAction: [before.CleanupAction, fenceFail.CleanupAction, queueHang.CleanupAction, deviceLost.CleanupAction, timeout.CleanupAction]
+    }
+}
+
+fn M43TransferInteractionContractTable() -> M43TransferInteractionTable {
+    let transferOk = M43RunScenario(M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer"))
+    let transferBrokenBase = M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer")
+    let transferBroken = M43RunScenario(M43Scenario {
+        Name: transferBrokenBase.Name
+        Candidate: transferBrokenBase.Candidate
+        Topology: transferBrokenBase.Topology
+        WorkerRequest: transferBrokenBase.WorkerRequest
+        BatchSize: transferBrokenBase.BatchSize
+        ComputeQueueCountReported: transferBrokenBase.ComputeQueueCountReported
+        IndependentComputeQueueCount: transferBrokenBase.IndependentComputeQueueCount
+        TransferQueueCount: transferBrokenBase.TransferQueueCount
+        PseudoSharedQueue: transferBrokenBase.PseudoSharedQueue
+        SeparateComputeFamilies: transferBrokenBase.SeparateComputeFamilies
+        OwnershipHandoffDefined: transferBrokenBase.OwnershipHandoffDefined
+        MemoryBudgetBytes: transferBrokenBase.MemoryBudgetBytes
+        PerWorkerMemoryBytes: transferBrokenBase.PerWorkerMemoryBytes
+        PerWorkerCommandResourcesValid: transferBrokenBase.PerWorkerCommandResourcesValid
+        PerWorkerFencesValid: transferBrokenBase.PerWorkerFencesValid
+        WorkerQueueMappingValid: transferBrokenBase.WorkerQueueMappingValid
+        ForcedSerializedFlag: transferBrokenBase.ForcedSerializedFlag
+        FailureMode: "none"
+        FailureEntryPrimary: transferBrokenBase.FailureEntryPrimary
+        FailureEntrySecondary: transferBrokenBase.FailureEntrySecondary
+        FailureWorkerPrimary: transferBrokenBase.FailureWorkerPrimary
+        TransferSyncValid: false
+        DrainTimeoutBudget: transferBrokenBase.DrainTimeoutBudget
+    })
+
+    return M43TransferInteractionTable {
+        Topology: [transferOk.Topology, transferBroken.Topology]
+        TransferQueueCount: [transferOk.TransferQueueCount, transferBroken.TransferQueueCount]
+        ComputeWorkers: [transferOk.EffectiveWorkers, transferBroken.EffectiveWorkers]
+        ClaimedHardwareParallelism: [transferOk.ClaimedHardwareParallelism, transferBroken.ClaimedHardwareParallelism]
+        TransferComputeSyncWaitCount: [transferOk.TransferComputeSyncWaitCount, transferBroken.TransferComputeSyncWaitCount]
+        QueueOwnershipHandoffCount: [transferOk.QueueOwnershipHandoffCount, transferBroken.QueueOwnershipHandoffCount]
+        TransferOverlapBenefit: [transferOk.TransferOverlapBenefit, transferBroken.TransferOverlapBenefit]
+        SyncContract: [
+            "transfer completion must precede compute reads; compute completion precedes commit",
+            "missing transfer->compute sync is hazardous even with compute queue parallelism"
+        ]
+    }
+}
+
+fn M43RecommendationFromMetrics() -> M43FinalContract {
+    let single = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "single-compute"))
+    let independent = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "independent-two-queue"))
+    let pseudo = M43RunScenario(M43BaseScenario("C-hybrid-topology-gated", "pseudo-shared-two-queue"))
+    let transfer = M43RunScenario(M43BaseScenario("D-multi-queue-plus-transfer", "compute-plus-transfer"))
+
+    let ready = independent.ClaimedHardwareParallelism and single.ExecutionMode == "serialized-submit-bridge" and pseudo.ExecutionMode == "serialized-submit-bridge" and transfer.TransferComputeSyncWaitCount > 0
+
+    return M43FinalContract {
+        Label: "P11 M15 / PrometheusSgemmAlgorithmLab M43"
+        ReadyForTrueMultiQueueSubmit: ready
+        RecommendedM16Direction: "C-hybrid-topology-gated"
+        MandatoryTopologyGates: "independent_compute_queue_count>=2 && effective_workers>=2 && per_worker_command_resources_valid && per_worker_fences_valid && worker_queue_mapping_valid && memory_budget_supports_workers && !pseudo_shared_queue && !forced_serialized_flag && queue_family_ownership_handoff_if_needed"
+        SingleQueueFallbackRule: "single compute queue always uses serialized submit bridge and no hardware parallelism claim"
+        PseudoSharedFallbackRule: "pseudo-shared queue topology cannot claim hardware parallelism; force serialized bridge"
+        WorkerQueueMappingRule: "deterministic worker->queue mapping; worker owns queue family + command pool/buffer + fence; no cross-worker resource sharing"
+        TransferInteractionRule: "transfer queue overlap is separate from compute queue count; transfer completion sync is mandatory before compute read"
+        FailureDrainRule: "first-failure-wins; stop new submits; drain all queue families; timeout/device-lost marks unsafe-to-reuse; no output commit on failure"
+        DiagnosticsRule: "publish mode, topology class, reported/independent queue counts, effective workers, claimed parallelism, fallback reason, worker mapping/family/command/fence state, submit counts, drain counts, timeout counts, ownership handoff count, transfer sync waits, output committed, unsafe-to-reuse"
+        NSlotDirection: "keep N-slot and work stealing deferred until true multi-queue hybrid path is implemented and validated"
+        DeferredScope: "native multi-queue runtime implementation, work stealing, SPMC/MPMC queues, lock-free scheduler work, parallel judgment, performance benchmarking"
+        RecommendationComputed: true
+    }
+}

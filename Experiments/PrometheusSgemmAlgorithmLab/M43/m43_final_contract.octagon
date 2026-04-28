@@ -1,0 +1,15 @@
+[M43FinalContract {
+    Label: "P11 M15 / PrometheusSgemmAlgorithmLab M43"
+    ReadyForTrueMultiQueueSubmit: true
+    RecommendedM16Direction: "C-hybrid-topology-gated"
+    MandatoryTopologyGates: "independent_compute_queue_count>=2 && effective_workers>=2 && per_worker_command_resources_valid && per_worker_fences_valid && worker_queue_mapping_valid && memory_budget_supports_workers && !pseudo_shared_queue && !forced_serialized_flag && queue_family_ownership_handoff_if_needed"
+    SingleQueueFallbackRule: "single compute queue always uses serialized submit bridge and no hardware parallelism claim"
+    PseudoSharedFallbackRule: "pseudo-shared queue topology cannot claim hardware parallelism; force serialized bridge"
+    WorkerQueueMappingRule: "deterministic worker->queue mapping; worker owns queue family + command pool/buffer + fence; no cross-worker resource sharing"
+    TransferInteractionRule: "transfer queue overlap is separate from compute queue count; transfer completion sync is mandatory before compute read"
+    FailureDrainRule: "first-failure-wins; stop new submits; drain all queue families; timeout/device-lost marks unsafe-to-reuse; no output commit on failure"
+    DiagnosticsRule: "publish mode, topology class, reported/independent queue counts, effective workers, claimed parallelism, fallback reason, worker mapping/family/command/fence state, submit counts, drain counts, timeout counts, ownership handoff count, transfer sync waits, output committed, unsafe-to-reuse"
+    NSlotDirection: "keep N-slot and work stealing deferred until true multi-queue hybrid path is implemented and validated"
+    DeferredScope: "native multi-queue runtime implementation, work stealing, SPMC/MPMC queues, lock-free scheduler work, parallel judgment, performance benchmarking"
+    RecommendationComputed: true
+}]
