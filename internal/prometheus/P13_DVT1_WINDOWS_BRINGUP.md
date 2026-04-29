@@ -163,10 +163,6 @@ This is a test-harness/documentation gap, not a Windows bring-up failure.
 
 ## 5. Current limitations
 
-- `marionette_slow_tests.exe` currently reports `0` tests with the current filter in `test_main_slow.cpp`.
-- MSVC still emits existing warnings in `reactor_vulkan_sgemm.c`:
-  - signed/unsigned mismatch
-  - several potentially uninitialized local-variable warnings
 - `vulkaninfo --summary` reports loader warnings from third-party overlay layers already installed on the machine.
 - The generic Marionette `--bench` registry is empty even though the P13 benchmark smoke executable is valid and passing.
 
@@ -184,3 +180,121 @@ Readiness statement:
 - occupancy-variant diagnostics remain visible on hardware
 
 The system is ready to proceed to DVT-2 full validation and reporting.
+
+## 7. DVT-1 Follow-up Hygiene
+
+### Slow lane fix
+
+`marionette_slow_tests.exe` was corrected to behave as a real slow/stress lane instead of reporting `0` tests.
+
+- `reactor_p11_m6_batch_tests.cpp` is now compiled into the slow-lane build path instead of being omitted from Windows entirely.
+- The Windows and Linux build helpers both keep that batch-test source out of the default and benchmark binaries, preserving the original normal-lane coverage shape.
+- `test_main_slow.cpp` now defaults to the explicit full slow-test names and also accepts an optional override filter for direct debugging.
+- The slow lane remains separate from the normal lane; these tests were not moved back into `marionette_tests.exe`.
+
+Validated slow coverage:
+
+- `PrometheusReactor_P11_M11_OutOfOrderCompletionStillCommitsInEntryOrder`
+- `PrometheusReactor_P11_M17_DrainTimeoutMarksUnsafeToReuse`
+- `PrometheusReactor_P11_M20_FailureMatrix_DrainTimeoutSlowCase`
+
+Observed Windows result:
+
+- `3` tests run
+- `3` passed
+- `0` skipped
+- `0` failed
+
+### Benchmark registry decision
+
+The benchmark discrepancy was documented rather than reworked.
+
+- Supported P13 benchmark smoke command: `out\prometheus\native\marionette_benchmarks.exe`
+- `out\prometheus\native\marionette_tests.exe --bench` still reports `0 benchmark(s)` because the current repository shape uses FACT-based benchmark smoke tests rather than registered `BENCHMARK(...)` entries.
+
+This distinction is now documented in `internal/prometheus/native/README.md` so DVT-2 does not mistake the empty generic benchmark registry for a bring-up regression.
+
+### Warning cleanup
+
+Low-risk MSVC warning cleanup was completed without broad refactoring.
+
+- `reactor_vulkan_sgemm.c`
+  - initialized several local size/copy variables that MSVC warned could be used uninitialized
+  - added one explicit cast for the signed/unsigned comparison around `mode` tracking
+- `reactor_p11_m6_batch_tests.cpp`
+  - added an explicit unsigned cast on the wrong-owner test flag assignment
+
+Result:
+
+- the prior `reactor_vulkan_sgemm.c` warnings observed during DVT-1 are cleared in the current Windows build
+- no new warnings were introduced by the follow-up changes
+- `internal/prometheus/native/build_stub.sh` was also normalized back to LF line endings so Bash can execute it directly during Linux parity checks
+
+### Windows build docs
+
+Windows is now documented as a first-class native build path in `internal/prometheus/native/README.md`.
+
+Documented commands:
+
+- Linux: `bash internal/prometheus/native/build_stub.sh`
+- Windows: `internal\prometheus\native\build_windows.cmd`
+
+Documented Windows outputs:
+
+- `marionette_tests.exe`
+- `marionette_slow_tests.exe`
+- `marionette_benchmarks.exe`
+
+### Validation commands and results
+
+Windows follow-up validation:
+
+```bat
+internal\prometheus\native\build_windows.cmd
+out\prometheus\native\marionette_tests.exe
+out\prometheus\native\marionette_slow_tests.exe
+out\prometheus\native\marionette_benchmarks.exe
+out\prometheus\native\marionette_tests.exe PrometheusReactor_Sgemm
+```
+
+Observed results:
+
+- build succeeded
+- `marionette_tests.exe` passed
+- `marionette_slow_tests.exe` ran `3` tests and passed
+- `marionette_benchmarks.exe` passed
+- targeted SGEMM tests passed
+- `marionette_tests.exe --bench` still reports `Benchmark Summary: 0 benchmark(s)` as documented
+
+Linux parity validation was also rerun after the shared test-entry changes:
+
+```bash
+bash internal/prometheus/native/build_stub.sh
+out/prometheus/native/marionette_tests
+out/prometheus/native/marionette_slow_tests
+out/prometheus/native/marionette_benchmarks
+```
+
+Observed Linux parity result:
+
+- `build_stub.sh` builds successfully again under Bash
+- `marionette_slow_tests` passed (`3` tests)
+- `marionette_benchmarks` passed (`14` tests)
+- `marionette_tests` still reports two runtime failures under the current WSL Mesa `dzn` Vulkan path:
+  - `PrometheusReactor_AsyncUseBeforeCompleteAndDoubleConsumeAreRejected`
+  - `PrometheusReactor_M29_FixedDouble_CleanupRejectsInflightOwnership`
+
+These Linux failures were surfaced during parity rerun and were not introduced by the Windows follow-up changes; the Windows RTX 3070 DVT path remains clean.
+
+### Minimal sanity artifact
+
+The existing P13 smoke lane already emits a lightweight artifact at:
+
+- `out\test-artifacts\P13_M4_ArtifactSchemaFieldsPresent\p13_m4_smoke_artifact.txt`
+
+This remains the most convenient sanity artifact for DVT-1/DVT-2 handoff because it captures the benchmark-smoke metadata shape without making any performance claim.
+
+### Remaining TODOs
+
+- `marionette_tests.exe --bench` still intentionally reports an empty generic benchmark registry; use `marionette_benchmarks.exe` for the supported P13 smoke lane.
+- Machine-local Vulkan loader warnings from installed third-party overlay layers remain visible in `vulkaninfo --summary`, but they did not block runtime creation or device enumeration during DVT-1.

@@ -22,3 +22,22 @@ Scope guardrails for this topology:
 - `reactor_vulkan_common.c` is for genuinely shared Vulkan plumbing only.
 - SGEMM policy/runtime behavior stays localized in `reactor_vulkan_sgemm.c` for auditability.
 - FFT/fused-reduction files remain inert until implementation milestones explicitly add behavior.
+
+## Native build entrypoints
+
+Supported native build helpers:
+
+- Linux: `bash internal/prometheus/native/build_stub.sh`
+- Windows: `internal\prometheus\native\build_windows.cmd`
+
+Expected Windows outputs:
+
+- `out\prometheus\native\marionette_tests.exe`
+- `out\prometheus\native\marionette_slow_tests.exe`
+- `out\prometheus\native\marionette_benchmarks.exe`
+
+Benchmark-lane note:
+
+- `marionette_benchmarks.exe` is the supported P13 benchmark smoke lane in this repository.
+- `marionette_tests.exe --bench` uses Marionette's registered `BENCHMARK(...)` registry.
+- The current Prometheus DVT smoke path is FACT-driven, so `--bench` may legitimately report `0 benchmark(s)` until explicit benchmark registrations are added.

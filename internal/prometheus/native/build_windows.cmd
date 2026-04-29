@@ -49,6 +49,7 @@ set "COMMON_C_SRCS="%NATIVE_DIR%\reactor_api.c" "%NATIVE_DIR%\reactor_judgment_e
 set "COMMON_OBJS="%OBJ_DIR%\reactor_api.obj" "%OBJ_DIR%\reactor_judgment_engine.obj" "%OBJ_DIR%\reactor_dominatus_blackboard.obj" "%OBJ_DIR%\reactor_dominatus_sgemm_adapter.obj" "%OBJ_DIR%\reactor_dominatus_slot_adapter.obj" "%OBJ_DIR%\reactor_policy_memory.obj" "%OBJ_DIR%\reactor_slot_hfsm.obj" "%OBJ_DIR%\reactor_vulkan_common.obj" "%OBJ_DIR%\reactor_vulkan_sgemm.obj" "%OBJ_DIR%\reactor_vulkan_fft.obj" "%OBJ_DIR%\reactor_vulkan_fused_reduction.obj""
 
 set "MARIONETTE_CPP_SRCS="%NATIVE_DIR%\Marionette\test_harness.cpp" "%NATIVE_DIR%\Marionette\test_doom.cpp" "%NATIVE_DIR%\Marionette\smoke_tests.cpp" "%NATIVE_DIR%\Marionette\test_harness_phase1_tests.cpp" "%NATIVE_DIR%\Marionette\test_harness_doom_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_stub_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_judgment_engine_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_dominatus_blackboard_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_dominatus_sgemm_adapter_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_dominatus_slot_adapter_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_slot_hfsm_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_m29_fixed_double_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_m31_transfer_queue_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_m35_buffering_selector_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_m15_layout_precision_selector_cache_tests.cpp" "%NATIVE_DIR%\Marionette\reactor_p13_m4_occupancy_benchmark_tests.cpp""
+set "MARIONETTE_SLOW_ONLY_SRCS="%NATIVE_DIR%\Marionette\reactor_p11_m6_batch_tests.cpp""
 
 pushd "%ROOT_DIR%"
 
@@ -61,13 +62,13 @@ if errorlevel 1 goto :fail
 copy /Y "%REACTOR_DLL%" "%REACTOR_DIR%\prometheus_reactor.dll" >nul
 if errorlevel 1 goto :fail
 
-call :build_marionette "%MARIONETTE_EXE%" "%MARIONETTE_PDB%" "%NATIVE_DIR%\Marionette\test_main.cpp" "/DMARIONETTE_EXCLUDE_SLOW_TESTS /DMARIONETTE_EXCLUDE_BENCHMARK_TESTS"
+call :build_marionette "%MARIONETTE_EXE%" "%MARIONETTE_PDB%" "%NATIVE_DIR%\Marionette\test_main.cpp" "/DMARIONETTE_EXCLUDE_SLOW_TESTS /DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" ""
 if errorlevel 1 goto :fail
 
-call :build_marionette "%MARIONETTE_SLOW_EXE%" "%MARIONETTE_SLOW_PDB%" "%NATIVE_DIR%\Marionette\test_main_slow.cpp" "/DMARIONETTE_EXCLUDE_BENCHMARK_TESTS"
+call :build_marionette "%MARIONETTE_SLOW_EXE%" "%MARIONETTE_SLOW_PDB%" "%NATIVE_DIR%\Marionette\test_main_slow.cpp" "/DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" "%MARIONETTE_SLOW_ONLY_SRCS%"
 if errorlevel 1 goto :fail
 
-call :build_marionette "%MARIONETTE_BENCH_EXE%" "%MARIONETTE_BENCH_PDB%" "%NATIVE_DIR%\Marionette\test_main_benchmarks.cpp" ""
+call :build_marionette "%MARIONETTE_BENCH_EXE%" "%MARIONETTE_BENCH_PDB%" "%NATIVE_DIR%\Marionette\test_main_benchmarks.cpp" "" ""
 if errorlevel 1 goto :fail
 
 popd
@@ -84,8 +85,10 @@ set "OUTPUT_EXE=%~1"
 set "OUTPUT_PDB=%~2"
 set "MAIN_CPP=%~3"
 set "EXTRA_DEFINES=%~4"
+set "EXTRA_SRCS=%~5"
 cl /nologo /TP /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_ROOT="\"%ROOT_DIR_FORWARD%\"" %EXTRA_DEFINES% ^
   %MARIONETTE_CPP_SRCS% ^
+  %EXTRA_SRCS% ^
   "%MAIN_CPP%" ^
   /link %COMMON_OBJS% /OUT:"%OUTPUT_EXE%" /PDB:"%OUTPUT_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 exit /b %ERRORLEVEL%

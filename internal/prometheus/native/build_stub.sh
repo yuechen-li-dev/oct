@@ -73,6 +73,7 @@ done < <(find "$NATIVE_DIR/Marionette" -maxdepth 1 -name "*.cpp" \
   ! -name "test_main.cpp" \
   ! -name "test_main_slow.cpp" \
   ! -name "test_main_benchmarks.cpp" \
+  ! -name "reactor_p11_m6_batch_tests.cpp" \
   -print0 | sort -z)
 
 if [[ ${#MARIONETTE_CPP[@]} -eq 0 ]]; then
@@ -87,7 +88,8 @@ echo "[4/5] Building Marionette test binaries..."
 do_build() {
   local out_bin="$1"
   local main_cpp="$2"
-  shift 2
+  local extra_src="$3"
+  shift 3
   local defines=("$@")
 
   if [[ ! -f "$main_cpp" ]]; then
@@ -100,6 +102,11 @@ do_build() {
     define_flags+=("-D$d")
   done
 
+  local extra_src_args=()
+  if [[ -n "$extra_src" ]]; then
+    extra_src_args+=("$extra_src")
+  fi
+
   echo -n "  Building $(basename "$out_bin")... "
 
   local repo_define="-DMARIONETTE_TEST_REPO_ROOT=\"$ROOT_DIR\""
@@ -107,12 +114,12 @@ do_build() {
   if [[ "$VERBOSE" == "1" ]]; then
     c++ -std=c++23 -O2 "${WARN_FLAGS[@]}" "$repo_define" \
       "${define_flags[@]}" \
-      "${COMMON_OBJS[@]}" "${MARIONETTE_CPP[@]}" "$main_cpp" \
+      "${COMMON_OBJS[@]}" "${MARIONETTE_CPP[@]}" "${extra_src_args[@]}" "$main_cpp" \
       -pthread -lm -lvulkan -o "$out_bin"
   else
     c++ -std=c++23 -O2 "${WARN_FLAGS[@]}" "$repo_define" \
       "${define_flags[@]}" \
-      "${COMMON_OBJS[@]}" "${MARIONETTE_CPP[@]}" "$main_cpp" \
+      "${COMMON_OBJS[@]}" "${MARIONETTE_CPP[@]}" "${extra_src_args[@]}" "$main_cpp" \
       -pthread -lm -lvulkan -o "$out_bin" 2>/dev/null
   fi
   echo "ok"
@@ -121,17 +128,20 @@ do_build() {
 do_build \
   "$OUT_DIR/marionette_tests" \
   "$NATIVE_DIR/Marionette/test_main.cpp" \
+  "" \
   "MARIONETTE_EXCLUDE_SLOW_TESTS" \
   "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"
 
 do_build \
   "$OUT_DIR/marionette_slow_tests" \
   "$NATIVE_DIR/Marionette/test_main_slow.cpp" \
+  "$NATIVE_DIR/Marionette/reactor_p11_m6_batch_tests.cpp" \
   "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"
 
 do_build \
   "$OUT_DIR/marionette_benchmarks" \
-  "$NATIVE_DIR/Marionette/test_main_benchmarks.cpp"
+  "$NATIVE_DIR/Marionette/test_main_benchmarks.cpp" \
+  ""
 
 # Step 5: Report
 echo "[5/5] Build complete."

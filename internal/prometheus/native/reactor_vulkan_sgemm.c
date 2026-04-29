@@ -903,9 +903,9 @@ static int batch_compute_plan_arena_required_bytes(uint32_t m,
                                                    prom_vk_compute_mode compute_mode,
                                                    uint64_t* out_required_bytes) {
   uint32_t compute_k;
-  VkDeviceSize a_size;
-  VkDeviceSize b_size;
-  VkDeviceSize c_size;
+  VkDeviceSize a_size = 0;
+  VkDeviceSize b_size = 0;
+  VkDeviceSize c_size = 0;
   size_t ignored_copy_size = 0u;
   uint64_t required_bytes;
   if (out_required_bytes == NULL) {
@@ -2730,7 +2730,7 @@ static prom_policy_mode prom_sgemm_controller_step(prom_sgemm_controller_state* 
 
   mode = prom_judgment_engine_update_policy_mode(&state->policy_memory, &state->policy_facts, &state->policy_thresholds);
   state->decision_count += 1u;
-  if (mode != state->last_mode) {
+  if ((uint32_t)mode != state->last_mode) {
     state->transition_count += 1u;
     if (state->transition_count > 1u) {
       state->instability_count += 1u;
@@ -4733,12 +4733,12 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_vk_buffer* shader_a;
   prom_vk_buffer* shader_b;
   prom_vk_buffer* shader_c;
-  VkDeviceSize a_buffer_size;
-  VkDeviceSize b_buffer_size;
-  VkDeviceSize c_buffer_size;
-  size_t a_copy_size;
-  size_t b_copy_size;
-  size_t c_copy_size;
+  VkDeviceSize a_buffer_size = 0;
+  VkDeviceSize b_buffer_size = 0;
+  VkDeviceSize c_buffer_size = 0;
+  size_t a_copy_size = 0u;
+  size_t b_copy_size = 0u;
+  size_t c_copy_size = 0u;
   uint32_t compute_k;
   uint64_t work_units;
   uint32_t work_units_u32;

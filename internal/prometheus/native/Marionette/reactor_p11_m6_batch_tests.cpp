@@ -1182,7 +1182,8 @@ FACT(PrometheusReactor_P11_M13_WrongOwnerCommandResourceUseRejected)
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(PrometheusReactorConfig);
-    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER;
+    cfg.test_flags = static_cast<std::uint32_t>(
+        PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER);
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
 
