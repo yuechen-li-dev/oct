@@ -332,11 +332,7 @@ void prom_judgment_engine_select_async_submission(const prom_judgment_async_fact
 
 void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts* facts,
                                                 prom_resource_lease_decision* out_decision) {
-  enum { PROM_LEASE_FAIRNESS_BUCKETS = 64u };
-  static uint32_t s_requests[PROM_LEASE_FAIRNESS_BUCKETS];
-  static uint32_t s_grants[PROM_LEASE_FAIRNESS_BUCKETS];
   uint32_t slot_mask;
-  uint32_t fairness_bucket;
   int grant_score;
   int backpressure_score;
   int lookahead_score;
@@ -372,8 +368,6 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
   out_decision->allowed_outstanding_depth = facts->max_outstanding_depth;
   out_decision->selected_recipe_variant = facts->selected_recipe_variant;
   out_decision->yield_required = facts->yield_requested;
-  fairness_bucket = facts->worker_id % PROM_LEASE_FAIRNESS_BUCKETS;
-  s_requests[fairness_bucket] += 1u;
 
   if (facts->yield_requested != 0u) {
     if (facts->lease_held == 0u && facts->current_outstanding_depth == 0u && facts->max_outstanding_depth == 0u) {
@@ -390,6 +384,27 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
   }
 
   slot_mask = facts->slot_id < 32u ? (1u << facts->slot_id) : 0u;
+  if (facts->single_call_mode != 0u) {
+    if (facts->unsafe_to_reuse != 0u) {
+      out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+      out_decision->deny_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+      out_decision->backpressure_applied = 1u;
+      out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
+      return;
+    }
+    if (facts->current_outstanding_depth >= facts->max_outstanding_depth) {
+      out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+      out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+      out_decision->backpressure_applied = 1u;
+      out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
+      return;
+    }
+    out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
+    out_decision->grant = 1u;
+    out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
+    out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
+    return;
+  }
   if (slot_mask != 0u && (facts->failed_slot_mask & slot_mask) != 0u) {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
@@ -450,14 +465,19 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
   } else if (facts->selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
     grant_score += 12;
   }
-  grant_score += (int)s_requests[fairness_bucket] - (int)(s_grants[fairness_bucket] * 2u);
+  /* M14 audit follow-up: fairness ownership moved out of judgment engine.
+   * Keep this function pure (facts -> decision) and deterministic across threads. */
+  if (facts->current_outstanding_depth == 0u) {
+    grant_score += 4;
+  } else if (facts->current_outstanding_depth >= facts->max_outstanding_depth) {
+    grant_score -= 6;
+  }
 
   if (grant_score >= backpressure_score) {
     out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
     out_decision->grant = 1u;
     out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
     out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
-    s_grants[fairness_bucket] += 1u;
   } else {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->grant = 0u;

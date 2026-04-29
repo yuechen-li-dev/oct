@@ -831,3 +831,79 @@ FACT(PrometheusJudgmentEngine_P13_M13_LeaseUtilityPolicy_HardUtilityFairnessAndL
     prom_judgment_engine_decide_resource_lease(&facts, &decision);
     ASSERT_EQUAL(1u, decision.grant, "under-served worker should still receive grant");
 }
+
+FACT(PrometheusJudgmentEngine_P13_M14_ResourceLeaseDecisionIsPureFromFacts)
+{
+    prom_resource_lease_facts facts{};
+    facts.worker_id = 3u;
+    facts.slot_id = 1u;
+    facts.entry_id = 5u;
+    facts.shape_class = static_cast<std::uint32_t>(PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE);
+    facts.device_band = static_cast<std::uint32_t>(PROM_OCCUPANCY_DEVICE_BAND_BALANCED);
+    facts.selected_recipe_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE);
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.register_pressure_class = 2u;
+    facts.shared_memory_pressure_class = 3u;
+    facts.memory_bandwidth_pressure_class = 3u;
+    facts.compute_pressure_class = 2u;
+    facts.pipeline_latency_pressure_class = 3u;
+    facts.current_outstanding_depth = 0u;
+    facts.max_outstanding_depth = 2u;
+    facts.lookahead_requested = 1u;
+    facts.lookahead_limit = 2u;
+    facts.ready_slot_mask = (1u << facts.slot_id);
+    facts.transfer_overlap_available = 1u;
+    facts.true_multi_queue_selected = 1u;
+
+    prom_resource_lease_decision baseline{};
+    prom_judgment_engine_decide_resource_lease(&facts, &baseline);
+    for (std::uint32_t i = 0u; i < 32u; ++i) {
+        prom_resource_lease_decision again{};
+        prom_judgment_engine_decide_resource_lease(&facts, &again);
+        ASSERT_EQUAL(baseline.lease_state, again.lease_state, "pure lease decision should be deterministic across repeated calls");
+        ASSERT_EQUAL(baseline.grant, again.grant, "grant bit must remain stable for identical facts");
+        ASSERT_EQUAL(baseline.detail, again.detail, "detail reason must remain stable for identical facts");
+    }
+}
+
+FACT(PrometheusJudgmentEngine_P13_M14_SingleCallModeSkipsContentionBackpressureButKeepsHardGates)
+{
+    prom_resource_lease_facts facts{};
+    facts.worker_id = 0u;
+    facts.slot_id = 0u;
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.single_call_mode = 1u;
+    facts.current_outstanding_depth = 0u;
+    facts.max_outstanding_depth = 1u;
+    facts.lookahead_limit = 1u;
+    facts.ready_slot_mask = 1u;
+    facts.slot_attention_mask = 1u;
+    facts.register_pressure_class = 4u;
+    facts.shared_memory_pressure_class = 4u;
+    facts.memory_bandwidth_pressure_class = 4u;
+    facts.compute_pressure_class = 4u;
+
+    prom_resource_lease_decision decision{};
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "single-call mode should grant after hard gates pass");
+
+    facts.unsafe_to_reuse = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "unsafe hard gate should still deny single-call mode");
+    facts.unsafe_to_reuse = 0u;
+
+    facts.failed_slot_mask = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "single-call mode should ignore stale failed/invalidated slot masks");
+
+    facts.single_call_mode = 0u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "batch mode must still deny failed-slot mask");
+
+    facts.failed_slot_mask = 0u;
+    facts.single_call_mode = 1u;
+    facts.current_outstanding_depth = 1u;
+    facts.max_outstanding_depth = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "single-call mode must still deny at outstanding-depth cap");
+}

@@ -1112,6 +1112,42 @@ static uint32_t batch_decide_resource_lease(const prom_resource_lease_facts* fac
   return 1u;
 }
 
+static void prom_fill_lease_pressure_classes(prometheus_runtime* rt,
+                                             uint32_t selected_recipe_variant,
+                                             uint32_t shape_class,
+                                             uint32_t device_band,
+                                             uint64_t work_units,
+                                             prom_resource_lease_facts* facts) {
+  if (facts == NULL) {
+    return;
+  }
+  facts->register_pressure_class = 1u;
+  facts->shared_memory_pressure_class = 1u;
+  facts->memory_bandwidth_pressure_class = 1u;
+  facts->compute_pressure_class = 1u;
+  facts->pipeline_latency_pressure_class = 1u;
+
+  if (selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    facts->register_pressure_class = 4u;
+    facts->compute_pressure_class = 4u;
+  } else if (selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    facts->memory_bandwidth_pressure_class = 3u;
+    facts->shared_memory_pressure_class = 3u;
+  }
+  if (device_band == PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED) {
+    facts->register_pressure_class = facts->register_pressure_class < 3u ? 3u : facts->register_pressure_class;
+  }
+  if (shape_class == PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE || work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD) {
+    facts->compute_pressure_class = facts->compute_pressure_class < 3u ? 3u : facts->compute_pressure_class;
+    facts->memory_bandwidth_pressure_class = facts->memory_bandwidth_pressure_class < 3u ? 3u : facts->memory_bandwidth_pressure_class;
+    facts->pipeline_latency_pressure_class = 3u;
+  }
+  if (rt != NULL && rt->slot_diag.m35_budget_rejection_count != 0u) {
+    facts->memory_bandwidth_pressure_class = 4u;
+    facts->shared_memory_pressure_class = facts->shared_memory_pressure_class < 3u ? 3u : facts->shared_memory_pressure_class;
+  }
+}
+
 typedef struct prom_batch_thread_ctx {
   prometheus_runtime* rt;
   const prom_batch_plan* plans;
@@ -5179,9 +5215,29 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   lease_facts.slot_id = work_slot_id;
   lease_facts.entry_id = 0u;
   lease_facts.selected_recipe_variant = occupancy_decision.selected_variant;
+  lease_facts.shape_class = occupancy_decision.shape_class;
+  lease_facts.device_band = occupancy_decision.device_band;
   lease_facts.requested_resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
+  lease_facts.current_outstanding_depth = 0u;
+  lease_facts.max_outstanding_depth = 1u;
+  lease_facts.single_call_mode = 1u;
   lease_facts.lookahead_requested = rt->sgemm_controller.lookahead;
   lease_facts.lookahead_limit = prom_sgemm_default_config().lookahead_max;
+  if (work_slot_id < 32u) {
+    const uint32_t slot_mask = (1u << work_slot_id);
+    /* Single-call path is explicitly preparing this slot for immediate dispatch.
+     * Mark it ready/attention to avoid synthetic utility under-scoring. */
+    lease_facts.ready_slot_mask = slot_mask;
+    lease_facts.slot_attention_mask = slot_mask;
+  }
+  lease_facts.transfer_overlap_available = 1u;
+  lease_facts.true_multi_queue_selected = 1u;
+  prom_fill_lease_pressure_classes(rt,
+                                   lease_facts.selected_recipe_variant,
+                                   lease_facts.shape_class,
+                                   lease_facts.device_band,
+                                   work_units,
+                                   &lease_facts);
   prepare_detail = prom_slot_prepare_for_call(rt,
                                               work_slot_id,
                                               m,
@@ -5572,6 +5628,25 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                      &push);
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+  if (work_slot_id < 32u) {
+    const uint32_t slot_mask = (1u << work_slot_id);
+    lease_facts.ready_slot_mask = slot_mask;
+    lease_facts.slot_attention_mask = slot_mask;
+  }
+  lease_facts.failed_slot_mask = 0u;
+  lease_facts.invalidated_slot_mask = 0u;
+  lease_facts.unsafe_to_reuse = 0u;
+  if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_decision) == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  lease_granted = lease_decision.grant;
+  if (lease_granted == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+    return PROM_ERROR;
+  }
+  lease_facts.lease_held = 1u;
+  lease_facts.current_outstanding_depth = 1u;
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
@@ -5830,11 +5905,17 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       prom_dom_sgemm_commit(&rt->blackboard);
     }
     if (lease_granted != 0u) {
+      lease_facts.single_call_mode = 1u;
       lease_facts.yield_requested = 1u;
+      lease_facts.lease_held = 1u;
+      lease_facts.current_outstanding_depth = 1u;
+      lease_facts.max_outstanding_depth = 1u;
       if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_yield_decision) == 0u) {
-        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_ERROR);
+        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
         return PROM_ERROR;
       }
+      lease_facts.lease_held = 0u;
+      lease_facts.current_outstanding_depth = 0u;
     }
     note_last_execution_shape(rt, m, n, k);
     return PROM_OK;
