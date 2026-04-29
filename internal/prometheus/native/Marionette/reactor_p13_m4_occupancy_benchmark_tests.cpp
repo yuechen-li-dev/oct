@@ -159,7 +159,26 @@ namespace
 
     bool variant_is_implemented(std::uint32_t variant)
     {
+        switch (variant) {
+            case PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool variant_dispatch_enabled(std::uint32_t variant)
+    {
         return variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
+    }
+
+    bool aggressive_shape_supported(const BenchmarkShapeCase& shape)
+    {
+        return shape.m >= 128u && shape.n >= 128u && shape.k >= 128u;
     }
 
     std::vector<float> deterministic_matrix(std::uint32_t rows, std::uint32_t cols, std::uint32_t salt)
@@ -351,6 +370,15 @@ namespace
             }
             result.tested_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
             result.fallback_reason = "unavailable_variant_fallback_to_baseline";
+        }
+
+        if (result.variant_available && !variant_dispatch_enabled(requested_variant)) {
+            result.tested_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
+            result.fallback_reason = "dispatch_disabled_benchmark_only";
+            if (requested_variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) &&
+                !aggressive_shape_supported(shape)) {
+                result.fallback_reason = "aggressive_shape_gate_fallback";
+            }
         }
 
         const std::uint32_t shape_salt = shape.m ^ (shape.n << 1u) ^ (shape.k << 2u);
@@ -578,6 +606,7 @@ namespace
             out << "      \"selected_variant\": \"" << occupancy_variant_name(c.selected_variant) << "\",\n";
             out << "      \"tested_variant\": \"" << occupancy_variant_name(c.tested_variant) << "\",\n";
             out << "      \"variant_available\": " << (c.variant_available ? "true" : "false") << ",\n";
+            out << "      \"variant_dispatch_enabled\": " << (variant_dispatch_enabled(c.selected_variant) ? "true" : "false") << ",\n";
             out << "      \"fallback_reason\": \"" << c.fallback_reason << "\",\n";
             out << "      \"correct\": " << (c.correctness.pass ? "true" : "false") << ",\n";
             out << "      \"max_absolute_error\": " << c.correctness.max_abs_error << ",\n";
@@ -666,7 +695,7 @@ FACT(P13_M4_LowTimingConfidenceBlocksActuation)
     ASSERT_FALSE(run.final_actuation_ready, "low timing confidence must block actuation readiness");
 }
 
-FACT(P13_M4_UnavailableVariantNotMarkedSuccessful)
+FACT(P13_M16_BenchmarkOnlyVariantsFallbackFromDispatch)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
@@ -674,8 +703,9 @@ FACT(P13_M4_UnavailableVariantNotMarkedSuccessful)
                                            false);
     ASSERT_TRUE(!run.cases.empty(), "comparison mode should include compact cases");
     for (const CaseResult& result : run.cases) {
-        ASSERT_FALSE(result.variant_available, "aggressive variant should report unavailable in M4 harness");
-        ASSERT_FALSE(result.actuation_ready, "unavailable variant case must never become actuation-ready");
+        ASSERT_TRUE(result.variant_available, "aggressive variant should report available in M16 harness");
+        ASSERT_FALSE(result.actuation_ready, "benchmark-only variant case must never become actuation-ready");
+        ASSERT_TRUE(!result.fallback_reason.empty(), "benchmark-only variants should report fallback reason");
     }
 }
 
