@@ -313,6 +313,7 @@ typedef struct prom_resource_lease_facts {
   uint32_t unsafe_to_reuse;
   uint32_t yield_requested;
   uint32_t lease_held;
+  uint32_t single_call_mode;
 } prom_resource_lease_facts;
 
 typedef struct prom_resource_lease_decision {

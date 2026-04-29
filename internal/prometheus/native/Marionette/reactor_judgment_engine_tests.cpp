@@ -865,3 +865,34 @@ FACT(PrometheusJudgmentEngine_P13_M14_ResourceLeaseDecisionIsPureFromFacts)
         ASSERT_EQUAL(baseline.detail, again.detail, "detail reason must remain stable for identical facts");
     }
 }
+
+FACT(PrometheusJudgmentEngine_P13_M14_SingleCallModeSkipsContentionBackpressureButKeepsHardGates)
+{
+    prom_resource_lease_facts facts{};
+    facts.worker_id = 0u;
+    facts.slot_id = 0u;
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.single_call_mode = 1u;
+    facts.current_outstanding_depth = 0u;
+    facts.max_outstanding_depth = 1u;
+    facts.lookahead_limit = 1u;
+    facts.ready_slot_mask = 1u;
+    facts.slot_attention_mask = 1u;
+    facts.register_pressure_class = 4u;
+    facts.shared_memory_pressure_class = 4u;
+    facts.memory_bandwidth_pressure_class = 4u;
+    facts.compute_pressure_class = 4u;
+
+    prom_resource_lease_decision decision{};
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "single-call mode should grant after hard gates pass");
+
+    facts.unsafe_to_reuse = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "unsafe hard gate should still deny single-call mode");
+    facts.unsafe_to_reuse = 0u;
+
+    facts.failed_slot_mask = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "failed-slot hard gate should still deny single-call mode");
+}

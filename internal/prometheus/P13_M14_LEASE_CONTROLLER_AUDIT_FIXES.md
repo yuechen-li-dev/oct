@@ -73,3 +73,15 @@ Lowered conservative default pressure classes from 2 to 1 (still non-zero) to av
 
 ### Current status
 Compatibility is improved but incomplete; further targeted tuning is required for candidate-C pressure paths and baseline oracle expectations before full `PrometheusReactor_Sgemm` acceptance.
+
+## M14 Follow-up 5 — Single-Call/No-Contention Scope
+
+Claude follow-up diagnosis was correct: contention utility arbitration should not deny singleton calls after hard gates pass.
+
+Implemented `single_call_mode` in lease facts and set it for single-SGEMM runtime path. Judgment engine now applies all hard gates first, then grants immediately in single-call mode (using existing grant detail), skipping contention backpressure arbitration.
+
+This preserves:
+- hard safety denials,
+- batch contention arbitration,
+- non-zero pressure classes,
+- pure facts->decision behavior.

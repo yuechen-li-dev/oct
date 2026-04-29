@@ -412,6 +412,13 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
     out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
     return;
   }
+  if (facts->single_call_mode != 0u) {
+    out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
+    out_decision->grant = 1u;
+    out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
+    out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
+    return;
+  }
   hard_lookahead_blocked = (facts->current_outstanding_depth >= facts->lookahead_limit || facts->unsafe_to_reuse != 0u ||
                             (slot_mask != 0u && (facts->failed_slot_mask & slot_mask) != 0u) ||
                             (slot_mask != 0u && (facts->invalidated_slot_mask & slot_mask) != 0u) ||

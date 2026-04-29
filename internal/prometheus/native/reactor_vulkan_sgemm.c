@@ -5220,6 +5220,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   lease_facts.requested_resource_class = PROM_LEASE_RESOURCE_CLASS_COMPUTE;
   lease_facts.current_outstanding_depth = 0u;
   lease_facts.max_outstanding_depth = 1u;
+  lease_facts.single_call_mode = 1u;
   lease_facts.lookahead_requested = rt->sgemm_controller.lookahead;
   lease_facts.lookahead_limit = prom_sgemm_default_config().lookahead_max;
   if (work_slot_id < 32u) {
