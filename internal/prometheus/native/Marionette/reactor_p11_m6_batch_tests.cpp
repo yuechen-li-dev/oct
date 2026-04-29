@@ -964,6 +964,8 @@ FACT(PrometheusReactor_P11_M11_FailureWhileOtherWorkerEmitsDrainsSafely)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+
+#ifndef MARIONETTE_EXCLUDE_SLOW_TESTS
 FACT(PrometheusReactor_P11_M11_OutOfOrderCompletionStillCommitsInEntryOrder)
 {
     PrometheusReactorConfig cfg{};
@@ -1001,6 +1003,9 @@ FACT(PrometheusReactor_P11_M11_OutOfOrderCompletionStillCommitsInEntryOrder)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+
+#endif
 
 FACT(PrometheusReactor_P11_M11_RepeatedBatchesResetPerBatchState)
 {
@@ -1480,6 +1485,8 @@ FACT(PrometheusReactor_P11_M17_WorkerFenceResetAndWaitFailuresRemainWorkerScoped
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(wait_handle), "wait runtime destroy should succeed");
 }
 
+
+#ifndef MARIONETTE_EXCLUDE_SLOW_TESTS
 FACT(PrometheusReactor_P11_M17_DrainTimeoutMarksUnsafeToReuse)
 {
     PrometheusReactorConfig cfg{};
@@ -1507,6 +1514,9 @@ FACT(PrometheusReactor_P11_M17_DrainTimeoutMarksUnsafeToReuse)
     ASSERT_EQUAL(0u, diag.output_committed, "drain timeout path must remain uncommitted");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
+
+
+#endif
 
 FACT(PrometheusReactor_P11_M17_DeviceLostDominatesAndMarksUnsafe)
 {
@@ -1961,8 +1971,6 @@ FACT(PrometheusReactor_P11_M20_FailureMatrix)
         PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_DIRECT_PATH,                                                                             // post-submit
         PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FAIL_RESET_FENCE,                                                                              // fence reset
         PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH,                                            // fence wait
-        PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH |
-            PROM_TESTCFG_DISABLE_SELECTOR_CACHE,                                                                                                                  // drain timeout
         PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_UPLOAD_ONLY | PROM_TESTCFG_DISABLE_STAGING_FALLBACK,                                     // device/global failure
         PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FAIL_DEVICE_CREATE,                                                                                        // wrong-owner
     };
@@ -1973,14 +1981,12 @@ FACT(PrometheusReactor_P11_M20_FailureMatrix)
         base_flags,
         base_flags,
         base_flags,
-        base_flags,
     };
     const std::vector<int> expected_details = {
         PROM_DETAIL_BATCH_EXECUTION_FAILED,
         PROM_DETAIL_BATCH_EXECUTION_FAILED,
         PROM_DETAIL_BATCH_FENCE_RESET_FAILED,
         PROM_DETAIL_BATCH_FENCE_WAIT_FAILED,
-        PROM_DETAIL_BATCH_DRAIN_TIMEOUT,
         PROM_DETAIL_BATCH_DEVICE_LOST,
         PROM_DETAIL_BATCH_RESOURCE_OWNERSHIP_VIOLATION,
     };
@@ -2013,6 +2019,36 @@ FACT(PrometheusReactor_P11_M20_FailureMatrix)
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed after failure case");
     }
 }
+
+
+#ifndef MARIONETTE_EXCLUDE_SLOW_TESTS
+FACT(PrometheusReactor_P11_M20_FailureMatrix_DrainTimeoutSlowCase)
+{
+    const std::uint32_t workers = 2u;
+    const std::uint32_t base_flags = workers | (workers << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT) | (3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT);
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(PrometheusReactorConfig);
+    cfg.test_flags = PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_TILED_PATH | PROM_TESTCFG_DISABLE_SELECTOR_CACHE;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    std::vector<float> a = make_matrix(4u, 4u, 0.2f);
+    std::vector<float> b = make_matrix(4u, 4u, 0.4f);
+    std::vector<float> c(16u, 9.0f);
+    PrometheusSgemmBatchEntry entry{a.data(), b.data(), c.data(), 4u, 4u, 4u};
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const int status = prometheus_reactor_runtime_sgemm_batch(handle, &entry, 1u, base_flags, &stage, &detail);
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(0u, diag.output_committed, "failure matrix slow case must never commit output");
+    ASSERT_EQUAL(PROM_ERROR, status, "drain timeout slow case should fail");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_DRAIN_TIMEOUT, detail, "failure detail should be truthful");
+    ASSERT_EQUAL(PROM_BATCH_STATE_FAILED, diag.batch_state, "failure matrix slow case should end failed");
+    ASSERT_EQUAL(1u, diag.first_failure_stable, "first failure metadata must remain stable");
+    ASSERT_EQUAL(9.0f, c[0], "failure run should not partially commit caller-visible output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed after failure case");
+}
+#endif
 
 FACT(PrometheusReactor_P11_M20_RepeatedLifecycle)
 {

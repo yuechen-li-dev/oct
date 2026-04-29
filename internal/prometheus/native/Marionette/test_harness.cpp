@@ -53,7 +53,22 @@ namespace marionette::tests
                 return true;
             }
 
-            return testName.find(filter) != std::string_view::npos;
+            std::size_t start = 0;
+            while (start <= filter.size()) {
+                const std::size_t end = filter.find(',', start);
+                const std::string_view token = end == std::string_view::npos
+                    ? filter.substr(start)
+                    : filter.substr(start, end - start);
+                if (!token.empty() && testName.find(token) != std::string_view::npos) {
+                    return true;
+                }
+                if (end == std::string_view::npos) {
+                    break;
+                }
+                start = end + 1;
+            }
+
+            return false;
         }
 
         void PrintFailure(const TestContext&, const Failure& failure)

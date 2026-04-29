@@ -616,6 +616,8 @@ namespace
     }
 }
 
+
+#ifndef MARIONETTE_EXCLUDE_BENCHMARK_TESTS
 FACT(P13_M4_SmokeModeRunsCompactCases)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
@@ -826,3 +828,5 @@ FACT(P13_M5_SmokeModeCiSafe)
     ASSERT_TRUE(run.warmup_iterations <= 1u, "smoke mode warmup must remain CI-safe");
     ASSERT_TRUE(run.measured_iterations <= 2u, "smoke mode measured iterations must remain CI-safe");
 }
+
+#endif
