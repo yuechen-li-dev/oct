@@ -1121,11 +1121,11 @@ static void prom_fill_lease_pressure_classes(prometheus_runtime* rt,
   if (facts == NULL) {
     return;
   }
-  facts->register_pressure_class = 2u;
-  facts->shared_memory_pressure_class = 2u;
-  facts->memory_bandwidth_pressure_class = 2u;
-  facts->compute_pressure_class = 2u;
-  facts->pipeline_latency_pressure_class = 2u;
+  facts->register_pressure_class = 1u;
+  facts->shared_memory_pressure_class = 1u;
+  facts->memory_bandwidth_pressure_class = 1u;
+  facts->compute_pressure_class = 1u;
+  facts->pipeline_latency_pressure_class = 1u;
 
   if (selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
     facts->register_pressure_class = 4u;

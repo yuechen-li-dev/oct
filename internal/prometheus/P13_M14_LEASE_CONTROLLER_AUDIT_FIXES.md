@@ -59,3 +59,17 @@ Single-SGEMM compute lease request is now deferred to submit phase, immediately 
 
 ### Why pressure classes remain non-zero
 Conservative non-zero pressure classes remain intact by design; compatibility is achieved by phase-correct lease placement and proper ready/attention fact timing, not by zeroing pressure.
+
+## M14 Follow-up 4 — Remaining Submit-Phase Compatibility
+
+### Observed failures
+After submit-phase placement correction, remaining `PrometheusReactor_Sgemm` failures are mixed:
+- some policy/pressure path tests still deny execution,
+- some oracle tests fail with stage mismatch and zero output buffers,
+- some SGEMM tests now pass (determinism, consecutive calls), indicating partial compatibility recovery.
+
+### Latest adjustment
+Lowered conservative default pressure classes from 2 to 1 (still non-zero) to avoid baseline over-backpressure while preserving escalation for high-pressure conditions.
+
+### Current status
+Compatibility is improved but incomplete; further targeted tuning is required for candidate-C pressure paths and baseline oracle expectations before full `PrometheusReactor_Sgemm` acceptance.
