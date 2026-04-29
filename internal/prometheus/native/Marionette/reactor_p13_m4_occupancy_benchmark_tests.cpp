@@ -425,6 +425,8 @@ namespace
                 result.selected_variant = result.diag.p13_m16b1_executed_occupancy_variant;
                 if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED) {
                     result.fallback_reason = "variant_path_not_wired";
+                } else if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS) {
+                    result.fallback_reason = "mc_baseline_strict_alias";
                 } else if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_NONE && result.fallback_reason.empty()) {
                     result.fallback_reason = "none";
                 }
@@ -717,6 +719,46 @@ FACT(P13_M16_BenchmarkOnlyVariantsFallbackFromDispatch)
     }
 }
 
+FACT(P13_M16B3_B2x2VariantWiredPathIdentity)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
+                                           false,
+                                           false);
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4), result.diag.p13_m16b1_executed_occupancy_variant, "B2x2 must execute requested variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED), result.diag.p13_m16b1_variant_path_id, "B2x2 path id mismatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE), result.diag.p13_m16b1_fallback_reason, "B2x2 should not fallback");
+    }
+}
+
+FACT(P13_M16B3_A2x4VariantWiredPathIdentity)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+                                           false,
+                                           false);
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8), result.diag.p13_m16b1_executed_occupancy_variant, "A2x4 must execute requested variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8), result.diag.p13_m16b1_variant_path_id, "A2x4 path id mismatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE), result.diag.p13_m16b1_fallback_reason, "A2x4 should not fallback");
+    }
+}
+
+FACT(P13_M16B3_MemoryConservativeAliasDiagnostics)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+                                           false,
+                                           false);
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_requested_occupancy_variant, "MC request variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_executed_occupancy_variant, "MC executed variant should preserve identity");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE), result.diag.p13_m16b1_variant_path_id, "MC alias should run baseline path id");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS), result.diag.p13_m16b1_fallback_reason, "MC alias reason required");
+    }
+}
+
 FACT(P13_M16B2_SrtVariantWiredPathIdentity)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
@@ -776,6 +818,26 @@ FACT(P13_M16B2_SrtVariantCorrectnessOddK)
         ASSERT_TRUE(correctness.pass, "SRT benchmark output should match CPU oracle");
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(P13_M16B3_PromotionLifecycleFieldsExposed)
+{
+    const std::vector<std::uint32_t> variants = {
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+    };
+    for (const std::uint32_t variant : variants) {
+        const BenchmarkRun run = run_benchmark(HarnessMode::Comparison, variant, false, false);
+        for (const CaseResult& result : run.cases) {
+            ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_benchmark_enabled, "benchmark_enabled must be true");
+            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dvt_validated, "non-baseline dvt_validated must be false");
+            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_pvt_validated, "non-baseline pvt_validated must be false");
+            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_production_eligible, "non-baseline production_eligible must be false");
+            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dispatch_enabled, "non-baseline dispatch_enabled must be false");
+        }
+    }
 }
 
 FACT(P13_M4_DiagnosticsAlignmentRequired)

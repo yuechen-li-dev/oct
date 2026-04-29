@@ -102,11 +102,14 @@ enum {
   PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE = 0,
   PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED = 1,
   PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K = 2,
+  PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED = 3,
+  PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8 = 4,
 };
 
 enum {
   PROM_OCCUPANCY_VARIANT_FALLBACK_NONE = 0,
   PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED = 1,
+  PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS = 2,
 };
 
 enum {
@@ -626,6 +629,8 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p13_m16b1_executed_occupancy_variant;
   uint32_t p13_m16b1_variant_registered;
   uint32_t p13_m16b1_variant_benchmark_enabled;
+  uint32_t p13_m16b1_variant_dvt_validated;
+  uint32_t p13_m16b1_variant_pvt_validated;
   uint32_t p13_m16b1_variant_production_eligible;
   uint32_t p13_m16b1_variant_dispatch_enabled;
   uint32_t p13_m16b1_variant_path_status;
