@@ -45,7 +45,7 @@ namespace
         std::uint32_t m;
         std::uint32_t n;
         std::uint32_t k;
-        std::uint32_t selected_variant;
+        std::uint32_t selector_recommended_variant;
         std::uint32_t tested_variant;
         bool variant_available;
         bool skipped;
@@ -92,7 +92,7 @@ namespace
         std::uint32_t k;
         std::uint32_t requested_variant;
         std::uint32_t executed_variant;
-        std::uint32_t selected_variant;
+        std::uint32_t selector_recommended_variant;
         std::uint32_t variant_path_id;
         std::uint32_t variant_path_status;
         std::uint32_t benchmark_enabled;
@@ -105,6 +105,7 @@ namespace
         std::uint32_t timestamp_valid_bits;
         float timestamp_period_ns;
         std::uint32_t transfer_queue_used;
+        std::uint32_t transfer_queue_selected;
         std::uint32_t dedicated_transfer_available;
         std::uint32_t queue_families_differ;
         std::uint32_t transfer_queue_family_index;
@@ -116,6 +117,8 @@ namespace
         std::uint64_t lease_grant_count;
         std::uint64_t lease_deny_count;
         std::uint64_t lease_yield_count;
+        std::uint32_t runtime_selected_fp16;
+        std::uint32_t device_supports_fp16;
         std::uint32_t outstanding_depth;
         std::string fallback_reason;
         std::string timing_source;
@@ -556,7 +559,7 @@ namespace
 
         observation.correctness = compare_against_oracle(expected, c);
         observation.executed_variant = diag.p13_m16b1_executed_occupancy_variant;
-        observation.selected_variant = diag.p13_m2_occupancy_selected_variant;
+        observation.selector_recommended_variant = diag.p13_m2_occupancy_selected_variant;
         observation.variant_path_id = diag.p13_m16b1_variant_path_id;
         observation.variant_path_status = diag.p13_m16b1_variant_path_status;
         observation.benchmark_enabled = diag.p13_m16b1_variant_benchmark_enabled;
@@ -569,6 +572,7 @@ namespace
         observation.timestamp_valid_bits = diag.p13_m5_timestamp_valid_bits;
         observation.timestamp_period_ns = diag.p13_m5_timestamp_period_ns;
         observation.transfer_queue_used = diag.m31_transfer_queue_used;
+        observation.transfer_queue_selected = diag.m31_transfer_policy_selected;
         observation.dedicated_transfer_available = diag.m31_dedicated_transfer_available;
         observation.queue_families_differ = diag.m31_queue_families_differ;
         observation.transfer_queue_family_index = diag.m31_transfer_queue_family_index;
@@ -580,6 +584,8 @@ namespace
         observation.lease_grant_count = diag.p13_m10_lease_grant_count;
         observation.lease_deny_count = diag.p13_m10_lease_deny_count;
         observation.lease_yield_count = diag.p13_m10_lease_yield_count;
+        observation.runtime_selected_fp16 = diag.fp16_selected_candidate;
+        observation.device_supports_fp16 = diag.fp16_tolerance_known;
         observation.outstanding_depth = diag.outstanding_depth;
         observation.fallback_reason = occupancy_variant_fallback_reason_name(diag.p13_m16b1_fallback_reason);
         observation.timestamp_failure_reason = timestamp_failure_reason_name(diag.p13_m5_last_gpu_timing_failure_reason);
@@ -616,7 +622,7 @@ namespace
     {
         std::ostringstream out;
         out << "{\n";
-        out << "  \"schema\": \"prometheus.sgemm.occupancy_dvt2.rtx3070.v1\",\n";
+        out << "  \"schema\": \"prometheus.sgemm.occupancy_dvt2.rtx3070.v2\",\n";
         out << "  \"observations\": [\n";
         for (std::size_t i = 0; i < observations.size(); ++i) {
             const DvtObservation& o = observations[i];
@@ -625,7 +631,7 @@ namespace
             out << "      \"m\": " << o.m << ", \"n\": " << o.n << ", \"k\": " << o.k << ",\n";
             out << "      \"requested_variant\": \"" << occupancy_variant_name(o.requested_variant) << "\",\n";
             out << "      \"executed_variant\": \"" << occupancy_variant_name(o.executed_variant) << "\",\n";
-            out << "      \"selector_variant\": \"" << occupancy_variant_name(o.selected_variant) << "\",\n";
+            out << "      \"selector_recommended_variant\": \"" << occupancy_variant_name(o.selector_recommended_variant) << "\",\n";
             out << "      \"path_id\": \"" << occupancy_variant_path_id_name(o.variant_path_id) << "\",\n";
             out << "      \"path_status\": \"" << occupancy_variant_path_status_name(o.variant_path_status) << "\",\n";
             out << "      \"fallback_reason\": \"" << o.fallback_reason << "\",\n";
@@ -651,7 +657,8 @@ namespace
                 << ", \"gpu_duration_ns_min\": " << o.gpu_duration_ns_min
                 << ", \"stability_cv\": " << o.stability_cv
                 << ", \"stability_permille\": " << o.timing_stability_permille << "},\n";
-            out << "      \"queues\": {\"transfer_queue_used\": " << o.transfer_queue_used
+            out << "      \"queues\": {\"transfer_queue_selected\": " << o.transfer_queue_selected
+                << ", \"transfer_queue_used\": " << o.transfer_queue_used
                 << ", \"dedicated_transfer_available\": " << o.dedicated_transfer_available
                 << ", \"queue_families_differ\": " << o.queue_families_differ
                 << ", \"transfer_queue_family_index\": " << o.transfer_queue_family_index
@@ -659,6 +666,8 @@ namespace
                 << ", \"queue_family_handoff_count\": " << o.queue_family_handoff_count
                 << ", \"transfer_compute_wait_count\": " << o.transfer_compute_wait_count
                 << ", \"transfer_fallback_reason\": " << o.transfer_fallback_reason << "},\n";
+            out << "      \"runtime_features\": {\"runtime_selected_fp16\": " << o.runtime_selected_fp16
+                << ", \"device_supports_fp16\": " << o.device_supports_fp16 << "},\n";
             out << "      \"lease\": {\"request_count\": " << o.lease_request_count
                 << ", \"grant_count\": " << o.lease_grant_count
                 << ", \"deny_count\": " << o.lease_deny_count
@@ -1369,6 +1378,10 @@ FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
                 ASSERT_TRUE(observation.correctness.pass, "all DVT occupancy cases must match CPU oracle");
             ASSERT_EQUAL(variant, observation.requested_variant, "requested variant identity must be preserved");
             ASSERT_EQUAL(variant, observation.executed_variant, "executed variant identity must be preserved");
+            ASSERT_TRUE(observation.selector_recommended_variant == observation.requested_variant ||
+                        observation.selector_recommended_variant != observation.executed_variant ||
+                        observation.requested_variant != observation.executed_variant,
+                        "selector/request/executed fields must stay independently representable");
             ASSERT_EQUAL(expected_variant_path_id(variant), observation.variant_path_id, "variant path id must match current wiring");
             ASSERT_EQUAL(occupancy_variant_fallback_reason_name(expected_variant_fallback_reason(variant)),
                          observation.fallback_reason,
@@ -1400,8 +1413,29 @@ FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "DVT runtime destroy should succeed");
     const std::string artifact = render_dvt2_artifact(observations);
-    ASSERT_TRUE(artifact.find("prometheus.sgemm.occupancy_dvt2.rtx3070.v1") != std::string::npos, "DVT artifact schema should be present");
+    ASSERT_TRUE(artifact.find("prometheus.sgemm.occupancy_dvt2.rtx3070.v2") != std::string::npos, "DVT artifact schema should be present");
     ASSERT_TRUE(context.WriteTextArtifact("p13_dvt2_rtx3070_validation", artifact), "DVT artifact should be emitted");
+}
+
+
+FACT(P13_M17_DvtArtifactTruthFieldsSeparated)
+{
+    DvtObservation o{};
+    o.shape_name = "truth-separation";
+    o.m = 64u; o.n = 64u; o.k = 64u;
+    o.requested_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4);
+    o.executed_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4);
+    o.selector_recommended_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE);
+    o.transfer_queue_selected = 1u;
+    o.transfer_queue_used = 0u;
+    o.device_supports_fp16 = 1u;
+    o.runtime_selected_fp16 = 0u;
+    const std::string artifact = render_dvt2_artifact(std::vector<DvtObservation>{o});
+    ASSERT_TRUE(artifact.find("\"selector_recommended_variant\": \"small-register-tile\"") != std::string::npos, "artifact must keep selector recommendation separate from request/execution");
+    ASSERT_TRUE(artifact.find("\"requested_variant\": \"balanced-2x2-accum4\"") != std::string::npos, "artifact must include benchmark requested variant");
+    ASSERT_TRUE(artifact.find("\"executed_variant\": \"balanced-2x2-accum4\"") != std::string::npos, "artifact must include runtime executed variant");
+    ASSERT_TRUE(artifact.find("\"transfer_queue_selected\": 1, \"transfer_queue_used\": 0") != std::string::npos, "artifact must separate transfer capability/selection from usage");
+    ASSERT_TRUE(artifact.find("\"runtime_selected_fp16\": 0, \"device_supports_fp16\": 1") != std::string::npos, "artifact must separate FP16 capability from runtime selection");
 }
 
 FACT(P13_M5_SmokeModeCiSafe)
