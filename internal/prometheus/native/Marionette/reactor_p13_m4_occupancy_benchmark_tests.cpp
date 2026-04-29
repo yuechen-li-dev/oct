@@ -85,6 +85,53 @@ namespace
         std::string final_reason;
     };
 
+    struct DvtObservation {
+        std::string shape_name;
+        std::uint32_t m;
+        std::uint32_t n;
+        std::uint32_t k;
+        std::uint32_t requested_variant;
+        std::uint32_t executed_variant;
+        std::uint32_t selected_variant;
+        std::uint32_t variant_path_id;
+        std::uint32_t variant_path_status;
+        std::uint32_t benchmark_enabled;
+        std::uint32_t dvt_validated;
+        std::uint32_t pvt_validated;
+        std::uint32_t production_eligible;
+        std::uint32_t dispatch_enabled;
+        std::uint32_t timestamp_available;
+        std::uint32_t timestamp_valid;
+        std::uint32_t timestamp_valid_bits;
+        float timestamp_period_ns;
+        std::uint32_t transfer_queue_used;
+        std::uint32_t dedicated_transfer_available;
+        std::uint32_t queue_families_differ;
+        std::uint32_t transfer_queue_family_index;
+        std::uint32_t compute_queue_family_index;
+        std::uint64_t queue_family_handoff_count;
+        std::uint64_t transfer_compute_wait_count;
+        std::uint32_t transfer_fallback_reason;
+        std::uint64_t lease_request_count;
+        std::uint64_t lease_grant_count;
+        std::uint64_t lease_deny_count;
+        std::uint64_t lease_yield_count;
+        std::uint32_t outstanding_depth;
+        std::string fallback_reason;
+        std::string timing_source;
+        std::string timing_confidence;
+        std::string timestamp_failure_reason;
+        double cpu_duration_ns_mean;
+        double gpu_duration_ns_mean;
+        double gpu_duration_ns_median;
+        double gpu_duration_ns_min;
+        double stability_cv;
+        std::uint32_t timing_stability_permille;
+        CorrectnessSummary correctness;
+        bool runtime_ok;
+        std::string runtime_error;
+    };
+
     constexpr float kAbsTolerance = 1.0e-4f;
     constexpr float kRelTolerance = 1.0e-4f;
     constexpr double kImprovementThreshold = 0.03;
@@ -152,6 +199,54 @@ namespace
                 return "balanced-2x2-accum4";
             case PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8:
                 return "aggressive-4x4-accum8";
+            default:
+                return "unknown";
+        }
+    }
+
+    std::string occupancy_variant_path_id_name(std::uint32_t path_id)
+    {
+        switch (path_id) {
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE:
+                return "baseline";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED:
+                return "not_wired";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K:
+                return "srt_2accum_k";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED:
+                return "b2x2_row_major_biased";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8:
+                return "a2x4_row_biased_accum8";
+            default:
+                return "unknown";
+        }
+    }
+
+    std::string occupancy_variant_path_status_name(std::uint32_t path_status)
+    {
+        switch (path_status) {
+            case PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE:
+                return "baseline";
+            case PROM_OCCUPANCY_VARIANT_PATH_STATUS_ALIAS_OR_NOT_WIRED:
+                return "alias_or_not_wired";
+            case PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED:
+                return "not_wired";
+            case PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED:
+                return "wired";
+            default:
+                return "unknown";
+        }
+    }
+
+    std::string occupancy_variant_fallback_reason_name(std::uint32_t fallback_reason)
+    {
+        switch (fallback_reason) {
+            case PROM_OCCUPANCY_VARIANT_FALLBACK_NONE:
+                return "none";
+            case PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED:
+                return "path_not_wired";
+            case PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS:
+                return "mc_baseline_strict_alias";
             default:
                 return "unknown";
         }
@@ -307,6 +402,277 @@ namespace
         result.gflops = (result.mean_ns > 0.0) ? ((flops / result.mean_ns) / 1.0e9) : 0.0;
         const double bytes = static_cast<double>(result.m * result.k + result.k * result.n + result.m * result.n) * static_cast<double>(sizeof(float));
         result.arithmetic_intensity = (bytes > 0.0) ? (flops / bytes) : 0.0;
+    }
+
+    void summarize_basic_timing(double& out_mean,
+                                double& out_min,
+                                double& out_median,
+                                double& out_cv,
+                                std::uint32_t& out_permille,
+                                const std::vector<double>& samples)
+    {
+        out_mean = 0.0;
+        out_min = 0.0;
+        out_median = 0.0;
+        out_cv = 0.0;
+        out_permille = 0u;
+        if (samples.empty()) {
+            return;
+        }
+
+        std::vector<double> sorted = samples;
+        std::sort(sorted.begin(), sorted.end());
+        out_min = sorted.front();
+        out_median = sorted[sorted.size() / 2u];
+        double sum = 0.0;
+        for (double sample : sorted) {
+            sum += sample;
+        }
+        out_mean = sum / static_cast<double>(sorted.size());
+
+        double variance = 0.0;
+        for (double sample : sorted) {
+            const double delta = sample - out_mean;
+            variance += delta * delta;
+        }
+        variance /= static_cast<double>(sorted.size());
+        const double stddev = std::sqrt(variance);
+        out_cv = (out_mean > 0.0) ? (stddev / out_mean) : 0.0;
+        out_permille = static_cast<std::uint32_t>(out_cv * 1000.0);
+    }
+
+    std::uint32_t expected_variant_path_id(std::uint32_t variant)
+    {
+        switch (variant) {
+            case PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8);
+            default:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED);
+        }
+    }
+
+    std::uint32_t expected_variant_fallback_reason(std::uint32_t variant)
+    {
+        return variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE)
+            ? static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS)
+            : static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE);
+    }
+
+    const std::vector<BenchmarkShapeCase>& dvt_shape_cases()
+    {
+        static const std::vector<BenchmarkShapeCase> kCases = {
+            {"1x1x1", 0u, 1u, 1u, 1u, true},
+            {"1xN-small", 0u, 1u, 17u, 9u, true},
+            {"Mx1-small", 0u, 19u, 1u, 7u, true},
+            {"3x7x5", 0u, 3u, 7u, 5u, true},
+            {"15x17x11", 0u, 15u, 17u, 11u, true},
+            {"8x8x9", 0u, 8u, 8u, 9u, true},
+            {"16x16x17", 0u, 16u, 16u, 17u, true},
+            {"64x64x65", 0u, 64u, 64u, 65u, true},
+            {"wide-short-small", 0u, 4u, 19u, 7u, true},
+            {"tall-skinny-small", 0u, 21u, 5u, 11u, true},
+            {"K-heavy-small", 0u, 7u, 9u, 33u, true},
+            {"ml-ffn-like-small", 0u, 128u, 344u, 128u, true},
+        };
+        return kCases;
+    }
+
+    DvtObservation run_dvt_observation(void* handle,
+                                       const BenchmarkShapeCase& shape,
+                                       std::uint32_t requested_variant,
+                                       std::uint32_t measured_iterations)
+    {
+        DvtObservation observation{};
+        observation.shape_name = shape.name;
+        observation.m = shape.m;
+        observation.n = shape.n;
+        observation.k = shape.k;
+        observation.requested_variant = requested_variant;
+        observation.executed_variant = requested_variant;
+        observation.timing_source = "cpu_wall_clock";
+        observation.timing_confidence = "low";
+        observation.timestamp_failure_reason = "unsupported";
+
+        const std::uint32_t shape_salt = shape.m ^ (shape.n << 1u) ^ (shape.k << 2u);
+        const std::vector<float> a = deterministic_matrix(shape.m, shape.k, shape_salt + 17u);
+        const std::vector<float> b = deterministic_matrix(shape.k, shape.n, shape_salt + 73u);
+        std::vector<float> c(static_cast<std::size_t>(shape.m) * static_cast<std::size_t>(shape.n), 0.0f);
+        const std::vector<float> expected = cpu_oracle(shape.m, shape.n, shape.k, a, b);
+
+        std::uint32_t stage = 0u;
+        int detail_code = 0;
+        if (prometheus_reactor_runtime_sgemm_benchmark_variant(handle,
+                                                               a.data(),
+                                                               b.data(),
+                                                               c.data(),
+                                                               shape.m,
+                                                               shape.n,
+                                                               shape.k,
+                                                               requested_variant,
+                                                               &stage,
+                                                               &detail_code) != PROM_OK) {
+            observation.runtime_error = "dvt_warmup_failed";
+            return observation;
+        }
+
+        std::vector<double> cpu_samples;
+        std::vector<double> gpu_samples;
+        cpu_samples.reserve(measured_iterations);
+        gpu_samples.reserve(measured_iterations);
+        PrometheusSgemmPolicyDiagnostics diag{};
+        for (std::uint32_t i = 0; i < measured_iterations; ++i) {
+            const auto start = std::chrono::steady_clock::now();
+            if (prometheus_reactor_runtime_sgemm_benchmark_variant(handle,
+                                                                   a.data(),
+                                                                   b.data(),
+                                                                   c.data(),
+                                                                   shape.m,
+                                                                   shape.n,
+                                                                   shape.k,
+                                                                   requested_variant,
+                                                                   &stage,
+                                                                   &detail_code) != PROM_OK) {
+                observation.runtime_error = "dvt_measured_call_failed";
+                return observation;
+            }
+            const auto end = std::chrono::steady_clock::now();
+            cpu_samples.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
+            memset(&diag, 0, sizeof(diag));
+            if (prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag) != PROM_OK) {
+                observation.runtime_error = "dvt_diagnostics_query_failed";
+                return observation;
+            }
+            if (diag.p13_m5_last_gpu_timing_valid != 0u && diag.p13_m5_last_gpu_duration_ns > 0u) {
+                gpu_samples.push_back(static_cast<double>(diag.p13_m5_last_gpu_duration_ns));
+            }
+        }
+
+        observation.correctness = compare_against_oracle(expected, c);
+        observation.executed_variant = diag.p13_m16b1_executed_occupancy_variant;
+        observation.selected_variant = diag.p13_m2_occupancy_selected_variant;
+        observation.variant_path_id = diag.p13_m16b1_variant_path_id;
+        observation.variant_path_status = diag.p13_m16b1_variant_path_status;
+        observation.benchmark_enabled = diag.p13_m16b1_variant_benchmark_enabled;
+        observation.dvt_validated = diag.p13_m16b1_variant_dvt_validated;
+        observation.pvt_validated = diag.p13_m16b1_variant_pvt_validated;
+        observation.production_eligible = diag.p13_m16b1_variant_production_eligible;
+        observation.dispatch_enabled = diag.p13_m16b1_variant_dispatch_enabled;
+        observation.timestamp_available = diag.p13_m5_timestamp_available;
+        observation.timestamp_valid = diag.p13_m5_last_gpu_timing_valid;
+        observation.timestamp_valid_bits = diag.p13_m5_timestamp_valid_bits;
+        observation.timestamp_period_ns = diag.p13_m5_timestamp_period_ns;
+        observation.transfer_queue_used = diag.m31_transfer_queue_used;
+        observation.dedicated_transfer_available = diag.m31_dedicated_transfer_available;
+        observation.queue_families_differ = diag.m31_queue_families_differ;
+        observation.transfer_queue_family_index = diag.m31_transfer_queue_family_index;
+        observation.compute_queue_family_index = diag.m31_compute_queue_family_index;
+        observation.queue_family_handoff_count = diag.m31_queue_family_handoff_count;
+        observation.transfer_compute_wait_count = diag.m31_transfer_compute_wait_count;
+        observation.transfer_fallback_reason = diag.m31_transfer_fallback_reason;
+        observation.lease_request_count = diag.p13_m10_lease_request_count;
+        observation.lease_grant_count = diag.p13_m10_lease_grant_count;
+        observation.lease_deny_count = diag.p13_m10_lease_deny_count;
+        observation.lease_yield_count = diag.p13_m10_lease_yield_count;
+        observation.outstanding_depth = diag.outstanding_depth;
+        observation.fallback_reason = occupancy_variant_fallback_reason_name(diag.p13_m16b1_fallback_reason);
+        observation.timestamp_failure_reason = timestamp_failure_reason_name(diag.p13_m5_last_gpu_timing_failure_reason);
+
+        double cpu_min = 0.0;
+        double cpu_median = 0.0;
+        summarize_basic_timing(observation.cpu_duration_ns_mean,
+                               cpu_min,
+                               cpu_median,
+                               observation.stability_cv,
+                               observation.timing_stability_permille,
+                               cpu_samples);
+        double gpu_cv = 0.0;
+        std::uint32_t gpu_permille = 0u;
+        summarize_basic_timing(observation.gpu_duration_ns_mean,
+                               observation.gpu_duration_ns_min,
+                               observation.gpu_duration_ns_median,
+                               gpu_cv,
+                               gpu_permille,
+                               gpu_samples);
+        if (!gpu_samples.empty() && gpu_samples.size() == cpu_samples.size()) {
+            observation.timing_source = "vulkan_timestamp_query";
+            observation.timing_confidence = "high";
+            observation.timestamp_failure_reason = "none";
+            observation.stability_cv = gpu_cv;
+            observation.timing_stability_permille = gpu_permille;
+        }
+
+        observation.runtime_ok = true;
+        return observation;
+    }
+
+    std::string render_dvt2_artifact(const std::vector<DvtObservation>& observations)
+    {
+        std::ostringstream out;
+        out << "{\n";
+        out << "  \"schema\": \"prometheus.sgemm.occupancy_dvt2.rtx3070.v1\",\n";
+        out << "  \"observations\": [\n";
+        for (std::size_t i = 0; i < observations.size(); ++i) {
+            const DvtObservation& o = observations[i];
+            out << "    {\n";
+            out << "      \"shape\": \"" << o.shape_name << "\",\n";
+            out << "      \"m\": " << o.m << ", \"n\": " << o.n << ", \"k\": " << o.k << ",\n";
+            out << "      \"requested_variant\": \"" << occupancy_variant_name(o.requested_variant) << "\",\n";
+            out << "      \"executed_variant\": \"" << occupancy_variant_name(o.executed_variant) << "\",\n";
+            out << "      \"selector_variant\": \"" << occupancy_variant_name(o.selected_variant) << "\",\n";
+            out << "      \"path_id\": \"" << occupancy_variant_path_id_name(o.variant_path_id) << "\",\n";
+            out << "      \"path_status\": \"" << occupancy_variant_path_status_name(o.variant_path_status) << "\",\n";
+            out << "      \"fallback_reason\": \"" << o.fallback_reason << "\",\n";
+            out << "      \"correctness\": {\"pass\": " << (o.correctness.pass ? "true" : "false")
+                << ", \"max_abs_error\": " << o.correctness.max_abs_error
+                << ", \"max_rel_error\": " << o.correctness.max_rel_error
+                << ", \"first_failing_index\": " << o.correctness.first_failing_index << "},\n";
+            out << "      \"lifecycle\": {\"benchmark_enabled\": " << o.benchmark_enabled
+                << ", \"dvt_validated\": " << o.dvt_validated
+                << ", \"pvt_validated\": " << o.pvt_validated
+                << ", \"production_eligible\": " << o.production_eligible
+                << ", \"dispatch_enabled\": " << o.dispatch_enabled << "},\n";
+            out << "      \"timing\": {\"timestamp_available\": " << o.timestamp_available
+                << ", \"timestamp_valid\": " << o.timestamp_valid
+                << ", \"timestamp_valid_bits\": " << o.timestamp_valid_bits
+                << ", \"timestamp_period_ns\": " << o.timestamp_period_ns
+                << ", \"timestamp_failure_reason\": \"" << o.timestamp_failure_reason
+                << "\", \"timing_source\": \"" << o.timing_source
+                << "\", \"timing_confidence\": \"" << o.timing_confidence
+                << "\", \"cpu_duration_ns_mean\": " << o.cpu_duration_ns_mean
+                << ", \"gpu_duration_ns_mean\": " << o.gpu_duration_ns_mean
+                << ", \"gpu_duration_ns_median\": " << o.gpu_duration_ns_median
+                << ", \"gpu_duration_ns_min\": " << o.gpu_duration_ns_min
+                << ", \"stability_cv\": " << o.stability_cv
+                << ", \"stability_permille\": " << o.timing_stability_permille << "},\n";
+            out << "      \"queues\": {\"transfer_queue_used\": " << o.transfer_queue_used
+                << ", \"dedicated_transfer_available\": " << o.dedicated_transfer_available
+                << ", \"queue_families_differ\": " << o.queue_families_differ
+                << ", \"transfer_queue_family_index\": " << o.transfer_queue_family_index
+                << ", \"compute_queue_family_index\": " << o.compute_queue_family_index
+                << ", \"queue_family_handoff_count\": " << o.queue_family_handoff_count
+                << ", \"transfer_compute_wait_count\": " << o.transfer_compute_wait_count
+                << ", \"transfer_fallback_reason\": " << o.transfer_fallback_reason << "},\n";
+            out << "      \"lease\": {\"request_count\": " << o.lease_request_count
+                << ", \"grant_count\": " << o.lease_grant_count
+                << ", \"deny_count\": " << o.lease_deny_count
+                << ", \"yield_count\": " << o.lease_yield_count
+                << ", \"outstanding_depth\": " << o.outstanding_depth << "}\n";
+            out << "    }";
+            if (i + 1u < observations.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ]\n";
+        out << "}\n";
+        return out.str();
     }
 
     bool candidate_actuation_gate(const CaseResult& candidate, const CaseResult& baseline)
@@ -978,6 +1344,64 @@ FACT(P13_M5_ArtifactSchemaIncludesTimestampFields)
     ASSERT_TRUE(artifact.find("\"timestamp_available\"") != std::string::npos, "artifact must include timestamp availability");
     ASSERT_TRUE(artifact.find("\"timestamp_failure_reason\"") != std::string::npos, "artifact must include timestamp failure reason");
     ASSERT_TRUE(artifact.find("\"gpu_duration_ns_mean\"") != std::string::npos, "artifact must include GPU duration statistics");
+}
+
+FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "DVT runtime create should succeed");
+    ASSERT_TRUE(handle != nullptr, "DVT runtime handle should be valid");
+
+    const std::vector<std::uint32_t> variants = {
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+    };
+
+        std::vector<DvtObservation> observations;
+        observations.reserve(variants.size() * dvt_shape_cases().size());
+        for (const std::uint32_t variant : variants) {
+            for (const BenchmarkShapeCase& shape : dvt_shape_cases()) {
+                const DvtObservation observation = run_dvt_observation(handle, shape, variant, 2u);
+                ASSERT_TRUE(observation.runtime_ok, observation.runtime_error.empty() ? "DVT observation should complete" : observation.runtime_error);
+                ASSERT_TRUE(observation.correctness.pass, "all DVT occupancy cases must match CPU oracle");
+            ASSERT_EQUAL(variant, observation.requested_variant, "requested variant identity must be preserved");
+            ASSERT_EQUAL(variant, observation.executed_variant, "executed variant identity must be preserved");
+            ASSERT_EQUAL(expected_variant_path_id(variant), observation.variant_path_id, "variant path id must match current wiring");
+            ASSERT_EQUAL(occupancy_variant_fallback_reason_name(expected_variant_fallback_reason(variant)),
+                         observation.fallback_reason,
+                         "fallback reason text must match current wiring");
+            ASSERT_EQUAL(1u, observation.benchmark_enabled, "all benchmark-seam variants should remain benchmark enabled");
+            if (variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)) {
+                ASSERT_EQUAL(1u, observation.dvt_validated, "baseline dvt_validated should remain true");
+                ASSERT_EQUAL(1u, observation.pvt_validated, "baseline pvt_validated should remain true");
+                ASSERT_EQUAL(1u, observation.production_eligible, "baseline production_eligible should remain true");
+                ASSERT_EQUAL(1u, observation.dispatch_enabled, "baseline dispatch_enabled should remain true");
+            } else {
+                ASSERT_EQUAL(0u, observation.dvt_validated, "non-baseline dvt_validated must remain false before closeout");
+                ASSERT_EQUAL(0u, observation.pvt_validated, "non-baseline pvt_validated must remain false");
+                ASSERT_EQUAL(0u, observation.production_eligible, "non-baseline production_eligible must remain false");
+                ASSERT_EQUAL(0u, observation.dispatch_enabled, "non-baseline dispatch_enabled must remain false");
+            }
+            if (observation.timestamp_available != 0u && observation.timestamp_valid != 0u) {
+                ASSERT_TRUE(observation.gpu_duration_ns_mean > 0.0, "valid GPU timestamps must report positive duration");
+                ASSERT_EQUAL(std::string("vulkan_timestamp_query"), observation.timing_source, "valid timestamps should win timing source");
+                ASSERT_EQUAL(std::string("high"), observation.timing_confidence, "valid timestamps should report high confidence");
+                ASSERT_EQUAL(std::string("none"), observation.timestamp_failure_reason, "valid timestamps should clear failure reason");
+            } else {
+                ASSERT_EQUAL(std::string("cpu_wall_clock"), observation.timing_source, "timestamp fallback must use CPU wall clock");
+                ASSERT_EQUAL(std::string("low"), observation.timing_confidence, "timestamp fallback must remain low confidence");
+            }
+            observations.push_back(observation);
+        }
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "DVT runtime destroy should succeed");
+    const std::string artifact = render_dvt2_artifact(observations);
+    ASSERT_TRUE(artifact.find("prometheus.sgemm.occupancy_dvt2.rtx3070.v1") != std::string::npos, "DVT artifact schema should be present");
+    ASSERT_TRUE(context.WriteTextArtifact("p13_dvt2_rtx3070_validation", artifact), "DVT artifact should be emitted");
 }
 
 FACT(P13_M5_SmokeModeCiSafe)
