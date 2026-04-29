@@ -1,0 +1,76 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M52BaselineAndSrtAreFixed() -> Void {
+    let m = M52ComputedRecipeMap(20)
+    Assert.Equal(m.BaselineScalar, "existing baseline/current path", "baseline must remain existing path")
+    Assert.Equal(m.SmallRegisterTile, "SRT-2accum-K", "small-register tile must preserve M48 choice")
+}
+
+[Fact]
+fn M52BalancedHasFourAccumulators() -> Void {
+    let winner = M52VariantWinners("balanced-2x2-accum4", 20)[0].Candidate
+    Assert.Equal(winner.AccumulatorCount, 4, "balanced winner must keep accum4 semantics")
+}
+
+[Fact]
+fn M52AggressiveIsBenchmarkOnlyAndNotProductionReady() -> Void {
+    let winner = M52VariantWinners("aggressive-4x4-accum8", 20)[0].Candidate
+    Assert.True(winner.BenchmarkOnlySuitability >= 88, "aggressive winner must remain benchmark-oriented")
+    Assert.True(winner.ProductionDispatchReadinessRisk >= 50, "aggressive winner must not be production-ready")
+}
+
+[Fact]
+fn M52ShapeBiasAndTailPenaltyAreVisible() -> Void {
+    let cs = M52Candidates()
+    Assert.True(M52ShapeModifier("wide-short", cs[7]) > M52ShapeModifier("wide-short", cs[8]), "row-biased candidate should be better on wide-short")
+    Assert.True(M52ShapeModifier("tall-skinny", cs[8]) > M52ShapeModifier("tall-skinny", cs[7]), "col-biased candidate should be better on tall-skinny")
+    Assert.True(M52ShapeModifier("small-square", cs[6]) < M52ShapeModifier("small-square", cs[7]), "4x4 tile should be penalized on small-square")
+    Assert.True(M52ShapeModifier("K-heavy", cs[5]) > M52ShapeModifier("K-heavy", cs[4]), "K-heavy should favor K-split hybrid")
+}
+
+[Fact]
+fn M52SafetyMarginAndDeterminism() -> Void {
+    let m1 = M52ComputedRecipeMap(20)
+    let m2 = M52ComputedRecipeMap(20)
+    let mc20 = M52VariantWinners("memory-conservative", 20)[0]
+    let mc60 = M52VariantWinners("memory-conservative", 60)[0]
+    Assert.Equal(m1.MemoryConservative, m2.MemoryConservative, "recommendation must be deterministic")
+    Assert.True(mc60.ProductScore < mc20.ProductScore, "higher safety margin must reduce aggressive/high-pressure score envelope")
+}
+
+[Artifact]
+fn EmitM52ComputedRecipeMap() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_final_recipe_map.octagon", [M52ComputedRecipeMap(20)])
+}
+
+[Artifact]
+fn EmitM52MemoryConservativeCandidates() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_memory_conservative_candidates.octagon", M52VariantWinners("memory-conservative", 20))
+}
+
+[Artifact]
+fn EmitM52BalancedCandidates() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_balanced_candidates.octagon", M52VariantWinners("balanced-2x2-accum4", 20))
+}
+
+[Artifact]
+fn EmitM52AggressiveCandidates() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_aggressive_candidates.octagon", M52VariantWinners("aggressive-4x4-accum8", 20))
+}
+
+[Artifact]
+fn EmitM52ShapeRecipeMatrix() -> Void {
+    let c = M52Candidates()
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_shape_recipe_matrix.octagon", [
+        M52ScoredCandidate { Candidate: c[4] ProductScore: M52Score(c[4], "wide-short", 20) },
+        M52ScoredCandidate { Candidate: c[5] ProductScore: M52Score(c[5], "K-heavy", 20) },
+        M52ScoredCandidate { Candidate: c[7] ProductScore: M52Score(c[7], "wide-short", 20) },
+        M52ScoredCandidate { Candidate: c[8] ProductScore: M52Score(c[8], "tall-skinny", 20) }
+    ])
+}
+
+[Artifact]
+fn EmitM52ImplementationContract() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M52/m52_implementation_contract.octagon", [M52ComputedRecipeMap(20)])
+}
