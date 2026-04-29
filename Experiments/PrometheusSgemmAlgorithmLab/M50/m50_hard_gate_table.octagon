@@ -1,0 +1,4 @@
+[M50ReasonTable {
+    Rule: ["unsafe runtime", "slot failed", "slot invalidated", "outstanding >= hard max", "yield only when held+critical done"]
+    Outcome: ["deny", "deny", "deny", "deny", "yield"]
+}]

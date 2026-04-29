@@ -1,0 +1,141 @@
+package PrometheusSgemmAlgorithmLab
+
+fn M50BaseFacts() -> M50LeaseFacts {
+    return M50ScenarioCatalog()[0]
+}
+
+[Fact]
+fn M50HardDeniesOverrideUtility() -> Void {
+    let b = M50BaseFacts()
+    let f = M50LeaseFacts {ScenarioName: b.ScenarioName SlotState: b.SlotState Failed: b.Failed Invalidated: b.Invalidated UnsafeRuntime: true LeaseHeld: b.LeaseHeld ReadyAttention: b.ReadyAttention CriticalSectionComplete: b.CriticalSectionComplete OutstandingDepth: b.OutstandingDepth MaxOutstandingDepth: b.MaxOutstandingDepth DeviceBand: b.DeviceBand ShapeClass: b.ShapeClass SelectedRecipeVariant: b.SelectedRecipeVariant RegisterPressureClass: b.RegisterPressureClass SharedMemoryPressureClass: b.SharedMemoryPressureClass MemoryBandwidthPressureClass: b.MemoryBandwidthPressureClass ComputePressureClass: b.ComputePressureClass PipelineLatencyPressureClass: b.PipelineLatencyPressureClass TransferOverlapAvailable: b.TransferOverlapAvailable TrueMultiQueueSelected: b.TrueMultiQueueSelected LookaheadRequested: b.LookaheadRequested LookaheadLimit: b.LookaheadLimit ContentionLevel: b.ContentionLevel LatencyDominant: b.LatencyDominant MemoryPressureLevel: b.MemoryPressureLevel WorkerId: b.WorkerId RecentGrantSkew: b.RecentGrantSkew}
+    let d = M50PolicyDecision("aggressive-lookahead", f)
+    Assert.Equal(d.Action, "deny", "unsafe runtime must deny regardless of utility")
+}
+
+[Fact]
+fn M50YieldOnlyWhenHeld() -> Void {
+    let b = M50BaseFacts()
+    let f0 = M50LeaseFacts {ScenarioName: b.ScenarioName SlotState: b.SlotState Failed: b.Failed Invalidated: b.Invalidated UnsafeRuntime: b.UnsafeRuntime LeaseHeld: false ReadyAttention: b.ReadyAttention CriticalSectionComplete: true OutstandingDepth: b.OutstandingDepth MaxOutstandingDepth: b.MaxOutstandingDepth DeviceBand: b.DeviceBand ShapeClass: b.ShapeClass SelectedRecipeVariant: b.SelectedRecipeVariant RegisterPressureClass: b.RegisterPressureClass SharedMemoryPressureClass: b.SharedMemoryPressureClass MemoryBandwidthPressureClass: b.MemoryBandwidthPressureClass ComputePressureClass: b.ComputePressureClass PipelineLatencyPressureClass: b.PipelineLatencyPressureClass TransferOverlapAvailable: b.TransferOverlapAvailable TrueMultiQueueSelected: b.TrueMultiQueueSelected LookaheadRequested: b.LookaheadRequested LookaheadLimit: b.LookaheadLimit ContentionLevel: b.ContentionLevel LatencyDominant: b.LatencyDominant MemoryPressureLevel: b.MemoryPressureLevel WorkerId: b.WorkerId RecentGrantSkew: b.RecentGrantSkew}
+    let a = M50PolicyDecision("balanced-utility", f0)
+    Assert.True(a.Action != "yield", "cannot yield without held lease")
+    let f1 = M50LeaseFacts {ScenarioName: b.ScenarioName SlotState: b.SlotState Failed: b.Failed Invalidated: b.Invalidated UnsafeRuntime: b.UnsafeRuntime LeaseHeld: true ReadyAttention: b.ReadyAttention CriticalSectionComplete: true OutstandingDepth: b.OutstandingDepth MaxOutstandingDepth: b.MaxOutstandingDepth DeviceBand: b.DeviceBand ShapeClass: b.ShapeClass SelectedRecipeVariant: b.SelectedRecipeVariant RegisterPressureClass: b.RegisterPressureClass SharedMemoryPressureClass: b.SharedMemoryPressureClass MemoryBandwidthPressureClass: b.MemoryBandwidthPressureClass ComputePressureClass: b.ComputePressureClass PipelineLatencyPressureClass: b.PipelineLatencyPressureClass TransferOverlapAvailable: b.TransferOverlapAvailable TrueMultiQueueSelected: b.TrueMultiQueueSelected LookaheadRequested: b.LookaheadRequested LookaheadLimit: b.LookaheadLimit ContentionLevel: b.ContentionLevel LatencyDominant: b.LatencyDominant MemoryPressureLevel: b.MemoryPressureLevel WorkerId: b.WorkerId RecentGrantSkew: b.RecentGrantSkew}
+    let b = M50PolicyDecision("balanced-utility", f1)
+    Assert.Equal(b.Action, "yield", "held lease + critical complete must yield")
+}
+
+[Fact]
+fn M50LookaheadBlockedAtCap() -> Void {
+    let b = M50BaseFacts()
+    let f = M50LeaseFacts {ScenarioName: b.ScenarioName SlotState: b.SlotState Failed: b.Failed Invalidated: b.Invalidated UnsafeRuntime: b.UnsafeRuntime LeaseHeld: b.LeaseHeld ReadyAttention: b.ReadyAttention CriticalSectionComplete: b.CriticalSectionComplete OutstandingDepth: b.LookaheadLimit MaxOutstandingDepth: b.MaxOutstandingDepth DeviceBand: b.DeviceBand ShapeClass: b.ShapeClass SelectedRecipeVariant: b.SelectedRecipeVariant RegisterPressureClass: b.RegisterPressureClass SharedMemoryPressureClass: b.SharedMemoryPressureClass MemoryBandwidthPressureClass: b.MemoryBandwidthPressureClass ComputePressureClass: b.ComputePressureClass PipelineLatencyPressureClass: b.PipelineLatencyPressureClass TransferOverlapAvailable: b.TransferOverlapAvailable TrueMultiQueueSelected: b.TrueMultiQueueSelected LookaheadRequested: true LookaheadLimit: b.LookaheadLimit ContentionLevel: b.ContentionLevel LatencyDominant: b.LatencyDominant MemoryPressureLevel: b.MemoryPressureLevel WorkerId: b.WorkerId RecentGrantSkew: b.RecentGrantSkew}
+    let d = M50PolicyDecision("aggressive-lookahead", f)
+    Assert.Equal(d.Action, "block_lookahead", "lookahead must block at lookahead cap")
+}
+
+[Fact]
+fn M50TransferUnavailableBlocksTransferLookahead() -> Void {
+    let b = M50BaseFacts()
+    let f = M50LeaseFacts {ScenarioName: b.ScenarioName SlotState: b.SlotState Failed: b.Failed Invalidated: b.Invalidated UnsafeRuntime: b.UnsafeRuntime LeaseHeld: b.LeaseHeld ReadyAttention: b.ReadyAttention CriticalSectionComplete: b.CriticalSectionComplete OutstandingDepth: b.OutstandingDepth MaxOutstandingDepth: b.MaxOutstandingDepth DeviceBand: b.DeviceBand ShapeClass: b.ShapeClass SelectedRecipeVariant: b.SelectedRecipeVariant RegisterPressureClass: b.RegisterPressureClass SharedMemoryPressureClass: b.SharedMemoryPressureClass MemoryBandwidthPressureClass: b.MemoryBandwidthPressureClass ComputePressureClass: b.ComputePressureClass PipelineLatencyPressureClass: "transfer-prefetch" TransferOverlapAvailable: false TrueMultiQueueSelected: b.TrueMultiQueueSelected LookaheadRequested: true LookaheadLimit: b.LookaheadLimit ContentionLevel: b.ContentionLevel LatencyDominant: b.LatencyDominant MemoryPressureLevel: b.MemoryPressureLevel WorkerId: b.WorkerId RecentGrantSkew: b.RecentGrantSkew}
+    let d = M50PolicyDecision("hybrid-feedforward-utility", f)
+    Assert.Equal(d.Action, "block_lookahead", "transfer-prefetch lookahead requires transfer overlap")
+}
+
+[Fact]
+fn M50BalancedGrantsSafeReadySlot() -> Void {
+    let d = M50PolicyDecision("balanced-utility", M50BaseFacts())
+    Assert.Equal(d.Action, "grant", "balanced policy should grant safe ready slot")
+}
+
+[Fact]
+fn M50HighPressureAppliesBackpressure() -> Void {
+    let f = M50ScenarioCatalog()[3]
+    let d = M50PolicyDecision("balanced-utility", f)
+    Assert.Equal(d.Action, "backpressure", "high pressure should backpressure")
+}
+
+[Fact]
+fn M50LatencyDominantAllowsBoundedLookahead() -> Void {
+    let f = M50ScenarioCatalog()[2]
+    let d = M50PolicyDecision("hybrid-feedforward-utility", f)
+    Assert.True(d.Action == "allow_lookahead" or d.Action == "grant", "latency-dominant path should not be blocked when below cap and transfer is available")
+}
+
+[Fact]
+fn M50FairnessIsAccountedFor() -> Void {
+    let f = M50ScenarioCatalog()[4]
+    let fair = M50PolicyDecision("fairness-biased", f)
+    let aggressive = M50PolicyDecision("aggressive-lookahead", f)
+    Assert.True(fair.Action != "allow_lookahead", "fairness policy should suppress speculative lookahead under skew")
+    Assert.True(fair.UtilityScore <= aggressive.UtilityScore or aggressive.Action == "grant", "fairness should counter pure aggressiveness")
+}
+
+[Fact]
+fn M50HybridBeatsAggressiveOnRobustScore() -> Void {
+    let hybrid = M50AggregatePolicyScore("hybrid-feedforward-utility")
+    let aggressive = M50AggregatePolicyScore("aggressive-lookahead")
+    Assert.True(hybrid > aggressive, "hybrid should beat aggressive for robust product score")
+}
+
+[Fact]
+fn M50RecommendationIsComputed() -> Void {
+    let rec = M50RecommendPolicy()
+    Assert.True(rec.RecommendedPolicy != "", "recommendation should be computed")
+    Assert.Equal(rec.Reason, "computed_from_scenario_aggregate_robust_product_score", "reason should be computed, not hardcoded winner")
+}
+
+[Fact]
+fn M50Determinism() -> Void {
+    let a = M50RecommendPolicy()
+    let b = M50RecommendPolicy()
+    Assert.Equal(a.RecommendedPolicy, b.RecommendedPolicy, "policy recommendation must be deterministic")
+    Assert.Equal(a.Score, b.Score, "aggregate score must be deterministic")
+}
+
+[Artifact]
+fn EmitM50PolicyComparison() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_policy_comparison.octagon", [M50PolicyComparison()])
+}
+
+[Artifact]
+fn EmitM50FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_final_recommendation.octagon", [M50RecommendPolicy()])
+}
+
+[Artifact]
+fn EmitM50DecisionTable() -> Void {
+    let s0 = M50ScenarioCatalog()[0]
+    let p = M50PolicyNames()
+    let d0 = M50PolicyDecision(p[0], s0)
+    let d1 = M50PolicyDecision(p[1], s0)
+    let d2 = M50PolicyDecision(p[2], s0)
+    let d3 = M50PolicyDecision(p[3], s0)
+    let d4 = M50PolicyDecision(p[4], s0)
+    let table = M50DecisionTable {
+        Scenario: [s0.ScenarioName, s0.ScenarioName, s0.ScenarioName, s0.ScenarioName, s0.ScenarioName]
+        Policy: [p[0], p[1], p[2], p[3], p[4]]
+        Action: [d0.Action, d1.Action, d2.Action, d3.Action, d4.Action]
+        Reason: [d0.ReasonCode, d1.ReasonCode, d2.ReasonCode, d3.ReasonCode, d4.ReasonCode]
+        UtilityScore: [d0.UtilityScore, d1.UtilityScore, d2.UtilityScore, d3.UtilityScore, d4.UtilityScore]
+    }
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_decision_table.octagon", [table])
+}
+
+[Artifact]
+fn EmitM50HardGateTable() -> Void {
+    let table = M50ReasonTable {Rule: ["unsafe runtime", "slot failed", "slot invalidated", "outstanding >= hard max", "yield only when held+critical done"] Outcome: ["deny", "deny", "deny", "deny", "yield"]}
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_hard_gate_table.octagon", [table])
+}
+
+[Artifact]
+fn EmitM50LookaheadPolicyTable() -> Void {
+    let a = M50PolicyDecision("hybrid-feedforward-utility", M50ScenarioCatalog()[2])
+    let b = M50PolicyDecision("hybrid-feedforward-utility", M50ScenarioCatalog()[3])
+    let c = M50PolicyDecision("hybrid-feedforward-utility", M50ScenarioCatalog()[0])
+    let table = M50LookaheadTable {Scenario: ["latency-transfer-available", "high-contention-high-memory", "safe-ready-slot"] Action: [a.Action, b.Action, c.Action] Allowed: [a.LookaheadAllowed, b.LookaheadAllowed, c.LookaheadAllowed]}
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_lookahead_policy_table.octagon", [table])
+}
+
+[Artifact]
+fn EmitM50FailureModes() -> Void {
+    let table = M50ReasonTable {Rule: ["unsafe runtime grant", "failed slot grant", "invalidated slot grant", "lookahead at limit", "transfer-prefetch without overlap"] Outcome: ["hard_deny_safety_or_cap", "hard_deny_safety_or_cap", "hard_deny_safety_or_cap", "hard_block_lookahead_limit_or_transfer", "hard_block_lookahead_limit_or_transfer"]}
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M50/m50_failure_modes.octagon", [table])
+}

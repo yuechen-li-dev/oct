@@ -1,0 +1,10 @@
+[M50PolicyComparisonTable {
+    Policy: ["conservative-hard-gate", "aggressive-lookahead", "balanced-utility", "fairness-biased", "hybrid-feedforward-utility"]
+    RobustProductScore: [1640, 1530, 1680, 1705, 1855]
+    CorrectnessSafetyScore: [100, 100, 100, 100, 100]
+    ThroughputProxy: [25, 70, 70, 65, 70]
+    StallRiskReduction: [70, 50, 50, 50, 60]
+    OvergrantRisk: [20, 50, 30, 30, 30]
+    FairnessScore: [45, 50, 50, 75, 60]
+    ImplementationComplexity: [60, 70, 60, 75, 65]
+}]

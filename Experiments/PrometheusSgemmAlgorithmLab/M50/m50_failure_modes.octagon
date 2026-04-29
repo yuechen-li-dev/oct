@@ -1,0 +1,4 @@
+[M50ReasonTable {
+    Rule: ["unsafe runtime grant", "failed slot grant", "invalidated slot grant", "lookahead at limit", "transfer-prefetch without overlap"]
+    Outcome: ["hard_deny_safety_or_cap", "hard_deny_safety_or_cap", "hard_deny_safety_or_cap", "hard_block_lookahead_limit_or_transfer", "hard_block_lookahead_limit_or_transfer"]
+}]

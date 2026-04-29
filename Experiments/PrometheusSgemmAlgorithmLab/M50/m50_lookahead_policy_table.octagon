@@ -1,0 +1,5 @@
+[M50LookaheadTable {
+    Scenario: ["latency-transfer-available", "high-contention-high-memory", "safe-ready-slot"]
+    Action: ["grant", "backpressure", "grant"]
+    Allowed: [false, false, false]
+}]
