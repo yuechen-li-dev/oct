@@ -1,0 +1,85 @@
+[M52ScoredCandidate {
+    Candidate: M52Candidate {
+        VariantClass: "memory-conservative"
+        RecipeName: "MC-k-serial-low-pressure"
+        OutputTileRows: (1)
+        OutputTileCols: (1)
+        AccumulatorCount: (1)
+        EstimatedRegistersPerThread: (14)
+        EstimatedSharedMemoryPerWorkgroup: (4)
+        EstimatedLocalMemoryPressure: (10)
+        AReuseFactor: (1)
+        BReuseFactor: (1)
+        ArithmeticIntensityGain: (-6)
+        IlpAdequacy: (28)
+        CoalescedLoadRisk: (10)
+        CoalescedStoreRisk: (6)
+        TailDimensionAffected: "K"
+        MaskedLoadStoreComplexity: (6)
+        ImplementationComplexity: (14)
+        CorrectnessRisk: (10)
+        ShapeCoverage: (78)
+        BenchmarkOnlySuitability: (68)
+        ProductionDispatchReadinessRisk: (12)
+        KSplitBias: (10)
+        RowBias: (0)
+        ColBias: (0)
+    }
+    ProductScore: (2212)
+}, M52ScoredCandidate {
+    Candidate: M52Candidate {
+        VariantClass: "memory-conservative"
+        RecipeName: "MC-baseline-strict"
+        OutputTileRows: (1)
+        OutputTileCols: (1)
+        AccumulatorCount: (1)
+        EstimatedRegistersPerThread: (18)
+        EstimatedSharedMemoryPerWorkgroup: (8)
+        EstimatedLocalMemoryPressure: (14)
+        AReuseFactor: (1)
+        BReuseFactor: (1)
+        ArithmeticIntensityGain: (0)
+        IlpAdequacy: (40)
+        CoalescedLoadRisk: (8)
+        CoalescedStoreRisk: (6)
+        TailDimensionAffected: "K"
+        MaskedLoadStoreComplexity: (8)
+        ImplementationComplexity: (10)
+        CorrectnessRisk: (8)
+        ShapeCoverage: (86)
+        BenchmarkOnlySuitability: (60)
+        ProductionDispatchReadinessRisk: (8)
+        KSplitBias: (2)
+        RowBias: (0)
+        ColBias: (0)
+    }
+    ProductScore: (2138)
+}, M52ScoredCandidate {
+    Candidate: M52Candidate {
+        VariantClass: "memory-conservative"
+        RecipeName: "MC-reduced-workgroup"
+        OutputTileRows: (1)
+        OutputTileCols: (2)
+        AccumulatorCount: (2)
+        EstimatedRegistersPerThread: (20)
+        EstimatedSharedMemoryPerWorkgroup: (6)
+        EstimatedLocalMemoryPressure: (16)
+        AReuseFactor: (2)
+        BReuseFactor: (2)
+        ArithmeticIntensityGain: (8)
+        IlpAdequacy: (52)
+        CoalescedLoadRisk: (10)
+        CoalescedStoreRisk: (10)
+        TailDimensionAffected: "MN"
+        MaskedLoadStoreComplexity: (12)
+        ImplementationComplexity: (18)
+        CorrectnessRisk: (12)
+        ShapeCoverage: (82)
+        BenchmarkOnlySuitability: (74)
+        ProductionDispatchReadinessRisk: (16)
+        KSplitBias: (2)
+        RowBias: (3)
+        ColBias: (0)
+    }
+    ProductScore: (1915)
+}]

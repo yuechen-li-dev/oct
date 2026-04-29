@@ -1,0 +1,84 @@
+package PrometheusSgemmAlgorithmLab
+
+record M52Candidate {
+    VariantClass: String
+    RecipeName: String
+    OutputTileRows: Int
+    OutputTileCols: Int
+    AccumulatorCount: Int
+    EstimatedRegistersPerThread: Int
+    EstimatedSharedMemoryPerWorkgroup: Int
+    EstimatedLocalMemoryPressure: Int
+    AReuseFactor: Int
+    BReuseFactor: Int
+    ArithmeticIntensityGain: Int
+    IlpAdequacy: Int
+    CoalescedLoadRisk: Int
+    CoalescedStoreRisk: Int
+    TailDimensionAffected: String
+    MaskedLoadStoreComplexity: Int
+    ImplementationComplexity: Int
+    CorrectnessRisk: Int
+    ShapeCoverage: Int
+    BenchmarkOnlySuitability: Int
+    ProductionDispatchReadinessRisk: Int
+    KSplitBias: Int
+    RowBias: Int
+    ColBias: Int
+}
+
+record M52ScoredCandidate { Candidate: M52Candidate ProductScore: Int }
+record M52FinalRecipeMap { BaselineScalar: String MemoryConservative: String SmallRegisterTile: String Balanced2x2Accum4: String Aggressive4x4Accum8: String }
+
+fn M52ShapeClasses() -> String[] { return ["small-square", "medium-square", "large-square", "tall-skinny", "wide-short", "K-heavy", "ML/FFN-like"] }
+
+fn M52Candidates() -> M52Candidate[] { return [
+M52Candidate { VariantClass: "memory-conservative" RecipeName: "MC-baseline-strict" OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 1 EstimatedRegistersPerThread: 18 EstimatedSharedMemoryPerWorkgroup: 8 EstimatedLocalMemoryPressure: 14 AReuseFactor: 1 BReuseFactor: 1 ArithmeticIntensityGain: 0 IlpAdequacy: 40 CoalescedLoadRisk: 8 CoalescedStoreRisk: 6 TailDimensionAffected: "K" MaskedLoadStoreComplexity: 8 ImplementationComplexity: 10 CorrectnessRisk: 8 ShapeCoverage: 86 BenchmarkOnlySuitability: 60 ProductionDispatchReadinessRisk: 8 KSplitBias: 2 RowBias: 0 ColBias: 0 },
+M52Candidate { VariantClass: "memory-conservative" RecipeName: "MC-reduced-workgroup" OutputTileRows: 1 OutputTileCols: 2 AccumulatorCount: 2 EstimatedRegistersPerThread: 20 EstimatedSharedMemoryPerWorkgroup: 6 EstimatedLocalMemoryPressure: 16 AReuseFactor: 2 BReuseFactor: 2 ArithmeticIntensityGain: 8 IlpAdequacy: 52 CoalescedLoadRisk: 10 CoalescedStoreRisk: 10 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 12 ImplementationComplexity: 18 CorrectnessRisk: 12 ShapeCoverage: 82 BenchmarkOnlySuitability: 74 ProductionDispatchReadinessRisk: 16 KSplitBias: 2 RowBias: 3 ColBias: 0 },
+M52Candidate { VariantClass: "memory-conservative" RecipeName: "MC-k-serial-low-pressure" OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 1 EstimatedRegistersPerThread: 14 EstimatedSharedMemoryPerWorkgroup: 4 EstimatedLocalMemoryPressure: 10 AReuseFactor: 1 BReuseFactor: 1 ArithmeticIntensityGain: -6 IlpAdequacy: 28 CoalescedLoadRisk: 10 CoalescedStoreRisk: 6 TailDimensionAffected: "K" MaskedLoadStoreComplexity: 6 ImplementationComplexity: 14 CorrectnessRisk: 10 ShapeCoverage: 78 BenchmarkOnlySuitability: 68 ProductionDispatchReadinessRisk: 12 KSplitBias: 10 RowBias: 0 ColBias: 0 },
+M52Candidate { VariantClass: "balanced-2x2-accum4" RecipeName: "B2x2-output-tile" OutputTileRows: 2 OutputTileCols: 2 AccumulatorCount: 4 EstimatedRegistersPerThread: 30 EstimatedSharedMemoryPerWorkgroup: 16 EstimatedLocalMemoryPressure: 28 AReuseFactor: 4 BReuseFactor: 4 ArithmeticIntensityGain: 26 IlpAdequacy: 72 CoalescedLoadRisk: 16 CoalescedStoreRisk: 16 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 26 ImplementationComplexity: 28 CorrectnessRisk: 24 ShapeCoverage: 76 BenchmarkOnlySuitability: 78 ProductionDispatchReadinessRisk: 36 KSplitBias: 4 RowBias: 0 ColBias: 0 },
+M52Candidate { VariantClass: "balanced-2x2-accum4" RecipeName: "B2x2-row-major-biased" OutputTileRows: 2 OutputTileCols: 2 AccumulatorCount: 4 EstimatedRegistersPerThread: 28 EstimatedSharedMemoryPerWorkgroup: 14 EstimatedLocalMemoryPressure: 26 AReuseFactor: 4 BReuseFactor: 4 ArithmeticIntensityGain: 24 IlpAdequacy: 74 CoalescedLoadRisk: 14 CoalescedStoreRisk: 10 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 24 ImplementationComplexity: 24 CorrectnessRisk: 20 ShapeCoverage: 80 BenchmarkOnlySuitability: 82 ProductionDispatchReadinessRisk: 30 KSplitBias: 4 RowBias: 7 ColBias: 0 },
+M52Candidate { VariantClass: "balanced-2x2-accum4" RecipeName: "B2x2-accum4-k-split-hybrid" OutputTileRows: 1 OutputTileCols: 2 AccumulatorCount: 4 EstimatedRegistersPerThread: 24 EstimatedSharedMemoryPerWorkgroup: 12 EstimatedLocalMemoryPressure: 22 AReuseFactor: 2 BReuseFactor: 2 ArithmeticIntensityGain: 16 IlpAdequacy: 70 CoalescedLoadRisk: 12 CoalescedStoreRisk: 10 TailDimensionAffected: "K" MaskedLoadStoreComplexity: 14 ImplementationComplexity: 22 CorrectnessRisk: 18 ShapeCoverage: 84 BenchmarkOnlySuitability: 80 ProductionDispatchReadinessRisk: 24 KSplitBias: 10 RowBias: 4 ColBias: 0 },
+M52Candidate { VariantClass: "aggressive-4x4-accum8" RecipeName: "A4x4-output-tile" OutputTileRows: 4 OutputTileCols: 4 AccumulatorCount: 16 EstimatedRegistersPerThread: 58 EstimatedSharedMemoryPerWorkgroup: 36 EstimatedLocalMemoryPressure: 54 AReuseFactor: 10 BReuseFactor: 10 ArithmeticIntensityGain: 50 IlpAdequacy: 90 CoalescedLoadRisk: 28 CoalescedStoreRisk: 30 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 46 ImplementationComplexity: 52 CorrectnessRisk: 44 ShapeCoverage: 48 BenchmarkOnlySuitability: 88 ProductionDispatchReadinessRisk: 72 KSplitBias: 2 RowBias: 0 ColBias: 0 },
+M52Candidate { VariantClass: "aggressive-4x4-accum8" RecipeName: "A2x4-row-biased-accum8" OutputTileRows: 2 OutputTileCols: 4 AccumulatorCount: 8 EstimatedRegistersPerThread: 44 EstimatedSharedMemoryPerWorkgroup: 26 EstimatedLocalMemoryPressure: 40 AReuseFactor: 6 BReuseFactor: 8 ArithmeticIntensityGain: 38 IlpAdequacy: 84 CoalescedLoadRisk: 18 CoalescedStoreRisk: 14 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 32 ImplementationComplexity: 34 CorrectnessRisk: 30 ShapeCoverage: 68 BenchmarkOnlySuitability: 92 ProductionDispatchReadinessRisk: 58 KSplitBias: 4 RowBias: 10 ColBias: 0 },
+M52Candidate { VariantClass: "aggressive-4x4-accum8" RecipeName: "A4x2-col-biased-accum8" OutputTileRows: 4 OutputTileCols: 2 AccumulatorCount: 8 EstimatedRegistersPerThread: 42 EstimatedSharedMemoryPerWorkgroup: 24 EstimatedLocalMemoryPressure: 38 AReuseFactor: 8 BReuseFactor: 6 ArithmeticIntensityGain: 36 IlpAdequacy: 82 CoalescedLoadRisk: 20 CoalescedStoreRisk: 18 TailDimensionAffected: "MN" MaskedLoadStoreComplexity: 30 ImplementationComplexity: 34 CorrectnessRisk: 30 ShapeCoverage: 66 BenchmarkOnlySuitability: 90 ProductionDispatchReadinessRisk: 58 KSplitBias: 4 RowBias: 0 ColBias: 10 }
+] }
+
+fn M52ClassFit(c: M52Candidate) -> Int { return switch { case c.VariantClass == "memory-conservative" => 150 - c.EstimatedLocalMemoryPressure - c.EstimatedRegistersPerThread - c.EstimatedSharedMemoryPerWorkgroup - c.ImplementationComplexity case c.VariantClass == "balanced-2x2-accum4" => 100 + (c.AccumulatorCount * 4) + (c.OutputTileRows * c.OutputTileCols) - c.ImplementationComplexity - c.CorrectnessRisk else => 80 + c.ArithmeticIntensityGain + c.BenchmarkOnlySuitability - c.ProductionDispatchReadinessRisk } }
+fn M52ShapeModifier(shape: String, c: M52Candidate) -> Int { return switch { case shape == "small-square" => 20 - c.EstimatedLocalMemoryPressure case shape == "medium-square" => (c.ShapeCoverage / 4) - (c.MaskedLoadStoreComplexity / 4) case shape == "large-square" => (c.ArithmeticIntensityGain / 2) + (c.AReuseFactor + c.BReuseFactor) case shape == "tall-skinny" => c.ColBias + 12 - c.CoalescedStoreRisk case shape == "wide-short" => c.RowBias + 12 - c.CoalescedStoreRisk case shape == "K-heavy" => c.KSplitBias + (c.IlpAdequacy / 8) else => (c.IlpAdequacy / 6) + (c.RowBias / 2) + (c.ColBias / 2) } }
+fn M52Score(c: M52Candidate, shape: String, safetyMargin: Int) -> Int {
+    let robust = c.ShapeCoverage + c.BenchmarkOnlySuitability - c.CoalescedLoadRisk - c.CoalescedStoreRisk
+    let safety = 160 - (c.EstimatedRegistersPerThread + c.EstimatedSharedMemoryPerWorkgroup + c.EstimatedLocalMemoryPressure + c.MaskedLoadStoreComplexity + c.ImplementationComplexity + c.CorrectnessRisk + c.ProductionDispatchReadinessRisk) - safetyMargin
+    return M52ClassFit(c) + robust + safety + M52ShapeModifier(shape, c)
+}
+
+fn M52TotalScore(c: M52Candidate, safetyMargin: Int) -> Int {
+    let shapes = M52ShapeClasses()
+    var sum = M52Score(c, shapes[0], safetyMargin)
+    for i in 1 .. Len(shapes) { sum = sum + M52Score(c, shapes[i], safetyMargin) }
+    return sum
+}
+
+fn M52VariantWinners(variantClass: String, safetyMargin: Int) -> M52ScoredCandidate[] {
+    let all = M52Candidates()
+    var scoped = [M52ScoredCandidate { Candidate: all[0] ProductScore: -1000000 }]
+    for i in 0 .. Len(all) {
+        if all[i].VariantClass == variantClass {
+            if scoped[0].ProductScore == -1000000 { scoped = [M52ScoredCandidate { Candidate: all[i] ProductScore: M52TotalScore(all[i], safetyMargin) }] }
+            else { scoped = Append(scoped, M52ScoredCandidate { Candidate: all[i] ProductScore: M52TotalScore(all[i], safetyMargin) }) }
+        }
+    }
+    var sorted = scoped
+    for i in 0 .. Len(sorted) {
+        for j in (i + 1) .. Len(sorted) {
+            if sorted[j].ProductScore > sorted[i].ProductScore {
+                let tmp = sorted[i]
+                sorted[i] = sorted[j]
+                sorted[j] = tmp
+            }
+        }
+    }
+    return sorted
+}
+
+fn M52ComputedRecipeMap(safetyMargin: Int) -> M52FinalRecipeMap { return M52FinalRecipeMap { BaselineScalar: "existing baseline/current path" MemoryConservative: M52VariantWinners("memory-conservative", safetyMargin)[0].Candidate.RecipeName SmallRegisterTile: "SRT-2accum-K" Balanced2x2Accum4: M52VariantWinners("balanced-2x2-accum4", safetyMargin)[0].Candidate.RecipeName Aggressive4x4Accum8: M52VariantWinners("aggressive-4x4-accum8", safetyMargin)[0].Candidate.RecipeName } }

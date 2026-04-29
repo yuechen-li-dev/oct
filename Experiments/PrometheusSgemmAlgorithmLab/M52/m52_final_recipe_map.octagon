@@ -1,0 +1,7 @@
+[M52FinalRecipeMap {
+    BaselineScalar: "existing baseline/current path"
+    MemoryConservative: "MC-k-serial-low-pressure"
+    SmallRegisterTile: "SRT-2accum-K"
+    Balanced2x2Accum4: "B2x2-accum4-k-split-hybrid"
+    Aggressive4x4Accum8: "A2x4-row-biased-accum8"
+}]
