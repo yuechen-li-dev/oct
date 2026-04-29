@@ -5237,15 +5237,6 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                    lease_facts.device_band,
                                    work_units,
                                    &lease_facts);
-  if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_decision) == 0u) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
-    return PROM_ERROR;
-  }
-  lease_granted = lease_decision.grant;
-  if (lease_granted == 0u) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
-    return PROM_ERROR;
-  }
   prepare_detail = prom_slot_prepare_for_call(rt,
                                               work_slot_id,
                                               m,
@@ -5636,6 +5627,23 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                      &push);
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
+  if (work_slot_id < 32u) {
+    const uint32_t slot_mask = (1u << work_slot_id);
+    lease_facts.ready_slot_mask = slot_mask;
+    lease_facts.slot_attention_mask = slot_mask;
+  }
+  lease_facts.failed_slot_mask = 0u;
+  lease_facts.invalidated_slot_mask = 0u;
+  lease_facts.unsafe_to_reuse = 0u;
+  if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_decision) == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  lease_granted = lease_decision.grant;
+  if (lease_granted == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+    return PROM_ERROR;
+  }
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);

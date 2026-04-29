@@ -48,3 +48,14 @@ Single-SGEMM lease fact construction now marks the selected work slot as ready +
 - Single-SGEMM lease remains gating (not diagnostic-only).
 - Safe baseline single calls can grant and execute.
 - Unsafe/failed/invalidated/cap deny behavior remains unchanged in lease engine hard-gates.
+
+## M14 Follow-up 3 — Phase Placement Correction
+
+### Confirmed issue
+The readiness/attention under-score was real, but the deeper issue was compute-lease phase placement: compute lease was evaluated in transfer-in instead of near compute submit/dispatch.
+
+### Fix applied
+Single-SGEMM compute lease request is now deferred to submit phase, immediately before dispatch gating. Transfer/staging can proceed, then compute lease gates the compute critical section.
+
+### Why pressure classes remain non-zero
+Conservative non-zero pressure classes remain intact by design; compatibility is achieved by phase-correct lease placement and proper ready/attention fact timing, not by zeroing pressure.
