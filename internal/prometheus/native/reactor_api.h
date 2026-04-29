@@ -92,6 +92,22 @@ enum {
 };
 
 enum {
+  PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE = 0,
+  PROM_OCCUPANCY_VARIANT_PATH_STATUS_ALIAS_OR_NOT_WIRED = 1,
+  PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED = 2,
+};
+
+enum {
+  PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE = 0,
+  PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED = 1,
+};
+
+enum {
+  PROM_OCCUPANCY_VARIANT_FALLBACK_NONE = 0,
+  PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED = 1,
+};
+
+enum {
   PROM_TRANSFER_FALLBACK_NONE = 0,
   PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE = 1,
   PROM_TRANSFER_FALLBACK_PSEUDO_SHARED_QUEUE = 2,
@@ -604,6 +620,15 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p13_m2_occupancy_clamp_reason;
   uint32_t p13_m2_occupancy_override_used;
   uint32_t p13_m2_occupancy_fallback_used;
+  uint32_t p13_m16b1_requested_occupancy_variant;
+  uint32_t p13_m16b1_executed_occupancy_variant;
+  uint32_t p13_m16b1_variant_registered;
+  uint32_t p13_m16b1_variant_benchmark_enabled;
+  uint32_t p13_m16b1_variant_production_eligible;
+  uint32_t p13_m16b1_variant_dispatch_enabled;
+  uint32_t p13_m16b1_variant_path_status;
+  uint32_t p13_m16b1_variant_path_id;
+  uint32_t p13_m16b1_fallback_reason;
   uint32_t p13_m5_timestamp_available;
   uint32_t p13_m5_last_gpu_timing_valid;
   uint32_t p13_m5_last_gpu_timing_failure_reason;
@@ -672,6 +697,16 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       uint32_t k,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_benchmark_variant(void* handle,
+                                                                         const float* a,
+                                                                         const float* b,
+                                                                         float* c,
+                                                                         uint32_t m,
+                                                                         uint32_t n,
+                                                                         uint32_t k,
+                                                                         uint32_t requested_variant,
+                                                                         uint32_t* out_stage,
+                                                                         int* out_detail_code);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                                             const PrometheusSgemmBatchEntry* entries,
                                                             uint32_t entry_count,

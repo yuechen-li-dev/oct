@@ -32,6 +32,20 @@ int prometheus_reactor_runtime_sgemm(void* handle,
   return prom_reactor_runtime_sgemm_impl(handle, a, b, c, m, n, k, out_stage, out_detail_code);
 }
 
+int prometheus_reactor_runtime_sgemm_benchmark_variant(void* handle,
+                                                       const float* a,
+                                                       const float* b,
+                                                       float* c,
+                                                       uint32_t m,
+                                                       uint32_t n,
+                                                       uint32_t k,
+                                                       uint32_t requested_variant,
+                                                       uint32_t* out_stage,
+                                                       int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_benchmark_variant_impl(
+      handle, a, b, c, m, n, k, requested_variant, out_stage, out_detail_code);
+}
+
 int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                            const PrometheusSgemmBatchEntry* entries,
                                            uint32_t entry_count,

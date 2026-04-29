@@ -279,6 +279,15 @@ typedef struct prom_slot_runtime_diag {
   uint32_t p13_m2_occupancy_clamp_reason;
   uint32_t p13_m2_occupancy_override_used;
   uint32_t p13_m2_occupancy_fallback_used;
+  uint32_t p13_m16b1_requested_occupancy_variant;
+  uint32_t p13_m16b1_executed_occupancy_variant;
+  uint32_t p13_m16b1_variant_registered;
+  uint32_t p13_m16b1_variant_benchmark_enabled;
+  uint32_t p13_m16b1_variant_production_eligible;
+  uint32_t p13_m16b1_variant_dispatch_enabled;
+  uint32_t p13_m16b1_variant_path_status;
+  uint32_t p13_m16b1_variant_path_id;
+  uint32_t p13_m16b1_fallback_reason;
   uint64_t p11_m3_total_committed_bytes;
   uint64_t p11_m3_projected_committed_bytes;
   uint64_t p11_m3_budget_limit_bytes;
@@ -4542,6 +4551,32 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
 // SGEMM Single-Call Execution
 // ============================================================================
 
+static uint32_t prom_occ_variant_registered(uint32_t variant) {
+  return (variant >= PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
+          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) ? 1u : 0u;
+}
+
+static uint32_t prom_occ_variant_path_status(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) {
+    return PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    return PROM_OCCUPANCY_VARIANT_PATH_STATUS_ALIAS_OR_NOT_WIRED;
+  }
+  return PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED;
+}
+
+static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
+                                                        const float* a,
+                                                        const float* b,
+                                                        float* c,
+                                                        uint32_t m,
+                                                        uint32_t n,
+                                                        uint32_t k,
+                                                        uint32_t requested_variant,
+                                                        uint32_t* out_stage,
+                                                        int* out_detail_code);
+
 int prom_reactor_runtime_sgemm_impl(void* handle,
                                      const float* a,
                                      const float* b,
@@ -4549,6 +4584,35 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                      uint32_t m,
                                      uint32_t n,
                                      uint32_t k,
+                                     uint32_t* out_stage,
+                                     int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k,
+                                                      PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+                                                      out_stage, out_detail_code);
+}
+
+int prom_reactor_runtime_sgemm_benchmark_variant_impl(void* handle,
+                                                      const float* a,
+                                                      const float* b,
+                                                      float* c,
+                                                      uint32_t m,
+                                                      uint32_t n,
+                                                      uint32_t k,
+                                                      uint32_t requested_variant,
+                                                      uint32_t* out_stage,
+                                                      int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k, requested_variant,
+                                                      out_stage, out_detail_code);
+}
+
+static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
+                                     const float* a,
+                                     const float* b,
+                                     float* c,
+                                     uint32_t m,
+                                     uint32_t n,
+                                     uint32_t k,
+                                     uint32_t requested_variant,
                                      uint32_t* out_stage,
                                      int* out_detail_code) {
   prometheus_runtime* rt;
@@ -4657,6 +4721,22 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
+  rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
+  rt->slot_diag.p13_m16b1_executed_occupancy_variant = PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+  rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
+  rt->slot_diag.p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_registered;
+  rt->slot_diag.p13_m16b1_variant_production_eligible =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_path_status = prom_occ_variant_path_status(requested_variant);
+  rt->slot_diag.p13_m16b1_variant_path_id =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE
+                                                                            : PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED;
+  rt->slot_diag.p13_m16b1_fallback_reason =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)
+          ? PROM_OCCUPANCY_VARIANT_FALLBACK_NONE
+          : PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
   if (rt->available == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
@@ -7871,6 +7951,15 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p13_m2_occupancy_clamp_reason = rt->slot_diag.p13_m2_occupancy_clamp_reason;
   out_diag->p13_m2_occupancy_override_used = rt->slot_diag.p13_m2_occupancy_override_used;
   out_diag->p13_m2_occupancy_fallback_used = rt->slot_diag.p13_m2_occupancy_fallback_used;
+  out_diag->p13_m16b1_requested_occupancy_variant = rt->slot_diag.p13_m16b1_requested_occupancy_variant;
+  out_diag->p13_m16b1_executed_occupancy_variant = rt->slot_diag.p13_m16b1_executed_occupancy_variant;
+  out_diag->p13_m16b1_variant_registered = rt->slot_diag.p13_m16b1_variant_registered;
+  out_diag->p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_benchmark_enabled;
+  out_diag->p13_m16b1_variant_production_eligible = rt->slot_diag.p13_m16b1_variant_production_eligible;
+  out_diag->p13_m16b1_variant_dispatch_enabled = rt->slot_diag.p13_m16b1_variant_dispatch_enabled;
+  out_diag->p13_m16b1_variant_path_status = rt->slot_diag.p13_m16b1_variant_path_status;
+  out_diag->p13_m16b1_variant_path_id = rt->slot_diag.p13_m16b1_variant_path_id;
+  out_diag->p13_m16b1_fallback_reason = rt->slot_diag.p13_m16b1_fallback_reason;
   out_diag->p13_m5_timestamp_available = rt->timestamp_query_supported;
   out_diag->p13_m5_last_gpu_timing_valid = rt->last_gpu_timing_valid;
   out_diag->p13_m5_last_gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
