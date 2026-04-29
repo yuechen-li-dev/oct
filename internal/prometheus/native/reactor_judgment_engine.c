@@ -332,7 +332,15 @@ void prom_judgment_engine_select_async_submission(const prom_judgment_async_fact
 
 void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts* facts,
                                                 prom_resource_lease_decision* out_decision) {
+  enum { PROM_LEASE_FAIRNESS_BUCKETS = 64u };
+  static uint32_t s_requests[PROM_LEASE_FAIRNESS_BUCKETS];
+  static uint32_t s_grants[PROM_LEASE_FAIRNESS_BUCKETS];
   uint32_t slot_mask;
+  uint32_t fairness_bucket;
+  int grant_score;
+  int backpressure_score;
+  int lookahead_score;
+  uint32_t hard_lookahead_blocked;
   if (out_decision == NULL) {
     return;
   }
@@ -364,11 +372,20 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
   out_decision->allowed_outstanding_depth = facts->max_outstanding_depth;
   out_decision->selected_recipe_variant = facts->selected_recipe_variant;
   out_decision->yield_required = facts->yield_requested;
+  fairness_bucket = facts->worker_id % PROM_LEASE_FAIRNESS_BUCKETS;
+  s_requests[fairness_bucket] += 1u;
 
   if (facts->yield_requested != 0u) {
+    if (facts->lease_held == 0u && facts->current_outstanding_depth == 0u && facts->max_outstanding_depth == 0u) {
+      out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+      out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+      out_decision->backpressure_applied = 1u;
+      out_decision->detail = PROM_LEASE_REASON_NO_YIELD_WITHOUT_HELD_LEASE;
+      return;
+    }
     out_decision->lease_state = PROM_LEASE_STATE_YIELDED;
     out_decision->deny_reason = PROM_LEASE_REASON_YIELDED;
-    out_decision->detail = PROM_LEASE_REASON_YIELDED;
+    out_decision->detail = PROM_LEASE_REASON_HARD_YIELD_CRITICAL_SECTION_COMPLETE;
     return;
   }
 
@@ -377,56 +394,87 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
     out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
+    out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
     return;
   }
   if (slot_mask != 0u && (facts->invalidated_slot_mask & slot_mask) != 0u) {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
     out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_SLOT_INVALIDATED;
+    out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
     return;
   }
   if (facts->unsafe_to_reuse != 0u) {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
     out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+    out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
     return;
   }
   if (facts->current_outstanding_depth >= facts->max_outstanding_depth) {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
     out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+    out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
     return;
   }
+  hard_lookahead_blocked = (facts->current_outstanding_depth >= facts->lookahead_limit || facts->unsafe_to_reuse != 0u ||
+                            (slot_mask != 0u && (facts->failed_slot_mask & slot_mask) != 0u) ||
+                            (slot_mask != 0u && (facts->invalidated_slot_mask & slot_mask) != 0u) ||
+                            (facts->requested_resource_class == PROM_LEASE_RESOURCE_CLASS_TRANSFER &&
+                             (facts->transfer_overlap_available == 0u || facts->true_multi_queue_selected == 0u)))
+                               ? 1u
+                               : 0u;
+
+  grant_score = 50 + (facts->ready_slot_mask & slot_mask ? 20 : 0) + (facts->slot_attention_mask & slot_mask ? 15 : 0);
+  backpressure_score = 20 + (int)facts->register_pressure_class * 7 + (int)facts->shared_memory_pressure_class * 7 +
+                       (int)facts->memory_bandwidth_pressure_class * 6 + (int)facts->compute_pressure_class * 5;
+  lookahead_score = facts->lookahead_requested != 0u ? 10 : 0;
+  lookahead_score += facts->pipeline_latency_pressure_class >= 3u ? 25 : -5;
   if (facts->requested_resource_class == PROM_LEASE_RESOURCE_CLASS_TRANSFER &&
       (facts->transfer_overlap_available == 0u || facts->true_multi_queue_selected == 0u)) {
-    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
-    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_TRANSFER_UNAVAILABLE;
-    out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_TRANSFER_UNAVAILABLE;
-    return;
+    backpressure_score += 40;
   }
-  if (facts->register_pressure_class >= 4u || facts->shared_memory_pressure_class >= 4u ||
-      facts->memory_bandwidth_pressure_class >= 4u || facts->compute_pressure_class >= 4u ||
-      facts->pipeline_latency_pressure_class >= 4u) {
-    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
-    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE;
-    out_decision->backpressure_applied = 1u;
-    out_decision->detail = PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE;
-    return;
+  if (facts->device_band == PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED && facts->register_pressure_class >= 3u) {
+    grant_score -= 18;
+  } else if (facts->device_band == PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH) {
+    grant_score += 10;
   }
+  if (facts->shape_class == PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE) {
+    lookahead_score += 10;
+  } else if (facts->shape_class == PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE) {
+    grant_score += 8;
+  }
+  if (facts->selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    backpressure_score += 12;
+  } else if (facts->selected_recipe_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    grant_score += 12;
+  }
+  grant_score += (int)s_requests[fairness_bucket] - (int)(s_grants[fairness_bucket] * 2u);
 
-  out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
-  out_decision->grant = 1u;
-  out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
-  out_decision->lookahead_allowed = (facts->lookahead_requested != 0u &&
-                                     facts->current_outstanding_depth < facts->lookahead_limit)
-                                        ? 1u
-                                        : 0u;
-  out_decision->detail = PROM_LEASE_REASON_GRANTED;
+  if (grant_score >= backpressure_score) {
+    out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
+    out_decision->grant = 1u;
+    out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
+    out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
+    s_grants[fairness_bucket] += 1u;
+  } else {
+    out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+    out_decision->grant = 0u;
+    out_decision->backpressure_applied = 1u;
+    out_decision->deny_reason = PROM_LEASE_REASON_DENIED_RESOURCE_PRESSURE;
+    out_decision->detail = (backpressure_score >= 40) ? PROM_LEASE_REASON_UTILITY_BACKPRESSURE_PRESSURE_OR_CONTENTION
+                                                       : PROM_LEASE_REASON_UTILITY_BACKPRESSURE_DEFAULT;
+  }
+  if (facts->lookahead_requested != 0u && hard_lookahead_blocked == 0u && lookahead_score > 0) {
+    out_decision->lookahead_allowed = 1u;
+    if (facts->pipeline_latency_pressure_class >= 3u) {
+      out_decision->detail = PROM_LEASE_REASON_UTILITY_ALLOW_LOOKAHEAD_LATENCY_DOMINANT;
+    }
+  } else if (facts->lookahead_requested != 0u && hard_lookahead_blocked != 0u) {
+    out_decision->lookahead_allowed = 0u;
+    out_decision->detail = PROM_LEASE_REASON_HARD_BLOCK_LOOKAHEAD_LIMIT_OR_TRANSFER;
+  }
 }
 
 prom_policy_mode prom_judgment_engine_update_policy_mode(prom_policy_memory* memory,

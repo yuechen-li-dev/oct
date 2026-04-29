@@ -756,3 +756,78 @@ FACT(PrometheusJudgmentEngine_P13M9_ResourceLeaseDecisionReasonsAndLookaheadBoun
     prom_judgment_engine_decide_resource_lease(&facts, &decision);
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_YIELDED), decision.lease_state, "yield request should emit yielded state");
 }
+
+FACT(PrometheusJudgmentEngine_P13_M13_LeaseUtilityPolicy_HardUtilityFairnessAndLookahead)
+{
+    prom_resource_lease_facts facts{};
+    facts.worker_id = 1u;
+    facts.slot_id = 0u;
+    facts.requested_resource_class = static_cast<std::uint32_t>(PROM_LEASE_RESOURCE_CLASS_COMPUTE);
+    facts.current_outstanding_depth = 1u;
+    facts.max_outstanding_depth = 4u;
+    facts.lookahead_requested = 1u;
+    facts.lookahead_limit = 3u;
+    facts.ready_slot_mask = 1u;
+    facts.slot_attention_mask = 1u;
+    facts.pipeline_latency_pressure_class = 3u;
+    facts.transfer_overlap_available = 1u;
+    facts.true_multi_queue_selected = 1u;
+
+    prom_resource_lease_decision decision{};
+    facts.failed_slot_mask = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP), decision.detail, "hard gates must override utility");
+
+    facts.failed_slot_mask = 0u;
+    facts.register_pressure_class = 1u;
+    facts.shared_memory_pressure_class = 1u;
+    facts.memory_bandwidth_pressure_class = 1u;
+    facts.compute_pressure_class = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "safe ready slot should grant");
+    ASSERT_EQUAL(1u, decision.lookahead_allowed, "latency-dominant lookahead should be allowed");
+
+    facts.register_pressure_class = 5u;
+    facts.shared_memory_pressure_class = 5u;
+    facts.compute_pressure_class = 5u;
+    facts.lookahead_requested = 0u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "high pressure should backpressure");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_UTILITY_BACKPRESSURE_PRESSURE_OR_CONTENTION), decision.detail,
+                 "pressure backpressure reason should be explicit");
+
+    facts.register_pressure_class = 1u;
+    facts.shared_memory_pressure_class = 1u;
+    facts.compute_pressure_class = 1u;
+    facts.lookahead_requested = 1u;
+    facts.lookahead_limit = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.lookahead_allowed, "lookahead should block at lookahead limit");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_HARD_BLOCK_LOOKAHEAD_LIMIT_OR_TRANSFER), decision.detail,
+                 "lookahead block reason should be explicit");
+
+    facts.lookahead_limit = 3u;
+    facts.yield_requested = 1u;
+    facts.lease_held = 0u;
+    facts.current_outstanding_depth = 0u;
+    facts.max_outstanding_depth = 0u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_REASON_NO_YIELD_WITHOUT_HELD_LEASE), decision.detail,
+                 "yield without held lease should be denied");
+    facts.lease_held = 1u;
+    facts.max_outstanding_depth = 4u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_YIELDED), decision.lease_state, "yield with held lease should pass");
+
+    facts.yield_requested = 0u;
+    facts.worker_id = 3u;
+    facts.slot_id = 1u;
+    facts.ready_slot_mask = 0x3u;
+    facts.slot_attention_mask = 0x3u;
+    for (std::uint32_t i = 0; i < 8u; ++i) {
+        prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    }
+    facts.worker_id = 4u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.grant, "under-served worker should still receive grant");
+}
