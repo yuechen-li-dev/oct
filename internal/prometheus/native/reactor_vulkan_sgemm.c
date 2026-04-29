@@ -5645,6 +5645,8 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
     return PROM_ERROR;
   }
+  lease_facts.lease_held = 1u;
+  lease_facts.current_outstanding_depth = 1u;
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
@@ -5903,11 +5905,17 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
       prom_dom_sgemm_commit(&rt->blackboard);
     }
     if (lease_granted != 0u) {
+      lease_facts.single_call_mode = 1u;
       lease_facts.yield_requested = 1u;
+      lease_facts.lease_held = 1u;
+      lease_facts.current_outstanding_depth = 1u;
+      lease_facts.max_outstanding_depth = 1u;
       if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_yield_decision) == 0u) {
-        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_ERROR);
+        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
         return PROM_ERROR;
       }
+      lease_facts.lease_held = 0u;
+      lease_facts.current_outstanding_depth = 0u;
     }
     note_last_execution_shape(rt, m, n, k);
     return PROM_OK;
