@@ -5951,6 +5951,8 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   uint32_t lease_last_lookahead_allowed = 0u;
   uint32_t lease_last_lookahead_blocked_reason = PROM_LEASE_REASON_NONE;
   uint32_t lease_last_selected_recipe_variant = 0u;
+  uint32_t lease_held_mask = 0u;
+  uint32_t lease_outstanding_depth = 0u;
   prom_batch_shared_state shared_state;
   prom_batch_event_drain_summary drain_summary = {0u, 0u, 0u};
   int final_status = PROM_ERROR;
@@ -6758,6 +6760,18 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
             break;
           }
           lease_grant_count += 1u;
+          if (plan->slot_id < 32u) {
+            lease_held_mask |= (1u << plan->slot_id);
+          }
+          lease_outstanding_depth += 1u;
+          if (lease_outstanding_depth > effective_slots_per_worker) {
+            state = PROM_BATCH_STATE_FAILING;
+            failure_stage = PROM_STAGE_SUBMIT;
+            failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
+            failed_entry_id = plan->entry_id;
+            failed_worker_id = w;
+            break;
+          }
         }
         if (slot_attention_mask != 0u) {
           slot_attention_poll_count += 1u;
@@ -6822,6 +6836,10 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
             if (plan->slot_id < 32u) {
               slot_dirty_mask |= (1u << plan->slot_id);
               slot_failed_mask |= (1u << plan->slot_id);
+              lease_held_mask &= ~(1u << plan->slot_id);
+            }
+            if (lease_outstanding_depth > 0u) {
+              lease_outstanding_depth -= 1u;
             }
             break;
           }
@@ -6982,11 +7000,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
           lease_facts.unsafe_to_reuse = unsafe_to_reuse;
           lease_facts.transfer_overlap_available = 1u;
           lease_facts.yield_requested = 1u;
-          if (batch_decide_resource_lease(&lease_facts, &lease_decision) != 0u &&
+          if (plan->slot_id < 32u && (lease_held_mask & (1u << plan->slot_id)) != 0u &&
+              batch_decide_resource_lease(&lease_facts, &lease_decision) != 0u &&
               lease_decision.lease_state == PROM_LEASE_STATE_YIELDED) {
             lease_yield_count += 1u;
             lease_last_state = lease_decision.lease_state;
             lease_last_deny_reason = lease_decision.deny_reason;
+            lease_held_mask &= ~(1u << plan->slot_id);
+            if (lease_outstanding_depth > 0u) {
+              lease_outstanding_depth -= 1u;
+            }
           }
         }
         worker->active = 0u;
@@ -7244,6 +7267,9 @@ batch_cleanup:
     rt->batch_diag.p13_m10_lookahead_allowed = lease_last_lookahead_allowed;
     rt->batch_diag.p13_m10_lookahead_blocked_reason = lease_last_lookahead_blocked_reason;
     rt->batch_diag.p13_m10_selected_recipe_variant = lease_last_selected_recipe_variant;
+    if (lease_outstanding_depth > effective_slots_per_worker) {
+      rt->batch_diag.p13_m10_lookahead_blocked_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+    }
     if (workers != NULL && worker_event_counts != NULL && worker_resources != NULL) {
       for (w = 0u; w < effective_workers && w < 8u; ++w) {
         rt->batch_diag.worker_assigned_count[w] = workers[w].assigned_count;
