@@ -82,3 +82,10 @@ Results:
 - `P11_M20`: pass (with expected lane-lifecycle backend skip)
 - `PrometheusReactor_Sgemm`: pass
 - Full Marionette suite: `237` total, `220` passed, `17` skipped, `0` failed.
+
+Reason-code / legacy compatibility resolution (verified clean in this run):
+- `decision.detail` carries deterministic M13 utility/hard-policy reason codes (grant, backpressure, lookahead, and hard-gate diagnostics).
+- `decision.deny_reason` preserves legacy deny semantics for compatibility-sensitive consumers/tests.
+- Backpressure outcomes preserve legacy deny compatibility (`DENIED_RESOURCE_PRESSURE`) while exposing M13 utility specificity in `decision.detail` (pressure/contention vs default).
+- Hard-deny outcomes preserve legacy deny compatibility (`DENIED_SLOT_FAILED`, `DENIED_SLOT_INVALIDATED`, `DENIED_UNSAFE_RUNTIME`, `DENIED_OUTSTANDING_LIMIT`) while `decision.detail` carries the M13 hard-gate diagnostic code.
+- No policy-semantic changes were required in this follow-up; validation confirms mapping/diagnostic coherence.
