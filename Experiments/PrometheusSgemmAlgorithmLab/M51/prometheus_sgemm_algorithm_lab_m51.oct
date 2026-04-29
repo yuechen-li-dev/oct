@@ -1,0 +1,151 @@
+package PrometheusSgemmAlgorithmLab
+
+enum M51ActuatorCandidate {
+    DiagnosticOnly
+    PrePlan
+    PreStageHost
+    PreTransfer
+    ReservationOnly
+    HybridPrePlanReservation
+}
+
+enum M51ContextKind {
+    Batch
+    Single
+}
+
+record M51Context {
+    ScenarioName: String
+    ContextKind: M51ContextKind
+    FutureEntryKnown: Bool
+    WorkerSlots: Int
+    LookaheadDepthRequested: Int
+    TransferQueueAvailable: Bool
+    MemoryPressureHigh: Bool
+    ShapeLayoutChurn: Bool
+    UnsafeRuntime: Bool
+    SlotFailed: Bool
+    SlotInvalidated: Bool
+    OutstandingDepth: Int
+    OutstandingLimit: Int
+    MemoryBudgetExceeded: Bool
+}
+
+record M51Eval {
+    Candidate: M51ActuatorCandidate
+    ScenarioName: String
+    Allowed: Bool
+    ReasonCode: String
+    SafetyScore: Int
+    CorrectnessConfidence: Int
+    ComplexityCost: Int
+    RollbackSimplicity: Int
+    LatencyHidingPotential: Int
+    BatchApplicability: Int
+    SingleApplicability: Int
+    MemoryPressureScore: Int
+    DiagnosticClarity: Int
+    Extensibility: Int
+    ProductScore: Int
+}
+
+record M51Recommendation {
+    Candidate: M51ActuatorCandidate
+    Score: Int
+    Reason: String
+}
+
+fn M51HardBlock(ctx: M51Context) -> Bool {
+    return ctx.UnsafeRuntime or ctx.SlotFailed or ctx.SlotInvalidated or ctx.OutstandingDepth >= ctx.OutstandingLimit or ctx.MemoryBudgetExceeded
+}
+
+fn M51NeedsFutureData(c: M51ActuatorCandidate) -> Bool {
+    return c == M51ActuatorCandidate.PreStageHost or c == M51ActuatorCandidate.PreTransfer
+}
+
+fn M51CandidateNames() -> M51ActuatorCandidate[] {
+    return [M51ActuatorCandidate.DiagnosticOnly, M51ActuatorCandidate.PrePlan, M51ActuatorCandidate.PreStageHost, M51ActuatorCandidate.PreTransfer, M51ActuatorCandidate.ReservationOnly, M51ActuatorCandidate.HybridPrePlanReservation]
+}
+
+fn M51Evaluate(c: M51ActuatorCandidate, ctx: M51Context) -> M51Eval {
+    var allowed = true
+    var reason = "allow"
+    if M51HardBlock(ctx) {
+        allowed = false
+        reason = "hard_gate_runtime_or_slot_or_budget"
+    }
+    if ctx.WorkerSlots <= 1 and ctx.LookaheadDepthRequested > 0 {
+        allowed = false
+        reason = "insufficient_worker_slots"
+    }
+    if ctx.WorkerSlots == 2 and ctx.LookaheadDepthRequested > 1 {
+        allowed = false
+        reason = "s2_depth_cap_exceeded"
+    }
+    if M51NeedsFutureData(c) and (not ctx.FutureEntryKnown) {
+        allowed = false
+        reason = "future_entry_unavailable"
+    }
+    if c == M51ActuatorCandidate.PreTransfer and (not ctx.TransferQueueAvailable) {
+        allowed = false
+        reason = "transfer_queue_unavailable"
+    }
+    if (c == M51ActuatorCandidate.ReservationOnly or c == M51ActuatorCandidate.PreStageHost or c == M51ActuatorCandidate.HybridPrePlanReservation) and ctx.MemoryPressureHigh {
+        allowed = false
+        reason = "memory_pressure_backpressure"
+    }
+    if (c == M51ActuatorCandidate.PreStageHost or c == M51ActuatorCandidate.PreTransfer) and ctx.ShapeLayoutChurn {
+        allowed = false
+        reason = "shape_layout_invalidation_risk"
+    }
+
+    var safety = 90
+    var confidence = 88
+    var complexity = 20
+    var rollback = 85
+    var latency = 5
+    var batchScore = 70
+    var singleScore = 70
+    var mem = 85
+    var diag = 90
+    var ext = 70
+
+    if c == M51ActuatorCandidate.DiagnosticOnly { latency = 2 }
+    if c == M51ActuatorCandidate.PrePlan { latency = 25 complexity = 30 ext = 80 }
+    if c == M51ActuatorCandidate.PreStageHost { latency = 35 complexity = 55 mem = 60 confidence = 70 singleScore = 45 }
+    if c == M51ActuatorCandidate.PreTransfer { latency = 60 complexity = 85 mem = 45 confidence = 50 rollback = 45 diag = 60 singleScore = 20 }
+    if c == M51ActuatorCandidate.ReservationOnly { latency = 15 complexity = 28 mem = 70 ext = 75 }
+    if c == M51ActuatorCandidate.HybridPrePlanReservation { latency = 38 complexity = 40 mem = 72 confidence = 83 ext = 90 batchScore = 92 singleScore = 55 }
+
+    if ctx.ContextKind == M51ContextKind.Batch { batchScore = batchScore + 8 }
+    if ctx.ContextKind == M51ContextKind.Single { singleScore = singleScore - 8 }
+    if M51NeedsFutureData(c) and ctx.ContextKind == M51ContextKind.Single { confidence = confidence - 20 }
+    if c == M51ActuatorCandidate.PreTransfer { confidence = confidence - 10 }
+    if not allowed { safety = safety - 35 confidence = confidence - 20 latency = 0 }
+
+    let score = safety + confidence + rollback + latency + batchScore + singleScore + mem + diag + ext - complexity
+    return M51Eval {Candidate: c ScenarioName: ctx.ScenarioName Allowed: allowed ReasonCode: reason SafetyScore: safety CorrectnessConfidence: confidence ComplexityCost: complexity RollbackSimplicity: rollback LatencyHidingPotential: latency BatchApplicability: batchScore SingleApplicability: singleScore MemoryPressureScore: mem DiagnosticClarity: diag Extensibility: ext ProductScore: score}
+}
+
+fn M51Recommend(ctx: M51Context) -> M51Recommendation {
+    let c = M51CandidateNames()
+    let e0 = M51Evaluate(c[0], ctx)
+    let e1 = M51Evaluate(c[1], ctx)
+    let e2 = M51Evaluate(c[2], ctx)
+    let e3 = M51Evaluate(c[3], ctx)
+    let e4 = M51Evaluate(c[4], ctx)
+    let e5 = M51Evaluate(c[5], ctx)
+
+    var best = e0
+    if e1.ProductScore > best.ProductScore { best = e1 }
+    if e2.ProductScore > best.ProductScore { best = e2 }
+    if e3.ProductScore > best.ProductScore { best = e3 }
+    if e4.ProductScore > best.ProductScore { best = e4 }
+    if e5.ProductScore > best.ProductScore { best = e5 }
+
+    return M51Recommendation {Candidate: best.Candidate Score: best.ProductScore Reason: "computed_from_contextual_product_score"}
+}
+
+fn M51PrimaryBatchContext() -> M51Context {
+    return M51Context {ScenarioName: "batch_s2_transfer_available" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 1 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+}

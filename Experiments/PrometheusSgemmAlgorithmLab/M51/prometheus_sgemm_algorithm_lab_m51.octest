@@ -1,0 +1,112 @@
+package PrometheusSgemmAlgorithmLab
+
+[Fact]
+fn M51DiagnosticSafeLowBenefit() -> Void {
+    let e = M51Evaluate(M51ActuatorCandidate.DiagnosticOnly, M51PrimaryBatchContext())
+    let h = M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, M51PrimaryBatchContext())
+    Assert.True(e.SafetyScore >= 90, "diagnostic-only should be very safe")
+    Assert.True(e.LatencyHidingPotential < h.LatencyHidingPotential, "diagnostic-only should have lower overlap potential")
+}
+
+[Fact]
+fn M51PreTransferBlockedWithoutQueue() -> Void {
+    let b = M51PrimaryBatchContext()
+    let c = M51Context {ScenarioName: b.ScenarioName ContextKind: b.ContextKind FutureEntryKnown: b.FutureEntryKnown WorkerSlots: b.WorkerSlots LookaheadDepthRequested: b.LookaheadDepthRequested TransferQueueAvailable: false MemoryPressureHigh: b.MemoryPressureHigh ShapeLayoutChurn: b.ShapeLayoutChurn UnsafeRuntime: b.UnsafeRuntime SlotFailed: b.SlotFailed SlotInvalidated: b.SlotInvalidated OutstandingDepth: b.OutstandingDepth OutstandingLimit: b.OutstandingLimit MemoryBudgetExceeded: b.MemoryBudgetExceeded}
+    let e = M51Evaluate(M51ActuatorCandidate.PreTransfer, c)
+    Assert.False(e.Allowed, "pre-transfer must be blocked when transfer queue is unavailable")
+}
+
+[Fact]
+fn M51SingleNoFutureNoPrefetch() -> Void {
+    let c = M51Context {ScenarioName: "single_unknown" ContextKind: M51ContextKind.Single FutureEntryKnown: false WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 0 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let e = M51Evaluate(M51ActuatorCandidate.PreTransfer, c)
+    Assert.False(e.Allowed, "single context without future hint cannot prefetch future data")
+}
+
+[Fact]
+fn M51BatchAllowsPrePlanReservation() -> Void {
+    let c = M51PrimaryBatchContext()
+    Assert.True(M51Evaluate(M51ActuatorCandidate.PrePlan, c).Allowed, "batch with known future should allow pre-plan")
+    Assert.True(M51Evaluate(M51ActuatorCandidate.ReservationOnly, c).Allowed, "batch with known future should allow reservation")
+}
+
+[Fact]
+fn M51MemoryPressureBlocksAllocatingActuators() -> Void {
+    let b = M51PrimaryBatchContext()
+    let c = M51Context {ScenarioName: b.ScenarioName ContextKind: b.ContextKind FutureEntryKnown: b.FutureEntryKnown WorkerSlots: b.WorkerSlots LookaheadDepthRequested: b.LookaheadDepthRequested TransferQueueAvailable: b.TransferQueueAvailable MemoryPressureHigh: true ShapeLayoutChurn: b.ShapeLayoutChurn UnsafeRuntime: b.UnsafeRuntime SlotFailed: b.SlotFailed SlotInvalidated: b.SlotInvalidated OutstandingDepth: b.OutstandingDepth OutstandingLimit: b.OutstandingLimit MemoryBudgetExceeded: b.MemoryBudgetExceeded}
+    Assert.False(M51Evaluate(M51ActuatorCandidate.ReservationOnly, c).Allowed, "memory pressure should block reservation")
+    Assert.False(M51Evaluate(M51ActuatorCandidate.PreStageHost, c).Allowed, "memory pressure should block host staging")
+}
+
+[Fact]
+fn M51InvalidationStopsActuation() -> Void {
+    let b = M51PrimaryBatchContext()
+    let c = M51Context {ScenarioName: b.ScenarioName ContextKind: b.ContextKind FutureEntryKnown: b.FutureEntryKnown WorkerSlots: b.WorkerSlots LookaheadDepthRequested: b.LookaheadDepthRequested TransferQueueAvailable: b.TransferQueueAvailable MemoryPressureHigh: b.MemoryPressureHigh ShapeLayoutChurn: true UnsafeRuntime: b.UnsafeRuntime SlotFailed: b.SlotFailed SlotInvalidated: true OutstandingDepth: b.OutstandingDepth OutstandingLimit: b.OutstandingLimit MemoryBudgetExceeded: b.MemoryBudgetExceeded}
+    Assert.False(M51Evaluate(M51ActuatorCandidate.PreStageHost, c).Allowed, "invalidated/shape churn path must stop pre-stage")
+}
+
+[Fact]
+fn M51S2DepthBounded() -> Void {
+    let b = M51PrimaryBatchContext()
+    let c = M51Context {ScenarioName: b.ScenarioName ContextKind: b.ContextKind FutureEntryKnown: b.FutureEntryKnown WorkerSlots: 2 LookaheadDepthRequested: 2 TransferQueueAvailable: b.TransferQueueAvailable MemoryPressureHigh: b.MemoryPressureHigh ShapeLayoutChurn: b.ShapeLayoutChurn UnsafeRuntime: b.UnsafeRuntime SlotFailed: b.SlotFailed SlotInvalidated: b.SlotInvalidated OutstandingDepth: b.OutstandingDepth OutstandingLimit: b.OutstandingLimit MemoryBudgetExceeded: b.MemoryBudgetExceeded}
+    Assert.False(M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, c).Allowed, "S=2 should cap lookahead depth to 1")
+}
+
+[Fact]
+fn M51HybridBeatsDiagnostic() -> Void {
+    let c = M51PrimaryBatchContext()
+    Assert.True(M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, c).ProductScore > M51Evaluate(M51ActuatorCandidate.DiagnosticOnly, c).ProductScore, "hybrid first actuator should beat diagnostic-only in batch context")
+}
+
+[Fact]
+fn M51PreTransferNotFirstRecommendation() -> Void {
+    let rec = M51Recommend(M51PrimaryBatchContext())
+    Assert.True(rec.Candidate != M51ActuatorCandidate.PreTransfer, "pre-transfer should be deferred unless risk profile justifies it")
+}
+
+[Fact]
+fn M51RecommendationComputedAndDeterministic() -> Void {
+    let a = M51Recommend(M51PrimaryBatchContext())
+    let b = M51Recommend(M51PrimaryBatchContext())
+    Assert.Equal(a.Reason, "computed_from_contextual_product_score", "recommendation reason should be computed")
+    Assert.Equal(a.Candidate, b.Candidate, "recommendation should be deterministic")
+    Assert.Equal(a.Score, b.Score, "score should be deterministic")
+}
+
+[Artifact]
+fn EmitM51ActuatorComparison() -> Void {
+    let ctx = M51PrimaryBatchContext()
+    let c = M51CandidateNames()
+    let table = [M51Evaluate(c[0], ctx), M51Evaluate(c[1], ctx), M51Evaluate(c[2], ctx), M51Evaluate(c[3], ctx), M51Evaluate(c[4], ctx), M51Evaluate(c[5], ctx)]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M51/m51_actuator_comparison.octagon", table)
+}
+
+[Artifact]
+fn EmitM51ContextMatrix() -> Void {
+    let batchCtx = M51PrimaryBatchContext()
+    let singleCtx = M51Context {ScenarioName: "single_unknown_future" ContextKind: M51ContextKind.Single FutureEntryKnown: false WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 0 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let highMemCtx = M51Context {ScenarioName: "batch_high_memory_pressure" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: true ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 1 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let table = [M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, batchCtx), M51Evaluate(M51ActuatorCandidate.PreTransfer, batchCtx), M51Evaluate(M51ActuatorCandidate.PreTransfer, singleCtx), M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, highMemCtx)]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M51/m51_context_matrix.octagon", table)
+}
+
+[Artifact]
+fn EmitM51SafetyGateTable() -> Void {
+    let unsafeCtx = M51Context {ScenarioName: "unsafe" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: true SlotFailed: false SlotInvalidated: false OutstandingDepth: 0 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let capped = M51Context {ScenarioName: "cap" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 3 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let transferOff = M51Context {ScenarioName: "no_queue" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: false MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 0 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    let table = [M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, unsafeCtx), M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, capped), M51Evaluate(M51ActuatorCandidate.PreTransfer, transferOff)]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M51/m51_safety_gate_table.octagon", table)
+}
+
+[Artifact]
+fn EmitM51RiskTable() -> Void {
+    let c = M51PrimaryBatchContext()
+    let table = [M51Evaluate(M51ActuatorCandidate.PrePlan, c), M51Evaluate(M51ActuatorCandidate.PreStageHost, c), M51Evaluate(M51ActuatorCandidate.PreTransfer, c), M51Evaluate(M51ActuatorCandidate.HybridPrePlanReservation, c)]
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M51/m51_risk_table.octagon", table)
+}
+
+[Artifact]
+fn EmitM51FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M51/m51_final_recommendation.octagon", [M51Recommend(M51PrimaryBatchContext())])
+}
