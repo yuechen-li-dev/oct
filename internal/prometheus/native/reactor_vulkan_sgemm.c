@@ -30,6 +30,8 @@
 #include "reactor_slot_hfsm.h"
 #include "reactor_vulkan_fp16_spirv.h"
 #include "reactor_vulkan_packed4_spirv.h"
+#include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
+#include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
@@ -284,6 +286,8 @@ typedef struct prom_slot_runtime_diag {
   uint32_t p13_m16b1_executed_occupancy_variant;
   uint32_t p13_m16b1_variant_registered;
   uint32_t p13_m16b1_variant_benchmark_enabled;
+  uint32_t p13_m16b1_variant_dvt_validated;
+  uint32_t p13_m16b1_variant_pvt_validated;
   uint32_t p13_m16b1_variant_production_eligible;
   uint32_t p13_m16b1_variant_dispatch_enabled;
   uint32_t p13_m16b1_variant_path_status;
@@ -464,6 +468,8 @@ typedef struct prometheus_runtime {
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
   VkPipeline srt_2accum_k_pipeline;
+  VkPipeline b2x2_row_major_biased_pipeline;
+  VkPipeline a2x4_row_biased_accum8_pipeline;
   VkPipeline packed4_pipeline;
   VkPipeline fp16_pipeline;
   prom_vk_buffer direct_a;
@@ -3827,6 +3833,14 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->srt_2accum_k_pipeline, NULL);
     rt->srt_2accum_k_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->b2x2_row_major_biased_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->b2x2_row_major_biased_pipeline, NULL);
+    rt->b2x2_row_major_biased_pipeline = VK_NULL_HANDLE;
+  }
+  if (rt->a2x4_row_biased_accum8_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->a2x4_row_biased_accum8_pipeline, NULL);
+    rt->a2x4_row_biased_accum8_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->packed4_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->packed4_pipeline, NULL);
     rt->packed4_pipeline = VK_NULL_HANDLE;
@@ -4246,6 +4260,54 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   memset(&shader_info, 0, sizeof(shader_info));
   shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv);
+  shader_info.pCode = k_prom_sgemm_b2x2_row_major_biased_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = shader_module;
+  stage_info.pName = "main";
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
+                                    &rt->b2x2_row_major_biased_pipeline);
+  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv);
+  shader_info.pCode = k_prom_sgemm_a2x4_row_biased_accum8_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = shader_module;
+  stage_info.pName = "main";
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
+                                    &rt->a2x4_row_biased_accum8_pipeline);
+  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_info.codeSize = sizeof(k_prom_sgemm_spirv);
   shader_info.pCode = k_prom_sgemm_spirv;
   result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
@@ -4590,7 +4652,9 @@ static uint32_t prom_occ_variant_path_status(uint32_t variant) {
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE;
   }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED;
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
@@ -4598,6 +4662,12 @@ static uint32_t prom_occ_variant_path_status(uint32_t variant) {
   }
   return PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED;
 }
+/* Promotion seam terms:
+ * DVT: local GPU correctness/sanity.
+ * PVT: broader cloud/borrowed GPU validation.
+ * production_eligible: allowed into production policy candidate set.
+ * dispatch_enabled: production policy may actively dispatch it.
+ */
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                         const float* a,
@@ -4756,11 +4826,20 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
   rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
   rt->slot_diag.p13_m16b1_executed_occupancy_variant =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE)
-          ? PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE
-          : PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)
+          ? PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR
+          : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
+              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
+                 ? requested_variant
+                 : PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
   rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
   rt->slot_diag.p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_registered;
+  rt->slot_diag.p13_m16b1_variant_dvt_validated =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_pvt_validated =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
   rt->slot_diag.p13_m16b1_variant_production_eligible =
       (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
   rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
@@ -4771,10 +4850,18 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
           ? PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE
           : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE)
                  ? PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K
-                 : PROM_OCCUPANCY_VARIANT_PATH_ID_NOT_WIRED);
+                 : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4)
+                        ? PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED
+                        : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
+                               ? PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8
+                               : PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE)));
   rt->slot_diag.p13_m16b1_fallback_reason =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
-       requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE)
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE)
+          ? PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS
+          : (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
           ? PROM_OCCUPANCY_VARIANT_FALLBACK_NONE
           : PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
   if (rt->available == 0u) {
@@ -5471,6 +5558,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
       selected_pipeline = rt->srt_2accum_k_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+      selected_pipeline = rt->b2x2_row_major_biased_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+      selected_pipeline = rt->a2x4_row_biased_accum8_pipeline;
     } else {
       selected_pipeline = rt->tiled_pipeline;
     }
@@ -7999,6 +8090,8 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p13_m16b1_executed_occupancy_variant = rt->slot_diag.p13_m16b1_executed_occupancy_variant;
   out_diag->p13_m16b1_variant_registered = rt->slot_diag.p13_m16b1_variant_registered;
   out_diag->p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_benchmark_enabled;
+  out_diag->p13_m16b1_variant_dvt_validated = rt->slot_diag.p13_m16b1_variant_dvt_validated;
+  out_diag->p13_m16b1_variant_pvt_validated = rt->slot_diag.p13_m16b1_variant_pvt_validated;
   out_diag->p13_m16b1_variant_production_eligible = rt->slot_diag.p13_m16b1_variant_production_eligible;
   out_diag->p13_m16b1_variant_dispatch_enabled = rt->slot_diag.p13_m16b1_variant_dispatch_enabled;
   out_diag->p13_m16b1_variant_path_status = rt->slot_diag.p13_m16b1_variant_path_status;
