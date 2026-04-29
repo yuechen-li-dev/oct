@@ -393,7 +393,8 @@ namespace
         std::uint32_t stage = 0u;
         int detail_code = 0;
         for (std::uint32_t i = 0; i < warmup_iterations; ++i) {
-            const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
+            const int status = prometheus_reactor_runtime_sgemm_benchmark_variant(
+                handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, requested_variant, &stage, &detail_code);
             if (status != PROM_OK) {
                 result.skipped = true;
                 result.fallback_reason = "runtime_sgemm_failed";
@@ -409,7 +410,8 @@ namespace
         gpu_samples.reserve(measured_iterations);
         for (std::uint32_t i = 0; i < measured_iterations; ++i) {
             const auto start = std::chrono::steady_clock::now();
-            const int status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
+            const int status = prometheus_reactor_runtime_sgemm_benchmark_variant(
+                handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, requested_variant, &stage, &detail_code);
             const auto end = std::chrono::steady_clock::now();
             if (status != PROM_OK) {
                 result.skipped = true;
@@ -420,6 +422,12 @@ namespace
             memset(&result.diag, 0, sizeof(result.diag));
             const int diag_status = prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag);
             if (diag_status == PROM_OK) {
+                result.selected_variant = result.diag.p13_m16b1_executed_occupancy_variant;
+                if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED) {
+                    result.fallback_reason = "variant_path_not_wired";
+                } else if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_NONE && result.fallback_reason.empty()) {
+                    result.fallback_reason = "none";
+                }
                 result.timestamp_available = (result.diag.p13_m5_timestamp_available != 0u);
                 result.timestamp_failure_reason = timestamp_failure_reason_name(result.diag.p13_m5_last_gpu_timing_failure_reason);
                 if (result.diag.p13_m5_last_gpu_timing_valid != 0u && result.diag.p13_m5_last_gpu_duration_ns > 0u) {
