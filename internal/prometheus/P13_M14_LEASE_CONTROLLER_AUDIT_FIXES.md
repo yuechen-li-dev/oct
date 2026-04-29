@@ -85,3 +85,11 @@ This preserves:
 - batch contention arbitration,
 - non-zero pressure classes,
 - pure facts->decision behavior.
+
+## M14 Follow-up 8 — Stale Invalidation Mask Scope Fix
+
+Root cause: single-call submit-phase lease facts could still observe historical invalidation mask bits from resolved shape-change preparation, causing false deny in non-contention singleton execution.
+
+Fix: in judgment engine, single-call mode path now runs immediately after yield handling and before batch failed/invalidated slot-mask hard gates. In single-call mode, hard gates retained are unsafe runtime and outstanding-depth cap; failed/invalidated masks remain strict for batch mode.
+
+This keeps batch safety semantics intact while preventing stale historical invalidation from vetoing a freshly prepared single-call slot.

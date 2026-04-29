@@ -384,6 +384,27 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
   }
 
   slot_mask = facts->slot_id < 32u ? (1u << facts->slot_id) : 0u;
+  if (facts->single_call_mode != 0u) {
+    if (facts->unsafe_to_reuse != 0u) {
+      out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+      out_decision->deny_reason = PROM_LEASE_REASON_DENIED_UNSAFE_RUNTIME;
+      out_decision->backpressure_applied = 1u;
+      out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
+      return;
+    }
+    if (facts->current_outstanding_depth >= facts->max_outstanding_depth) {
+      out_decision->lease_state = PROM_LEASE_STATE_DENIED;
+      out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
+      out_decision->backpressure_applied = 1u;
+      out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
+      return;
+    }
+    out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
+    out_decision->grant = 1u;
+    out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
+    out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
+    return;
+  }
   if (slot_mask != 0u && (facts->failed_slot_mask & slot_mask) != 0u) {
     out_decision->lease_state = PROM_LEASE_STATE_DENIED;
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_SLOT_FAILED;
@@ -410,13 +431,6 @@ void prom_judgment_engine_decide_resource_lease(const prom_resource_lease_facts*
     out_decision->deny_reason = PROM_LEASE_REASON_DENIED_OUTSTANDING_LIMIT;
     out_decision->backpressure_applied = 1u;
     out_decision->detail = PROM_LEASE_REASON_HARD_DENY_SAFETY_OR_CAP;
-    return;
-  }
-  if (facts->single_call_mode != 0u) {
-    out_decision->lease_state = PROM_LEASE_STATE_GRANTED;
-    out_decision->grant = 1u;
-    out_decision->deny_reason = PROM_LEASE_REASON_GRANTED;
-    out_decision->detail = PROM_LEASE_REASON_UTILITY_GRANT_READY_AND_SAFE;
     return;
   }
   hard_lookahead_blocked = (facts->current_outstanding_depth >= facts->lookahead_limit || facts->unsafe_to_reuse != 0u ||

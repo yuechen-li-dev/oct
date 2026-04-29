@@ -894,5 +894,16 @@ FACT(PrometheusJudgmentEngine_P13_M14_SingleCallModeSkipsContentionBackpressureB
 
     facts.failed_slot_mask = 1u;
     prom_judgment_engine_decide_resource_lease(&facts, &decision);
-    ASSERT_EQUAL(0u, decision.grant, "failed-slot hard gate should still deny single-call mode");
+    ASSERT_EQUAL(1u, decision.grant, "single-call mode should ignore stale failed/invalidated slot masks");
+
+    facts.single_call_mode = 0u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "batch mode must still deny failed-slot mask");
+
+    facts.failed_slot_mask = 0u;
+    facts.single_call_mode = 1u;
+    facts.current_outstanding_depth = 1u;
+    facts.max_outstanding_depth = 1u;
+    prom_judgment_engine_decide_resource_lease(&facts, &decision);
+    ASSERT_EQUAL(0u, decision.grant, "single-call mode must still deny at outstanding-depth cap");
 }
