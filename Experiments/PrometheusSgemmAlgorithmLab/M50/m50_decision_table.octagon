@@ -1,0 +1,7 @@
+[M50DecisionTable {
+    Scenario: ["safe-ready-slot", "safe-ready-slot", "safe-ready-slot", "safe-ready-slot", "safe-ready-slot"]
+    Policy: ["conservative-hard-gate", "aggressive-lookahead", "balanced-utility", "fairness-biased", "hybrid-feedforward-utility"]
+    Action: ["backpressure", "grant", "grant", "grant", "grant"]
+    Reason: ["utility_backpressure_default", "utility_grant_ready_and_safe", "utility_grant_ready_and_safe", "utility_grant_ready_and_safe", "utility_grant_ready_and_safe"]
+    UtilityScore: [60, 95, 80, 75, 75]
+}]

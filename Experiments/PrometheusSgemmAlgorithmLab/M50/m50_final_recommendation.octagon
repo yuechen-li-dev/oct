@@ -1,0 +1,5 @@
+[M50Recommendation {
+    RecommendedPolicy: "hybrid-feedforward-utility"
+    Score: (1855)
+    Reason: "computed_from_scenario_aggregate_robust_product_score"
+}]
