@@ -717,6 +717,67 @@ FACT(P13_M16_BenchmarkOnlyVariantsFallbackFromDispatch)
     }
 }
 
+FACT(P13_M16B2_SrtVariantWiredPathIdentity)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+                                           false,
+                                           false);
+    ASSERT_TRUE(!run.cases.empty(), "comparison mode should include compact cases");
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+                     result.diag.p13_m16b1_requested_occupancy_variant,
+                     "request should be SRT benchmark variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+                     result.diag.p13_m16b1_executed_occupancy_variant,
+                     "executed variant should be SRT");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K),
+                     result.diag.p13_m16b1_variant_path_id,
+                     "path id should identify SRT shader path");
+        ASSERT_TRUE(result.diag.p13_m16b1_variant_path_id != static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE),
+                    "SRT path id must differ from baseline");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE),
+                     result.diag.p13_m16b1_fallback_reason,
+                     "SRT should not report not-wired fallback");
+    }
+}
+
+FACT(P13_M16B2_SrtVariantCorrectnessOddK)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    const std::vector<BenchmarkShapeCase> cases = {
+        {"1x1x1", 0u, 1u, 1u, 1u, true},
+        {"3x7x5", 0u, 3u, 7u, 5u, true},
+        {"8x8x9", 0u, 8u, 8u, 9u, true},
+        {"16x16x17", 0u, 16u, 16u, 17u, true},
+        {"wide-short-small", 0u, 4u, 19u, 7u, true},
+        {"tall-skinny-small", 0u, 21u, 5u, 11u, true},
+    };
+    for (const BenchmarkShapeCase& test_case : cases) {
+        const std::vector<float> a = deterministic_matrix(test_case.m, test_case.k, 11u);
+        const std::vector<float> b = deterministic_matrix(test_case.k, test_case.n, 29u);
+        std::vector<float> c(static_cast<std::size_t>(test_case.m) * static_cast<std::size_t>(test_case.n), 0.0f);
+        std::uint32_t stage = 0u;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_sgemm_benchmark_variant(handle,
+                                                                        a.data(),
+                                                                        b.data(),
+                                                                        c.data(),
+                                                                        test_case.m,
+                                                                        test_case.n,
+                                                                        test_case.k,
+                                                                        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
+                                                                        &stage,
+                                                                        &detail),
+                     "SRT benchmark call should succeed");
+        const CorrectnessSummary correctness = compare_against_oracle(cpu_oracle(test_case.m, test_case.n, test_case.k, a, b), c);
+        ASSERT_TRUE(correctness.pass, "SRT benchmark output should match CPU oracle");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 FACT(P13_M4_DiagnosticsAlignmentRequired)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
