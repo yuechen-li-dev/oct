@@ -14,6 +14,20 @@ std::vector<float> matrix(std::uint32_t rows, std::uint32_t cols)
     }
     return out;
 }
+
+bool wait_until_async_ready(void* handle, int task_id)
+{
+    PrometheusAsyncStatus status{};
+    for (int attempts = 0; attempts < 2000; ++attempts) {
+        if (prometheus_reactor_runtime_sgemm_query_async(handle, task_id, &status) != PROM_OK) {
+            return false;
+        }
+        if (status.lifecycle_state == PROM_ASYNC_STATE_READY) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 FACT(PrometheusReactor_M31_TransferQueueFallback_NoDedicatedQueue)
@@ -146,6 +160,7 @@ FACT(PrometheusReactor_M31_TransferQueueAsyncReadinessWaitsForTransferAndCompute
         ASSERT_EQUAL(1u, diag.m31_async_transfer_complete, "ready async status must include completed transfer work");
     }
 
+    ASSERT_TRUE(wait_until_async_ready(handle, task_id), "async transfer path should eventually become ready");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, task_id), "abandon should clean up task");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }

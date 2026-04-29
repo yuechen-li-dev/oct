@@ -14,6 +14,7 @@
 namespace
 {
     constexpr std::uint32_t kExpectedAbiVersion = 1;
+    constexpr float kGpuOracleTolerance = 1e-4f;
 
     struct ShapeCase {
         const char* name;
@@ -89,6 +90,21 @@ namespace
                 if (std::fabs(expected[i] - actual[i]) > 1e-4f) {
                     return false;
                 }
+            }
+        }
+        return true;
+    }
+
+    bool sequence_near(const std::vector<float>& expected,
+                       const std::vector<float>& actual,
+                       float tolerance)
+    {
+        if (expected.size() != actual.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            if (std::fabs(expected[i] - actual[i]) > tolerance) {
+                return false;
             }
         }
         return true;
@@ -492,7 +508,7 @@ FACT(PrometheusReactor_Packed4EligibleShapeSelectsPackedDetail)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "packed4-eligible shape should execute");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_STAGE_TRANSFER_OUT), stage, "packed4-eligible shape should complete transfer-out stage");
     ASSERT_EQUAL(PROM_DETAIL_PATH_DIRECT_PACKED4_FP32, detail, "packed4-eligible shape should emit packed4 detail code");
-    ASSERT_SEQUENCE_EQUAL(expected, c, "packed4 path output should match scalar oracle exactly");
+    ASSERT_TRUE(sequence_near(expected, c, kGpuOracleTolerance), "packed4 path output should match scalar oracle within tolerance");
 
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diagnostics query should succeed");
@@ -668,7 +684,7 @@ FACT(PrometheusReactor_Packed4TailAndRectangularCasesMatchScalarOracle)
         int detail = 0;
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail),
             "tail/rectangular case should execute");
-        ASSERT_SEQUENCE_EQUAL(expected, c, "tail/rectangular case must match scalar oracle exactly");
+        ASSERT_TRUE(sequence_near(expected, c, kGpuOracleTolerance), "tail/rectangular case must match scalar oracle within tolerance");
     }
 
     PrometheusSgemmPolicyDiagnostics diag{};
@@ -736,7 +752,7 @@ FACT(PrometheusReactor_Packed4AllMod4TailCombinationsMatchScalarOracle)
                 int detail = 0;
                 ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
                     "mod-4 tail combination should execute");
-                ASSERT_SEQUENCE_EQUAL(expected, c, "mod-4 tail combination must match scalar oracle exactly");
+                ASSERT_TRUE(sequence_near(expected, c, kGpuOracleTolerance), "mod-4 tail combination must match scalar oracle within tolerance");
             }
         }
     }

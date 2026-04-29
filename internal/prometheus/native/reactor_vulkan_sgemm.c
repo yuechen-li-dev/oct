@@ -1768,6 +1768,42 @@ static void prom_slot_mark_failure(prometheus_runtime* rt, uint32_t slot_id, int
 static int prom_slot_mark_complete(prometheus_runtime* rt, uint32_t slot_id);
 static void stage_transfer_complete_telemetry(prometheus_runtime* rt, uint32_t complete, uint32_t slot_id, int reason_code);
 static void stage_transfer_failure_telemetry(prometheus_runtime* rt, uint32_t slot_id, int reason_code);
+static uint32_t stage_slot_runtime_diag_snapshot(prometheus_runtime* rt, int reason_code);
+static void commit_slot_runtime_diag_snapshot(prometheus_runtime* rt, int reason_code);
+
+static uint32_t stage_slot_runtime_diag_snapshot(prometheus_runtime* rt, int reason_code) {
+  prom_dom_slot_runtime_diag_snapshot diag_snapshot;
+  if (rt == NULL) {
+    return 0u;
+  }
+  memset(&diag_snapshot, 0, sizeof(diag_snapshot));
+  diag_snapshot.current_slot_id = rt->slot_diag.current_slot_id;
+  diag_snapshot.next_slot_id = rt->slot_diag.next_slot_id;
+  diag_snapshot.slot_state[0] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
+  diag_snapshot.slot_state[1] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
+  diag_snapshot.slot_generation[0] = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
+  diag_snapshot.slot_generation[1] = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
+  diag_snapshot.slot_valid[0] = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
+  diag_snapshot.slot_valid[1] = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
+  diag_snapshot.swap_count = rt->slot_diag.swap_count;
+  diag_snapshot.max_wip_depth = rt->slot_diag.max_wip_depth;
+  diag_snapshot.overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
+  diag_snapshot.stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
+  diag_snapshot.shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
+  diag_snapshot.layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
+  diag_snapshot.capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
+  diag_snapshot.inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
+  diag_snapshot.cleanup_success_count = rt->slot_diag.cleanup_success_count;
+  diag_snapshot.failure_slot_id = rt->slot_diag.failure_slot_id;
+  diag_snapshot.failure_reason = rt->slot_diag.failure_reason;
+  return prom_dom_slot_stage_runtime_diag(&rt->blackboard, &diag_snapshot, reason_code);
+}
+
+static void commit_slot_runtime_diag_snapshot(prometheus_runtime* rt, int reason_code) {
+  if (stage_slot_runtime_diag_snapshot(rt, reason_code) != 0u) {
+    prom_dom_slot_commit(&rt->blackboard);
+  }
+}
 
 static int update_async_progress(prometheus_runtime* rt) {
   VkResult vk_result;
@@ -1988,7 +2024,6 @@ static void prom_slot_stage_commit_event(prometheus_runtime* rt,
                                          uint32_t has_next_slot,
                                          uint32_t next_slot_id) {
   const prom_slot_metadata* metadata;
-  prom_dom_slot_runtime_diag_snapshot diag_snapshot;
   if (rt == NULL || slot_id >= 2u) {
     return;
   }
@@ -2011,27 +2046,7 @@ static void prom_slot_stage_commit_event(prometheus_runtime* rt,
     return;
   }
 
-  memset(&diag_snapshot, 0, sizeof(diag_snapshot));
-  diag_snapshot.current_slot_id = rt->slot_diag.current_slot_id;
-  diag_snapshot.next_slot_id = rt->slot_diag.next_slot_id;
-  diag_snapshot.slot_state[0] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[0]);
-  diag_snapshot.slot_state[1] = (uint32_t)prom_slot_hfsm_current_state(&rt->slots[1]);
-  diag_snapshot.slot_generation[0] = prom_slot_hfsm_metadata(&rt->slots[0])->generation;
-  diag_snapshot.slot_generation[1] = prom_slot_hfsm_metadata(&rt->slots[1])->generation;
-  diag_snapshot.slot_valid[0] = prom_slot_hfsm_metadata(&rt->slots[0])->valid;
-  diag_snapshot.slot_valid[1] = prom_slot_hfsm_metadata(&rt->slots[1])->valid;
-  diag_snapshot.swap_count = rt->slot_diag.swap_count;
-  diag_snapshot.max_wip_depth = rt->slot_diag.max_wip_depth;
-  diag_snapshot.overwrite_rejection_count = rt->slot_diag.overwrite_rejection_count;
-  diag_snapshot.stale_buffer_rejection_count = rt->slot_diag.stale_buffer_rejection_count;
-  diag_snapshot.shape_invalidation_count = rt->slot_diag.shape_invalidation_count;
-  diag_snapshot.layout_invalidation_count = rt->slot_diag.layout_invalidation_count;
-  diag_snapshot.capacity_invalidation_count = rt->slot_diag.capacity_invalidation_count;
-  diag_snapshot.inflight_rejection_count = rt->slot_diag.inflight_rejection_count;
-  diag_snapshot.cleanup_success_count = rt->slot_diag.cleanup_success_count;
-  diag_snapshot.failure_slot_id = rt->slot_diag.failure_slot_id;
-  diag_snapshot.failure_reason = rt->slot_diag.failure_reason;
-  if (prom_dom_slot_stage_runtime_diag(&rt->blackboard, &diag_snapshot, reason_code) == 0u) {
+  if (stage_slot_runtime_diag_snapshot(rt, reason_code) == 0u) {
     return;
   }
 
@@ -2091,6 +2106,7 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
 
   if (state == PROM_SLOT_IN_FLIGHT || state == PROM_SLOT_CURRENT) {
     rt->slot_diag.inflight_rejection_count += 1u;
+    commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
     return PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED;
   }
 
@@ -2127,6 +2143,7 @@ static int prom_slot_prepare_for_call(prometheus_runtime* rt,
   if (!prom_slot_cleanup_to_empty(rt, slot)) {
     if (prom_slot_hfsm_current_state(slot) == PROM_SLOT_IN_FLIGHT) {
       rt->slot_diag.inflight_rejection_count += 1u;
+      commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_SLOT_INFLIGHT_REJECTED);
       return PROM_DETAIL_SLOT_INFLIGHT_REJECTED;
     }
     rt->slot_diag.overwrite_rejection_count += 1u;
@@ -4479,27 +4496,11 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->slot_diag.transfer_failure_reason = 0;
   runtime->reported_compute_queue_count = 1u;
   runtime->independent_compute_queue_count = 1u;
-  runtime->async_task_id = -1;
+  runtime->async_task_id = 0;
   runtime->async_state = PROM_ASYNC_STATE_IDLE;
   runtime->async_stage = PROM_STAGE_NONE;
   runtime->async_failure_detail = 0;
-  {
-    prom_dom_slot_runtime_diag_snapshot diag_snapshot;
-    memset(&diag_snapshot, 0, sizeof(diag_snapshot));
-    diag_snapshot.current_slot_id = runtime->slot_diag.current_slot_id;
-    diag_snapshot.next_slot_id = runtime->slot_diag.next_slot_id;
-    diag_snapshot.slot_state[0] = (uint32_t)prom_slot_hfsm_current_state(&runtime->slots[0]);
-    diag_snapshot.slot_state[1] = (uint32_t)prom_slot_hfsm_current_state(&runtime->slots[1]);
-    diag_snapshot.slot_generation[0] = prom_slot_hfsm_metadata(&runtime->slots[0])->generation;
-    diag_snapshot.slot_generation[1] = prom_slot_hfsm_metadata(&runtime->slots[1])->generation;
-    diag_snapshot.slot_valid[0] = prom_slot_hfsm_metadata(&runtime->slots[0])->valid;
-    diag_snapshot.slot_valid[1] = prom_slot_hfsm_metadata(&runtime->slots[1])->valid;
-    diag_snapshot.failure_slot_id = runtime->slot_diag.failure_slot_id;
-    diag_snapshot.failure_reason = runtime->slot_diag.failure_reason;
-    if (prom_dom_slot_stage_runtime_diag(&runtime->blackboard, &diag_snapshot, 0) != 0u) {
-      prom_dom_slot_commit(&runtime->blackboard);
-    }
-  }
+  commit_slot_runtime_diag_snapshot(runtime, 0);
   stage_commit_async_snapshot(runtime, PROM_DOM_EVENT_NONE, 0);
 
   if (config != NULL) {
@@ -4896,6 +4897,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
     rt->slot_diag.inflight_rejection_count += 1u;
+    commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_ASYNC_UNCONSUMED);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
@@ -4906,6 +4908,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       rt->in_flight_submit = 0u;
     } else {
       rt->slot_diag.inflight_rejection_count += 1u;
+      commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
       return PROM_ERROR;
     }
@@ -7791,6 +7794,7 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
   update_async_progress(rt);
   if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
     rt->slot_diag.inflight_rejection_count += 1u;
+    commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_ASYNC_UNCONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
