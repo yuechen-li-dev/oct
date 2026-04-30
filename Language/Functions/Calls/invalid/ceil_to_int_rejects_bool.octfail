@@ -1,0 +1,7 @@
+expect error: "function 'CeilToInt' argument 1 expects Float, got Bool"
+
+package Main
+
+fn Main() -> Int {
+    return CeilToInt(true)
+}

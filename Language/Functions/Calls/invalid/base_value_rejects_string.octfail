@@ -1,0 +1,7 @@
+expect error: "function 'BaseValue' argument 1 expects Float, got String"
+
+package Main
+
+fn Main() -> Float {
+    return BaseValue("x")
+}

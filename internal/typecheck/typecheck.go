@@ -3721,6 +3721,16 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	case "FloorToInt", "CeilToInt":
+		if argumentType.ValueType.Base != BaseTypeFloat || argumentType.ValueType.IsArray || argumentType.ValueType.IsVector || argumentType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Float, got %s", callee, argumentType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	case "BaseValue":
+		if argumentType.ValueType.Base != BaseTypeFloat || argumentType.ValueType.IsArray || argumentType.ValueType.IsVector || argumentType.ValueType.IsMatrix {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Float, got %s", callee, argumentType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}

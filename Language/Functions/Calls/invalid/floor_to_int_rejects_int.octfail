@@ -1,0 +1,7 @@
+expect error: "function 'FloorToInt' argument 1 expects Float, got Int"
+
+package Main
+
+fn Main() -> Int {
+    return FloorToInt(1)
+}
