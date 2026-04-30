@@ -10,17 +10,17 @@ import (
 func TestM68ExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Stable() -> Int { return 1 }\n")
-	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalZeroPasses() -> Void { return }\n")
+	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalZeroPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
 	writeMilestoneFile(t, root, "M1", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M1", "suite.octest", "package Main\n[Fact]\nfn CanonicalOneFails() -> Void { let x = 1 / 0 Print(x) }\n")
 	writeMilestoneFile(t, root, "M2", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "M2", "suite.octest", "package Main\n[Fact]\nfn CanonicalTwoPasses() -> Void { return }\n")
+	writeMilestoneFile(t, root, "M2", "suite.octest", "package Main\n[Fact]\nfn CanonicalTwoPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
 	writeMilestoneFile(t, root, "M2a", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "M2a", "suite.octest", "package Main\n[Fact]\nfn CanonicalTwoAPasses() -> Void { return }\n")
+	writeMilestoneFile(t, root, "M2a", "suite.octest", "package Main\n[Fact]\nfn CanonicalTwoAPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
 	writeMilestoneFile(t, root, "Mx1", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "Mx1", "suite.octest", "package Main\n[Fact]\nfn AuxiliaryPassesButExcluded() -> Void { return }\n")
+	writeMilestoneFile(t, root, "Mx1", "suite.octest", "package Main\n[Fact]\nfn AuxiliaryPassesButExcluded() -> Void { Assert.Equal(1, 1, \"auxiliary milestone executes when selected\") }\n")
 	writeMilestoneFile(t, root, "Manual", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "Manual", "suite.octest", "package Main\n[Fact]\nfn NonMilestoneExcluded() -> Void { return }\n")
+	writeMilestoneFile(t, root, "Manual", "suite.octest", "package Main\n[Fact]\nfn NonMilestoneExcluded() -> Void { Assert.Equal(1, 1, \"non-milestone executes when selected\") }\n")
 
 	stdout, stderr, err := executeCLI("test", root)
 	if err == nil {
@@ -55,9 +55,9 @@ func TestM68ExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
 func TestM68DirectMilestonePathRunsOnlyTargetedMilestone(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalPasses() -> Void { return }\n")
+	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
 	writeMilestoneFile(t, root, "Mx1", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeMilestoneFile(t, root, "Mx1", "suite.octest", "package Main\n[Fact]\nfn AuxiliaryRunsWhenDirectlyTargeted() -> Void { return }\n")
+	writeMilestoneFile(t, root, "Mx1", "suite.octest", "package Main\n[Fact]\nfn AuxiliaryRunsWhenDirectlyTargeted() -> Void { Assert.Equal(1, 1, \"targeted auxiliary milestone executes\") }\n")
 
 	stdout, stderr, err := executeCLI("test", filepath.Join(root, "Mx1"))
 	if err != nil {

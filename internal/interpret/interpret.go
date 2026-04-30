@@ -238,6 +238,7 @@ type interpreter struct {
 	pdfPages       wrapperHandleStore[*wrapperPDFPage]
 	uiMounts       wrapperHandleStore[*uiMount]
 	wrappers       wrapperBuiltinRegistry
+	assertRecorder func()
 }
 
 type xlsxWorkbook struct {
@@ -246,6 +247,7 @@ type xlsxWorkbook struct {
 
 type ExecuteOptions struct {
 	OutputPathPrefix string
+	AssertionRecorder func()
 }
 
 type environment struct {
@@ -346,6 +348,7 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 	defer clearPrefix()
 
 	interpreter := newInterpreter(program, stdout)
+	interpreter.assertRecorder = options.AssertionRecorder
 	key := pkgName + "." + functionName
 	function, ok := interpreter.functions[key]
 	if !ok {
@@ -1931,6 +1934,11 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 	fail := func(message string) (evalResult, error) {
 		return evalResult{}, fmt.Errorf("assertion failed: %s", message)
 	}
+	recordAssertion := func() {
+		if i.assertRecorder != nil {
+			i.assertRecorder()
+		}
+	}
 
 	evalArg := func(index int) (evalResult, error) {
 		argument, err := i.evalExpr(env, pkgName, argumentExprs[index])
@@ -1942,6 +1950,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 
 	switch callee {
 	case "Assert.True":
+		recordAssertion()
 		condition, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err
@@ -1960,6 +1969,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return fail(message.value.Text)
 		}
 	case "Assert.False":
+		recordAssertion()
 		condition, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err
@@ -1978,6 +1988,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return fail(message.value.Text)
 		}
 	case "Assert.Equal":
+		recordAssertion()
 		expected, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err
@@ -2003,6 +2014,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return fail(message.value.Text)
 		}
 	case "Assert.Near":
+		recordAssertion()
 		expected, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err
@@ -2035,6 +2047,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return fail(message.value.Text)
 		}
 	case "Assert.Error":
+		recordAssertion()
 		result, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err
@@ -2050,6 +2063,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return fail(message.value.Text)
 		}
 	case "Assert.LGTM":
+		recordAssertion()
 		result, err := evalArg(0)
 		if err != nil {
 			return evalResult{}, err

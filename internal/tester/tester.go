@@ -92,10 +92,27 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 	for _, testCase := range tests {
 		total++
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
-		err := interpret.ExecuteFunctionWithArgs(program, testCase.pkg, testCase.name, testCase.arguments, io.Discard)
+		assertionCount := 0
+		err := interpret.ExecuteFunctionWithArgsAndOptions(
+			program,
+			testCase.pkg,
+			testCase.name,
+			testCase.arguments,
+			io.Discard,
+			interpret.ExecuteOptions{
+				AssertionRecorder: func() {
+					assertionCount++
+				},
+			},
+		)
 		if err != nil {
 			failed++
 			_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): %v\n", qualified, shortPath(path, testCase.filePath), err)
+			continue
+		}
+		if assertionCount == 0 {
+			failed++
+			_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): test completed with zero assertions\n", qualified, shortPath(path, testCase.filePath))
 			continue
 		}
 		_, _ = fmt.Fprintf(stdout, "PASS %s (%s)\n", qualified, shortPath(path, testCase.filePath))

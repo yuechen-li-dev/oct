@@ -90,7 +90,7 @@ func TestPackageRootLoadsCanonicalMilestoneLayout(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(milestoneDir, "probe.oct"), []byte("package MilestonePkg\nfn One() -> Int { return 1 }\n"), 0o644); err != nil {
 		t.Fatalf("write milestone source: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(milestoneDir, "probe.octest"), []byte("package MilestonePkg\n[Fact]\nfn Roundtrip() -> Void { return }\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(milestoneDir, "probe.octest"), []byte("package MilestonePkg\n[Fact]\nfn Roundtrip() -> Void { Assert.Equal(1, 1, \"milestone package test executed\") }\n"), 0o644); err != nil {
 		t.Fatalf("write milestone test: %v", err)
 	}
 

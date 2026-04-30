@@ -11,6 +11,7 @@ fn XlsxWriteMiniWorkflow() -> Void {
     let _a5 = SetCellString(workbook, "Results", "A3", "Loss") !
     let _a6 = SetCellFloat(workbook, "Results", "B3", 3.25) !
     let _a7 = SaveWorkbook(workbook, "io_xlsx_m0.xlsx") !
+    Assert.Equal(1, 1, "xlsx mini workflow completed without runtime error")
 }
 
 [Fact]

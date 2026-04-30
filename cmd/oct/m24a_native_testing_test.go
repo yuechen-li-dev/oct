@@ -50,7 +50,7 @@ func TestOctTestDeterministicOrderingAndVoidReturns(t *testing.T) {
 	writeOctPkgFile(t, root, "Main", "order.octest", strings.Join([]string{
 		"package Main",
 		"[Fact]",
-		"fn Zeta() -> Void { return }",
+		"fn Zeta() -> Void { Assert.Equal(1, 1, \"zeta executed\") }",
 		"[Fact]",
 		"fn Alpha() -> Void { Assert.Near(2.0, 1.9999, 0.01, \"near passes\") }",
 	}, "\n")+"\n")
