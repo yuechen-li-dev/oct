@@ -1,9 +1,8 @@
-expect error: "runtime error: min must be <= max"
+expect error: "function Main: let _: undefined variable: definitely_missing_symbol"
 
 package Random
 
 fn Main() -> Int {
-    let rng = Random.RngSeed(1)
-    let _ = Random.RandInt(rng, 5, 1)
+    let _ = definitely_missing_symbol
     return 0
 }
