@@ -168,3 +168,91 @@ fn Positive(x: Int) -> Void {
 		t.Fatalf("expected pass, got %v (%s)", err, out.String())
 	}
 }
+
+func TestSkipTestFactReportsSkip(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "skip_fact.octest", `package Main
+
+[Fact]
+fn SkippedFact() -> Void {
+    SkipTest("known unsupported capability")
+}
+`)
+	var out bytes.Buffer
+	if err := Execute(root, &out); err != nil {
+		t.Fatalf("expected pass with skip, got %v (%s)", err, out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "SKIP Main.SkippedFact") || !strings.Contains(log, "Result: 0 passed, 0 failed, 1 skipped") {
+		t.Fatalf("expected skip output and summary, got %q", log)
+	}
+}
+
+func TestSkipTestIsTerminal(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "skip_terminal.octest", `package Main
+
+[Fact]
+fn SkipStopsExecution() -> Void {
+    SkipTest("stop here")
+    Assert.True(false, "unreachable")
+}
+`)
+	var out bytes.Buffer
+	if err := Execute(root, &out); err != nil {
+		t.Fatalf("expected skip, got %v (%s)", err, out.String())
+	}
+	if strings.Contains(out.String(), "FAIL") {
+		t.Fatalf("expected terminal skip not failure, got %q", out.String())
+	}
+}
+
+func TestSkipTestTheoryRowOnlySkipsCurrentRow(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "skip_theory.octest", `package Main
+
+[Theory]
+[InlineData(0)]
+[InlineData(1)]
+fn MaybeSkip(x: Int) -> Void {
+    if x == 0 {
+        SkipTest("zero case unsupported")
+    }
+    Assert.True(x > 0, "positive row")
+}
+`)
+	var out bytes.Buffer
+	if err := Execute(root, &out); err != nil {
+		t.Fatalf("expected mixed pass/skip, got %v (%s)", err, out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "SKIP Main.MaybeSkip[0]") || !strings.Contains(log, "PASS Main.MaybeSkip[1]") || !strings.Contains(log, "Result: 1 passed, 0 failed, 1 skipped") {
+		t.Fatalf("expected row skip behavior, got %q", log)
+	}
+}
+
+func TestSkipTestValidationAndLaneRestrictions(t *testing.T) {
+	cases := []struct {
+		name    string
+		rel     string
+		source  string
+		wantErr string
+	}{
+		{name: "no args", rel: "bad_no_args.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest() }\n", wantErr: "function 'SkipTest' expects 1 arguments, got 0"},
+		{name: "empty literal", rel: "bad_empty.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest(\"\") }\n", wantErr: "SkipTest reason must be non-empty"},
+		{name: "wrong type", rel: "bad_type.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest(123) }\n", wantErr: "function 'SkipTest' argument 1 expects String, got Int"},
+		{name: "non test file", rel: "bad_prod.oct", source: "package Main\nfn Bad() -> Void { SkipTest(\"nope\") }\n", wantErr: "SkipTest is only available in .octest files"},
+		{name: "benchmark lane", rel: "bad_bench.octest", source: "package Main\n[Benchmark]\nfn Bad() -> Void { SkipTest(\"nope\") }\n", wantErr: "SkipTest is only available in [Fact] or [Theory] tests"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTestFile(t, root, tc.rel, tc.source)
+			var out bytes.Buffer
+			err := Execute(root, &out)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got err=%v out=%q", tc.wantErr, err, out.String())
+			}
+		})
+	}
+}

@@ -147,6 +147,8 @@ type functionContext struct {
 	returnType  Type
 	isFallible  bool
 	isTestFile  bool
+	isFact      bool
+	isTheory    bool
 	isBenchmark bool
 	inFlow      bool
 	inState     bool
@@ -509,7 +511,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		functionScope.define(parameter.Name, signature.parameters[i], false)
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isBenchmark: function.IsBenchmark}
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -2087,6 +2089,18 @@ regularCall:
 		}
 		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
 	}
+	if hasDirectName && calleeName == "SkipTest" {
+		if len(expr.TypeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
+		}
+		if !ctx.isTestFile {
+			return ExprType{}, fmt.Errorf("SkipTest is only available in .octest files")
+		}
+		if !ctx.isFact && !ctx.isTheory {
+			return ExprType{}, fmt.Errorf("SkipTest is only available in [Fact] or [Theory] tests")
+		}
+		return c.checkSkipTestCallExpr(scope, expr.Arguments, ctx)
+	}
 	if hasDirectName && calleeName == "error" {
 		if len(expr.TypeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'error' does not accept type arguments")
@@ -2150,6 +2164,25 @@ regularCall:
 		return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", calleeType.ValueType.FunctionSignature)
 	}
 	return c.checkFunctionCallArguments(calleeType.ValueType.FunctionSignature, signature, scope, expr.Arguments, ctx)
+}
+
+func (c checker) checkSkipTestCallExpr(scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 1 {
+		return ExprType{}, fmt.Errorf("function 'SkipTest' expects 1 arguments, got %d", len(arguments))
+	}
+	reasonType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if reasonType.ValueType != (Type{Base: BaseTypeString}) {
+		return ExprType{}, fmt.Errorf("function 'SkipTest' argument 1 expects String, got %s", reasonType.ValueType)
+	}
+	if literal, ok := arguments[0].(ast.StringLiteralExpr); ok {
+		if strings.TrimSpace(literal.Value) == "" {
+			return ExprType{}, fmt.Errorf("SkipTest reason must be non-empty")
+		}
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 }
 
 func (c checker) enumVariantFromCallee(expr ast.Expr) (string, string, bool) {

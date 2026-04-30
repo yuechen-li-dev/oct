@@ -1,6 +1,7 @@
 package tester
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -88,6 +89,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 	}
 
 	failed := 0
+	skipped := 0
 	total := 0
 	for _, testCase := range tests {
 		total++
@@ -106,6 +108,12 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 			},
 		)
 		if err != nil {
+			var skipErr interpret.SkipTestError
+			if errors.As(err, &skipErr) {
+				skipped++
+				_, _ = fmt.Fprintf(stdout, "SKIP %s (%s): %s\n", qualified, shortPath(path, testCase.filePath), skipErr.Reason)
+				continue
+			}
 			failed++
 			_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): %v\n", qualified, shortPath(path, testCase.filePath), err)
 			continue
@@ -133,7 +141,8 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 		_, _ = fmt.Fprintf(stdout, "PASS %s\n", octFailCase.displayName)
 	}
 
-	_, _ = fmt.Fprintf(stdout, "Result: %d passed, %d failed\n", total-failed, failed)
+	passed := total - failed - skipped
+	_, _ = fmt.Fprintf(stdout, "Result: %d passed, %d failed, %d skipped\n", passed, failed, skipped)
 	if failed > 0 {
 		return fmt.Errorf("%d test(s) failed", failed)
 	}

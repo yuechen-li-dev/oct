@@ -26,9 +26,13 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `[Fact]`, `[Theory]`, `[Artifact]`, and `[Benchmark]` attributes are mutually constrained (invalid combinations are rejected).
 - Theory case names use zero-based row indices: `Package.Function[0]`, `Package.Function[1]`, ...
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
-- `[Fact]` and each `[Theory]` row must execute at least one `Assert.*` call; otherwise the test fails with a zero-assert diagnostic.
+- `[Fact]` and each `[Theory]` row must execute at least one `Assert.*` call, unless the test row ends with `SkipTest("reason")`; otherwise the test fails with a zero-assert diagnostic.
 - Use `Assert.LGTM(<fallible-expression>, "<reason>")` for smoke/completion tests when the main contract is successful completion without runtime error.
-- Planned `SkipTest("reason")` semantics are deferred; no skip helper is currently available in the language surface.
+- `SkipTest(reason: String) -> Void` is available only in `.octest` `[Fact]` and `[Theory]` test bodies.
+- `SkipTest` reason is mandatory and must be non-empty.
+- `SkipTest` is terminal for the current `[Fact]` or current `[Theory]` row; statements after it are not executed.
+- `SkipTest` marks the test outcome as `SKIP` (not `PASS`).
+- `SkipTest` is unavailable in `oct bench` (`[Benchmark]`) and `oct artifact` (`[Artifact]`) lanes.
 - `oct test` executes `.octest` functions through the interpreter path (source execution).
 - `.octest` and `.oct` use the same package import resolver and repository package-root search order.
 - `oct test` does not build or run a compiled `.octbin` test artifact.
