@@ -1,0 +1,68 @@
+package Random
+
+fn Uniform(rng: Rng, min: Float, max: Float) -> RandFloatResult {
+    Require(min <= max, "Uniform requires min <= max")
+    return RandFloatRange(rng, min, max)
+}
+
+fn Gaussian(rng: Rng, mean: Float, stddev: Float) -> RandFloatResult {
+    Require(stddev >= 0.0, "Gaussian requires stddev >= 0")
+    return RandNormal(rng, mean, stddev)
+}
+
+fn Exponential(rng: Rng, lambda: Float) -> RandFloatResult {
+    Require(lambda > 0.0, "Exponential requires lambda > 0")
+
+    let draw = RandFloat01(rng)
+    let value = 0.0 - Ln(1.0 - draw.Value) / lambda
+    return RandFloatResult {
+        Next: draw.Next
+        Value: value
+    }
+}
+
+fn Jitter(rng: Rng, amplitude: Float) -> RandFloatResult {
+    Require(amplitude >= 0.0, "Jitter requires amplitude >= 0")
+    return RandFloatRange(rng, 0.0 - amplitude, amplitude)
+}
+
+fn Spike(rng: Rng, probability: Float, amplitude: Float) -> RandFloatResult {
+    Require(probability >= 0.0, "Spike requires probability >= 0")
+    Require(probability <= 1.0, "Spike requires probability <= 1")
+    Require(amplitude >= 0.0, "Spike requires amplitude >= 0")
+
+    if probability == 0.0 {
+        return RandFloatResult { Next: rng Value: 0.0 }
+    }
+    if probability == 1.0 {
+        let signAlways = RandBernoulli(rng, 0.5)
+        let valueAlways = if signAlways.Value { amplitude } else { 0.0 - amplitude }
+        return RandFloatResult { Next: signAlways.Next Value: valueAlways }
+    }
+
+    let trigger = RandBernoulli(rng, probability)
+    if trigger.Value == false {
+        return RandFloatResult { Next: trigger.Next Value: 0.0 }
+    }
+
+    let sign = RandBernoulli(trigger.Next, 0.5)
+    let value = if sign.Value { amplitude } else { 0.0 - amplitude }
+    return RandFloatResult {
+        Next: sign.Next
+        Value: value
+    }
+}
+
+fn DriftStep(rng: Rng, current: Float, stepStddev: Float) -> RandFloatResult {
+    Require(stepStddev >= 0.0, "DriftStep requires stepStddev >= 0")
+
+    let delta = Gaussian(rng, 0.0, stepStddev)
+    return RandFloatResult {
+        Next: delta.Next
+        Value: current + delta.Value
+    }
+}
+
+fn Bernoulli(rng: Rng, p: Float) -> RandBoolResult {
+    return RandBernoulli(rng, p)
+}
