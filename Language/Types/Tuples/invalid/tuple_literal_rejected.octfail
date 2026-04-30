@@ -1,0 +1,8 @@
+expect error: "expected ')' after expression"
+
+package Main
+
+fn Main() -> Int {
+    x = (1, 2)
+    return 0
+}

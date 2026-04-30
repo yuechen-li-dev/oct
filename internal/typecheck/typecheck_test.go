@@ -92,14 +92,6 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "fn Main() -> Int { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9 return m[0, 1] }",
 		},
 		{
-			name: "tuple return type resolves and destructuring from builtin succeeds",
-			src:  "fn Pair() -> (Int, Int) { return TupleProbe() } fn Main() -> Int { a, b = TupleProbe() return a + b }",
-		},
-		{
-			name: "heterogeneous destructuring from builtin succeeds",
-			src:  "fn Main() -> Int { flag, n = BoolIntProbe() if flag { return n } return 0 }",
-		},
-		{
 			name: "named record arrays in signatures",
 			src:  "record Ingredient { Name: String Grams: Float } fn First(xs: Ingredient[]) -> Ingredient { return xs[0] } fn Main() -> String { let xs = [Ingredient { Name: \"Flour\" Grams: 500.0 }] return First(xs).Name }",
 		},
@@ -244,10 +236,6 @@ func TestCheckValidatesM18Assignments(t *testing.T) {
 	assertTypeErrorContains(t, "record Board { Flag: Bool } fn Main() -> Int { var board = Board { Flag: false } board.Flag = true return 0 }", "function Main: board field assignment is only valid inside flow state bodies")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } flow F(board: Board) -> Int { state S { let shadow = board shadow.Flag = true return 0 } }", "function F: only board field assignment is supported")
 	assertTypeErrorContains(t, "record Board { Count: Int } flow F(board: Board) -> Int { state S { board.Count = 1.5 return 0 } }", "function F: assignment to board.Count: expected Int, got Float")
-	assertTypeErrorContains(t, "fn Main() -> Int { a, b = 1 return 0 }", "function Main: destructuring assignment requires tuple return/value")
-	assertTypeErrorContains(t, "fn Main() -> Int { a, b, c = TupleProbe() return 0 }", "function Main: destructuring assignment expected 2 targets, got 3")
-	assertTypeErrorContains(t, "fn Main() -> Int { var x = 0 x = TupleProbe() return x }", "function Main: assignment to x: tuple return values must be destructured")
-	assertTypeErrorContains(t, "fn Main() -> Int { var x = 0 x, y = BoolIntProbe() return 0 }", "function Main: destructuring assignment tuple element 0 to x: expected Int, got Bool")
 }
 
 func TestCheckRejectsInvalidPropagationAndFallibility(t *testing.T) {

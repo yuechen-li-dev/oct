@@ -138,8 +138,6 @@ var names = map[string]struct{}{
 	"Matrix.zeros":             {},
 	"Matrix.fill":              {},
 	"Matrix.identity":          {},
-	"TupleProbe":               {},
-	"BoolIntProbe":             {},
 	"fft":                      {},
 	"Random.RngSeed":           {},
 	"Random.RandInt":           {},
