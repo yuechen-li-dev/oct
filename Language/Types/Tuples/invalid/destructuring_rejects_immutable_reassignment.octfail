@@ -1,0 +1,9 @@
+expect error: "function Main: cannot assign to immutable binding 'a'"
+
+package Main
+
+fn Main() -> Int {
+    let a = 0
+    a, b = TupleProbe()
+    return a + b
+}
