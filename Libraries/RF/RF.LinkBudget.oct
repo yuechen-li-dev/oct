@@ -54,7 +54,7 @@ fn LinearToDb(valueLinear: Float) -> Float {
 
 /// Converts decibels to linear power ratio.
 fn DbToLinear(valueDb: Float) -> Float {
-    return Exp(Ln(10) * valueDb / 10.0)
+    return Pow(10.0, valueDb / 10.0)
 }
 
 /// Computes SNR in decibels from received and noise power.

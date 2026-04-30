@@ -114,7 +114,7 @@ fn ComputeLinkMargin(budget: LinkBudget) -> LinkMargin {
 }
 
 fn SpectralEfficiencyFromSnrDb(snrDb: Float) -> Float {
-    let snrLinear = Exp(snrDb / 10.0 * Ln(10.0))
+    let snrLinear = Pow(10.0, snrDb / 10.0)
     let shannon = Log10(1.0 + snrLinear) / Log10(2.0)
     if shannon > 10.0 {
         return 10.0
