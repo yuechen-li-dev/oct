@@ -246,8 +246,16 @@ type xlsxWorkbook struct {
 }
 
 type ExecuteOptions struct {
-	OutputPathPrefix string
+	OutputPathPrefix  string
 	AssertionRecorder func()
+}
+
+type SkipTestError struct {
+	Reason string
+}
+
+func (e SkipTestError) Error() string {
+	return fmt.Sprintf("test skipped: %s", e.Reason)
 }
 
 type environment struct {
@@ -1868,6 +1876,12 @@ regularCall:
 		}
 		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments)
 	}
+	if hasDirectName && calleeName == "SkipTest" {
+		if len(expr.TypeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: SkipTest does not accept type arguments")
+		}
+		return i.evalSkipTestCallExpr(env, pkgName, expr.Arguments)
+	}
 
 	functionKey := ""
 	if hasDirectName {
@@ -2083,6 +2097,27 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported Assert function %s", callee)
 	}
 	return evalResult{}, nil
+}
+
+func (i interpreter) evalSkipTestCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(argumentExprs) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: SkipTest expects 1 argument")
+	}
+	reason, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if reason.hasError {
+		return evalResult{hasError: true, errorVal: reason.errorVal}, nil
+	}
+	if reason.value.Kind != ValueString {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: SkipTest expects String, got %s", reason.value.Kind)
+	}
+	text := strings.TrimSpace(reason.value.Text)
+	if text == "" {
+		return evalResult{}, fmt.Errorf("SkipTest reason must be non-empty")
+	}
+	return evalResult{}, SkipTestError{Reason: text}
 }
 
 func valuesEqual(left Value, right Value) bool {
