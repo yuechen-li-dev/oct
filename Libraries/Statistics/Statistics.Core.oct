@@ -1,10 +1,8 @@
 package Statistics
 
-fn Mean(xs: Float[]) -> Float ! Error {
+fn Mean(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("mean requires at least one value")
-    }
+    Require(n > 0, "Mean requires at least one value")
 
     var sum = 0.0
     for i in 0 .. n {
@@ -14,13 +12,11 @@ fn Mean(xs: Float[]) -> Float ! Error {
     return sum / n
 }
 
-fn Variance(xs: Float[]) -> Float ! Error {
+fn Variance(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("variance requires at least one value")
-    }
+    Require(n > 0, "Variance requires at least one value")
 
-    let mean = Mean(xs)?
+    let mean = Mean(xs)
     var accum = 0.0
     for i in 0 .. n {
         let d = xs[i] - mean
@@ -31,16 +27,14 @@ fn Variance(xs: Float[]) -> Float ! Error {
     return accum / n
 }
 
-fn StandardDeviation(xs: Float[]) -> Float ! Error {
-    let variance = Variance(xs)?
+fn StandardDeviation(xs: Float[]) -> Float {
+    let variance = Variance(xs)
     return Sqrt(variance)
 }
 
-fn Median(xs: Float[]) -> Float ! Error {
+fn Median(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("median requires at least one value")
-    }
+    Require(n > 0, "Median requires at least one value")
 
     let sorted = SortedCopy(xs)
     let half = n / 2
@@ -53,15 +47,11 @@ fn Median(xs: Float[]) -> Float ! Error {
     return (sorted[lo] + sorted[hi]) / 2.0
 }
 
-fn Percentile(xs: Float[], p: Float) -> Float ! Error {
+fn Percentile(xs: Float[], p: Float) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("percentile requires at least one value")
-    }
+    Require(n > 0, "Percentile requires at least one value")
 
-    if p < 0.0 or p > 100.0 {
-        return error("percentile p must be in [0, 100]")
-    }
+    Require(p >= 0.0 and p <= 100.0, "Percentile requires p in [0, 100]")
 
     let sorted = SortedCopy(xs)
     if n == 1 {

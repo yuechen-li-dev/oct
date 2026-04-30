@@ -19,30 +19,28 @@ record StatSummary {
 }
 
 // Summarize computes a complete descriptive summary of a dataset.
-fn Summarize(xs: Float[]) -> StatSummary ! Error {
+fn Summarize(xs: Float[]) -> StatSummary {
     let n = Len(xs)
-    if n == 0 {
-        return error("summary requires at least one value")
-    }
+    Require(n > 0, "Summarize requires at least one value")
 
     let sorted = SortedCopy(xs)
     let mn = sorted[0]
     let mx = sorted[n - 1]
     let rng = mx - mn
-    let mean = Mean(xs)?
-    let median = Median(xs)?
-    let variance = Variance(xs)?
-    let sd = StandardDeviation(xs)?
-    let p25 = Percentile(xs, 25.0)?
-    let p75 = Percentile(xs, 75.0)?
+    let mean = Mean(xs)
+    let median = Median(xs)
+    let variance = Variance(xs)
+    let sd = StandardDeviation(xs)
+    let p25 = Percentile(xs, 25.0)
+    let p75 = Percentile(xs, 75.0)
     let iqr = p75 - p25
 
     // Sample variance and stddev (n-1 denominator)
     var sv = 0.0
     var ssd = 0.0
     if n >= 2 {
-        sv = SampleVariance(xs)?
-        ssd = SampleStandardDeviation(xs)?
+        sv = SampleVariance(xs)
+        ssd = SampleStandardDeviation(xs)
     }
 
     // Skewness: (1/n) * sum((xi - mean)^3) / stddev^3
@@ -79,12 +77,10 @@ fn Summarize(xs: Float[]) -> StatSummary ! Error {
 // Returns an error if the dataset is constant (stddev = 0).
 fn ZScores(xs: Float[]) -> Float[] ! Error {
     let n = Len(xs)
-    if n == 0 {
-        return error("z-scores require at least one value")
-    }
+    Require(n > 0, "ZScores requires at least one value")
 
-    let mean = Mean(xs)?
-    let sd = StandardDeviation(xs)?
+    let mean = Mean(xs)
+    let sd = StandardDeviation(xs)
 
     if sd == 0.0 {
         return error("z-scores require a non-constant sequence")
@@ -101,11 +97,9 @@ fn ZScores(xs: Float[]) -> Float[] ! Error {
 }
 
 // MinOf returns the minimum value in the array.
-fn MinOf(xs: Float[]) -> Float ! Error {
+fn MinOf(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("min requires at least one value")
-    }
+    Require(n > 0, "MinOf requires at least one value")
 
     var mn = xs[0]
     for i in 1 .. n {
@@ -118,11 +112,9 @@ fn MinOf(xs: Float[]) -> Float ! Error {
 }
 
 // MaxOf returns the maximum value in the array.
-fn MaxOf(xs: Float[]) -> Float ! Error {
+fn MaxOf(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("max requires at least one value")
-    }
+    Require(n > 0, "MaxOf requires at least one value")
 
     var mx = xs[0]
     for i in 1 .. n {
@@ -135,15 +127,15 @@ fn MaxOf(xs: Float[]) -> Float ! Error {
 }
 
 // RangeOf returns the difference between max and min.
-fn RangeOf(xs: Float[]) -> Float ! Error {
-    let mn = MinOf(xs)?
-    let mx = MaxOf(xs)?
+fn RangeOf(xs: Float[]) -> Float {
+    let mn = MinOf(xs)
+    let mx = MaxOf(xs)
     return mx - mn
 }
 
 // IQR returns the interquartile range (P75 - P25).
-fn IQR(xs: Float[]) -> Float ! Error {
-    let p25 = Percentile(xs, 25.0)?
-    let p75 = Percentile(xs, 75.0)?
+fn IQR(xs: Float[]) -> Float {
+    let p25 = Percentile(xs, 25.0)
+    let p75 = Percentile(xs, 75.0)
     return p75 - p25
 }
