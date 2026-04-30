@@ -2139,9 +2139,18 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return argTypes[0], nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", argTypes[0])
-	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh":
+	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "FloorToInt", "CeilToInt", "BaseValue":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if name == "FloorToInt" || name == "CeilToInt" || name == "BaseValue" {
+			if isFloatScalarTypeString(argTypes[0]) {
+				if name == "FloorToInt" || name == "CeilToInt" {
+					return "Int", nil
+				}
+				return "Float", nil
+			}
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
 			return "Float", nil
@@ -2699,7 +2708,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
 		importSet["strings"] = struct{}{}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["fft"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] {
@@ -4237,6 +4246,12 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = math.Cosh(float64(%s))", st.Target, st.Args[0]), nil
 			case "Tanh":
 				return fmt.Sprintf("%s = math.Tanh(float64(%s))", st.Target, st.Args[0]), nil
+			case "FloorToInt":
+				return fmt.Sprintf("%s = int(math.Floor(float64(%s)))", st.Target, st.Args[0]), nil
+			case "CeilToInt":
+				return fmt.Sprintf("%s = int(math.Ceil(float64(%s)))", st.Target, st.Args[0]), nil
+			case "BaseValue":
+				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
 			case "Contains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "StartsWith":

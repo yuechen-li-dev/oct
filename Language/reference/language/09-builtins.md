@@ -84,7 +84,16 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 
 - `Float(value: Int) -> Float`.
   - Explicit numeric widening conversion (`Int`/`Int<D>` to `Float`/`Float<D>`).
-  - `Float -> Int` conversion is intentionally not provided.
+  - Generic `Float -> Int` conversion is intentionally not provided.
+- `FloorToInt(x: Float) -> Int`.
+  - Explicit conversion using floor (`toward -infinity`).
+  - Examples: `FloorToInt(2.9) == 2`, `FloorToInt(0.0 - 2.1) == -3`.
+- `CeilToInt(x: Float) -> Int`.
+  - Explicit conversion using ceil (`toward +infinity`).
+  - Examples: `CeilToInt(2.1) == 3`, `CeilToInt(0.0 - 2.9) == -2`.
+- `BaseValue(x: Float | Float<D>) -> Float`.
+  - Explicitly strips unit annotation and returns canonical/base-unit numeric value.
+  - Dimensionless `Float` is accepted and returned unchanged.
 - `ToString(value: Int | Float | Bool) -> String`.
 - `FormatFloat(value: Float, precision: Int) -> String`.
   - Preferred when fixed decimal precision is required.
@@ -94,6 +103,8 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 - Use `ToString(x)` for plain explicit conversion.
 - Use `FormatFloat(x, precision)` when display precision matters.
 - Use `Float(x)` only for explicit `Int -> Float` conversion.
+- Use `FloorToInt(x)` or `CeilToInt(x)` for explicit float-to-int rounding policy.
+- Use `BaseValue(x)` only when intentionally discarding units.
 - No implicit numeric/string conversion is performed in concatenation or other expressions.
 
 ## 5) String helpers

@@ -3340,6 +3340,21 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime error: Log10 expects positive input, got %s", argument.value.String())
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Log10(value)}}, nil
+	case "FloorToInt":
+		if argument.value.Kind != ValueFloat {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: FloorToInt expects Float, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueInt, Int: int64(math.Floor(argument.value.Float))}}, nil
+	case "CeilToInt":
+		if argument.value.Kind != ValueFloat {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: CeilToInt expects Float, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueInt, Int: int64(math.Ceil(argument.value.Float))}}, nil
+	case "BaseValue":
+		if argument.value.Kind != ValueFloat {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: BaseValue expects Float, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: argument.value.Float}}, nil
 	default:
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", callee)
 	}

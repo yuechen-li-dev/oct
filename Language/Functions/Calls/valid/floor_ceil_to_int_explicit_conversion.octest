@@ -1,0 +1,11 @@
+package Main
+
+fn FloorCeilToIntExplicitConversion() -> Void {
+    Assert.Equal(FloorToInt(2.9), 2)
+    Assert.Equal(FloorToInt(2.0), 2)
+    Assert.Equal(FloorToInt(0.0 - 2.1), 0 - 3)
+
+    Assert.Equal(CeilToInt(2.1), 3)
+    Assert.Equal(CeilToInt(2.0), 2)
+    Assert.Equal(CeilToInt(0.0 - 2.9), 0 - 2)
+}

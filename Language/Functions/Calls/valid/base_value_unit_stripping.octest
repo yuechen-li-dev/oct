@@ -1,0 +1,14 @@
+package Main
+
+fn BaseValueStripsUnitsExplicitly() -> Void {
+    let t: Float<s> = 0.5<s>
+    Assert.LGTM(BaseValue(t), 0.5)
+
+    let f: Float<Hz> = 60.0<Hz>
+    Assert.LGTM(BaseValue(f), 60.0)
+
+    let a: Float<m*s^-2> = 9.8<m*s^-2>
+    Assert.LGTM(BaseValue(a), 9.8)
+
+    Assert.LGTM(BaseValue(3.0), 3.0)
+}
