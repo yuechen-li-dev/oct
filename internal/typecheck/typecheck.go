@@ -38,6 +38,7 @@ type Type struct {
 	Base              BaseType
 	Name              string
 	Dimension         dimension.Dimension
+	Tuple             *tupleType
 	IsArray           bool
 	ArrayDepth        int
 	IsVector          bool
@@ -47,6 +48,10 @@ type Type struct {
 	IsFlowInstance    bool
 	FlowResultType    string
 	FlowResult        *Type
+}
+
+type tupleType struct {
+	Elements []Type
 }
 
 func mustDimension(name string) dimension.Dimension {
@@ -71,6 +76,13 @@ func peelArrayType(t Type) Type {
 }
 
 func (t Type) String() string {
+	if t.Tuple != nil {
+		parts := make([]string, 0, len(t.Tuple.Elements))
+		for _, element := range t.Tuple.Elements {
+			parts = append(parts, element.String())
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	}
 	base := t.Name
 	if base == "" {
 		base = string(t.Base)
@@ -670,8 +682,39 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: assignment to %s: fallible expression must be handled explicitly", ctx.name, node.Name)
 		}
+		if valueType.ValueType.Tuple != nil {
+			return false, fmt.Errorf("function %s: assignment to %s: tuple return values must be destructured", ctx.name, node.Name)
+		}
 		if !isAssignable(valueType.ValueType, target.valueType) {
 			return false, fmt.Errorf("function %s: assignment to %s: expected %s, got %s", ctx.name, node.Name, target.valueType, valueType.ValueType)
+		}
+		return false, nil
+	case ast.DestructureAssignStmt:
+		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("function %s: destructuring assignment: %w", ctx.name, err)
+		}
+		if valueType.Fallible {
+			return false, fmt.Errorf("function %s: destructuring assignment: fallible expression must be handled explicitly", ctx.name)
+		}
+		if valueType.ValueType.Tuple == nil {
+			return false, fmt.Errorf("function %s: destructuring assignment requires tuple return/value", ctx.name)
+		}
+		if len(node.Names) != len(valueType.ValueType.Tuple.Elements) {
+			return false, fmt.Errorf("function %s: destructuring assignment expected %d targets, got %d", ctx.name, len(valueType.ValueType.Tuple.Elements), len(node.Names))
+		}
+		for i, name := range node.Names {
+			target, ok := scope.lookup(name)
+			if !ok {
+				scope.define(name, valueType.ValueType.Tuple.Elements[i], true)
+				continue
+			}
+			if !target.mutable {
+				return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'", ctx.name, name)
+			}
+			if !isAssignable(valueType.ValueType.Tuple.Elements[i], target.valueType) {
+				return false, fmt.Errorf("function %s: destructuring assignment tuple element %d to %s: expected %s, got %s", ctx.name, i, name, target.valueType, valueType.ValueType.Tuple.Elements[i])
+			}
 		}
 		return false, nil
 	case ast.IndexAssignStmt:
@@ -2364,6 +2407,18 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "TupleProbe" || callee == "BoolIntProbe" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		if callee == "TupleProbe" {
+			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeInt}, {Base: BaseTypeInt}}}}}, nil
+		}
+		return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeBool}, {Base: BaseTypeInt}}}}}, nil
+	}
 	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -4659,6 +4714,27 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
+	if len(typeRef.TupleOf) > 0 {
+		if typeRef.IsArray || typeRef.ArrayDepth > 0 || typeRef.VectorOf != nil || typeRef.MatrixOf != nil || typeRef.Function != nil || typeRef.Name != "" || typeRef.Package != "" || typeRef.HasUnit {
+			return Type{}, fmt.Errorf("invalid tuple type syntax")
+		}
+		if len(typeRef.TupleOf) < 2 {
+			return Type{}, fmt.Errorf("tuple type must include at least two element types")
+		}
+		elements := make([]Type, 0, len(typeRef.TupleOf))
+		for _, elementRef := range typeRef.TupleOf {
+			if len(elementRef.TupleOf) > 0 {
+				return Type{}, fmt.Errorf("nested tuple types are not supported in M2")
+			}
+			elementType, err := c.resolveType(elementRef, false)
+			if err != nil {
+				return Type{}, err
+			}
+			elements = append(elements, elementType)
+		}
+		return Type{Tuple: &tupleType{Elements: elements}}, nil
+	}
+
 	arrayDepth := typeRef.ArrayDepth
 	if typeRef.IsArray && arrayDepth == 0 {
 		arrayDepth = 1
@@ -5185,6 +5261,20 @@ func operatorName(operator string) string {
 
 func isAssignable(actual Type, expected Type) bool {
 	if actual == expected {
+		return true
+	}
+	if actual.Tuple != nil || expected.Tuple != nil {
+		if actual.Tuple == nil || expected.Tuple == nil {
+			return false
+		}
+		if len(actual.Tuple.Elements) != len(expected.Tuple.Elements) {
+			return false
+		}
+		for i := range actual.Tuple.Elements {
+			if !isAssignable(actual.Tuple.Elements[i], expected.Tuple.Elements[i]) {
+				return false
+			}
+		}
 		return true
 	}
 	if actual.IsFlowInstance || expected.IsFlowInstance {
