@@ -266,3 +266,29 @@ Keep plain `Float` (intentional non-Hz):
 
 - Existing RF/Wireless APIs currently encode Hz semantics mostly in names/comments while using plain `Float`; this conflicts with reference-supported `Float<Hz>`/`Float<s^-1>` capability.
 - dB/dBm are widely used but not represented as dedicated unit-typed aliases in `Language/reference`; this is a documentation/modeling gap to keep tracking.
+
+
+## 10) M5b implementation status (completed)
+
+Date: 2026-04-30
+
+- Tests updated first as oracle in:
+  - `Libraries/RF/RF.Noise.octest`
+  - `Libraries/RF/RF.PathLoss.octest`
+  - `Libraries/RF/RF.Doppler.octest`
+- APIs migrated (low/medium-risk RF function set):
+  - `RF.Noise`: bandwidth inputs to `Float<Hz>` / `Float<Hz>[]`, temperature inputs to `Float<K>` / `Float<K>[]` for dimensional consistency with existing `K` usage.
+  - `RF.PathLoss`: free-space carrier-frequency inputs to `Float<Hz>` (scalar + series), speed-of-light helper typed as `Float<m/s>`.
+  - `RF.Doppler`: carrier/max-doppler/doppler-shift frequency inputs and outputs migrated to `Float<Hz>`; coherence-bandwidth returns migrated to `Float<Hz>`; coherence-time max-Doppler inputs migrated to `Float<Hz>`.
+- Formulas preserved: numeric relationships/constants unchanged (kTB, Friis geometry, Doppler linear relation, Jakes/half-cycle coherence-time approximations, and coherence-bandwidth approximations).
+- Intentionally unchanged dimensionless quantities: dB/dBm, linear noise figure, path-loss exponents, scalar power/loss ratios remain `Float`.
+- Deferred by scope: Wireless records and RF.SParameters were intentionally not migrated in this milestone.
+- Validation executed:
+  - `go test ./...`
+  - `go run ./cmd/oct test Libraries/RF`
+  - `go run ./cmd/oct test Libraries`
+  - `go run ./cmd/oct test Language/Types/UnitsM1`
+  - `go run ./cmd/oct test Libraries/Wireless`
+
+Reference consistency note surfaced:
+- This migration uses `Hz` typed literals/arrays and signed-exponent-compatible unit behavior per `Language/reference/language/08-units.md` (`Hz = s^-1`).

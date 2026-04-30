@@ -2,30 +2,30 @@ package RF
 
 [Fact]
 fn FreeSpacePathLossIncreasesWithDistanceAndFrequency() -> Void {
-    let f = 2400000000
+    let f: Float<Hz> = 2400000000Hz
 
     let nearLoss = FreeSpacePathLossLinear(1m, f)
     let farLoss = FreeSpacePathLossLinear(10m, f)
     Assert.True(farLoss > nearLoss, "fspl should increase with distance")
 
-    let lowFreqLoss = FreeSpacePathLossLinear(10m, 900000000)
-    let highFreqLoss = FreeSpacePathLossLinear(10m, 2400000000)
+    let lowFreqLoss = FreeSpacePathLossLinear(10m, 900000000Hz)
+    let highFreqLoss = FreeSpacePathLossLinear(10m, 2400000000Hz)
     Assert.True(highFreqLoss > lowFreqLoss, "fspl should increase with frequency")
 }
 
 [Fact]
 fn PathLossSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
     let distance = [1m]
-    let fspl1 = FreeSpacePathLossLinearSeries(distance, 2400000000)
+    let fspl1 = FreeSpacePathLossLinearSeries(distance, 2400000000Hz)
     Assert.Equal(1, Len(fspl1), "length-1 fspl shape")
-    Assert.Near(FreeSpacePathLossLinear(1m, 2400000000), fspl1[0], 0.000001, "length-1 fspl equals scalar")
+    Assert.Near(FreeSpacePathLossLinear(1m, 2400000000Hz), fspl1[0], 0.000001, "length-1 fspl equals scalar")
 
     var distances = [1m]
     for _ in 1 .. 100 {
         distances = Append(distances, 1m)
     }
 
-    let fsplLarge = FreeSpacePathLossLinearSeries(distances, 2400000000)
+    let fsplLarge = FreeSpacePathLossLinearSeries(distances, 2400000000Hz)
     Assert.Equal(Len(distances), Len(fsplLarge), "large fspl shape matches input")
     let fsplLast = Len(fsplLarge) - 1
     Assert.Near(fsplLarge[0], fsplLarge[fsplLast], 0.000001, "constant distance maps elementwise")
@@ -38,7 +38,7 @@ fn PathLossSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
 
 [Fact]
 fn FreeSpacePathLossSanityAtOneMeterTwoPointFourGHz() -> Void {
-    let fspl = FreeSpacePathLossLinear(1m, 2400000000)
+    let fspl = FreeSpacePathLossLinear(1m, 2400000000Hz)
     Assert.Near(10117.0, fspl, 50.0, "1 m, 2.4 GHz FSPL linear sanity")
 }
 
@@ -56,8 +56,8 @@ fn LogDistancePathLossHasExpectedGrowthAndReference() -> Void {
 
 [Fact]
 fn InvalidPathLossInputsReturnZero() -> Void {
-    Assert.Equal(0.0, FreeSpacePathLossLinear(0m, 1000000000), "zero distance is invalid")
-    Assert.Equal(0.0, FreeSpacePathLossLinear(1m, 0), "zero frequency is invalid")
+    Assert.Equal(0.0, FreeSpacePathLossLinear(0m, 1000000000Hz), "zero distance is invalid")
+    Assert.Equal(0.0, FreeSpacePathLossLinear(1m, 0Hz), "zero frequency is invalid")
     Assert.Equal(0.0, LogDistancePathLossLinear(1m, 0m, 100.0, 2.0), "zero reference distance is invalid")
 }
 

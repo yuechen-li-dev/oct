@@ -2,83 +2,83 @@ package RF
 
 [Fact]
 fn DopplerShiftScalesWithVelocityAndCarrierFrequency() -> Void {
-    let atRest = DopplerShiftHz(2400000000.0, 0.0)
-    Assert.Near(0.0, atRest, 0.000001, "zero velocity should produce zero doppler shift")
+    let atRest = DopplerShiftHz(2400000000.0Hz, 0.0m/s)
+    Assert.Near(0.0, atRest / 1Hz, 0.000001, "zero velocity should produce zero doppler shift")
 
-    let lowSpeed = Abs(DopplerShiftHz(2400000000.0, 10.0))
-    let highSpeed = Abs(DopplerShiftHz(2400000000.0, 30.0))
+    let lowSpeed = Abs(DopplerShiftHz(2400000000.0Hz, 10.0m/s))
+    let highSpeed = Abs(DopplerShiftHz(2400000000.0Hz, 30.0m/s))
     Assert.True(highSpeed > lowSpeed, "higher speed should increase doppler magnitude")
 
-    let lowCarrier = Abs(DopplerShiftHz(900000000.0, 20.0))
-    let highCarrier = Abs(DopplerShiftHz(2400000000.0, 20.0))
+    let lowCarrier = Abs(DopplerShiftHz(900000000.0Hz, 20.0m/s))
+    let highCarrier = Abs(DopplerShiftHz(2400000000.0Hz, 20.0m/s))
     Assert.True(highCarrier > lowCarrier, "higher carrier should increase doppler magnitude")
 }
 
 [Fact]
 fn DopplerHelpersRespectExpectedUnitsAndSignConventions() -> Void {
     let c = SpeedOfLightMetersPerSecond()
-    let oneToOne = DopplerShiftHzWithPropagationSpeed(1000000000.0, c, c)
-    Assert.Near(1000000000.0, oneToOne, 0.000001, "velocity and propagation speed with same units should produce expected hz")
+    let oneToOne = DopplerShiftHzWithPropagationSpeed(1000000000.0Hz, c, c)
+    Assert.Near(1000000000.0, oneToOne / 1Hz, 0.000001, "velocity and propagation speed with same units should produce expected hz")
 
-    let toward = DopplerShiftHz(1000000000.0, 25.0)
-    let away = DopplerShiftHz(1000000000.0, 0.0 - 25.0)
-    Assert.Near(0.0, toward + away, 0.000001, "opposite radial velocity directions should flip doppler sign")
+    let toward = DopplerShiftHz(1000000000.0Hz, 25.0m/s)
+    let away = DopplerShiftHz(1000000000.0Hz, 0.0m/s - 25.0m/s)
+    Assert.Near(0.0, (toward + away) / 1Hz, 0.000001, "opposite radial velocity directions should flip doppler sign")
 
-    let maxFromNegative = MaxDopplerShiftHz(1000000000.0, 0.0 - 25.0)
-    let maxFromPositive = MaxDopplerShiftHz(1000000000.0, 25.0)
-    Assert.Near(maxFromPositive, maxFromNegative, 0.000001, "max doppler should use speed magnitude")
+    let maxFromNegative = MaxDopplerShiftHz(1000000000.0Hz, 0.0m/s - 25.0m/s)
+    let maxFromPositive = MaxDopplerShiftHz(1000000000.0Hz, 25.0m/s)
+    Assert.Near(maxFromPositive / 1Hz, maxFromNegative / 1Hz, 0.000001, "max doppler should use speed magnitude")
 }
 
 [Fact]
 fn CoherenceTimeHelpersShrinkAsDopplerGrows() -> Void {
-    let slow = CoherenceTimeSecondsFromMaxDopplerJakes(10.0)
-    let fast = CoherenceTimeSecondsFromMaxDopplerJakes(100.0)
+    let slow = CoherenceTimeSecondsFromMaxDopplerJakes(10.0Hz)
+    let fast = CoherenceTimeSecondsFromMaxDopplerJakes(100.0Hz)
     Assert.True(fast < slow, "larger doppler should reduce jakes coherence time")
 
-    let halfCycleSlow = CoherenceTimeSecondsFromMaxDopplerHalfCycle(10.0)
-    let halfCycleFast = CoherenceTimeSecondsFromMaxDopplerHalfCycle(100.0)
+    let halfCycleSlow = CoherenceTimeSecondsFromMaxDopplerHalfCycle(10.0Hz)
+    let halfCycleFast = CoherenceTimeSecondsFromMaxDopplerHalfCycle(100.0Hz)
     Assert.True(halfCycleFast < halfCycleSlow, "larger doppler should reduce half-cycle coherence time")
 }
 
 [Fact]
 fn CoherenceTimeApproximationConstantsAreStableAndExplicit() -> Void {
-    let jakes = CoherenceTimeSecondsFromMaxDopplerJakes(100.0)
-    Assert.Near(0.00423, jakes, 0.00000001, "jakes-style approximation uses 0.423/fd")
+    let jakes = CoherenceTimeSecondsFromMaxDopplerJakes(100.0Hz)
+    Assert.Near(0.00423, jakes / 1s, 0.00000001, "jakes-style approximation uses 0.423/fd")
 
-    let halfCycle = CoherenceTimeSecondsFromMaxDopplerHalfCycle(100.0)
-    Assert.Near(0.005, halfCycle, 0.00000001, "half-cycle approximation uses 1/(2fd)")
+    let halfCycle = CoherenceTimeSecondsFromMaxDopplerHalfCycle(100.0Hz)
+    Assert.Near(0.005, halfCycle / 1s, 0.00000001, "half-cycle approximation uses 1/(2fd)")
 
-    Assert.Equal(0.0, CoherenceTimeSecondsFromMaxDopplerJakes(0.0), "zero doppler maps to deterministic zero sentinel")
+    Assert.Equal(0.0, CoherenceTimeSecondsFromMaxDopplerJakes(0.0Hz) / 1s, "zero doppler maps to deterministic zero sentinel")
 }
 
 [Fact]
 fn CoherenceBandwidthHelpersShrinkAsDelaySpreadGrows() -> Void {
-    let shortDelay = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.0000001)
-    let longDelay = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.000001)
+    let shortDelay = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.0000001s)
+    let longDelay = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.000001s)
     Assert.True(longDelay < shortDelay, "larger delay spread should reduce wide-sense coherence bandwidth")
 
-    let shortDelayStrict = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.0000001)
-    let longDelayStrict = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.000001)
+    let shortDelayStrict = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.0000001s)
+    let longDelayStrict = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.000001s)
     Assert.True(longDelayStrict < shortDelayStrict, "larger delay spread should reduce strict coherence bandwidth")
 }
 
 [Fact]
 fn CoherenceBandwidthApproximationConstantsAreStableAndExplicit() -> Void {
-    let wideSense = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.000001)
-    Assert.Near(200000.0, wideSense, 0.1, "wide-sense approximation uses 1/(5 tau_rms)")
+    let wideSense: Float<Hz> = CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.000001s)
+    Assert.Near(200000.0, wideSense / 1Hz, 0.1, "wide-sense approximation uses 1/(5 tau_rms)")
 
-    let strict = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.000001)
-    Assert.Near(20000.0, strict, 0.1, "strict approximation uses 1/(50 tau_rms)")
+    let strict: Float<Hz> = CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.000001s)
+    Assert.Near(20000.0, strict / 1Hz, 0.1, "strict approximation uses 1/(50 tau_rms)")
 
-    Assert.Equal(0.0, CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.0), "zero delay spread maps to deterministic zero sentinel")
+    Assert.Equal(0.0, CoherenceBandwidthHzFromRmsDelaySpreadWideSense(0.0s) / 1Hz, "zero delay spread maps to deterministic zero sentinel")
 }
 
 [Fact]
 fn DeterministicDopplerPhaseProgressionIsLinearInTime() -> Void {
-    let doppler = 100.0
-    let phaseAt0 = DopplerPhaseRadians(doppler, 0.0)
-    let phaseAt1ms = DopplerPhaseRadians(doppler, 0.001)
-    let phaseAt2ms = DopplerPhaseRadians(doppler, 0.002)
+    let doppler: Float<Hz> = 100.0Hz
+    let phaseAt0 = DopplerPhaseRadians(doppler, 0.0s)
+    let phaseAt1ms = DopplerPhaseRadians(doppler, 0.001s)
+    let phaseAt2ms = DopplerPhaseRadians(doppler, 0.002s)
 
     Assert.Near(0.0, phaseAt0, 0.000001, "zero time should produce zero phase")
     Assert.True(phaseAt2ms > phaseAt1ms, "phase should increase deterministically with time for positive doppler")
@@ -87,8 +87,8 @@ fn DeterministicDopplerPhaseProgressionIsLinearInTime() -> Void {
 
 [Fact]
 fn InvalidDopplerInputsReturnDeterministicZeroSentinels() -> Void {
-    Assert.Equal(0.0, DopplerShiftHz(0.0, 10.0), "zero carrier frequency is invalid")
-    Assert.Equal(0.0, DopplerShiftHzWithPropagationSpeed(1000000000.0, 10.0, 0.0), "zero propagation speed is invalid")
-    Assert.Equal(0.0, CoherenceTimeSecondsFromMaxDopplerHalfCycle(0.0 - 1.0), "negative doppler is invalid for coherence-time helpers")
-    Assert.Equal(0.0, CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.0 - 0.000001), "negative delay spread is invalid for coherence-bandwidth helpers")
+    Assert.Equal(0.0, DopplerShiftHz(0.0Hz, 10.0m/s) / 1Hz, "zero carrier frequency is invalid")
+    Assert.Equal(0.0, DopplerShiftHzWithPropagationSpeed(1000000000.0Hz, 10.0m/s, 0.0m/s) / 1Hz, "zero propagation speed is invalid")
+    Assert.Equal(0.0, CoherenceTimeSecondsFromMaxDopplerHalfCycle(0.0Hz - 1.0Hz) / 1s, "negative doppler is invalid for coherence-time helpers")
+    Assert.Equal(0.0, CoherenceBandwidthHzFromRmsDelaySpreadStrict(0.0s - 0.000001s) / 1Hz, "negative delay spread is invalid for coherence-bandwidth helpers")
 }

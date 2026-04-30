@@ -4,42 +4,42 @@ package RF
 /// Param carrierFrequencyHz: Carrier center frequency.
 /// Param relativeRadialVelocityMetersPerSecond: Signed closing velocity component.
 /// Remarks: Uses speed of light from this package.
-fn DopplerShiftHz(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float) -> Float {
+fn DopplerShiftHz(carrierFrequencyHz: Float<Hz>, relativeRadialVelocityMetersPerSecond: Float<m/s>) -> Float<Hz> {
     return DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz, relativeRadialVelocityMetersPerSecond, SpeedOfLightMetersPerSecond())
 }
 
 /// Computes Doppler shift using an explicit propagation speed.
 /// Remarks: Suitable for non-vacuum or non-RF wave-speed approximations.
-fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float, relativeRadialVelocityMetersPerSecond: Float, propagationSpeedMetersPerSecond: Float) -> Float {
-    if carrierFrequencyHz <= 0 {
-        return 0.0
+fn DopplerShiftHzWithPropagationSpeed(carrierFrequencyHz: Float<Hz>, relativeRadialVelocityMetersPerSecond: Float<m/s>, propagationSpeedMetersPerSecond: Float<m/s>) -> Float<Hz> {
+    if carrierFrequencyHz <= 0Hz {
+        return 0.0Hz
     }
-    if propagationSpeedMetersPerSecond <= 0 {
-        return 0.0
+    if propagationSpeedMetersPerSecond <= 0m/s {
+        return 0.0Hz
     }
 
     return carrierFrequencyHz * relativeRadialVelocityMetersPerSecond / propagationSpeedMetersPerSecond
 }
 
 /// Returns the maximum magnitude Doppler shift for a speed bound.
-fn MaxDopplerShiftHz(carrierFrequencyHz: Float, speedMetersPerSecond: Float) -> Float {
+fn MaxDopplerShiftHz(carrierFrequencyHz: Float<Hz>, speedMetersPerSecond: Float<m/s>) -> Float<Hz> {
     return Abs(DopplerShiftHz(carrierFrequencyHz, Abs(speedMetersPerSecond)))
 }
 
 /// Approximates channel coherence time using the Jakes 0.423/fd relation.
 /// Remarks: Model assumes wide-sense stationary narrowband fading.
-fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float) -> Float {
-    if maxDopplerHz <= 0 {
-        return 0.0
+fn CoherenceTimeSecondsFromMaxDopplerJakes(maxDopplerHz: Float<Hz>) -> Float<s> {
+    if maxDopplerHz <= 0Hz {
+        return 0.0s
     }
 
     return 0.423 / maxDopplerHz
 }
 
 /// Approximates coherence time using a half-cycle Doppler heuristic.
-fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
-    if maxDopplerHz <= 0 {
-        return 0.0
+fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float<Hz>) -> Float<s> {
+    if maxDopplerHz <= 0Hz {
+        return 0.0s
     }
 
     return 1.0 / (2.0 * maxDopplerHz)
@@ -47,9 +47,9 @@ fn CoherenceTimeSecondsFromMaxDopplerHalfCycle(maxDopplerHz: Float) -> Float {
 
 /// Estimates coherence bandwidth from RMS delay spread with loose selectivity criterion.
 /// Remarks: Uses Bc≈1/(5στ), common for ~0.5 correlation definitions.
-fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float) -> Float {
-    if rmsDelaySpreadSeconds <= 0 {
-        return 0.0
+fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float<s>) -> Float<Hz> {
+    if rmsDelaySpreadSeconds <= 0s {
+        return 0.0Hz
     }
 
     return 1.0 / (5.0 * rmsDelaySpreadSeconds)
@@ -57,9 +57,9 @@ fn CoherenceBandwidthHzFromRmsDelaySpreadWideSense(rmsDelaySpreadSeconds: Float)
 
 /// Estimates coherence bandwidth from RMS delay spread with stricter selectivity criterion.
 /// Remarks: Uses Bc≈1/(50στ), representing higher frequency-correlation requirement.
-fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) -> Float {
-    if rmsDelaySpreadSeconds <= 0 {
-        return 0.0
+fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float<s>) -> Float<Hz> {
+    if rmsDelaySpreadSeconds <= 0s {
+        return 0.0Hz
     }
 
     return 1.0 / (50.0 * rmsDelaySpreadSeconds)
@@ -67,6 +67,6 @@ fn CoherenceBandwidthHzFromRmsDelaySpreadStrict(rmsDelaySpreadSeconds: Float) ->
 
 /// Converts Doppler frequency offset and elapsed time to accumulated phase.
 /// Units: Hz·s -> radians.
-fn DopplerPhaseRadians(dopplerShiftHz: Float, timeSeconds: Float) -> Float {
+fn DopplerPhaseRadians(dopplerShiftHz: Float<Hz>, timeSeconds: Float<s>) -> Float {
     return 2.0 * Pi() * dopplerShiftHz * timeSeconds
 }
