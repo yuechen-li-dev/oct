@@ -1863,15 +1863,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			case "Random.RngSeed":
 				return builtinName, "Random.Rng", true, false, nil
 			case "Random.RandInt":
-				return builtinName, "(Random.Rng, Int)", true, false, nil
+				return builtinName, "Random.RandIntResult", true, false, nil
 			case "Random.RandFloat01":
-				return builtinName, "(Random.Rng, Float)", true, false, nil
+				return builtinName, "Random.RandFloatResult", true, false, nil
 			case "Random.RandFloatRange":
-				return builtinName, "(Random.Rng, Float)", true, false, nil
+				return builtinName, "Random.RandFloatResult", true, false, nil
 			case "Random.RandBernoulli":
-				return builtinName, "(Random.Rng, Bool)", true, false, nil
+				return builtinName, "Random.RandBoolResult", true, false, nil
 			case "Random.RandNormal":
-				return builtinName, "(Random.Rng, Float)", true, false, nil
+				return builtinName, "Random.RandFloatResult", true, false, nil
 			case "Random.CryptoRandInt":
 				return builtinName, "Int", true, true, nil
 			case "Random.CryptoRandFloat01":
@@ -3091,7 +3091,7 @@ func __octRandomNext(s Random_Rng) (Random_Rng, uint64) {
 }
 func __octRandomFloat01(x uint64) float64 { return float64(x>>11) * (1.0 / (1 << 53)) }
 func __octRandomRngSeed(seed int) Random_Rng { return __octRandomSeedState(seed) }
-func __octRandomRandInt(rng Random_Rng, min int, max int) (Random_Rng, int) {
+func __octRandomRandInt(rng Random_Rng, min int, max int) Random_RandIntResult {
 	if min > max { panic("runtime error: min must be <= max") }
 	span := uint64(max - min + 1)
 	threshold := ^uint64(0) - (^uint64(0) % span)
@@ -3100,31 +3100,31 @@ func __octRandomRandInt(rng Random_Rng, min int, max int) (Random_Rng, int) {
 		rng, x = __octRandomNext(rng)
 		if x < threshold { break }
 	}
-	return rng, min + int(x%span)
+	return Random_RandIntResult{Next: rng, Value: min + int(x%span)}
 }
-func __octRandomRandFloat01(rng Random_Rng) (Random_Rng, float64) {
+func __octRandomRandFloat01(rng Random_Rng) Random_RandFloatResult {
 	rng, x := __octRandomNext(rng)
-	return rng, __octRandomFloat01(x)
+	return Random_RandFloatResult{Next: rng, Value: __octRandomFloat01(x)}
 }
-func __octRandomRandFloatRange(rng Random_Rng, min float64, max float64) (Random_Rng, float64) {
+func __octRandomRandFloatRange(rng Random_Rng, min float64, max float64) Random_RandFloatResult {
 	if min > max { panic("runtime error: min must be <= max") }
-	if min == max { return rng, min }
+	if min == max { return Random_RandFloatResult{Next: rng, Value: min} }
 	rng, x := __octRandomNext(rng)
-	return rng, min + (max-min)*__octRandomFloat01(x)
+	return Random_RandFloatResult{Next: rng, Value: min + (max-min)*__octRandomFloat01(x)}
 }
-func __octRandomRandBernoulli(rng Random_Rng, p float64) (Random_Rng, bool) {
+func __octRandomRandBernoulli(rng Random_Rng, p float64) Random_RandBoolResult {
 	if p < 0 || p > 1 { panic("runtime error: p must be in [0,1]") }
-	if p == 0 || p == 1 { return rng, p == 1 }
+	if p == 0 || p == 1 { return Random_RandBoolResult{Next: rng, Value: p == 1} }
 	rng, x := __octRandomNext(rng)
-	return rng, __octRandomFloat01(x) < p
+	return Random_RandBoolResult{Next: rng, Value: __octRandomFloat01(x) < p}
 }
-func __octRandomRandNormal(rng Random_Rng, mean float64, stddev float64) (Random_Rng, float64) {
+func __octRandomRandNormal(rng Random_Rng, mean float64, stddev float64) Random_RandFloatResult {
 	if stddev < 0 { panic("runtime error: stddev must be >= 0") }
-	if stddev == 0 { return rng, mean }
+	if stddev == 0 { return Random_RandFloatResult{Next: rng, Value: mean} }
 	rng, u1 := __octRandomNext(rng)
 	rng, u2 := __octRandomNext(rng)
 	z := math.Sqrt(-2*math.Log(math.Max(__octRandomFloat01(u1), 1e-12))) * math.Cos(2*math.Pi*__octRandomFloat01(u2))
-	return rng, mean + stddev*z
+	return Random_RandFloatResult{Next: rng, Value: mean + stddev*z}
 }
 func __octCryptoRandBytes(count int) ([]byte, error) {
 	if count < 0 { return nil, fmt.Errorf("count must be >= 0") }
@@ -4286,6 +4286,16 @@ func goStmt(s MIRStmt) (string, error) {
 					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
 			case "Random.RngSeed":
 				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, st.Args[0]), nil
+			case "Random.RandInt":
+				return fmt.Sprintf("%s = __octRandomRandInt(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+			case "Random.RandFloat01":
+				return fmt.Sprintf("%s = __octRandomRandFloat01(%s)", st.Target, st.Args[0]), nil
+			case "Random.RandFloatRange":
+				return fmt.Sprintf("%s = __octRandomRandFloatRange(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+			case "Random.RandBernoulli":
+				return fmt.Sprintf("%s = __octRandomRandBernoulli(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "Random.RandNormal":
+				return fmt.Sprintf("%s = __octRandomRandNormal(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
 			case "Random.CryptoRandBytes":
 				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandBytes(%s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
 					st.Target, goResultTypeName("Bytes"), st.Args[0], goResultTypeName("Bytes"), goResultTypeName("Bytes")), nil
@@ -4311,15 +4321,15 @@ func goStmt(s MIRStmt) (string, error) {
 			case "BoolIntProbe":
 				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
 			case "Random.RandInt":
-				return fmt.Sprintf("%s, %s = __octRandomRandInt(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
+				return "", fmt.Errorf("destructuring Random.RandInt is not supported")
 			case "Random.RandFloat01":
-				return fmt.Sprintf("%s, %s = __octRandomRandFloat01(%s)", st.Targets[0], st.Targets[1], st.Args[0]), nil
+				return "", fmt.Errorf("destructuring Random.RandFloat01 is not supported")
 			case "Random.RandFloatRange":
-				return fmt.Sprintf("%s, %s = __octRandomRandFloatRange(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
+				return "", fmt.Errorf("destructuring Random.RandFloatRange is not supported")
 			case "Random.RandBernoulli":
-				return fmt.Sprintf("%s, %s = __octRandomRandBernoulli(%s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1]), nil
+				return "", fmt.Errorf("destructuring Random.RandBernoulli is not supported")
 			case "Random.RandNormal":
-				return fmt.Sprintf("%s, %s = __octRandomRandNormal(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
+				return "", fmt.Errorf("destructuring Random.RandNormal is not supported")
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}

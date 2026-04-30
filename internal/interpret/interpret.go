@@ -2207,7 +2207,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		case "Random.RandFloat01":
 			s, _ := rngStateFromValue(args[0])
 			s, x := randomNext(s)
-			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueFloat, Float: toFloat01(x)}}}}, nil
+			return evalResult{value: randomFloatResultValue(rngValueFromState(s), toFloat01(x))}, nil
 		case "Random.RandInt":
 			s, _ := rngStateFromValue(args[0])
 			min, max := args[1].Int, args[2].Int
@@ -2223,7 +2223,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 					break
 				}
 			}
-			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueInt, Int: min + int64(x%span)}}}}, nil
+			return evalResult{value: randomIntResultValue(rngValueFromState(s), min+int64(x%span))}, nil
 		case "Random.RandFloatRange":
 			s, _ := rngStateFromValue(args[0])
 			min, max := args[1].Float, args[2].Float
@@ -2231,10 +2231,10 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{}, fmt.Errorf("runtime error: min must be <= max")
 			}
 			if min == max {
-				return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueFloat, Float: min}}}}, nil
+				return evalResult{value: randomFloatResultValue(rngValueFromState(s), min)}, nil
 			}
 			s, x := randomNext(s)
-			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueFloat, Float: min + (max-min)*toFloat01(x)}}}}, nil
+			return evalResult{value: randomFloatResultValue(rngValueFromState(s), min+(max-min)*toFloat01(x))}, nil
 		case "Random.RandBernoulli":
 			s, _ := rngStateFromValue(args[0])
 			p := args[1].Float
@@ -2242,10 +2242,10 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{}, fmt.Errorf("runtime error: p must be in [0,1]")
 			}
 			if p == 0 || p == 1 {
-				return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueBool, Bool: p == 1}}}}, nil
+				return evalResult{value: randomBoolResultValue(rngValueFromState(s), p == 1)}, nil
 			}
 			s, x := randomNext(s)
-			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueBool, Bool: toFloat01(x) < p}}}}, nil
+			return evalResult{value: randomBoolResultValue(rngValueFromState(s), toFloat01(x) < p)}, nil
 		case "Random.RandNormal":
 			s, _ := rngStateFromValue(args[0])
 			mean, std := args[1].Float, args[2].Float
@@ -2253,12 +2253,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{}, fmt.Errorf("runtime error: stddev must be >= 0")
 			}
 			if std == 0 {
-				return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueFloat, Float: mean}}}}, nil
+				return evalResult{value: randomFloatResultValue(rngValueFromState(s), mean)}, nil
 			}
 			s, u1 := randomNext(s)
 			s, u2 := randomNext(s)
 			z := normalFromPair(math.Max(toFloat01(u1), 1e-12), toFloat01(u2))
-			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{rngValueFromState(s), {Kind: ValueFloat, Float: mean + std*z}}}}, nil
+			return evalResult{value: randomFloatResultValue(rngValueFromState(s), mean+std*z)}, nil
 		case "Random.CryptoRandBytes":
 			count := args[0].Int
 			if count < 0 {

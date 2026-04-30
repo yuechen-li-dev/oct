@@ -2424,6 +2424,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
 		rngType := Type{Name: "Random.Rng"}
+		randIntResultType := Type{Name: "Random.RandIntResult"}
+		randFloatResultType := Type{Name: "Random.RandFloatResult"}
+		randBoolResultType := Type{Name: "Random.RandBoolResult"}
 		switch callee {
 		case "Random.RngSeed":
 			if len(arguments) != 1 {
@@ -2434,17 +2437,17 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			if len(arguments) != 3 {
 				return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
 			}
-			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeInt}}}}}, nil
+			return ExprType{ValueType: randIntResultType}, nil
 		case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal":
 			if (callee == "Random.RandFloat01" && len(arguments) != 1) || (callee != "Random.RandFloat01" && len(arguments) != 3) {
 				return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
 			}
-			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeFloat}}}}}, nil
+			return ExprType{ValueType: randFloatResultType}, nil
 		case "Random.RandBernoulli":
 			if len(arguments) != 2 {
 				return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
 			}
-			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeBool}}}}}, nil
+			return ExprType{ValueType: randBoolResultType}, nil
 		case "Random.CryptoRandInt":
 			return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
 		case "Random.CryptoRandFloat01":
