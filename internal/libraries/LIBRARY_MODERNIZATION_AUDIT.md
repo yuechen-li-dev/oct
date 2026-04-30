@@ -269,3 +269,45 @@ No public API signatures were changed in this pass. In particular, the following
   - `a * Pow(sutMpa, b)`
   - `Pow(ratio, exponent)`
 - This covers the same interpreter path and expression shape used by the Mechanics modernization and RF power-law formulas.
+
+## 9. M3 loop + mutability readability pass (implemented 2026-04-30)
+
+### Files changed
+
+- `Libraries/LinearAlgebra/LinearAlgebra.Core.oct`
+- `Libraries/Mathematics/Mathematics.Transforms.oct`
+- `Libraries/Statistics/Statistics.Core.oct`
+- `internal/libraries/LIBRARY_MODERNIZATION_AUDIT.md`
+
+### Loop categories converted
+
+- Converted clear counting/index loops from `while` to `for` in matrix/vector traversal and fixed-bound copy/scale passes:
+  - `LinearAlgebra.Core`: dense matmul/matvec/vecmat loops and output pre-allocation loops.
+  - `Mathematics.Transforms`: FFT bit-reorder index sweep, butterfly inner-half sweep, inverse scaling sweep, and copy helper loop.
+  - `Statistics.Core`: sorted-copy build loop and insertion-sort outer pass loop.
+
+### Loop categories intentionally left unchanged
+
+- Kept condition-driven `while` loops where condition evolution is the algorithm:
+  - FFT stage growth (`span = span * 2`) and stage-block stepping loops.
+  - Power-of-two and bit-reversal reduction loops (`while n > 1`).
+  - Insertion-sort shift loop (`while j > 0 and out[j - 1] > value`).
+  - LU pivot/search/elimination and backward-substitution loops in `LinearAlgebra.Core`.
+
+### Mutability demotions performed
+
+- No safe `var`→`let` demotions were applied in this pass inside the touched numerical kernels.
+- Existing `var` bindings in touched regions are either loop-carried state, accumulator variables, mutable arrays, or algorithmic counters that remain reassigned.
+
+### Risk notes
+
+- The pass is readability-only and preserves public signatures and algorithm structure.
+- The `Percentile` lower-index conversion relies on existing `Int(Float)` truncation semantics to preserve prior floor behavior for non-negative ranks (`p ∈ [0, 100]`).
+
+### Validation results
+
+- `go test ./...`
+- `go run ./cmd/oct test Libraries/LinearAlgebra`
+- `go run ./cmd/oct test Libraries/Mathematics`
+- `go run ./cmd/oct test Libraries/Statistics`
+- `go run ./cmd/oct test Libraries`

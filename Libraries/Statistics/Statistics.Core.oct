@@ -96,15 +96,12 @@ fn SortedCopy(xs: Float[]) -> Float[] {
     }
 
     var out = [xs[0]]
-    var i = 1
-    while i < n {
+    for i in 1 .. n {
         out = Append(out, xs[i])
-        i = i + 1
     }
 
     // Deterministic insertion sort ascending.
-    var k = 1
-    while k < n {
+    for k in 1 .. n {
         let value = out[k]
         var j = k
 
@@ -114,7 +111,6 @@ fn SortedCopy(xs: Float[]) -> Float[] {
         }
 
         out[j] = value
-        k = k + 1
     }
 
     return out

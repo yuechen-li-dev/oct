@@ -44,26 +44,18 @@ fn MatMul(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int
     }
 
     var out = [0.0]
-    var i = 1
-    while i < aRows * bCols {
+    for i in 1 .. aRows * bCols {
         out = Append(out, 0.0)
-        i = i + 1
     }
 
-    var r = 0
-    while r < aRows {
-        var c = 0
-        while c < bCols {
+    for r in 0 .. aRows {
+        for c in 0 .. bCols {
             var sum = 0.0
-            var k = 0
-            while k < aCols {
+            for k in 0 .. aCols {
                 sum = sum + A[FlatIndex(r, k, aCols)] * B[FlatIndex(k, c, bCols)]
-                k = k + 1
             }
             out[FlatIndex(r, c, bCols)] = sum
-            c = c + 1
         }
-        r = r + 1
     }
 
     return out
@@ -78,22 +70,16 @@ fn MatVecMul(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Error {
     }
 
     var out = [0.0]
-    var oi = 1
-    while oi < rows {
+    for oi in 1 .. rows {
         out = Append(out, 0.0)
-        oi = oi + 1
     }
 
-    var r = 0
-    while r < rows {
+    for r in 0 .. rows {
         var sum = 0.0
-        var c = 0
-        while c < cols {
+        for c in 0 .. cols {
             sum = sum + A[FlatIndex(r, c, cols)] * x[c]
-            c = c + 1
         }
         out[r] = sum
-        r = r + 1
     }
 
     return out
@@ -108,22 +94,16 @@ fn VecMatMul(x: Float[], A: Float[], rows: Int, cols: Int) -> Float[] ! Error {
     }
 
     var out = [0.0]
-    var oi = 1
-    while oi < cols {
+    for oi in 1 .. cols {
         out = Append(out, 0.0)
-        oi = oi + 1
     }
 
-    var c = 0
-    while c < cols {
+    for c in 0 .. cols {
         var sum = 0.0
-        var r = 0
-        while r < rows {
+        for r in 0 .. rows {
             sum = sum + x[r] * A[FlatIndex(r, c, cols)]
-            r = r + 1
         }
         out[c] = sum
-        c = c + 1
     }
 
     return out
