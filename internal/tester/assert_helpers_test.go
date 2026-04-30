@@ -96,3 +96,75 @@ fn FailsWhenOk() -> Void {
 		t.Fatalf("expected assertion failed output, got %q", out.String())
 	}
 }
+
+func TestZeroAssertFactFails(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "zero_fact.octest", `package Main
+
+[Fact]
+fn EmptyFact() -> Void {
+    let x = 1
+}
+`)
+	var out bytes.Buffer
+	err := Execute(root, &out)
+	if err == nil {
+		t.Fatalf("expected failure for zero-assert fact, got pass (%s)", out.String())
+	}
+	if !strings.Contains(out.String(), "test completed with zero assertions") {
+		t.Fatalf("expected zero-assert failure message, got %q", out.String())
+	}
+}
+
+func TestAssertedFactPasses(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "asserted_fact.octest", `package Main
+
+[Fact]
+fn AssertedFact() -> Void {
+    Assert.Equal(1 + 1, 2, "math works")
+}
+`)
+	var out bytes.Buffer
+	if err := Execute(root, &out); err != nil {
+		t.Fatalf("expected pass, got %v (%s)", err, out.String())
+	}
+}
+
+func TestZeroAssertTheoryRowFails(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "zero_theory.octest", `package Main
+
+[Theory]
+[InlineData(1)]
+fn EmptyTheory(x: Int) -> Void {
+    let y = x + 1
+}
+`)
+	var out bytes.Buffer
+	err := Execute(root, &out)
+	if err == nil {
+		t.Fatalf("expected failure for zero-assert theory row, got pass (%s)", out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "EmptyTheory[0]") || !strings.Contains(log, "test completed with zero assertions") {
+		t.Fatalf("expected row-specific zero-assert failure, got %q", log)
+	}
+}
+
+func TestAssertedTheoryRowsPass(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "asserted_theory.octest", `package Main
+
+[Theory]
+[InlineData(1)]
+[InlineData(2)]
+fn Positive(x: Int) -> Void {
+    Assert.True(x > 0, "inline row is positive")
+}
+`)
+	var out bytes.Buffer
+	if err := Execute(root, &out); err != nil {
+		t.Fatalf("expected pass, got %v (%s)", err, out.String())
+	}
+}
