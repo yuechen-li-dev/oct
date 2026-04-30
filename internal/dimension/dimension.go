@@ -31,6 +31,11 @@ func Zero() Dimension {
 }
 
 func FromBaseName(name string) (Dimension, bool) {
+	if name == "Hz" {
+		var dim Dimension
+		dim.Exponents[Time] = -1
+		return dim, true
+	}
 	for i, baseName := range baseNames {
 		if baseName == name {
 			var dim Dimension

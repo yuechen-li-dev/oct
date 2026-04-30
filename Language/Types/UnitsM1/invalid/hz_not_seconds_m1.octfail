@@ -1,0 +1,7 @@
+expect error: "let bad: expected Float<s>, got Float<1/s>"
+
+package UnitsM1Invalid
+
+fn Main() -> Void {
+    let bad: Float<s> = 60.0Hz
+}
