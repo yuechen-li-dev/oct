@@ -2149,3 +2149,62 @@ func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *te
 		t.Fatalf("expected matrix output, got %q", normalized)
 	}
 }
+
+func TestCompileRunTupleProbeDestructure(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Int {
+    var a = 0
+    var b = 0
+    a, b = TupleProbe()
+    return a + b
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "3" {
+		t.Fatalf("expected 3, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+func TestCompileRunBoolIntProbeDestructure(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Int {
+    var flag = false
+    var n = 0
+    flag, n = BoolIntProbe()
+    if flag {
+        return n
+    }
+    return 0
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "7" {
+		t.Fatalf("expected 7, got %q", strings.TrimSpace(string(out)))
+	}
+}

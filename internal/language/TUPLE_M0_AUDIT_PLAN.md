@@ -325,3 +325,23 @@ Implemented in M3:
 Known consistency note:
 
 - Language reference documentation does not yet fully describe tuple packet runtime behavior; this is a deliberate documentation gap to close alongside broader language reference updates.
+
+## Tuple M4 status update (compiled/lowering compatibility)
+
+Date: 2026-04-30
+
+Implemented in M4:
+
+1. Compiled lowering now handles `ast.DestructureAssignStmt` for call RHS with tuple return type.
+2. Compiled MIR now includes a dedicated destructuring-call statement to preserve one RHS evaluation.
+3. Compiled call resolution now includes proof builtins:
+   - `TupleProbe() -> (Int, Int)`
+   - `BoolIntProbe() -> (Bool, Int)`
+4. Compiled Go emission now supports tuple destructuring assignment lowering.
+5. Compiled proof tests added in `internal/build/compiler_test.go` for tuple destructuring and heterogeneous tuple destructuring.
+
+Preserved constraints:
+
+- tuple-to-single assignment remains rejected in typechecker before lowering,
+- no general tuple storage or API broadening,
+- no tuple literals/indexing/equality/nested destructuring support.
