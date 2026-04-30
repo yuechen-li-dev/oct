@@ -1,61 +1,220 @@
-# Random.Core (M1a runtime)
+# Random.Core (M0 Oct-Shaped Edition)
 
-Random M1a provides deterministic state-threaded RNG and fallible crypto RNG.
+This document defines the **Oct-shaped** public design for `Random.Core`.
 
-## Public API
+Tuple-threaded public APIs are rejected for Random. Random draws are modeled as explicit state transitions using **records** with named fields.
+
+## 1) Why tuple-threading was rejected
+
+The previously explored public shape:
+
+```oct
+rng, value = Random.RandInt(rng, 1, 6)
+```
+
+is rejected for `Random.Core` because it introduces positional meaning at the call site, pushes tuple-first user ergonomics, and reflects host-language implementation convenience more than Oct-facing design.
+
+Random in Oct should expose state transitions via named data, not position.
+
+## 2) Oct-shaped design principles
+
+Random.Core follows existing Oct constructs:
+
+- **Record**: named heterogeneous data.
+- **Enum**: closed domain outcomes.
+- **Match**: consume structured enum alternatives (especially payload-bearing cases).
+- **Array**: homogeneous sequences.
+
+No new language features are required.
+
+If any existing experiments or older docs conflict with this direction, this document is the source of truth for Random.Core API shape.
+
+## 3) Public `Random.Core` API
 
 ```oct
 package Random
 
 type Rng
 
+record RandIntResult {
+    Next: Rng
+    Value: Int
+}
+
+record RandFloatResult {
+    Next: Rng
+    Value: Float
+}
+
+record RandBoolResult {
+    Next: Rng
+    Value: Bool
+}
+
 RngSeed(seed: Int) -> Rng
 
-RandInt(rng: Rng, min: Int, max: Int) -> (Rng, Int)
-RandFloat01(rng: Rng) -> (Rng, Float)
-RandFloatRange(rng: Rng, min: Float, max: Float) -> (Rng, Float)
-RandBernoulli(rng: Rng, p: Float) -> (Rng, Bool)
-RandNormal(rng: Rng, mean: Float, stddev: Float) -> (Rng, Float)
+RandInt(rng: Rng, min: Int, max: Int) -> RandIntResult
+RandFloat01(rng: Rng) -> RandFloatResult
+RandFloatRange(rng: Rng, min: Float, max: Float) -> RandFloatResult
+RandBernoulli(rng: Rng, p: Float) -> RandBoolResult
+RandNormal(rng: Rng, mean: Float, stddev: Float) -> RandFloatResult
 
 CryptoRandInt!(min: Int, max: Int) -> Int
 CryptoRandFloat01!() -> Float
 CryptoRandBytes!(count: Int) -> Bytes
 ```
 
-## Canonical state-threading pattern
+Deterministic APIs are explicit-state and infallible (for valid programmer input). Crypto APIs are fallible and entropy-backed.
+
+## 4) Result record definitions
+
+Result records must expose these field names:
+
+- `Next`: next RNG state after the draw.
+- `Value`: sampled value.
+
+`Next` is preferred over `Rng` as the transition field name because it communicates progression rather than storage.
+
+## 5) Deterministic usage examples
+
+### Basic usage
+
+```oct
+let rng0 = Random.RngSeed(42)
+
+let r1 = Random.RandInt(rng0, 1, 6)
+let die = r1.Value
+
+let r2 = Random.RandFloat01(r1.Next)
+let u = r2.Value
+```
+
+### Loop usage
 
 ```oct
 var rng = Random.RngSeed(42)
-rng, x = Random.RandInt(rng, 1, 6)
-rng, y = Random.RandFloat01(rng)
+var total = 0
+
+for i in 1..100 {
+    let roll = Random.RandInt(rng, 1, 6)
+    rng = roll.Next
+    total = total + roll.Value
+}
 ```
 
-Deterministic Random APIs are infallible and require explicit state threading through `var` reassignment.
+### P14 noise usage
 
-## Deterministic guarantee
+```oct
+var rng = Random.RngSeed(123)
+var sum = 0.0
 
-Within one Oct version, the same seed and same call order produce the same sequence.
-No global RNG state is used.
+for i in 1..n {
+    let noise = Random.RandNormal(rng, 0.0, sigma)
+    rng = noise.Next
+    sum = sum + noise.Value
+}
+```
 
-## Crypto vs seeded
+## 6) Crypto usage examples
 
-- Seeded (`RngSeed`, `Rand*`) is deterministic/reproducible and infallible.
-- Crypto (`CryptoRand*`) uses Go `crypto/rand`, is non-deterministic, and is fallible (`!`).
+```oct
+let secureDie = Random.CryptoRandInt!(1, 6)
+let secureU = Random.CryptoRandFloat01!()
+let keyBytes = Random.CryptoRandBytes!(32)
+```
 
-## Validation rules
+Crypto APIs:
 
-- `RandInt`: inclusive `[min, max]`, requires `min <= max`.
-- `RandFloat01`: `[0.0, 1.0)`.
-- `RandFloatRange`: `[min, max)`, requires `min <= max`; `min == max` returns `min`.
-- `RandBernoulli`: `0.0 <= p <= 1.0`; exact edges map to `false`/`true`.
-- `RandNormal`: requires `stddev >= 0`; `stddev == 0` returns `mean`.
-- `CryptoRandInt!`: inclusive `[min, max]`, invalid bounds return an error.
-- `CryptoRandBytes!`: requires `count >= 0`; `count == 0` returns empty `Bytes`.
+- do not accept `Rng`,
+- are not reproducible,
+- are backed by OS crypto entropy,
+- surface errors via `!`.
 
-## Implementation note
+## 7) Enum/match design for higher-level libraries
 
-- Seed expansion: SplitMix64.
-- Generator step: xoshiro256**.
-- Normal distribution: Box-Muller transform.
+Higher-level Random libraries should model domain outcomes with enums and keep RNG transitions in records.
 
-The implementation may use 4×`uint64` internally, but numeric-width internals are not exposed in the public API (which uses only `Rng`, `Int`, `Float`, `Bool`, and `Bytes`).
+```oct
+enum CoinSide {
+    Heads
+    Tails
+}
+
+record CoinFlipResult {
+    Next: Rng
+    Side: CoinSide
+}
+```
+
+Guidance:
+
+- **Enum** = domain outcome (`CoinSide`).
+- **Record** = draw result + next state (`CoinFlipResult`).
+- **switch** is often enough for tag-only enums.
+- **match** is preferred when enum variants carry payloads.
+
+`CoinSide` should not be represented as `Bool`, `Text`, or `Int` in high-level APIs.
+
+## 8) Octomata/stochastic simulation design note
+
+Random.Core should remain primitive and focused: deterministic state transitions and crypto draws.
+
+Octomata or flow-style systems can carry `Rng` inside larger simulation state:
+
+```text
+board:
+  Rng
+  Index
+  Sum
+
+state Sample:
+  let draw = Random.RandNormal(Rng, 0.0, sigma)
+  Rng = draw.Next
+  Sum = Sum + draw.Value
+```
+
+Conclusion:
+
+- Random.Core provides primitive state transitions.
+- Octomata structures stochastic processes.
+
+Random.Core itself should not become an Octomata subsystem.
+
+## 9) Validation rules
+
+Deterministic API validation:
+
+- `RandInt`
+  - requires `min <= max`
+  - range is inclusive `[min, max]`
+- `RandFloat01`
+  - range is `[0.0, 1.0)`
+- `RandFloatRange`
+  - requires `min <= max`
+  - range is `[min, max)`
+  - `min == max` returns `min`
+- `RandBernoulli`
+  - requires `0.0 <= p <= 1.0`
+  - `p == 0` returns `false`
+  - `p == 1` returns `true`
+- `RandNormal`
+  - requires `stddev >= 0`
+  - `stddev == 0` returns `mean`
+
+Invalid deterministic input is a non-fallible programmer error and should fail loudly.
+
+Invalid crypto input returns a fallible error.
+
+## 10) M1 implementation direction
+
+Implementation target for later M1 runtime work:
+
+- SplitMix64 for seeding.
+- xoshiro256** for deterministic generation.
+- Go `crypto/rand` for crypto APIs.
+
+Public API stays type-clean and Oct-facing:
+
+- `Int`, `Float`, `Bool`, `Bytes`, `Rng`, records, enums.
+
+No public exposure of host-width internals such as `Uint64`, `Float64`, `byte[]`, or `Int32`.

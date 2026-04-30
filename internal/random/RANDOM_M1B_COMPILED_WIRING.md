@@ -1,44 +1,33 @@
-# Random M1b compiled wiring report
+# Random M1b compiled wiring report (historical, superseded API shape)
 
-## Root cause
+> Status (2026-04-30): This report documents historical compiled wiring work that used tuple-return Random builtins. The **current public API direction** is the Oct-shaped record-result model in `internal/random/Random.Core.md`.
 
-M1a failed in compiled mode because `resolveCall` returned empty return type strings for `Random.*` field-access builtins. Tuple destructuring lowering requires tuple return metadata, so lowering failed with `compiled mode destructuring requires tuple return, got ""`.
+## Historical root cause
 
-## Signature fix
+M1a failed in compiled mode because `resolveCall` returned empty return type strings for `Random.*` field-access builtins. Tuple destructuring lowering required tuple return metadata, so lowering failed with `compiled mode destructuring requires tuple return, got ""`.
 
-Compiled resolve-call builtin mapping now provides return types for:
-- `Random.RngSeed -> Random.Rng`
-- `Random.RandInt -> (Random.Rng, Int)`
-- `Random.RandFloat01 -> (Random.Rng, Float)`
-- `Random.RandFloatRange -> (Random.Rng, Float)`
-- `Random.RandBernoulli -> (Random.Rng, Bool)`
-- `Random.RandNormal -> (Random.Rng, Float)`
-- `Random.CryptoRandInt -> Int !`
-- `Random.CryptoRandFloat01 -> Float !`
-- `Random.CryptoRandBytes -> Bytes !`
+## Historical signature fix
 
-## Compiled execution approach
+At that time, compiled resolve-call builtin mapping provided return types for tuple-return signatures such as `Random.RandInt -> (Random.Rng, Int)` and related functions.
 
-Compiled builtin emission adds Random builtin handling:
-- deterministic tuple-return builtins emit single-call destructuring (`rng, value = __octRandom...(...)`) to preserve single RHS evaluation,
-- `Random.RngSeed` emits `__octRandomRngSeed(...)`,
-- crypto builtins emit fallible wrappers that map helper errors into compiled result types.
+This is now superseded by the record-result API direction (`Next` / `Value`) for public Random.Core design.
 
-Helper implementation was added in codegen prelude (`__octRandomHelpers`) and uses the same deterministic algorithm family as interpreter runtime:
+## Historical compiled execution approach
+
+Compiled builtin emission added Random builtin handling for deterministic tuple-return destructuring and crypto wrappers.
+
+Helper implementation in codegen prelude used:
+
 - SplitMix64 seeding,
 - xoshiro256** stepping,
 - Box-Muller for normal.
 
-## Parity status
+These algorithm notes remain relevant to implementation lineage, while tuple-return public API shape does not.
 
-`go run ./cmd/oct test Libraries/Random` passes with deterministic tuple-threaded tests in compiled path.
-
-## Crypto compiled status
-
-Crypto builtins are wired for compiled mode in this patch via helper wrappers (`__octCryptoRand*`).
-
-## Validation
+## Historical validation snapshot
 
 - `go test ./internal/build ./internal/interpret ./internal/typecheck`
 - `go test ./...`
 - `go run ./cmd/oct test Libraries/Random`
+
+For current API intent and examples, use `internal/random/Random.Core.md`.
