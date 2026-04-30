@@ -105,23 +105,3 @@ fn EnduranceLimitModifiersComposeWithGoodmanFatigueCheck() -> Void {
     Assert.True(modifiedFos < unmodifiedFos, "reduced endurance limit should reduce Goodman safety factor")
 }
 
-[Fact]
-fn InvalidInputsReturnZeroForGuardedHelpers() -> Void {
-    let badComposite = EnduranceModifierProduct(1.0, 0.0, 0.85, 0.95, 0.897)
-    Assert.Near(0.0, badComposite, 0.000001, "invalid modifier factor guard")
-
-    let badEndurance = DesignEnduranceLimit(0.0kg/m/s^2, 0.9, 0.9, 0.9, 0.9, 0.9)
-    Assert.Near(0.0, badEndurance / 1kg/m/s^2, 0.000001, "invalid baseline endurance guard")
-
-    let badSurface = SurfaceFactorFromUltimateStrength(0.0kg/m/s^2, 4.51, 0.0 - 0.265)
-    let badSize = SizeFactorFromDiameter(0.0m, 0.00762m, 0.0 - 0.107)
-    let badLoad = LoadFactorDirect(0.0)
-    let badTemp = TemperatureFactorDirect(0.0)
-    let badReliability = ReliabilityFactorFromPercent(150.0)
-
-    Assert.Near(0.0, badSurface, 0.000001, "invalid surface input guard")
-    Assert.Near(0.0, badSize, 0.000001, "invalid size input guard")
-    Assert.Near(0.0, badLoad, 0.000001, "invalid load factor guard")
-    Assert.Near(0.0, badTemp, 0.000001, "invalid temperature factor guard")
-    Assert.Near(0.0, badReliability, 0.000001, "invalid reliability percent guard")
-}

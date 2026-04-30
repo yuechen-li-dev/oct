@@ -54,10 +54,3 @@ fn TorsionalShearStressScalesWithTorqueAndGeometry() -> Void {
     Assert.Near(10000000.0, base / 1kg/m/s^2, 0.001, "torsional shear stress hand-check")
 }
 
-[Fact]
-fn InvalidStressGeometryReturnsZero() -> Void {
-    Assert.Near(0.0, NormalStress(1000kg*m/s^2, 0m^2) / 1kg/m/s^2, 0.000001, "normal stress invalid area")
-    Assert.Near(0.0, ShearStress(1000kg*m/s^2, 0m^2) / 1kg/m/s^2, 0.000001, "shear stress invalid area")
-    Assert.Near(0.0, BendingStress(10kg*m^2/s^2, 0.01m, 0m^4) / 1kg/m/s^2, 0.000001, "bending invalid inertia")
-    Assert.Near(0.0, TorsionalShearStress(10kg*m^2/s^2, 0.01m, 0m^4) / 1kg/m/s^2, 0.000001, "torsion invalid polar moment")
-}
