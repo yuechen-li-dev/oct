@@ -933,6 +933,14 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	var typeHint *ast.TypeRef
+	if p.match(lex.Colon) {
+		parsedType, typeErr := p.parseTypeRef()
+		if typeErr != nil {
+			return nil, typeErr
+		}
+		typeHint = &parsedType
+	}
 	if _, err := p.expect(lex.Assign, "expected '=' after binding name"); err != nil {
 		return nil, err
 	}
@@ -940,7 +948,7 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ast.LetStmt{Name: name.Lexeme, Value: value}, nil
+	return ast.LetStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
 func (p *parser) parseVarStmt() (ast.Stmt, error) {
@@ -949,6 +957,14 @@ func (p *parser) parseVarStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	var typeHint *ast.TypeRef
+	if p.match(lex.Colon) {
+		parsedType, typeErr := p.parseTypeRef()
+		if typeErr != nil {
+			return nil, typeErr
+		}
+		typeHint = &parsedType
+	}
 	if _, err := p.expect(lex.Assign, "expected '=' after binding name"); err != nil {
 		return nil, err
 	}
@@ -956,7 +972,7 @@ func (p *parser) parseVarStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ast.VarStmt{Name: name.Lexeme, Value: value}, nil
+	return ast.VarStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
 func (p *parser) parseAssignStmt() (ast.Stmt, error) {
@@ -1959,7 +1975,8 @@ func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {
 		return nil, err
 	}
 	if p.current().Kind == lex.RightBracket {
-		return nil, p.errorAtCurrent("empty array literals are not supported")
+		p.advance()
+		return ast.ArrayLiteralExpr{Elements: []ast.Expr{}}, nil
 	}
 
 	var elements []ast.Expr

@@ -75,5 +75,5 @@ fn CryptoRandFloat01() -> Float ! Error {
 }
 
 fn CryptoRandBytes(count: Int) -> Bytes ! Error {
-    return []
+    return FileReadBytes("/dev/null")?
 }

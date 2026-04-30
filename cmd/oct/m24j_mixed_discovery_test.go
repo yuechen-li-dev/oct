@@ -62,7 +62,7 @@ func TestM24jOctfailDoesNotMaskOctestParseErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected parse failure from .octest")
 	}
-	if !strings.Contains(stderr, "empty array literals are not supported") {
+	if !strings.Contains(stderr, "empty array literals require an explicit array type") {
 		t.Fatalf("expected octest parse error to surface, got %q", stderr)
 	}
 }

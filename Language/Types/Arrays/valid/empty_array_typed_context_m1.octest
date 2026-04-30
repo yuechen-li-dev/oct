@@ -1,0 +1,21 @@
+package MainValid
+
+record Bag {
+    Items: Int[]
+}
+
+[Fact]
+fn TypedEmptyArrayContexts() -> Void {
+    let xs: Int[] = []
+    Assert.Equal(Len(xs), 0, "typed int empty")
+
+    let ys: Float<m>[] = []
+    Assert.Equal(Len(ys), 0, "typed unit float empty")
+
+    let bag = Bag { Items: [] }
+    Assert.Equal(Len(bag.Items), 0, "record field empty")
+
+    var zs: Int[] = [1, 2]
+    zs = []
+    Assert.Equal(Len(zs), 0, "assignment empty")
+}

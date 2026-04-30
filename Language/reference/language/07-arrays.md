@@ -9,6 +9,7 @@ Type matching is exact, including dimensions and nominal names.
 ## Rules
 
 - Array literal form is `[a, b, c]`.
+- Empty array literal form is `[]`, but only in explicit array-typed context.
 - All array literal elements must have one exact type.
 - Array type forms are `T[]`, `T[][]`, and deeper nested container forms.
 - Indexing form is `xs[i]`.
@@ -21,6 +22,7 @@ Type matching is exact, including dimensions and nominal names.
 - Element-wise arithmetic requires equal runtime lengths.
 - Nested arrays are still arrays (containers), not matrix values.
 - Nested arrays may be ragged/jagged (`[[1], [2, 3]]`) because they are container-of-container values.
+- `[]` never means null/nil; it is a zero-length array with a known element type.
 
 ## Examples
 
@@ -32,6 +34,16 @@ package Main
 fn Main() -> Int {
     let grid = [[1, 2], [3, 4]]
     return grid[1][0]
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Int {
+    var xs: Int[] = []
+    var ys: Float<m>[] = []
+    return Len(xs) + Len(ys)
 }
 ```
 

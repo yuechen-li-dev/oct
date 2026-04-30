@@ -1,0 +1,8 @@
+expect error: "function Main: let x: empty array literal requires array type context, got Int"
+
+package Main
+
+fn Main() -> Int {
+    let x: Int = []
+    return x
+}

@@ -1,0 +1,8 @@
+expect error: "function Main: let xs: empty array literals require an explicit array type"
+
+package Main
+
+fn Main() -> Int {
+    let xs = []
+    return Len(xs)
+}

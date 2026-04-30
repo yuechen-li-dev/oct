@@ -24,6 +24,7 @@ fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
     let side = switch draw.Value {
         case true => CoinSide.Heads
         case false => CoinSide.Tails
+        else => CoinSide.Tails
     }
     return CoinFlipResult {
         Next: draw.Next
@@ -32,16 +33,17 @@ fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
 }
 
 fn FlipCoins(rng: Rng, count: Int) -> CoinFlipManyResult {
-    if count < 0 {
-        count = 0
+    var normalizedCount = count
+    if normalizedCount < 0 {
+        normalizedCount = 0
     }
 
     var next = rng
-    var flips = []
-    for _i in 0..count {
-        let step = FlipCoin(next)
-        next = step.Next
-        flips = Append(flips, step.Side)
+    var flips: CoinSide[] = []
+    for _i in 0..normalizedCount {
+        let flipResult = FlipCoin(next)
+        next = flipResult.Next
+        flips = Append(flips, flipResult.Side)
     }
 
     return CoinFlipManyResult {
@@ -70,10 +72,11 @@ fn CountTails(flips: CoinSide[]) -> Int {
     return count
 }
 
-fn CoinSideToText(side: CoinSide) -> Text {
+fn CoinSideToString(side: CoinSide) -> String {
     return switch side {
         case CoinSide.Heads => "Heads"
         case CoinSide.Tails => "Tails"
+        else => "Tails"
     }
 }
 
@@ -94,8 +97,8 @@ fn CryptoFlipCoins(count: Int) -> CoinSide[] ! Error {
         count = 0
     }
 
-    var flips = []
-    for _i in 0..count {
+    var flips: CoinSide[] = []
+    for _i in 0..normalizedCount {
         flips = Append(flips, CryptoFlipCoin!())
     }
     return flips

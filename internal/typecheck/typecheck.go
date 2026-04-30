@@ -642,7 +642,15 @@ func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext)
 func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bool, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		var expected *Type
+		if node.TypeHint != nil {
+			resolved, resolveErr := c.resolveNonReturnType(*node.TypeHint)
+			if resolveErr != nil {
+				return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, resolveErr)
+			}
+			expected = &resolved
+		}
+		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, expected)
 		if err != nil {
 			return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, err)
 		}
@@ -652,10 +660,24 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: let %s: Void result cannot be used as a value", ctx.name, node.Name)
 		}
+		if expected != nil && !isAssignable(valueType.ValueType, *expected) {
+			return false, fmt.Errorf("function %s: let %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+		}
+		if expected != nil {
+			valueType.ValueType = *expected
+		}
 		scope.define(node.Name, valueType.ValueType, false)
 		return false, nil
 	case ast.VarStmt:
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		var expected *Type
+		if node.TypeHint != nil {
+			resolved, resolveErr := c.resolveNonReturnType(*node.TypeHint)
+			if resolveErr != nil {
+				return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, resolveErr)
+			}
+			expected = &resolved
+		}
+		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, expected)
 		if err != nil {
 			return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, err)
 		}
@@ -664,6 +686,12 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: var %s: Void result cannot be used as a value", ctx.name, node.Name)
+		}
+		if expected != nil && !isAssignable(valueType.ValueType, *expected) {
+			return false, fmt.Errorf("function %s: var %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+		}
+		if expected != nil {
+			valueType.ValueType = *expected
 		}
 		scope.define(node.Name, valueType.ValueType, true)
 		return false, nil
@@ -675,7 +703,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if !target.mutable {
 			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'", ctx.name, node.Name)
 		}
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, &target.valueType)
 		if err != nil {
 			return false, fmt.Errorf("function %s: assignment to %s: %w", ctx.name, node.Name, err)
 		}
@@ -1055,6 +1083,10 @@ func isDecisionLadderElseIf(node ast.IfStmt) bool {
 }
 
 func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (ExprType, error) {
+	return c.checkExprWithExpected(scope, expr, ctx, nil)
+}
+
+func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx functionContext, expected *Type) (ExprType, error) {
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		return ExprType{ValueType: Type{Base: BaseTypeInt, Dimension: node.Dimension}}, nil
@@ -1065,7 +1097,7 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 	case ast.StringLiteralExpr:
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	case ast.ArrayLiteralExpr:
-		valueType, err := c.checkArrayLiteralExpr(scope, node, ctx)
+		valueType, err := c.checkArrayLiteralExpr(scope, node, ctx, expected)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -4572,9 +4604,15 @@ func requirePlotArrayType(functionName string, index int, valueType Type) error 
 	}
 }
 
-func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext) (Type, error) {
+func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext, expected *Type) (Type, error) {
 	if len(expr.Elements) == 0 {
-		return Type{}, fmt.Errorf("empty array literals are not supported")
+		if expected == nil {
+			return Type{}, fmt.Errorf("empty array literals require an explicit array type")
+		}
+		if !expected.IsArray {
+			return Type{}, fmt.Errorf("empty array literal requires array type context, got %s", *expected)
+		}
+		return *expected, nil
 	}
 
 	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
@@ -4686,7 +4724,7 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 		if !exists {
 			return ExprType{}, fmt.Errorf("record '%s' has no field '%s'", expr.TypeName, field.Name)
 		}
-		actualType, err := c.checkExpr(scope, field.Value, ctx)
+		actualType, err := c.checkExprWithExpected(scope, field.Value, ctx, &expectedType)
 		if err != nil {
 			return ExprType{}, err
 		}
