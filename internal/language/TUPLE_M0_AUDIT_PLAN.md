@@ -238,6 +238,37 @@ After M1–M3 pass:
 Deferred intentionally:
 
 - tuple literals,
+
+---
+
+## Tuple M1 status update (parser/AST only)
+
+Date: 2026-04-30
+
+Implemented in M1:
+
+1. **AST form added**
+   - `ast.TypeRef` now supports tuple/product return packets via `TupleOf []TypeRef`.
+   - `ast.DestructureAssignStmt` represents flat destructuring assignment with `Names []string` and single `Value Expr`.
+2. **Syntax accepted**
+   - Tuple return type syntax: `fn F() -> (A, B) { ... }`
+   - Flat destructuring assignment: `a, b = expr` and `a, b, c = expr`
+3. **Syntax rejected**
+   - Invalid tuple return types: `()`, `(A)`, `(A, )`, `(, A)`
+   - Invalid destructuring forms: `(a, b) = expr`, `a, (b, c) = expr`, `a, b = foo(), bar()`
+   - Nested tuple types in type positions are explicitly rejected in M1.
+4. **Parser tests added**
+   - Positive/negative coverage for tuple return syntax and destructuring assignment AST shape.
+5. **Explicit non-goals preserved**
+   - No typechecker tuple semantics.
+   - No runtime tuple values or execution semantics.
+   - No tuple literals/indexing/equality/storage semantics.
+6. **M2 next step**
+   - Add checker-level tuple/product type representation and destructuring assignment type rules (tuple RHS requirement, arity checks, per-element assignability diagnostics).
+
+Clarification carried forward:
+
+- `x = PairReturningFunction()` is **not** made valid by M1 in semantic terms. M1 only parses syntax and AST shapes. M2/M3 will define checker/runtime behavior.
 - tuple indexing,
 - tuple equality,
 - tuple arrays / heterogeneous arrays,
