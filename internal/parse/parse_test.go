@@ -188,6 +188,68 @@ func TestBuildFileRejectsLegacyBracketTypeArguments(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"x.octagon\")? }", "type arguments must use '<...>'")
 }
 
+func TestBuildFileParsesTupleReturnType(t *testing.T) {
+	file := parseSource(t, "fn Pair() -> (Int, Int) { return 0 }")
+	ret := file.Functions[0].ReturnType
+	if len(ret.TupleOf) != 2 {
+		t.Fatalf("expected tuple return with two elements, got %+v", ret)
+	}
+	if ret.TupleOf[0].Name != "Int" || ret.TupleOf[1].Name != "Int" {
+		t.Fatalf("unexpected tuple return elements: %+v", ret.TupleOf)
+	}
+}
+
+func TestBuildFileParsesTupleReturnTypeElementOrder(t *testing.T) {
+	file := parseSource(t, "fn Mixed() -> (Bool, Int) { return 0 }")
+	ret := file.Functions[0].ReturnType
+	if len(ret.TupleOf) != 2 {
+		t.Fatalf("expected tuple return with two elements, got %+v", ret)
+	}
+	if ret.TupleOf[0].Name != "Bool" || ret.TupleOf[1].Name != "Int" {
+		t.Fatalf("unexpected tuple return elements/order: %+v", ret.TupleOf)
+	}
+}
+
+func TestBuildFileRejectsInvalidTupleReturnTypeSyntax(t *testing.T) {
+	assertParseErrorContains(t, "fn Bad() -> () { return 0 }", "tuple type must include at least two element types")
+	assertParseErrorContains(t, "fn Bad() -> (Int) { return 0 }", "tuple type must include at least two element types")
+	assertParseErrorContains(t, "fn Bad() -> (Int, ) { return 0 }", "expected tuple element type after ','")
+	assertParseErrorContains(t, "fn Bad() -> (, Int) { return 0 }", "expected type name")
+}
+
+func TestBuildFileParsesDestructureAssignment(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { a, b = Pair() return 0 }")
+	stmt, ok := file.Functions[0].Body.Statements[0].(ast.DestructureAssignStmt)
+	if !ok {
+		t.Fatalf("expected DestructureAssignStmt, got %T", file.Functions[0].Body.Statements[0])
+	}
+	if !reflect.DeepEqual(stmt.Names, []string{"a", "b"}) {
+		t.Fatalf("unexpected names: %#v", stmt.Names)
+	}
+	call, ok := stmt.Value.(ast.CallExpr)
+	if !ok {
+		t.Fatalf("expected destructure value to be call, got %T", stmt.Value)
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "Pair" {
+		t.Fatalf("expected Pair() call, got %#v", stmt.Value)
+	}
+}
+
+func TestBuildFileParsesThreeTargetDestructureAssignment(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { a, b, c = Triple() return 0 }")
+	stmt := file.Functions[0].Body.Statements[0].(ast.DestructureAssignStmt)
+	if !reflect.DeepEqual(stmt.Names, []string{"a", "b", "c"}) {
+		t.Fatalf("unexpected names: %#v", stmt.Names)
+	}
+}
+
+func TestBuildFileRejectsInvalidDestructureAssignments(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { (a, b) = Pair() return 0 }", "expected ')' after expression")
+	assertParseErrorContains(t, "fn Main() -> Int { a, (b, c) = Pair() return 0 }", "expected identifier in destructuring assignment")
+	assertParseErrorContains(t, "fn Main() -> Int { a, b = Foo(), Bar() return 0 }", "destructuring assignment requires exactly one right-hand expression")
+}
+
 func TestBuildFileParsesFatalUnwrapAndStrings(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { let x = Fail()! return x }")
 

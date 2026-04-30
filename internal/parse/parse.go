@@ -649,6 +649,44 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 }
 
 func (p *parser) parseTypeRef() (ast.TypeRef, error) {
+	if p.match(lex.LeftParen) {
+		elements := make([]ast.TypeRef, 0, 2)
+		if p.current().Kind == lex.RightParen {
+			return ast.TypeRef{}, p.errorAtCurrent("tuple type must include at least two element types")
+		}
+		first, err := p.parseTypeRef()
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		if len(first.TupleOf) != 0 {
+			return ast.TypeRef{}, p.errorAtCurrent("nested tuple types are not supported in M1")
+		}
+		elements = append(elements, first)
+		if !p.match(lex.Comma) {
+			return ast.TypeRef{}, p.errorAtCurrent("tuple type must include at least two element types")
+		}
+		for {
+			if p.current().Kind == lex.RightParen {
+				return ast.TypeRef{}, p.errorAtCurrent("expected tuple element type after ','")
+			}
+			element, err := p.parseTypeRef()
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			if len(element.TupleOf) != 0 {
+				return ast.TypeRef{}, p.errorAtCurrent("nested tuple types are not supported in M1")
+			}
+			elements = append(elements, element)
+			if !p.match(lex.Comma) {
+				break
+			}
+		}
+		if _, err := p.expect(lex.RightParen, "expected ')' after tuple type"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		return ast.TypeRef{TupleOf: elements}, nil
+	}
+
 	if p.current().Kind == lex.KeywordFn {
 		p.advance()
 		if _, err := p.expect(lex.LeftParen, "expected '(' after 'fn' in function type"); err != nil {
@@ -982,7 +1020,35 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
+		if p.match(lex.Comma) {
+			return nil, false, p.errorAtCurrent("destructuring assignment requires exactly one right-hand expression")
+		}
 		return ast.AssignStmt{Name: name.Lexeme, Value: value}, true, nil
+	}
+
+	if p.match(lex.Comma) {
+		names := []string{name.Lexeme}
+		for {
+			nextName, err := p.expect(lex.Identifier, "expected identifier in destructuring assignment")
+			if err != nil {
+				return nil, false, err
+			}
+			names = append(names, nextName.Lexeme)
+			if !p.match(lex.Comma) {
+				break
+			}
+		}
+		if _, err := p.expect(lex.Assign, "expected '=' after destructuring assignment targets"); err != nil {
+			return nil, false, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, false, err
+		}
+		if p.match(lex.Comma) {
+			return nil, false, p.errorAtCurrent("destructuring assignment requires exactly one right-hand expression")
+		}
+		return ast.DestructureAssignStmt{Names: names, Value: value}, true, nil
 	}
 
 	if p.match(lex.Dot) {

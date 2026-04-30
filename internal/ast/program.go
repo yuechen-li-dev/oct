@@ -98,6 +98,7 @@ type Parameter struct {
 type TypeRef struct {
 	Package    string
 	Name       string
+	TupleOf    []TypeRef
 	Dimension  dimension.Dimension
 	HasUnit    bool
 	IsArray    bool
@@ -142,6 +143,13 @@ type AssignStmt struct {
 }
 
 func (AssignStmt) stmtNode() {}
+
+type DestructureAssignStmt struct {
+	Names []string
+	Value Expr
+}
+
+func (DestructureAssignStmt) stmtNode() {}
 
 type IndexAssignStmt struct {
 	Target  string
