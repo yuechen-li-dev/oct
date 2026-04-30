@@ -14,7 +14,7 @@ record Dependency {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "Optimization"
+        Name: "Cooking"
         Version: "0.1.0"
         Description: "Do you smell what the Claude is Cookin'?"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
