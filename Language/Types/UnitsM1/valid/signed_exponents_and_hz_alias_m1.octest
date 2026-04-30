@@ -1,0 +1,12 @@
+package UnitsM1Valid
+
+[Fact]
+fn SignedExponentsAndHzAliasM1() -> Void {
+    let rate: Float<s^-1> = 10.0s^-1
+    let accel: Float<m*s^-2> = 9.8m*s^-2
+    let freq: Float<Hz> = 60.0Hz
+    let same: Float<s^-1> = freq
+    Assert.Equal(10.0s^-1, rate, "signed inverse second literal typechecks")
+    Assert.Equal(9.8m*s^-2, accel, "compound negative exponent typechecks")
+    Assert.Equal(60.0s^-1, same, "Hz alias is dimensionally compatible with s^-1")
+}

@@ -2191,14 +2191,21 @@ func (p *parser) parseDimensionFactor() (dimension.Dimension, error) {
 	}
 	exponent := 1
 	if p.match(lex.Caret) {
+		sign := 1
+		if p.match(lex.Minus) {
+			sign = -1
+		} else if p.match(lex.Plus) {
+			sign = 1
+		}
 		valueToken, err := p.expect(lex.IntLiteral, "expected integer exponent after '^'")
 		if err != nil {
 			return dimension.Dimension{}, err
 		}
 		exponent, err = strconv.Atoi(valueToken.Lexeme)
-		if err != nil || exponent <= 0 {
-			return dimension.Dimension{}, p.errorAtToken(valueToken, "expected positive integer exponent")
+		if err != nil || exponent == 0 {
+			return dimension.Dimension{}, p.errorAtToken(valueToken, "expected non-zero integer exponent")
 		}
+		exponent *= sign
 	}
 	return baseDim.Pow(exponent), nil
 }

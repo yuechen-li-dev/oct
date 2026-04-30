@@ -1,0 +1,7 @@
+expect error: "expected integer exponent after '^'"
+
+package UnitsM1Invalid
+
+fn Main() -> Void {
+    let _: Float<s^-0.5> = 1.0s^-0.5
+}

@@ -30,6 +30,9 @@ Unit behavior is explicit and deterministic.
 - `Sqrt` requires even exponents across all dimensions.
 - Implicit unit conversion is not allowed.
 - `C` is not a base unit name and is not valid in type-level unit expressions (for example `Float<C>` is invalid).
+- Unit exponents are signed integers (for example `s^2`, `s^-1`, `m*s^-2`).
+- Use inverse-unit notation with signed exponents (for example `Float<s^-1>`); `<1/s>` is not supported in this milestone.
+- `Hz` is a named alias for `s^-1` and is dimensionally compatible with `Float<s^-1>`.
 
 ## Examples
 
@@ -40,6 +43,16 @@ package Main
 
 fn Main() -> Float<m> {
     return Sqrt(4m^2)
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Float<Hz> {
+    let f: Float<Hz> = 60.0Hz
+    let same: Float<s^-1> = f
+    return same
 }
 ```
 
