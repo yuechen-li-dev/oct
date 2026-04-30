@@ -142,10 +142,10 @@ Still intentionally out of scope:
 
 ### Deterministic 2-port S-parameter core
 
-- `SParameters2Port` with direct fields: `Frequencies`, `S11`, `S21`, `S12`, `S22`
+- `SParameters2Port` with direct fields: `Frequencies: Float<Hz>[]`, `S11`, `S21`, `S12`, `S22`
 - `ValidateSParameters2Port` for non-empty and strictly increasing frequency axes (Complex[] length introspection is currently unavailable, so trace-length consistency is caller-maintained in M0)
 - `MagnitudeDb`, `PhaseRadians`, `PhaseDegrees` for small complex-trace inspection
-- `InterpolateS11`, `InterpolateS21`, `InterpolateS12`, `InterpolateS22`
+- `InterpolateS11`, `InterpolateS21`, `InterpolateS12`, `InterpolateS22` with query frequency `Float<Hz>`
   - exact-knot queries return the stored sample
   - in-range non-knot queries linearly interpolate real/imag parts separately
   - out-of-range queries reject with `Error` (no clamping/extrapolation)

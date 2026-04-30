@@ -2,7 +2,7 @@ package RF
 
 fn SampleSParameters2Port() -> SParameters2Port {
     return SParameters2Port {
-        Frequencies: [1000000000.0, 2000000000.0, 3000000000.0]
+        Frequencies: [1.0e9Hz, 2.0e9Hz, 3.0e9Hz]
         S11: [Complex(0.1, 0.2), Complex(0.2, 0.4), Complex(0.3, 0.6)]
         S21: [Complex(0.8, 0.1), Complex(0.6, 0.3), Complex(0.4, 0.5)]
         S12: [Complex(0.05, 0.01), Complex(0.04, 0.02), Complex(0.03, 0.03)]
@@ -19,7 +19,7 @@ fn ValidateSParameters2PortAcceptsValidDataset() -> Void {
 [Fact]
 fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
     Assert.True(ValidateSParameters2Port(SParameters2Port {
-        Frequencies: [1000000000.0]
+        Frequencies: [1.0e9Hz]
         S11: [Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0)]
         S12: [Complex(0.1, 0.0)]
@@ -27,7 +27,7 @@ fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
     })!, "single-sample dataset should be valid")
 
     Assert.Error(ValidateSParameters2Port(SParameters2Port {
-        Frequencies: [1000000000.0, 900000000.0]
+        Frequencies: [1.0e9Hz, 9.0e8Hz]
         S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
@@ -35,7 +35,7 @@ fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
     }), "unsorted frequencies must fail")
 
     Assert.Error(ValidateSParameters2Port(SParameters2Port {
-        Frequencies: [1000000000.0, 1000000000.0]
+        Frequencies: [1.0e9Hz, 1.0e9Hz]
         S11: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.1, 0.0)]
@@ -47,7 +47,7 @@ fn ValidateSParameters2PortRejectsInvalidFrequencyAxes() -> Void {
 [Fact]
 fn ValidateSParameters2PortRejectsMismatchedComplexTraceLengths() -> Void {
     Assert.Error(ValidateSParameters2Port(SParameters2Port {
-        Frequencies: [1000000000.0, 2000000000.0]
+        Frequencies: [1.0e9Hz, 2.0e9Hz]
         S11: [Complex(0.1, 0.0)]
         S21: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
         S12: [Complex(0.1, 0.0), Complex(0.2, 0.0)]
@@ -66,22 +66,24 @@ fn MagnitudePhaseAndDbHelpersAreConsistent() -> Void {
 [Fact]
 fn InterpolationSupportsKnotsInteriorAndOutOfRangeRejection() -> Void {
     let data = SampleSParameters2Port()
+    let axis: Float<Hz>[] = data.Frequencies
+    let query: Float<Hz> = 2.0e9Hz
 
-    let knot = InterpolateS11(data, 2000000000.0)!
+    let knot = InterpolateS11(data, query)!
     Assert.Near(0.2, Real(knot), 0.000001, "exact knot real part")
     Assert.Near(0.4, Imag(knot), 0.000001, "exact knot imag part")
 
-    let interior = InterpolateS11(data, 1500000000.0)!
+    let interior = InterpolateS11(data, 1.5e9Hz)!
     Assert.Near(0.15, Real(interior), 0.000001, "interior linear interpolation real")
     Assert.Near(0.3, Imag(interior), 0.000001, "interior linear interpolation imag")
 
-    let s21Interior = InterpolateS21(data, 2500000000.0)!
+    let s21Interior = InterpolateS21(data, 2.5e9Hz)!
     Assert.Near(0.5, Real(s21Interior), 0.000001, "s21 real interpolation should be separate")
     Assert.Near(0.4, Imag(s21Interior), 0.000001, "s21 imag interpolation should be separate")
 
-    Assert.Error(InterpolateS11(data, 900000000.0), "below-range query must fail")
+    Assert.Error(InterpolateS11(data, 9.0e8Hz), "below-range query must fail")
 
-    Assert.Error(InterpolateS21(data, 3100000000.0), "above-range query must fail")
+    Assert.Error(InterpolateS21(data, 3.1e9Hz), "above-range query must fail")
 }
 
 [Fact]
@@ -98,7 +100,7 @@ fn SParameterWorkflowComposesDeterministically() -> Void {
     let data = SampleSParameters2Port()
     let validated = ValidateSParameters2Port(data)!
 
-    let s11At1p5GHz = InterpolateS11(data, 1500000000.0)!
+    let s11At1p5GHz = InterpolateS11(data, 1.5e9Hz)!
     let phaseDeg = PhaseDegrees(s11At1p5GHz)
     let returnLoss = ReturnLossDbFromS11(s11At1p5GHz)
 
