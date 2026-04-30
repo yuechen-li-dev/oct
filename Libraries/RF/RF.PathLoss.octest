@@ -103,3 +103,13 @@ fn InvalidShadowingSeriesInputsReturnSentinelShape() -> Void {
     let rx = ApplyShadowingToReceivedPowerSeries([1.0kg*m^2/s^3, 2.0kg*m^2/s^3], [3.0])
     Assert.Equal(1, Len(rx), "mismatched shadowing/rx arrays return sentinel")
 }
+
+
+test "LogDistancePathLossLinear uses power-law scaling" {
+    let d0 = 1m
+    let d = 10m
+    let pl0 = 2.0
+    let n = 3.0
+    let expected = pl0 * Pow(d / d0, n)
+    Assert.Near(expected, LogDistancePathLossLinear(d, d0, pl0, n), 0.000001, "log-distance model matches power-law form")
+}

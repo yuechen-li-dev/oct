@@ -59,7 +59,7 @@ fn LogDistancePathLossLinear(distance: Float<m>, referenceDistance: Float<m>, re
     }
 
     let distanceRatio = distance / referenceDistance
-    return referencePathLossLinear * Exp(pathLossExponent * Ln(distanceRatio))
+    return referencePathLossLinear * Pow(distanceRatio, pathLossExponent)
 }
 
 /// Maps LogDistancePathLossLinear across a distance series.
