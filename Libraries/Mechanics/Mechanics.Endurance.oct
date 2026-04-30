@@ -44,7 +44,7 @@ fn SurfaceFactorFromUltimateStrength(ultimateStrength: Float<kg/m/s^2>, a: Float
     }
 
     let sutMpa = ultimateStrength / 1000000kg/m/s^2
-    return a * Exp(b * Ln(sutMpa))
+    return a * Pow(sutMpa, b)
 }
 
 /// Computes size factor from diameter ratio using a power-law model.
@@ -57,7 +57,7 @@ fn SizeFactorFromDiameter(diameter: Float<m>, referenceDiameter: Float<m>, expon
     }
 
     let ratio = diameter / referenceDiameter
-    return Exp(exponent * Ln(ratio))
+    return Pow(ratio, exponent)
 }
 
 /// Pass-through load factor with positivity guard.

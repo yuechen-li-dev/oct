@@ -3106,9 +3106,6 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: n, Cols: n, Elements: elements}}}, nil
 	}
 
-	if len(argumentExprs) != 1 {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
-	}
 	if callee == "Pow" {
 		if len(argumentExprs) != 2 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Pow expects 2 arguments")
@@ -3139,6 +3136,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, err
 		}
 		return evalResult{value: Value{Kind: ValueFloat, Float: math.Pow(baseValue, exponentValue)}}, nil
+	}
+	if len(argumentExprs) != 1 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
 	}
 
 	argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
