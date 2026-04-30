@@ -3109,6 +3109,37 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
 	}
+	if callee == "Pow" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Pow expects 2 arguments")
+		}
+		base, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if base.hasError {
+			return evalResult{hasError: true, errorVal: base.errorVal}, nil
+		}
+		exponent, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if exponent.hasError {
+			return evalResult{hasError: true, errorVal: exponent.errorVal}, nil
+		}
+		if !base.value.Dimension.IsDimensionless() || !exponent.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Pow requires dimensionless input")
+		}
+		baseValue, err := numericValueAsFloat(base.value, "Pow")
+		if err != nil {
+			return evalResult{}, err
+		}
+		exponentValue, err := numericValueAsFloat(exponent.value, "Pow")
+		if err != nil {
+			return evalResult{}, err
+		}
+		return evalResult{value: Value{Kind: ValueFloat, Float: math.Pow(baseValue, exponentValue)}}, nil
+	}
 
 	argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
 	if err != nil {

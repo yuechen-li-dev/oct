@@ -1,0 +1,7 @@
+test "pow builtin supports float exponentiation" {
+    Assert.Near(8.0, Pow(2.0, 3.0), 0.000001, "pow integral exponent")
+    Assert.Near(3.0, Pow(9.0, 0.5), 0.000001, "pow fractional exponent")
+    Assert.Near(1.0, Pow(5.0, 0.0), 0.000001, "pow zero exponent")
+    Assert.Near(4.0, Pow(4.0, 1.0), 0.000001, "pow identity exponent")
+    Assert.Near(8.0, Pow(2, 3), 0.000001, "pow accepts int inputs via numeric builtin rules")
+}
