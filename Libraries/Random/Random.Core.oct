@@ -1,82 +1,8 @@
 package Random
 
-// Rng is deterministic RNG state.
-// It is intentionally opaque at the API boundary in M0.
 record Rng {
     _State0: Int
     _State1: Int
     _State2: Int
     _State3: Int
-}
-
-// RngSeed constructs deterministic RNG state.
-// Contract: same seed -> same sequence (within this Oct version).
-fn RngSeed(seed: Int) -> Rng {
-    // M0 design-only placeholder. M1 will wire SplitMix64 seeding.
-    return Rng { _State0: seed _State1: 0 _State2: 0 _State3: 0 }
-}
-
-// RandUint64 returns next raw generator word and next state.
-fn RandUint64(rng: Rng) -> (Rng, Int) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, 0)
-}
-
-// RandFloat01 returns a uniform sample in [0.0, 1.0).
-fn RandFloat01(rng: Rng) -> (Rng, Float) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, 0.0)
-}
-
-// RandFloatRange returns a uniform sample in [min, max).
-// Invalid input (min >= max) is a runtime error by contract.
-fn RandFloatRange(rng: Rng, min: Float, max: Float) -> (Rng, Float) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, min + (max - min) * 0.0)
-}
-
-// RandInt returns a uniform sample in [min, max] (inclusive end points).
-// Example: RandInt(rng, 1, 6) can return 6.
-// Invalid input (min > max) is a runtime error by contract.
-fn RandInt(rng: Rng, min: Int, max: Int) -> (Rng, Int) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, min + (max - min) * 0)
-}
-
-// RandBernoulli returns true with probability p.
-// Contract: 0.0 <= p <= 1.0.
-// Invalid input (p outside [0.0, 1.0]) is a runtime error by contract.
-fn RandBernoulli(rng: Rng, p: Float) -> (Rng, Bool) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, p >= 1.0)
-}
-
-// RandNormal returns a normal sample with given mean and stddev.
-// Contract: stddev >= 0.0; stddev == 0.0 returns mean.
-// Invalid input (stddev < 0.0) is a runtime error by contract.
-fn RandNormal(rng: Rng, mean: Float, stddev: Float) -> (Rng, Float) {
-    // M0 placeholder: implementation deferred to M1.
-    return (rng, mean + stddev * 0.0)
-}
-
-// CryptoRandUint64 returns a cryptographically secure non-deterministic word.
-fn CryptoRandUint64() -> Int ! Error {
-    return error("CryptoRandUint64 not implemented in M0")
-}
-
-// CryptoRandBytes returns cryptographically secure random bytes.
-// Invalid input (count < 0) is returned as Error.
-fn CryptoRandBytes(count: Int) -> Bytes ! Error {
-    return error("CryptoRandBytes not implemented in M0")
-}
-
-// CryptoRandInt returns a uniform sample in [min, max] (inclusive).
-// Invalid input (min > max) is returned as Error.
-fn CryptoRandInt(min: Int, max: Int) -> Int ! Error {
-    return error("CryptoRandInt not implemented in M0")
-}
-
-// CryptoRandFloat01 returns a cryptographically secure sample in [0.0, 1.0).
-fn CryptoRandFloat01() -> Float ! Error {
-    return error("CryptoRandFloat01 not implemented in M0")
 }
