@@ -8,7 +8,7 @@ fn Sum(values: Int[]) -> Int {
     return total
 }
 
-fn AssertInRange(value: Int, low: Int, high: Int, message: Text) {
+fn AssertInRange(value: Int, low: Int, high: Int, message: String) -> Void {
     Assert.True(value >= low, message)
     Assert.True(value <= high, message)
 }

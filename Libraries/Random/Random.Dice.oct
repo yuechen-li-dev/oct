@@ -12,11 +12,12 @@ record DiceRollResult {
 }
 
 fn RollDie(rng: Rng, sides: Int) -> DieRollResult {
-    if sides < 2 {
-        sides = 2
+    var normalizedSides = sides
+    if normalizedSides < 2 {
+        normalizedSides = 2
     }
 
-    let draw = RandInt(rng, 1, sides)
+    let draw = RandInt(rng, 1, normalizedSides)
     return DieRollResult {
         Next: draw.Next
         Value: draw.Value
@@ -32,18 +33,20 @@ fn RollD20(rng: Rng) -> DieRollResult { return RollDie(rng, 20) }
 fn RollD100(rng: Rng) -> DieRollResult { return RollDie(rng, 100) }
 
 fn RollDice(rng: Rng, count: Int, sides: Int) -> DiceRollResult {
-    if count < 0 {
-        count = 0
+    var normalizedCount = count
+    if normalizedCount < 0 {
+        normalizedCount = 0
     }
-    if sides < 2 {
-        sides = 2
+    var normalizedSides = sides
+    if normalizedSides < 2 {
+        normalizedSides = 2
     }
 
     var next = rng
-    var values = []
+    var values: Int[] = []
     var total = 0
-    for _i in 0..count {
-        let roll = RollDie(next, sides)
+    for _i in 0..normalizedCount {
+        let roll = RollDie(next, normalizedSides)
         next = roll.Next
         values = Append(values, roll.Value)
         total = total + roll.Value
@@ -89,10 +92,11 @@ fn RollD20Disadvantage(rng: Rng) -> DiceRollResult {
 }
 
 fn CryptoRollDie(sides: Int) -> Int ! Error {
-    if sides < 2 {
-        sides = 2
+    var normalizedSides = sides
+    if normalizedSides < 2 {
+        normalizedSides = 2
     }
-    return CryptoRandInt!(1, sides)
+    return CryptoRandInt!(1, normalizedSides)
 }
 
 fn CryptoRollD20() -> Int ! Error {
@@ -107,8 +111,8 @@ fn CryptoRollDice(count: Int, sides: Int) -> Int[] ! Error {
         sides = 2
     }
 
-    var values = []
-    for _i in 0..count {
+    var values: Int[] = []
+    for _i in 0..normalizedCount {
         values = Append(values, CryptoRollDie!(sides))
     }
     return values

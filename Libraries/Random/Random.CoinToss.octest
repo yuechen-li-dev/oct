@@ -31,8 +31,8 @@ fn RandomRandomCoinTossFacts() -> Void {
     Assert.Equal(2, Random.CountHeads(known), "count heads")
     Assert.Equal(1, Random.CountTails(known), "count tails")
 
-    Assert.Equal("Heads", Random.CoinSideToText(Random.CoinSide.Heads), "text heads")
-    Assert.Equal("Tails", Random.CoinSideToText(Random.CoinSide.Tails), "text tails")
+    Assert.Equal("Heads", Random.CoinSideToString(Random.CoinSide.Heads), "text heads")
+    Assert.Equal("Tails", Random.CoinSideToString(Random.CoinSide.Tails), "text tails")
 
     let firstFlip = Random.FlipCoin(Random.RngSeed(123))
     let secondFromThreaded = Random.FlipCoin(firstFlip.Next)

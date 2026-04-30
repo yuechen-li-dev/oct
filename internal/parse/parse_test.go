@@ -657,8 +657,16 @@ func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { return 0", "expected '}' to close block")
 }
 
-func TestBuildFileRejectsEmptyArrayLiteral(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int[] { return [] }", "empty array literals are not supported")
+func TestBuildFileParsesEmptyArrayLiteral(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int[] { return [] }")
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	arrayLiteral, ok := ret.Value.(ast.ArrayLiteralExpr)
+	if !ok {
+		t.Fatalf("expected ArrayLiteralExpr, got %T", ret.Value)
+	}
+	if len(arrayLiteral.Elements) != 0 {
+		t.Fatalf("expected empty array literal, got %d elements", len(arrayLiteral.Elements))
+	}
 }
 
 func TestBuildFileParsesNestedArrayTypeSyntax(t *testing.T) {

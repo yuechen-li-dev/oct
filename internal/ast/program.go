@@ -124,15 +124,17 @@ type Stmt interface {
 }
 
 type LetStmt struct {
-	Name  string
-	Value Expr
+	Name     string
+	TypeHint *TypeRef
+	Value    Expr
 }
 
 func (LetStmt) stmtNode() {}
 
 type VarStmt struct {
-	Name  string
-	Value Expr
+	Name     string
+	TypeHint *TypeRef
+	Value    Expr
 }
 
 func (VarStmt) stmtNode() {}
