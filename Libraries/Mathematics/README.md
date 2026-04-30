@@ -10,7 +10,7 @@
 - `Floor(value: Float) -> Float`
 - `Ceil(value: Float) -> Float`
 - `Round(value: Float) -> Float`
-- `Pow(base: Float, exponent: Int) -> Float`
+- `PowExpLnReference(base: Float, exponent: Float) -> Float`
 - `Sign(value: Float) -> Int`
 - `Hypot(x: Float, y: Float) -> Float`
 - `DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error`
@@ -20,6 +20,8 @@
 - `IFFT(X: Complex[]) -> Complex[] ! Error`
 
 Production transforms should use builtin `fft(x: Complex[]) -> Complex[] ! Error`; `FastFourierTransform` remains the pure Oct reference/oracle path.
+
+Production exponentiation should use builtin `Pow(base, exponent)`; `PowExpLnReference` remains a pure-Oct educational/reference path.
 
 ## M1 transform conventions
 
@@ -54,7 +56,8 @@ Hotfix note: FFT/IFFT now operate directly on `Complex[]` after adding `Len(Comp
 - `Floor` returns the greatest integer-valued real less than or equal to the input.
 - `Ceil` returns the least integer-valued real greater than or equal to the input.
 - `Round` uses **half-away-from-zero** (`2.5 -> 3.0`, `-2.5 -> -3.0`).
-- `Pow` uses integer exponents only. Negative exponents return reciprocals; `Pow(0.0, negative)` returns `0.0` as a sentinel.
+- `Pow` is a core builtin (`Pow(base: Int|Float, exponent: Int|Float) -> Float`) and is the production exponentiation API.
+- `PowExpLnReference` is a pure-Oct reference implementation using `Exp(Ln(base) * exponent)` for educational/testing comparisons. `PowExpLnReference(0.0, negative)` returns `0.0` as a sentinel to avoid invalid log-domain evaluation.
 - `Sign` returns `-1`, `0`, or `1`.
 - `Hypot` computes `Sqrt(x*x + y*y)`.
 - `DifferentiateCentral` uses `(f(x+h) - f(x-h)) / (2h)` and requires `h > 0`.
