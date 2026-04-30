@@ -1,0 +1,48 @@
+package Random
+
+fn Main() -> Int {
+    let a0 = Random.RngSeed(42)
+    let aMany = Random.FlipCoins(a0, 10)
+
+    let b0 = Random.RngSeed(42)
+    let bMany = Random.FlipCoins(b0, 10)
+
+    Assert.Equal(10, Len(aMany.Flips), "flip count")
+    Assert.Equal(10, Len(bMany.Flips), "flip count reproducible")
+
+    for i in 0..Len(aMany.Flips) {
+        Assert.Equal(aMany.Flips[i], bMany.Flips[i], "same seed same side sequence")
+    }
+
+    let different = Random.FlipCoins(Random.RngSeed(99), 10)
+    var hasDifference = false
+    for i in 0..Len(aMany.Flips) {
+        if aMany.Flips[i] != different.Flips[i] {
+            hasDifference = true
+        }
+    }
+    Assert.True(hasDifference, "different seeds should differ in smoke check")
+
+    Assert.Equal(Random.CoinSide.Heads, Random.FlipBiasedCoin(a0, 1.0).Side, "pHeads=1 always heads")
+    Assert.Equal(Random.CoinSide.Tails, Random.FlipBiasedCoin(a0, 0.0).Side, "pHeads=0 always tails")
+
+    let known = [Random.CoinSide.Heads, Random.CoinSide.Tails, Random.CoinSide.Heads]
+    Assert.Equal(2, Random.CountHeads(known), "count heads")
+    Assert.Equal(1, Random.CountTails(known), "count tails")
+
+    Assert.Equal("Heads", Random.CoinSideToText(Random.CoinSide.Heads), "text heads")
+    Assert.Equal("Tails", Random.CoinSideToText(Random.CoinSide.Tails), "text tails")
+
+    let firstFlip = Random.FlipCoin(Random.RngSeed(123))
+    let secondFromThreaded = Random.FlipCoin(firstFlip.Next)
+    let replay = Random.FlipCoins(Random.RngSeed(123), 2)
+    Assert.Equal(replay.Flips[1], secondFromThreaded.Side, "threaded state matches replay")
+
+    let cryptoSide = Random.CryptoFlipCoin!()
+    Assert.True(cryptoSide == Random.CoinSide.Heads or cryptoSide == Random.CoinSide.Tails, "crypto side domain")
+    Assert.Equal(Random.CoinSide.Heads, Random.CryptoFlipBiasedCoin!(1.0), "crypto pHeads=1")
+    Assert.Equal(Random.CoinSide.Tails, Random.CryptoFlipBiasedCoin!(0.0), "crypto pHeads=0")
+    Assert.Equal(4, Len(Random.CryptoFlipCoins!(4)), "crypto count")
+
+    return 0
+}
