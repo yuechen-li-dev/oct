@@ -1,0 +1,38 @@
+package RandomApiBakeoff
+
+[Fact]
+fn DeterministicScoresAreStable() -> Void {
+    let a = FinalScore(TupleCandidate())
+    let b = FinalScore(TupleCandidate())
+    Assert.Equal(a, b, "tuple score should be deterministic")
+
+    let r1 = FinalScore(RecordCandidate())
+    let r2 = FinalScore(RecordCandidate())
+    Assert.Equal(r1, r2, "record score should be deterministic")
+}
+
+[Fact]
+fn StateVisibilityOrderingMatchesModel() -> Void {
+    let tupleAxis = ComputeAxisScores(TupleCandidate())
+    let mutableAxis = ComputeAxisScores(MutableCandidate())
+    Assert.True(tupleAxis.StateVisibility > mutableAxis.StateVisibility, "explicit state should rank above hidden mutation")
+}
+
+[Fact]
+fn MisusePenaltyHitsHiddenMutationDesigns() -> Void {
+    let mutableScenario = ComputeScenarioScores(MutableCandidate())
+    let recordScenario = ComputeScenarioScores(RecordCandidate())
+    Assert.True(recordScenario.ErrorCaseReasonability > mutableScenario.ErrorCaseReasonability, "record shape should be less error-prone than mutable handle")
+}
+
+[Fact]
+fn SequentialDrawsPreferLowerStepCountGivenEqualVisibility() -> Void {
+    let tupleScenario = ComputeScenarioScores(TupleCandidate())
+    let recordScenario = ComputeScenarioScores(RecordCandidate())
+    Assert.True(tupleScenario.SequentialDraws > recordScenario.SequentialDraws, "fewer sequential steps should reduce friction")
+}
+
+[Fact]
+fn WinnerIsComputedFromScores() -> Void {
+    Assert.Equal("A.TupleReturn", WinnerName(), "tuple should win under this M0 scoring model")
+}
