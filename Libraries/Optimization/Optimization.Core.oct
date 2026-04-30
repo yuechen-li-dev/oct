@@ -20,8 +20,8 @@ fn GoldenSectionSearch(
     b: Float,
     tolerance: Float,
     maxIterations: Int
-) -> OptimizationResult1D ! Error {
-    let ok = ValidateGoldenSectionInputs(a, b, tolerance, maxIterations)?
+) -> OptimizationResult1D {
+    ValidateGoldenSectionInputs(a, b, tolerance, maxIterations)
 
     let phi = (1.0 + Sqrt(5.0)) / 2.0
     let ratio = phi - 1.0
@@ -63,8 +63,8 @@ fn GoldenSectionSearch(
     }
 }
 
-fn GradientDescentStep(x: Float, gradient: Float, stepSize: Float) -> Float ! Error {
-    let ok = ValidateStepSize(stepSize)?
+fn GradientDescentStep(x: Float, gradient: Float, stepSize: Float) -> Float {
+    ValidateStepSize(stepSize)
     return x - stepSize * gradient
 }
 
@@ -75,8 +75,8 @@ fn GradientDescentSolve(
     stepSize: Float,
     tolerance: Float,
     maxIterations: Int
-) -> OptimizationResult ! Error {
-    let ok = ValidateGradientDescentInputs(stepSize, tolerance, maxIterations)?
+) -> OptimizationResult {
+    ValidateGradientDescentInputs(stepSize, tolerance, maxIterations)
 
     var x = x0
     var value = f(x)
@@ -88,7 +88,7 @@ fn GradientDescentSolve(
         if Abs(g) <= tolerance {
             converged = true
         } else {
-            x = GradientDescentStep(x, g, stepSize)?
+            x = GradientDescentStep(x, g, stepSize)
             value = f(x)
             iterations = iterations + 1
         }
@@ -102,39 +102,39 @@ fn GradientDescentSolve(
     }
 }
 
-fn ValidateGoldenSectionInputs(a: Float, b: Float, tolerance: Float, maxIterations: Int) -> Bool ! Error {
+fn ValidateGoldenSectionInputs(a: Float, b: Float, tolerance: Float, maxIterations: Int) -> Bool {
     if a >= b {
-        return error("golden section search requires a < b")
+        Require(a < b, "GoldenSectionSearch requires a < b")
     }
 
     if tolerance <= 0.0 {
-        return error("golden section search requires tolerance > 0")
+        Require(tolerance > 0.0, "GoldenSectionSearch requires tolerance > 0")
     }
 
     if maxIterations <= 0 {
-        return error("golden section search requires maxIterations > 0")
+        Require(maxIterations > 0, "GoldenSectionSearch requires maxIterations > 0")
     }
 
     return true
 }
 
-fn ValidateStepSize(stepSize: Float) -> Bool ! Error {
+fn ValidateStepSize(stepSize: Float) -> Bool {
     if stepSize <= 0.0 {
-        return error("gradient descent requires stepSize > 0")
+        Require(stepSize > 0.0, "GradientDescentStep requires stepSize > 0")
     }
 
     return true
 }
 
-fn ValidateGradientDescentInputs(stepSize: Float, tolerance: Float, maxIterations: Int) -> Bool ! Error {
-    let stepOk = ValidateStepSize(stepSize)?
+fn ValidateGradientDescentInputs(stepSize: Float, tolerance: Float, maxIterations: Int) -> Bool {
+    ValidateStepSize(stepSize)
 
     if tolerance <= 0.0 {
-        return error("gradient descent requires tolerance > 0")
+        Require(tolerance > 0.0, "GradientDescentSolve requires tolerance > 0")
     }
 
     if maxIterations <= 0 {
-        return error("gradient descent requires maxIterations > 0")
+        Require(maxIterations > 0, "GradientDescentSolve requires maxIterations > 0")
     }
 
     return true

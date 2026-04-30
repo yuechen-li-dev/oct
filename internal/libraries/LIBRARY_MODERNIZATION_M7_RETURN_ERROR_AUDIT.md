@@ -306,3 +306,9 @@ High-confidence candidates are all entries classified **migrate to Require**. In
 - **M7b — high-confidence precondition conversions**: convert validator/input-shape checks in Octomata, LinearAlgebra, Signal, Analysis, Thermofluids, Geometry, Deployment, Optimization, DifferentialEquations, Random to `Require(...)`; shrink fallible signatures where no other fallible paths remain.
 - **M7c — domain-policy decisions**: resolve philosophy for out-of-range interpolation queries, non-constant-series normalization, near-singular linear algebra and root-finder edge conditions, and complex tangent singularity handling.
 - **M7d — keep-fallible contract docs**: retain and document recoverable lookup/runtime-domain failures (`unknown ingredient`, `unknown protein`, `no extrema found`, unsupported Kalman dimensions).
+
+## M7c status (2026-04-30)
+- Completed a high-confidence precondition sweep in Optimization, Cooking arithmetic/precondition helpers, and Octomata anti-windup utilities.
+- Converted precondition `return error(...)` checks to `Require(...)` and made dependent functions non-fallible where no recoverable failure remained.
+- Intentionally left ambiguous/recoverable/domain failures fallible (lookup failures, external-style validation boundaries, and non-precondition runtime-domain failures).
+- Detailed conversion list and validation runbook recorded in `internal/libraries/LIBRARY_MODERNIZATION_M7C_REQUIRE_SWEEP.md`.
