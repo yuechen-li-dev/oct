@@ -9,7 +9,7 @@ LinearAlgebra M0b uses native Oct arrays only:
 
 Index convention: `A[row * cols + col]`.
 
-> Note: nested array types (`Float[][]`) are currently not supported by the Oct parser, so M0 uses flat row-major arrays while keeping matrix data transparent and first-principles.
+> Note: nested array types (for example `Float[][]`) are supported by current Oct syntax. This package still uses flat row-major arrays by design for explicit shape control and compatibility with its current APIs.
 
 ## Surface
 
