@@ -1,0 +1,125 @@
+package Wireless
+
+[Fact]
+fn TestBand6GhzCenter() -> Void {
+    let b = Band6Ghz()
+    Assert.Near(6135000000.0, b.CenterFreqHz, 1.0, "6GHz band center freq")
+}
+
+[Fact]
+fn TestBand6GhzMaxWidth() -> Void {
+    let b = Band6Ghz()
+    Assert.Near(320000000.0, b.MaxChannelWidthHz, 1.0, "6GHz max channel width is 320MHz")
+}
+
+[Fact]
+fn TestFreeSpacePathLoss10m5Ghz() -> Void {
+    let loss = FreeSpacePathLossDb(10.0m, 5000000000.0)
+    Assert.Near(66.4, loss, 1.0, "FSPL at 5GHz 10m ~ 66dB")
+}
+
+[Fact]
+fn TestFreeSpacePathLoss20dbPer10xDistance() -> Void {
+    let loss10 = FreeSpacePathLossDb(10.0m, 6000000000.0)
+    let loss100 = FreeSpacePathLossDb(100.0m, 6000000000.0)
+    Assert.Near(20.0, loss100 - loss10, 0.1, "10x distance adds 20dB path loss")
+}
+
+[Fact]
+fn TestThermalNoiseFloor320Mhz() -> Void {
+    let noise = ThermalNoiseFloorDbm(320000000.0)
+    Assert.Near(-88.9, noise, 0.5, "thermal noise floor at 320MHz ~ -89dBm")
+}
+
+[Fact]
+fn TestWattsToDbm100mW() -> Void {
+    let watts = 0.1 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    let dbm = WattsToDbm(watts)
+    Assert.Near(20.0, dbm, 0.01, "100mW = 20dBm")
+}
+
+[Fact]
+fn TestLinkMarginPositiveAtShortRange() -> Void {
+    let budget = LinkBudget {
+        TxPowerW: 0.1 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+        TxGainDb: 3.0
+        RxGainDb: 3.0
+        FreqHz: 6000000000.0
+        DistanceM: 5.0m
+        NoiseFigureDb: 7.0
+        BandwidthHz: 320000000.0
+    }
+    let margin = ComputeLinkMargin(budget)
+    Assert.True(margin.MarginDb > 0.0, "5m range should have positive link margin")
+}
+
+[Fact]
+fn TestSnrDecreasesWithDistance() -> Void {
+    let pwr = 0.2 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    let near = ComputeLinkMargin(LinkBudget {
+        TxPowerW: pwr TxGainDb: 0.0 RxGainDb: 0.0
+        FreqHz: 5000000000.0 DistanceM: 10.0m
+        NoiseFigureDb: 7.0 BandwidthHz: 80000000.0
+    })
+    let farr = ComputeLinkMargin(LinkBudget {
+        TxPowerW: pwr TxGainDb: 0.0 RxGainDb: 0.0
+        FreqHz: 5000000000.0 DistanceM: 100.0m
+        NoiseFigureDb: 7.0 BandwidthHz: 80000000.0
+    })
+    Assert.True(near.SnrDb > farr.SnrDb, "SNR decreases with distance")
+    Assert.Near(20.0, near.SnrDb - farr.SnrDb, 1.0, "10x distance drops SNR ~20dB")
+}
+
+[Fact]
+fn TestSpectralEfficiencyClampedAt4096Qam() -> Void {
+    let eff = SpectralEfficiencyFromSnrDb(60.0)
+    Assert.Near(10.0, eff, 0.01, "4096-QAM max ~10 bits/Hz")
+}
+
+[Fact]
+fn TestSpectralEfficiency10dB() -> Void {
+    let eff = SpectralEfficiencyFromSnrDb(10.0)
+    Assert.Near(3.46, eff, 0.1, "10dB SNR spectral efficiency")
+}
+
+[Fact]
+fn TestThroughput320Mhz8Streams() -> Void {
+    let t = EstimateThroughput(40.0, 320000000.0, 8)
+    Assert.True(t.ThroughputBitsPerSec > 10000000000.0, "320MHz 8-stream at 40dB > 10Gbps")
+}
+
+[Fact]
+fn TestMloExceedsSingleLink() -> Void {
+    let cfg = MloConfig {
+        Link1FreqHz: 5000000000.0
+        Link2FreqHz: 6000000000.0
+        Link1WidthHz: 160000000.0
+        Link2WidthHz: 320000000.0
+        SimultaneousTx: true
+    }
+    let total = MloAggregateThroughputBps(cfg, 35.0, 40.0, 4)
+    let link1only = EstimateThroughput(35.0, cfg.Link1WidthHz, 4)
+    Assert.True(total > link1only.ThroughputBitsPerSec, "MLO aggregate exceeds single link")
+}
+
+[Fact]
+fn TestOfdmaAllocation8Users() -> Void {
+    let alloc = AllocateOfdma(8)
+    Assert.Equal(8, alloc.NumUsers, "8 users")
+    Assert.Equal(3920, alloc.TotalSubcarriers, "WiFi 7 3920 data subcarriers")
+    Assert.Equal(490, alloc.SubcarriersPerUser, "490 subcarriers per user")
+}
+
+[Fact]
+fn TestGuardIntervalOverhead() -> Void {
+    let alloc = AllocateOfdma(4)
+    let overhead = GuardIntervalOverhead(alloc)
+    Assert.Near(0.111, overhead, 0.005, "GI overhead ~ 11.1%")
+}
+
+[Fact]
+fn TestSymbolDurationMicroseconds() -> Void {
+    let alloc = AllocateOfdma(1)
+    let durUs = (alloc.SymbolDurationS / 1.0s) * 1000000.0
+    Assert.Near(12.8, durUs, 0.01, "OFDM symbol duration 12.8us")
+}

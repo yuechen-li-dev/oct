@@ -1,0 +1,166 @@
+package Wireless
+
+// Frequency values are plain Float, unit is Hz (cycles per second).
+// Power values use Float<kg*m^2/s^3*A^2> which is Watts (SI).
+// Distance values use Float<m>.
+// Time values use Float<s>.
+
+record Band {
+    CenterFreqHz: Float
+    ChannelWidthHz: Float
+    MaxChannelWidthHz: Float
+    TxPowerMaxW: Float<kg*m^2/s^3*A^2>
+}
+
+record LinkBudget {
+    TxPowerW: Float<kg*m^2/s^3*A^2>
+    TxGainDb: Float
+    RxGainDb: Float
+    FreqHz: Float
+    DistanceM: Float<m>
+    NoiseFigureDb: Float
+    BandwidthHz: Float
+}
+
+record LinkMargin {
+    PathLossDb: Float
+    ReceivedPowerDbm: Float
+    NoiseFloorDbm: Float
+    SnrDb: Float
+    MarginDb: Float
+}
+
+record MloConfig {
+    Link1FreqHz: Float
+    Link2FreqHz: Float
+    Link1WidthHz: Float
+    Link2WidthHz: Float
+    SimultaneousTx: Bool
+}
+
+record ThroughputEstimate {
+    SpectralEfficiencyBitsPerHz: Float
+    ChannelWidthHz: Float
+    NumSpatialStreams: Int
+    MimoEfficiency: Float
+    OverheadFraction: Float
+    ThroughputBitsPerSec: Float
+}
+
+record OfdmaAllocation {
+    TotalSubcarriers: Int
+    NumUsers: Int
+    SubcarriersPerUser: Int
+    ToneSpacingHz: Float
+    SymbolDurationS: Float<s>
+    GuardIntervalS: Float<s>
+}
+
+fn Band24Ghz() -> Band {
+    return Band {
+        CenterFreqHz: 2412000000.0
+        ChannelWidthHz: 20000000.0
+        MaxChannelWidthHz: 40000000.0
+        TxPowerMaxW: 0.1 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    }
+}
+
+fn Band5Ghz() -> Band {
+    return Band {
+        CenterFreqHz: 5180000000.0
+        ChannelWidthHz: 80000000.0
+        MaxChannelWidthHz: 160000000.0
+        TxPowerMaxW: 0.2 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    }
+}
+
+fn Band6Ghz() -> Band {
+    return Band {
+        CenterFreqHz: 6135000000.0
+        ChannelWidthHz: 320000000.0
+        MaxChannelWidthHz: 320000000.0
+        TxPowerMaxW: 0.25 * (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    }
+}
+
+fn FreeSpacePathLossDb(distanceM: Float<m>, freqHz: Float) -> Float {
+    let d = distanceM / 1.0m
+    return 20.0 * Log10(d) + 20.0 * Log10(freqHz) - 147.55
+}
+
+fn ThermalNoiseFloorDbm(bandwidthHz: Float) -> Float {
+    let kTb = 1.380649e-23 * 290.0 * bandwidthHz
+    return 10.0 * Log10(kTb) + 30.0
+}
+
+fn WattsToDbm(wattsW: Float<kg*m^2/s^3*A^2>) -> Float {
+    let w = wattsW / (1.0kg * 1.0m^2 / (1.0s^3 * 1.0A^2))
+    return 10.0 * Log10(w * 1000.0)
+}
+
+fn ComputeLinkMargin(budget: LinkBudget) -> LinkMargin {
+    let pathLoss = FreeSpacePathLossDb(budget.DistanceM, budget.FreqHz)
+    let txDbm = WattsToDbm(budget.TxPowerW)
+    let rxPower = txDbm + budget.TxGainDb + budget.RxGainDb - pathLoss
+    let noiseFloor = ThermalNoiseFloorDbm(budget.BandwidthHz) + budget.NoiseFigureDb
+    let snr = rxPower - noiseFloor
+    return LinkMargin {
+        PathLossDb: pathLoss
+        ReceivedPowerDbm: rxPower
+        NoiseFloorDbm: noiseFloor
+        SnrDb: snr
+        MarginDb: snr - 10.0
+    }
+}
+
+fn SpectralEfficiencyFromSnrDb(snrDb: Float) -> Float {
+    let snrLinear = Exp(snrDb / 10.0 * Ln(10.0))
+    let shannon = Log10(1.0 + snrLinear) / Log10(2.0)
+    if shannon > 10.0 {
+        return 10.0
+    }
+    return shannon
+}
+
+fn EstimateThroughput(snrDb: Float, channelWidthHz: Float, numStreams: Int) -> ThroughputEstimate {
+    let bitsPerHz = SpectralEfficiencyFromSnrDb(snrDb)
+    let rawBps = bitsPerHz * channelWidthHz * Float(numStreams)
+    let mimoEff = 0.9
+    let overhead = 0.8
+    return ThroughputEstimate {
+        SpectralEfficiencyBitsPerHz: bitsPerHz
+        ChannelWidthHz: channelWidthHz
+        NumSpatialStreams: numStreams
+        MimoEfficiency: mimoEff
+        OverheadFraction: overhead
+        ThroughputBitsPerSec: rawBps * mimoEff * overhead
+    }
+}
+
+fn MloAggregateThroughputBps(cfg: MloConfig, snrDb1: Float, snrDb2: Float, numStreams: Int) -> Float {
+    let t1 = EstimateThroughput(snrDb1, cfg.Link1WidthHz, numStreams)
+    let t2 = EstimateThroughput(snrDb2, cfg.Link2WidthHz, numStreams)
+    return t1.ThroughputBitsPerSec + t2.ThroughputBitsPerSec
+}
+
+fn AllocateOfdma(numUsers: Int) -> OfdmaAllocation {
+    let totalSc = 3920
+    let scPerUser = totalSc / numUsers
+    let toneSpacingHz = 78125.0
+    let symbolDurS = 1.0 / toneSpacingHz * 1.0s
+    let giS = symbolDurS / 8.0
+    return OfdmaAllocation {
+        TotalSubcarriers: totalSc
+        NumUsers: numUsers
+        SubcarriersPerUser: scPerUser
+        ToneSpacingHz: toneSpacingHz
+        SymbolDurationS: symbolDurS
+        GuardIntervalS: giS
+    }
+}
+
+fn GuardIntervalOverhead(alloc: OfdmaAllocation) -> Float {
+    let giS = alloc.GuardIntervalS / 1.0s
+    let symS = alloc.SymbolDurationS / 1.0s
+    return giS / (symS + giS)
+}
