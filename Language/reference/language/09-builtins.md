@@ -53,6 +53,10 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
   - Runtime domain is positive values.
 - `Ln(z: Complex) -> Complex`.
   - Uses principal logarithm with `Im(Ln(z)) = Arg(z)` in `[-Pi(), Pi()]`.
+- `Pow(base: Int | Float, exponent: Int | Float) -> Float`.
+  - Both inputs must be dimensionless.
+  - Runtime behavior follows IEEE754/Go `math.Pow` semantics (e.g. `0^0 == 1`, domain edge-cases may return `NaN`/`+Inf`).
+  - `^` operator syntax is not part of this surface; use `Pow(base, exponent)`.
 - `Log10(x: Int | Float) -> Float`.
   - Input must be dimensionless.
   - Runtime domain is positive values.

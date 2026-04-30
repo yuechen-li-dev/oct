@@ -1172,7 +1172,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					RetType: "Matrix<Float>",
 				})
 				return tmp, "Matrix<Float>", false, nil
-			case "Abs", "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
+			case "Abs", "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
 				args := make([]string, 0, len(e.Arguments))
 				argTypes := make([]string, 0, len(e.Arguments))
 				for _, a := range e.Arguments {
@@ -2157,6 +2157,16 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "Float", nil
+	case "Pow":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		for idx := range argTypes {
+			if !(isIntScalarTypeString(argTypes[idx]) || isFloatScalarTypeString(argTypes[idx])) {
+				return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[idx])
+			}
+		}
+		return "Float", nil
 	case "Complex":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function 'Complex' expects 2 arguments, got %d", len(argTypes))
@@ -2689,7 +2699,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
 		importSet["strings"] = struct{}{}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["fft"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] {
@@ -4217,6 +4227,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = math.Exp(float64(%s))", st.Target, st.Args[0]), nil
 			case "Ln":
 				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, st.Args[0]), nil
+			case "Pow":
+				return fmt.Sprintf("%s = math.Pow(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
 			case "Log10":
 				return fmt.Sprintf("%s = math.Log10(float64(%s))", st.Target, st.Args[0]), nil
 			case "Sinh":

@@ -1,0 +1,7 @@
+expect error: "function 'Pow' expects 2 arguments, got 1"
+
+package Main
+
+fn Main() -> Float {
+    return Pow(2.0)
+}

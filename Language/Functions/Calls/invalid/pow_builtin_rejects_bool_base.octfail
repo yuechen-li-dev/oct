@@ -1,0 +1,7 @@
+expect error: "function 'Pow' argument 1 expects Int or Float, got Bool"
+
+package Main
+
+fn Main() -> Float {
+    return Pow(true, 2.0)
+}

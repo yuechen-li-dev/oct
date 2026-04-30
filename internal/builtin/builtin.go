@@ -21,6 +21,7 @@ var names = map[string]struct{}{
 	"Atan2":                    {},
 	"Exp":                      {},
 	"Ln":                       {},
+	"Pow":                      {},
 	"Log10":                    {},
 	"Sinh":                     {},
 	"Cosh":                     {},
