@@ -1,0 +1,115 @@
+package Random
+
+record DieRollResult {
+    Next: Rng
+    Value: Int
+}
+
+record DiceRollResult {
+    Next: Rng
+    Values: Int[]
+    Total: Int
+}
+
+fn RollDie(rng: Rng, sides: Int) -> DieRollResult {
+    if sides < 2 {
+        let _ = Assert.True(false, "RollDie sides must be >= 2")
+    }
+
+    let draw = RandInt(rng, 1, sides)
+    return DieRollResult {
+        Next: draw.Next
+        Value: draw.Value
+    }
+}
+
+fn RollD4(rng: Rng) -> DieRollResult { return RollDie(rng, 4) }
+fn RollD6(rng: Rng) -> DieRollResult { return RollDie(rng, 6) }
+fn RollD8(rng: Rng) -> DieRollResult { return RollDie(rng, 8) }
+fn RollD10(rng: Rng) -> DieRollResult { return RollDie(rng, 10) }
+fn RollD12(rng: Rng) -> DieRollResult { return RollDie(rng, 12) }
+fn RollD20(rng: Rng) -> DieRollResult { return RollDie(rng, 20) }
+fn RollD100(rng: Rng) -> DieRollResult { return RollDie(rng, 100) }
+
+fn RollDice(rng: Rng, count: Int, sides: Int) -> DiceRollResult {
+    if count < 0 {
+        let _ = Assert.True(false, "RollDice count must be >= 0")
+    }
+    if sides < 2 {
+        let _ = Assert.True(false, "RollDice sides must be >= 2")
+    }
+
+    var next = rng
+    var values: Int[] = []
+    var total = 0
+    for _i in 0..count {
+        let roll = RollDie(next, sides)
+        next = roll.Next
+        values = Append(values, roll.Value)
+        total = total + roll.Value
+    }
+
+    return DiceRollResult {
+        Next: next
+        Values: values
+        Total: total
+    }
+}
+
+fn RollDiceSum(rng: Rng, count: Int, sides: Int) -> DieRollResult {
+    let rolled = RollDice(rng, count, sides)
+    return DieRollResult {
+        Next: rolled.Next
+        Value: rolled.Total
+    }
+}
+
+fn RollD20Advantage(rng: Rng) -> DiceRollResult {
+    let rolled = RollDice(rng, 2, 20)
+    let a = rolled.Values[0]
+    let b = rolled.Values[1]
+    let selected = if a >= b { a } else { b }
+    return DiceRollResult {
+        Next: rolled.Next
+        Values: rolled.Values
+        Total: selected
+    }
+}
+
+fn RollD20Disadvantage(rng: Rng) -> DiceRollResult {
+    let rolled = RollDice(rng, 2, 20)
+    let a = rolled.Values[0]
+    let b = rolled.Values[1]
+    let selected = if a <= b { a } else { b }
+    return DiceRollResult {
+        Next: rolled.Next
+        Values: rolled.Values
+        Total: selected
+    }
+}
+
+fn CryptoRollDie(sides: Int) -> Int ! Error {
+    if sides < 2 {
+        let _ = Assert.True(false, "CryptoRollDie sides must be >= 2")
+    }
+    return CryptoRandInt!(1, sides)
+}
+
+fn CryptoRollD20() -> Int ! Error {
+    return CryptoRollDie!(20)
+}
+
+fn CryptoRollDice(count: Int, sides: Int) -> Int[] ! Error {
+    if count < 0 {
+        let _ = Assert.True(false, "CryptoRollDice count must be >= 0")
+    }
+    if sides < 2 {
+        let _ = Assert.True(false, "CryptoRollDice sides must be >= 2")
+    }
+
+    var values: Int[] = []
+    for _i in 0..count {
+        values = Append(values, CryptoRollDie!(sides))
+    }
+    return values
+}
