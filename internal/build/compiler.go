@@ -1859,7 +1859,28 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		builtinName := pkgIdent.Name + "." + x.Field
 		if builtin.IsName(builtinName) {
-			return builtinName, "", true, false, nil
+			switch builtinName {
+			case "Random.RngSeed":
+				return builtinName, "Random.Rng", true, false, nil
+			case "Random.RandInt":
+				return builtinName, "(Random.Rng, Int)", true, false, nil
+			case "Random.RandFloat01":
+				return builtinName, "(Random.Rng, Float)", true, false, nil
+			case "Random.RandFloatRange":
+				return builtinName, "(Random.Rng, Float)", true, false, nil
+			case "Random.RandBernoulli":
+				return builtinName, "(Random.Rng, Bool)", true, false, nil
+			case "Random.RandNormal":
+				return builtinName, "(Random.Rng, Float)", true, false, nil
+			case "Random.CryptoRandInt":
+				return builtinName, "Int", true, true, nil
+			case "Random.CryptoRandFloat01":
+				return builtinName, "Float", true, true, nil
+			case "Random.CryptoRandBytes":
+				return builtinName, "Bytes", true, true, nil
+			default:
+				return builtinName, "", true, false, nil
+			}
 		}
 		importPkg, ok := c.program.Packages[pkgIdent.Name]
 		if !ok {
@@ -2602,18 +2623,21 @@ func emitGo(m MIRModule) (string, error) {
 		}
 		for _, bb := range fn.Blocks {
 			for _, st := range bb.Statements {
-				call, ok := st.(MIRCall)
-				if !ok || !call.Builtin {
-					if batch, ok := st.(MIRBatchMap); ok {
-						usedBuiltins["BatchMap"] = true
-						resultTypes[batch.ResultType+"[]"] = struct{}{}
+				if call, ok := st.(MIRCall); ok && call.Builtin {
+					usedBuiltins[call.Callee] = true
+					if call.Callee == "LoadOctagon" {
+						loadTypes[call.RetType] = struct{}{}
+						resultTypes[call.RetType] = struct{}{}
 					}
 					continue
 				}
-				usedBuiltins[call.Callee] = true
-				if call.Callee == "LoadOctagon" {
-					loadTypes[call.RetType] = struct{}{}
-					resultTypes[call.RetType] = struct{}{}
+				if dcall, ok := st.(MIRDestructureCall); ok && dcall.Builtin {
+					usedBuiltins[dcall.Callee] = true
+					continue
+				}
+				if batch, ok := st.(MIRBatchMap); ok {
+					usedBuiltins["BatchMap"] = true
+					resultTypes[batch.ResultType+"[]"] = struct{}{}
 				}
 			}
 		}
@@ -2655,6 +2679,17 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
+	}
+	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] {
+		importSet["math"] = struct{}{}
+		importSet["crypto/rand"] = struct{}{}
+		importSet["encoding/binary"] = struct{}{}
+		importSet["math/big"] = struct{}{}
+	}
+	if usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"] {
+		importSet["crypto/rand"] = struct{}{}
+		importSet["encoding/binary"] = struct{}{}
+		importSet["math/big"] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
 	for pkg := range importSet {
@@ -2720,6 +2755,9 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if usedBuiltins["fft"] {
 		b.WriteString(__octFFTHelpers)
+	}
+	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] || usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"] {
+		b.WriteString(__octRandomHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octPrometheusHelpers)
@@ -3020,6 +3058,92 @@ func __octReverseBits(index int, width int) int {
 		n /= 2
 	}
 	return reversed
+}
+`
+
+const __octRandomHelpers = `
+func __octRandomRotl(x uint64, k int) uint64 { return (x << k) | (x >> (64 - k)) }
+func __octRandomSplitMix64(x uint64) uint64 {
+	x += 0x9e3779b97f4a7c15
+	z := x
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb
+	return z ^ (z >> 31)
+}
+func __octRandomSeedState(seed int) Random_Rng {
+	x := uint64(seed)
+	return Random_Rng{_State0: int(__octRandomSplitMix64(x)), _State1: int(__octRandomSplitMix64(x + 1)), _State2: int(__octRandomSplitMix64(x + 2)), _State3: int(__octRandomSplitMix64(x + 3))}
+}
+func __octRandomNext(s Random_Rng) (Random_Rng, uint64) {
+	s0 := uint64(s._State0)
+	s1 := uint64(s._State1)
+	s2 := uint64(s._State2)
+	s3 := uint64(s._State3)
+	result := __octRandomRotl(s1*5, 7) * 9
+	t := s1 << 17
+	s2 ^= s0
+	s3 ^= s1
+	s1 ^= s2
+	s0 ^= s3
+	s2 ^= t
+	s3 = __octRandomRotl(s3, 45)
+	return Random_Rng{_State0: int(s0), _State1: int(s1), _State2: int(s2), _State3: int(s3)}, result
+}
+func __octRandomFloat01(x uint64) float64 { return float64(x>>11) * (1.0 / (1 << 53)) }
+func __octRandomRngSeed(seed int) Random_Rng { return __octRandomSeedState(seed) }
+func __octRandomRandInt(rng Random_Rng, min int, max int) (Random_Rng, int) {
+	if min > max { panic("runtime error: min must be <= max") }
+	span := uint64(max - min + 1)
+	threshold := ^uint64(0) - (^uint64(0) % span)
+	var x uint64
+	for {
+		rng, x = __octRandomNext(rng)
+		if x < threshold { break }
+	}
+	return rng, min + int(x%span)
+}
+func __octRandomRandFloat01(rng Random_Rng) (Random_Rng, float64) {
+	rng, x := __octRandomNext(rng)
+	return rng, __octRandomFloat01(x)
+}
+func __octRandomRandFloatRange(rng Random_Rng, min float64, max float64) (Random_Rng, float64) {
+	if min > max { panic("runtime error: min must be <= max") }
+	if min == max { return rng, min }
+	rng, x := __octRandomNext(rng)
+	return rng, min + (max-min)*__octRandomFloat01(x)
+}
+func __octRandomRandBernoulli(rng Random_Rng, p float64) (Random_Rng, bool) {
+	if p < 0 || p > 1 { panic("runtime error: p must be in [0,1]") }
+	if p == 0 || p == 1 { return rng, p == 1 }
+	rng, x := __octRandomNext(rng)
+	return rng, __octRandomFloat01(x) < p
+}
+func __octRandomRandNormal(rng Random_Rng, mean float64, stddev float64) (Random_Rng, float64) {
+	if stddev < 0 { panic("runtime error: stddev must be >= 0") }
+	if stddev == 0 { return rng, mean }
+	rng, u1 := __octRandomNext(rng)
+	rng, u2 := __octRandomNext(rng)
+	z := math.Sqrt(-2*math.Log(math.Max(__octRandomFloat01(u1), 1e-12))) * math.Cos(2*math.Pi*__octRandomFloat01(u2))
+	return rng, mean + stddev*z
+}
+func __octCryptoRandBytes(count int) ([]byte, error) {
+	if count < 0 { return nil, fmt.Errorf("count must be >= 0") }
+	out := make([]byte, count)
+	_, err := rand.Read(out)
+	return out, err
+}
+func __octCryptoRandInt(min int, max int) (int, error) {
+	if min > max { return 0, fmt.Errorf("runtime error: min must be <= max") }
+	span := max - min + 1
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(span)))
+	if err != nil { return 0, err }
+	return min + int(n.Int64()), nil
+}
+func __octCryptoRandFloat01() (float64, error) {
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil { return 0, err }
+	return __octRandomFloat01(binary.LittleEndian.Uint64(b[:])), nil
 }
 `
 
@@ -4160,6 +4284,17 @@ func goStmt(s MIRStmt) (string, error) {
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s(__r, __c) }; __m[__r] = __row }; return __m }()",
 					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
+			case "Random.RngSeed":
+				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, st.Args[0]), nil
+			case "Random.CryptoRandBytes":
+				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandBytes(%s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
+					st.Target, goResultTypeName("Bytes"), st.Args[0], goResultTypeName("Bytes"), goResultTypeName("Bytes")), nil
+			case "Random.CryptoRandInt":
+				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandInt(%s, %s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
+					st.Target, goResultTypeName("Int"), st.Args[0], st.Args[1], goResultTypeName("Int"), goResultTypeName("Int")), nil
+			case "Random.CryptoRandFloat01":
+				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandFloat01(); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
+					st.Target, goResultTypeName("Float"), goResultTypeName("Float"), goResultTypeName("Float")), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
@@ -4175,6 +4310,16 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s, %s = 1, 2", st.Targets[0], st.Targets[1]), nil
 			case "BoolIntProbe":
 				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
+			case "Random.RandInt":
+				return fmt.Sprintf("%s, %s = __octRandomRandInt(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
+			case "Random.RandFloat01":
+				return fmt.Sprintf("%s, %s = __octRandomRandFloat01(%s)", st.Targets[0], st.Targets[1], st.Args[0]), nil
+			case "Random.RandFloatRange":
+				return fmt.Sprintf("%s, %s = __octRandomRandFloatRange(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
+			case "Random.RandBernoulli":
+				return fmt.Sprintf("%s, %s = __octRandomRandBernoulli(%s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1]), nil
+			case "Random.RandNormal":
+				return fmt.Sprintf("%s, %s = __octRandomRandNormal(%s, %s, %s)", st.Targets[0], st.Targets[1], st.Args[0], st.Args[1], st.Args[2]), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}

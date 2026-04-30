@@ -1,0 +1,64 @@
+package tests
+
+import Random
+
+[Fact]
+fn RandomDeterminismAndRanges() -> Void {
+    var rngA = Random.RngSeed(42)
+    var rngB = Random.RngSeed(42)
+    var rngC = Random.RngSeed(43)
+
+    rngA, a1 = Random.RandInt(rngA, 1, 10)
+    rngB, b1 = Random.RandInt(rngB, 1, 10)
+    rngC, c1 = Random.RandInt(rngC, 1, 10)
+
+    Assert.Equal(a1, b1, "same seed first draw matches")
+    Assert.True(a1 != c1, "different seed first draw differs")
+
+    var seeded = Random.RngSeed(42)
+    seeded, first = Random.RandInt(seeded, 1, 10)
+    var replay = Random.RngSeed(42)
+    replay, firstReplay = Random.RandInt(replay, 1, 10)
+    Assert.Equal(first, firstReplay, "re-seeding reproduces first draw")
+
+    var rangeRng = Random.RngSeed(99)
+    var sawMin = false
+    var sawMax = false
+    var i = 0
+    while i < 512 {
+        rangeRng, n = Random.RandInt(rangeRng, 1, 6)
+        Assert.True(n >= 1 and n <= 6, "randint in range")
+        if n == 1 { sawMin = true }
+        if n == 6 { sawMax = true }
+        i = i + 1
+    }
+    Assert.True(sawMin, "randint can hit min")
+    Assert.True(sawMax, "randint can hit max")
+
+    rangeRng, u = Random.RandFloat01(rangeRng)
+    Assert.True(u >= 0.0 and u < 1.0, "float01 in range")
+
+    rangeRng, v = Random.RandFloatRange(rangeRng, -1.0, 1.0)
+    Assert.True(v >= -1.0 and v < 1.0, "floatrange in range")
+
+    rangeRng, bFalse = Random.RandBernoulli(rangeRng, 0.0)
+    rangeRng, bTrue = Random.RandBernoulli(rangeRng, 1.0)
+    Assert.False(bFalse, "bernoulli p=0")
+    Assert.True(bTrue, "bernoulli p=1")
+
+    rangeRng, normal0 = Random.RandNormal(rangeRng, 3.5, 0.0)
+    Assert.Equal(3.5, normal0, "normal stddev 0 returns mean")
+}
+
+[Fact]
+fn RandomCryptoSmoke() -> Void ! Error {
+    var bytes16 = Random.CryptoRandBytes(16)?
+    var bytes0 = Random.CryptoRandBytes(0)?
+    var n = Random.CryptoRandInt(1, 6)?
+    var f = Random.CryptoRandFloat01()?
+
+    Assert.Equal(16, Len(bytes16), "bytes(16) length")
+    Assert.Equal(0, Len(bytes0), "bytes(0) length")
+    Assert.True(n >= 1 and n <= 6, "crypto int in range")
+    Assert.True(f >= 0.0 and f < 1.0, "crypto float in range")
+}
