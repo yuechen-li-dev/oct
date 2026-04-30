@@ -3,14 +3,10 @@ package Mechanics
 /// Computes Peterson notch sensitivity q from material length and root radius.
 /// Param petersonLength: Empirical material length parameter a.
 /// Param notchRadius: Notch root radius rho.
-/// Remarks: Clamped to [0,1] and returns 0 for invalid geometry.
+/// Precondition: petersonLength >= 0 and notchRadius > 0.
 fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
-    if petersonLength < 0m {
-        return 0
-    }
-    if notchRadius <= 0m {
-        return 0
-    }
+    Require(petersonLength >= 0m, "NotchSensitivity requires petersonLength >= 0")
+    Require(notchRadius > 0m, "NotchSensitivity requires notchRadius > 0")
 
     let q = notchRadius / (notchRadius + petersonLength)
     if q < 0 {
@@ -25,29 +21,17 @@ fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
 /// Converts theoretical stress concentration Kt to fatigue concentration Kf.
 /// Remarks: Uses Kf = 1 + q*(Kt-1).
 fn FatigueStressConcentrationFactor(theoreticalStressConcentrationFactor: Float, notchSensitivity: Float) -> Float {
-    if theoreticalStressConcentrationFactor < 1.0 {
-        return 0
-    }
-    if notchSensitivity < 0 {
-        return 0
-    }
-    if notchSensitivity > 1 {
-        return 0
-    }
+    Require(theoreticalStressConcentrationFactor >= 1.0, "FatigueStressConcentrationFactor requires theoreticalStressConcentrationFactor >= 1")
+    Require(notchSensitivity >= 0, "FatigueStressConcentrationFactor requires notchSensitivity >= 0")
+    Require(notchSensitivity <= 1, "FatigueStressConcentrationFactor requires notchSensitivity <= 1")
     return 1.0 + notchSensitivity * (theoreticalStressConcentrationFactor - 1.0)
 }
 
 /// Converts theoretical shear concentration Kts to fatigue shear concentration Kfs.
 /// Remarks: Uses Kfs = 1 + q*(Kts-1).
 fn FatigueShearStressConcentrationFactor(theoreticalShearConcentrationFactor: Float, notchSensitivity: Float) -> Float {
-    if theoreticalShearConcentrationFactor < 1.0 {
-        return 0
-    }
-    if notchSensitivity < 0 {
-        return 0
-    }
-    if notchSensitivity > 1 {
-        return 0
-    }
+    Require(theoreticalShearConcentrationFactor >= 1.0, "FatigueShearStressConcentrationFactor requires theoreticalShearConcentrationFactor >= 1")
+    Require(notchSensitivity >= 0, "FatigueShearStressConcentrationFactor requires notchSensitivity >= 0")
+    Require(notchSensitivity <= 1, "FatigueShearStressConcentrationFactor requires notchSensitivity <= 1")
     return 1.0 + notchSensitivity * (theoreticalShearConcentrationFactor - 1.0)
 }

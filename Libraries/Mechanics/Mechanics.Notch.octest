@@ -80,21 +80,3 @@ fn NotchFatigueFactorComposesWithFatigueCriteria() -> Void {
     Assert.True(notchedSoderberg < baselineSoderberg, "fatigue notch concentration should reduce Soderberg safety factor")
 }
 
-[Fact]
-fn InvalidNotchInputsReturnZero() -> Void {
-    let badRadius = NotchSensitivity(0.0002m, 0.0m)
-    let badMaterialLength = NotchSensitivity(0.0m - 0.0002m, 0.001m)
-
-    let badKt = FatigueStressConcentrationFactor(0.9, 0.5)
-    let badQNegative = FatigueStressConcentrationFactor(2.0, 0.0 - 0.2)
-    let badQHigh = FatigueStressConcentrationFactor(2.0, 1.2)
-
-    let badKts = FatigueShearStressConcentrationFactor(0.95, 0.5)
-
-    Assert.Near(0.0, badRadius, 0.000001, "invalid notch radius guard")
-    Assert.Near(0.0, badMaterialLength, 0.000001, "invalid material parameter guard")
-    Assert.Near(0.0, badKt, 0.000001, "invalid theoretical stress concentration guard")
-    Assert.Near(0.0, badQNegative, 0.000001, "invalid notch sensitivity lower-bound guard")
-    Assert.Near(0.0, badQHigh, 0.000001, "invalid notch sensitivity upper-bound guard")
-    Assert.Near(0.0, badKts, 0.000001, "invalid theoretical shear concentration guard")
-}

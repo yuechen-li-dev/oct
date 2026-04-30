@@ -121,18 +121,3 @@ fn ShaftFatigueCompositionRespondsToKfKfsAndEnduranceModifiers() -> Void {
     Assert.True(goodmanModified > soderbergModified, "Soderberg should remain most conservative in this case")
 }
 
-[Fact]
-fn ShaftInvalidInputsReturnZeroForGuardedHelpers() -> Void {
-    Assert.Near(0.0, ShaftAreaSolidCircular(0m) / 1m^2, 0.000000001, "invalid diameter area guard")
-    Assert.Near(0.0, ShaftSecondMomentAreaSolidCircular(0m) / 1m^4, 0.000000001, "invalid diameter inertia guard")
-    Assert.Near(0.0, ShaftPolarMomentAreaSolidCircular(0m) / 1m^4, 0.000000001, "invalid diameter polar moment guard")
-
-    Assert.Near(0.0, ShaftBendingStress(100kg*m^2/s^2, 0m) / 1kg/m/s^2, 0.000001, "invalid diameter shaft bending guard")
-    Assert.Near(0.0, ShaftTorsionalShearStress(100kg*m^2/s^2, 0m) / 1kg/m/s^2, 0.000001, "invalid diameter shaft torsion guard")
-
-    Assert.Near(0.0, ShaftStaticBendingStressWithKt(100kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kt guard")
-    Assert.Near(0.0, ShaftStaticTorsionalShearStressWithKts(100kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kts guard")
-
-    Assert.Near(0.0, ShaftFatigueBendingAlternatingStress(100kg*m^2/s^2, 0kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kf guard")
-    Assert.Near(0.0, ShaftFatigueTorsionAlternatingShearStress(100kg*m^2/s^2, 0kg*m^2/s^2, 0.03m, 0.9) / 1kg/m/s^2, 0.000001, "invalid Kfs guard")
-}

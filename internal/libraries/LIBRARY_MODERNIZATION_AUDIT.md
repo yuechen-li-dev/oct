@@ -347,3 +347,87 @@ No public API signatures were changed in this pass. In particular, the following
 ### Reference alignment note
 
 - This change aligns with `Language/reference/language/09-builtins.md` where `Pow(base: Int | Float, exponent: Int | Float) -> Float` is documented as a core builtin and builtin names are reserved.
+
+## 8. M4 Require precondition modernization (implemented 2026-04-30)
+
+### Search patterns used
+
+- `rg -n "return 0(\\.0)?|return error\\(" Libraries -g "*.oct"`
+- `rg -n "if .*<= 0|if .*< 0|if .*== 0|if .*>=|if .*>" Libraries -g "*.oct"`
+- `rg -n "Assert\\." Libraries -g "*.oct"`
+
+### Files/functions changed
+
+- `Libraries/Mechanics/Mechanics.Endurance.oct`
+  - Converted precondition-pretzel guards in:
+    - `EnduranceModifierProduct`
+    - `DesignEnduranceLimit`
+    - `SurfaceFactorFromUltimateStrength`
+    - `SizeFactorFromDiameter`
+    - `LoadFactorDirect`
+    - `TemperatureFactorDirect`
+    - `ReliabilityFactorFromStandardScore`
+- `Libraries/Mechanics/Mechanics.Notch.oct`
+  - Converted precondition guards in:
+    - `NotchSensitivity`
+    - `FatigueStressConcentrationFactor`
+    - `FatigueShearStressConcentrationFactor`
+- `Libraries/Mechanics/Mechanics.Stress.oct`
+  - Converted precondition guards in:
+    - `NormalStress`
+    - `ShearStress`
+    - `BendingStress`
+    - `TorsionalShearStress`
+- `Libraries/Mechanics/Mechanics.Shafts.oct`
+  - Converted precondition guards in:
+    - `ShaftAreaSolidCircular`
+    - `ShaftSecondMomentAreaSolidCircular`
+    - `ShaftPolarMomentAreaSolidCircular`
+    - `ShaftBendingStress`
+    - `ShaftTorsionalShearStress`
+    - `ShaftStaticBendingStressWithKt`
+    - `ShaftStaticTorsionalShearStressWithKts`
+    - `ShaftFatigueBendingAlternatingStress`
+    - `ShaftFatigueBendingMeanStress`
+    - `ShaftFatigueTorsionAlternatingShearStress`
+    - `ShaftFatigueTorsionMeanShearStress`
+- `Libraries/Mechanics/Mechanics.Fatigue.oct`
+  - Converted precondition guards in:
+    - `GoodmanUtilization`
+    - `GoodmanFactorOfSafety`
+    - `GerberUtilization`
+    - `GerberFactorOfSafety`
+    - `SoderbergUtilization`
+    - `SoderbergFactorOfSafety`
+
+### `return 0` cases converted
+
+Converted all confident `return 0`/`return 0 unit` precondition sentinel cases in the above Mechanics modules where invalid input clearly indicates caller/programmer contract violation.
+
+### `error(...)` cases converted
+
+No `-> T ! Error` signatures were converted in this slice. Changes were limited to infallible functions that previously masked precondition failures with zero/default sentinels.
+
+### Cases intentionally left unchanged
+
+- `ReliabilityFactorFromPercent` in `Mechanics.Endurance.oct` still returns piecewise/tabulated values with `0.0` fallback for out-of-table ranges. This behavior appears to be part of existing API semantics rather than a pure arithmetic precondition.
+- Broader `Libraries/` fallible APIs (e.g., parsing, analysis, optimization, random crypto wrappers) were left fallible because those paths are recoverable and/or external-input facing.
+
+### Call sites/tests updated
+
+- Removed/rewrote tests that asserted legacy zero-on-invalid guard behavior in:
+  - `Libraries/Mechanics/Mechanics.Endurance.octest`
+  - `Libraries/Mechanics/Mechanics.Notch.octest`
+  - `Libraries/Mechanics/Mechanics.Stress.octest`
+  - `Libraries/Mechanics/Mechanics.Shafts.octest`
+  - `Libraries/Mechanics/Mechanics.Fatigue.octest`
+
+### Validation
+
+- `go run ./cmd/oct test Libraries/Mechanics` passed after conversion.
+- Full required suite run is listed in this change's validation section (`go test ./...`, `go run ./cmd/oct test Libraries`, `go run ./cmd/oct test Libraries/Random`, and targeted changed package tests).
+
+### Reference alignment note
+
+This milestone intentionally follows `Language/reference` guidance that `Require(condition, message)` is the production primitive for non-recoverable programmer preconditions.
+

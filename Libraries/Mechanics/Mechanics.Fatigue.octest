@@ -84,18 +84,3 @@ fn FatigueOrderingForSameInputsIsGerberThenGoodmanThenSoderberg() -> Void {
     Assert.True(goodman > soderberg, "Goodman should be between Gerber and Soderberg")
 }
 
-[Fact]
-fn InvalidStrengthInputsReturnZeroSafetyFactor() -> Void {
-    let alternating = 80000000.0kg/m/s^2
-    let mean = 60000000.0kg/m/s^2
-
-    let goodmanInvalidEndurance = GoodmanFactorOfSafety(alternating, mean, 0.0kg/m/s^2, 600000000.0kg/m/s^2)
-    let goodmanInvalidSut = GoodmanFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
-    let gerberInvalidSut = GerberFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
-    let soderbergInvalidYield = SoderbergFactorOfSafety(alternating, mean, 300000000.0kg/m/s^2, 0.0kg/m/s^2)
-
-    Assert.Near(0.0, goodmanInvalidEndurance, 0.000001, "Goodman invalid endurance guard")
-    Assert.Near(0.0, goodmanInvalidSut, 0.000001, "Goodman invalid ultimate guard")
-    Assert.Near(0.0, gerberInvalidSut, 0.000001, "Gerber invalid ultimate guard")
-    Assert.Near(0.0, soderbergInvalidYield, 0.000001, "Soderberg invalid yield guard")
-}
