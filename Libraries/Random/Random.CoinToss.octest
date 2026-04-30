@@ -1,6 +1,7 @@
 package Random
 
-fn Main() -> Int {
+[Fact]
+fn RandomRandomCoinTossFacts() -> Void {
     let a0 = Random.RngSeed(42)
     let aMany = Random.FlipCoins(a0, 10)
 
@@ -44,5 +45,4 @@ fn Main() -> Int {
     Assert.Equal(Random.CoinSide.Tails, Random.CryptoFlipBiasedCoin!(0.0), "crypto pHeads=0")
     Assert.Equal(4, Len(Random.CryptoFlipCoins!(4)), "crypto count")
 
-    return 0
 }
