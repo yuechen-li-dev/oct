@@ -34,11 +34,11 @@ fn FloorCeilRoundCoreBehavior() -> Void {
 }
 
 [Fact]
-fn PowSignAndHypotCoreBehavior() -> Void {
-    Assert.Equal(8.0, Pow(2.0, 3), "pow positive exponent")
-    Assert.Near(0.125, Pow(2.0, 0 - 3), 0.000001, "pow negative exponent")
-    Assert.Equal(1.0, Pow(5.0, 0), "pow zero exponent")
-    Assert.Equal(0.0, Pow(0.0, 0 - 1), "pow zero to negative exponent is sentinel zero")
+fn BuiltinPowExpLnReferencePowAndHypotCoreBehavior() -> Void {
+    Assert.Equal(8.0, Pow(2.0, 3.0), "builtin pow positive exponent")
+    Assert.Near(0.125, Pow(2.0, 0.0 - 3.0), 0.000001, "builtin pow negative exponent")
+    Assert.Equal(1.0, Pow(5.0, 0.0), "builtin pow zero exponent")
+    Assert.Equal(0.0, PowExpLnReference(0.0, 0.0 - 1.0), "reference pow zero to negative exponent is sentinel zero")
 
     Assert.Equal(0, Sign(0.0), "sign zero")
     Assert.Equal(1, Sign(3.2), "sign positive")
@@ -49,11 +49,23 @@ fn PowSignAndHypotCoreBehavior() -> Void {
 
 [Fact]
 fn ComposableExpressionHelpers() -> Void {
-    let bounded = Clamp(Round(Pow(2.0, 4) / 3.0), 0.0, 10.0)
+    let bounded = Clamp(Round(Pow(2.0, 4.0) / 3.0), 0.0, 10.0)
     let score = Max(0.0, bounded - 1.0)
     Assert.Equal(4.0, score, "helpers compose in ordinary expressions")
 
     let radius = Hypot(3.0, 4.0)
     let trend = Sign(radius - 6.0)
     Assert.Equal(0 - 1, trend, "helpers compose in classification-style workflows")
+}
+
+
+[Fact]
+fn BuiltinAndReferencePowAgreeOnOrdinaryPositiveInputs() -> Void {
+    Assert.Near(8.0, PowExpLnReference(2.0, 3.0), 0.000001, "reference pow positive exponent")
+    Assert.Near(8.0, Pow(2.0, 3.0), 0.000001, "builtin pow positive exponent")
+
+    Assert.Near(Pow(9.0, 0.5), PowExpLnReference(9.0, 0.5), 0.000001, "builtin and reference agree for fractional positive exponent")
+
+    Assert.Equal(1.0, PowExpLnReference(5.0, 0.0), "reference pow zero exponent")
+    Assert.Near(1.0, Pow(5.0, 0.0), 0.000001, "builtin pow zero exponent")
 }

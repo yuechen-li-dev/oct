@@ -311,3 +311,39 @@ No public API signatures were changed in this pass. In particular, the following
 - `go run ./cmd/oct test Libraries/Mathematics`
 - `go run ./cmd/oct test Libraries/Statistics`
 - `go run ./cmd/oct test Libraries`
+
+## 9. M3 follow-up: Mathematics Pow redeclaration conflict (implemented 2026-04-30)
+
+### Conflict root cause
+
+- `Libraries/Mathematics/Mathematics.Core.oct` declared `fn Pow(base: Float, exponent: Int) -> Float`.
+- The language core now reserves builtin `Pow(base, exponent)` as the production exponentiation surface, so the library declaration conflicted with builtin name reservation during `Libraries/Mathematics` testing.
+
+### Resolution and naming
+
+- Renamed the pure-Oct library implementation to:
+  - `PowExpLnReference(base: Float, exponent: Float) -> Float`
+- Added explicit in-source comments clarifying role:
+  - reference/educational implementation retained
+  - production code should use builtin `Pow`
+
+### Call sites and docs updated
+
+- Updated Mathematics tests to:
+  - keep canonical builtin assertions (`Pow(2.0, 3.0)`, etc.)
+  - call `PowExpLnReference(...)` where reference semantics are intended
+  - assert builtin/reference agreement on ordinary positive inputs (`2^3`, `9^0.5`, `5^0`)
+- Updated `Libraries/Mathematics/README.md` to clarify:
+  - builtin `Pow` is canonical production API
+  - `PowExpLnReference` is retained as pure-Oct educational/reference algorithm
+
+### Validation results
+
+- `go test ./...` — pass
+- `go run ./cmd/oct test Libraries/Mathematics` — pass
+- `go run ./cmd/oct test Libraries` — pass
+- `go run ./cmd/oct test Language/Functions/Calls` — pass
+
+### Reference alignment note
+
+- This change aligns with `Language/reference/language/09-builtins.md` where `Pow(base: Int | Float, exponent: Int | Float) -> Float` is documented as a core builtin and builtin names are reserved.

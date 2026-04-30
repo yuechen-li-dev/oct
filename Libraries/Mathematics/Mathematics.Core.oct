@@ -64,29 +64,20 @@ fn Round(value: Float) -> Float {
     return Ceil(value - 0.5)
 }
 
-fn Pow(base: Float, exponent: Int) -> Float {
-    if exponent == 0 {
+// Reference implementation retained for educational/testing purposes.
+// Production code should use the core builtin Pow.
+fn PowExpLnReference(base: Float, exponent: Float) -> Float {
+    if exponent == 0.0 {
         return 1.0
     }
-
-    let exponentMagnitude = Abs(exponent)
-    var product = 1.0
-    var i = 0
-    while i < exponentMagnitude {
-        product = product * base
-        i = i + 1
-    }
-
-    if exponent < 0 {
-        if base == 0.0 {
+    if base == 0.0 {
+        if exponent < 0.0 {
             return 0.0
         }
-        return 1.0 / product
+        return 0.0
     }
-
-    return product
+    return Exp(Ln(base) * exponent)
 }
-
 fn Sign(value: Float) -> Int {
     if value > 0.0 {
         return 1
