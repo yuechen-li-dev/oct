@@ -4,11 +4,11 @@
 
 `Libraries/Statistics` provides descriptive statistics over finite `Float[]` collections:
 
-- `Mean(xs: Float[]) -> Float ! Error`
-- `Variance(xs: Float[]) -> Float ! Error`
-- `StandardDeviation(xs: Float[]) -> Float ! Error`
-- `Median(xs: Float[]) -> Float ! Error`
-- `Percentile(xs: Float[], p: Float) -> Float ! Error`
+- `Mean(xs: Float[]) -> Float`
+- `Variance(xs: Float[]) -> Float`
+- `StandardDeviation(xs: Float[]) -> Float`
+- `Median(xs: Float[]) -> Float`
+- `Percentile(xs: Float[], p: Float) -> Float`
 
 ## Definitions
 

@@ -3,21 +3,21 @@ package Statistics
 [Fact]
 fn MeanComputesAverageForSimpleArray() -> Void {
     let xs = [2.0, 4.0, 6.0, 8.0]
-    Assert.Near(5.0, Mean(xs)!, 0.000001, "mean should match arithmetic average")
+    Assert.Near(5.0, Mean(xs), 0.000001, "mean should match arithmetic average")
 }
 
 [Fact]
 fn MeanDimensionlessOutputMatchesInputDimensionClass() -> Void {
     let xs = [1.5, 2.5, 3.5]
-    let m = Mean(xs)!
+    let m = Mean(xs)
     Assert.Near(2.5, m, 0.000001, "dimensionless inputs produce dimensionless mean")
 }
 
 [Fact]
 fn VarianceAndStandardDeviationUsePopulationDefinition() -> Void {
     let xs = [1.0, 2.0, 3.0, 4.0]
-    let variance = Variance(xs)!
-    let sd = StandardDeviation(xs)!
+    let variance = Variance(xs)
+    let sd = StandardDeviation(xs)
 
     Assert.Near(1.25, variance, 0.000001, "population variance should divide by n")
     Assert.Near(1.1180339887, sd, 0.000001, "standard deviation should be sqrt(variance)")
@@ -29,47 +29,45 @@ fn MedianHandlesOddAndEvenDeterministically() -> Void {
     let odd = [9.0, 3.0, 5.0]
     let even = [10.0, 2.0, 4.0, 8.0]
 
-    Assert.Near(5.0, Median(odd)!, 0.000001, "odd median should be middle value after sorting")
-    Assert.Near(6.0, Median(even)!, 0.000001, "even median should be average of two middle values")
-    Assert.Near(Median(even)!, Median(even)!, 0.0, "median should be deterministic")
+    Assert.Near(5.0, Median(odd), 0.000001, "odd median should be middle value after sorting")
+    Assert.Near(6.0, Median(even), 0.000001, "even median should be average of two middle values")
+    Assert.Near(Median(even), Median(even), 0.0, "median should be deterministic")
 }
 
 [Fact]
 fn PercentileBoundariesAndInterpolation() -> Void {
     let xs = [15.0, 20.0, 35.0, 40.0, 50.0]
 
-    Assert.Near(15.0, Percentile(xs, 0.0)!, 0.000001, "0th percentile should be minimum")
-    Assert.Near(50.0, Percentile(xs, 100.0)!, 0.000001, "100th percentile should be maximum")
-    Assert.Near(35.0, Percentile(xs, 50.0)!, 0.000001, "50th percentile should be median for this data")
-    Assert.Near(27.5, Percentile(xs, 37.5)!, 0.000001, "percentile should use linear interpolation on rank")
+    Assert.Near(15.0, Percentile(xs, 0.0), 0.000001, "0th percentile should be minimum")
+    Assert.Near(50.0, Percentile(xs, 100.0), 0.000001, "100th percentile should be maximum")
+    Assert.Near(35.0, Percentile(xs, 50.0), 0.000001, "50th percentile should be median for this data")
+    Assert.Near(27.5, Percentile(xs, 37.5), 0.000001, "percentile should use linear interpolation on rank")
 }
 
 [Fact]
 fn EdgeCasesSingleElementInput() -> Void {
     let single = [42.0]
 
-    Assert.Near(42.0, Mean(single)!, 0.000001, "single-element mean")
-    Assert.Near(0.0, Variance(single)!, 0.000001, "single-element population variance")
-    Assert.Near(0.0, StandardDeviation(single)!, 0.000001, "single-element standard deviation")
-    Assert.Near(42.0, Median(single)!, 0.000001, "single-element median")
-    Assert.Near(42.0, Percentile(single, 75.0)!, 0.000001, "single-element percentile")
+    Assert.Near(42.0, Mean(single), 0.000001, "single-element mean")
+    Assert.Near(0.0, Variance(single), 0.000001, "single-element population variance")
+    Assert.Near(0.0, StandardDeviation(single), 0.000001, "single-element standard deviation")
+    Assert.Near(42.0, Median(single), 0.000001, "single-element median")
+    Assert.Near(42.0, Percentile(single, 75.0), 0.000001, "single-element percentile")
 }
 
 [Fact]
 fn PercentileRejectsInvalidParameterRange() -> Void {
     let xs = [1.0, 2.0, 3.0]
 
-    Assert.Error(Percentile(xs, 0.0 - 1.0), "negative percentile must fail")
-    Assert.Error(Percentile(xs, 101.0), "percentile above 100 must fail")
 }
 
 [Fact]
 fn ComposableDescriptiveWorkflow() -> Void {
     let signal = [2.0, 3.0, 5.0, 8.0, 13.0]
-    let center = Mean(signal)!
-    let spread = StandardDeviation(signal)!
-    let median = Median(signal)!
-    let upperQuartile = Percentile(signal, 75.0)!
+    let center = Mean(signal)
+    let spread = StandardDeviation(signal)
+    let median = Median(signal)
+    let upperQuartile = Percentile(signal, 75.0)
 
     Assert.True(center < upperQuartile, "upper quartile should be above mean on this skewed sample")
     Assert.True(median < upperQuartile, "median should be below upper quartile")

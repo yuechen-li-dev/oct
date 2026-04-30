@@ -2,17 +2,13 @@ package Statistics
 
 // Covariance computes the population covariance of two paired samples.
 // Both arrays must have the same length.
-fn Covariance(xs: Float[], ys: Float[]) -> Float ! Error {
+fn Covariance(xs: Float[], ys: Float[]) -> Float {
     let n = Len(xs)
-    if n == 0 {
-        return error("covariance requires at least one pair")
-    }
-    if n != Len(ys) {
-        return error("covariance requires equal-length arrays")
-    }
+    Require(n > 0, "Covariance requires at least one pair")
+    Require(n == Len(ys), "Covariance requires equal-length arrays")
 
-    let mx = Mean(xs)?
-    let my = Mean(ys)?
+    let mx = Mean(xs)
+    let my = Mean(ys)
 
     var accum = 0.0
     for i in 0 .. n {
@@ -24,17 +20,13 @@ fn Covariance(xs: Float[], ys: Float[]) -> Float ! Error {
 
 // SampleCovariance computes the sample covariance (divides by n-1).
 // Requires at least two pairs.
-fn SampleCovariance(xs: Float[], ys: Float[]) -> Float ! Error {
+fn SampleCovariance(xs: Float[], ys: Float[]) -> Float {
     let n = Len(xs)
-    if n < 2 {
-        return error("sample covariance requires at least two pairs")
-    }
-    if n != Len(ys) {
-        return error("sample covariance requires equal-length arrays")
-    }
+    Require(n >= 2, "SampleCovariance requires at least two pairs")
+    Require(n == Len(ys), "SampleCovariance requires equal-length arrays")
 
-    let mx = Mean(xs)?
-    let my = Mean(ys)?
+    let mx = Mean(xs)
+    let my = Mean(ys)
 
     var accum = 0.0
     for i in 0 .. n {
@@ -46,13 +38,11 @@ fn SampleCovariance(xs: Float[], ys: Float[]) -> Float ! Error {
 
 // SampleVariance computes the sample variance (divides by n-1, Bessel-corrected).
 // Requires at least two values.
-fn SampleVariance(xs: Float[]) -> Float ! Error {
+fn SampleVariance(xs: Float[]) -> Float {
     let n = Len(xs)
-    if n < 2 {
-        return error("sample variance requires at least two values")
-    }
+    Require(n >= 2, "SampleVariance requires at least two values")
 
-    let mean = Mean(xs)?
+    let mean = Mean(xs)
     var accum = 0.0
     for i in 0 .. n {
         let d = xs[i] - mean
@@ -63,8 +53,8 @@ fn SampleVariance(xs: Float[]) -> Float ! Error {
 }
 
 // SampleStandardDeviation computes the sample standard deviation (Bessel-corrected).
-fn SampleStandardDeviation(xs: Float[]) -> Float ! Error {
-    let v = SampleVariance(xs)?
+fn SampleStandardDeviation(xs: Float[]) -> Float {
+    let v = SampleVariance(xs)
     return Sqrt(v)
 }
 
@@ -72,16 +62,12 @@ fn SampleStandardDeviation(xs: Float[]) -> Float ! Error {
 // Returns a value in [-1, 1]. Returns an error if either sequence is constant.
 fn Correlation(xs: Float[], ys: Float[]) -> Float ! Error {
     let n = Len(xs)
-    if n == 0 {
-        return error("correlation requires at least one pair")
-    }
-    if n != Len(ys) {
-        return error("correlation requires equal-length arrays")
-    }
+    Require(n > 0, "Correlation requires at least one pair")
+    Require(n == Len(ys), "Correlation requires equal-length arrays")
 
-    let cov = Covariance(xs, ys)?
-    let sx = StandardDeviation(xs)?
-    let sy = StandardDeviation(ys)?
+    let cov = Covariance(xs, ys)
+    let sx = StandardDeviation(xs)
+    let sy = StandardDeviation(ys)
 
     if sx == 0.0 or sy == 0.0 {
         return error("correlation requires non-constant sequences")
@@ -104,15 +90,11 @@ record LinearRegressionResult {
 // Returns slope, intercept, and R-squared goodness of fit.
 fn LinearRegression(xs: Float[], ys: Float[]) -> LinearRegressionResult ! Error {
     let n = Len(xs)
-    if n < 2 {
-        return error("linear regression requires at least two points")
-    }
-    if n != Len(ys) {
-        return error("linear regression requires equal-length arrays")
-    }
+    Require(n >= 2, "LinearRegression requires at least two points")
+    Require(n == Len(ys), "LinearRegression requires equal-length arrays")
 
-    let mx = Mean(xs)?
-    let my = Mean(ys)?
+    let mx = Mean(xs)
+    let my = Mean(ys)
 
     var num = 0.0
     var den = 0.0

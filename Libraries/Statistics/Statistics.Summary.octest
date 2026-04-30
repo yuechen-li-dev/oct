@@ -3,9 +3,9 @@ package Statistics
 [Fact]
 fn MinMaxRangeCoreBehavior() -> Void {
     let xs = [4.0, 1.0, 9.0, 2.0, 7.0]
-    Assert.Near(1.0, MinOf(xs)!, 0.000001, "min should be 1.0")
-    Assert.Near(9.0, MaxOf(xs)!, 0.000001, "max should be 9.0")
-    Assert.Near(8.0, RangeOf(xs)!, 0.000001, "range should be max - min")
+    Assert.Near(1.0, MinOf(xs), 0.000001, "min should be 1.0")
+    Assert.Near(9.0, MaxOf(xs), 0.000001, "max should be 9.0")
+    Assert.Near(8.0, RangeOf(xs), 0.000001, "range should be max - min")
 }
 
 [Fact]
@@ -13,10 +13,10 @@ fn IQRSpansFiftyPercentOfData() -> Void {
     // Known dataset: sorted [1, 2, 3, 4, 5, 6, 7, 8]
     // P25 = 2.75, P75 = 6.25, IQR = 3.5
     let xs = [3.0, 1.0, 7.0, 5.0, 2.0, 8.0, 4.0, 6.0]
-    let iqr = IQR(xs)!
+    let iqr = IQR(xs)
     Assert.True(iqr > 0.0, "IQR should be positive for non-constant data")
-    let p25 = Percentile(xs, 25.0)!
-    let p75 = Percentile(xs, 75.0)!
+    let p25 = Percentile(xs, 25.0)
+    let p75 = Percentile(xs, 75.0)
     Assert.Near(p75 - p25, iqr, 0.000001, "IQR should equal P75 - P25")
 }
 
@@ -24,8 +24,8 @@ fn IQRSpansFiftyPercentOfData() -> Void {
 fn ZScoresHaveZeroMeanAndUnitVariance() -> Void {
     let xs = [2.0, 4.0, 6.0, 8.0, 10.0]
     let zs = ZScores(xs)!
-    let zm = Mean(zs)!
-    let zv = Variance(zs)!
+    let zm = Mean(zs)
+    let zv = Variance(zs)
     Assert.Near(0.0, zm, 0.000001, "z-scores should have zero mean")
     Assert.Near(1.0, zv, 0.000001, "z-scores should have unit variance")
 }
@@ -48,7 +48,7 @@ fn ZScoresRejectConstantInput() -> Void {
 [Fact]
 fn SummarizeProducesCoherentRecord() -> Void {
     let xs = [3.0, 7.0, 1.0, 9.0, 5.0]
-    let s = Summarize(xs)!
+    let s = Summarize(xs)
 
     Assert.Equal(5, s.N, "N should match array length")
     Assert.Near(1.0, s.Min, 0.000001, "min")
@@ -66,7 +66,7 @@ fn SummarizeProducesCoherentRecord() -> Void {
 [Fact]
 fn SummarizeSampleVarianceIsLargerThanPopulation() -> Void {
     let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    let s = Summarize(xs)!
+    let s = Summarize(xs)
     // Sample variance (n-1) > population variance (n) for n > 1
     Assert.True(s.SampleVariance > s.Variance, "sample variance > population variance")
     Assert.Near(s.Variance * 5.0 / 4.0, s.SampleVariance, 0.000001, "sample/pop ratio = n/(n-1)")
@@ -76,7 +76,7 @@ fn SummarizeSampleVarianceIsLargerThanPopulation() -> Void {
 fn SkewnessIsZeroForSymmetricData() -> Void {
     // Symmetric around mean: skewness should be ~0
     let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    let s = Summarize(xs)!
+    let s = Summarize(xs)
     Assert.Near(0.0, s.Skewness, 0.000001, "symmetric data should have zero skewness")
 }
 
@@ -84,7 +84,7 @@ fn SkewnessIsZeroForSymmetricData() -> Void {
 fn SkewnessIsPositiveForRightSkewedData() -> Void {
     // Right skewed: most values small with a long right tail
     let xs = [1.0, 1.0, 1.0, 2.0, 10.0]
-    let s = Summarize(xs)!
+    let s = Summarize(xs)
     Assert.True(s.Skewness > 0.0, "right-skewed data should have positive skewness")
 }
 
@@ -95,7 +95,7 @@ fn SummarizeAndRegressionComposability() -> Void {
     let shapes = [64.0, 128.0, 256.0, 512.0, 1024.0]
     let throughput = [12.0, 28.0, 61.0, 130.0, 285.0]
 
-    let summary = Summarize(throughput)!
+    let summary = Summarize(throughput)
     let regression = LinearRegression(shapes, throughput)!
 
     // Throughput grows roughly linearly with shape in this toy data
@@ -112,7 +112,7 @@ fn SummarizeAndRegressionComposability() -> Void {
 [Fact]
 fn EdgeCasesEmptyAndSingleElement() -> Void {
     let single = [42.0]
-    Assert.Near(42.0, MinOf(single)!, 0.000001, "min of single element")
-    Assert.Near(42.0, MaxOf(single)!, 0.000001, "max of single element")
-    Assert.Near(0.0, RangeOf(single)!, 0.000001, "range of single element is zero")
+    Assert.Near(42.0, MinOf(single), 0.000001, "min of single element")
+    Assert.Near(42.0, MaxOf(single), 0.000001, "max of single element")
+    Assert.Near(0.0, RangeOf(single), 0.000001, "range of single element is zero")
 }
