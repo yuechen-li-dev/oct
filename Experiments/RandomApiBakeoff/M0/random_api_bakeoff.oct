@@ -1,0 +1,232 @@
+package RandomApiBakeoff
+
+record Candidate {
+    Name: String
+    SupportsExplicitState: Bool
+    HidesMutation: Bool
+    RequiresTupleFeature: Bool
+    RequiresNewControlConstruct: Bool
+    StepCountSimple: Int
+    StepCountSequential: Int
+    StepCountSimulation: Int
+    StepCountConditional: Int
+    StepCountComposition: Int
+    MisuseRiskBase: Int
+}
+
+record AxisScores {
+    DeterminismClarity: Int
+    StateVisibility: Int
+    SyntaxFriction: Int
+    CognitiveLoad: Int
+    TeachingCost: Int
+    ErrorProneness: Int
+    AlignmentWithOct: Int
+    ImplementationComplexity: Int
+    LanguageFeatureRisk: Int
+    FitForP14: Int
+    FitForCoinAndDice: Int
+    Total: Int
+}
+
+record ScenarioScores {
+    SimpleDraw: Int
+    SequentialDraws: Int
+    SimulationLoop: Int
+    ConditionalRandomness: Int
+    Composition: Int
+    ErrorCaseReasonability: Int
+    Total: Int
+}
+
+fn TupleCandidate() -> Candidate {
+    return Candidate {
+        Name: "A.TupleReturn"
+        SupportsExplicitState: true
+        HidesMutation: false
+        RequiresTupleFeature: true
+        RequiresNewControlConstruct: false
+        StepCountSimple: 1
+        StepCountSequential: 3
+        StepCountSimulation: 4
+        StepCountConditional: 3
+        StepCountComposition: 4
+        MisuseRiskBase: 3
+    }
+}
+
+fn RecordCandidate() -> Candidate {
+    return Candidate {
+        Name: "B.ResultRecord"
+        SupportsExplicitState: true
+        HidesMutation: false
+        RequiresTupleFeature: false
+        RequiresNewControlConstruct: false
+        StepCountSimple: 3
+        StepCountSequential: 9
+        StepCountSimulation: 12
+        StepCountConditional: 9
+        StepCountComposition: 12
+        MisuseRiskBase: 4
+    }
+}
+
+fn MutableCandidate() -> Candidate {
+    return Candidate {
+        Name: "C.MutableHandle"
+        SupportsExplicitState: false
+        HidesMutation: true
+        RequiresTupleFeature: false
+        RequiresNewControlConstruct: false
+        StepCountSimple: 1
+        StepCountSequential: 3
+        StepCountSimulation: 4
+        StepCountConditional: 3
+        StepCountComposition: 4
+        MisuseRiskBase: 8
+    }
+}
+
+fn SplitCandidate() -> Candidate {
+    return Candidate {
+        Name: "D.SplitStateValue"
+        SupportsExplicitState: true
+        HidesMutation: false
+        RequiresTupleFeature: false
+        RequiresNewControlConstruct: false
+        StepCountSimple: 2
+        StepCountSequential: 6
+        StepCountSimulation: 8
+        StepCountConditional: 6
+        StepCountComposition: 8
+        MisuseRiskBase: 6
+    }
+}
+
+fn ScopedCandidate() -> Candidate {
+    return Candidate {
+        Name: "E.ScopedBlock"
+        SupportsExplicitState: false
+        HidesMutation: true
+        RequiresTupleFeature: false
+        RequiresNewControlConstruct: true
+        StepCountSimple: 2
+        StepCountSequential: 4
+        StepCountSimulation: 5
+        StepCountConditional: 4
+        StepCountComposition: 5
+        MisuseRiskBase: 7
+    }
+}
+
+fn ClampScore(v: Int) -> Int {
+    if v < 0 { return 0 }
+    if v > 10 { return 10 }
+    return v
+}
+
+fn BoolInt(v: Bool) -> Int {
+    if v { return 1 }
+    return 0
+}
+
+fn ComputeAxisScores(c: Candidate) -> AxisScores {
+    let explicitBonus = BoolInt(c.SupportsExplicitState)
+    let hiddenPenalty = BoolInt(c.HidesMutation)
+    let tuplePenalty = BoolInt(c.RequiresTupleFeature)
+    let controlPenalty = BoolInt(c.RequiresNewControlConstruct)
+
+    let determinism = ClampScore(2 + 6 * explicitBonus - 4 * hiddenPenalty)
+    let visibility = ClampScore(2 + 7 * explicitBonus - 5 * hiddenPenalty)
+    let friction = ClampScore(10 - (c.StepCountSimple + c.StepCountSequential + c.StepCountComposition) / 3)
+    let cognitive = ClampScore(10 - (c.StepCountSimulation + c.StepCountConditional) / 2)
+    let teaching = ClampScore(10 - (c.StepCountSimple + c.StepCountConditional) / 2 - tuplePenalty - controlPenalty)
+    let errors = ClampScore(10 - c.MisuseRiskBase - 2 * hiddenPenalty)
+    let alignment = ClampScore(1 + 6 * explicitBonus - 4 * hiddenPenalty - tuplePenalty - controlPenalty)
+    let implComplexity = ClampScore(10 - 4 * tuplePenalty - 5 * controlPenalty)
+    let featureRisk = ClampScore(10 - 5 * tuplePenalty - 5 * controlPenalty)
+    let p14fit = ClampScore((determinism + visibility + cognitive) / 3)
+    let coinfit = ClampScore((friction + teaching + errors) / 3)
+
+    let total = determinism + visibility + friction + cognitive + teaching + errors + alignment + implComplexity + featureRisk + p14fit + coinfit
+
+    return AxisScores {
+        DeterminismClarity: determinism
+        StateVisibility: visibility
+        SyntaxFriction: friction
+        CognitiveLoad: cognitive
+        TeachingCost: teaching
+        ErrorProneness: errors
+        AlignmentWithOct: alignment
+        ImplementationComplexity: implComplexity
+        LanguageFeatureRisk: featureRisk
+        FitForP14: p14fit
+        FitForCoinAndDice: coinfit
+        Total: total
+    }
+}
+
+fn ScenarioScore(steps: Int, explicitState: Bool, hidesMutation: Bool, misuseRisk: Int) -> Int {
+    let explicitBonus = BoolInt(explicitState)
+    let hiddenPenalty = BoolInt(hidesMutation)
+    return ClampScore(10 - steps + 3 * explicitBonus - 2 * hiddenPenalty - misuseRisk / 3)
+}
+
+fn ComputeScenarioScores(c: Candidate) -> ScenarioScores {
+    let simple = ScenarioScore(c.StepCountSimple, c.SupportsExplicitState, c.HidesMutation, c.MisuseRiskBase)
+    let sequential = ScenarioScore(c.StepCountSequential, c.SupportsExplicitState, c.HidesMutation, c.MisuseRiskBase)
+    let simulation = ScenarioScore(c.StepCountSimulation, c.SupportsExplicitState, c.HidesMutation, c.MisuseRiskBase)
+    let conditional = ScenarioScore(c.StepCountConditional, c.SupportsExplicitState, c.HidesMutation, c.MisuseRiskBase)
+    let composition = ScenarioScore(c.StepCountComposition, c.SupportsExplicitState, c.HidesMutation, c.MisuseRiskBase)
+    let errorCase = ClampScore(10 - c.MisuseRiskBase - 2 * BoolInt(c.HidesMutation))
+
+    return ScenarioScores {
+        SimpleDraw: simple
+        SequentialDraws: sequential
+        SimulationLoop: simulation
+        ConditionalRandomness: conditional
+        Composition: composition
+        ErrorCaseReasonability: errorCase
+        Total: simple + sequential + simulation + conditional + composition + errorCase
+    }
+}
+
+fn FinalScore(c: Candidate) -> Int {
+    let axis = ComputeAxisScores(c)
+    let scenario = ComputeScenarioScores(c)
+    return axis.Total + scenario.Total
+}
+
+fn WinnerName() -> String {
+    let a = TupleCandidate()
+    let b = RecordCandidate()
+    let c = MutableCandidate()
+    let d = SplitCandidate()
+    let e = ScopedCandidate()
+
+    var winner = a.Name
+    var best = FinalScore(a)
+
+    let bScore = FinalScore(b)
+    if bScore > best {
+        best = bScore
+        winner = b.Name
+    }
+
+    let cScore = FinalScore(c)
+    if cScore > best {
+        best = cScore
+        winner = c.Name
+    }
+
+    let dScore = FinalScore(d)
+    if dScore > best {
+        best = dScore
+        winner = d.Name
+    }
+
+    let eScore = FinalScore(e)
+    if eScore > best { winner = e.Name }
+
+    return winner
+}
