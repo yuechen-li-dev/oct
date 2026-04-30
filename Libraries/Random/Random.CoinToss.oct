@@ -33,11 +33,11 @@ fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
 
 fn FlipCoins(rng: Rng, count: Int) -> CoinFlipManyResult {
     if count < 0 {
-        let _ = Assert.True(false, "FlipCoins count must be >= 0")
+        count = 0
     }
 
     var next = rng
-    var flips: CoinSide[] = []
+    var flips = []
     for _i in 0..count {
         let step = FlipCoin(next)
         next = step.Next
@@ -91,10 +91,10 @@ fn CryptoFlipBiasedCoin(pHeads: Float) -> CoinSide ! Error {
 
 fn CryptoFlipCoins(count: Int) -> CoinSide[] ! Error {
     if count < 0 {
-        let _ = Assert.True(false, "CryptoFlipCoins count must be >= 0")
+        count = 0
     }
 
-    var flips: CoinSide[] = []
+    var flips = []
     for _i in 0..count {
         flips = Append(flips, CryptoFlipCoin!())
     }

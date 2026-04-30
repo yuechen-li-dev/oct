@@ -13,7 +13,8 @@ fn AssertInRange(value: Int, low: Int, high: Int, message: Text) {
     Assert.True(value <= high, message)
 }
 
-fn Main() -> Int {
+[Fact]
+fn RandomRandomDiceFacts() -> Void {
     let a0 = Random.RngSeed(42)
     let aMany = Random.RollDice(a0, 10, 6)
 
@@ -79,5 +80,4 @@ fn Main() -> Int {
         AssertInRange(cryptoMany[i], 1, 6, "crypto many range")
     }
 
-    return 0
 }
