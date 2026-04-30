@@ -42,6 +42,7 @@ const (
 	ValueIndex   ValueKind = "Index"
 	ValueDiffOp  ValueKind = "DiffOp"
 	ValueFieldOp ValueKind = "FieldOp"
+	ValueTuple   ValueKind = "Tuple"
 )
 
 type Value struct {
@@ -65,6 +66,7 @@ type Value struct {
 	UI        *uiirNode
 	DiffOp    DifferentialOpValue
 	FieldOp   FieldOpValue
+	Tuple     []Value
 }
 
 type DifferentialOpValue struct {
@@ -212,6 +214,12 @@ func (v Value) String() string {
 			return "FieldOp(<invalid>)"
 		}
 		return "(" + v.FieldOp.Left.String() + " " + v.FieldOp.Operator + " " + v.FieldOp.Right.String() + ")"
+	case ValueTuple:
+		parts := make([]string, 0, len(v.Tuple))
+		for _, element := range v.Tuple {
+			parts = append(parts, element.String())
+		}
+		return "tuple(" + strings.Join(parts, ", ") + ")"
 	default:
 		return "<invalid>"
 	}
@@ -685,6 +693,26 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
 		env.define(node.Name, value.value, true)
+		return stmtResult{}, nil
+	case ast.DestructureAssignStmt:
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		if value.value.Kind != ValueTuple {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: destructuring assignment requires tuple value, got %s", valueTypeName(value.value))
+		}
+		if len(value.value.Tuple) != len(node.Names) {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: destructuring assignment expected %d elements, got %d", len(node.Names), len(value.value.Tuple))
+		}
+		for idx, name := range node.Names {
+			if !env.assign(name, value.value.Tuple[idx]) {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", name)
+			}
+		}
 		return stmtResult{}, nil
 	case ast.AssignStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -2097,6 +2125,10 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 		for index := range value.Matrix.Elements {
 			value.Matrix.Elements[index] = qualifyCrossPackageValue(value.Matrix.Elements[index], pkgName)
 		}
+	case ValueTuple:
+		for index := range value.Tuple {
+			value.Tuple[index] = qualifyCrossPackageValue(value.Tuple[index], pkgName)
+		}
 	case ValueDiffOp:
 		if value.DiffOp.Operand != nil {
 			operand := qualifyCrossPackageValue(*value.DiffOp.Operand, pkgName)
@@ -2140,6 +2172,18 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	}
 	if callee == "JsonLoadStructured" {
 		return i.evalJSONLoadStructuredBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
+	}
+	if callee == "TupleProbe" || callee == "BoolIntProbe" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
+		}
+		if len(argumentExprs) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 0 arguments", callee)
+		}
+		if callee == "TupleProbe" {
+			return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{{Kind: ValueInt, Int: 1}, {Kind: ValueInt, Int: 2}}}}, nil
+		}
+		return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{{Kind: ValueBool, Bool: true}, {Kind: ValueInt, Int: 7}}}}, nil
 	}
 	if i.wrappers.has(callee) {
 		if len(typeArguments) != 0 {
@@ -4202,6 +4246,13 @@ func valueTypeName(value Value) string {
 	}
 	if value.Kind == ValueFieldOp {
 		return "FieldOp"
+	}
+	if value.Kind == ValueTuple {
+		parts := make([]string, 0, len(value.Tuple))
+		for _, e := range value.Tuple {
+			parts = append(parts, valueTypeName(e))
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
 	}
 	base := string(value.Kind)
 	if (value.Kind == ValueInt || value.Kind == ValueFloat) && !value.Dimension.IsDimensionless() {
