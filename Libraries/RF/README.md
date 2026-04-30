@@ -152,3 +152,9 @@ Still intentionally out of scope:
 - `ReturnLossDbFromS11` and `InsertionLossDbFromS21` use explicit convention `-20*log10(|Sij|)`
 
 Scope is intentionally narrow and 2-port only for M0: no Touchstone I/O, no N-port framework, no cascading/de-embedding, and no impedance-renormalization surfaces.
+
+## Typed-frequency API note (M5b)
+
+For RF physical frequency and bandwidth function parameters/returns in low/medium-risk helpers, the API now uses unit-typed frequency values (`Float<Hz>`) instead of dimensionless `Float` (notably in RF.Noise, RF.PathLoss, and RF.Doppler function surfaces).
+
+Dimensionless logarithmic and ratio quantities remain plain `Float` by design (for example dB/dBm, noise figure linear factors, path-loss exponents, and SNR-derived scalar ratios).

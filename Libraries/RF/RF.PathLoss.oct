@@ -2,8 +2,8 @@ package RF
 
 /// Returns the physical speed of light used by RF propagation helpers.
 /// Units: m/s.
-fn SpeedOfLightMetersPerSecond() -> Float {
-    return 299792458.0
+fn SpeedOfLightMetersPerSecond() -> Float<m/s> {
+    return 299792458.0m/s
 }
 
 /// Computes free-space path loss factor from Friis geometry in linear scale.
@@ -12,16 +12,16 @@ fn SpeedOfLightMetersPerSecond() -> Float {
 /// Returns: Dimensionless path-loss multiplier >= 0.
 /// Units: Distance in m, frequency in Hz.
 /// Remarks: Returns 0 when distance or frequency is non-positive.
-fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
+fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float<Hz>) -> Float {
     if distance <= 0m {
         return 0.0
     }
-    if frequencyHz <= 0 {
+    if frequencyHz <= 0Hz {
         return 0.0
     }
 
     let wavelengthMeters = SpeedOfLightMetersPerSecond() / frequencyHz
-    let geometricTerm = 4.0 * Pi() * (distance / 1m) / wavelengthMeters
+    let geometricTerm = 4.0 * Pi() * (distance / 1m) / (wavelengthMeters / 1m)
     return geometricTerm * geometricTerm
 }
 
@@ -29,7 +29,7 @@ fn FreeSpacePathLossLinear(distance: Float<m>, frequencyHz: Float) -> Float {
 /// Param distance: Distance samples evaluated independently.
 /// Param frequencyHz: Shared carrier frequency.
 /// Remarks: Returns [0.0] for empty input.
-fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Float[] {
+fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float<Hz>) -> Float[] {
     if Len(distance) == 0 {
         return [0.0]
     }

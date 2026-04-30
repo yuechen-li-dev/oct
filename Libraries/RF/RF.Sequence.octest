@@ -55,7 +55,7 @@ fn ConcatSeriesSupportsPiecewisePatternsWithoutShapeSurprises() -> Void {
 [Fact]
 fn SequenceBuildersReduceRfExperimentInputVerbosity() -> Void {
     let distanceSweep = LinearDistanceSeries(1.0m, 5.0m, 5)
-    let baseLoss = FreeSpacePathLossLinearSeries(distanceSweep, 2400000000)
+    let baseLoss = FreeSpacePathLossLinearSeries(distanceSweep, 2400000000Hz)
 
     let calmShadowing = ConstantFloatSeries(0.0, 3)
     let obstructedShadowing = ConstantFloatSeries(6.0, 2)
