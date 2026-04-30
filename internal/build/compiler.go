@@ -2115,6 +2115,17 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin fft for type %s", argTypes[0])
 		}
 		return "Complex[]", nil
+	case "Require":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function 'Require' expects 2 arguments, got %d", len(argTypes))
+		}
+		if argTypes[0] != "Bool" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin Require for type %s", argTypes[0])
+		}
+		if argTypes[1] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin Require for type %s", argTypes[1])
+		}
+		return "Void", nil
 	case "Pi", "E":
 		if len(argTypes) != 0 {
 			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
@@ -4170,6 +4181,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
+			case "Require":
+				return fmt.Sprintf("if !%s { panic(\"runtime error: \" + %s) }; %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":

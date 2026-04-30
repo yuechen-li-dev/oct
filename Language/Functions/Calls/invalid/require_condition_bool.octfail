@@ -1,0 +1,7 @@
+expect error: "function 'Require' argument 1 expects Bool, got Int"
+
+package Main
+
+fn Main() -> Void {
+    Require(1, "bad")
+}

@@ -134,3 +134,27 @@ Current status (for this core-builtin page scope):
   - complex-number family (`Complex`, `ComplexPolar`, `I`, `Real`, `Imag`, `Conj`, `Arg`)
 
 When in doubt, treat the parity corpus as SSOT and validate against `internal/build/compiler.go`.
+
+
+## Preconditions
+
+- `Require(condition, message)` enforces non-recoverable runtime preconditions in production code.
+- `message` is mandatory and must explain the violated invariant.
+- If `condition` is false, execution fails immediately with a runtime error including `message`.
+- Use `Require` for programmer errors/invalid arguments, not for recoverable failures.
+- Recoverable failures remain `! Error` values.
+- `Assert.*` remains test-only (`.octest`).
+
+Example:
+
+```oct
+fn RollDie(rng: Rng, sides: Int) -> DieRollResult {
+    Require(sides >= 2, "RollDie requires sides >= 2")
+
+    let r = Random.RandInt(rng, 1, sides)
+    return DieRollResult {
+        Next: r.Next
+        Value: r.Value
+    }
+}
+```

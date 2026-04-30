@@ -2530,6 +2530,32 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Rect(rValue, thetaValue)}}, nil
 	}
+	if callee == "Require" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		conditionResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if conditionResult.hasError {
+			return evalResult{hasError: true, errorVal: conditionResult.errorVal}, nil
+		}
+		messageResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if messageResult.hasError {
+			return evalResult{hasError: true, errorVal: messageResult.errorVal}, nil
+		}
+		if conditionResult.value.Kind != ValueBool || messageResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Require expects (Bool, String)")
+		}
+		if !conditionResult.value.Bool {
+			return evalResult{}, fmt.Errorf("runtime error: %s", messageResult.value.Text)
+		}
+		return evalResult{value: Value{}}, nil
+	}
 	if callee == "Atan2" {
 		if len(argumentExprs) != 2 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)

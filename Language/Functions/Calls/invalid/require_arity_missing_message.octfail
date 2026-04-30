@@ -1,0 +1,7 @@
+expect error: "function 'Require' expects 2 arguments, got 1"
+
+package Main
+
+fn Main() -> Void {
+    Require(true)
+}
