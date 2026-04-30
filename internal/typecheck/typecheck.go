@@ -3562,6 +3562,32 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeComplex}}, nil
 	}
+	if callee == "Require" {
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'Require' expects 2 arguments, got %d", len(arguments))
+		}
+		conditionType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if conditionType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("function 'Require' argument 1 expects Bool, got %s", conditionType.ValueType)
+		}
+		messageType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if messageType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		}
+		if messageType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'Require' argument 2 expects String, got %s", messageType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
+	}
 	if callee == "Atan2" {
 		if len(arguments) != 2 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))

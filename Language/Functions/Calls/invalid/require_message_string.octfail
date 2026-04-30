@@ -1,0 +1,7 @@
+expect error: "function 'Require' argument 2 expects String, got Int"
+
+package Main
+
+fn Main() -> Void {
+    Require(true, 123)
+}

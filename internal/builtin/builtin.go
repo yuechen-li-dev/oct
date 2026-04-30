@@ -28,6 +28,7 @@ var names = map[string]struct{}{
 	"Pi":                       {},
 	"E":                        {},
 	"Print":                    {},
+	"Require":                  {},
 	"WriteOctagon":             {},
 	"LoadOctagon":              {},
 	"XlsxCreateWorkbook":       {},
