@@ -226,6 +226,16 @@ type MIRCall struct {
 
 func (MIRCall) mirStmt() {}
 
+type MIRDestructureCall struct {
+	Targets  []string
+	Callee   string
+	Args     []string
+	Builtin  bool
+	RetTypes []string
+}
+
+func (MIRDestructureCall) mirStmt() {}
+
 type MIRConstructRecord struct {
 	Target     string
 	TypeName   string
@@ -516,6 +526,46 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return fmt.Errorf("assignment to unknown local '%s'", s.Name)
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
+		case ast.DestructureAssignStmt:
+			call, ok := s.Value.(ast.CallExpr)
+			if !ok {
+				return fmt.Errorf("compiled mode destructuring currently requires a call RHS")
+			}
+			callee, ret, builtin, _, err := c.resolveCall(call.Callee)
+			if err != nil {
+				return err
+			}
+			retTypes, ok := parseTupleTypeString(ret)
+			if !ok {
+				return fmt.Errorf("compiled mode destructuring requires tuple return, got %s", ret)
+			}
+			if len(retTypes) != len(s.Names) {
+				return fmt.Errorf("compiled mode destructuring expected %d targets, got %d", len(retTypes), len(s.Names))
+			}
+			for i, name := range s.Names {
+				t, ok := c.locals[name]
+				if !ok {
+					return fmt.Errorf("assignment to unknown local '%s'", name)
+				}
+				if t != retTypes[i] {
+					return fmt.Errorf("compiled mode destructuring target '%s' expects %s, got %s", name, t, retTypes[i])
+				}
+			}
+			args := make([]string, 0, len(call.Arguments))
+			for _, a := range call.Arguments {
+				v, _, _, err := c.lowerExpr(a)
+				if err != nil {
+					return err
+				}
+				args = append(args, v)
+			}
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRDestructureCall{
+				Targets:  append([]string(nil), s.Names...),
+				Callee:   callee,
+				Args:     args,
+				Builtin:  builtin,
+				RetTypes: retTypes,
+			})
 		case ast.IndexAssignStmt:
 			indexExprs := make([]string, 0, len(s.Indices))
 			for _, idxNode := range s.Indices {
@@ -1782,6 +1832,12 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "Trim" || x.Name == "Lower" || x.Name == "Upper" || x.Name == "Join" {
 			return x.Name, "String", true, false, nil
 		}
+		if x.Name == "TupleProbe" {
+			return "TupleProbe", "(Int, Int)", true, false, nil
+		}
+		if x.Name == "BoolIntProbe" {
+			return "BoolIntProbe", "(Bool, Int)", true, false, nil
+		}
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {
 				return c.pkg.Name + "." + x.Name, typeRefStringForPackage(c.pkg.Name, fn.ReturnType), false, fn.IsFallible, nil
@@ -1917,6 +1973,13 @@ func typeRefString(t ast.TypeRef) string {
 }
 
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
+	if len(t.TupleOf) > 0 {
+		parts := make([]string, 0, len(t.TupleOf))
+		for _, elem := range t.TupleOf {
+			parts = append(parts, typeRefStringForPackage(currentPkg, elem))
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	}
 	if t.VectorOf != nil {
 		return "Vector<" + typeRefStringForPackage(currentPkg, *t.VectorOf) + ">"
 	}
@@ -1996,6 +2059,29 @@ func parseFlowInstanceType(t string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), true
+}
+
+func parseTupleTypeString(t string) ([]string, bool) {
+	if !strings.HasPrefix(t, "(") || !strings.HasSuffix(t, ")") {
+		return nil, false
+	}
+	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(t, "("), ")"))
+	if inner == "" {
+		return nil, false
+	}
+	parts := strings.Split(inner, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		part := strings.TrimSpace(p)
+		if part == "" {
+			return nil, false
+		}
+		out = append(out, part)
+	}
+	if len(out) < 2 {
+		return nil, false
+	}
+	return out, true
 }
 
 func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
@@ -4082,6 +4168,18 @@ func goStmt(s MIRStmt) (string, error) {
 			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
+	case MIRDestructureCall:
+		if st.Builtin {
+			switch st.Callee {
+			case "TupleProbe":
+				return fmt.Sprintf("%s, %s = 1, 2", st.Targets[0], st.Targets[1]), nil
+			case "BoolIntProbe":
+				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
+			default:
+				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
+			}
+		}
+		return fmt.Sprintf("%s = fn_%s(%s)", strings.Join(st.Targets, ", "), strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 	case MIRBatchMap:
 		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, fn_%s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
 			st.Target,
