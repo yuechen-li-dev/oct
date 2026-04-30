@@ -1,8 +1,2 @@
 package Random
 
-record Rng {
-    _State0: Int
-    _State1: Int
-    _State2: Int
-    _State3: Int
-}
