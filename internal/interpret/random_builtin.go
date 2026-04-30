@@ -69,3 +69,12 @@ func normalFromPair(u1, u2 float64) float64 {
 	r := math.Sqrt(-2 * math.Log(u1))
 	return r * math.Cos(2*math.Pi*u2)
 }
+func randomIntResultValue(next Value, value int64) Value {
+	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: "Random.RandIntResult", FieldOrder: []string{"Next", "Value"}, Fields: map[string]Value{"Next": next, "Value": {Kind: ValueInt, Int: value}}}}
+}
+func randomFloatResultValue(next Value, value float64) Value {
+	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: "Random.RandFloatResult", FieldOrder: []string{"Next", "Value"}, Fields: map[string]Value{"Next": next, "Value": {Kind: ValueFloat, Float: value}}}}
+}
+func randomBoolResultValue(next Value, value bool) Value {
+	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: "Random.RandBoolResult", FieldOrder: []string{"Next", "Value"}, Fields: map[string]Value{"Next": next, "Value": {Kind: ValueBool, Bool: value}}}}
+}

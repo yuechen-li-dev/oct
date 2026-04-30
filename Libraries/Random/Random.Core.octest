@@ -1,0 +1,23 @@
+package Random
+
+fn Main() -> Int {
+    let rng0 = Random.RngSeed(42)
+    let a1 = Random.RandInt(rng0, 1, 10)
+    let a2 = Random.RandInt(a1.Next, 1, 10)
+    let rng1 = Random.RngSeed(42)
+    let b1 = Random.RandInt(rng1, 1, 10)
+    let b2 = Random.RandInt(b1.Next, 1, 10)
+    Assert.Equal(a1.Value, b1.Value, "deterministic first draw")
+    Assert.Equal(a2.Value, b2.Value, "deterministic second draw")
+    Assert.Equal(a1.Value, Random.RandInt(rng0, 1, 10).Value, "state threading explicit")
+    let rf = Random.RandFloat01(a2.Next)
+    Assert.True(rf.Value >= 0.0 and rf.Value < 1.0, "float01 range")
+    Assert.Equal(false, Random.RandBernoulli(rf.Next, 0.0).Value, "bernoulli zero")
+    Assert.Equal(true, Random.RandBernoulli(rf.Next, 1.0).Value, "bernoulli one")
+    Assert.Equal(3.5, Random.RandNormal(rf.Next, 3.5, 0.0).Value, "normal zero stddev")
+    let rr = Random.RandFloatRange(rf.Next, 2.0, 2.0)
+    Assert.Equal(2.0, rr.Value, "float range equal bounds")
+    let bytes = Random.CryptoRandBytes!(16)
+    Assert.Equal(16, Len(bytes), "crypto bytes len")
+    return 0
+}

@@ -1,0 +1,9 @@
+expect error: "runtime error: min must be <= max"
+
+package Random
+
+fn Main() -> Int {
+    let rng = Random.RngSeed(1)
+    let _ = Random.RandInt(rng, 5, 1)
+    return 0
+}

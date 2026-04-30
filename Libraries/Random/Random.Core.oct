@@ -1,2 +1,79 @@
 package Random
 
+record Rng {
+    _State0: Int
+    _State1: Int
+    _State2: Int
+    _State3: Int
+}
+
+record RandIntResult {
+    Next: Rng
+    Value: Int
+}
+
+record RandFloatResult {
+    Next: Rng
+    Value: Float
+}
+
+record RandBoolResult {
+    Next: Rng
+    Value: Bool
+}
+
+fn RngSeed(seed: Int) -> Rng {
+    return Rng {
+        _State0: 0
+        _State1: 0
+        _State2: 0
+        _State3: 0
+    }
+}
+
+fn RandInt(rng: Rng, min: Int, max: Int) -> RandIntResult {
+    return RandIntResult {
+        Next: rng
+        Value: min
+    }
+}
+
+fn RandFloat01(rng: Rng) -> RandFloatResult {
+    return RandFloatResult {
+        Next: rng
+        Value: 0.0
+    }
+}
+
+fn RandFloatRange(rng: Rng, min: Float, max: Float) -> RandFloatResult {
+    return RandFloatResult {
+        Next: rng
+        Value: min
+    }
+}
+
+fn RandBernoulli(rng: Rng, p: Float) -> RandBoolResult {
+    return RandBoolResult {
+        Next: rng
+        Value: false
+    }
+}
+
+fn RandNormal(rng: Rng, mean: Float, stddev: Float) -> RandFloatResult {
+    return RandFloatResult {
+        Next: rng
+        Value: mean
+    }
+}
+
+fn CryptoRandInt(min: Int, max: Int) -> Int ! Error {
+    return 0
+}
+
+fn CryptoRandFloat01() -> Float ! Error {
+    return 0.0
+}
+
+fn CryptoRandBytes(count: Int) -> Bytes ! Error {
+    return []
+}
