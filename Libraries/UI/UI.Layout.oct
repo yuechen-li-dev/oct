@@ -4,8 +4,13 @@ record Mount {
     Handle: Int
 }
 
+enum BoxKind {
+    Absolute
+    Anchored
+}
+
 record UIBox {
-    Kind: String
+    Kind: BoxKind
     X: Float<px>
     Y: Float<px>
     Width: Float<px>
@@ -43,7 +48,7 @@ fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) 
 
 fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
     return UIBox {
-        Kind: "absolute"
+        Kind: BoxKind.Absolute
         X: x
         Y: y
         Width: width
@@ -62,7 +67,7 @@ fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<
 
 fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int) -> UIBox {
     return UIBox {
-        Kind: "anchored"
+        Kind: BoxKind.Anchored
         X: 0.0 px
         Y: 0.0 px
         Width: 0.0 px
@@ -76,11 +81,10 @@ fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float
 }
 
 fn Place(box: UIBox, child: UI) -> UI {
-    if box.Kind == "absolute" {
-        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, box.Z)
+    return switch box.Kind {
+        case BoxKind.Absolute => UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, box.Z)
+        case BoxKind.Anchored => UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child, box.Z)
     }
-
-    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child, box.Z)
 }
 
 fn MountUI(root: UI) -> Mount {

@@ -431,3 +431,22 @@ No `-> T ! Error` signatures were converted in this slice. Changes were limited 
 
 This milestone intentionally follows `Language/reference` guidance that `Require(condition, message)` is the production primitive for non-recoverable programmer preconditions.
 
+
+
+## 8. M6 enum domain modeling pass (implemented 2026-04-30)
+
+### Files changed
+
+- `Libraries/UI/UI.Layout.oct`
+- `Libraries/UI/UI.TypedCoordinates.octest`
+- `Libraries/UI/UI.BoxKindRejectsStringTag.octfail`
+- `Libraries/UI/README.md`
+- `Libraries/IO/README.md`
+- `internal/libraries/LIBRARY_MODERNIZATION_M6_ENUM_DOMAIN_MODELING.md`
+
+### Summary
+
+- Migrated high-confidence internal UI layout domain from `UIBox.Kind: String` (`"absolute"`/`"anchored"`) to `UIBox.Kind: BoxKind` enum (`BoxKind.Absolute`/`BoxKind.Anchored`).
+- Updated placement dispatch to enum-based `switch` over `BoxKind`.
+- Added coverage asserting closed enum-domain behavior and added an `.octfail` contract to reject legacy string tags.
+- Deferred public/boundary-heavy `IO.Json` kind migration; retained string compatibility at JSON interchange boundary and documented the deferral for M6.

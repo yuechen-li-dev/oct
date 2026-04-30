@@ -83,3 +83,9 @@ All wrapper errors use standardized wrapper error kinds via the Mx103a substrate
 ## Note on type surface
 
 `Bytes` is available as a narrow binary boundary type for wrapper compatibility surfaces (file payloads now, additional transport wrappers later). It is intentionally not a dynamic catch-all and does not introduce `Dynamic`.
+
+
+## Enum/domain modeling note (M6)
+
+`JsonRawGraphNode.Kind` remains a `String` in M6 to preserve compatibility at the JSON interchange boundary.
+A future pass may introduce an internal `JsonNodeKind` enum adapter layer while keeping boundary parse/serialize string semantics stable.
