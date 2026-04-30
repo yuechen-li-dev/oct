@@ -2419,6 +2419,40 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeBool}, {Base: BaseTypeInt}}}}}, nil
 	}
+	if callee == "Random.RngSeed" || callee == "Random.RandInt" || callee == "Random.RandFloat01" || callee == "Random.RandFloatRange" || callee == "Random.RandBernoulli" || callee == "Random.RandNormal" || callee == "Random.CryptoRandInt" || callee == "Random.CryptoRandFloat01" || callee == "Random.CryptoRandBytes" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		rngType := Type{Name: "Random.Rng"}
+		switch callee {
+		case "Random.RngSeed":
+			if len(arguments) != 1 {
+				return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			}
+			return ExprType{ValueType: rngType}, nil
+		case "Random.RandInt":
+			if len(arguments) != 3 {
+				return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
+			}
+			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeInt}}}}}, nil
+		case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal":
+			if (callee == "Random.RandFloat01" && len(arguments) != 1) || (callee != "Random.RandFloat01" && len(arguments) != 3) {
+				return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
+			}
+			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeFloat}}}}}, nil
+		case "Random.RandBernoulli":
+			if len(arguments) != 2 {
+				return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+			}
+			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{rngType, {Base: BaseTypeBool}}}}}, nil
+		case "Random.CryptoRandInt":
+			return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
+		case "Random.CryptoRandFloat01":
+			return ExprType{ValueType: Type{Base: BaseTypeFloat}, Fallible: true}, nil
+		default:
+			return ExprType{ValueType: Type{Base: BaseTypeBytes}, Fallible: true}, nil
+		}
+	}
 	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
