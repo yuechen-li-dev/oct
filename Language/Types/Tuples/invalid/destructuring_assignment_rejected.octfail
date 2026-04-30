@@ -1,0 +1,12 @@
+expect error: "destructuring assignment is not supported"
+
+package Main
+
+fn Pair() -> Int {
+    return 1
+}
+
+fn Main() -> Int {
+    a, b = Pair()
+    return 0
+}

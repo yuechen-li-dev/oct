@@ -1,0 +1,9 @@
+expect error: "destructuring assignment is not supported"
+
+package Main
+
+fn Main() -> Int {
+    rng = Random.RngSeed(1)
+    rng, x = Random.RandInt(rng, 1, 6)
+    return x
+}

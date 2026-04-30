@@ -1,8 +1,0 @@
-package Main
-
-[Fact]
-fn DestructuringBindsNewNames() -> Void {
-    a, b = TupleProbe()
-    Assert.Equal(1, a, "tuple first element binds")
-    Assert.Equal(2, b, "tuple second element binds")
-}

@@ -1,3 +1,5 @@
+# Superseded note: Tuple M1–M5 were experimental and superseded by M6 removal.
+
 # Tuple Support — M0 Audit & Implementation Plan
 
 ## Scope and intent

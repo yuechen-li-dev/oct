@@ -1,0 +1,7 @@
+expect error: "tuple types are not supported"
+
+package Main
+
+fn Pair() -> (Int, Int) {
+    return 0
+}

@@ -1,9 +1,0 @@
-package Main
-
-[Fact]
-fn DestructuringAllowsMutableReassignmentAndMixedTargets() -> Void {
-    var a = 0
-    a, b = TupleProbe()
-    Assert.Equal(1, a, "mutable target is updated")
-    Assert.Equal(2, b, "new target is bound")
-}
