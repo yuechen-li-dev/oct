@@ -18,8 +18,12 @@ fn EnduranceModifierCompositionMonotonicAndUnityBehavior() -> Void {
 [Fact]
 fn SurfaceFactorCoefficientFormMatchesHandCalculation() -> Void {
     let sut = 900000000.0kg/m/s^2
+    let a = 4.51
+    let b = 0.0 - 0.265
 
-    let machined = SurfaceFactorFromUltimateStrength(sut, 4.51, 0.0 - 0.265)
+    let expected = a * Pow(sut / 1000000kg/m/s^2, b)
+    let machined = SurfaceFactorFromUltimateStrength(sut, a, b)
+    Assert.Near(expected, machined, 0.000001, "surface factor should match explicit Pow form")
     Assert.Near(0.743536, machined, 0.0005, "surface factor coefficient form hand-check")
 
     let rougher = SurfaceFactorFromUltimateStrength(sut, 57.7, 0.0 - 0.718)
@@ -29,14 +33,17 @@ fn SurfaceFactorCoefficientFormMatchesHandCalculation() -> Void {
 [Fact]
 fn SizeFactorDecreasesAsDiameterIncreases() -> Void {
     let referenceDiameter = 0.00762m
+    let exponent = 0.0 - 0.107
 
-    let small = SizeFactorFromDiameter(0.00762m, referenceDiameter, 0.0 - 0.107)
-    let medium = SizeFactorFromDiameter(0.01524m, referenceDiameter, 0.0 - 0.107)
-    let large = SizeFactorFromDiameter(0.03048m, referenceDiameter, 0.0 - 0.107)
+    let small = SizeFactorFromDiameter(0.00762m, referenceDiameter, exponent)
+    let medium = SizeFactorFromDiameter(0.01524m, referenceDiameter, exponent)
+    let large = SizeFactorFromDiameter(0.03048m, referenceDiameter, exponent)
+    let expectedMedium = Pow(2.0, exponent)
 
     Assert.Near(1.0, small, 0.000001, "reference diameter should give unity factor")
     Assert.True(medium < small, "larger diameter should reduce size factor")
     Assert.True(large < medium, "size factor trend should be monotonic")
+    Assert.Near(expectedMedium, medium, 0.000001, "size factor should match explicit Pow form")
     Assert.Near(0.928523, medium, 0.0005, "size factor hand-check")
 }
 

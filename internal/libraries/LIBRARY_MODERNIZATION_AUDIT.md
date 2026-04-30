@@ -202,3 +202,70 @@ No public API signatures were changed in this pass. In particular, the following
 - **M3**: precondition-policy consistency pass (`Require` vs `error(...)`) and any remaining low-risk math-style cleanup.
 - **M4**: coordinated RF/Wireless typed-frequency API migration (`Float<Hz>`/`Float<s^-1>`) with compatibility strategy.
 - **M5**: enum migration for stringly-typed domain fields where appropriate.
+
+## 7. M2 mechanics Pow cleanup (implemented 2026-04-30)
+
+### Files changed
+
+- `Libraries/Mechanics/Mechanics.Endurance.oct`
+- `Libraries/Mechanics/Mechanics.Endurance.octest`
+- `internal/libraries/LIBRARY_MODERNIZATION_AUDIT.md`
+
+### Expressions replaced
+
+- `SurfaceFactorFromUltimateStrength`:
+  - from `a * Exp(b * Ln(sutMpa))`
+  - to `a * Pow(sutMpa, b)`
+- `SizeFactorFromDiameter`:
+  - from `Exp(exponent * Ln(ratio))`
+  - to `Pow(ratio, exponent)`
+
+### Expressions intentionally left unchanged
+
+- `Libraries/Random/Random.Distributions.oct`: `-Ln(1-u)/lambda` inverse-CDF form is intentional log-space math (not a power-law workaround).
+- `Libraries/Distributions/Distributions.Core.oct`: direct `Exp(...)` forms for Gaussian/exponential/Phi approximations are intentional exponential-domain formulas (not power-law workarounds).
+
+### Regression tests added/updated
+
+- `SurfaceFactorCoefficientFormMatchesHandCalculation` now asserts function output against explicit `a * Pow(sutMpa, b)`.
+- `SizeFactorDecreasesAsDiameterIncreases` now asserts function output against explicit `Pow(ratio, exponent)`.
+
+### Validation results
+
+- `go test ./...` failed with runtime invariant violations (`Pow expects 1 argument`) during Oct test execution.
+- `go run ./cmd/oct test Libraries/Mechanics` failed with runtime invariant violations (`Pow expects 1 argument`).
+- `go run ./cmd/oct test Libraries` passed.
+- `go run ./cmd/oct test Language/Functions/Calls` passed.
+- Additional check: `go run ./cmd/oct test Libraries/RF` also failed with the same `Pow expects 1 argument` runtime invariant on pre-existing RF `Pow(base, exponent)` call sites.
+
+### Remaining mechanics modernization notes
+
+- No additional `Exp(k * Ln(x))` or `Exp(Ln(x) * k)` patterns remain under `Libraries/Mechanics`.
+- Broader modernization items (loop style, frequency-unit typing, precondition-policy alignment) remain tracked in existing milestone plan sections above.
+
+## 8. M2 Pow follow-up (runtime arity fix, implemented 2026-04-30)
+
+### Root cause
+
+- The `Pow` runtime evaluator in `internal/interpret/interpret.go` was placed after a generic unary-builtin guard:
+  - `if len(argumentExprs) != 1 { ...expects 1 argument... }`
+- As a result, interpreter execution of `Pow(base, exponent)` incorrectly hit the unary-arity guard before reaching the dedicated `Pow` branch, producing `runtime invariant violation: Pow expects 1 argument`.
+- Typechecker and compiled builtin typing already modeled `Pow` as a 2-argument builtin; the bug was specific to interpreter call dispatch ordering.
+
+### Why `Language/Functions/Calls` passed while Mechanics/RF failed
+
+- `go run ./cmd/oct test Language/Functions/Calls` executes `.octest/.octfail` fixtures and passed.
+- The observed runtime failure surfaced in interpreter-backed program execution paths used by `go test ./...` and package-level library test runs (`Libraries/Mechanics`, `Libraries/RF`), where the misordered unary guard in the interpreter was exercised.
+
+### Fix applied
+
+- Moved the generic unary-arity check to run **after** the dedicated `Pow` branch in `internal/interpret/interpret.go`.
+- This ensures `Pow` always enforces and executes its correct 2-argument behavior in interpreter mode.
+
+### Regression tests added
+
+- Added `TestExecuteMainPowBuiltinUsesTwoArgumentForm` in `internal/interpret/interpret_test.go`.
+- The test executes a real program via `project.Load` + `typecheck.CheckProgram` + `ExecuteMain` and includes:
+  - `a * Pow(sutMpa, b)`
+  - `Pow(ratio, exponent)`
+- This covers the same interpreter path and expression shape used by the Mechanics modernization and RF power-law formulas.
