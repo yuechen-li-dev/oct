@@ -63,13 +63,13 @@ package Main
 import Random
 
 fn Main() -> Int {
-    let rng0 = Random.RngSeed(42)
+    var rng = Random.RngSeed(42)
 
-    let rng1, x = Random.RandFloat01(rng0)
-    let rng2, y = Random.RandFloatRange(rng1, -1.0, 1.0)
-    let rng3, z = Random.RandNormal(rng2, 0.0, 1.0)
-    let rng4, n = Random.RandInt(rng3, 1, 6)
-    let rng5, b = Random.RandBernoulli(rng4, 0.2)
+    rng, x = Random.RandFloat01(rng)
+    rng, y = Random.RandFloatRange(rng, -1.0, 1.0)
+    rng, z = Random.RandNormal(rng, 0.0, 1.0)
+    rng, n = Random.RandInt(rng, 1, 6)
+    rng, b = Random.RandBernoulli(rng, 0.2)
 
     if b {
         return n

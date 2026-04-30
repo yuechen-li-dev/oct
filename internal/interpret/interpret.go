@@ -709,6 +709,10 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: destructuring assignment expected %d elements, got %d", len(node.Names), len(value.value.Tuple))
 		}
 		for idx, name := range node.Names {
+			if _, ok := env.lookup(name); !ok {
+				env.define(name, value.value.Tuple[idx], false)
+				continue
+			}
 			if !env.assign(name, value.value.Tuple[idx]) {
 				return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", name)
 			}

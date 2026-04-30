@@ -706,7 +706,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		for i, name := range node.Names {
 			target, ok := scope.lookup(name)
 			if !ok {
-				scope.define(name, valueType.ValueType.Tuple.Elements[i], true)
+				scope.define(name, valueType.ValueType.Tuple.Elements[i], false)
 				continue
 			}
 			if !target.mutable {
