@@ -67,7 +67,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 				}
 			}
 		}
-	} else if len(octFailCases) == 0 && !strings.Contains(loadErr.Error(), "unknown package") {
+	} else if len(octFailCases) == 0 || !strings.Contains(loadErr.Error(), "unknown package") {
 		return loadErr
 	}
 	sort.Slice(tests, func(i, j int) bool {
