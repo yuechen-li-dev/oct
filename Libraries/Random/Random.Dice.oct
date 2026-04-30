@@ -96,24 +96,26 @@ fn CryptoRollDie(sides: Int) -> Int ! Error {
     if normalizedSides < 2 {
         normalizedSides = 2
     }
-    return CryptoRandInt!(1, normalizedSides)
+    return CryptoRandInt(1, normalizedSides)!
 }
 
 fn CryptoRollD20() -> Int ! Error {
-    return CryptoRollDie!(20)
+    return CryptoRollDie(20)!
 }
 
 fn CryptoRollDice(count: Int, sides: Int) -> Int[] ! Error {
-    if count < 0 {
-        count = 0
+    var normalizedCount = count
+    if normalizedCount < 0 {
+        normalizedCount = 0
     }
-    if sides < 2 {
-        sides = 2
+    var normalizedSides = sides
+    if normalizedSides < 2 {
+        normalizedSides = 2
     }
 
     var values: Int[] = []
     for _i in 0..normalizedCount {
-        values = Append(values, CryptoRollDie!(sides))
+        values = Append(values, CryptoRollDie(normalizedSides)!)
     }
     return values
 }

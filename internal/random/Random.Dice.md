@@ -82,7 +82,7 @@ Crypto:
 - `CryptoRollDie`: `sides >= 2`
 - `CryptoRollDice`: `count >= 0`, `sides >= 2`
 
-Invalid inputs fail through assertion checks.
+Invalid inputs are currently normalized conservatively in source Oct: `count < 0` becomes `0`, and `sides < 2` becomes `2`. This avoids nonsense ranges while pure-Oct non-fallible runtime error helpers are still limited.
 
 ## Notes
 

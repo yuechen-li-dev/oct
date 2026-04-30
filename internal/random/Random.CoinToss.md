@@ -12,7 +12,7 @@
   - `FlipBiasedCoin(rng, pHeads)`
   - `FlipCoins(rng, count)`
   - `CountHeads(flips)` / `CountTails(flips)`
-  - `CoinSideToText(side)`
+  - `CoinSideToString(side)`
 - Crypto APIs:
   - `CryptoFlipCoin!()`
   - `CryptoFlipBiasedCoin!(pHeads)`
@@ -65,3 +65,8 @@ switch side {
 ## Core dependency statement
 
 All deterministic coin tosses call `Random.RandBernoulli` and thread `Next` from the returned result record.
+
+
+## Input validation note
+
+Current pure-Oct `FlipCoins` and `CryptoFlipCoins!` normalize negative `count` to `0` (empty result) instead of throwing. This is a temporary conservative behavior until non-fallible runtime error helpers are available for deterministic helpers.

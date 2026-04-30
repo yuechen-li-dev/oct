@@ -81,11 +81,11 @@ fn CoinSideToString(side: CoinSide) -> String {
 }
 
 fn CryptoFlipCoin() -> CoinSide ! Error {
-    return CryptoFlipBiasedCoin!(0.5)
+    return CryptoFlipBiasedCoin(0.5)!
 }
 
 fn CryptoFlipBiasedCoin(pHeads: Float) -> CoinSide ! Error {
-    let draw = CryptoRandFloat01!()
+    let draw = CryptoRandFloat01()!
     if draw < pHeads {
         return CoinSide.Heads
     }
@@ -93,13 +93,14 @@ fn CryptoFlipBiasedCoin(pHeads: Float) -> CoinSide ! Error {
 }
 
 fn CryptoFlipCoins(count: Int) -> CoinSide[] ! Error {
-    if count < 0 {
-        count = 0
+    var normalizedCount = count
+    if normalizedCount < 0 {
+        normalizedCount = 0
     }
 
     var flips: CoinSide[] = []
     for _i in 0..normalizedCount {
-        flips = Append(flips, CryptoFlipCoin!())
+        flips = Append(flips, CryptoFlipCoin()!)
     }
     return flips
 }
