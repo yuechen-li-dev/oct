@@ -1,0 +1,102 @@
+package Random
+
+enum CoinSide {
+    Heads
+    Tails
+}
+
+record CoinFlipResult {
+    Next: Rng
+    Side: CoinSide
+}
+
+record CoinFlipManyResult {
+    Next: Rng
+    Flips: CoinSide[]
+}
+
+fn FlipCoin(rng: Rng) -> CoinFlipResult {
+    return FlipBiasedCoin(rng, 0.5)
+}
+
+fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
+    let draw = RandBernoulli(rng, pHeads)
+    let side = switch draw.Value {
+        case true => CoinSide.Heads
+        case false => CoinSide.Tails
+    }
+    return CoinFlipResult {
+        Next: draw.Next
+        Side: side
+    }
+}
+
+fn FlipCoins(rng: Rng, count: Int) -> CoinFlipManyResult {
+    if count < 0 {
+        let _ = Assert.True(false, "FlipCoins count must be >= 0")
+    }
+
+    var next = rng
+    var flips: CoinSide[] = []
+    for _i in 0..count {
+        let step = FlipCoin(next)
+        next = step.Next
+        flips = Append(flips, step.Side)
+    }
+
+    return CoinFlipManyResult {
+        Next: next
+        Flips: flips
+    }
+}
+
+fn CountHeads(flips: CoinSide[]) -> Int {
+    var count = 0
+    for i in 0..Len(flips) {
+        if flips[i] == CoinSide.Heads {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn CountTails(flips: CoinSide[]) -> Int {
+    var count = 0
+    for i in 0..Len(flips) {
+        if flips[i] == CoinSide.Tails {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn CoinSideToText(side: CoinSide) -> Text {
+    return switch side {
+        case CoinSide.Heads => "Heads"
+        case CoinSide.Tails => "Tails"
+    }
+}
+
+fn CryptoFlipCoin() -> CoinSide ! Error {
+    return CryptoFlipBiasedCoin!(0.5)
+}
+
+fn CryptoFlipBiasedCoin(pHeads: Float) -> CoinSide ! Error {
+    let draw = CryptoRandFloat01!()
+    if draw < pHeads {
+        return CoinSide.Heads
+    }
+    return CoinSide.Tails
+}
+
+fn CryptoFlipCoins(count: Int) -> CoinSide[] ! Error {
+    if count < 0 {
+        let _ = Assert.True(false, "CryptoFlipCoins count must be >= 0")
+    }
+
+    var flips: CoinSide[] = []
+    for _i in 0..count {
+        flips = Append(flips, CryptoFlipCoin!())
+    }
+    return flips
+}
