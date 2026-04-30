@@ -116,6 +116,7 @@ Machina UI projection now lowers into **UIIR** (UI Intermediate Representation),
 - **Presentation lowers to UIIR** (`Text`, `Button`, `AbsoluteBox`, `AnchorBox`, `Row`, `Column`, `Grid`, `Spacer`).
 - **Stable ordering and identity** are encoded in signatures via deterministic node IDs.
 - **Layout worldview** is led by `AbsoluteBox` and `AnchorBox`; row/column/grid/spacer remain helper composition nodes.
+- `UIBox.Kind` is now modeled as a closed `BoxKind` enum (`Absolute` | `Anchored`) instead of legacy magic strings (`"absolute"` / `"anchored"`).
 - `AbsoluteBox` coordinates/sizes are `px`; `AnchoredBox` coordinates are normalized `ui`.
 - `AbsoluteBox` / `AnchoredBox` support bounded optional z-order (`-5..5`, default `0`), and same-z overlap is rendered deterministically in stable node order.
 

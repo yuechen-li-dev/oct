@@ -1,0 +1,17 @@
+expect error: "field 'Kind' expects BoxKind, got String"
+
+package UI
+
+enum BoxKind {
+    Absolute
+    Anchored
+}
+
+record UIBox {
+    Kind: BoxKind
+}
+
+fn Main() -> Int {
+    let _ = UIBox { Kind: "absolute" }
+    return 0
+}
