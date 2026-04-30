@@ -303,3 +303,25 @@ Clarification carried forward:
 - enums page explicitly marks tuple destructuring patterns as out-of-scope.
 
 Therefore tuple return/destructuring support is a **documentation expansion** that must be introduced intentionally alongside implementation milestones; existing code should not silently diverge from reference authority.
+
+## Tuple M3 status update (runtime/interpreter only)
+
+Date: 2026-04-30
+
+Implemented in M3:
+
+1. Runtime tuple packet value kind added (`ValueTuple` with ordered `[]Value`).
+2. Proof builtins now execute at runtime:
+   - `TupleProbe() -> (1, 2)`
+   - `BoolIntProbe() -> (true, 7)`
+3. Destructuring assignment execution added for flat `a, b = expr`:
+   - RHS evaluated exactly once,
+   - RHS required to be tuple packet,
+   - arity guard enforced,
+   - per-target mutable binding assignment applied in order.
+4. Runtime invariant guards added for unexpected non-tuple/arity mismatch paths.
+5. No broad tuple features added; tuple remains return-packet-only.
+
+Known consistency note:
+
+- Language reference documentation does not yet fully describe tuple packet runtime behavior; this is a deliberate documentation gap to close alongside broader language reference updates.
