@@ -12,12 +12,9 @@ record DiceRollResult {
 }
 
 fn RollDie(rng: Rng, sides: Int) -> DieRollResult {
-    var normalizedSides = sides
-    if normalizedSides < 2 {
-        normalizedSides = 2
-    }
+    Require(sides >= 2, "RollDie requires sides >= 2")
 
-    let draw = RandInt(rng, 1, normalizedSides)
+    let draw = RandInt(rng, 1, sides)
     return DieRollResult {
         Next: draw.Next
         Value: draw.Value
@@ -33,20 +30,14 @@ fn RollD20(rng: Rng) -> DieRollResult { return RollDie(rng, 20) }
 fn RollD100(rng: Rng) -> DieRollResult { return RollDie(rng, 100) }
 
 fn RollDice(rng: Rng, count: Int, sides: Int) -> DiceRollResult {
-    var normalizedCount = count
-    if normalizedCount < 0 {
-        normalizedCount = 0
-    }
-    var normalizedSides = sides
-    if normalizedSides < 2 {
-        normalizedSides = 2
-    }
+    Require(count >= 0, "RollDice requires count >= 0")
+    Require(sides >= 2, "RollDice requires sides >= 2")
 
     var next = rng
     var values: Int[] = []
     var total = 0
-    for _i in 0..normalizedCount {
-        let roll = RollDie(next, normalizedSides)
+    for _i in 0..count {
+        let roll = RollDie(next, sides)
         next = roll.Next
         values = Append(values, roll.Value)
         total = total + roll.Value
@@ -92,11 +83,10 @@ fn RollD20Disadvantage(rng: Rng) -> DiceRollResult {
 }
 
 fn CryptoRollDie(sides: Int) -> Int ! Error {
-    var normalizedSides = sides
-    if normalizedSides < 2 {
-        normalizedSides = 2
+    if sides < 2 {
+        return error("CryptoRollDie requires sides >= 2")
     }
-    return CryptoRandInt(1, normalizedSides)!
+    return CryptoRandInt(1, sides)!
 }
 
 fn CryptoRollD20() -> Int ! Error {
@@ -104,18 +94,21 @@ fn CryptoRollD20() -> Int ! Error {
 }
 
 fn CryptoRollDice(count: Int, sides: Int) -> Int[] ! Error {
-    var normalizedCount = count
-    if normalizedCount < 0 {
-        normalizedCount = 0
+    if count < 0 {
+        return error("CryptoRollDice requires count >= 0")
     }
-    var normalizedSides = sides
-    if normalizedSides < 2 {
-        normalizedSides = 2
+    if sides < 2 {
+        return error("CryptoRollDice requires sides >= 2")
     }
 
-    var values: Int[] = []
-    for _i in 0..normalizedCount {
-        values = Append(values, CryptoRollDie(normalizedSides)!)
+    let values: Int[] = []
+    return CryptoRollDiceInto(values, count, sides)!
+}
+
+fn CryptoRollDiceInto(values: Int[], remaining: Int, sides: Int) -> Int[] ! Error {
+    if remaining == 0 {
+        return values
     }
-    return values
+    let next = Append(values, CryptoRollDie(sides)!)
+    return CryptoRollDiceInto(next, remaining - 1, sides)!
 }

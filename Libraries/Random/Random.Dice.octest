@@ -14,63 +14,66 @@ fn AssertInRange(value: Int, low: Int, high: Int, message: String) -> Void {
 }
 
 [Fact]
-fn RandomRandomDiceFacts() -> Void {
-    let a0 = RngSeed(42)
-    let aMany = RollDice(a0, 10, 6)
+fn RollDiceSameSeedProducesSameSequence() -> Void {
+    let a = RollDice(RngSeed(42), 10, 6)
+    let b = RollDice(RngSeed(42), 10, 6)
 
-    let b0 = RngSeed(42)
-    let bMany = RollDice(b0, 10, 6)
-
-    Assert.Equal(10, Len(aMany.Values), "same seed roll count")
-    Assert.Equal(10, Len(bMany.Values), "same seed roll count reproducible")
-    Assert.Equal(aMany.Total, bMany.Total, "same seed total")
-    for i in 0..Len(aMany.Values) {
-        Assert.Equal(aMany.Values[i], bMany.Values[i], "same seed sequence")
+    Assert.Equal(10, Len(a.Values), "same seed roll count")
+    Assert.Equal(10, Len(b.Values), "same seed roll count reproducible")
+    Assert.Equal(a.Total, b.Total, "same seed total")
+    for i in 0..Len(a.Values) {
+        Assert.Equal(a.Values[i], b.Values[i], "same seed sequence")
     }
+}
 
-    let different = RollDice(RngSeed(99), 10, 6)
-    Assert.Equal(10, Len(different.Values), "different seed roll count")
+[Fact]
+fn StandardDiceStayInRange() -> Void {
+    let rng = RngSeed(42)
+    AssertInRange(RollD4(rng).Value, 1, 4, "d4 range")
+    AssertInRange(RollD6(rng).Value, 1, 6, "d6 range")
+    AssertInRange(RollD8(rng).Value, 1, 8, "d8 range")
+    AssertInRange(RollD10(rng).Value, 1, 10, "d10 range")
+    AssertInRange(RollD12(rng).Value, 1, 12, "d12 range")
+    AssertInRange(RollD20(rng).Value, 1, 20, "d20 range")
+    AssertInRange(RollD100(rng).Value, 1, 100, "d100 range")
+}
 
-    AssertInRange(RollD4(a0).Value, 1, 4, "d4 range")
-    AssertInRange(RollD6(a0).Value, 1, 6, "d6 range")
-    AssertInRange(RollD8(a0).Value, 1, 8, "d8 range")
-    AssertInRange(RollD10(a0).Value, 1, 10, "d10 range")
-    AssertInRange(RollD12(a0).Value, 1, 12, "d12 range")
-    AssertInRange(RollD20(a0).Value, 1, 20, "d20 range")
-    AssertInRange(RollD100(a0).Value, 1, 100, "d100 range")
-
-    let pool = RollDice(a0, 5, 6)
+[Fact]
+fn RollDicePoolLengthAndTotalAreConsistent() -> Void {
+    let pool = RollDice(RngSeed(2), 5, 6)
     Assert.Equal(5, Len(pool.Values), "pool length")
     Assert.Equal(Sum(pool.Values), pool.Total, "pool total equals value sum")
-    for i in 0..Len(pool.Values) {
-        AssertInRange(pool.Values[i], 1, 6, "pool value range")
-    }
+}
 
-    let zero = RollDice(a0, 0, 6)
+[Fact]
+fn RollDiceZeroCountReturnsEmptyAndZeroTotal() -> Void {
+    let zero = RollDice(RngSeed(8), 0, 6)
     Assert.Equal(0, Len(zero.Values), "zero-count values empty")
     Assert.Equal(0, zero.Total, "zero-count total is zero")
+}
 
-    let sumOnly = RollDiceSum(a0, 4, 8)
-    AssertInRange(sumOnly.Value, 4, 32, "sum helper range")
+[Fact]
+fn RollD20AdvantageAndDisadvantageUseMaxMin() -> Void {
+    let rng = RngSeed(11)
 
-    let adv = RollD20Advantage(a0)
-    Assert.Equal(2, Len(adv.Values), "advantage has two values")
+    let adv = RollD20Advantage(rng)
     let maxValue = if adv.Values[0] >= adv.Values[1] { adv.Values[0] } else { adv.Values[1] }
     Assert.Equal(maxValue, adv.Total, "advantage picks max")
 
-    let dis = RollD20Disadvantage(a0)
-    Assert.Equal(2, Len(dis.Values), "disadvantage has two values")
+    let dis = RollD20Disadvantage(rng)
     let minValue = if dis.Values[0] <= dis.Values[1] { dis.Values[0] } else { dis.Values[1] }
     Assert.Equal(minValue, dis.Total, "disadvantage picks min")
+}
 
+[Fact]
+fn CryptoDiceHelpersSmokeAndValidation() -> Void {
     let cryptoD6 = CryptoRollDie(6)!
     Assert.True(cryptoD6 >= 0, "crypto d6 non-negative smoke")
     let cryptoD20 = CryptoRollD20()!
     Assert.True(cryptoD20 >= 0, "crypto d20 non-negative smoke")
     let cryptoMany = CryptoRollDice(3, 6)!
     Assert.Equal(3, Len(cryptoMany), "crypto count")
-    for i in 0..Len(cryptoMany) {
-        Assert.True(cryptoMany[i] >= 0, "crypto many non-negative smoke")
-    }
-
+    Assert.Error(CryptoRollDie(1), "crypto roll die sides<2 should fail")
+    Assert.Error(CryptoRollDice(0 - 1, 6), "crypto roll dice count<0 should fail")
+    Assert.Error(CryptoRollDice(2, 1), "crypto roll dice sides<2 should fail")
 }

@@ -69,4 +69,10 @@ All deterministic coin tosses call `Random.RandBernoulli` and thread `Next` from
 
 ## Input validation note
 
-Current pure-Oct `FlipCoins` and `CryptoFlipCoins!` normalize negative `count` to `0` (empty result) instead of throwing. This is a temporary conservative behavior until non-fallible runtime error helpers are available for deterministic helpers.
+Deterministic helpers now fail loudly on invalid inputs via `Require`:
+
+- `FlipCoins`: requires `count >= 0`
+
+`count == 0` remains valid and returns an empty typed array while preserving deterministic state threading via `Next`.
+
+Crypto helpers remain fallible (`! Error`) rather than non-recoverable. `CryptoFlipCoins!` returns a fallible error when `count < 0`.

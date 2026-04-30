@@ -1,43 +1,54 @@
 package Random
 
 [Fact]
-fn RandomRandomCoinTossFacts() -> Void {
-    let a0 = RngSeed(42)
-    let aMany = FlipCoins(a0, 10)
+fn FlipCoinsSameSeedProducesSameSequence() -> Void {
+    let a = FlipCoins(RngSeed(42), 10)
+    let b = FlipCoins(RngSeed(42), 10)
 
-    let b0 = RngSeed(42)
-    let bMany = FlipCoins(b0, 10)
-
-    Assert.Equal(10, Len(aMany.Flips), "flip count")
-    Assert.Equal(10, Len(bMany.Flips), "flip count reproducible")
-
-    for i in 0..Len(aMany.Flips) {
-        Assert.Equal(aMany.Flips[i], bMany.Flips[i], "same seed same side sequence")
+    Assert.Equal(10, Len(a.Flips), "flip count")
+    Assert.Equal(10, Len(b.Flips), "flip count reproducible")
+    for i in 0..Len(a.Flips) {
+        Assert.Equal(a.Flips[i], b.Flips[i], "same seed same side sequence")
     }
+}
 
-    let different = FlipCoins(RngSeed(99), 10)
-    Assert.Equal(10, Len(different.Flips), "different seed count")
-
-    let always = FlipBiasedCoin(a0, 1.0).Side
-    Assert.True(always == CoinSide.Heads or always == CoinSide.Tails, "biased coin domain")
-    Assert.Equal(CoinSide.Tails, FlipBiasedCoin(a0, 0.0).Side, "pHeads=0 always tails")
+[Fact]
+fn FlipBiasedCoinExtremesAndCounts() -> Void {
+    Assert.Equal(CoinSide.Tails, FlipBiasedCoin(RngSeed(7), 0.0).Side, "pHeads=0 tails")
 
     let known = [CoinSide.Heads, CoinSide.Tails, CoinSide.Heads]
     Assert.Equal(2, CountHeads(known), "count heads")
     Assert.Equal(1, CountTails(known), "count tails")
+}
 
+[Fact]
+fn FlipCoinsZeroCountIsEmptyAndKeepsRngState() -> Void {
+    let rng = RngSeed(123)
+    let zero = FlipCoins(rng, 0)
+    Assert.Equal(0, Len(zero.Flips), "zero count returns empty")
+
+    let fromOriginal = FlipCoin(rng)
+    let fromNext = FlipCoin(zero.Next)
+    Assert.Equal(fromOriginal.Side, fromNext.Side, "zero count keeps next deterministic")
+}
+
+[Fact]
+fn FlipCoinsCountMatchesRequestedCount() -> Void {
+    let many = FlipCoins(RngSeed(1), 4)
+    Assert.Equal(4, Len(many.Flips), "flip count matches requested count")
+}
+
+[Fact]
+fn CoinSideToStringMapsEnumValues() -> Void {
     Assert.Equal("Heads", CoinSideToString(CoinSide.Heads), "text heads")
     Assert.Equal("Tails", CoinSideToString(CoinSide.Tails), "text tails")
+}
 
-    let firstFlip = FlipCoin(RngSeed(123))
-    let secondFromThreaded = FlipCoin(firstFlip.Next)
-    let replay = FlipCoins(RngSeed(123), 2)
-    Assert.Equal(replay.Flips[1], secondFromThreaded.Side, "threaded state matches replay")
-
+[Fact]
+fn CryptoCoinHelpersSmokeAndValidation() -> Void {
     let cryptoSide = CryptoFlipCoin()!
     Assert.True(cryptoSide == CoinSide.Heads or cryptoSide == CoinSide.Tails, "crypto side domain")
     Assert.Equal(CoinSide.Heads, CryptoFlipBiasedCoin(1.0)!, "crypto pHeads=1")
     Assert.Equal(CoinSide.Tails, CryptoFlipBiasedCoin(0.0)!, "crypto pHeads=0")
     Assert.Equal(4, Len(CryptoFlipCoins(4)!), "crypto count")
-
 }

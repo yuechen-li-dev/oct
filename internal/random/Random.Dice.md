@@ -74,15 +74,20 @@ Crypto helpers are intentionally non-deterministic and should only be range/smok
 
 Deterministic:
 
-- `RollDie`: `sides >= 2`
-- `RollDice`: `count >= 0`, `sides >= 2`
+- `RollDie`: requires `sides >= 2` via `Require`
+- `RollDice`: requires `count >= 0` and `sides >= 2` via `Require`
+- `RollDiceSum`: inherits `RollDice` preconditions
+
+Deterministic invalid inputs are non-recoverable programmer errors and fail loudly.
+
+Valid edge behavior is preserved: `RollDice(rng, 0, sides)` is valid and returns `Values = []`, `Total = 0`, and unchanged deterministic `Next`.
 
 Crypto:
 
-- `CryptoRollDie`: `sides >= 2`
-- `CryptoRollDice`: `count >= 0`, `sides >= 2`
+- `CryptoRollDie`: fallible error if `sides < 2`
+- `CryptoRollDice`: fallible error if `count < 0` or `sides < 2`
 
-Invalid inputs are currently normalized conservatively in source Oct: `count < 0` becomes `0`, and `sides < 2` becomes `2`. This avoids nonsense ranges while pure-Oct non-fallible runtime error helpers are still limited.
+Crypto helpers remain fallible (`! Error`) for invalid arguments.
 
 ## Notes
 
