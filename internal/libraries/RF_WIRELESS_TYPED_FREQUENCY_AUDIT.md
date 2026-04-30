@@ -292,3 +292,33 @@ Date: 2026-04-30
 
 Reference consistency note surfaced:
 - This migration uses `Hz` typed literals/arrays and signed-exponent-compatible unit behavior per `Language/reference/language/08-units.md` (`Hz = s^-1`).
+
+## M5c execution update (RF.SParameters typed-frequency migration)
+
+Date: 2026-04-30
+
+1. Tests updated first
+- Updated `Libraries/RF/RF.SParameters.octest` to use typed frequency axis arrays (`Float<Hz>[]`) and typed query frequencies (`Float<Hz>`) before changing implementation.
+- Added compatibility assertions that bind `data.Frequencies` to `Float<Hz>[]` and interpolation query to `Float<Hz>`.
+
+2. Record fields migrated
+- Migrated `SParameters2Port.Frequencies` from `Float[]` to `Float<Hz>[]` in `Libraries/RF/RF.SParameters.oct`.
+
+3. Interpolation helpers migrated
+- Migrated `InterpolateTraceAtFrequency(... frequencies, f)` to `frequencies: Float<Hz>[]` and `f: Float<Hz>`.
+- Migrated public wrappers `InterpolateS11`, `InterpolateS21`, `InterpolateS12`, and `InterpolateS22` query argument `f` to `Float<Hz>`.
+
+4. Interpolation semantics preserved
+- Preserved range checks, exact-knot behavior, and piecewise linear interpolation over real/imaginary components.
+- Ratio expression `(f - f0) / (f1 - f0)` remains dimensionless by unit cancellation; no algorithmic changes were introduced.
+
+5. Intentionally unchanged dimensionless quantities
+- `S11/S21/S12/S22` trace values remain `Complex` (dimensionless/network-ratio representation).
+- `MagnitudeDb`, `ReturnLossDbFromS11`, and `InsertionLossDbFromS21` remain dimensionless/log-domain `Float` outputs.
+
+6. Limitations/deferred items
+- Wireless typed-frequency migration remains deferred by design for this milestone (M5c scope is RF.SParameters only).
+- No field renaming performed (kept `Frequencies` as required).
+
+7. Validation results
+- Executed required validation matrix for Go tests and Oct test suites, including RF, Libraries-wide, UnitsM1, and Wireless non-regression.

@@ -1,10 +1,9 @@
 package RF
 
 /// Deterministic tabulated 2-port S-parameter data over frequency.
-/// Legacy API note: frequencies are currently scalar Float values for compatibility.
-/// TODO modernization: migrate Hz-valued frequency axes/queries to Float<Hz> in the RF/Wireless typed-frequency pass.
+/// Frequency-axis API uses typed frequency values (Float<Hz>) for physical measurements and interpolation queries.
 record SParameters2Port {
-    Frequencies: Float[]
+    Frequencies: Float<Hz>[]
     S11: Complex[]
     S21: Complex[]
     S12: Complex[]
@@ -58,7 +57,7 @@ fn InsertionLossDbFromS21(s21: Complex) -> Float {
     return 0.0 - MagnitudeDb(s21)
 }
 
-fn InterpolateTraceAtFrequency(frequencies: Float[], trace: Complex[], f: Float) -> Complex ! Error {
+fn InterpolateTraceAtFrequency(frequencies: Float<Hz>[], trace: Complex[], f: Float<Hz>) -> Complex ! Error {
     let n = Len(frequencies)
     if f < frequencies[0] or f > frequencies[n - 1] {
         return error("interpolation frequency is out of range")
@@ -89,28 +88,28 @@ fn InterpolateTraceAtFrequency(frequencies: Float[], trace: Complex[], f: Float)
 
 /// Interpolates S11 at frequency f using linear interpolation on real and imaginary parts.
 /// Rejects out-of-range queries and invalid datasets.
-fn InterpolateS11(data: SParameters2Port, f: Float) -> Complex ! Error {
+fn InterpolateS11(data: SParameters2Port, f: Float<Hz>) -> Complex ! Error {
     let ok = ValidateSParameters2Port(data)?
     return InterpolateTraceAtFrequency(data.Frequencies, data.S11, f)?
 }
 
 /// Interpolates S21 at frequency f using linear interpolation on real and imaginary parts.
 /// Rejects out-of-range queries and invalid datasets.
-fn InterpolateS21(data: SParameters2Port, f: Float) -> Complex ! Error {
+fn InterpolateS21(data: SParameters2Port, f: Float<Hz>) -> Complex ! Error {
     let ok = ValidateSParameters2Port(data)?
     return InterpolateTraceAtFrequency(data.Frequencies, data.S21, f)?
 }
 
 /// Interpolates S12 at frequency f using linear interpolation on real and imaginary parts.
 /// Rejects out-of-range queries and invalid datasets.
-fn InterpolateS12(data: SParameters2Port, f: Float) -> Complex ! Error {
+fn InterpolateS12(data: SParameters2Port, f: Float<Hz>) -> Complex ! Error {
     let ok = ValidateSParameters2Port(data)?
     return InterpolateTraceAtFrequency(data.Frequencies, data.S12, f)?
 }
 
 /// Interpolates S22 at frequency f using linear interpolation on real and imaginary parts.
 /// Rejects out-of-range queries and invalid datasets.
-fn InterpolateS22(data: SParameters2Port, f: Float) -> Complex ! Error {
+fn InterpolateS22(data: SParameters2Port, f: Float<Hz>) -> Complex ! Error {
     let ok = ValidateSParameters2Port(data)?
     return InterpolateTraceAtFrequency(data.Frequencies, data.S22, f)?
 }
