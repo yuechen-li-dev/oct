@@ -218,3 +218,42 @@ Public API stays type-clean and Oct-facing:
 - `Int`, `Float`, `Bool`, `Bytes`, `Rng`, records, enums.
 
 No public exposure of host-width internals such as `Uint64`, `Float64`, `byte[]`, or `Int32`.
+
+## 11) M1b compiled record-result emission fix (2026-04-30)
+
+### Root cause
+
+Compiled Random builtin helpers in `internal/build/compiler.go` return and accept Go types named:
+
+- `Random_Rng`
+- `Random_RandIntResult`
+- `Random_RandFloatResult`
+- `Random_RandBoolResult`
+
+These names match compiled record naming (`Package_Record`), but some compiled test paths invoked Random builtins without carrying Random package record declarations into `m.Records`. In those paths, helper functions were emitted but the record structs were not, causing unresolved Go symbols.
+
+### Chosen fix path
+
+M1b uses the smallest compatible fix: when Random helpers are needed, the compiler now emits fallback declarations for the four Random record-result structs if they were not already emitted from package records.
+
+This preserves:
+
+- the Oct public API shape (`Rng`, `Rand*Result` records),
+- compiled helper signatures,
+- deterministic algorithm behavior (SplitMix64 + xoshiro256**),
+- and normal record emission when package records are present.
+
+### How Random record-result types are emitted now
+
+In compiled mode:
+
+1. All `m.Records` are emitted first with the canonical `Package_Record` struct naming.
+2. If Random builtins are used, compiler checks whether:
+   - `Random.Rng`
+   - `Random.RandIntResult`
+   - `Random.RandFloatResult`
+   - `Random.RandBoolResult`
+   were already emitted.
+3. Missing ones are emitted as fallback structs before helper functions.
+
+This avoids duplicate type declarations while guaranteeing helper references resolve.

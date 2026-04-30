@@ -2604,6 +2604,7 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 func emitGo(m MIRModule) (string, error) {
 	var b strings.Builder
 	usedBuiltins := map[string]bool{}
+	emittedRecordTypes := map[string]struct{}{}
 	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
@@ -2711,11 +2712,27 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), goType(t))
 	}
 	for _, r := range m.Records {
+		emittedRecordTypes[r.Package+"."+r.Name] = struct{}{}
 		fmt.Fprintf(&b, "type %s_%s struct {\n", r.Package, r.Name)
 		for _, f := range r.Fields {
 			fmt.Fprintf(&b, "\t%s %s\n", f.Name, goType(f.Type))
 		}
 		b.WriteString("}\n\n")
+	}
+	needsRandomHelpers := usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] || usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"]
+	if needsRandomHelpers {
+		if _, ok := emittedRecordTypes["Random.Rng"]; !ok {
+			b.WriteString("type Random_Rng struct {\n\t_State0 int\n\t_State1 int\n\t_State2 int\n\t_State3 int\n}\n\n")
+		}
+		if _, ok := emittedRecordTypes["Random.RandIntResult"]; !ok {
+			b.WriteString("type Random_RandIntResult struct {\n\tNext Random_Rng\n\tValue int\n}\n\n")
+		}
+		if _, ok := emittedRecordTypes["Random.RandFloatResult"]; !ok {
+			b.WriteString("type Random_RandFloatResult struct {\n\tNext Random_Rng\n\tValue float64\n}\n\n")
+		}
+		if _, ok := emittedRecordTypes["Random.RandBoolResult"]; !ok {
+			b.WriteString("type Random_RandBoolResult struct {\n\tNext Random_Rng\n\tValue bool\n}\n\n")
+		}
 	}
 	for _, e := range m.Enums {
 		fmt.Fprintf(&b, "type %s_%s int\nconst (\n", e.Package, e.Name)
@@ -2756,7 +2773,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["fft"] {
 		b.WriteString(__octFFTHelpers)
 	}
-	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] || usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"] {
+	if needsRandomHelpers {
 		b.WriteString(__octRandomHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
