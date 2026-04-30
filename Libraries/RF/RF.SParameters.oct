@@ -1,7 +1,8 @@
 package RF
 
 /// Deterministic tabulated 2-port S-parameter data over frequency.
-/// Frequencies are represented as scalar Float values (typically Hz).
+/// Legacy API note: frequencies are currently scalar Float values for compatibility.
+/// TODO modernization: migrate Hz-valued frequency axes/queries to Float<Hz> in the RF/Wireless typed-frequency pass.
 record SParameters2Port {
     Frequencies: Float[]
     S11: Complex[]

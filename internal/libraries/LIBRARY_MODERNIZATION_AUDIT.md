@@ -169,3 +169,36 @@ Primary repo scans used:
 - `rg -n "mode|status|kind|type" Libraries -i -g '*.oct' -g '*.md'`
 
 Supplementary reference scans used against `Language/reference/language/*.md` for feature baseline confirmation.
+
+
+## 6. M1 documentation + historical-slop cleanup (implemented 2026-04-30)
+
+### Files updated
+
+- `Libraries/LinearAlgebra/README.md`
+- `Libraries/Wireless/Wireless.Core.oct`
+- `Libraries/RF/RF.SParameters.oct`
+
+### Stale docs/comments fixed
+
+- Corrected stale nested-array parser guidance in `LinearAlgebra` docs: `Float[][]` is supported by current Oct syntax; package-level flat row-major storage remains an API/design choice, not a parser limitation.
+- Replaced legacy Wireless top-of-file comment that implied dimensionless `Float` frequency is the preferred modern style.
+- Added explicit compatibility wording plus TODO modernization note in Wireless for future `Float<Hz>` migration.
+- Added explicit compatibility wording plus TODO modernization note in RF S-parameter frequency docs for future `Float<Hz>` migration.
+
+### API changes intentionally deferred in M1
+
+No public API signatures were changed in this pass. In particular, the following remain deferred:
+
+- `Float` -> `Float<Hz>` / `Float<s^-1>` signature migration across RF/Wireless
+- loop-structure modernization (`while` to `for`)
+- `Require` vs `error(...)` policy normalization
+- enum/stringly-domain migrations
+- broader numerical refactors
+
+### Follow-up milestones still required
+
+- **M2**: loop + mutability readability pass (no API changes).
+- **M3**: precondition-policy consistency pass (`Require` vs `error(...)`) and any remaining low-risk math-style cleanup.
+- **M4**: coordinated RF/Wireless typed-frequency API migration (`Float<Hz>`/`Float<s^-1>`) with compatibility strategy.
+- **M5**: enum migration for stringly-typed domain fields where appropriate.
