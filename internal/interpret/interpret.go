@@ -1,6 +1,7 @@
 package interpret
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -239,6 +240,7 @@ type interpreter struct {
 	uiMounts       wrapperHandleStore[*uiMount]
 	wrappers       wrapperBuiltinRegistry
 	assertRecorder func()
+	ctx            context.Context
 }
 
 type xlsxWorkbook struct {
@@ -248,6 +250,7 @@ type xlsxWorkbook struct {
 type ExecuteOptions struct {
 	OutputPathPrefix  string
 	AssertionRecorder func()
+	Context           context.Context
 }
 
 type SkipTestError struct {
@@ -357,6 +360,7 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 
 	interpreter := newInterpreter(program, stdout)
 	interpreter.assertRecorder = options.AssertionRecorder
+	interpreter.ctx = options.Context
 	key := pkgName + "." + functionName
 	function, ok := interpreter.functions[key]
 	if !ok {
@@ -373,6 +377,18 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 		return fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
 	}
 	return nil
+}
+
+func (i interpreter) checkCancelled() error {
+	if i.ctx == nil {
+		return nil
+	}
+	select {
+	case <-i.ctx.Done():
+		return i.ctx.Err()
+	default:
+		return nil
+	}
 }
 
 func newInterpreter(program project.Program, stdout io.Writer) interpreter {
@@ -672,6 +688,9 @@ func findFlowState(flow ast.FlowDecl, name string) (ast.StateDecl, bool) {
 func (i interpreter) executeBlock(parent *environment, pkgName string, block ast.Block) (stmtResult, error) {
 	blockEnv := newEnvironment(parent)
 	for _, statement := range block.Statements {
+		if err := i.checkCancelled(); err != nil {
+			return stmtResult{}, err
+		}
 		result, err := i.executeStmt(blockEnv, pkgName, statement)
 		if err != nil {
 			return stmtResult{}, err
@@ -684,6 +703,9 @@ func (i interpreter) executeBlock(parent *environment, pkgName string, block ast
 }
 
 func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt) (stmtResult, error) {
+	if err := i.checkCancelled(); err != nil {
+		return stmtResult{}, err
+	}
 	switch node := stmt.(type) {
 	case ast.LetStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -864,6 +886,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
 		}
 		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
+			if err := i.checkCancelled(); err != nil {
+				return stmtResult{}, err
+			}
 			iterationEnv := newEnvironment(env)
 			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
 			result, err := i.executeBlock(iterationEnv, pkgName, node.Body)
@@ -907,6 +932,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		return stmtResult{}, nil
 	case ast.WhileStmt:
 		for {
+			if err := i.checkCancelled(); err != nil {
+				return stmtResult{}, err
+			}
 			condition, err := i.evalExpr(env, pkgName, node.Condition)
 			if err != nil {
 				return stmtResult{}, err

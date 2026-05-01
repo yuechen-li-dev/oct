@@ -67,6 +67,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingArtifact := false
 	pendingBenchmark := false
 	pendingInlineData := make([]ast.InlineDataRow, 0)
+	var pendingCycleTime ast.Expr
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
 			if !file.IsTest {
@@ -139,12 +140,17 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				pendingBenchmark = true
 			case "InlineData":
 				pendingInlineData = append(pendingInlineData, ast.InlineDataRow{Values: attribute.values})
+			case "CycleTime":
+				if pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("duplicate [CycleTime] attribute on function")
+				}
+				pendingCycleTime = attribute.value
 			}
 			continue
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -153,7 +159,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -177,6 +183,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if len(pendingInlineData) > 0 {
 					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Fact]")
 				}
+				if pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
+				}
 				function.IsFact = true
 				pendingFact = false
 			}
@@ -190,6 +199,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if len(pendingInlineData) > 0 {
 					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Artifact]")
 				}
+				if pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
+				}
 				function.IsArtifact = true
 				pendingArtifact = false
 			}
@@ -202,6 +214,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				}
 				if len(pendingInlineData) > 0 {
 					return ast.File{}, p.errorAtCurrent("[InlineData] cannot be used with [Benchmark]")
+				}
+				if pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
 				}
 				function.IsBenchmark = true
 				pendingBenchmark = false
@@ -218,14 +233,18 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				}
 				function.IsTheory = true
 				function.InlineData = append(function.InlineData, pendingInlineData...)
+				function.CycleTime = pendingCycleTime
 				pendingTheory = false
 				pendingInlineData = pendingInlineData[:0]
+				pendingCycleTime = nil
 			} else if len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("[InlineData] must apply to a [Theory] function")
+			} else if pendingCycleTime != nil {
+				return ast.File{}, p.errorAtCurrent("[CycleTime] must apply to a [Theory] function")
 			}
 			file.Functions = append(file.Functions, function)
 		case lex.KeywordFlow:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			flow, err := p.parseFlowDecl()
@@ -237,7 +256,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', 'fn', or 'flow' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 {
+	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	return file, nil
@@ -330,6 +349,7 @@ func parseDocSection(line string) (ast.DocSection, bool) {
 type testAttribute struct {
 	kind   string
 	values []ast.Expr
+	value  ast.Expr
 }
 
 func (p *parser) parseTestAttribute() (testAttribute, error) {
@@ -374,6 +394,21 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 			return testAttribute{}, err
 		}
 		return testAttribute{kind: "InlineData", values: values}, nil
+	case "CycleTime":
+		if _, err := p.expect(lex.LeftParen, "expected '(' after CycleTime"); err != nil {
+			return testAttribute{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightParen, "expected ')' after CycleTime argument"); err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: "CycleTime", value: value}, nil
 	default:
 		return testAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
 	}

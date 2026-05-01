@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTestFile(t *testing.T, root string, rel string, contents string) {
@@ -254,5 +255,59 @@ func TestSkipTestValidationAndLaneRestrictions(t *testing.T) {
 				t.Fatalf("expected error containing %q, got err=%v out=%q", tc.wantErr, err, out.String())
 			}
 		})
+	}
+}
+
+func TestCycleTimeTheoryAndTimeouts(t *testing.T) {
+	originalDefault := defaultTestCycleTime
+	defaultTestCycleTime = 20 * time.Millisecond
+	defer func() {
+		defaultTestCycleTime = originalDefault
+	}()
+	root := t.TempDir()
+	writeTestFile(t, root, "cycle.octest", `package Main
+
+[Fact]
+fn FactTimeout() -> Void {
+    while true {
+    }
+}
+
+[Theory]
+[InlineData(1)]
+fn TheoryDefaultTimeout(x: Int) -> Void {
+    while true {
+    }
+}
+
+[CycleTime(0.01s)]
+[Theory]
+[InlineData(0)]
+[InlineData(1)]
+fn TheoryOverride(x: Int) -> Void {
+    if x == 0 {
+        while true {
+        }
+    }
+    Assert.True(true, "fast row")
+}
+`)
+	var out bytes.Buffer
+	err := Execute(root, &out)
+	if err == nil {
+		t.Fatalf("expected timeout failures, got pass (%s)", out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "FactTimeout") || !strings.Contains(log, "exceeded cycle time of 0.0<s>") {
+		t.Fatalf("expected fact timeout, got %q", log)
+	}
+	if !strings.Contains(log, "TheoryDefaultTimeout[0]") || !strings.Contains(log, "exceeded cycle time of 0.0<s>") {
+		t.Fatalf("expected default theory timeout, got %q", log)
+	}
+	if !strings.Contains(log, "TheoryOverride[0]") || !strings.Contains(log, "exceeded cycle time of 0.0<s>") {
+		t.Fatalf("expected override timeout, got %q", log)
+	}
+	if !strings.Contains(log, "PASS Main.TheoryOverride[1]") {
+		t.Fatalf("expected non-timed-out row to continue, got %q", log)
 	}
 }

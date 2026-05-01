@@ -16,6 +16,7 @@ const decisionLadderIfElseDiagnostic = "nested decision-ladder `if/else` is not 
 var (
 	uiPixelDimension  = mustDimension("px")
 	uiAnchorDimension = mustDimension("ui")
+	timeSecondDim     = mustDimension("s")
 )
 
 type BaseType string
@@ -509,6 +510,21 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 	functionScope := newScope(nil)
 	for i, parameter := range function.Parameters {
 		functionScope.define(parameter.Name, signature.parameters[i], false)
+	}
+	if function.CycleTime != nil {
+		cycleType, err := c.checkExpr(functionScope, function.CycleTime, functionContext{})
+		if err != nil {
+			return fmt.Errorf("function %s: [CycleTime] argument: %w", function.Name, err)
+		}
+		if cycleType.ValueType.Base != BaseTypeFloat || cycleType.ValueType.IsArray || cycleType.ValueType.IsVector || cycleType.ValueType.IsMatrix || cycleType.ValueType.Dimension != timeSecondDim {
+			return fmt.Errorf("function %s: [CycleTime] expects a time quantity of type Float<s>, got %s", function.Name, cycleType.ValueType)
+		}
+		if literal, ok := function.CycleTime.(ast.FloatLiteral); ok {
+			value, parseErr := strconv.ParseFloat(literal.Value, 64)
+			if parseErr == nil && value <= 0 {
+				return fmt.Errorf("function %s: [CycleTime] must be > 0<s>", function.Name)
+			}
+		}
 	}
 
 	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark}

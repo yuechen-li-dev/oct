@@ -1,6 +1,7 @@
 package tester
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"oct/internal/ast"
 	"oct/internal/interpret"
@@ -22,7 +24,10 @@ type testCase struct {
 	displayName string
 	caseIndex   int
 	arguments   []interpret.Value
+	cycleTime   time.Duration
 }
+
+var defaultTestCycleTime = 30 * time.Second
 
 func Execute(path string, stdout io.Writer) error {
 	return executeForPathOrExperiment(path, stdout, "test", executeTestsSingleRoot)
@@ -48,9 +53,14 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 						filePath:    fn.SourcePath,
 						name:        fn.Name,
 						displayName: fn.Name,
+						cycleTime:   defaultTestCycleTime,
 					})
 				}
 				if fn.IsTheory {
+					cycleTime, err := resolveTheoryCycleTime(fn)
+					if err != nil {
+						return fmt.Errorf("%s.%s: %w", pkgName, fn.Name, err)
+					}
 					for i, row := range fn.InlineData {
 						args, err := inlineDataArgumentsToValues(row.Values, pkgName)
 						if err != nil {
@@ -63,6 +73,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 							displayName: fmt.Sprintf("%s[%d]", fn.Name, i),
 							caseIndex:   i,
 							arguments:   args,
+							cycleTime:   cycleTime,
 						})
 					}
 				}
@@ -95,6 +106,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 		total++
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
 		assertionCount := 0
+		ctx, cancel := context.WithTimeout(context.Background(), testCase.cycleTime)
 		err := interpret.ExecuteFunctionWithArgsAndOptions(
 			program,
 			testCase.pkg,
@@ -105,9 +117,16 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 				AssertionRecorder: func() {
 					assertionCount++
 				},
+				Context: ctx,
 			},
 		)
+		cancel()
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				failed++
+				_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): exceeded cycle time of %.1f<s>\n", qualified, shortPath(path, testCase.filePath), testCase.cycleTime.Seconds())
+				continue
+			}
 			var skipErr interpret.SkipTestError
 			if errors.As(err, &skipErr) {
 				skipped++
@@ -147,6 +166,24 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 		return fmt.Errorf("%d test(s) failed", failed)
 	}
 	return nil
+}
+
+func resolveTheoryCycleTime(fn ast.FunctionDecl) (time.Duration, error) {
+	if fn.CycleTime == nil {
+		return defaultTestCycleTime, nil
+	}
+	literal, ok := fn.CycleTime.(ast.FloatLiteral)
+	if !ok {
+		return 0, fmt.Errorf("[CycleTime] currently requires a Float unit literal")
+	}
+	if literal.Dimension.String() != "s" {
+		return 0, fmt.Errorf("[CycleTime] expects Float<s>")
+	}
+	value := parseFloatLiteral(literal.Value)
+	if value <= 0 {
+		return 0, fmt.Errorf("[CycleTime] must be > 0<s>")
+	}
+	return time.Duration(value * float64(time.Second)), nil
 }
 
 func inlineDataArgumentsToValues(values []ast.Expr, currentPackage string) ([]interpret.Value, error) {

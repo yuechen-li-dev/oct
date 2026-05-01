@@ -60,6 +60,7 @@ type FunctionDecl struct {
 	IsArtifact  bool
 	IsBenchmark bool
 	InlineData  []InlineDataRow
+	CycleTime   Expr
 	Parameters  []Parameter
 	ReturnType  TypeRef
 	IsFallible  bool
