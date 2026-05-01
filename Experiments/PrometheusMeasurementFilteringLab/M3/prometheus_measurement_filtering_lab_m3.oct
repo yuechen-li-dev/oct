@@ -1,0 +1,476 @@
+package PrometheusMeasurementFilteringLab
+
+import Random
+
+record M3RegimeConfig {
+    Name: String
+    Base: Float
+    JitterStddev: Float
+    SpikeProbability: Float
+    SpikeAmplitude: Float
+    StepIndex: Int
+    StepDelta: Float
+    DriftPerSample: Float
+}
+
+record M3RegimeSeries {
+    Name: String
+    TrueValues: Float[]
+    Measurements: Float[]
+    StepIndex: Int
+    StepDelta: Float
+    DriftPerSample: Float
+    SpikeAmplitude: Float
+}
+
+record M3Candidate {
+    Name: String
+    Kind: String
+    ParamA: Float
+    ParamB: Float
+    Complexity: Int
+    DiagnosticValue: Int
+}
+
+record M3Score {
+    Regime: String
+    Candidate: String
+    MeanAbsoluteError: Float
+    Stability: Float
+    SpikeSensitivity: Float
+    StepResponseDelay: Int
+    DriftTrackingError: Float
+    WarmupCost: Int
+    StateComplexity: Int
+    DiagnosticUsefulness: Int
+    QualityScore: Float
+    ImplementationCostScore: Float
+    DiagnosticValueScore: Float
+    CompositeScore: Float
+}
+
+record M3Dominance {
+    Candidate: String
+    DominatedBy: String
+    Regime: String
+    Reason: String
+}
+
+record M3Contract {
+    Name: String
+    StateFields: String
+    Params: String
+    InitBehavior: String
+    UpdateBehavior: String
+    ResetBehavior: String
+    Diagnostics: String
+    JudgmentWhen: String
+    Weaknesses: String
+}
+
+fn M3Regimes() -> M3RegimeConfig[] {
+    return [
+        M3RegimeConfig { Name: "stable-low-jitter" Base: 10.0 JitterStddev: 0.05 SpikeProbability: 0.0 SpikeAmplitude: 0.0 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        M3RegimeConfig { Name: "moderate-jitter" Base: 10.0 JitterStddev: 0.20 SpikeProbability: 0.03 SpikeAmplitude: 0.8 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        M3RegimeConfig { Name: "spike-heavy" Base: 10.0 JitterStddev: 0.12 SpikeProbability: 0.12 SpikeAmplitude: 3.5 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        M3RegimeConfig { Name: "step-change" Base: 10.0 JitterStddev: 0.15 SpikeProbability: 0.02 SpikeAmplitude: 0.7 StepIndex: 40 StepDelta: 2.8 DriftPerSample: 0.0 },
+        M3RegimeConfig { Name: "slow-drift" Base: 9.0 JitterStddev: 0.10 SpikeProbability: 0.01 SpikeAmplitude: 0.6 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.03 },
+        M3RegimeConfig { Name: "mixed-hostile" Base: 10.0 JitterStddev: 0.25 SpikeProbability: 0.08 SpikeAmplitude: 2.4 StepIndex: 42 StepDelta: 2.1 DriftPerSample: 0.02 }
+    ]
+}
+
+fn M3Candidates() -> M3Candidate[] {
+    return [
+        M3Candidate { Name: "ema-0.1" Kind: "ema" ParamA: 0.1 ParamB: 0.0 Complexity: 1 DiagnosticValue: 3 },
+        M3Candidate { Name: "ema-0.2" Kind: "ema" ParamA: 0.2 ParamB: 0.0 Complexity: 1 DiagnosticValue: 3 },
+        M3Candidate { Name: "ema-0.4" Kind: "ema" ParamA: 0.4 ParamB: 0.0 Complexity: 1 DiagnosticValue: 3 },
+        M3Candidate { Name: "ema-0.6" Kind: "ema" ParamA: 0.6 ParamB: 0.0 Complexity: 1 DiagnosticValue: 3 },
+        M3Candidate { Name: "median-3" Kind: "median" ParamA: 3.0 ParamB: 0.0 Complexity: 2 DiagnosticValue: 4 },
+        M3Candidate { Name: "median-5" Kind: "median" ParamA: 5.0 ParamB: 0.0 Complexity: 2 DiagnosticValue: 4 },
+        M3Candidate { Name: "median-9" Kind: "median" ParamA: 9.0 ParamB: 0.0 Complexity: 2 DiagnosticValue: 4 },
+        M3Candidate { Name: "trimmed-5-1" Kind: "trimmed" ParamA: 5.0 ParamB: 1.0 Complexity: 3 DiagnosticValue: 4 },
+        M3Candidate { Name: "trimmed-9-1" Kind: "trimmed" ParamA: 9.0 ParamB: 1.0 Complexity: 3 DiagnosticValue: 4 },
+        M3Candidate { Name: "trimmed-9-2" Kind: "trimmed" ParamA: 9.0 ParamB: 2.0 Complexity: 3 DiagnosticValue: 4 },
+        M3Candidate { Name: "hysteresis-0.05" Kind: "hysteresis" ParamA: 0.05 ParamB: 0.0 Complexity: 1 DiagnosticValue: 5 },
+        M3Candidate { Name: "hysteresis-0.10" Kind: "hysteresis" ParamA: 0.10 ParamB: 0.0 Complexity: 1 DiagnosticValue: 5 },
+        M3Candidate { Name: "hysteresis-0.20" Kind: "hysteresis" ParamA: 0.20 ParamB: 0.0 Complexity: 1 DiagnosticValue: 5 },
+        M3Candidate { Name: "hybrid-median3-ema02" Kind: "hybrid-medema" ParamA: 3.0 ParamB: 0.2 Complexity: 4 DiagnosticValue: 5 },
+        M3Candidate { Name: "hybrid-median5-ema02" Kind: "hybrid-medema" ParamA: 5.0 ParamB: 0.2 Complexity: 4 DiagnosticValue: 5 },
+        M3Candidate { Name: "hybrid-reject1-ema02" Kind: "hybrid-rejectema" ParamA: 1.0 ParamB: 0.2 Complexity: 4 DiagnosticValue: 5 },
+        M3Candidate { Name: "hybrid-reject2-ema02" Kind: "hybrid-rejectema" ParamA: 2.0 ParamB: 0.2 Complexity: 4 DiagnosticValue: 5 }
+    ]
+}
+
+fn M3GenerateSeries(seed: Int, sampleCount: Int, cfg: M3RegimeConfig) -> M3RegimeSeries {
+    var trueValues: Float[] = []
+    var measurements: Float[] = []
+    var current = cfg.Base
+    var rng = Random.Gaussian(Random.RngSeed(seed * 1009 + 17), 0.0, 0.0).Next
+
+    for i in 0..sampleCount {
+        if cfg.StepIndex >= 0 and i >= cfg.StepIndex {
+            current = cfg.Base + cfg.StepDelta
+        }
+
+        current = current + cfg.DriftPerSample
+        trueValues = Append(trueValues, current)
+
+        let jitter = Random.RandNormal(rng, 0.0, cfg.JitterStddev)
+        rng = jitter.Next
+
+        let trigger = Random.RandBernoulli(rng, cfg.SpikeProbability)
+        rng = trigger.Next
+
+        var spike = 0.0
+        if trigger.Value {
+            let sign = Random.RandBernoulli(rng, 0.5)
+            rng = sign.Next
+            spike = if sign.Value { cfg.SpikeAmplitude } else { 0.0 - cfg.SpikeAmplitude }
+        }
+
+        measurements = Append(measurements, current + jitter.Value + spike)
+    }
+
+    return M3RegimeSeries {
+        Name: cfg.Name
+        TrueValues: trueValues
+        Measurements: measurements
+        StepIndex: cfg.StepIndex
+        StepDelta: cfg.StepDelta
+        DriftPerSample: cfg.DriftPerSample
+        SpikeAmplitude: cfg.SpikeAmplitude
+    }
+}
+
+fn M3ApplyCandidate(candidate: M3Candidate, measurements: Float[]) -> Float[] {
+    if candidate.Kind == "ema" { return M3ApplyEma(measurements, candidate.ParamA) }
+    if candidate.Kind == "median" { return M3ApplyWindow(measurements, FloorToInt(candidate.ParamA), "median", 0) }
+    if candidate.Kind == "trimmed" { return M3ApplyWindow(measurements, FloorToInt(candidate.ParamA), "trimmed", FloorToInt(candidate.ParamB)) }
+    if candidate.Kind == "hysteresis" { return M3ApplyHysteresis(measurements, candidate.ParamA) }
+
+    if candidate.Kind == "hybrid-medema" {
+        let pre = M3ApplyWindow(measurements, FloorToInt(candidate.ParamA), "median", 0)
+        return M3ApplyEma(pre, candidate.ParamB)
+    }
+
+    if candidate.Kind == "hybrid-rejectema" {
+        let pre = M3ApplyRejectClamp(measurements, candidate.ParamA)
+        return M3ApplyEma(pre, candidate.ParamB)
+    }
+
+    return measurements
+}
+
+fn M3ApplyEma(values: Float[], alpha: Float) -> Float[] {
+    var out: Float[] = []
+    var estimate = values[0]
+
+    for i in 0..Len(values) {
+        if i == 0 { estimate = values[0] } else { estimate = alpha * values[i] + (1.0 - alpha) * estimate }
+        out = Append(out, estimate)
+    }
+
+    return out
+}
+
+fn M3ApplyHysteresis(values: Float[], band: Float) -> Float[] {
+    var out: Float[] = []
+    var estimate = values[0]
+
+    for i in 0..Len(values) {
+        let delta = Abs(values[i] - estimate)
+        if delta > band { estimate = values[i] }
+        out = Append(out, estimate)
+    }
+
+    return out
+}
+
+fn M3ApplyRejectClamp(values: Float[], threshold: Float) -> Float[] {
+    var out: Float[] = []
+    var estimate = values[0]
+
+    for i in 0..Len(values) {
+        let x = values[i]
+        let y = if Abs(x - estimate) > threshold {
+            if x > estimate { estimate + threshold } else { estimate - threshold }
+        } else {
+            x
+        }
+
+        estimate = y
+        out = Append(out, y)
+    }
+
+    return out
+}
+
+fn M3ApplyWindow(values: Float[], window: Int, mode: String, trim: Int) -> Float[] {
+    var out: Float[] = []
+
+    for i in 0..Len(values) {
+        let startRaw = i - window + 1
+        let start = if startRaw < 0 { 0 } else { startRaw }
+        let win = M3Window(values, start, i + 1)
+
+        if mode == "median" { out = Append(out, M3Median(win)) }
+        if mode == "trimmed" { out = Append(out, M3TrimmedMean(win, trim)) }
+    }
+
+    return out
+}
+
+fn M3ScoreMatrix(seed: Int, sampleCount: Int) -> M3Score[] {
+    let regimes = M3Regimes()
+    let candidates = M3Candidates()
+    var out: M3Score[] = []
+
+    for ri in 0..Len(regimes) {
+        let series = M3GenerateSeries(seed + ri * 31, sampleCount, regimes[ri])
+        for ci in 0..Len(candidates) {
+            let candidate = candidates[ci]
+            let estimate = M3ApplyCandidate(candidate, series.Measurements)
+            let mae = M3MeanAbsError(estimate, series.TrueValues)
+            let stability = M3MeanAbsStep(estimate)
+            let spike = M3SpikeSensitivity(estimate, series.TrueValues, series.SpikeAmplitude)
+            let stepDelay = M3StepDelay(estimate, series, 0.25)
+            let driftError = M3DriftError(estimate, series)
+            let warmup = M3WarmupCost(candidate)
+
+            let quality = 1.4 * mae + 0.9 * stability + 0.9 * spike + 0.5 * Float(stepDelay) + 0.8 * driftError
+            let implementationCost = Float(candidate.Complexity) * 0.08
+            let diagnosticPenalty = 0.04 * Float(6 - candidate.DiagnosticValue)
+
+            out = Append(out, M3Score {
+                Regime: series.Name
+                Candidate: candidate.Name
+                MeanAbsoluteError: mae
+                Stability: stability
+                SpikeSensitivity: spike
+                StepResponseDelay: stepDelay
+                DriftTrackingError: driftError
+                WarmupCost: warmup
+                StateComplexity: candidate.Complexity
+                DiagnosticUsefulness: candidate.DiagnosticValue
+                QualityScore: quality
+                ImplementationCostScore: implementationCost
+                DiagnosticValueScore: diagnosticPenalty
+                CompositeScore: quality + implementationCost + diagnosticPenalty
+            })
+        }
+    }
+
+    return out
+}
+
+fn M3DominatedCandidates(scores: M3Score[]) -> M3Dominance[] {
+    let regimes = M3Regimes()
+    let candidates = M3Candidates()
+    var out: M3Dominance[] = []
+
+    for ri in 0..Len(regimes) {
+        let regimeName = regimes[ri].Name
+        for i in 0..Len(candidates) {
+            let a = M3FindScore(scores, regimeName, candidates[i].Name)
+            for j in 0..Len(candidates) {
+                if i != j {
+                    let b = M3FindScore(scores, regimeName, candidates[j].Name)
+                    let beats = b.QualityScore <= a.QualityScore and b.Stability <= a.Stability and b.StepResponseDelay <= a.StepResponseDelay and b.StateComplexity <= a.StateComplexity
+                    if beats {
+                        out = Append(out, M3Dominance {
+                            Candidate: a.Candidate
+                            DominatedBy: b.Candidate
+                            Regime: regimeName
+                            Reason: "quality/stability/response worse at >= complexity"
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    return M3UniqueDominance(out)
+}
+
+fn M3UniqueDominance(rows: M3Dominance[]) -> M3Dominance[] {
+    var out: M3Dominance[] = []
+    for i in 0..Len(rows) {
+        var seen = false
+        for j in 0..Len(out) {
+            if rows[i].Regime == out[j].Regime and rows[i].Candidate == out[j].Candidate {
+                seen = true
+            }
+        }
+        if not seen {
+            out = Append(out, rows[i])
+        }
+    }
+    return out
+}
+
+fn M3SelectedImplementationSet(scores: M3Score[]) -> String[] {
+    let regimes = M3Regimes()
+    let dominated = M3DominatedCandidates(scores)
+    var selected: String[] = []
+
+    for ri in 0..Len(regimes) {
+        let regimeName = regimes[ri].Name
+        var bestCandidate = ""
+        var bestScore = 999999.0
+
+        for i in 0..Len(scores) {
+            let row = scores[i]
+            if row.Regime == regimeName {
+                let isDominated = M3IsDominated(dominated, row.Regime, row.Candidate)
+                if not isDominated {
+                    if row.CompositeScore < bestScore {
+                        bestScore = row.CompositeScore
+                        bestCandidate = row.Candidate
+                    }
+                }
+            }
+        }
+
+        selected = Append(selected, bestCandidate)
+    }
+
+    return selected
+}
+
+fn M3Contracts() -> M3Contract[] {
+    return [
+        M3Contract { Name: "EMA" StateFields: "initialized, estimate, sample_count" Params: "alpha in {0.1,0.2,0.4,0.6}" InitBehavior: "first sample seeds estimate" UpdateBehavior: "estimate=alpha*x+(1-alpha)*estimate" ResetBehavior: "clear initialized/estimate/count" Diagnostics: "estimate,residual,sample_count,stability,confidence proxy" JudgmentWhen: "stable/moderate jitter and drift with low spike rate" Weaknesses: "spike sensitivity unless alpha is small" },
+        M3Contract { Name: "SlidingMedian" StateFields: "window buffer,count,index" Params: "window in {3,5,9}" InitBehavior: "partial window until full" UpdateBehavior: "insert sample then median(window)" ResetBehavior: "clear buffer,index,count" Diagnostics: "estimate,window_count,residual,outlier suppression proxy" JudgmentWhen: "spike-heavy and mixed-hostile data" Weaknesses: "lag and buffer maintenance" },
+        M3Contract { Name: "TrimmedMean" StateFields: "window buffer,count,index" Params: "(5,1),(9,1),(9,2)" InitBehavior: "partial window until full" UpdateBehavior: "sort, trim tails, average interior" ResetBehavior: "clear buffer,index,count" Diagnostics: "estimate,trimmed_count,residual,outlier suppression proxy" JudgmentWhen: "moderate spikes with smoother response preference" Weaknesses: "sorting and trim complexity" },
+        M3Contract { Name: "HysteresisDeadband" StateFields: "initialized,estimate,last_update_tick,update_count" Params: "band in {0.05,0.10,0.20}" InitBehavior: "first sample seeds estimate" UpdateBehavior: "update only when |measurement-estimate| > band" ResetBehavior: "clear initialized and counters" Diagnostics: "estimate,update_count,hold_count,residual" JudgmentWhen: "stable signals where hold behavior is preferred" Weaknesses: "can mask slow drift and small real transitions" },
+        M3Contract { Name: "HybridMedianEmaAndRejectEma" StateFields: "stage1 state + ema state" Params: "median3/5+ema0.2 and reject{1,2}+ema0.2" InitBehavior: "initialize stage1 then ema" UpdateBehavior: "stage1 denoise then ema" ResetBehavior: "clear both stage states" Diagnostics: "residual,outlier_count,stage outputs,sample_count" JudgmentWhen: "mixed-hostile regimes with spikes+jitter" Weaknesses: "highest implementation complexity" }
+    ]
+}
+
+fn M3FindScore(scores: M3Score[], regime: String, candidate: String) -> M3Score {
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime and scores[i].Candidate == candidate {
+            return scores[i]
+        }
+    }
+
+    return scores[0]
+}
+
+fn M3IsDominated(rows: M3Dominance[], regime: String, candidate: String) -> Bool {
+    for i in 0..Len(rows) {
+        if rows[i].Regime == regime and rows[i].Candidate == candidate { return true }
+    }
+    return false
+}
+
+fn M3WarmupCost(candidate: M3Candidate) -> Int {
+    if candidate.Kind == "ema" or candidate.Kind == "hysteresis" { return 2 }
+    if candidate.Kind == "median" or candidate.Kind == "trimmed" or candidate.Kind == "hybrid-medema" { return FloorToInt(candidate.ParamA) }
+    return 3
+}
+
+fn M3MeanAbsError(a: Float[], b: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(a) { sum = sum + Abs(a[i] - b[i]) }
+    return sum / Float(Len(a))
+}
+
+fn M3MeanAbsStep(a: Float[]) -> Float {
+    if Len(a) < 2 { return 0.0 }
+    var sum = 0.0
+    for i in 1..Len(a) { sum = sum + Abs(a[i] - a[i - 1]) }
+    return sum / Float(Len(a) - 1)
+}
+
+fn M3SpikeSensitivity(estimate: Float[], truth: Float[], spikeAmplitude: Float) -> Float {
+    if spikeAmplitude <= 0.0 { return 0.0 }
+    var worst = 0.0
+    for i in 0..Len(estimate) {
+        let d = Abs(estimate[i] - truth[i])
+        if d > worst { worst = d }
+    }
+    return worst / spikeAmplitude
+}
+
+fn M3StepDelay(estimate: Float[], series: M3RegimeSeries, tolerance: Float) -> Int {
+    if series.StepIndex < 0 or series.StepDelta == 0.0 { return 0 }
+
+    let target = series.TrueValues[Len(series.TrueValues) - 1]
+    let band = Abs(series.StepDelta) * tolerance
+    for i in series.StepIndex..Len(estimate) {
+        if Abs(estimate[i] - target) <= band { return i - series.StepIndex }
+    }
+
+    return Len(estimate) - series.StepIndex
+}
+
+fn M3DriftError(estimate: Float[], series: M3RegimeSeries) -> Float {
+    if series.DriftPerSample == 0.0 { return 0.0 }
+    let start = Len(estimate) / 3
+    let end = Len(estimate)
+    let a = M3Window(estimate, start, end)
+    let b = M3Window(series.TrueValues, start, end)
+    return M3MeanAbsError(a, b)
+}
+
+fn M3Window(values: Float[], start: Int, endExclusive: Int) -> Float[] {
+    var out: Float[] = []
+    for i in start..endExclusive {
+        out = Append(out, values[i])
+    }
+    return out
+}
+
+fn M3Mean(values: Float[]) -> Float {
+    if Len(values) == 0 { return 0.0 }
+    var sum = 0.0
+    for i in 0..Len(values) { sum = sum + values[i] }
+    return sum / Float(Len(values))
+}
+
+fn M3Median(values: Float[]) -> Float {
+    if Len(values) == 0 { return 0.0 }
+    let sorted = M3Sort(values)
+    let n = Len(sorted)
+    if n % 2 == 1 { return sorted[n / 2] }
+    let hi = n / 2
+    let lo = hi - 1
+    return (sorted[lo] + sorted[hi]) / 2.0
+}
+
+fn M3TrimmedMean(values: Float[], trim: Int) -> Float {
+    let sorted = M3Sort(values)
+    if Len(sorted) <= trim * 2 { return M3Mean(values) }
+
+    var sum = 0.0
+    var count = 0
+    for i in trim..(Len(sorted) - trim) {
+        sum = sum + sorted[i]
+        count = count + 1
+    }
+
+    return sum / Float(count)
+}
+
+fn M3Sort(values: Float[]) -> Float[] {
+    let n = Len(values)
+    if n == 0 { return values }
+
+    var out = [values[0]]
+    for i in 1..n {
+        out = Append(out, values[i])
+    }
+
+    for i in 0..Len(out) {
+        for j in 0..Len(out) - 1 {
+            if out[j] > out[j + 1] {
+                let t = out[j]
+                out[j] = out[j + 1]
+                out[j + 1] = t
+            }
+        }
+    }
+
+    return out
+}

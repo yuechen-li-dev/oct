@@ -1,0 +1,71 @@
+package PrometheusMeasurementFilteringLab
+
+[Fact]
+fn M3Reproducibility() -> Void {
+ let a=M3ScoreMatrix(1337,96)
+ let b=M3ScoreMatrix(1337,96)
+ Assert.Equal(Len(a),Len(b),"same seed score length")
+ Assert.True(a[0].CompositeScore==b[0].CompositeScore,"deterministic ranking inputs")
+}
+
+[Fact]
+fn M3FilterOutputLength() -> Void {
+ let rs=M3Regimes()
+ let cs=M3Candidates()
+
+ for ri in 0..Len(rs){ let s=M3GenerateSeries(700+ri,80,rs[ri])
+ for ci in 0..Len(cs){ let o=M3ApplyCandidate(cs[ci],s.Measurements)
+ Assert.Equal(Len(o),Len(s.Measurements),"one output per input")}}
+}
+
+[Fact]
+fn M3EmaConstantInputStable() -> Void {
+ let xs=[10.0,10.0,10.0,10.0,10.0]
+ let e=M3ApplyCandidate(M3Candidate{Name:"ema-0.2" Kind:"ema" ParamA:0.2 ParamB:0.0 Complexity:1 DiagnosticValue:3},xs)
+ Assert.True(Abs(e[4]-10.0)<0.0001,"ema holds constant input")
+}
+
+[Fact]
+fn M3MedianSuppressesSpike() -> Void {
+ let x=[10.0,10.0,10.0,20.0,10.0,10.0]
+ let med=M3ApplyCandidate(M3Candidate{Name:"median-3" Kind:"median" ParamA:3.0 ParamB:0.0 Complexity:2 DiagnosticValue:4},x)
+ Assert.True(Abs(med[3]-10.0)<Abs(x[3]-10.0),"median suppresses isolated spike")
+}
+
+[Fact]
+fn M3HysteresisHoldBehavior() -> Void {
+ let x=[10.0,10.03,10.04,10.12]
+ let h=M3ApplyCandidate(M3Candidate{Name:"hysteresis-0.05" Kind:"hysteresis" ParamA:0.05 ParamB:0.0 Complexity:1 DiagnosticValue:5},x)
+ Assert.True(h[1]==h[0] and h[2]==h[0],"inside-band values hold")
+}
+
+[Fact]
+fn M3HybridNonDegenerateBounded() -> Void {
+ let s=M3GenerateSeries(999,96,M3Regimes()[5])
+ let y=M3ApplyCandidate(M3Candidate{Name:"hybrid-median5-ema02" Kind:"hybrid-medema" ParamA:5.0 ParamB:0.2 Complexity:4 DiagnosticValue:5},s.Measurements)
+ Assert.True(M3MeanAbsStep(y)>0.0,"hybrid output non-degenerate")
+ Assert.True(Abs(y[95]-s.TrueValues[95])<4.0,"hybrid bounded near truth")
+}
+
+[Fact]
+fn M3DominationFixtureOrReal() -> Void {
+ let d=M3DominatedCandidates(M3ScoreMatrix(1337,96))
+ Assert.True(Len(d)>0,"domination logic should detect at least one dominated candidate")
+}
+
+[Fact]
+fn M3SelectedSetDeterministic() -> Void {
+ let s1=M3SelectedImplementationSet(M3ScoreMatrix(1337,96))
+ let s2=M3SelectedImplementationSet(M3ScoreMatrix(1337,96))
+ Assert.Equal(Len(s1),Len(s2),"same selected set length")
+ Assert.True(s1[0]==s2[0],"deterministic selected set")
+}
+
+[Artifact] fn EmitM3ParameterRakeScores() -> Void { let _=WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M3/m3_parameter_rake_scores.octagon",M3ScoreMatrix(1337,96)) }
+[Artifact] fn EmitM3FilterContracts() -> Void { let _=WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M3/m3_filter_contracts.octagon",M3Contracts()) }
+[Artifact] fn EmitM3SelectedImplementationSet() -> Void { let s=M3ScoreMatrix(1337,96)
+ let _=WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M3/m3_selected_implementation_set.octagon",M3SelectedImplementationSet(s)) }
+[Artifact] fn EmitM3DominatedFilters() -> Void { let s=M3ScoreMatrix(1337,96)
+ let _=WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M3/m3_dominated_filters.octagon",M3DominatedCandidates(s)) }
+[Artifact] fn EmitM3FinalRecommendation() -> Void { let s=M3ScoreMatrix(1337,96)
+ let _=WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M3/m3_final_recommendation.octagon",M3SelectedImplementationSet(s)) }

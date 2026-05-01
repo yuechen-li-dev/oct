@@ -1,0 +1,321 @@
+[M3Dominance {
+    Candidate: "ema-0.2"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.4"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.6"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-3"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-5"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-9"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-5-1"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-1"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-2"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.10"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-median3-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-median5-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject1-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "stable-low-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.2"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.4"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.6"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-3"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-5"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-9"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-5-1"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-1"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-2"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.10"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.20"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-median3-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject1-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "ema-0.1"
+    Regime: "moderate-jitter"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.2"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.4"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.6"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-3"
+    DominatedBy: "median-5"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-5"
+    DominatedBy: "median-9"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-5-1"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-1"
+    DominatedBy: "median-9"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.10"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.20"
+    DominatedBy: "ema-0.1"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-median3-ema02"
+    DominatedBy: "hybrid-median5-ema02"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject1-ema02"
+    DominatedBy: "median-5"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "median-3"
+    Regime: "spike-heavy"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "hysteresis-0.10"
+    Regime: "step-change"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject1-ema02"
+    DominatedBy: "trimmed-9-2"
+    Regime: "step-change"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "trimmed-9-2"
+    Regime: "step-change"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "ema-0.6"
+    DominatedBy: "ema-0.4"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-3"
+    DominatedBy: "ema-0.4"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-9"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-2"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.10"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.20"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject1-ema02"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "ema-0.2"
+    Regime: "slow-drift"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-5"
+    DominatedBy: "ema-0.2"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "median-9"
+    DominatedBy: "ema-0.1"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-5-1"
+    DominatedBy: "ema-0.2"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-1"
+    DominatedBy: "ema-0.1"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "trimmed-9-2"
+    DominatedBy: "ema-0.1"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.05"
+    DominatedBy: "ema-0.6"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.10"
+    DominatedBy: "ema-0.6"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hysteresis-0.20"
+    DominatedBy: "ema-0.6"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}, M3Dominance {
+    Candidate: "hybrid-reject2-ema02"
+    DominatedBy: "hybrid-reject1-ema02"
+    Regime: "mixed-hostile"
+    Reason: "quality/stability/response worse at >= complexity"
+}]
