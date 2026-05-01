@@ -1150,7 +1150,7 @@ func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
 				"    1 + 2\n" +
 				"    return 0\n" +
 				"}\n",
-			wantMessage: "expression statements must be call expressions",
+			wantMessage: "In Oct, a statement like this must be a function call (for side effects), an assignment, or a return",
 		},
 	}
 

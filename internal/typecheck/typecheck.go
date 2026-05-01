@@ -892,7 +892,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		return true, nil
 	case ast.ExprStmt:
 		if _, ok := node.Value.(ast.CallExpr); !ok {
-			return false, fmt.Errorf("function %s: expression statements must be call expressions", ctx.name)
+			return false, fmt.Errorf("function %s: I can't run this standalone expression. In Oct, a statement like this must be a function call (for side effects), an assignment, or a return. If you meant to keep the value, assign it to a variable; if you meant to return it, use return.", ctx.name)
 		}
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
 		if err != nil {
