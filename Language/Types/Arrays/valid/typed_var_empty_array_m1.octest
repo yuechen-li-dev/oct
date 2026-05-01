@@ -1,0 +1,24 @@
+package MainValid
+
+enum Side {
+    A
+    B
+}
+
+[Fact]
+fn TypedVarEmptyIntArrayWorks() -> Void {
+    var xs: Int[] = []
+    Assert.Equal(Len(xs), 0, "typed var int empty")
+}
+
+[Fact]
+fn TypedVarEmptyEnumArrayWorks() -> Void {
+    var xs: Side[] = []
+    Assert.Equal(Len(xs), 0, "typed var enum empty")
+}
+
+[Fact]
+fn TypedVarEmptyUnitArrayWorks() -> Void {
+    var xs: Float<Hz>[] = []
+    Assert.Equal(Len(xs), 0, "typed var unit empty")
+}
