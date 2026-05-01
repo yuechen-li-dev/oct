@@ -6,11 +6,11 @@ M49 compared feedforward-only variant selection, HFSM-only resource control, and
 
 ## 2) Why existing Dominatus/HFSM/Judgment/Blackboard machinery is used
 
-M9 adds lease control as a Dominatus slice using existing patterns:
+M9 adds lease control as a Dominatus subsystem slice using existing patterns:
 
-- facts staged into the blackboard,
+- facts staged into the Dominatus blackboard,
 - committed to visible state,
-- deterministic judgment decision,
+- deterministic Dominatus Judgment Engine decision,
 - decision staged + committed,
 - visible diagnostics consumed by tests.
 
@@ -76,6 +76,9 @@ The adapter exposes:
 - visible fact projection
 - decision staging
 - visible diagnostics snapshot
+
+These blackboard flows are one seam within the broader Dominatus subsystem
+control stack (Judgment Engine + slot HFSM + lease-control integration).
 
 ## 7) Slot HFSM integration
 

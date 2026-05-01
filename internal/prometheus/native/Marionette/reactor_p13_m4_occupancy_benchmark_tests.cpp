@@ -375,7 +375,7 @@ namespace
     bool diagnostics_alignment_ok(const CaseResult& result)
     {
         return result.diag.p13_m2_occupancy_shape_class == result.shape_class &&
-            result.diag.p13_m2_occupancy_selected_variant == result.selected_variant;
+            result.diag.p13_m2_occupancy_selected_variant == result.selector_recommended_variant;
     }
 
     void summarize_timing(CaseResult& result, const std::vector<double>& samples)
@@ -729,7 +729,7 @@ namespace
         result.m = shape.m;
         result.n = shape.n;
         result.k = shape.k;
-        result.selected_variant = requested_variant;
+        result.selector_recommended_variant = requested_variant;
         result.tested_variant = requested_variant;
         result.variant_available = variant_is_implemented(requested_variant);
         result.timing_source = "cpu_wall_clock";
@@ -797,7 +797,7 @@ namespace
             memset(&result.diag, 0, sizeof(result.diag));
             const int diag_status = prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag);
             if (diag_status == PROM_OK) {
-                result.selected_variant = result.diag.p13_m16b1_executed_occupancy_variant;
+                result.selector_recommended_variant = result.diag.p13_m16b1_executed_occupancy_variant;
                 if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED) {
                     result.fallback_reason = "variant_path_not_wired";
                 } else if (result.diag.p13_m16b1_fallback_reason == PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS) {
@@ -856,7 +856,7 @@ namespace
         memset(&result.diag, 0, sizeof(result.diag));
         const int diag_status = prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag);
         if (diag_status == PROM_OK) {
-            result.selected_variant = result.diag.p13_m2_occupancy_selected_variant;
+            result.selector_recommended_variant = result.diag.p13_m2_occupancy_selected_variant;
         }
         result.diagnostics_match = diagnostics_alignment_ok(result);
         if (force_diagnostics_mismatch) {
@@ -988,10 +988,10 @@ namespace
             out << "    {\n";
             out << "      \"shape_class\": \"" << c.shape_name << "\",\n";
             out << "      \"m\": " << c.m << ", \"n\": " << c.n << ", \"k\": " << c.k << ",\n";
-            out << "      \"selected_variant\": \"" << occupancy_variant_name(c.selected_variant) << "\",\n";
+            out << "      \"selected_variant\": \"" << occupancy_variant_name(c.selector_recommended_variant) << "\",\n";
             out << "      \"tested_variant\": \"" << occupancy_variant_name(c.tested_variant) << "\",\n";
             out << "      \"variant_available\": " << (c.variant_available ? "true" : "false") << ",\n";
-            out << "      \"variant_dispatch_enabled\": " << (variant_dispatch_enabled(c.selected_variant) ? "true" : "false") << ",\n";
+            out << "      \"variant_dispatch_enabled\": " << (variant_dispatch_enabled(c.selector_recommended_variant) ? "true" : "false") << ",\n";
             out << "      \"fallback_reason\": \"" << c.fallback_reason << "\",\n";
             out << "      \"correct\": " << (c.correctness.pass ? "true" : "false") << ",\n";
             out << "      \"max_absolute_error\": " << c.correctness.max_abs_error << ",\n";
@@ -1269,7 +1269,7 @@ FACT(P13_M4_Determinism_MetadataStableAcrossRuns)
     if (!first.cases.empty() && !second.cases.empty()) {
         ASSERT_EQUAL(first.cases[0].shape_name, second.cases[0].shape_name, "deterministic smoke runs should preserve first case identity");
         ASSERT_EQUAL(first.cases[0].correctness.pass, second.cases[0].correctness.pass, "deterministic smoke runs should preserve correctness result");
-        ASSERT_EQUAL(first.cases[0].selected_variant, second.cases[0].selected_variant, "deterministic smoke runs should preserve selector metadata");
+        ASSERT_EQUAL(first.cases[0].selector_recommended_variant, second.cases[0].selector_recommended_variant, "deterministic smoke runs should preserve selector metadata");
     }
 }
 
