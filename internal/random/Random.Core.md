@@ -257,3 +257,33 @@ In compiled mode:
 3. Missing ones are emitted as fallback structs before helper functions.
 
 This avoids duplicate type declarations while guaranteeing helper references resolve.
+
+## 12) M8 deterministic PRNG state-advancement correction (2026-05-01)
+
+The public API shape was correct earlier, but `.oct` library bodies in `Libraries/Random/Random.Core.oct` were still constant stubs.
+
+Interpreter and compiled execution both route Random deterministic calls to runtime helpers, not to `.oct` stub bodies:
+
+- Interpreter: `internal/interpret/interpret.go` Random builtin dispatch.
+- Compiled: `internal/build/compiler.go` Random helper emission and call lowering.
+
+Deterministic algorithm is real and shared across modes:
+
+- SplitMix64 seeding into 4×uint64-equivalent state words.
+- xoshiro256** stepping for each draw.
+
+State advancement decisions:
+
+- `RandFloat01`: always advances once.
+- `RandInt`: advances at least once; may advance additional times for rejection sampling.
+- `RandFloatRange`: advances once for `min != max`; for `min == max` currently does **not** advance.
+- `RandBernoulli`: advances once for `0<p<1`; for `p==0`/`p==1` currently does **not** advance.
+- `RandNormal`: advances twice for `stddev>0`; for `stddev==0` currently does **not** advance.
+
+These degenerate-case non-advancement behaviors match current runtime implementation and tests.
+
+Same-state reuse property is preserved by design:
+
+- Calling a draw twice with the exact same input `Rng` returns the same value and same `Next` each time.
+
+M8 test coverage explicitly verifies non-degeneracy and state progression so constant stubs cannot pass.
