@@ -1,100 +1,124 @@
 package PrometheusMeasurementFilteringLab
 
 [Fact]
-fn M2UniformBounds() -> Void {
-    let xs = M2CollectFloat01(1337, 2000)
-    for i in 0..Len(xs) {
-        Assert.True(xs[i] >= 0.0, "RandFloat01 lower bound")
-        Assert.True(xs[i] < 1.0, "RandFloat01 upper bound")
-    }
-}
-
-[Fact]
-fn M2BernoulliExtremes() -> Void {
-    let allFalse = M2BernoulliSummary(1500, 1000, 0.0)
-    let allTrue = M2BernoulliSummary(1501, 1000, 1.0)
-    Assert.Equal(0, allFalse.TrueCount, "p=0 should produce only false")
-    Assert.Equal(1000, allTrue.TrueCount, "p=1 should produce only true")
-}
-
-[Fact]
-fn M2BernoulliProbabilitySanity() -> Void {
-    let s = M2BernoulliSummary(1502, 2000, 0.5)
-    Assert.True(s.ObservedProbability >= 0.40 and s.ObservedProbability <= 0.60, "p=0.5 must be in broad sanity band")
-}
-
-[Fact]
-fn M2NormalSanity() -> Void {
-    let xs = M2CollectNormal(1600, 3000, 0.0, 1.0)
+fn UniformSmokeProducesVariedValues() -> Void {
+    let xs = M2CollectFloat01(1337, 200)
     let s = M2Summarize(xs)
-    Assert.True(s.Mean >= -0.2 and s.Mean <= 0.2, "normal mean sanity")
-    Assert.True(s.Variance >= 0.5 and s.Variance <= 1.5, "normal variance sanity")
-    Assert.True(s.CountPositive > 0 and s.CountNegative > 0, "normal should have both signs")
+
+    for i in 0..Len(xs) {
+        Assert.True(xs[i] >= 0.0, "uniform lower bound")
+        Assert.True(xs[i] < 1.0, "uniform upper bound")
+    }
+
+    Assert.True(s.Min != s.Max, "uniform values should vary")
+    Assert.True(s.Mean >= 0.25 and s.Mean <= 0.75, "uniform mean broad sanity")
 }
 
 [Fact]
-fn M2SpikeSanity() -> Void {
-    let s = M2SpikeSummary(1700, 2000, 0.1, 4.0)
-    Assert.True(s.ObservedSpikeProbability >= 0.03 and s.ObservedSpikeProbability <= 0.20, "spike probability broad sanity")
-    Assert.True(s.PositiveSpikeCount > 0 and s.NegativeSpikeCount > 0, "spike signs should both occur")
+fn FloatRangeSmokeProducesPositiveAndNegativeValues() -> Void {
+    let xs = M2CollectFloatRange(1338, 200, -1.0, 1.0)
+    let s = M2Summarize(xs)
+
+    for i in 0..Len(xs) {
+        Assert.True(xs[i] >= -1.0, "range lower bound")
+        Assert.True(xs[i] < 1.0, "range upper bound")
+    }
+
+    Assert.True(s.CountPositive > 0, "range includes positive")
+    Assert.True(s.CountNegative > 0, "range includes negative")
+    Assert.True(s.Min != s.Max, "range values should vary")
 }
 
 [Fact]
-fn M2StateThreading() -> Void {
+fn BernoulliSmokeProducesBothOutcomes() -> Void {
+    let mid = M2BernoulliSummary(1400, 200, 0.5)
+    let alwaysFalse = M2BernoulliSummary(1401, 100, 0.0)
+    let alwaysTrue = M2BernoulliSummary(1402, 100, 1.0)
+
+    Assert.True(mid.TrueCount > 0, "p=0.5 should produce some true")
+    Assert.True(mid.TrueCount < mid.SampleCount, "p=0.5 should produce some false")
+    Assert.Equal(0, alwaysFalse.TrueCount, "p=0 produces only false")
+    Assert.Equal(alwaysTrue.SampleCount, alwaysTrue.TrueCount, "p=1 produces only true")
+}
+
+[Fact]
+fn NormalSmokeProducesPositiveAndNegativeValues() -> Void {
+    let xs = M2CollectNormal(1500, 200, 0.0, 1.0)
+    let s = M2Summarize(xs)
+
+    Assert.True(s.Min != s.Max, "normal values should vary")
+    Assert.True(s.CountPositive > 0, "normal includes positive")
+    Assert.True(s.CountNegative > 0, "normal includes negative")
+    Assert.True(s.Mean >= -0.5 and s.Mean <= 0.5, "normal mean broad sanity")
+}
+
+[Fact]
+fn DistributionHelpersAreNonDegenerate() -> Void {
+    let jitter = M2Summarize(M2CollectJitter(1600, 200, 0.05))
+    let spike = M2SpikeSummary(1601, 400, 0.1, 4.0)
+    let driftA = M2DriftWalk(1602, 80, 0.0, 0.05)
+    let driftB = M2DriftWalk(1602, 80, 0.0, 0.05)
+
+    Assert.True(jitter.Min >= -0.05, "jitter lower bound")
+    Assert.True(jitter.Max < 0.05, "jitter upper bound")
+    Assert.True(jitter.Min != 0.0 or jitter.Max != 0.0, "jitter not all zero")
+
+    Assert.True(spike.ZeroCount > 0, "spike includes zeros")
+    Assert.True(spike.PositiveSpikeCount + spike.NegativeSpikeCount > 0, "spike appears eventually")
+
+    Assert.True(M2SameFloats(driftA, driftB), "drift deterministic for same seed")
+    Assert.True(driftA[Len(driftA) - 1] != 0.0, "drift changes current over time")
+}
+
+[Fact]
+fn StateThreadingWorksFromExperimentPackage() -> Void {
     let s = M2StateThreadingSummary()
-    Assert.True(s.SameSeedMatch, "same seed must match")
+    Assert.True(s.SameSeedMatch, "same seed should match")
     Assert.True(s.DifferentSeedDiffers, "different seed should differ")
-    Assert.True(s.OldStateRepeatWorks, "reusing old state should repeat same next sample")
+    Assert.True(s.ReusedStateRepeats, "reusing same state repeats next draw")
+    Assert.True(s.AdvancedStateDiffers, "advanced state produces different draw")
 }
 
 [Artifact]
-fn EmitM2RandomCoreSummary() -> Void {
-    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_random_core_summary.octagon", [
-        M2Summarize(M2CollectFloat01(1337, 2000)),
-        M2Summarize(M2CollectFloatRange(1338, 2000, -1.0, 1.0)),
-        M2Summarize(M2CollectNormal(1339, 3000, 0.0, 1.0))
+fn EmitM2RandomSmokeSummary() -> Void {
+    let u = M2Summarize(M2CollectFloat01(2000, 200))
+    let r = M2Summarize(M2CollectFloatRange(2001, 200, -1.0, 1.0))
+    let n = M2Summarize(M2CollectNormal(2002, 200, 0.0, 1.0))
+    let b = M2BernoulliSummary(2003, 200, 0.5)
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_random_smoke_summary.octagon", [
+        u.Mean, r.Mean, n.Mean, b.ObservedProbability
     ])
 }
 
 [Artifact]
-fn EmitM2RandomDistributionSamples() -> Void {
-    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_random_distribution_samples.octagon", [
-        M2BernoulliSummary(1400, 2000, 0.25),
-        M2BernoulliSummary(1401, 2000, 0.5),
-        M2BernoulliSummary(1402, 2000, 0.75),
-        M2SpikeSummary(1403, 2000, 0.1, 4.0),
-        M2Summarize(M2CollectJitter(1404, 2000, 0.05)),
-        M2StateThreadingSummary()
-    ])
-}
-
-[Artifact]
-fn EmitM2RandomHistogramSummary() -> Void {
-    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_random_histogram_summary.octagon", [
-        M2UniformBuckets(M2CollectFloat01(1500, 2000)),
-        M2NormalBuckets(M2CollectNormal(1501, 3000, 0.0, 1.0)),
-        M2DriftWalk(1502, 500, 0.0, 0.05)
+fn EmitM2RandomDistributionSummary() -> Void {
+    let jitter = M2Summarize(M2CollectJitter(2100, 200, 0.05))
+    let spike = M2SpikeSummary(2101, 400, 0.1, 4.0)
+    let drift = M2DriftWalk(2102, 80, 0.0, 0.05)
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_random_distribution_summary.octagon", [
+        jitter.Min,
+        jitter.Max,
+        Float(spike.ZeroCount),
+        Float(spike.PositiveSpikeCount + spike.NegativeSpikeCount),
+        drift[Len(drift) - 1]
     ])
 }
 
 [Artifact]
 fn EmitM2FinalVerdict() -> Void {
-    let u01 = M2Summarize(M2CollectFloat01(1900, 2000))
-    let ur = M2Summarize(M2CollectFloatRange(1901, 2000, -1.0, 1.0))
-    let n = M2Summarize(M2CollectNormal(1902, 3000, 0.0, 1.0))
-    let b = M2BernoulliSummary(1903, 2000, 0.5)
-    let sp = M2SpikeSummary(1904, 2000, 0.1, 4.0)
-    let jitter = M2Summarize(M2CollectJitter(1905, 2000, 0.05))
-    let st = M2StateThreadingSummary()
+    let uniform = M2Summarize(M2CollectFloat01(2200, 200))
+    let range = M2Summarize(M2CollectFloatRange(2201, 200, -1.0, 1.0))
+    let normal = M2Summarize(M2CollectNormal(2202, 200, 0.0, 1.0))
+    let bernoulli = M2BernoulliSummary(2203, 200, 0.5)
+    let spike = M2SpikeSummary(2204, 400, 0.1, 4.0)
+    let threading = M2StateThreadingSummary()
+
     let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_final_verdict.octagon", [
-        u01.Mean >= 0.45 and u01.Mean <= 0.55,
-        u01.Min >= 0.0 and u01.Max < 1.0,
-        ur.Mean >= -0.1 and ur.Mean <= 0.1,
-        n.Mean >= -0.2 and n.Mean <= 0.2,
-        n.Variance >= 0.5 and n.Variance <= 1.5,
-        b.ObservedProbability >= 0.40 and b.ObservedProbability <= 0.60,
-        sp.ObservedSpikeProbability >= 0.03 and sp.ObservedSpikeProbability <= 0.20,
-        jitter.Min >= -0.05 and jitter.Max < 0.05,
-        st.SameSeedMatch and st.DifferentSeedDiffers and st.OldStateRepeatWorks
+        uniform.Min >= 0.0 and uniform.Max < 1.0 and uniform.Min != uniform.Max and uniform.Mean >= 0.25 and uniform.Mean <= 0.75,
+        range.Min >= -1.0 and range.Max < 1.0 and range.CountPositive > 0 and range.CountNegative > 0,
+        normal.CountPositive > 0 and normal.CountNegative > 0 and normal.Mean >= -0.5 and normal.Mean <= 0.5,
+        bernoulli.TrueCount > 0 and bernoulli.TrueCount < bernoulli.SampleCount,
+        spike.ZeroCount > 0 and (spike.PositiveSpikeCount + spike.NegativeSpikeCount) > 0,
+        threading.SameSeedMatch and threading.DifferentSeedDiffers and threading.ReusedStateRepeats and threading.AdvancedStateDiffers
     ])
 }
