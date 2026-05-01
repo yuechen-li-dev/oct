@@ -1,4 +1,4 @@
-expect error: "function Main: var x: empty array literal requires array type context, got Int"
+expect error: "function Main: var x: empty array literal `[]` requires array type context, got Int; use an explicit annotation like `var values: Int[] = []`"
 
 package Main
 

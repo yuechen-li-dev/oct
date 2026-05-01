@@ -1,0 +1,8 @@
+expect error: "must be a function call (for side effects), an assignment, or a return"
+
+package Main
+
+fn Main() -> Int {
+    1 + 2
+    return 0
+}

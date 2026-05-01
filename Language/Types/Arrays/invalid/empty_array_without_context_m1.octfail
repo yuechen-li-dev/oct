@@ -1,4 +1,4 @@
-expect error: "function Main: let xs: empty array literals require an explicit array type"
+expect error: "function Main: let xs: empty array literal `[]` requires an expected array type; write `var values: Int[] = []` or assign it where an array type is already known"
 
 package Main
 

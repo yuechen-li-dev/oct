@@ -682,7 +682,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
 		}
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: let %s: Void result cannot be used as a value", ctx.name, node.Name)
@@ -709,7 +709,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: var %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: var %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
 		}
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: var %s: Void result cannot be used as a value", ctx.name, node.Name)
@@ -728,14 +728,14 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Name)
 		}
 		if !target.mutable {
-			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'; use `var %s = ...` for bindings that must be reassigned, or bind a new value with `let`", ctx.name, node.Name, node.Name)
 		}
 		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, &target.valueType)
 		if err != nil {
 			return false, fmt.Errorf("function %s: assignment to %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: assignment to %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: assignment to %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
 		}
 		if valueType.ValueType.Tuple != nil {
 			return false, fmt.Errorf("function %s: assignment to %s: tuple return values must be destructured", ctx.name, node.Name)
@@ -750,7 +750,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: destructuring assignment: %w", ctx.name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: destructuring assignment: fallible expression must be handled explicitly", ctx.name)
+			return false, fmt.Errorf("function %s: destructuring assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 		}
 		if valueType.ValueType.Tuple == nil {
 			return false, fmt.Errorf("function %s: destructuring assignment requires tuple return/value", ctx.name)
@@ -765,7 +765,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 				continue
 			}
 			if !target.mutable {
-				return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'", ctx.name, name)
+				return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'; use `var %s = ...` for bindings that must be reassigned, or bind a new value with `let`", ctx.name, name, name)
 			}
 			if !isAssignable(valueType.ValueType.Tuple.Elements[i], target.valueType) {
 				return false, fmt.Errorf("function %s: destructuring assignment tuple element %d to %s: expected %s, got %s", ctx.name, i, name, target.valueType, valueType.ValueType.Tuple.Elements[i])
@@ -778,7 +778,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Target)
 		}
 		if !target.mutable {
-			return false, fmt.Errorf("function %s: cannot assign to immutable binding", ctx.name)
+			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'; use `var %s = ...` for bindings that must be reassigned, or bind a new value with `let`", ctx.name, node.Target, node.Target)
 		}
 		if len(node.Indices) == 0 {
 			return false, fmt.Errorf("function %s: index assignment requires at least one index", ctx.name)
@@ -789,7 +789,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 				return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
 			}
 			if indexType.Fallible {
-				return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
+				return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 			}
 			if indexType.ValueType != (Type{Base: BaseTypeInt}) {
 				return false, fmt.Errorf("function %s: index assignment indices must be Int", ctx.name)
@@ -800,16 +800,16 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		switch {
 		case target.valueType.IsArray:
 			if len(node.Indices) != 1 {
-				return false, fmt.Errorf("function %s: array index assignment requires exactly 1 index, got %d", ctx.name, len(node.Indices))
+				return false, fmt.Errorf("function %s: array index assignment (`x[i] = ...`) requires exactly 1 index, got %d", ctx.name, len(node.Indices))
 			}
 			elementType = peelArrayType(target.valueType)
 		case target.valueType.IsMatrix:
 			if len(node.Indices) != 2 {
-				return false, fmt.Errorf("function %s: matrix index assignment requires exactly 2 indices, got %d", ctx.name, len(node.Indices))
+				return false, fmt.Errorf("function %s: matrix index assignment (`x[i, j] = ...`) requires exactly 2 indices, got %d", ctx.name, len(node.Indices))
 			}
 			elementType = Type{Base: target.valueType.Base, Dimension: target.valueType.Dimension}
 		default:
-			return false, fmt.Errorf("function %s: index assignment requires array or matrix type", ctx.name)
+			return false, fmt.Errorf("function %s: index assignment (`x[i] = ...`) requires an array or matrix target, got %s. For records, use immutable update (`x = x with { Field: value }`); for scalars, assign the whole value", ctx.name, target.valueType)
 		}
 
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
@@ -817,7 +817,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly", ctx.name)
+			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 		}
 		if !isAssignable(valueType.ValueType, elementType) {
 			return false, fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
@@ -828,7 +828,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)", ctx.name)
 		}
 		if node.Target != "board" {
-			return false, fmt.Errorf("function %s: only board field assignment is supported", ctx.name)
+			return false, fmt.Errorf("function %s: inside flow state bodies, field assignment is only supported on `board`, e.g. `board.Count = board.Count + 1`; ordinary records are immutable and must use `with`", ctx.name)
 		}
 		target, ok := scope.lookup(node.Target)
 		if !ok {
@@ -857,7 +857,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s.%s: %w", ctx.name, node.Target, node.Field, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: assignment to %s.%s: fallible expression must be handled explicitly", ctx.name, node.Target, node.Field)
+			return false, fmt.Errorf("function %s: assignment to %s.%s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Target, node.Field)
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
 			return false, fmt.Errorf("function %s: assignment to %s.%s: expected %s, got %s", ctx.name, node.Target, node.Field, fieldType, valueType.ValueType)
@@ -908,7 +908,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: for %s: %w", ctx.name, node.Name, err)
 		}
 		if rangeType.Fallible {
-			return false, fmt.Errorf("function %s: for %s: fallible expression must be handled explicitly", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: for %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
 		}
 		if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
 			return false, fmt.Errorf("function %s: for %s: range expression expects Range, got %s", ctx.name, node.Name, rangeType.ValueType)
@@ -953,7 +953,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: if condition: %w", ctx.name, err)
 		}
 		if conditionType.Fallible {
-			return false, fmt.Errorf("function %s: if condition: fallible expression must be handled explicitly", ctx.name)
+			return false, fmt.Errorf("function %s: if condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 		}
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return false, fmt.Errorf("function %s: if condition must be Bool, got %s", ctx.name, conditionType.ValueType)
@@ -977,7 +977,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: while condition: %w", ctx.name, err)
 		}
 		if conditionType.Fallible {
-			return false, fmt.Errorf("function %s: while condition: fallible expression must be handled explicitly", ctx.name)
+			return false, fmt.Errorf("function %s: while condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 		}
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return false, fmt.Errorf("function %s: while condition must be Bool, got %s", ctx.name, conditionType.ValueType)
@@ -1034,7 +1034,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 				return false, fmt.Errorf("function %s: when case condition: %w", ctx.name, err)
 			}
 			if conditionType.Fallible {
-				return false, fmt.Errorf("function %s: when case condition: fallible expression must be handled explicitly", ctx.name)
+				return false, fmt.Errorf("function %s: when case condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
 			}
 			if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 				return false, fmt.Errorf("function %s: when case condition must be Bool, got %s", ctx.name, conditionType.ValueType)
@@ -1079,7 +1079,7 @@ func (c checker) checkWhenAction(scope *scope, action ast.WhenAction, ctx functi
 			case ast.RememberStmt, ast.ResumeStmt, ast.GotoStmt, ast.SuspendStmt, ast.ReturnStmt, ast.FieldAssignStmt:
 				// allowed
 			default:
-				return false, fmt.Errorf("function %s: when block action only supports remember, resume, goto, suspend, return, and board assignment", ctx.name)
+				return false, fmt.Errorf("function %s: a `when` action block may only contain flow-control actions (`remember`, `resume`, `goto`, `suspend`, `return`) and `board.field = ...` updates; move ordinary computation before the `when`, or use a normal block outside the flow guard", ctx.name)
 			}
 			isLast := i == len(node.Statements)-1
 			if !isLast {
@@ -1093,7 +1093,7 @@ func (c checker) checkWhenAction(scope *scope, action ast.WhenAction, ctx functi
 		case ast.ReturnStmt, ast.GotoStmt, ast.SuspendStmt, ast.ResumeStmt:
 			// required for deterministic when action lowering.
 		default:
-			return false, fmt.Errorf("function %s: when block action must end with goto, suspend, resume, or return", ctx.name)
+			return false, fmt.Errorf("function %s: a `when` action block must end with a control transfer (`goto`, `suspend`, `resume`, or `return`) so the flow transition is deterministic", ctx.name)
 		}
 		return c.checkBlock(scope, ast.Block{Statements: node.Statements}, ctx)
 	default:
@@ -1177,7 +1177,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if targetType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		indexTypes := make([]Type, 0, len(node.Indices))
 		for _, idxExpr := range node.Indices {
@@ -1186,7 +1186,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				return ExprType{}, err
 			}
 			if indexType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			indexTypes = append(indexTypes, indexType.ValueType)
 		}
@@ -1287,7 +1287,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if targetType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if ctx.board != nil && targetType.ValueType == ctx.boardType {
 			fieldType, ok := ctx.board[node.Field]
@@ -1329,14 +1329,14 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if leftType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		rightType, err := c.checkExpr(scope, node.Right, ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if rightType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if leftType.EinTerm != nil || rightType.EinTerm != nil {
 			return c.checkEinsteinBinaryExpr(node, leftType, rightType)
@@ -1357,7 +1357,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if operandType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		switch node.Operator {
 		case "not":
@@ -1379,7 +1379,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if startType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if startType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("range start must be Int, got %s", startType.ValueType)
@@ -1389,7 +1389,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		if endType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if endType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("range end must be Int, got %s", endType.ValueType)
@@ -1400,7 +1400,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				return ExprType{}, err
 			}
 			if stepType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if stepType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("range step must be Int, got %s", stepType.ValueType)
@@ -1456,7 +1456,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 		return ExprType{}, fmt.Errorf("utility when policy hysteresis: %w", err)
 	}
 	if hysteresisType.Fallible {
-		return ExprType{}, fmt.Errorf("utility when policy hysteresis: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if hysteresisType.ValueType != (Type{Base: BaseTypeInt}) {
 		return ExprType{}, fmt.Errorf("utility when policy hysteresis must be Int")
@@ -1467,7 +1467,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 		return ExprType{}, fmt.Errorf("utility when policy min_commit: %w", err)
 	}
 	if minCommitType.Fallible {
-		return ExprType{}, fmt.Errorf("utility when policy min_commit: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("utility when policy min_commit: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if minCommitType.ValueType != (Type{Base: BaseTypeInt}) {
 		return ExprType{}, fmt.Errorf("utility when policy min_commit must be Int")
@@ -1485,7 +1485,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 			return ExprType{}, fmt.Errorf("utility when case %d condition: %w", idx+1, err)
 		}
 		if conditionType.Fallible {
-			return ExprType{}, fmt.Errorf("utility when case %d condition: fallible expression must be handled explicitly", idx+1)
+			return ExprType{}, fmt.Errorf("utility when case %d condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", idx+1)
 		}
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("utility when case condition must be Bool")
@@ -1496,7 +1496,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 			return ExprType{}, fmt.Errorf("utility when case %d score: %w", idx+1, err)
 		}
 		if scoreType.Fallible {
-			return ExprType{}, fmt.Errorf("utility when case %d score: fallible expression must be handled explicitly", idx+1)
+			return ExprType{}, fmt.Errorf("utility when case %d score: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", idx+1)
 		}
 		if scoreType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("utility when case score must be Int")
@@ -1507,7 +1507,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 			return ExprType{}, fmt.Errorf("utility when case %d value: %w", idx+1, err)
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("utility when case %d value: fallible expression must be handled explicitly", idx+1)
+			return ExprType{}, fmt.Errorf("utility when case %d value: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", idx+1)
 		}
 		if !hasResultType {
 			resultType = valueType.ValueType
@@ -1524,7 +1524,7 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 		return ExprType{}, fmt.Errorf("utility when else: %w", err)
 	}
 	if elseType.Fallible {
-		return ExprType{}, fmt.Errorf("utility when else: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("utility when else: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !hasResultType {
 		return ExprType{ValueType: elseType.ValueType}, nil
@@ -1541,7 +1541,7 @@ func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionCo
 		return ExprType{}, fmt.Errorf("batch input: %w", err)
 	}
 	if inputType.Fallible {
-		return ExprType{}, fmt.Errorf("batch input: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("batch input: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !inputType.ValueType.IsArray {
 		return ExprType{}, fmt.Errorf("batch input must be an array, got %s", inputType.ValueType)
@@ -1676,7 +1676,7 @@ func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext)
 		return ExprType{}, fmt.Errorf("if expression condition: %w", err)
 	}
 	if conditionType.Fallible {
-		return ExprType{}, fmt.Errorf("if expression condition: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("if expression condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 		return ExprType{}, fmt.Errorf("if expression condition must be Bool, got %s", conditionType.ValueType)
@@ -1720,7 +1720,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 		return ExprType{}, fmt.Errorf("switch subject: %w", err)
 	}
 	if subjectType.Fallible {
-		return ExprType{}, fmt.Errorf("switch subject: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("switch subject: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !isSwitchSubjectTypeSupported(c, subjectType.ValueType) {
 		return ExprType{}, fmt.Errorf("switch subject type %s is not supported", subjectType.ValueType)
@@ -1773,7 +1773,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
 		}
 		if caseValueType.Fallible {
-			return ExprType{}, fmt.Errorf("switch case %d: fallible expression must be handled explicitly", index+1)
+			return ExprType{}, fmt.Errorf("switch case %d: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", index+1)
 		}
 		if !hasResultType {
 			resultType = caseValueType.ValueType
@@ -1790,7 +1790,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			return ExprType{}, fmt.Errorf("switch else: %w", err)
 		}
 		if elseType.Fallible {
-			return ExprType{}, fmt.Errorf("switch else: fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("switch else: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !hasResultType {
 			resultType = elseType.ValueType
@@ -1822,7 +1822,7 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 		return ExprType{}, fmt.Errorf("match subject: %w", err)
 	}
 	if subjectType.Fallible {
-		return ExprType{}, fmt.Errorf("match subject: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("match subject: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if subjectType.ValueType.Name == "" {
 		return ExprType{}, fmt.Errorf("match subject must be an enum, got %s", subjectType.ValueType)
@@ -1863,7 +1863,7 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 			return ExprType{}, fmt.Errorf("match case %d: %w", index+1, err)
 		}
 		if caseValueType.Fallible {
-			return ExprType{}, fmt.Errorf("match case %d: fallible expression must be handled explicitly", index+1)
+			return ExprType{}, fmt.Errorf("match case %d: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", index+1)
 		}
 		if !hasResultType {
 			resultType = caseValueType.ValueType
@@ -1891,7 +1891,7 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 			return ExprType{}, fmt.Errorf("condition switch case %d: %w", index+1, err)
 		}
 		if conditionType.Fallible {
-			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly", index+1)
+			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", index+1)
 		}
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("condition switch case must be Bool")
@@ -1902,7 +1902,7 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 			return ExprType{}, fmt.Errorf("condition switch case %d: %w", index+1, err)
 		}
 		if caseValueType.Fallible {
-			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly", index+1)
+			return ExprType{}, fmt.Errorf("condition switch case %d: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", index+1)
 		}
 		if !hasResultType {
 			resultType = caseValueType.ValueType
@@ -1926,7 +1926,7 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 		return ExprType{}, fmt.Errorf("condition switch else: %w", err)
 	}
 	if elseType.Fallible {
-		return ExprType{}, fmt.Errorf("condition switch else: fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("condition switch else: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !hasResultType {
 		return ExprType{ValueType: elseType.ValueType}, nil
@@ -2095,7 +2095,7 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 			return ExprType{}, err
 		}
 		if payloadType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(payloadType.ValueType, *variant.payload) {
 			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' payload expects %s, got %s", enumName, variantName, *variant.payload, payloadType.ValueType)
@@ -2131,7 +2131,7 @@ regularCall:
 			return ExprType{}, fmt.Errorf("function 'error' does not accept type arguments")
 		}
 		if len(expr.Arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'error' expects 1 arguments, got %d", len(expr.Arguments))
+			return ExprType{}, fmt.Errorf("function 'error' expects 1 argument, got %d", len(expr.Arguments))
 		}
 		if _, ok := expr.Arguments[0].(ast.StringLiteralExpr); !ok {
 			return ExprType{}, fmt.Errorf("error() requires a string literal")
@@ -2176,7 +2176,7 @@ regularCall:
 		return ExprType{}, err
 	}
 	if calleeType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !calleeType.ValueType.IsFunction {
 		if hasDirectName {
@@ -2193,7 +2193,7 @@ regularCall:
 
 func (c checker) checkSkipTestCallExpr(scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function 'SkipTest' expects 1 arguments, got %d", len(arguments))
+		return ExprType{}, fmt.Errorf("function 'SkipTest' expects 1 argument, got %d", len(arguments))
 	}
 	reasonType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
@@ -2235,7 +2235,7 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 			return ExprType{}, err
 		}
 		if argumentType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		expected := signature.parameters[i]
 		if isAssignable(argumentType.ValueType, expected) {
@@ -2256,7 +2256,7 @@ func (c checker) checkFunctionCallArguments(displayName string, signature functi
 			return ExprType{}, err
 		}
 		if argumentType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argumentType.ValueType.Base == BaseTypeVoid {
 			return ExprType{}, fmt.Errorf("Void result cannot be used as a value")
@@ -2529,7 +2529,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		switch randomBuiltin {
 		case "Random.RngSeed":
 			if len(arguments) != 1 {
-				return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+				return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 			}
 			return ExprType{ValueType: rngType}, nil
 		case "Random.RandInt":
@@ -2668,14 +2668,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Step' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Step' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Step' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Step' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2687,14 +2687,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Active' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Active' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Active' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Active' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2706,14 +2706,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Result' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Result' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Result' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Result' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2728,14 +2728,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Complete' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Complete' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Complete' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Complete' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2747,14 +2747,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'StateHistory' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'StateHistory' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'StateHistory' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'StateHistory' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2766,14 +2766,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'ResumeTarget' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'ResumeTarget' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'ResumeTarget' expects 1 argument, got %d", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if flowType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'ResumeTarget' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
@@ -2785,14 +2785,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'UIText' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'UIText' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'UIText' expects 1 argument, got %d", len(arguments))
 		}
 		contentType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if contentType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if contentType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'UIText' argument 1 expects String, got %s", contentType.ValueType)
@@ -2811,7 +2811,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if labelType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if labelType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'UIButton' argument 1 expects String, got %s", labelType.ValueType)
@@ -2821,7 +2821,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if eventType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if eventType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'UIButton' argument 2 expects String, got %s", eventType.ValueType)
@@ -2831,7 +2831,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if enabledType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if enabledType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("function 'UIButton' argument 3 expects Bool, got %s", enabledType.ValueType)
@@ -2850,7 +2850,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
 			return ExprType{}, fmt.Errorf("function 'FormatFloat' argument 1 expects Float, got %s", valueType.ValueType)
@@ -2860,7 +2860,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if precisionType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if precisionType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'FormatFloat' argument 2 expects Int, got %s", precisionType.ValueType)
@@ -2872,14 +2872,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Float' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Float' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Float' expects 1 argument, got %d", len(arguments))
 		}
 		valueType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if valueType.ValueType.Base != BaseTypeInt || valueType.ValueType.Name != "" || valueType.ValueType.IsArray || valueType.ValueType.IsVector || valueType.ValueType.IsMatrix || valueType.ValueType.IsFunction || valueType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Float' argument 1 expects Int, got %s", valueType.ValueType)
@@ -2891,14 +2891,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'ToString' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'ToString' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'ToString' expects 1 argument, got %d", len(arguments))
 		}
 		valueType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		switch valueType.ValueType {
 		case Type{Base: BaseTypeInt}, Type{Base: BaseTypeFloat}, Type{Base: BaseTypeBool}:
@@ -2919,7 +2919,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if textType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if textType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
@@ -2929,7 +2929,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if partType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if partType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, partType.ValueType)
@@ -2941,14 +2941,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		textType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if textType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if textType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
@@ -2967,7 +2967,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if partsType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if partsType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
 			return ExprType{}, fmt.Errorf("function 'Join' argument 1 expects String[], got %s", partsType.ValueType)
@@ -2977,7 +2977,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if sepType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if sepType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'Join' argument 2 expects String, got %s", sepType.ValueType)
@@ -2989,14 +2989,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Idx' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Idx' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Idx' expects 1 argument, got %d", len(arguments))
 		}
 		nameType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if nameType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if nameType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'Idx' argument 1 expects String, got %s", nameType.ValueType)
@@ -3015,14 +3015,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if leftType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		rightType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if rightType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		floatMatrix := Type{Base: BaseTypeFloat, IsMatrix: true}
 		if leftType.ValueType != floatMatrix {
@@ -3047,7 +3047,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if dimType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' argument %d expects Int, got %s", idx+1, dimType.ValueType)
@@ -3058,7 +3058,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if callbackType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !callbackType.ValueType.IsFunction {
 			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' argument 3 expects function (Int, Int) -> T, got %s", callbackType.ValueType)
@@ -3088,7 +3088,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if dimType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("function 'Matrix.zeros' argument %d expects Int, got %s", idx+1, dimType.ValueType)
@@ -3116,7 +3116,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if dimType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if dimType.ValueType != (Type{Base: BaseTypeInt}) {
 				return ExprType{}, fmt.Errorf("function 'Matrix.fill' argument %d expects Int, got %s", idx+1, dimType.ValueType)
@@ -3127,7 +3127,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isNumericBaseType(valueType.ValueType.Base) || valueType.ValueType.IsArray || valueType.ValueType.IsVector || valueType.ValueType.IsMatrix {
 			return ExprType{}, fmt.Errorf("function 'Matrix.fill' argument 3 expects numeric scalar, got %s", valueType.ValueType)
@@ -3139,14 +3139,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Matrix.identity' expects 1 type arguments, got %d", len(typeArguments))
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Matrix.identity' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Matrix.identity' expects 1 argument, got %d", len(arguments))
 		}
 		sizeType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if sizeType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if sizeType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'Matrix.identity' argument 1 expects Int, got %s", sizeType.ValueType)
@@ -3172,14 +3172,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if leftType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		rightType, err := c.checkExpr(scope, arguments[3], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if rightType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !leftType.ValueType.IsMatrix {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Matrix, got %s", callee, leftType.ValueType)
@@ -3193,7 +3193,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if indexType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if indexType.ValueType != (Type{Base: BaseTypeIndex}) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Index, got %s", callee, idx+1, indexType.ValueType)
@@ -3205,7 +3205,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if indexType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if indexType.ValueType != (Type{Base: BaseTypeIndex}) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Index, got %s", callee, idx+1, indexType.ValueType)
@@ -3229,14 +3229,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Trace' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Trace' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Trace' expects 1 argument, got %d", len(arguments))
 		}
 		matrixType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if matrixType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !matrixType.ValueType.IsMatrix {
 			return ExprType{}, fmt.Errorf("function 'Trace' argument 1 expects Matrix, got %s", matrixType.ValueType)
@@ -3248,14 +3248,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Grad' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Grad' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Grad' expects 1 argument, got %d", len(arguments))
 		}
 		operandType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if operandType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray {
 			return ExprType{}, fmt.Errorf("function 'Grad' argument 1 expects numeric Scalar or Vector, got %s", operandType.ValueType)
@@ -3273,14 +3273,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Div' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Div' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Div' expects 1 argument, got %d", len(arguments))
 		}
 		operandType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if operandType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray || (!operandType.ValueType.IsVector && !operandType.ValueType.IsMatrix) {
 			return ExprType{}, fmt.Errorf("function 'Div' argument 1 expects numeric Vector or Matrix, got %s", operandType.ValueType)
@@ -3295,14 +3295,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'SymGrad' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'SymGrad' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'SymGrad' expects 1 argument, got %d", len(arguments))
 		}
 		operandType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if operandType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isNumericBaseType(operandType.ValueType.Base) || operandType.ValueType.IsArray || !operandType.ValueType.IsVector {
 			return ExprType{}, fmt.Errorf("function 'SymGrad' argument 1 expects numeric Vector, got %s", operandType.ValueType)
@@ -3314,14 +3314,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		childrenType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if childrenType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if childrenType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 1) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
@@ -3351,7 +3351,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if valueType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if valueType.ValueType != (Type{Base: BaseTypeFloat, Dimension: uiPixelDimension}) && valueType.ValueType != (Type{Base: BaseTypeFloat}) {
 				return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument %d expects Float<px>, got %s", idx+1, valueType.ValueType)
@@ -3362,7 +3362,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if childType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if childType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 5 expects UI, got %s", childType.ValueType)
@@ -3372,7 +3372,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if zType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if zType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 6 expects Int, got %s", zType.ValueType)
@@ -3392,7 +3392,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if valueType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if valueType.ValueType != (Type{Base: BaseTypeFloat, Dimension: uiAnchorDimension}) && valueType.ValueType != (Type{Base: BaseTypeFloat}) {
 				return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument %d expects Float<ui>, got %s", idx+1, valueType.ValueType)
@@ -3403,7 +3403,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if childType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if childType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 5 expects UI, got %s", childType.ValueType)
@@ -3413,7 +3413,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if zType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if zType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 6 expects Int, got %s", zType.ValueType)
@@ -3425,14 +3425,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'UIMount' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'UIMount' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'UIMount' expects 1 argument, got %d", len(arguments))
 		}
 		rootType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if rootType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIMount' argument 1 expects UI, got %s", rootType.ValueType)
@@ -3451,7 +3451,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if mountType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIPatch' argument 1 expects Int, got %s", mountType.ValueType)
@@ -3461,7 +3461,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if rootType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UIPatch' argument 2 expects UI, got %s", rootType.ValueType)
@@ -3473,14 +3473,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'UIUnmount' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'UIUnmount' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'UIUnmount' expects 1 argument, got %d", len(arguments))
 		}
 		mountType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if mountType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIUnmount' argument 1 expects Int, got %s", mountType.ValueType)
@@ -3499,7 +3499,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if mountType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIEmit' argument 1 expects Int, got %s", mountType.ValueType)
@@ -3509,7 +3509,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if eventType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if eventType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'UIEmit' argument 2 expects String, got %s", eventType.ValueType)
@@ -3521,14 +3521,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' expects 1 argument, got %d", len(arguments))
 		}
 		mountType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if mountType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if mountType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIDrainEvents' argument 1 expects Int, got %s", mountType.ValueType)
@@ -3540,14 +3540,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'UISignature' does not accept type arguments")
 		}
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'UISignature' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'UISignature' expects 1 argument, got %d", len(arguments))
 		}
 		rootType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if rootType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
 			return ExprType{}, fmt.Errorf("function 'UISignature' argument 1 expects UI, got %s", rootType.ValueType)
@@ -3556,14 +3556,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	}
 	if callee == "fft" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'fft' expects 1 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'fft' expects 1 argument, got %d", len(arguments))
 		}
 		argumentType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if argumentType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argumentType.ValueType != withArrayDepth(Type{Base: BaseTypeComplex}, 1) {
 			return ExprType{}, fmt.Errorf("function 'fft' argument 1 expects Complex[], got %s", argumentType.ValueType)
@@ -3597,7 +3597,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if argumentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if !isRealNumericScalar(argumentType.ValueType) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
@@ -3618,7 +3618,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if argumentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if !isRealNumericScalar(argumentType.ValueType) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
@@ -3638,7 +3638,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if conditionType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("function 'Require' argument 1 expects Bool, got %s", conditionType.ValueType)
@@ -3648,7 +3648,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if messageType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if messageType.ValueType != (Type{Base: BaseTypeString}) {
 			return ExprType{}, fmt.Errorf("function 'Require' argument 2 expects String, got %s", messageType.ValueType)
@@ -3665,7 +3665,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if argumentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if !isRealNumericScalar(argumentType.ValueType) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
@@ -3686,7 +3686,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, err
 			}
 			if argumentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if !isRealNumericScalar(argumentType.ValueType) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects Int or Float, got %s", callee, idx+1, argumentType.ValueType)
@@ -3699,7 +3699,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	}
 
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 	}
 
 	argumentType, err := c.checkExpr(scope, arguments[0], ctx)
@@ -3707,7 +3707,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		return ExprType{}, err
 	}
 	if argumentType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 
 	switch callee {
@@ -3822,7 +3822,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if workbookType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if workbookType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
@@ -3832,7 +3832,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if sheetType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if sheetType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, sheetType.ValueType)
@@ -3847,7 +3847,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if workbookType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if workbookType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
@@ -3857,7 +3857,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if sheetType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if sheetType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, sheetType.ValueType)
@@ -3867,7 +3867,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if cellType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if cellType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, cellType.ValueType)
@@ -3877,7 +3877,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if callee == "XlsxSetCellString" && valueType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 4 expects String, got %s", callee, valueType.ValueType)
@@ -3895,7 +3895,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if workbookType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if workbookType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, workbookType.ValueType)
@@ -3905,7 +3905,7 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if pathType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if pathType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, pathType.ValueType)
@@ -3924,14 +3924,14 @@ func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments
 	switch callee {
 	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		textType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if textType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if textType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
@@ -3947,7 +3947,7 @@ func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments
 				return ExprType{}, err
 			}
 			if currentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if currentType.ValueType != stringType {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, currentType.ValueType)
@@ -3975,7 +3975,7 @@ func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, argument
 			return ExprType{}, err
 		}
 		if handleType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if handleType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
@@ -3985,7 +3985,7 @@ func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, argument
 			return ExprType{}, err
 		}
 		if pathType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if pathType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, pathType.ValueType)
@@ -3994,14 +3994,14 @@ func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, argument
 	}
 	if callee == "ImageWidth" || callee == "ImageHeight" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		handleType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if handleType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if handleType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
@@ -4010,14 +4010,14 @@ func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, argument
 	}
 	if callee == "ImageFormat" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		handleType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if handleType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if handleType.ValueType != intType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, handleType.ValueType)
@@ -4043,7 +4043,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if dimType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if dimType.ValueType != pixelIntType {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, pixelIntType, dimType.ValueType)
@@ -4060,7 +4060,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != expected {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
@@ -4078,7 +4078,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != want {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, want, current.ValueType)
@@ -4095,7 +4095,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != expected {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
@@ -4112,7 +4112,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != expected {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
@@ -4129,7 +4129,7 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != expected {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, expected, current.ValueType)
@@ -4154,14 +4154,14 @@ func (c checker) checkJSONStructuredBuiltinCallExpr(scope *scope, callee string,
 		return ExprType{}, fmt.Errorf("function '%s' type argument expects JsonRawGraph, got %s", callee, targetValueType)
 	}
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 	}
 	inputType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
 	if inputType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if inputType.ValueType != stringType {
 		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, inputType.ValueType)
@@ -4193,7 +4193,7 @@ func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if pathType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if pathType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
@@ -4203,7 +4203,7 @@ func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if callee == "FileWriteText" && valueType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String, got %s", callee, valueType.ValueType)
@@ -4248,7 +4248,7 @@ func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments 
 		return ExprType{}, err
 	}
 	if pathType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if pathType.ValueType != stringType {
 		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
@@ -4258,7 +4258,7 @@ func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments 
 		return ExprType{}, err
 	}
 	if rowsType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if rowsType.ValueType != stringMatrixType {
 		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[][], got %s", callee, rowsType.ValueType)
@@ -4281,7 +4281,7 @@ func (c checker) checkArchiveBuiltinCallExpr(scope *scope, callee string, argume
 		return ExprType{}, err
 	}
 	if pathType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if pathType.ValueType != (Type{Base: BaseTypeString}) {
 		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, pathType.ValueType)
@@ -4291,7 +4291,7 @@ func (c checker) checkArchiveBuiltinCallExpr(scope *scope, callee string, argume
 		return ExprType{}, err
 	}
 	if pathsType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if pathsType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
 		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[], got %s", callee, pathsType.ValueType)
@@ -4303,14 +4303,14 @@ func (c checker) checkCompressionBuiltinCallExpr(scope *scope, callee string, ar
 	bytesType := Type{Base: BaseTypeBytes}
 	if callee == "GzipCompressBytes" || callee == "GzipDecompressBytes" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		argType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if argType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argType.ValueType != bytesType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bytes, got %s", callee, argType.ValueType)
@@ -4323,14 +4323,14 @@ func (c checker) checkCompressionBuiltinCallExpr(scope *scope, callee string, ar
 func (c checker) checkHashBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	if callee == "HashSha256Bytes" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		argType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if argType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argType.ValueType != (Type{Base: BaseTypeBytes}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bytes, got %s", callee, argType.ValueType)
@@ -4354,7 +4354,7 @@ func (c checker) checkRegexBuiltinCallExpr(scope *scope, callee string, argument
 				return ExprType{}, err
 			}
 			if argType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if argType.ValueType != (Type{Base: BaseTypeString}) {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, argType.ValueType)
@@ -4389,14 +4389,14 @@ func (c checker) checkTimeBuiltinCallExpr(scope *scope, callee string, arguments
 	}
 	if callee == "TimeFormatUnixSecond" {
 		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
 		argType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if argType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Int, got %s", callee, argType.ValueType)
@@ -4423,7 +4423,7 @@ func (c checker) requireTwoStringArgs(scope *scope, callee string, arguments []a
 			return err
 		}
 		if argType.Fallible {
-			return fmt.Errorf("fallible expression must be handled explicitly")
+			return fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if argType.ValueType != (Type{Base: BaseTypeString}) {
 			return fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, argType.ValueType)
@@ -4434,14 +4434,14 @@ func (c checker) requireTwoStringArgs(scope *scope, callee string, arguments []a
 
 func (c checker) checkSingleStringArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 	}
 	argType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
 	if argType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if argType.ValueType != (Type{Base: BaseTypeString}) {
 		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, argType.ValueType)
@@ -4451,14 +4451,14 @@ func (c checker) checkSingleStringArgBuiltin(scope *scope, callee string, argume
 
 func (c checker) checkSingleStringArrayArgBuiltin(scope *scope, callee string, arguments []ast.Expr, ctx functionContext, result ExprType) (ExprType, error) {
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 	}
 	argType, err := c.checkExpr(scope, arguments[0], ctx)
 	if err != nil {
 		return ExprType{}, err
 	}
 	if argType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if argType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
 		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String[], got %s", callee, argType.ValueType)
@@ -4471,7 +4471,7 @@ func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, ty
 		return ExprType{}, fmt.Errorf("function '%s' expects 1 type argument, got %d", callee, len(typeArguments))
 	}
 	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 arguments, got %d", callee, len(arguments))
+		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 	}
 
 	expectedType, err := c.resolveNonReturnType(typeArguments[0])
@@ -4487,7 +4487,7 @@ func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, ty
 		return ExprType{}, err
 	}
 	if pathType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if pathType.ValueType != (Type{Base: BaseTypeString}) {
 		return ExprType{}, fmt.Errorf("function 'LoadOctagon' argument 1 expects String, got %s", pathType.ValueType)
@@ -4509,7 +4509,7 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 		return ExprType{}, err
 	}
 	if pathType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if pathType.ValueType != (Type{Base: BaseTypeString}) {
 		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 1 expects String, got %s", pathType.ValueType)
@@ -4523,7 +4523,7 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 		return ExprType{}, err
 	}
 	if valueType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !isOctagonRepresentableType(valueType.ValueType) {
 		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 2 expects .octagon-representable value, got %s", valueType.ValueType)
@@ -4561,7 +4561,7 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 		return ExprType{}, err
 	}
 	if arrayType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !arrayType.ValueType.IsArray {
 		return ExprType{}, fmt.Errorf("Append requires array as first argument")
@@ -4572,7 +4572,7 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 		return ExprType{}, err
 	}
 	if elementType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 
 	expectedElementType := arrayType.ValueType
@@ -4610,7 +4610,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if xType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
 			return ExprType{}, err
@@ -4620,7 +4620,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if yType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
 			return ExprType{}, err
@@ -4630,7 +4630,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if pathType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if pathType.ValueType != stringType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects String, got %s", callee, pathType.ValueType)
@@ -4646,7 +4646,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if xType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if err := requirePlotArrayType(callee, 1, xType.ValueType); err != nil {
 			return ExprType{}, err
@@ -4656,7 +4656,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if yType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if err := requirePlotArrayType(callee, 2, yType.ValueType); err != nil {
 			return ExprType{}, err
@@ -4667,7 +4667,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 				return ExprType{}, err
 			}
 			if current.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if current.ValueType != expected {
 				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+3, expected, current.ValueType)
@@ -4683,7 +4683,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 		return ExprType{}, err
 	}
 	if valuesType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if err := requirePlotArrayType(callee, 1, valuesType.ValueType); err != nil {
 		return ExprType{}, err
@@ -4693,7 +4693,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 		return ExprType{}, err
 	}
 	if binsType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if binsType.ValueType != intType {
 		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Int, got %s", callee, binsType.ValueType)
@@ -4704,7 +4704,7 @@ func (c checker) checkPlotBuiltinCallExpr(scope *scope, callee string, arguments
 			return ExprType{}, err
 		}
 		if current.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if current.ValueType != expected {
 			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+3, expected, current.ValueType)
@@ -4731,10 +4731,10 @@ func requirePlotArrayType(functionName string, index int, valueType Type) error 
 func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext, expected *Type) (Type, error) {
 	if len(expr.Elements) == 0 {
 		if expected == nil {
-			return Type{}, fmt.Errorf("empty array literals require an explicit array type")
+			return Type{}, fmt.Errorf("empty array literal `[]` requires an expected array type; write `var values: Int[] = []` or assign it where an array type is already known")
 		}
 		if !expected.IsArray {
-			return Type{}, fmt.Errorf("empty array literal requires array type context, got %s", *expected)
+			return Type{}, fmt.Errorf("empty array literal `[]` requires array type context, got %s; use an explicit annotation like `var values: Int[] = []`", *expected)
 		}
 		return *expected, nil
 	}
@@ -4744,7 +4744,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		return Type{}, err
 	}
 	if firstType.Fallible {
-		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	for _, element := range expr.Elements[1:] {
 		elementType, err := c.checkExpr(scope, element, ctx)
@@ -4752,7 +4752,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 			return Type{}, err
 		}
 		if elementType.Fallible {
-			return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if elementType.ValueType != firstType.ValueType {
 			return Type{}, fmt.Errorf("array literal elements must all have the same type; found %s and %s", firstType.ValueType, elementType.ValueType)
@@ -4771,7 +4771,7 @@ func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr
 		return Type{}, err
 	}
 	if firstType.Fallible {
-		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !isNumericScalar(firstType.ValueType) {
 		return Type{}, fmt.Errorf("Vector literals require numeric elements, got %s", firstType.ValueType)
@@ -4782,7 +4782,7 @@ func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr
 			return Type{}, err
 		}
 		if elementType.Fallible {
-			return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if elementType.ValueType != firstType.ValueType {
 			return Type{}, fmt.Errorf("Vector literals require homogeneous element type")
@@ -4804,7 +4804,7 @@ func (c checker) checkMatrixLiteralExpr(scope *scope, expr ast.MatrixLiteralExpr
 		return Type{}, err
 	}
 	if firstType.Fallible {
-		return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if !isNumericScalar(firstType.ValueType) {
 		return Type{}, fmt.Errorf("Matrix literals require numeric elements, got %s", firstType.ValueType)
@@ -4819,7 +4819,7 @@ func (c checker) checkMatrixLiteralExpr(scope *scope, expr ast.MatrixLiteralExpr
 				return Type{}, err
 			}
 			if elementType.Fallible {
-				return Type{}, fmt.Errorf("fallible expression must be handled explicitly")
+				return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 			}
 			if elementType.ValueType != firstType.ValueType {
 				return Type{}, fmt.Errorf("Matrix literals require homogeneous element type")
@@ -4853,7 +4853,7 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 			return ExprType{}, err
 		}
 		if actualType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(actualType.ValueType, expectedType) {
 			return ExprType{}, fmt.Errorf("record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
@@ -4873,7 +4873,7 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 		return ExprType{}, err
 	}
 	if sourceType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	if sourceType.ValueType.Base != "" || sourceType.ValueType.Name == "" || sourceType.ValueType.IsArray {
 		return ExprType{}, fmt.Errorf("record update source must be a record value, got %s", sourceType.ValueType)
@@ -4892,7 +4892,7 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly")
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
 			return ExprType{}, fmt.Errorf("field '%s' on type '%s' expects %s, got %s", field.Name, sourceType.ValueType.Name, fieldType, valueType.ValueType)
@@ -4915,15 +4915,15 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
 	if len(typeRef.TupleOf) > 0 {
 		if typeRef.IsArray || typeRef.ArrayDepth > 0 || typeRef.VectorOf != nil || typeRef.MatrixOf != nil || typeRef.Function != nil || typeRef.Name != "" || typeRef.Package != "" || typeRef.HasUnit {
-			return Type{}, fmt.Errorf("invalid tuple type syntax")
+			return Type{}, fmt.Errorf("tuple types are not part of Oct's public language. Use a record with named fields instead")
 		}
 		if len(typeRef.TupleOf) < 2 {
-			return Type{}, fmt.Errorf("tuple type must include at least two element types")
+			return Type{}, fmt.Errorf("tuple types are not part of Oct's public language. Use a record with named fields instead")
 		}
 		elements := make([]Type, 0, len(typeRef.TupleOf))
 		for _, elementRef := range typeRef.TupleOf {
 			if len(elementRef.TupleOf) > 0 {
-				return Type{}, fmt.Errorf("nested tuple types are not supported in M2")
+				return Type{}, fmt.Errorf("tuple types are not part of Oct's public language. Use a record with named fields instead")
 			}
 			elementType, err := c.resolveType(elementRef, false)
 			if err != nil {

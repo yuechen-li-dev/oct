@@ -610,7 +610,7 @@ func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
     return Len()
 }
 `,
-			wantMessage: "run failed: function Main: function 'Len' expects 1 arguments, got 0",
+			wantMessage: "run failed: function Main: function 'Len' expects 1 argument, got 0",
 		},
 		{
 			name: "sin arity mismatch",
@@ -618,7 +618,7 @@ func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
     return Sin(1, 2)
 }
 `,
-			wantMessage: "run failed: function Main: function 'Sin' expects 1 arguments, got 2",
+			wantMessage: "run failed: function Main: function 'Sin' expects 1 argument, got 2",
 		},
 		{
 			name: "builtin collision",
@@ -646,7 +646,7 @@ fn Main() -> Int {
     return Print()
 }
 `,
-			wantMessage: "run failed: function Main: function 'Print' expects 1 arguments, got 0",
+			wantMessage: "run failed: function Main: function 'Print' expects 1 argument, got 0",
 		},
 		{
 			name: "print builtin collision",
@@ -1593,7 +1593,7 @@ func TestM18MutableLocalsAndReassignment(t *testing.T) {
 		{"assign to immutable let", "fn Main() -> Int { let x = 1 x = 2 return x }", "cannot assign to immutable binding 'x'"},
 		{"assign to unknown name", "fn Main() -> Int { x = 1 return 0 }", "unknown binding 'x'"},
 		{"record field mutation rejected", "record Point { X: Int Y: Int } fn Main() -> Int { var p = Point { X: 1 Y: 2 } p.X = 3 return 0 }", "field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)"},
-		{"vector element mutation rejected", "fn Main() -> Vector<Int> { var v = vector[1, 2] v[0] = 3 return v }", "index assignment requires array or matrix type"},
+		{"vector element mutation rejected", "fn Main() -> Vector<Int> { var v = vector[1, 2] v[0] = 3 return v }", "index assignment (`x[i] = ...`) requires an array or matrix target"},
 		{"matrix element mutation wrong value type", "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9.5 return m }", "assigned value type does not match indexed element type"},
 	}
 

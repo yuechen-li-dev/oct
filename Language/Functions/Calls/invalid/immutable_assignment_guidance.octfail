@@ -1,0 +1,9 @@
+expect error: "function Main: cannot assign to immutable binding 'x'; use `var x = ...` for bindings that must be reassigned, or bind a new value with `let`"
+
+package Main
+
+fn Main() -> Int {
+    let x = 1
+    x = 2
+    return x
+}

@@ -1,4 +1,4 @@
-expect error: "function BadWhenBlock: when block action only supports remember, resume, goto, suspend, return, and board assignment"
+expect error: "function BadWhenBlock: a `when` action block may only contain flow-control actions (`remember`, `resume`, `goto`, `suspend`, `return`) and `board.field = ...` updates; move ordinary computation before the `when`, or use a normal block outside the flow guard"
 
 package MainInvalid
 
