@@ -57,6 +57,60 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `.octfail` passes when compilation fails and the error contains the declared substring.
 - `.octfail` fails on missing rejection, malformed header, or mismatch.
 
+
+## Lane policy (M5)
+
+- `[Fact]` / `[Theory]` are correctness-contract lanes.
+- `[Benchmark]` is a measurement lane (performance/timing), not a correctness-proof lane.
+- `[Artifact]` is a code-driven artifact-generation lane (evidence/scratch outputs), not a correctness-test lane.
+
+### Mixed-file partitioning
+
+A single `.octest` file may contain multiple lanes, but each CLI command executes only its lane:
+
+- `oct test` runs `[Fact]` / `[Theory]` + `.octfail`.
+- `oct bench` runs `[Benchmark]` only.
+- `oct artifact` runs `[Artifact]` only.
+
+```oct
+package Main
+
+[Fact]
+fn CorrectnessCheck() -> Void {
+    Assert.Equal(1 + 1, 2, "math")
+}
+
+[Benchmark]
+fn MeasureSomething() -> Void {
+    Print(1 + 1)
+}
+
+[Artifact]
+fn EmitReferenceData() -> Void {
+    let data = [1, 2, 3]
+    WriteOctagon("out/reference.octagon", data)
+}
+```
+
+### Assertion and timeout scope
+
+- `[Fact]` and `[Theory]` require assertions or `SkipTest("reason")`.
+- `[Benchmark]` and `[Artifact]` do not require assertions.
+- `[Fact]` has fixed `30.0s` cycle time; `[Theory]` rows default to `30.0s` and can opt into `[CycleTime(...)]`.
+- Current timeout policy for `[Benchmark]` and `[Artifact]` is unchanged/deferred.
+
+### Artifact output policy
+
+- Artifact functions write files explicitly from user code.
+- `WriteOctagon(...)` is the primary structured output helper today; other formats may be added later.
+- Artifact lane execution does not impose a mandatory output directory.
+
+### `.octagon` guidance
+
+- `.octagon` artifacts are intended to be human-readable, LLM-readable, and Oct-type-shaped evidence.
+- Schema/version metadata is encouraged for long-lived or machine-consumed artifacts, but not mandatory.
+- Reports summarize conclusions; artifacts preserve the underlying evidence.
+
 ## Assert helpers (`.octest` test-only surface)
 
 These helpers are intended for `.octest` tests and are not part of general runtime program semantics:
