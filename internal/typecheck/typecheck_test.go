@@ -233,7 +233,7 @@ func TestCheckValidatesM18Assignments(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 1.5 return m }", "function Main: assigned value type does not match indexed element type")
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0] = 9 return m }", "function Main: matrix index assignment requires exactly 2 indices, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Void { PROMETHEUS { return } }", "function Main: PROMETHEUS blocks are only valid inside [Benchmark] functions")
-	assertTypeErrorContains(t, "record Board { Flag: Bool } fn Main() -> Int { var board = Board { Flag: false } board.Flag = true return 0 }", "function Main: board field assignment is only valid inside flow state bodies")
+	assertTypeErrorContains(t, "record Board { Flag: Bool } fn Main() -> Int { var board = Board { Flag: false } board.Flag = true return 0 }", "function Main: field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)")
 	assertTypeErrorContains(t, "record Board { Flag: Bool } flow F(board: Board) -> Int { state S { let shadow = board shadow.Flag = true return 0 } }", "function F: only board field assignment is supported")
 	assertTypeErrorContains(t, "record Board { Count: Int } flow F(board: Board) -> Int { state S { board.Count = 1.5 return 0 } }", "function F: assignment to board.Count: expected Int, got Float")
 }

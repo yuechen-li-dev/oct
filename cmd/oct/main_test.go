@@ -1592,7 +1592,7 @@ func TestM18MutableLocalsAndReassignment(t *testing.T) {
 		{"dimension mismatch reassignment", "fn Main() -> Int<m> { var d = 1m d = 2s return d }", "assignment to d: expected Int<m>, got Int<s>"},
 		{"assign to immutable let", "fn Main() -> Int { let x = 1 x = 2 return x }", "cannot assign to immutable binding 'x'"},
 		{"assign to unknown name", "fn Main() -> Int { x = 1 return 0 }", "unknown binding 'x'"},
-		{"record field mutation rejected", "record Point { X: Int Y: Int } fn Main() -> Int { var p = Point { X: 1 Y: 2 } p.X = 3 return 0 }", "board field assignment is only valid inside flow state bodies"},
+		{"record field mutation rejected", "record Point { X: Int Y: Int } fn Main() -> Int { var p = Point { X: 1 Y: 2 } p.X = 3 return 0 }", "field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)"},
 		{"vector element mutation rejected", "fn Main() -> Vector<Int> { var v = vector[1, 2] v[0] = 3 return v }", "index assignment requires array or matrix type"},
 		{"matrix element mutation wrong value type", "fn Main() -> Matrix<Int> { var m = matrix[[1, 2] [3, 4]] m[0, 1] = 9.5 return m }", "assigned value type does not match indexed element type"},
 	}

@@ -1,0 +1,613 @@
+package PrometheusMeasurementFilteringLab
+
+import Random
+
+record M4Scenario {
+    Name: String
+    TrueValues: Float[]
+    Measurements: Float[]
+    RegimeLabels: String[]
+    SpikeAmplitude: Float
+    StepIndex: Int
+    DriftStart: Int
+}
+
+record M4Facts {
+    SampleCount: Int
+    RecentAbsResidual: Float
+    RecentOutputVariation: Float
+    SpikeRateEstimate: Float
+    JitterEstimate: Float
+    StepChangeSuspected: Bool
+    DriftSuspected: Bool
+    Confidence: Float
+}
+
+record M4Policy {
+    Name: String
+    Kind: String
+    MinCommitTicks: Int
+    SwitchMargin: Float
+    ConfidenceThreshold: Float
+    UseParallel: Bool
+    SwitchMechanic: String
+}
+
+record M4Result {
+    Scenario: String
+    Policy: String
+    QualityScore: Float
+    SwitchingScore: Float
+    ConfidenceScore: Float
+    ImplementationCostScore: Float
+    CompositeScore: Float
+    MeanAbsoluteError: Float
+    Stability: Float
+    SpikeDisturbance: Float
+    StepSettlingDelay: Int
+    DriftTrackingError: Float
+    SwitchCount: Int
+    SwitchJumpMean: Float
+    WarmupPenalty: Float
+    ThrashScore: Float
+    ConfidenceDrop: Float
+    ConfidenceRecovery: Float
+}
+
+record M4RunState {
+    SelectedKind: String
+    SelectedEstimate: Float
+    LastSwitchTick: Int
+    MinCommitRemaining: Int
+    SwitchCount: Int
+    ThrashCount: Int
+    PrevEstimate: Float
+    CandidateEmaFast: Float
+    CandidateEmaSlow: Float
+    CandidateHybrid: Float
+    CandidateMedian: Float
+}
+
+fn M4Policies() -> M4Policy[] {
+    return [
+        M4Policy {
+            Name: "oracle-per-regime"
+            Kind: "oracle"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "warm"
+        },
+        M4Policy {
+            Name: "static-conservative"
+            Kind: "static-conservative"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "warm"
+        },
+        M4Policy {
+            Name: "static-smooth"
+            Kind: "static-smooth"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "warm"
+        },
+        M4Policy {
+            Name: "greedy-fact-switch"
+            Kind: "greedy"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "cold"
+        },
+        M4Policy {
+            Name: "dominatus-mincommit-hysteresis"
+            Kind: "dominatus"
+            MinCommitTicks: 8
+            SwitchMargin: 0.15
+            ConfidenceThreshold: 0.45
+            UseParallel: false
+            SwitchMechanic: "warm"
+        },
+        M4Policy {
+            Name: "dominatus-parallel-candidates"
+            Kind: "dominatus"
+            MinCommitTicks: 8
+            SwitchMargin: 0.15
+            ConfidenceThreshold: 0.45
+            UseParallel: true
+            SwitchMechanic: "parallel"
+        }
+    ]
+}
+
+fn M4BuildScenarios(seed: Int, n: Int) -> M4Scenario[] {
+    return [
+        M4ScenarioFromSegments("stable-to-spike-heavy", seed + 11, n, ["stable", "spike-heavy"]),
+        M4ScenarioFromSegments("spike-heavy-to-stable", seed + 17, n, ["spike-heavy", "stable"]),
+        M4ScenarioFromSegments("stable-to-step-change", seed + 23, n, ["stable", "step-change"]),
+        M4ScenarioFromSegments("moderate-jitter-to-slow-drift", seed + 29, n, ["moderate-jitter", "slow-drift"]),
+        M4ScenarioFromSegments("mixed-hostile-to-stable", seed + 31, n, ["mixed-hostile", "stable"]),
+        M4ScenarioFromSegments("false-alarm-stable-isolated-spikes", seed + 37, n, ["false-alarm"])
+    ]
+}
+
+fn M4ScenarioFromSegments(name: String, seed: Int, n: Int, segments: String[]) -> M4Scenario {
+    var trueValues: Float[] = []
+    var measurements: Float[] = []
+    var regimeLabels: String[] = []
+
+    var base = 10.0
+    var stepIndex = -1
+    var driftStart = -1
+    var spikeAmplitude = 3.0
+
+    var rng = Random.Gaussian(Random.RngSeed(seed), 0.0, 0.0).Next
+
+    for i in 0..n {
+        let segment = segments[FloorToInt(Float(i * Len(segments)) / Float(n))]
+        regimeLabels = Append(regimeLabels, segment)
+
+        var jitter = 0.05
+        var spikeProbability = 0.0
+        var driftPerSample = 0.0
+
+        if segment == "spike-heavy" {
+            jitter = 0.12
+            spikeProbability = 0.14
+            spikeAmplitude = 3.5
+        }
+
+        if segment == "moderate-jitter" {
+            jitter = 0.2
+            spikeProbability = 0.03
+            spikeAmplitude = 1.2
+        }
+
+        if segment == "slow-drift" {
+            jitter = 0.12
+            driftPerSample = 0.03
+            driftStart = i
+        }
+
+        if segment == "mixed-hostile" {
+            jitter = 0.25
+            spikeProbability = 0.08
+            driftPerSample = 0.02
+            if i > n / 5 and stepIndex < 0 {
+                stepIndex = i
+                base = base + 2.2
+            }
+        }
+
+        if segment == "step-change" and i >= n / 2 {
+            if stepIndex < 0 {
+                stepIndex = i
+                base = base + 2.8
+            }
+            jitter = 0.12
+        }
+
+        if segment == "false-alarm" {
+            jitter = 0.05
+            spikeProbability = if i == n / 3 or i == (n / 3 + 2) { 1.0 } else { 0.0 }
+            spikeAmplitude = 3.0
+        }
+
+        base = base + driftPerSample
+        trueValues = Append(trueValues, base)
+
+        let jitterSample = Random.RandNormal(rng, 0.0, jitter)
+        rng = jitterSample.Next
+
+        let trigger = Random.RandBernoulli(rng, spikeProbability)
+        rng = trigger.Next
+
+        var spike = 0.0
+        if trigger.Value {
+            let sign = Random.RandBernoulli(rng, 0.5)
+            rng = sign.Next
+            spike = if sign.Value { spikeAmplitude } else { 0.0 - spikeAmplitude }
+        }
+
+        measurements = Append(measurements, base + jitterSample.Value + spike)
+    }
+
+    return M4Scenario {
+        Name: name
+        TrueValues: trueValues
+        Measurements: measurements
+        RegimeLabels: regimeLabels
+        SpikeAmplitude: spikeAmplitude
+        StepIndex: stepIndex
+        DriftStart: driftStart
+    }
+}
+
+fn M4RunPolicy(s: M4Scenario, p: M4Policy) -> M4Result {
+    var st = M4RunState {
+        SelectedKind: "ema-slow"
+        SelectedEstimate: s.Measurements[0]
+        LastSwitchTick: -999
+        MinCommitRemaining: 0
+        SwitchCount: 0
+        ThrashCount: 0
+        PrevEstimate: s.Measurements[0]
+        CandidateEmaFast: s.Measurements[0]
+        CandidateEmaSlow: s.Measurements[0]
+        CandidateHybrid: s.Measurements[0]
+        CandidateMedian: s.Measurements[0]
+    }
+
+    var output: Float[] = []
+    var confidenceSeries: Float[] = []
+    var switchJumpSum = 0.0
+    var warmPenaltySum = 0.0
+
+    for i in 0..Len(s.Measurements) {
+        let measurement = s.Measurements[i]
+        st = M4UpdateCandidates(st, measurement)
+
+        let facts = M4FactsFromWindow(i, s.Measurements, output, s.TrueValues)
+        let choice = M4SelectKind(p, s.RegimeLabels[i], facts, st.SelectedKind)
+
+        var switched = false
+        if choice != st.SelectedKind and st.MinCommitRemaining <= 0 and facts.Confidence >= p.ConfidenceThreshold {
+            switched = true
+            st = st with {
+                SwitchCount: st.SwitchCount + 1
+            }
+
+            if i - st.LastSwitchTick < 6 {
+                st = st with {
+                    ThrashCount: st.ThrashCount + 1
+                }
+            }
+
+            let before = st.SelectedEstimate
+            st = M4DoSwitch(st, choice, measurement, p.SwitchMechanic)
+            switchJumpSum = switchJumpSum + Abs(st.SelectedEstimate - before)
+
+            st = st with {
+                LastSwitchTick: i
+                MinCommitRemaining: p.MinCommitTicks
+            }
+
+            if p.SwitchMechanic == "cold" {
+                warmPenaltySum = warmPenaltySum + Abs(st.SelectedEstimate - s.TrueValues[i])
+            }
+        }
+
+        if not switched and st.MinCommitRemaining > 0 {
+            st = st with {
+                MinCommitRemaining: st.MinCommitRemaining - 1
+            }
+        }
+
+        st = st with {
+            SelectedEstimate: M4EstimateByKind(st, st.SelectedKind)
+        }
+        output = Append(output, st.SelectedEstimate)
+        confidenceSeries = Append(confidenceSeries, facts.Confidence)
+    }
+
+    let mae = M4MeanAbsError(output, s.TrueValues)
+    let stability = M4MeanAbsStep(output)
+    let spikeDisturbance = M4SpikeDisturbance(output, s.TrueValues, s.RegimeLabels)
+    let stepDelay = M4StepSettling(output, s)
+    let driftErr = M4DriftErr(output, s)
+    let switchJumpMean = if st.SwitchCount == 0 { 0.0 } else { switchJumpSum / Float(st.SwitchCount) }
+    let thrashScore = Float(st.ThrashCount)
+
+    let confidenceDrop = M4ConfidenceDrop(confidenceSeries, s.RegimeLabels)
+    let confidenceRecovery = M4ConfidenceRecovery(confidenceSeries, s.RegimeLabels)
+
+    let quality = 1.5 * mae + 0.8 * stability + 1.0 * spikeDisturbance + 0.4 * Float(stepDelay) + 0.8 * driftErr
+    let switching = 0.7 * Float(st.SwitchCount) + 1.4 * switchJumpMean + 0.8 * thrashScore + 0.6 * warmPenaltySum
+    let confidence = 0.6 * confidenceDrop + 0.6 * (1.0 - confidenceRecovery)
+    let implementationCost = if p.UseParallel { 0.8 } else { 0.25 + 0.05 * Float(p.MinCommitTicks) }
+
+    return M4Result {
+        Scenario: s.Name
+        Policy: p.Name
+        QualityScore: quality
+        SwitchingScore: switching
+        ConfidenceScore: confidence
+        ImplementationCostScore: implementationCost
+        CompositeScore: quality + 0.5 * switching + 0.5 * confidence + 0.3 * implementationCost
+        MeanAbsoluteError: mae
+        Stability: stability
+        SpikeDisturbance: spikeDisturbance
+        StepSettlingDelay: stepDelay
+        DriftTrackingError: driftErr
+        SwitchCount: st.SwitchCount
+        SwitchJumpMean: switchJumpMean
+        WarmupPenalty: warmPenaltySum
+        ThrashScore: thrashScore
+        ConfidenceDrop: confidenceDrop
+        ConfidenceRecovery: confidenceRecovery
+    }
+}
+
+fn M4UpdateCandidates(st: M4RunState, m: Float) -> M4RunState {
+    let fast = 0.45 * m + 0.55 * st.CandidateEmaFast
+    let slow = 0.2 * m + 0.8 * st.CandidateEmaSlow
+    let hybrid = 0.2 * (M4Median3(st.CandidateMedian, st.CandidateEmaSlow, m)) + 0.8 * st.CandidateHybrid
+    let median = M4Median3(st.CandidateMedian, st.PrevEstimate, m)
+    return st with {
+        CandidateEmaFast: fast
+        CandidateEmaSlow: slow
+        CandidateHybrid: hybrid
+        CandidateMedian: median
+        PrevEstimate: m
+    }
+}
+
+fn M4SelectKind(p: M4Policy, label: String, f: M4Facts, current: String) -> String {
+    if p.Kind == "static-conservative" { return "hybrid" }
+    if p.Kind == "static-smooth" { return "ema-slow" }
+
+    if p.Kind == "oracle" {
+        if label == "spike-heavy" or label == "mixed-hostile" or label == "false-alarm" { return "hybrid" }
+        if label == "step-change" or label == "slow-drift" { return "ema-fast" }
+        return "ema-slow"
+    }
+
+    let scoreHybrid = 2.0 * f.SpikeRateEstimate + 1.2 * f.JitterEstimate + if f.StepChangeSuspected { -0.8 } else { 0.0 }
+    let scoreFast = 1.4 * if f.StepChangeSuspected { 1.0 } else { 0.0 } + 1.0 * if f.DriftSuspected { 1.0 } else { 0.0 } - 0.9 * f.SpikeRateEstimate
+    let scoreSlow = 0.4 + 0.7 * (1.0 - f.JitterEstimate) + 0.4 * f.Confidence
+
+    if p.Kind == "greedy" {
+        return if scoreHybrid > scoreFast and scoreHybrid > scoreSlow {
+            "hybrid"
+        } else {
+            if scoreFast > scoreSlow { "ema-fast" } else { "ema-slow" }
+        }
+    }
+
+    if p.Kind == "dominatus" {
+        let currentScore = if current == "hybrid" {
+            scoreHybrid
+        } else {
+            if current == "ema-fast" { scoreFast } else { scoreSlow }
+        }
+
+        let best = if scoreHybrid > scoreFast and scoreHybrid > scoreSlow {
+            "hybrid"
+        } else {
+            if scoreFast > scoreSlow { "ema-fast" } else { "ema-slow" }
+        }
+
+        let bestScore = if best == "hybrid" {
+            scoreHybrid
+        } else {
+            if best == "ema-fast" { scoreFast } else { scoreSlow }
+        }
+
+        if bestScore - currentScore >= p.SwitchMargin { return best }
+        return current
+    }
+
+    return current
+}
+
+fn M4DoSwitch(st: M4RunState, kind: String, m: Float, mechanic: String) -> M4RunState {
+    let seeded = st with {
+        SelectedKind: kind
+    }
+    if mechanic == "cold" {
+        return seeded with {
+            SelectedEstimate: m
+        }
+    }
+    if mechanic == "parallel" {
+        return seeded with {
+            SelectedEstimate: M4EstimateByKind(seeded, kind)
+        }
+    }
+    return seeded
+}
+
+fn M4EstimateByKind(st: M4RunState, kind: String) -> Float {
+    if kind == "hybrid" { return st.CandidateHybrid }
+    if kind == "ema-fast" { return st.CandidateEmaFast }
+    return st.CandidateEmaSlow
+}
+
+fn M4FactsFromWindow(i: Int, m: Float[], out: Float[], tv: Float[]) -> M4Facts {
+    let start = if i < 8 { 0 } else { i - 8 }
+    let w = M4Slice(m, start, i + 1)
+    let t = M4Slice(tv, start, i + 1)
+
+    let jitter = M4Std(w)
+    let spike = M4SpikeRate(w, jitter)
+    let residual = if Len(out) == 0 { 0.0 } else { Abs(m[i] - out[Len(out) - 1]) }
+    let outputVariation = if Len(out) < 2 { 0.0 } else { Abs(out[Len(out) - 1] - out[Len(out) - 2]) }
+    let stepFlag = if i < 2 { false } else { Abs(m[i] - m[i - 2]) > 2.2 * jitter + 0.6 }
+    let driftFlag = if Len(t) < 4 { false } else { Abs(t[Len(t) - 1] - t[0]) > 0.09 }
+    let confidence = 1.0 - M4Clamp01(1.8 * jitter + 1.5 * spike)
+
+    return M4Facts {
+        SampleCount: i + 1
+        RecentAbsResidual: residual
+        RecentOutputVariation: outputVariation
+        SpikeRateEstimate: spike
+        JitterEstimate: M4Clamp01(jitter)
+        StepChangeSuspected: stepFlag
+        DriftSuspected: driftFlag
+        Confidence: confidence
+    }
+}
+
+fn M4Evaluate(seed: Int, n: Int) -> M4Result[] {
+    let scenarios = M4BuildScenarios(seed, n)
+    let policies = M4Policies()
+
+    var out: M4Result[] = []
+    for si in 0..Len(scenarios) {
+        for pi in 0..Len(policies) {
+            out = Append(out, M4RunPolicy(scenarios[si], policies[pi]))
+        }
+    }
+
+    return out
+}
+
+fn M4MeanAbsError(a: Float[], b: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(a) {
+        sum = sum + Abs(a[i] - b[i])
+    }
+    return sum / Float(Len(a))
+}
+
+fn M4MeanAbsStep(a: Float[]) -> Float {
+    if Len(a) < 2 { return 0.0 }
+
+    var sum = 0.0
+    for i in 1..Len(a) {
+        sum = sum + Abs(a[i] - a[i - 1])
+    }
+    return sum / Float(Len(a) - 1)
+}
+
+fn M4SpikeDisturbance(y: Float[], t: Float[], labels: String[]) -> Float {
+    var sum = 0.0
+    var count = 0
+
+    for i in 0..Len(y) {
+        if labels[i] == "spike-heavy" or labels[i] == "mixed-hostile" or labels[i] == "false-alarm" {
+            sum = sum + Abs(y[i] - t[i])
+            count = count + 1
+        }
+    }
+
+    return if count == 0 { 0.0 } else { sum / Float(count) }
+}
+
+fn M4StepSettling(y: Float[], s: M4Scenario) -> Int {
+    if s.StepIndex < 0 { return 0 }
+
+    let target = s.TrueValues[Len(s.TrueValues) - 1]
+    for i in s.StepIndex..Len(y) {
+        if Abs(y[i] - target) < 0.25 {
+            return i - s.StepIndex
+        }
+    }
+
+    return Len(y) - s.StepIndex
+}
+
+fn M4DriftErr(y: Float[], s: M4Scenario) -> Float {
+    if s.DriftStart < 0 { return 0.0 }
+
+    var sum = 0.0
+    var count = 0
+    for i in s.DriftStart..Len(y) {
+        sum = sum + Abs(y[i] - s.TrueValues[i])
+        count = count + 1
+    }
+
+    return sum / Float(count)
+}
+
+fn M4ConfidenceDrop(c: Float[], labels: String[]) -> Float {
+    var stableSum = 0.0
+    var noisySum = 0.0
+    var stableCount = 0
+    var noisyCount = 0
+
+    for i in 0..Len(c) {
+        if labels[i] == "stable" {
+            stableSum = stableSum + c[i]
+            stableCount = stableCount + 1
+        } else {
+            noisySum = noisySum + c[i]
+            noisyCount = noisyCount + 1
+        }
+    }
+
+    if stableCount == 0 or noisyCount == 0 { return 0.0 }
+    return (stableSum / Float(stableCount)) - (noisySum / Float(noisyCount))
+}
+
+fn M4ConfidenceRecovery(c: Float[], labels: String[]) -> Float {
+    var noisySum = 0.0
+    var stableSum = 0.0
+    var noisyCount = 0
+    var stableCount = 0
+
+    for i in 0..Len(c) {
+        if labels[i] == "mixed-hostile" {
+            noisySum = noisySum + c[i]
+            noisyCount = noisyCount + 1
+        }
+        if labels[i] == "stable" and i > Len(c) / 2 {
+            stableSum = stableSum + c[i]
+            stableCount = stableCount + 1
+        }
+    }
+
+    if stableCount == 0 or noisyCount == 0 { return 0.5 }
+    return M4Clamp01((stableSum / Float(stableCount)) - (noisySum / Float(noisyCount)) + 0.5)
+}
+
+fn M4SpikeRate(w: Float[], j: Float) -> Float {
+    var count = 0
+    let m = M4Mean(w)
+
+    for i in 0..Len(w) {
+        if Abs(w[i] - m) > 2.5 * j + 0.4 {
+            count = count + 1
+        }
+    }
+
+    return Float(count) / Float(Len(w))
+}
+
+fn M4Mean(w: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(w) {
+        sum = sum + w[i]
+    }
+    return sum / Float(Len(w))
+}
+
+fn M4Std(w: Float[]) -> Float {
+    let m = M4Mean(w)
+    var sum = 0.0
+
+    for i in 0..Len(w) {
+        let d = w[i] - m
+        sum = sum + d * d
+    }
+
+    return Sqrt(sum / Float(Len(w)))
+}
+
+fn M4Slice(a: Float[], s: Int, e: Int) -> Float[] {
+    var out: Float[] = []
+    for i in s..e {
+        out = Append(out, a[i])
+    }
+    return out
+}
+
+fn M4Median3(a: Float, b: Float, c: Float) -> Float {
+    if a > b { return M4Median3(b, a, c) }
+    if b > c { return M4Median3(a, c, b) }
+    if a > b { return b }
+    return if c < b { c } else { b }
+}
+
+fn M4Clamp01(x: Float) -> Float {
+    if x < 0.0 { return 0.0 }
+    if x > 1.0 { return 1.0 }
+    return x
+}

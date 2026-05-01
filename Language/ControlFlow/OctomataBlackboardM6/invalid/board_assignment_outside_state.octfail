@@ -1,4 +1,4 @@
-expect error: "function Main: board field assignment is only valid inside flow state bodies"
+expect error: "function Main: field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)"
 
 package MainInvalid
 

@@ -825,7 +825,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		return false, nil
 	case ast.FieldAssignStmt:
 		if !ctx.inState {
-			return false, fmt.Errorf("function %s: board field assignment is only valid inside flow state bodies", ctx.name)
+			return false, fmt.Errorf("function %s: field assignment (`x.field = ...`) is only valid for `board.field` inside flow state bodies; for records, use immutable update (`x = x with { Field: value }`)", ctx.name)
 		}
 		if node.Target != "board" {
 			return false, fmt.Errorf("function %s: only board field assignment is supported", ctx.name)
