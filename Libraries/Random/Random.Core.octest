@@ -131,3 +131,4 @@ fn BernoulliAndRangesAndNormalAreNonDegenerate() -> Void {
     Assert.True(normalMean >= -0.5 and normalMean <= 0.5, "normal mean sanity")
     Assert.Equal(3.5, RandNormal(RngSeed(5), 3.5, 0.0).Value, "normal stddev=0 returns mean")
 }
+
