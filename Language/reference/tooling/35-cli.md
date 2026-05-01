@@ -22,6 +22,9 @@
 - `oct bench <path> --profile --profile-format pprof` emits raw Go `pprof` output (`bench.cpu.pprof`).
 - `oct bench <path> --profile --profile-format both` emits both artifacts.
 - `oct bench <path> --profile --filter <pattern>` profiles only the filtered benchmark subset.
+
+- Lane roles are intentionally partitioned: `test` = correctness contracts, `bench` = performance measurement, `artifact` = generated evidence outputs.
+- Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
 - `oct fmt <path>` formats one file or a directory tree in place.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
