@@ -23,6 +23,7 @@ COMMON_C=(
   "$NATIVE_DIR/reactor_judgment_engine.c"
   "$NATIVE_DIR/reactor_dominatus_blackboard.c"
   "$NATIVE_DIR/reactor_dominatus_filter.c"
+  "$NATIVE_DIR/reactor_dominatus_filter_policy.c"
   "$NATIVE_DIR/reactor_dominatus_sgemm_adapter.c"
   "$NATIVE_DIR/reactor_dominatus_slot_adapter.c"
   "$NATIVE_DIR/reactor_policy_memory.c"
