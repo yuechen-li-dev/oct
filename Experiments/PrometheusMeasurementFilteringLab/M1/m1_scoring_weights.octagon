@@ -1,0 +1,25 @@
+[ScoringWeight {
+    Regime: "stable-low-jitter"
+    QualityFormula: "0.45*mae + 0.45*stability + 0.05*spike + 0.05*drift"
+    ComplexityFormula: "0.03*complexity"
+}, ScoringWeight {
+    Regime: "moderate-jitter"
+    QualityFormula: "0.35*mae + 0.35*stability + 0.20*spike + 0.10*drift"
+    ComplexityFormula: "0.03*complexity"
+}, ScoringWeight {
+    Regime: "spike-heavy"
+    QualityFormula: "0.20*mae + 0.55*spike + 0.15*stability + 0.02*stepDelay + 0.10*drift"
+    ComplexityFormula: "0.03*complexity"
+}, ScoringWeight {
+    Regime: "step-change"
+    QualityFormula: "0.55*stepDelay + 0.20*mae + 0.15*stability + 0.10*spike"
+    ComplexityFormula: "0.03*complexity"
+}, ScoringWeight {
+    Regime: "slow-drift"
+    QualityFormula: "0.50*drift + 0.25*mae + 0.20*stability + 0.05*spike"
+    ComplexityFormula: "0.03*complexity"
+}, ScoringWeight {
+    Regime: "mixed-hostile"
+    QualityFormula: "0.25*mae + 0.30*spike + 0.25*stability + 0.10*stepDelay + 0.10*drift"
+    ComplexityFormula: "0.03*complexity"
+}]

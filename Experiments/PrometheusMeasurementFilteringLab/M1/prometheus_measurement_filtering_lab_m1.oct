@@ -40,13 +40,29 @@ record CandidateScore {
     DriftTrackingError: Float
     Stability: Float
     Complexity: Int
+    QualityScore: Float
+    ComplexityScore: Float
     CompositeScore: Float
 }
 
 record RegimeRecommendation {
     Regime: String
     Candidate: String
+    QualityWinner: String
     CompositeScore: Float
+}
+
+record Top3Summary {
+    Regime: String
+    Rank1: String
+    Rank2: String
+    Rank3: String
+}
+
+record ScoringWeight {
+    Regime: String
+    QualityFormula: String
+    ComplexityFormula: String
 }
 
 fn M1RegimeConfigs() -> RegimeConfig[] {
@@ -153,7 +169,9 @@ fn M1Score(series: RegimeSeries, candidate: CandidateConfig) -> CandidateScore {
     let stepDelay = StepDelay(estimate, series, 0.25)
     let driftErr = DriftError(estimate, series)
     let stability = MeanAbsStep(estimate)
-    let composite = mae + spike + Float(stepDelay) * 0.03 + driftErr + stability * 0.3 + Float(candidate.Complexity) * 0.02
+    let quality = M1QualityScore(series.Name, mae, spike, stepDelay, driftErr, stability)
+    let complexityScore = Float(candidate.Complexity) * 0.03
+    let composite = quality + complexityScore
     return CandidateScore {
         Regime: series.Name
         Candidate: candidate.Name
@@ -163,6 +181,8 @@ fn M1Score(series: RegimeSeries, candidate: CandidateConfig) -> CandidateScore {
         DriftTrackingError: driftErr
         Stability: stability
         Complexity: candidate.Complexity
+        QualityScore: quality
+        ComplexityScore: complexityScore
         CompositeScore: composite
     }
 }
@@ -186,7 +206,8 @@ fn M1FinalRecommendations(seed: Int, sampleCount: Int) -> RegimeRecommendation[]
     var out: RegimeRecommendation[] = []
     for ri in 0..Len(regimes) {
         let best = BestForRegime(score, regimes[ri].Name)
-        out = Append(out, RegimeRecommendation { Regime: regimes[ri].Name Candidate: best.Candidate CompositeScore: best.CompositeScore })
+        let qualityBest = BestQualityForRegime(score, regimes[ri].Name)
+        out = Append(out, RegimeRecommendation { Regime: regimes[ri].Name Candidate: best.Candidate QualityWinner: qualityBest.Candidate CompositeScore: best.CompositeScore })
     }
     return out
 }
@@ -203,6 +224,68 @@ fn BestForRegime(scores: CandidateScore[], regime: String) -> CandidateScore {
         }
     }
     return best
+}
+
+fn BestQualityForRegime(scores: CandidateScore[], regime: String) -> CandidateScore {
+    var found = false
+    var best = scores[0]
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime {
+            if found == false or scores[i].QualityScore < best.QualityScore {
+                best = scores[i]
+                found = true
+            }
+        }
+    }
+    return best
+}
+
+fn M1Top3ByRegime(seed: Int, sampleCount: Int) -> Top3Summary[] {
+    let scores = M1ScoreMatrix(seed, sampleCount)
+    let regimes = M1RegimeConfigs()
+    var out: Top3Summary[] = []
+    for ri in 0..Len(regimes) {
+        let ranked = RankedForRegime(scores, regimes[ri].Name)
+        out = Append(out, Top3Summary { Regime: regimes[ri].Name Rank1: ranked[0].Candidate Rank2: ranked[1].Candidate Rank3: ranked[2].Candidate })
+    }
+    return out
+}
+
+fn RankedForRegime(scores: CandidateScore[], regime: String) -> CandidateScore[] {
+    var rows: CandidateScore[] = []
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime { rows = Append(rows, scores[i]) }
+    }
+    for i in 0..Len(rows) {
+        for j in 0..Len(rows) - 1 {
+            if rows[j].CompositeScore > rows[j + 1].CompositeScore {
+                let t = rows[j]
+                rows[j] = rows[j + 1]
+                rows[j + 1] = t
+            }
+        }
+    }
+    return rows
+}
+
+fn M1QualityScore(regime: String, mae: Float, spike: Float, stepDelay: Int, driftErr: Float, stability: Float) -> Float {
+    if regime == "stable-low-jitter" { return mae * 0.45 + stability * 0.45 + spike * 0.05 + driftErr * 0.05 }
+    if regime == "moderate-jitter" { return mae * 0.35 + stability * 0.35 + spike * 0.20 + driftErr * 0.10 }
+    if regime == "spike-heavy" { return mae * 0.20 + spike * 0.55 + stability * 0.15 + Float(stepDelay) * 0.02 + driftErr * 0.10 }
+    if regime == "step-change" { return Float(stepDelay) * 0.55 + mae * 0.20 + stability * 0.15 + spike * 0.10 }
+    if regime == "slow-drift" { return driftErr * 0.50 + mae * 0.25 + stability * 0.20 + spike * 0.05 }
+    return mae * 0.25 + spike * 0.30 + stability * 0.25 + Float(stepDelay) * 0.10 + driftErr * 0.10
+}
+
+fn M1ScoringWeights() -> ScoringWeight[] {
+    return [
+        ScoringWeight { Regime: "stable-low-jitter" QualityFormula: "0.45*mae + 0.45*stability + 0.05*spike + 0.05*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "moderate-jitter" QualityFormula: "0.35*mae + 0.35*stability + 0.20*spike + 0.10*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "spike-heavy" QualityFormula: "0.20*mae + 0.55*spike + 0.15*stability + 0.02*stepDelay + 0.10*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "step-change" QualityFormula: "0.55*stepDelay + 0.20*mae + 0.15*stability + 0.10*spike" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "slow-drift" QualityFormula: "0.50*drift + 0.25*mae + 0.20*stability + 0.05*spike" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "mixed-hostile" QualityFormula: "0.25*mae + 0.30*spike + 0.25*stability + 0.10*stepDelay + 0.10*drift" ComplexityFormula: "0.03*complexity" }
+    ]
 }
 
 fn MeanAbsError(a: Float[], b: Float[]) -> Float {

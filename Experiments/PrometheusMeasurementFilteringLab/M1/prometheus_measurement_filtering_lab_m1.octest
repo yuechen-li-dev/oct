@@ -44,6 +44,31 @@ fn M1BehaviorMedianAndEmaAndStepSpeed() -> Void {
 }
 
 [Fact]
+fn M1SpikeHeavySanityMedianOrHybridBeatsRawOnSpikeSensitivity() -> Void {
+    let truth = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+    let observed = [10.0, 10.0, 18.0, 10.0, 10.0, 19.0, 10.0]
+    let rawOut = M1ApplyCandidate(CandidateConfig { Name: "raw" Kind: "raw" ParamA: 0.0 ParamB: 0.0 Complexity: 1 }, observed)
+    let medianOut = M1ApplyCandidate(CandidateConfig { Name: "median-3" Kind: "median" ParamA: 3.0 ParamB: 0.0 Complexity: 2 }, observed)
+    let hybridOut = M1ApplyCandidate(CandidateConfig { Name: "hybrid-median3-ema02" Kind: "hybrid" ParamA: 3.0 ParamB: 0.2 Complexity: 3 }, observed)
+    let rawSpike = SpikeSensitivity(rawOut, truth, 9.0)
+    let medianSpike = SpikeSensitivity(medianOut, truth, 9.0)
+    let hybridSpike = SpikeSensitivity(hybridOut, truth, 9.0)
+    let better = if medianSpike < rawSpike { true } else { hybridSpike < rawSpike }
+    Assert.True(better, "median or hybrid must beat raw on spike sensitivity")
+}
+
+[Fact]
+fn M1TrueVsObservedGuard() -> Void {
+    let truth = [10.0, 10.0, 10.0]
+    let observed = [10.0, 50.0, 10.0]
+    let estimate = [10.0, 10.0, 10.0]
+    let errVsTruth = MeanAbsError(estimate, truth)
+    let errVsObserved = MeanAbsError(estimate, observed)
+    Assert.Equal(0.0, errVsTruth, "error against truth should be zero")
+    Assert.True(errVsObserved > 0.0, "error against observed should be non-zero")
+}
+
+[Fact]
 fn M1RecommendationsAreDeterministic() -> Void {
     let a = M1FinalRecommendations(4242, 96)
     let b = M1FinalRecommendations(4242, 96)
@@ -70,6 +95,8 @@ fn SameScoreMatrix(a: CandidateScore[], b: CandidateScore[]) -> Bool {
         if a[i].DriftTrackingError != b[i].DriftTrackingError { return false }
         if a[i].Stability != b[i].Stability { return false }
         if a[i].Complexity != b[i].Complexity { return false }
+        if a[i].QualityScore != b[i].QualityScore { return false }
+        if a[i].ComplexityScore != b[i].ComplexityScore { return false }
         if a[i].CompositeScore != b[i].CompositeScore { return false }
     }
     return true
@@ -80,6 +107,7 @@ fn SameRecommendations(a: RegimeRecommendation[], b: RegimeRecommendation[]) -> 
     for i in 0..Len(a) {
         if a[i].Regime != b[i].Regime { return false }
         if a[i].Candidate != b[i].Candidate { return false }
+        if a[i].QualityWinner != b[i].QualityWinner { return false }
         if a[i].CompositeScore != b[i].CompositeScore { return false }
     }
     return true
@@ -98,4 +126,19 @@ fn EmitM1CandidateFilterMatrix() -> Void {
 [Artifact]
 fn EmitM1FinalRecommendation() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_final_recommendation.octagon", M1FinalRecommendations(1337, 96))
+}
+
+[Artifact]
+fn EmitM1MetricBreakdown() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_metric_breakdown.octagon", M1ScoreMatrix(1337, 96))
+}
+
+[Artifact]
+fn EmitM1Top3ByRegime() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_top3_by_regime.octagon", M1Top3ByRegime(1337, 96))
+}
+
+[Artifact]
+fn EmitM1ScoringWeights() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_scoring_weights.octagon", M1ScoringWeights())
 }
