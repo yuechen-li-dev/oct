@@ -51,3 +51,27 @@
 ## Validation results
 - Built and executed native Marionette target set including filter tests.
 - Existing ResourceLease and PrometheusReactor_Sgemm test slices were executed to check no regressions.
+
+## M5 Follow-up: warmup + warm-start corrections
+- Root cause (warmup): previous implementation used a generic `sample_count < 3` warmup rule for all kinds, which under-reported warmup for windowed filters.
+- Root cause (warm-start): previous warm-start only seeded scalar estimate and did not seed median window state for windowed kinds.
+
+### Corrected warmup semantics
+- MEDIAN/HYBRID now report warmup based on window readiness: `window_count < params.window`.
+- EMA/HYSTERESIS retain warmup behavior based on sample count threshold (`sample_count < 3`).
+
+### Corrected warm-start behavior
+- Warm-start for MEDIAN/HYBRID now seeds all window entries with the prior estimate, sets `window_count=params.window`, and `window_index=0`.
+- This makes warm transfer truthful and prevents immediate cold-window artifacts after policy handoff.
+
+### Additional tests added
+- median window-9 warmup progression until full window.
+- hybrid window-5 warmup progression until full window.
+- warm-started median spike suppression with immediate non-warmup status.
+- warm-started hybrid spike suppression with immediate non-warmup status.
+- explicit EMA/hysteresis warmup contract preservation tests.
+
+### Follow-up validation
+- Native build and Marionette filter suite rerun.
+- Existing ResourceLease and PrometheusReactor_Sgemm slices rerun.
+- `go test ./...` rerun.

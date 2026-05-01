@@ -49,6 +49,17 @@ static double compute_median(const double* values, uint32_t count) {
   return copy[count / 2u];
 }
 
+static uint32_t is_windowed_kind(prom_dominatus_filter_kind kind) {
+  return kind == PROM_DOM_FILTER_KIND_MEDIAN || kind == PROM_DOM_FILTER_KIND_HYBRID_MEDIAN_EMA;
+}
+
+static uint32_t compute_warmup(const prom_dominatus_filter_state* state) {
+  if (is_windowed_kind(state->kind) != 0u) {
+    return state->window_count < state->params.window ? 1u : 0u;
+  }
+  return state->sample_count < 3u ? 1u : 0u;
+}
+
 prom_dominatus_filter_params prom_dominatus_filter_params_ema(double alpha) {
   prom_dominatus_filter_params params;
   memset(&params, 0, sizeof(params));
@@ -98,12 +109,20 @@ void prom_dominatus_filter_init(prom_dominatus_filter_state* state, const prom_d
 void prom_dominatus_filter_warm_start(prom_dominatus_filter_state* state,
                                       const prom_dominatus_filter_params* params,
                                       double prior_estimate) {
+  uint32_t i;
   prom_dominatus_filter_init(state, params);
   if (state == NULL || state->kind == PROM_DOM_FILTER_KIND_NONE) {
     return;
   }
   state->initialized = 1u;
   state->estimate = prior_estimate;
+  if (is_windowed_kind(state->kind) != 0u) {
+    for (i = 0u; i < state->params.window; ++i) {
+      state->window_buffer[i] = prior_estimate;
+    }
+    state->window_count = state->params.window;
+    state->window_index = 0u;
+  }
 }
 
 void prom_dominatus_filter_reset(prom_dominatus_filter_state* state) {
@@ -129,13 +148,13 @@ prom_dominatus_filter_output prom_dominatus_filter_update(prom_dominatus_filter_
   if (state->initialized == 0u) {
     state->initialized = 1u;
     state->estimate = measurement;
-    if (state->kind == PROM_DOM_FILTER_KIND_MEDIAN || state->kind == PROM_DOM_FILTER_KIND_HYBRID_MEDIAN_EMA) {
+    if (is_windowed_kind(state->kind) != 0u) {
       state->window_buffer[0] = measurement;
       state->window_count = 1u;
       state->window_index = 1u % state->params.window;
     }
   } else {
-    if (state->kind == PROM_DOM_FILTER_KIND_MEDIAN || state->kind == PROM_DOM_FILTER_KIND_HYBRID_MEDIAN_EMA) {
+    if (is_windowed_kind(state->kind) != 0u) {
       state->window_buffer[state->window_index] = measurement;
       state->window_index = (state->window_index + 1u) % state->params.window;
       if (state->window_count < state->params.window) {
@@ -181,6 +200,6 @@ prom_dominatus_filter_output prom_dominatus_filter_update(prom_dominatus_filter_
   out.sample_count = state->sample_count;
   out.updated = updated;
   out.held = updated == 0u ? 1u : 0u;
-  out.warmup = state->sample_count < 3u ? 1u : 0u;
+  out.warmup = compute_warmup(state);
   return out;
 }

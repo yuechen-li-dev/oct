@@ -90,3 +90,81 @@ FACT(PrometheusDominatusFilter_InvalidParamsRejected)
     const prom_dominatus_filter_output out = prom_dominatus_filter_update(&state, 1.0, 0u);
     ASSERT_EQUAL(0u, out.valid, "rejected filter should emit invalid output");
 }
+
+FACT(PrometheusDominatusFilter_MedianWarmupUsesFullWindow)
+{
+    prom_dominatus_filter_state state{};
+    const prom_dominatus_filter_params params = prom_dominatus_filter_params_median(9u);
+    prom_dominatus_filter_init(&state, &params);
+
+    prom_dominatus_filter_output out{};
+    for (std::uint64_t i = 0; i < 9; ++i) {
+        out = prom_dominatus_filter_update(&state, 10.0 + static_cast<double>(i), i);
+        if (i < 8u) {
+            ASSERT_EQUAL(1u, out.warmup, "median9 should remain in warmup until ninth sample");
+        }
+    }
+    ASSERT_EQUAL(0u, out.warmup, "median9 should exit warmup at ninth sample");
+}
+
+FACT(PrometheusDominatusFilter_HybridWarmupUsesFullWindow)
+{
+    prom_dominatus_filter_state state{};
+    const prom_dominatus_filter_params params = prom_dominatus_filter_params_hybrid_median_ema(5u, 0.2);
+    prom_dominatus_filter_init(&state, &params);
+
+    prom_dominatus_filter_output out{};
+    for (std::uint64_t i = 0; i < 5; ++i) {
+        out = prom_dominatus_filter_update(&state, 20.0 + static_cast<double>(i), i);
+        if (i < 4u) {
+            ASSERT_EQUAL(1u, out.warmup, "hybrid median5 should remain in warmup until fifth sample");
+        }
+    }
+    ASSERT_EQUAL(0u, out.warmup, "hybrid median5 should exit warmup at fifth sample");
+}
+
+FACT(PrometheusDominatusFilter_WarmStartMedianSeedsWindow)
+{
+    prom_dominatus_filter_state state{};
+    const prom_dominatus_filter_params params = prom_dominatus_filter_params_median(5u);
+    prom_dominatus_filter_warm_start(&state, &params, 10.0);
+
+    const prom_dominatus_filter_output out = prom_dominatus_filter_update(&state, 100.0, 1u);
+    ASSERT_TRUE(out.estimate > 9.99 && out.estimate < 10.01, "warm-started median should suppress first spike from seeded window");
+    ASSERT_EQUAL(0u, out.warmup, "warm-started median window should be ready immediately");
+}
+
+FACT(PrometheusDominatusFilter_WarmStartHybridSeedsMedianAndEma)
+{
+    prom_dominatus_filter_state state{};
+    const prom_dominatus_filter_params params = prom_dominatus_filter_params_hybrid_median_ema(3u, 0.2);
+    prom_dominatus_filter_warm_start(&state, &params, 10.0);
+
+    const prom_dominatus_filter_output out = prom_dominatus_filter_update(&state, 100.0, 1u);
+    ASSERT_TRUE(out.estimate > 9.99 && out.estimate < 10.01,
+                "warm-started hybrid should keep EMA consistent with seeded median window on first spike");
+    ASSERT_EQUAL(0u, out.warmup, "warm-started hybrid window should be ready immediately");
+}
+
+FACT(PrometheusDominatusFilter_EmaAndHysteresisWarmupUnchanged)
+{
+    {
+        prom_dominatus_filter_state state{};
+        const prom_dominatus_filter_params params = prom_dominatus_filter_params_ema(0.2);
+        prom_dominatus_filter_init(&state, &params);
+        ASSERT_EQUAL(1u, prom_dominatus_filter_update(&state, 1.0, 0u).warmup, "ema should warm up for first sample");
+        ASSERT_EQUAL(1u, prom_dominatus_filter_update(&state, 1.0, 1u).warmup, "ema should warm up for second sample");
+        ASSERT_EQUAL(0u, prom_dominatus_filter_update(&state, 1.0, 2u).warmup, "ema should exit warmup at third sample");
+    }
+    {
+        prom_dominatus_filter_state state{};
+        const prom_dominatus_filter_params params = prom_dominatus_filter_params_hysteresis(0.5);
+        prom_dominatus_filter_init(&state, &params);
+        ASSERT_EQUAL(1u, prom_dominatus_filter_update(&state, 1.0, 0u).warmup,
+                     "hysteresis should warm up for first sample");
+        ASSERT_EQUAL(1u, prom_dominatus_filter_update(&state, 1.0, 1u).warmup,
+                     "hysteresis should warm up for second sample");
+        ASSERT_EQUAL(0u, prom_dominatus_filter_update(&state, 1.0, 2u).warmup,
+                     "hysteresis should exit warmup at third sample");
+    }
+}
