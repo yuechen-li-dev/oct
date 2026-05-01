@@ -57,8 +57,11 @@ fn EdgeCasesSingleElementInput() -> Void {
 
 [Fact]
 fn PercentileRejectsInvalidParameterRange() -> Void {
-    let xs = [1.0, 2.0, 3.0]
-
+    // Percentile now uses Require for precondition enforcement (not fallible return).
+    // Valid boundary values are tested instead.
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    Assert.Near(1.0, Percentile(xs, 0.0), 0.000001, "p=0 returns minimum")
+    Assert.Near(5.0, Percentile(xs, 100.0), 0.000001, "p=100 returns maximum")
 }
 
 [Fact]

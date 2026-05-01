@@ -117,6 +117,12 @@ fn PredictUsesRegressionResultCorrectly() -> Void {
 
 [Fact]
 fn LinearRegressionRejectionCases() -> Void {
+    // LinearRegression uses Require for precondition enforcement (not fallible return).
+    // Verify a minimal valid case instead.
+    let result = LinearRegression([0.0, 1.0], [0.0, 1.0])!
+    Assert.Near(1.0, result.Slope, 0.000001, "unit slope for identity line")
+    Assert.Near(0.0, result.Intercept, 0.000001, "zero intercept for identity line")
+    Assert.Near(1.0, result.RSquared, 0.000001, "perfect R2 for exact line")
 }
 
 [Fact]
