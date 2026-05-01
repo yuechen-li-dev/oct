@@ -17,8 +17,7 @@
     ThrashScore: (0)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-spike-heavy"
     Policy: "static-conservative"
     QualityScore: (0.10124007882058898)
@@ -37,8 +36,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-spike-heavy"
     Policy: "static-smooth"
     QualityScore: (0.6423054101918233)
@@ -57,8 +55,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-spike-heavy"
     Policy: "greedy-fact-switch"
     QualityScore: (0.35616793259187707)
@@ -77,8 +74,7 @@ M4Result {
     ThrashScore: (8)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-spike-heavy"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (0.6423054101918233)
@@ -97,8 +93,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-spike-heavy"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (0.6423054101918233)
@@ -117,8 +112,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.749115180136637)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "oracle-per-regime"
     QualityScore: (0.08949472081639306)
@@ -137,8 +131,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "static-conservative"
     QualityScore: (0.07641129100203342)
@@ -157,8 +150,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "static-smooth"
     QualityScore: (0.3647815699602639)
@@ -177,8 +169,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "greedy-fact-switch"
     QualityScore: (0.30660980482810923)
@@ -197,8 +188,7 @@ M4Result {
     ThrashScore: (7)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (0.3647815699602639)
@@ -217,8 +207,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "spike-heavy-to-stable"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (0.3647815699602639)
@@ -237,8 +226,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.4949497953533774)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "oracle-per-regime"
     QualityScore: (1.3412213744174772)
@@ -257,8 +245,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "static-conservative"
     QualityScore: (5.523459869892746)
@@ -277,8 +264,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "static-smooth"
     QualityScore: (4.643599873146697)
@@ -297,8 +283,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "greedy-fact-switch"
     QualityScore: (4.709138875903262)
@@ -317,8 +302,7 @@ M4Result {
     ThrashScore: (1)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (4.643599873146697)
@@ -337,8 +321,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "stable-to-step-change"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (4.643599873146697)
@@ -357,8 +340,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.2414798170610981)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "oracle-per-regime"
     QualityScore: (0.21581343263039518)
@@ -377,8 +359,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "static-conservative"
     QualityScore: (0.36422933511326483)
@@ -397,8 +378,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "static-smooth"
     QualityScore: (0.2732162933974253)
@@ -417,8 +397,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "greedy-fact-switch"
     QualityScore: (0.2732162933974253)
@@ -437,8 +416,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (0.2732162933974253)
@@ -457,8 +435,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "moderate-jitter-to-slow-drift"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (0.2732162933974253)
@@ -477,8 +454,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "oracle-per-regime"
     QualityScore: (10.328974814327093)
@@ -497,8 +473,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "static-conservative"
     QualityScore: (10.335845192497517)
@@ -517,8 +492,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "static-smooth"
     QualityScore: (8.54076732101107)
@@ -537,8 +511,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "greedy-fact-switch"
     QualityScore: (1.2146245319251752)
@@ -557,8 +530,7 @@ M4Result {
     ThrashScore: (7)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (8.54076732101107)
@@ -577,8 +549,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "mixed-hostile-to-stable"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (8.54076732101107)
@@ -597,8 +568,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0.608709643279348)
     ConfidenceRecovery: (1)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "oracle-per-regime"
     QualityScore: (0.05766153790945513)
@@ -617,8 +587,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "static-conservative"
     QualityScore: (0.05766153790945513)
@@ -637,8 +606,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "static-smooth"
     QualityScore: (0.20920393840871077)
@@ -657,8 +625,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "greedy-fact-switch"
     QualityScore: (0.13005496522824814)
@@ -677,8 +644,7 @@ M4Result {
     ThrashScore: (1)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "dominatus-mincommit-hysteresis"
     QualityScore: (0.20920393840871077)
@@ -697,8 +663,7 @@ M4Result {
     ThrashScore: (0)
     ConfidenceDrop: (0)
     ConfidenceRecovery: (0.5)
-},
-M4Result {
+}, M4Result {
     Scenario: "false-alarm-stable-isolated-spikes"
     Policy: "dominatus-parallel-candidates"
     QualityScore: (0.20920393840871077)
