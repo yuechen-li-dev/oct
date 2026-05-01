@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+/* Dominatus subsystem blackboard core:
+ * this stores staged/visible control facts consumed across the Dominatus
+ * subsystem (Judgment Engine, slot HFSM/stack state machine, lease-control,
+ * and future measurement-filter/predictor seams). */
 enum {
   PROM_DOM_MAX_SLOTS = 8u,
   PROM_DOM_MAX_EVENTS = 32u,
