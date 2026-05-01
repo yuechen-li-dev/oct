@@ -1,4 +1,4 @@
-expect error: "tuple types are not supported"
+expect error: "tuple types are not supported; use records for heterogeneous values"
 
 package Main
 

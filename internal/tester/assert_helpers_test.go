@@ -239,7 +239,7 @@ func TestSkipTestValidationAndLaneRestrictions(t *testing.T) {
 		source  string
 		wantErr string
 	}{
-		{name: "no args", rel: "bad_no_args.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest() }\n", wantErr: "function 'SkipTest' expects 1 arguments, got 0"},
+		{name: "no args", rel: "bad_no_args.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest() }\n", wantErr: "function 'SkipTest' expects 1 argument, got 0"},
 		{name: "empty literal", rel: "bad_empty.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest(\"\") }\n", wantErr: "SkipTest reason must be non-empty"},
 		{name: "wrong type", rel: "bad_type.octest", source: "package Main\n[Fact]\nfn Bad() -> Void { SkipTest(123) }\n", wantErr: "function 'SkipTest' argument 1 expects String, got Int"},
 		{name: "non test file", rel: "bad_prod.oct", source: "package Main\nfn Bad() -> Void { SkipTest(\"nope\") }\n", wantErr: "SkipTest is only available in .octest files"},

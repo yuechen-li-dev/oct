@@ -1,4 +1,4 @@
-expect error: "function Sample: only board field assignment is supported"
+expect error: "function Sample: inside flow state bodies, field assignment is only supported on `board`, e.g. `board.Count = board.Count + 1`; ordinary records are immutable and must use `with`"
 
 package MainInvalid
 
