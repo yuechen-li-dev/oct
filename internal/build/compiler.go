@@ -1849,7 +1849,31 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			}
 		}
 		if builtin.IsName(x.Name) {
-			return "", "", false, false, unsupportedBuiltin(x.Name)
+			normalized := x.Name
+			if c.pkg.Name == "Random" {
+				switch x.Name {
+				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+					normalized = "Random." + x.Name
+				}
+			}
+			switch normalized {
+			case "Random.RngSeed":
+				return normalized, "Random.Rng", true, false, nil
+			case "Random.RandInt":
+				return normalized, "Random.RandIntResult", true, false, nil
+			case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal":
+				return normalized, "Random.RandFloatResult", true, false, nil
+			case "Random.RandBernoulli":
+				return normalized, "Random.RandBoolResult", true, false, nil
+			case "Random.CryptoRandInt":
+				return normalized, "Int", true, true, nil
+			case "Random.CryptoRandFloat01":
+				return normalized, "Float", true, true, nil
+			case "Random.CryptoRandBytes":
+				return normalized, "Bytes", true, true, nil
+			default:
+				return "", "", false, false, unsupportedBuiltin(x.Name)
+			}
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
 	case ast.FieldAccessExpr:
