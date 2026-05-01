@@ -1,20 +1,187 @@
 package PrometheusMeasurementFilteringLab
+
 import Random
-record ScalarSummary { SampleCount: Int Min: Float Max: Float Mean: Float Variance: Float StandardDeviation: Float CountZero: Int CountPositive: Int CountNegative: Int }
-record UniformBucketSummary { Bucket0: Int Bucket1: Int Bucket2: Int Bucket3: Int Bucket4: Int Bucket5: Int Bucket6: Int Bucket7: Int Bucket8: Int Bucket9: Int }
-record BernoulliSummary { P: Float SampleCount: Int TrueCount: Int ObservedProbability: Float }
-record SpikeSummary { SampleCount: Int ZeroCount: Int PositiveSpikeCount: Int NegativeSpikeCount: Int ObservedSpikeProbability: Float }
-record StateThreadingSummary { SameSeedMatch: Bool DifferentSeedDiffers: Bool OldStateRepeatWorks: Bool }
-fn M2CollectFloat01(seed: Int, n: Int) -> Float[] { var out: Float[] = []; for i in 0..n { let d = Random.RandFloat01(Random.RngSeed(seed * 10007 + i * 37 + 1)); out = Append(out, d.Value) }; return out }
-fn M2CollectFloatRange(seed: Int, n: Int, min: Float, max: Float) -> Float[] { var out: Float[] = []; for i in 0..n { let d = Random.RandFloatRange(Random.RngSeed(seed * 10007 + i * 37 + 2), min, max); out = Append(out, d.Value) }; return out }
-fn M2CollectNormal(seed: Int, n: Int, mean: Float, stddev: Float) -> Float[] { var out: Float[] = []; for i in 0..n { let d = Random.RandNormal(Random.RngSeed(seed * 10007 + i * 37 + 3), mean, stddev); out = Append(out, d.Value) }; return out }
-fn M2CollectJitter(seed: Int, n: Int, amplitude: Float) -> Float[] { var out: Float[] = []; for i in 0..n { let d = Random.Jitter(Random.RngSeed(seed * 10007 + i * 37 + 4), amplitude); out = Append(out, d.Value) }; return out }
-fn M2CollectSpike(seed: Int, n: Int, probability: Float, amplitude: Float) -> Float[] { var out: Float[] = []; for i in 0..n { let d = Random.Spike(Random.RngSeed(seed * 10007 + i * 37 + 5), probability, amplitude); out = Append(out, d.Value) }; return out }
-fn M2DriftWalk(seed: Int, n: Int, start: Float, stepStddev: Float) -> Float[] { var out: Float[] = []; var current = start; for i in 0..n { let d = Random.DriftStep(Random.RngSeed(seed * 10007 + i * 37 + 6), current, stepStddev); current = d.Value; out = Append(out, current) }; return out }
-fn M2Summarize(xs: Float[]) -> ScalarSummary { var min = xs[0]; var max = xs[0]; var sum = 0.0; var zero = 0; var pos = 0; var neg = 0; for i in 0..Len(xs) { let v = xs[i]; if v < min { min = v }; if v > max { max = v }; if v == 0.0 { zero = zero + 1 }; if v > 0.0 { pos = pos + 1 }; if v < 0.0 { neg = neg + 1 }; sum = sum + v }; let mean = sum / Float(Len(xs)); var sq = 0.0; for i in 0..Len(xs) { let d = xs[i] - mean; sq = sq + d * d }; let variance = sq / Float(Len(xs)); return ScalarSummary { SampleCount: Len(xs) Min: min Max: max Mean: mean Variance: variance StandardDeviation: Sqrt(variance) CountZero: zero CountPositive: pos CountNegative: neg } }
-fn M2UniformBuckets(xs: Float[]) -> UniformBucketSummary { var b0 = 0; var b1 = 0; var b2 = 0; var b3 = 0; var b4 = 0; var b5 = 0; var b6 = 0; var b7 = 0; var b8 = 0; var b9 = 0; for i in 0..Len(xs) { let idx = FloorToInt(xs[i] * 10.0); if idx <= 0 { b0 = b0 + 1 }; if idx == 1 { b1 = b1 + 1 }; if idx == 2 { b2 = b2 + 1 }; if idx == 3 { b3 = b3 + 1 }; if idx == 4 { b4 = b4 + 1 }; if idx == 5 { b5 = b5 + 1 }; if idx == 6 { b6 = b6 + 1 }; if idx == 7 { b7 = b7 + 1 }; if idx == 8 { b8 = b8 + 1 }; if idx >= 9 { b9 = b9 + 1 } }; return UniformBucketSummary { Bucket0: b0 Bucket1: b1 Bucket2: b2 Bucket3: b3 Bucket4: b4 Bucket5: b5 Bucket6: b6 Bucket7: b7 Bucket8: b8 Bucket9: b9 } }
-fn M2BernoulliSummary(seed: Int, n: Int, p: Float) -> BernoulliSummary { var c = 0; for i in 0..n { let d = Random.RandBernoulli(Random.RngSeed(seed * 10007 + i * 37 + 7), p); if d.Value { c = c + 1 } }; return BernoulliSummary { P: p SampleCount: n TrueCount: c ObservedProbability: Float(c) / Float(n) } }
-fn M2SpikeSummary(seed: Int, n: Int, probability: Float, amplitude: Float) -> SpikeSummary { let xs = M2CollectSpike(seed, n, probability, amplitude); var z = 0; var p = 0; var ng = 0; for i in 0..Len(xs) { if xs[i] == 0.0 { z = z + 1 }; if xs[i] > 0.0 { p = p + 1 }; if xs[i] < 0.0 { ng = ng + 1 } }; return SpikeSummary { SampleCount: n ZeroCount: z PositiveSpikeCount: p NegativeSpikeCount: ng ObservedSpikeProbability: Float(p + ng) / Float(n) } }
-fn M2NormalBuckets(xs: Float[]) -> Int[] { var out = [0, 0, 0, 0, 0, 0]; for i in 0..Len(xs) { let x = xs[i]; if x < -2.0 { out[0] = out[0] + 1 }; if x >= -2.0 and x < -1.0 { out[1] = out[1] + 1 }; if x >= -1.0 and x < 0.0 { out[2] = out[2] + 1 }; if x >= 0.0 and x < 1.0 { out[3] = out[3] + 1 }; if x >= 1.0 and x < 2.0 { out[4] = out[4] + 1 }; if x >= 2.0 { out[5] = out[5] + 1 } }; return out }
-fn M2SameFloats(a: Float[], b: Float[]) -> Bool { if Len(a) != Len(b) { return false }; for i in 0..Len(a) { if a[i] != b[i] { return false } }; return true }
-fn M2StateThreadingSummary() -> StateThreadingSummary { let a = M2CollectFloat01(123, 12); let b = M2CollectFloat01(123, 12); let c = M2CollectFloat01(124, 12); let r0 = Random.RngSeed(777); let d1 = Random.RandFloat01(r0); let dRepeat = Random.RandFloat01(r0); let d2 = Random.RandFloat01(d1.Next); return StateThreadingSummary { SameSeedMatch: M2SameFloats(a, b) DifferentSeedDiffers: not M2SameFloats(a, c) OldStateRepeatWorks: d1.Value == dRepeat.Value and d2.Value != d1.Value } }
+
+record ScalarSummary {
+    SampleCount: Int
+    Min: Float
+    Max: Float
+    Mean: Float
+    Variance: Float
+    CountZero: Int
+    CountPositive: Int
+    CountNegative: Int
+}
+
+record BernoulliSummary {
+    SampleCount: Int
+    TrueCount: Int
+    ObservedProbability: Float
+}
+
+record SpikeSummary {
+    SampleCount: Int
+    ZeroCount: Int
+    PositiveSpikeCount: Int
+    NegativeSpikeCount: Int
+}
+
+record StateThreadingSummary {
+    SameSeedMatch: Bool
+    DifferentSeedDiffers: Bool
+    ReusedStateRepeats: Bool
+    AdvancedStateDiffers: Bool
+}
+
+fn M2CollectFloat01(seed: Int, n: Int) -> Float[] {
+    var out: Float[] = []
+    for i in 0..n {
+        let draw = Random.RandFloat01(Random.RngSeed(seed * 10007 + i * 37 + 1))
+        out = Append(out, draw.Value)
+    }
+    return out
+}
+
+fn M2CollectFloatRange(seed: Int, n: Int, min: Float, max: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..n {
+        let draw = Random.RandFloatRange(Random.RngSeed(seed * 10007 + i * 37 + 2), min, max)
+        out = Append(out, draw.Value)
+    }
+    return out
+}
+
+fn M2CollectNormal(seed: Int, n: Int, mean: Float, stddev: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..n {
+        let draw = Random.RandNormal(Random.RngSeed(seed * 10007 + i * 37 + 3), mean, stddev)
+        out = Append(out, draw.Value)
+    }
+    return out
+}
+
+fn M2CollectJitter(seed: Int, n: Int, amplitude: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..n {
+        let draw = Random.Jitter(Random.RngSeed(seed * 10007 + i * 37 + 4), amplitude)
+        out = Append(out, draw.Value)
+    }
+    return out
+}
+
+fn M2CollectSpike(seed: Int, n: Int, probability: Float, amplitude: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..n {
+        let draw = Random.Spike(Random.RngSeed(seed * 10007 + i * 37 + 5), probability, amplitude)
+        out = Append(out, draw.Value)
+    }
+    return out
+}
+
+fn M2DriftWalk(seed: Int, n: Int, start: Float, stepStddev: Float) -> Float[] {
+    var out: Float[] = []
+    var current = start
+    for i in 0..n {
+        let draw = Random.DriftStep(Random.RngSeed(seed * 10007 + i * 37 + 6), current, stepStddev)
+        current = draw.Value
+        out = Append(out, current)
+    }
+    return out
+}
+
+fn M2Summarize(xs: Float[]) -> ScalarSummary {
+    var min = xs[0]
+    var max = xs[0]
+    var sum = 0.0
+    var zero = 0
+    var positive = 0
+    var negative = 0
+
+    for i in 0..Len(xs) {
+        let v = xs[i]
+        if v < min { min = v }
+        if v > max { max = v }
+        if v == 0.0 { zero = zero + 1 }
+        if v > 0.0 { positive = positive + 1 }
+        if v < 0.0 { negative = negative + 1 }
+        sum = sum + v
+    }
+
+    let mean = sum / Float(Len(xs))
+    var sq = 0.0
+    for i in 0..Len(xs) {
+        let d = xs[i] - mean
+        sq = sq + d * d
+    }
+
+    return ScalarSummary {
+        SampleCount: Len(xs)
+        Min: min
+        Max: max
+        Mean: mean
+        Variance: sq / Float(Len(xs))
+        CountZero: zero
+        CountPositive: positive
+        CountNegative: negative
+    }
+}
+
+fn M2BernoulliSummary(seed: Int, n: Int, p: Float) -> BernoulliSummary {
+    var trueCount = 0
+    for i in 0..n {
+        let draw = Random.RandBernoulli(Random.RngSeed(seed * 10007 + i * 37 + 7), p)
+        if draw.Value { trueCount = trueCount + 1 }
+    }
+
+    return BernoulliSummary {
+        SampleCount: n
+        TrueCount: trueCount
+        ObservedProbability: Float(trueCount) / Float(n)
+    }
+}
+
+fn M2SpikeSummary(seed: Int, n: Int, probability: Float, amplitude: Float) -> SpikeSummary {
+    let xs = M2CollectSpike(seed, n, probability, amplitude)
+    var zero = 0
+    var positive = 0
+    var negative = 0
+
+    for i in 0..Len(xs) {
+        if xs[i] == 0.0 { zero = zero + 1 }
+        if xs[i] > 0.0 { positive = positive + 1 }
+        if xs[i] < 0.0 { negative = negative + 1 }
+    }
+
+    return SpikeSummary {
+        SampleCount: n
+        ZeroCount: zero
+        PositiveSpikeCount: positive
+        NegativeSpikeCount: negative
+    }
+}
+
+fn M2SameFloats(a: Float[], b: Float[]) -> Bool {
+    if Len(a) != Len(b) { return false }
+    for i in 0..Len(a) {
+        if a[i] != b[i] { return false }
+    }
+    return true
+}
+
+fn M2StateThreadingSummary() -> StateThreadingSummary {
+    let first = M2CollectFloat01(1234, 12)
+    let sameSeed = M2CollectFloat01(1234, 12)
+    let differentSeed = M2CollectFloat01(4321, 12)
+
+    let r0 = Random.RngSeed(777)
+    let draw1 = Random.RandFloat01(r0)
+    let draw1Again = Random.RandFloat01(r0)
+    let draw2 = Random.RandFloat01(draw1.Next)
+
+    return StateThreadingSummary {
+        SameSeedMatch: M2SameFloats(first, sameSeed)
+        DifferentSeedDiffers: not M2SameFloats(first, differentSeed)
+        ReusedStateRepeats: draw1.Value == draw1Again.Value
+        AdvancedStateDiffers: draw2.Value != draw1.Value
+    }
+}
