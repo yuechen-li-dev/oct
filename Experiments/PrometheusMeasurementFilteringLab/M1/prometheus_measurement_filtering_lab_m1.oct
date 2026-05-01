@@ -1,0 +1,374 @@
+package PrometheusMeasurementFilteringLab
+
+import Random
+
+record RegimeConfig {
+    Name: String
+    Base: Float
+    JitterStddev: Float
+    SpikeProbability: Float
+    SpikeAmplitude: Float
+    StepIndex: Int
+    StepDelta: Float
+    DriftPerSample: Float
+}
+
+record CandidateConfig {
+    Name: String
+    Kind: String
+    ParamA: Float
+    ParamB: Float
+    Complexity: Int
+}
+
+record RegimeSeries {
+    Name: String
+    TrueValues: Float[]
+    Measurements: Float[]
+    StepIndex: Int
+    StepDelta: Float
+    SpikeAmplitude: Float
+    DriftPerSample: Float
+}
+
+record CandidateScore {
+    Regime: String
+    Candidate: String
+    MeanAbsoluteError: Float
+    SpikeRejection: Float
+    StepResponseDelay: Int
+    DriftTrackingError: Float
+    Stability: Float
+    Complexity: Int
+    QualityScore: Float
+    ComplexityScore: Float
+    CompositeScore: Float
+}
+
+record RegimeRecommendation {
+    Regime: String
+    Candidate: String
+    QualityWinner: String
+    CompositeScore: Float
+}
+
+record Top3Summary {
+    Regime: String
+    Rank1: String
+    Rank2: String
+    Rank3: String
+}
+
+record ScoringWeight {
+    Regime: String
+    QualityFormula: String
+    ComplexityFormula: String
+}
+
+fn M1RegimeConfigs() -> RegimeConfig[] {
+    return [
+        RegimeConfig { Name: "stable-low-jitter" Base: 10.0 JitterStddev: 0.05 SpikeProbability: 0.0 SpikeAmplitude: 0.0 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        RegimeConfig { Name: "moderate-jitter" Base: 10.0 JitterStddev: 0.25 SpikeProbability: 0.04 SpikeAmplitude: 1.0 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        RegimeConfig { Name: "spike-heavy" Base: 10.0 JitterStddev: 0.10 SpikeProbability: 0.12 SpikeAmplitude: 4.0 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
+        RegimeConfig { Name: "step-change" Base: 10.0 JitterStddev: 0.15 SpikeProbability: 0.03 SpikeAmplitude: 1.0 StepIndex: 40 StepDelta: 3.0 DriftPerSample: 0.0 },
+        RegimeConfig { Name: "slow-drift" Base: 9.0 JitterStddev: 0.12 SpikeProbability: 0.02 SpikeAmplitude: 0.8 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.035 },
+        RegimeConfig { Name: "mixed-hostile" Base: 10.0 JitterStddev: 0.22 SpikeProbability: 0.08 SpikeAmplitude: 2.5 StepIndex: 44 StepDelta: 2.5 DriftPerSample: 0.02 }
+    ]
+}
+
+fn M1CandidateConfigs() -> CandidateConfig[] {
+    return [
+        CandidateConfig { Name: "raw" Kind: "raw" ParamA: 0.0 ParamB: 0.0 Complexity: 1 },
+        CandidateConfig { Name: "ema-0.1" Kind: "ema" ParamA: 0.1 ParamB: 0.0 Complexity: 1 },
+        CandidateConfig { Name: "ema-0.2" Kind: "ema" ParamA: 0.2 ParamB: 0.0 Complexity: 1 },
+        CandidateConfig { Name: "ema-0.4" Kind: "ema" ParamA: 0.4 ParamB: 0.0 Complexity: 1 },
+        CandidateConfig { Name: "mean-3" Kind: "mean" ParamA: 3.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "mean-5" Kind: "mean" ParamA: 5.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "mean-9" Kind: "mean" ParamA: 9.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "median-3" Kind: "median" ParamA: 3.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "median-5" Kind: "median" ParamA: 5.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "median-9" Kind: "median" ParamA: 9.0 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "trimmed-5" Kind: "trimmed" ParamA: 5.0 ParamB: 1.0 Complexity: 3 },
+        CandidateConfig { Name: "trimmed-9" Kind: "trimmed" ParamA: 9.0 ParamB: 1.0 Complexity: 3 },
+        CandidateConfig { Name: "hysteresis-small" Kind: "hysteresis" ParamA: 0.2 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "hysteresis-medium" Kind: "hysteresis" ParamA: 0.5 ParamB: 0.0 Complexity: 2 },
+        CandidateConfig { Name: "hybrid-median3-ema02" Kind: "hybrid" ParamA: 3.0 ParamB: 0.2 Complexity: 3 }
+    ]
+}
+
+fn M1GenerateRegimeSeries(seed: Int, sampleCount: Int, cfg: RegimeConfig) -> RegimeSeries {
+    var trueValues: Float[] = []
+    var measurements: Float[] = []
+    var current = cfg.Base
+    for i in 0..sampleCount {
+        if cfg.StepIndex >= 0 and i >= cfg.StepIndex {
+            current = cfg.Base + cfg.StepDelta
+        }
+        current = current + cfg.DriftPerSample
+        trueValues = Append(trueValues, current)
+
+        let jitter = Random.Gaussian(Random.RngSeed(seed * 1000 + i * 11 + 1), 0.0, cfg.JitterStddev)
+        let spike = Random.Spike(Random.RngSeed(seed * 1000 + i * 11 + 2), cfg.SpikeProbability, cfg.SpikeAmplitude)
+        measurements = Append(measurements, current + jitter.Value + spike.Value)
+    }
+    return RegimeSeries { Name: cfg.Name TrueValues: trueValues Measurements: measurements StepIndex: cfg.StepIndex StepDelta: cfg.StepDelta SpikeAmplitude: cfg.SpikeAmplitude DriftPerSample: cfg.DriftPerSample }
+}
+
+fn M1ApplyCandidate(c: CandidateConfig, values: Float[]) -> Float[] {
+    if c.Kind == "raw" { return values }
+    if c.Kind == "ema" { return M1ApplyEma(values, c.ParamA) }
+    if c.Kind == "mean" { return M1ApplyWindow(values, FloorToInt(c.ParamA), "mean") }
+    if c.Kind == "median" { return M1ApplyWindow(values, FloorToInt(c.ParamA), "median") }
+    if c.Kind == "trimmed" { return M1ApplyWindow(values, FloorToInt(c.ParamA), "trimmed") }
+    if c.Kind == "hysteresis" { return M1ApplyHysteresis(values, c.ParamA) }
+    if c.Kind == "hybrid" {
+        let pre = M1ApplyWindow(values, FloorToInt(c.ParamA), "median")
+        return M1ApplyEma(pre, c.ParamB)
+    }
+    return values
+}
+
+fn M1ApplyEma(values: Float[], alpha: Float) -> Float[] {
+    var out: Float[] = []
+    var e = values[0]
+    for i in 0..Len(values) {
+        if i == 0 { e = values[0] } else { e = alpha * values[i] + (1.0 - alpha) * e }
+        out = Append(out, e)
+    }
+    return out
+}
+
+fn M1ApplyWindow(values: Float[], w: Int, mode: String) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(values) {
+        let startRaw = i - w + 1
+        let start = if startRaw < 0 { 0 } else { startRaw }
+        let win = M1Window(values, start, i + 1)
+        if mode == "mean" { out = Append(out, M1Mean(win)) }
+        if mode == "median" { out = Append(out, M1Median(win)) }
+        if mode == "trimmed" { out = Append(out, M1TrimmedMean(win, 1)) }
+    }
+    return out
+}
+
+fn M1ApplyHysteresis(values: Float[], band: Float) -> Float[] {
+    var out: Float[] = []
+    var e = values[0]
+    for i in 0..Len(values) {
+        let delta = Abs(values[i] - e)
+        if delta > band { e = values[i] }
+        out = Append(out, e)
+    }
+    return out
+}
+
+fn M1Score(series: RegimeSeries, candidate: CandidateConfig) -> CandidateScore {
+    let estimate = M1ApplyCandidate(candidate, series.Measurements)
+    let mae = MeanAbsError(estimate, series.TrueValues)
+    let spike = SpikeSensitivity(estimate, series.TrueValues, series.SpikeAmplitude)
+    let stepDelay = StepDelay(estimate, series, 0.25)
+    let driftErr = DriftError(estimate, series)
+    let stability = MeanAbsStep(estimate)
+    let quality = M1QualityScore(series.Name, mae, spike, stepDelay, driftErr, stability)
+    let complexityScore = Float(candidate.Complexity) * 0.03
+    let composite = quality + complexityScore
+    return CandidateScore {
+        Regime: series.Name
+        Candidate: candidate.Name
+        MeanAbsoluteError: mae
+        SpikeRejection: spike
+        StepResponseDelay: stepDelay
+        DriftTrackingError: driftErr
+        Stability: stability
+        Complexity: candidate.Complexity
+        QualityScore: quality
+        ComplexityScore: complexityScore
+        CompositeScore: composite
+    }
+}
+
+fn M1ScoreMatrix(seed: Int, sampleCount: Int) -> CandidateScore[] {
+    let rc = M1RegimeConfigs()
+    let cc = M1CandidateConfigs()
+    var out: CandidateScore[] = []
+    for ri in 0..Len(rc) {
+        let series = M1GenerateRegimeSeries(seed + ri * 47, sampleCount, rc[ri])
+        for ci in 0..Len(cc) {
+            out = Append(out, M1Score(series, cc[ci]))
+        }
+    }
+    return out
+}
+
+fn M1FinalRecommendations(seed: Int, sampleCount: Int) -> RegimeRecommendation[] {
+    let score = M1ScoreMatrix(seed, sampleCount)
+    let regimes = M1RegimeConfigs()
+    var out: RegimeRecommendation[] = []
+    for ri in 0..Len(regimes) {
+        let best = BestForRegime(score, regimes[ri].Name)
+        let qualityBest = BestQualityForRegime(score, regimes[ri].Name)
+        out = Append(out, RegimeRecommendation { Regime: regimes[ri].Name Candidate: best.Candidate QualityWinner: qualityBest.Candidate CompositeScore: best.CompositeScore })
+    }
+    return out
+}
+
+fn BestForRegime(scores: CandidateScore[], regime: String) -> CandidateScore {
+    var found = false
+    var best = scores[0]
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime {
+            if found == false or scores[i].CompositeScore < best.CompositeScore {
+                best = scores[i]
+                found = true
+            }
+        }
+    }
+    return best
+}
+
+fn BestQualityForRegime(scores: CandidateScore[], regime: String) -> CandidateScore {
+    var found = false
+    var best = scores[0]
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime {
+            if found == false or scores[i].QualityScore < best.QualityScore {
+                best = scores[i]
+                found = true
+            }
+        }
+    }
+    return best
+}
+
+fn M1Top3ByRegime(seed: Int, sampleCount: Int) -> Top3Summary[] {
+    let scores = M1ScoreMatrix(seed, sampleCount)
+    let regimes = M1RegimeConfigs()
+    var out: Top3Summary[] = []
+    for ri in 0..Len(regimes) {
+        let ranked = RankedForRegime(scores, regimes[ri].Name)
+        out = Append(out, Top3Summary { Regime: regimes[ri].Name Rank1: ranked[0].Candidate Rank2: ranked[1].Candidate Rank3: ranked[2].Candidate })
+    }
+    return out
+}
+
+fn RankedForRegime(scores: CandidateScore[], regime: String) -> CandidateScore[] {
+    var rows: CandidateScore[] = []
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime { rows = Append(rows, scores[i]) }
+    }
+    for i in 0..Len(rows) {
+        for j in 0..Len(rows) - 1 {
+            if rows[j].CompositeScore > rows[j + 1].CompositeScore {
+                let t = rows[j]
+                rows[j] = rows[j + 1]
+                rows[j + 1] = t
+            }
+        }
+    }
+    return rows
+}
+
+fn M1QualityScore(regime: String, mae: Float, spike: Float, stepDelay: Int, driftErr: Float, stability: Float) -> Float {
+    if regime == "stable-low-jitter" { return mae * 0.45 + stability * 0.45 + spike * 0.05 + driftErr * 0.05 }
+    if regime == "moderate-jitter" { return mae * 0.35 + stability * 0.35 + spike * 0.20 + driftErr * 0.10 }
+    if regime == "spike-heavy" { return mae * 0.20 + spike * 0.55 + stability * 0.15 + Float(stepDelay) * 0.02 + driftErr * 0.10 }
+    if regime == "step-change" { return Float(stepDelay) * 0.55 + mae * 0.20 + stability * 0.15 + spike * 0.10 }
+    if regime == "slow-drift" { return driftErr * 0.50 + mae * 0.25 + stability * 0.20 + spike * 0.05 }
+    return mae * 0.25 + spike * 0.30 + stability * 0.25 + Float(stepDelay) * 0.10 + driftErr * 0.10
+}
+
+fn M1ScoringWeights() -> ScoringWeight[] {
+    return [
+        ScoringWeight { Regime: "stable-low-jitter" QualityFormula: "0.45*mae + 0.45*stability + 0.05*spike + 0.05*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "moderate-jitter" QualityFormula: "0.35*mae + 0.35*stability + 0.20*spike + 0.10*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "spike-heavy" QualityFormula: "0.20*mae + 0.55*spike + 0.15*stability + 0.02*stepDelay + 0.10*drift" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "step-change" QualityFormula: "0.55*stepDelay + 0.20*mae + 0.15*stability + 0.10*spike" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "slow-drift" QualityFormula: "0.50*drift + 0.25*mae + 0.20*stability + 0.05*spike" ComplexityFormula: "0.03*complexity" },
+        ScoringWeight { Regime: "mixed-hostile" QualityFormula: "0.25*mae + 0.30*spike + 0.25*stability + 0.10*stepDelay + 0.10*drift" ComplexityFormula: "0.03*complexity" }
+    ]
+}
+
+fn MeanAbsError(a: Float[], b: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(a) { sum = sum + Abs(a[i] - b[i]) }
+    return sum / Float(Len(a))
+}
+
+fn MeanAbsStep(a: Float[]) -> Float {
+    if Len(a) < 2 { return 0.0 }
+    var sum = 0.0
+    for i in 1..Len(a) { sum = sum + Abs(a[i] - a[i - 1]) }
+    return sum / Float(Len(a) - 1)
+}
+
+fn SpikeSensitivity(estimate: Float[], truth: Float[], spikeAmplitude: Float) -> Float {
+    if spikeAmplitude <= 0.0 { return 0.0 }
+    var worst = 0.0
+    for i in 0..Len(estimate) {
+        let d = Abs(estimate[i] - truth[i])
+        if d > worst { worst = d }
+    }
+    return worst / spikeAmplitude
+}
+
+fn StepDelay(estimate: Float[], series: RegimeSeries, tolerance: Float) -> Int {
+    if series.StepIndex < 0 or series.StepDelta == 0.0 { return 0 }
+    let target = series.TrueValues[Len(series.TrueValues) - 1]
+    let band = Abs(series.StepDelta) * tolerance
+    for i in series.StepIndex..Len(estimate) {
+        if Abs(estimate[i] - target) <= band { return i - series.StepIndex }
+    }
+    return Len(estimate) - series.StepIndex
+}
+
+fn DriftError(estimate: Float[], series: RegimeSeries) -> Float {
+    if series.DriftPerSample == 0.0 { return 0.0 }
+    let start = Len(estimate) / 3
+    let end = Len(estimate)
+    return MeanAbsError(M1Window(estimate, start, end), M1Window(series.TrueValues, start, end))
+}
+
+fn M1Window(values: Float[], start: Int, endExclusive: Int) -> Float[] {
+    var out: Float[] = []
+    for i in start..endExclusive { out = Append(out, values[i]) }
+    return out
+}
+
+fn M1Mean(values: Float[]) -> Float {
+    if Len(values) == 0 { return 0.0 }
+    var sum = 0.0
+    for i in 0..Len(values) { sum = sum + values[i] }
+    return sum / Float(Len(values))
+}
+
+fn M1Median(values: Float[]) -> Float {
+    if Len(values) == 0 { return 0.0 }
+    let sorted = M1Sort(values)
+    let n = Len(sorted)
+    if n % 2 == 1 { return sorted[n / 2] }
+    let hi = n / 2
+    let lo = hi - 1
+    return (sorted[lo] + sorted[hi]) * 0.5
+}
+
+fn M1TrimmedMean(values: Float[], trimEachSide: Int) -> Float {
+    if Len(values) == 0 { return 0.0 }
+    let sorted = M1Sort(values)
+    if Len(sorted) <= trimEachSide * 2 { return M1Mean(sorted) }
+    return M1Mean(M1Window(sorted, trimEachSide, Len(sorted) - trimEachSide))
+}
+
+fn M1Sort(values: Float[]) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(values) { out = Append(out, values[i]) }
+    for i in 0..Len(out) {
+        for j in 0..Len(out) - 1 {
+            if out[j] > out[j + 1] {
+                let t = out[j]
+                out[j] = out[j + 1]
+                out[j + 1] = t
+            }
+        }
+    }
+    return out
+}

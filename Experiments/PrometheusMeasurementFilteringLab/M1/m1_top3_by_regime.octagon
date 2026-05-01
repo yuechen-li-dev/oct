@@ -1,0 +1,31 @@
+[Top3Summary {
+    Regime: "stable-low-jitter"
+    Rank1: "raw"
+    Rank2: "ema-0.1"
+    Rank3: "ema-0.2"
+}, Top3Summary {
+    Regime: "moderate-jitter"
+    Rank1: "raw"
+    Rank2: "ema-0.1"
+    Rank3: "ema-0.2"
+}, Top3Summary {
+    Regime: "spike-heavy"
+    Rank1: "raw"
+    Rank2: "ema-0.1"
+    Rank3: "ema-0.2"
+}, Top3Summary {
+    Regime: "step-change"
+    Rank1: "raw"
+    Rank2: "hysteresis-small"
+    Rank3: "hysteresis-medium"
+}, Top3Summary {
+    Regime: "slow-drift"
+    Rank1: "raw"
+    Rank2: "ema-0.4"
+    Rank3: "median-3"
+}, Top3Summary {
+    Regime: "mixed-hostile"
+    Rank1: "raw"
+    Rank2: "hysteresis-small"
+    Rank3: "hysteresis-medium"
+}]

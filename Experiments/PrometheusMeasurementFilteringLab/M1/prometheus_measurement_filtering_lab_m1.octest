@@ -1,0 +1,144 @@
+package PrometheusMeasurementFilteringLab
+
+[Fact]
+fn M1DeterministicRegimeDataAndRankings() -> Void {
+    let s1 = M1ScoreMatrix(1337, 96)
+    let s2 = M1ScoreMatrix(1337, 96)
+    let r1 = M1FinalRecommendations(1337, 96)
+    let r2 = M1FinalRecommendations(1337, 96)
+    Assert.Equal(Len(s1), Len(s2), "same seed should produce identical score matrix size")
+    Assert.True(SameScoreMatrix(s1, s2), "same seed should produce identical score matrix values")
+    Assert.Equal(Len(r1), Len(r2), "same seed should produce identical recommendation count")
+    Assert.True(SameRecommendations(r1, r2), "same seed should produce identical recommendations")
+}
+
+[Fact]
+fn M1AllCandidatesProduceCorrectLength() -> Void {
+    let regimes = M1RegimeConfigs()
+    let candidates = M1CandidateConfigs()
+    for ri in 0..Len(regimes) {
+        let s = M1GenerateRegimeSeries(900 + ri, 80, regimes[ri])
+        for ci in 0..Len(candidates) {
+            let out = M1ApplyCandidate(candidates[ci], s.Measurements)
+            Assert.Equal(Len(s.Measurements), Len(out), "every filter output must match input length")
+        }
+    }
+}
+
+[Fact]
+fn M1BehaviorMedianAndEmaAndStepSpeed() -> Void {
+    let scores = M1ScoreMatrix(2026, 96)
+    let spikeSignal = [10.0, 10.0, 10.0, 20.0, 10.0, 10.0, 10.0]
+    let rawOut = M1ApplyCandidate(CandidateConfig { Name: "raw" Kind: "raw" ParamA: 0.0 ParamB: 0.0 Complexity: 1 }, spikeSignal)
+    let medOut = M1ApplyCandidate(CandidateConfig { Name: "median-3" Kind: "median" ParamA: 3.0 ParamB: 0.0 Complexity: 2 }, spikeSignal)
+    Assert.True(Abs(medOut[3] - 10.0) < Abs(rawOut[3] - 10.0), "median should suppress isolated spike better than raw")
+
+    let lowJitter = [10.0, 10.1, 9.9, 10.08, 9.92, 10.05, 9.95]
+    let rawStable = M1ApplyCandidate(CandidateConfig { Name: "raw" Kind: "raw" ParamA: 0.0 ParamB: 0.0 Complexity: 1 }, lowJitter)
+    let emaStable = M1ApplyCandidate(CandidateConfig { Name: "ema-0.2" Kind: "ema" ParamA: 0.2 ParamB: 0.0 Complexity: 1 }, lowJitter)
+    Assert.True(MeanAbsStep(emaStable) < MeanAbsStep(rawStable), "ema should smooth low-jitter sequence more than raw")
+
+    let stepFast = FindScore(scores, "step-change", "ema-0.4")
+    let stepSlow = FindScore(scores, "step-change", "ema-0.1")
+    Assert.True(stepFast.StepResponseDelay <= stepSlow.StepResponseDelay, "fast ema should respond no slower than slow ema on step")
+}
+
+[Fact]
+fn M1SpikeHeavySanityMedianOrHybridBeatsRawOnSpikeSensitivity() -> Void {
+    let truth = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+    let observed = [10.0, 10.0, 18.0, 10.0, 10.0, 19.0, 10.0]
+    let rawOut = M1ApplyCandidate(CandidateConfig { Name: "raw" Kind: "raw" ParamA: 0.0 ParamB: 0.0 Complexity: 1 }, observed)
+    let medianOut = M1ApplyCandidate(CandidateConfig { Name: "median-3" Kind: "median" ParamA: 3.0 ParamB: 0.0 Complexity: 2 }, observed)
+    let hybridOut = M1ApplyCandidate(CandidateConfig { Name: "hybrid-median3-ema02" Kind: "hybrid" ParamA: 3.0 ParamB: 0.2 Complexity: 3 }, observed)
+    let rawSpike = SpikeSensitivity(rawOut, truth, 9.0)
+    let medianSpike = SpikeSensitivity(medianOut, truth, 9.0)
+    let hybridSpike = SpikeSensitivity(hybridOut, truth, 9.0)
+    let better = if medianSpike < rawSpike { true } else { hybridSpike < rawSpike }
+    Assert.True(better, "median or hybrid must beat raw on spike sensitivity")
+}
+
+[Fact]
+fn M1TrueVsObservedGuard() -> Void {
+    let truth = [10.0, 10.0, 10.0]
+    let observed = [10.0, 50.0, 10.0]
+    let estimate = [10.0, 10.0, 10.0]
+    let errVsTruth = MeanAbsError(estimate, truth)
+    let errVsObserved = MeanAbsError(estimate, observed)
+    Assert.Equal(0.0, errVsTruth, "error against truth should be zero")
+    Assert.True(errVsObserved > 0.0, "error against observed should be non-zero")
+}
+
+[Fact]
+fn M1RecommendationsAreDeterministic() -> Void {
+    let a = M1FinalRecommendations(4242, 96)
+    let b = M1FinalRecommendations(4242, 96)
+    Assert.True(SameRecommendations(a, b), "recommendations must be deterministic")
+}
+
+fn FindScore(scores: CandidateScore[], regime: String, candidate: String) -> CandidateScore {
+    for i in 0..Len(scores) {
+        if scores[i].Regime == regime and scores[i].Candidate == candidate {
+            return scores[i]
+        }
+    }
+    return scores[0]
+}
+
+fn SameScoreMatrix(a: CandidateScore[], b: CandidateScore[]) -> Bool {
+    if Len(a) != Len(b) { return false }
+    for i in 0..Len(a) {
+        if a[i].Regime != b[i].Regime { return false }
+        if a[i].Candidate != b[i].Candidate { return false }
+        if a[i].MeanAbsoluteError != b[i].MeanAbsoluteError { return false }
+        if a[i].SpikeRejection != b[i].SpikeRejection { return false }
+        if a[i].StepResponseDelay != b[i].StepResponseDelay { return false }
+        if a[i].DriftTrackingError != b[i].DriftTrackingError { return false }
+        if a[i].Stability != b[i].Stability { return false }
+        if a[i].Complexity != b[i].Complexity { return false }
+        if a[i].QualityScore != b[i].QualityScore { return false }
+        if a[i].ComplexityScore != b[i].ComplexityScore { return false }
+        if a[i].CompositeScore != b[i].CompositeScore { return false }
+    }
+    return true
+}
+
+fn SameRecommendations(a: RegimeRecommendation[], b: RegimeRecommendation[]) -> Bool {
+    if Len(a) != Len(b) { return false }
+    for i in 0..Len(a) {
+        if a[i].Regime != b[i].Regime { return false }
+        if a[i].Candidate != b[i].Candidate { return false }
+        if a[i].QualityWinner != b[i].QualityWinner { return false }
+        if a[i].CompositeScore != b[i].CompositeScore { return false }
+    }
+    return true
+}
+
+[Artifact]
+fn EmitM1RegimeScoreMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_regime_score_matrix.octagon", M1ScoreMatrix(1337, 96))
+}
+
+[Artifact]
+fn EmitM1CandidateFilterMatrix() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_candidate_filter_matrix.octagon", M1CandidateConfigs())
+}
+
+[Artifact]
+fn EmitM1FinalRecommendation() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_final_recommendation.octagon", M1FinalRecommendations(1337, 96))
+}
+
+[Artifact]
+fn EmitM1MetricBreakdown() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_metric_breakdown.octagon", M1ScoreMatrix(1337, 96))
+}
+
+[Artifact]
+fn EmitM1Top3ByRegime() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_top3_by_regime.octagon", M1Top3ByRegime(1337, 96))
+}
+
+[Artifact]
+fn EmitM1ScoringWeights() -> Void {
+    let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M1/m1_scoring_weights.octagon", M1ScoringWeights())
+}

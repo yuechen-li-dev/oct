@@ -1,0 +1,31 @@
+[RegimeRecommendation {
+    Regime: "stable-low-jitter"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.03)
+}, RegimeRecommendation {
+    Regime: "moderate-jitter"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.03)
+}, RegimeRecommendation {
+    Regime: "spike-heavy"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.03)
+}, RegimeRecommendation {
+    Regime: "step-change"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.034736842105263156)
+}, RegimeRecommendation {
+    Regime: "slow-drift"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.037000000000000026)
+}, RegimeRecommendation {
+    Regime: "mixed-hostile"
+    Candidate: "raw"
+    QualityWinner: "raw"
+    CompositeScore: (0.03657894736842105)
+}]
