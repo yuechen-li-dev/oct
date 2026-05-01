@@ -23,6 +23,10 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `[Theory]` requires at least one `[InlineData(...)]` row.
 - `[InlineData(...)]` is valid only on `[Theory]`.
 - `[InlineData(...)]` supports scalar literals and enum values.
+- `[Fact]` has fixed cycle time `30.0s` (not overrideable).
+- `[Theory]` has default cycle time `30.0s` per row.
+- `[CycleTime(t)]` overrides cycle time per `[Theory]` row only.
+- `[CycleTime(t)]` requires exactly one positive time quantity argument of type `Float<s>`.
 - `[Fact]`, `[Theory]`, `[Artifact]`, and `[Benchmark]` attributes are mutually constrained (invalid combinations are rejected).
 - Theory case names use zero-based row indices: `Package.Function[0]`, `Package.Function[1]`, ...
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
@@ -33,6 +37,7 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `SkipTest` is terminal for the current `[Fact]` or current `[Theory]` row; statements after it are not executed.
 - `SkipTest` marks the test outcome as `SKIP` (not `PASS`).
 - `SkipTest` is unavailable in `oct bench` (`[Benchmark]`) and `oct artifact` (`[Artifact]`) lanes.
+- Exceeding cycle time is a `FAIL` outcome (not `SKIP`).
 - `oct test` executes `.octest` functions through the interpreter path (source execution).
 - `.octest` and `.oct` use the same package import resolver and repository package-root search order.
 - `oct test` does not build or run a compiled `.octbin` test artifact.
@@ -41,6 +46,7 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.
 - Assertion-count requirements apply only to `oct test` `[Fact]`/`[Theory]`; `[Artifact]` and `[Benchmark]` do not require assertions.
+- M4 does not change `[Artifact]` or `[Benchmark]` timeout policy.
 - `oct bench <path> --filter <pattern>` runs only benchmarks whose qualified name (`Package.Function`) contains `<pattern>`.
 - `oct bench <path> --profile` emits a deterministic `bench.cpu.octagon` benchmark profile artifact by default.
 - `oct bench <path> --profile --profile-format pprof` emits raw `bench.cpu.pprof` output.

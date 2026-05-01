@@ -741,6 +741,9 @@ func TestBuildFileRejectsInvalidTheoryUsage(t *testing.T) {
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\nfn MissingData(x: Int) -> Void { return }\n", "[Theory] function must declare at least one [InlineData] row")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[InlineData(1)]\nfn NotTheory(x: Int) -> Void { return }\n", "[InlineData] must apply to a [Theory] function")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[InlineData([1])]\n[Theory]\nfn NotAllowed(x: Int[]) -> Void { return }\n", "[InlineData] supports only scalar literals and enum values in M24b")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[CycleTime(1.0s)]\n[Fact]\nfn Bad() -> Void { return }\n", "[CycleTime] is only valid on [Theory] functions")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[CycleTime(1.0s)]\nfn Bad() -> Void { return }\n", "[CycleTime] must apply to a [Theory] function")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[CycleTime(1.0s)]\n[CycleTime(2.0s)]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "duplicate [CycleTime] attribute on function")
 }
 
 func TestBuildFileParsesArtifactInOctest(t *testing.T) {
