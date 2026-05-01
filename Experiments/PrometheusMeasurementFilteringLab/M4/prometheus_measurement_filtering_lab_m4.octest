@@ -1,0 +1,170 @@
+package PrometheusMeasurementFilteringLab
+
+fn M4Find(results: M4Result[], scenario: String, policy: String) -> M4Result {
+    for i in 0..Len(results) {
+        if results[i].Scenario == scenario and results[i].Policy == policy {
+            return results[i]
+        }
+    }
+
+    return results[0]
+}
+
+[Fact]
+fn M4Reproducibility() -> Void {
+    let a = M4Evaluate(2026, 96)
+    let b = M4Evaluate(2026, 96)
+
+    Assert.Equal(Len(a), Len(b), "same output length")
+    Assert.True(a[0].CompositeScore == b[0].CompositeScore, "deterministic")
+}
+
+[Fact]
+fn M4OracleSanity() -> Void {
+    let r = M4Evaluate(2026, 96)
+    let oracle = M4Find(r, "stable-to-spike-heavy", "oracle-per-regime")
+    let smooth = M4Find(r, "stable-to-spike-heavy", "static-smooth")
+
+    Assert.True(oracle.QualityScore <= smooth.QualityScore, "oracle beats mismatched smooth baseline")
+}
+
+[Fact]
+fn M4FalseAlarmSwitchingSanity() -> Void {
+    let r = M4Evaluate(2026, 96)
+    let dominatus = M4Find(r, "false-alarm-stable-isolated-spikes", "dominatus-mincommit-hysteresis")
+    let greedy = M4Find(r, "false-alarm-stable-isolated-spikes", "greedy-fact-switch")
+
+    Assert.True(dominatus.SwitchCount <= greedy.SwitchCount, "dominatus switches less than greedy on false alarm")
+}
+
+[Fact]
+fn M4WarmTransferSanity() -> Void {
+    let scenario = M4BuildScenarios(2026, 96)[0]
+
+    let cold = M4RunPolicy(
+        scenario,
+        M4Policy {
+            Name: "cold"
+            Kind: "greedy"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "cold"
+        }
+    )
+
+    let warm = M4RunPolicy(
+        scenario,
+        M4Policy {
+            Name: "warm"
+            Kind: "greedy"
+            MinCommitTicks: 0
+            SwitchMargin: 0.0
+            ConfidenceThreshold: 0.0
+            UseParallel: false
+            SwitchMechanic: "warm"
+        }
+    )
+
+    Assert.True(warm.SwitchJumpMean <= cold.SwitchJumpMean, "warm transfer lowers switch jump")
+}
+
+[Fact]
+fn M4ParallelSanity() -> Void {
+    let scenario = M4BuildScenarios(2026, 96)[0]
+
+    let cold = M4RunPolicy(
+        scenario,
+        M4Policy {
+            Name: "cold-dom"
+            Kind: "dominatus"
+            MinCommitTicks: 8
+            SwitchMargin: 0.15
+            ConfidenceThreshold: 0.45
+            UseParallel: false
+            SwitchMechanic: "cold"
+        }
+    )
+
+    let parallel = M4RunPolicy(
+        scenario,
+        M4Policy {
+            Name: "par-dom"
+            Kind: "dominatus"
+            MinCommitTicks: 8
+            SwitchMargin: 0.15
+            ConfidenceThreshold: 0.45
+            UseParallel: true
+            SwitchMechanic: "parallel"
+        }
+    )
+
+    Assert.True(parallel.WarmupPenalty <= cold.WarmupPenalty, "parallel avoids cold warmup penalty")
+}
+
+[Fact]
+fn M4ConfidenceSanity() -> Void {
+    let scenario = M4BuildScenarios(2026, 96)[4]
+    let dominatus = M4RunPolicy(scenario, M4Policies()[4])
+
+    Assert.True(dominatus.ConfidenceDrop > 0.0, "confidence lower in noisy phase than stable")
+    Assert.True(dominatus.ConfidenceRecovery > 0.5, "confidence recovers after hostile segment")
+}
+
+[Fact]
+fn M4PolicyOutputLength() -> Void {
+    let scenarios = M4BuildScenarios(2026, 80)
+    let policies = M4Policies()
+
+    for si in 0..Len(scenarios) {
+        for pi in 0..Len(policies) {
+            let r = M4RunPolicy(scenarios[si], policies[pi])
+            Assert.True(r.MeanAbsoluteError >= 0.0, "policy produced valid estimate stream")
+        }
+    }
+}
+
+[Artifact]
+fn EmitM4RegimeTransitionScenarios() -> Void {
+    let _ = WriteOctagon(
+        "Experiments/PrometheusMeasurementFilteringLab/M4/m4_regime_transition_scenarios.octagon",
+        M4BuildScenarios(2026, 96)
+    )
+}
+
+[Artifact]
+fn EmitM4PolicyScoreMatrix() -> Void {
+    let _ = WriteOctagon(
+        "Experiments/PrometheusMeasurementFilteringLab/M4/m4_policy_score_matrix.octagon",
+        M4Evaluate(2026, 96)
+    )
+}
+
+[Artifact]
+fn EmitM4FilterSwitchTrace() -> Void {
+    let r = M4Evaluate(2026, 96)
+    let _ = WriteOctagon(
+        "Experiments/PrometheusMeasurementFilteringLab/M4/m4_filter_switch_trace.octagon",
+        r
+    )
+}
+
+[Artifact]
+fn EmitM4SelectedPolicyContract() -> Void {
+    let r = M4Evaluate(2026, 96)
+    let selected = M4Find(r, "mixed-hostile-to-stable", "dominatus-mincommit-hysteresis")
+    let _ = WriteOctagon(
+        "Experiments/PrometheusMeasurementFilteringLab/M4/m4_selected_policy_contract.octagon",
+        selected
+    )
+}
+
+[Artifact]
+fn EmitM4FinalRecommendation() -> Void {
+    let r = M4Evaluate(2026, 96)
+    let _ = WriteOctagon(
+        "Experiments/PrometheusMeasurementFilteringLab/M4/m4_final_recommendation.octagon",
+        r
+    )
+}

@@ -103,37 +103,75 @@ fn FindScore(scores: CandidateScore[], regime: String, candidate: String) -> Can
 }
 
 fn SameScoreMatrix(a: CandidateScore[], b: CandidateScore[]) -> Bool {
-    if Len(a) != Len(b) { return false }
+    if Len(a) != Len(b) {
+        return false
+    }
+
     for i in 0..Len(a) {
-        if a[i].Regime != b[i].Regime { return false }
-        if a[i].Candidate != b[i].Candidate { return false }
-        if a[i].MeanAbsoluteError != b[i].MeanAbsoluteError { return false }
-        if a[i].SpikeRejection != b[i].SpikeRejection { return false }
-        if a[i].StepResponseDelay != b[i].StepResponseDelay { return false }
-        if a[i].DriftTrackingError != b[i].DriftTrackingError { return false }
-        if a[i].Stability != b[i].Stability { return false }
-        if a[i].Complexity != b[i].Complexity { return false }
-        if a[i].QualityScore != b[i].QualityScore { return false }
-        if a[i].ComplexityScore != b[i].ComplexityScore { return false }
-        if a[i].CompositeScore != b[i].CompositeScore { return false }
+        if a[i].Regime != b[i].Regime {
+            return false
+        }
+        if a[i].Candidate != b[i].Candidate {
+            return false
+        }
+        if a[i].MeanAbsoluteError != b[i].MeanAbsoluteError {
+            return false
+        }
+        if a[i].SpikeRejection != b[i].SpikeRejection {
+            return false
+        }
+        if a[i].StepResponseDelay != b[i].StepResponseDelay {
+            return false
+        }
+        if a[i].DriftTrackingError != b[i].DriftTrackingError {
+            return false
+        }
+        if a[i].Stability != b[i].Stability {
+            return false
+        }
+        if a[i].Complexity != b[i].Complexity {
+            return false
+        }
+        if a[i].QualityScore != b[i].QualityScore {
+            return false
+        }
+        if a[i].ComplexityScore != b[i].ComplexityScore {
+            return false
+        }
+        if a[i].CompositeScore != b[i].CompositeScore {
+            return false
+        }
     }
     return true
 }
 
 fn SameRecommendations(a: RegimeRecommendation[], b: RegimeRecommendation[]) -> Bool {
-    if Len(a) != Len(b) { return false }
+    if Len(a) != Len(b) {
+        return false
+    }
+
     for i in 0..Len(a) {
-        if a[i].Regime != b[i].Regime { return false }
-        if a[i].Candidate != b[i].Candidate { return false }
-        if a[i].QualityWinner != b[i].QualityWinner { return false }
-        if a[i].CompositeScore != b[i].CompositeScore { return false }
+        if a[i].Regime != b[i].Regime {
+            return false
+        }
+        if a[i].Candidate != b[i].Candidate {
+            return false
+        }
+        if a[i].QualityWinner != b[i].QualityWinner {
+            return false
+        }
+        if a[i].CompositeScore != b[i].CompositeScore {
+            return false
+        }
     }
     return true
 }
 
 fn FindNoiseSummary(rows: RegimeNoiseSummary[], regime: String) -> RegimeNoiseSummary {
     for i in 0..Len(rows) {
-        if rows[i].Regime == regime { return rows[i] }
+        if rows[i].Regime == regime {
+            return rows[i]
+        }
     }
     return rows[0]
 }

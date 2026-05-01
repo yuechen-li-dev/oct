@@ -1,0 +1,20 @@
+M4Result {
+    Scenario: "mixed-hostile-to-stable"
+    Policy: "dominatus-mincommit-hysteresis"
+    QualityScore: (8.54076732101107)
+    SwitchingScore: (0)
+    ConfidenceScore: (0.36522578596760874)
+    ImplementationCostScore: (0.65)
+    CompositeScore: (8.918380213994876)
+    MeanAbsoluteError: (0.14399521914396388)
+    Stability: (0.06435809317912257)
+    SpikeDisturbance: (0.2732880177518277)
+    StepSettlingDelay: (20)
+    DriftTrackingError: (0)
+    SwitchCount: (0)
+    SwitchJumpMean: (0)
+    WarmupPenalty: (0)
+    ThrashScore: (0)
+    ConfidenceDrop: (0.608709643279348)
+    ConfidenceRecovery: (1)
+}
