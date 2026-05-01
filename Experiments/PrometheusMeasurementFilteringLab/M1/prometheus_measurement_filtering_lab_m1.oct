@@ -65,6 +65,21 @@ record ScoringWeight {
     ComplexityFormula: String
 }
 
+record RegimeNoiseSummary {
+    Regime: String
+    SampleCount: Int
+    TrueMin: Float
+    TrueMax: Float
+    MeasurementMin: Float
+    MeasurementMax: Float
+    NoiseMean: Float
+    MeanNoiseMagnitude: Float
+    SpikeCount: Int
+    StepIndex: Int
+    StepDelta: Float
+    DriftTotal: Float
+}
+
 fn M1RegimeConfigs() -> RegimeConfig[] {
     return [
         RegimeConfig { Name: "stable-low-jitter" Base: 10.0 JitterStddev: 0.05 SpikeProbability: 0.0 SpikeAmplitude: 0.0 StepIndex: -1 StepDelta: 0.0 DriftPerSample: 0.0 },
@@ -100,6 +115,7 @@ fn M1GenerateRegimeSeries(seed: Int, sampleCount: Int, cfg: RegimeConfig) -> Reg
     var trueValues: Float[] = []
     var measurements: Float[] = []
     var current = cfg.Base
+    var rngJ = Random.Gaussian(Random.RngSeed(seed * 1009 + 17), 0.0, 0.0).Next
     for i in 0..sampleCount {
         if cfg.StepIndex >= 0 and i >= cfg.StepIndex {
             current = cfg.Base + cfg.StepDelta
@@ -107,11 +123,64 @@ fn M1GenerateRegimeSeries(seed: Int, sampleCount: Int, cfg: RegimeConfig) -> Reg
         current = current + cfg.DriftPerSample
         trueValues = Append(trueValues, current)
 
-        let jitter = Random.Gaussian(Random.RngSeed(seed * 1000 + i * 11 + 1), 0.0, cfg.JitterStddev)
-        let spike = Random.Spike(Random.RngSeed(seed * 1000 + i * 11 + 2), cfg.SpikeProbability, cfg.SpikeAmplitude)
-        measurements = Append(measurements, current + jitter.Value + spike.Value)
+        let jitter = Random.RandNormal(rngJ, 0.0, cfg.JitterStddev)
+        rngJ = jitter.Next
+        let trigger = Random.RandBernoulli(rngJ, cfg.SpikeProbability)
+        rngJ = trigger.Next
+        var spikeValue = 0.0
+        if trigger.Value {
+            let sign = Random.RandBernoulli(rngJ, 0.5)
+            rngJ = sign.Next
+            spikeValue = if sign.Value { cfg.SpikeAmplitude } else { 0.0 - cfg.SpikeAmplitude }
+        }
+        measurements = Append(measurements, current + jitter.Value + spikeValue)
     }
     return RegimeSeries { Name: cfg.Name TrueValues: trueValues Measurements: measurements StepIndex: cfg.StepIndex StepDelta: cfg.StepDelta SpikeAmplitude: cfg.SpikeAmplitude DriftPerSample: cfg.DriftPerSample }
+}
+
+fn M1RegimeNoiseSummaries(seed: Int, sampleCount: Int) -> RegimeNoiseSummary[] {
+    let regimes = M1RegimeConfigs()
+    var out: RegimeNoiseSummary[] = []
+    for i in 0..Len(regimes) {
+        let series = M1GenerateRegimeSeries(seed + i * 47, sampleCount, regimes[i])
+        out = Append(out, M1NoiseSummary(series))
+    }
+    return out
+}
+
+fn M1NoiseSummary(series: RegimeSeries) -> RegimeNoiseSummary {
+    var trueMin = series.TrueValues[0]
+    var trueMax = series.TrueValues[0]
+    var measurementMin = series.Measurements[0]
+    var measurementMax = series.Measurements[0]
+    var noiseSum = 0.0
+    var noiseAbsSum = 0.0
+    var spikeCount = 0
+    let threshold = series.SpikeAmplitude * 0.5
+    for i in 0..Len(series.TrueValues) {
+        if series.TrueValues[i] < trueMin { trueMin = series.TrueValues[i] }
+        if series.TrueValues[i] > trueMax { trueMax = series.TrueValues[i] }
+        if series.Measurements[i] < measurementMin { measurementMin = series.Measurements[i] }
+        if series.Measurements[i] > measurementMax { measurementMax = series.Measurements[i] }
+        let noise = series.Measurements[i] - series.TrueValues[i]
+        noiseSum = noiseSum + noise
+        noiseAbsSum = noiseAbsSum + Abs(noise)
+        if series.SpikeAmplitude > 0.0 and Abs(noise) >= threshold { spikeCount = spikeCount + 1 }
+    }
+    return RegimeNoiseSummary {
+        Regime: series.Name
+        SampleCount: Len(series.TrueValues)
+        TrueMin: trueMin
+        TrueMax: trueMax
+        MeasurementMin: measurementMin
+        MeasurementMax: measurementMax
+        NoiseMean: noiseSum / Float(Len(series.TrueValues))
+        MeanNoiseMagnitude: noiseAbsSum / Float(Len(series.TrueValues))
+        SpikeCount: spikeCount
+        StepIndex: series.StepIndex
+        StepDelta: series.StepDelta
+        DriftTotal: series.DriftPerSample * Float(Len(series.TrueValues))
+    }
 }
 
 fn M1ApplyCandidate(c: CandidateConfig, values: Float[]) -> Float[] {

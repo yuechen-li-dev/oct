@@ -75,6 +75,24 @@ fn M1RecommendationsAreDeterministic() -> Void {
     Assert.True(SameRecommendations(a, b), "recommendations must be deterministic")
 }
 
+[Fact]
+fn M1RegimesAreNonDegenerateWithThreadedRandom() -> Void {
+    let summaries = M1RegimeNoiseSummaries(1337, 96)
+    let stable = FindNoiseSummary(summaries, "stable-low-jitter")
+    let moderate = FindNoiseSummary(summaries, "moderate-jitter")
+    let spikeHeavy = FindNoiseSummary(summaries, "spike-heavy")
+    let stepChange = FindNoiseSummary(summaries, "step-change")
+    let slowDrift = FindNoiseSummary(summaries, "slow-drift")
+    let mixed = FindNoiseSummary(summaries, "mixed-hostile")
+
+    Assert.True(stable.MeanNoiseMagnitude > 0.0, "stable-low-jitter must contain non-zero jitter")
+    Assert.True(moderate.MeanNoiseMagnitude > stable.MeanNoiseMagnitude, "moderate-jitter should be noisier than stable-low-jitter")
+    Assert.True(spikeHeavy.SpikeCount > 0, "spike-heavy must include spikes")
+    Assert.True(stepChange.StepIndex >= 0 and stepChange.StepDelta != 0.0, "step-change must encode an actual step")
+    Assert.True(slowDrift.DriftTotal > 0.0, "slow-drift must include monotonic drift")
+    Assert.True(mixed.SpikeCount > 0 and mixed.StepIndex >= 0 and mixed.DriftTotal > 0.0, "mixed-hostile must combine spikes with step/drift")
+}
+
 fn FindScore(scores: CandidateScore[], regime: String, candidate: String) -> CandidateScore {
     for i in 0..Len(scores) {
         if scores[i].Regime == regime and scores[i].Candidate == candidate {
@@ -111,6 +129,13 @@ fn SameRecommendations(a: RegimeRecommendation[], b: RegimeRecommendation[]) -> 
         if a[i].CompositeScore != b[i].CompositeScore { return false }
     }
     return true
+}
+
+fn FindNoiseSummary(rows: RegimeNoiseSummary[], regime: String) -> RegimeNoiseSummary {
+    for i in 0..Len(rows) {
+        if rows[i].Regime == regime { return rows[i] }
+    }
+    return rows[0]
 }
 
 [Artifact]
