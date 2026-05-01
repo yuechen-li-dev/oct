@@ -14,6 +14,7 @@ Use `var` only when reassignment is required.
 - `let` creates an immutable binding.
 - `var` creates a mutable binding.
 - Assignment (`name = expr`) requires a mutable binding.
+- Bindings may include explicit type annotations: `let name: Type = expr` and `var name: Type = expr`.
 - Reassignment type must match the binding type exactly, including dimensions and nominal type identity.
 - Record, enum, vector, and matrix updates use whole-value reassignment.
 - Array element assignment (`xs[i] = value`) requires `xs` bound with `var`.
@@ -49,6 +50,18 @@ fn NextPowerOfTwo(n: Int) -> Int {
 ```
 
 Side-by-side contrast:
+
+Typed mutable binding (including typed empty arrays):
+
+```oct
+package Main
+
+fn Main() -> Int {
+    var samples: Float<Hz>[] = []
+    samples = [60.0Hz, 120.0Hz]
+    return Len(samples)
+}
+```
 
 ```oct
 package Main
