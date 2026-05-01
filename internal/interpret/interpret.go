@@ -2266,7 +2266,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{{Kind: ValueBool, Bool: true}, {Kind: ValueInt, Int: 7}}}}, nil
 	}
-	if strings.HasPrefix(callee, "Random.") {
+	if strings.HasPrefix(callee, "Random.") || (pkgName == "Random" && (callee == "RngSeed" || callee == "RandInt" || callee == "RandFloat01" || callee == "RandFloatRange" || callee == "RandBernoulli" || callee == "RandNormal" || callee == "CryptoRandBytes" || callee == "CryptoRandInt" || callee == "CryptoRandFloat01")) {
 		args := make([]Value, 0, len(argumentExprs))
 		for _, a := range argumentExprs {
 			r, err := i.evalExpr(env, pkgName, a)
@@ -2279,13 +2279,13 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			args = append(args, r.value)
 		}
 		switch callee {
-		case "Random.RngSeed":
+		case "Random.RngSeed", "RngSeed":
 			return evalResult{value: rngValueFromState(seedState(args[0].Int))}, nil
-		case "Random.RandFloat01":
+		case "Random.RandFloat01", "RandFloat01":
 			s, _ := rngStateFromValue(args[0])
 			s, x := randomNext(s)
 			return evalResult{value: randomFloatResultValue(rngValueFromState(s), toFloat01(x))}, nil
-		case "Random.RandInt":
+		case "Random.RandInt", "RandInt":
 			s, _ := rngStateFromValue(args[0])
 			min, max := args[1].Int, args[2].Int
 			if min > max {
@@ -2301,7 +2301,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				}
 			}
 			return evalResult{value: randomIntResultValue(rngValueFromState(s), min+int64(x%span))}, nil
-		case "Random.RandFloatRange":
+		case "Random.RandFloatRange", "RandFloatRange":
 			s, _ := rngStateFromValue(args[0])
 			min, max := args[1].Float, args[2].Float
 			if min > max {
@@ -2312,7 +2312,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			}
 			s, x := randomNext(s)
 			return evalResult{value: randomFloatResultValue(rngValueFromState(s), min+(max-min)*toFloat01(x))}, nil
-		case "Random.RandBernoulli":
+		case "Random.RandBernoulli", "RandBernoulli":
 			s, _ := rngStateFromValue(args[0])
 			p := args[1].Float
 			if p < 0 || p > 1 {
@@ -2323,7 +2323,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			}
 			s, x := randomNext(s)
 			return evalResult{value: randomBoolResultValue(rngValueFromState(s), toFloat01(x) < p)}, nil
-		case "Random.RandNormal":
+		case "Random.RandNormal", "RandNormal":
 			s, _ := rngStateFromValue(args[0])
 			mean, std := args[1].Float, args[2].Float
 			if std < 0 {
@@ -2336,7 +2336,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			s, u2 := randomNext(s)
 			z := normalFromPair(math.Max(toFloat01(u1), 1e-12), toFloat01(u2))
 			return evalResult{value: randomFloatResultValue(rngValueFromState(s), mean+std*z)}, nil
-		case "Random.CryptoRandBytes":
+		case "Random.CryptoRandBytes", "CryptoRandBytes":
 			count := args[0].Int
 			if count < 0 {
 				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "count must be >= 0"}}}, nil
@@ -2347,13 +2347,13 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
 			}
 			return evalResult{value: Value{Kind: ValueBytes, Bytes: b}}, nil
-		case "Random.CryptoRandInt":
+		case "Random.CryptoRandInt", "CryptoRandInt":
 			v, err := cryptoInt(args[0].Int, args[1].Int)
 			if err != nil {
 				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
 			}
 			return evalResult{value: Value{Kind: ValueInt, Int: v}}, nil
-		case "Random.CryptoRandFloat01":
+		case "Random.CryptoRandFloat01", "CryptoRandFloat01":
 			v, err := cryptoU64()
 			if err != nil {
 				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil

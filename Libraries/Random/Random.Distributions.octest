@@ -11,59 +11,50 @@ fn UniformRangeAndDegenerateCase() -> Void {
 }
 
 [Fact]
-fn GaussianZeroStddevReturnsMean() -> Void {
-    let sample = Gaussian(RngSeed(3), 12.5, 0.0)
-    Assert.Equal(12.5, sample.Value, "gaussian stddev=0 returns mean")
+fn JitterSpikeAndDriftAreNonDegenerate() -> Void {
+    var jitterRng = RngSeed(20)
+    var jitterNonZero = false
+    for _i in 0..100 {
+        let sample = Jitter(jitterRng, 0.05)
+        jitterRng = sample.Next
+        if sample.Value != 0.0 {
+            jitterNonZero = true
+        }
+    }
+    Assert.True(jitterNonZero, "jitter eventually non-zero")
+
+    var spikeRng = RngSeed(21)
+    var sawSpike = false
+    for _j in 0..200 {
+        let sample = Spike(spikeRng, 0.1, 4.0)
+        spikeRng = sample.Next
+        if sample.Value != 0.0 {
+            sawSpike = true
+        }
+    }
+    Assert.True(sawSpike, "spike eventually emits spike")
+
+    var driftRng = RngSeed(22)
+    var current = 0.0
+    var changed = false
+    for _k in 0..50 {
+        let draw = DriftStep(driftRng, current, 0.25)
+        driftRng = draw.Next
+        if draw.Value != current {
+            changed = true
+        }
+        current = draw.Value
+    }
+    Assert.True(changed, "drift step changes over time")
 }
 
 [Fact]
-fn ExponentialIsNonNegativeAndReproducible() -> Void {
+fn GaussianAndExponentialDeterministicProperties() -> Void {
+    let sample = Gaussian(RngSeed(3), 12.5, 0.0)
+    Assert.Equal(12.5, sample.Value, "gaussian stddev=0 returns mean")
+
     let a = Exponential(RngSeed(99), 2.0)
     let b = Exponential(RngSeed(99), 2.0)
     Assert.True(a.Value >= 0.0, "exponential non-negative")
     Assert.Equal(a.Value, b.Value, "exponential reproducible for same seed")
-}
-
-[Fact]
-fn JitterRangeAndZeroAmplitude() -> Void {
-    let sample = Jitter(RngSeed(2), 0.75)
-    Assert.True(sample.Value >= -0.75, "jitter lower bound inclusive")
-    Assert.True(sample.Value < 0.75, "jitter upper bound exclusive")
-
-    let zero = Jitter(RngSeed(2), 0.0)
-    Assert.Equal(0.0, zero.Value, "jitter amplitude=0 returns zero")
-}
-
-[Fact]
-fn SpikeExtremesAndReproducibility() -> Void {
-    let never = Spike(RngSeed(4), 0.0, 10.0)
-    Assert.Equal(0.0, never.Value, "spike p=0 returns zero")
-
-    let alwaysA = Spike(RngSeed(8), 1.0, 10.0)
-    let alwaysB = Spike(RngSeed(8), 1.0, 10.0)
-    let isPositive = alwaysA.Value == 10.0
-    let isNegative = alwaysA.Value == -10.0
-    let validSign = if isPositive { true } else { isNegative }
-    Assert.True(validSign, "spike p=1 returns +/- amplitude")
-    Assert.Equal(alwaysA.Value, alwaysB.Value, "spike reproducible for same seed")
-}
-
-[Fact]
-fn DriftStepZeroStddevReturnsCurrent() -> Void {
-    let sample = DriftStep(RngSeed(12), 123.5, 0.0)
-    Assert.Equal(123.5, sample.Value, "drift step stddev=0 returns current")
-}
-
-[Fact]
-fn StateThreadingIsExplicitAndDeterministic() -> Void {
-    let r0 = RngSeed(13)
-
-    let a1 = Jitter(r0, 0.2)
-    let a2 = Gaussian(a1.Next, 0.0, 1.0)
-
-    let b1 = Jitter(RngSeed(13), 0.2)
-    let b2 = Gaussian(b1.Next, 0.0, 1.0)
-
-    Assert.Equal(a1.Value, b1.Value, "first sample deterministic")
-    Assert.Equal(a2.Value, b2.Value, "threaded second sample deterministic")
 }

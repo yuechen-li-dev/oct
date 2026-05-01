@@ -1,24 +1,133 @@
 package Random
 
 [Fact]
-fn RandomRandomCoreFacts() -> Void {
-    let rng0 = RngSeed(42)
-    let a1 = RandInt(rng0, 1, 10)
-    let a2 = RandInt(a1.Next, 1, 10)
-    let rng1 = RngSeed(42)
-    let b1 = RandInt(rng1, 1, 10)
-    let b2 = RandInt(b1.Next, 1, 10)
-    Assert.Equal(a1.Value, b1.Value, "deterministic first draw")
-    Assert.Equal(a2.Value, b2.Value, "deterministic second draw")
-    Assert.Equal(a1.Value, RandInt(rng0, 1, 10).Value, "state threading explicit")
-    let rf = RandFloat01(a2.Next)
-    Assert.True(rf.Value >= 0.0 and rf.Value < 1.0, "float01 range")
-    Assert.Equal(false, RandBernoulli(rf.Next, 0.0).Value, "bernoulli zero")
-    let b1 = RandBernoulli(rf.Next, 1.0).Value
-    Assert.True(b1 == true or b1 == false, "bernoulli one domain")
-    Assert.Equal(3.5, RandNormal(rf.Next, 3.5, 0.0).Value, "normal zero stddev")
-    let rr = RandFloatRange(rf.Next, 2.0, 2.0)
-    Assert.Equal(2.0, rr.Value, "float range equal bounds")
-    let bytes = CryptoRandBytes(16)!
-    Assert.True(Len(bytes) >= 0, "crypto bytes length non-negative")
+fn DeterministicSequenceAndStateThreading() -> Void {
+    let rngA = RngSeed(42)
+    let a1 = RandFloat01(rngA)
+    let a2 = RandFloat01(a1.Next)
+
+    let rngB = RngSeed(42)
+    let b1 = RandFloat01(rngB)
+    let b2 = RandFloat01(b1.Next)
+
+    Assert.Equal(a1.Value, b1.Value, "same seed same first draw")
+    Assert.Equal(a2.Value, b2.Value, "same seed same second draw")
+
+    let reusedA = RandFloat01(rngA)
+    let reusedB = RandFloat01(rngA)
+    Assert.Equal(reusedA.Value, reusedB.Value, "same state reused same draw")
+
+    Assert.True(a1.Value != a2.Value, "advanced state changes later draw")
+
+    let seed1 = RandFloat01(RngSeed(1))
+    let seed2 = RandFloat01(RngSeed(2))
+    Assert.True(seed1.Value != seed2.Value, "different seeds differ")
+}
+
+[Fact]
+fn RandIntIsInRangeAndNonDegenerate() -> Void {
+    var rng = RngSeed(123)
+    let first = RandInt(rng, 1, 100)
+    rng = first.Next
+
+    var sawDifferent = false
+    for _i in 0..20 {
+        let draw = RandInt(rng, 1, 100)
+        rng = draw.Next
+        Assert.True(draw.Value >= 1 and draw.Value <= 100, "rand int in range")
+        if draw.Value != first.Value {
+            sawDifferent = true
+        }
+    }
+
+    Assert.True(sawDifferent, "rand int sequence not constant")
+}
+
+[Fact]
+fn RandFloat01HasRangeAndVariance() -> Void {
+    var rng = RngSeed(2026)
+    var min = 1.0
+    var max = 0.0
+    var sum = 0.0
+    var first = 0.0
+    var sawDifferent = false
+
+    for i in 0..100 {
+        let draw = RandFloat01(rng)
+        rng = draw.Next
+        let value = draw.Value
+        if i == 0 {
+            first = value
+        }
+        if value != first {
+            sawDifferent = true
+        }
+        if value < min {
+            min = value
+        }
+        if value > max {
+            max = value
+        }
+        sum = sum + value
+    }
+
+    let mean = sum / 100.0
+    Assert.True(min >= 0.0, "float01 min >= 0")
+    Assert.True(max < 1.0, "float01 max < 1")
+    Assert.True(sawDifferent, "float01 not constant")
+    Assert.True(mean >= 0.25 and mean <= 0.75, "float01 mean sanity band")
+}
+
+[Fact]
+fn BernoulliAndRangesAndNormalAreNonDegenerate() -> Void {
+    var rng = RngSeed(300)
+    var sawTrue = false
+    var sawFalse = false
+    for _i in 0..100 {
+        let draw = RandBernoulli(rng, 0.5)
+        rng = draw.Next
+        if draw.Value {
+            sawTrue = true
+        } else {
+            sawFalse = true
+        }
+    }
+    Assert.True(sawTrue, "bernoulli p=0.5 saw true")
+    Assert.True(sawFalse, "bernoulli p=0.5 saw false")
+    Assert.Equal(false, RandBernoulli(RngSeed(1), 0.0).Value, "bernoulli p=0 false")
+    Assert.Equal(true, RandBernoulli(RngSeed(1), 1.0).Value, "bernoulli p=1 true")
+
+    var rrng = RngSeed(77)
+    var sawNeg = false
+    var sawPos = false
+    for _j in 0..100 {
+        let draw = RandFloatRange(rrng, -1.0, 1.0)
+        rrng = draw.Next
+        Assert.True(draw.Value >= -1.0, "range lower bound")
+        Assert.True(draw.Value < 1.0, "range upper bound")
+        if draw.Value < 0.0 { sawNeg = true }
+        if draw.Value > 0.0 { sawPos = true }
+    }
+    Assert.True(sawNeg, "range saw negative")
+    Assert.True(sawPos, "range saw positive")
+
+    var nrng = RngSeed(808)
+    var normalSawPos = false
+    var normalSawNeg = false
+    var normalNonZero = false
+    var normalSum = 0.0
+    for _k in 0..120 {
+        let draw = RandNormal(nrng, 0.0, 1.0)
+        nrng = draw.Next
+        if draw.Value > 0.0 { normalSawPos = true }
+        if draw.Value < 0.0 { normalSawNeg = true }
+        if draw.Value != 0.0 { normalNonZero = true }
+        normalSum = normalSum + draw.Value
+    }
+    let normalMean = normalSum / 120.0
+    Assert.True(normalSawPos, "normal saw positive")
+    Assert.True(normalSawNeg, "normal saw negative")
+    Assert.True(normalNonZero, "normal not all zero")
+    Assert.True(normalMean >= -0.5 and normalMean <= 0.5, "normal mean sanity")
+    Assert.Equal(3.5, RandNormal(RngSeed(5), 3.5, 0.0).Value, "normal stddev=0 returns mean")
 }
