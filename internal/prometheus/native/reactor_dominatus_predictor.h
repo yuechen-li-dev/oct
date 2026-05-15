@@ -66,6 +66,52 @@ typedef struct prom_dominatus_prediction_entry {
   prom_dominatus_future_lease_state future_lease_state;
 } prom_dominatus_prediction_entry;
 
+typedef struct prom_dominatus_future_lease_request {
+  uint32_t valid;
+  uint64_t request_id;
+  uint64_t issued_tick;
+  uint64_t target_tick;
+  uint32_t resource_kind;
+  uint32_t slot_id;
+  uint32_t shape_class;
+  uint32_t variant_id;
+  uint32_t lookahead_depth;
+  double confidence;
+  prom_dominatus_future_lease_state state;
+  uint32_t cancel_reason;
+  uint32_t deny_reason;
+} prom_dominatus_future_lease_request;
+
+typedef struct prom_dominatus_future_lease_decision {
+  uint32_t valid;
+  uint64_t request_id;
+  prom_dominatus_future_lease_state previous_state;
+  prom_dominatus_future_lease_state new_state;
+  uint32_t requested;
+  uint32_t granted;
+  uint32_t denied;
+  uint32_t cancelled;
+  uint32_t matured;
+  uint32_t expired;
+  uint32_t yielded;
+  uint32_t reason;
+  uint64_t target_tick;
+  double confidence;
+} prom_dominatus_future_lease_decision;
+
+typedef struct prom_dominatus_future_lease_seam_state {
+  uint64_t next_request_id;
+  uint64_t requested_count;
+  uint64_t granted_count;
+  uint64_t denied_count;
+  uint64_t cancelled_count;
+  uint64_t matured_count;
+  uint64_t expired_count;
+  uint64_t yielded_count;
+  prom_dominatus_future_lease_request last_request;
+  prom_dominatus_future_lease_request last_matured;
+} prom_dominatus_future_lease_seam_state;
+
 typedef struct prom_dominatus_correction_event {
   uint32_t valid;
   uint64_t tick;
@@ -108,8 +154,34 @@ typedef struct prom_dominatus_predictor_state {
   uint32_t fallback_reason;
   uint64_t last_tick;
   uint64_t next_lease_request_id;
+  prom_dominatus_future_lease_seam_state future_lease_seam;
   uint32_t initialized;
 } prom_dominatus_predictor_state;
+
+void prom_dominatus_future_lease_seam_init(prom_dominatus_future_lease_seam_state* state);
+void prom_dominatus_future_lease_seam_reset(prom_dominatus_future_lease_seam_state* state);
+prom_dominatus_future_lease_decision prom_dominatus_future_lease_request_issue(
+    prom_dominatus_future_lease_seam_state* state,
+    const prom_dominatus_prediction_entry* prediction,
+    uint64_t tick);
+prom_dominatus_future_lease_decision prom_dominatus_future_lease_grant(
+    prom_dominatus_future_lease_seam_state* state,
+    uint64_t request_id,
+    uint64_t tick);
+prom_dominatus_future_lease_decision prom_dominatus_future_lease_deny(
+    prom_dominatus_future_lease_seam_state* state,
+    uint64_t request_id,
+    uint32_t reason,
+    uint64_t tick);
+prom_dominatus_future_lease_decision prom_dominatus_future_lease_cancel(
+    prom_dominatus_future_lease_seam_state* state,
+    uint64_t request_id,
+    uint32_t reason,
+    uint64_t tick);
+prom_dominatus_future_lease_decision prom_dominatus_future_lease_mature(
+    prom_dominatus_future_lease_seam_state* state,
+    uint64_t request_id,
+    uint64_t tick);
 
 prom_dominatus_predictor_evidence prom_dominatus_predictor_evidence_from_filtered(
     const prom_dominatus_filtered_evidence* evidence);
