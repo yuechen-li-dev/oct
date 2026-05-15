@@ -1,0 +1,72 @@
+package PrometheusPredictiveLeaseAheadLabM6a
+
+[Fact]
+fn LowConfidenceBlocksPrestage() -> Void {
+    let m = SimulatePolicyScenario(PolicyConfidence(), ScenarioType.WarmupLowConfidence, BaseRake())
+    Assert.True(m.SubmittedCount == 0, "below threshold should not submit pre-stage")
+}
+
+[Fact]
+fn RecentMissBlocksPrestage() -> Void {
+    let m = SimulatePolicyScenario(PolicyConfCorrection(), ScenarioType.PredictionMiss, BaseRake())
+    Assert.True(m.BlockedRecentMiss > 0, "recent miss window should block pre-stage")
+}
+
+[Fact]
+fn StableHighConfidencePermitsPrestage() -> Void {
+    let m = SimulatePolicyScenario(PolicyDominatus(), ScenarioType.StableHighConfidence, BaseRake())
+    Assert.True(m.SubmittedCount > 0, "stable confidence should allow staging")
+    Assert.True(m.MaturedCount > 0, "stable scenario should mature staging")
+}
+
+[Fact]
+fn PredictionMissCausesWasteOrCancel() -> Void {
+    let m = SimulatePolicyScenario(PolicyGreedy(), ScenarioType.PredictionMiss, BaseRake())
+    Assert.True(m.CancelledCount > 0 or m.WastedCount > 0, "miss should cancel or waste pre-stage")
+}
+
+[Fact]
+fn DominatusWastesLessThanGreedyInHostileScenario() -> Void {
+    let greedy = SimulatePolicyScenario(PolicyGreedy(), ScenarioType.MixedHostile, BaseRake())
+    let dom = SimulatePolicyScenario(PolicyDominatus(), ScenarioType.MixedHostile, BaseRake())
+    Assert.True(dom.Waste < greedy.Waste, "dominatus should waste less than greedy")
+}
+
+[Fact]
+fn HardGateBlocksPrestage() -> Void {
+    let m = SimulatePolicyScenario(PolicyDominatus(), ScenarioType.ResourcePressure, BaseRake())
+    Assert.True(m.SubmittedCount == 0, "resource pressure hard gate should block")
+    Assert.True(m.BlockedHardGate > 0 or m.BlockedResourcePressure > 0, "hard gate block reason should be recorded")
+}
+
+[Fact]
+fn DeterminismRecommendation() -> Void {
+    let a = M6aFinalRecommendation()
+    let b = M6aFinalRecommendation()
+    Assert.Equal(a, b, "same config should produce same recommendation")
+}
+
+[Artifact]
+fn EmitM6aPolicyMatrix() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M6a/m6a_prestage_policy_matrix.octagon", CompareScenarioPolicies(ScenarioType.MixedHostile, BaseRake()))
+}
+
+[Artifact]
+fn EmitM6aGateRakeScores() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M6a/m6a_gate_rake_scores.octagon", ScenarioSweep())
+}
+
+[Artifact]
+fn EmitM6aFailureModes() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M6a/m6a_failure_modes.octagon", [
+        SimulatePolicyScenario(PolicyGreedy(), ScenarioType.PredictionMiss, BaseRake()),
+        SimulatePolicyScenario(PolicyGreedy(), ScenarioType.FalsePositiveSpike, BaseRake()),
+        SimulatePolicyScenario(PolicyGreedy(), ScenarioType.StepChange, BaseRake()),
+        SimulatePolicyScenario(PolicyDominatus(), ScenarioType.MixedHostile, BaseRake())
+    ])
+}
+
+[Artifact]
+fn EmitM6aFinalRecommendation() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M6a/m6a_final_recommendation.octagon", [M6aFinalRecommendation()])
+}
