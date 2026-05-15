@@ -26,6 +26,7 @@
 #include "reactor_dominatus_blackboard.h"
 #include "reactor_dominatus_sgemm_adapter.h"
 #include "reactor_dominatus_slot_adapter.h"
+#include "reactor_dominatus_measurement_filter.h"
 #include "reactor_judgment_engine.h"
 #include "reactor_slot_hfsm.h"
 #include "reactor_vulkan_fp16_spirv.h"
@@ -508,6 +509,9 @@ typedef struct prometheus_runtime {
   uint32_t last_gpu_timing_valid;
   uint32_t last_gpu_timing_failure_reason;
   uint64_t last_gpu_duration_ns;
+  prom_dominatus_measurement_filter_state p14_measurement_filter_state;
+  prom_dominatus_filtered_evidence p14_last_filtered_evidence;
+  uint64_t p14_measurement_tick;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -3832,6 +3836,7 @@ static void reset_last_gpu_timing(prometheus_runtime* rt, uint32_t failure_reaso
   rt->last_gpu_timing_valid = 0u;
   rt->last_gpu_duration_ns = 0u;
   rt->last_gpu_timing_failure_reason = failure_reason;
+  rt->p14_last_filtered_evidence.valid = 0u;
 }
 
 static void vk_runtime_cleanup(prometheus_runtime* rt) {
@@ -4481,6 +4486,9 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
   runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
   prom_dom_blackboard_init(&runtime->blackboard);
+  prom_dominatus_measurement_filter_init(&runtime->p14_measurement_filter_state, NULL);
+  memset(&runtime->p14_last_filtered_evidence, 0, sizeof(runtime->p14_last_filtered_evidence));
+  runtime->p14_measurement_tick = 0u;
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
   prom_slot_hfsm_init(&runtime->slots[1], 1u);
@@ -6059,6 +6067,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
           rt->last_gpu_timing_valid = 1u;
           rt->last_gpu_timing_failure_reason = PROM_SGEMM_GPU_TIMING_FAILURE_NONE;
           rt->last_gpu_duration_ns = (uint64_t)duration;
+          rt->p14_measurement_tick += 1u;
+          rt->p14_last_filtered_evidence =
+              prom_dominatus_measurement_filter_update(&rt->p14_measurement_filter_state, duration, rt->p14_measurement_tick);
         }
       }
     }
@@ -8105,6 +8116,21 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p13_m5_last_gpu_timing_valid = rt->last_gpu_timing_valid;
   out_diag->p13_m5_last_gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
   out_diag->p13_m5_last_gpu_duration_ns = rt->last_gpu_duration_ns;
+  out_diag->p14_m8_filter_evidence_valid = rt->p14_last_filtered_evidence.valid;
+  out_diag->p14_m8_raw_gpu_duration_ns = rt->p14_last_filtered_evidence.raw_value;
+  out_diag->p14_m8_filtered_gpu_duration_ns = rt->p14_last_filtered_evidence.filtered_value;
+  out_diag->p14_m8_filter_residual = rt->p14_last_filtered_evidence.residual;
+  out_diag->p14_m8_filter_confidence = rt->p14_last_filtered_evidence.confidence;
+  out_diag->p14_m8_filter_selected_kind = (uint32_t)rt->p14_last_filtered_evidence.selected_filter;
+  out_diag->p14_m8_filter_previous_kind = (uint32_t)rt->p14_last_filtered_evidence.previous_filter;
+  out_diag->p14_m8_filter_switched = rt->p14_last_filtered_evidence.filter_switched;
+  out_diag->p14_m8_filter_warmup = rt->p14_last_filtered_evidence.filter_warmup;
+  out_diag->p14_m8_filter_held_by_min_commit = rt->p14_last_filtered_evidence.held_by_min_commit;
+  out_diag->p14_m8_filter_held_by_margin = rt->p14_last_filtered_evidence.held_by_margin;
+  out_diag->p14_m8_filter_held_by_confidence = rt->p14_last_filtered_evidence.held_by_confidence;
+  out_diag->p14_m8_filter_warm_transferred = rt->p14_last_filtered_evidence.warm_transferred;
+  out_diag->p14_m8_filter_sample_count = rt->p14_last_filtered_evidence.sample_count;
+  out_diag->p14_m8_filter_outlier_count = rt->p14_last_filtered_evidence.outlier_count;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
