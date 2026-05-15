@@ -276,6 +276,12 @@ prom_dominatus_correction_event prom_dominatus_predictor_update(
     const prom_dominatus_physical_observation* physical,
     uint64_t tick,
     prom_dominatus_prediction_entry* out_issued);
+prom_dominatus_reservation_decision prom_dominatus_predictor_apply_correction_to_reservation(
+    prom_dominatus_predictor_state* predictor,
+    prom_dominatus_reservation_state_set* reservations,
+    const prom_dominatus_prediction_entry* matured_entry,
+    const prom_dominatus_correction_event* correction,
+    uint64_t tick);
 
 prom_dominatus_reservation_params prom_dominatus_reservation_default_params(void);
 void prom_dominatus_reservation_init(prom_dominatus_reservation_state_set* state,

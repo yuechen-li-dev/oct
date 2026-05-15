@@ -7,6 +7,12 @@
 #define PROM_DOM_FALLBACK_HARD_GATE 1u
 #define PROM_DOM_FALLBACK_RING_FULL 2u
 
+static prom_dominatus_reservation_decision reservation_transition_by_request_id(
+    prom_dominatus_reservation_state_set* state,
+    uint64_t request_id,
+    prom_dominatus_reservation_state next,
+    uint32_t reason);
+
 static double clamp01(double x) {
   if (x < 0.0) return 0.0;
   if (x > 1.0) return 1.0;
@@ -285,6 +291,12 @@ prom_dominatus_correction_event prom_dominatus_predictor_mature(
     }
   }
 
+  (void)prom_dominatus_predictor_apply_correction_to_reservation(state,
+                                                                  &state->reservations,
+                                                                  entry,
+                                                                  &ev,
+                                                                  tick);
+
   memset(entry, 0, sizeof(*entry));
   state->ring_head = (state->ring_head + 1u) % PROM_DOM_PREDICTION_RING_CAP;
   state->ring_count -= 1u;
@@ -335,6 +347,64 @@ static prom_dominatus_reservation_decision reservation_transition(prom_dominatus
   if (next == PROM_DOM_RESERVATION_EXPIRED) { d.expired = 1u; state->expired_count += 1u; }
   if (next == PROM_DOM_RESERVATION_YIELDED) { d.yielded = 1u; state->yielded_count += 1u; }
   d.active_count = state->active_count;
+  return d;
+}
+
+static prom_dominatus_reservation_decision reservation_transition_by_request_id(
+    prom_dominatus_reservation_state_set* state,
+    uint64_t request_id,
+    prom_dominatus_reservation_state next,
+    uint32_t reason) {
+  uint32_t i;
+  prom_dominatus_reservation_decision d;
+  memset(&d, 0, sizeof(d));
+  if (state == NULL || request_id == 0u) return d;
+  for (i = 0u; i < PROM_DOM_RESERVATION_CAP; ++i) {
+    if (state->entries[i].valid != 0u && state->entries[i].request_id == request_id &&
+        state->entries[i].state == PROM_DOM_RESERVATION_RESERVED) {
+      return reservation_transition(state, i, next, reason);
+    }
+  }
+  return d;
+}
+
+prom_dominatus_reservation_decision prom_dominatus_predictor_apply_correction_to_reservation(
+    prom_dominatus_predictor_state* predictor,
+    prom_dominatus_reservation_state_set* reservations,
+    const prom_dominatus_prediction_entry* matured_entry,
+    const prom_dominatus_correction_event* correction,
+    uint64_t tick) {
+  prom_dominatus_reservation_decision d;
+  memset(&d, 0, sizeof(d));
+  if (predictor == NULL || reservations == NULL || matured_entry == NULL || correction == NULL ||
+      correction->valid == 0u || matured_entry->lease_request_id == 0u) return d;
+
+  if (correction->action == PROM_DOM_CORRECTION_ACTION_MARK_STALE) {
+    d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_CANCELLED, 90u);
+    if (d.cancelled != 0u) {
+      (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
+      predictor->future_lease_cancelled += 1u;
+    }
+    return d;
+  }
+  if (correction->state_mismatch == 0u) {
+    d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_MATURED, 0u);
+    if (d.matured != 0u) (void)prom_dominatus_future_lease_mature(&predictor->future_lease_seam, matured_entry->lease_request_id, tick);
+    return d;
+  }
+  if (tick >= matured_entry->target_tick) {
+    d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_EXPIRED, 91u);
+    if (d.expired != 0u) {
+      (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
+      predictor->future_lease_cancelled += 1u;
+    }
+    return d;
+  }
+  d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_CANCELLED, 92u);
+  if (d.cancelled != 0u) {
+    (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
+    predictor->future_lease_cancelled += 1u;
+  }
   return d;
 }
 
