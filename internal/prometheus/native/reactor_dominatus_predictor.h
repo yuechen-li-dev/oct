@@ -31,6 +31,19 @@ typedef enum prom_dominatus_future_lease_state {
   PROM_DOM_FUTURE_LEASE_EXPIRED
 } prom_dominatus_future_lease_state;
 
+typedef enum prom_dominatus_reservation_state {
+  PROM_DOM_RESERVATION_NONE = 0,
+  PROM_DOM_RESERVATION_REQUESTED,
+  PROM_DOM_RESERVATION_RESERVED,
+  PROM_DOM_RESERVATION_DENIED,
+  PROM_DOM_RESERVATION_CANCELLED,
+  PROM_DOM_RESERVATION_MATURED,
+  PROM_DOM_RESERVATION_EXPIRED,
+  PROM_DOM_RESERVATION_YIELDED
+} prom_dominatus_reservation_state;
+
+#define PROM_DOM_RESERVATION_CAP 16u
+
 typedef struct prom_dominatus_predictor_evidence {
   uint32_t valid;
   uint32_t warmup;
@@ -112,6 +125,60 @@ typedef struct prom_dominatus_future_lease_seam_state {
   prom_dominatus_future_lease_request last_matured;
 } prom_dominatus_future_lease_seam_state;
 
+typedef struct prom_dominatus_reservation_request {
+  uint32_t valid;
+  uint64_t request_id;
+  uint64_t issued_tick;
+  uint64_t target_tick;
+  uint32_t resource_kind;
+  uint32_t slot_id;
+  uint32_t shape_class;
+  uint32_t variant_id;
+  uint32_t lookahead_depth;
+  double confidence;
+  prom_dominatus_reservation_state state;
+  uint32_t deny_reason;
+  uint32_t cancel_reason;
+} prom_dominatus_reservation_request;
+
+typedef struct prom_dominatus_reservation_state_set {
+  prom_dominatus_reservation_request entries[PROM_DOM_RESERVATION_CAP];
+  uint64_t next_request_id;
+  uint64_t requested_count;
+  uint64_t reserved_count;
+  uint64_t denied_count;
+  uint64_t cancelled_count;
+  uint64_t matured_count;
+  uint64_t expired_count;
+  uint64_t yielded_count;
+  uint32_t active_count;
+} prom_dominatus_reservation_state_set;
+
+typedef struct prom_dominatus_reservation_params {
+  uint32_t capacity;
+  uint32_t max_lookahead_depth;
+  double min_confidence;
+  uint64_t max_future_ticks;
+  uint64_t expiry_slack_ticks;
+} prom_dominatus_reservation_params;
+
+typedef struct prom_dominatus_reservation_decision {
+  uint32_t valid;
+  uint64_t request_id;
+  prom_dominatus_reservation_state previous_state;
+  prom_dominatus_reservation_state new_state;
+  uint32_t reserved;
+  uint32_t denied;
+  uint32_t cancelled;
+  uint32_t matured;
+  uint32_t expired;
+  uint32_t yielded;
+  uint32_t reason;
+  uint64_t target_tick;
+  double confidence;
+  uint32_t active_count;
+} prom_dominatus_reservation_decision;
+
 typedef struct prom_dominatus_correction_event {
   uint32_t valid;
   uint64_t tick;
@@ -155,6 +222,8 @@ typedef struct prom_dominatus_predictor_state {
   uint64_t last_tick;
   uint64_t next_lease_request_id;
   prom_dominatus_future_lease_seam_state future_lease_seam;
+  prom_dominatus_reservation_state_set reservations;
+  prom_dominatus_reservation_params reservation_params;
   uint32_t initialized;
 } prom_dominatus_predictor_state;
 
@@ -207,6 +276,31 @@ prom_dominatus_correction_event prom_dominatus_predictor_update(
     const prom_dominatus_physical_observation* physical,
     uint64_t tick,
     prom_dominatus_prediction_entry* out_issued);
+
+prom_dominatus_reservation_params prom_dominatus_reservation_default_params(void);
+void prom_dominatus_reservation_init(prom_dominatus_reservation_state_set* state,
+                                     const prom_dominatus_reservation_params* params);
+void prom_dominatus_reservation_reset(prom_dominatus_reservation_state_set* state);
+prom_dominatus_reservation_decision prom_dominatus_reservation_request_from_future_lease(
+    prom_dominatus_reservation_state_set* state,
+    const prom_dominatus_reservation_params* params,
+    const prom_dominatus_future_lease_request* request,
+    uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_reservation_cancel(prom_dominatus_reservation_state_set* state,
+                                                                      uint64_t request_id,
+                                                                      uint32_t reason,
+                                                                      uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_reservation_mature(prom_dominatus_reservation_state_set* state,
+                                                                      uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_reservation_expire_stale(
+    prom_dominatus_reservation_state_set* state,
+    const prom_dominatus_reservation_params* params,
+    uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
+    prom_dominatus_predictor_state* predictor,
+    prom_dominatus_reservation_state_set* reservations,
+    const prom_dominatus_future_lease_request* future_request,
+    uint64_t tick);
 
 #ifdef __cplusplus
 }

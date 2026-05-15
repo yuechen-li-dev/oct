@@ -58,6 +58,22 @@ static prom_dominatus_future_lease_decision future_lease_transition(
 }
 
 void prom_dominatus_future_lease_seam_init(prom_dominatus_future_lease_seam_state* state) { prom_dominatus_future_lease_seam_reset(state); }
+
+prom_dominatus_reservation_params prom_dominatus_reservation_default_params(void) {
+  prom_dominatus_reservation_params p;
+  p.capacity = 16u;
+  p.max_lookahead_depth = 2u;
+  p.min_confidence = 0.45;
+  p.max_future_ticks = 2u;
+  p.expiry_slack_ticks = 1u;
+  return p;
+}
+
+void prom_dominatus_reservation_init(prom_dominatus_reservation_state_set* state,
+                                     const prom_dominatus_reservation_params* params) {
+  (void)params;
+  prom_dominatus_reservation_reset(state);
+}
 void prom_dominatus_future_lease_seam_reset(prom_dominatus_future_lease_seam_state* state) {
   if (state == NULL) return;
   memset(state, 0, sizeof(*state));
@@ -149,6 +165,8 @@ void prom_dominatus_predictor_init(prom_dominatus_predictor_state* state,
   state->params = params == NULL ? prom_dominatus_predictor_default_params() : *params;
   state->prediction_confidence = state->params.confidence_threshold_depth1;
   prom_dominatus_future_lease_seam_init(&state->future_lease_seam);
+  state->reservation_params = prom_dominatus_reservation_default_params();
+  prom_dominatus_reservation_init(&state->reservations, &state->reservation_params);
   state->initialized = 1u;
 }
 
@@ -171,6 +189,7 @@ void prom_dominatus_predictor_reset(prom_dominatus_predictor_state* state) {
   state->last_tick = 0u;
   state->next_lease_request_id = 0u;
   prom_dominatus_future_lease_seam_reset(&state->future_lease_seam);
+  prom_dominatus_reservation_reset(&state->reservations);
   state->initialized = 0u;
 }
 
@@ -282,4 +301,119 @@ prom_dominatus_correction_event prom_dominatus_predictor_update(
   const prom_dominatus_correction_event ev = prom_dominatus_predictor_mature(state, physical, tick);
   (void)prom_dominatus_predictor_issue(state, evidence, physical, tick, out_issued);
   return ev;
+}
+
+
+void prom_dominatus_reservation_reset(prom_dominatus_reservation_state_set* state) {
+  if (state == NULL) return;
+  memset(state, 0, sizeof(*state));
+}
+
+static uint32_t reservation_is_active(prom_dominatus_reservation_state st) {
+  return st == PROM_DOM_RESERVATION_RESERVED || st == PROM_DOM_RESERVATION_REQUESTED;
+}
+
+static prom_dominatus_reservation_decision reservation_transition(prom_dominatus_reservation_state_set* state,
+                                                                  uint64_t idx,
+                                                                  prom_dominatus_reservation_state next,
+                                                                  uint32_t reason) {
+  prom_dominatus_reservation_decision d;
+  memset(&d, 0, sizeof(d));
+  if (state == NULL || idx >= PROM_DOM_RESERVATION_CAP || state->entries[idx].valid == 0u) return d;
+  d.valid = 1u;
+  d.request_id = state->entries[idx].request_id;
+  d.previous_state = state->entries[idx].state;
+  d.new_state = next;
+  d.reason = reason;
+  d.target_tick = state->entries[idx].target_tick;
+  d.confidence = state->entries[idx].confidence;
+  if (reservation_is_active(state->entries[idx].state) && !reservation_is_active(next) && state->active_count > 0u) state->active_count -= 1u;
+  state->entries[idx].state = next;
+  if (next == PROM_DOM_RESERVATION_DENIED) { d.denied = 1u; state->denied_count += 1u; state->entries[idx].deny_reason = reason; }
+  if (next == PROM_DOM_RESERVATION_CANCELLED) { d.cancelled = 1u; state->cancelled_count += 1u; state->entries[idx].cancel_reason = reason; }
+  if (next == PROM_DOM_RESERVATION_MATURED) { d.matured = 1u; state->matured_count += 1u; }
+  if (next == PROM_DOM_RESERVATION_EXPIRED) { d.expired = 1u; state->expired_count += 1u; }
+  if (next == PROM_DOM_RESERVATION_YIELDED) { d.yielded = 1u; state->yielded_count += 1u; }
+  d.active_count = state->active_count;
+  return d;
+}
+
+prom_dominatus_reservation_decision prom_dominatus_reservation_request_from_future_lease(
+    prom_dominatus_reservation_state_set* state,
+    const prom_dominatus_reservation_params* params,
+    const prom_dominatus_future_lease_request* request,
+    uint64_t tick) {
+  prom_dominatus_reservation_decision d;
+  uint32_t i;
+  uint32_t cap;
+  memset(&d, 0, sizeof(d));
+  if (state == NULL || params == NULL || request == NULL || request->valid == 0u) return d;
+  d.valid = 1u; d.request_id = request->request_id; d.new_state = PROM_DOM_RESERVATION_DENIED; d.target_tick = request->target_tick; d.confidence = request->confidence;
+  if (request->confidence < params->min_confidence || request->lookahead_depth == 0u || request->lookahead_depth > params->max_lookahead_depth || request->target_tick <= tick || (request->target_tick - tick) > params->max_future_ticks) {
+    d.denied = 1u; d.reason = 1u; state->denied_count += 1u; d.active_count = state->active_count; return d;
+  }
+  cap = params->capacity; if (cap == 0u || cap > PROM_DOM_RESERVATION_CAP) cap = PROM_DOM_RESERVATION_CAP;
+  if (state->active_count >= cap) { d.denied = 1u; d.reason = 2u; state->denied_count += 1u; d.active_count = state->active_count; return d; }
+  for (i = 0u; i < cap; ++i) {
+    if (state->entries[i].valid != 0u && state->entries[i].request_id == request->request_id && reservation_is_active(state->entries[i].state) != 0u) {
+      d.denied = 1u; d.reason = 3u; state->denied_count += 1u; d.active_count = state->active_count; return d;
+    }
+  }
+  for (i = 0u; i < cap; ++i) {
+    if (state->entries[i].valid == 0u || reservation_is_active(state->entries[i].state) == 0u) {
+      memset(&state->entries[i], 0, sizeof(state->entries[i]));
+      state->entries[i].valid = 1u;
+      state->entries[i].request_id = request->request_id != 0u ? request->request_id : ++state->next_request_id;
+      state->entries[i].issued_tick = tick; state->entries[i].target_tick = request->target_tick;
+      state->entries[i].resource_kind = request->resource_kind; state->entries[i].slot_id = request->slot_id;
+      state->entries[i].shape_class = request->shape_class; state->entries[i].variant_id = request->variant_id;
+      state->entries[i].lookahead_depth = request->lookahead_depth; state->entries[i].confidence = request->confidence;
+      state->entries[i].state = PROM_DOM_RESERVATION_RESERVED;
+      state->requested_count += 1u; state->reserved_count += 1u; state->active_count += 1u;
+      d.request_id = state->entries[i].request_id; d.previous_state = PROM_DOM_RESERVATION_NONE; d.new_state = PROM_DOM_RESERVATION_RESERVED; d.reserved = 1u; d.active_count = state->active_count;
+      return d;
+    }
+  }
+  d.denied = 1u; d.reason = 4u; state->denied_count += 1u; d.active_count = state->active_count; return d;
+}
+
+prom_dominatus_reservation_decision prom_dominatus_reservation_cancel(prom_dominatus_reservation_state_set* state,
+                                                                      uint64_t request_id,
+                                                                      uint32_t reason,
+                                                                      uint64_t tick) {
+  uint32_t i; (void)tick;
+  for (i = 0u; state != NULL && i < PROM_DOM_RESERVATION_CAP; ++i) if (state->entries[i].valid != 0u && state->entries[i].request_id == request_id && state->entries[i].state == PROM_DOM_RESERVATION_RESERVED) return reservation_transition(state, i, PROM_DOM_RESERVATION_CANCELLED, reason);
+  { prom_dominatus_reservation_decision d; memset(&d,0,sizeof(d)); return d; }
+}
+
+prom_dominatus_reservation_decision prom_dominatus_reservation_mature(prom_dominatus_reservation_state_set* state,
+                                                                      uint64_t tick) {
+  uint32_t i; int found=-1; uint64_t best=0;
+  for (i = 0u; state != NULL && i < PROM_DOM_RESERVATION_CAP; ++i) if (state->entries[i].valid != 0u && state->entries[i].state == PROM_DOM_RESERVATION_RESERVED && state->entries[i].target_tick <= tick) { if (found < 0 || state->entries[i].target_tick < best) { found=(int)i; best=state->entries[i].target_tick; } }
+  if (found >= 0) return reservation_transition(state, (uint64_t)found, PROM_DOM_RESERVATION_MATURED, 0u);
+  { prom_dominatus_reservation_decision d; memset(&d,0,sizeof(d)); return d; }
+}
+
+prom_dominatus_reservation_decision prom_dominatus_reservation_expire_stale(
+    prom_dominatus_reservation_state_set* state,
+    const prom_dominatus_reservation_params* params,
+    uint64_t tick) {
+  uint32_t i; uint64_t slack = params == NULL ? 0u : params->expiry_slack_ticks;
+  for (i = 0u; state != NULL && i < PROM_DOM_RESERVATION_CAP; ++i) if (state->entries[i].valid != 0u && state->entries[i].state == PROM_DOM_RESERVATION_RESERVED && tick > state->entries[i].target_tick + slack) return reservation_transition(state, i, PROM_DOM_RESERVATION_EXPIRED, 0u);
+  { prom_dominatus_reservation_decision d; memset(&d,0,sizeof(d)); return d; }
+}
+
+prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
+    prom_dominatus_predictor_state* predictor,
+    prom_dominatus_reservation_state_set* reservations,
+    const prom_dominatus_future_lease_request* future_request,
+    uint64_t tick) {
+  prom_dominatus_reservation_decision d;
+  if (predictor == NULL || reservations == NULL) { memset(&d,0,sizeof(d)); return d; }
+  d = prom_dominatus_reservation_request_from_future_lease(reservations, &predictor->reservation_params, future_request, tick);
+  if (future_request != NULL && future_request->valid != 0u) {
+    if (d.reserved != 0u) (void)prom_dominatus_future_lease_grant(&predictor->future_lease_seam, future_request->request_id, tick);
+    else if (d.denied != 0u) (void)prom_dominatus_future_lease_deny(&predictor->future_lease_seam, future_request->request_id, d.reason, tick);
+  }
+  return d;
 }
