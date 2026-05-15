@@ -1,0 +1,71 @@
+package PrometheusPredictiveLeaseAheadLabM1
+
+[Fact]
+fn StableConfidenceRaisesDepth() -> Void {
+    let adaptive = SimulateScenario(PolicyAdaptive(), "stable")
+    Assert.True(adaptive.FinalDepth >= 1, "stable high-confidence should raise depth")
+}
+
+[Fact]
+fn WarmupBlocksPrediction() -> Void {
+    let adaptive = SimulateScenario(PolicyAdaptive(), "warmup")
+    Assert.True(adaptive.FinalDepth == 0, "warmup should keep depth 0")
+    Assert.True(adaptive.OpportunityScore == 0.0, "warmup should issue no useful lookahead")
+}
+
+[Fact]
+fn LowConfidenceBlocksPrediction() -> Void {
+    let adaptive = SimulateScenario(PolicyAdaptive(), "low-confidence")
+    Assert.True(adaptive.FinalDepth == 0, "low confidence should keep depth 0")
+}
+
+[Fact]
+fn MissReducesConfidenceDepthViaPenalty() -> Void {
+    let greedy = SimulateScenario(PolicyGreedy(), "prediction-miss")
+    let adaptive = SimulateScenario(PolicyAdaptive(), "prediction-miss")
+    Assert.True(greedy.MissPenalty >= 1.0, "miss scenario should create misses")
+    Assert.True(adaptive.FinalDepth <= 1, "adaptive should reduce depth after misses")
+}
+
+[Fact]
+fn ResourcePressureBlocksFutureLease() -> Void {
+    let adaptive = SimulateScenario(PolicyAdaptive(), "resource-pressure")
+    Assert.True(adaptive.OpportunityScore == 0.0, "hard gate should block lookahead actuation")
+    Assert.True(adaptive.SafetyScore > 0.0, "hard gate should count as safety block")
+}
+
+[Fact]
+fn AdaptiveBeatsGreedyOnMissWaste() -> Void {
+    let greedy = SimulateScenario(PolicyGreedy(), "prediction-miss")
+    let adaptive = SimulateScenario(PolicyAdaptive(), "prediction-miss")
+    Assert.True(adaptive.MissPenalty <= greedy.MissPenalty, "adaptive should reduce miss penalty")
+    Assert.True(adaptive.FutureLeaseWaste <= greedy.FutureLeaseWaste, "adaptive should reduce lease waste")
+}
+
+[Fact]
+fn BaselineHasZeroLeaseWaste() -> Void {
+    let base = SimulateScenario(PolicyBaseline(), "stable")
+    Assert.True(base.FutureLeaseWaste == 0.0, "baseline issues no future lease")
+}
+
+[Fact]
+fn DeterministicRecommendation() -> Void {
+    let a = M1FinalRecommendation()
+    let b = M1FinalRecommendation()
+    Assert.Equal(a, b, "same inputs should produce same recommendation")
+}
+
+[Artifact]
+fn EmitM1ScenarioMatrix() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M1/m1_predictive_scenario_matrix.octagon", M1ScenarioMatrix())
+}
+
+[Artifact]
+fn EmitM1PolicyScores() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M1/m1_depth_policy_scores.octagon", ComparePolicies("prediction-miss"))
+}
+
+[Artifact]
+fn EmitM1FinalRecommendation() -> Void {
+    let _ = WriteOctagon("Experiments/PrometheusPredictiveLeaseAheadLab/M1/m1_final_recommendation.octagon", [M1FinalRecommendation()])
+}
