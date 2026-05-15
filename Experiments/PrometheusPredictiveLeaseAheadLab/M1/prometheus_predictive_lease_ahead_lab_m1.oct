@@ -1,0 +1,238 @@
+package PrometheusPredictiveLeaseAheadLabM1
+
+record FilteredEvidenceSample {
+    Tick: Int
+    RawValue: Float
+    FilteredValue: Float
+    Confidence: Float
+    Warmup: Bool
+    Valid: Bool
+    OutlierCount: Int
+}
+
+record PhysicalObservation {
+    Tick: Int
+    ActualReady: Bool
+    ActualLatency: Float
+    SlotValid: Bool
+    RuntimeUnsafe: Bool
+    OutstandingDepth: Int
+    MemoryBudgetOk: Bool
+}
+
+record PredictionEntry {
+    IssuedTick: Int
+    TargetTick: Int
+    PredictedReady: Bool
+    PredictedLatency: Float
+    PredictionConfidence: Float
+    LookaheadDepth: Int
+    FutureLeaseRequested: Bool
+    Active: Bool
+}
+
+enum CorrectionAction { None LowerConfidence ReduceDepth CancelFutureLease Fallback MarkStale }
+enum FutureLeaseState { None Requested Granted Denied Cancelled Matured Yielded Expired }
+
+record CorrectionEvent {
+    Tick: Int
+    PredictionMatured: Bool
+    PredictedReady: Bool
+    ActualReady: Bool
+    ArrivalErrorTicks: Int
+    StateMismatch: Bool
+    ConfidenceDelta: Float
+    Action: CorrectionAction
+}
+
+record PolicyConfig {
+    Name: String
+    Mode: String
+}
+
+record StepResult {
+    Tick: Int
+    Depth: Int
+    Confidence: Float
+    FutureLease: FutureLeaseState
+    Correction: CorrectionEvent
+}
+
+record PolicyOutcome {
+    Scenario: String
+    Policy: String
+    OpportunityScore: Float
+    SafetyScore: Float
+    MissPenalty: Float
+    FutureLeaseWaste: Float
+    FallbackRate: Float
+    ThrashCount: Int
+    CompositeScore: Float
+    FinalDepth: Int
+}
+
+fn PolicyBaseline() -> PolicyConfig { return PolicyConfig { Name: "A-baseline" Mode: "baseline" } }
+fn PolicyGreedy() -> PolicyConfig { return PolicyConfig { Name: "B-greedy" Mode: "greedy" } }
+fn PolicyConservative() -> PolicyConfig { return PolicyConfig { Name: "C-conservative" Mode: "conservative" } }
+fn PolicyAdaptive() -> PolicyConfig { return PolicyConfig { Name: "D-adaptive" Mode: "adaptive" } }
+
+fn AllPolicies() -> PolicyConfig[] { return [PolicyBaseline(), PolicyGreedy(), PolicyConservative(), PolicyAdaptive()] }
+
+fn Clamp01(v: Float) -> Float {
+    if v < 0.0 { return 0.0 }
+    if v > 1.0 { return 1.0 }
+    return v
+}
+
+fn IsHardGate(obs: PhysicalObservation) -> Bool {
+    return obs.RuntimeUnsafe or obs.SlotValid == false or obs.MemoryBudgetOk == false or obs.OutstandingDepth >= 2
+}
+
+fn ChooseDepth(policy: PolicyConfig, confidence: Float, e: FilteredEvidenceSample, obs: PhysicalObservation, recentMiss: Int) -> Int {
+    if policy.Mode == "baseline" { return 0 }
+    if IsHardGate(obs) or e.Warmup or e.Valid == false or confidence < 0.45 { return 0 }
+
+    if policy.Mode == "greedy" {
+        if confidence >= 0.45 { return 2 }
+        return 0
+    }
+
+    if policy.Mode == "conservative" {
+        if confidence >= 0.75 and recentMiss == 0 { return 1 }
+        return 0
+    }
+
+    if confidence >= 0.75 and recentMiss == 0 and e.OutlierCount <= 1 { return 2 }
+    return 1
+}
+
+fn Scenario(name: String) -> FilteredEvidenceSample[] {
+    if name == "stable" {
+        return [
+            FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.82 Warmup:false Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:1 RawValue:3.1 FilteredValue:3.1 Confidence:0.84 Warmup:false Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:2 RawValue:3.0 FilteredValue:3.0 Confidence:0.86 Warmup:false Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:3 RawValue:3.1 FilteredValue:3.1 Confidence:0.87 Warmup:false Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:4 RawValue:3.0 FilteredValue:3.0 Confidence:0.88 Warmup:false Valid:true OutlierCount:0 }
+        ]
+    }
+    if name == "warmup" {
+        return [
+            FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.80 Warmup:true Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:1 RawValue:3.0 FilteredValue:3.0 Confidence:0.78 Warmup:true Valid:true OutlierCount:0 },
+            FilteredEvidenceSample { Tick:2 RawValue:3.0 FilteredValue:3.0 Confidence:0.77 Warmup:true Valid:true OutlierCount:0 }
+        ]
+    }
+    if name == "low-confidence" {
+        return [FilteredEvidenceSample { Tick:0 RawValue:4.0 FilteredValue:4.0 Confidence:0.30 Warmup:false Valid:true OutlierCount:2 }]
+    }
+    return [
+        FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.82 Warmup:false Valid:true OutlierCount:0 },
+        FilteredEvidenceSample { Tick:1 RawValue:3.0 FilteredValue:3.0 Confidence:0.80 Warmup:false Valid:true OutlierCount:0 },
+        FilteredEvidenceSample { Tick:2 RawValue:8.0 FilteredValue:5.8 Confidence:0.50 Warmup:false Valid:true OutlierCount:3 },
+        FilteredEvidenceSample { Tick:3 RawValue:8.0 FilteredValue:7.2 Confidence:0.48 Warmup:false Valid:true OutlierCount:2 },
+        FilteredEvidenceSample { Tick:4 RawValue:8.0 FilteredValue:8.0 Confidence:0.76 Warmup:false Valid:true OutlierCount:0 }
+    ]
+}
+
+fn Observation(name: String, tick: Int) -> PhysicalObservation {
+    if name == "resource-pressure" {
+        return PhysicalObservation { Tick:tick ActualReady:true ActualLatency:3.0 SlotValid:true RuntimeUnsafe:false OutstandingDepth:2 MemoryBudgetOk:false }
+    }
+    if name == "runtime-unsafe" {
+        return PhysicalObservation { Tick:tick ActualReady:false ActualLatency:6.0 SlotValid:false RuntimeUnsafe:true OutstandingDepth:0 MemoryBudgetOk:true }
+    }
+    if name == "prediction-miss" and tick >= 2 {
+        return PhysicalObservation { Tick:tick ActualReady:false ActualLatency:7.5 SlotValid:true RuntimeUnsafe:false OutstandingDepth:0 MemoryBudgetOk:true }
+    }
+    return PhysicalObservation { Tick:tick ActualReady:true ActualLatency:3.0 SlotValid:true RuntimeUnsafe:false OutstandingDepth:0 MemoryBudgetOk:true }
+}
+
+fn SimulateScenario(policy: PolicyConfig, scenario: String) -> PolicyOutcome {
+    let samples = if scenario == "resource-pressure" or scenario == "runtime-unsafe" or scenario == "prediction-miss" { Scenario("stable") } else { Scenario(scenario) }
+    var confidence = samples[0].Confidence
+    var recentMiss = 0
+    var depthPrev = 0
+    var thrash = 0
+    var useful = 0
+    var safeBlocks = 0
+    var misses = 0
+    var wastes = 0
+    var fallbacks = 0
+    for i in 0..Len(samples) {
+        let e = samples[i]
+        let obs = Observation(scenario, e.Tick)
+        let depth = ChooseDepth(policy, confidence, e, obs, recentMiss)
+        if depth == 0 { fallbacks = fallbacks + 1 }
+        if depth == 0 and (e.Warmup or IsHardGate(obs) or e.Confidence < 0.45) { safeBlocks = safeBlocks + 1 }
+        if depth > 0 and obs.ActualReady and IsHardGate(obs) == false { useful = useful + 1 }
+        if depth > 0 and IsHardGate(obs) { wastes = wastes + 1 }
+        if depthPrev == 0 and depth == 2 and i + 1 < Len(samples) and samples[i + 1].Confidence < 0.5 { thrash = thrash + 1 }
+
+        let predictedReady = depth > 0
+        let missCase = switch {
+            case predictedReady and obs.ActualReady == false => 1
+            case predictedReady and obs.ActualReady => 2
+            else => 0
+        }
+        if missCase == 1 {
+            misses = misses + 1
+            recentMiss = 1
+            confidence = Clamp01(confidence - 0.22)
+        }
+        if missCase == 2 {
+            recentMiss = 0
+            confidence = Clamp01(confidence + 0.05)
+        }
+        if missCase == 0 {
+            recentMiss = 0
+            confidence = Clamp01((confidence * 0.7) + (e.Confidence * 0.3))
+        }
+        depthPrev = depth
+    }
+
+    let n = Float(Len(samples))
+    let opp = Float(useful) / n
+    let safety = Float(safeBlocks) / n
+    let missPenalty = Float(misses)
+    let waste = Float(wastes)
+    let fallbackRate = Float(fallbacks) / n
+    let composite = (opp * 1.7) + (safety * 1.5) - (missPenalty * 0.9) - (waste * 0.7) - (fallbackRate * 0.2) - (Float(thrash) * 0.4)
+    return PolicyOutcome { Scenario:scenario Policy:policy.Name OpportunityScore:opp SafetyScore:safety MissPenalty:missPenalty FutureLeaseWaste:waste FallbackRate:fallbackRate ThrashCount:thrash CompositeScore:composite FinalDepth:depthPrev }
+}
+
+fn ComparePolicies(scenario: String) -> PolicyOutcome[] {
+    let p = AllPolicies()
+    return [SimulateScenario(p[0], scenario), SimulateScenario(p[1], scenario), SimulateScenario(p[2], scenario), SimulateScenario(p[3], scenario)]
+}
+
+fn BestPolicy(scenario: String) -> PolicyOutcome {
+    let scores = ComparePolicies(scenario)
+    var best = scores[0]
+    for i in 1..Len(scores) {
+        if scores[i].CompositeScore > best.CompositeScore { best = scores[i] }
+    }
+    return best
+}
+
+fn M1ScenarioMatrix() -> PolicyOutcome[] {
+    let names = ["stable", "warmup", "low-confidence", "step-change", "prediction-miss", "resource-pressure", "runtime-unsafe"]
+    var out: PolicyOutcome[] = []
+    for i in 0..Len(names) {
+        let scores = ComparePolicies(names[i])
+        out = Append(out, scores[0])
+        out = Append(out, scores[1])
+        out = Append(out, scores[2])
+        out = Append(out, scores[3])
+    }
+    return out
+}
+
+fn M1FinalRecommendation() -> String {
+    let miss = BestPolicy("prediction-miss")
+    let stable = BestPolicy("stable")
+    if miss.Policy == "D-adaptive" and stable.Policy == "D-adaptive" {
+        return "Recommend adaptive depth {0,1,2}; gates: conf<0.45=>0, conf>=0.45=>1, conf>=0.75 & no recent miss=>2; apply correction penalties and lease cancel-on-miss."
+    }
+    return "Recommendation inconclusive: tighten thresholds before native M2."
+}
