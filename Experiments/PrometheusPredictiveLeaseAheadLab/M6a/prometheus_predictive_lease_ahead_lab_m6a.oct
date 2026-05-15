@@ -1,0 +1,330 @@
+package PrometheusPredictiveLeaseAheadLabM6a
+
+enum PreStageState { None Eligible Submitted Ready Cancelled Expired Wasted Matured }
+enum ReservationState { None Requested Reserved Denied Cancelled Expired Matured }
+enum PreStageCostLevel { Low Medium }
+enum ScenarioType { StableHighConfidence WarmupLowConfidence PredictionMiss StepChange ResourcePressure FalsePositiveSpike MixedHostile }
+enum PolicyKind { BaselineReservationOnly Greedy ConfidenceGated ConfidenceCorrectionGated FullDominatus }
+
+record TickSample {
+    Tick: Int
+    Confidence: Float
+    Warmup: Bool
+    PredictedReady: Bool
+    ActualReady: Bool
+    RuntimeUnsafe: Bool
+    ResourcePressure: Bool
+    OutstandingDepth: Int
+    MemoryBudgetOk: Bool
+}
+
+record RakeConfig {
+    Name: String
+    ConfidenceThreshold: Float
+    RecentMissWindow: Int
+    MaxPrestageLeadTicks: Int
+    CostLevel: PreStageCostLevel
+}
+
+record PolicyConfig {
+    Name: String
+    Kind: PolicyKind
+}
+
+record PreStageEntry {
+    Valid: Bool
+    RequestId: Int
+    IssuedTick: Int
+    TargetTick: Int
+    State: PreStageState
+    Confidence: Float
+    Cost: Float
+    Benefit: Float
+    Cancelled: Bool
+    Wasted: Bool
+}
+
+record ScenarioMetrics {
+    Scenario: String
+    Policy: String
+    Rake: String
+    OpportunityBenefit: Float
+    Waste: Float
+    FalseStageRate: Float
+    MissAmplification: Float
+    RecoveryTime: Float
+    SafetyCompliance: Float
+    CompositeScore: Float
+    SubmittedCount: Int
+    MaturedCount: Int
+    CancelledCount: Int
+    WastedCount: Int
+    BlockedLowConfidence: Int
+    BlockedWarmup: Int
+    BlockedRecentMiss: Int
+    BlockedHardGate: Int
+    BlockedResourcePressure: Int
+    BlockedLeadWindow: Int
+    BlockedReservationState: Int
+}
+
+fn CostValue(level: PreStageCostLevel) -> Float {
+    if level == PreStageCostLevel.Low { return 1.0 }
+    return 2.0
+}
+
+fn BaseRake() -> RakeConfig { return RakeConfig { Name:"th075_m5_lead2_low" ConfidenceThreshold:0.75 RecentMissWindow:5 MaxPrestageLeadTicks:2 CostLevel:PreStageCostLevel.Low } }
+
+fn PolicyBaseline() -> PolicyConfig { return PolicyConfig { Name:"A-reservation-only" Kind:PolicyKind.BaselineReservationOnly } }
+fn PolicyGreedy() -> PolicyConfig { return PolicyConfig { Name:"B-greedy-prestage" Kind:PolicyKind.Greedy } }
+fn PolicyConfidence() -> PolicyConfig { return PolicyConfig { Name:"C-confidence-gated" Kind:PolicyKind.ConfidenceGated } }
+fn PolicyConfCorrection() -> PolicyConfig { return PolicyConfig { Name:"D-confidence+correction" Kind:PolicyKind.ConfidenceCorrectionGated } }
+fn PolicyDominatus() -> PolicyConfig { return PolicyConfig { Name:"E-full-dominatus" Kind:PolicyKind.FullDominatus } }
+
+fn AllPolicies() -> PolicyConfig[] { return [PolicyBaseline(), PolicyGreedy(), PolicyConfidence(), PolicyConfCorrection(), PolicyDominatus()] }
+
+fn ScenarioSamples(s: ScenarioType) -> TickSample[] {
+    if s == ScenarioType.StableHighConfidence {
+        return [
+            TickSample { Tick:0 Confidence:0.86 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:1 Confidence:0.87 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:2 Confidence:0.88 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:3 Confidence:0.89 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:4 Confidence:0.88 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+        ]
+    }
+    if s == ScenarioType.WarmupLowConfidence {
+        return [
+            TickSample { Tick:0 Confidence:0.55 Warmup:true PredictedReady:false ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:1 Confidence:0.58 Warmup:true PredictedReady:false ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:2 Confidence:0.45 Warmup:false PredictedReady:false ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+        ]
+    }
+    if s == ScenarioType.PredictionMiss {
+        return [
+            TickSample { Tick:0 Confidence:0.84 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:1 Confidence:0.86 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:2 Confidence:0.83 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:3 Confidence:0.80 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+        ]
+    }
+    if s == ScenarioType.StepChange {
+        return [
+            TickSample { Tick:0 Confidence:0.86 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:1 Confidence:0.85 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:2 Confidence:0.82 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:3 Confidence:0.70 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:4 Confidence:0.78 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+        ]
+    }
+    if s == ScenarioType.ResourcePressure {
+        return [
+            TickSample { Tick:0 Confidence:0.86 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:true OutstandingDepth:2 MemoryBudgetOk:false },
+            TickSample { Tick:1 Confidence:0.87 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:true OutstandingDepth:2 MemoryBudgetOk:false },
+            TickSample { Tick:2 Confidence:0.88 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:true OutstandingDepth:2 MemoryBudgetOk:false }
+        ]
+    }
+    if s == ScenarioType.FalsePositiveSpike {
+        return [
+            TickSample { Tick:0 Confidence:0.40 Warmup:false PredictedReady:false ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:1 Confidence:0.90 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:2 Confidence:0.42 Warmup:false PredictedReady:false ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+            TickSample { Tick:3 Confidence:0.44 Warmup:false PredictedReady:false ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+        ]
+    }
+    return [
+        TickSample { Tick:0 Confidence:0.80 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+        TickSample { Tick:1 Confidence:0.63 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+        TickSample { Tick:2 Confidence:0.78 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+        TickSample { Tick:3 Confidence:0.58 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:true OutstandingDepth:2 MemoryBudgetOk:false },
+        TickSample { Tick:4 Confidence:0.82 Warmup:false PredictedReady:true ActualReady:true RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true },
+        TickSample { Tick:5 Confidence:0.52 Warmup:false PredictedReady:true ActualReady:false RuntimeUnsafe:false ResourcePressure:false OutstandingDepth:0 MemoryBudgetOk:true }
+    ]
+}
+
+fn ScenarioName(s: ScenarioType) -> String {
+    if s == ScenarioType.StableHighConfidence { return "stable-high-confidence" }
+    if s == ScenarioType.WarmupLowConfidence { return "warmup-low-confidence" }
+    if s == ScenarioType.PredictionMiss { return "prediction-miss" }
+    if s == ScenarioType.StepChange { return "step-change-latency-shift" }
+    if s == ScenarioType.ResourcePressure { return "resource-pressure" }
+    if s == ScenarioType.FalsePositiveSpike { return "false-positive-spike" }
+    return "mixed-hostile"
+}
+
+fn IsHardGate(sample: TickSample) -> Bool {
+    return sample.RuntimeUnsafe or sample.MemoryBudgetOk == false or sample.OutstandingDepth >= 2
+}
+
+fn HasRecentMiss(missTicks: Int[], tick: Int, window: Int) -> Bool {
+    for i in 0..Len(missTicks) {
+        if tick - missTicks[i] <= window { return true }
+    }
+    return false
+}
+
+fn ShouldPrestage(policy: PolicyConfig, sample: TickSample, rake: RakeConfig, missTicks: Int[]) -> Bool {
+    let reservationReserved = sample.PredictedReady
+    let recentMiss = HasRecentMiss(missTicks, sample.Tick, rake.RecentMissWindow)
+    let hard = IsHardGate(sample)
+    let leadTicks = if sample.PredictedReady { 1 } else { 0 }
+
+    if policy.Kind == PolicyKind.BaselineReservationOnly { return false }
+    if policy.Kind == PolicyKind.Greedy { return reservationReserved }
+    if policy.Kind == PolicyKind.ConfidenceGated { return reservationReserved and sample.Confidence >= rake.ConfidenceThreshold }
+    if policy.Kind == PolicyKind.ConfidenceCorrectionGated { return reservationReserved and sample.Confidence >= rake.ConfidenceThreshold and recentMiss == false }
+
+    return reservationReserved and
+        sample.Confidence >= rake.ConfidenceThreshold and
+        sample.Warmup == false and
+        recentMiss == false and
+        hard == false and
+        sample.ResourcePressure == false and
+        leadTicks >= 1 and leadTicks <= rake.MaxPrestageLeadTicks
+}
+
+fn SimulatePolicyScenario(policy: PolicyConfig, scenario: ScenarioType, rake: RakeConfig) -> ScenarioMetrics {
+    let samples = ScenarioSamples(scenario)
+    let n = Len(samples)
+    var missTicks: Int[] = []
+    var submitted = 0
+    var matured = 0
+    var cancelled = 0
+    var wasted = 0
+    var falseStage = 0
+    var lowConfBlocks = 0
+    var warmupBlocks = 0
+    var recentMissBlocks = 0
+    var hardGateBlocks = 0
+    var resourceBlocks = 0
+    var leadBlocks = 0
+    var reservationBlocks = 0
+    var safetyCompliant = 0
+    var recoveryDebt = -1
+    var recoverySamples = 0
+
+    for i in 0..n {
+        let s = samples[i]
+        let recentMiss = HasRecentMiss(missTicks, s.Tick, rake.RecentMissWindow)
+        let hard = IsHardGate(s)
+        let reservationReserved = s.PredictedReady
+        let leadTicks = if s.PredictedReady { 1 } else { 0 }
+
+        let should = ShouldPrestage(policy, s, rake, missTicks)
+        if should { submitted = submitted + 1 }
+
+        if should and s.ActualReady {
+            matured = matured + 1
+        }
+        if should and s.ActualReady == false {
+            cancelled = cancelled + 1
+            wasted = wasted + 1
+            missTicks = Append(missTicks, s.Tick)
+            if recoveryDebt == -1 { recoveryDebt = 0 }
+        }
+
+        if should and (s.Confidence < rake.ConfidenceThreshold or s.Warmup or recentMiss or hard or s.ResourcePressure or reservationReserved == false or leadTicks > rake.MaxPrestageLeadTicks) {
+            falseStage = falseStage + 1
+        }
+
+        if should == false {
+            if s.Confidence < rake.ConfidenceThreshold { lowConfBlocks = lowConfBlocks + 1 }
+            if s.Warmup { warmupBlocks = warmupBlocks + 1 }
+            if recentMiss { recentMissBlocks = recentMissBlocks + 1 }
+            if hard { hardGateBlocks = hardGateBlocks + 1 }
+            if s.ResourcePressure { resourceBlocks = resourceBlocks + 1 }
+            if reservationReserved == false { reservationBlocks = reservationBlocks + 1 }
+            if leadTicks > rake.MaxPrestageLeadTicks { leadBlocks = leadBlocks + 1 }
+        }
+
+        if should == false and (s.Confidence < rake.ConfidenceThreshold or s.Warmup or recentMiss or hard or s.ResourcePressure or reservationReserved == false or leadTicks > rake.MaxPrestageLeadTicks) {
+            safetyCompliant = safetyCompliant + 1
+        }
+
+        if recoveryDebt >= 0 {
+            recoveryDebt = recoveryDebt + 1
+            if should and s.ActualReady {
+                recoverySamples = recoverySamples + recoveryDebt
+                recoveryDebt = -1
+            }
+        }
+    }
+
+    let opp = if submitted == 0 { 0.0 } else { Float(matured) / Float(submitted) }
+    let wasteRate = if submitted == 0 { 0.0 } else { Float(wasted) / Float(submitted) }
+    let falseRate = if submitted == 0 { 0.0 } else { Float(falseStage) / Float(submitted) }
+    let missAmplification = Float(wasted) * CostValue(rake.CostLevel)
+    let recovery = if recoverySamples == 0 { 0.0 } else { Float(recoverySamples) }
+    let safety = Float(safetyCompliant) / Float(n)
+    let implPenalty = switch { case policy.Kind == PolicyKind.FullDominatus => 0.08 case policy.Kind == PolicyKind.ConfidenceCorrectionGated => 0.05 case policy.Kind == PolicyKind.ConfidenceGated => 0.03 else => 0.0 }
+    let composite = (opp * 1.4) + (safety * 1.3) - (wasteRate * 1.5) - (falseRate * 1.2) - (missAmplification * 0.2) - (recovery * 0.05) - implPenalty
+
+    return ScenarioMetrics {
+        Scenario:ScenarioName(scenario)
+        Policy:policy.Name
+        Rake:rake.Name
+        OpportunityBenefit:opp
+        Waste:wasteRate
+        FalseStageRate:falseRate
+        MissAmplification:missAmplification
+        RecoveryTime:recovery
+        SafetyCompliance:safety
+        CompositeScore:composite
+        SubmittedCount:submitted
+        MaturedCount:matured
+        CancelledCount:cancelled
+        WastedCount:wasted
+        BlockedLowConfidence:lowConfBlocks
+        BlockedWarmup:warmupBlocks
+        BlockedRecentMiss:recentMissBlocks
+        BlockedHardGate:hardGateBlocks
+        BlockedResourcePressure:resourceBlocks
+        BlockedLeadWindow:leadBlocks
+        BlockedReservationState:reservationBlocks
+    }
+}
+
+fn CompareScenarioPolicies(scenario: ScenarioType, rake: RakeConfig) -> ScenarioMetrics[] {
+    let p = AllPolicies()
+    return [
+        SimulatePolicyScenario(p[0], scenario, rake),
+        SimulatePolicyScenario(p[1], scenario, rake),
+        SimulatePolicyScenario(p[2], scenario, rake),
+        SimulatePolicyScenario(p[3], scenario, rake),
+        SimulatePolicyScenario(p[4], scenario, rake)
+    ]
+}
+
+fn RakeConfigs() -> RakeConfig[] {
+    return [
+        RakeConfig { Name:"th060_m3_lead1_low" ConfidenceThreshold:0.60 RecentMissWindow:3 MaxPrestageLeadTicks:1 CostLevel:PreStageCostLevel.Low },
+        RakeConfig { Name:"th060_m5_lead2_medium" ConfidenceThreshold:0.60 RecentMissWindow:5 MaxPrestageLeadTicks:2 CostLevel:PreStageCostLevel.Medium },
+        RakeConfig { Name:"th075_m5_lead2_low" ConfidenceThreshold:0.75 RecentMissWindow:5 MaxPrestageLeadTicks:2 CostLevel:PreStageCostLevel.Low },
+        RakeConfig { Name:"th085_m8_lead2_medium" ConfidenceThreshold:0.85 RecentMissWindow:8 MaxPrestageLeadTicks:2 CostLevel:PreStageCostLevel.Medium }
+    ]
+}
+
+fn ScenarioSweep() -> ScenarioMetrics[] {
+    let sc = [ScenarioType.StableHighConfidence, ScenarioType.WarmupLowConfidence, ScenarioType.PredictionMiss, ScenarioType.StepChange, ScenarioType.ResourcePressure, ScenarioType.FalsePositiveSpike, ScenarioType.MixedHostile]
+    let rk = RakeConfigs()
+    let pl = AllPolicies()
+    var out: ScenarioMetrics[] = []
+    for i in 0..Len(sc) {
+        for j in 0..Len(rk) {
+            for k in 0..Len(pl) {
+                out = Append(out, SimulatePolicyScenario(pl[k], sc[i], rk[j]))
+            }
+        }
+    }
+    return out
+}
+
+fn M6aFinalRecommendation() -> String {
+    let stable = SimulatePolicyScenario(PolicyDominatus(), ScenarioType.StableHighConfidence, BaseRake())
+    let hostileDominatus = SimulatePolicyScenario(PolicyDominatus(), ScenarioType.MixedHostile, BaseRake())
+    let hostileGreedy = SimulatePolicyScenario(PolicyGreedy(), ScenarioType.MixedHostile, BaseRake())
+    if stable.OpportunityBenefit >= 0.75 and hostileDominatus.Waste < hostileGreedy.Waste {
+        return "Proceed to native M6 pre-stage with Dominatus gates: confidence>=0.75, warmup=false, recent_miss_window=5 clear, reservation=RESERVED, hard safety clear, resource pressure low, lead<=2 ticks; expose full diagnostics contract including block reasons and state transitions."
+    }
+    return "Defer native M6 pre-stage; reservation-only remains safer under hostile scenarios until gate quality improves."
+}
