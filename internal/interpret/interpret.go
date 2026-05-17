@@ -407,6 +407,7 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		flows:          make(map[string]ast.FlowDecl),
 		functionSource: make(map[string]string),
 		flowSource:     make(map[string]string),
+		packageImports: make(map[string]map[string]struct{}),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		images:         newWrapperHandleStore[*wrapperImage]("image"),
@@ -415,6 +416,11 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 	}
 	for currentPkg, pkg := range program.Packages {
+		imports := make(map[string]struct{}, len(pkg.Imports))
+		for _, imp := range pkg.Imports {
+			imports[imp] = struct{}{}
+		}
+		interp.packageImports[currentPkg] = imports
 		for _, record := range pkg.Records {
 			interp.records[currentPkg+"."+record.Name] = record
 		}

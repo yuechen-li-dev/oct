@@ -406,6 +406,9 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 
 func (b *builder) importSearchRoots() []string {
 	roots := []string{b.root}
+	if experimentFamilyRoot, ok := containingExperimentFamilyRoot(b.root); ok {
+		roots = append(roots, experimentFamilyRoot)
+	}
 	if b.repoRoot == "" {
 		return roots
 	}
@@ -418,6 +421,27 @@ func (b *builder) importSearchRoots() []string {
 		roots = append(roots, root)
 	}
 	return dedupePaths(roots)
+}
+
+func containingExperimentFamilyRoot(root string) (string, bool) {
+	clean := filepath.Clean(root)
+	base := filepath.Base(clean)
+	if !isMilestoneDir(base) && base != "Shared" {
+		return "", false
+	}
+	parent := filepath.Dir(clean)
+	if parent == "." || parent == clean {
+		return "", false
+	}
+	if !hasFileAt(parent, "manifest.oct") || !hasFileAt(parent, "REPORT.md") {
+		return "", false
+	}
+	return parent, true
+}
+
+func hasFileAt(root string, name string) bool {
+	info, err := os.Stat(filepath.Join(root, name))
+	return err == nil && !info.IsDir()
 }
 
 func (b *builder) resolveCachedDependencyDir(importName string) (string, bool, error) {

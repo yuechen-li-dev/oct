@@ -1,0 +1,15 @@
+package Json
+
+import IO
+
+fn Save(path: String, value: String) -> Int ! Error {
+    return IO.Save(path, value)?
+}
+
+fn Load(path: String) -> String ! Error {
+    return IO.Load(path)?
+}
+
+fn Object(value: String) -> String {
+    return value
+}

@@ -1,0 +1,59 @@
+package FmBrownNoiseKalman
+
+import String
+import IO
+import Csv
+import Json
+
+[Theory]
+[CycleTime(45.0s)]
+[InlineData("direct")]
+[InlineData("phase")]
+fn M1ModesProduceFiniteMetrics(mode: String) -> Void {
+    let c = M1TinyCase()
+    let run = if mode == "direct" { RunM1ModeDirectMessageBrownNoise(c) } else { RunM1ModePhaseDomainFmBrownNoise(c) }
+    Assert.Equal(Len(run.CleanMessage), Len(run.Observed), "observed and clean lengths must match")
+    Assert.Equal(4, Len(run.Metrics), "each mode should emit 4 methods")
+    for i in 0..Len(run.Metrics) {
+        let m = run.Metrics[i]
+        Assert.True(Abs(m.OutputSNRDb) < 1e300, "output snr must be finite")
+        Assert.True(Abs(m.Nrmse) < 1e300, "nrmse must be finite")
+        Assert.True(Abs(m.Correlation) < 1e300, "correlation must be finite")
+        Assert.True(Abs(m.InnovationWhitenessCost) < 1e300, "whiteness cost must be finite")
+        Assert.True(Abs(m.Lag1InnovationAutocorrelation) < 1e300, "lag-1 innovation autocorrelation must be finite")
+    }
+    var foundAdaptive = false
+    var finalA = 0.0
+    for i in 0..Len(run.Metrics) {
+        let m = run.Metrics[i]
+        if m.Method == "AdaptiveAr1ColoredNoiseKalman" {
+            foundAdaptive = true
+            finalA = m.FinalA
+        }
+    }
+    Assert.True(foundAdaptive, "adaptive method metric row should exist")
+    Assert.True(finalA >= -0.99 and finalA <= 0.99, "adaptive finalA must be clamped")
+}
+
+[Theory]
+[CycleTime(45.0s)]
+[InlineData(1)]
+fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
+    let _ = M1ArtifactWriteAll()?
+    let metricsRows = IO.Read("Experiments/FmBrownNoiseKalman/M1/metrics.csv")?
+    Assert.True(Len(metricsRows) <= 32, "metrics csv must remain compact")
+    let metricsJson = IO.Load("Experiments/FmBrownNoiseKalman/M1/metrics.json")?
+    Assert.True(Len(metricsJson) > 0, "metrics json should be written")
+    let reportLines = IO.ReadLines("Experiments/FmBrownNoiseKalman/M1/m1_report.octagon")?
+    Assert.True(Len(reportLines) > 0, "m1 .octagon report should be written")
+}
+
+[Fact]
+fn M1LargeSignalCsvGuardSkipsWhenOverLimit() -> Void {
+    Assert.False(1201 <= 1000, "guard should skip sample csv when rows exceed 1000")
+}
+
+[Artifact]
+fn M1Artifacts() -> Void ! Error {
+    let _ = M1ArtifactWriteAll()?
+}

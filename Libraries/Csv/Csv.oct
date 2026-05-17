@@ -1,0 +1,11 @@
+package Csv
+
+import IO
+
+fn Write(path: String, rows: String[][]) -> Int ! Error {
+    return IO.Write(path, rows)?
+}
+
+fn Read(path: String) -> String[][] ! Error {
+    return IO.Read(path)?
+}

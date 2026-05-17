@@ -119,6 +119,21 @@ func TestM68ExperimentRootBenchCommandUsesCanonicalMilestones(t *testing.T) {
 	}
 }
 
+func TestM68ExperimentRootSkipsSharedSupportFolder(t *testing.T) {
+	root := createExperimentRoot(t)
+	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
+	writeMilestoneFile(t, root, "Shared", "suite.octest", "package Main\n[Fact]\nfn SharedShouldNotRun() -> Void { Assert.True(false, \"shared should not run as milestone\") }\n")
+
+	stdout, stderr, err := executeCLI("test", root)
+	if err != nil {
+		t.Fatalf("expected experiment root test to pass with Shared support folder: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	if strings.Contains(stdout, "SharedShouldNotRun") || strings.Contains(stdout, "MILESTONE Shared") {
+		t.Fatalf("expected Shared support folder exclusion from milestone execution, got %q", stdout)
+	}
+}
+
 func createExperimentRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
