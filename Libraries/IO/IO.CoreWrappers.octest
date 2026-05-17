@@ -99,6 +99,59 @@ fn CsvReadRejectsInvalidCsv() -> Void {
 }
 
 [Fact]
+fn CsvReadRowsRoundTripQuotedCommaQuoteAndEmpty() -> Void {
+    let root = "out/test-artifacts/io_csv_shapes/rows"
+    let path = JoinPath([root, "rows.csv"])
+    let rows = [["a,b", "say \"hi\"", ""], ["x", "y", "z"]]
+    let _w = Write(path, rows)!
+    let readBack = CsvReadRows(path)!
+    Assert.Equal(2, Len(readBack), "ReadRows should preserve row count")
+    Assert.Equal("a,b", readBack[0][0], "ReadRows should preserve commas")
+    Assert.Equal("say \"hi\"", readBack[0][1], "ReadRows should preserve quotes")
+    Assert.Equal("", readBack[0][2], "ReadRows should preserve empty fields")
+    let _rm = RemoveAll("out/test-artifacts/io_csv_shapes")!
+}
+
+[Fact]
+fn CsvReadTableImportsHeaderIntoColumnarRecord() -> Void {
+    let root = "out/test-artifacts/io_csv_shapes/table"
+    let path = JoinPath([root, "metrics.csv"])
+    let _w = Write(path, [["name", "score"], ["ada", "42"], ["lin", "7"]])!
+    let _table = CsvReadTable(path)!
+    Assert.True(true, "ReadTable should parse header csv without errors")
+    let _rm = RemoveAll("out/test-artifacts/io_csv_shapes")!
+}
+
+[Fact]
+fn CsvReadTableRejectsDuplicateHeadersAndRaggedRows() -> Void {
+    let root = "out/test-artifacts/io_csv_shapes/table_invalid"
+    let duplicate = JoinPath([root, "duplicate.csv"])
+    let ragged = JoinPath([root, "ragged.csv"])
+    let _w1 = Write(duplicate, [["name", "name"], ["ada", "42"]])!
+    let _w2 = Write(ragged, [["name", "score"], ["ada"]])!
+    Assert.Error(CsvReadTable(duplicate), "ReadTable should reject duplicate headers")
+    Assert.Error(CsvReadTable(ragged), "ReadTable should reject ragged rows")
+    let _rm = RemoveAll("out/test-artifacts/io_csv_shapes")!
+}
+
+[Fact]
+fn CsvReadMatrixImportsNumericGridAndRejectsNonNumeric() -> Void {
+    let root = "out/test-artifacts/io_csv_shapes/matrix"
+    let numeric = JoinPath([root, "numeric.csv"])
+    let invalid = JoinPath([root, "invalid.csv"])
+    let _w1 = Write(numeric, [["1.5", "2"], ["3", "-4.25"]])!
+    let _w2 = Write(invalid, [["x", "2"], ["3", "4"]])!
+    let grid = CsvReadMatrix(numeric)!
+    let firstRow = grid[0]
+    let secondRow = grid[1]
+    Assert.Equal(2, Len(grid), "ReadMatrix should import row-major numeric grid")
+    Assert.Equal(2.0, firstRow[1], "ReadMatrix should parse numeric cells as Float")
+    Assert.Equal(-4.25, secondRow[1], "ReadMatrix should preserve decimal floats")
+    Assert.Error(CsvReadMatrix(invalid), "ReadMatrix should reject non-numeric cells and does not infer headers")
+    let _rm = RemoveAll("out/test-artifacts/io_csv_shapes")!
+}
+
+[Fact]
 fn FileWriteTextReadTextRoundTripAndOverwrite() -> Void {
     let dir = "out/test-artifacts/io_mx106/text"
     let path = JoinPath([dir, "roundtrip.txt"])
