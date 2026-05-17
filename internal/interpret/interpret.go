@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/xuri/excelize/v2"
 
@@ -2810,6 +2811,106 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			parts = append(parts, value.Text)
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: strings.Join(parts, sepResult.value.Text)}}, nil
+	}
+	if callee == "StringByteLength" || callee == "StringRuneCount" || callee == "StringTrim" || callee == "StringSplitLines" || callee == "StringEscapeJSON" || callee == "StringQuoteJSON" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		textResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if textResult.hasError {
+			return evalResult{hasError: true, errorVal: textResult.errorVal}, nil
+		}
+		if textResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String argument", callee)
+		}
+		switch callee {
+		case "StringByteLength":
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(textResult.value.Text))}}, nil
+		case "StringRuneCount":
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(utf8.RuneCountInString(textResult.value.Text))}}, nil
+		case "StringTrim":
+			return evalResult{value: Value{Kind: ValueString, Text: strings.TrimSpace(textResult.value.Text)}}, nil
+		case "StringSplitLines":
+			lines := splitLinesPreservingTerminal(strings.ReplaceAll(textResult.value.Text, "\r\n", "\n"))
+			return wrapperStringArrayResult(lines), nil
+		case "StringEscapeJSON":
+			quoted := strconv.Quote(textResult.value.Text)
+			return evalResult{value: Value{Kind: ValueString, Text: quoted[1 : len(quoted)-1]}}, nil
+		default:
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.Quote(textResult.value.Text)}}, nil
+		}
+	}
+	if callee == "StringContains" || callee == "StringStartsWith" || callee == "StringEndsWith" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+		}
+		a, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		b, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if a.value.Kind != ValueString || b.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects (String, String)", callee)
+		}
+		switch callee {
+		case "StringContains":
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.Contains(a.value.Text, b.value.Text)}}, nil
+		case "StringStartsWith":
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.HasPrefix(a.value.Text, b.value.Text)}}, nil
+		default:
+			return evalResult{value: Value{Kind: ValueBool, Bool: strings.HasSuffix(a.value.Text, b.value.Text)}}, nil
+		}
+	}
+	if callee == "StringJoin" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringJoin expects 2 arguments")
+		}
+		partsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		sepResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if partsResult.value.Kind != ValueArray || sepResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringJoin expects (String[], String)")
+		}
+		parts := make([]string, 0, len(partsResult.value.Array))
+		for _, v := range partsResult.value.Array {
+			if v.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: StringJoin expects String[] as first argument")
+			}
+			parts = append(parts, v.Text)
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: strings.Join(parts, sepResult.value.Text)}}, nil
+	}
+	if callee == "StringReplaceAll" {
+		if len(argumentExprs) != 3 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringReplaceAll expects 3 arguments")
+		}
+		s, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		old, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		nw, err := i.evalExpr(env, pkgName, argumentExprs[2])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if s.value.Kind != ValueString || old.value.Kind != ValueString || nw.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringReplaceAll expects (String, String, String)")
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: strings.ReplaceAll(s.value.Text, old.value.Text, nw.value.Text)}}, nil
 	}
 	if callee == "EinMul" || callee == "EinAdd" {
 		if len(argumentExprs) != 6 {

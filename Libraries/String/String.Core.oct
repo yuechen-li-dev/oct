@@ -1,0 +1,56 @@
+package String
+
+fn IsEmpty(s: String) -> Bool {
+    return ByteLength(s) == 0
+}
+
+fn ByteLength(s: String) -> Int {
+    return StringByteLength(s)
+}
+
+fn RuneCount(s: String) -> Int {
+    return StringRuneCount(s)
+}
+
+fn Concat(parts: String[]) -> String {
+    return Join("", parts)
+}
+
+fn Join(separator: String, parts: String[]) -> String {
+    return StringJoin(parts, separator)
+}
+
+fn Replace(s: String, old: String, new: String) -> String ! Error {
+    if old == "" {
+        return error("String.Replace old must be non-empty")!
+    }
+    return StringReplaceAll(s, old, new)
+}
+
+fn Contains(s: String, needle: String) -> Bool {
+    return StringContains(s, needle)
+}
+
+fn StartsWith(s: String, prefix: String) -> Bool {
+    return StringStartsWith(s, prefix)
+}
+
+fn EndsWith(s: String, suffix: String) -> Bool {
+    return StringEndsWith(s, suffix)
+}
+
+fn Trim(s: String) -> String {
+    return StringTrim(s)
+}
+
+fn SplitLines(s: String) -> String[] {
+    return StringSplitLines(s)
+}
+
+fn EscapeJson(s: String) -> String {
+    return StringEscapeJSON(s)
+}
+
+fn QuoteJson(s: String) -> String {
+    return StringQuoteJSON(s)
+}

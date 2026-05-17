@@ -43,3 +43,8 @@ fn Main() -> String {
     return "unterminated
 }
 ```
+
+## String escapes (M0 contract)
+
+Supported escapes in string literals: `\n`, `\"`, `\\`.
+Unsupported escapes are rejected by the lexer.
