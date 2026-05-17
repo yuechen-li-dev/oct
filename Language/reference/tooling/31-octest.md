@@ -102,7 +102,7 @@ fn EmitReferenceData() -> Void {
 ### Artifact output policy
 
 - Artifact functions write files explicitly from user code.
-- `WriteOctagon(...)` is the primary structured output helper today; other formats may be added later.
+- Prefer `Artifact.Write*` for artifact emission (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
 - Artifact lane execution does not impose a mandatory output directory.
 
 ### `.octagon` guidance

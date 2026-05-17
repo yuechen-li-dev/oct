@@ -1,0 +1,36 @@
+package ArtifactUsage
+
+import Artifact
+import IO
+
+record MetricsRow {
+    Name: String
+    Score: String
+}
+
+[Artifact]
+fn ArtifactWritesWithoutLetBinding() -> Void {
+    let root = "out/test-artifacts/library_artifact"
+    Artifact.WriteText(IO.JoinPath([root, "text.txt"]), "hello")
+    Artifact.WriteLines(IO.JoinPath([root, "lines.txt"]), ["alpha", "beta"])
+    Artifact.WriteMarkdown(IO.JoinPath([root, "report.md"]), ["# Report", "ok"])
+    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]), [["name", "score"], ["ada", "42"]])
+    Artifact.WriteJson(IO.JoinPath([root, "metrics.json"]), "{ \"ok\": true }")
+    Artifact.WriteOctagon(IO.JoinPath([root, "snapshot.octagon"]), MetricsRow { Name: "ada" Score: "42" })
+}
+
+[Fact]
+fn ArtifactCsvAndJsonAreCompact() -> Void {
+    let root = "out/test-artifacts/library_artifact"
+    let csvPath = IO.JoinPath([root, "compact.csv"])
+    let jsonPath = IO.JoinPath([root, "compact.json"])
+
+    Artifact.WriteCsv(csvPath, [["a", "b"], ["1", "2"]])
+    Artifact.WriteJson(jsonPath, "{\n  \"a\": 1\n}")
+
+    let csvText = IO.ReadText(csvPath)!
+    let jsonText = IO.ReadText(jsonPath)!
+    Assert.Equal("a,b\n1,2\n", csvText, "csv writes compact deterministic output")
+    Assert.Equal("{\"a\":1}", jsonText, "json writes compact output")
+    let _rm = IO.RemoveAll(root)!
+}

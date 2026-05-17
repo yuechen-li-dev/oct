@@ -1,0 +1,6 @@
+package Manifest
+record PackageManifest { Name: String Version: String Description: String Dependencies: Dependency[] }
+record Dependency { Name: String VersionRequirement: String }
+fn Manifest() -> PackageManifest {
+    return PackageManifest { Name: "ArtifactUsage" Version: "0.1.0" Description: "Artifact usage tests" Dependencies: [Dependency { Name: "Artifact" VersionRequirement: "0.1.0" }, Dependency { Name: "IO" VersionRequirement: "0.1.0" }] }
+}

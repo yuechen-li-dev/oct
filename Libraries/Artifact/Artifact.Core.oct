@@ -1,0 +1,5 @@
+package Artifact
+
+fn _ArtifactNamespaceMarker() -> Int {
+    return 0
+}
