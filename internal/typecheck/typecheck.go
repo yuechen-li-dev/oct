@@ -2609,6 +2609,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkArtifactBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "LoadOctagon" {
 		return c.checkLoadOctagonBuiltinCallExpr(scope, callee, typeArguments, arguments, ctx)
 	}
@@ -4684,6 +4690,29 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 2 expects .octagon-representable value, got %s", valueType.ValueType)
 	}
 	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+}
+
+func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	delegate := ""
+	switch callee {
+	case "ArtifactWriteText":
+		delegate = "FileWriteText"
+	case "ArtifactWriteLines", "ArtifactWriteMarkdown":
+		delegate = "FileWriteLines"
+	case "ArtifactWriteCsv":
+		delegate = "CsvWrite"
+	case "ArtifactWriteJson":
+		delegate = "JsonSave"
+	case "ArtifactWriteOctagon":
+		delegate = "WriteOctagon"
+	default:
+		return ExprType{}, fmt.Errorf("runtime invariant violation: unknown artifact builtin '%s'", callee)
+	}
+	_, err := c.checkBuiltinCallExpr(scope, delegate, nil, arguments, ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 }
 
 func isOctagonRepresentableType(valueType Type) bool {

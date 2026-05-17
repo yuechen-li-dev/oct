@@ -113,10 +113,9 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 - Global compatibility/backing builtins remain available during transition (`StringJoin`, `StringQuoteJSON`, etc.).
 
 Artifact guidance:
-- Use `IO.WriteLines` for markdown/text reports.
-- Use `Csv.Write` for CSV output.
-- Use `Json.Save` for structured JSON.
-- Prefer `String.Join(parts, separator)` for deterministic line construction.
+- Prefer `Artifact.Write*` in `[Artifact]` functions for canonical fail-fast emission without `let _ = ...`.
+- `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain available as lower-level fallible APIs.
+- Prefer `String.Join(parts, separator)` for deterministic line construction when preparing report text.
 
 Canonical namespaced authoring pattern:
 

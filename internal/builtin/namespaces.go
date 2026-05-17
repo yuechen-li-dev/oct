@@ -30,6 +30,14 @@ var namespaceAliases = map[string]map[string]string{
 		"Load": "JsonLoad",
 		"Save": "JsonSave",
 	},
+	"Artifact": {
+		"WriteText":     "ArtifactWriteText",
+		"WriteLines":    "ArtifactWriteLines",
+		"WriteMarkdown": "ArtifactWriteMarkdown",
+		"WriteCsv":      "ArtifactWriteCsv",
+		"WriteJson":     "ArtifactWriteJson",
+		"WriteOctagon":  "ArtifactWriteOctagon",
+	},
 }
 
 func ResolveNamespacedAlias(namespace string, symbol string) (string, bool) {

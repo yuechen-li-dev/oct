@@ -1,0 +1,11 @@
+package Artifact
+
+[Fact]
+fn ArtifactPackageCompiles() -> Void {
+    Assert.True(true, "artifact package is loadable")
+}
+
+[Artifact]
+fn ArtifactLaneCompiles() -> Void {
+    return
+}
