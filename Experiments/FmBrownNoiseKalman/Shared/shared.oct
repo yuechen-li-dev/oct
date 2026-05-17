@@ -1,0 +1,254 @@
+package Shared
+
+import Random
+
+record KalmanResult {
+    Recovered: Float[]
+    Innovation: Float[]
+    FinalA: Float
+}
+
+fn Mean(x: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(x) {
+        sum = sum + x[i]
+    }
+    return sum / Float(Len(x))
+}
+
+fn Variance(x: Float[]) -> Float {
+    let m = Mean(x)
+    var sum = 0.0
+    for i in 0..Len(x) {
+        let d = x[i] - m
+        sum = sum + d * d
+    }
+    return sum / Float(Len(x))
+}
+
+fn Rms(x: Float[]) -> Float {
+    return Sqrt(Variance(x) + Mean(x) * Mean(x))
+}
+
+fn RemoveMean(x: Float[]) -> Float[] {
+    let m = Mean(x)
+    var out: Float[] = []
+    for i in 0..Len(x) {
+        out = Append(out, x[i] - m)
+    }
+    return out
+}
+
+fn NormalizeRms(x: Float[], target: Float) -> Float[] {
+    let r = Rms(x)
+    if r <= 1e-12 {
+        return x
+    }
+    var out: Float[] = []
+    for i in 0..Len(x) {
+        out = Append(out, x[i] * target / r)
+    }
+    return out
+}
+
+fn Sub(a: Float[], b: Float[]) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(a) {
+        out = Append(out, a[i] - b[i])
+    }
+    return out
+}
+
+fn Correlation(a: Float[], b: Float[]) -> Float {
+    let x = NormalizeRms(RemoveMean(a), 1.0)
+    let y = NormalizeRms(RemoveMean(b), 1.0)
+    var dot = 0.0
+    for i in 0..Len(x) {
+        dot = dot + x[i] * y[i]
+    }
+    return dot / Float(Len(x))
+}
+
+fn Nrmse(clean: Float[], recovered: Float[]) -> Float {
+    let err = Sub(clean, NormalizeRms(RemoveMean(recovered), 1.0))
+    return Rms(err) / (Rms(clean) + 1e-12)
+}
+
+fn GenerateWhiteNoise(n: Int, seed: Int) -> Float[] {
+    var out: Float[] = []
+    var rng = Random.Gaussian(Random.RngSeed(seed), 0.0, 0.0).Next
+    for i in 0..n {
+        let d = Random.RandNormal(rng, 0.0, 1.0)
+        rng = d.Next
+        out = Append(out, d.Value)
+    }
+    return out
+}
+
+fn GenerateBrownNoise(n: Int, seed: Int) -> Float[] {
+    let white = GenerateWhiteNoise(n, seed)
+    var brown: Float[] = []
+    var accum = 0.0
+    for i in 0..Len(white) {
+        accum = accum + white[i]
+        brown = Append(brown, accum)
+    }
+    return NormalizeRms(RemoveMean(brown), 1.0)
+}
+
+fn MeasureSnrDb(signal: Float[], noise: Float[]) -> Float {
+    let sp = Rms(signal) * Rms(signal)
+    let np = Rms(noise) * Rms(noise)
+    return 10.0 * Log10(sp / (np + 1e-12))
+}
+
+fn AddNoiseAtSnr(signal: Float[], raw: Float[], snrDb: Float) -> Float[] {
+    let sp = Rms(signal) * Rms(signal)
+    let targetNoisePower = sp / Pow(10.0, snrDb / 10.0)
+    let n = NormalizeRms(raw, Sqrt(targetNoisePower))
+    var out: Float[] = []
+    for i in 0..Len(signal) {
+        out = Append(out, signal[i] + n[i])
+    }
+    return out
+}
+
+fn FmModulate(message: Float[], sampleRate: Float, carrier: Float, deviation: Float) -> Float[] {
+    var out: Float[] = []
+    var phase = 0.0
+    for i in 0..Len(message) {
+        let f = carrier + deviation * message[i]
+        phase = phase + 2.0 * Pi() * f / sampleRate
+        out = Append(out, phase)
+    }
+    return out
+}
+
+fn FmDemodulate(signal: Float[], sampleRate: Float) -> Float[] {
+    var out: Float[] = [0.0]
+    for i in 1..Len(signal) {
+        let dphi = signal[i] - signal[i - 1]
+        out = Append(out, dphi * sampleRate / (2.0 * Pi()))
+    }
+    return out
+}
+
+fn LowPassFilter(signal: Float[], sampleRate: Float, cutoff: Float) -> Float[] {
+    let rc = 1.0 / (2.0 * Pi() * cutoff)
+    let dt = 1.0 / sampleRate
+    let alpha = dt / (rc + dt)
+    var y = signal[0]
+    var out: Float[] = []
+    for i in 0..Len(signal) {
+        if i > 0 {
+            y = y + alpha * (signal[i] - y)
+        }
+        out = Append(out, y)
+    }
+    return out
+}
+
+fn LagAutocorrelation(z: Float[], lag: Int) -> Float {
+    var num = 0.0
+    var den = 0.0
+    for i in lag..Len(z) {
+        num = num + z[i] * z[i - lag]
+    }
+    for i in 0..Len(z) {
+        den = den + z[i] * z[i]
+    }
+    return num / (den + 1e-12)
+}
+
+fn Sum(x: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(x) {
+        total = total + x[i]
+    }
+    return total
+}
+
+fn WhitenessCost(x: Float[]) -> Float {
+    let z = RemoveMean(x)
+    let lags = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let vals = batch lags as lag {
+        let rho = LagAutocorrelation(z, lag)
+        return rho * rho
+    }
+    return Sum(vals)
+}
+
+fn FixedWhiteKalmanFilter(observed: Float[]) -> KalmanResult {
+    return RunKalman(observed, false)
+}
+
+fn AdaptiveAr1ColoredNoiseKalmanFilter(observed: Float[]) -> KalmanResult {
+    return RunKalman(observed, true)
+}
+
+fn RunKalman(observed: Float[], adaptive: Bool) -> KalmanResult {
+    var x0 = 0.0
+    var x1 = 0.0
+    var xn = 0.0
+    var p00 = 1.0
+    var p11 = 1.0
+    var p22 = 1.0
+    var a = 0.0
+
+    let q0 = 1e-3
+    let q1 = 1e-2
+    let qn = 0.1
+    let r = 1.0
+    let learningRate = 0.05
+    let window = 64
+
+    var out: Float[] = []
+    var innovation: Float[] = []
+
+    for k in 0..Len(observed) {
+        let x0Pred = x0 + x1
+        let x1Pred = x1
+        let xnPred = if adaptive { a * xn } else { 0.0 }
+
+        let p00Pred = p00 + p11 + q0
+        let p11Pred = p11 + q1
+        let p22Pred = if adaptive { a * a * p22 + qn } else { qn }
+
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + r
+
+        let k0 = p00Pred / s
+        let k1 = p11Pred / s
+        let k2 = if adaptive { p22Pred / s } else { 0.0 }
+
+        x0 = x0Pred + k0 * y
+        x1 = x1Pred + k1 * y
+        xn = xnPred + k2 * y
+
+        p00 = (1.0 - k0) * p00Pred
+        p11 = (1.0 - k1) * p11Pred
+        p22 = if adaptive { (1.0 - k2) * p22Pred } else { 0.0 }
+
+        out = Append(out, x0)
+        innovation = Append(innovation, y)
+
+        if adaptive and Len(innovation) > window {
+            var num = 0.0
+            var den = 0.0
+            for i in (Len(innovation) - window + 1)..Len(innovation) {
+                num = num + innovation[i] * innovation[i - 1]
+                den = den + innovation[i - 1] * innovation[i - 1]
+            }
+            let rho1 = num / (den + 1e-12)
+            a = a + learningRate * rho1
+            if a > 0.99 {
+                a = 0.99
+            }
+            if a < -0.99 {
+                a = -0.99
+            }
+        }
+    }
+
+    return KalmanResult { Recovered: out Innovation: innovation FinalA: a }
+}
