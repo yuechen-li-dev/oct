@@ -1273,15 +1273,15 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				case "rows", "cols":
 					return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 				default:
-					return ExprType{}, c.missingFieldError(fmt.Sprint(targetType.ValueType), node.Field, chain, chainOK)
+					return ExprType{}, missingTypeFieldError(fmt.Sprint(targetType.ValueType), node.Field, chain, chainOK)
 				}
 			}
 			recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
 			if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
 				if !chainOK || strings.Count(chain, ".") < 2 {
-					return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
+					return ExprType{}, missingTypeFieldError(fmt.Sprint(targetType.ValueType), node.Field, chain, chainOK)
 				}
-				msg := fmt.Sprintf("cannot access field '%s' on '%s'", node.Field, targetType.ValueType)
+				msg := fmt.Sprintf("type '%s' has no field '%s'", targetType.ValueType, node.Field)
 				if chainOK {
 					msg += fmt.Sprintf("\nwhile resolving '%s'\n'%s' has type %s, which has no fields", chain, chainParentPath(chain), targetType.ValueType)
 				}
@@ -5637,6 +5637,14 @@ func (c checker) missingFieldError(recordName string, field string, chain string
 		}
 		slices.Sort(fields)
 		message += fmt.Sprintf("\navailable fields: %s", strings.Join(fields, ", "))
+	}
+	return errors.New(message)
+}
+
+func missingTypeFieldError(typeName string, field string, chain string, includeChain bool) error {
+	message := fmt.Sprintf("type '%s' has no field '%s'", typeName, field)
+	if includeChain {
+		message += fmt.Sprintf("\nwhile resolving '%s'", chain)
 	}
 	return errors.New(message)
 }
