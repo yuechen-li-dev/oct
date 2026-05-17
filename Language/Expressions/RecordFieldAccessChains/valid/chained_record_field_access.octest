@@ -1,0 +1,34 @@
+package Main
+
+import Assert
+
+record Metrics {
+    FinalA: Float
+}
+
+record Run {
+    AdaptiveKF: Metrics
+}
+
+record Envelope {
+    Run: Run
+}
+
+fn BuildEnvelope() -> Envelope {
+    return Envelope {
+        Run: Run {
+            AdaptiveKF: Metrics { FinalA: 3.5 }
+        }
+    }
+}
+
+fn Main() -> Void {
+    let run = Run { AdaptiveKF: Metrics { FinalA: 2.25 } }
+    Assert.Equal(2.25, run.AdaptiveKF.FinalA, "two-level chain should resolve")
+
+    let env = BuildEnvelope()
+    Assert.Equal(3.5, env.Run.AdaptiveKF.FinalA, "three-level chain should resolve")
+
+    Assert.True(run.AdaptiveKF.FinalA > 2.0, "chained result should support numeric comparisons")
+    Assert.Equal(4.5, run.AdaptiveKF.FinalA + 2.25, "chained result should support arithmetic")
+}
