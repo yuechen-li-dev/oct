@@ -13,40 +13,52 @@ fn StringLiteralEscapesM0Contract() -> Void {
 
 [Fact]
 fn StringCoreBasics() -> Void {
-    Assert.True(IsEmpty(""), "empty string should be empty")
-    Assert.False(IsEmpty("x"), "non-empty string should not be empty")
-    Assert.Equal(3, ByteLength("abc"), "ascii byte length should match chars")
-    Assert.Equal(3, RuneCount("abc"), "ascii rune count should match chars")
-    Assert.Equal(1, RuneCount("é"), "single rune should count once")
-    Assert.Equal(2, ByteLength("é"), "utf-8 byte length should track bytes")
+    Assert.True(StringByteLength("") == 0, "empty string should be empty")
+    Assert.False(StringByteLength("x") == 0, "non-empty string should not be empty")
+    Assert.Equal(3, StringByteLength("abc"), "ascii byte length should match chars")
+    Assert.Equal(3, StringRuneCount("abc"), "ascii rune count should match chars")
+    Assert.Equal(1, StringRuneCount("é"), "single rune should count once")
+    Assert.Equal(2, StringByteLength("é"), "utf-8 byte length should track bytes")
     return
 }
 
 [Fact]
 fn StringCompositionAndSearch() -> Void {
-    Assert.Equal("abc", Concat(["a", "b", "c"]), "concat should preserve order")
-    Assert.Equal("a,b,c", Join(",", ["a", "b", "c"]), "join should apply separator")
-    Assert.Equal("a\nb", Join("\n", ["a", "b"]), "join should support newline separators")
-    Assert.Equal("x-y-x", Replace("x_y_x", "_", "-")!, "replace should replace all matches")
-    Assert.Equal("abc", Replace("abc", "z", "q")!, "replace should keep source when no match")
-    Assert.Error(Replace("abc", "", "x"), "replace should reject empty old")
-    Assert.True(Contains("hello", "ell"), "contains should detect matches")
-    Assert.False(Contains("hello", "xyz"), "contains should detect non-match")
-    Assert.True(StartsWith("hello", "he"), "startswith true case")
-    Assert.False(StartsWith("hello", "ll"), "startswith false case")
-    Assert.True(EndsWith("hello", "lo"), "endswith true case")
-    Assert.False(EndsWith("hello", "he"), "endswith false case")
-    Assert.Equal("hi", Trim(" \nhi\n "), "trim should remove unicode/go trim whitespace")
+    Assert.Equal("abc", StringJoin(["a", "b", "c"], ""), "concat should preserve order")
+    Assert.Equal("a,b,c", StringJoin(["a", "b", "c"], ","), "join should apply separator")
+    Assert.Equal("a\nb", StringJoin(["a", "b"], "\n"), "join should support newline separators")
+    Assert.Equal("x-y-x", StringReplaceAll("x_y_x", "_", "-"), "replace should replace all matches")
+    Assert.Equal("abc", StringReplaceAll("abc", "z", "q"), "replace should keep source when no match")
+    Assert.Equal("xaxbxcx", StringReplaceAll("abc", "", "x"), "replace empty old should follow Go insertion semantics")
+    Assert.True(StringContains("hello", "ell"), "contains should detect matches")
+    Assert.False(StringContains("hello", "xyz"), "contains should detect non-match")
+    Assert.True(StringStartsWith("hello", "he"), "startswith true case")
+    Assert.False(StringStartsWith("hello", "ll"), "startswith false case")
+    Assert.True(StringEndsWith("hello", "lo"), "endswith true case")
+    Assert.False(StringEndsWith("hello", "he"), "endswith false case")
+    Assert.Equal("hi", StringTrim(" \nhi\n "), "trim should remove unicode/go trim whitespace")
     return
 }
 
 [Fact]
 fn StringSplitLinesAndJsonHelpers() -> Void {
-    Assert.Equal(["a", "b"], SplitLines("a\nb"), "split should separate basic lines")
-    Assert.Equal(["a", "", "b"], SplitLines("a\n\nb"), "split should preserve interior empty lines")
-    Assert.Equal(["a"], SplitLines("a\n"), "split should suppress trailing synthetic empty line")
-    Assert.Equal([], SplitLines(""), "split empty should be empty array")
-    Assert.Equal("a\\\"b\\n", EscapeJson("a\"b\n"), "escape json should escape quotes and newlines")
-    Assert.Equal("\"a\\\"b\"", QuoteJson("a\"b"), "quote json should include wrapping quotes")
+    let linesAB = StringSplitLines("a\nb")
+    Assert.Equal(2, Len(linesAB), "split should separate basic lines")
+    Assert.Equal("a", linesAB[0], "split first line")
+    Assert.Equal("b", linesAB[1], "split second line")
+
+    let linesAEmptyB = StringSplitLines("a\n\nb")
+    Assert.Equal(3, Len(linesAEmptyB), "split should preserve interior empty lines")
+    Assert.Equal("", linesAEmptyB[1], "split should preserve empty interior line")
+
+    let linesTrailing = StringSplitLines("a\n")
+    Assert.Equal(1, Len(linesTrailing), "split should suppress trailing synthetic empty line")
+    Assert.Equal("a", linesTrailing[0], "trailing split retains content")
+
+    let linesEmpty = StringSplitLines("")
+    Assert.Equal(0, Len(linesEmpty), "split empty should be empty array")
+
+    Assert.Equal("a\\\"b\\n", StringEscapeJSON("a\"b\n"), "escape json should escape quotes and newlines")
+    Assert.Equal("\"a\\\"b\"", StringQuoteJSON("a\"b"), "quote json should include wrapping quotes")
     return
 }
