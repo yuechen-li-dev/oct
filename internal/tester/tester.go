@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -35,6 +36,10 @@ func Execute(path string, stdout io.Writer) error {
 
 func executeTestsSingleRoot(path string, stdout io.Writer) error {
 	var tests []testCase
+	selectedSources, err := selectedTestSources(path)
+	if err != nil {
+		return err
+	}
 	octFailCases, err := discoverOctFailCases(path)
 	if err != nil {
 		return err
@@ -47,6 +52,9 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 		}
 		for pkgName, pkg := range program.Packages {
 			for _, fn := range pkg.Functions {
+				if !isSelectedSource(selectedSources, fn.SourcePath) {
+					continue
+				}
 				if fn.IsFact {
 					tests = append(tests, testCase{
 						pkg:         pkgName,
@@ -261,4 +269,31 @@ func shortPath(root string, full string) string {
 		return full
 	}
 	return rel
+}
+
+func selectedTestSources(path string) (map[string]struct{}, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, nil
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]struct{}{filepath.Clean(abs): {}}, nil
+}
+
+func isSelectedSource(selected map[string]struct{}, sourcePath string) bool {
+	if selected == nil {
+		return true
+	}
+	abs, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return false
+	}
+	_, ok := selected[filepath.Clean(abs)]
+	return ok
 }
