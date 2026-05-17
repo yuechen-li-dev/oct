@@ -2,24 +2,26 @@
 
 Minimal deterministic helpers for report/artifact text composition.
 
-## API
+## API (canonical M0 namespace form)
 
-- `StringByteLength(s)` -> `Int` (UTF-8 byte length)
-- `StringRuneCount(s)` -> `Int` (Unicode code-point count)
-- `StringJoin(parts, separator)` -> `String` (join parts with separator)
-- `StringReplaceAll(s, old, new)` -> `String` (replaces all non-overlapping occurrences; when `old == ""`, follows Go `strings.ReplaceAll` insertion semantics)
-- `StringContains(s, needle)` -> `Bool`
-- `StringStartsWith(s, prefix)` -> `Bool`
-- `StringEndsWith(s, suffix)` -> `Bool`
-- `StringTrim(s)` -> `String` (Go `strings.TrimSpace` / Unicode whitespace)
-- `StringSplitLines(s)` -> `String[]` (normalizes `CRLF` to `LF`; splits on `LF`; preserves interior empties; suppresses terminal synthetic empty line)
-- `StringEscapeJSON(s)` -> `String` (JSON escaped contents, no wrapping quotes)
-- `StringQuoteJSON(s)` -> `String` (complete JSON string literal with wrapping quotes)
+- `String.ByteLength(s)` -> `Int`
+- `String.RuneCount(s)` -> `Int`
+- `String.Join(parts, separator)` -> `String`
+- `String.ReplaceAll(s, old, new)` -> `String`
+- `String.Contains(s, needle)` -> `Bool`
+- `String.StartsWith(s, prefix)` -> `Bool`
+- `String.EndsWith(s, suffix)` -> `Bool`
+- `String.Trim(s)` -> `String`
+- `String.SplitLines(s)` -> `String[]`
+- `String.EscapeJson(s)` -> `String`
+- `String.QuoteJson(s)` -> `String`
+
+Compatibility/backing globals remain available (`StringJoin`, `StringQuoteJSON`, etc.) but are not the preferred user-facing spelling.
 
 ## Artifact guidance
 
 - Use `IO.WriteLines` for markdown/text report files.
-- Use `StringJoin` to build deterministic lines.
+- Use `String.Join` to build deterministic lines.
 - Use `CsvWrite` for CSV.
 - Use `JsonSave` for structured JSON.
 - Use `StringQuoteJSON` only when manual JSON-shaped text is necessary.

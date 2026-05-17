@@ -1,0 +1,7 @@
+expect error: "unknown namespace/module 'String'; did you forget `import String`?"
+
+package Main
+
+fn Main() -> String {
+    return String.Join(["a", "b"], ",")
+}

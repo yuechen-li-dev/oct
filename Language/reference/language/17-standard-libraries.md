@@ -107,12 +107,10 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 
 `Libraries/String/String.Core.oct` provides deterministic report-focused text helpers:
 
-- `IsEmpty`, `ByteLength`, `RuneCount`
-- `Concat`, `Join`
-- `Replace` (`old == ""` returns `Error`)
-- `Contains`, `StartsWith`, `EndsWith`, `Trim`
-- `SplitLines` (CRLF->LF normalization, preserve interior empties, suppress synthetic trailing empty line)
-- `EscapeJson`, `QuoteJson`
+- Preferred M0 namespaced surface (requires `import String`):
+  - `String.Join`, `String.ReplaceAll`, `String.Contains`, `String.StartsWith`, `String.EndsWith`, `String.Trim`
+  - `String.SplitLines`, `String.EscapeJson`, `String.QuoteJson`, `String.ByteLength`, `String.RuneCount`
+- Global compatibility/backing builtins remain available during transition (`StringJoin`, `StringQuoteJSON`, etc.).
 
 Artifact guidance:
 - Use `IO.WriteLines` for markdown/text reports.
