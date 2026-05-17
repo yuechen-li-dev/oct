@@ -1,0 +1,15 @@
+expect error: "unknown name 'missing'"
+
+package Main
+
+record Metrics {
+    FinalA: Float
+}
+
+record Run {
+    AdaptiveKF: Metrics
+}
+
+fn Main() -> Float {
+    return missing.AdaptiveKF.FinalA
+}

@@ -1,7 +1,9 @@
 package typecheck
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -1253,6 +1255,55 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				}
 			}
 		}
+		chain, chainOK := flattenFieldAccessChain(node)
+		targetType, err := c.checkExpr(scope, node.Target, ctx)
+		if err == nil {
+			if targetType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			if ctx.board != nil && targetType.ValueType == ctx.boardType {
+				fieldType, ok := ctx.board[node.Field]
+				if !ok {
+					return ExprType{}, c.missingFieldError(targetType.ValueType.Name, node.Field, chain, chainOK)
+				}
+				return ExprType{ValueType: fieldType}, nil
+			}
+			if targetType.ValueType.IsMatrix {
+				switch node.Field {
+				case "rows", "cols":
+					return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+				default:
+					return ExprType{}, c.missingFieldError(fmt.Sprint(targetType.ValueType), node.Field, chain, chainOK)
+				}
+			}
+			recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
+			if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
+				if !chainOK || strings.Count(chain, ".") < 2 {
+					return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
+				}
+				msg := fmt.Sprintf("cannot access field '%s' on '%s'", node.Field, targetType.ValueType)
+				if chainOK {
+					msg += fmt.Sprintf("\nwhile resolving '%s'\n'%s' has type %s, which has no fields", chain, chainParentPath(chain), targetType.ValueType)
+				}
+				return ExprType{}, errors.New(msg)
+			}
+			fieldType, ok := recordDecl.fields[node.Field]
+			if !ok {
+				return ExprType{}, c.missingFieldError(targetType.ValueType.Name, node.Field, chain, chainOK)
+			}
+			return ExprType{ValueType: fieldType}, nil
+		}
+		if chainOK && strings.Count(chain, ".") >= 2 {
+			if enumName, ok := c.flattenEnumTypeName(node.Target); ok {
+				if _, enumExists := c.lookupEnum(enumName); !enumExists {
+					root := chainRoot(chain)
+					return ExprType{}, fmt.Errorf("unknown name '%s'\nwhile resolving '%s'", root, chain)
+				}
+			} else {
+				root := chainRoot(chain)
+				return ExprType{}, fmt.Errorf("unknown name '%s'\nwhile resolving '%s'", root, chain)
+			}
+		}
 		if identifier, ok := node.Target.(ast.IdentifierExpr); ok {
 			if enumDecl, enumExists := c.lookupEnum(identifier.Name); enumExists {
 				variant, variantExists := enumDecl.variants[node.Field]
@@ -1282,37 +1333,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			}
 			return ExprType{}, fmt.Errorf("unknown enum type: %s", enumName)
 		}
-		targetType, err := c.checkExpr(scope, node.Target, ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		if targetType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		if ctx.board != nil && targetType.ValueType == ctx.boardType {
-			fieldType, ok := ctx.board[node.Field]
-			if !ok {
-				return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType.Name, node.Field)
-			}
-			return ExprType{ValueType: fieldType}, nil
-		}
-		if targetType.ValueType.IsMatrix {
-			switch node.Field {
-			case "rows", "cols":
-				return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
-			default:
-				return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType, node.Field)
-			}
-		}
-		recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
-		if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
-			return ExprType{}, fmt.Errorf("field access requires record type, got %s", targetType.ValueType)
-		}
-		fieldType, ok := recordDecl.fields[node.Field]
-		if !ok {
-			return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", targetType.ValueType.Name, node.Field)
-		}
-		return ExprType{ValueType: fieldType}, nil
+		return ExprType{}, err
 	case ast.ParenExpr:
 		return c.checkExpr(scope, node.Inner, ctx)
 	case ast.BinaryExpr:
@@ -5529,6 +5550,53 @@ func (c checker) flattenQualifiedFunctionName(expr ast.FieldAccessExpr) (string,
 		return "", "", false
 	}
 	return pkgIdentifier.Name, expr.Field, true
+}
+
+func flattenFieldAccessChain(expr ast.Expr) (string, bool) {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name, true
+	case ast.FieldAccessExpr:
+		left, ok := flattenFieldAccessChain(node.Target)
+		if !ok {
+			return "", false
+		}
+		return left + "." + node.Field, true
+	default:
+		return "", false
+	}
+}
+
+func chainRoot(chain string) string {
+	dot := strings.Index(chain, ".")
+	if dot < 0 {
+		return chain
+	}
+	return chain[:dot]
+}
+
+func chainParentPath(chain string) string {
+	dot := strings.LastIndex(chain, ".")
+	if dot < 0 {
+		return chain
+	}
+	return chain[:dot]
+}
+
+func (c checker) missingFieldError(recordName string, field string, chain string, includeChain bool) error {
+	message := fmt.Sprintf("record has no field '%s'", field)
+	if includeChain {
+		message += fmt.Sprintf("\nwhile resolving '%s'", chain)
+	}
+	if recordDecl, ok := c.lookupRecord(recordName); ok {
+		fields := make([]string, 0, len(recordDecl.fields))
+		for name := range recordDecl.fields {
+			fields = append(fields, name)
+		}
+		slices.Sort(fields)
+		message += fmt.Sprintf("\navailable fields: %s", strings.Join(fields, ", "))
+	}
+	return errors.New(message)
 }
 
 func splitQualifiedTypeName(typeName string) (string, string, bool) {

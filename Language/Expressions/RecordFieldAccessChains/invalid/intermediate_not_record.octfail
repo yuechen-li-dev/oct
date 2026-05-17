@@ -1,0 +1,17 @@
+expect error: "while resolving 'run.AdaptiveKF.FinalA.Value'"
+
+
+package Main
+
+record Metrics {
+    FinalA: Float
+}
+
+record Run {
+    AdaptiveKF: Metrics
+}
+
+fn Main() -> Float {
+    let run = Run { AdaptiveKF: Metrics { FinalA: 1.0 } }
+    return run.AdaptiveKF.FinalA.Value
+}
