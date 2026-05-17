@@ -210,19 +210,40 @@ fn RunKalman(observed: Float[], adaptive: Bool) -> MethodMetrics {
     return MethodMetrics { Method: if adaptive { "adaptive-ar1-kf" } else { "fixed-white-kf" } OutputSNRDb: 0.0 Nrmse: 0.0 Correlation: 0.0 WhitenessCost: WhitenessCost(innovation) FinalA: a Recovered: out Innovation: innovation }
 }
 
-fn WhitenessCost(x: Float[]) -> Float {
-    let z = RemoveMean(x)
-    var cost = 0.0
-    for lag in 1..11 {
-        var num = 0.0
-        var den = 0.0
-        for i in lag..Len(z) { num = num + z[i] * z[i - lag] }
-        for i in 0..Len(z) { den = den + z[i] * z[i] }
-        let rho = num / (den + 1e-12)
-        cost = cost + rho * rho
-    }
-    return cost
+fn LagAutocorrelation(z: Float[], lag: Int) -> Float {
+    var num = 0.0
+    var den = 0.0
+    for i in lag..Len(z) { num = num + z[i] * z[i - lag] }
+    for i in 0..Len(z) { den = den + z[i] * z[i] }
+    return num / (den + 1e-12)
 }
+
+fn WhitenessLagSquaresSequential(x: Float[]) -> Float[] {
+    let z = RemoveMean(x)
+    var lagSquares: Float[] = []
+    for lag in 1..11 {
+        let rho = LagAutocorrelation(z, lag)
+        lagSquares = Append(lagSquares, rho * rho)
+    }
+    return lagSquares
+}
+
+fn WhitenessLagSquaresBatch(x: Float[]) -> Float[] {
+    let z = RemoveMean(x)
+    let lags = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    return batch lags as lag {
+        let rho = LagAutocorrelation(z, lag)
+        return rho * rho
+    }
+}
+
+fn Sum(x: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(x) { total = total + x[i] }
+    return total
+}
+
+fn WhitenessCost(x: Float[]) -> Float { return Sum(WhitenessLagSquaresBatch(x)) }
 
 fn BuildMetric(method: String, clean: Float[], recovered: Float[], observed: Float[], finalA: Float) -> MethodMetrics {
     return MethodMetrics { Method: method OutputSNRDb: MeasureSnrDb(clean, Sub(clean, recovered)) Nrmse: Nrmse(clean, recovered) Correlation: Correlation(clean, recovered) WhitenessCost: WhitenessCost(Sub(observed, recovered)) FinalA: finalA Recovered: recovered Innovation: Sub(observed, recovered) }
