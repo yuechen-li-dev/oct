@@ -18,6 +18,8 @@
 
 - `ReadText(path) -> String ! Error`
 - `WriteText(path, text) -> Int ! Error`
+- `ReadLines(path) -> String[] ! Error`
+- `WriteLines(path, lines: String[]) -> Int ! Error`
 - `ReadBytes(path) -> Bytes ! Error`
 - `WriteBytes(path, data: Bytes) -> Int ! Error`
 - `Exists(path) -> Bool`
@@ -70,6 +72,19 @@
 
 - `Read(path) -> String[][] ! Error`
 - `Write(path, rows) -> Int ! Error`
+
+#### Deterministic text/line semantics
+
+- `WriteText` overwrites existing files and creates missing parent directories.
+- `ReadText` returns exact file content (including newlines) and fails on missing files.
+- `WriteLines` writes lines joined by `\n` and appends one trailing `\n` when `lines` is non-empty.
+- `ReadLines` splits on `\n`, preserving empty lines; terminal newline does not create an extra trailing empty element.
+
+#### Deterministic CSV semantics
+
+- `Write` uses standard CSV escaping for commas, quotes, and embedded newlines.
+- `Write` creates missing parent directories.
+- Row order is preserved exactly as provided.
 
 ## Common failure cases
 

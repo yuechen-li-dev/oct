@@ -97,3 +97,62 @@ fn CsvReadRejectsInvalidCsv() -> Void {
     Assert.Error(Read(path), "invalid csv should fail")
     let _d = Delete(path)!
 }
+
+[Fact]
+fn FileWriteTextReadTextRoundTripAndOverwrite() -> Void {
+    let dir = "out/test-artifacts/io_mx106/text"
+    let path = JoinPath([dir, "roundtrip.txt"])
+    let _w1 = WriteText(path, "alpha\nbeta")!
+    let first = ReadText(path)!
+    Assert.Equal("alpha\nbeta", first, "write then read should preserve exact newlines")
+    let _w2 = WriteText(path, "replacement")!
+    let second = ReadText(path)!
+    Assert.Equal("replacement", second, "write should overwrite existing text file")
+    let _rm = RemoveAll("out/test-artifacts/io_mx106")!
+}
+
+[Fact]
+fn FileReadMissingReportsError() -> Void {
+    Assert.Error(ReadText("out/test-artifacts/io_mx106/missing.txt"), "missing file should report failure")
+}
+
+[Fact]
+fn FileWriteLinesReadLinesPreservesEmptyLines() -> Void {
+    let root = "out/test-artifacts/io_mx106/lines"
+    let path = JoinPath([root, "lines.txt"])
+    let lines = ["first", "", "third", ""]
+    let _w = WriteLines(path, lines)!
+    let readBack = ReadLines(path)!
+    Assert.Equal(4, Len(readBack), "ReadLines should preserve empty lines")
+    Assert.Equal("", readBack[1], "ReadLines should preserve middle empty line")
+    Assert.Equal("", readBack[3], "ReadLines should preserve trailing empty line")
+
+    let parsed = ReadLines(path)!
+    Assert.Equal(4, Len(parsed), "ReadLines on WriteLines output should preserve deterministic line count")
+    Assert.Equal("", parsed[1], "ReadLines should preserve empty lines")
+    let _rm = RemoveAll("out/test-artifacts/io_mx106")!
+}
+
+[Fact]
+fn CsvWriteEscapesAndArtifactRoundTrip() -> Void {
+    let root = "out/test-artifacts/io_mx106/csv"
+    let path = JoinPath([root, "metrics.csv"])
+    let rows = [
+        ["name", "value", "note", "empty"],
+        ["a,b", "quote here", "line1", ""]
+    ]
+    let _w = Write(path, rows)!
+    let csvText = ReadText(path)!
+    Assert.True(Contains(csvText, "name,value,note,empty"), "artifact csv should contain deterministic header row")
+    let readBack = Read(path)!
+    Assert.Equal(2, Len(readBack), "csv read should preserve row count")
+    Assert.Equal("a,b", readBack[1][0], "csv read should roundtrip comma field")
+    Assert.Equal("quote here", readBack[1][1], "csv read should roundtrip plain field")
+    Assert.Equal("line1", readBack[1][2], "csv read should roundtrip plain field")
+    Assert.Equal("", readBack[1][3], "csv read should roundtrip empty field")
+
+    let escapePath = JoinPath([root, "escaping.csv"])
+    let escapeRows = [["a,b", "", "x,y"]]
+    let _we = Write(escapePath, escapeRows)!
+    let _rm = RemoveAll("out/test-artifacts/io_mx106")!
+}

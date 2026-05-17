@@ -23,6 +23,10 @@ func TestMx103bIOCoreWrappers(t *testing.T) {
 		"PASS IO.JsonParseRejectsInvalidDocument",
 		"PASS IO.CsvReadWriteRoundTrip",
 		"PASS IO.CsvReadRejectsInvalidCsv",
+		"PASS IO.FileWriteTextReadTextRoundTripAndOverwrite",
+		"PASS IO.FileReadMissingReportsError",
+		"PASS IO.FileWriteLinesReadLinesPreservesEmptyLines",
+		"PASS IO.CsvWriteEscapesAndArtifactRoundTrip",
 	}
 
 	for _, marker := range expectedPasses {
