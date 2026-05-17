@@ -709,6 +709,15 @@ func TestCheckRejectsInvalidMatrixConstructionSurfaceMx100a(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m.depth }", "type 'Matrix<Int>' has no field 'depth'")
 }
 
+func TestCheckFieldAccessDiagnosticsForRecordsAndChains(t *testing.T) {
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return run.AdaptiveKF.FinelA }", "record has no field 'FinelA'")
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return run.AdaptiveKF.FinelA }", "while resolving 'run.AdaptiveKF.FinelA'")
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return run.AdaptiveKF.FinelA }", "available fields: FinalA")
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return run.AdaptiveKF.FinalA.Value }", "type 'Float' has no field 'Value'")
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return run.AdaptiveKF.FinalA.Value }", "while resolving 'run.AdaptiveKF.FinalA.Value'")
+	assertTypeErrorContains(t, "record Adaptive { FinalA: Float } record Run { AdaptiveKF: Adaptive } fn Main() -> Int { let run = Run { AdaptiveKF: Adaptive { FinalA: 1.0 } } return missing.AdaptiveKF.FinalA }", "unknown name 'missing'\nwhile resolving 'missing.AdaptiveKF.FinalA'")
+}
+
 func TestCheckValidatesM92DimensionedLinearAlgebra(t *testing.T) {
 	validPrograms := []string{
 		"fn Main() -> Vector<Float<m>> { return vector[1.0m, 2.0m] }",

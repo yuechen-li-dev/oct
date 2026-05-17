@@ -1117,7 +1117,7 @@ func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
 			source: "fn Main() -> Int {\n" +
 				"    return 1.X\n" +
 				"}\n",
-			wantMessage: "field access requires record type, got Int",
+			wantMessage: "type 'Int' has no field 'X'",
 		},
 		{
 			name: "enum unknown variant",
