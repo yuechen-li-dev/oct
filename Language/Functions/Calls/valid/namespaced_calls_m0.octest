@@ -1,0 +1,20 @@
+package Calls
+
+import String
+import IO
+
+[Fact]
+fn string_join_namespaced() {
+    Assert.Equal("a,b", String.Join(["a", "b"], ","), "String.Join should resolve via namespace alias")
+    Assert.Equal("a,b", Join(["a", "b"], ","), "global Join should remain available")
+}
+
+[Fact]
+fn io_write_lines_namespaced() {
+    let path = "Artifacts/TestOutput/namespaced_calls_m0.txt"
+    IO.WriteLines(path, ["a", "b"])!
+    let lines = IO.ReadLines(path)!
+    Assert.Equal(2, Len(lines), "IO.ReadLines should round-trip line count")
+    Assert.Equal("a", lines[0], "line 1 should round-trip")
+    Assert.Equal("b", lines[1], "line 2 should round-trip")
+}

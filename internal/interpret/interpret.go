@@ -234,6 +234,7 @@ type interpreter struct {
 	flows          map[string]ast.FlowDecl
 	functionSource map[string]string
 	flowSource     map[string]string
+	packageImports map[string]map[string]struct{}
 	stdout         io.Writer
 	workbooks      wrapperHandleStore[*xlsxWorkbook]
 	images         wrapperHandleStore[*wrapperImage]
@@ -303,6 +304,7 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		flows:          make(map[string]ast.FlowDecl),
 		functionSource: make(map[string]string),
 		flowSource:     make(map[string]string),
+		packageImports: make(map[string]map[string]struct{}),
 		stdout:         stdout,
 		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
 		images:         newWrapperHandleStore[*wrapperImage]("image"),
@@ -311,6 +313,11 @@ func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 	}
 	for pkgName, pkg := range program.Packages {
+		imports := make(map[string]struct{}, len(pkg.Imports))
+		for _, imp := range pkg.Imports {
+			imports[imp] = struct{}{}
+		}
+		interpreter.packageImports[pkgName] = imports
 		for _, record := range pkg.Records {
 			interpreter.records[pkgName+"."+record.Name] = record
 		}
@@ -1898,6 +1905,16 @@ regularCall:
 	}
 	if hasDirectName && builtin.IsName(calleeName) {
 		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.TypeArguments, expr.Arguments)
+	}
+	if hasDirectName {
+		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
+			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
+				if _, imported := i.packageImports[pkgName][namespace]; !imported {
+					return evalResult{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
+				}
+				return i.evalBuiltinCallExpr(env, pkgName, builtinName, expr.TypeArguments, expr.Arguments)
+			}
+		}
 	}
 	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
 		if len(expr.TypeArguments) != 0 {
@@ -4113,6 +4130,17 @@ func flattenDirectCallName(expr ast.Expr) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func splitTwoSegmentQualifiedName(name string) (string, string, bool) {
+	dot := strings.Index(name, ".")
+	if dot <= 0 || dot >= len(name)-1 {
+		return "", "", false
+	}
+	if strings.Index(name[dot+1:], ".") >= 0 {
+		return "", "", false
+	}
+	return name[:dot], name[dot+1:], true
 }
 
 func evalBinaryExpr(operator string, left Value, right Value) (Value, error) {

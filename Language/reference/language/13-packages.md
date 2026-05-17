@@ -11,6 +11,8 @@ Package loading is directory-based.
 - Package declaration form is `package Name`.
 - Import form is `import Name`.
 - Imported package members are referenced with qualification (`Name.Symbol()` / `Name.Type.Member`).
+- M0 namespace-style calls are exactly two segments (`Namespace.Function(...)`).
+- M0 has no wildcard imports and no `using static`.
 - One directory corresponds to one package name.
 - Source files in one package directory must declare the same package name.
 - Imports resolve through one canonical resolver used by `.oct` and `.octest`.

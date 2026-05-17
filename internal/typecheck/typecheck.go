@@ -2138,6 +2138,16 @@ regularCall:
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
+	if hasDirectName {
+		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
+			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
+				if _, imported := c.importedPackages[namespace]; !imported {
+					return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
+				}
+				return c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
+			}
+		}
+	}
 	if hasDirectName && builtin.IsName(calleeName) {
 		return c.checkBuiltinCallExpr(scope, calleeName, expr.TypeArguments, expr.Arguments, ctx)
 	}
@@ -2323,6 +2333,17 @@ func flattenDirectCallName(expr ast.Expr) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func splitTwoSegmentQualifiedName(name string) (string, string, bool) {
+	dot := strings.Index(name, ".")
+	if dot <= 0 || dot >= len(name)-1 {
+		return "", "", false
+	}
+	if strings.Index(name[dot+1:], ".") >= 0 {
+		return "", "", false
+	}
+	return name[:dot], name[dot+1:], true
 }
 
 func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
