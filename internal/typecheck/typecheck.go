@@ -2669,7 +2669,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkDirectoryBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "CsvRead" || callee == "CsvWrite" {
+	if callee == "CsvRead" || callee == "CsvReadRows" || callee == "CsvReadTable" || callee == "CsvReadMatrix" || callee == "CsvWrite" || callee == "CsvWriteRows" || callee == "CsvWriteTable" || callee == "CsvWriteMatrix" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -4398,8 +4398,14 @@ func (c checker) checkDirectoryBuiltinCallExpr(scope *scope, callee string, argu
 func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	stringType := Type{Base: BaseTypeString}
 	stringMatrixType := withArrayDepth(stringType, 2)
-	if callee == "CsvRead" {
+	if callee == "CsvRead" || callee == "CsvReadRows" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: stringMatrixType, Fallible: true})
+	}
+	if callee == "CsvReadTable" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Name: "Csv.Table"}, Fallible: true})
+	}
+	if callee == "CsvReadMatrix" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeFloat}, 2), Fallible: true})
 	}
 	if len(arguments) != 2 {
 		return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
@@ -4421,8 +4427,15 @@ func (c checker) checkCSVBuiltinCallExpr(scope *scope, callee string, arguments 
 	if rowsType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
-	if rowsType.ValueType != stringMatrixType {
-		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[][], got %s", callee, rowsType.ValueType)
+	expectedRowsType := stringMatrixType
+	if callee == "CsvWriteMatrix" {
+		expectedRowsType = withArrayDepth(Type{Base: BaseTypeFloat}, 2)
+	}
+	if callee == "CsvWriteTable" {
+		expectedRowsType = Type{Name: "Csv.Table"}
+	}
+	if rowsType.ValueType != expectedRowsType {
+		return ExprType{}, fmt.Errorf("function '%s' argument 2 expects %s, got %s", callee, expectedRowsType, rowsType.ValueType)
 	}
 	return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
 }

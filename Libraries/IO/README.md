@@ -71,7 +71,13 @@
 ### IO.Csv
 
 - `Read(path) -> String[][] ! Error`
+- `ReadRows(path) -> String[][] ! Error` (explicit raw row-major import; alias of `Read`)
+- `ReadTable(path) -> record of String[] columns ! Error` (header row required; values remain String for M0)
+- `ReadMatrix(path) -> Float[][] ! Error` (no header inference; rectangular numeric grid only)
 - `Write(path, rows) -> Int ! Error`
+- `WriteRows(path, rows: String[][]) -> Int ! Error` (explicit row-major export; alias of `Write`)
+- `WriteMatrix(path, matrix: Float[][]) -> Int ! Error`
+- `WriteTable(path, table) -> Int ! Error` (**not implemented in M0**; explicit placeholder)
 
 #### Deterministic text/line semantics
 
@@ -82,7 +88,10 @@
 
 #### Deterministic CSV semantics
 
-- `Write` uses standard CSV escaping for commas, quotes, and embedded newlines.
+- CSV storage remains physically row-major; import intent is ambiguous unless you choose an explicit read API.
+- Prefer `ReadTable` for named spreadsheet-like tables and `ReadMatrix` for raw numeric grids.
+- Use `ReadRows` when you need lossless string rows from the CSV parser.
+- `Write`/`WriteRows` use standard CSV escaping for commas, quotes, and embedded newlines.
 - `Write` creates missing parent directories.
 - Row order is preserved exactly as provided.
 

@@ -23,8 +23,14 @@ var namespaceAliases = map[string]map[string]string{
 		"WriteLines": "FileWriteLines",
 	},
 	"Csv": {
-		"Read":  "CsvRead",
-		"Write": "CsvWrite",
+		"Read":       "CsvRead",
+		"ReadRows":   "CsvReadRows",
+		"ReadTable":  "CsvReadTable",
+		"ReadMatrix": "CsvReadMatrix",
+		"Write":      "CsvWrite",
+		"WriteRows":  "CsvWriteRows",
+		"WriteTable": "CsvWriteTable",
+		"WriteMatrix": "CsvWriteMatrix",
 	},
 	"Json": {
 		"Load": "JsonLoad",
