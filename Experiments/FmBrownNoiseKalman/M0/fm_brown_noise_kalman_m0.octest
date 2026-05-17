@@ -72,6 +72,23 @@ fn M0dTinyDirectMessageBrownNoiseFiltering() -> Void {
     Assert.True(fixedN >= 0.0 and adaptiveN >= 0.0, "tiny direct filtering should complete")
 }
 
+[Fact]
+fn M0eWhitenessLagBatchMatchesSequential() -> Void {
+    let n = 1000
+    var clean: Float[] = []
+    for i in 0..n {
+        clean = Append(clean, Sin(2.0 * Pi() * 25.0 * Float(i) / 2000.0))
+    }
+    let noisy = AddNoiseAtSnr(clean, GenerateBrownNoise(n, 12345), -12.0)
+    let seq = WhitenessLagSquaresSequential(noisy)
+    let bat = WhitenessLagSquaresBatch(noisy)
+    Assert.Equal(Len(seq), Len(bat), "batch lag whitening vector must preserve output shape")
+    for i in 0..Len(seq) {
+        Assert.Near(seq[i], bat[i], 1e-10, "batch lag whitening must match sequential per-lag values in deterministic order")
+    }
+    Assert.Near(Sum(seq), Sum(bat), 1e-10, "batch whitening aggregate must match sequential aggregate")
+}
+
 fn BandPower(x: Float[], k: Int) -> Float {
     var re = 0.0
     var im = 0.0
@@ -159,5 +176,4 @@ fn M0ArtifactInnovationsOctagon() -> Void {
     }
     let _ = WriteOctagon("Experiments/FmBrownNoiseKalman/M0/m0_innovations.octagon", rows)
 }
-
 
