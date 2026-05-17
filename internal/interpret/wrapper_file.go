@@ -3,6 +3,8 @@ package interpret
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"oct/internal/ast"
 )
@@ -15,6 +17,8 @@ func fileWrapperBuiltins() map[string]wrapperBuiltinHandler {
 		"FileDelete":     (*interpreter).evalFileDeleteBuiltin,
 		"FileReadBytes":  (*interpreter).evalFileReadBytesBuiltin,
 		"FileWriteBytes": (*interpreter).evalFileWriteBytesBuiltin,
+		"FileReadLines":  (*interpreter).evalFileReadLinesBuiltin,
+		"FileWriteLines": (*interpreter).evalFileWriteLinesBuiltin,
 	}
 }
 
@@ -57,6 +61,13 @@ func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string,
 		return *errResult, nil
 	}
 	if writeErr := os.WriteFile(path, []byte(text), 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			if retryErr := os.WriteFile(path, []byte(text), 0o644); retryErr == nil {
+				return wrapperIntResult(0), nil
+			} else {
+				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
+			}
+		}
 		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
 	}
 	return wrapperIntResult(0), nil
@@ -141,9 +152,109 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 		return *errResult, nil
 	}
 	if writeErr := os.WriteFile(path, bytes, 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			if retryErr := os.WriteFile(path, bytes, 0o644); retryErr == nil {
+				return wrapperIntResult(0), nil
+			} else {
+				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
+			}
+		}
 		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
 	}
 	return wrapperIntResult(0), nil
+}
+
+func (i *interpreter) evalFileReadLinesBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(1); err != nil {
+		return evalResult{}, err
+	}
+	path, errResult, err := call.stringArg(0)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if errResult != nil {
+		return *errResult, nil
+	}
+	contents, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return wrapperErrorResult(callee, mapPathError(path, readErr)), nil
+	}
+	lines := splitLinesPreservingTerminal(strings.ReplaceAll(string(contents), "\r\n", "\n"))
+	return wrapperStringArrayResult(lines), nil
+}
+
+func (i *interpreter) evalFileWriteLinesBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(2); err != nil {
+		return evalResult{}, err
+	}
+	path, errResult, err := call.stringArg(0)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if errResult != nil {
+		return *errResult, nil
+	}
+	value, errResult, err := call.evalArg(1)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if errResult != nil {
+		return *errResult, nil
+	}
+	lines, decodeErr := stringArrayArg(value)
+	if decodeErr != nil {
+		return wrapperErrorResult(callee, decodeErr), nil
+	}
+	payload := ""
+	if len(lines) > 0 {
+		payload = strings.Join(lines, "\n") + "\n"
+	}
+	if writeErr := os.WriteFile(path, []byte(payload), 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			if retryErr := os.WriteFile(path, []byte(payload), 0o644); retryErr == nil {
+				return wrapperIntResult(0), nil
+			} else {
+				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
+			}
+		}
+		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
+	}
+	return wrapperIntResult(0), nil
+}
+
+func stringArrayArg(value Value) ([]string, error) {
+	if value.Kind != ValueArray {
+		return nil, wrapperErrorf(wrapperErrorInvalidArgument, "argument expects String[]")
+	}
+	out := make([]string, 0, len(value.Array))
+	for i, element := range value.Array {
+		if element.Kind != ValueString {
+			return nil, wrapperErrorf(wrapperErrorInvalidArgument, "argument expects String[] (index %d)", i)
+		}
+		out = append(out, element.Text)
+	}
+	return out, nil
+}
+
+func splitLinesPreservingTerminal(text string) []string {
+	if text == "" {
+		return []string{}
+	}
+	parts := strings.Split(text, "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		return parts[:len(parts)-1]
+	}
+	return parts
+}
+
+func ensureParentDir(path string) error {
+	parent := filepath.Dir(path)
+	if parent == "." || parent == "" {
+		return nil
+	}
+	return os.MkdirAll(parent, 0o755)
 }
 
 func mapPathError(path string, err error) error {

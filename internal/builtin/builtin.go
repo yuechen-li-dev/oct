@@ -62,6 +62,8 @@ var names = map[string]struct{}{
 	"FileWriteText":        {},
 	"FileReadBytes":        {},
 	"FileWriteBytes":       {},
+	"FileReadLines":       {},
+	"FileWriteLines":      {},
 	"FileExists":           {},
 	"FileDelete":           {},
 	"PathJoin":             {},

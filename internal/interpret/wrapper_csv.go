@@ -74,12 +74,18 @@ func (i *interpreter) evalCSVWriteBuiltin(env *environment, pkgName string, call
 	}
 	file, createErr := os.Create(path)
 	if createErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			file, createErr = os.Create(path)
+		}
+	}
+	if createErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, createErr)), nil
 	}
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	if writeErr := writer.WriteAll(rows); writeErr != nil {
+	writer.WriteAll(rows)
+	if writeErr := writer.Error(); writeErr != nil {
 		return wrapperErrorResult(callee, mapCSVError(writeErr)), nil
 	}
 	return wrapperIntResult(0), nil

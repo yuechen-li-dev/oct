@@ -2603,7 +2603,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "FileReadText" || callee == "FileWriteText" || callee == "FileReadBytes" || callee == "FileWriteBytes" || callee == "FileExists" || callee == "FileDelete" {
+	if callee == "FileReadText" || callee == "FileWriteText" || callee == "FileReadBytes" || callee == "FileWriteBytes" || callee == "FileReadLines" || callee == "FileWriteLines" || callee == "FileExists" || callee == "FileDelete" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -4178,13 +4178,16 @@ func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments
 	if callee == "FileReadBytes" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: bytesType, Fallible: true})
 	}
+	if callee == "FileReadLines" {
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1), Fallible: true})
+	}
 	if callee == "FileExists" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeBool}})
 	}
 	if callee == "FileDelete" {
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
 	}
-	if callee == "FileWriteText" || callee == "FileWriteBytes" {
+	if callee == "FileWriteText" || callee == "FileWriteBytes" || callee == "FileWriteLines" {
 		if len(arguments) != 2 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
 		}
@@ -4210,6 +4213,9 @@ func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments
 		}
 		if callee == "FileWriteBytes" && valueType.ValueType != bytesType {
 			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Bytes, got %s", callee, valueType.ValueType)
+		}
+		if callee == "FileWriteLines" && valueType.ValueType != (withArrayDepth(Type{Base: BaseTypeString}, 1)) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[], got %s", callee, valueType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
 	}

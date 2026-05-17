@@ -8,6 +8,14 @@ fn WriteText(path: String, text: String) -> Int ! Error {
     return FileWriteText(path, text)?
 }
 
+fn ReadLines(path: String) -> String[] ! Error {
+    return FileReadLines(path)?
+}
+
+fn WriteLines(path: String, lines: String[]) -> Int ! Error {
+    return FileWriteLines(path, lines)?
+}
+
 fn ReadBytes(path: String) -> Bytes ! Error {
     return FileReadBytes(path)?
 }
