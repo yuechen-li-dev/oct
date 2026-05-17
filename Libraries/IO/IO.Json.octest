@@ -1,5 +1,25 @@
 package IO
 
+
+fn ResolveJsonFixturePath(name: String) -> String {
+    let repoRootRelative = JoinPath(["Libraries", "IO", "testdata", name])
+    if FileExists(repoRootRelative) {
+        return repoRootRelative
+    }
+
+    let fromCmdOct = JoinPath(["..", "..", "Libraries", "IO", "testdata", name])
+    if FileExists(fromCmdOct) {
+        return fromCmdOct
+    }
+
+    let localRelative = JoinPath(["testdata", name])
+    if FileExists(localRelative) {
+        return localRelative
+    }
+
+    return repoRootRelative
+}
+
 [Fact]
 fn JsonNormalizeMinifiesValidDocument() -> Void {
     let normalized = NormalizeJson("[ 1, 2, 3 ]")!
@@ -27,7 +47,7 @@ fn JsonStructuredLoweringCoversScalarsAndNull() -> Void {
 
 [Fact]
 fn JsonStructuredLoweringCoversObjectArrayAndStringValues() -> Void {
-    let graph = ImportRawJsonGraph("../../Libraries/IO/testdata/smoke_dispatch.json")!
+    let graph = ImportRawJsonGraph(ResolveJsonFixturePath("smoke_dispatch.json"))!
     let root = RootNode(graph)
     Assert.Equal("object", root.Kind, "object json should lower to object node")
 
@@ -44,7 +64,7 @@ fn JsonStructuredLoweringCoversObjectArrayAndStringValues() -> Void {
 
 [Fact]
 fn JsonImportRawPathExposesCompactJsonAndGraph() -> Void {
-    let path = "../../Libraries/IO/testdata/smoke_people.json"
+    let path = ResolveJsonFixturePath("smoke_people.json")
     let rawText = ImportRawJson(path)!
     Assert.True(StartsWith(rawText, "{"), "raw import should preserve JSON compatibility text surface")
 
@@ -54,41 +74,41 @@ fn JsonImportRawPathExposesCompactJsonAndGraph() -> Void {
 
 [Fact]
 fn JsonIntentRecoveryHomogeneousObjectArrayUsesColumnarTable() -> Void {
-    let recovered = ImportJson("../../Libraries/IO/testdata/smoke_people.json")!
+    let recovered = ImportJson(ResolveJsonFixturePath("smoke_people.json"))!
     Assert.Equal("table.columnar", recovered.Kind, "homogeneous object arrays should recover to canonical columnar tables")
     Assert.True(Contains(recovered.Canonical, "table.columnar"), "canonical output should state columnar table recovery")
 }
 
 [Fact]
 fn JsonIntentRecoveryMappingObjectUsesMappingTable() -> Void {
-    let recovered = ImportJson("../../Libraries/IO/testdata/simple_mapping.json")!
+    let recovered = ImportJson(ResolveJsonFixturePath("simple_mapping.json"))!
     Assert.Equal("mapping.table", recovered.Kind, "flat mapping objects with simple payloads should recover as mapping tables")
     Assert.True(Contains(recovered.Canonical, "key"), "mapping canonical should include key/value posture")
 }
 
 [Fact]
 fn JsonIntentRecoveryNumericGridUsesNestedArrayException() -> Void {
-    let recovered = ImportJson("../../Libraries/IO/testdata/smoke_grid.json")!
+    let recovered = ImportJson(ResolveJsonFixturePath("smoke_grid.json"))!
     Assert.Equal("grid.nested_array", recovered.Kind, "true rectangular numeric grids should preserve nested arrays")
     Assert.True(Contains(recovered.Canonical, "[[Float]]"), "grid canonical should explicitly keep nested array posture")
 }
 
 [Fact]
 fn JsonIntentRecoveryNestedConfigUsesNestedRecord() -> Void {
-    let recovered = ImportJson("../../Libraries/IO/testdata/smoke_config.json")!
+    let recovered = ImportJson(ResolveJsonFixturePath("smoke_config.json"))!
     Assert.Equal("config.nested_record", recovered.Kind, "config-shaped nested JSON should recover as nested records")
 }
 
 [Fact]
 fn JsonIntentRecoveryAmbiguousShapeFallsBackConservatively() -> Void {
-    let recovered = ImportJson("../../Libraries/IO/testdata/ambiguous_overlap.json")!
+    let recovered = ImportJson(ResolveJsonFixturePath("ambiguous_overlap.json"))!
     Assert.Equal("record.raw.ambiguous", recovered.Kind, "ambiguous overlapping recoveries should not be guessed silently")
     Assert.True(Contains(recovered.Canonical, "ImportRawJson"), "ambiguous fallback should point users to raw compatibility path")
 }
 
 [Fact]
 fn JsonIntentRecoveryIsDeterministicForSameInput() -> Void {
-    let path = "../../Libraries/IO/testdata/smoke_people.json"
+    let path = ResolveJsonFixturePath("smoke_people.json")
     let a = ImportJson(path)!
     let b = ImportJson(path)!
     Assert.Equal(a.Kind, b.Kind, "recovery kind should be deterministic")
@@ -97,7 +117,7 @@ fn JsonIntentRecoveryIsDeterministicForSameInput() -> Void {
 
 [Fact]
 fn JsonNullRemainsCompatibilityOnlyInRawGraph() -> Void {
-    let graph = ImportRawJsonGraph("../../Libraries/IO/testdata/smoke_optional.json")!
+    let graph = ImportRawJsonGraph(ResolveJsonFixturePath("smoke_optional.json"))!
     let root = RootNode(graph)
     let tickets = ChildByKey(graph, root.Id, "tickets")
     Assert.True(tickets.Found, "tickets array should exist in compatibility graph")
