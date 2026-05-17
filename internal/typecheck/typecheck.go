@@ -2984,6 +2984,113 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
+	if callee == "StringByteLength" || callee == "StringRuneCount" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		textType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if textType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
+	if callee == "StringTrim" || callee == "StringEscapeJSON" || callee == "StringQuoteJSON" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		textType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if textType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "StringSplitLines" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'StringSplitLines' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'StringSplitLines' expects 1 argument, got %d", len(arguments))
+		}
+		textType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if textType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'StringSplitLines' argument 1 expects String, got %s", textType.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "StringContains" || callee == "StringStartsWith" || callee == "StringEndsWith" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for i := 0; i < 2; i++ {
+			tp, err := c.checkExpr(scope, arguments[i], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if tp.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, i+1, tp.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+	}
+	if callee == "StringJoin" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'StringJoin' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'StringJoin' expects 2 arguments, got %d", len(arguments))
+		}
+		partsType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		sepType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if partsType.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+			return ExprType{}, fmt.Errorf("function 'StringJoin' argument 1 expects String[], got %s", partsType.ValueType)
+		}
+		if sepType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'StringJoin' argument 2 expects String, got %s", sepType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "StringReplaceAll" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'StringReplaceAll' does not accept type arguments")
+		}
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'StringReplaceAll' expects 3 arguments, got %d", len(arguments))
+		}
+		for i := 0; i < 3; i++ {
+			tp, err := c.checkExpr(scope, arguments[i], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if tp.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function 'StringReplaceAll' argument %d expects String, got %s", i+1, tp.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
 	if callee == "Idx" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Idx' does not accept type arguments")

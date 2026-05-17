@@ -102,3 +102,20 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 
 - The builtin reference intentionally no longer carries the full wrapper catalog; that content is conceptually owned by this page.
 - If a library module exists in `Libraries/` but lacks matching detailed reference coverage under `Language/reference`, treat that as a documentation gap to close incrementally.
+
+## String
+
+`Libraries/String/String.Core.oct` provides deterministic report-focused text helpers:
+
+- `IsEmpty`, `ByteLength`, `RuneCount`
+- `Concat`, `Join`
+- `Replace` (`old == ""` returns `Error`)
+- `Contains`, `StartsWith`, `EndsWith`, `Trim`
+- `SplitLines` (CRLF->LF normalization, preserve interior empties, suppress synthetic trailing empty line)
+- `EscapeJson`, `QuoteJson`
+
+Artifact guidance:
+- Use `IO.WriteLines` for markdown/text reports.
+- Use `IO.CsvWrite` wrappers for CSV output.
+- Use `IO.JsonSave` for structured JSON.
+- Prefer `String.Join` for deterministic line construction.

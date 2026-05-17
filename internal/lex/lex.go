@@ -347,6 +347,25 @@ func (l *lexer) scanString() (string, error) {
 		if r == '\n' {
 			return "", fmt.Errorf("unterminated string literal at %d:%d", line, column)
 		}
+		if r == '\\' {
+			l.advanceRune()
+			if l.atEnd() {
+				return "", fmt.Errorf("unterminated string literal at %d:%d", line, column)
+			}
+			escaped, _ := l.peekRune()
+			switch escaped {
+			case 'n':
+				builder.WriteRune('\n')
+			case '"':
+				builder.WriteRune('"')
+			case '\\':
+				builder.WriteRune('\\')
+			default:
+				return "", fmt.Errorf("unsupported string escape \\%c at %d:%d", escaped, l.line, l.column)
+			}
+			l.advanceRune()
+			continue
+		}
 		builder.WriteRune(r)
 		l.advanceRune()
 	}
