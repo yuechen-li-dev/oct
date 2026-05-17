@@ -57,12 +57,13 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "test":
-		if len(args) != 2 {
+		if len(args) < 2 {
 			return writeUsage(stderr)
 		}
-		path := args[1]
-		if err := tester.Execute(path, stdout); err != nil {
-			return reportCommandError(stderr, command, err)
+		for _, path := range args[1:] {
+			if err := tester.Execute(path, stdout); err != nil {
+				return reportCommandError(stderr, command, err)
+			}
 		}
 		return nil
 	case "artifact":
