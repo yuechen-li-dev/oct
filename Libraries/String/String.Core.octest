@@ -12,7 +12,7 @@ fn StringLiteralEscapesM0Contract() -> Void {
 }
 
 [Fact]
-fn StringCoreBasics() -> Void {
+fn StringCoreBasicsNamespaced() -> Void {
     Assert.True(StringByteLength("") == 0, "empty string should be empty")
     Assert.False(StringByteLength("x") == 0, "non-empty string should not be empty")
     Assert.Equal(3, StringByteLength("abc"), "ascii byte length should match chars")
@@ -23,7 +23,7 @@ fn StringCoreBasics() -> Void {
 }
 
 [Fact]
-fn StringCompositionAndSearch() -> Void {
+fn StringCompositionAndSearchNamespaced() -> Void {
     Assert.Equal("abc", StringJoin(["a", "b", "c"], ""), "concat should preserve order")
     Assert.Equal("a,b,c", StringJoin(["a", "b", "c"], ","), "join should apply separator")
     Assert.Equal("a\nb", StringJoin(["a", "b"], "\n"), "join should support newline separators")
@@ -41,7 +41,7 @@ fn StringCompositionAndSearch() -> Void {
 }
 
 [Fact]
-fn StringSplitLinesAndJsonHelpers() -> Void {
+fn StringSplitLinesAndJsonHelpersNamespaced() -> Void {
     let linesAB = StringSplitLines("a\nb")
     Assert.Equal(2, Len(linesAB), "split should separate basic lines")
     Assert.Equal("a", linesAB[0], "split first line")
@@ -60,5 +60,13 @@ fn StringSplitLinesAndJsonHelpers() -> Void {
 
     Assert.Equal("a\\\"b\\n", StringEscapeJSON("a\"b\n"), "escape json should escape quotes and newlines")
     Assert.Equal("\"a\\\"b\"", StringQuoteJSON("a\"b"), "quote json should include wrapping quotes")
+    return
+}
+
+[Fact]
+fn StringGlobalCompatibilityBackings() -> Void {
+    Assert.Equal("a,b", StringJoin(["a", "b"], ","), "global StringJoin compatibility should remain")
+    Assert.Equal("\"a\\\"b\"", StringQuoteJSON("a\"b"), "global StringQuoteJSON compatibility should remain")
+    Assert.Equal("a\\nb", StringEscapeJSON("a\nb"), "global StringEscapeJSON compatibility should remain")
     return
 }

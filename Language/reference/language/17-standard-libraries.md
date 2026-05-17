@@ -114,6 +114,22 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 
 Artifact guidance:
 - Use `IO.WriteLines` for markdown/text reports.
-- Use `IO.CsvWrite` wrappers for CSV output.
-- Use `IO.JsonSave` for structured JSON.
-- Prefer `String.Join` for deterministic line construction.
+- Use `Csv.Write` for CSV output.
+- Use `Json.Save` for structured JSON.
+- Prefer `String.Join(parts, separator)` for deterministic line construction.
+
+Canonical namespaced authoring pattern:
+
+```oct
+import String
+let text = String.Join(lines, "\n")
+
+import IO
+IO.WriteLines("out/report.md", lines)!
+
+import Csv
+Csv.Write("out/metrics.csv", rows)!
+
+import Json
+Json.Save("out/metrics.json", summary)!
+```
