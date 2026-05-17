@@ -1,0 +1,24 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "FmBrownNoiseKalman"
+        Version: "0.1.0"
+        Description: "Deterministic FM + brown-noise adaptive Kalman filtering experiment"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }
+        ]
+    }
+}
