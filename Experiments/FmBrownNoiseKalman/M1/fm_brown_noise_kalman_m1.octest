@@ -7,6 +7,7 @@ import Json
 
 [Theory]
 [Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
 [CycleTime(45.0s)]
 [InlineData("direct")]
 [InlineData("phase")]
@@ -38,6 +39,7 @@ fn M1ModesProduceFiniteMetrics(mode: String) -> Void {
 
 [Theory]
 [Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
 [CycleTime(90.0s)]
 [InlineData(1)]
 fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
@@ -55,12 +57,57 @@ fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
 fn M1LargeSignalCsvGuardSkipsWhenOverLimit() -> Void {
     Assert.False(1201 <= 1000, "guard should skip sample csv when rows exceed 1000")
 }
 
 [Artifact]
 [Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
 fn M1Artifacts() -> Void ! Error {
     let _ = M1ArtifactWriteAll()?
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
+fn M1FingerprintDeterministicAndDistinct() -> Void {
+    let a = [1.0, 2.0, 3.0, 4.0]
+    let b = [1.0, 2.0, 3.0, 5.0]
+    let fa1 = M1BuildSignalFingerprint(a)
+    let fa2 = M1BuildSignalFingerprint(a)
+    let fb = M1BuildSignalFingerprint(b)
+    Assert.Equal(4, fa1.Length, "fingerprint should preserve length")
+    Assert.Equal(M1SignalFingerprintString(fa1), M1SignalFingerprintString(fa2), "fingerprint should be deterministic")
+    Assert.False(M1SignalFingerprintString(fa1) == M1SignalFingerprintString(fb), "fingerprint should differ for distinct signals")
+}
+
+[Theory]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
+[Suite("Experiments.FmBrownNoiseKalman.M1b")]
+[InlineData("direct")]
+[InlineData("phase")]
+fn M1OutputsAndMappingsAreConsistent(mode: String) -> Void {
+    let c = M1TinyCase()
+    let run = if mode == "direct" { RunM1ModeDirectMessageBrownNoise(c) } else { RunM1ModePhaseDomainFmBrownNoise(c) }
+    let expected = Len(run.CleanMessage)
+    Assert.Equal(expected, Len(run.NoFilter.Recovered), "NoFilter output length should match sample count")
+    Assert.Equal(expected, Len(run.LowPass.Recovered), "LowPass output length should match sample count")
+    Assert.Equal(expected, Len(run.FixedKF.Recovered), "FixedWhiteKalman output length should match sample count")
+    Assert.Equal(expected, Len(run.AdaptiveKF.Recovered), "Adaptive output length should match sample count")
+    Assert.False(M1ExactEqual(run.AdaptiveKF.Recovered, run.FixedKF.Recovered), "adaptive and fixed outputs must not be exactly identical")
+    if mode == "direct" { Assert.False(M1ExactEqual(run.AdaptiveKF.Recovered, run.LowPass.Recovered), "adaptive and low-pass outputs must not be exactly identical in direct mode") }
+    Assert.False(M1ExactEqual(run.NoFilter.Recovered, run.LowPass.Recovered), "NoFilter and LowPass should differ")
+    for i in 0..Len(run.Metrics) {
+        let m = run.Metrics[i]
+        Assert.Equal(expected, m.SampleCount, "metrics sample count should match output length")
+        if m.Method == "AdaptiveAr1ColoredNoiseKalman" {
+            Assert.True(Len(m.FinalAText) > 0, "adaptive should include finalA text")
+            Assert.True(m.DiagnosticLabel == "AdaptiveWin" or m.DiagnosticLabel == "WhitenessOnly" or m.DiagnosticLabel == "RecoveryOnly" or m.DiagnosticLabel == "NoMeaningfulWin", "adaptive diagnostic label must be allowed")
+        } else {
+            Assert.Equal("", m.FinalAText, "non-adaptive rows should not include finalA text")
+            Assert.Equal("", m.DiagnosticLabel, "non-adaptive rows should not include diagnostic label")
+        }
+    }
 }
