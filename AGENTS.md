@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## Language Reference Authority (Oct)
+## Language Reference Authority Rule (Oct Code)
 
 * The `Language/reference` directory is the **single source of truth** for:
 
@@ -20,7 +20,7 @@
 
   * deprecated syntax
   * superseded patterns (e.g., while-loops used as for-loops)
-  * pre-Mx100/Mx101 workarounds
+  * pre-fix workarounds
 
 * If you encounter inconsistencies between:
 
@@ -42,7 +42,7 @@
 * Do not silently resolve inconsistencies.
   Always make them visible so they can be corrected intentionally.
 
-## Primer
+## Primer Rule (Native Code)
 
 Read `primer/` before writing or editing native code (C, C++, Vulkan, etc.).
 
@@ -71,7 +71,81 @@ A failed attempt is only acceptable if it leaves behind a narrower problem, stro
 
 Any partial work must leave the codebase in a cleaner, more legible, and more diagnosable state than before.
 
-## Core Principle of Separation of Concerns
+## Judgment Rule
+
+When a compiler/tooling decision has:
+- one selected answer,
+- a bounded set of valid candidate choices,
+- multiple competing input signals,
+- no single signal that should always dominate,
+- and a need for deterministic/debuggable behavior,
+
+prefer internal/judgment over fragile nested if/else ladders.
+
+Examples:
+- formatter layout choice:
+  inline vs multiline vs leaveUnchanged
+
+- diagnostic suggestion choice:
+  unknown function vs missing import vs wrong namespace vs typo suggestion
+
+- import/path recovery:
+  candidate package roots or fixture paths
+
+- artifact/report presentation:
+  whether to emit table, key-value table, callout, or compact summary
+
+- future geometry/recovery-style heuristics if mirrored in Oct tooling:
+  candidate interpretation selection from partial evidence
+
+Use direct if/else only when:
+- the decision is truly binary and rule-based,
+- one condition is semantically authoritative,
+- ordering is obvious and not heuristic,
+- or the choice is not worth tracing.
+
+Judgment pattern:
+1. Generate bounded candidates.
+2. Mark unsafe/impossible candidates ineligible with explicit reasons.
+3. Add named considerations with weights.
+4. Score candidates deterministically.
+5. Use deterministic tie-breaks.
+6. Preserve a trace where the decision may be inspected later.
+
+The goal is not “AI vibes.” The goal is deterministic, inspectable ambiguity resolution.
+
+Avoid this shape for multi-signal candidate selection:
+
+if width > maxWidth {
+    return multiline
+}
+if hasNestedCall && isMarkdown {
+    return multiline
+}
+if hasComment {
+    return leaveUnchanged
+}
+...
+
+Prefer:
+
+candidates:
+- inline
+- multiline
+- leaveUnchanged
+
+considerations:
+- widthFit
+- nestingReadability
+- heavyCalleePreference
+- commentSafety
+- diffStability
+
+Then let internal/judgment choose and record why.
+
+This mirrors Oct’s language-level `when utility` concept in the Go implementation layer. Oct is not self-hosted, so compiler/tooling decisions need a Go-native utility primitive instead of relying on Oct-layer code.
+
+## Separation of Concerns (Anti Self-Host) Rule
 
 Oct has a strict, non-negotiable separation of concerns:
 
@@ -82,7 +156,7 @@ Do not blur this boundary.
 
 \---
 
-## Mental Model
+### Mental Model
 
 Think of the repository as two layers:
 
@@ -93,8 +167,6 @@ Go defines how Oct works.
 Oct is never used to define how Oct works.
 
 \---
-
-## Hard Rules
 
 ### 1\. Do not embed Oct inside Go
 
