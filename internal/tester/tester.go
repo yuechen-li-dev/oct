@@ -26,15 +26,26 @@ type testCase struct {
 	caseIndex   int
 	arguments   []interpret.Value
 	cycleTime   time.Duration
+	suites      []string
 }
 
 var defaultTestCycleTime = 30 * time.Second
 
-func Execute(path string, stdout io.Writer) error {
-	return executeForPathOrExperiment(path, stdout, "test", executeTestsSingleRoot)
+type TestOptions struct {
+	Suite string
 }
 
-func executeTestsSingleRoot(path string, stdout io.Writer) error {
+func Execute(path string, stdout io.Writer) error {
+	return ExecuteWithOptions(path, stdout, TestOptions{})
+}
+
+func ExecuteWithOptions(path string, stdout io.Writer, options TestOptions) error {
+	return executeForPathOrExperiment(path, stdout, "test", func(singlePath string, singleStdout io.Writer) error {
+		return executeTestsSingleRoot(singlePath, singleStdout, options)
+	})
+}
+
+func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) error {
 	var tests []testCase
 	selectedSources, err := selectedTestSources(path)
 	if err != nil {
@@ -62,6 +73,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 						name:        fn.Name,
 						displayName: fn.Name,
 						cycleTime:   defaultTestCycleTime,
+						suites:      append([]string{}, fn.Suites...),
 					})
 				}
 				if fn.IsTheory {
@@ -82,6 +94,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 							caseIndex:   i,
 							arguments:   args,
 							cycleTime:   cycleTime,
+							suites:      append([]string{}, fn.Suites...),
 						})
 					}
 				}
@@ -102,8 +115,23 @@ func executeTestsSingleRoot(path string, stdout io.Writer) error {
 		}
 		return tests[i].caseIndex < tests[j].caseIndex
 	})
+	if options.Suite != "" {
+		filtered := make([]testCase, 0, len(tests))
+		for _, tc := range tests {
+			for _, suite := range tc.suites {
+				if suite == options.Suite {
+					filtered = append(filtered, tc)
+					break
+				}
+			}
+		}
+		tests = filtered
+	}
 
 	if len(tests) == 0 && len(octFailCases) == 0 {
+		if options.Suite != "" {
+			return fmt.Errorf("no tests found for suite `%s`", options.Suite)
+		}
 		return fmt.Errorf("no [Fact], [Theory], or .octfail tests found")
 	}
 

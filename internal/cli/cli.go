@@ -60,8 +60,12 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) < 2 {
 			return writeUsage(stderr)
 		}
-		for _, path := range args[1:] {
-			if err := tester.Execute(path, stdout); err != nil {
+		options, paths, err := parseTestOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		for _, path := range paths {
+			if err := tester.ExecuteWithOptions(path, stdout, options); err != nil {
 				return reportCommandError(stderr, command, err)
 			}
 		}
@@ -344,6 +348,30 @@ func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, err
 		}
 	}
 	return options, nil
+}
+
+func parseTestOptions(args []string) (tester.TestOptions, []string, error) {
+	options := tester.TestOptions{}
+	paths := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--suite" {
+			if i+1 >= len(args) {
+				return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>]")
+			}
+			i++
+			options.Suite = strings.TrimSpace(args[i])
+			if options.Suite == "" {
+				return tester.TestOptions{}, nil, fmt.Errorf("--suite requires a non-empty value")
+			}
+			continue
+		}
+		paths = append(paths, arg)
+	}
+	if len(paths) == 0 {
+		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>]")
+	}
+	return options, paths, nil
 }
 
 func parseBenchOctagonOut(args []string) (string, error) {

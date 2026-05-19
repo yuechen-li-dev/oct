@@ -13,6 +13,11 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 
 - `oct test <path>` discovers `.octest` and `.octfail` recursively under `<path>`.
 - `.octest` supports test attributes only on functions.
+- `[Suite("Name")]` optionally tags a `[Fact]`, `[Theory]`, `[Artifact]`, or `[Benchmark]` function with a suite name.
+- `[Suite]` requires a non-empty string literal after trimming.
+- Dotted suite names are allowed (example: `"Experiments.FmBrownNoiseKalman.M1"`).
+- Repeating `[Suite("...")]` on one function is allowed; the function belongs to all declared suites.
+- File-level `[Suite(...)]` is not supported in M0.
 - `[Fact]` marks a test function.
 - `[Theory]` marks a parameterized test function.
 - `[InlineData(...)]` supplies one theory row.
@@ -30,6 +35,11 @@ It does not compile `.octest` functions to `.octbin`, and no compiled parity gua
 - `[Fact]`, `[Theory]`, `[Artifact]`, and `[Benchmark]` attributes are mutually constrained (invalid combinations are rejected).
 - Theory case names use zero-based row indices: `Package.Function[0]`, `Package.Function[1]`, ...
 - `oct test` runs `[Fact]`, `[Theory]` rows, and `.octfail` checks.
+- `oct test <path> --suite <name>` runs only `[Fact]`/`[Theory]` cases whose suite set contains `<name>`.
+- In suite-target mode, unsuited tests are excluded.
+- Suite filtering is execution selection only: imports/dependencies still load and typecheck normally.
+- Tests from imported packages do not run unless they are explicitly selected by the requested suite.
+- Suite filtering currently applies to `oct test` execution; `oct artifact` suite selection is not in this pass.
 - `[Fact]` and each `[Theory]` row must execute at least one `Assert.*` call, unless the test row ends with `SkipTest("reason")`; otherwise the test fails with a zero-assert diagnostic.
 - Use `Assert.LGTM(<fallible-expression>, "<reason>")` for smoke/completion tests when the main contract is successful completion without runtime error.
 - `SkipTest(reason: String) -> Void` is available only in `.octest` `[Fact]` and `[Theory]` test bodies.
