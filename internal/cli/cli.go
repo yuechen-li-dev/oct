@@ -48,11 +48,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
 	case "fmt":
-		if len(args) != 2 {
-			return writeUsage(stderr)
+		fmtOptions, err := parseFmtOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
 		}
-		path := args[1]
-		if err := ocfmt.FormatPath(path); err != nil {
+		if err := ocfmt.FormatPathWithOptions(fmtOptions.path, fmtOptions.options); err != nil {
 			return reportCommandError(stderr, command, err)
 		}
 		return nil
@@ -275,6 +275,32 @@ func reportCommandError(stderr io.Writer, command string, err error) error {
 	return err
 }
 
+type fmtOptions struct {
+	path    string
+	options ocfmt.Options
+}
+
+func parseFmtOptions(args []string) (fmtOptions, error) {
+	if len(args) < 1 {
+		return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]")
+	}
+	result := fmtOptions{path: args[0]}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--check":
+			result.options.Check = true
+		case "--mode":
+			if i+1 >= len(args) {
+				return fmtOptions{}, fmt.Errorf("fmt --mode requires a value")
+			}
+			i++
+			result.options.Mode = ocfmt.Mode(args[i])
+		default:
+			return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]")
+		}
+	}
+	return result, nil
+}
 func writeUsage(stderr io.Writer) error {
 	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]\n       oct prometheus-m1-async [--octagon-out <file.octagon>]\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
 	return err

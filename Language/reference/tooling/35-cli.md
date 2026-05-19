@@ -26,7 +26,7 @@
 
 - Lane roles are intentionally partitioned: `test` = correctness contracts, `bench` = performance measurement, `artifact` = generated evidence outputs.
 - Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
-- `oct fmt <path>` formats one file or a directory tree in place.
+- `oct fmt <path> [--mode readable|compact|en-llm] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
 - `oct pkg sync` syncs direct manifest dependencies for the current directory.
