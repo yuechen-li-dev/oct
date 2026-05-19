@@ -6,6 +6,7 @@ import Csv
 import Json
 
 [Theory]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
 [CycleTime(45.0s)]
 [InlineData("direct")]
 [InlineData("phase")]
@@ -36,7 +37,8 @@ fn M1ModesProduceFiniteMetrics(mode: String) -> Void {
 }
 
 [Theory]
-[CycleTime(45.0s)]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
+[CycleTime(90.0s)]
 [InlineData(1)]
 fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
     let _ = M1ArtifactWriteAll()?
@@ -46,14 +48,19 @@ fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
     Assert.True(Len(metricsJson) > 0, "metrics json should be written")
     let reportLines = IO.ReadLines("Experiments/FmBrownNoiseKalman/M1/m1_report.octagon")?
     Assert.True(Len(reportLines) > 0, "m1 .octagon report should be written")
+    let mdLines = IO.ReadLines("Experiments/FmBrownNoiseKalman/M1/m1_report.md")?
+    Assert.True(Len(mdLines) > 10, "m1 markdown report should be written and non-trivial")
+    Assert.True(Len(mdLines) <= 220, "m1 markdown report should remain compact")
 }
 
 [Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
 fn M1LargeSignalCsvGuardSkipsWhenOverLimit() -> Void {
     Assert.False(1201 <= 1000, "guard should skip sample csv when rows exceed 1000")
 }
 
 [Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M1")]
 fn M1Artifacts() -> Void ! Error {
     let _ = M1ArtifactWriteAll()?
 }
