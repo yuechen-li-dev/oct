@@ -33,6 +33,36 @@ func markdownEscapeTableCell(text string) string {
 	return strings.ReplaceAll(markdownNormalizeInline(text), "|", "\\|")
 }
 
+func markdownLongestBacktickRun(text string) int {
+	longest := 0
+	current := 0
+	for _, r := range text {
+		if r == '`' {
+			current++
+			if current > longest {
+				longest = current
+			}
+			continue
+		}
+		current = 0
+	}
+	return longest
+}
+
+func markdownCodeFence(language string, body []string) string {
+	longest := markdownLongestBacktickRun(strings.TrimSpace(language))
+	for _, line := range body {
+		if run := markdownLongestBacktickRun(line); run > longest {
+			longest = run
+		}
+	}
+	fenceLength := 3
+	if longest+1 > fenceLength {
+		fenceLength = longest + 1
+	}
+	return strings.Repeat("`", fenceLength)
+}
+
 type ValueKind string
 
 const (
@@ -3035,14 +3065,17 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if lang.value.Kind != ValueString || body.value.Kind != ValueArray {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownCodeBlock expects (String, String[])")
 		}
-		lines := []string{"```" + strings.TrimSpace(lang.value.Text)}
+		bodyLines := make([]string, 0, len(body.value.Array))
 		for _, v := range body.value.Array {
 			if v.Kind != ValueString {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownCodeBlock expects (String, String[])")
 			}
-			lines = append(lines, v.Text)
+			bodyLines = append(bodyLines, v.Text)
 		}
-		lines = append(lines, "```")
+		fence := markdownCodeFence(lang.value.Text, bodyLines)
+		lines := []string{fence + strings.TrimSpace(lang.value.Text)}
+		lines = append(lines, bodyLines...)
+		lines = append(lines, fence)
 		return wrapperStringArrayResult(lines), nil
 	}
 	if callee == "MarkdownReport" {
