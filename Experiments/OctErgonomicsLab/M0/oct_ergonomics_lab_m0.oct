@@ -1,0 +1,38 @@
+package OctErgonomicsLabM0
+
+import String
+import IO
+import Csv
+import Json
+import Markdown
+import Artifact
+
+record CaseTable {
+    caseName: String[]
+    status: String[]
+    value: String[]
+}
+record FixedSummary { OutputSNRDb: String WhitenessCost: String }
+record AdaptiveSummary { OutputSNRDb: String WhitenessCost: String FinalA: String }
+record RunSummary { Fixed: FixedSummary Adaptive: AdaptiveSummary }
+record ErgonomicsSnapshot { run: RunSummary caseCount: String joinedCases: String diagnostic: String }
+
+fn GenerateErgonomicsArtifacts() -> Void {
+    let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m0"
+    let run = RunSummary {
+        Fixed: FixedSummary { OutputSNRDb: "-1.53" WhitenessCost: "0.8698" }
+        Adaptive: AdaptiveSummary { OutputSNRDb: "-1.67" WhitenessCost: "0.3745" FinalA: "0.99" }
+    }
+
+    let caseTable = CaseTable { caseName: ["baseline", "improved", "regressed"] status: ["hold", "promising", "watch"] value: ["-1.53", "-1.67", "-1.41"] }
+    let settings = Markdown.KeyValueTable(["suite", "fixed.output_snr_db", "adaptive.final_a", "adaptive.whiteness_cost"], ["Experiments.OctErgonomicsLab.M0", run.Fixed.OutputSNRDb, run.Adaptive.FinalA, run.Adaptive.WhitenessCost])
+    let lines = Markdown.Report([Markdown.H1("Oct Ergonomics Lab M0"), Markdown.Paragraph("Dry-run package to validate namespaced authoring ergonomics before FM Brown-Noise Kalman return."), Markdown.Section("Settings", [settings]), Markdown.Section("Case Summary", [Markdown.Table(caseTable)]), Markdown.Subsection("Diagnostic", [Markdown.Callout("warning", ["Adaptive whiteness improved while output SNR remains negative."])]), Markdown.Figure("figures/placeholder.png", "Placeholder figure for deterministic report shape")])
+    let csvRows = [["caseName", "status", "value"], ["baseline", "hold", "-1.53"], ["improved", "promising", "-1.67"], ["regressed", "watch", "-1.41"]]
+
+    let normalizedNote = String.Trim(String.ReplaceAll("  namespace friction check  ", "friction", "ergonomics"))
+    Artifact.WriteMarkdown(IO.JoinPath([root, "ergonomics_report.md"]), lines)
+    Artifact.WriteOctagon(IO.JoinPath([root, "ergonomics_report.octagon"]), ErgonomicsSnapshot { run: run caseCount: "3" joinedCases: String.Join(caseTable.caseName, ",") diagnostic: normalizedNote })
+    Artifact.WriteCsv(IO.JoinPath([root, "ergonomics_metrics.csv"]), csvRows)
+    let summaryJson = Json.Object("{\"fixedOutputSNRDb\":" + String.QuoteJson(run.Fixed.OutputSNRDb) + ",\"adaptiveFinalA\":" + String.QuoteJson(run.Adaptive.FinalA) + ",\"diagnostic\":" + String.QuoteJson(normalizedNote) + "}")
+    Artifact.WriteJson(IO.JoinPath([root, "ergonomics_summary.json"]), summaryJson)
+}
