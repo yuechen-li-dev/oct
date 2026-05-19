@@ -135,12 +135,18 @@ Json.Save("out/metrics.json", summary)!
 
 ## Markdown
 
-`Libraries/Markdown` provides Markdown M0 report-output helpers.
+`Libraries/Markdown` provides Markdown M1 report-output helpers.
 
-- Markdown M0 is an output helper, **not** a Markdown parser.
+- Markdown M1 is an output helper, **not** a Markdown parser.
 - Block-producing functions return `String[]` lines (not one large `String`).
 - Emit generated lines via `Artifact.WriteMarkdown(path, lines)` or `IO.WriteLines(path, lines)!`.
 - `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
 - `Markdown.TableWithColumns(table, columns)` provides explicit column order control.
-- `Markdown.CodeBlock(language, lines)` uses dynamic backtick fences (`max(3, longestRun + 1)`) to avoid premature closure when generated reports contain nested Markdown/code fences.
-- Markdown M0 does not claim CommonMark-complete compliance.
+- `Markdown.KeyValueTable(keys, values)` provides deterministic scalar settings/metadata output in a two-column table.
+- `Markdown.Callout(kind, lines)` emits deterministic blockquote callouts for `note`, `info`, `warning`, `danger`, and `success`.
+- `Markdown.Image(path, altText)` emits a single image line and performs minimal alt-text safety normalization.
+- `Markdown.Figure(path, caption)` emits image + caption report lines.
+- `Markdown.Section(title, blocks)` and `Markdown.Subsection(title, blocks)` emit H2/H3 headings plus `Markdown.Report`-style block flattening.
+- `Markdown.CodeBlock(language, lines)` uses dynamic backtick fences (`max(3, longestRun + 1)`) to avoid premature closure.
+- Markdown M1 does not claim CommonMark-complete compliance and does not implement parser/renderer/PDF/UI behavior.
+- Future direction (not implemented): an Oct-owned `.md` dialect may parse structured block tags like `<Code>`, `<Figure>`, and `<Callout>`.
