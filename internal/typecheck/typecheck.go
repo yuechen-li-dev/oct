@@ -3219,6 +3219,65 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
 	}
+	if callee == "MarkdownCallout" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' expects 2 arguments, got %d", len(arguments))
+		}
+		a, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		b, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if a.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' argument 1 expects String, got %s", a.ValueType)
+		}
+		if b.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' argument 2 expects String[], got %s", b.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownImage" || callee == "MarkdownFigure" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		for i := 0; i < 2; i++ {
+			t, err := c.checkExpr(scope, arguments[i], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if t.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, i+1, t.ValueType)
+			}
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownKeyValueTable" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' expects 2 arguments, got %d", len(arguments))
+		}
+		for i := 0; i < 2; i++ {
+			t, err := c.checkExpr(scope, arguments[i], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if t.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+				return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' argument %d expects String[], got %s", i+1, t.ValueType)
+			}
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
 	if callee == "MarkdownReport" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'MarkdownReport' does not accept type arguments")
@@ -3232,6 +3291,29 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		if t.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 2) {
 			return ExprType{}, fmt.Errorf("function 'MarkdownReport' argument 1 expects String[][], got %s", t.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownSection" || callee == "MarkdownSubsection" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+		}
+		t1, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		t2, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t1.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, t1.ValueType)
+		}
+		if t2.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 2) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects String[][], got %s", callee, t2.ValueType)
 		}
 		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
 	}
