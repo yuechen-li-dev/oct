@@ -16,7 +16,24 @@ fn MarkdownBlocksM0() -> Void {
     Assert.Equal("---", MarkdownHorizontalRule()[0], "hr")
     Assert.Equal("- a", MarkdownBullets(["a", "b"])[0], "bullets")
     Assert.Equal("2. b", MarkdownNumbered(["a", "b"])[1], "numbered")
-    Assert.Equal("```oct", MarkdownCodeBlock("oct", ["let x = 1"])[0], "code open")
+    let simple = MarkdownCodeBlock("oct", ["let x = 1"])
+    Assert.Equal("```oct", simple[0], "code open fence len 3")
+    Assert.Equal("```", simple[2], "code close fence len 3")
+
+    let nested3 = MarkdownCodeBlock("markdown", ["```oct", "let x = 1", "```"])
+    Assert.Equal("````markdown", nested3[0], "code open fence len 4")
+    Assert.Equal("```oct", nested3[1], "nested triple preserved")
+    Assert.Equal("```", nested3[3], "nested triple close preserved")
+    Assert.Equal("````", nested3[4], "code close fence len 4")
+
+    let nested4 = MarkdownCodeBlock("markdown", ["````oct", "let x = 1", "````"])
+    Assert.Equal("`````markdown", nested4[0], "code open fence len 5")
+    Assert.Equal("`````", nested4[4], "code close fence len 5")
+
+    let preserved = MarkdownCodeBlock("oct", ["  keep spaces  ", "	keep	tabs	", ""])
+    Assert.Equal("  keep spaces  ", preserved[1], "content preserves spaces")
+    Assert.Equal("	keep	tabs	", preserved[2], "content preserves tabs")
+    Assert.Equal("", preserved[3], "content preserves blank line")
     Assert.Equal("a\\|b", MarkdownEscapeTableCell("a|b"), "escape cell")
 }
 

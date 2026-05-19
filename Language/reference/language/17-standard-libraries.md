@@ -142,4 +142,5 @@ Json.Save("out/metrics.json", summary)!
 - Emit generated lines via `Artifact.WriteMarkdown(path, lines)` or `IO.WriteLines(path, lines)!`.
 - `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
 - `Markdown.TableWithColumns(table, columns)` provides explicit column order control.
+- `Markdown.CodeBlock(language, lines)` uses dynamic backtick fences (`max(3, longestRun + 1)`) to avoid premature closure when generated reports contain nested Markdown/code fences.
 - Markdown M0 does not claim CommonMark-complete compliance.
