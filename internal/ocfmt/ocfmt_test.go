@@ -228,3 +228,42 @@ func TestFormatPathCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReadableExpandsReportHeavyCalls(t *testing.T) {
+	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)]),Markdown.Callout(\"warning\",[\"a\",\"b\"])])\nreturn\n}\n"
+	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
+	if err != nil {
+		t.Fatalf("format readable: %v", err)
+	}
+	mustContain(t, out, "Markdown.Report(")
+	mustContain(t, out, "\n            Markdown.Section(")
+	mustContain(t, out, "Markdown.Table(")
+}
+
+func TestReadableExpandsRecordAndConcat(t *testing.T) {
+	input := "package Main\nfn main()->Void{\nlet x=M1OctagonSummary{title:\"FM Brown-Noise Kalman M1\" rowCount:Len(rows) limitations:[\"a\",\"b\"]}\nlet s=\"{\"+\"\\\"rowCount\\\":\\\"\"+ToString(Len(rows))+\"\\\"}\"\nreturn\n}\n"
+	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
+	if err != nil {
+		t.Fatalf("format readable: %v", err)
+	}
+	mustContain(t, out, "M1OctagonSummary{")
+	mustContain(t, out, "limitations:[")
+	mustContain(t, out, "ToString(Len(rows))")
+}
+
+func TestModeIdempotenceReadableAndCompact(t *testing.T) {
+	input := "package Main\nfn main()->Int{return Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"S\",[Markdown.Table(rows)])])}\n"
+	for _, mode := range []Mode{ModeReadable, ModeCompact} {
+		first, err := FormatSourceWithOptions(input, Options{Mode: mode})
+		if err != nil {
+			t.Fatalf("first format mode %s: %v", mode, err)
+		}
+		second, err := FormatSourceWithOptions(first, Options{Mode: mode})
+		if err != nil {
+			t.Fatalf("second format mode %s: %v", mode, err)
+		}
+		if first != second {
+			t.Fatalf("mode %s is not idempotent", mode)
+		}
+	}
+}

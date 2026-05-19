@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"oct/internal/lex"
@@ -181,14 +182,33 @@ func normalize(src string, compact bool) string {
 		}
 		code, comment := splitCodeAndComment(trimmed)
 		normCode := normalizeCode(code, compact)
-		line := strings.Repeat("    ", indent) + normCode
-		if comment != "" {
-			if normCode != "" {
-				line += " "
+		if !compact {
+			expanded := expandReadableLine(normCode, indent)
+			if len(expanded) > 0 {
+				if comment != "" {
+					expanded[len(expanded)-1] += " " + comment
+				}
+				out = append(out, expanded...)
+			} else {
+				line := strings.Repeat("    ", indent) + normCode
+				if comment != "" {
+					if normCode != "" {
+						line += " "
+					}
+					line += comment
+				}
+				out = append(out, line)
 			}
-			line += comment
+		} else {
+			line := strings.Repeat("    ", indent) + normCode
+			if comment != "" {
+				if normCode != "" {
+					line += " "
+				}
+				line += comment
+			}
+			out = append(out, line)
 		}
-		out = append(out, line)
 		if strings.HasSuffix(normCode, "{") {
 			indent++
 		}
@@ -256,6 +276,93 @@ func normalizeCode(code string, compact bool) string {
 		b.WriteString(tok)
 	}
 	return b.String()
+}
+
+func expandReadableLine(code string, baseIndent int) []string {
+	if code == "" {
+		return nil
+	}
+	tokens := scanTokens(code)
+	if !shouldExpand(tokens, code) {
+		return nil
+	}
+	lines := formatTokensReadable(tokens, baseIndent)
+	if len(lines) <= 1 {
+		return nil
+	}
+	return lines
+}
+
+func shouldExpand(tokens []string, code string) bool {
+	if strings.HasPrefix(code, "fn ") || strings.HasPrefix(code, "[") {
+		return false
+	}
+	if !strings.Contains(code, "=") && !strings.HasPrefix(code, "return Markdown.") {
+		return false
+	}
+	if len(code) > 110 {
+		return true
+	}
+	if slices.Contains(tokens, "+") && len(code) > 80 {
+		return true
+	}
+	nested := 0
+	for _, tok := range tokens {
+		if tok == "(" || tok == "[" || tok == "{" {
+			nested++
+		}
+	}
+	if nested >= 3 {
+		return true
+	}
+	heavy := []string{"Markdown", "Report", "Section", "Callout", "Table", "KeyValueTable", "Artifact", "Json", "Write"}
+	for _, h := range heavy {
+		if strings.Contains(code, h) {
+			return true
+		}
+	}
+	return false
+}
+
+func formatTokensReadable(tokens []string, baseIndent int) []string {
+	lines := []string{strings.Repeat("    ", baseIndent)}
+	level := 0
+	last := ""
+	for _, tok := range tokens {
+		switch tok {
+		case "(", "[", "{":
+			lines[len(lines)-1] += tok
+			level++
+			lines = append(lines, strings.Repeat("    ", baseIndent+level))
+		case ")", "]", "}":
+			level--
+			if strings.TrimSpace(lines[len(lines)-1]) == "" {
+				lines = lines[:len(lines)-1]
+			}
+			lines = append(lines, strings.Repeat("    ", baseIndent+level)+tok)
+		case ",":
+			lines[len(lines)-1] += tok
+			lines = append(lines, strings.Repeat("    ", baseIndent+level))
+		case "+":
+			lines[len(lines)-1] += " +"
+			lines = append(lines, strings.Repeat("    ", baseIndent+level+1))
+		default:
+			cur := lines[len(lines)-1]
+			if strings.TrimSpace(cur) != "" && needsSpace(last, tok) {
+				lines[len(lines)-1] += " "
+			}
+			lines[len(lines)-1] += tok
+		}
+		last = tok
+	}
+	filtered := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		filtered = append(filtered, l)
+	}
+	return filtered
 }
 
 func needsSpaceCompact(prev, curr string) bool {
