@@ -1,0 +1,94 @@
+package OctErgonomicsLabM0
+
+import String
+import IO
+import Csv
+import Json
+import Markdown
+import Artifact
+
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Fact]
+fn NamespacedStringAndMarkdownSmoke() -> Void {
+    let headline = String.ReplaceAll("  Oct Ergonomics Lab  ", "Lab", "Report")
+    let title = String.Trim(headline)
+    let report = Markdown.Report([Markdown.H1(title), Markdown.Paragraph(String.Join(["discoverability", "check"], " "))])
+    Assert.Equal("# Oct Ergonomics Report", report[0], "h1 should be deterministic")
+    Assert.Equal("discoverability check", report[2], "paragraph should be deterministic")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Fact]
+fn ChainedRecordAccess() -> Void {
+    let run = RunSummary {
+        Fixed: FixedSummary { OutputSNRDb: "-1.53" WhitenessCost: "0.8698" }
+        Adaptive: AdaptiveSummary { OutputSNRDb: "-1.67" WhitenessCost: "0.3745" FinalA: "0.99" }
+    }
+    Assert.Equal("0.99", run.Adaptive.FinalA, "adaptive final a")
+    Assert.Equal("-1.53", run.Fixed.OutputSNRDb, "fixed output snr")
+    Assert.Equal("0.3745", run.Adaptive.WhitenessCost, "adaptive whiteness")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Fact]
+fn ColumnarMarkdownTable() -> Void {
+    let table = CaseTable {
+        caseName: ["baseline", "improved", "regressed"]
+        status: ["hold", "promising", "watch"]
+        value: ["-1.53", "-1.67", "-1.41"]
+    }
+    let lines = Markdown.Table(table)
+    Assert.Equal("| caseName | status | value |", lines[0], "header")
+    Assert.Equal("| baseline | hold | -1.53 |", lines[2], "row")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Fact]
+fn KeyValueTableAndCallout() -> Void {
+    let kv = Markdown.KeyValueTable(["suite", "mode"], ["Experiments.OctErgonomicsLab.M0", "dry-run"])
+    Assert.Equal("| key | value |", kv[0], "kv header")
+    Assert.Equal("| suite | Experiments.OctErgonomicsLab.M0 |", kv[2], "kv row")
+
+    let warning = Markdown.Callout("warning", ["Remaining friction should be reported honestly."])
+    Assert.Equal("> **Warning:** Remaining friction should be reported honestly.", warning[0], "callout")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Theory]
+[CycleTime(15.0s)]
+[InlineData("baseline")]
+[InlineData("improved")]
+fn StringSplitLinesTheory(caseName: String) -> Void {
+    let lines = String.SplitLines("baseline\nimproved\nregressed")
+    Assert.True(Len(lines) >= 3, "split lines count")
+    Assert.True(String.Contains(String.Join(lines, ","), caseName), "joined lines should include theory case")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Fact]
+fn CsvReadShapeSmoke() -> Void {
+    let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m0"
+    let rowsPath = IO.JoinPath([root, "rows.csv"])
+    let matrixPath = IO.JoinPath([root, "matrix.csv"])
+    let tablePath = IO.JoinPath([root, "table.csv"])
+
+    Artifact.WriteCsv(rowsPath, [["case", "status"], ["baseline", "hold"]])
+    Artifact.WriteCsv(matrixPath, [["1.0", "2.0"], ["3.5", "4.25"]])
+    Artifact.WriteCsv(tablePath, [["case", "status"], ["baseline", "hold"], ["improved", "promising"]])
+
+    let rows = Csv.ReadRows(rowsPath)!
+    Assert.Equal("case", rows[0][0], "rows header")
+    let grid = Csv.ReadMatrix(matrixPath)!
+    let firstRow = grid[0]
+    Assert.Equal(2.0, firstRow[1], "matrix numeric parse")
+
+    let _table = Csv.ReadTable(tablePath)!
+    Assert.True(true, "ReadTable parses header csv; columnar record inspection not yet exposed in Oct")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M0")]
+[Artifact]
+fn ArtifactWriteHelpersNoLetSmoke() -> Void {
+    GenerateErgonomicsArtifacts()
+}
