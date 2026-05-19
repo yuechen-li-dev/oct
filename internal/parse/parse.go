@@ -67,6 +67,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingArtifact := false
 	pendingBenchmark := false
 	pendingInlineData := make([]ast.InlineDataRow, 0)
+	pendingSuites := make([]string, 0)
 	var pendingCycleTime ast.Expr
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
@@ -140,6 +141,8 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				pendingBenchmark = true
 			case "InlineData":
 				pendingInlineData = append(pendingInlineData, ast.InlineDataRow{Values: attribute.values})
+			case "Suite":
+				pendingSuites = append(pendingSuites, attribute.suiteName)
 			case "CycleTime":
 				if pendingCycleTime != nil {
 					return ast.File{}, p.errorAtCurrent("duplicate [CycleTime] attribute on function")
@@ -150,7 +153,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -159,7 +162,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -187,7 +190,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
 				}
 				function.IsFact = true
+				function.Suites = append(function.Suites, pendingSuites...)
 				pendingFact = false
+				pendingSuites = pendingSuites[:0]
 			}
 			if pendingArtifact {
 				if len(function.Parameters) != 0 {
@@ -203,7 +208,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
 				}
 				function.IsArtifact = true
+				function.Suites = append(function.Suites, pendingSuites...)
 				pendingArtifact = false
+				pendingSuites = pendingSuites[:0]
 			}
 			if pendingBenchmark {
 				if len(function.Parameters) != 0 {
@@ -219,7 +226,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
 				}
 				function.IsBenchmark = true
+				function.Suites = append(function.Suites, pendingSuites...)
 				pendingBenchmark = false
+				pendingSuites = pendingSuites[:0]
 			}
 			if pendingTheory {
 				if len(function.Parameters) == 0 {
@@ -233,18 +242,22 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				}
 				function.IsTheory = true
 				function.InlineData = append(function.InlineData, pendingInlineData...)
+				function.Suites = append(function.Suites, pendingSuites...)
 				function.CycleTime = pendingCycleTime
 				pendingTheory = false
 				pendingInlineData = pendingInlineData[:0]
+				pendingSuites = pendingSuites[:0]
 				pendingCycleTime = nil
 			} else if len(pendingInlineData) > 0 {
 				return ast.File{}, p.errorAtCurrent("[InlineData] must apply to a [Theory] function")
+			} else if len(pendingSuites) > 0 {
+				return ast.File{}, p.errorAtCurrent("[Suite] must apply to a [Fact], [Theory], [Artifact], or [Benchmark] function")
 			} else if pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("[CycleTime] must apply to a [Theory] function")
 			}
 			file.Functions = append(file.Functions, function)
 		case lex.KeywordFlow:
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			flow, err := p.parseFlowDecl()
@@ -256,7 +269,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', 'fn', or 'flow' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || pendingCycleTime != nil {
+	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	return file, nil
@@ -347,9 +360,10 @@ func parseDocSection(line string) (ast.DocSection, bool) {
 }
 
 type testAttribute struct {
-	kind   string
-	values []ast.Expr
-	value  ast.Expr
+	kind      string
+	values    []ast.Expr
+	value     ast.Expr
+	suiteName string
 }
 
 func (p *parser) parseTestAttribute() (testAttribute, error) {
@@ -409,6 +423,25 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 			return testAttribute{}, err
 		}
 		return testAttribute{kind: "CycleTime", value: value}, nil
+	case "Suite":
+		if _, err := p.expect(lex.LeftParen, "expected '(' after Suite"); err != nil {
+			return testAttribute{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return testAttribute{}, err
+		}
+		stringLiteral, ok := value.(ast.StringLiteralExpr)
+		if !ok || strings.TrimSpace(stringLiteral.Value) == "" {
+			return testAttribute{}, p.errorAtCurrent("[Suite] requires a non-empty string literal")
+		}
+		if _, err := p.expect(lex.RightParen, "expected ')' after Suite argument"); err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: "Suite", suiteName: strings.TrimSpace(stringLiteral.Value)}, nil
 	default:
 		return testAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
 	}

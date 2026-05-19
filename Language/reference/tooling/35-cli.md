@@ -14,6 +14,7 @@
 - `.octbin` is the compiled binary artifact produced by `oct build`.
 - `oct run` executes program behavior and does not require a prebuilt `.octbin`.
 - `oct test <path>` runs `.octest` and `.octfail` suites.
+- `oct test <path> --suite <name>` runs only tests tagged with `[Suite("<name>")]`.
 - `oct test` executes `.octest` through interpreter-driven source execution (no compiled `.octbin` test path).
 - `oct artifact <path>` runs `[Artifact]` functions only.
 - `oct bench <path>` runs `[Benchmark]` functions only.

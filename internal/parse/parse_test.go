@@ -188,6 +188,20 @@ func TestBuildFileRejectsLegacyBracketTypeArguments(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int ! Error { return LoadOctagon[Int](\"x.octagon\")? }", "type arguments must use '<...>'")
 }
 
+func TestBuildFileParsesSuiteAttribute(t *testing.T) {
+	file := parseSourceWithPath(t, "x.octest", "package Main\n[Suite(\"A\")]\n[Fact]\nfn Alpha() -> Void { return }\n[Suite(\"A\")]\n[Suite(\"B\")]\n[Theory]\n[InlineData(1)]\nfn Beta(x: Int) -> Void { return }\n")
+	if got := file.Functions[0].Suites; len(got) != 1 || got[0] != "A" {
+		t.Fatalf("unexpected fact suites: %#v", got)
+	}
+	if got := file.Functions[1].Suites; len(got) != 2 || got[0] != "A" || got[1] != "B" {
+		t.Fatalf("unexpected theory suites: %#v", got)
+	}
+}
+
+func TestBuildFileRejectsInvalidSuiteAttribute(t *testing.T) {
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Suite(123)]\n[Fact]\nfn Bad() -> Void { return }\n", "[Suite] requires a non-empty string literal")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Suite(\" \")]\n[Fact]\nfn Bad() -> Void { return }\n", "[Suite] requires a non-empty string literal")
+}
 
 func TestBuildFileRejectsTupleSyntax(t *testing.T) {
 	assertParseErrorContains(t, "fn Bad() -> (Int, Int) { return 0 }", "tuple types are not supported")

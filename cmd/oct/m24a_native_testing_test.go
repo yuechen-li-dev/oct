@@ -177,6 +177,34 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 	}
 }
 
+func TestOctTestSuiteSelection(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nimport Lib\nfn Main() -> Int { return Lib.One() }\n")
+	writeOctPkgFile(t, root, "Main", "suite.octest", "package Main\nimport Lib\n[Suite(\"A\")]\n[Fact]\nfn InA() -> Void { Assert.Equal(1, Lib.One(), \"a\") }\n[Suite(\"B\")]\n[Fact]\nfn InB() -> Void { Assert.True(false, \"b fail\") }\n[Fact]\nfn Unsuited() -> Void { Assert.True(false, \"unsuited fail\") }\n[Suite(\"Slow\")]\n[Theory]\n[CycleTime(45.0s)]\n[InlineData(1)]\nfn SlowTheory(x: Int) -> Void { Assert.Equal(1, x, \"ok\") }\n")
+	writeOctPkgFile(t, root, "Lib", "lib.oct", "package Lib\nfn One() -> Int { return 1 }\n")
+	writeOctPkgFile(t, root, "Lib", "lib.octest", "package Lib\n[Suite(\"Libraries.Bad\")]\n[Fact]\nfn Bad() -> Void { Assert.True(false, \"library bad\") }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"test", root, "--suite", "A"}, &stdout, &stderr); err != nil {
+		t.Fatalf("suite A should pass, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "PASS Main.InA") || strings.Contains(stdout.String(), "InB") || strings.Contains(stdout.String(), "Unsuited") || strings.Contains(stdout.String(), "Lib.Bad") {
+		t.Fatalf("unexpected suite output: %q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	err := cli.Execute([]string{"test", root, "--suite", "Libraries.Bad"}, &stdout, &stderr)
+	if err == nil || !strings.Contains(stdout.String(), "FAIL Lib.Bad") {
+		t.Fatalf("expected library suite failure, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := cli.Execute([]string{"test", root, "--suite", "Slow"}, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), "PASS Main.SlowTheory[0]") {
+		t.Fatalf("slow suite should pass, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+}
+
 func writeOctPkgFile(t *testing.T, root, pkg, name, content string) {
 	t.Helper()
 	dir := filepath.Join(root, pkg)
