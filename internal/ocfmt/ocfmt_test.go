@@ -267,3 +267,51 @@ func TestModeIdempotenceReadableAndCompact(t *testing.T) {
 		}
 	}
 }
+
+func TestReadableJudgmentSimpleCallStaysInline(t *testing.T) {
+	input := "package Main\nfn main()->Void{\nlet x=Markdown.H1(\"Title\")\nreturn\n}\n"
+	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "let x = Markdown.H1(\"Title\")")
+}
+
+func TestReadableJudgmentCommentRiskLeaveUnchanged(t *testing.T) {
+	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)])]) // keep\nreturn\n}\n"
+	out, _, err := formatSourceWithDiagnostics(input, Options{Mode: ModeReadable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "// keep")
+	mustContain(t, out, "let report = Markdown.Report(")
+	mustContain(t, out, "// keep")
+	if strings.Contains(out, "let report = Markdown.Report(\n") {
+		t.Fatalf("expected leaveUnchanged for comment risk, got multiline rewrite:\n%s", out)
+	}
+}
+
+func TestReadableJudgmentTrace(t *testing.T) {
+	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)]),Markdown.Callout(\"warning\",[\"m\"])])\nreturn\n}\n"
+	_, diag, err := formatSourceWithDiagnostics(input, Options{Mode: ModeReadable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diag.Traces) == 0 {
+		t.Fatalf("expected traces")
+	}
+	tr := diag.Traces[0]
+	if !strings.Contains(tr.Winner, "multiline") {
+		t.Fatalf("winner=%s", tr.Winner)
+	}
+	if !strings.Contains(tr.Traces[tr.WinnerIndex].Name, "multiline") {
+		t.Fatalf("winner trace missing")
+	}
+	names := map[string]bool{}
+	for _, c := range tr.Traces[tr.WinnerIndex].Contributions {
+		names[c.Name] = true
+	}
+	if !(names["widthFit"] || names["nestingReadability"] || names["heavyCalleePreference"] || names["commentSafety"]) {
+		t.Fatalf("missing expected contribution names: %#v", names)
+	}
+}
