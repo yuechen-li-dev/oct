@@ -12,13 +12,29 @@ import (
 	"oct/internal/source"
 )
 
+type Mode string
+
+const (
+	ModeDefault  Mode = ""
+	ModeReadable Mode = "readable"
+	ModeCompact  Mode = "compact"
+	ModeEnLLM    Mode = "en-llm"
+)
+
+type Options struct {
+	Mode  Mode
+	Check bool
+}
+
 var octExtensions = map[string]struct{}{
 	".oct":     {},
 	".octest":  {},
 	".octfail": {},
 }
 
-func FormatPath(path string) error {
+func FormatPath(path string) error { return FormatPathWithOptions(path, Options{}) }
+
+func FormatPathWithOptions(path string, options Options) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -28,33 +44,50 @@ func FormatPath(path string) error {
 			if walkErr != nil {
 				return walkErr
 			}
-			if d.IsDir() {
+			if d.IsDir() || !isOctFile(current) {
 				return nil
 			}
-			if !isOctFile(current) {
-				return nil
-			}
-			return formatFile(current)
+			return formatFile(current, options)
 		})
 	}
 	if !isOctFile(path) {
 		return fmt.Errorf("unsupported file extension: %s", path)
 	}
-	return formatFile(path)
+	return formatFile(path, options)
 }
 
-func FormatSource(src string) (string, error) {
-	return formatSourceWithPath("<format>.oct", src)
+func FormatSource(src string) (string, error) { return FormatSourceWithOptions(src, Options{}) }
+
+func FormatSourceWithOptions(src string, options Options) (string, error) {
+	return formatSourceWithPath("<format>.oct", src, options)
 }
 
-func formatSourceWithPath(path string, src string) (string, error) {
-	if strings.EqualFold(filepath.Ext(path), ".octfail") {
-		return formatOctFailSource(src)
+func resolveMode(mode Mode) (Mode, error) {
+	switch mode {
+	case ModeDefault, ModeReadable, ModeCompact:
+		if mode == ModeDefault {
+			return ModeReadable, nil
+		}
+		return mode, nil
+	case ModeEnLLM:
+		return ModeReadable, nil
+	default:
+		return "", fmt.Errorf("unsupported format mode %q (expected readable, compact, or en-llm)", mode)
 	}
-	return formatRegularSource(path, src)
 }
 
-func formatRegularSource(path string, src string) (string, error) {
+func formatSourceWithPath(path string, src string, options Options) (string, error) {
+	mode, err := resolveMode(options.Mode)
+	if err != nil {
+		return "", err
+	}
+	if strings.EqualFold(filepath.Ext(path), ".octfail") {
+		return formatOctFailSource(src, mode)
+	}
+	return formatRegularSource(path, src, mode)
+}
+
+func formatRegularSource(path string, src string, mode Mode) (string, error) {
 	lexed, err := lex.Analyze(source.File{Path: path, Text: src})
 	if err != nil {
 		return "", err
@@ -62,7 +95,10 @@ func formatRegularSource(path string, src string) (string, error) {
 	if _, err := parse.BuildFile(lexed); err != nil {
 		return "", err
 	}
-	return normalize(src), nil
+	if mode == ModeCompact {
+		return normalizeCompact(src), nil
+	}
+	return normalizeReadable(src), nil
 }
 
 func isOctFile(path string) bool {
@@ -70,21 +106,27 @@ func isOctFile(path string) bool {
 	return ok
 }
 
-func formatFile(path string) error {
+func formatFile(path string, options Options) error {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	formatted, err := formatSourceWithPath(path, string(bytes))
+	formatted, err := formatSourceWithPath(path, string(bytes), options)
 	if err != nil {
 		return fmt.Errorf("format %s: %w", path, err)
+	}
+	if options.Check {
+		if string(bytes) != formatted {
+			return fmt.Errorf("%s is not formatted", path)
+		}
+		return nil
 	}
 	return os.WriteFile(path, []byte(formatted), 0o644)
 }
 
 var octFailHeaderPattern = regexp.MustCompile(`^expect error:\s*"(.*)"\s*$`)
 
-func formatOctFailSource(src string) (string, error) {
+func formatOctFailSource(src string, mode Mode) (string, error) {
 	lines := strings.Split(src, "\n")
 	headerIndex := -1
 	for i, line := range lines {
@@ -97,17 +139,14 @@ func formatOctFailSource(src string) (string, error) {
 	if headerIndex == -1 {
 		return "", fmt.Errorf("missing expectation header")
 	}
-
 	header := strings.TrimSpace(lines[headerIndex])
 	if !octFailHeaderPattern.MatchString(header) {
 		return "", fmt.Errorf("malformed expectation header")
 	}
-
-	formattedSource, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"))
+	formattedSource, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"), mode)
 	if err != nil {
 		return "", err
 	}
-
 	var b strings.Builder
 	for i := 0; i < headerIndex; i++ {
 		b.WriteString(lines[i])
@@ -119,7 +158,10 @@ func formatOctFailSource(src string) (string, error) {
 	return b.String(), nil
 }
 
-func normalize(src string) string {
+func normalizeReadable(src string) string { return normalize(src, false) }
+func normalizeCompact(src string) string  { return normalize(src, true) }
+
+func normalize(src string, compact bool) string {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	lines := strings.Split(src, "\n")
 	indent := 0
@@ -130,17 +172,15 @@ func normalize(src string) string {
 			out = append(out, "")
 			continue
 		}
-		if strings.HasPrefix(trimmed, "}") {
-			if indent > 0 {
-				indent--
-			}
+		if strings.HasPrefix(trimmed, "}") && indent > 0 {
+			indent--
 		}
 		if strings.HasPrefix(trimmed, "//") {
 			out = append(out, strings.Repeat("    ", indent)+trimmed)
 			continue
 		}
 		code, comment := splitCodeAndComment(trimmed)
-		normCode := normalizeCode(code)
+		normCode := normalizeCode(code, compact)
 		line := strings.Repeat("    ", indent) + normCode
 		if comment != "" {
 			if normCode != "" {
@@ -160,7 +200,7 @@ func normalize(src string) string {
 	return result
 }
 
-func splitCodeAndComment(line string) (string, string) {
+func splitCodeAndComment(line string) (string, string) { /* unchanged */
 	inString := false
 	escaped := false
 	for i := 0; i < len(line)-1; i++ {
@@ -190,7 +230,7 @@ func splitCodeAndComment(line string) (string, string) {
 	return strings.TrimSpace(line), ""
 }
 
-func normalizeCode(code string) string {
+func normalizeCode(code string, compact bool) string {
 	tokens := scanTokens(code)
 	if len(tokens) == 0 {
 		return ""
@@ -207,7 +247,10 @@ func normalizeCode(code string) string {
 				prev = "->"
 			}
 		}
-		if i > 0 && needsSpace(prev, tok) {
+		if !compact && i > 0 && needsSpace(prev, tok) {
+			b.WriteByte(' ')
+		}
+		if compact && i > 0 && needsSpaceCompact(prev, tok) {
 			b.WriteByte(' ')
 		}
 		b.WriteString(tok)
@@ -215,6 +258,24 @@ func normalizeCode(code string) string {
 	return b.String()
 }
 
+func needsSpaceCompact(prev, curr string) bool {
+	if isWord(prev) && isWord(curr) {
+		return true
+	}
+	if (prev == "]" || prev == ")" || prev == "}") && isWord(curr) {
+		return true
+	}
+	return false
+}
+func isWord(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '"'
+}
+
+// keep scanTokens/needsSpace/isOperator unchanged
 func scanTokens(code string) []string {
 	var tokens []string
 	for i := 0; i < len(code); {

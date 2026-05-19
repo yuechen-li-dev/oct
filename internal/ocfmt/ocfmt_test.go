@@ -5,6 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"oct/internal/lex"
+	"oct/internal/parse"
+	"oct/internal/source"
 )
 
 func TestFormatSourceIdempotent(t *testing.T) {
@@ -184,4 +188,43 @@ func mustContain(t *testing.T, s string, sub string) {
 
 func contains(s string, sub string) bool {
 	return strings.Contains(s, sub)
+}
+
+func parseBuild(path, text string) error {
+	lexed, err := lex.Analyze(source.File{Path: path, Text: text})
+	if err != nil {
+		return err
+	}
+	_, err = parse.BuildFile(lexed)
+	return err
+}
+
+func TestFormatSourceModesRoundTripParse(t *testing.T) {
+	input := "package Main\nfn main()->Int{return sum(1+2,3)}\n"
+	for _, mode := range []Mode{ModeReadable, ModeCompact, ModeEnLLM} {
+		out, err := FormatSourceWithOptions(input, Options{Mode: mode})
+		if err != nil {
+			t.Fatalf("format mode %s: %v", mode, err)
+		}
+		if err := parseBuild("<test>.oct", out); err != nil {
+			t.Fatalf("parse after format mode %s: %v\n%s", mode, err, out)
+		}
+	}
+}
+
+func TestFormatPathCheck(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "a.oct")
+	if err := os.WriteFile(f, []byte("package Main\nfn main()->Int{return 1}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := FormatPathWithOptions(f, Options{Mode: ModeReadable, Check: true}); err == nil {
+		t.Fatalf("expected check failure for unformatted file")
+	}
+	if err := FormatPathWithOptions(f, Options{Mode: ModeReadable}); err != nil {
+		t.Fatal(err)
+	}
+	if err := FormatPathWithOptions(f, Options{Mode: ModeReadable, Check: true}); err != nil {
+		t.Fatal(err)
+	}
 }
