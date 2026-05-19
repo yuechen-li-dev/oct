@@ -132,3 +132,14 @@ Csv.Write("out/metrics.csv", rows)!
 import Json
 Json.Save("out/metrics.json", summary)!
 ```
+
+## Markdown
+
+`Libraries/Markdown` provides Markdown M0 report-output helpers.
+
+- Markdown M0 is an output helper, **not** a Markdown parser.
+- Block-producing functions return `String[]` lines (not one large `String`).
+- Emit generated lines via `Artifact.WriteMarkdown(path, lines)` or `IO.WriteLines(path, lines)!`.
+- `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
+- `Markdown.TableWithColumns(table, columns)` provides explicit column order control.
+- Markdown M0 does not claim CommonMark-complete compliance.
