@@ -22,6 +22,17 @@ import (
 	"oct/internal/project"
 )
 
+func markdownNormalizeInline(text string) string {
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.ReplaceAll(normalized, "\n", " ")
+	return strings.TrimSpace(normalized)
+}
+
+func markdownEscapeTableCell(text string) string {
+	return strings.ReplaceAll(markdownNormalizeInline(text), "|", "\\|")
+}
+
 type ValueKind string
 
 const (
@@ -2934,6 +2945,224 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: StringReplaceAll expects (String, String, String)")
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: strings.ReplaceAll(s.value.Text, old.value.Text, nw.value.Text)}}, nil
+	}
+	if callee == "MarkdownEscapeText" || callee == "MarkdownEscapeTableCell" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		textResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if textResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String argument", callee)
+		}
+		if callee == "MarkdownEscapeText" {
+			return evalResult{value: Value{Kind: ValueString, Text: markdownNormalizeInline(textResult.value.Text)}}, nil
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: markdownEscapeTableCell(textResult.value.Text)}}, nil
+	}
+	if callee == "MarkdownH1" || callee == "MarkdownH2" || callee == "MarkdownH3" || callee == "MarkdownParagraph" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		textResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if textResult.value.Kind != ValueString {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String argument", callee)
+		}
+		text := markdownNormalizeInline(textResult.value.Text)
+		prefix := ""
+		if callee == "MarkdownH1" {
+			prefix = "# "
+		} else if callee == "MarkdownH2" {
+			prefix = "## "
+		} else if callee == "MarkdownH3" {
+			prefix = "### "
+		}
+		if callee == "MarkdownParagraph" {
+			prefix = ""
+		}
+		return wrapperStringArrayResult([]string{prefix + text}), nil
+	}
+	if callee == "MarkdownBlank" || callee == "MarkdownHorizontalRule" {
+		if len(argumentExprs) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 0 arguments", callee)
+		}
+		if callee == "MarkdownBlank" {
+			return wrapperStringArrayResult([]string{""}), nil
+		}
+		return wrapperStringArrayResult([]string{"---"}), nil
+	}
+	if callee == "MarkdownBullets" || callee == "MarkdownNumbered" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		items, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if items.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String[]", callee)
+		}
+		lines := make([]string, 0, len(items.value.Array))
+		for idx, item := range items.value.Array {
+			if item.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects String[]", callee)
+			}
+			prefix := "- "
+			if callee == "MarkdownNumbered" {
+				prefix = fmt.Sprintf("%d. ", idx+1)
+			}
+			lines = append(lines, prefix+markdownNormalizeInline(item.Text))
+		}
+		return wrapperStringArrayResult(lines), nil
+	}
+	if callee == "MarkdownCodeBlock" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownCodeBlock expects 2 arguments")
+		}
+		lang, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		body, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if lang.value.Kind != ValueString || body.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownCodeBlock expects (String, String[])")
+		}
+		lines := []string{"```" + strings.TrimSpace(lang.value.Text)}
+		for _, v := range body.value.Array {
+			if v.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownCodeBlock expects (String, String[])")
+			}
+			lines = append(lines, v.Text)
+		}
+		lines = append(lines, "```")
+		return wrapperStringArrayResult(lines), nil
+	}
+	if callee == "MarkdownReport" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownReport expects 1 argument")
+		}
+		blocks, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if blocks.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownReport expects String[][]")
+		}
+		out := []string{}
+		for _, block := range blocks.value.Array {
+			if block.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownReport expects String[][]")
+			}
+			if len(block.Array) == 0 {
+				continue
+			}
+			lines := make([]string, 0, len(block.Array))
+			for _, ln := range block.Array {
+				if ln.Kind != ValueString {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: MarkdownReport expects String[][]")
+				}
+				lines = append(lines, ln.Text)
+			}
+			if len(out) > 0 {
+				out = append(out, "")
+			}
+			out = append(out, lines...)
+		}
+		return wrapperStringArrayResult(out), nil
+	}
+	if callee == "MarkdownTable" || callee == "MarkdownTableWithColumns" {
+		if (callee == "MarkdownTable" && len(argumentExprs) != 1) || (callee == "MarkdownTableWithColumns" && len(argumentExprs) != 2) {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s has wrong arity", callee)
+		}
+		table, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if table.value.Kind != ValueRecord {
+			return evalResult{}, fmt.Errorf("runtime error: %s expects record-of-string-columns", strings.TrimPrefix(callee, "Markdown"))
+		}
+		columns := append([]string{}, table.value.Record.FieldOrder...)
+		if len(columns) == 0 {
+			return evalResult{}, fmt.Errorf("runtime error: MarkdownTable requires at least one column")
+		}
+		if callee == "MarkdownTableWithColumns" {
+			requested, err := i.evalExpr(env, pkgName, argumentExprs[1])
+			if err != nil {
+				return evalResult{}, err
+			}
+			if requested.value.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns expects String[] as second argument")
+			}
+			seen := map[string]struct{}{}
+			columns = []string{}
+			for _, c := range requested.value.Array {
+				if c.Kind != ValueString {
+					return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns expects String[] as second argument")
+				}
+				name := c.Text
+				if strings.TrimSpace(name) == "" {
+					return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns column names must be non-empty")
+				}
+				if _, ok := table.value.Record.Fields[name]; !ok {
+					return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns unknown column '%s'", name)
+				}
+				if _, dup := seen[name]; dup {
+					return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns duplicate requested column '%s'", name)
+				}
+				seen[name] = struct{}{}
+				columns = append(columns, name)
+			}
+			if len(columns) == 0 {
+				return evalResult{}, fmt.Errorf("runtime error: MarkdownTableWithColumns requires at least one requested column")
+			}
+		}
+		rowCount := -1
+		colArrays := make([][]string, 0, len(columns))
+		for _, name := range columns {
+			col, ok := table.value.Record.Fields[name]
+			if !ok {
+				return evalResult{}, fmt.Errorf("runtime error: MarkdownTable unknown column '%s'", name)
+			}
+			if col.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime error: Markdown table column '%s' must be String[]", name)
+			}
+			arr := make([]string, 0, len(col.Array))
+			for _, v := range col.Array {
+				if v.Kind != ValueString {
+					return evalResult{}, fmt.Errorf("runtime error: Markdown table column '%s' must be String[]", name)
+				}
+				arr = append(arr, v.Text)
+			}
+			if rowCount == -1 {
+				rowCount = len(arr)
+			} else if rowCount != len(arr) {
+				return evalResult{}, fmt.Errorf("runtime error: Markdown table columns must have equal lengths")
+			}
+			colArrays = append(colArrays, arr)
+		}
+		header := "|"
+		sep := "|"
+		for _, name := range columns {
+			header += " " + markdownEscapeTableCell(name) + " |"
+			sep += " --- |"
+		}
+		out := []string{header, sep}
+		for r := 0; r < rowCount; r++ {
+			line := "|"
+			for c := 0; c < len(columns); c++ {
+				line += " " + markdownEscapeTableCell(colArrays[c][r]) + " |"
+			}
+			out = append(out, line)
+		}
+		return wrapperStringArrayResult(out), nil
 	}
 	if callee == "EinMul" || callee == "EinAdd" {
 		if len(argumentExprs) != 6 {

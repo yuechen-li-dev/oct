@@ -3139,6 +3139,127 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
 	}
+	if callee == "MarkdownEscapeText" || callee == "MarkdownEscapeTableCell" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		t, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, t.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "MarkdownH1" || callee == "MarkdownH2" || callee == "MarkdownH3" || callee == "MarkdownParagraph" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		t, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, t.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownBlank" || callee == "MarkdownHorizontalRule" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 0 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 0 arguments, got %d", callee, len(arguments))
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownBullets" || callee == "MarkdownNumbered" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		t, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String[], got %s", callee, t.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownCodeBlock" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCodeBlock' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCodeBlock' expects 2 arguments, got %d", len(arguments))
+		}
+		a, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		b, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if a.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCodeBlock' argument 1 expects String, got %s", a.ValueType)
+		}
+		if b.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+			return ExprType{}, fmt.Errorf("function 'MarkdownCodeBlock' argument 2 expects String[], got %s", b.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownReport" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownReport' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'MarkdownReport' expects 1 argument, got %d", len(arguments))
+		}
+		t, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 2) {
+			return ExprType{}, fmt.Errorf("function 'MarkdownReport' argument 1 expects String[][], got %s", t.ValueType)
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
+	if callee == "MarkdownTable" || callee == "MarkdownTableWithColumns" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if (callee == "MarkdownTable" && len(arguments) != 1) || (callee == "MarkdownTableWithColumns" && len(arguments) != 2) {
+			return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
+		}
+		t, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if t.ValueType.Name == "" {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects record table, got %s", callee, t.ValueType)
+		}
+		if callee == "MarkdownTableWithColumns" {
+			c2, err := c.checkExpr(scope, arguments[1], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if c2.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
+				return ExprType{}, fmt.Errorf("function 'MarkdownTableWithColumns' argument 2 expects String[], got %s", c2.ValueType)
+			}
+		}
+		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
+	}
 	if callee == "Idx" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Idx' does not accept type arguments")
