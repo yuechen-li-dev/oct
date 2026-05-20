@@ -2286,6 +2286,64 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Matrix<" + elemType + ">", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
+	case "StringByteLength", "String.ByteLength":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Int", nil
+	case "StringRuneCount", "String.RuneCount":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Int", nil
+	case "StringJoin", "String.Join":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String[]" || argTypes[1] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "String", nil
+	case "StringReplaceAll", "String.ReplaceAll":
+		if len(argTypes) != 3 {
+			return "", fmt.Errorf("function '%s' expects 3 arguments, got %d", name, len(argTypes))
+		}
+		for _, t := range argTypes {
+			if t != "String" {
+				return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, t)
+			}
+		}
+		return "String", nil
+	case "StringContains", "StringStartsWith", "StringEndsWith", "String.Contains", "String.StartsWith", "String.EndsWith":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "Bool", nil
+	case "StringTrim", "StringEscapeJSON", "StringQuoteJSON", "String.Trim", "String.EscapeJson", "String.EscapeJSON", "String.QuoteJson", "String.QuoteJSON":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String", nil
+	case "StringSplitLines", "String.SplitLines":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
 	default:
 		return "", fmt.Errorf("compiled mode does not yet support builtin %s", name)
 	}
@@ -2897,6 +2955,9 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octPrometheusHelpers)
 	}
+	if usedBuiltins["StringSplitLines"] || usedBuiltins["StringEscapeJSON"] {
+		b.WriteString(__octStringHelpers)
+	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
 		b.WriteString("const (\n")
@@ -3330,6 +3391,25 @@ func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
 		panic(fmt.Sprintf("PrometheusMatMulMM failed: %v", err))
 	}
 	return out
+}
+`
+
+const __octStringHelpers = `
+func __octStringSplitLines(text string) []string {
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	if normalized == "" {
+		return []string{}
+	}
+	lines := strings.Split(normalized, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+func __octStringEscapeJSON(text string) string {
+	quoted := strconv.Quote(text)
+	return quoted[1 : len(quoted)-1]
 }
 `
 
@@ -4369,6 +4449,28 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, st.Args[0]), nil
 			case "Join":
 				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringByteLength", "String.ByteLength":
+				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
+			case "StringRuneCount", "String.RuneCount":
+				return fmt.Sprintf("%s = utf8.RuneCountInString(%s)", st.Target, st.Args[0]), nil
+			case "StringJoin", "String.Join":
+				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringReplaceAll", "String.ReplaceAll":
+				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+			case "StringContains", "String.Contains":
+				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringStartsWith", "String.StartsWith":
+				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringEndsWith", "String.EndsWith":
+				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringTrim", "String.Trim":
+				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, st.Args[0]), nil
+			case "StringSplitLines", "String.SplitLines":
+				return fmt.Sprintf("%s = __octStringSplitLines(%s)", st.Target, st.Args[0]), nil
+			case "StringEscapeJSON", "String.EscapeJson", "String.EscapeJSON":
+				return fmt.Sprintf("%s = __octStringEscapeJSON(%s)", st.Target, st.Args[0]), nil
+			case "StringQuoteJSON", "String.QuoteJson", "String.QuoteJSON":
+				return fmt.Sprintf("%s = strconv.Quote(%s)", st.Target, st.Args[0]), nil
 			case "fft":
 				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
 			case "WriteOctagon":
