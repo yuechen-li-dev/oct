@@ -533,7 +533,7 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 			}
 			if targetPkg == "Random" {
 				switch call[1] {
-				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
 					continue
 				}
 			}
@@ -921,6 +921,8 @@ func canonicalCompiledBuiltinName(name string) string {
 		return "StringEscapeJSON"
 	case "String.QuoteJson", "String.QuoteJSON":
 		return "StringQuoteJSON"
+	case "Random.Gaussian", "Gaussian":
+		return "Random.RandNormal"
 	default:
 		return name
 	}
@@ -2114,7 +2116,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if c.pkg.Name == "Random" {
 			switch x.Name {
-			case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+			case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
 				resolved, ret, _, fallible, err := c.resolveCall(ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: "Random"}, Field: x.Name})
 				if err == nil {
 					return resolved, ret, true, fallible, nil
@@ -2135,7 +2137,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			normalized := x.Name
 			if c.pkg.Name == "Random" {
 				switch x.Name {
-				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
 					normalized = "Random." + x.Name
 				}
 			}
@@ -2144,7 +2146,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Random.Rng", true, false, nil
 			case "Random.RandInt":
 				return normalized, "Random.RandIntResult", true, false, nil
-			case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal":
+			case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal", "Random.Gaussian":
 				return normalized, "Random.RandFloatResult", true, false, nil
 			case "Random.RandBernoulli":
 				return normalized, "Random.RandBoolResult", true, false, nil
@@ -2189,7 +2191,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return builtinName, "Random.RandFloatResult", true, false, nil
 			case "Random.RandBernoulli":
 				return builtinName, "Random.RandBoolResult", true, false, nil
-			case "Random.RandNormal":
+			case "Random.RandNormal", "Random.Gaussian":
 				return builtinName, "Random.RandFloatResult", true, false, nil
 			case "Random.CryptoRandInt":
 				return builtinName, "Int", true, true, nil

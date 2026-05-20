@@ -237,3 +237,27 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Next recommended task
 - Address compiled handling strategy for Random distribution wrappers that contain `Require` preconditions (starting with `Random.Gaussian`) without broadening into global `Require` support unless intentionally scoped.
 - After that, continue with isolated M2b generated-Go record-array append type mismatch.
+
+## 11) 2026-05-20 Random.Gaussian/RandNormal alias dispatch repair (M0j)
+- Added canonical compiled builtin alias mapping so `Random.Gaussian` and `Gaussian` canonicalize to `Random.RandNormal` in `internal/build/compiler.go` (`canonicalCompiledBuiltinName`), reusing the existing compiled builtin dispatch/emission path (`__octRandomRandNormal`).
+- Extended Random builtin name inventories so alias spellings are recognized consistently across builtin detection/typecheck/interpreter/compiled paths.
+- Added focused fixture `Libraries/Random/CompiledDispatch.RandomGaussian.octest` covering `Random.RngSeed`, `Random.Gaussian`, and `Random.RandNormal` in one compiled smoke path.
+
+### Alias inventory (repo state after fix)
+- Public wrapper alias exists as package function: `Libraries/Random/Random.Distributions.oct` defines `Gaussian(rng, mean, stddev)` and forwards to `RandNormal` with `Require(stddev >= 0.0, ...)`.
+- Interpreted dispatch now treats `Random.Gaussian`/`Gaussian` as Random builtin aliases (same lane as `Random.RandNormal`), so it no longer needs wrapper fallback for this name.
+- Typechecker builtin signature dispatch now recognizes `Gaussian`/`Random.Gaussian` and types it as `RandFloatResult` with `RandNormal`-equivalent arity/shape.
+- Compiled canonicalization now maps `Random.Gaussian`/`Gaussian` -> `Random.RandNormal`, so compiled lowering/emission uses `__octRandomRandNormal` instead of lowering wrapper `Require` bodies.
+
+### Fixture evidence
+- `go run ./cmd/oct test Libraries/Random/CompiledDispatch.RandomGaussian.octest --execution compiled`: PASS (compiled=1, fallback=0).
+- `go run ./cmd/oct test Libraries/Random/CompiledDispatch.RandomGaussian.octest --execution auto`: PASS (compiled=1, fallback=0).
+- `go run ./cmd/oct test Libraries/Random/CompiledDispatch.RandomGaussian.octest --execution interpreted`: PASS.
+
+### M2/M2b remeasure after fix
+- `M2 --execution compiled`: first blocker moved past Random.Gaussian/Require; now fails on unsupported compiled builtin `Pi`.
+- `M2b --execution compiled`: first blockers are generated-Go type mismatch (`[]int` vs `[]FmBrownNoiseKalman_M2bParams` / append arg type) and separate `Shared.WhitenessCost` unknown identifier `z` on smoke rows.
+- `M2b --execution auto`: compiled falls back (duplicate `main` / `Shared.WhitenessCost` issues), then interpreted smoke rows fail by cycle-time limit.
+
+### Documentation gap surfaced
+- `Gaussian` is present as public Random API surface in library code and experiment usage, but random builtin inventories historically only listed `RandNormal`; this mismatch caused wrapper fallback in compiled mode.
