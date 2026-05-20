@@ -78,6 +78,15 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 		visited:          make(map[string]struct{}),
 		manifestDeps:     make(map[string]map[string]struct{}),
 	}
+	if includeTests && filepath.Ext(path) == ".octest" {
+		absEntry, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return Program{}, absErr
+		}
+		builder.selectedFiles = map[string]map[string]struct{}{
+			entryFile.Package: {filepath.Clean(absEntry): {}},
+		}
+	}
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
@@ -139,6 +148,7 @@ type builder struct {
 	visited          map[string]struct{}
 	manifestDeps     map[string]map[string]struct{}
 	cachedDeps       map[string]string
+	selectedFiles    map[string]map[string]struct{}
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
@@ -151,7 +161,7 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	b.visiting[packageName] = struct{}{}
 	defer delete(b.visiting, packageName)
 
-	files, err := loadPackageFiles(directory, b.includeTests)
+	files, err := loadPackageFiles(directory, b.includeTests, b.selectedFiles[packageName])
 	if err != nil {
 		return err
 	}
@@ -240,7 +250,7 @@ func (b *builder) loadAllPackagesInRoot() error {
 			continue
 		}
 		dir := filepath.Join(b.root, entry.Name())
-		files, err := loadPackageFiles(dir, b.includeTests)
+		files, err := loadPackageFiles(dir, b.includeTests, b.selectedFiles[entry.Name()])
 		if err != nil {
 			return err
 		}
@@ -254,7 +264,7 @@ func (b *builder) loadAllPackagesInRoot() error {
 	return nil
 }
 
-func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
+func loadPackageFiles(directory string, includeTests bool, selected map[string]struct{}) ([]ast.File, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -295,6 +305,19 @@ func loadPackageFiles(directory string, includeTests bool) ([]ast.File, error) {
 		files = append(files, filepath.Join(directory, entry.Name()))
 	}
 	sort.Strings(files)
+	if len(selected) > 0 {
+		filtered := make([]string, 0, len(files))
+		for _, candidate := range files {
+			absCandidate, err := filepath.Abs(candidate)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := selected[filepath.Clean(absCandidate)]; ok {
+				filtered = append(filtered, candidate)
+			}
+		}
+		files = filtered
+	}
 	result := make([]ast.File, 0, len(files))
 	for _, path := range files {
 		parsed, err := parseFile(path)
@@ -356,7 +379,7 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 	for _, searchRoot := range b.importSearchRoots() {
 		candidateDir := filepath.Join(searchRoot, importName)
 		searched = append(searched, candidateDir)
-		files, err := loadPackageFiles(candidateDir, b.includeTests)
+		files, err := loadPackageFiles(candidateDir, b.includeTests, b.selectedFiles[importName])
 		if err != nil {
 			return "", err
 		}
@@ -500,7 +523,7 @@ func detectManifestedRoot(root string) (bool, error) {
 }
 
 func detectSinglePackageName(root string, includeTests bool) (string, error) {
-	files, err := loadPackageFiles(root, includeTests)
+	files, err := loadPackageFiles(root, includeTests, nil)
 	if err != nil {
 		return "", err
 	}
