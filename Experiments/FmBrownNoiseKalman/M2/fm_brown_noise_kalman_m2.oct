@@ -177,6 +177,35 @@ fn M2bSmallGrid() -> M2bParams[] {
     return grid
 }
 
+
+fn M2bSmokeGrid() -> M2bParams[] {
+    return [
+        M2bParams {
+            QOsc: 1e-3
+            QNoise: 0.05
+            R: 1.0
+            LearningRate: 0.05
+            Window: 64
+        },
+        M2bParams {
+            QOsc: 1e-4
+            QNoise: 0.01
+            R: 1.0
+            LearningRate: 0.01
+            Window: 64
+        }
+    ]
+}
+
+fn M2bRunSmokeGrid(mode: String, c: M2Case) -> M2bComparison[] {
+    let smoke = M2bSmokeGrid()
+    var rows: M2bComparison[] = []
+    for i in 0..Len(smoke) {
+        rows = Append(rows, M2bRunSweepCase(mode, c, smoke[i]))
+    }
+    return rows
+}
+
 fn M2SampleCount(c: M2Case) -> Int {
     var n = 0
     var t = 0.0
@@ -726,23 +755,21 @@ fn M2ArtifactWriteAll() -> Int ! Error {
     return 0
 }
 
-fn M2bArtifactWriteAll() -> Int ! Error {
-    let tiny = M2TinyCase()
-    let grid = M2bSmallGrid()
-    let modes = ["DirectMessageBrownNoise", "PhaseDomainFmBrownNoise"]
-    var rows: M2bComparison[] = []
 
-    for mi in 0..Len(modes) {
-        for gi in 0..Len(grid) {
-            rows = Append(rows, M2bRunSweepCase(modes[mi], tiny, grid[gi]))
-        }
-    }
-
+fn M2bBuildCsvRows(rows: M2bComparison[]) -> String[][] {
     var csv: String[][] = [[
         "mode","qOsc","qNoise","r","learningRate","window",
         "oscillatorOutputSNRDb","adaptiveOutputSNRDb","deltaOutputSNRDb",
         "oscillatorWhitenessCost","adaptiveWhitenessCost","whitenessRatio","finalA","label"
     ]]
+    for i in 0..Len(rows) {
+        let r = rows[i]
+        csv = Append(csv, [r.Mode, ToString(r.QOsc), ToString(r.QNoise), ToString(r.R), ToString(r.LearningRate), ToString(r.Window), ToString(r.OscillatorOutputSNRDb), ToString(r.AdaptiveOutputSNRDb), ToString(r.DeltaOutputSNRDb), ToString(r.OscillatorWhitenessCost), ToString(r.AdaptiveWhitenessCost), ToString(r.WhitenessRatio), ToString(r.FinalA), r.Label])
+    }
+    return csv
+}
+
+fn M2bBuildJsonSummary(rows: M2bComparison[]) -> String {
     var adaptiveWin = 0
     var whitenessOnly = 0
     var recoveryOnly = 0
@@ -752,7 +779,6 @@ fn M2bArtifactWriteAll() -> Int ! Error {
     var clampCount = 0
     for i in 0..Len(rows) {
         let r = rows[i]
-        csv = Append(csv, [r.Mode, ToString(r.QOsc), ToString(r.QNoise), ToString(r.R), ToString(r.LearningRate), ToString(r.Window), ToString(r.OscillatorOutputSNRDb), ToString(r.AdaptiveOutputSNRDb), ToString(r.DeltaOutputSNRDb), ToString(r.OscillatorWhitenessCost), ToString(r.AdaptiveWhitenessCost), ToString(r.WhitenessRatio), ToString(r.FinalA), r.Label])
         let labelKind = switch {
             case r.Label == "AdaptiveWin" => 0
             case r.Label == "WhitenessOnly" => 1
@@ -767,18 +793,43 @@ fn M2bArtifactWriteAll() -> Int ! Error {
         if r.FinalA > finalAMax { finalAMax = r.FinalA }
         if Abs(r.FinalA) >= 0.98 { clampCount = clampCount + 1 }
     }
+    return "{\"totalCases\":" + ToString(Len(rows)) + ",\"adaptiveWin\":" + ToString(adaptiveWin) + ",\"whitenessOnly\":" + ToString(whitenessOnly) + ",\"recoveryOnly\":" + ToString(recoveryOnly) + ",\"noWin\":" + ToString(nowin) + ",\"finalAMin\":" + ToString(finalAMin) + ",\"finalAMax\":" + ToString(finalAMax) + ",\"finalAClampCount\":" + ToString(clampCount) + "}"
+}
 
-    let json = Json.Object("{\"totalCases\":" + ToString(Len(rows)) + ",\"adaptiveWin\":" + ToString(adaptiveWin) + ",\"whitenessOnly\":" + ToString(whitenessOnly) + ",\"recoveryOnly\":" + ToString(recoveryOnly) + ",\"noWin\":" + ToString(nowin) + ",\"finalAMin\":" + ToString(finalAMin) + ",\"finalAMax\":" + ToString(finalAMax) + ",\"finalAClampCount\":" + ToString(clampCount) + "}")
-    let md = Markdown.Report([
+fn M2bBuildMarkdownReport(tiny: M2Case, rows: M2bComparison[]) -> String[] {
+    let json = M2bBuildJsonSummary(rows)
+    return Markdown.Report([
         Markdown.H1("FM Brown-Noise Kalman M2b"),
         Markdown.Paragraph("Bounded oscillator/adaptive sensitivity sweep over covariance and adaptation settings."),
         Markdown.Section("Sweep settings", [Markdown.KeyValueTable(["sampleRate", "duration", "messageHz", "carrierHz", "frequencyDeviationHz", "inputSNRDb", "seed"], [ToString(tiny.SampleRate), ToString(tiny.Duration), ToString(tiny.MessageHz), ToString(tiny.CarrierHz), ToString(tiny.FrequencyDeviationHz), ToString(tiny.InputSNRDb), ToString(tiny.Seed)])]),
-        Markdown.Section("Summary", [Markdown.KeyValueTable(["totalCases", "adaptiveWin", "whitenessOnly", "recoveryOnly", "noWin", "finalAMin", "finalAMax", "finalAClampCount"], [ToString(Len(rows)), ToString(adaptiveWin), ToString(whitenessOnly), ToString(recoveryOnly), ToString(nowin), ToString(finalAMin), ToString(finalAMax), ToString(clampCount)])]),
+        Markdown.Section("Summary", [Markdown.Paragraph(json)]),
         Markdown.Section("Limitations", [Markdown.Bullets(["still synthetic sine message", "still phase-domain FM, not real carrier/IQ FM", "no real audio", "covariance grid is small", "sweep is diagnostic, not exhaustive", "adaptive win can be sensitive to modeling assumptions"])])
     ])
+}
+
+fn M2bBuildOctagonSummary(rows: M2bComparison[]) -> String {
+    return "{\"title\":\"FM Brown-Noise Kalman M2b\",\"totalCases\":" + ToString(Len(rows)) + "}"
+}
+
+fn M2bArtifactWriteAll() -> Int ! Error {
+    let tiny = M2TinyCase()
+    let grid = M2bSmallGrid()
+    let modes = ["DirectMessageBrownNoise", "PhaseDomainFmBrownNoise"]
+    var rows: M2bComparison[] = []
+
+    for mi in 0..Len(modes) {
+        for gi in 0..Len(grid) {
+            rows = Append(rows, M2bRunSweepCase(modes[mi], tiny, grid[gi]))
+        }
+    }
+
+    let csv = M2bBuildCsvRows(rows)
+    let json = Json.Object(M2bBuildJsonSummary(rows))
+    let md = M2bBuildMarkdownReport(tiny, rows)
+    let octagon = Json.Object(M2bBuildOctagonSummary(rows))
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M2/sweep_metrics.csv", csv)
     Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M2/sweep_summary.json", json)
-    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.octagon", Json.Object("{\"title\":\"FM Brown-Noise Kalman M2b\",\"totalCases\":" + ToString(Len(rows)) + "}"))
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.octagon", octagon)
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.md", md)
     return 0
 }

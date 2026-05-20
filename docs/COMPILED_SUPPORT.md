@@ -141,3 +141,22 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### Inconsistency surfaced
 - `Libraries/String --execution compiled` is green (`compiled 5 fallback 0`), but `Libraries/String --execution auto` in this pass fell back on duplicate `main` in package `String` (`compiled 0 fallback 5`). This indicates an auto-lane harness ownership inconsistency rather than String builtin lowering regression.
+
+## 9) 2026-05-20 M0f test-lane cleanup attempt (M2/M2b)
+- Added explicit M2b smoke helpers (`M2bSmokeGrid`, `M2bRunSmokeGrid`) so `[Theory]` tests can stay tiny (2 cases/mode) while artifact lane keeps the bounded full grid.
+- Split M2b artifact construction into helper functions:
+  - `M2bBuildCsvRows`
+  - `M2bBuildJsonSummary`
+  - `M2bBuildMarkdownReport`
+  - `M2bBuildOctagonSummary`
+- Updated M2b theory test to use smoke-only path (`M2bSmokeGridFinite`) and not call artifact builders directly.
+
+### Re-measurement outcome after split
+- `M2 --execution compiled`: still nonzero; compiled unsupported due `unknown function 'Markdown.Report'` during package compile.
+- `M2 --execution auto`: still nonzero for same compile-time blocker.
+- `M2b --execution compiled`: still nonzero for same compile-time blocker.
+- `M2b --execution auto`: compiled 0 / interpreted fallback 3; one row passes, two rows timeout at 30s in interpreted fallback.
+
+### Classification (current)
+- Remaining blocker is **wrapper/report contamination at package compilation boundary** (not numeric lowering yet): compiled mode appears to typecheck/compile whole package and still sees artifact/report helpers even when theory lanes are smoke-only.
+- Therefore, next focused task should isolate artifact/report functions into a separate package/file-ownership lane that is excluded from compiled theory package build, before pursuing numeric lowering fixes.

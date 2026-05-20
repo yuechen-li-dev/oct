@@ -66,13 +66,16 @@ fn M2bGridHasExpectedSize(_id: Int) -> Void {
 [Suite("Experiments.FmBrownNoiseKalman.M2b")]
 [InlineData("DirectMessageBrownNoise")]
 [InlineData("PhaseDomainFmBrownNoise")]
-fn M2bSingleCaseFinite(mode: String) -> Void {
+fn M2bSmokeGridFinite(mode: String) -> Void {
     let c = M2TinyCase()
-    let p = M2bSmallGrid()[0]
-    let row = M2bRunSweepCase(mode, c, p)
-    Assert.True(Abs(row.DeltaOutputSNRDb) < 1e300, "finite snr delta")
-    Assert.True(Abs(row.WhitenessRatio) < 1e300, "finite whiteness ratio")
-    Assert.True(row.FinalA >= -0.99 and row.FinalA <= 0.99, "finalA bounded")
+    let rows = M2bRunSmokeGrid(mode, c)
+    Assert.Equal(2, Len(rows), "smoke grid should stay tiny")
+    for i in 0..Len(rows) {
+        let row = rows[i]
+        Assert.True(Abs(row.DeltaOutputSNRDb) < 1e300, "finite snr delta")
+        Assert.True(Abs(row.WhitenessRatio) < 1e300, "finite whiteness ratio")
+        Assert.True(row.FinalA >= -0.99 and row.FinalA <= 0.99, "finalA bounded")
+    }
 }
 
 [Artifact]
