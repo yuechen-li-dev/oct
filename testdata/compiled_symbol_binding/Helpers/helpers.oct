@@ -1,0 +1,5 @@
+package Helpers
+
+fn VerifyAnswer() -> Int {
+    return 40 + 2
+}

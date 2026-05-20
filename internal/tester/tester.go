@@ -27,6 +27,7 @@ type testCase struct {
 	displayName string
 	caseIndex   int
 	arguments   []interpret.Value
+	isFallible  bool
 	cycleTime   time.Duration
 	suites      []string
 }
@@ -83,6 +84,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 						name:        fn.Name,
 						displayName: fn.Name,
 						cycleTime:   defaultTestCycleTime,
+						isFallible:  fn.IsFallible,
 						suites:      append([]string{}, fn.Suites...),
 					})
 				}
@@ -104,6 +106,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 							caseIndex:   i,
 							arguments:   args,
 							cycleTime:   cycleTime,
+							isFallible:  fn.IsFallible,
 							suites:      append([]string{}, fn.Suites...),
 						})
 					}
@@ -271,6 +274,9 @@ func writeCompiledTestRunner(pkgDir string, pkgName string, testCase testCase) (
 			parts = append(parts, inlineValueToSource(arg))
 		}
 		call = fmt.Sprintf("    %s(%s)", testCase.name, strings.Join(parts, ", "))
+	}
+	if testCase.isFallible {
+		call += "!"
 	}
 	source := strings.Join([]string{
 		"package " + pkgName,
