@@ -1,0 +1,624 @@
+package FmBrownNoiseKalman
+
+import String
+import Json
+import Artifact
+import Markdown
+import Shared
+
+record M2Case {
+    Label: String
+    SampleRate: Float
+    Duration: Float
+    MessageHz: Float
+    CarrierHz: Float
+    FrequencyDeviationHz: Float
+    InputSNRDb: Float
+    Seed: Int
+}
+
+record M2Metric {
+    Mode: String
+    Method: String
+    SampleRate: Float
+    Duration: Float
+    SampleCount: Int
+    Seed: Int
+    InputSNRDb: Float
+    OutputSNRDb: Float
+    Nrmse: Float
+    Correlation: Float
+    InnovationWhitenessCost: Float
+    Lag1InnovationAutocorrelation: Float
+    FinalA: Float
+    FinalAText: String
+    DiagnosticLabel: String
+}
+
+record M2SignalFingerprint {
+    Length: Int
+    Mean: Float
+    Rms: Float
+    Min: Float
+    Max: Float
+    First: Float
+    Middle: Float
+    Last: Float
+    WeightedSum: Float
+}
+
+record M2MethodResult {
+    Method: String
+    Recovered: Float[]
+    Innovation: Float[]
+    FinalA: Float
+    Fingerprint: M2SignalFingerprint
+}
+
+record M2PairwiseDiagnostic {
+    Mode: String
+    LeftMethod: String
+    RightMethod: String
+    ExactEqual: Bool
+    RmsDifference: Float
+    MaxAbsDifference: Float
+    Correlation: Float
+}
+
+record M2Run {
+    Mode: String
+    Case: M2Case
+    CleanMessage: Float[]
+    Observed: Float[]
+    NoFilter: M2MethodResult
+    LowPass: M2MethodResult
+    FixedKF: M2MethodResult
+    AdaptiveKF: M2MethodResult
+    OscillatorKF: M2MethodResult
+    OscillatorAdaptiveKF: M2MethodResult
+    Metrics: M2Metric[]
+}
+
+record M2MetricReportTable {
+    mode: String[]
+    method: String[]
+    outputSNRDb: String[]
+    nrmse: String[]
+    correlation: String[]
+    whitenessCost: String[]
+    lag1InnovationAutocorrelation: String[]
+    finalA: String[]
+    diagnosticLabel: String[]
+}
+
+record M2PairwiseTable {
+    mode: String[]
+    leftMethod: String[]
+    rightMethod: String[]
+    exactEqual: String[]
+    rmsDifference: String[]
+    maxAbsDifference: String[]
+    correlation: String[]
+}
+
+record M2OctagonSummary {
+    title: String
+    rowCount: Int
+    artifactSkipNotes: String[]
+    limitations: String[]
+    labelToleranceSnrEpsilonDb: Float
+    labelToleranceWhitenessRelativeEpsilon: Float
+    outputDiagnosticsCount: Int
+}
+
+fn M2TinyCase() -> M2Case {
+    return M2Case {
+        Label: "tiny"
+        SampleRate: 2000.0
+        Duration: 0.5
+        MessageHz: 25.0
+        CarrierHz: 250.0
+        FrequencyDeviationHz: 50.0
+        InputSNRDb: -12.0
+        Seed: 12345
+    }
+}
+
+fn M2BuildCleanMessage(c: M2Case) -> Float[] {
+    let n = FloorToInt(c.SampleRate * c.Duration)
+    var clean: Float[] = []
+    for i in 0..n {
+        let t = Float(i) / c.SampleRate
+        clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * t))
+    }
+    return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0)
+}
+
+fn M2DiagnosticLabel(adaptSnr: Float, fixedSnr: Float, adaptW: Float, fixedW: Float) -> String {
+    let snrEpsilonDb = 0.01
+    let whitenessRelativeEpsilon = 0.01
+    let snrDelta = adaptSnr - fixedSnr
+    let whitenessImprovementRatio = if fixedW > 1e-12 { (fixedW - adaptW) / fixedW } else { 0.0 }
+    let meaningfulSnr = snrDelta >= snrEpsilonDb
+    let meaningfulWhiteness = whitenessImprovementRatio >= whitenessRelativeEpsilon
+
+    if meaningfulSnr and meaningfulWhiteness { return "AdaptiveWin" }
+    if (not meaningfulSnr) and meaningfulWhiteness { return "WhitenessOnly" }
+    if meaningfulSnr and (not meaningfulWhiteness) { return "RecoveryOnly" }
+    return "NoMeaningfulWin"
+}
+
+fn M2BuildSignalFingerprint(signal: Float[]) -> M2SignalFingerprint {
+    let n = Len(signal)
+    if n == 0 {
+        return M2SignalFingerprint {
+            Length: 0
+            Mean: 0.0
+            Rms: 0.0
+            Min: 0.0
+            Max: 0.0
+            First: 0.0
+            Middle: 0.0
+            Last: 0.0
+            WeightedSum: 0.0
+        }
+    }
+
+    var sum = 0.0
+    var sumSq = 0.0
+    var minV = signal[0]
+    var maxV = signal[0]
+    var weighted = 0.0
+
+    for i in 0..n {
+        let x = signal[i]
+        sum = sum + x
+        sumSq = sumSq + (x * x)
+        if x < minV { minV = x }
+        if x > maxV { maxV = x }
+        weighted = weighted + (x * (1.0 + Float((i % 31) + 1) * 0.03125))
+    }
+
+    return M2SignalFingerprint {
+        Length: n
+        Mean: sum / Float(n)
+        Rms: Sqrt(sumSq / Float(n))
+        Min: minV
+        Max: maxV
+        First: signal[0]
+        Middle: signal[n / 2]
+        Last: signal[n - 1]
+        WeightedSum: weighted
+    }
+}
+
+fn M2ExactEqual(a: Float[], b: Float[]) -> Bool {
+    if Len(a) != Len(b) { return false }
+    for i in 0..Len(a) {
+        if a[i] != b[i] { return false }
+    }
+    return true
+}
+
+fn M2RmsDifference(a: Float[], b: Float[]) -> Float {
+    var acc = 0.0
+    for i in 0..Len(a) {
+        let d = a[i] - b[i]
+        acc = acc + (d * d)
+    }
+    return Sqrt(acc / Float(Len(a)))
+}
+
+fn M2MaxAbsDifference(a: Float[], b: Float[]) -> Float {
+    var m = 0.0
+    for i in 0..Len(a) {
+        let d = Abs(a[i] - b[i])
+        if d > m { m = d }
+    }
+    return m
+}
+
+fn M2Pairwise(mode: String, left: M2MethodResult, right: M2MethodResult) -> M2PairwiseDiagnostic {
+    return M2PairwiseDiagnostic {
+        Mode: mode
+        LeftMethod: left.Method
+        RightMethod: right.Method
+        ExactEqual: M2ExactEqual(left.Recovered, right.Recovered)
+        RmsDifference: M2RmsDifference(left.Recovered, right.Recovered)
+        MaxAbsDifference: M2MaxAbsDifference(left.Recovered, right.Recovered)
+        Correlation: Shared.Correlation(left.Recovered, right.Recovered)
+    }
+}
+
+fn M2BuildPairwiseTable(rows: M2PairwiseDiagnostic[]) -> M2PairwiseTable {
+    var mode: String[] = []
+    var leftMethod: String[] = []
+    var rightMethod: String[] = []
+    var exactEqual: String[] = []
+    var rmsDifference: String[] = []
+    var maxAbsDifference: String[] = []
+    var correlation: String[] = []
+
+    for i in 0..Len(rows) {
+        let r = rows[i]
+        mode = Append(mode, r.Mode)
+        leftMethod = Append(leftMethod, r.LeftMethod)
+        rightMethod = Append(rightMethod, r.RightMethod)
+        exactEqual = Append(exactEqual, ToString(r.ExactEqual))
+        rmsDifference = Append(rmsDifference, ToString(r.RmsDifference))
+        maxAbsDifference = Append(maxAbsDifference, ToString(r.MaxAbsDifference))
+        correlation = Append(correlation, ToString(r.Correlation))
+    }
+
+    return M2PairwiseTable {
+        mode: mode
+        leftMethod: leftMethod
+        rightMethod: rightMethod
+        exactEqual: exactEqual
+        rmsDifference: rmsDifference
+        maxAbsDifference: maxAbsDifference
+        correlation: correlation
+    }
+}
+
+fn M2OscillatorKalmanFilter(observed: Float[], sampleRate: Float, messageHz: Float, adaptive: Bool) -> Shared.KalmanResult {
+    var xp = 0.0
+    var xq = 1.0
+    var xn = 0.0
+    var p0 = 1.0
+    var p1 = 1.0
+    var pn = 1.0
+    var a = 0.0
+
+    let theta = 2.0 * Pi() * messageHz / sampleRate
+    let c = Cos(theta)
+    let s = Sin(theta)
+
+    let qOsc = 1e-3
+    let qNoise = 0.05
+    let r = 1.0
+    let learningRate = 0.05
+    let window = 64
+
+    var out: Float[] = []
+    var innovation: Float[] = []
+
+    for k in 0..Len(observed) {
+        let xpPred = c * xp - s * xq
+        let xqPred = s * xp + c * xq
+        let xnPred = if adaptive { a * xn } else { 0.0 }
+
+        let p0Pred = p0 + qOsc
+        let p1Pred = p1 + qOsc
+        let pnPred = if adaptive { a * a * pn + qNoise } else { qNoise }
+
+        let y = observed[k] - (xpPred + xnPred)
+        let sInnov = p0Pred + pnPred + r
+        let kp = p0Pred / sInnov
+        let kq = p1Pred / sInnov
+        let kn = if adaptive { pnPred / sInnov } else { 0.0 }
+
+        xp = xpPred + kp * y
+        xq = xqPred + kq * y
+        xn = xnPred + kn * y
+
+        p0 = (1.0 - kp) * p0Pred
+        p1 = (1.0 - kq) * p1Pred
+        pn = if adaptive { (1.0 - kn) * pnPred } else { 0.0 }
+
+        out = Append(out, xp)
+        innovation = Append(innovation, y)
+
+        if adaptive and Len(innovation) > window {
+            var num = 0.0
+            var den = 0.0
+            for i in (Len(innovation) - window + 1)..Len(innovation) {
+                num = num + innovation[i] * innovation[i - 1]
+                den = den + innovation[i - 1] * innovation[i - 1]
+            }
+
+            let rho1 = num / (den + 1e-12)
+            a = a + learningRate * rho1
+            if a > 0.99 { a = 0.99 }
+            if a < -0.99 { a = -0.99 }
+        }
+    }
+
+    return Shared.KalmanResult {
+        Recovered: out
+        Innovation: innovation
+        FinalA: a
+    }
+}
+
+fn RunM2ModeDirectMessageBrownNoise(c: M2Case) -> M2Run {
+    let clean = M2BuildCleanMessage(c)
+    let observed = Shared.AddNoiseAtSnr(clean, Shared.GenerateBrownNoise(Len(clean), c.Seed), c.InputSNRDb)
+    return RunM2Methods("DirectMessageBrownNoise", c, clean, observed)
+}
+
+fn RunM2ModePhaseDomainFmBrownNoise(c: M2Case) -> M2Run {
+    let clean = M2BuildCleanMessage(c)
+    let fm = Shared.FmModulate(clean, c.SampleRate, c.CarrierHz, c.FrequencyDeviationHz)
+    let noisyPhase = Shared.AddNoiseAtSnr(fm, Shared.GenerateBrownNoise(Len(fm), c.Seed), c.InputSNRDb)
+    let demodHz = Shared.FmDemodulate(noisyPhase, c.SampleRate)
+
+    var centered: Float[] = []
+    for i in 0..Len(demodHz) {
+        centered = Append(centered, (demodHz[i] - c.CarrierHz) / c.FrequencyDeviationHz)
+    }
+
+    let observed = Shared.NormalizeRms(Shared.RemoveMean(centered), 1.0)
+    return RunM2Methods("PhaseDomainFmBrownNoise", c, clean, observed)
+}
+
+fn RunM2Methods(mode: String, c: M2Case, clean: Float[], observed: Float[]) -> M2Run {
+    let noRec = Shared.NormalizeRms(Shared.RemoveMean(observed), 1.0)
+    let lowRec = Shared.NormalizeRms(Shared.RemoveMean(Shared.LowPassFilter(observed, c.SampleRate, 120.0)), 1.0)
+
+    let noFilter = M2MethodResult {
+        Method: "NoFilter"
+        Recovered: noRec
+        Innovation: Shared.Sub(observed, noRec)
+        FinalA: 0.0
+        Fingerprint: M2BuildSignalFingerprint(noRec)
+    }
+    let low = M2MethodResult {
+        Method: "LowPass"
+        Recovered: lowRec
+        Innovation: Shared.Sub(observed, lowRec)
+        FinalA: 0.0
+        Fingerprint: M2BuildSignalFingerprint(lowRec)
+    }
+
+    let fixedRaw = Shared.FixedWhiteKalmanFilter(observed)
+    let fixedRec = Shared.NormalizeRms(Shared.RemoveMean(fixedRaw.Recovered), 1.0)
+    let fixed = M2MethodResult {
+        Method: "FixedWhiteKalman"
+        Recovered: fixedRec
+        Innovation: fixedRaw.Innovation
+        FinalA: fixedRaw.FinalA
+        Fingerprint: M2BuildSignalFingerprint(fixedRec)
+    }
+
+    let adaptiveRaw = Shared.AdaptiveAr1ColoredNoiseKalmanFilter(observed)
+    let adaptiveRec = Shared.NormalizeRms(Shared.RemoveMean(adaptiveRaw.Recovered), 1.0)
+    let adaptive = M2MethodResult {
+        Method: "AdaptiveAr1ColoredNoiseKalman"
+        Recovered: adaptiveRec
+        Innovation: adaptiveRaw.Innovation
+        FinalA: adaptiveRaw.FinalA
+        Fingerprint: M2BuildSignalFingerprint(adaptiveRec)
+    }
+
+    let oscRaw = M2OscillatorKalmanFilter(observed, c.SampleRate, c.MessageHz, false)
+    let oscRec = Shared.NormalizeRms(Shared.RemoveMean(oscRaw.Recovered), 1.0)
+    let osc = M2MethodResult {
+        Method: "OscillatorKalman"
+        Recovered: oscRec
+        Innovation: oscRaw.Innovation
+        FinalA: oscRaw.FinalA
+        Fingerprint: M2BuildSignalFingerprint(oscRec)
+    }
+
+    let oscAdaptiveRaw = M2OscillatorKalmanFilter(observed, c.SampleRate, c.MessageHz, true)
+    let oscAdaptiveRec = Shared.NormalizeRms(Shared.RemoveMean(oscAdaptiveRaw.Recovered), 1.0)
+    let oscAdaptive = M2MethodResult {
+        Method: "OscillatorAdaptiveAr1Kalman"
+        Recovered: oscAdaptiveRec
+        Innovation: oscAdaptiveRaw.Innovation
+        FinalA: oscAdaptiveRaw.FinalA
+        Fingerprint: M2BuildSignalFingerprint(oscAdaptiveRec)
+    }
+
+    return M2Run {
+        Mode: mode
+        Case: c
+        CleanMessage: clean
+        Observed: observed
+        NoFilter: noFilter
+        LowPass: low
+        FixedKF: fixed
+        AdaptiveKF: adaptive
+        OscillatorKF: osc
+        OscillatorAdaptiveKF: oscAdaptive
+        Metrics: [
+            M2BuildMetric(mode, c, clean, noFilter, fixed, adaptive, osc, oscAdaptive),
+            M2BuildMetric(mode, c, clean, low, fixed, adaptive, osc, oscAdaptive),
+            M2BuildMetric(mode, c, clean, fixed, fixed, adaptive, osc, oscAdaptive),
+            M2BuildMetric(mode, c, clean, adaptive, fixed, adaptive, osc, oscAdaptive),
+            M2BuildMetric(mode, c, clean, osc, fixed, adaptive, osc, oscAdaptive),
+            M2BuildMetric(mode, c, clean, oscAdaptive, fixed, adaptive, osc, oscAdaptive)
+        ]
+    }
+}
+
+fn M2BuildMetric(mode: String, c: M2Case, clean: Float[], m: M2MethodResult, fixed: M2MethodResult, adaptive: M2MethodResult, osc: M2MethodResult, oscAdaptive: M2MethodResult) -> M2Metric {
+    let finalAText = if m.Method == "AdaptiveAr1ColoredNoiseKalman" or m.Method == "OscillatorAdaptiveAr1Kalman" { ToString(m.FinalA) } else { "" }
+
+    var label = ""
+    if m.Method == "AdaptiveAr1ColoredNoiseKalman" {
+        label = M2DiagnosticLabel(
+            Shared.MeasureSnrDb(clean, Shared.Sub(clean, adaptive.Recovered)),
+            Shared.MeasureSnrDb(clean, Shared.Sub(clean, fixed.Recovered)),
+            Shared.WhitenessCost(adaptive.Innovation),
+            Shared.WhitenessCost(fixed.Innovation)
+        )
+    }
+    if m.Method == "OscillatorAdaptiveAr1Kalman" {
+        label = M2DiagnosticLabel(
+            Shared.MeasureSnrDb(clean, Shared.Sub(clean, oscAdaptive.Recovered)),
+            Shared.MeasureSnrDb(clean, Shared.Sub(clean, osc.Recovered)),
+            Shared.WhitenessCost(oscAdaptive.Innovation),
+            Shared.WhitenessCost(osc.Innovation)
+        )
+    }
+
+    return M2Metric {
+        Mode: mode
+        Method: m.Method
+        SampleRate: c.SampleRate
+        Duration: c.Duration
+        SampleCount: Len(clean)
+        Seed: c.Seed
+        InputSNRDb: c.InputSNRDb
+        OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, m.Recovered))
+        Nrmse: Shared.Nrmse(clean, m.Recovered)
+        Correlation: Shared.Correlation(clean, m.Recovered)
+        InnovationWhitenessCost: Shared.WhitenessCost(m.Innovation)
+        Lag1InnovationAutocorrelation: Shared.LagAutocorrelation(Shared.RemoveMean(m.Innovation), 1)
+        FinalA: m.FinalA
+        FinalAText: finalAText
+        DiagnosticLabel: label
+    }
+}
+
+fn M2ArtifactWriteAll() -> Int ! Error {
+    let tiny = M2TinyCase()
+    let directRun = RunM2ModeDirectMessageBrownNoise(tiny)
+    let phaseRun = RunM2ModePhaseDomainFmBrownNoise(tiny)
+
+    var rows: M2Metric[] = []
+    for i in 0..Len(directRun.Metrics) { rows = Append(rows, directRun.Metrics[i]) }
+    for i in 0..Len(phaseRun.Metrics) { rows = Append(rows, phaseRun.Metrics[i]) }
+
+    let diagnostics = [
+        M2Pairwise(directRun.Mode, directRun.FixedKF, directRun.OscillatorKF),
+        M2Pairwise(directRun.Mode, directRun.OscillatorKF, directRun.OscillatorAdaptiveKF),
+        M2Pairwise(directRun.Mode, directRun.OscillatorAdaptiveKF, directRun.AdaptiveKF),
+        M2Pairwise(phaseRun.Mode, phaseRun.FixedKF, phaseRun.OscillatorKF),
+        M2Pairwise(phaseRun.Mode, phaseRun.OscillatorKF, phaseRun.OscillatorAdaptiveKF),
+        M2Pairwise(phaseRun.Mode, phaseRun.OscillatorAdaptiveKF, phaseRun.AdaptiveKF)
+    ]
+
+    var csv: String[][] = [[
+        "mode",
+        "method",
+        "sampleRate",
+        "duration",
+        "sampleCount",
+        "seed",
+        "inputSNRDb",
+        "outputSNRDb",
+        "nrmse",
+        "correlation",
+        "innovationWhitenessCost",
+        "lag1InnovationAutocorrelation",
+        "finalA",
+        "diagnosticLabel"
+    ]]
+
+    for i in 0..Len(rows) {
+        let r = rows[i]
+        csv = Append(csv, [
+            r.Mode,
+            r.Method,
+            ToString(r.SampleRate),
+            ToString(r.Duration),
+            ToString(r.SampleCount),
+            ToString(r.Seed),
+            ToString(r.InputSNRDb),
+            ToString(r.OutputSNRDb),
+            ToString(r.Nrmse),
+            ToString(r.Correlation),
+            ToString(r.InnovationWhitenessCost),
+            ToString(r.Lag1InnovationAutocorrelation),
+            r.FinalAText,
+            r.DiagnosticLabel
+        ])
+    }
+
+    var modes: String[] = []
+    var methods: String[] = []
+    var outputSnrDbs: String[] = []
+    var nrmses: String[] = []
+    var correlations: String[] = []
+    var whitenessCosts: String[] = []
+    var lag1s: String[] = []
+    var finalAs: String[] = []
+    var labels: String[] = []
+
+    for i in 0..Len(rows) {
+        let r = rows[i]
+        modes = Append(modes, r.Mode)
+        methods = Append(methods, r.Method)
+        outputSnrDbs = Append(outputSnrDbs, ToString(r.OutputSNRDb))
+        nrmses = Append(nrmses, ToString(r.Nrmse))
+        correlations = Append(correlations, ToString(r.Correlation))
+        whitenessCosts = Append(whitenessCosts, ToString(r.InnovationWhitenessCost))
+        lag1s = Append(lag1s, ToString(r.Lag1InnovationAutocorrelation))
+        finalAs = Append(finalAs, r.FinalAText)
+        labels = Append(labels, r.DiagnosticLabel)
+    }
+
+    let report = Markdown.Report([
+        Markdown.H1("FM Brown-Noise Kalman M2a"),
+        Markdown.Paragraph("M2a tests known-frequency oscillator message-state diagnostics versus M1 position/velocity filtering."),
+        Markdown.Section("Settings", [
+            Markdown.KeyValueTable(
+                ["sampleRate", "duration", "messageHz", "carrierHz", "frequencyDeviationHz", "inputSNRDb", "seed"],
+                [ToString(tiny.SampleRate), ToString(tiny.Duration), ToString(tiny.MessageHz), ToString(tiny.CarrierHz), ToString(tiny.FrequencyDeviationHz), ToString(tiny.InputSNRDb), ToString(tiny.Seed)]
+            )
+        ]),
+        Markdown.Section("Method descriptions", [
+            Markdown.Bullets([
+                "NoFilter",
+                "LowPass",
+                "FixedWhiteKalman",
+                "AdaptiveAr1ColoredNoiseKalman",
+                "OscillatorKalman",
+                "OscillatorAdaptiveAr1Kalman"
+            ])
+        ]),
+        Markdown.Section("Metrics", [
+            Markdown.Table(M2MetricReportTable {
+                mode: modes
+                method: methods
+                outputSNRDb: outputSnrDbs
+                nrmse: nrmses
+                correlation: correlations
+                whitenessCost: whitenessCosts
+                lag1InnovationAutocorrelation: lag1s
+                finalA: finalAs
+                diagnosticLabel: labels
+            })
+        ]),
+        Markdown.Section("Diagnostic comparisons", [Markdown.Table(M2BuildPairwiseTable(diagnostics))]),
+        Markdown.Section("M1 vs M2a interpretation", [
+            Markdown.Callout("info", [
+                "Oscillator adaptive labels compare only against OscillatorKalman.",
+                "Tolerance policy is unchanged: snrEpsilonDb=0.01, whitenessRelativeEpsilon=0.01."
+            ])
+        ]),
+        Markdown.Section("Limitations", [
+            Markdown.Bullets([
+                "No real audio or IQ/PLL receiver path.",
+                "Single bounded tiny case only."
+            ])
+        ]),
+        Markdown.Section("Next recommended experiment", [
+            Markdown.Paragraph("M2b: bounded message-model mismatch and larger case if cycle time remains acceptable.")
+        ])
+    ])
+
+    let summary = Json.Object(
+        "{\"rowCount\":" + ToString(Len(rows)) + ",\"labelTolerance\":{\"snrEpsilonDb\":0.01,\"whitenessRelativeEpsilon\":0.01},\"outputDiagnosticsCount\":" + ToString(Len(diagnostics)) + "}"
+    )
+
+    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M2/metrics.csv", csv)
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M2/metrics.json", summary)
+    Artifact.WriteOctagon(
+        "Experiments/FmBrownNoiseKalman/M2/m2a_report.octagon",
+        M2OctagonSummary {
+            title: "FM Brown-Noise Kalman M2a"
+            rowCount: Len(rows)
+            artifactSkipNotes: ["sample CSV writes are bounded to <=1000 rows"]
+            limitations: ["No real audio/IQ/PLL path in M2a."]
+            labelToleranceSnrEpsilonDb: 0.01
+            labelToleranceWhitenessRelativeEpsilon: 0.01
+            outputDiagnosticsCount: Len(diagnostics)
+        }
+    )
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M2/m2a_report.md", report)
+    return 0
+}

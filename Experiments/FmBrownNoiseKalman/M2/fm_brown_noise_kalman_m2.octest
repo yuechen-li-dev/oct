@@ -1,0 +1,58 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Theory]
+[Suite("Experiments.FmBrownNoiseKalman.M2")]
+[CycleTime(60.0s)]
+[InlineData("direct")]
+[InlineData("phase")]
+fn M2ModesProduceFiniteMetrics(mode: String) -> Void {
+    let c = M2TinyCase()
+    let run = if mode == "direct" {
+        RunM2ModeDirectMessageBrownNoise(c)
+    } else {
+        RunM2ModePhaseDomainFmBrownNoise(c)
+    }
+
+    let expected = Len(run.CleanMessage)
+    Assert.Equal(6, Len(run.Metrics), "m2 should emit 6 methods")
+    Assert.Equal(expected, Len(run.OscillatorKF.Recovered), "oscillator output length")
+    Assert.Equal(expected, Len(run.OscillatorAdaptiveKF.Recovered), "oscillator adaptive output length")
+    Assert.True(run.OscillatorAdaptiveKF.FinalA >= -0.99 and run.OscillatorAdaptiveKF.FinalA <= 0.99, "oscillator adaptive finalA clamp")
+    Assert.False(M2ExactEqual(run.OscillatorKF.Recovered, run.FixedKF.Recovered), "oscillator and fixed outputs should not be exactly equal")
+
+    for i in 0..Len(run.Metrics) {
+        let m = run.Metrics[i]
+        Assert.True(Abs(m.OutputSNRDb) < 1e300, "finite output snr")
+        if m.Method == "OscillatorAdaptiveAr1Kalman" or m.Method == "AdaptiveAr1ColoredNoiseKalman" {
+            Assert.True(Len(m.DiagnosticLabel) > 0, "adaptive rows should carry labels")
+        }
+    }
+}
+
+[Theory]
+[Suite("Experiments.FmBrownNoiseKalman.M2")]
+[CycleTime(60.0s)]
+[InlineData(1)]
+fn M2ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
+    let _ = M2ArtifactWriteAll()?
+
+    let csv = IO.Read("Experiments/FmBrownNoiseKalman/M2/metrics.csv")?
+    Assert.True(Len(csv) <= 64, "metrics csv must remain compact")
+
+    let metricsJson = IO.Load("Experiments/FmBrownNoiseKalman/M2/metrics.json")?
+    Assert.True(Len(metricsJson) > 0, "metrics json written")
+
+    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2a_report.octagon")?
+    Assert.True(Len(octagon) > 0, "octagon report written")
+
+    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2a_report.md")?
+    Assert.True(Len(md) > 10, "markdown report written")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M2")]
+fn M2Artifacts() -> Void ! Error {
+    let _ = M2ArtifactWriteAll()?
+}
