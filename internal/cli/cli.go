@@ -392,10 +392,21 @@ func parseTestOptions(args []string) (tester.TestOptions, []string, error) {
 			}
 			continue
 		}
+		if arg == "--execution" {
+			if i+1 >= len(args) {
+				return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]")
+			}
+			i++
+			options.Execution = strings.TrimSpace(args[i])
+			if options.Execution == "" {
+				return tester.TestOptions{}, nil, fmt.Errorf("--execution requires a non-empty value")
+			}
+			continue
+		}
 		paths = append(paths, arg)
 	}
 	if len(paths) == 0 {
-		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>]")
+		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]")
 	}
 	return options, paths, nil
 }
