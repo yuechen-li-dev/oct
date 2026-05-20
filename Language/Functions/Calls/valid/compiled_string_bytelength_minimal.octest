@@ -1,0 +1,8 @@
+package Calls
+
+import String
+
+[Fact]
+fn compiledStringByteLengthMinimal() -> Void {
+    Assert.Equal(3, String.ByteLength("abc"))
+}

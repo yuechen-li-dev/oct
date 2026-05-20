@@ -689,6 +689,35 @@ func unsupportedBuiltin(name string) error {
 	return unsupported("builtin " + name)
 }
 
+func canonicalCompiledBuiltinName(name string) string {
+	switch name {
+	case "String.ByteLength":
+		return "StringByteLength"
+	case "String.RuneCount":
+		return "StringRuneCount"
+	case "String.Join":
+		return "StringJoin"
+	case "String.ReplaceAll":
+		return "StringReplaceAll"
+	case "String.Contains":
+		return "StringContains"
+	case "String.StartsWith":
+		return "StringStartsWith"
+	case "String.EndsWith":
+		return "StringEndsWith"
+	case "String.Trim":
+		return "StringTrim"
+	case "String.SplitLines":
+		return "StringSplitLines"
+	case "String.EscapeJson", "String.EscapeJSON":
+		return "StringEscapeJSON"
+	case "String.QuoteJson", "String.QuoteJSON":
+		return "StringQuoteJSON"
+	default:
+		return name
+	}
+}
+
 func fallibleType(t string) string {
 	return "Fallible[" + t + "]"
 }
@@ -1908,6 +1937,17 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Float", true, true, nil
 			case "Random.CryptoRandBytes":
 				return normalized, "Bytes", true, true, nil
+			case "StringByteLength", "StringRuneCount", "StringJoin", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
+				ret := "String"
+				switch normalized {
+				case "StringByteLength", "StringRuneCount":
+					ret = "Int"
+				case "StringContains", "StringStartsWith", "StringEndsWith":
+					ret = "Bool"
+				case "StringSplitLines":
+					ret = "String[]"
+				}
+				return normalized, ret, true, false, nil
 			default:
 				return "", "", false, false, unsupportedBuiltin(x.Name)
 			}
@@ -1920,6 +1960,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		builtinName := pkgIdent.Name + "." + x.Field
 		if builtin.IsName(builtinName) {
+			canonical := canonicalCompiledBuiltinName(builtinName)
 			switch builtinName {
 			case "Random.RngSeed":
 				return builtinName, "Random.Rng", true, false, nil
@@ -1940,7 +1981,16 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			case "Random.CryptoRandBytes":
 				return builtinName, "Bytes", true, true, nil
 			default:
-				return builtinName, "", true, false, nil
+				ret := "String"
+				switch canonical {
+				case "StringByteLength", "StringRuneCount":
+					ret = "Int"
+				case "StringContains", "StringStartsWith", "StringEndsWith":
+					ret = "Bool"
+				case "StringSplitLines":
+					ret = "String[]"
+				}
+				return canonical, ret, true, false, nil
 			}
 		}
 		importPkg, ok := c.program.Packages[pkgIdent.Name]
@@ -2167,6 +2217,7 @@ func parseTupleTypeString(t string) ([]string, bool) {
 }
 
 func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
+	name = canonicalCompiledBuiltinName(name)
 	switch name {
 	case "fft":
 		if len(argTypes) != 1 {
@@ -2286,7 +2337,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Matrix<" + elemType + ">", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
-	case "StringByteLength", "String.ByteLength":
+	case "StringByteLength":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -2294,7 +2345,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "Int", nil
-	case "StringRuneCount", "String.RuneCount":
+	case "StringRuneCount":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -2302,7 +2353,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "Int", nil
-	case "StringJoin", "String.Join":
+	case "StringJoin":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
 		}
@@ -2310,7 +2361,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "String", nil
-	case "StringReplaceAll", "String.ReplaceAll":
+	case "StringReplaceAll":
 		if len(argTypes) != 3 {
 			return "", fmt.Errorf("function '%s' expects 3 arguments, got %d", name, len(argTypes))
 		}
@@ -2320,7 +2371,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "String", nil
-	case "StringContains", "StringStartsWith", "StringEndsWith", "String.Contains", "String.StartsWith", "String.EndsWith":
+	case "StringContains", "StringStartsWith", "StringEndsWith":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
 		}
@@ -2328,7 +2379,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "Bool", nil
-	case "StringTrim", "StringEscapeJSON", "StringQuoteJSON", "String.Trim", "String.EscapeJson", "String.EscapeJSON", "String.QuoteJson", "String.QuoteJSON":
+	case "StringTrim", "StringEscapeJSON", "StringQuoteJSON":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -2336,7 +2387,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "String", nil
-	case "StringSplitLines", "String.SplitLines":
+	case "StringSplitLines":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -4365,7 +4416,7 @@ func goStmt(s MIRStmt) (string, error) {
 		return fmt.Sprintf("%s = %s{%s}", st.Target, goType(st.TypeName), strings.Join(parts, ", ")), nil
 	case MIRCall:
 		if st.Builtin {
-			switch st.Callee {
+			switch canonicalCompiledBuiltinName(st.Callee) {
 			case "Len":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":
@@ -4449,27 +4500,27 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, st.Args[0]), nil
 			case "Join":
 				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "StringByteLength", "String.ByteLength":
+			case "StringByteLength":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
-			case "StringRuneCount", "String.RuneCount":
+			case "StringRuneCount":
 				return fmt.Sprintf("%s = utf8.RuneCountInString(%s)", st.Target, st.Args[0]), nil
-			case "StringJoin", "String.Join":
+			case "StringJoin":
 				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "StringReplaceAll", "String.ReplaceAll":
+			case "StringReplaceAll":
 				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
-			case "StringContains", "String.Contains":
+			case "StringContains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "StringStartsWith", "String.StartsWith":
+			case "StringStartsWith":
 				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "StringEndsWith", "String.EndsWith":
+			case "StringEndsWith":
 				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "StringTrim", "String.Trim":
+			case "StringTrim":
 				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, st.Args[0]), nil
-			case "StringSplitLines", "String.SplitLines":
+			case "StringSplitLines":
 				return fmt.Sprintf("%s = __octStringSplitLines(%s)", st.Target, st.Args[0]), nil
-			case "StringEscapeJSON", "String.EscapeJson", "String.EscapeJSON":
+			case "StringEscapeJSON":
 				return fmt.Sprintf("%s = __octStringEscapeJSON(%s)", st.Target, st.Args[0]), nil
-			case "StringQuoteJSON", "String.QuoteJson", "String.QuoteJSON":
+			case "StringQuoteJSON":
 				return fmt.Sprintf("%s = strconv.Quote(%s)", st.Target, st.Args[0]), nil
 			case "fft":
 				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
