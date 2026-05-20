@@ -1,4 +1,4 @@
-# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20
+# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20 (Assertions repair pass)
 
 ## 1) Overview
 - Compiled pipeline: **Oct -> MIR -> generated Go -> .octbin**.
@@ -41,9 +41,9 @@
 | `Json.*` | Supported | Partial/unsupported | likely fallback/fail in wrapper paths | missing compiled bridges | P1 |
 | `Artifact.*` | Supported | Partial/unsupported | artifact suites not reliably compiled | fallible-expression + bridge gaps | P2 |
 | Numeric helpers (`FloorToInt`) | Supported | Not observed in current M2 failure diagnostics | Current M2 blockers are fallible statement + Markdown wrapper | no new FloorToInt repro in this pass | P1 |
-| Test assertion helpers | Supported | Partial | mixed; depends on called wrappers/builtins | depends on underlying builtin coverage | P1 |
+| Test assertion helpers (`Assert.True/False/Equal`) | Supported | Supported (core fixtures) | compiled valid fixtures run with compiled=3 fallback=0 | failing fixture exits nonzero with `assertion failed: ...`; diagnostics currently plain stderr text via `os.Exit(1)` | P0 closed |
 
-## 5) Current command evidence (2026-05-20)
+## 5) Current command evidence (2026-05-20 (Assertions repair pass))
 - `go run ./cmd/oct test Language/Functions/Calls --execution compiled`
   - pass; this target currently contains invalid `.octfail` coverage only in this run.
 - `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2b --execution compiled`
@@ -51,7 +51,7 @@
 - `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution compiled`
   - fails with non-zero exit; blockers are fallible expression statement + `Markdown.Report` unsupported.
 - `go run ./cmd/oct test Libraries/String --execution compiled`
-  - no longer fails on undefined generated `fn_String_*` symbol; now fails earlier on unsupported `Assert` in compiled lowering.
+  - assertion lowering is no longer the blocker; next blocker remains unsupported builtin `StringByteLength`.
 - Existing verification (prior pass):
   - Libraries/String auto: compiled 0 fallback 5
   - Libraries/Markdown auto: compiled 0 fallback 4
@@ -61,10 +61,9 @@
 
 ## 6) Priority backlog
 ### P0 (current critical path)
-1. Fix generated symbol binding for selected compiled test functions (namespaced harness linkage).
-2. Resolve compiled support path for `FloorToInt` used in M2/M2b numerical flow.
-3. Resolve M2 fallible expression-statement failures (`?`, `!`, or `match` required).
-4. Make M2b suite compile/run enough to avoid interpreted timeout behavior in auto mode.
+1. Resolve compiled support path for `FloorToInt` used in M2/M2b numerical flow.
+2. Resolve M2 fallible expression-statement failures (`?`, `!`, or `match` required).
+3. Make M2b suite compile/run enough to avoid interpreted timeout behavior in auto mode.
 
 ### P1
 1. String wrappers.

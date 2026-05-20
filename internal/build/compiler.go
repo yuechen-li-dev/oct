@@ -317,7 +317,9 @@ func compileProgram(program project.Program) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	defer os.RemoveAll(genDir)
+	if os.Getenv("OCT_KEEP_GEN") == "" {
+		defer os.RemoveAll(genDir)
+	}
 	genPath := filepath.Join(genDir, filepath.Base(artifactPath)+".gen.go")
 	if err := os.WriteFile(genPath, []byte(goSrc), 0o644); err != nil {
 		return Result{}, fmt.Errorf("write generated go %s: %w", genPath, err)
@@ -1218,17 +1220,14 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				}
 				switch calleeName {
 				case "Assert.True":
-					tmp := c.temp("Void")
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.True", Args: args, Builtin: true, RetType: "Void"})
-					return tmp, "Void", false, nil
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.True", Args: args, Builtin: true, RetType: "Void"})
+					return "_", "Void", false, nil
 				case "Assert.False":
-					tmp := c.temp("Void")
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.False", Args: args, Builtin: true, RetType: "Void"})
-					return tmp, "Void", false, nil
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.False", Args: args, Builtin: true, RetType: "Void"})
+					return "_", "Void", false, nil
 				case "Assert.Equal":
-					tmp := c.temp("Void")
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.Equal", Args: args, Builtin: true, RetType: "Void"})
-					return tmp, "Void", false, nil
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Equal", Args: args, Builtin: true, RetType: "Void"})
+					return "_", "Void", false, nil
 				}
 			}
 			switch calleeName {
@@ -2806,8 +2805,35 @@ func emitGo(m MIRModule) (string, error) {
 		resultNames = append(resultNames, t)
 	}
 	sort.Strings(resultNames)
+	needsVoidType := false
 	for _, t := range resultNames {
-		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), goType(t))
+		if t == "Void" {
+			needsVoidType = true
+			break
+		}
+	}
+	if !needsVoidType {
+		for _, fn := range m.Functions {
+			for _, l := range fn.Locals {
+				if l.Type == "Void" {
+					needsVoidType = true
+					break
+				}
+			}
+			if needsVoidType {
+				break
+			}
+		}
+	}
+	if needsVoidType {
+		b.WriteString("type __octVoid struct{}\n\n")
+	}
+	for _, t := range resultNames {
+		valueType := goType(t)
+		if t == "Void" {
+			valueType = "__octVoid"
+		}
+		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), valueType)
 	}
 	for _, r := range m.Records {
 		emittedRecordTypes[r.Package+"."+r.Name] = struct{}{}
@@ -2844,12 +2870,6 @@ func emitGo(m MIRModule) (string, error) {
 		flowTypeNames = append(flowTypeNames, t)
 	}
 	sort.Strings(flowTypeNames)
-	for _, t := range flowTypeNames {
-		if t == "Void" {
-			b.WriteString("type __octVoid struct{}\n\n")
-			break
-		}
-	}
 	for _, t := range flowTypeNames {
 		fmt.Fprintf(&b, "type __octFlowInstance_%s interface {\n", goSafeName(t))
 		b.WriteString("\t__octStep()\n\t__octActive() string\n\t__octComplete() bool\n")
@@ -2951,7 +2971,11 @@ func emitGo(m MIRModule) (string, error) {
 			fmt.Fprintf(&b, ") %s {\n", returnType)
 		}
 		for _, l := range fn.Locals {
-			fmt.Fprintf(&b, "\tvar %s %s\n", l.Name, goType(l.Type))
+			localType := goType(l.Type)
+			if l.Type == "Void" {
+				localType = "__octVoid"
+			}
+			fmt.Fprintf(&b, "\tvar %s %s\n", l.Name, localType)
 		}
 		labelToIdx := map[string]int{}
 		for i, bb := range fn.Blocks {
