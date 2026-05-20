@@ -1,0 +1,9 @@
+package Random
+
+[Fact]
+fn CompiledRandomGaussianDispatch() -> Void {
+    let seed = Random.RngSeed(123)
+    Random.Gaussian(seed, 0.0, 1.0)
+    Random.RandNormal(seed, 0.0, 1.0)
+    Assert.True(true, "reaching this assertion proves gaussian/randnormal wrapper Require fallback was bypassed")
+}

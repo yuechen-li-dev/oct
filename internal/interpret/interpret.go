@@ -2358,7 +2358,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{{Kind: ValueBool, Bool: true}, {Kind: ValueInt, Int: 7}}}}, nil
 	}
-	if strings.HasPrefix(callee, "Random.") || (pkgName == "Random" && (callee == "RngSeed" || callee == "RandInt" || callee == "RandFloat01" || callee == "RandFloatRange" || callee == "RandBernoulli" || callee == "RandNormal" || callee == "CryptoRandBytes" || callee == "CryptoRandInt" || callee == "CryptoRandFloat01")) {
+	if strings.HasPrefix(callee, "Random.") || (pkgName == "Random" && (callee == "RngSeed" || callee == "RandInt" || callee == "RandFloat01" || callee == "RandFloatRange" || callee == "RandBernoulli" || callee == "RandNormal" || callee == "Gaussian" || callee == "CryptoRandBytes" || callee == "CryptoRandInt" || callee == "CryptoRandFloat01")) {
 		args := make([]Value, 0, len(argumentExprs))
 		for _, a := range argumentExprs {
 			r, err := i.evalExpr(env, pkgName, a)
@@ -2415,7 +2415,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			}
 			s, x := randomNext(s)
 			return evalResult{value: randomBoolResultValue(rngValueFromState(s), toFloat01(x) < p)}, nil
-		case "Random.RandNormal", "RandNormal":
+		case "Random.RandNormal", "RandNormal", "Random.Gaussian", "Gaussian":
 			s, _ := rngStateFromValue(args[0])
 			mean, std := args[1].Float, args[2].Float
 			if std < 0 {

@@ -329,7 +329,7 @@ func (c checker) checkFile(file ast.File) error {
 
 func isRandomBuiltinAlias(name string) bool {
 	switch name {
-	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
 		return true
 	default:
 		return false
@@ -2553,10 +2553,10 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	}
 	randomBuiltin := callee
 	switch callee {
-	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
 		randomBuiltin = "Random." + callee
 	}
-	if randomBuiltin == "Random.RngSeed" || randomBuiltin == "Random.RandInt" || randomBuiltin == "Random.RandFloat01" || randomBuiltin == "Random.RandFloatRange" || randomBuiltin == "Random.RandBernoulli" || randomBuiltin == "Random.RandNormal" || randomBuiltin == "Random.CryptoRandInt" || randomBuiltin == "Random.CryptoRandFloat01" || randomBuiltin == "Random.CryptoRandBytes" {
+	if randomBuiltin == "Random.RngSeed" || randomBuiltin == "Random.RandInt" || randomBuiltin == "Random.RandFloat01" || randomBuiltin == "Random.RandFloatRange" || randomBuiltin == "Random.RandBernoulli" || randomBuiltin == "Random.RandNormal" || randomBuiltin == "Random.Gaussian" || randomBuiltin == "Random.CryptoRandInt" || randomBuiltin == "Random.CryptoRandFloat01" || randomBuiltin == "Random.CryptoRandBytes" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -2579,7 +2579,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 				return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
 			}
 			return ExprType{ValueType: randIntResultType}, nil
-		case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal":
+		case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal", "Random.Gaussian":
 			if (randomBuiltin == "Random.RandFloat01" && len(arguments) != 1) || (randomBuiltin != "Random.RandFloat01" && len(arguments) != 3) {
 				return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
 			}
