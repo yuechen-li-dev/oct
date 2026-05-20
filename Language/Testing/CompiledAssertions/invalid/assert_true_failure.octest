@@ -1,0 +1,6 @@
+package Main
+
+[Fact]
+fn CompiledAssertTrueFails() -> Void {
+    Assert.True(false, "expected failure message")
+}
