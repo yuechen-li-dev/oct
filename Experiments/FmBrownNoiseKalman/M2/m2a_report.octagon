@@ -1,0 +1,9 @@
+M2OctagonSummary {
+    title: "FM Brown-Noise Kalman M2a"
+    rowCount: (12)
+    artifactSkipNotes: ["sample CSV writes are bounded to <=1000 rows"]
+    limitations: ["No real audio/IQ/PLL path in M2a."]
+    labelToleranceSnrEpsilonDb: (0.01)
+    labelToleranceWhitenessRelativeEpsilon: (0.01)
+    outputDiagnosticsCount: (6)
+}
