@@ -15,7 +15,7 @@
 | `[Theory]` + `[InlineData]` | Partial | Harness now binds to emitted test symbols (no `undefined fn_String_*`), but wrapper/assert coverage still blocks many suites. |
 | `[CycleTime]` | Partial | CLI mode plumbing exists; no claim of broad compiled semantic parity yet. |
 | `[Suite]` | Partial | Suite selection works; compiled path still blocked in M2/M2b cases. |
-| Explicit file target isolation | Supported | CLI accepts file target + execution mode. |
+| Explicit file target isolation | Supported | Compiled explicit `.octest` target now isolates selection to the chosen file in its package (imports still load normally). |
 | Directory/package targets | Supported | `oct test <dir> --execution ...` works. |
 | Imported test isolation | Partial | Works in many cases, but generated symbol binding is still a blocker for some namespaced cases. |
 | Auto fallback reporting | Supported | Summary prints compiled/fallback counts. |
@@ -99,7 +99,7 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### Measured outcome
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution compiled`
-  - still fails in this invocation shape with `duplicate declaration 'main' in package 'String'`.
+  - passes with `compiled: 4 interpreted fallback: 0`.
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution auto`
   - passes with `compiled: 4 interpreted fallback: 0`.
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution interpreted`
@@ -111,5 +111,5 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 - `go run ./cmd/oct test Libraries/String --execution interpreted`
   - passes.
 
-### Next blocker
-- Remaining compiled failure for the single-file compiled invocation appears to be a harness/target-shape issue (`duplicate declaration 'main'`) rather than missing generated imports.
+### File-target/harness repair (M0d)
+- `project.LoadForTest` file-path loading now applies `.octest` file-selection filtering only to the explicitly selected entry package file, preventing parse/selection widening to sibling `.octest` files in compiled file-target runs.
