@@ -286,7 +286,7 @@ func Compile(path string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program)
+	return compileProgram(program, compileOptions{})
 }
 
 func CompileForTest(path string) (Result, error) {
@@ -294,15 +294,19 @@ func CompileForTest(path string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program)
+	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
 
-func compileProgram(program project.Program) (Result, error) {
+type compileOptions struct {
+	selectedReachableOnly bool
+}
+
+func compileProgram(program project.Program, options compileOptions) (Result, error) {
 	if err := typecheck.CheckProgram(program); err != nil {
 		return Result{}, err
 	}
 
-	module, err := lowerProgram(program)
+	module, err := lowerProgram(program, options)
 	if err != nil {
 		return Result{}, err
 	}
@@ -392,8 +396,12 @@ type lowerCtx struct {
 	inPrometheus    bool
 }
 
-func lowerProgram(program project.Program) (MIRModule, error) {
+func lowerProgram(program project.Program, options compileOptions) (MIRModule, error) {
 	module := MIRModule{EntryPackage: program.Entry}
+	reachable := map[string]map[string]struct{}{}
+	if options.selectedReachableOnly {
+		reachable = collectReachableFunctions(program)
+	}
 	pkgNames := make([]string, 0, len(program.Packages))
 	for name := range program.Packages {
 		pkgNames = append(pkgNames, name)
@@ -439,6 +447,9 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Flows = append(module.Flows, mirFlow)
 		}
 		for _, fn := range pkg.Functions {
+			if options.selectedReachableOnly && !isReachableFunction(reachable, pkgName, fn.Name) {
+				continue
+			}
 			if fn.IsArtifact {
 				continue
 			}
@@ -453,7 +464,7 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			if fn.IsTheory || fn.IsFact {
 				// compiled octest runner can target these directly
 			}
-			if fn.IsTestFile && !fn.IsBenchmark && !fn.IsFact && !fn.IsTheory {
+			if fn.IsTestFile && !fn.IsBenchmark && !fn.IsFact && !fn.IsTheory && !options.selectedReachableOnly {
 				continue
 			}
 			lowered, err := lowerFunction(program, pkg, fn)
@@ -467,6 +478,190 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 		return MIRModule{}, fmt.Errorf("entry package '%s' is missing main/Main function", program.Entry)
 	}
 	return module, nil
+}
+
+func isReachableFunction(reachable map[string]map[string]struct{}, pkgName string, fnName string) bool {
+	pkgFns, ok := reachable[pkgName]
+	if !ok {
+		return false
+	}
+	_, ok = pkgFns[fnName]
+	return ok
+}
+
+func collectReachableFunctions(program project.Program) map[string]map[string]struct{} {
+	reachable := map[string]map[string]struct{}{}
+	functions := map[string]map[string]ast.FunctionDecl{}
+	for pkgName, pkg := range program.Packages {
+		functions[pkgName] = map[string]ast.FunctionDecl{}
+		for _, fn := range pkg.Functions {
+			functions[pkgName][fn.Name] = fn
+		}
+	}
+	queue := [][2]string{{program.Entry, "main"}, {program.Entry, "Main"}}
+	seen := map[string]struct{}{}
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		key := item[0] + "." + item[1]
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		fn, ok := functions[item[0]][item[1]]
+		if !ok {
+			continue
+		}
+		if _, ok := reachable[item[0]]; !ok {
+			reachable[item[0]] = map[string]struct{}{}
+		}
+		reachable[item[0]][item[1]] = struct{}{}
+		for _, call := range collectFunctionCalls(fn.Body) {
+			targetPkg := call[0]
+			if targetPkg == "" {
+				targetPkg = item[0]
+			}
+			if targetPkg == "" || call[1] == "" {
+				continue
+			}
+			queue = append(queue, [2]string{targetPkg, call[1]})
+		}
+	}
+	return reachable
+}
+
+func collectFunctionCalls(block ast.Block) [][2]string {
+	calls := make([][2]string, 0)
+	for _, stmt := range block.Statements {
+		switch s := stmt.(type) {
+		case ast.LetStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.VarStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.AssignStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.DestructureAssignStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.IndexAssignStmt:
+			for _, idx := range s.Indices {
+				calls = append(calls, collectExprCalls(idx)...)
+			}
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.FieldAssignStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.ReturnStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.ExprStmt:
+			calls = append(calls, collectExprCalls(s.Value)...)
+		case ast.ForStmt:
+			calls = append(calls, collectExprCalls(s.Range)...)
+			calls = append(calls, collectFunctionCalls(s.Body)...)
+		case ast.MatchStmt:
+			calls = append(calls, collectExprCalls(s.Subject)...)
+			calls = append(calls, collectFunctionCalls(s.OkBody)...)
+			calls = append(calls, collectFunctionCalls(s.ErrBody)...)
+		case ast.IfStmt:
+			calls = append(calls, collectExprCalls(s.Condition)...)
+			calls = append(calls, collectFunctionCalls(s.ThenBody)...)
+			if s.ElseBody != nil {
+				calls = append(calls, collectFunctionCalls(*s.ElseBody)...)
+			}
+		case ast.WhileStmt:
+			calls = append(calls, collectExprCalls(s.Condition)...)
+			calls = append(calls, collectFunctionCalls(s.Body)...)
+		case ast.PrometheusStmt:
+			calls = append(calls, collectFunctionCalls(s.Body)...)
+		}
+	}
+	return calls
+}
+
+func collectExprCalls(expr ast.Expr) [][2]string {
+	calls := make([][2]string, 0)
+	switch e := expr.(type) {
+	case ast.CallExpr:
+		calls = append(calls, resolveCallTarget(e.Callee))
+		for _, arg := range e.Arguments {
+			calls = append(calls, collectExprCalls(arg)...)
+		}
+	case ast.FieldAccessExpr:
+		calls = append(calls, collectExprCalls(e.Target)...)
+	case ast.IndexExpr:
+		calls = append(calls, collectExprCalls(e.Target)...)
+		for _, idx := range e.Indices {
+			calls = append(calls, collectExprCalls(idx)...)
+		}
+	case ast.BinaryExpr:
+		calls = append(calls, collectExprCalls(e.Left)...)
+		calls = append(calls, collectExprCalls(e.Right)...)
+	case ast.UnaryExpr:
+		calls = append(calls, collectExprCalls(e.Operand)...)
+	case ast.RangeExpr:
+		calls = append(calls, collectExprCalls(e.Start)...)
+		calls = append(calls, collectExprCalls(e.End)...)
+		calls = append(calls, collectExprCalls(e.Step)...)
+	case ast.ParenExpr:
+		calls = append(calls, collectExprCalls(e.Inner)...)
+	case ast.PropagateExpr:
+		calls = append(calls, collectExprCalls(e.Inner)...)
+	case ast.UnwrapExpr:
+		calls = append(calls, collectExprCalls(e.Inner)...)
+	case ast.ArrayLiteralExpr:
+		for _, v := range e.Elements {
+			calls = append(calls, collectExprCalls(v)...)
+		}
+	case ast.VectorLiteralExpr:
+		for _, v := range e.Elements {
+			calls = append(calls, collectExprCalls(v)...)
+		}
+	case ast.MatrixLiteralExpr:
+		for _, row := range e.Rows {
+			for _, cell := range row {
+				calls = append(calls, collectExprCalls(cell)...)
+			}
+		}
+	case ast.SwitchExpr:
+		calls = append(calls, collectExprCalls(e.Subject)...)
+		for _, c := range e.Cases {
+			calls = append(calls, collectExprCalls(c.Match)...)
+			calls = append(calls, collectExprCalls(c.Value)...)
+		}
+		calls = append(calls, collectExprCalls(e.Else)...)
+	case ast.MatchExpr:
+		calls = append(calls, collectExprCalls(e.Subject)...)
+		for _, c := range e.Cases {
+			calls = append(calls, collectExprCalls(c.Value)...)
+		}
+	case ast.IfExpr:
+		calls = append(calls, collectExprCalls(e.Condition)...)
+		calls = append(calls, collectExprCalls(e.ThenExpr)...)
+		calls = append(calls, collectExprCalls(e.ElseExpr)...)
+	case ast.UtilityWhenExpr:
+		calls = append(calls, collectExprCalls(e.Policy.Hysteresis)...)
+		calls = append(calls, collectExprCalls(e.Policy.MinCommit)...)
+		for _, c := range e.Cases {
+			calls = append(calls, collectExprCalls(c.Value)...)
+			calls = append(calls, collectExprCalls(c.Condition)...)
+			calls = append(calls, collectExprCalls(c.Score)...)
+		}
+		calls = append(calls, collectExprCalls(e.Else)...)
+	case ast.BatchExpr:
+		calls = append(calls, collectExprCalls(e.Input)...)
+		calls = append(calls, collectFunctionCalls(e.Body)...)
+	}
+	return calls
+}
+
+func resolveCallTarget(callee ast.Expr) [2]string {
+	switch c := callee.(type) {
+	case ast.IdentifierExpr:
+		return [2]string{"", c.Name}
+	case ast.FieldAccessExpr:
+		if pkg, ok := c.Target.(ast.IdentifierExpr); ok {
+			return [2]string{pkg.Name, c.Field}
+		}
+	}
+	return [2]string{}
 }
 
 func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) ([]MIRFunction, error) {

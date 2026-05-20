@@ -1,0 +1,11 @@
+package Main
+import Markdown
+
+fn UnsupportedMarkdownPath() -> Void {
+    Markdown.Report([["title", "body"]])
+}
+
+[Fact]
+fn CompiledFactReachesUnsupportedPath() -> Void {
+    UnsupportedMarkdownPath()
+}
