@@ -1,0 +1,8 @@
+package Main
+
+import Helpers
+
+[Fact]
+fn SymbolBindingNamespacedCall() -> Void {
+    Helpers.VerifyAnswer()
+}

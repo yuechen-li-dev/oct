@@ -437,7 +437,21 @@ func lowerProgram(program project.Program) (MIRModule, error) {
 			module.Flows = append(module.Flows, mirFlow)
 		}
 		for _, fn := range pkg.Functions {
-			if fn.IsTheory || fn.IsFact || fn.IsArtifact || (fn.IsTestFile && !fn.IsBenchmark) {
+			if fn.IsArtifact {
+				continue
+			}
+			if fn.IsTestFile && !fn.IsBenchmark {
+				if pkgName != program.Entry {
+					continue
+				}
+				if !fn.IsFact && !fn.IsTheory {
+					continue
+				}
+			}
+			if fn.IsTheory || fn.IsFact {
+				// compiled octest runner can target these directly
+			}
+			if fn.IsTestFile && !fn.IsBenchmark && !fn.IsFact && !fn.IsTheory {
 				continue
 			}
 			lowered, err := lowerFunction(program, pkg, fn)

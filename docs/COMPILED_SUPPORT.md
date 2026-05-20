@@ -12,7 +12,7 @@
 | Surface | Status | Notes / evidence |
 |---|---|---|
 | `[Fact]` | Partial | Control-plane works; compiled failures still common on unsupported builtins / lowering. |
-| `[Theory]` + `[InlineData]` | Partial | Harness runs, but compiled symbol-binding failures observed in verification (`undefined: fn_String_StringCoreBasicsNamespaced`). |
+| `[Theory]` + `[InlineData]` | Partial | Harness now binds to emitted test symbols (no `undefined fn_String_*`), but wrapper/assert coverage still blocks many suites. |
 | `[CycleTime]` | Partial | CLI mode plumbing exists; no claim of broad compiled semantic parity yet. |
 | `[Suite]` | Partial | Suite selection works; compiled path still blocked in M2/M2b cases. |
 | Explicit file target isolation | Supported | CLI accepts file target + execution mode. |
@@ -26,7 +26,7 @@
 |---|---|---|
 | Arithmetic/comparisons/if/loops | Supported (core) | Present in compiled benchmark/loop tests; still subject to unsupported builtin paths. |
 | Arrays/records/field access/chained access | Partial | Core lowering exists; wrapper-heavy suites still fall back/fail. |
-| Functions/imports/namespaces | Partial | Works broadly, but symbol binding failures still present for some generated test harness names. |
+| Functions/imports/namespaces | Partial | Symbol binding bug fixed for compiled octest harness; remaining gaps are wrapper/assert builtin coverage. |
 | Scientific float literals | Partial | Present in M2 code paths, but not fully isolated from other compiled blockers. |
 | Fallible calls (`?`, `!`, `match`) | Partial | Language supports these; compiled tests still fail if expression statements are fallible. |
 | Fallible expression statements | Unsupported by rule | Enforced diagnostic: `expression statement must not be fallible; handle it with '?', '!', or match`. |
@@ -40,16 +40,18 @@
 | `Csv.*` | Supported | Partial/unsupported | Often fallback/fail | `CsvRead` not compiled-supported in current path | P1 |
 | `Json.*` | Supported | Partial/unsupported | likely fallback/fail in wrapper paths | missing compiled bridges | P1 |
 | `Artifact.*` | Supported | Partial/unsupported | artifact suites not reliably compiled | fallible-expression + bridge gaps | P2 |
-| Numeric helpers (`FloorToInt`) | Supported | **Currently blocked in M2/M2b path** | Causes compiled failure, no fallback in `--execution compiled` | unresolved compiled builtin handling in this path | **P0** |
+| Numeric helpers (`FloorToInt`) | Supported | Not observed in current M2 failure diagnostics | Current M2 blockers are fallible statement + Markdown wrapper | no new FloorToInt repro in this pass | P1 |
 | Test assertion helpers | Supported | Partial | mixed; depends on called wrappers/builtins | depends on underlying builtin coverage | P1 |
 
 ## 5) Current command evidence (2026-05-20)
 - `go run ./cmd/oct test Language/Functions/Calls --execution compiled`
   - pass; this target currently contains invalid `.octfail` coverage only in this run.
 - `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2b --execution compiled`
-  - fails: `FloorToInt` unsupported in `M2BuildCleanMessage`; also fallible expression statement in artifact test.
+  - fails with non-zero exit; first failure is fallible expression-statement in generated runner entry, plus `unknown function 'Markdown.Report'` on artifact path.
 - `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution compiled`
-  - fails: same `FloorToInt` blocker + fallible expression statement.
+  - fails with non-zero exit; blockers are fallible expression statement + `Markdown.Report` unsupported.
+- `go run ./cmd/oct test Libraries/String --execution compiled`
+  - no longer fails on undefined generated `fn_String_*` symbol; now fails earlier on unsupported `Assert` in compiled lowering.
 - Existing verification (prior pass):
   - Libraries/String auto: compiled 0 fallback 5
   - Libraries/Markdown auto: compiled 0 fallback 4
