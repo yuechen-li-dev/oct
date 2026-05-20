@@ -1,47 +1,80 @@
-# `oct build` Compiled Support Matrix (M89)
+# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20
 
-This page is the repository truth surface for compiled mode (`oct build`).
+## 1) Overview
+- Compiled pipeline: **Oct -> MIR -> generated Go -> .octbin**.
+- Used by benchmark-oriented compiled tests and now exposed for Octest via:
+  - `oct test --execution auto|compiled|interpreted`
+- `auto` prefers compiled and falls back to interpreted.
+- `compiled` requires compiled support and fails fast with explicit diagnostics.
+- `interpreted` stays on the legacy interpreter path.
 
-Goal: keep the compiled boundary explicit and testable.
+## 2) Test execution support status
+| Surface | Status | Notes / evidence |
+|---|---|---|
+| `[Fact]` | Partial | Control-plane works; compiled failures still common on unsupported builtins / lowering. |
+| `[Theory]` + `[InlineData]` | Partial | Harness runs, but compiled symbol-binding failures observed in verification (`undefined: fn_String_StringCoreBasicsNamespaced`). |
+| `[CycleTime]` | Partial | CLI mode plumbing exists; no claim of broad compiled semantic parity yet. |
+| `[Suite]` | Partial | Suite selection works; compiled path still blocked in M2/M2b cases. |
+| Explicit file target isolation | Supported | CLI accepts file target + execution mode. |
+| Directory/package targets | Supported | `oct test <dir> --execution ...` works. |
+| Imported test isolation | Partial | Works in many cases, but generated symbol binding is still a blocker for some namespaced cases. |
+| Auto fallback reporting | Supported | Summary prints compiled/fallback counts. |
+| `[Artifact]` in compiled path | Unsupported/Partial | Artifact-heavy tests currently hit fallible-expression and builtin support gaps. |
 
-- **Supported** means there is compile+run coverage for that family.
-- **Unsupported** means `oct build` fails with an explicit deterministic diagnostic (`compiled mode does not yet support ...`).
+## 3) Core language/lowering support (compiled)
+| Feature | Status | Notes |
+|---|---|---|
+| Arithmetic/comparisons/if/loops | Supported (core) | Present in compiled benchmark/loop tests; still subject to unsupported builtin paths. |
+| Arrays/records/field access/chained access | Partial | Core lowering exists; wrapper-heavy suites still fall back/fail. |
+| Functions/imports/namespaces | Partial | Works broadly, but symbol binding failures still present for some generated test harness names. |
+| Scientific float literals | Partial | Present in M2 code paths, but not fully isolated from other compiled blockers. |
+| Fallible calls (`?`, `!`, `match`) | Partial | Language supports these; compiled tests still fail if expression statements are fallible. |
+| Fallible expression statements | Unsupported by rule | Enforced diagnostic: `expression statement must not be fallible; handle it with '?', '!', or match`. |
 
-## Supported in compiled mode (current)
+## 4) Builtin / wrapper support snapshot
+| Surface | Interpreted | Compiled | Auto behavior | Blocker | Priority |
+|---|---|---|---|---|---|
+| `String.*` wrappers | Supported | Not supported enough | Falls back (e.g., String auto compiled 0 fallback 5) | Symbol binding / wrapper compiled coverage | P1 |
+| `Markdown.*` wrappers | Supported | Not supported enough | Falls back (compiled 0 fallback 4) | Wrapper lowering/runtime gaps | P1 |
+| `IO.*` wrappers | Supported | Not supported enough | Falls back (compiled 0 fallback 35) | CSV + IO wrapper gaps | P1 |
+| `Csv.*` | Supported | Partial/unsupported | Often fallback/fail | `CsvRead` not compiled-supported in current path | P1 |
+| `Json.*` | Supported | Partial/unsupported | likely fallback/fail in wrapper paths | missing compiled bridges | P1 |
+| `Artifact.*` | Supported | Partial/unsupported | artifact suites not reliably compiled | fallible-expression + bridge gaps | P2 |
+| Numeric helpers (`FloorToInt`) | Supported | **Currently blocked in M2/M2b path** | Causes compiled failure, no fallback in `--execution compiled` | unresolved compiled builtin handling in this path | **P0** |
+| Test assertion helpers | Supported | Partial | mixed; depends on called wrappers/builtins | depends on underlying builtin coverage | P1 |
 
-| Surface | Status | Evidence |
-| --- | --- | --- |
-| Functions, returns, variables, assignment, control-flow blocks | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunSubsetProgram`, `TestLowerProgramBuildsMIRShape`) |
-| Records (construction, field access, updates), enums | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunCrossPackageFallibleAndEnum`, `TestCompileAndRunNamedRecordArraySurface`) |
-| Arrays (including named-record arrays) and indexing | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunNamedRecordArraySurface`) |
-| Vector literals, matrix literals, and core matrix multiplication (`Matrix @ Vector`, `Matrix @ Matrix`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunVectorsMatricesM93`, `TestCompileRunParityVectorsMatricesM93`) |
-| Fallible functions (`! Error`, `?`, `!`, `match`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunCrossPackageFallibleAndEnum`, `TestCompileAndRunFalliblePropagationAndMatch / TestCompileAndRunFallibleUnwrap`) |
-| Package imports / cross-package calls | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunSubsetProgram`, `TestCompileAndRunCrossPackageFallibleAndEnum`) |
-| `if` statements and `if` expressions (condition-switch style) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunIfExpressionConditionSwitchSurface`, branch MIR tests) |
-| `switch` expressions (subject + condition forms) | Supported | `cmd/oct/m19_enum_switch_test.go` (`TestM19EnumAwareSwitch`) + `cmd/oct/m21_string_ergonomics_test.go` (`switch expression string result`) |
-| `while` statements | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunLoopLoweringParity`) |
-| `for` range loops (`start..end`, `start..end step n`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunLoopLoweringParity`) |
-| Flows (`Step`, `Active`, `Result`, `Complete`, `StateHistory`, `ResumeTarget`) | Supported | `internal/build/compiler_test.go` flow tests `TestCompileAndRunFlowCoreRuntimeBuiltins` |
-| `when` in flow states | Supported | `internal/build/compiler_test.go` (`TestCompileFlowDecisionDoesNotUseSpecialCaseShimPath`, `TestCompileFlowBoardAndWhenActionBlock`) |
-| non-flow utility `when utility` expressions | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunStandaloneUtilityWhenParity`) |
-| Flow `board` fields | Supported | `internal/build/compiler_test.go` (`TestCompileFlowBoardAndWhenActionBlock`) |
-| `remember` / `resume` in flows | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunFlowRememberResume...`, `TestCompileFlowRememberResumeMIRDump`) |
-| `batch` expression | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunBatchParameterSweepAndOrder`) |
-| Octagon I/O (`WriteOctagon`, `LoadOctagon`) | Supported | `internal/build/compiler_test.go` (`TestCompileAndRunOctagonRoundTrip`) |
-| Selected string/util built-ins (`ToString`, `Float`, `Contains`, `StartsWith`, `EndsWith`, `Trim`, `Lower`, `Upper`, `Join`) | Supported | `internal/build/compiler.go` builtin lowering + compile tests |
+## 5) Current command evidence (2026-05-20)
+- `go run ./cmd/oct test Language/Functions/Calls --execution compiled`
+  - pass; this target currently contains invalid `.octfail` coverage only in this run.
+- `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2b --execution compiled`
+  - fails: `FloorToInt` unsupported in `M2BuildCleanMessage`; also fallible expression statement in artifact test.
+- `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution compiled`
+  - fails: same `FloorToInt` blocker + fallible expression statement.
+- Existing verification (prior pass):
+  - Libraries/String auto: compiled 0 fallback 5
+  - Libraries/Markdown auto: compiled 0 fallback 4
+  - Libraries/IO auto: compiled 0 fallback 35
+  - M2 suite auto: compiled 0 fallback 3
+  - M2b auto: timeout / no compiled evidence
 
-## Intentionally unsupported in compiled mode (current)
+## 6) Priority backlog
+### P0 (current critical path)
+1. Fix generated symbol binding for selected compiled test functions (namespaced harness linkage).
+2. Resolve compiled support path for `FloorToInt` used in M2/M2b numerical flow.
+3. Resolve M2 fallible expression-statement failures (`?`, `!`, or `match` required).
+4. Make M2b suite compile/run enough to avoid interpreted timeout behavior in auto mode.
 
-These are rejected with deterministic diagnostics.
+### P1
+1. String wrappers.
+2. Markdown pure wrappers.
+3. IO text/line wrappers.
+4. CSV read-row/matrix bridges as needed.
+5. JSON load/save bridges as needed.
 
-| Surface | Diagnostic shape |
-| --- | --- |
-| top-level statement `when` (non-flow) | `compiled mode does not yet support when` |
-| standalone range expressions (outside `for` lowering) | `compiled mode does not yet support range` |
-| unsupported built-ins (for example plotting, XLSX, trig/math, UI, Einstein/tensor helpers not lowered yet) | `compiled mode does not yet support builtin <Name>` |
+### P2
+1. Artifact write support in compiled mode.
+2. CSV table/row-major write bridges.
+3. Broader wrapper parity hardening.
 
-## M86 hardening guarantees
-
-- Unsupported features should fail early from lowering, not via accidental fallout.
-- Unsupported built-ins now report as unsupported built-ins (not unknown function lookups).
-- This matrix is **descriptive**, not aspirational. If support changes, update this page and tests in the same change.
+---
+This tracker is descriptive (not aspirational): if auto reports fallback or compiled fails, compiled support remains partial/unsupported until measured evidence changes.

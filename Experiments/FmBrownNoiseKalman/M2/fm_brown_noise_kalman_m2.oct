@@ -177,8 +177,19 @@ fn M2bSmallGrid() -> M2bParams[] {
     return grid
 }
 
+fn M2SampleCount(c: M2Case) -> Int {
+    var n = 0
+    var t = 0.0
+    let dt = 1.0 / c.SampleRate
+    while t < c.Duration {
+        n = n + 1
+        t = t + dt
+    }
+    return n
+}
+
 fn M2BuildCleanMessage(c: M2Case) -> Float[] {
-    let n = FloorToInt(c.SampleRate * c.Duration)
+    let n = M2SampleCount(c)
     var clean: Float[] = []
     for i in 0..n {
         let t = Float(i) / c.SampleRate
