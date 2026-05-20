@@ -1,0 +1,41 @@
+package String
+
+
+[Fact]
+fn ByteLengthAndRuneCount() -> Void {
+    Assert.Equal(3, StringByteLength("abc"), "byte length ascii")
+    Assert.Equal(3, StringRuneCount("abc"), "rune count ascii")
+    Assert.Equal(2, StringByteLength("é"), "byte length utf8")
+    Assert.Equal(1, StringRuneCount("é"), "rune count utf8")
+}
+
+[Fact]
+fn JoinAndReplaceAll() -> Void {
+    Assert.Equal("a,b,c", StringJoin(["a", "b", "c"], ","), "join with separator")
+    Assert.Equal("x-y-x", StringReplaceAll("x_y_x", "_", "-"), "replace all")
+    Assert.Equal("xaxbxcx", StringReplaceAll("abc", "", "x"), "replace all empty old semantics")
+}
+
+[Fact]
+fn ContainsPrefixSuffixTrim() -> Void {
+    Assert.True(StringContains("hello", "ell"), "contains true")
+    Assert.False(StringContains("hello", "zzz"), "contains false")
+    Assert.True(StringStartsWith("hello", "he"), "starts with true")
+    Assert.False(StringStartsWith("hello", "el"), "starts with false")
+    Assert.True(StringEndsWith("hello", "lo"), "ends with true")
+    Assert.False(StringEndsWith("hello", "he"), "ends with false")
+    Assert.Equal("hi", StringTrim(" \nhi\n "), "trim whitespace")
+}
+
+[Fact]
+fn SplitLinesAndJson() -> Void {
+    let lines = StringSplitLines("a\nb")
+    Assert.Equal(2, Len(lines), "split lines lf count")
+    Assert.Equal("a", lines[0], "split lines first")
+    Assert.Equal("b", lines[1], "split lines second")
+    let trailing = StringSplitLines("a\n")
+    Assert.Equal(1, Len(trailing), "split lines trailing newline count")
+    Assert.Equal("a", trailing[0], "split lines trailing newline value")
+    Assert.Equal("a\\\"b\\n", StringEscapeJSON("a\"b\n"), "escape json")
+    Assert.Equal("\"a\\\"b\"", StringQuoteJSON("a\"b"), "quote json")
+}

@@ -79,3 +79,21 @@
 
 ---
 This tracker is descriptive (not aspirational): if auto reports fallback or compiled fails, compiled support remains partial/unsupported until measured evidence changes.
+
+## 7) 2026-05-20 Compiled String builtins M0 attempt (this pass)
+- Added compiled-lowering coverage scaffolding for String builtins in `internal/build/compiler.go`:
+  - return-type routing and Go emission paths for `StringByteLength`, `StringRuneCount`, `StringJoin`, `StringReplaceAll`, `StringContains`, `StringStartsWith`, `StringEndsWith`, `StringTrim`, `StringSplitLines`, `StringEscapeJSON`, `StringQuoteJSON`, plus namespaced spellings.
+  - emitted helper bridges for compiled path: `__octStringSplitLines` and `__octStringEscapeJSON`.
+- Added focused fixture:
+  - `Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest`.
+
+### Measured outcome
+- `go run ./cmd/oct test Libraries/String --execution compiled`
+  - still fails with: `compiled mode does not yet support builtin StringByteLength`.
+- `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution compiled`
+  - still fails with the same unsupported builtin diagnostic.
+- `--execution auto` for that fixture falls back interpreted and passes; interpreted mode passes directly.
+
+### Next blocker (post-change)
+- Compiled call-resolution/lowering path still reports `StringByteLength` unsupported despite explicit switch coverage in `compiledBuiltinReturnType` and emission switch.
+- This indicates a deeper compiled builtin dispatch mismatch (likely pre-switch normalization/alias path), not String semantics.
