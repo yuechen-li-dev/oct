@@ -1,4 +1,4 @@
-# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20 (Assertions repair pass)
+# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20 (String import plumbing pass)
 
 ## 1) Overview
 - Compiled pipeline: **Oct -> MIR -> generated Go -> .octbin**.
@@ -34,7 +34,7 @@
 ## 4) Builtin / wrapper support snapshot
 | Surface | Interpreted | Compiled | Auto behavior | Blocker | Priority |
 |---|---|---|---|---|---|
-| `String.*` wrappers | Supported | Not supported enough | Falls back (e.g., String auto compiled 0 fallback 5) | Symbol binding / wrapper compiled coverage | P1 |
+| `String.*` wrappers | Supported | Supported for core fixture + Libraries/String | Compiles in auto with fallback 0 on verified targets | broader wrapper parity still tracked separately | P0 closed for missing-import blocker |
 | `Markdown.*` wrappers | Supported | Not supported enough | Falls back (compiled 0 fallback 4) | Wrapper lowering/runtime gaps | P1 |
 | `IO.*` wrappers | Supported | Not supported enough | Falls back (compiled 0 fallback 35) | CSV + IO wrapper gaps | P1 |
 | `Csv.*` | Supported | Partial/unsupported | Often fallback/fail | `CsvRead` not compiled-supported in current path | P1 |
@@ -51,7 +51,7 @@
 - `go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution compiled`
   - fails with non-zero exit; blockers are fallible expression statement + `Markdown.Report` unsupported.
 - `go run ./cmd/oct test Libraries/String --execution compiled`
-  - assertion lowering is no longer the blocker; next blocker remains unsupported builtin `StringByteLength`.
+  - now passes: compiled 5, interpreted fallback 0.
 - Existing verification (prior pass):
   - Libraries/String auto: compiled 0 fallback 5
   - Libraries/Markdown auto: compiled 0 fallback 4
@@ -80,27 +80,36 @@
 ---
 This tracker is descriptive (not aspirational): if auto reports fallback or compiled fails, compiled support remains partial/unsupported until measured evidence changes.
 
-## 7) 2026-05-20 Compiled String builtins M0 attempt (this pass)
-- Added compiled-lowering coverage scaffolding for String builtins in `internal/build/compiler.go`:
-  - return-type routing and Go emission paths for `StringByteLength`, `StringRuneCount`, `StringJoin`, `StringReplaceAll`, `StringContains`, `StringStartsWith`, `StringEndsWith`, `StringTrim`, `StringSplitLines`, `StringEscapeJSON`, `StringQuoteJSON`, plus namespaced spellings.
-  - emitted helper bridges for compiled path: `__octStringSplitLines` and `__octStringEscapeJSON`.
-- Added focused fixture:
-  - `Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest`.
+## 7) 2026-05-20 Compiled String builtins M0c (generated-Go import plumbing)
+- Implemented centralized compiled-builtin import mapping in `internal/build/compiler.go` via `builtinImportDeps(...)`.
+- Generated Go import-set population now derives String-related imports from builtin usage metadata instead of ad-hoc scattered checks.
 
-### Measured outcome (normalization repair)
-- Exact rejection site was `internal/build/compiler.go` `resolveCall` (identifier builtin path): only `Random.*` builtins were normalized/typed there, while `StringByteLength` hit the default unsupported-builtin branch before emission.
-- Fix applied:
-  - added canonical builtin identity helper `canonicalCompiledBuiltinName(...)`.
-  - compiled support/type routing now canonicalizes names before `compiledBuiltinReturnType(...)`.
-  - generated-Go builtin emission switch canonicalizes callee identity before dispatch.
-  - `resolveCall` now returns typed builtin entries for the compiled String builtin set and canonicalizes namespaced String aliases (`String.ByteLength` -> `StringByteLength`, etc.).
+### String builtin -> import mapping (compiled Go emission)
+- `StringRuneCount` -> `unicode/utf8`
+- `StringTrim` -> `strings`
+- `StringReplaceAll` -> `strings`
+- `StringContains` -> `strings`
+- `StringStartsWith` -> `strings`
+- `StringEndsWith` -> `strings`
+- `StringSplitLines` -> `strings` (helper `__octStringSplitLines` uses `strings`)
+- `StringEscapeJSON` -> `strconv` (helper `__octStringEscapeJSON` uses `strconv.Quote`)
+- `StringQuoteJSON` -> `strconv`
+- `StringJoin` -> `strings`
+- `StringByteLength` -> no extra import (`len(s)`)
+
+### Measured outcome
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution compiled`
-  - now progresses past the old `StringByteLength` unsupported-builtin gate.
-  - current blocker is later Go build failure due to missing generated imports (`strings`, `strconv`, `utf8`) in emitted file.
+  - still fails in this invocation shape with `duplicate declaration 'main' in package 'String'`.
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution auto`
-  - falls back interpreted and passes (`compiled: 0 interpreted fallback: 4`), with compiled unsupported reason now `duplicate declaration 'main' in package 'String'`.
+  - passes with `compiled: 4 interpreted fallback: 0`.
+- `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution interpreted`
+  - passes.
 - `go run ./cmd/oct test Libraries/String --execution compiled`
-  - no longer blocked by `StringByteLength` unsupported; now fails at generated Go compile with undefined `strings/strconv/utf8` symbols.
+  - passes with `compiled: 5 interpreted fallback: 0`.
+- `go run ./cmd/oct test Libraries/String --execution auto`
+  - passes with `compiled: 5 interpreted fallback: 0`.
+- `go run ./cmd/oct test Libraries/String --execution interpreted`
+  - passes.
 
-### Next blocker (post-dispatch fix)
-- Generated-Go import management is incomplete for newly wired String builtin emission paths (`strings`, `strconv`, `unicode/utf8` helpers referenced but not imported in generated output).
+### Next blocker
+- Remaining compiled failure for the single-file compiled invocation appears to be a harness/target-shape issue (`duplicate declaration 'main'`) rather than missing generated imports.
