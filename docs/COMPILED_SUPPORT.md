@@ -261,3 +261,35 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### Documentation gap surfaced
 - `Gaussian` is present as public Random API surface in library code and experiment usage, but random builtin inventories historically only listed `RandNormal`; this mismatch caused wrapper fallback in compiled mode.
+
+## 12) 2026-05-20 Compiled Pi builtin support (M0k)
+- Added narrow compiled codegen support for core constants `Pi()` and `E()` in builtin emission (`MIRCall` builtin branch) by lowering to Go `math.Pi` / `math.E`.
+- Updated compiled import tracking so `math` is imported when either `Pi` or `E` is used in compiled output.
+- Scope intentionally limited to constant emission path only (no broad math builtin expansion).
+
+### Pi surface inventory + mapping
+- Language reference documents `Pi() -> Float` as a core builtin constant.
+- Builtin registry includes `Pi` (core builtin name).
+- Typechecker enforces `Pi()` arity 0 and return type `Float`.
+- Interpreter returns Go `math.Pi` for `Pi()`.
+- Compiled gap before this fix: return-type checker accepted `Pi`, but generated-Go builtin emitter had no `Pi` case, yielding `compiled mode does not yet support builtin Pi`.
+- Namespace note: `Math.Pi` is **not** currently registered as a builtin alias; only `Pi()` is valid in current repo state.
+
+### Focused compiled fixture evidence
+- Added `Language/Testing/CompiledPi/valid/core_pi.octest` with `[Fact]` asserting `2.0 * Pi() * 1.0 > 6.28`.
+- Results:
+  - compiled: pass (`compiled: 1, interpreted fallback: 0`)
+  - auto: pass (`compiled: 1, interpreted fallback: 0`)
+  - interpreted: pass
+
+### Post-fix M2/M2b re-measure map
+- `M2 --execution compiled`: Pi blocker cleared; next blocker is generated-Go record/array numeric type mismatch (`[]int` vs `[]float64` paths, append mismatches).
+- `M2 --execution auto`: passes via interpreted fallback (`compiled: 0, fallback: 2`) with same compiled mismatch reason.
+- `M2b --execution compiled`: fails on two known blockers:
+  1. generated-Go record-array/type mismatch (`[]int` vs `[]FmBrownNoiseKalman_M2bParams`, append mismatch)
+  2. `Shared.WhitenessCost: unknown identifier 'z'`
+- `M2b --execution auto`: fallback path still hits cycle-time timeout after compiled unsupported diagnostics.
+
+### Next recommended blocker (after Pi)
+1. generated-Go record-array/type mismatch in M2/M2b lowering (now the first compiled blocker for M2)
+2. `Shared.WhitenessCost` unresolved identifier `z` (M2b)
