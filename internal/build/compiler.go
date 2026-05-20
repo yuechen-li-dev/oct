@@ -2881,8 +2881,10 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Contains"] || usedBuiltins["StartsWith"] || usedBuiltins["EndsWith"] || usedBuiltins["Trim"] || usedBuiltins["Lower"] || usedBuiltins["Upper"] || usedBuiltins["Join"] {
-		importSet["strings"] = struct{}{}
+	for builtinName := range usedBuiltins {
+		for _, pkg := range builtinImportDeps(builtinName) {
+			importSet[pkg] = struct{}{}
+		}
 	}
 	if usedBuiltins["Abs"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
@@ -3397,6 +3399,20 @@ func __octCryptoRandFloat01() (float64, error) {
 	return __octRandomFloat01(binary.LittleEndian.Uint64(b[:])), nil
 }
 `
+
+func builtinImportDeps(name string) []string {
+	switch name {
+	case "Contains", "StartsWith", "EndsWith", "Trim", "Lower", "Upper", "Join":
+		return []string{"strings"}
+	case "StringRuneCount":
+		return []string{"unicode/utf8"}
+	case "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringJoin", "StringReplaceAll", "StringSplitLines":
+		return []string{"strings"}
+	case "StringEscapeJSON", "StringQuoteJSON":
+		return []string{"strconv"}
+	}
+	return nil
+}
 
 const __octPrometheusHelpers = `
 var __octPrometheusVulkanEnvOnce sync.Once
