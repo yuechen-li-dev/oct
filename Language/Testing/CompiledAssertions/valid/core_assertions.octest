@@ -1,0 +1,17 @@
+package Main
+
+[Fact]
+fn CompiledAssertCorePasses() -> Void {
+    Assert.True(true, "true passes")
+    Assert.False(false, "false passes")
+    Assert.Equal(7, 7, "int equal")
+    Assert.Equal("ok", "ok", "string equal")
+    Assert.Equal(true, true, "bool equal")
+}
+
+[Theory]
+[InlineData(1)]
+[InlineData(2)]
+fn CompiledTheoryAssertRows(x: Int) -> Void {
+    Assert.True(x > 0, "positive row")
+}

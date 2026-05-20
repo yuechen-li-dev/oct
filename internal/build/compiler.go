@@ -1207,6 +1207,30 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 		}
 		if calleeName, ok := flattenDirectCallName(e.Callee); ok {
+			if strings.HasPrefix(calleeName, "Assert.") {
+				args := make([]string, 0, len(e.Arguments))
+				for _, a := range e.Arguments {
+					v, _, _, err := c.lowerExpr(a)
+					if err != nil {
+						return "", "", false, err
+					}
+					args = append(args, v)
+				}
+				switch calleeName {
+				case "Assert.True":
+					tmp := c.temp("Void")
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.True", Args: args, Builtin: true, RetType: "Void"})
+					return tmp, "Void", false, nil
+				case "Assert.False":
+					tmp := c.temp("Void")
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.False", Args: args, Builtin: true, RetType: "Void"})
+					return tmp, "Void", false, nil
+				case "Assert.Equal":
+					tmp := c.temp("Void")
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Assert.Equal", Args: args, Builtin: true, RetType: "Void"})
+					return tmp, "Void", false, nil
+				}
+			}
 			switch calleeName {
 			case "Matrix.tabulate":
 				if len(e.Arguments) != 3 {
@@ -2733,6 +2757,12 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
+	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] {
+		importSet["os"] = struct{}{}
+	}
+	if usedBuiltins["Assert.Equal"] {
+		importSet["reflect"] = struct{}{}
+	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		for _, pkg := range []string{"oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
 			importSet[pkg] = struct{}{}
@@ -4240,6 +4270,21 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "Require":
 				return fmt.Sprintf("if !%s { panic(\"runtime error: \" + %s) }; %s = 0", st.Args[0], st.Args[1], st.Target), nil
+			case "Assert.True":
+				if st.Target == "_" {
+					return fmt.Sprintf("if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+				}
+				return fmt.Sprintf("if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+			case "Assert.False":
+				if st.Target == "_" {
+					return fmt.Sprintf("if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+				}
+				return fmt.Sprintf("if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+			case "Assert.Equal":
+				if st.Target == "_" {
+					return fmt.Sprintf("if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2]), nil
+				}
+				return fmt.Sprintf("if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
