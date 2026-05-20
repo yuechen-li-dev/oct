@@ -524,6 +524,19 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 			if targetPkg == "" || call[1] == "" {
 				continue
 			}
+			builtinName := call[1]
+			if targetPkg != "" {
+				builtinName = targetPkg + "." + call[1]
+			}
+			if builtin.IsName(builtinName) {
+				continue
+			}
+			if targetPkg == "Random" {
+				switch call[1] {
+				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+					continue
+				}
+			}
 			queue = append(queue, [2]string{targetPkg, call[1]})
 		}
 	}
@@ -2098,6 +2111,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if x.Name == "BoolIntProbe" {
 			return "BoolIntProbe", "(Bool, Int)", true, false, nil
+		}
+		if c.pkg.Name == "Random" {
+			switch x.Name {
+			case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
+				resolved, ret, _, fallible, err := c.resolveCall(ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: "Random"}, Field: x.Name})
+				if err == nil {
+					return resolved, ret, true, fallible, nil
+				}
+			}
 		}
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {

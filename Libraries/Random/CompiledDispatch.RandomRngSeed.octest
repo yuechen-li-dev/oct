@@ -1,0 +1,8 @@
+package Random
+
+[Fact]
+fn CompiledRandomRngSeedDispatch() -> Void {
+    let seed = RngSeed(123)
+    RandFloat01(seed)
+    Assert.True(true, "reaching this assertion proves wrapper Require fallback was bypassed")
+}
