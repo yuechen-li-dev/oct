@@ -219,3 +219,21 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Next recommended task
 - Keep scope tight: add/repair compiled lowering dispatch so `Random.RngSeed` (and sibling Random builtin wrappers used by M2/M2b) consistently bypass wrapper `Require(false, ...)` bodies and bind directly to compiled builtin emit path.
 - Then re-measure M2b generated-Go type mismatch as the next independent blocker.
+
+## 10) 2026-05-20 Random builtin dispatch repair (M0i)
+- Fixed compiled selected-reachable dispatch so `Random` builtin aliases (`RngSeed`, `RandInt`, `RandFloat01`, `RandFloatRange`, `RandBernoulli`, `RandNormal`, `CryptoRandInt`, `CryptoRandFloat01`, `CryptoRandBytes`) no longer get enqueued/lowered as ordinary package functions in compiled mode.
+- Fixed compiled call resolution in `internal/build/compiler.go` for package-local `Random` builtin alias calls so they resolve through builtin emission instead of wrapper fallback function bodies.
+- Added focused fixture `Libraries/Random/CompiledDispatch.RandomRngSeed.octest` to assert compiled execution reaches runtime RNG helper path without triggering `Require(false, "...must dispatch...")` wrapper fallbacks.
+
+### Status after fix
+- `Random.RngSeed` dispatch blocker is removed in compiled mode for the focused fixture and no longer appears as first blocker for M2.
+- Next M2 compiled blocker is now `Random.Gaussian` hitting unsupported compiled builtin `Require` via distribution precondition wrappers.
+- M2b still shows generated-Go type mismatch (`[]int` vs `[]FmBrownNoiseKalman_M2bParams` / `append` mismatch), plus `Random.Gaussian`/`Require` on smoke rows.
+
+### Classification notes
+- `Require` remains a separate compiled-support classification (runtime precondition builtin), not part of Random RNG emit support.
+- Random runtime emit helpers (`__octRandomRngSeed`, `__octRandomRandInt`, `__octRandomRandFloat01`, `__octRandomRandFloatRange`, `__octRandomRandBernoulli`, `__octRandomRandNormal`, crypto helpers) remain present; this change repaired dispatch/binding to them.
+
+### Next recommended task
+- Address compiled handling strategy for Random distribution wrappers that contain `Require` preconditions (starting with `Random.Gaussian`) without broadening into global `Require` support unless intentionally scoped.
+- After that, continue with isolated M2b generated-Go record-array append type mismatch.
