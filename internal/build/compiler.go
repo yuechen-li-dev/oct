@@ -453,14 +453,14 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsArtifact {
 				continue
 			}
-			if fn.IsTestFile && !fn.IsBenchmark {
-				if pkgName != program.Entry {
-					continue
+				if fn.IsTestFile && !fn.IsBenchmark {
+					if pkgName != program.Entry {
+						continue
+					}
+					if !fn.IsFact && !fn.IsTheory && !options.selectedReachableOnly {
+						continue
+					}
 				}
-				if !fn.IsFact && !fn.IsTheory {
-					continue
-				}
-			}
 			if fn.IsTheory || fn.IsFact {
 				// compiled octest runner can target these directly
 			}

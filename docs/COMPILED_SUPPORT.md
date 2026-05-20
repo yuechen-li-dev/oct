@@ -185,3 +185,37 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### Artifact lane status
 - `oct artifact Experiments/FmBrownNoiseKalman/M2` still runs on artifact lane; this change does not require compiled artifact support and does not change interpreted artifact behavior.
+
+## 11) 2026-05-20 M0h selected-reachable helper emission repair
+- Root cause for `CompiledSelectedReachable/reachable` undefined symbol was in `internal/build/compiler.go` test-file gating:
+  - `collectReachableFunctions(...)` correctly marked `Main.UnsupportedMarkdownPath` reachable from selected root `Main.CompiledFactReachesUnsupportedPath`.
+  - But `lowerProgram(...)` still dropped non-`[Fact]/[Theory]` functions from `.octest` files unconditionally, even in `selectedReachableOnly` mode.
+  - Runner Go therefore called `fn_Main_UnsupportedMarkdownPath` without lowering/emitting it, producing `undefined: fn_Main_UnsupportedMarkdownPath`.
+
+### Narrow fix shipped
+- In `lowerProgram(...)`, adjusted `.octest` test-file filter so non-fact/theory functions are only skipped when `selectedReachableOnly` is false.
+- Result: selected reachable helpers in test files now lower+emit; unreachable helpers remain excluded by reachability.
+
+### Fixture outcomes
+- `Language/Testing/CompiledSelectedReachable/unreachable --execution compiled`: PASS (`compiled: 1, fallback: 0`).
+- `Language/Testing/CompiledSelectedReachable/reachable --execution compiled`: FAIL as expected with explicit unsupported diagnostic (`function Main.UnsupportedMarkdownPath: unknown function 'Markdown.Report'`), no undefined symbol.
+
+### M2 / M2b re-measure after helper emission fix
+- `M2 --execution compiled`: FAIL; first blocker remains `function Random.RngSeed: compiled mode does not yet support builtin Require`.
+- `M2b --execution compiled`: mixed blockers:
+  - first failing row hits generated-Go type mismatch in M2b grid lowering (`[]int` vs `[]FmBrownNoiseKalman_M2bParams`, plus append type mismatch),
+  - smoke rows still hit `Random.RngSeed` -> unsupported compiled builtin `Require`.
+- `M2b --execution auto`: compiled unsupported fallback works (`interpreted fallback: 3`), but interpreted smoke rows exceed cycle time (30s), so suite still fails overall.
+
+### Require classification
+- `Require(condition, message)` is documented in language reference as runtime precondition enforcement (not test-only assertion helper).
+- `Assert.True/False/Equal` compiled support already exists for octest assertions; `Require` is currently a separate builtin lane that compiled lowering rejects.
+- In this repo state, `Random.RngSeed` wrappers in `Libraries/Random/Random.Core.oct` intentionally use `Require(false, "...must dispatch...")` fallback stubs, so any missed builtin bridge surfaces as `Require` unsupported.
+
+### Random.RngSeed classification
+- Compiled runtime already has RNG emit support (`__octRandomRngSeed(...)` and related random builtins in codegen), but call resolution still flows through `Random.RngSeed` wrapper path that can trigger unsupported `Require` fallback.
+- Therefore stable next blocker is not RNG algorithm absence; it is wrapper/builtin dispatch completeness for `Random.RngSeed` in compiled lowering paths used by M2/M2b.
+
+### Next recommended task
+- Keep scope tight: add/repair compiled lowering dispatch so `Random.RngSeed` (and sibling Random builtin wrappers used by M2/M2b) consistently bypass wrapper `Require(false, ...)` bodies and bind directly to compiled builtin emit path.
+- Then re-measure M2b generated-Go type mismatch as the next independent blocker.
