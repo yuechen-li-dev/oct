@@ -1,0 +1,7 @@
+package Main
+
+[Fact]
+fn CompiledPiBuiltin() -> Void {
+    let circumference = 2.0 * Pi() * 1.0
+    Assert.True(circumference > 6.28, "pi constant should be available in compiled mode")
+}
