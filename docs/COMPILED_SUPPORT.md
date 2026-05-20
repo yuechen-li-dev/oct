@@ -87,13 +87,20 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 - Added focused fixture:
   - `Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest`.
 
-### Measured outcome
-- `go run ./cmd/oct test Libraries/String --execution compiled`
-  - still fails with: `compiled mode does not yet support builtin StringByteLength`.
+### Measured outcome (normalization repair)
+- Exact rejection site was `internal/build/compiler.go` `resolveCall` (identifier builtin path): only `Random.*` builtins were normalized/typed there, while `StringByteLength` hit the default unsupported-builtin branch before emission.
+- Fix applied:
+  - added canonical builtin identity helper `canonicalCompiledBuiltinName(...)`.
+  - compiled support/type routing now canonicalizes names before `compiledBuiltinReturnType(...)`.
+  - generated-Go builtin emission switch canonicalizes callee identity before dispatch.
+  - `resolveCall` now returns typed builtin entries for the compiled String builtin set and canonicalizes namespaced String aliases (`String.ByteLength` -> `StringByteLength`, etc.).
 - `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution compiled`
-  - still fails with the same unsupported builtin diagnostic.
-- `--execution auto` for that fixture falls back interpreted and passes; interpreted mode passes directly.
+  - now progresses past the old `StringByteLength` unsupported-builtin gate.
+  - current blocker is later Go build failure due to missing generated imports (`strings`, `strconv`, `utf8`) in emitted file.
+- `go run ./cmd/oct test Language/Testing/CompiledStringBuiltins/valid/core_string_builtins.octest --execution auto`
+  - falls back interpreted and passes (`compiled: 0 interpreted fallback: 4`), with compiled unsupported reason now `duplicate declaration 'main' in package 'String'`.
+- `go run ./cmd/oct test Libraries/String --execution compiled`
+  - no longer blocked by `StringByteLength` unsupported; now fails at generated Go compile with undefined `strings/strconv/utf8` symbols.
 
-### Next blocker (post-change)
-- Compiled call-resolution/lowering path still reports `StringByteLength` unsupported despite explicit switch coverage in `compiledBuiltinReturnType` and emission switch.
-- This indicates a deeper compiled builtin dispatch mismatch (likely pre-switch normalization/alias path), not String semantics.
+### Next blocker (post-dispatch fix)
+- Generated-Go import management is incomplete for newly wired String builtin emission paths (`strings`, `strconv`, `unicode/utf8` helpers referenced but not imported in generated output).
