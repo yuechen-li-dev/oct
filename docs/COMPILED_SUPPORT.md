@@ -293,3 +293,45 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Next recommended blocker (after Pi)
 1. generated-Go record-array/type mismatch in M2/M2b lowering (now the first compiled blocker for M2)
 2. `Shared.WhitenessCost` unresolved identifier `z` (M2b)
+
+## 12) 2026-05-20 M0l array literal / Append element-type lowering repair
+- **Root cause** in compiled lowering was twofold inside `internal/build/compiler.go`:
+  1. `ast.ArrayLiteralExpr` lowering defaulted empty literals to `Int[]` unless it saw first element type.
+  2. builtin call resolution hard-coded `Append` return type as `Int[]`.
+- This produced generated-Go mismatches (`[]int` receiving `float64` or record elements), even when Oct source had typed arrays like `var clean: Float[] = []` and `var grid: M2bParams[] = []`.
+
+### Generated-Go mismatch evidence (pre-fix)
+- M2 compiled (`--suite Experiments.FmBrownNoiseKalman.M2`) failed with:
+  - append float into int slice (`cannot use _t13 (float64) as int in append`),
+  - passing `[]int` where `[]float64` required,
+  - record fields expecting `[]float64` but receiving `[]int`.
+- M2b compiled (`--suite Experiments.FmBrownNoiseKalman.M2b`) failed with:
+  - `cannot use grid (type []int) as []FmBrownNoiseKalman_M2bParams return`,
+  - `append(grid, M2bParams{...})` element mismatch (`struct ... as int`).
+- These failures mapped directly to empty typed arrays + Append chains in:
+  - `M2BuildCleanMessage` (`var clean: Float[] = []`, `Append(clean, Sin(...))`),
+  - `M2OscillatorKalmanFilterWithParams` (`innovation/out` Float arrays),
+  - `M2bSmallGrid` (`var grid: M2bParams[] = []`, append records).
+
+### Fix implemented (minimal, targeted)
+- Added expected-type threading for expression lowering in typed `let`/`var` initializers (TypeHint context).
+- Empty array literal lowering now uses contextual expected array element type when available.
+- `Append` return type now derives from first argument lowered type instead of hard-coded `Int[]`.
+
+### Focused compiled fixtures added
+- `Language/Testing/CompiledArrayLowering/valid/core_array_lowering.octest` covers:
+  - Float array append/construction,
+  - Record array append/construction,
+  - Empty typed array context,
+  - Non-empty float literal inference,
+  - Record array literal typing.
+- Verified under `compiled`, `auto`, and `interpreted`.
+
+### Post-fix M2/M2b status
+- `M2 --execution compiled`: moved past `[]int`/append mismatch; now blocked by undefined generated symbols (`fn_Shared_Sub`, `fn_FmBrownNoiseKalman_M2BuildSignalFingerprint`, `fn_FmBrownNoiseKalman_M2BuildMetric`, etc.).
+- `M2b --execution compiled`: array typing mismatch cleared for `M2bGridHasExpectedSize` (now passes compiled); first blocker for remaining rows is `function Shared.WhitenessCost: unknown identifier 'z'`.
+- `M2b --execution auto`: still falls back to interpreted for `WhitenessCost` blocker and then hits cycle-time limits on smoke rows.
+
+### Inconsistency surfaced
+- New fixture confirms array typing semantics from `Language/reference/language/07-arrays.md` are now preserved in compiled lowering.
+- A separate blocker remains in `Shared.WhitenessCost` (`unknown identifier 'z'`), which is independent of array typing and now correctly exposed as the next first blocker.
