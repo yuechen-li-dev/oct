@@ -1,0 +1,58 @@
+package CompiledArrayLowering
+
+record Point {
+    X: Float
+    Y: Float
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledArrayLowering")]
+[InlineData(1)]
+fn FloatArrayAppendConstruction(_id: Int) -> Void {
+    var xs: Float[] = []
+    xs = Append(xs, 1.0)
+    xs = Append(xs, 2.0)
+    Assert.Equal(2, Len(xs), "float append length")
+    Assert.True(xs[1] == 2.0, "float append content")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledArrayLowering")]
+[InlineData(1)]
+fn RecordArrayAppendConstruction(_id: Int) -> Void {
+    var pts: Point[] = []
+    pts = Append(pts, Point { X: 1.0 Y: 2.0 })
+    pts = Append(pts, Point { X: 3.0 Y: 4.0 })
+    Assert.Equal(2, Len(pts), "record append length")
+    Assert.True(pts[1].Y == 4.0, "record append content")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledArrayLowering")]
+[InlineData(1)]
+fn EmptyArrayTypedContext(_id: Int) -> Void {
+    var xs: Float[] = []
+    xs = Append(xs, 1.0)
+    Assert.Equal(1, Len(xs), "typed empty array append")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledArrayLowering")]
+[InlineData(1)]
+fn NonEmptyArrayInfersFloat(_id: Int) -> Void {
+    let xs = [1.0, 2.0]
+    Assert.Equal(2, Len(xs), "float literal length")
+    Assert.True(xs[0] == 1.0, "float literal content")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledArrayLowering")]
+[InlineData(1)]
+fn RecordArrayLiteralType(_id: Int) -> Void {
+    let pts = [
+        Point { X: 1.0 Y: 2.0 },
+        Point { X: 3.0 Y: 4.0 }
+    ]
+    Assert.Equal(2, Len(pts), "record literal length")
+    Assert.True(pts[0].X == 1.0, "record literal content")
+}

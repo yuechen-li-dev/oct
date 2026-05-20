@@ -381,19 +381,20 @@ func compilerModuleRoot() (string, error) {
 }
 
 type lowerCtx struct {
-	pkg             project.Package
-	program         project.Program
-	locals          map[string]string
-	blocks          []MIRBlock
-	cur             int
-	tempID          int
-	batchID         int
-	retType         string
-	fn              ast.FunctionDecl
-	extra           []MIRFunction
-	lastRet         string
-	usesUtilityWhen bool
-	inPrometheus    bool
+	expectedTypeStack []string
+	pkg               project.Package
+	program           project.Program
+	locals            map[string]string
+	blocks            []MIRBlock
+	cur               int
+	tempID            int
+	batchID           int
+	retType           string
+	fn                ast.FunctionDecl
+	extra             []MIRFunction
+	lastRet           string
+	usesUtilityWhen   bool
+	inPrometheus      bool
 }
 
 func lowerProgram(program project.Program, options compileOptions) (MIRModule, error) {
@@ -453,14 +454,14 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsArtifact {
 				continue
 			}
-				if fn.IsTestFile && !fn.IsBenchmark {
-					if pkgName != program.Entry {
-						continue
-					}
-					if !fn.IsFact && !fn.IsTheory && !options.selectedReachableOnly {
-						continue
-					}
+			if fn.IsTestFile && !fn.IsBenchmark {
+				if pkgName != program.Entry {
+					continue
 				}
+				if !fn.IsFact && !fn.IsTheory && !options.selectedReachableOnly {
+					continue
+				}
+			}
 			if fn.IsTheory || fn.IsFact {
 				// compiled octest runner can target these directly
 			}
@@ -728,14 +729,28 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 		}
 		switch s := stmt.(type) {
 		case ast.LetStmt:
-			v, t, _, err := c.lowerExpr(s.Value)
+			var v, t string
+			var err error
+			if s.TypeHint != nil {
+				hint := typeRefStringForPackage(c.pkg.Name, *s.TypeHint)
+				v, t, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
+			} else {
+				v, t, _, err = c.lowerExpr(s.Value)
+			}
 			if err != nil {
 				return err
 			}
 			c.locals[s.Name] = t
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
 		case ast.VarStmt:
-			v, t, _, err := c.lowerExpr(s.Value)
+			var v, t string
+			var err error
+			if s.TypeHint != nil {
+				hint := typeRefStringForPackage(c.pkg.Name, *s.TypeHint)
+				v, t, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
+			} else {
+				v, t, _, err = c.lowerExpr(s.Value)
+			}
 			if err != nil {
 				return err
 			}
@@ -1239,6 +1254,23 @@ func (c *lowerCtx) temp(t string) string {
 	return name
 }
 
+func (c *lowerCtx) expectedArrayElemType() (string, bool) {
+	if len(c.expectedTypeStack) == 0 {
+		return "", false
+	}
+	current := c.expectedTypeStack[len(c.expectedTypeStack)-1]
+	if !strings.HasSuffix(current, "[]") {
+		return "", false
+	}
+	return strings.TrimSuffix(current, "[]"), true
+}
+
+func (c *lowerCtx) withExpectedType(expected string, fn func() (string, string, bool, error)) (string, string, bool, error) {
+	c.expectedTypeStack = append(c.expectedTypeStack, expected)
+	defer func() { c.expectedTypeStack = c.expectedTypeStack[:len(c.expectedTypeStack)-1] }()
+	return fn()
+}
+
 func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
@@ -1553,12 +1585,17 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, err
 		}
 		args := make([]string, 0, len(e.Arguments))
+		argTypes := make([]string, 0, len(e.Arguments))
 		for _, a := range e.Arguments {
-			v, _, _, err := c.lowerExpr(a)
+			v, at, _, err := c.lowerExpr(a)
 			if err != nil {
 				return "", "", false, err
 			}
 			args = append(args, v)
+			argTypes = append(argTypes, at)
+		}
+		if builtin && callee == "Append" && len(argTypes) > 0 {
+			ret = argTypes[0]
 		}
 		localType := ret
 		if fallible {
@@ -1574,6 +1611,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.ArrayLiteralExpr:
 		vals := []string{}
 		typeName := "Int"
+		if len(e.Elements) == 0 {
+			if hint, ok := c.expectedArrayElemType(); ok {
+				typeName = hint
+			}
+		}
 		for i, el := range e.Elements {
 			v, t, _, err := c.lowerExpr(el)
 			if err != nil {
@@ -2085,7 +2127,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return "Len", "Int", true, false, nil
 		}
 		if x.Name == "Append" {
-			return "Append", "Int[]", true, false, nil
+			return "Append", "", true, false, nil
 		}
 		if x.Name == "Print" {
 			return "Print", "Int", true, false, nil
