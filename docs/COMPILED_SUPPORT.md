@@ -1,4 +1,4 @@
-# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20 (String import plumbing pass)
+# Compiled Octest Support Tracker (M0b/M2b) — 2026-05-20 (FmBrownNoiseKalman M2/M2b re-measure + artifact-lane split)
 
 ## 1) Overview
 - Compiled pipeline: **Oct -> MIR -> generated Go -> .octbin**.
@@ -113,3 +113,31 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### File-target/harness repair (M0d)
 - `project.LoadForTest` file-path loading now applies `.octest` file-selection filtering only to the explicitly selected entry package file, preventing parse/selection widening to sibling `.octest` files in compiled file-target runs.
+
+
+## 8) 2026-05-20 M2/M2b re-measure (post assertions/string/file-target repairs)
+### Initial measurements (before this pass change)
+- `M2 --execution compiled`: failed, compiled 0 / fallback 0; first blocker `This standalone expression cannot be ran` then `unknown function Markdown.Report`.
+- `M2 --execution auto`: passed, compiled 0 / fallback 3; first fallback blocker `duplicate declaration 'main'` and `unknown function Markdown.Report`.
+- `M2b --execution compiled`: failed, compiled 0 / fallback 0; first blocker `duplicate declaration 'main'`.
+- `M2b --execution auto`: failed by cycle-time timeout on artifact row, compiled 0 / fallback 4; non-artifact rows fallback on `unknown function Markdown.Report`.
+
+### Blocker classification
+- Classified as **Test/artifact workload separation issue** (class 3), with wrapper/reporting coupling (class 2): `[Theory]` lane invoked artifact/report generation paths that require unsupported `Markdown.Report` compiled bridges and provoke timeout-heavy interpreted fallback.
+
+### Smallest fix applied
+- Moved `M2ArtifactFilesWrite` and `M2bArtifactsWrite` from `[Theory]` suite lanes into `[Artifact]`-only lanes (`Experiments.FmBrownNoiseKalman.M2.Artifacts` and `Experiments.FmBrownNoiseKalman.M2b.Artifacts`) to keep compiled `[Theory]` lane focused on numerical checks.
+- No FM science, Kalman parameters, or sweep logic changed.
+
+### Post-fix measurements
+- `M2 --execution compiled`: still fails (compiled 0 / fallback 0) with runner/source-file and `Markdown.Report` blockers.
+- `M2 --execution auto`: passes with compiled 0 / fallback 2.
+- `M2b --execution compiled`: fails with compiled 0 / fallback 0 (`source file not found` + `Markdown.Report` blockers).
+- `M2b --execution auto`: improved fallback count to compiled 0 / fallback 3, but still fails due `M2bSingleCaseFinite` cycle-time timeout (30s).
+
+### Interpretation
+- M2b remains interpreted-path dominated and still not converged for auto-mode performance due timeout under fallback execution.
+- Remaining concrete next blocker for compiled parity is still wrapper/harness boundary around `Markdown.Report` reachability and intermittent runner source-file ownership (`zz_oct_test_runner_*.oct` not found / duplicate main).
+
+### Inconsistency surfaced
+- `Libraries/String --execution compiled` is green (`compiled 5 fallback 0`), but `Libraries/String --execution auto` in this pass fell back on duplicate `main` in package `String` (`compiled 0 fallback 5`). This indicates an auto-lane harness ownership inconsistency rather than String builtin lowering regression.

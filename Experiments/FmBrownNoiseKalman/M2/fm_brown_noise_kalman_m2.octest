@@ -31,11 +31,9 @@ fn M2ModesProduceFiniteMetrics(mode: String) -> Void {
     }
 }
 
-[Theory]
-[Suite("Experiments.FmBrownNoiseKalman.M2")]
-[CycleTime(180.0s)]
-[InlineData(1)]
-fn M2ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M2.Artifacts")]
+fn M2ArtifactFilesWrite() -> Void ! Error {
     let _ = M2ArtifactWriteAll()?
 
     let csv = IO.Read("Experiments/FmBrownNoiseKalman/M2/metrics.csv")?
@@ -77,11 +75,9 @@ fn M2bSingleCaseFinite(mode: String) -> Void {
     Assert.True(row.FinalA >= -0.99 and row.FinalA <= 0.99, "finalA bounded")
 }
 
-[Theory]
-[Suite("Experiments.FmBrownNoiseKalman.M2b")]
-[CycleTime(300.0s)]
-[InlineData(1)]
-fn M2bArtifactsWrite(_id: Int) -> Void ! Error {
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M2b.Artifacts")]
+fn M2bArtifactsWrite() -> Void ! Error {
     let _ = M2bArtifactWriteAll()?
     let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/sweep_metrics.csv")?
     let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.octagon")?
