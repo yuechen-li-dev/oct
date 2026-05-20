@@ -39,7 +39,7 @@ fn main() -> Int {
 	if err := typecheck.CheckProgram(program); err != nil {
 		t.Fatalf("typecheck: %v", err)
 	}
-	module, err := lowerProgram(program)
+	module, err := lowerProgram(program, compileOptions{})
 	if err != nil {
 		t.Fatalf("lower: %v", err)
 	}
@@ -2149,4 +2149,3 @@ func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *te
 		t.Fatalf("expected matrix output, got %q", normalized)
 	}
 }
-

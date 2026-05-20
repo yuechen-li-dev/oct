@@ -160,3 +160,28 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Classification (current)
 - Remaining blocker is **wrapper/report contamination at package compilation boundary** (not numeric lowering yet): compiled mode appears to typecheck/compile whole package and still sees artifact/report helpers even when theory lanes are smoke-only.
 - Therefore, next focused task should isolate artifact/report functions into a separate package/file-ownership lane that is excluded from compiled theory package build, before pursuing numeric lowering fixes.
+
+## 10) 2026-05-20 M0g selected-function lowering boundary repair
+- Root cause confirmed in `internal/build/compiler.go`: `lowerProgram(...)` lowered almost every package function unconditionally (excluding only `[Artifact]`-tagged funcs and some test-file filters), so compiled octest runner builds still traversed unrelated package helpers.
+- First unwanted inclusion for `M2b` compiled suite was `FmBrownNoiseKalman.M2ArtifactWriteAll`, which then reached `Markdown.Report` and failed before numeric/theory lowering could execute.
+
+### Fix shipped
+- Added `compileOptions{selectedReachableOnly:true}` for `CompileForTest(...)` only.
+- Added selected reachability collection rooted from compiled runner entry (`main`/`Main`) and traversed function-call graph across local/imported package calls before lowering.
+- Compiled test lowering now includes only reachable functions for compiled octest/benchmark runners; normal `Compile(...)` behavior is unchanged.
+
+### Fixture evidence
+- Added `Language/Testing/CompiledSelectedReachable/unreachable`:
+  - `[Fact]` does not call `Markdown.Report`; unreachable artifact-only helper exists.
+  - Expected compiled pass (unreachable unsupported path no longer blocks).
+- Added `Language/Testing/CompiledSelectedReachable/reachable`:
+  - `[Fact]` calls helper that calls `Markdown.Report`.
+  - Expected compiled fail with explicit unsupported wrapper diagnostic.
+
+### Re-measure (post-fix)
+- `M2 --execution compiled`: no longer blocked by `Markdown.Report`; next blocker is `Random.RngSeed` using unsupported compiled builtin `Require`.
+- `M2b --execution compiled`: no longer first-blocked by `Markdown.Report`; next blockers are `Require` and a generated-Go type mismatch in M2b grid lowering.
+- `M2b --execution auto`: compiled unsupported reasons now report `Require`/type mismatch, then interpreted fallback where cycle-time timeout still occurs on two rows.
+
+### Artifact lane status
+- `oct artifact Experiments/FmBrownNoiseKalman/M2` still runs on artifact lane; this change does not require compiled artifact support and does not change interpreted artifact behavior.

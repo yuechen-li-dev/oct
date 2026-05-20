@@ -1,0 +1,12 @@
+package Main
+import Markdown
+
+[Artifact]
+fn ArtifactOnly() -> Void {
+    Markdown.Report([["title", "body"]])
+}
+
+[Fact]
+fn CompiledFactIgnoresArtifactOnlyPath() -> Void {
+    Assert.Equal(2, 1 + 1, "compiled selected lowering should ignore unreachable artifact helper")
+}
