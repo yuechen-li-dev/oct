@@ -247,7 +247,7 @@ func executeCompiledTestCase(program project.Program, testCase testCase) error {
 		return err
 	}
 	defer cleanupRunner()
-	result, err := build.CompileForTest(runnerPath)
+	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, testCase.filePath})
 	if err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func executeCompiledTestCase(program project.Program, testCase testCase) error {
 }
 
 func writeCompiledTestRunner(pkgDir string, pkgName string, testCase testCase) (string, func(), error) {
-	fileName := fmt.Sprintf("zz_oct_test_runner_%d_%d.oct", os.Getpid(), time.Now().UnixNano())
+	fileName := fmt.Sprintf("zz_oct_test_runner_%d_%d.octest", os.Getpid(), time.Now().UnixNano())
 	runnerPath := filepath.Join(pkgDir, fileName)
 	call := fmt.Sprintf("    %s()", testCase.name)
 	if len(testCase.arguments) > 0 {

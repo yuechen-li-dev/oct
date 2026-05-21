@@ -39,7 +39,15 @@ func LoadForTest(path string) (Program, error) {
 	return load(path, true)
 }
 
+func LoadForTestWithSelectedFiles(path string, selectedFiles []string) (Program, error) {
+	return loadWithSelectedFiles(path, true, selectedFiles)
+}
+
 func load(path string, includeTests bool) (Program, error) {
+	return loadWithSelectedFiles(path, includeTests, nil)
+}
+
+func loadWithSelectedFiles(path string, includeTests bool, selectedFiles []string) (Program, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -51,10 +59,10 @@ func load(path string, includeTests bool) (Program, error) {
 	if info.IsDir() {
 		return loadFromDir(path, includeTests)
 	}
-	return loadFromFile(path, includeTests)
+	return loadFromFile(path, includeTests, selectedFiles)
 }
 
-func loadFromFile(path string, includeTests bool) (Program, error) {
+func loadFromFile(path string, includeTests bool, explicitSelected []string) (Program, error) {
 	packageDir := filepath.Dir(path)
 	entryFile, err := parseFile(path)
 	if err != nil {
@@ -82,12 +90,19 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 		manifestDeps:     make(map[string]map[string]struct{}),
 	}
 	if includeTests && (filepath.Ext(path) == ".octest" || filepath.Ext(path) == ".oct") {
-		absEntry, absErr := filepath.Abs(path)
-		if absErr != nil {
-			return Program{}, absErr
+		selected := map[string]struct{}{}
+		if len(explicitSelected) == 0 {
+			explicitSelected = []string{path}
+		}
+		for _, selectedPath := range explicitSelected {
+			absEntry, absErr := filepath.Abs(selectedPath)
+			if absErr != nil {
+				return Program{}, absErr
+			}
+			selected[filepath.Clean(absEntry)] = struct{}{}
 		}
 		builder.selectedFiles = map[string]map[string]struct{}{
-			entryFile.Package: {filepath.Clean(absEntry): {}},
+			entryFile.Package: selected,
 		}
 	}
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
