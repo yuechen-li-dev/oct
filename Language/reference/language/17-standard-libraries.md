@@ -143,6 +143,9 @@ Json.Save("out/metrics.json", summary)!
 - `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
 - `Markdown.TableWithColumns(table, columns)` provides explicit column order control.
 - `Markdown.KeyValueTable(keys, values)` provides deterministic scalar settings/metadata output in a two-column table.
+- Prefer `Markdown.Title(text)` and `Markdown.Subtitle(text)` as semantic report-heading helpers.
+- `Markdown.Title(text)` is an alias for `Markdown.H1(text)`, and `Markdown.Subtitle(text)` is an alias for `Markdown.H2(text)`.
+- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain available as lower-level Markdown heading helpers.
 - `Markdown.Callout(kind, lines)` emits deterministic blockquote callouts for `note`, `info`, `warning`, `danger`, and `success`.
 - `Markdown.Image(path, altText)` emits a single image line and performs minimal alt-text safety normalization.
 - `Markdown.Figure(path, caption)` emits image + caption report lines.
