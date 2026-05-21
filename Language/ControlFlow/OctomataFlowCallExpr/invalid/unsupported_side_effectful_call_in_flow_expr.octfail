@@ -1,0 +1,18 @@
+expect error: "fallible expression must be handled explicitly"
+
+package MainInvalid
+
+flow RejectSideEffectfulFlowCallExpr() -> Float {
+    board {
+        X: Float
+    }
+
+    state Start {
+        board.X = CsvRead("ignored.csv")
+        return board.X
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

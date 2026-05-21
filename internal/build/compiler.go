@@ -167,6 +167,16 @@ type MIRFlowUnaryExpr struct {
 
 func (MIRFlowUnaryExpr) mirFlowExpr() {}
 
+type MIRFlowCallExpr struct {
+	Callee   string
+	Args     []MIRFlowExpr
+	Builtin  bool
+	RetType  string
+	Fallible bool
+}
+
+func (MIRFlowCallExpr) mirFlowExpr() {}
+
 type MIRFlowUtilityWhenExpr struct {
 	SiteID     int
 	ResultType string
@@ -3036,6 +3046,26 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 			return nil, err
 		}
 		return MIRFlowUnaryExpr{Operator: e.Operator, Operand: v}, nil
+	case ast.CallExpr:
+		callee, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
+		if err != nil {
+			return nil, err
+		}
+		if !builtin {
+			return nil, unsupported("non-builtin calls in compiled flow expressions")
+		}
+		if fallible {
+			return nil, fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
+		}
+		args := make([]MIRFlowExpr, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			v, err := lowerFlowExpr(arg, env, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, v)
+		}
+		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, RetType: ret, Fallible: fallible}, nil
 	case ast.UtilityWhenExpr:
 		resultType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 		if err != nil {
@@ -3121,6 +3151,18 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 		default:
 			return inferFlowExprType(e.Left, env, pkg, boardFieldTypes)
 		}
+	case ast.CallExpr:
+		_, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
+		if err != nil {
+			return "", err
+		}
+		if !builtin {
+			return "", unsupported("non-builtin calls in compiled flow expressions")
+		}
+		if fallible {
+			return "", fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
+		}
+		return ret, nil
 	case ast.UtilityWhenExpr:
 		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3138,6 +3180,26 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 		return "", unsupported(fmt.Sprintf("flow field access %s.%s", targetIdent.Name, e.Field))
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
+	}
+}
+
+func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
+	ident, ok := callee.(ast.IdentifierExpr)
+	if !ok {
+		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
+	}
+	if !builtin.IsName(ident.Name) {
+		return "", "", false, false, unsupportedBuiltin(ident.Name)
+	}
+	switch ident.Name {
+	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue":
+		return ident.Name, "Float", true, false, nil
+	case "FloorToInt", "CeilToInt", "RoundToInt":
+		return ident.Name, "Int", true, false, nil
+	case "FormatFloat":
+		return ident.Name, "String", true, false, nil
+	default:
+		return "", "", false, false, unsupportedBuiltin(ident.Name)
 	}
 }
 
@@ -3259,6 +3321,12 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 		return fmt.Sprintf("(%s %s %s)", dumpFlowExpr(e.Left), e.Operator, dumpFlowExpr(e.Right))
 	case MIRFlowUnaryExpr:
 		return fmt.Sprintf("(%s%s)", e.Operator, dumpFlowExpr(e.Operand))
+	case MIRFlowCallExpr:
+		args := make([]string, 0, len(e.Args))
+		for _, arg := range e.Args {
+			args = append(args, dumpFlowExpr(arg))
+		}
+		return fmt.Sprintf("%s(%s)", e.Callee, strings.Join(args, ", "))
 	case MIRFlowUtilityWhenExpr:
 		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
 	default:
@@ -4848,6 +4916,19 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			op = "!"
 		}
 		return fmt.Sprintf("(%s%s)", op, v), nil
+	case MIRFlowCallExpr:
+		args := make([]string, 0, len(e.Args))
+		for _, arg := range e.Args {
+			v, err := emitGoFlowExpr(arg, pkg)
+			if err != nil {
+				return "", err
+			}
+			args = append(args, v)
+		}
+		if !e.Builtin {
+			return "", unsupported("non-builtin calls in compiled flow expressions")
+		}
+		return emitGoBuiltinCallExpr(e.Callee, args)
 	case MIRFlowUtilityWhenExpr:
 		h, err := emitGoFlowExpr(e.Hysteresis, pkg)
 		if err != nil {
@@ -4882,6 +4963,57 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
+	}
+}
+
+func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
+	switch canonicalCompiledBuiltinName(callee) {
+	case "Abs":
+		return fmt.Sprintf("math.Abs(%s)", args[0]), nil
+	case "Sqrt":
+		return fmt.Sprintf("math.Sqrt(%s)", args[0]), nil
+	case "Sin":
+		return fmt.Sprintf("math.Sin(%s)", args[0]), nil
+	case "Cos":
+		return fmt.Sprintf("math.Cos(%s)", args[0]), nil
+	case "Tan":
+		return fmt.Sprintf("math.Tan(%s)", args[0]), nil
+	case "Asin":
+		return fmt.Sprintf("math.Asin(%s)", args[0]), nil
+	case "Acos":
+		return fmt.Sprintf("math.Acos(%s)", args[0]), nil
+	case "Atan":
+		return fmt.Sprintf("math.Atan(%s)", args[0]), nil
+	case "Atan2":
+		return fmt.Sprintf("math.Atan2(%s, %s)", args[0], args[1]), nil
+	case "Exp":
+		return fmt.Sprintf("math.Exp(%s)", args[0]), nil
+	case "Ln":
+		return fmt.Sprintf("math.Log(%s)", args[0]), nil
+	case "Pow":
+		return fmt.Sprintf("math.Pow(%s, %s)", args[0], args[1]), nil
+	case "Log10":
+		return fmt.Sprintf("math.Log10(%s)", args[0]), nil
+	case "Sinh":
+		return fmt.Sprintf("math.Sinh(%s)", args[0]), nil
+	case "Cosh":
+		return fmt.Sprintf("math.Cosh(%s)", args[0]), nil
+	case "Tanh":
+		return fmt.Sprintf("math.Tanh(%s)", args[0]), nil
+	case "Pi":
+		return "math.Pi", nil
+	case "E":
+		return "math.E", nil
+	case "FloorToInt":
+		return fmt.Sprintf("int(math.Floor(%s))", args[0]), nil
+	case "CeilToInt":
+		return fmt.Sprintf("int(math.Ceil(%s))", args[0]), nil
+	case "RoundToInt":
+		return fmt.Sprintf("int(math.Round(%s))", args[0]), nil
+	case "FormatFloat":
+		return fmt.Sprintf("strconv.FormatFloat(%s, 'f', int(%s), 64)", args[0], args[1]), nil
+	default:
+		return "", unsupportedBuiltin(callee)
 	}
 }
 
