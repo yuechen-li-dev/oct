@@ -1,0 +1,49 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+fn M3OctomataRunsToDone() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    Assert.True(run.Trace.DoneReached, "done reached")
+    Assert.Equal(M3SampleCount(run.Case), Len(run.Octomata.Recovered), "output length")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+fn M3ProceduralEquivalence() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    let tol = 1e-9
+    for i in 0..Len(run.Procedural.Recovered) {
+        Assert.True(Abs(run.Procedural.Recovered[i] - run.Octomata.Recovered[i]) <= tol, "recovered equivalence")
+        Assert.True(Abs(run.Procedural.Innovation[i] - run.Octomata.Innovation[i]) <= tol, "innovation equivalence")
+    }
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+fn M3MetricsFiniteAndTraceHasStates() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    for i in 0..Len(run.Metrics) {
+        Assert.True(Abs(run.Metrics[i].OutputSNRDb) < 1e300, "finite output snr")
+        Assert.True(Abs(run.Metrics[i].Nrmse) < 1e300, "finite nrmse")
+        Assert.True(Abs(run.Metrics[i].WhitenessCost) < 1e300, "finite whiteness")
+    }
+    Assert.True(run.Trace.PredictCount > 0, "predict visited")
+    Assert.True(run.Trace.DoneCount == 1, "done visited once")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+fn M3ArtifactsWrite() -> Void ! Error {
+    let _ = M3ArtifactWriteAll()?
+    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon")?
+    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md")?
+    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/metrics.csv")?
+    let json = IO.Load("Experiments/FmBrownNoiseKalman/M3/metrics.json")?
+    Assert.True(Len(octagon) > 0, "octagon written")
+    Assert.True(Len(md) > 0, "markdown written")
+    Assert.True(Len(csv) <= 32, "compact csv")
+    Assert.True(Len(json) > 0, "json written")
+}
