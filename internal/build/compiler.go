@@ -1024,15 +1024,15 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 		case ast.GotoStmt:
-			return unsupported("flow/goto")
+			return unsupported("goto outside flow state")
 		case ast.SuspendStmt:
-			return unsupported("suspend")
+			return unsupported("suspend outside flow state")
 		case ast.RememberStmt:
-			return unsupported("remember")
+			return unsupported("remember outside flow state")
 		case ast.ResumeStmt:
-			return unsupported("resume")
+			return unsupported("resume outside flow state")
 		case ast.WhenStmt:
-			return unsupported("when")
+			return unsupported("when outside flow state")
 		default:
 			return fmt.Errorf("unsupported statement %T", s)
 		}

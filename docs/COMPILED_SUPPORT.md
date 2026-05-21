@@ -14,21 +14,30 @@ This file is the **source of truth** for compiled support posture.
 
 ## Octomata feature-granular support snapshot
 
-| Octomata surface | Interpreted status | Compiled status |
-| --- | --- | --- |
-| `flow` declarations | Supported | Partial / verify per fixture |
-| `Step(flow)` | Supported | Partial / verify per fixture |
-| `Active(flow)` | Supported | Partial / verify per fixture |
-| `Complete(flow)` | Supported | Partial / verify per fixture |
-| `Result(flow)` | Supported | Partial / verify per fixture |
-| `StateHistory(flow)` | Supported | Partial / verify per fixture |
-| `ResumeTarget(flow)` | Supported | Partial / verify per fixture |
-| board scalar fields (`Bool`, `Int`, `Float`, `String`) | Supported | Partial / verify per fixture |
-| board array fields (e.g. `Float[]`) | **Unsupported** (type-system/runtime contract currently rejects) | **Unsupported** |
+Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 2026.
+
+| Feature | Interpreted support | Compiled support | Fixture evidence | Limitations |
+| --- | --- | --- | --- | --- |
+| flow declaration lowering | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | No contradiction found between MIR flow lowering and Go emission paths. |
+| state declaration lowering | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | State machine still requires explicit control-transfer (`suspend`, `goto`, `return`). |
+| suspend | Supported | Supported (inside `flow state`) | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Outside flow state remains rejected with explicit diagnostic. |
+| goto | Supported | Supported (inside `flow state`) | Existing runtime fixtures in `OctomataCoreA/runtime/valid` and `OctomataCoreB/runtime/valid` | Outside flow state remains rejected. |
+| resume | Supported | Supported | `OctomataResumeM57/runtime/valid/single_slot_resume_behaviors.octest` | Empty-slot resume remains runtime error path by design. |
+| remember | Supported | Supported | `OctomataResumeM57/runtime/valid/single_slot_resume_behaviors.octest` | Single-slot semantics only; latest remember overwrites prior slot. |
+| when policy / utility when | Supported | Supported | `OctomataCoreB` + `OctomataUtilityWhen` suites | Must satisfy existing utility-when shape/type constraints. |
+| board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
+| scalar board fields Bool/Int/Float/String | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Scalar-only field contract. |
+| board array fields | Unsupported | Unsupported | `OctomataCompiledBoundary/invalid/board_array_unsupported.octfail` | Diagnostic: board fields must be Bool/Int/Float/String. |
+| Step(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Mutates flow in place; returns `Int` sentinel in lowered MIR. |
+| Active(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Returns empty string before first step and after completion. |
+| Complete(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | `false` until completed terminal path executes. |
+| Result(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Calling before completion returns error result contract. |
+| StateHistory(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest`; `OctomataResumeM57/runtime/valid/...` | History records entry + transitions only. |
+| ResumeTarget(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest`; `OctomataResumeM57/runtime/valid/...` | Empty string when slot unused/cleared. |
 
 Notes:
-- Interpreted lane is the primary known-good execution path for Octomata authoring.
-- Compiled Octomata posture remains mixed/unclear at feature granularity; treat as ongoing convergence, not blanket green.
+- Compiler audit found active support in `lowerFlow`, `emitGoFlow`, and MIR builtin emission for Step/Active/Result/Complete/StateHistory/ResumeTarget.
+- No stale “unsupported Step/Result/etc” gate was found ahead of those paths; stale wording was only in generic non-flow statement diagnostics and was narrowed.
 
 ## Current deferred / partial categories
 

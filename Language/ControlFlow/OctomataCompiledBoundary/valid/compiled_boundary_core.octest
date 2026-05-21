@@ -1,0 +1,56 @@
+package Main
+
+flow PauseOnce() -> Void {
+    state Start {
+        suspend
+    }
+}
+
+flow FinishInt() -> Int {
+    state Start {
+        return 42
+    }
+}
+
+flow BoardScalarProbe() -> String {
+    board {
+        Armed: Bool
+        Count: Int
+        Temp: Float
+        Label: String
+    }
+
+    state Start {
+        board.Armed = true
+        board.Count = 3
+        board.Temp = 12.5
+        board.Label = "ok"
+        return board.Label
+    }
+}
+
+[Fact]
+fn CompiledBoundaryCore() -> Void {
+    let paused = PauseOnce()
+    Assert.Equal("", Active(paused), "active is empty before first step")
+    Step(paused)
+    Assert.Equal("Start", Active(paused), "suspend leaves flow active in state")
+    Assert.Equal(false, Complete(paused), "suspended flow is not complete")
+
+    let done = FinishInt()
+    Assert.Equal(false, Complete(done), "new flow not complete before stepping")
+    Step(done)
+    Assert.Equal(true, Complete(done), "flow should complete after returning")
+    Assert.Equal("", Active(done), "active state clears on completion")
+    Assert.Equal("", ResumeTarget(done), "resume slot remains empty when remember unused")
+    let history = StateHistory(done)
+    Assert.Equal(1, Len(history), "history records entry state")
+    Assert.Equal("Start", history[0], "entry state name recorded")
+    let value = Assert.LGTM(Result(done), "Result should succeed after completion")
+    Assert.Equal(42, value, "completed flow returns expected value")
+
+    let boardFlow = BoardScalarProbe()
+    Step(boardFlow)
+    let label = Assert.LGTM(Result(boardFlow), "board scalar probe should return")
+    Assert.Equal("ok", label, "scalar board fields compile and run")
+}
