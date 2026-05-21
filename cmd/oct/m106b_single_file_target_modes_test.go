@@ -27,3 +27,26 @@ func TestM106bExplicitSingleFileTargetIgnoresInvalidSiblingAndManifestInAllModes
 		}
 	}
 }
+
+func TestM106bManifestStubFailsDirectoryButSelectedFileRetainsAssertInCompiledMode(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "manifest.oct", "package Main\n")
+	writeOctPkgFile(t, root, "Main", "selected.octest", "package Main\n[Fact]\nfn SelectedPasses() -> Void { Assert.Equal(1, 1, \"assert available for selected file\") }\n")
+
+	stdout, stderr, err := executeCLIArgs("test", filepath.Join(root, "Main"), "--execution", "compiled")
+	if err == nil {
+		t.Fatalf("expected directory target to fail due to invalid stub manifest, stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "manifest.oct must declare package Manifest") {
+		t.Fatalf("expected canonical manifest validation error, got stderr=%q stdout=%q", stderr, stdout)
+	}
+
+	target := filepath.Join(root, "Main", "selected.octest")
+	stdout, stderr, err = executeCLIArgs("test", target, "--execution", "compiled")
+	if err != nil {
+		t.Fatalf("expected selected file target to pass in compiled mode, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	if !strings.Contains(stdout, "PASS Main.SelectedPasses") {
+		t.Fatalf("expected selected file assert-based pass output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
