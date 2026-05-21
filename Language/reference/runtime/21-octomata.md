@@ -12,6 +12,15 @@ Octomata and records are complementary:
 
 ## Rules
 
+## Contextual keywords
+
+`flow`, `state`, and `step` are contextual keywords.
+
+- `flow` starts flow declarations.
+- `state` starts state declarations.
+- `step` marks range step clauses.
+- In non-ambiguous identifier/binding positions, `flow`/`state`/`step` can still be used as ordinary names.
+
 - Flow declaration form is `flow Name(params) -> ReturnType { state ... }` (source also accepts `=>` for the arrow).
 - A flow must declare at least one `state`.
 - State declaration form is `state Name { ... }`.
@@ -37,7 +46,7 @@ Octomata and records are complementary:
 - `Step(flow)` advances one scheduling step.
 - `Active(flow)` returns the active state name or `""` when inactive/completed-before-step.
 - `Complete(flow)` reports completion status.
-- `Result(flow)` is available only after completion.
+- `Result(flow)` is fallible because the flow may not have completed yet.
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
 - Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, and `StateHistory` require a flow instance argument.
