@@ -27,7 +27,7 @@ Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 
 | when policy / utility when | Supported | Supported | `OctomataCoreB` + `OctomataUtilityWhen` suites | Must satisfy existing utility-when shape/type constraints. |
 | board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
 | scalar board fields Bool/Int/Float/String | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Scalar-only field contract. |
-| flow expression calls (pure builtins) | Supported | Supported (builtin-only in flow state expressions) | `OctomataFlowCallExpr/valid/flow_call_builtin_surface.octest` | Calls inside flow expressions are currently limited to non-fallible pure builtins (`Abs`, `Sqrt`, trig/log family, `FloorToInt`/`CeilToInt`/`RoundToInt`, `FormatFloat`). |
+| flow expression calls (pure builtins) | Supported | Supported (builtin-only in flow state expressions) | `OctomataFlowCallExpr/valid/flow_call_builtin_surface.octest` | Calls inside flow expressions are currently limited to non-fallible pure builtins (`Len`, `Abs`, `Sqrt`, trig/log family, `FloorToInt`/`CeilToInt`/`RoundToInt`, `FormatFloat`). Fallible or side-effectful wrappers remain deferred. |
 | board array fields | Unsupported | Unsupported | `OctomataCompiledBoundary/invalid/board_array_unsupported.octfail` | Diagnostic: board fields must be Bool/Int/Float/String. |
 | Step(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Mutates flow in place; returns `Int` sentinel in lowered MIR. |
 | Active(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Returns empty string before first step and after completion. |
@@ -45,6 +45,7 @@ Notes:
 - Markdown wrapper-heavy paths are still largely interpreted/fallback territory.
 - Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
+- `DirectoryMakeAll` remains wrapper/deferred for compiled mode, including flow-expression contexts.
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 

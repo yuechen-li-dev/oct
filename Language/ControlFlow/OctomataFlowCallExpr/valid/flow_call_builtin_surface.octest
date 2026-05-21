@@ -13,10 +13,46 @@ flow CallBuiltinFlow() -> Float {
     }
 }
 
+flow LenFlow(xs: Float[]) -> Int {
+    board {
+        Count: Int
+    }
+    state Start {
+        board.Count = Len(xs)
+        return board.Count
+    }
+}
+
+flow LenStringFlow() -> Int {
+    board {
+        Count: Int
+    }
+    state Start {
+        board.Count = Len("abc")
+        return board.Count
+    }
+}
+
 [Fact]
 fn FlowBuiltinCallExprCompiled() -> Void {
     let machine = CallBuiltinFlow()
     Step(machine)
     let out = Assert.LGTM(Result(machine), "result should be available after step")
     Assert.Equal(3.0, out, "flow builtin call expression should evaluate")
+}
+
+[Fact]
+fn FlowLenCallExprCompiled() -> Void {
+    let machine = LenFlow([1.0, 2.0, 3.0])
+    Step(machine)
+    let out = Assert.LGTM(Result(machine), "result should be available after len step")
+    Assert.Equal(3, out, "flow len call expression should evaluate for arrays")
+}
+
+[Fact]
+fn FlowLenStringCallExprCompiled() -> Void {
+    let machine = LenStringFlow()
+    Step(machine)
+    let out = Assert.LGTM(Result(machine), "result should be available after string len step")
+    Assert.Equal(3, out, "flow len call expression should evaluate for strings")
 }
