@@ -5256,3 +5256,11 @@ func goReturnExpr(expr string) string {
 	}
 	return expr
 }
+
+func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Result, error) {
+	program, err := project.LoadForTestWithSelectedFiles(path, selectedFiles)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program, compileOptions{selectedReachableOnly: true})
+}

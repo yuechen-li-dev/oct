@@ -1,0 +1,6 @@
+package Main
+
+[Fact]
+fn InvalidSibling() -> Void {
+    let x = [
+}

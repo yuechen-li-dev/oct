@@ -1,0 +1,6 @@
+package Main
+
+[Fact]
+fn SelectedPass() -> Void {
+    Assert.Equal(1, One(), "selected pass")
+}
