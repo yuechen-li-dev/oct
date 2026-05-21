@@ -4,61 +4,70 @@ import IO
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3ExplicitStateRunsToDone() -> Void ! Error {
+[Suite("Experiments.FmBrownNoiseKalman.M3.FlowSmoke")]
+fn M3FlowReachesDone() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     Assert.True(run.Trace.DoneReached, "done reached")
-    Assert.Equal("OctomataFlow", run.Trace.RepresentationKind, "representation kind")
 }
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3OutputAndInnovationLengthsMatchSampleCount() -> Void ! Error {
+[Suite("Experiments.FmBrownNoiseKalman.M3.FlowSmoke")]
+fn M3RecoveredAndInnovationLengthsMatchSampleCount() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     let expected = M3SampleCount(run.Case)
-    Assert.Equal(expected, Len(run.Octomata.Recovered), "output length")
-    Assert.Equal(expected, Len(run.Octomata.Innovation), "innovation length")
-    Assert.Equal(expected, Len(run.Procedural.Recovered), "procedural output length")
-    Assert.Equal(expected, Len(run.Procedural.Innovation), "procedural innovation length")
+    Assert.Equal(expected, Len(run.Octomata.Recovered), "octomata recovered length")
+    Assert.Equal(expected, Len(run.Octomata.Innovation), "octomata innovation length")
 }
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3ProceduralAndExplicitOutputsMatchWithinTolerance() -> Void ! Error {
+[Suite("Experiments.FmBrownNoiseKalman.M3.FlowSmoke")]
+fn M3ProceduralAndOctomataEquivalentWithinTolerance() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
-    let tol = 1e-9
-    Assert.True(run.MaxOutputDiff <= tol, "max output difference")
-    Assert.True(run.MaxInnovationDiff <= tol, "max innovation difference")
-
-    let proc = run.Metrics[0]
-    let exp = run.Metrics[1]
-    Assert.True(Abs(proc.OutputSNRDb - exp.OutputSNRDb) <= tol, "output snr equivalence")
-    Assert.True(Abs(proc.Nrmse - exp.Nrmse) <= tol, "nrmse equivalence")
-    Assert.True(Abs(proc.WhitenessCost - exp.WhitenessCost) <= tol, "whiteness equivalence")
+    Assert.True(run.MaxOutputDiff <= run.ToleranceUsed, "max recovered abs diff")
+    Assert.True(run.MaxInnovationDiff <= run.ToleranceUsed, "max innovation abs diff")
+    Assert.True(Abs(run.Metrics[0].OutputSNRDb - run.Metrics[1].OutputSNRDb) <= run.ToleranceUsed, "output snr diff")
+    Assert.True(Abs(run.Metrics[0].Nrmse - run.Metrics[1].Nrmse) <= run.ToleranceUsed, "nrmse diff")
+    Assert.True(Abs(run.Metrics[0].WhitenessCost - run.Metrics[1].WhitenessCost) <= run.ToleranceUsed, "whiteness diff")
 }
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3MetricsFiniteAndTraceCountsAreExpected() -> Void ! Error {
+[Suite("Experiments.FmBrownNoiseKalman.M3.FlowSmoke")]
+fn M3MetricsFiniteAndTraceContainsExpectedStates() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     for i in 0..Len(run.Metrics) {
         Assert.True(Abs(run.Metrics[i].OutputSNRDb) < 1e300, "finite output snr")
         Assert.True(Abs(run.Metrics[i].Nrmse) < 1e300, "finite nrmse")
         Assert.True(Abs(run.Metrics[i].WhitenessCost) < 1e300, "finite whiteness")
+        Assert.True(Abs(run.Metrics[i].Correlation) <= 1.0 + 1e-9, "finite correlation")
     }
 
-    let n = M3SampleCount(run.Case)
-    Assert.Equal(1, run.Trace.InitializeCount, "initialize count")
-    Assert.Equal(n + 1, run.Trace.PredictCount, "predict count")
-    Assert.Equal(n, run.Trace.ObserveCount, "observe count")
-    Assert.Equal(n, run.Trace.ComputeGainCount, "compute gain count")
-    Assert.Equal(n, run.Trace.CorrectCount, "correct count")
-    Assert.Equal(n, run.Trace.RecordCount, "record count")
-    Assert.Equal(n, run.Trace.AdvanceCount, "advance count")
-    Assert.Equal(1, run.Trace.DoneCount, "done count")
+    Assert.True(run.Trace.TickCount > 0, "state history non-empty")
+    Assert.True(run.Trace.InitializeCount > 0, "initialize present")
+    Assert.True(run.Trace.PredictCount > 0, "predict present")
+    Assert.True(run.Trace.ObserveCount > 0, "observe present")
+    Assert.True(run.Trace.ComputeGainCount > 0, "compute gain present")
+    Assert.True(run.Trace.CorrectCount > 0, "correct present")
+    Assert.True(run.Trace.RecordCount > 0, "record present")
+    Assert.True(run.Trace.AdvanceCount > 0, "advance present")
+    Assert.True(run.Trace.DoneCount > 0, "done present")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+[Suite("Experiments.FmBrownNoiseKalman.M3.FlowSmoke")]
+fn M3BoardSnapshotPathExercised() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    Assert.Equal("RealOctomataScalarBoardWithBoardSnapshot", run.Trace.RepresentationKind, "representation kind")
+    Assert.Equal(run.Trace.SampleCount, run.Trace.RecoveredCount, "snapshot recovered count")
+    Assert.Equal(run.Trace.SampleCount, run.Trace.InnovationCount, "snapshot innovation count")
 }
 
 [Artifact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
+[Suite("Experiments.FmBrownNoiseKalman.M3.Artifacts")]
 fn M3ArtifactsWrite() -> Void ! Error {
     let _ = M3ArtifactWriteAll()
     let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon")?

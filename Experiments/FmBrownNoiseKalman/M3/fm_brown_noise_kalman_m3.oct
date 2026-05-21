@@ -35,6 +35,10 @@ record M3TraceSummary {
     FirstState: String
     LastState: String
     SampleCount: Int
+    RecoveredCount: Int
+    InnovationCount: Int
+    FirstRecovered: Float
+    LastRecovered: Float
     FirstInnovation: Float
     LastInnovation: Float
 }
@@ -44,6 +48,7 @@ record M3MetricRow {
     OutputSNRDb: Float
     Nrmse: Float
     WhitenessCost: Float
+    Correlation: Float
 }
 
 record M3Run {
@@ -56,114 +61,99 @@ record M3Run {
     Metrics: M3MetricRow[]
     MaxOutputDiff: Float
     MaxInnovationDiff: Float
+    ToleranceUsed: Float
 }
 
-record M3OctagonReport {
-    title: String
-    goal: String
-    representationChoice: String
-    stateMachine: String[]
-    trace: M3TraceSummary
-    metrics: M3MetricRow[]
-    equivalence: String[]
-    limitations: String[]
-    next: String
-}
-
-record M3MetricTable {
-    method: String[]
-    outputSNRDb: String[]
-    nrmse: String[]
-    whitenessCost: String[]
-}
-
-record M3CsvRow {
-    method: String
-    outputSNRDb: String
-    nrmse: String
-    whitenessCost: String
-}
-
-flow M3KalmanMachine(observed: Float[]) -> M3StateMachineResult {
+flow M3KalmanMachine(observed: Float[]) -> Bool {
     board {
         Index: Int
-        Z: Float
-        X0: Float
-        X1: Float
-        P00: Float
-        P11: Float
-        X0Pred: Float
-        X1Pred: Float
-        P00Pred: Float
-        P11Pred: Float
-        InnovationY: Float
-        S: Float
-        K0: Float
-        K1: Float
-        Recovered: Float[]
-        Innovation: Float[]
+        SampleCount: Int
+        Measurement: Float
+        Estimate: Float
+        Velocity: Float
+        Covariance: Float
+        VelocityCovariance: Float
+        PredictedEstimate: Float
+        PredictedVelocity: Float
+        PredictedCovariance: Float
+        PredictedVelocityCovariance: Float
+        Innovation: Float
+        Gain: Float
+        VelocityGain: Float
+        RecoveredCurrent: Float
+        RecordReady: Bool
+        DoneFlag: Bool
     }
 
     state Initialize {
         board.Index = 0
-        board.X0 = 0.0
-        board.X1 = 0.0
-        board.P00 = 1.0
-        board.P11 = 1.0
-        board.Recovered = []
-        board.Innovation = []
+        board.SampleCount = Len(observed)
+        board.Measurement = 0.0
+        board.Estimate = 0.0
+        board.Velocity = 0.0
+        board.Covariance = 1.0
+        board.VelocityCovariance = 1.0
+        board.PredictedEstimate = 0.0
+        board.PredictedVelocity = 0.0
+        board.PredictedCovariance = 1.0
+        board.PredictedVelocityCovariance = 1.0
+        board.Innovation = 0.0
+        board.Gain = 0.0
+        board.VelocityGain = 0.0
+        board.RecoveredCurrent = 0.0
+        board.RecordReady = false
+        board.DoneFlag = false
         goto Predict
     }
 
     state Predict {
+        board.RecordReady = false
         when {
-            case board.Index >= Len(observed) -> goto Done
+            case board.Index >= board.SampleCount -> goto Done
             else -> goto Observe
         }
     }
 
     state Observe {
-        board.Z = observed[board.Index]
-        board.X0Pred = board.X0 + board.X1
-        board.X1Pred = board.X1
-        board.P00Pred = board.P00 + board.P11 + 1e-3
-        board.P11Pred = board.P11 + 1e-2
+        board.Measurement = observed[board.Index]
+        board.PredictedEstimate = board.Estimate + board.Velocity
+        board.PredictedVelocity = board.Velocity
+        board.PredictedCovariance = board.Covariance + board.VelocityCovariance + 1e-3
+        board.PredictedVelocityCovariance = board.VelocityCovariance + 1e-2
         goto ComputeGain
     }
 
     state ComputeGain {
-        board.InnovationY = board.Z - board.X0Pred
-        board.S = board.P00Pred + 0.1 + 1.0
-        board.K0 = board.P00Pred / board.S
-        board.K1 = board.P11Pred / board.S
+        board.Innovation = board.Measurement - board.PredictedEstimate
+        let s = board.PredictedCovariance + 0.1 + 1.0
+        board.Gain = board.PredictedCovariance / s
+        board.VelocityGain = board.PredictedVelocityCovariance / s
         goto Correct
     }
 
     state Correct {
-        board.X0 = board.X0Pred + board.K0 * board.InnovationY
-        board.X1 = board.X1Pred + board.K1 * board.InnovationY
-        board.P00 = (1.0 - board.K0) * board.P00Pred
-        board.P11 = (1.0 - board.K1) * board.P11Pred
+        board.Estimate = board.PredictedEstimate + board.Gain * board.Innovation
+        board.Velocity = board.PredictedVelocity + board.VelocityGain * board.Innovation
+        board.Covariance = (1.0 - board.Gain) * board.PredictedCovariance
+        board.VelocityCovariance = (1.0 - board.VelocityGain) * board.PredictedVelocityCovariance
         goto Record
     }
 
     state Record {
-        board.Recovered = Append(board.Recovered, board.X0)
-        board.Innovation = Append(board.Innovation, board.InnovationY)
+        board.RecoveredCurrent = board.Estimate
+        board.RecordReady = true
         goto Advance
     }
 
     state Advance {
         board.Index = board.Index + 1
+        suspend
         goto Predict
     }
 
     state Done {
-        return M3StateMachineResult {
-            Recovered: board.Recovered
-            Innovation: board.Innovation
-            DoneReached: true
-        }
+        board.DoneFlag = true
+        return true
     }
 }
 
@@ -178,9 +168,11 @@ fn M3SampleCount(c: M3Case) -> Int {
 fn M3BuildClean(c: M3Case) -> Float[] {
     let n = M3SampleCount(c)
     var clean: Float[] = []
+    var x = 0.0
+    let dx = 1.0 / c.SampleRate
     for i in 0..n {
-        let x = Float(i) / c.SampleRate
         clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * x))
+        x = x + dx
     }
     return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0)
 }
@@ -197,9 +189,7 @@ fn M3MaxAbsDiff(a: Float[], b: Float[]) -> Float {
     var max = 0.0
     for i in 0..Len(a) {
         let d = Abs(a[i] - b[i])
-        if d > max {
-            max = d
-        }
+        if d > max { max = d }
     }
     return max
 }
@@ -210,11 +200,27 @@ fn RunM3OctomataFixedKalman(c: M3Case) -> M3Run ! Error {
     let procedural = Shared.FixedWhiteKalmanFilter(observed)
 
     let machine = M3KalmanMachine(observed)
+    var recovered: Float[] = []
+    var innovation: Float[] = []
+
     while Complete(machine) == false {
         Step(machine)
+        let snap = BoardSnapshot(machine)!
+        if snap.RecordReady {
+            recovered = Append(recovered, snap.RecoveredCurrent)
+            innovation = Append(innovation, snap.Innovation)
+        }
     }
-    let octomata = Result(machine)!
+
+    let _ = Result(machine)!
     let history = StateHistory(machine)
+    let finalSnap = BoardSnapshot(machine)!
+
+    let octomata = M3StateMachineResult {
+        Recovered: recovered
+        Innovation: innovation
+        DoneReached: finalSnap.DoneFlag
+    }
 
     let metrics = [
         M3MetricRow {
@@ -222,17 +228,19 @@ fn RunM3OctomataFixedKalman(c: M3Case) -> M3Run ! Error {
             OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, procedural.Recovered))
             Nrmse: Shared.Nrmse(clean, procedural.Recovered)
             WhitenessCost: Shared.WhitenessCost(procedural.Innovation)
+            Correlation: Shared.Correlation(clean, procedural.Recovered)
         },
         M3MetricRow {
             Method: "OctomataFlow"
             OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, octomata.Recovered))
             Nrmse: Shared.Nrmse(clean, octomata.Recovered)
             WhitenessCost: Shared.WhitenessCost(octomata.Innovation)
+            Correlation: Shared.Correlation(clean, octomata.Recovered)
         }
     ]
 
     let trace = M3TraceSummary {
-        RepresentationKind: "OctomataFlow"
+        RepresentationKind: "RealOctomataScalarBoardWithBoardSnapshot"
         TickCount: Len(history)
         InitializeCount: M3CountState(history, "Initialize")
         PredictCount: M3CountState(history, "Predict")
@@ -246,12 +254,15 @@ fn RunM3OctomataFixedKalman(c: M3Case) -> M3Run ! Error {
         FirstState: if Len(history) > 0 { history[0] } else { "" }
         LastState: if Len(history) > 0 { history[Len(history) - 1] } else { "" }
         SampleCount: Len(clean)
+        RecoveredCount: Len(octomata.Recovered)
+        InnovationCount: Len(octomata.Innovation)
+        FirstRecovered: if Len(octomata.Recovered) > 0 { octomata.Recovered[0] } else { 0.0 }
+        LastRecovered: if Len(octomata.Recovered) > 0 { octomata.Recovered[Len(octomata.Recovered) - 1] } else { 0.0 }
         FirstInnovation: if Len(octomata.Innovation) > 0 { octomata.Innovation[0] } else { 0.0 }
         LastInnovation: if Len(octomata.Innovation) > 0 { octomata.Innovation[Len(octomata.Innovation) - 1] } else { 0.0 }
     }
 
-    let maxOut = M3MaxAbsDiff(procedural.Recovered, octomata.Recovered)
-    let maxInnov = M3MaxAbsDiff(procedural.Innovation, octomata.Innovation)
+    let tolerance = 1e-9
 
     return M3Run {
         Case: c
@@ -261,65 +272,30 @@ fn RunM3OctomataFixedKalman(c: M3Case) -> M3Run ! Error {
         Octomata: octomata
         Trace: trace
         Metrics: metrics
-        MaxOutputDiff: maxOut
-        MaxInnovationDiff: maxInnov
+        MaxOutputDiff: M3MaxAbsDiff(procedural.Recovered, octomata.Recovered)
+        MaxInnovationDiff: M3MaxAbsDiff(procedural.Innovation, octomata.Innovation)
+        ToleranceUsed: tolerance
     }
 }
 
 fn M3ArtifactWriteAll() -> Int {
     let run = RunM3OctomataFixedKalman(M3TinyCase())!
-    let octagon = M3OctagonReport {
-        title: "FM Brown-Noise Kalman M3 explicit-state representation"
-        goal: "Represent fixed Kalman as explicit Octomata state machine and compare with procedural baseline on deterministic tiny case."
-        representationChoice: "Real Octomata flow/state syntax used (no manual fallback)."
-        stateMachine: ["Initialize", "Predict", "Observe", "ComputeGain", "Correct", "Record", "Advance", "Done"]
-        trace: run.Trace
-        metrics: run.Metrics
-        equivalence: [
-            String.Concat(["max|output_diff|=", String.From<Float>(run.MaxOutputDiff)]),
-            String.Concat(["max|innovation_diff|=", String.From<Float>(run.MaxInnovationDiff)])
-        ]
-        limitations: ["Fixed white-noise Kalman only in M3", "No adaptive AR(1) in this pass"]
-        next: "Add adaptive AR(1) explicit-state variant after fixed representation stabilizes."
-    }
 
-    var methods: String[] = []
-    var outputSnrs: String[] = []
-    var nrmses: String[] = []
-    var whiteness: String[] = []
-    for i in 0..Len(run.Metrics) {
-        methods = Append(methods, run.Metrics[i].Method)
-        outputSnrs = Append(outputSnrs, String.From<Float>(run.Metrics[i].OutputSNRDb))
-        nrmses = Append(nrmses, String.From<Float>(run.Metrics[i].Nrmse))
-        whiteness = Append(whiteness, String.From<Float>(run.Metrics[i].WhitenessCost))
-    }
-    let metricTable = M3MetricTable { method: methods outputSNRDb: outputSnrs nrmse: nrmses whitenessCost: whiteness }
-
-    let doneText = if run.Trace.DoneReached { "true" } else { "false" }
-    let traceKeys = ["representationKind", "doneReached", "sampleCount", "tickCount", "firstState", "lastState", "firstInnovation", "lastInnovation"]
-    let traceVals = [run.Trace.RepresentationKind, doneText, String.From<Int>(run.Trace.SampleCount), String.From<Int>(run.Trace.TickCount), run.Trace.FirstState, run.Trace.LastState, String.From<Float>(run.Trace.FirstInnovation), String.From<Float>(run.Trace.LastInnovation)]
-
-    let md = Markdown.Report([
-        Markdown.Title("FM Brown-Noise Kalman M3: explicit-state / Octomata representation"),
-        Markdown.Subtitle("Deterministic tiny-case equivalence against procedural baseline"),
-        Markdown.Section("Experiment goal", [Markdown.Paragraph("Represent a fixed Kalman estimator as explicit state-machine phases and verify equivalence to a procedural baseline.")]),
-        Markdown.Section("Representation choice", [Markdown.Callout("info", ["Real Octomata flow/state was sufficient for this experiment; manual fallback was not required."])]),
+    let report = Markdown.Report([
+        Markdown.Title("FM Brown-Noise Kalman M3"),
+        Markdown.Subtitle("Real Octomata scalar-board Kalman representation using BoardSnapshot"),
+        Markdown.Section("Goal", [Markdown.KeyValueTable(["goal"], ["Can a Kalman-style estimator loop be expressed as explicit Octomata flow states while matching a procedural baseline on a deterministic tiny case?"])]),
+        Markdown.Section("Representation", [Markdown.KeyValueTable(["representation", "boardObservation", "arraysPlacement", "compiledBoardSnapshot"], [run.Trace.RepresentationKind, "BoardSnapshot(machine)! read-only observation", "Recovered/innovation arrays are external accumulators", "Deferred: interpreted-supported, compiled-not-yet"]) ]),
         Markdown.Section("State-machine phases", [Markdown.Bullets(["Initialize", "Predict", "Observe", "ComputeGain", "Correct", "Record", "Advance", "Done"])]),
-        Markdown.Section("Equivalence metrics", [Markdown.Table(metricTable)]),
-        Markdown.Section("Trace summary", [Markdown.KeyValueTable(traceKeys, traceVals)]),
-        Markdown.Section("Limitations", [Markdown.Bullets(["No adaptive AR(1) in this pass", "No parameter tuning; representation/inspectability only"])]),
-        Markdown.Section("Next recommendation", [Markdown.Bullets(["Add adaptive AR(1) variant with same explicit-state phases", "If needed, add compact transition histogram artifacts"] )])
+        Markdown.Section("Equivalence metrics", [Markdown.KeyValueTable(["tolerance", "maxRecoveredAbsDiff", "maxInnovationAbsDiff"], [String.From<Float>(run.ToleranceUsed), String.From<Float>(run.MaxOutputDiff), String.From<Float>(run.MaxInnovationDiff)])]),
+        Markdown.Section("Trace summary", [Markdown.KeyValueTable(["doneReached", "sampleCount", "tickCount", "recoveredCount", "innovationCount", "firstState", "lastState", "firstRecovered", "lastRecovered", "firstInnovation", "lastInnovation"], [ToString(run.Trace.DoneReached), String.From<Int>(run.Trace.SampleCount), String.From<Int>(run.Trace.TickCount), String.From<Int>(run.Trace.RecoveredCount), String.From<Int>(run.Trace.InnovationCount), run.Trace.FirstState, run.Trace.LastState, String.From<Float>(run.Trace.FirstRecovered), String.From<Float>(run.Trace.LastRecovered), String.From<Float>(run.Trace.FirstInnovation), String.From<Float>(run.Trace.LastInnovation)])]),
+        Markdown.Section("Limitations", [Markdown.Callout("note", ["Fixed white-Kalman baseline only in M3 first pass.", "No board arrays were used by design.", "Compiled BoardSnapshot support is intentionally deferred."])]),
+        Markdown.Section("Recommendation", [Markdown.KeyValueTable(["next"], ["Add adaptive AR(1) Octomata variant reusing this scalar-board + BoardSnapshot architecture once compiled BoardSnapshot support lands."])])
     ])
 
-    var csvRows: String[][] = [["method", "outputSNRDb", "nrmse", "whitenessCost"]]
-    for i in 0..Len(run.Metrics) {
-        let m = run.Metrics[i]
-        csvRows = Append(csvRows, [m.Method, String.From<Float>(m.OutputSNRDb), String.From<Float>(m.Nrmse), String.From<Float>(m.WhitenessCost)])
-    }
-
-    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon", octagon )
-    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md", md )
-    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M3/metrics.csv", csvRows )
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M3/metrics.json", Json.Object("{}"))
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon", run)
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md", report)
+    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M3/metrics.csv", [["method", "outputSNRDb", "nrmse", "whitenessCost", "correlation"], [run.Metrics[0].Method, String.From<Float>(run.Metrics[0].OutputSNRDb), String.From<Float>(run.Metrics[0].Nrmse), String.From<Float>(run.Metrics[0].WhitenessCost), String.From<Float>(run.Metrics[0].Correlation)], [run.Metrics[1].Method, String.From<Float>(run.Metrics[1].OutputSNRDb), String.From<Float>(run.Metrics[1].Nrmse), String.From<Float>(run.Metrics[1].WhitenessCost), String.From<Float>(run.Metrics[1].Correlation)]])
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M3/metrics.json", Json.Object(String.Concat(["{\"tolerance\":", String.From<Float>(run.ToleranceUsed), ",\"maxOutputDiff\":", String.From<Float>(run.MaxOutputDiff), ",\"maxInnovationDiff\":", String.From<Float>(run.MaxInnovationDiff), "}"])))
     return 0
 }
