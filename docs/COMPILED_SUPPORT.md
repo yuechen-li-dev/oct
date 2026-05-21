@@ -421,3 +421,46 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Post-fix blocker map
 - No new blocker observed on the requested M2/M2b compiled lanes in this pass.
 - Recommended next task: resume the next highest compiled support gap outside batch capture (wrapper/builtin parity and broader suite coverage), now that batch capture is no longer gating M2/M2b compiled execution.
+
+## 12) 2026-05-21 M2/M2b final validation (post compiled batch capture repair)
+- Batch capture repair context validated in this pass:
+  - `MIRBatchMap.Captures` present and used for compiled batch worker lowering.
+  - Outer-local capture into compiled batch workers is now functional in observed compiled tests.
+  - Existing `__octBatchRun` runtime path remains in use (no replacement observed in outcomes).
+- Measured M2/M2b smoke lanes now execute compiled with zero fallback:
+  - `M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution compiled`: pass, `compiled: 2 interpreted fallback: 0`.
+  - `M2 --suite Experiments.FmBrownNoiseKalman.M2 --execution auto`: pass, `compiled: 2 interpreted fallback: 0`.
+  - `M2 --suite Experiments.FmBrownNoiseKalman.M2b --execution compiled`: pass, `compiled: 3 interpreted fallback: 0`.
+  - `M2 --suite Experiments.FmBrownNoiseKalman.M2b --execution auto`: pass, `compiled: 3 interpreted fallback: 0`.
+- Prior interpreted cycle-time failures are gone for the M2b smoke suite lane in this measurement set (no timeouts in compiled or auto smoke suite runs).
+
+### Artifact lane status (M2)
+- `go run ./cmd/oct artifact Experiments/FmBrownNoiseKalman/M2` consistently advances through:
+  - `FmBrownNoiseKalman.M2ArtifactFilesWrite` (pass)
+  - `FmBrownNoiseKalman.M2Artifacts` (pass)
+  - then stalls at `FmBrownNoiseKalman.M2bArtifactsWrite`
+- With an explicit `timeout 420s`, command exits `124` while still in `M2bArtifactsWrite`.
+- Artifact files confirmed written in this pass:
+  - `m2a_report.octagon`
+  - `m2a_report.md`
+  - `metrics.csv`
+  - `metrics.json`
+- M2b sweep artifacts (`m2b_sweep_report.*`, `sweep_metrics.csv`, `sweep_summary.json`) were **not produced** in this environment due timeout/stall at `M2bArtifactsWrite`.
+
+### Regression status snapshot (selected)
+- Green compiled fixtures:
+  - `Language/Testing/CompiledBatchCapture/valid/core_batch_capture.octest --execution compiled` -> `compiled: 5 fallback: 0`.
+  - `Language/Testing/CompiledArrayLowering/valid/core_array_lowering.octest --execution compiled` -> `compiled: 5 fallback: 0`.
+  - `Language/Testing/CompiledAssertions/valid --execution compiled` -> `compiled: 3 fallback: 0`.
+  - `Libraries/String --execution compiled` -> `compiled: 5 fallback: 0`.
+  - `Libraries/Random/CompiledDispatch.RandomGaussian.octest --execution compiled` -> `compiled: 1 fallback: 0`.
+- FM regression lanes:
+  - `Experiments/FmBrownNoiseKalman/M0` test + artifact: pass.
+  - `Experiments/FmBrownNoiseKalman/M1` test + artifact: pass.
+- Remaining broad compiled gaps unchanged in non-target suites:
+  - Markdown/IO/ArtifactUsage still rely on interpreted fallback in auto/default runs.
+
+### Next compiled-support priorities
+1. Investigate and decompose `FmBrownNoiseKalman.M2bArtifactsWrite` runtime stall so full M2b sweep artifacts can complete deterministically.
+2. Keep compiled smoke-lane guarantees for M2/M2b pinned (compiled counts should remain nonzero with zero fallback).
+3. Continue wrapper/builtin parity work for Markdown/IO/ArtifactUsage separately from FM science lanes.
