@@ -48,6 +48,8 @@ var namespaceAliases = map[string]map[string]string{
 		"H1":               "MarkdownH1",
 		"H2":               "MarkdownH2",
 		"H3":               "MarkdownH3",
+		"Title":            "MarkdownH1",
+		"Subtitle":         "MarkdownH2",
 		"Paragraph":        "MarkdownParagraph",
 		"Blank":            "MarkdownBlank",
 		"HorizontalRule":   "MarkdownHorizontalRule",

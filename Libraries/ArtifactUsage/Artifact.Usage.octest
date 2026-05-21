@@ -2,6 +2,7 @@ package ArtifactUsage
 
 import Artifact
 import IO
+import Markdown
 
 record MetricsRow {
     Name: String
@@ -33,4 +34,15 @@ fn ArtifactCsvAndJsonAreCompact() -> Void {
     Assert.Equal("a,b\n1,2\n", csvText, "csv writes compact deterministic output")
     Assert.Equal("{\"a\":1}", jsonText, "json writes compact output")
     let _rm = IO.RemoveAll(root)!
+}
+
+[Fact]
+fn MarkdownSemanticTitleAliasesM0() -> Void {
+    Assert.Equal(Markdown.H1("Title"), Markdown.Title("Title"), "title alias")
+    Assert.Equal(Markdown.H2("Subtitle"), Markdown.Subtitle("Subtitle"), "subtitle alias")
+
+    let report = Markdown.Report([Markdown.Title("Report Title"), Markdown.Subtitle("Overview"), Markdown.Paragraph("Body.")])
+    Assert.Equal("# Report Title", report[0], "report title line")
+    Assert.Equal("## Overview", report[2], "report subtitle line")
+    Assert.Equal("Body.", report[4], "report body line")
 }

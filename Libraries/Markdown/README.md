@@ -4,6 +4,12 @@ Markdown is a deterministic report-writing helper, not a Markdown parser.
 
 All block helpers return `String[]` lines suitable for `IO.WriteLines` or `Artifact.WriteMarkdown`.
 
+For report ergonomics, prefer semantic heading aliases:
+
+- `Markdown.Title(text)` as the canonical report title helper (same output as `Markdown.H1(text)`).
+- `Markdown.Subtitle(text)` as the canonical report subtitle helper (same output as `Markdown.H2(text)`).
+- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain supported lower-level heading helpers.
+
 `Markdown.Table` expects a columnar record-of-string-columns table.
 Use `Markdown.TableWithColumns(table, columns)` for explicit output column order.
 Use `Markdown.KeyValueTable(keys, values)` for scalar metadata/settings sections.
@@ -28,6 +34,13 @@ Future direction (not implemented in M1): an Oct-owned `.md` dialect could later
 Canonical namespaced authoring pattern:
 
 ```oct
+import Markdown
+let report = Markdown.Report([
+    Markdown.Title("Experiment Report"),
+    Markdown.Subtitle("Overview"),
+    Markdown.Paragraph("Body.")
+])
+
 import String
 let text = String.Join(lines, "\n")
 
