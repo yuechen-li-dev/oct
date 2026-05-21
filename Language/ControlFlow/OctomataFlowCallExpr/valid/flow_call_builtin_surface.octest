@@ -1,0 +1,22 @@
+package Main
+
+flow CallBuiltinFlow() -> Float {
+    board {
+        X: Float
+        I: Int
+    }
+    state Start {
+        board.X = Abs(0.0 - 2.5)
+        board.I = FloorToInt(3.9)
+        board.X = Sqrt(4.0) + 1.0
+        return board.X
+    }
+}
+
+[Fact]
+fn FlowBuiltinCallExprCompiled() -> Void {
+    let machine = CallBuiltinFlow()
+    Step(machine)
+    let out = Assert.LGTM(Result(machine), "result should be available after step")
+    Assert.Equal(3.0, out, "flow builtin call expression should evaluate")
+}
