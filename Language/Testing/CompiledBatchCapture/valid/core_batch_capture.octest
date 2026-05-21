@@ -1,0 +1,57 @@
+package Main
+
+fn BuildSignal() -> Float[] {
+    return [10.0, 20.0, 30.0]
+}
+
+[Fact]
+fn BatchCapturesOuterScalar() -> Void {
+    let base = 10
+    let xs = batch [1, 2, 3] as x {
+        return x + base
+    }
+    Assert.Equal(11, xs[0], "capture scalar first")
+    Assert.Equal(13, xs[2], "capture scalar last")
+}
+
+[Fact]
+fn BatchCapturesOuterArray() -> Void {
+    let z = [10.0, 20.0, 30.0]
+    let indices = [0, 1, 2]
+    let ys = batch indices as i {
+        return z[i]
+    }
+    Assert.Equal(20.0, ys[1], "capture array index")
+}
+
+[Fact]
+fn BatchCapturesComputedLocal() -> Void {
+    let z = BuildSignal()
+    let lags = [0, 2]
+    let ys = batch lags as lag {
+        return z[lag]
+    }
+    Assert.Equal(10.0, ys[0], "computed local capture first")
+    Assert.Equal(30.0, ys[1], "computed local capture second")
+}
+
+[Fact]
+fn BatchLocalShadowingWins() -> Void {
+    let z = 1
+    let xs = [2, 4]
+    let ys = batch xs as x {
+        let z = x
+        return z
+    }
+    Assert.Equal(2, ys[0], "inner z shadows outer z")
+    Assert.Equal(4, ys[1], "inner z shadows outer z second")
+}
+
+[Fact]
+fn BatchWithoutCaptureStillCompiles() -> Void {
+    let ys = batch [1, 2, 3] as x {
+        return x * x
+    }
+    Assert.Equal(1, ys[0], "no capture first")
+    Assert.Equal(9, ys[2], "no capture last")
+}

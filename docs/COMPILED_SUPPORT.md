@@ -386,3 +386,38 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 
 ### Next blocker
 - Isolated next task: compiled batch capture/scoping repair for `Shared.WhitenessCost` (`unknown identifier 'z'`).
+
+## 14) 2026-05-21 M0o compiled batch capture / outer-local scoping repair
+- Root cause confirmed in `internal/build/compiler.go` batch lowering:
+  - `lowerBatchWorker(...)` created a worker context with locals containing only the iterator variable (`map[itemName]itemType`).
+  - Batch body free variables from enclosing scope (for example `z` in `Shared.WhitenessCost`) were therefore unresolved during lowering.
+  - Compiled suites failed with: `function Shared.WhitenessCost: unknown identifier 'z'`.
+- Lowering model (current compiled path): batch lowers to a generated helper function plus `MIRBatchMap`, then generated Go invokes `__octBatchRun(...)` with a worker function.
+- Fix shipped (minimal capture support):
+  - Compute capture set from enclosing locals (excluding transient compiler temps `_t*`/`__*`).
+  - Add captures to worker context locals so batch-body name resolution succeeds.
+  - Add captures as explicit worker parameters.
+  - Extend `MIRBatchMap` with capture argument names and emit a Go forwarding closure that binds captured values while preserving `__octBatchRun` worker shape.
+- M0 status: compiled batch remains on existing `__octBatchRun` path (parallel-capable runtime path unchanged); this patch repairs lexical capture semantics without changing FM/Kalman logic.
+
+### New fixture evidence
+- Added `Language/Testing/CompiledBatchCapture/valid/core_batch_capture.octest` covering:
+  1. outer scalar capture,
+  2. outer array capture,
+  3. outer computed local capture,
+  4. local shadowing inside batch body,
+  5. no-capture batch regression guard.
+- Results:
+  - compiled: pass (5/5)
+  - auto: pass (5/5, compiled path used)
+  - interpreted: pass (5/5)
+
+### WhitenessCost / M2/M2b outcome
+- `Experiments.FmBrownNoiseKalman.M2 --suite ...M2 --execution compiled`: pass (2/2).
+- `Experiments.FmBrownNoiseKalman.M2 --suite ...M2b --execution compiled`: pass (3/3).
+- `--execution auto` for M2b: pass (3/3, compiled path).
+- The prior `unknown identifier 'z'` blocker is resolved.
+
+### Post-fix blocker map
+- No new blocker observed on the requested M2/M2b compiled lanes in this pass.
+- Recommended next task: resume the next highest compiled support gap outside batch capture (wrapper/builtin parity and broader suite coverage), now that batch capture is no longer gating M2/M2b compiled execution.
