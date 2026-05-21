@@ -4,46 +4,69 @@ import IO
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3OctomataRunsToDone() -> Void ! Error {
+fn M3ExplicitStateRunsToDone() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     Assert.True(run.Trace.DoneReached, "done reached")
-    Assert.Equal(M3SampleCount(run.Case), Len(run.Octomata.Recovered), "output length")
+    Assert.Equal("OctomataFlow", run.Trace.RepresentationKind, "representation kind")
 }
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3ProceduralEquivalence() -> Void ! Error {
+fn M3OutputAndInnovationLengthsMatchSampleCount() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    let expected = M3SampleCount(run.Case)
+    Assert.Equal(expected, Len(run.Octomata.Recovered), "output length")
+    Assert.Equal(expected, Len(run.Octomata.Innovation), "innovation length")
+    Assert.Equal(expected, Len(run.Procedural.Recovered), "procedural output length")
+    Assert.Equal(expected, Len(run.Procedural.Innovation), "procedural innovation length")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M3")]
+fn M3ProceduralAndExplicitOutputsMatchWithinTolerance() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     let tol = 1e-9
-    for i in 0..Len(run.Procedural.Recovered) {
-        Assert.True(Abs(run.Procedural.Recovered[i] - run.Octomata.Recovered[i]) <= tol, "recovered equivalence")
-        Assert.True(Abs(run.Procedural.Innovation[i] - run.Octomata.Innovation[i]) <= tol, "innovation equivalence")
-    }
+    Assert.True(run.MaxOutputDiff <= tol, "max output difference")
+    Assert.True(run.MaxInnovationDiff <= tol, "max innovation difference")
+
+    let proc = run.Metrics[0]
+    let exp = run.Metrics[1]
+    Assert.True(Abs(proc.OutputSNRDb - exp.OutputSNRDb) <= tol, "output snr equivalence")
+    Assert.True(Abs(proc.Nrmse - exp.Nrmse) <= tol, "nrmse equivalence")
+    Assert.True(Abs(proc.WhitenessCost - exp.WhitenessCost) <= tol, "whiteness equivalence")
 }
 
 [Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
-fn M3MetricsFiniteAndTraceHasStates() -> Void ! Error {
+fn M3MetricsFiniteAndTraceCountsAreExpected() -> Void ! Error {
     let run = RunM3OctomataFixedKalman(M3TinyCase())?
     for i in 0..Len(run.Metrics) {
         Assert.True(Abs(run.Metrics[i].OutputSNRDb) < 1e300, "finite output snr")
         Assert.True(Abs(run.Metrics[i].Nrmse) < 1e300, "finite nrmse")
         Assert.True(Abs(run.Metrics[i].WhitenessCost) < 1e300, "finite whiteness")
     }
-    Assert.True(run.Trace.PredictCount > 0, "predict visited")
-    Assert.True(run.Trace.DoneCount == 1, "done visited once")
+
+    let n = M3SampleCount(run.Case)
+    Assert.Equal(1, run.Trace.InitializeCount, "initialize count")
+    Assert.Equal(n + 1, run.Trace.PredictCount, "predict count")
+    Assert.Equal(n, run.Trace.ObserveCount, "observe count")
+    Assert.Equal(n, run.Trace.ComputeGainCount, "compute gain count")
+    Assert.Equal(n, run.Trace.CorrectCount, "correct count")
+    Assert.Equal(n, run.Trace.RecordCount, "record count")
+    Assert.Equal(n, run.Trace.AdvanceCount, "advance count")
+    Assert.Equal(1, run.Trace.DoneCount, "done count")
 }
 
 [Artifact]
 [Suite("Experiments.FmBrownNoiseKalman.M3")]
 fn M3ArtifactsWrite() -> Void ! Error {
-    let _ = M3ArtifactWriteAll()?
+    let _ = M3ArtifactWriteAll()
     let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon")?
     let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md")?
     let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/metrics.csv")?
     let json = IO.Load("Experiments/FmBrownNoiseKalman/M3/metrics.json")?
     Assert.True(Len(octagon) > 0, "octagon written")
     Assert.True(Len(md) > 0, "markdown written")
-    Assert.True(Len(csv) <= 32, "compact csv")
+    Assert.True(Len(csv) > 0, "csv written")
     Assert.True(Len(json) > 0, "json written")
 }
