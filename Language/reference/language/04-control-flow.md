@@ -25,6 +25,7 @@ Conditions never use implicit coercion.
 - `for` bounds must be `Int`.
 - `step` is optional.
 - `step` must be `Int` and greater than zero.
+- `flow`, `state`, and `step` are contextual keywords: they remain structural in `flow` declarations, `state` declarations, and `for .. step ..` clauses, but are valid as ordinary identifiers in non-ambiguous binding/reference positions.
 - `while` conditions must be `Bool`.
 
 ### Decision surfaces by context

@@ -1174,3 +1174,22 @@ func TestBuildFileRejectsUtilityWhenWithoutElse(t *testing.T) {
 func TestBuildFileRejectsMalformedFlowState(t *testing.T) {
 	assertParseErrorContains(t, "flow Patrol() -> Int { let x = 1 }", "expected 'state' declaration inside flow")
 }
+
+func TestBuildFileParsesContextualKeywordsAsIdentifiers(t *testing.T) {
+	file := parseSource(t, "record Example { state: Int step: Int flow: Int }\nfn Echo(state: Int, step: Int, flow: Int) -> Int { let state = state let step = step let flow = flow let xs = 1..10 step 2 let ys = batch [1, 2, 3] as state { return state + 1 } return flow + step + state + xs[0] + ys[0] }\nflow Idle() -> Void { state Start { suspend } }")
+	if len(file.Records) != 1 || len(file.Records[0].Fields) != 3 {
+		t.Fatalf("expected contextual-keyword record fields, got %+v", file.Records)
+	}
+	if file.Records[0].Fields[0].Name != "state" || file.Records[0].Fields[1].Name != "step" || file.Records[0].Fields[2].Name != "flow" {
+		t.Fatalf("unexpected record field names: %+v", file.Records[0].Fields)
+	}
+	if len(file.Functions) != 1 || len(file.Functions[0].Parameters) != 3 {
+		t.Fatalf("expected contextual-keyword parameters, got %+v", file.Functions)
+	}
+	if file.Functions[0].Parameters[0].Name != "state" || file.Functions[0].Parameters[1].Name != "step" || file.Functions[0].Parameters[2].Name != "flow" {
+		t.Fatalf("unexpected parameter names: %+v", file.Functions[0].Parameters)
+	}
+	if len(file.Flows) != 1 || len(file.Flows[0].States) != 1 || file.Flows[0].States[0].Name != "Start" {
+		t.Fatalf("expected unchanged flow/state parse, got %+v", file.Flows)
+	}
+}

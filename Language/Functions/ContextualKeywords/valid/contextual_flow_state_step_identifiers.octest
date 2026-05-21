@@ -1,0 +1,49 @@
+package MainValid
+
+record Example {
+    state: Int
+    step: Int
+    flow: Int
+}
+
+fn Echo(state: Int) -> Int { return state }
+fn EchoStep(step: Int) -> Int { return step }
+fn EchoFlow(flow: Int) -> Int { return flow }
+
+[Fact]
+fn ContextualKeywordsCanBindAsIdentifiers() -> Void {
+    let state = 1
+    let step = 2
+    let flow = 3
+    Assert.Equal(1, Echo(state), "state parameter should parse as identifier")
+    Assert.Equal(2, EchoStep(step), "step parameter should parse as identifier")
+    Assert.Equal(3, EchoFlow(flow), "flow parameter should parse as identifier")
+
+    var sum = 0
+    for i in 1..6 step 2 {
+        sum = sum + i
+    }
+    Assert.Equal(9, sum, "range step syntax must still parse and execute")
+
+    let mapped = batch [1, 2, 3] as state { return state + 1 }
+    Assert.Equal(3, Len(mapped), "batch binding named state should parse")
+    Assert.Equal(4, mapped[2], "batch mapping should run")
+
+    let e = Example { state: state step: step flow: flow }
+    Assert.Equal(1, e.state, "record field named state should parse")
+    Assert.Equal(2, e.step, "record field named step should parse")
+    Assert.Equal(3, e.flow, "record field named flow should parse")
+}
+
+[Fact]
+fn FlowStateSyntaxStillParses() -> Void {
+    let machine = Idle()
+    Step(machine)
+    Assert.Equal("Start", Active(machine), "flow/state grammar should remain intact")
+}
+
+flow Idle() -> Void {
+    state Start {
+        suspend
+    }
+}
