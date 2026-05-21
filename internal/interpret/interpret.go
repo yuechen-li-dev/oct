@@ -2598,6 +2598,29 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: target}}, nil
 	}
+	if callee == "BoardSnapshot" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: BoardSnapshot does not accept type arguments")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: BoardSnapshot expects 1 argument")
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: BoardSnapshot expects FlowInstance argument")
+		}
+		snapshot, ok := flowBoardSnapshotValue(argument.value.Flow)
+		if !ok {
+			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "BoardSnapshot() requires a flow with a declared board"}}}, nil
+		}
+		return evalResult{value: snapshot}, nil
+	}
 	if callee == "fft" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: fft does not accept type arguments")
@@ -4322,6 +4345,21 @@ func flowStateHistoryValue(instance *FlowRuntimeInstance) Value {
 		history = append(history, Value{Kind: ValueString, Text: state})
 	}
 	return Value{Kind: ValueArray, Array: history}
+}
+
+func flowBoardSnapshotValue(instance *FlowRuntimeInstance) (Value, bool) {
+	boardBinding, ok := instance.RootEnv.lookup("board")
+	if !ok || boardBinding.value.Kind != ValueRecord {
+		return Value{}, false
+	}
+	board := boardBinding.value
+	fields := make(map[string]Value, len(board.Record.Fields))
+	order := make([]string, 0, len(board.Record.FieldOrder))
+	for _, name := range board.Record.FieldOrder {
+		fields[name] = board.Record.Fields[name]
+		order = append(order, name)
+	}
+	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: instance.Decl.Name + "BoardSnapshot", Fields: fields, FieldOrder: order}}, true
 }
 
 func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {

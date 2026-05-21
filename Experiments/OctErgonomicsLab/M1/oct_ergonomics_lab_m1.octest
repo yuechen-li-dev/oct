@@ -9,9 +9,9 @@ import IO
 fn RealOctomataScalarBoardRunsAndHistoryIsStateNamesOnly() -> Void {
     let result = RunRealOctomataProbe()
     Assert.True(result.DoneReached, "real probe flow should complete")
-    Assert.Equal("BlockedScalarBoardProbe", result.Representation, "probe should declare blocked external board scalar surface")
-    Assert.True(StringContains(result.MissingSurface, "No public API"), "missing surface explanation should be explicit")
-    Assert.Equal(0, Len(result.Recovered), "real probe should not pretend recovered accumulation is available")
+    Assert.Equal("ScalarBoardOctomataWithExternalAccumulators", result.Representation, "probe should use scalar board snapshots")
+    Assert.Equal("", result.MissingSurface, "surface is now available")
+    Assert.True(Len(result.Recovered) > 0, "real probe should accumulate recovered values")
     Assert.True(result.HistoryCount > 0, "state history should still be available")
 }
 

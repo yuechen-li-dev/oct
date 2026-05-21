@@ -49,6 +49,7 @@ type Type struct {
 	IsFunction        bool
 	FunctionSignature string
 	IsFlowInstance    bool
+	FlowIdentity      string
 	FlowResultType    string
 	FlowResult        *Type
 }
@@ -284,6 +285,7 @@ type enumVariantInfo struct {
 type flowSignature struct {
 	parameters []Type
 	returnType Type
+	boardType  *Type
 }
 
 type scope struct {
@@ -497,7 +499,24 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 		}
 		parameters = append(parameters, parameterType)
 	}
-	return flowSignature{parameters: parameters, returnType: returnType}, nil
+	var boardType *Type
+	if len(flow.Board) > 0 {
+		snapshot := Type{Name: flow.Name + "BoardSnapshot"}
+		fields := make(map[string]Type, len(flow.Board))
+		fieldOrder := make([]string, 0, len(flow.Board))
+		for _, field := range flow.Board {
+			fieldType, err := c.resolveFlowBoardFieldType(field.Type)
+			if err != nil {
+				return flowSignature{}, err
+			}
+			fields[field.Name] = fieldType
+			fieldOrder = append(fieldOrder, field.Name)
+		}
+		c.records[snapshot.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder}
+		c.typeNames[snapshot.Name] = struct{}{}
+		boardType = &snapshot
+	}
+	return flowSignature{parameters: parameters, returnType: returnType, boardType: boardType}, nil
 }
 
 func (c checker) checkFunction(function ast.FunctionDecl) error {
@@ -676,6 +695,9 @@ func unhandledFallibleMessage(expr ast.Expr) string {
 	if isResultFlowCall(expr) {
 		return "Result(machine) is fallible because a flow may not have completed. Use Result(machine)! in tests when completion is required, Result(machine)? to propagate, or match Result(machine) to handle the not-completed/error case. For non-result inspection, use Active(machine), Complete(machine), or StateHistory(machine)."
 	}
+	if isBoardSnapshotFlowCall(expr) {
+		return "BoardSnapshot(machine) is fallible because not every flow has a board and snapshot extraction can fail. Use BoardSnapshot(machine)! when the flow is known to declare a board, ? to propagate, or match to handle failure."
+	}
 	return genericUnhandledFallibleMessage()
 }
 
@@ -685,6 +707,14 @@ func isResultFlowCall(expr ast.Expr) bool {
 		return false
 	}
 	return calleeEndsWithIdentifier(call.Callee, "Result")
+}
+
+func isBoardSnapshotFlowCall(expr ast.Expr) bool {
+	call, ok := expr.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	return calleeEndsWithIdentifier(call.Callee, "BoardSnapshot")
 }
 
 func calleeEndsWithIdentifier(expr ast.Expr, target string) bool {
@@ -2283,9 +2313,9 @@ func (c checker) enumVariantFromCallee(expr ast.Expr) (string, string, bool) {
 	}
 }
 
-func flowInstanceType(resultType Type) Type {
+func flowInstanceType(flowName string, resultType Type) Type {
 	resultCopy := resultType
-	return Type{IsFlowInstance: true, FlowResultType: resultType.String(), FlowResult: &resultCopy}
+	return Type{IsFlowInstance: true, FlowIdentity: flowName, FlowResultType: resultType.String(), FlowResult: &resultCopy}
 }
 
 func (c checker) checkFlowCallArguments(displayName string, signature flowSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -2306,7 +2336,7 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 		}
 		return ExprType{}, fmt.Errorf("flow '%s' argument %d expects %s, got %s", displayName, i+1, expected, argumentType.ValueType)
 	}
-	return ExprType{ValueType: flowInstanceType(signature.returnType)}, nil
+	return ExprType{ValueType: flowInstanceType(displayName, signature.returnType)}, nil
 }
 
 func (c checker) checkFunctionCallArguments(displayName string, signature functionSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -2859,6 +2889,35 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'ResumeTarget' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+	}
+	if callee == "BoardSnapshot" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'BoardSnapshot' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'BoardSnapshot' expects 1 argument, got %d", len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'BoardSnapshot' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
+		}
+		if flowType.ValueType.FlowIdentity == "" {
+			return ExprType{}, fmt.Errorf("BoardSnapshot currently requires a concrete flow instance; flow identity metadata was not preserved for this value")
+		}
+		flowSignature, ok := c.flows[flowType.ValueType.FlowIdentity]
+		if !ok {
+			return ExprType{}, fmt.Errorf("internal error: missing flow metadata for '%s'", flowType.ValueType.FlowIdentity)
+		}
+		if flowSignature.boardType == nil {
+			return ExprType{}, fmt.Errorf("flow %s has no board; BoardSnapshot requires a flow with a declared board", flowType.ValueType.FlowIdentity)
+		}
+		return ExprType{ValueType: *flowSignature.boardType, Fallible: true}, nil
 	}
 	if callee == "UIText" {
 		if len(typeArguments) > 0 {

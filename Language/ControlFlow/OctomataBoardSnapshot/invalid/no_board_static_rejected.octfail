@@ -1,0 +1,13 @@
+expect error: "flow NoBoard has no board; BoardSnapshot requires a flow with a declared board"
+
+package ControlFlowOctomataBoardSnapshot
+
+flow NoBoard() -> Int {
+    state Start { return 1 }
+}
+
+fn Main() -> Int {
+    let m = NoBoard()
+    let _ = BoardSnapshot(m)!
+    return 0
+}

@@ -1,0 +1,18 @@
+expect error: "BoardSnapshot(machine) is fallible because not every flow has a board and snapshot extraction can fail"
+
+package ControlFlowOctomataBoardSnapshot
+
+flow Probe() -> Int {
+    board { Count: Int }
+    state Start {
+        board.Count = 1
+        return 1
+    }
+}
+
+fn Main() -> Int {
+    let machine = Probe()
+    Step(machine)
+    let snapshot = BoardSnapshot(machine)
+    return snapshot.Count
+}

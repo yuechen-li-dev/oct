@@ -84,3 +84,5 @@ Notes:
 2. Keep selected-target compiled fixture coverage tight and diagnostic-friendly.
 3. Isolate and clear remaining M2/M2b compiled blockers with focused fixtures.
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
+
+| BoardSnapshot(machine) | Supported | Not yet supported | `OctomataBoardSnapshot` (runtime only) | Interpreted support is available; compiled lowering not yet implemented in M0. |

@@ -1,0 +1,57 @@
+package ControlFlow.OctomataBoardSnapshot
+
+import Test.Assert
+
+flow ScalarBoardProbe(sample: Float) -> Int {
+    board {
+        Ready: Bool
+        Count: Int
+        Estimate: Float
+        Label: String
+    }
+    state Start {
+        board.Ready = true
+        board.Count = board.Count + 1
+        board.Estimate = sample
+        board.Label = "step1"
+        suspend
+    }
+    state Next {
+        board.Count = board.Count + 1
+        board.Estimate = board.Estimate + 1.0
+        board.Label = "step2"
+        return board.Count
+    }
+}
+
+flow NoBoard() -> Int {
+    state Start { return 1 }
+}
+
+test "BoardSnapshot returns typed scalar fields and detaches" {
+    let m = ScalarBoardProbe(2.5)
+    Step(m)
+    let a = BoardSnapshot(m)!
+    Assert.True(a.Ready, "bool field")
+    Assert.Equal(1, a.Count, "int field")
+    Assert.Equal(2.5, a.Estimate, "float field")
+    Assert.Equal("step1", a.Label, "string field")
+
+    Step(m)
+    let b = BoardSnapshot(m)!
+    Assert.Equal(1, a.Count, "snapshot A detached from later steps")
+    Assert.Equal(2, b.Count, "snapshot B reflects latest board")
+    Assert.Equal(3.5, b.Estimate, "latest float")
+}
+
+test "BoardSnapshot works while active and after completion" {
+    let m = ScalarBoardProbe(1.0)
+    Step(m)
+    Assert.Equal("Start", Active(m), "suspended active state")
+    let s = BoardSnapshot(m)!
+    Assert.Equal("step1", s.Label, "available during suspension")
+    Step(m)
+    Assert.True(Complete(m), "complete after second step")
+    let done = BoardSnapshot(m)!
+    Assert.Equal("step2", done.Label, "available after completion")
+}
