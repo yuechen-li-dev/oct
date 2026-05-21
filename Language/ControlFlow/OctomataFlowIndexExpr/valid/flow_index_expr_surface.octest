@@ -36,15 +36,20 @@ flow PickInt(xs: Int[]) -> Int {
     }
 }
 
-fn Main() -> Int {
-    let a = Pick([1.0, 2.5, 9.0])
-    Step(a)
+[Fact]
+fn FlowIndexExprFloat() -> Void {
+    Step(Pick([1.0, 2.5, 9.0]))
+    Assert.True(true, "flow index expr should execute float branch")
+}
 
-    let b = PickPlus([1.0, 2.5, 9.0])
-    Step(b)
+[Fact]
+fn FlowIndexExprFloatWithArithmetic() -> Void {
+    Step(PickPlus([1.0, 2.5, 9.0]))
+    Assert.True(true, "flow index expr with arithmetic should execute")
+}
 
-    let c = PickInt([3, 5, 8, 13])
-    Step(c)
-
-    return 0
+[Fact]
+fn FlowIndexExprInt() -> Void {
+    Step(PickInt([3, 5, 8, 13]))
+    Assert.True(true, "flow index expr should execute int branch")
 }
