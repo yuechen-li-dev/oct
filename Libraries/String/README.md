@@ -22,17 +22,24 @@ import String
 - `String.EscapeJson(s)` -> `String`
 - `String.QuoteJson(s)` -> `String`
 
-Compatibility/backing globals remain available (`StringJoin`, `StringQuoteJSON`, etc.) but are not the preferred user-facing spelling. Compatibility namespace aliases (`String.EscapeJSON`, `String.QuoteJSON`) are also supported, but `EscapeJson`/`QuoteJson` are canonical.
+Compatibility/backing globals remain available (`StringJoin`, `StringQuoteJSON`, etc.) but are transition/backing surface, not preferred authoring style.
 
-## Artifact guidance
+## Canonical examples
 
-- Use `IO.WriteLines` for markdown/text report files.
-- Use `String.Join(parts, separator)` only when a single joined string is specifically needed.
-- Use `Csv.Write` for CSV.
-- Use `Json.Save` for structured JSON.
-- Use `String.QuoteJson` when manual JSON-shaped text is necessary.
+```oct
+import String
 
+let sampleCount = FloorToInt(sampleRate * duration)
+let summary = String.Concat(["samples=", String.From<Int>(sampleCount)])
+let scalar = String.From<Float>(value)
+let textBlob = String.Join(lines, "\n")
+```
+
+Use `String.Join(lines, "\n")` when one joined text blob is needed; otherwise keep line-oriented `String[]` and write with `Artifact.WriteLines`/`IO.WriteLines`.
 
 ## Constrained generic builtin note
 
-Oct does not support user-defined generics. A small number of compiler-known builtins use explicit type arguments to select a static conversion/decoding contract. `String.From<T>` and `LoadOctagon<T>` are examples.
+Oct does not support user-defined generics.
+A small number of compiler-known builtins use explicit type arguments for closed conversion/decoding contracts. `String.From<T>` (and `ReadOctagon<T>` in artifact/data lanes) are examples.
+
+`ToString(...)` remains available, but namespaced `String.From<T>` is preferred in report/library code for explicitness and consistency.

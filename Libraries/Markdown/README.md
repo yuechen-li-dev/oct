@@ -2,51 +2,45 @@
 
 Markdown is a deterministic report-writing helper, not a Markdown parser.
 
-All block helpers return `String[]` lines suitable for `IO.WriteLines` or `Artifact.WriteMarkdown`.
+All block helpers return `String[]` lines suitable for `Artifact.WriteMarkdown(path, lines)` (preferred) or `IO.WriteLines(path, lines)!`.
 
-For report ergonomics, prefer semantic heading aliases:
+## Canonical heading posture
 
-- `Markdown.Title(text)` as the canonical report title helper (same output as `Markdown.H1(text)`).
-- `Markdown.Subtitle(text)` as the canonical report subtitle helper (same output as `Markdown.H2(text)`).
-- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain supported lower-level heading helpers.
+- `Markdown.Title(text)` is the preferred report title helper and aliases `Markdown.H1(text)`.
+- `Markdown.Subtitle(text)` is the preferred report subtitle helper and aliases `Markdown.H2(text)`.
+- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain available lower-level heading helpers.
 
-`Markdown.Table` expects a columnar record-of-string-columns table.
-Use `Markdown.TableWithColumns(table, columns)` for explicit output column order.
-Use `Markdown.KeyValueTable(keys, values)` for scalar metadata/settings sections.
+## Canonical report pattern
 
-`Markdown.CodeBlock(language, lines)` uses dynamic backtick fence lengths: it scans content (and language) for the longest backtick run and emits a fence of `max(3, longestRun + 1)`.
-
-M1 adds report ergonomics:
-
-- `Markdown.Callout(kind, lines)` for deterministic blockquote callouts (`note`, `info`, `warning`, `danger`, `success`).
-- `Markdown.Image(path, altText)` for single-line image output.
-- `Markdown.Figure(path, caption)` for image + caption output.
-- `Markdown.KeyValueTable(keys, values)` for two-column key/value tables.
-- `Markdown.Section(title, blocks)` and `Markdown.Subsection(title, blocks)` for heading + flattened report blocks.
-
-No CommonMark compliance is claimed in M1.
-Markdown remains line-oriented output only; no parser, renderer, or nested document model is introduced.
-
-Known limitation: `Markdown.Image`/`Markdown.Figure` only perform minimal alt-text safety normalization and do not implement full URL/path escaping.
-
-Future direction (not implemented in M1): an Oct-owned `.md` dialect could later parse structured tags such as `<Code>`, `<Figure>`, and `<Callout>` for PDF/UI report pipelines.
-
-Canonical namespaced authoring pattern:
+`Markdown.Report` takes a list of blocks.
 
 ```oct
 import Markdown
-let report = Markdown.Report([
+import Artifact
+
+let lines = Markdown.Report([
     Markdown.Title("Experiment Report"),
-    Markdown.Subtitle("Overview"),
-    Markdown.Paragraph("Body.")
+    Markdown.Subtitle("Run Summary"),
+    Markdown.Section("Config", [
+        Markdown.KeyValueTable(["seed", "sampleCount"], ["42", "1200"])
+    ]),
+    Markdown.Section("Results", [
+        Markdown.Table(table),
+        Markdown.Callout("info", ["Compiled lane used for this run."])
+    ])
 ])
 
-import String
-let text = String.Join(lines, "\n")
-
-import IO
-IO.WriteLines("out/report.md", lines)!
-
-import Artifact
 Artifact.WriteMarkdown("out/report.md", lines)
 ```
+
+## Surface notes
+
+- `Markdown.Section(title, blocks)` and `Markdown.Subsection(title, blocks)` flatten lists of blocks.
+- `Markdown.KeyValueTable(keys, values)` is the canonical scalar metadata/settings table helper.
+- `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
+- `Markdown.TableWithColumns(table, columns)` provides explicit column-order control.
+- `Markdown.Callout(kind, lines)` supports `note`, `info`, `warning`, `danger`, `success`.
+- `Markdown.Image(path, altText)` and `Markdown.Figure(path, caption)` are line-oriented media helpers.
+- `Markdown.CodeBlock(language, lines)` uses dynamic backtick fences to avoid premature fence closure.
+
+No CommonMark compliance is claimed in M1.

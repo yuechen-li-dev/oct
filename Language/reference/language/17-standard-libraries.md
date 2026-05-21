@@ -105,51 +105,71 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 
 ## String
 
-`Libraries/String/String.Core.oct` provides deterministic report-focused text helpers:
+`Libraries/String/String.Core.oct` provides deterministic report-focused text helpers.
 
-- Preferred M0 namespaced surface (requires `import String`):
-  - `String.Join`, `String.Concat`, `String.From<T>`, `String.ReplaceAll`, `String.Contains`, `String.StartsWith`, `String.EndsWith`, `String.Trim`
-  - `String.SplitLines`, `String.EscapeJson`, `String.QuoteJson`, `String.ByteLength`, `String.RuneCount`
-- Global compatibility/backing builtins remain available during transition (`StringJoin`, `StringQuoteJSON`, etc.).
+Canonical namespaced surface:
 
-Artifact guidance:
-- Prefer `Artifact.Write*` in `[Artifact]` functions for canonical fail-fast emission without `let _ = ...`.
-- `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain available as lower-level fallible APIs.
-- Prefer `String.Join(parts, separator)` for deterministic line construction when preparing report text.
+- `String.ByteLength`
+- `String.RuneCount`
+- `String.Join`
+- `String.Concat`
+- `String.From<T>`
+- `String.ReplaceAll`
+- `String.Contains`
+- `String.StartsWith`
+- `String.EndsWith`
+- `String.Trim`
+- `String.SplitLines`
+- `String.EscapeJson`
+- `String.QuoteJson`
 
-Canonical namespaced authoring pattern:
+Examples:
 
 ```oct
 import String
-let text = String.Join(lines, "\n")
-
-import IO
-IO.WriteLines("out/report.md", lines)!
-
-import Csv
-Csv.Write("out/metrics.csv", rows)!
-
-import Json
-Json.Save("out/metrics.json", summary)!
+let summary = String.Concat(["samples=", String.From<Int>(sampleCount)])
+let scalar = String.From<Float>(value)
+let reportText = String.Join(lines, "\n")
 ```
+
+Notes:
+- `String.From<T>` is compiler-known constrained generic syntax (closed contracts), not user-defined generic support.
+- `ToString(...)` remains available for compatibility, but `String.From<T>` is preferred in report/library code.
+- Compatibility globals/backing aliases remain available during transition and should not be the preferred authoring style.
+
+Artifact guidance:
+- Prefer `Artifact.Write*` in `[Artifact]` functions.
+- `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain available as lower-level fallible APIs.
 
 ## Markdown
 
 `Libraries/Markdown` provides Markdown M1 report-output helpers.
 
 - Markdown M1 is an output helper, **not** a Markdown parser.
-- Block-producing functions return `String[]` lines (not one large `String`).
-- Emit generated lines via `Artifact.WriteMarkdown(path, lines)` or `IO.WriteLines(path, lines)!`.
-- `Markdown.Table(table)` expects a columnar record-of-string-columns shape.
-- `Markdown.TableWithColumns(table, columns)` provides explicit column order control.
-- `Markdown.KeyValueTable(keys, values)` provides deterministic scalar settings/metadata output in a two-column table.
-- Prefer `Markdown.Title(text)` and `Markdown.Subtitle(text)` as semantic report-heading helpers.
-- `Markdown.Title(text)` is an alias for `Markdown.H1(text)`, and `Markdown.Subtitle(text)` is an alias for `Markdown.H2(text)`.
-- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain available as lower-level Markdown heading helpers.
-- `Markdown.Callout(kind, lines)` emits deterministic blockquote callouts for `note`, `info`, `warning`, `danger`, and `success`.
-- `Markdown.Image(path, altText)` emits a single image line and performs minimal alt-text safety normalization.
-- `Markdown.Figure(path, caption)` emits image + caption report lines.
-- `Markdown.Section(title, blocks)` and `Markdown.Subsection(title, blocks)` emit H2/H3 headings plus `Markdown.Report`-style block flattening.
-- `Markdown.CodeBlock(language, lines)` uses dynamic backtick fences (`max(3, longestRun + 1)`) to avoid premature closure.
-- Markdown M1 does not claim CommonMark-complete compliance and does not implement parser/renderer/PDF/UI behavior.
-- Future direction (not implemented): an Oct-owned `.md` dialect may parse structured block tags like `<Code>`, `<Figure>`, and `<Callout>`.
+- Block helpers return `String[]` lines.
+- `Markdown.Title` aliases `Markdown.H1`; `Markdown.Subtitle` aliases `Markdown.H2`.
+- `Markdown.H1` / `Markdown.H2` / `Markdown.H3` remain available lower-level heading helpers.
+- `Markdown.Report(blocks)` takes a list of blocks (not title+sections positional arguments).
+- Canonical report helpers: `Markdown.Report`, `Markdown.Section`, `Markdown.KeyValueTable`, `Markdown.Table`, `Markdown.Callout`.
+- Preferred sink for artifact lane output: `Artifact.WriteMarkdown(path, lines)`.
+
+Canonical example:
+
+```oct
+import Markdown
+import Artifact
+
+let lines = Markdown.Report([
+    Markdown.Title("Experiment Report"),
+    Markdown.Subtitle("Overview"),
+    Markdown.Section("Config", [
+        Markdown.KeyValueTable(["seed"], ["42"])
+    ]),
+    Markdown.Section("Results", [
+        Markdown.Table(table),
+        Markdown.Callout("info", ["All checks passed."])
+    ])
+])
+
+Artifact.WriteMarkdown("out/report.md", lines)
+```
