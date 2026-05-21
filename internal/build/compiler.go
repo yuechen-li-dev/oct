@@ -610,6 +610,11 @@ func validateUserCallSymbols(module MIRModule) error {
 	for _, fn := range module.Functions {
 		defs[fn.Package+"."+fn.Name] = struct{}{}
 	}
+	for _, flow := range module.Flows {
+		// Flow constructor calls are represented as user calls in MIR and are
+		// emitted from MIR flows during Go generation.
+		defs[flow.Package+"."+flow.Name] = struct{}{}
+	}
 	missing := map[string]struct{}{}
 	for _, fn := range module.Functions {
 		for _, block := range fn.Blocks {

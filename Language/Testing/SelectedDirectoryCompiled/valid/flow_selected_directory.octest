@@ -1,0 +1,19 @@
+package Main
+
+flow SelectFrom(xs: Int[]) -> Int {
+    board {
+        Index: Int
+        Value: Int
+    }
+    state Start {
+        board.Index = 1
+        board.Value = xs[board.Index]
+        return board.Value
+    }
+}
+
+[Fact]
+fn SelectedDirectoryFlowIndexExprCompiles() -> Void {
+    Step(SelectFrom([7, 11, 13]))
+    Assert.True(true, "selected directory compiled flow should emit reachable flow constructor")
+}
