@@ -335,3 +335,26 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Inconsistency surfaced
 - New fixture confirms array typing semantics from `Language/reference/language/07-arrays.md` are now preserved in compiled lowering.
 - A separate blocker remains in `Shared.WhitenessCost` (`unknown identifier 'z'`), which is independent of array typing and now correctly exposed as the next first blocker.
+
+## 12) 2026-05-20 M0m reachable-helper emission + WhitenessCost classification
+
+### Reproduction evidence
+- `M2 --execution compiled` now fails at generated-Go link stage with undefined reachable helper symbols:
+  - `fn_Shared_Sub`
+  - `fn_FmBrownNoiseKalman_M2BuildSignalFingerprint`
+  - `fn_FmBrownNoiseKalman_M2BuildMetric`
+- With `OCT_KEEP_GEN=1`, generated calls are present (e.g. in `M2RunAllMethods` lowering), but corresponding function definitions are absent in the same generated file.
+- `M2b --execution compiled` currently runs `M2bGridHasExpectedSize` compiled (pass) and then fails on `Shared.WhitenessCost: unknown identifier 'z'` for smoke rows.
+
+### Classification
+- **Reachable helper emission blocker (M2):** selected-reachable filtering is still dropping some helper functions that are referenced by emitted compiled functions. This affects both imported helper (`Shared.Sub`) and same-package non-test helpers (`M2BuildSignalFingerprint`, `M2BuildMetric`).
+- **WhitenessCost blocker (M2b):** independent compiler scoping/lowering issue in `Shared.WhitenessCost` around batch expression capture of `z` (`let z = RemoveMean(x)` then `batch lags as lag { LagAutocorrelation(z, lag) }`). This is not FM science logic.
+
+### Current post-measure status
+- `M2 --execution compiled`: still blocked by missing emitted helper definitions (link-time undefined symbol errors).
+- `M2b --execution compiled`: first compiled row passes, then fails with `unknown identifier 'z'` in `Shared.WhitenessCost`.
+- `M2b --execution auto`: falls back for `WhitenessCost` and then hits cycle-time limits on smoke rows.
+
+### Next recommended task
+1. Repair selected-reachable helper closure so emitted call targets are guaranteed emitted (including imported + same-package helper chains).
+2. Then isolate/fix batch capture scoping in `Shared.WhitenessCost` lowering (`z` resolution inside batch body).
