@@ -4,17 +4,19 @@ import String
 import IO
 
 [Suite("Experiments.OctErgonomicsLab.M1")]
+[Suite("Experiments.OctErgonomicsLab.M1.FlowSmoke")]
 [Fact]
 fn RealOctomataScalarBoardRunsAndHistoryIsStateNamesOnly() -> Void {
     let result = RunRealOctomataProbe()
     Assert.True(result.DoneReached, "real probe flow should complete")
     Assert.Equal("BlockedScalarBoardProbe", result.Representation, "probe should declare blocked external board scalar surface")
-    Assert.True(String.Contains(result.MissingSurface, "No public API"), "missing surface explanation should be explicit")
+    Assert.True(StringContains(result.MissingSurface, "No public API"), "missing surface explanation should be explicit")
     Assert.Equal(0, Len(result.Recovered), "real probe should not pretend recovered accumulation is available")
     Assert.True(result.HistoryCount > 0, "state history should still be available")
 }
 
 [Suite("Experiments.OctErgonomicsLab.M1")]
+[Suite("Experiments.OctErgonomicsLab.M1.FlowSmoke")]
 [Fact]
 fn ManualFallbackAccumulatesPerStepArrays() -> Void {
     let result = RunManualExplicitStateLoopFallback()
@@ -25,6 +27,7 @@ fn ManualFallbackAccumulatesPerStepArrays() -> Void {
 }
 
 [Suite("Experiments.OctErgonomicsLab.M1")]
+[Suite("Experiments.OctErgonomicsLab.M1.FlowSmoke")]
 [Fact]
 fn ResultBangOnlyAfterCompletionInRealFlow() -> Void {
     let machine = ScalarBoardProbe([1.0, 2.0, 3.0])
@@ -37,6 +40,7 @@ fn ResultBangOnlyAfterCompletionInRealFlow() -> Void {
 
 
 [Suite("Experiments.OctErgonomicsLab.M1")]
+[Suite("Experiments.OctErgonomicsLab.M1.Artifacts")]
 [Fact]
 fn ArtifactFilesExistAfterGenerate() -> Void {
     GenerateM1Artifacts()
@@ -52,6 +56,7 @@ fn ArtifactFilesExistAfterGenerate() -> Void {
 }
 
 [Suite("Experiments.OctErgonomicsLab.M1")]
+[Suite("Experiments.OctErgonomicsLab.M1.Artifacts")]
 [Artifact]
 fn ArtifactM1Probe() -> Void {
     GenerateM1Artifacts()

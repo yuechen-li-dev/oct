@@ -248,7 +248,7 @@ func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) 
 	}
 	defer cleanupRunner()
 
-	result, err := build.CompileForTest(runnerPath)
+	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, benchmark.filePath})
 	if err != nil {
 		return "", 0, err
 	}

@@ -47,7 +47,7 @@ Notes:
 - Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
 - `DirectoryMakeAll` remains wrapper/deferred for compiled mode, including flow-expression contexts.
-- OctErgonomicsLab M1 compiled lane now moves past `ast.IndexExpr` flow-expression lowering; remaining blocker is still artifact-lane (`DirectoryMakeAll`) contamination.
+- OctErgonomicsLab M1 now has an explicit suite split: `Experiments.OctErgonomicsLab.M1.FlowSmoke` is compiled-green, while `Experiments.OctErgonomicsLab.M1.Artifacts` remains interpreted fallback because `DirectoryMakeAll` is still deferred in compiled mode.
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 
@@ -60,6 +60,12 @@ Notes:
 
 - Selected-file compiled mode is repaired and currently usable for isolating a single `.octest` file in package context.
 - Sibling files/imports still load/typecheck per normal package rules.
+
+## Selected-directory fixture convention
+
+- `Language/Testing/SelectedDirectoryCompiled` is a fixture container, not a package root.
+- The actual package root target is `Language/Testing/SelectedDirectoryCompiled/valid`.
+- Running compiled test directly on the parent container currently surfaces `unknown package 'Main'`; treat this as expected shape mismatch for that container target, not as a compiled-lowering regression.
 
 ## M2 / M2b smoke status (current)
 
