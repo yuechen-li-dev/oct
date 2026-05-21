@@ -1,0 +1,50 @@
+package Main
+
+flow Pick(xs: Float[]) -> Float {
+    board {
+        Index: Int
+        Value: Float
+    }
+    state Start {
+        board.Index = 1
+        board.Value = xs[board.Index]
+        return board.Value
+    }
+}
+
+flow PickPlus(xs: Float[]) -> Float {
+    board {
+        Index: Int
+        Value: Float
+    }
+    state Start {
+        board.Index = 1
+        board.Value = xs[board.Index] + 1.0
+        return board.Value
+    }
+}
+
+flow PickInt(xs: Int[]) -> Int {
+    board {
+        Index: Int
+        Value: Int
+    }
+    state Start {
+        board.Index = 2
+        board.Value = xs[board.Index]
+        return board.Value
+    }
+}
+
+fn Main() -> Int {
+    let a = Pick([1.0, 2.5, 9.0])
+    Step(a)
+
+    let b = PickPlus([1.0, 2.5, 9.0])
+    Step(b)
+
+    let c = PickInt([3, 5, 8, 13])
+    Step(c)
+
+    return 0
+}

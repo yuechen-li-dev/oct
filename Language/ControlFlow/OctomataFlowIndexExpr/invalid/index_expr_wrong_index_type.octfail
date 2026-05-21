@@ -1,0 +1,17 @@
+expect error: "array indexing index must be Int"
+
+package MainInvalid
+
+flow BadIndexType(xs: Float[]) -> Float {
+    board {
+        Value: Float
+    }
+    state Start {
+        board.Value = xs[1.5]
+        return board.Value
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}

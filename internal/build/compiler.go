@@ -177,6 +177,14 @@ type MIRFlowCallExpr struct {
 
 func (MIRFlowCallExpr) mirFlowExpr() {}
 
+type MIRFlowIndexExpr struct {
+	Target     MIRFlowExpr
+	Index      MIRFlowExpr
+	ResultType string
+}
+
+func (MIRFlowIndexExpr) mirFlowExpr() {}
+
 type MIRFlowUtilityWhenExpr struct {
 	SiteID     int
 	ResultType string
@@ -3066,6 +3074,37 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 			args = append(args, v)
 		}
 		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, RetType: ret, Fallible: fallible}, nil
+	case ast.IndexExpr:
+		if len(e.Indices) != 1 {
+			return nil, unsupported("compiled flow expression indexing only supports single-dimension indexing")
+		}
+		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.HasSuffix(targetType, "[]") {
+			return nil, unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
+		}
+		idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		if idxType != "Int" {
+			return nil, fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
+		}
+		target, err := lowerFlowExpr(e.Target, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		idx, err := lowerFlowExpr(e.Indices[0], env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowIndexExpr{
+			Target:     target,
+			Index:      idx,
+			ResultType: strings.TrimSuffix(targetType, "[]"),
+		}, nil
 	case ast.UtilityWhenExpr:
 		resultType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 		if err != nil {
@@ -3163,6 +3202,25 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			return "", fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
 		}
 		return ret, nil
+	case ast.IndexExpr:
+		if len(e.Indices) != 1 {
+			return "", unsupported("compiled flow expression indexing only supports single-dimension indexing")
+		}
+		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
+		if err != nil {
+			return "", err
+		}
+		if !strings.HasSuffix(targetType, "[]") {
+			return "", unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
+		}
+		idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
+		if err != nil {
+			return "", err
+		}
+		if idxType != "Int" {
+			return "", fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
+		}
+		return strings.TrimSuffix(targetType, "[]"), nil
 	case ast.UtilityWhenExpr:
 		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3329,6 +3387,8 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 			args = append(args, dumpFlowExpr(arg))
 		}
 		return fmt.Sprintf("%s(%s)", e.Callee, strings.Join(args, ", "))
+	case MIRFlowIndexExpr:
+		return fmt.Sprintf("%s[%s]", dumpFlowExpr(e.Target), dumpFlowExpr(e.Index))
 	case MIRFlowUtilityWhenExpr:
 		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
 	default:
@@ -4931,6 +4991,16 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			return "", unsupported("non-builtin calls in compiled flow expressions")
 		}
 		return emitGoBuiltinCallExpr(e.Callee, args)
+	case MIRFlowIndexExpr:
+		target, err := emitGoFlowExpr(e.Target, pkg)
+		if err != nil {
+			return "", err
+		}
+		idx, err := emitGoFlowExpr(e.Index, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s[%s]", target, idx), nil
 	case MIRFlowUtilityWhenExpr:
 		h, err := emitGoFlowExpr(e.Hysteresis, pkg)
 		if err != nil {
