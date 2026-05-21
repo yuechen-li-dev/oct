@@ -358,3 +358,31 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Next recommended task
 1. Repair selected-reachable helper closure so emitted call targets are guaranteed emitted (including imported + same-package helper chains).
 2. Then isolate/fix batch capture scoping in `Shared.WhitenessCost` lowering (`z` resolution inside batch body).
+
+## 13) 2026-05-21 M0n selected-reachable helper closure/emission invariant
+- Added a compiled selected-reachable invariant in `internal/build/compiler.go` (`validateUserCallSymbols`) that checks: every non-builtin MIR call target (`pkg.fn`) must have a corresponding emitted MIR function definition in the same generated module.
+- Invariant is run for `CompileForTest` selected-reachable lowering and now fails fast with a deterministic missing-symbol list before generated-Go link errors.
+
+### Root cause
+- The selected-reachable collector relied on AST-level call traversal from original functions only.
+- Some call targets (including `Shared.Sub`, `M2BuildSignalFingerprint`, `M2BuildMetric`) are introduced via lowering-emitted helper/control functions (`ctx.extra` / MIR-level structure) and were not guaranteed to be present in the AST reachable set.
+- Result: generated Go emitted calls to `fn_*` symbols that were never lowered/emitted.
+
+### Fix shipped (smallest scope)
+- Kept selected-reachable mode enabled (did not revert to whole-package lowering).
+- During selected lowering, now enqueue additional reachable functions discovered from non-builtin MIR calls in newly lowered functions, then lower any newly discovered reachable functions not yet emitted.
+- Preserves exclusion of unreachable helpers/artifact/report functions.
+
+### Fixture evidence
+- `Language/Testing/CompiledSelectedReachable/same_package --execution compiled`: PASS (same-package transitive helper closure).
+- `Language/Testing/CompiledSelectedReachable/imported --execution compiled`: PASS (imported helper closure).
+- `Language/Testing/CompiledSelectedReachable/unreachable --execution compiled`: PASS (unreachable unsupported helper remains excluded).
+
+### M2/M2b re-measure after helper closure fix
+- `M2 --execution compiled`: helper undefined-symbol class cleared; next blocker is now `function Shared.WhitenessCost: unknown identifier 'z'`.
+- `M2 --execution auto`: passes via interpreted fallback with compiled unsupported reason `Shared.WhitenessCost: unknown identifier 'z'`.
+- `M2b --execution compiled`: first blocker remains `function Shared.WhitenessCost: unknown identifier 'z'` (after one compiled row passes).
+- `M2b --execution auto`: same compiled unsupported reason then interpreted behavior; still non-converged for full suite runtime.
+
+### Next blocker
+- Isolated next task: compiled batch capture/scoping repair for `Shared.WhitenessCost` (`unknown identifier 'z'`).
