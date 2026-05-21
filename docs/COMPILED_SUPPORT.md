@@ -12,6 +12,24 @@ This file is the **source of truth** for compiled support posture.
 - Core assertion fixture lane used by compiled test harness is green.
 - Pure-builtin compiled sweep fixture (`Language/Testing/CompiledBuiltinSweep/valid`) is green in current verification.
 
+## Octomata feature-granular support snapshot
+
+| Octomata surface | Interpreted status | Compiled status |
+| --- | --- | --- |
+| `flow` declarations | Supported | Partial / verify per fixture |
+| `Step(flow)` | Supported | Partial / verify per fixture |
+| `Active(flow)` | Supported | Partial / verify per fixture |
+| `Complete(flow)` | Supported | Partial / verify per fixture |
+| `Result(flow)` | Supported | Partial / verify per fixture |
+| `StateHistory(flow)` | Supported | Partial / verify per fixture |
+| `ResumeTarget(flow)` | Supported | Partial / verify per fixture |
+| board scalar fields (`Bool`, `Int`, `Float`, `String`) | Supported | Partial / verify per fixture |
+| board array fields (e.g. `Float[]`) | **Unsupported** (type-system/runtime contract currently rejects) | **Unsupported** |
+
+Notes:
+- Interpreted lane is the primary known-good execution path for Octomata authoring.
+- Compiled Octomata posture remains mixed/unclear at feature granularity; treat as ongoing convergence, not blanket green.
+
 ## Current deferred / partial categories
 
 - Markdown wrapper-heavy paths are still largely interpreted/fallback territory.

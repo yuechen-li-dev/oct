@@ -1,0 +1,7 @@
+expect error: "function 'MarkdownTable' argument 1 expects a columnar record of String[] fields, got String[][]. For row-major data, convert to a columnar record first or use Markdown.KeyValueTable for scalar metadata"
+
+package Markdown
+
+fn main() -> String[] {
+    return MarkdownTable([["name", "value"], ["a", "1"]])
+}

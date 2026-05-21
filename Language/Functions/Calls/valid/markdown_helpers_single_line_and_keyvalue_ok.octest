@@ -1,0 +1,10 @@
+package Calls
+
+[Fact]
+fn markdown_helpers_single_line_and_keyvalue_ok() {
+    let callout = Markdown.Callout("warning", ["message"])
+    Assert.True(Len(callout) >= 3, "single-line callout should render")
+
+    let kv = Markdown.KeyValueTable(["sampleRate"], ["2000"])
+    Assert.True(Len(kv) >= 3, "two-array key-value table should render")
+}

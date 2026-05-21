@@ -13,6 +13,13 @@
 
 All functions fail the artifact run immediately on write errors.
 
+## JSON authoring guidance (canonical)
+
+- In `[Artifact]` functions, prefer `Artifact.WriteJson(path, value)`.
+- Use `Json.Save(path, value)!` only when you intentionally need lower-level fallible control flow.
+- Do **not** manually stringify JSON for artifact output unless there is a specific reason.
+- `Json.Stringify(...)` is **not** currently exposed as a namespaced `Json.*` alias (`Json` namespace exposes `Load` and `Save`).
+
 ## Example
 
 ```oct

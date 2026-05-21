@@ -3304,7 +3304,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' argument 1 expects String, got %s", a.ValueType)
 		}
 		if b.ValueType != withArrayDepth(Type{Base: BaseTypeString}, 1) {
-			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' argument 2 expects String[], got %s", b.ValueType)
+			return ExprType{}, fmt.Errorf("function 'MarkdownCallout' argument 2 expects String[], got %s. Markdown.Callout expects a String[] list of lines; use [\"text\"] for a single-line callout", b.ValueType)
 		}
 		return ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1)}, nil
 	}
@@ -3331,7 +3331,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' does not accept type arguments")
 		}
 		if len(arguments) != 2 {
-			return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' expects 2 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'MarkdownKeyValueTable' expects 2 arguments, got %d. Markdown.KeyValueTable expects two arrays: keys and values. Example: Markdown.KeyValueTable([\"sampleRate\"], [\"2000\"])", len(arguments))
 		}
 		for i := 0; i < 2; i++ {
 			t, err := c.checkExpr(scope, arguments[i], ctx)
@@ -3395,7 +3395,10 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, err
 		}
 		if t.ValueType.Name == "" {
-			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects record table, got %s", callee, t.ValueType)
+			if t.ValueType == withArrayDepth(Type{Base: BaseTypeString}, 2) {
+				return ExprType{}, fmt.Errorf("function '%s' argument 1 expects a columnar record of String[] fields, got %s. For row-major data, convert to a columnar record first or use Markdown.KeyValueTable for scalar metadata", callee, t.ValueType)
+			}
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects a columnar record of String[] fields, got %s", callee, t.ValueType)
 		}
 		if callee == "MarkdownTableWithColumns" {
 			c2, err := c.checkExpr(scope, arguments[1], ctx)

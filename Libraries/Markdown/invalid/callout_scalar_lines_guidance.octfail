@@ -1,0 +1,7 @@
+expect error: "function 'MarkdownCallout' argument 2 expects String[], got String. Markdown.Callout expects a String[] list of lines; use ["text"] for a single-line callout"
+
+package Markdown
+
+fn main() -> String[] {
+    return MarkdownCallout("warning", "message")
+}

@@ -1,0 +1,28 @@
+package OctomataCoreA
+
+flow FlowSmokeScalarBoard {
+    board {
+        Counter: Int
+        Done: Bool
+    }
+
+    state Start {
+        board.Counter = 1
+        goto Finish
+    }
+
+    state Finish {
+        board.Done = true
+        return board.Counter
+    }
+}
+
+[Fact]
+fn flow_smoke_scalar_board_progression() -> Void {
+    let run = FlowSmokeScalarBoard {}
+    let _s1 = Step(run)
+    let _s2 = Step(run)
+    Assert.True(Complete(run), "flow smoke should complete")
+    Assert.Equal(1, Result(run)!, "flow smoke result should be deterministic")
+    Assert.True(Len(StateHistory(run)) >= 1, "state history should be available for smoke debugging")
+}
