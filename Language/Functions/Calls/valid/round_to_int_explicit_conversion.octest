@@ -1,0 +1,7 @@
+package Main
+
+fn RoundToIntExplicitConversion() -> Void {
+    Assert.Equal(RoundToInt(3.4), 3)
+    Assert.Equal(RoundToInt(3.5), 4)
+    Assert.Equal(RoundToInt(0.0 - 3.5), 0 - 4)
+}

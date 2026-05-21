@@ -3,5 +3,7 @@ expect error: "Int(...) is not a conversion in Oct because float-to-int conversi
 package Main
 
 fn Main() -> Int {
-    return Int(1.5)
+    let sampleRate = 44100.0
+    let duration = 0.5
+    return Int(sampleRate * duration)
 }

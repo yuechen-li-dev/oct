@@ -91,6 +91,9 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 - `CeilToInt(x: Float) -> Int`.
   - Explicit conversion using ceil (`toward +infinity`).
   - Examples: `CeilToInt(2.1) == 3`, `CeilToInt(0.0 - 2.9) == -2`.
+- `RoundToInt(x: Float) -> Int`.
+  - Explicit conversion using round-to-nearest with halves away from zero (Go `math.Round`).
+  - Examples: `RoundToInt(3.4) == 3`, `RoundToInt(3.5) == 4`, `RoundToInt(0.0 - 3.5) == 0 - 4`.
 - `BaseValue(x: Float | Float<D>) -> Float`.
   - Explicitly strips unit annotation and returns canonical/base-unit numeric value.
   - Dimensionless `Float` is accepted and returned unchanged.
@@ -104,7 +107,9 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 - Use `ToString(x)` for plain explicit conversion.
 - Use `FormatFloat(x, precision)` when display precision matters.
 - Use `Float(x)` only for explicit `Int -> Float` conversion.
-- Use `FloorToInt(x)` or `CeilToInt(x)` for explicit float-to-int rounding policy.
+- `Int` is a type, not a conversion function.
+- Use `FloorToInt(x)`, `CeilToInt(x)`, or `RoundToInt(x)` for explicit float-to-int rounding policy.
+- For sample counts, `let sampleCount = FloorToInt(sampleRate * duration)` is usually intended.
 - Use `BaseValue(x)` only when intentionally discarding units.
 - No implicit numeric/string conversion is performed in concatenation or other expressions.
 - `String.From<T>` requires an explicit type argument and does not introduce user-defined generic support.

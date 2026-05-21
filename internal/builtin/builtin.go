@@ -28,6 +28,7 @@ var names = map[string]struct{}{
 	"Tanh":                     {},
 	"FloorToInt":               {},
 	"CeilToInt":                {},
+	"RoundToInt":               {},
 	"BaseValue":                {},
 	"Pi":                       {},
 	"E":                        {},

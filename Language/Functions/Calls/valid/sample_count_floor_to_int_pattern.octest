@@ -1,0 +1,8 @@
+package Main
+
+fn SampleCountFloorToIntPattern() -> Void {
+    let sampleRate = 44100.0
+    let duration = 0.5
+    let sampleCount = FloorToInt(sampleRate * duration)
+    Assert.Equal(sampleCount, 22050)
+}
