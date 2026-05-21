@@ -1,0 +1,7 @@
+expect error: "function 'MarkdownKeyValueTable' expects 2 arguments, got 1. Markdown.KeyValueTable expects two arrays: keys and values. Example: Markdown.KeyValueTable(["sampleRate"], ["2000"])"
+
+package Markdown
+
+fn main() -> String[] {
+    return MarkdownKeyValueTable(["sampleRate"])
+}
