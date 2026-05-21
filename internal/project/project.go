@@ -68,6 +68,9 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 	if err != nil {
 		return Program{}, err
 	}
+	if includeTests && (filepath.Ext(path) == ".octest" || filepath.Ext(path) == ".oct") {
+		requireManifests = false
+	}
 	builder := builder{
 		root:             root,
 		repoRoot:         detectRepoRoot(root),
@@ -78,7 +81,7 @@ func loadFromFile(path string, includeTests bool) (Program, error) {
 		visited:          make(map[string]struct{}),
 		manifestDeps:     make(map[string]map[string]struct{}),
 	}
-	if includeTests && filepath.Ext(path) == ".octest" {
+	if includeTests && (filepath.Ext(path) == ".octest" || filepath.Ext(path) == ".oct") {
 		absEntry, absErr := filepath.Abs(path)
 		if absErr != nil {
 			return Program{}, absErr
@@ -308,6 +311,10 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 	if len(selected) > 0 {
 		filtered := make([]string, 0, len(files))
 		for _, candidate := range files {
+			if filepath.Ext(candidate) != ".octest" {
+				filtered = append(filtered, candidate)
+				continue
+			}
 			absCandidate, err := filepath.Abs(candidate)
 			if err != nil {
 				return nil, err
