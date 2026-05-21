@@ -47,7 +47,7 @@ func TestM106cDirectoryTargetStillSeesInvalidSibling(t *testing.T) {
 		t.Fatalf("directory target should fail due to invalid sibling, stdout=%q stderr=%q", stdout, stderr)
 	}
 	combined := stdout + "\n" + stderr
-	if !strings.Contains(combined, "sibling_invalid.octest") {
+	if !strings.Contains(combined, "sibling_invalid.octfail") {
 		t.Fatalf("expected directory mode to include sibling invalid diagnostic, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
