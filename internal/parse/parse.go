@@ -474,7 +474,7 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 		if p.current().Kind == lex.EOF {
 			return ast.RecordDecl{}, p.errorAtCurrent("expected '}' to close record declaration")
 		}
-		fieldName, err := p.expect(lex.Identifier, "expected record field name")
+		fieldName, err := p.expectIdentifierLike("expected record field name")
 		if err != nil {
 			return ast.RecordDecl{}, err
 		}
@@ -695,7 +695,7 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 
 	var parameters []ast.Parameter
 	for {
-		name, err := p.expect(lex.Identifier, "expected parameter name")
+		name, err := p.expectIdentifierLike("expected parameter name")
 		if err != nil {
 			return nil, err
 		}
@@ -864,7 +864,7 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 	case lex.KeywordWhen:
 		return p.parseWhenStmt()
 	default:
-		if p.current().Kind == lex.Identifier {
+		if p.isIdentifierLike(p.current().Kind) {
 			if stmt, handled, err := p.tryParseIdentifierLeadingAssignment(); err != nil {
 				return nil, err
 			} else if handled {
@@ -997,7 +997,7 @@ func (p *parser) parseResumeStmt() (ast.Stmt, error) {
 
 func (p *parser) parseLetStmt() (ast.Stmt, error) {
 	p.advance()
-	name, err := p.expect(lex.Identifier, "expected identifier after 'let'")
+	name, err := p.expectIdentifierLike("expected identifier after 'let'")
 	if err != nil {
 		return nil, err
 	}
@@ -1021,7 +1021,7 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 
 func (p *parser) parseVarStmt() (ast.Stmt, error) {
 	p.advance()
-	name, err := p.expect(lex.Identifier, "expected identifier after 'var'")
+	name, err := p.expectIdentifierLike("expected identifier after 'var'")
 	if err != nil {
 		return nil, err
 	}
@@ -1044,7 +1044,7 @@ func (p *parser) parseVarStmt() (ast.Stmt, error) {
 }
 
 func (p *parser) parseAssignStmt() (ast.Stmt, error) {
-	name, err := p.expect(lex.Identifier, "expected assignment target")
+	name, err := p.expectIdentifierLike("expected assignment target")
 	if err != nil {
 		return nil, err
 	}
@@ -1060,7 +1060,7 @@ func (p *parser) parseAssignStmt() (ast.Stmt, error) {
 
 func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 	savedPosition := p.position
-	name, err := p.expect(lex.Identifier, "expected assignment target")
+	name, err := p.expectIdentifierLike("expected assignment target")
 	if err != nil {
 		return nil, false, err
 	}
@@ -1081,7 +1081,7 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 	}
 
 	if p.match(lex.Dot) {
-		field, err := p.expect(lex.Identifier, "expected field name after '.'")
+		field, err := p.expectIdentifierLike("expected field name after '.'")
 		if err != nil {
 			return nil, false, err
 		}
@@ -1154,7 +1154,7 @@ func (p *parser) parseExprStmt() (ast.Stmt, error) {
 
 func (p *parser) parseForStmt() (ast.Stmt, error) {
 	p.advance()
-	name, err := p.expect(lex.Identifier, "expected loop variable after 'for'")
+	name, err := p.expectIdentifierLike("expected loop variable after 'for'")
 	if err != nil {
 		return nil, err
 	}
@@ -1235,7 +1235,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus:
 		return true
 	default:
 		return false
@@ -1253,7 +1253,7 @@ func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
 	if _, err := p.expect(lex.LeftParen, fmt.Sprintf("expected '(' after '%s'", expectedName)); err != nil {
 		return "", ast.Block{}, err
 	}
-	binding, err := p.expect(lex.Identifier, fmt.Sprintf("expected identifier in %s arm", expectedName))
+	binding, err := p.expectIdentifierLike(fmt.Sprintf("expected identifier in %s arm", expectedName))
 	if err != nil {
 		return "", ast.Block{}, err
 	}
@@ -1384,7 +1384,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			}
 			expr = ast.RecordUpdateExpr{Source: expr, Fields: fields}
 		case p.match(lex.Dot):
-			field, err := p.expect(lex.Identifier, "expected field name after '.'")
+			field, err := p.expectIdentifierLike("expected field name after '.'")
 			if err != nil {
 				return nil, err
 			}
@@ -1598,7 +1598,7 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	case lex.KeywordFalse:
 		p.advance()
 		return ast.BoolLiteral{Value: false}, nil
-	case lex.Identifier:
+	case lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep:
 		p.advance()
 		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
 			return p.parseVectorLiteralExpr()
@@ -1633,7 +1633,7 @@ func (p *parser) parseBatchExpr() (ast.Expr, error) {
 	if _, err := p.expect(lex.KeywordAs, "expected 'as' after batch input expression"); err != nil {
 		return nil, err
 	}
-	itemName, err := p.expect(lex.Identifier, "expected item binding name after 'as'")
+	itemName, err := p.expectIdentifierLike("expected item binding name after 'as'")
 	if err != nil {
 		return nil, err
 	}
@@ -1848,7 +1848,7 @@ func (p *parser) looksLikeRecordLiteral() bool {
 	if p.peek(0).Kind != lex.LeftBrace {
 		return false
 	}
-	return p.peek(1).Kind == lex.Identifier && p.peek(2).Kind == lex.Colon
+	return p.isIdentifierLike(p.peek(1).Kind) && p.peek(2).Kind == lex.Colon
 }
 
 func (p *parser) parseRecordLiteralExpr(typeName string) (ast.Expr, error) {
@@ -1869,7 +1869,7 @@ func (p *parser) parseRecordLiteralFields(context string, requireAtLeastOne bool
 		if p.current().Kind == lex.EOF {
 			return nil, p.errorAtCurrent("expected '}' to close " + context)
 		}
-		name, err := p.expect(lex.Identifier, "expected "+context+" field name")
+		name, err := p.expectIdentifierLike("expected "+context+" field name")
 		if err != nil {
 			return nil, err
 		}
@@ -2137,6 +2137,28 @@ func (p *parser) match(kind lex.TokenKind) bool {
 func (p *parser) expect(kind lex.TokenKind, message string) (lex.Token, error) {
 	token := p.current()
 	if token.Kind != kind {
+		return lex.Token{}, p.errorAtCurrent(message)
+	}
+	p.advance()
+	return token, nil
+}
+
+func isContextualIdentifierToken(kind lex.TokenKind) bool {
+	switch kind {
+	case lex.KeywordFlow, lex.KeywordState, lex.KeywordStep:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *parser) isIdentifierLike(kind lex.TokenKind) bool {
+	return kind == lex.Identifier || isContextualIdentifierToken(kind)
+}
+
+func (p *parser) expectIdentifierLike(message string) (lex.Token, error) {
+	token := p.current()
+	if !p.isIdentifierLike(token.Kind) {
 		return lex.Token{}, p.errorAtCurrent(message)
 	}
 	p.advance()
