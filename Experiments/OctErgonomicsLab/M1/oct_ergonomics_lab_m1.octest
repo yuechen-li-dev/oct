@@ -1,0 +1,58 @@
+package OctErgonomicsLabM1
+
+import String
+import IO
+
+[Suite("Experiments.OctErgonomicsLab.M1")]
+[Fact]
+fn RealOctomataScalarBoardRunsAndHistoryIsStateNamesOnly() -> Void {
+    let result = RunRealOctomataProbe()
+    Assert.True(result.DoneReached, "real probe flow should complete")
+    Assert.Equal("BlockedScalarBoardProbe", result.Representation, "probe should declare blocked external board scalar surface")
+    Assert.True(String.Contains(result.MissingSurface, "No public API"), "missing surface explanation should be explicit")
+    Assert.Equal(0, Len(result.Recovered), "real probe should not pretend recovered accumulation is available")
+    Assert.True(result.HistoryCount > 0, "state history should still be available")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M1")]
+[Fact]
+fn ManualFallbackAccumulatesPerStepArrays() -> Void {
+    let result = RunManualExplicitStateLoopFallback()
+    Assert.Equal("ManualExplicitStateLoopFallback", result.Representation, "fallback label must be explicit")
+    Assert.True(result.DoneReached, "fallback should reach done")
+    Assert.Equal(3, Len(result.Recovered), "recovered length should match sample count")
+    Assert.Equal(3, Len(result.Innovations), "innovation length should match sample count")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M1")]
+[Fact]
+fn ResultBangOnlyAfterCompletionInRealFlow() -> Void {
+    let machine = ScalarBoardProbe([1.0, 2.0, 3.0])
+    while Complete(machine) == false {
+        Step(machine)
+    }
+    let value = Result(machine)!
+    Assert.True(value > 0.0, "result bang should be used only after completion")
+}
+
+
+[Suite("Experiments.OctErgonomicsLab.M1")]
+[Fact]
+fn ArtifactFilesExistAfterGenerate() -> Void {
+    GenerateM1Artifacts()
+    let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m1"
+    let octagonText = IO.ReadText(IO.JoinPath([root, "m1_octomata_scalar_board_probe.octagon"]))!
+    let markdownText = IO.ReadText(IO.JoinPath([root, "m1_octomata_scalar_board_probe.md"]))!
+    let metricsText = IO.ReadText(IO.JoinPath([root, "metrics.csv"]))!
+    let summaryText = IO.ReadText(IO.JoinPath([root, "summary.json"]))!
+    Assert.True(Len(octagonText) > 0, "octagon artifact must exist")
+    Assert.True(Len(markdownText) > 0, "markdown artifact must exist")
+    Assert.True(Len(metricsText) > 0, "csv artifact must exist")
+    Assert.True(Len(summaryText) > 0, "json artifact must exist")
+}
+
+[Suite("Experiments.OctErgonomicsLab.M1")]
+[Artifact]
+fn ArtifactM1Probe() -> Void {
+    GenerateM1Artifacts()
+}
