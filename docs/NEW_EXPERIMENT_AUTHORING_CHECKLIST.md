@@ -13,3 +13,5 @@
 - Use `Result(machine)!` only when completion is guaranteed; otherwise propagate/handle fallibility.
 - Start with milestone-local smoke commands before full matrix runs.
 - Use `--execution auto` first to probe compiled support posture.
+
+- For Octomata scalar board observation between steps, use `BoardSnapshot(machine)!` (or `?`/`match`) and keep per-step arrays in external accumulators.

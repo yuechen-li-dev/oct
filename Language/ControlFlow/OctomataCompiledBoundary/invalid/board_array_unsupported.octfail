@@ -1,4 +1,4 @@
-expect error: "flow BoardArrayUnsupported board field Samples: board fields must be one of Bool, Int, Float, or String"
+expect error: "flow BoardArrayUnsupported: board fields must be one of Bool, Int, Float, or String"
 
 package MainInvalid
 

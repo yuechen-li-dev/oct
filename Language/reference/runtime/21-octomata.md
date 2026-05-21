@@ -49,7 +49,8 @@ Octomata and records are complementary:
 - `Result(flow)` is fallible because the flow may not have completed yet.
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
-- Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, and `StateHistory` require a flow instance argument.
+- Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
+- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current scalar board fields (Bool/Int/Float/String only) when the flow declares a board.
 
 
 ## Result handling

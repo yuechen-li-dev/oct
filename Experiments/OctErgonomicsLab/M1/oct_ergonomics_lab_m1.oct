@@ -58,24 +58,37 @@ flow ScalarBoardProbe(samples: Float[]) -> Float {
 
 fn RunRealOctomataProbe() -> ProbeResult {
     let machine = ScalarBoardProbe([1.0, 2.0, 3.0])
+    var recovered: Float[] = []
+    var innovations: Float[] = []
+
     Step(machine)
+    let a = BoardSnapshot(machine)!
+    recovered = Append(recovered, a.Estimate)
+    innovations = Append(innovations, a.Innovation)
     Step(machine)
+    let b = BoardSnapshot(machine)!
+    recovered = Append(recovered, b.Estimate)
+    innovations = Append(innovations, b.Innovation)
     Step(machine)
+    let c = BoardSnapshot(machine)!
+    recovered = Append(recovered, c.Estimate)
+    innovations = Append(innovations, c.Innovation)
     Step(machine)
+    let d = BoardSnapshot(machine)!
+    recovered = Append(recovered, d.Estimate)
+    innovations = Append(innovations, d.Innovation)
 
     let history = StateHistory(machine)
     let _ = Result(machine)!
 
-    let emptyRecovered: Float[] = []
-    let emptyInnovations: Float[] = []
     return ProbeResult {
         DoneReached: Complete(machine)
-        Recovered: emptyRecovered
-        Innovations: emptyInnovations
+        Recovered: recovered
+        Innovations: innovations
         StepCount: 4
         HistoryCount: Len(history)
-        Representation: "BlockedScalarBoardProbe"
-        MissingSurface: "No public API currently exposes scalar board fields from outside a suspended/completing machine after Step(machine); StateHistory only returns state names and Result returns final value only."
+        Representation: "ScalarBoardOctomataWithExternalAccumulators"
+        MissingSurface: ""
     }
 }
 
@@ -149,9 +162,9 @@ fn GenerateM1Artifacts() -> Void {
         Markdown.Subtitle("Kalman-shaped loop feasibility with external accumulator"),
         Markdown.Section("Probe goal", [Markdown.KeyValueTable(["goal", "suite"], ["Validate scalar-board-only Octomata loop with external array accumulation", "Experiments.OctErgonomicsLab.M1"])]),
         Markdown.Section("Real Octomata attempt", [Markdown.KeyValueTable(["representation", "doneReached", "stepCount", "historyCount"], [real.Representation, ToString(real.DoneReached), ToString(real.StepCount), ToString(real.HistoryCount)]), Markdown.Callout("warning", [real.MissingSurface])]),
-        Markdown.Section("External observability", [Markdown.KeyValueTable(["canObserveBoardScalarsAfterStep", "stateHistoryCarriesBoardData", "resultCarriesPerStepArrays"], ["false", "false", "false"])]),
+        Markdown.Section("External observability", [Markdown.KeyValueTable(["canObserveBoardScalarsAfterStep", "stateHistoryCarriesBoardData", "resultCarriesPerStepArrays"], ["true", "false", "false"])]),
         Markdown.Section("Fallback", [Markdown.KeyValueTable(["representation", "doneReached", "recoveredCount", "innovationCount"], [fallback.Representation, ToString(fallback.DoneReached), ToString(Len(fallback.Recovered)), ToString(Len(fallback.Innovations))])]),
-        Markdown.Section("Recommendation for FM M3", [Markdown.KeyValueTable(["nextStep"], ["Design a scalar board snapshot/read API before relying on real Octomata for per-step external accumulators."])])
+        Markdown.Section("Recommendation for FM M3", [Markdown.KeyValueTable(["nextStep"], ["Use scalar board + BoardSnapshot(machine)! + external accumulators for per-step arrays."])])
     ])
 
     Artifact.WriteMarkdown(IO.JoinPath([root, "m1_octomata_scalar_board_probe.md"]), report)
