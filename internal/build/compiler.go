@@ -3196,6 +3196,8 @@ func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
 		return ident.Name, "Float", true, false, nil
 	case "FloorToInt", "CeilToInt", "RoundToInt":
 		return ident.Name, "Int", true, false, nil
+	case "Len":
+		return ident.Name, "Int", true, false, nil
 	case "FormatFloat":
 		return ident.Name, "String", true, false, nil
 	default:
@@ -4968,6 +4970,8 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 
 func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	switch canonicalCompiledBuiltinName(callee) {
+	case "Len":
+		return fmt.Sprintf("len(%s)", args[0]), nil
 	case "Abs":
 		return fmt.Sprintf("math.Abs(%s)", args[0]), nil
 	case "Sqrt":
