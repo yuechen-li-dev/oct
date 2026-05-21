@@ -28,6 +28,7 @@ Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 
 | board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
 | scalar board fields Bool/Int/Float/String | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Scalar-only field contract. |
 | flow expression calls (pure builtins) | Supported | Supported (builtin-only in flow state expressions) | `OctomataFlowCallExpr/valid/flow_call_builtin_surface.octest` | Calls inside flow expressions are currently limited to non-fallible pure builtins (`Len`, `Abs`, `Sqrt`, trig/log family, `FloorToInt`/`CeilToInt`/`RoundToInt`, `FormatFloat`). Fallible or side-effectful wrappers remain deferred. |
+| flow expression indexing | Supported (array indexing) | Supported (array indexing `T[]` with `Int` index in flow expressions) | `OctomataFlowIndexExpr/valid/flow_index_expr_surface.octest` | Current compiled flow support is scoped to single-dimension array indexing. String/matrix/vector flow-expression indexing remains deferred until explicitly verified. |
 | board array fields | Unsupported | Unsupported | `OctomataCompiledBoundary/invalid/board_array_unsupported.octfail` | Diagnostic: board fields must be Bool/Int/Float/String. |
 | Step(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Mutates flow in place; returns `Int` sentinel in lowered MIR. |
 | Active(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Returns empty string before first step and after completion. |
@@ -46,6 +47,7 @@ Notes:
 - Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
 - `DirectoryMakeAll` remains wrapper/deferred for compiled mode, including flow-expression contexts.
+- OctErgonomicsLab M1 compiled lane now moves past `ast.IndexExpr` flow-expression lowering; remaining blocker is still artifact-lane (`DirectoryMakeAll`) contamination.
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 
