@@ -1,0 +1,15 @@
+expect error: "Result(machine) is fallible because a flow may not have completed"
+
+package MainInvalid
+
+flow DoneFlow() -> Int {
+    state Start {
+        return 7
+    }
+}
+
+fn Main() -> Void {
+    let machine = DoneFlow()
+    Step(machine)
+    let result = Result(machine)
+}

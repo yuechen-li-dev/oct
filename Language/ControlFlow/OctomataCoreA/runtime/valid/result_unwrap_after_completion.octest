@@ -1,0 +1,16 @@
+package Main
+
+import Assert
+
+flow DoneFlow() -> Int {
+    state Start {
+        return 7
+    }
+}
+
+test "Result(machine)! after guaranteed completion" {
+    let machine = DoneFlow()
+    Step(machine)
+    let result = Result(machine)!
+    Assert.Equal(7, result)
+}

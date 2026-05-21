@@ -668,6 +668,35 @@ func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext)
 	return hasReturn, nil
 }
 
+func genericUnhandledFallibleMessage() string {
+	return "fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error"
+}
+
+func unhandledFallibleMessage(expr ast.Expr) string {
+	if isResultFlowCall(expr) {
+		return "Result(machine) is fallible because a flow may not have completed. Use Result(machine)! in tests when completion is required, Result(machine)? to propagate, or match Result(machine) to handle the not-completed/error case. For non-result inspection, use Active(machine), Complete(machine), or StateHistory(machine)."
+	}
+	return genericUnhandledFallibleMessage()
+}
+
+func isResultFlowCall(expr ast.Expr) bool {
+	call, ok := expr.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	return calleeEndsWithIdentifier(call.Callee, "Result")
+}
+
+func calleeEndsWithIdentifier(expr ast.Expr, target string) bool {
+	switch node := expr.(type) {
+	case ast.IdentifierExpr:
+		return node.Name == target
+	case ast.FieldAccessExpr:
+		return node.Field == target
+	default:
+		return false
+	}
+}
 func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bool, error) {
 	switch node := stmt.(type) {
 	case ast.LetStmt:
@@ -684,7 +713,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: let %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: let %s: %s", ctx.name, node.Name, unhandledFallibleMessage(node.Value))
 		}
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: let %s: Void result cannot be used as a value", ctx.name, node.Name)
@@ -711,7 +740,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: var %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: var %s: %s", ctx.name, node.Name, unhandledFallibleMessage(node.Value))
 		}
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: var %s: Void result cannot be used as a value", ctx.name, node.Name)
@@ -737,7 +766,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s: %w", ctx.name, node.Name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: assignment to %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
+			return false, fmt.Errorf("function %s: assignment to %s: %s", ctx.name, node.Name, unhandledFallibleMessage(node.Value))
 		}
 		if valueType.ValueType.Tuple != nil {
 			return false, fmt.Errorf("function %s: assignment to %s: tuple return values must be destructured", ctx.name, node.Name)
@@ -752,7 +781,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: destructuring assignment: %w", ctx.name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: destructuring assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
+			return false, fmt.Errorf("function %s: destructuring assignment: %s", ctx.name, unhandledFallibleMessage(node.Value))
 		}
 		if valueType.ValueType.Tuple == nil {
 			return false, fmt.Errorf("function %s: destructuring assignment requires tuple return/value", ctx.name)
@@ -859,7 +888,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s.%s: %w", ctx.name, node.Target, node.Field, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: assignment to %s.%s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Target, node.Field)
+			return false, fmt.Errorf("function %s: assignment to %s.%s: %s", ctx.name, node.Target, node.Field, unhandledFallibleMessage(node.Value))
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
 			return false, fmt.Errorf("function %s: assignment to %s.%s: expected %s, got %s", ctx.name, node.Target, node.Field, fieldType, valueType.ValueType)
@@ -901,7 +930,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: %w", ctx.name, err)
 		}
 		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: expression statement must not be fallible; handle it with '?', '!', or match", ctx.name)
+			return false, fmt.Errorf("function %s: expression statement must not be fallible; %s", ctx.name, unhandledFallibleMessage(node.Value))
 		}
 		return false, nil
 	case ast.ForStmt:

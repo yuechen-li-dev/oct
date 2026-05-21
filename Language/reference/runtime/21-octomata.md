@@ -42,6 +42,45 @@ Octomata and records are complementary:
 - `StateHistory(flow)` returns state-entry history as `String[]`.
 - Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, and `StateHistory` require a flow instance argument.
 
+
+## Result handling
+
+`Result(machine)` extracts a flow's completed return value.
+It is a fallible operation because a flow may not have completed yet (for example, it may still be active, suspended, or not stepped to completion).
+
+Use the handling form that matches your intent:
+
+- Tests or assertions after guaranteed completion: `Result(machine)!`
+- Fallible function boundaries: `Result(machine)?`
+- Robust branch handling: `match Result(machine) { ok(v) => ... err(e) => ... }`
+
+For status/inspection, do not use `Result` as a status accessor.
+Prefer:
+
+- `Active(machine)` for current active state visibility
+- `Complete(machine)` for completion status
+- `StateHistory(machine)` for transition/history visibility
+- `ResumeTarget(machine)` for remembered resume-slot state
+
+```oct
+package Main
+
+import Assert
+
+flow DoneFlow() -> Int {
+    state Start {
+        return 7
+    }
+}
+
+test "result after completion" {
+    let machine = DoneFlow()
+    Step(machine)
+    let value = Result(machine)!
+    Assert.Equal(7, value)
+}
+```
+
 ## When to use Octomata
 
 Use Octomata when behavior progression is a first-class concern:
