@@ -1,7 +1,8 @@
 package Main
 
+[Fact]
 fn RoundToIntExplicitConversion() -> Void {
-    Assert.Equal(RoundToInt(3.4), 3)
-    Assert.Equal(RoundToInt(3.5), 4)
-    Assert.Equal(RoundToInt(0.0 - 3.5), 0 - 4)
+    Assert.Equal(3, RoundToInt(3.4), "RoundToInt(3.4) rounds down")
+    Assert.Equal(4, RoundToInt(3.5), "RoundToInt(3.5) rounds up")
+    Assert.Equal(0 - 4, RoundToInt(0.0 - 3.5), "RoundToInt(-3.5) rounds away from zero")
 }
