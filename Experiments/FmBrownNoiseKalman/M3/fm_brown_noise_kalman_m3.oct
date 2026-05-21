@@ -1,0 +1,275 @@
+package FmBrownNoiseKalman
+
+import Shared
+import String
+import Artifact
+import Markdown
+import Json
+
+record M3Case {
+    SampleRate: Float
+    Duration: Float
+    MessageHz: Float
+    InputSNRDb: Float
+    Seed: Int
+}
+
+record M3StateMachineResult {
+    Recovered: Float[]
+    Innovation: Float[]
+    DoneReached: Bool
+}
+
+record M3TraceSummary {
+    TickCount: Int
+    InitializeCount: Int
+    PredictCount: Int
+    ObserveCount: Int
+    ComputeGainCount: Int
+    CorrectCount: Int
+    RecordCount: Int
+    AdvanceCount: Int
+    DoneCount: Int
+    DoneReached: Bool
+    FirstState: String
+    LastState: String
+    FirstSampleIndex: Int
+    LastSampleIndex: Int
+}
+
+record M3MetricRow {
+    Method: String
+    OutputSNRDb: Float
+    Nrmse: Float
+    WhitenessCost: Float
+}
+
+record M3Run {
+    Case: M3Case
+    Clean: Float[]
+    Observed: Float[]
+    Procedural: Shared.KalmanResult
+    Octomata: M3StateMachineResult
+    Trace: M3TraceSummary
+    Metrics: M3MetricRow[]
+}
+
+record M3OctagonReport {
+    title: String
+    goal: String
+    stateMachine: String[]
+    trace: M3TraceSummary
+    metrics: M3MetricRow[]
+    limitations: String[]
+    next: String
+}
+
+record M3CsvRow {
+    method: String
+    outputSNRDb: String
+    nrmse: String
+    whitenessCost: String
+}
+
+flow M3KalmanMachine(observed: Float[]) -> M3StateMachineResult {
+    board {
+        Index: Int
+        Z: Float
+        X0: Float
+        X1: Float
+        P00: Float
+        P11: Float
+        X0Pred: Float
+        X1Pred: Float
+        P00Pred: Float
+        P11Pred: Float
+        InnovationY: Float
+        S: Float
+        K0: Float
+        K1: Float
+        Recovered: Float[]
+        Innovation: Float[]
+    }
+
+    state Initialize {
+        board.Index = 0
+        board.X0 = 0.0
+        board.X1 = 0.0
+        board.P00 = 1.0
+        board.P11 = 1.0
+        board.Recovered = []
+        board.Innovation = []
+        goto Predict
+    }
+
+    state Predict {
+        when {
+            case board.Index >= Len(observed) -> goto Done
+            else -> goto Observe
+        }
+    }
+
+    state Observe {
+        board.Z = observed[board.Index]
+        board.X0Pred = board.X0 + board.X1
+        board.X1Pred = board.X1
+        board.P00Pred = board.P00 + board.P11 + 1e-3
+        board.P11Pred = board.P11 + 1e-2
+        goto ComputeGain
+    }
+
+    state ComputeGain {
+        board.InnovationY = board.Z - board.X0Pred
+        board.S = board.P00Pred + 0.1 + 1.0
+        board.K0 = board.P00Pred / board.S
+        board.K1 = board.P11Pred / board.S
+        goto Correct
+    }
+
+    state Correct {
+        board.X0 = board.X0Pred + board.K0 * board.InnovationY
+        board.X1 = board.X1Pred + board.K1 * board.InnovationY
+        board.P00 = (1.0 - board.K0) * board.P00Pred
+        board.P11 = (1.0 - board.K1) * board.P11Pred
+        goto Record
+    }
+
+    state Record {
+        board.Recovered = Append(board.Recovered, board.X0)
+        board.Innovation = Append(board.Innovation, board.InnovationY)
+        goto Advance
+    }
+
+    state Advance {
+        board.Index = board.Index + 1
+        goto Predict
+    }
+
+    state Done {
+        return M3StateMachineResult {
+            Recovered: board.Recovered
+            Innovation: board.Innovation
+            DoneReached: true
+        }
+    }
+}
+
+fn M3TinyCase() -> M3Case {
+    return M3Case { SampleRate: 2000.0 Duration: 0.5 MessageHz: 25.0 InputSNRDb: -12.0 Seed: 12345 }
+}
+
+fn M3SampleCount(c: M3Case) -> Int {
+    var n = 0
+    var t = 0.0
+    let dt = 1.0 / c.SampleRate
+    while t < c.Duration {
+        n = n + 1
+        t = t + dt
+    }
+    return n
+}
+
+fn M3BuildClean(c: M3Case) -> Float[] {
+    let n = M3SampleCount(c)
+    var clean: Float[] = []
+    for i in 0..n {
+        let t = Float(i) / c.SampleRate
+        clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * t))
+    }
+    return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0)
+}
+
+fn M3CountState(history: String[], stateName: String) -> Int {
+    var count = 0
+    for i in 0..Len(history) {
+        if history[i] == stateName { count = count + 1 }
+    }
+    return count
+}
+
+fn RunM3OctomataFixedKalman(c: M3Case) -> M3Run ! Error {
+    let clean = M3BuildClean(c)
+    let observed = Shared.AddNoiseAtSnr(clean, Shared.GenerateBrownNoise(Len(clean), c.Seed), c.InputSNRDb)
+    let procedural = Shared.FixedWhiteKalmanFilter(observed)
+
+    let machine = M3KalmanMachine(observed)
+    while Complete(machine) == false {
+        Step(machine)
+    }
+    let octomata = Result(machine)?
+    let history = StateHistory(machine)
+
+    let metrics = [
+        M3MetricRow {
+            Method: "Procedural"
+            OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, procedural.Recovered))
+            Nrmse: Shared.Nrmse(clean, procedural.Recovered)
+            WhitenessCost: Shared.WhitenessCost(procedural.Innovation)
+        },
+        M3MetricRow {
+            Method: "Octomata"
+            OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, octomata.Recovered))
+            Nrmse: Shared.Nrmse(clean, octomata.Recovered)
+            WhitenessCost: Shared.WhitenessCost(octomata.Innovation)
+        }
+    ]
+
+    let trace = M3TraceSummary {
+        TickCount: Len(history)
+        InitializeCount: M3CountState(history, "Initialize")
+        PredictCount: M3CountState(history, "Predict")
+        ObserveCount: M3CountState(history, "Observe")
+        ComputeGainCount: M3CountState(history, "ComputeGain")
+        CorrectCount: M3CountState(history, "Correct")
+        RecordCount: M3CountState(history, "Record")
+        AdvanceCount: M3CountState(history, "Advance")
+        DoneCount: M3CountState(history, "Done")
+        DoneReached: octomata.DoneReached
+        FirstState: if Len(history) > 0 { history[0] } else { "" }
+        LastState: if Len(history) > 0 { history[Len(history) - 1] } else { "" }
+        FirstSampleIndex: 0
+        LastSampleIndex: Len(clean) - 1
+    }
+
+    return M3Run { Case: c Clean: clean Observed: observed Procedural: procedural Octomata: octomata Trace: trace Metrics: metrics }
+}
+
+fn M3ArtifactWriteAll() -> Void ! Error {
+    let run = RunM3OctomataFixedKalman(M3TinyCase())?
+    let octagon = M3OctagonReport {
+        title: "FM Brown-Noise Kalman M3 Octomata representation"
+        goal: "Represent fixed Kalman as explicit Octomata state machine and compare with procedural baseline."
+        stateMachine: ["Initialize", "Predict", "Observe", "ComputeGain", "Correct", "Record", "Advance", "Done"]
+        trace: run.Trace
+        metrics: run.Metrics
+        limitations: ["Fixed white-noise Kalman only in M3", "No adaptive AR(1) in this pass"]
+        next: "Add adaptive AR(1) Octomata variant after fixed representation stabilizes."
+    }
+
+    let md = Markdown.Report([
+        Markdown.Section("Title", [Markdown.Paragraph("FM Brown-Noise Kalman M3: Octomata Representation")]),
+        Markdown.Section("Goal", [Markdown.Bullets(["Representation and inspectability first", "Procedural equivalence on deterministic tiny case"]) ]),
+        Markdown.Section("State machine structure", [Markdown.Bullets(["Initialize", "Predict", "Observe", "ComputeGain", "Correct", "Record", "Advance", "Done"])]),
+        Markdown.Section("Trace summary", [Markdown.Bullets([
+            "tickCount=" + ToString(run.Trace.TickCount),
+            "doneReached=" + if run.Trace.DoneReached { "true" } else { "false" },
+            "firstState=" + run.Trace.FirstState,
+            "lastState=" + run.Trace.LastState
+        ])]),
+        Markdown.Section("Limitations", [Markdown.Callout("warning", "M3 currently covers fixed Kalman representation only.")])
+    ])
+
+    let csvRows = batch run.Metrics as m {
+        return M3CsvRow {
+            method: m.Method
+            outputSNRDb: String.Format("{0}", [m.OutputSNRDb])
+            nrmse: String.Format("{0}", [m.Nrmse])
+            whitenessCost: String.Format("{0}", [m.WhitenessCost])
+        }
+    }
+
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon", octagon)?
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md", md)?
+    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M3/metrics.csv", csvRows)?
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M3/metrics.json", Json.Stringify(run.Metrics))?
+}
