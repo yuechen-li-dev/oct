@@ -1056,6 +1056,10 @@ func canonicalCompiledBuiltinName(name string) string {
 		return "StringRuneCount"
 	case "String.Join":
 		return "StringJoin"
+	case "String.Concat":
+		return "StringConcat"
+	case "String.From":
+		return "StringFrom"
 	case "String.ReplaceAll":
 		return "StringReplaceAll"
 	case "String.Contains":
@@ -2359,7 +2363,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Float", true, true, nil
 			case "Random.CryptoRandBytes":
 				return normalized, "Bytes", true, true, nil
-			case "StringByteLength", "StringRuneCount", "StringJoin", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
+			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 				ret := "String"
 				switch normalized {
 				case "StringByteLength", "StringRuneCount":
@@ -2775,6 +2779,24 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "Int", nil
+	case "StringConcat":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String", nil
+	case "StringFrom":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		switch argTypes[0] {
+		case "Int", "Float", "Bool", "String":
+			return "String", nil
+		default:
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
 	case "StringJoin":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
@@ -4948,6 +4970,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = utf8.RuneCountInString(%s)", st.Target, st.Args[0]), nil
 			case "StringJoin":
 				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "StringConcat":
+				return fmt.Sprintf("%s = strings.Join(%s, \"\")", st.Target, st.Args[0]), nil
+			case "StringFrom":
+				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "StringReplaceAll":
 				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
 			case "StringContains":

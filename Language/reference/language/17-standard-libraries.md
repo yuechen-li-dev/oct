@@ -108,7 +108,7 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 `Libraries/String/String.Core.oct` provides deterministic report-focused text helpers:
 
 - Preferred M0 namespaced surface (requires `import String`):
-  - `String.Join`, `String.ReplaceAll`, `String.Contains`, `String.StartsWith`, `String.EndsWith`, `String.Trim`
+  - `String.Join`, `String.Concat`, `String.From<T>`, `String.ReplaceAll`, `String.Contains`, `String.StartsWith`, `String.EndsWith`, `String.Trim`
   - `String.SplitLines`, `String.EscapeJson`, `String.QuoteJson`, `String.ByteLength`, `String.RuneCount`
 - Global compatibility/backing builtins remain available during transition (`StringJoin`, `StringQuoteJSON`, etc.).
 

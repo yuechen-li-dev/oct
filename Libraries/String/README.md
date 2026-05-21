@@ -11,6 +11,8 @@ import String
 - `String.ByteLength(s)` -> `Int`
 - `String.RuneCount(s)` -> `Int`
 - `String.Join(parts, separator)` -> `String`
+- `String.Concat(parts)` -> `String`
+- `String.From<T>(value)` -> `String` (`T` in M0: `Int`, `Float`, `Bool`, `String`)
 - `String.ReplaceAll(s, old, new)` -> `String`
 - `String.Contains(s, needle)` -> `Bool`
 - `String.StartsWith(s, prefix)` -> `Bool`
@@ -29,3 +31,8 @@ Compatibility/backing globals remain available (`StringJoin`, `StringQuoteJSON`,
 - Use `Csv.Write` for CSV.
 - Use `Json.Save` for structured JSON.
 - Use `String.QuoteJson` when manual JSON-shaped text is necessary.
+
+
+## Constrained generic builtin note
+
+Oct does not support user-defined generics. A small number of compiler-known builtins use explicit type arguments to select a static conversion/decoding contract. `String.From<T>` and `LoadOctagon<T>` are examples.

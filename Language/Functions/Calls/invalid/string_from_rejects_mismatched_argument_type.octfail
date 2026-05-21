@@ -1,0 +1,5 @@
+expect error: "function 'String.From' argument 1 expects Int, got String"
+package Main
+fn Main() -> String {
+    return StringFrom<Int>("not int")
+}

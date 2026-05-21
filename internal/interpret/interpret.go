@@ -2782,6 +2782,49 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatFloat(valueResult.value.Float, 'f', int(precisionResult.value.Int), 64)}}, nil
 	}
+	if callee == "StringFrom" {
+		if len(typeArguments) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: String.From requires exactly 1 type argument")
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: String.From expects 1 argument")
+		}
+		valueResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if valueResult.hasError {
+			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+		}
+		arg := typeArguments[0]
+		if arg.IsArray || arg.Name != "" {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<T> supports Int, Float, Bool, and String in M0")
+		}
+		switch arg.Name {
+		case "Int":
+			if valueResult.value.Kind != ValueInt {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<Int> expects Int")
+			}
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatInt(valueResult.value.Int, 10)}}, nil
+		case "Float":
+			if valueResult.value.Kind != ValueFloat {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<Float> expects Float")
+			}
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatFloat(valueResult.value.Float, 'g', -1, 64)}}, nil
+		case "Bool":
+			if valueResult.value.Kind != ValueBool {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<Bool> expects Bool")
+			}
+			return evalResult{value: Value{Kind: ValueString, Text: strconv.FormatBool(valueResult.value.Bool)}}, nil
+		case "String":
+			if valueResult.value.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<String> expects String")
+			}
+			return evalResult{value: valueResult.value}, nil
+		default:
+			return evalResult{}, fmt.Errorf("runtime invariant violation: String.From<T> supports Int, Float, Bool, and String in M0")
+		}
+	}
 	if callee == "ToString" {
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
@@ -2957,6 +3000,26 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		default:
 			return evalResult{value: Value{Kind: ValueBool, Bool: strings.HasSuffix(a.value.Text, b.value.Text)}}, nil
 		}
+	}
+	if callee == "StringConcat" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringConcat expects 1 argument")
+		}
+		partsResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if partsResult.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: StringConcat expects String[]")
+		}
+		parts := make([]string, 0, len(partsResult.value.Array))
+		for _, v := range partsResult.value.Array {
+			if v.Kind != ValueString {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: StringConcat expects String[]")
+			}
+			parts = append(parts, v.Text)
+		}
+		return evalResult{value: Value{Kind: ValueString, Text: strings.Join(parts, "")}}, nil
 	}
 	if callee == "StringJoin" {
 		if len(argumentExprs) != 2 {

@@ -2,6 +2,8 @@ package builtin
 
 var namespaceAliases = map[string]map[string]string{
 	"String": {
+		"Concat":     "StringConcat",
+		"From":       "StringFrom",
 		"Join":       "StringJoin",
 		"ReplaceAll": "StringReplaceAll",
 		"Contains":   "StringContains",

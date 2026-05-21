@@ -95,6 +95,7 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
   - Explicitly strips unit annotation and returns canonical/base-unit numeric value.
   - Dimensionless `Float` is accepted and returned unchanged.
 - `ToString(value: Int | Float | Bool) -> String`.
+- `String.From<T>(value) -> String` for compiler-known `T` only (`Int`, `Float`, `Bool`, `String` in M0).
 - `FormatFloat(value: Float, precision: Int) -> String`.
   - Preferred when fixed decimal precision is required.
 
@@ -106,6 +107,7 @@ For matrix and tensor-focused language surface, see [16 vectors and matrices](./
 - Use `FloorToInt(x)` or `CeilToInt(x)` for explicit float-to-int rounding policy.
 - Use `BaseValue(x)` only when intentionally discarding units.
 - No implicit numeric/string conversion is performed in concatenation or other expressions.
+- `String.From<T>` requires an explicit type argument and does not introduce user-defined generic support.
 
 ## 5) String helpers
 

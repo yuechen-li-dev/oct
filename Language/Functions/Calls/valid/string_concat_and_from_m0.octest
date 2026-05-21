@@ -1,0 +1,13 @@
+package Main
+
+[Fact]
+fn StringConcatAndFromM0() -> Void {
+    Assert.Equal("abc", String.Concat(["a", "b", "c"]), "concat in order")
+    Assert.Equal("", String.Concat([]), "concat empty")
+    Assert.Equal("42", String.From<Int>(42), "from int")
+    Assert.Equal("1.5", String.From<Float>(1.5), "from float")
+    Assert.Equal("true", String.From<Bool>(true), "from bool true")
+    Assert.Equal("false", String.From<Bool>(false), "from bool false")
+    Assert.Equal("x", String.From<String>("x"), "from string identity")
+    return
+}
