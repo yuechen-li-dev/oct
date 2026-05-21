@@ -1,0 +1,7 @@
+package Main
+import Shared
+
+[Fact]
+fn CompiledSelectedImportedHelperTransitiveClosure() -> Void {
+    Assert.Equal(4, Shared.HelperA(3), "selected reachable lowering should emit transitive imported helpers")
+}

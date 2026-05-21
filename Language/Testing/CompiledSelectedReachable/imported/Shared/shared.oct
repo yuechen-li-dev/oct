@@ -1,0 +1,8 @@
+package Shared
+
+fn HelperB(v: Int) -> Int { return v + 1 }
+fn HelperA(v: Int) -> Int { return HelperB(v) }
+
+fn UnsupportedPlotOnly() -> Void {
+    PlotLine([1.0], [1.0], "unsupported in compiled mode")
+}

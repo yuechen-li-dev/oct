@@ -403,6 +403,50 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 	if options.selectedReachableOnly {
 		reachable = collectReachableFunctions(program)
 	}
+	emitted := map[string]map[string]struct{}{}
+	pending := [][2]string{}
+	enqueueReachable := func(pkgName string, fnName string) {
+		if pkgName == "" || fnName == "" {
+			return
+		}
+		if _, ok := emitted[pkgName]; ok {
+			if _, done := emitted[pkgName][fnName]; done {
+				return
+			}
+		}
+		if _, ok := reachable[pkgName]; !ok {
+			reachable[pkgName] = map[string]struct{}{}
+		}
+		if _, ok := reachable[pkgName][fnName]; ok {
+			return
+		}
+		reachable[pkgName][fnName] = struct{}{}
+		pending = append(pending, [2]string{pkgName, fnName})
+	}
+	enqueueLoweredCalls := func(lowered []MIRFunction, defaultPkg string) {
+		for _, mf := range lowered {
+			for _, block := range mf.Blocks {
+				for _, stmt := range block.Statements {
+					call, ok := stmt.(MIRCall)
+					if !ok || call.Builtin {
+						continue
+					}
+					targetPkg := defaultPkg
+					targetFn := call.Callee
+					if dot := strings.Index(call.Callee, "."); dot >= 0 {
+						targetPkg = call.Callee[:dot]
+						targetFn = call.Callee[dot+1:]
+					}
+					enqueueReachable(targetPkg, targetFn)
+				}
+			}
+		}
+	}
+	for pkgName, fns := range reachable {
+		for fnName := range fns {
+			pending = append(pending, [2]string{pkgName, fnName})
+		}
+	}
 	pkgNames := make([]string, 0, len(program.Packages))
 	for name := range program.Packages {
 		pkgNames = append(pkgNames, name)
@@ -472,13 +516,104 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if err != nil {
 				return MIRModule{}, err
 			}
+			if options.selectedReachableOnly {
+				enqueueLoweredCalls(lowered, pkgName)
+			}
+			if _, ok := emitted[pkgName]; !ok {
+				emitted[pkgName] = map[string]struct{}{}
+			}
+			emitted[pkgName][fn.Name] = struct{}{}
 			module.Functions = append(module.Functions, lowered...)
+		}
+	}
+	if options.selectedReachableOnly {
+		indexed := map[string]map[string]ast.FunctionDecl{}
+		for pkgName, pkg := range program.Packages {
+			indexed[pkgName] = map[string]ast.FunctionDecl{}
+			for _, fn := range pkg.Functions {
+				indexed[pkgName][fn.Name] = fn
+			}
+		}
+		for len(pending) > 0 {
+			item := pending[0]
+			pending = pending[1:]
+			pkgFns := indexed[item[0]]
+			fn, ok := pkgFns[item[1]]
+			if !ok {
+				continue
+			}
+			for _, call := range collectFunctionCalls(fn.Body) {
+				targetPkg := call[0]
+				if targetPkg == "" {
+					targetPkg = item[0]
+				}
+				builtinName := targetPkg + "." + call[1]
+				if builtin.IsName(builtinName) || builtin.IsName(call[1]) {
+					continue
+				}
+				enqueueReachable(targetPkg, call[1])
+			}
+		}
+		for pkgName, pkg := range program.Packages {
+			for _, fn := range pkg.Functions {
+				if !isReachableFunction(reachable, pkgName, fn.Name) {
+					continue
+				}
+				if _, ok := emitted[pkgName]; ok {
+					if _, done := emitted[pkgName][fn.Name]; done {
+						continue
+					}
+				}
+				lowered, err := lowerFunction(program, pkg, fn)
+				if err != nil {
+					return MIRModule{}, err
+				}
+				enqueueLoweredCalls(lowered, pkgName)
+				if _, ok := emitted[pkgName]; !ok {
+					emitted[pkgName] = map[string]struct{}{}
+				}
+				emitted[pkgName][fn.Name] = struct{}{}
+				module.Functions = append(module.Functions, lowered...)
+			}
+		}
+		if err := validateUserCallSymbols(module); err != nil {
+			return MIRModule{}, err
 		}
 	}
 	if module.EntryFunc == "" {
 		return MIRModule{}, fmt.Errorf("entry package '%s' is missing main/Main function", program.Entry)
 	}
 	return module, nil
+}
+
+func validateUserCallSymbols(module MIRModule) error {
+	defs := map[string]struct{}{}
+	for _, fn := range module.Functions {
+		defs[fn.Package+"."+fn.Name] = struct{}{}
+	}
+	missing := map[string]struct{}{}
+	for _, fn := range module.Functions {
+		for _, block := range fn.Blocks {
+			for _, stmt := range block.Statements {
+				call, ok := stmt.(MIRCall)
+				if !ok || call.Builtin {
+					continue
+				}
+				if _, ok := defs[call.Callee]; !ok {
+					missing[call.Callee] = struct{}{}
+				}
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(missing))
+	for name := range missing {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return fmt.Errorf("compiled selected reachable invariant failed: missing emitted function definitions for %s", strings.Join(names, ", "))
 }
 
 func isReachableFunction(reachable map[string]map[string]struct{}, pkgName string, fnName string) bool {

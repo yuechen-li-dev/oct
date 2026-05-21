@@ -1,0 +1,9 @@
+package Main
+
+fn HelperB(v: Int) -> Int { return v + 1 }
+fn HelperA(v: Int) -> Int { return HelperB(v) }
+
+[Fact]
+fn CompiledSelectedSamePackageTransitiveClosure() -> Void {
+    Assert.Equal(4, HelperA(3), "selected reachable lowering should emit transitive same-package helpers")
+}
