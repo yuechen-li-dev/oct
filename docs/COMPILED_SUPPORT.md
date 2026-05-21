@@ -490,3 +490,34 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 ### Current blocker
 - Full artifact lane remains non-converged: `M2bArtifactsWrite` sweep-stage runtime remains too high for expected artifact-lane guard windows.
 - Next isolation target should be inside the per-case numerical pipeline in `M2bRunSweepCase` / `M2OscillatorKalmanFilterWithParams` (cycle cost per case), since redundant report-format recomputation has already been excluded.
+## 15) 2026-05-21 Compiled builtin support sweep M0
+
+### Inventory snapshot (registry/typecheck/interpreter/compiled)
+
+| Builtin(s) | Category | Interpreted | Compiled return-type routing | Compiled emission | Imports/helpers | Status | Notes |
+|---|---|---:|---:|---:|---|---|---|
+| `Len`, `Append` | Core collections | Yes | Yes | Yes | none | supported | typed-array append/len path already compiled. |
+| `RoundToInt`, `FloorToInt`, `CeilToInt` | Numeric conversion | Yes | Yes | Yes | `math` | supported | round/floor/ceil compiled emit via `math.Round/Floor/Ceil`. |
+| `FormatFloat` | Numeric formatting | Yes | **Yes (added M0)** | **Yes (added M0)** | `strconv` | supported | fixed-precision formatting now compiled. |
+| `Lower`, `Upper`, `Contains`, `StartsWith`, `EndsWith`, `Trim`, `Join` | Core string helpers | Yes | Yes | Yes | `strings` | supported | global string helpers compiled (in addition to `String.*`). |
+| `Abs`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2`, `Exp`, `Ln`, `Pow`, `Log10`, `Sinh`, `Cosh`, `Tanh` | Pure math | Yes | Yes | Yes | `math` | supported | scalar numeric forms compiled. |
+| `BaseValue` | Units helper | Yes | Yes | Yes | none | supported | float base-value extraction compiles directly. |
+| `Pi`, `E` | constants | Yes | Yes | Yes | `math` | supported | direct constant emission. |
+| `Require` | contract/precondition | Yes | Yes | Yes | none | supported | compiled behavior is explicit panic on false precondition. |
+| `Real`, `Imag`, `Conj`, `Arg`, `ComplexPolar`, `I` | complex helpers | Yes | partial/none | none/partial | `cmplx` likely | difficult/deferred | interpreter supports; compiled emitter/return routing not fully implemented yet. |
+| `File*`, `Directory*`, `Path*`, `Csv*`, `Json*`, `ArtifactWrite*`, `Plot*`, `Pdf*`, `Image*`, `Xlsx*` | IO/artifact/wrapper | Yes | mostly no/partial | mostly no/partial | runtime bridges + error paths | should not compile directly (current scope) | side effects/path semantics/artifact lane behavior; requires robust bridge + structured errors. |
+| `Zip*`, `Gzip*`, `Hash*`, `Regex*`, `Time*`, `UI*`, Prometheus/Octomata runtime builtins | external/runtime-heavy | Yes/partial | partial | partial | extra deps/runtime coupling | difficult/deferred | external dependency/runtime bridge or interpreted-only-by-design lanes. |
+
+### Require decision
+- `Require(condition, message)` is now explicitly treated as a compiled runtime precondition guard.
+- Compiled codegen emits: `if !condition { panic("runtime error: " + message) }`.
+- This is for genuine reachable contract checks; wrapper fallback `Require(false, "...must dispatch...")` remains a dispatch bug signal and should not be used to hide missed builtin routing.
+
+### New fixture
+- Added `Language/Testing/CompiledBuiltinSweep/valid/core_pure_builtins.octest` covering compiled pure/simple builtin surface (numeric conversion, format, string helpers, math, `BaseValue`, `Len/Append`, and `Require(true, ...)`).
+
+### Deferred categories rationale (no scope expansion in this pass)
+- IO/path/filesystem wrappers: side effects and path semantics need shared runtime bridge discipline.
+- Artifact/report/render wrappers: artifact-lane semantics and nontrivial error/report plumbing.
+- UI/Prometheus/Octomata runtime lanes: runtime-coupled behavior not a pure direct Go builtin map.
+- Archive/hash/regex/time wrappers: mixed dependency and structured error-handling requirements.
