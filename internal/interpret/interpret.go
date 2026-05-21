@@ -1977,6 +1977,9 @@ regularCall:
 		}
 		return evalResult{value: Value{Kind: ValueError, Error: ErrorValue{Message: messageValue.value.Text}}}, nil
 	}
+	if hasDirectName && calleeName == "Int" && len(expr.Arguments) == 1 {
+		return evalResult{}, fmt.Errorf("runtime error: Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
+	}
 	if hasDirectName && builtin.IsName(calleeName) {
 		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.TypeArguments, expr.Arguments)
 	}
@@ -4011,6 +4014,11 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: CeilToInt expects Float, got %s", argument.value.Kind)
 		}
 		return evalResult{value: Value{Kind: ValueInt, Int: int64(math.Ceil(argument.value.Float))}}, nil
+	case "RoundToInt":
+		if argument.value.Kind != ValueFloat {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: RoundToInt expects Float, got %s", argument.value.Kind)
+		}
+		return evalResult{value: Value{Kind: ValueInt, Int: int64(math.Round(argument.value.Float))}}, nil
 	case "BaseValue":
 		if argument.value.Kind != ValueFloat {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: BaseValue expects Float, got %s", argument.value.Kind)

@@ -2198,6 +2198,9 @@ regularCall:
 			}
 		}
 	}
+	if hasDirectName && calleeName == "Int" && len(expr.Arguments) == 1 {
+		return ExprType{}, fmt.Errorf("Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
+	}
 	if hasDirectName && builtin.IsName(calleeName) {
 		return c.checkBuiltinCallExpr(scope, calleeName, expr.TypeArguments, expr.Arguments, ctx)
 	}
@@ -4209,7 +4212,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("%s requires dimensionless input", callee)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
-	case "FloorToInt", "CeilToInt":
+	case "FloorToInt", "CeilToInt", "RoundToInt":
 		if argumentType.ValueType.Base != BaseTypeFloat || argumentType.ValueType.IsArray || argumentType.ValueType.IsVector || argumentType.ValueType.IsMatrix {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Float, got %s", callee, argumentType.ValueType)
 		}
