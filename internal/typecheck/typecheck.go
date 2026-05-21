@@ -2963,6 +2963,34 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: valueType.ValueType.Dimension}}, nil
 	}
+	if callee == "StringFrom" {
+		if len(typeArguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'String.From' requires an explicit type argument, e.g. String.From<Int>(value)")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'String.From' expects 1 argument, got %d", len(arguments))
+		}
+		targetType, err := c.resolveNonReturnType(typeArguments[0])
+		if err != nil {
+			return ExprType{}, err
+		}
+		valueType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		switch targetType {
+		case Type{Base: BaseTypeInt}, Type{Base: BaseTypeFloat}, Type{Base: BaseTypeBool}, Type{Base: BaseTypeString}:
+			if valueType.ValueType != targetType {
+				return ExprType{}, fmt.Errorf("function 'String.From' argument 1 expects %s, got %s", targetType, valueType.ValueType)
+			}
+			return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
+		default:
+			return ExprType{}, fmt.Errorf("String.From<T> supports Int, Float, Bool, and String in M0")
+		}
+	}
 	if callee == "ToString" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'ToString' does not accept type arguments")
@@ -3126,6 +3154,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			}
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+	}
+	if callee == "StringConcat" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'StringConcat' does not accept type arguments")
+		}
+		return c.checkSingleStringArrayArgBuiltin(scope, "StringConcat", arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}})
 	}
 	if callee == "StringJoin" {
 		if len(typeArguments) > 0 {

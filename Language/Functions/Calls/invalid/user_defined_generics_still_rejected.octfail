@@ -1,0 +1,6 @@
+expect error: "expected '(' after function name"
+package Main
+
+fn Identity<T>(x: T) -> T {
+    return x
+}
