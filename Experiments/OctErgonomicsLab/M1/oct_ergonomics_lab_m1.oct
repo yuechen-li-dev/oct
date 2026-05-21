@@ -1,0 +1,160 @@
+package OctErgonomicsLabM1
+
+import Artifact
+import IO
+import Json
+import Markdown
+import String
+
+record ProbeResult {
+    DoneReached: Bool
+    Recovered: Float[]
+    Innovations: Float[]
+    StepCount: Int
+    HistoryCount: Int
+    Representation: String
+    MissingSurface: String
+}
+
+flow ScalarBoardProbe(samples: Float[]) -> Float {
+    board {
+        Index: Int
+        Current: Float
+        Estimate: Float
+        Innovation: Float
+        SampleCount: Int
+    }
+
+    state Predict {
+        board.SampleCount = Len(samples)
+        board.Current = samples[board.Index]
+        board.Estimate = board.Estimate + 0.5
+        goto Observe
+    }
+
+    state Observe {
+        board.Innovation = board.Current - board.Estimate
+        goto Correct
+    }
+
+    state Correct {
+        board.Estimate = board.Estimate + 0.5 * board.Innovation
+        goto Advance
+    }
+
+    state Advance {
+        board.Index = board.Index + 1
+        suspend
+        when {
+            case board.Index >= board.SampleCount -> goto Done
+            else -> goto Predict
+        }
+    }
+
+    state Done {
+        return board.Estimate
+    }
+}
+
+fn RunRealOctomataProbe() -> ProbeResult {
+    let machine = ScalarBoardProbe([1.0, 2.0, 3.0])
+    Step(machine)
+    Step(machine)
+    Step(machine)
+    Step(machine)
+
+    let history = StateHistory(machine)
+    let _ = Result(machine)!
+
+    let emptyRecovered: Float[] = []
+    let emptyInnovations: Float[] = []
+    return ProbeResult {
+        DoneReached: Complete(machine)
+        Recovered: emptyRecovered
+        Innovations: emptyInnovations
+        StepCount: 4
+        HistoryCount: Len(history)
+        Representation: "BlockedScalarBoardProbe"
+        MissingSurface: "No public API currently exposes scalar board fields from outside a suspended/completing machine after Step(machine); StateHistory only returns state names and Result returns final value only."
+    }
+}
+
+fn RunManualExplicitStateLoopFallback() -> ProbeResult {
+    let samples = [1.0, 2.0, 3.0]
+    var recovered: Float[] = []
+    var innovations: Float[] = []
+    var estimate = 0.0
+    var index = 0
+    var phase = "Predict"
+    var current = 0.0
+    var innovation = 0.0
+    var steps = 0
+
+    while phase != "Done" {
+        steps = steps + 1
+        let currentPhase = phase
+
+        if currentPhase == "Predict" {
+            current = samples[index]
+            estimate = estimate + 0.5
+            phase = "Observe"
+        }
+
+        if currentPhase == "Observe" {
+            innovation = current - estimate
+            phase = "Correct"
+        }
+
+        if currentPhase == "Correct" {
+            estimate = estimate + 0.5 * innovation
+            recovered = Append(recovered, estimate)
+            innovations = Append(innovations, innovation)
+            phase = "Advance"
+        }
+
+        if currentPhase == "Advance" {
+            index = index + 1
+            phase = switch {
+                case index >= Len(samples) => "Done"
+                else => "Predict"
+            }
+        }
+
+        if currentPhase != "Predict" and currentPhase != "Observe" and currentPhase != "Correct" and currentPhase != "Advance" {
+            phase = "Done"
+        }
+    }
+
+    return ProbeResult {
+        DoneReached: true
+        Recovered: recovered
+        Innovations: innovations
+        StepCount: steps
+        HistoryCount: steps
+        Representation: "ManualExplicitStateLoopFallback"
+        MissingSurface: ""
+    }
+}
+
+fn GenerateM1Artifacts() -> Void {
+    let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m1"
+    let _mkdir = IO.MakeAll(root)!
+    let real = RunRealOctomataProbe()
+    let fallback = RunManualExplicitStateLoopFallback()
+
+    Artifact.WriteOctagon(IO.JoinPath([root, "m1_octomata_scalar_board_probe.octagon"]), fallback)
+
+    let report = Markdown.Report([
+        Markdown.Title("OctErgonomicsLab M1: scalar-board Octomata probe"),
+        Markdown.Subtitle("Kalman-shaped loop feasibility with external accumulator"),
+        Markdown.Section("Probe goal", [Markdown.KeyValueTable(["goal", "suite"], ["Validate scalar-board-only Octomata loop with external array accumulation", "Experiments.OctErgonomicsLab.M1"])]),
+        Markdown.Section("Real Octomata attempt", [Markdown.KeyValueTable(["representation", "doneReached", "stepCount", "historyCount"], [real.Representation, ToString(real.DoneReached), ToString(real.StepCount), ToString(real.HistoryCount)]), Markdown.Callout("warning", [real.MissingSurface])]),
+        Markdown.Section("External observability", [Markdown.KeyValueTable(["canObserveBoardScalarsAfterStep", "stateHistoryCarriesBoardData", "resultCarriesPerStepArrays"], ["false", "false", "false"])]),
+        Markdown.Section("Fallback", [Markdown.KeyValueTable(["representation", "doneReached", "recoveredCount", "innovationCount"], [fallback.Representation, ToString(fallback.DoneReached), ToString(Len(fallback.Recovered)), ToString(Len(fallback.Innovations))])]),
+        Markdown.Section("Recommendation for FM M3", [Markdown.KeyValueTable(["nextStep"], ["Design a scalar board snapshot/read API before relying on real Octomata for per-step external accumulators."])])
+    ])
+
+    Artifact.WriteMarkdown(IO.JoinPath([root, "m1_octomata_scalar_board_probe.md"]), report)
+    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]), [["representation", "done", "steps", "history", "recovered", "innovations"], [real.Representation, ToString(real.DoneReached), ToString(real.StepCount), ToString(real.HistoryCount), ToString(Len(real.Recovered)), ToString(Len(real.Innovations))], [fallback.Representation, ToString(fallback.DoneReached), ToString(fallback.StepCount), ToString(fallback.HistoryCount), ToString(Len(fallback.Recovered)), ToString(Len(fallback.Innovations))]])
+    Artifact.WriteJson(IO.JoinPath([root, "summary.json"]), Json.Object("{" + String.Concat(["\"realRepresentation\":", String.QuoteJson(real.Representation), ",\"realMissingSurface\":", String.QuoteJson(real.MissingSurface), ",\"fallbackRepresentation\":", String.QuoteJson(fallback.Representation), ",\"fallbackRecoveredCount\":", ToString(Len(fallback.Recovered))]) + "}"))
+}
