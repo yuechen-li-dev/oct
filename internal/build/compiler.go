@@ -259,6 +259,7 @@ type MIRBatchMap struct {
 	Worker     string
 	InputType  string
 	ResultType string
+	Captures   []string
 }
 
 func (MIRBatchMap) mirStmt() {}
@@ -1985,7 +1986,7 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 		return "", "", false, fmt.Errorf("batch input must be an array")
 	}
 	itemType := strings.TrimSuffix(inputType, "[]")
-	worker, resultType, err := c.lowerBatchWorker(e, itemType)
+	worker, resultType, captureNames, err := c.lowerBatchWorker(e, itemType)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -1998,6 +1999,7 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 		Worker:     worker.Package + "." + worker.Name,
 		InputType:  itemType,
 		ResultType: resultType,
+		Captures:   captureNames,
 	})
 	value := c.temp(resultType + "[]")
 	okID := len(c.blocks)
@@ -2022,46 +2024,70 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 	return value, resultType + "[]", false, nil
 }
 
-func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFunction, string, error) {
+func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFunction, string, []string, error) {
 	name := fmt.Sprintf("__batch_%s_%d", c.fn.Name, c.batchID)
 	c.batchID++
 	const retPlaceholder = "__oct_batch_ret__"
 	workerDecl := ast.FunctionDecl{Name: name, IsFallible: true, ErrorType: ast.TypeRef{Name: "Error"}}
+	captureNames := make([]string, 0, len(c.locals))
+	for localName := range c.locals {
+		if localName == e.ItemName {
+			continue
+		}
+		if strings.HasPrefix(localName, "_t") || strings.HasPrefix(localName, "__") {
+			continue
+		}
+		captureNames = append(captureNames, localName)
+	}
+	sort.Strings(captureNames)
+	workerLocals := make(map[string]string, len(captureNames)+1)
+	workerLocals[e.ItemName] = itemType
+	for _, captureName := range captureNames {
+		workerLocals[captureName] = c.locals[captureName]
+	}
 	wctx := &lowerCtx{
 		pkg:     c.pkg,
 		program: c.program,
-		locals:  map[string]string{e.ItemName: itemType},
+		locals:  workerLocals,
 		blocks:  []MIRBlock{{Label: "entry"}},
 		cur:     0,
 		retType: retPlaceholder,
 		fn:      workerDecl,
 	}
 	if err := wctx.lowerBlock(e.Body); err != nil {
-		return MIRFunction{}, "", err
+		return MIRFunction{}, "", nil, err
 	}
 	if wctx.blocks[wctx.cur].Terminator == nil {
-		return MIRFunction{}, "", fmt.Errorf("batch body missing return")
+		return MIRFunction{}, "", nil, fmt.Errorf("batch body missing return")
 	}
 	if wctx.lastRet == "" {
-		return MIRFunction{}, "", fmt.Errorf("batch body return type could not be inferred")
+		return MIRFunction{}, "", nil, fmt.Errorf("batch body return type could not be inferred")
+	}
+	params := []MIRField{{Name: e.ItemName, Type: itemType}}
+	for _, captureName := range captureNames {
+		params = append(params, MIRField{Name: captureName, Type: c.locals[captureName]})
 	}
 	worker := MIRFunction{
 		Package:    c.pkg.Name,
 		Name:       name,
-		Params:     []MIRField{{Name: e.ItemName, Type: itemType}},
+		Params:     params,
 		Return:     wctx.lastRet,
 		IsFallible: true,
 		ErrorType:  "Error",
 		Blocks:     patchBatchReturnType(wctx.blocks, retPlaceholder, wctx.lastRet),
 	}
+	paramNames := map[string]struct{}{}
+	for _, param := range worker.Params {
+		paramNames[param.Name] = struct{}{}
+	}
 	for n, t := range wctx.locals {
-		if n == e.ItemName {
+		if _, isParam := paramNames[n]; isParam {
 			continue
 		}
 		worker.Locals = append(worker.Locals, MIRField{Name: n, Type: t})
 	}
 	sort.Slice(worker.Locals, func(i, j int) bool { return worker.Locals[i].Name < worker.Locals[j].Name })
-	return worker, wctx.lastRet, nil
+	return worker, wctx.lastRet, captureNames, nil
 }
 
 func patchBatchReturnType(blocks []MIRBlock, from, to string) []MIRBlock {
@@ -5065,11 +5091,21 @@ func goStmt(s MIRStmt) (string, error) {
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", strings.Join(st.Targets, ", "), strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 	case MIRBatchMap:
-		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, fn_%s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
+		workerName := "fn_" + strings.ReplaceAll(st.Worker, ".", "_")
+		forwarderArgs := []string{"__item"}
+		forwarderParams := []string{fmt.Sprintf("__item %s", goType(st.InputType))}
+		for _, capture := range st.Captures {
+			forwarderArgs = append(forwarderArgs, capture)
+		}
+		workerExpr := workerName
+		if len(st.Captures) > 0 {
+			workerExpr = fmt.Sprintf("func(%s) %s { return %s(%s) }", strings.Join(forwarderParams, ", "), goResultTypeName(st.ResultType), workerName, strings.Join(forwarderArgs, ", "))
+		}
+		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, %s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
 			st.Target,
 			goType(fallibleType(st.ResultType+"[]")),
 			st.Input,
-			strings.ReplaceAll(st.Worker, ".", "_"),
+			workerExpr,
 			goResultTypeName(st.ResultType),
 			goResultTypeName(st.ResultType),
 			goResultTypeName(st.ResultType),
