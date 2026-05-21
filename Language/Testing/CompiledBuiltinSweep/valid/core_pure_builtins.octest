@@ -1,0 +1,43 @@
+package Main
+
+[Fact]
+fn CorePureBuiltinsCompiledSweep() -> Void {
+    Assert.Equal(2, RoundToInt(1.6), "round to int")
+    Assert.Equal(-2, FloorToInt(-1.2), "floor to int")
+    Assert.Equal(-1, CeilToInt(-1.2), "ceil to int")
+
+    Assert.Equal("1.25", FormatFloat(1.25, 2), "format float fixed precision")
+
+    Assert.Equal("oct", Lower("OCT"), "lower")
+    Assert.Equal("OCT", Upper("oct"), "upper")
+    Assert.True(Contains("compiled", "pile"), "contains")
+    Assert.True(StartsWith("compiled", "com"), "startswith")
+    Assert.True(EndsWith("compiled", "led"), "endswith")
+    Assert.Equal("x", Trim("  x\n"), "trim")
+    Assert.Equal("a,b", Join(["a", "b"], ","), "join")
+
+    Assert.Equal(5.0, Abs(-5.0), "abs")
+    Assert.Equal(2.0, Sqrt(4.0), "sqrt")
+    Assert.Equal(0.0, Sin(0.0), "sin")
+    Assert.Equal(1.0, Cos(0.0), "cos")
+    Assert.Equal(0.0, Tan(0.0), "tan")
+    Assert.Equal(0.0, Asin(0.0), "asin")
+    Assert.Equal(0.0, Acos(1.0), "acos")
+    Assert.Equal(0.0, Atan(0.0), "atan")
+    Assert.Equal(0.0, Atan2(0.0, 1.0), "atan2")
+    Assert.Equal(1.0, Exp(0.0), "exp")
+    Assert.Equal(0.0, Ln(1.0), "ln")
+    Assert.Equal(8.0, Pow(2.0, 3.0), "pow")
+    Assert.Equal(3.0, Log10(1000.0), "log10")
+    Assert.Equal(0.0, Sinh(0.0), "sinh")
+    Assert.Equal(1.0, Cosh(0.0), "cosh")
+    Assert.Equal(0.0, Tanh(0.0), "tanh")
+
+    Assert.Equal(12.0, BaseValue(12.0), "base value")
+
+    let xs = [1, 2]
+    let ys = Append(xs, 3)
+    Assert.Equal(3, Len(ys), "len/append")
+
+    Require(true, "require true must pass")
+}

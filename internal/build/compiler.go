@@ -2374,6 +2374,16 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 					ret = "String[]"
 				}
 				return normalized, ret, true, false, nil
+			case "RoundToInt", "FloorToInt", "CeilToInt":
+				return normalized, "Int", true, false, nil
+			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue":
+				return normalized, "Float", true, false, nil
+			case "Abs":
+				return normalized, "Float", true, false, nil
+			case "FormatFloat":
+				return normalized, "String", true, false, nil
+			case "Require":
+				return normalized, "Void", true, false, nil
 			default:
 				return "", "", false, false, unsupportedBuiltin(x.Name)
 			}
@@ -2664,6 +2674,17 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin Require for type %s", argTypes[1])
 		}
 		return "Void", nil
+	case "FormatFloat":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function 'FormatFloat' expects 2 arguments, got %d", len(argTypes))
+		}
+		if !isFloatScalarTypeString(argTypes[0]) {
+			return "", fmt.Errorf("compiled mode does not yet support builtin FormatFloat for type %s", argTypes[0])
+		}
+		if !isIntScalarTypeString(argTypes[1]) {
+			return "", fmt.Errorf("compiled mode does not yet support builtin FormatFloat for type %s", argTypes[1])
+		}
+		return "String", nil
 	case "Pi", "E":
 		if len(argTypes) != 0 {
 			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
@@ -3854,6 +3875,8 @@ func builtinImportDeps(name string) []string {
 		return []string{"strings"}
 	case "StringEscapeJSON", "StringQuoteJSON":
 		return []string{"strconv"}
+	case "FormatFloat":
+		return []string{"strconv"}
 	}
 	return nil
 }
@@ -4885,6 +4908,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "Require":
 				return fmt.Sprintf("if !%s { panic(\"runtime error: \" + %s) }; %s = 0", st.Args[0], st.Args[1], st.Target), nil
+			case "FormatFloat":
+				return fmt.Sprintf("%s = strconv.FormatFloat(%s, 'f', int(%s), 64)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Assert.True":
 				if st.Target == "_" {
 					return fmt.Sprintf("if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
