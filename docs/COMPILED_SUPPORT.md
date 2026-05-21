@@ -464,3 +464,29 @@ This tracker is descriptive (not aspirational): if auto reports fallback or comp
 1. Investigate and decompose `FmBrownNoiseKalman.M2bArtifactsWrite` runtime stall so full M2b sweep artifacts can complete deterministically.
 2. Keep compiled smoke-lane guarantees for M2/M2b pinned (compiled counts should remain nonzero with zero fallback).
 3. Continue wrapper/builtin parity work for Markdown/IO/ArtifactUsage separately from FM science lanes.
+
+## 15) 2026-05-21 M2b artifact-lane convergence probe (M2bArtifactsWrite stall)
+- Added explicit M2b artifact-lane progress diagnostics in `M2bArtifactWriteAll`:
+  - `m2b_sweep_progress.json` now records phase, mode/grid sizes, expected/actual `M2bRunSweepCase` calls, and row count.
+  - phase checkpoints include per-case markers (`sweepCase#N`) and post-build/post-write markers.
+- Confirmed sweep computation is performed once per artifact run and reused for all builders (`csv/json/md/octagon`) from a single in-memory `rows` collection.
+- Reduced repeated non-sweep work inside sweep loop:
+  - `M2bRunSweepCase` now accepts precomputed `clean` and `observed` signals.
+  - `M2bArtifactWriteAll` precomputes `clean/observed` once per mode and reuses them across all grid cases.
+  - `M2bRunSmokeGrid` also reuses precomputed `clean/observed` per mode.
+
+### Measured outcome (this pass)
+- `timeout 420s go run ./cmd/oct artifact Experiments/FmBrownNoiseKalman/M2` still did not complete within observed window.
+- Progress evidence isolated stall to **sweep computation**, not artifact formatting/writes:
+  - latest observed progress marker: `{"phase":"sweepCase#6", ...}` in `Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json` during the active run.
+  - In prior run before per-mode precompute, progress had reached `sweepCase#17`; however command still remained in `M2bArtifactsWrite` and did not reach `afterSweep`.
+- No evidence in this pass that markdown/csv/json/octagon construction or `Artifact.Write*` are the first blocking stage; runs remain inside sweep-stage checkpoints.
+
+### Compiled smoke-lane preservation (re-verified)
+- `M2` suite compiled: pass (`compiled: 2`, `interpreted fallback: 0`).
+- `M2b` suite compiled: pass (`compiled: 3`, `interpreted fallback: 0`).
+- `M2b` suite auto: pass (`compiled: 3`, `interpreted fallback: 0`).
+
+### Current blocker
+- Full artifact lane remains non-converged: `M2bArtifactsWrite` sweep-stage runtime remains too high for expected artifact-lane guard windows.
+- Next isolation target should be inside the per-case numerical pipeline in `M2bRunSweepCase` / `M2OscillatorKalmanFilterWithParams` (cycle cost per case), since redundant report-format recomputation has already been excluded.
