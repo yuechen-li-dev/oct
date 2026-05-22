@@ -3621,7 +3621,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	importSet := map[string]struct{}{"fmt": {}}
+	importSet := map[string]struct{}{"fmt": {}, "os": {}}
 	if needsUtilityHelpers {
 		importSet["reflect"] = struct{}{}
 	}
@@ -3903,6 +3903,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 		b.WriteString("\t\t}\n\t}\n}\n\n")
 	}
+	b.WriteString("var __octAssertionCount int\n\n")
 	b.WriteString("func main() {\n")
 	entryReturn := ""
 	entryFallible := false
@@ -3922,6 +3923,10 @@ func emitGo(m MIRModule) (string, error) {
 	} else if entryReturn != "Void" {
 		b.WriteString("\tfmt.Println(result)\n")
 	}
+	b.WriteString("	if os.Getenv(\"OCT_ENFORCE_ASSERTIONS\") == \"1\" && __octAssertionCount == 0 {\n")
+	b.WriteString("		fmt.Fprintln(os.Stderr, \"test completed with zero assertions\")\n")
+	b.WriteString("		os.Exit(1)\n")
+	b.WriteString("	}\n")
 	b.WriteString("}\n")
 	return b.String(), nil
 }
@@ -5389,19 +5394,19 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = strconv.FormatFloat(%s, 'f', int(%s), 64)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Assert.True":
 				if st.Target == "_" {
-					return fmt.Sprintf("if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
 				}
-				return fmt.Sprintf("if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
 			case "Assert.False":
 				if st.Target == "_" {
-					return fmt.Sprintf("if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+					return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
 				}
-				return fmt.Sprintf("if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
 			case "Assert.Equal":
 				if st.Target == "_" {
-					return fmt.Sprintf("if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2]), nil
 				}
-				return fmt.Sprintf("if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":

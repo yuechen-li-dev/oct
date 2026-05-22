@@ -252,9 +252,15 @@ func executeCompiledTestCase(program project.Program, testCase testCase) error {
 		return err
 	}
 	defer cleanupArtifact(result.ArtifactPath)
-	cmd := exec.Command(result.ArtifactPath)
+	ctx, cancel := context.WithTimeout(context.Background(), testCase.cycleTime)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, result.ArtifactPath)
+	cmd.Env = append(os.Environ(), "OCT_ENFORCE_ASSERTIONS=1")
 	output, runErr := cmd.CombinedOutput()
 	if runErr != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return context.DeadlineExceeded
+		}
 		msg := strings.TrimSpace(string(output))
 		if msg == "" {
 			return fmt.Errorf("compiled test run failed: %w", runErr)

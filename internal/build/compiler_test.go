@@ -153,7 +153,7 @@ func TestCompileForTestLowersBenchmarkFunctionIntoMIRAndRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("OCT_MIR_DUMP", "1")
-	result, err := CompileForTest(runnerPath)
+	result, err := CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, filepath.Join(root, "Main", "bench.octest")})
 	if err != nil {
 		t.Fatalf("compile for test: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T
 	}
 	t.Setenv("OCT_MIR_DUMP", "1")
 	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor.so"))
-	result, err := CompileForTest(runnerPath)
+	result, err := CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, filepath.Join(root, "Main", "bench.octest")})
 	if err != nil {
 		t.Fatalf("compile for test: %v", err)
 	}
