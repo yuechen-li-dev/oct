@@ -3219,6 +3219,8 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			Cases:      cases,
 			Else:       elseExpr,
 		}, nil
+	case ast.ParenExpr:
+		return lowerFlowExpr(e.Inner, env, locals, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
 		targetIdent, ok := e.Target.(ast.IdentifierExpr)
 		if !ok {
@@ -3296,6 +3298,8 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 		return strings.TrimSuffix(targetType, "[]"), nil
 	case ast.UtilityWhenExpr:
 		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
+	case ast.ParenExpr:
+		return inferFlowExprType(e.Inner, env, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
 		targetIdent, ok := e.Target.(ast.IdentifierExpr)
 		if !ok {
