@@ -52,6 +52,24 @@ func main() {
 					resp.Exists = exists
 					resp.HasExists = true
 				}
+			case "FileDelete", "Delete":
+				if removeErr := interpret.FileDeleteForSidecar(req.Path); removeErr != nil {
+					resp.Error = removeErr.Error()
+				} else {
+					resp.OK = true
+				}
+			case "DirectoryMake":
+				if mkdirErr := interpret.DirectoryMakeForSidecar(req.Path); mkdirErr != nil {
+					resp.Error = mkdirErr.Error()
+				} else {
+					resp.OK = true
+				}
+			case "DirectoryMakeAll":
+				if mkdirErr := interpret.DirectoryMakeAllForSidecar(req.Path); mkdirErr != nil {
+					resp.Error = mkdirErr.Error()
+				} else {
+					resp.OK = true
+				}
 			default:
 				resp.Error = "unsupported Octxiliary function family/function: " + req.Family + "/" + req.Function
 			}
@@ -62,4 +80,6 @@ func main() {
 	}
 }
 
-func isFileFamily(family string) bool { return family == "IO.File" || family == "File" }
+func isFileFamily(family string) bool {
+	return family == "IO.File" || family == "File" || family == "Directory" || family == "IO.Directory"
+}

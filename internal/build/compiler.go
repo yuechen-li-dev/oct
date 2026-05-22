@@ -2467,6 +2467,10 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Int", true, true, nil
 			case "FileExists":
 				return normalized, "Bool", true, false, nil
+			case "FileDelete", "DirectoryMake", "DirectoryMakeAll":
+				return normalized, "Int", true, true, nil
+			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
+				return normalized, "String", true, false, nil
 			default:
 				return "", "", false, false, unsupportedBuiltin(x.Name)
 			}
@@ -2892,6 +2896,24 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "Bool", nil
+	case "FileDelete", "DirectoryMake", "DirectoryMakeAll":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Int", nil
+	case "PathJoin":
+		if len(argTypes) != 1 || argTypes[0] != "String[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %v", name, argTypes)
+		}
+		return "String", nil
+	case "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
+		if len(argTypes) != 1 || argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %v", name, argTypes)
+		}
+		return "String", nil
 	case "StringByteLength":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -3624,7 +3646,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
@@ -3664,7 +3686,7 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "\t%q\n", name)
 	}
 	b.WriteString(")\n\n")
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		resultTypes["String"] = struct{}{}
 	}
 	resultTypes["Int"] = struct{}{}
@@ -3803,7 +3825,7 @@ func emitGo(m MIRModule) (string, error) {
 		if usedBuiltins["WriteOctagon"] {
 			b.WriteString(__octWriteHelpers)
 		}
-		if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] {
+		if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
@@ -3826,7 +3848,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
@@ -4180,6 +4202,11 @@ func builtinImportDeps(name string) []string {
 		return []string{"strconv"}
 	case "FormatFloat":
 		return []string{"strconv"}
+	case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
+		if name == "PathStem" {
+			return []string{"path/filepath", "strings"}
+		}
+		return []string{"path/filepath"}
 	}
 	return nil
 }
@@ -5484,6 +5511,24 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "FileExists":
 				return fmt.Sprintf("%s = func() bool { _, __err := os.Stat(%s); return __err == nil }()", st.Target, st.Args[0]), nil
+			case "PathJoin":
+				return fmt.Sprintf("%s = filepath.Join(%s...)", st.Target, st.Args[0]), nil
+			case "PathBaseName":
+				return fmt.Sprintf("%s = filepath.Base(%s)", st.Target, st.Args[0]), nil
+			case "PathExtension":
+				return fmt.Sprintf("%s = filepath.Ext(%s)", st.Target, st.Args[0]), nil
+			case "PathStem":
+				return fmt.Sprintf("%s = strings.TrimSuffix(filepath.Base(%s), filepath.Ext(filepath.Base(%s)))", st.Target, st.Args[0], st.Args[0]), nil
+			case "PathParent":
+				return fmt.Sprintf("%s = filepath.Dir(%s)", st.Target, st.Args[0]), nil
+			case "PathClean":
+				return fmt.Sprintf("%s = filepath.Clean(%s)", st.Target, st.Args[0]), nil
+			case "FileDelete":
+				return fmt.Sprintf("%s = __octFileDelete(%s)", st.Target, st.Args[0]), nil
+			case "DirectoryMake":
+				return fmt.Sprintf("%s = __octDirectoryMake(%s)", st.Target, st.Args[0]), nil
+			case "DirectoryMakeAll":
+				return fmt.Sprintf("%s = __octDirectoryMakeAll(%s)", st.Target, st.Args[0]), nil
 			case "Step":
 				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
 			case "Active":
@@ -5750,8 +5795,6 @@ func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Resul
 	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
 
-
-
 const __octOctxiliaryHelpers = `
 var __octOctxiliaryOnce sync.Once
 var __octOctxiliaryCmd *exec.Cmd
@@ -5780,6 +5823,45 @@ func __octFileWriteText(path string, text string) octResult_Int {
 	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	__octOctxiliaryReqID++
 	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileWriteText", Path: path, Text: text}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
+
+func __octFileDelete(path string) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileDelete", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
+
+func __octDirectoryMake(path string) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "Directory", Function: "DirectoryMake", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
+
+func __octDirectoryMakeAll(path string) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "Directory", Function: "DirectoryMakeAll", Path: path}
 	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	resp, _ := octxiliary.ParseResponse(frame)

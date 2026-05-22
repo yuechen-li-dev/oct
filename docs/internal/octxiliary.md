@@ -117,3 +117,14 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
 - Simple non-fallible host queries should compile directly unless an explicit compiled preflight policy is adopted.
 - M2 decision: `FileExists(path: String) -> Bool` compiles directly (host `os.Stat` check) and does not require sidecar or `OCT_WRAPPER_PATH`.
 - Missing-sidecar behavior must never be hidden behind default values for non-fallible APIs.
+
+
+## M3 narrow additions
+
+- Added sidecar dispatch for `FileDelete`, `DirectoryMake`, and `DirectoryMakeAll` with existing narrow request shape (`path` string only).
+- Path helpers (`PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`) remain direct compiled lowerings and do not use Octxiliary.
+- Current compiled split:
+  - Direct/no-sidecar: `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
+  - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
+  - Deferred in this family: `FileReadBytes`, `FileWriteBytes`, `FileReadLines`, `FileWriteLines`, `DirectoryList`, `DirectoryRemoveAll`.
+- Protocol remains framed Octagon transport (no JSON protocol).
