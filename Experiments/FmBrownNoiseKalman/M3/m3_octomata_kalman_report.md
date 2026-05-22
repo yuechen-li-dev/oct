@@ -15,7 +15,7 @@
 | representation | RealOctomataScalarBoardWithBoardSnapshot |
 | boardObservation | BoardSnapshot(machine)! read-only observation |
 | arraysPlacement | Recovered/innovation arrays are external accumulators |
-| compiledBoardSnapshot | Deferred: interpreted-supported, compiled-not-yet |
+| compiledBoardSnapshot | Supported: interpreted+compiled for M0 scalar-board fields |
 
 ## State-machine phases
 
@@ -55,11 +55,14 @@
 ## Limitations
 
 > **Note:** Fixed white-Kalman baseline only in M3 first pass.
-> No board arrays were used by design.
-> Compiled BoardSnapshot support is intentionally deferred.
+> Tiny deterministic direct-message equivalence case only.
+> No adaptive AR(1) variant yet.
+> No real carrier/IQ/FM receiver path in M3.
+> No real audio pipeline in M3.
+> No board arrays were used by design (arrays remain unsupported on board fields).
 
 ## Recommendation
 
 | key | value |
 | --- | --- |
-| next | Add adaptive AR(1) Octomata variant reusing this scalar-board + BoardSnapshot architecture once compiled BoardSnapshot support lands. |
+| next | Add adaptive AR(1) Octomata variant reusing this scalar-board + BoardSnapshot architecture (compiled-supported for scalar board fields). |
