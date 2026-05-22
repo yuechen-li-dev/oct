@@ -64,6 +64,10 @@ func TestCheckValidPrograms(t *testing.T) {
 			src:  "fn Safe() -> Int ! Error { return 5 } fn Main() -> Int ! Error { let x = Safe()? return x }",
 		},
 		{
+			name: "fallible call expression statement with unwrap",
+			src:  "fn Safe() -> Void ! Error { return } fn Main() -> Int { Safe()! return 0 }",
+		},
+		{
 			name: "match fallible result",
 			src:  "fn Safe() -> Int ! Error { return 7 } fn Main() -> Int { match Safe() { ok(value) => { return value } err(e) => { return 0 } } }",
 		},

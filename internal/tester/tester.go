@@ -289,6 +289,9 @@ func writeCompiledTestRunner(pkgDir string, pkgName string, testCase testCase) (
 	if err := os.WriteFile(runnerPath, []byte(source), 0o644); err != nil {
 		return "", nil, err
 	}
+	if os.Getenv("OCT_DEBUG_COMPILED_RUNNER") != "" {
+		fmt.Fprintf(os.Stderr, "compiled runner debug: testCase.name=%q displayName=%q isFallible=%t arguments=%d runner=%s\n%s\n", testCase.name, testCase.displayName, testCase.isFallible, len(testCase.arguments), runnerPath, source)
+	}
 	return runnerPath, func() { _ = os.Remove(runnerPath) }, nil
 }
 
