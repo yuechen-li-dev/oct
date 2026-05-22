@@ -63,7 +63,7 @@ Notes:
 | `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
 | `ast.MatchExpr` / `ast.BatchExpr` / runtime-heavy expression forms | Partial | No | No | Defer | Outside current pure, deterministic local flow-expression scope. |
 
-M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed; the next expected blocker is compiled `BoardSnapshot` support, which remains deferred by design in this pass.
+M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed, and compiled `BoardSnapshot` support is now green for M0 scalar board fields (`Bool`/`Int`/`Float`/`String`) with board arrays intentionally unsupported.
 
 ## Current deferred / partial categories
 
