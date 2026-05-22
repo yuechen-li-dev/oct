@@ -140,9 +140,32 @@ func TestCheckValidPrograms(t *testing.T) {
 }
 
 func TestArtifactProgressBuiltinTypeErrors(t *testing.T) {
-	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Progress(\"x\", 1) }", "function Main: function 'Artifact.Progress' expects 3 arguments, got 2")
-	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Progress(\"x\", \"1\", 3) }", "function Main: function 'Artifact.Progress' argument 2 expects Int, got String")
-	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Checkpoint(1) }", "function Main: function 'Artifact.Checkpoint' argument 1 expects String, got Int")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", 1) }", "function Main: function 'Artifact.Progress' expects 3 arguments, got 2")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", \"1\", 3) }", "function Main: function 'Artifact.Progress' argument 2 expects Int, got String")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Checkpoint(1) }", "function Main: function 'Artifact.Checkpoint' argument 1 expects String, got Int")
+}
+
+func assertTypeErrorContainsWithArtifactImport(t *testing.T, text string, want string) {
+	t.Helper()
+	file := parseSource(t, "import Artifact\n"+text)
+	chk := checker{
+		functions:     make(map[string]functionSignature),
+		functionTypes: make(map[string]functionSignature),
+		records:       make(map[string]recordInfo),
+		enums:         make(map[string]enumInfo),
+		flows:         make(map[string]flowSignature),
+		typeNames:     make(map[string]struct{}),
+		importedPackages: map[string]packageSymbols{
+			"Artifact": {},
+		},
+	}
+	err := chk.checkFile(file)
+	if err == nil {
+		t.Fatal("expected type error")
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected error to contain %q, got %q", want, err.Error())
+	}
 }
 
 func TestCheckRejectsReturnTypeMismatches(t *testing.T) {
