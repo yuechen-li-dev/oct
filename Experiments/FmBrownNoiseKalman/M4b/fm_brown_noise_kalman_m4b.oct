@@ -412,7 +412,7 @@ fn RunM4bSweep() -> M4bReport ! Error {
     let seeds = [12345, 23456, 34567]
     let snrs = [-18.0, -12.0, -6.0]
     let messageHzs = [10.0, 25.0, 50.0]
-
+    let expectedCases = Len(seeds) * Len(snrs) * Len(messageHzs)
     var rows: M4bCaseMetrics[] = []
     for i in 0..Len(seeds) {
         for j in 0..Len(snrs) {
@@ -494,7 +494,9 @@ fn RunM4bSweep() -> M4bReport ! Error {
 }
 
 fn M4bArtifactWriteAll() -> Int {
+    Print("M4bProgress stage=artifactStart")
     let report = RunM4bSweep()!
+    Print("M4bProgress stage=beforeMarkdownReportBuild")
 
     var csv = [["seed","inputSNRDb","messageHz","deltaOutputSNRDb","whitenessRatio","finalA","clampCount","label"]]
     for i in 0..Len(report.Cases) {
@@ -542,10 +544,15 @@ fn M4bArtifactWriteAll() -> Int {
             ])
         ])
     ])
+    Print("M4bProgress stage=afterMarkdownReportBuild")
 
+    Print("M4bProgress stage=beforeOctagonBuildWrite")
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.octagon", report)
+    Print("M4bProgress stage=beforeMarkdownWrite")
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.md", md)
+    Print("M4bProgress stage=beforeCsvWrite")
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M4b/sweep_metrics.csv", csv)
+    Print("M4bProgress stage=beforeJsonWrite")
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json",
         Json.Object(String.Concat([
@@ -559,6 +566,7 @@ fn M4bArtifactWriteAll() -> Int {
             "}"
         ]))
     )
+    Print("M4bProgress stage=done")
 
     return 0
 }
