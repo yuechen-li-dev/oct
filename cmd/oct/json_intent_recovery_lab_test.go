@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMx103cJsonIntentRecoveryLabCorpusValidation(t *testing.T) {
+func TestJsonIntentRecoveryLabCorpusValidation(t *testing.T) {
 	path := "../../Experiments/JsonIntentRecoveryLab/M0/corpus_validation.octest"
 	stdout, stderr, err := executeCLI("test", path)
 	if err != nil {

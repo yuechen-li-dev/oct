@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM104ConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
+func TestConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
 	outputPath := "m104_convenience_plot.png"
 	sourcePath := writeSourceFile(t, "m104_convenience_plot.oct", "fn Main() -> Int {\n    return PlotLine([0.0, 1.0, 2.0], [0.0, 1.0, 4.0], \""+outputPath+"\")\n}\n")
 
@@ -20,7 +20,7 @@ func TestM104ConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
 	_ = os.Remove(outputPath)
 }
 
-func TestM104PlotCoreWrappers(t *testing.T) {
+func TestPlotCoreWrappers(t *testing.T) {
 	root := "../../Libraries/Plot"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

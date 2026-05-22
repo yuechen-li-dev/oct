@@ -39,7 +39,7 @@ func windowsReactorDLL(t *testing.T) string {
 	return ""
 }
 
-func TestWindowsBenchM0UsesPrometheusBackendAndWritesOctagon(t *testing.T) {
+func TestWindowsBenchUsesPrometheusBackendAndWritesOctagon(t *testing.T) {
 	root := windowsRepoRoot(t)
 	experiment := filepath.Join(root, "Experiments", "PrometheusBenchmarkHarness", "M0")
 	reactor := windowsReactorDLL(t)

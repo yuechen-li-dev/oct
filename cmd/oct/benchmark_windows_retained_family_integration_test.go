@@ -13,7 +13,7 @@ import (
 	"oct/internal/octagon"
 )
 
-func TestWindowsBenchM4RetainedFamiliesUsePrometheusBackend(t *testing.T) {
+func TestWindowsBenchRetainedFamiliesUsePrometheusBackend(t *testing.T) {
 	root := windowsRepoRoot(t)
 	experiment := filepath.Join(root, "Experiments", "PrometheusSgemmAlgorithmLab", "M4")
 	reactor := windowsReactorDLL(t)

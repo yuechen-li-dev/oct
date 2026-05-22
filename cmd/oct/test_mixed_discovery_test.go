@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM24jMixedOctestAndOctfailExecuteTogether(t *testing.T) {
+func TestMixedDiscoveryMixedOctestAndOctfailExecuteTogether(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "mixed.octest", "package Main\n[Fact]\nfn Runs() -> Void { Assert.Equal(1, 1, \"fact runs\") }\n")
@@ -40,7 +40,7 @@ func TestM24jMixedOctestAndOctfailExecuteTogether(t *testing.T) {
 	}
 }
 
-func TestM24jOctfailDoesNotMaskOctestParseErrors(t *testing.T) {
+func TestMixedDiscoveryOctfailDoesNotMaskOctestParseErrors(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "broken.octest", "package Main\n[Fact]\nfn Broken() -> Void { let x = [] }\n")

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM105PdfCoreWrappers(t *testing.T) {
+func TestPdfCoreWrappers(t *testing.T) {
 	root := "../../Libraries/Pdf"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -30,7 +30,7 @@ func TestM105PdfCoreWrappers(t *testing.T) {
 	}
 }
 
-func TestM105PdfDefaultsToBundledInter(t *testing.T) {
+func TestPdfDefaultsToBundledInter(t *testing.T) {
 	outputPath := "m105_inter_default.pdf"
 	sourcePath := writeSourceFile(t, "m105_inter_default.oct", "fn Main() -> Int ! Error {\n    let page = PdfNewPage(220px, 120px)?\n    let _ = PdfDrawText(page, 10px, 12px, \"inter check\")?\n    let _saved = PdfSave(page, \""+outputPath+"\")?\n    return 0\n}\n")
 

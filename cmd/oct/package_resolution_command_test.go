@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestMx105CanonicalRepoWideImportResolutionParity(t *testing.T) {
+func TestCanonicalRepoWideImportResolutionParity(t *testing.T) {
 	repoRoot := t.TempDir()
 	writeOctFile(t, repoRoot, "Libraries", "Octomata", "octomata.oct", strings.Join([]string{
 		"package Octomata",
@@ -99,7 +99,7 @@ func TestMx105CanonicalRepoWideImportResolutionParity(t *testing.T) {
 	}
 }
 
-func TestMx105MissingPackageDiagnosticIncludesResolverContext(t *testing.T) {
+func TestMissingPackageDiagnosticIncludesResolverContext(t *testing.T) {
 	repoRoot := t.TempDir()
 	mainPath := writeOctFile(t, repoRoot, "Experiments", "ImportDiagnostics", "M0", "Main", "main.oct", strings.Join([]string{
 		"package Main",

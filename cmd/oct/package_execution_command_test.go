@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM15RunBasicCrossPackageFunctionCall(t *testing.T) {
+func TestRunBasicCrossPackageFunctionCall(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { return Geometry.Distance() }\n")
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nfn Distance() -> Int { return 42 }\n")
@@ -21,7 +21,7 @@ func TestM15RunBasicCrossPackageFunctionCall(t *testing.T) {
 	}
 }
 
-func TestM15RunSupportsMultiFilePackage(t *testing.T) {
+func TestRunSupportsMultiFilePackage(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { return Geometry.DistancePlusOne() }\n")
 	writePkgFile(t, root, "Geometry", "base.oct", "package Geometry\nfn Distance() -> Int { return 41 }\n")
@@ -36,7 +36,7 @@ func TestM15RunSupportsMultiFilePackage(t *testing.T) {
 	}
 }
 
-func TestM15RejectsInvalidPackagePrograms(t *testing.T) {
+func TestRejectsInvalidPackagePrograms(t *testing.T) {
 	tests := []struct {
 		name    string
 		setup   func(t *testing.T, root string) string
@@ -110,7 +110,7 @@ func TestM15RejectsInvalidPackagePrograms(t *testing.T) {
 	}
 }
 
-func TestM15BuildAndBuiltinsCoexist(t *testing.T) {
+func TestBuildAndBuiltinsCoexist(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Tools\nfn Main() -> Int { Print(Tools.Value()) return 0 }\n")
 	writePkgFile(t, root, "Tools", "tools.oct", "package Tools\nfn Value() -> Int { return 7 }\n")
@@ -124,7 +124,7 @@ func TestM15BuildAndBuiltinsCoexist(t *testing.T) {
 	}
 }
 
-func TestM15aQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
+func TestQualifiedQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\nfn MakePoint() -> Point { return Point { X: 4m Y: 2m } }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn UsePoint(p: Geometry.Point) -> Float<m> { return p.X }\nfn Main() -> Float<m> { return UsePoint(Geometry.MakePoint()) }\n")
@@ -138,7 +138,7 @@ func TestM15aQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
 	}
 }
 
-func TestM15aQualifiedRecordConstruction(t *testing.T) {
+func TestQualifiedQualifiedRecordConstruction(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { return Geometry.Point { X: 1m Y: 2m } }\n")
@@ -152,7 +152,7 @@ func TestM15aQualifiedRecordConstruction(t *testing.T) {
 	}
 }
 
-func TestM15aQualifiedEnumValueReference(t *testing.T) {
+func TestQualifiedQualifiedEnumValueReference(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Euler }\n")
@@ -166,7 +166,7 @@ func TestM15aQualifiedEnumValueReference(t *testing.T) {
 	}
 }
 
-func TestM15aRejectsUnknownQualifiedType(t *testing.T) {
+func TestQualifiedRejectsUnknownQualifiedType(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main(p: Geometry.Nope) -> Int { return 0 }\n")
@@ -180,7 +180,7 @@ func TestM15aRejectsUnknownQualifiedType(t *testing.T) {
 	}
 }
 
-func TestM15aRejectsUnknownQualifiedEnumVariant(t *testing.T) {
+func TestQualifiedRejectsUnknownQualifiedEnumVariant(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Bogus }\n")
@@ -194,7 +194,7 @@ func TestM15aRejectsUnknownQualifiedEnumVariant(t *testing.T) {
 	}
 }
 
-func TestM15aRejectsQualifiedRecordLiteralWrongField(t *testing.T) {
+func TestQualifiedRejectsQualifiedRecordLiteralWrongField(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { return Geometry.Point { X: 1m Z: 2m } }\n")
@@ -222,7 +222,7 @@ func TestM18PackageCoexistenceWithMutableLocalReassignment(t *testing.T) {
 	}
 }
 
-func TestM15aRejectsQualifiedSymbolKindMismatch(t *testing.T) {
+func TestQualifiedRejectsQualifiedSymbolKindMismatch(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int }\nfn Distance() -> Int { return 42 }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { let x = Geometry.Point() return 0 }\n")
@@ -236,7 +236,7 @@ func TestM15aRejectsQualifiedSymbolKindMismatch(t *testing.T) {
 	}
 }
 
-func TestM15aBuiltinsCoexistWithQualifiedTypesAndFunctions(t *testing.T) {
+func TestQualifiedBuiltinsCoexistWithQualifiedTypesAndFunctions(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Int Y: Int }\nfn Origin() -> Point { return Point { X: 0 Y: 0 } }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Int { let p = Geometry.Origin() Print(p.X) return 0 }\n")
@@ -250,7 +250,7 @@ func TestM15aBuiltinsCoexistWithQualifiedTypesAndFunctions(t *testing.T) {
 	}
 }
 
-func TestM15aBuildRejectsInvalidQualifiedPrograms(t *testing.T) {
+func TestQualifiedBuildRejectsInvalidQualifiedPrograms(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Nope }\n")

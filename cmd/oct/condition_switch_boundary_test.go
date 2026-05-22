@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM23cConditionSwitchInvalidCasesStayHostOwned(t *testing.T) {
+func TestConditionSwitchConditionSwitchInvalidCasesStayHostOwned(t *testing.T) {
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "invalid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

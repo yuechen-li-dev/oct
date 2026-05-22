@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM23bScientificNotationRuntime(t *testing.T) {
+func TestScientificNotationScientificNotationRuntime(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
@@ -68,7 +68,7 @@ func TestM23bScientificNotationRuntime(t *testing.T) {
 	}
 }
 
-func TestM23bDimensionedScientificNotationBuilds(t *testing.T) {
+func TestScientificNotationDimensionedScientificNotationBuilds(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m23b_dimensioned.oct", "fn Main() -> Float<kg/m/s/s> {\n    return 2.0e11kg/m/s/s\n}\n")
 
 	stdout, stderr, err := executeCLI("build", sourcePath)
@@ -80,7 +80,7 @@ func TestM23bDimensionedScientificNotationBuilds(t *testing.T) {
 	}
 }
 
-func TestM23bMalformedScientificNotationRejected(t *testing.T) {
+func TestScientificNotationMalformedScientificNotationRejected(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
@@ -107,7 +107,7 @@ func TestM23bMalformedScientificNotationRejected(t *testing.T) {
 	}
 }
 
-func TestM23bIntegerLiteralsUnchanged(t *testing.T) {
+func TestScientificNotationIntegerLiteralsUnchanged(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m23b_int_regression.oct", "fn Main() -> Int {\n    return 42\n}\n")
 
 	stdout, stderr, err := executeCLI("run", sourcePath)

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM24eIfExpressionContractsRunAsNativeOctTests(t *testing.T) {
+func TestNativeIfExpressionIfExpressionContractsRunAsNativeOctTests(t *testing.T) {
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -20,7 +20,7 @@ func TestM24eIfExpressionContractsRunAsNativeOctTests(t *testing.T) {
 	}
 }
 
-func TestM24eIfExpressionInvalidFixtureRunsAsNativeOctFail(t *testing.T) {
+func TestNativeIfExpressionIfExpressionInvalidFixtureRunsAsNativeOctFail(t *testing.T) {
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "invalid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

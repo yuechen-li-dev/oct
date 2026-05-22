@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM23aAppendIntArray(t *testing.T) {
+func TestAppendAppendIntArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -28,7 +28,7 @@ func TestM23aAppendIntArray(t *testing.T) {
 	}
 }
 
-func TestM23aAppendFloatArray(t *testing.T) {
+func TestAppendAppendFloatArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -49,7 +49,7 @@ func TestM23aAppendFloatArray(t *testing.T) {
 	}
 }
 
-func TestM23aAppendStringArray(t *testing.T) {
+func TestAppendAppendStringArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -70,7 +70,7 @@ func TestM23aAppendStringArray(t *testing.T) {
 	}
 }
 
-func TestM23aAppendRecordArray(t *testing.T) {
+func TestAppendAppendRecordArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -92,7 +92,7 @@ func TestM23aAppendRecordArray(t *testing.T) {
 	}
 }
 
-func TestM23aAppendDimensionedArray(t *testing.T) {
+func TestAppendAppendDimensionedArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -113,7 +113,7 @@ func TestM23aAppendDimensionedArray(t *testing.T) {
 	}
 }
 
-func TestM23aRejectsAppendElementTypeMismatch(t *testing.T) {
+func TestAppendRejectsAppendElementTypeMismatch(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -134,7 +134,7 @@ func TestM23aRejectsAppendElementTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestM23aRejectsAppendOnNonArray(t *testing.T) {
+func TestAppendRejectsAppendOnNonArray(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -153,7 +153,7 @@ func TestM23aRejectsAppendOnNonArray(t *testing.T) {
 	}
 }
 
-func TestM23aAppendDynamicGrowthLoop(t *testing.T) {
+func TestAppendAppendDynamicGrowthLoop(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -178,7 +178,7 @@ func TestM23aAppendDynamicGrowthLoop(t *testing.T) {
 	}
 }
 
-func TestM23aBuildArtifactBehavior(t *testing.T) {
+func TestAppendBuildArtifactBehavior(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

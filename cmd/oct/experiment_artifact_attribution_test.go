@@ -11,7 +11,7 @@ import (
 	"oct/internal/cli"
 )
 
-func TestM70ExperimentRootArtifactPrefixesMilestoneOutputsAndExcludesAuxiliary(t *testing.T) {
+func TestExperimentArtifactAttributionExperimentRootArtifactPrefixesMilestoneOutputsAndExcludesAuxiliary(t *testing.T) {
 	root := createExperimentRoot(t)
 	shared := filepath.Join(t.TempDir(), "artifact-results.octagon")
 
@@ -66,7 +66,7 @@ func TestM70ExperimentRootArtifactPrefixesMilestoneOutputsAndExcludesAuxiliary(t
 	}
 }
 
-func TestM70ExperimentRootBenchPrefixesMilestoneOutputsAndOctagonOut(t *testing.T) {
+func TestExperimentArtifactAttributionExperimentRootBenchPrefixesMilestoneOutputsAndOctagonOut(t *testing.T) {
 	root := createExperimentRoot(t)
 	artifactPath := filepath.Join(t.TempDir(), "bench-artifact.octagon")
 	benchOut := filepath.Join(t.TempDir(), "bench-run.octagon")
@@ -117,7 +117,7 @@ func TestM70ExperimentRootBenchPrefixesMilestoneOutputsAndOctagonOut(t *testing.
 	}
 }
 
-func TestM70DirectMilestoneArtifactDoesNotPrefixOutputs(t *testing.T) {
+func TestExperimentArtifactAttributionDirectMilestoneArtifactDoesNotPrefixOutputs(t *testing.T) {
 	root := createExperimentRoot(t)
 	output := filepath.Join(t.TempDir(), "direct.octagon")
 
@@ -144,7 +144,7 @@ func TestM70DirectMilestoneArtifactDoesNotPrefixOutputs(t *testing.T) {
 	}
 }
 
-func TestM70ArtifactCollisionSameFilenameAcrossMilestonesDoesNotOverwrite(t *testing.T) {
+func TestExperimentArtifactAttributionArtifactCollisionSameFilenameAcrossMilestonesDoesNotOverwrite(t *testing.T) {
 	root := createExperimentRoot(t)
 	shared := filepath.Join(t.TempDir(), "plot.octagon")
 

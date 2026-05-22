@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM74IOXlsxM0Wrapper(t *testing.T) {
+func TestIOXlsxWrapper(t *testing.T) {
 	outputPath := filepath.Join("io_xlsx_m0.xlsx")
 	_ = os.Remove(outputPath)
 	t.Cleanup(func() {

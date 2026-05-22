@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM22eAxialStiffnessMatrix(t *testing.T) {
+func TestAxialStiffnessMatrix(t *testing.T) {
 	root := setupM22eFixture(t)
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -21,7 +21,7 @@ func TestM22eAxialStiffnessMatrix(t *testing.T) {
 	}
 }
 
-func TestM22ePackageIntegrationRunAndBuild(t *testing.T) {
+func TestStructuresPackageIntegrationRunAndBuild(t *testing.T) {
 	root := setupM22eFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 
@@ -51,7 +51,7 @@ func TestM22ePackageIntegrationRunAndBuild(t *testing.T) {
 	}
 }
 
-func TestM22eBuildFailureDoesNotEmitArtifact(t *testing.T) {
+func TestStructuresBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	root := setupM22eStructuresFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

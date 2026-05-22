@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMx103cUtilityWrappers(t *testing.T) {
+func TestUtilityWrappers(t *testing.T) {
 	testCases := []struct {
 		root    string
 		markers []string

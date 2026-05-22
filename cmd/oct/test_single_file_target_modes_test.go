@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM106bExplicitSingleFileTargetIgnoresInvalidSiblingAndManifestInAllModes(t *testing.T) {
+func TestSingleFileTargetExplicitSingleFileTargetIgnoresInvalidSiblingAndManifestInAllModes(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", manifestSource("WrongName", "intentionally invalid for directory target strictness"))
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn One() -> Int { return 1 }\n")
@@ -28,7 +28,7 @@ func TestM106bExplicitSingleFileTargetIgnoresInvalidSiblingAndManifestInAllModes
 	}
 }
 
-func TestM106bManifestStubFailsDirectoryButSelectedFileRetainsAssertInCompiledMode(t *testing.T) {
+func TestSingleFileTargetManifestStubFailsDirectoryButSelectedFileRetainsAssertInCompiledMode(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", "package Main\n")
 	writeOctPkgFile(t, root, "Main", "selected.octest", "package Main\n[Fact]\nfn SelectedPasses() -> Void { Assert.Equal(1, 1, \"assert available for selected file\") }\n")

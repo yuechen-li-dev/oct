@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestM71dExpRunFetchesAndExecutesExperiment(t *testing.T) {
+func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
@@ -40,7 +40,7 @@ func TestM71dExpRunFetchesAndExecutesExperiment(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
+func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
@@ -81,7 +81,7 @@ func TestM71dExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunSyncsDirectDependencies(t *testing.T) {
+func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
@@ -110,7 +110,7 @@ func TestM71dExpRunSyncsDirectDependencies(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunRejectsInvalidExperimentShape(t *testing.T) {
+func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
@@ -131,7 +131,7 @@ func TestM71dExpRunRejectsInvalidExperimentShape(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunRespectsExplicitEntryMilestone(t *testing.T) {
+func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
@@ -161,7 +161,7 @@ func TestM71dExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
+func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
@@ -179,7 +179,7 @@ func TestM71dExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
+func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
@@ -203,7 +203,7 @@ func TestM71dExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 	}
 }
 
-func TestM71dExpRunDeterministicForRepeatedRuns(t *testing.T) {
+func TestExpRunExpRunDeterministicForRepeatedRuns(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))

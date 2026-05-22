@@ -8,7 +8,7 @@ import (
 	"oct/internal/cli"
 )
 
-func TestM83aOctestExecutesInterpreterOnlySurface(t *testing.T) {
+func TestExecutionModeOctestExecutesInterpreterOnlySurface(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "m83a_execution_mode.octest", strings.Join([]string{
@@ -43,7 +43,7 @@ func TestM83aOctestExecutesInterpreterOnlySurface(t *testing.T) {
 	}
 }
 
-func TestM83aCompiledBuildSupportsEquivalentFlow(t *testing.T) {
+func TestExecutionModeCompiledBuildSupportsEquivalentFlow(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m83a_compiled_mode_boundary.oct", strings.Join([]string{
 		"fn Main() -> Int {",
 		"    let n = 0",

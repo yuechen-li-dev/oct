@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM17BuildAcceptsValidLogicalPrograms(t *testing.T) {
+func TestBuildAcceptsValidLogicalPrograms(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Bool { return true and not false or false }\n")
 
@@ -19,7 +19,7 @@ func TestM17BuildAcceptsValidLogicalPrograms(t *testing.T) {
 	}
 }
 
-func TestM17BuildRejectsInvalidLogicalPrograms(t *testing.T) {
+func TestBuildRejectsInvalidLogicalPrograms(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Bool { return 1 and 2 }\n")
 

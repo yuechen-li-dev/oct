@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM22bBasicVec2ForceOperation(t *testing.T) {
+func TestBasicVec2ForceOperation(t *testing.T) {
 	root := setupM22bFixture(t)
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -24,7 +24,7 @@ func TestM22bBasicVec2ForceOperation(t *testing.T) {
 	}
 }
 
-func TestM22bPackageIntegrationRunAndBuild(t *testing.T) {
+func TestMechanicsPackageIntegrationRunAndBuild(t *testing.T) {
 	root := setupM22bFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 
@@ -54,7 +54,7 @@ func TestM22bPackageIntegrationRunAndBuild(t *testing.T) {
 	}
 }
 
-func TestM22bBuildFailureDoesNotEmitArtifact(t *testing.T) {
+func TestMechanicsBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	root := setupM22bMechanicsFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

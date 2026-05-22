@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestMx103dImageCoreWrappers(t *testing.T) {
+func TestImageCoreWrappers(t *testing.T) {
 	if err := synthesizeImageCoreFixtures(); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}

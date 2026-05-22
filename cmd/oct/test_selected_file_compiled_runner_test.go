@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestM106cSelectedFileCompiledRunnerLinkage(t *testing.T) {
+func TestSelectedFileCompiledRunnerSelectedFileCompiledRunnerLinkage(t *testing.T) {
 	target, err := filepath.Abs(filepath.Join("..", "..", "Language", "Testing", "SelectedFileCompiled", "selected_pass.octest"))
 	if err != nil {
 		t.Fatalf("resolve selected fixture path: %v", err)
@@ -37,7 +37,7 @@ func TestM106cSelectedFileCompiledRunnerLinkage(t *testing.T) {
 	}
 }
 
-func TestM106cDirectoryTargetStillSeesInvalidSibling(t *testing.T) {
+func TestSelectedFileCompiledRunnerDirectoryTargetStillSeesInvalidSibling(t *testing.T) {
 	targetDir, err := filepath.Abs(filepath.Join("..", "..", "Language", "Testing", "SelectedFileCompiled"))
 	if err != nil {
 		t.Fatalf("resolve fixture dir path: %v", err)
