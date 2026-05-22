@@ -1,0 +1,14 @@
+package Main
+
+[Fact]
+fn FileExistsCompiledDirectNoSidecar() -> Void {
+    let fixture = "Language/Testing/CompiledOctxiliary/valid/file_exists_fixture.txt"
+    Assert.True(FileExists(fixture), "compiled FileExists should return true for existing checked-in fixture without sidecar")
+    Assert.False(FileExists(fixture + ".missing"), "compiled FileExists should return false for missing path without sidecar")
+}
+
+[Fact]
+fn FileExistsInterpretedStillGreen() -> Void {
+    let fixture = "Language/Testing/CompiledOctxiliary/valid/file_exists_fixture.txt"
+    Assert.True(FileExists(fixture), "interpreted FileExists should remain true for existing fixture")
+}

@@ -108,3 +108,12 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
 ## Known inconsistency surfaced
 
 `Language/reference` defines wrapper standard-library availability at language level, but compiled support documentation still marks wrapper-backed calls as deferred except selected builtins. This is a real mode-coverage gap (not syntax/contract disagreement) and should continue to be tracked explicitly in `docs/COMPILED_SUPPORT.md`.
+
+
+## M2 fallibility policy (wrapper calls)
+
+- Octxiliary is for compiled wrapper operations that are operationally fallible at the process boundary (spawn, handshake, framing/protocol, sidecar runtime failures).
+- Those operations should be language-fallible (`... ! Error`) so sidecar/runtime failures are representable to user code.
+- Simple non-fallible host queries should compile directly unless an explicit compiled preflight policy is adopted.
+- M2 decision: `FileExists(path: String) -> Bool` compiles directly (host `os.Stat` check) and does not require sidecar or `OCT_WRAPPER_PATH`.
+- Missing-sidecar behavior must never be hidden behind default values for non-fallible APIs.
