@@ -201,7 +201,7 @@ func parseBuild(path, text string) error {
 
 func TestFormatSourceModesRoundTripParse(t *testing.T) {
 	input := "package Main\nfn main()->Int{return sum(1+2,3)}\n"
-	for _, mode := range []Mode{ModeReadable, ModeCompact, ModeEnLLM} {
+	for _, mode := range []Mode{ModeReadable, ModeCompact, ModeEnLLM, ModeEnLLMCompact} {
 		out, err := FormatSourceWithOptions(input, Options{Mode: mode})
 		if err != nil {
 			t.Fatalf("format mode %s: %v", mode, err)
@@ -229,31 +229,21 @@ func TestFormatPathCheck(t *testing.T) {
 	}
 }
 
-func TestReadableExpandsReportHeavyCalls(t *testing.T) {
+func TestEnLLMDoesNotAutoWrapHeavyCalls(t *testing.T) {
 	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)]),Markdown.Callout(\"warning\",[\"a\",\"b\"])])\nreturn\n}\n"
-	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
+	out, err := FormatSourceWithOptions(input, Options{Mode: ModeEnLLM})
 	if err != nil {
-		t.Fatalf("format readable: %v", err)
+		t.Fatalf("format en-llm: %v", err)
 	}
-	mustContain(t, out, "Markdown.Report(")
-	mustContain(t, out, "\n            Markdown.Section(")
-	mustContain(t, out, "Markdown.Table(")
-}
-
-func TestReadableExpandsRecordAndConcat(t *testing.T) {
-	input := "package Main\nfn main()->Void{\nlet x=M1OctagonSummary{title:\"FM Brown-Noise Kalman M1\" rowCount:Len(rows) limitations:[\"a\",\"b\"]}\nlet s=\"{\"+\"\\\"rowCount\\\":\\\"\"+ToString(Len(rows))+\"\\\"}\"\nreturn\n}\n"
-	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
-	if err != nil {
-		t.Fatalf("format readable: %v", err)
+	mustContain(t, out, "let report = Markdown.Report([Markdown.H1(\"t\"), Markdown.Section(\"Metrics\"")
+	if strings.Contains(out, "let report = Markdown.Report(\n") {
+		t.Fatalf("expected no multiline rewrite:\n%s", out)
 	}
-	mustContain(t, out, "M1OctagonSummary{")
-	mustContain(t, out, "limitations:[")
-	mustContain(t, out, "ToString(Len(rows))")
 }
 
 func TestModeIdempotenceReadableAndCompact(t *testing.T) {
 	input := "package Main\nfn main()->Int{return Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"S\",[Markdown.Table(rows)])])}\n"
-	for _, mode := range []Mode{ModeReadable, ModeCompact} {
+	for _, mode := range []Mode{ModeEnLLM, ModeEnLLMCompact} {
 		first, err := FormatSourceWithOptions(input, Options{Mode: mode})
 		if err != nil {
 			t.Fatalf("first format mode %s: %v", mode, err)
@@ -268,18 +258,18 @@ func TestModeIdempotenceReadableAndCompact(t *testing.T) {
 	}
 }
 
-func TestReadableJudgmentSimpleCallStaysInline(t *testing.T) {
+func TestEnLLMSimpleCallStaysInline(t *testing.T) {
 	input := "package Main\nfn main()->Void{\nlet x=Markdown.H1(\"Title\")\nreturn\n}\n"
-	out, err := FormatSourceWithOptions(input, Options{Mode: ModeReadable})
+	out, err := FormatSourceWithOptions(input, Options{Mode: ModeEnLLM})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustContain(t, out, "let x = Markdown.H1(\"Title\")")
 }
 
-func TestReadableJudgmentCommentRiskLeaveUnchanged(t *testing.T) {
+func TestEnLLMCommentPreservedWithoutAutoWrap(t *testing.T) {
 	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)])]) // keep\nreturn\n}\n"
-	out, _, err := formatSourceWithDiagnostics(input, Options{Mode: ModeReadable})
+	out, _, err := formatSourceWithDiagnostics(input, Options{Mode: ModeEnLLM})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,31 +277,17 @@ func TestReadableJudgmentCommentRiskLeaveUnchanged(t *testing.T) {
 	mustContain(t, out, "let report = Markdown.Report(")
 	mustContain(t, out, "// keep")
 	if strings.Contains(out, "let report = Markdown.Report(\n") {
-		t.Fatalf("expected leaveUnchanged for comment risk, got multiline rewrite:\n%s", out)
+		t.Fatalf("expected no multiline rewrite:\n%s", out)
 	}
 }
 
-func TestReadableJudgmentTrace(t *testing.T) {
+func TestNoJudgmentTraceWhenAutoWrapDisabled(t *testing.T) {
 	input := "package Main\nfn main()->Void{\nlet report=Markdown.Report([Markdown.H1(\"t\"),Markdown.Section(\"Metrics\",[Markdown.Table(rows)]),Markdown.Callout(\"warning\",[\"m\"])])\nreturn\n}\n"
-	_, diag, err := formatSourceWithDiagnostics(input, Options{Mode: ModeReadable})
+	_, diag, err := formatSourceWithDiagnostics(input, Options{Mode: ModeEnLLM})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(diag.Traces) == 0 {
-		t.Fatalf("expected traces")
-	}
-	tr := diag.Traces[0]
-	if !strings.Contains(tr.Winner, "multiline") {
-		t.Fatalf("winner=%s", tr.Winner)
-	}
-	if !strings.Contains(tr.Traces[tr.WinnerIndex].Name, "multiline") {
-		t.Fatalf("winner trace missing")
-	}
-	names := map[string]bool{}
-	for _, c := range tr.Traces[tr.WinnerIndex].Contributions {
-		names[c.Name] = true
-	}
-	if !(names["widthFit"] || names["nestingReadability"] || names["heavyCalleePreference"] || names["commentSafety"]) {
-		t.Fatalf("missing expected contribution names: %#v", names)
+	if len(diag.Traces) != 0 {
+		t.Fatalf("expected no traces while auto-wrap is disabled")
 	}
 }

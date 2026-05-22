@@ -304,7 +304,7 @@ type fmtOptions struct {
 
 func parseFmtOptions(args []string) (fmtOptions, error) {
 	if len(args) < 1 {
-		return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]")
+		return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]")
 	}
 	result := fmtOptions{path: args[0]}
 	for i := 1; i < len(args); i++ {
@@ -318,7 +318,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 			i++
 			result.options.Mode = ocfmt.Mode(args[i])
 		default:
-			return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]")
+			return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]")
 		}
 	}
 	return result, nil
@@ -336,7 +336,7 @@ func writeBuildHelp(out io.Writer) error {
 	return err
 }
 func writeFmtHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]\nFormat Oct source files.")
+	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]\nFormat Oct source files with deterministic structural whitespace normalization.\nDefault mode: en-llm.\nModes:\n  en-llm          LLM-oriented readable structural formatting.\n  en-llm-compact  LLM-oriented compact structural formatting.\nAuto line wrapping/reflow is intentionally not enabled in v0.1.\nExamples:\n  oct fmt Language/Testing --mode en-llm\n  oct fmt Language/Testing --mode en-llm-compact --check")
 	return err
 }
 func writeTestHelp(out io.Writer) error {
