@@ -13,7 +13,7 @@ import (
 	"oct/internal/cli"
 )
 
-func TestM71aPkgGetFetchesIntoSharedCache(t *testing.T) {
+func TestPkgGetPkgGetFetchesIntoSharedCache(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
@@ -37,7 +37,7 @@ func TestM71aPkgGetFetchesIntoSharedCache(t *testing.T) {
 	}
 }
 
-func TestM71aPkgGetUsesCacheHitOnRepeatedFetch(t *testing.T) {
+func TestPkgGetPkgGetUsesCacheHitOnRepeatedFetch(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
@@ -72,7 +72,7 @@ func TestM71aPkgGetUsesCacheHitOnRepeatedFetch(t *testing.T) {
 	}
 }
 
-func TestM71aPkgGetFailsWhenManifestMissing(t *testing.T) {
+func TestPkgGetPkgGetFailsWhenManifestMissing(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	source := createGitRepo(t, false)
@@ -85,7 +85,7 @@ func TestM71aPkgGetFailsWhenManifestMissing(t *testing.T) {
 	}
 }
 
-func TestM71aPkgListShowsCachedEntries(t *testing.T) {
+func TestPkgGetPkgListShowsCachedEntries(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	source := createGitRepo(t, true)
@@ -107,7 +107,7 @@ func TestM71aPkgListShowsCachedEntries(t *testing.T) {
 	}
 }
 
-func TestM71aPkgGetRejectsBadSource(t *testing.T) {
+func TestPkgGetPkgGetRejectsBadSource(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	stdout, stderr, err := executeCLIArgs("pkg", "get", "not-a-url")
 	if err == nil {
@@ -118,7 +118,7 @@ func TestM71aPkgGetRejectsBadSource(t *testing.T) {
 	}
 }
 
-func TestM71aPkgGetRejectsMalformedManifestShape(t *testing.T) {
+func TestPkgGetPkgGetRejectsMalformedManifestShape(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	source := createGitRepoWithManifest(t, strings.Join([]string{

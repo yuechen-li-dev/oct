@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM24fConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
+func TestNativeHostBoundaryConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -21,7 +21,7 @@ func TestM24fConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
 	}
 }
 
-func TestM24fConditionSwitchInvalidFixturesRunAsNativeOctFail(t *testing.T) {
+func TestNativeHostBoundaryConditionSwitchInvalidFixturesRunAsNativeOctFail(t *testing.T) {
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "invalid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -32,7 +32,7 @@ func TestM24fConditionSwitchInvalidFixturesRunAsNativeOctFail(t *testing.T) {
 	}
 }
 
-func TestM24fBoundaryPolicyDocumentedInTestingDoc(t *testing.T) {
+func TestNativeHostBoundaryBoundaryPolicyDocumentedInTestingDoc(t *testing.T) {
 	testingDoc := filepath.Join("..", "..", "docs", "TESTING.md")
 	data, err := os.ReadFile(testingDoc)
 	if err != nil {

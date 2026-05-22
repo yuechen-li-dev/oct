@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestM20CrossPackageIfExpression(t *testing.T) {
+func TestCrossPackageIfExpression(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point {\n    X: Int\n    Y: Int\n}\nfn Make(flag: Bool) -> Point {\n    return if flag { Point { X: 1 Y: 2 } } else { Point { X: 3 Y: 4 } }\n}\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\n\nfn Main() -> Int {\n    let p = Geometry.Make(true)\n    return p.X\n}\n")

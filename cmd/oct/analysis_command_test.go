@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestM22cBasicAnalysisResult(t *testing.T) {
+func TestBasicAnalysisResult(t *testing.T) {
 	root := setupM22cFixture(t)
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -22,7 +22,7 @@ func TestM22cBasicAnalysisResult(t *testing.T) {
 	}
 }
 
-func TestM22cPlotGeneration(t *testing.T) {
+func TestPlotGeneration(t *testing.T) {
 	root := setupM22cAnalysisFixture(t)
 	outputPath := filepath.Join(root, "analysis_plot.png")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -54,7 +54,7 @@ func TestM22cPlotGeneration(t *testing.T) {
 	}
 }
 
-func TestM22cPackageIntegrationRunAndBuild(t *testing.T) {
+func TestAnalysisPackageIntegrationRunAndBuild(t *testing.T) {
 	root := setupM22cFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 
@@ -85,7 +85,7 @@ func TestM22cPackageIntegrationRunAndBuild(t *testing.T) {
 	}
 }
 
-func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
+func TestAnalysisBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	root := setupM22cAnalysisFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -114,7 +114,7 @@ func TestM22cBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	}
 }
 
-func TestM22cAnalysisUsesAppendPattern(t *testing.T) {
+func TestAnalysisUsesAppendPattern(t *testing.T) {
 	// Structural proof: the new Analysis library uses Append-based array
 	// construction rather than pre-allocated indexed assignment.
 	analysisPath := filepath.Join("..", "..", "Libraries", "Analysis", "Analysis.Core.oct")

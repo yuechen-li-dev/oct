@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM21StringErgonomics(t *testing.T) {
+func TestStringErgonomics(t *testing.T) {
 	tests := []struct {
 		name         string
 		source       string
@@ -151,7 +151,7 @@ func TestM21StringErgonomics(t *testing.T) {
 	}
 }
 
-func TestM21CrossPackageStringConcat(t *testing.T) {
+func TestCrossPackageStringConcat(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Utils", "utils.oct", strings.Join([]string{
 		"package Utils",

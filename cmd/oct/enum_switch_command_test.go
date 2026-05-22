@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestM19EnumAwareSwitch(t *testing.T) {
+func TestEnumAwareSwitch(t *testing.T) {
 	tests := []struct {
 		name         string
 		source       string
@@ -245,7 +245,7 @@ func TestM19EnumAwareSwitch(t *testing.T) {
 	}
 }
 
-func TestM19CrossPackageEnumSwitch(t *testing.T) {
+func TestCrossPackageEnumSwitch(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler RK4 }\n")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

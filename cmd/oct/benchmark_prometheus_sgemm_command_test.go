@@ -10,7 +10,7 @@ import (
 	"oct/internal/octagon"
 )
 
-func TestM52PrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
+func TestPrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "sgemm-report.octagon")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -28,7 +28,7 @@ func TestM52PrometheusSgemmCPUScenarioEmitsOctagonReport(t *testing.T) {
 	}
 }
 
-func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
+func TestPrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
 	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -43,7 +43,7 @@ func TestM52PrometheusSgemmPrometheusUnavailableStatusVisible(t *testing.T) {
 	}
 }
 
-func TestM52PrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *testing.T) {
+func TestPrometheusSgemmPrometheusDefaultsToUnavailableUntilRuntimeReady(t *testing.T) {
 	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

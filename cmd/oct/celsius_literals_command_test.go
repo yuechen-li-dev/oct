@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM82CelsiusLiteralRuntimeAndBuildParity(t *testing.T) {
+func TestCelsiusLiteralRuntimeAndBuildParity(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m82_celsius_parity.oct", "fn Main() -> Float<K> {\n    let room = 22C\n    let oven = 180C\n    if oven > room {\n        return oven\n    }\n    return room\n}\n")
 
 	runStdout, runStderr, runErr := executeCLI("run", sourcePath)
@@ -34,7 +34,7 @@ func TestM82CelsiusLiteralRuntimeAndBuildParity(t *testing.T) {
 	}
 }
 
-func TestM82CelsiusLiteralRejectsTypeLevelC(t *testing.T) {
+func TestCelsiusLiteralRejectsTypeLevelC(t *testing.T) {
 	sourcePath := writeSourceFile(t, "m82_invalid_type_level_c.oct", "fn Main() -> Float<C> {\n    return 273.15K\n}\n")
 
 	stdout, stderr, err := executeCLI("build", sourcePath)

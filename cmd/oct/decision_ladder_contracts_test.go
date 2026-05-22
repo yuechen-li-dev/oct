@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM23eDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
+func TestDecisionLadderDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
 	validRoot := filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid")
 	validStdout, validStderr, err := executeCLI("test", validRoot)
 	if err != nil {
@@ -35,7 +35,7 @@ func TestM23eDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
 	}
 }
 
-func TestM23eProofSignalUsesConditionSwitch(t *testing.T) {
+func TestDecisionLadderProofSignalUsesConditionSwitch(t *testing.T) {
 	signalPath := filepath.Join("..", "..", "Libraries", "Signal", "Signal.Core.oct")
 	bytes, err := os.ReadFile(signalPath)
 	if err != nil {

@@ -9,7 +9,7 @@ import (
 	"oct/internal/cli"
 )
 
-func TestM106ExplicitFileDoesNotRunImportedPackageTests(t *testing.T) {
+func TestSelectionIsolationExplicitFileDoesNotRunImportedPackageTests(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Lib", "lib.oct", "package Lib\nfn FortyTwo() -> Int { return 42 }\n")
 	writeOctPkgFile(t, root, "Lib", "lib_with_tests.octest", "package Lib\n[Fact]\nfn DeliberateFailure() -> Void { Assert.Equal(1, 2, \"must fail when selected\") }\n")
@@ -36,7 +36,7 @@ func TestM106ExplicitFileDoesNotRunImportedPackageTests(t *testing.T) {
 	}
 }
 
-func TestM106DirectlySelectedLibraryTestStillRuns(t *testing.T) {
+func TestSelectionIsolationDirectlySelectedLibraryTestStillRuns(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Lib", "lib.oct", "package Lib\nfn FortyTwo() -> Int { return 42 }\n")
 	writeOctPkgFile(t, root, "Lib", "lib_with_tests.octest", "package Lib\n[Fact]\nfn DeliberateFailure() -> Void { Assert.Equal(1, 2, \"must fail when selected\") }\n")
@@ -52,7 +52,7 @@ func TestM106DirectlySelectedLibraryTestStillRuns(t *testing.T) {
 	}
 }
 
-func TestM106MultipleExplicitFilesRunOnlySelectedFiles(t *testing.T) {
+func TestSelectionIsolationMultipleExplicitFilesRunOnlySelectedFiles(t *testing.T) {
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Deps", "dep.oct", "package Deps\nfn Marker() -> Int { return 7 }\n")
 	writeOctPkgFile(t, root, "Deps", "dep_fail.octest", "package Deps\n[Fact]\nfn DependencyFailure() -> Void { Assert.Equal(1, 2, \"must not run unless selected\") }\n")
@@ -74,7 +74,7 @@ func TestM106MultipleExplicitFilesRunOnlySelectedFiles(t *testing.T) {
 	}
 }
 
-func TestM106DirectoryModeDiscoversWithinDirectoryOnly(t *testing.T) {
+func TestSelectionIsolationDirectoryModeDiscoversWithinDirectoryOnly(t *testing.T) {
 	root := t.TempDir()
 	inside := filepath.Join(root, "Inside")
 	outside := filepath.Join(root, "Outside")

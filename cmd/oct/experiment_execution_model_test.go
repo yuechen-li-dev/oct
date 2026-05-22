@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM68ExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
+func TestExperimentExecutionModelExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Stable() -> Int { return 1 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalZeroPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
@@ -52,7 +52,7 @@ func TestM68ExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
 	}
 }
 
-func TestM68DirectMilestonePathRunsOnlyTargetedMilestone(t *testing.T) {
+func TestExperimentExecutionModelDirectMilestonePathRunsOnlyTargetedMilestone(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")
@@ -71,7 +71,7 @@ func TestM68DirectMilestonePathRunsOnlyTargetedMilestone(t *testing.T) {
 	}
 }
 
-func TestM68ExperimentRootArtifactCommandUsesCanonicalMilestones(t *testing.T) {
+func TestExperimentExecutionModelExperimentRootArtifactCommandUsesCanonicalMilestones(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Artifact]\nfn CanonicalArtifact() -> Void { Print(\"canonical\") }\n")
@@ -95,7 +95,7 @@ func TestM68ExperimentRootArtifactCommandUsesCanonicalMilestones(t *testing.T) {
 	}
 }
 
-func TestM68ExperimentRootBenchCommandUsesCanonicalMilestones(t *testing.T) {
+func TestExperimentExecutionModelExperimentRootBenchCommandUsesCanonicalMilestones(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Benchmark]\nfn CanonicalBench() -> Void { return }\n")
@@ -119,7 +119,7 @@ func TestM68ExperimentRootBenchCommandUsesCanonicalMilestones(t *testing.T) {
 	}
 }
 
-func TestM68ExperimentRootSkipsSharedSupportFolder(t *testing.T) {
+func TestExperimentExecutionModelExperimentRootSkipsSharedSupportFolder(t *testing.T) {
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM23BasicArrayElementAssignment(t *testing.T) {
+func TestArrayAssignmentBasicArrayElementAssignment(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
 		"package Main",
@@ -27,7 +27,7 @@ func TestM23BasicArrayElementAssignment(t *testing.T) {
 	}
 }
 
-func TestM23LoopDrivenArrayPopulation(t *testing.T) {
+func TestArrayAssignmentLoopDrivenArrayPopulation(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
 		"package Main",
@@ -51,7 +51,7 @@ func TestM23LoopDrivenArrayPopulation(t *testing.T) {
 	}
 }
 
-func TestM23RejectsImmutableArrayBindingAssignment(t *testing.T) {
+func TestArrayAssignmentRejectsImmutableArrayBindingAssignment(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -72,7 +72,7 @@ func TestM23RejectsImmutableArrayBindingAssignment(t *testing.T) {
 	}
 }
 
-func TestM23RejectsArrayElementTypeMismatch(t *testing.T) {
+func TestArrayAssignmentRejectsArrayElementTypeMismatch(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -93,7 +93,7 @@ func TestM23RejectsArrayElementTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestM23RejectsNonIntArrayIndexAssignment(t *testing.T) {
+func TestArrayAssignmentRejectsNonIntArrayIndexAssignment(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -114,7 +114,7 @@ func TestM23RejectsNonIntArrayIndexAssignment(t *testing.T) {
 	}
 }
 
-func TestM23RejectsOutOfBoundsArrayIndexAssignmentAtRuntime(t *testing.T) {
+func TestArrayAssignmentRejectsOutOfBoundsArrayIndexAssignmentAtRuntime(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -135,7 +135,7 @@ func TestM23RejectsOutOfBoundsArrayIndexAssignmentAtRuntime(t *testing.T) {
 	}
 }
 
-func TestM23SupportsRecordArrayElementAssignment(t *testing.T) {
+func TestArrayAssignmentSupportsRecordArrayElementAssignment(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{
@@ -157,7 +157,7 @@ func TestM23SupportsRecordArrayElementAssignment(t *testing.T) {
 	}
 }
 
-func TestM23BuildArtifactBehavior(t *testing.T) {
+func TestArrayAssignmentBuildArtifactBehavior(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

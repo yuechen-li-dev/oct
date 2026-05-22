@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMx103aIOJsonGoldenWrapper(t *testing.T) {
+func TestIOJsonGoldenWrapper(t *testing.T) {
 	root := "../../Libraries/IO"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

@@ -87,7 +87,7 @@ func TestRunCommandExecutesMainInvalidPrograms(t *testing.T) {
 	}
 }
 
-func TestRunCommandSupportsM6ErrorHandling(t *testing.T) {
+func TestRunCommandSupportsErrorHandling(t *testing.T) {
 	tests := []struct {
 		name        string
 		source      string
@@ -224,7 +224,7 @@ fn Main() -> Int {
 	}
 }
 
-func TestRunAndBuildRejectInvalidM9Programs(t *testing.T) {
+func TestRunAndBuildRejectInvalidPrograms(t *testing.T) {
 	tests := []struct {
 		name        string
 		source      string
@@ -476,7 +476,7 @@ func TestRunCommandValidatesMainEntryPoint(t *testing.T) {
 	}
 }
 
-func TestRunCommandSupportsM7Builtins(t *testing.T) {
+func TestRunCommandSupportsBuiltins(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
@@ -566,7 +566,7 @@ func TestRunCommandSupportsM7Builtins(t *testing.T) {
 	}
 }
 
-func TestRunCommandRejectsInvalidM7Builtins(t *testing.T) {
+func TestRunCommandRejectsInvalidBuiltins(t *testing.T) {
 	tests := []struct {
 		name        string
 		source      string
@@ -679,7 +679,7 @@ fn Main() -> Int {
 	}
 }
 
-func TestBuildCommandHandlesM7Builtins(t *testing.T) {
+func TestBuildCommandHandlesBuiltins(t *testing.T) {
 	t.Run("sqrt builtin in compiled mode builds deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m7_valid.oct", "fn Main() -> Float {\n    return Sqrt(4)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
@@ -716,7 +716,7 @@ func TestBuildCommandHandlesM7Builtins(t *testing.T) {
 	})
 }
 
-func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
+func TestBuildCommandHandlesPrintAndWhile(t *testing.T) {
 	t.Run("while in compiled mode builds successfully", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m12_valid_build.oct", "fn Main() -> Int {\n    while false {\n        return 1\n    }\n    return Print(1)\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
@@ -754,7 +754,7 @@ func TestBuildCommandHandlesM12PrintAndWhile(t *testing.T) {
 	})
 }
 
-func TestRunCommandHandlesM10PlotBuiltins(t *testing.T) {
+func TestRunCommandHandlesPlotBuiltins(t *testing.T) {
 	t.Run("line plot writes png", func(t *testing.T) {
 		outputPath := filepath.Join(t.TempDir(), "line.png")
 		sourcePath := writeSourceFile(t, "m10_line.oct", "fn Main() -> Int {\n    let x = [0.0, 1.0, 2.0]\n    let y = [0.0, 1.0, 4.0]\n    return PlotLine(x, y, "+strconv.Quote(outputPath)+")\n}\n")
@@ -836,7 +836,7 @@ func TestRunCommandHandlesM10PlotBuiltins(t *testing.T) {
 	})
 }
 
-func TestBuildCommandHandlesM10PlotBuiltins(t *testing.T) {
+func TestBuildCommandHandlesPlotBuiltins(t *testing.T) {
 	t.Run("unsupported plot builtin in compiled mode fails deterministically", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m10_valid_build.oct", "fn Main() -> Int {\n    return PlotLine([0.0], [1.0], \"plot.png\")\n}\n")
 		stdout, stderr, err := executeCLI("build", sourcePath)
@@ -978,7 +978,7 @@ func TestMissingFileFailsDeterministically(t *testing.T) {
 	}
 }
 
-func TestM13RecordsEnumsAndExprStmtRules(t *testing.T) {
+func TestRecordsEnumsAndExprStmtRules(t *testing.T) {
 	validTests := []struct {
 		name   string
 		source string
@@ -1243,7 +1243,7 @@ func TestRunCommandRejectsInvalidDimensions(t *testing.T) {
 	}
 }
 
-func TestRunCommandSupportsM72Builtins(t *testing.T) {
+func TestRunCommandSupportsScientificBuiltins(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
@@ -1285,7 +1285,7 @@ func TestRunCommandSupportsM72Builtins(t *testing.T) {
 	}
 }
 
-func TestMx101cFFTBuiltinRunAndBuildParity(t *testing.T) {
+func TestFFTBuiltinRunAndBuildParity(t *testing.T) {
 	source := `
 fn Main() -> Int {
     let signal = [
@@ -1326,7 +1326,7 @@ fn Main() -> Int {
 	}
 }
 
-func TestRunCommandRejectsInvalidM72Domains(t *testing.T) {
+func TestRunCommandRejectsInvalidScientificDomains(t *testing.T) {
 	tests := []struct {
 		name        string
 		source      string
@@ -1359,7 +1359,7 @@ func TestRunCommandRejectsInvalidM72Domains(t *testing.T) {
 	}
 }
 
-func TestM14ComparisonsRunAndBuild(t *testing.T) {
+func TestComparisonsRunAndBuild(t *testing.T) {
 	t.Run("valid comparison program", func(t *testing.T) {
 		sourcePath := writeSourceFile(t, "m14_valid.oct", "fn Main() -> Int {\n    if 3 >= 2 {\n        while 1 < 2 {\n            return 7\n        }\n    }\n    return 0\n}\n")
 		stdout, stderr, err := executeCLI("run", sourcePath)
@@ -1406,7 +1406,7 @@ func TestM14ComparisonsRunAndBuild(t *testing.T) {
 	})
 }
 
-func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
+func TestVectorsMatricesRunAndBuild(t *testing.T) {
 	valid := []struct {
 		name   string
 		source string
@@ -1493,7 +1493,7 @@ func TestM16VectorsMatricesRunAndBuild(t *testing.T) {
 	}
 }
 
-func TestM91NestedArraysRunAndBuild(t *testing.T) {
+func TestNestedArraysRunAndBuild(t *testing.T) {
 	valid := []struct {
 		name   string
 		source string
@@ -1551,7 +1551,7 @@ func TestM91NestedArraysRunAndBuild(t *testing.T) {
 	}
 }
 
-func TestM18MutableLocalsAndReassignment(t *testing.T) {
+func TestMutableLocalsAndReassignment(t *testing.T) {
 	valid := []struct {
 		name   string
 		source string

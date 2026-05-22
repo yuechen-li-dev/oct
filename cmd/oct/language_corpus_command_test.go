@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestM11ValidProgramCorpus(t *testing.T) {
+func TestValidProgramCorpus(t *testing.T) {
 	tests := []struct {
 		file       string
 		wantStdout string
@@ -56,7 +56,7 @@ func TestM11ValidProgramCorpus(t *testing.T) {
 	}
 }
 
-func TestM11InvalidProgramCorpus(t *testing.T) {
+func TestInvalidProgramCorpus(t *testing.T) {
 	tests := []struct {
 		file        string
 		wantMessage string

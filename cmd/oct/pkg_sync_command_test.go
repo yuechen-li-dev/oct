@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestM71cPkgSyncDirectDependencies(t *testing.T) {
+func TestPkgSyncPkgSyncDirectDependencies(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
@@ -35,7 +35,7 @@ func TestM71cPkgSyncDirectDependencies(t *testing.T) {
 	}
 }
 
-func TestM71cPkgSyncCacheHitReuse(t *testing.T) {
+func TestPkgSyncPkgSyncCacheHitReuse(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	dep := createGitRepoWithManifest(t, manifestWithDeps("Signal", "1.0.0", nil))
@@ -73,7 +73,7 @@ func TestM71cPkgSyncCacheHitReuse(t *testing.T) {
 	}
 }
 
-func TestM71cPkgSyncMissingManifest(t *testing.T) {
+func TestPkgSyncPkgSyncMissingManifest(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	dir := t.TempDir()
 	stdout, stderr, err := executeCLIInDir(dir, "pkg", "sync")
@@ -85,7 +85,7 @@ func TestM71cPkgSyncMissingManifest(t *testing.T) {
 	}
 }
 
-func TestM71cPkgSyncFailsWhenDependencySourceMissing(t *testing.T) {
+func TestPkgSyncPkgSyncFailsWhenDependencySourceMissing(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	projectDir := createProjectWithManifest(t, projectManifestWithDeps([]string{
 		`Dependency { Name: "Signal" VersionRequirement: "^1.0.0" }`,
@@ -99,7 +99,7 @@ func TestM71cPkgSyncFailsWhenDependencySourceMissing(t *testing.T) {
 	}
 }
 
-func TestM71cPkgSyncFailsOnMalformedDependencyMetadata(t *testing.T) {
+func TestPkgSyncPkgSyncFailsOnMalformedDependencyMetadata(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	projectDir := createProjectWithManifest(t, strings.Join([]string{
 		"package Manifest",
@@ -135,7 +135,7 @@ func TestM71cPkgSyncFailsOnMalformedDependencyMetadata(t *testing.T) {
 	}
 }
 
-func TestM71cPkgSyncDeterministicOutput(t *testing.T) {
+func TestPkgSyncPkgSyncDeterministicOutput(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	dep := createGitRepoWithManifest(t, manifestWithDeps("Signal", "1.0.0", nil))

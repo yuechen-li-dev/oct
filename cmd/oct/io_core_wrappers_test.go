@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMx103bIOCoreWrappers(t *testing.T) {
+func TestIOCoreWrappers(t *testing.T) {
 	root := "../../Libraries/IO"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

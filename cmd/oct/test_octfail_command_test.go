@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestM24gOctFailDoesNotBreakOctestExecution(t *testing.T) {
+func TestOctFailOctFailDoesNotBreakOctestExecution(t *testing.T) {
 	root := filepath.Join("..", "..", "testdata", "m24g", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -18,7 +18,7 @@ func TestM24gOctFailDoesNotBreakOctestExecution(t *testing.T) {
 	}
 }
 
-func TestM24gOctFailFailsWhenExpectedMessageDoesNotMatch(t *testing.T) {
+func TestOctFailOctFailFailsWhenExpectedMessageDoesNotMatch(t *testing.T) {
 	root := t.TempDir()
 	fixture := strings.Join([]string{
 		"expect error: \"totally different message\"",
@@ -46,7 +46,7 @@ func TestM24gOctFailFailsWhenExpectedMessageDoesNotMatch(t *testing.T) {
 	}
 }
 
-func TestM24gOctFailFailsWhenCompilationUnexpectedlySucceeds(t *testing.T) {
+func TestOctFailOctFailFailsWhenCompilationUnexpectedlySucceeds(t *testing.T) {
 	root := t.TempDir()
 	fixture := strings.Join([]string{
 		"expect error: \"must fail\"",
@@ -73,7 +73,7 @@ func TestM24gOctFailFailsWhenCompilationUnexpectedlySucceeds(t *testing.T) {
 	}
 }
 
-func TestM24gOctFailRejectsMalformedHeader(t *testing.T) {
+func TestOctFailOctFailRejectsMalformedHeader(t *testing.T) {
 	root := t.TempDir()
 	fixture := "expect error \"missing colon\"\n\nfn Main() -> Int { return 1 }\n"
 	if err := os.WriteFile(filepath.Join(root, "bad_header.octfail"), []byte(fixture), 0o644); err != nil {
