@@ -1,0 +1,215 @@
+package FmBrownNoiseKalman
+
+import Shared
+import String
+import Artifact
+import Markdown
+import Json
+
+record M4Case { SampleRate: Float Duration: Float MessageHz: Float InputSNRDb: Float Seed: Int }
+record M4AdaptiveResult { Recovered: Float[] Innovation: Float[] ATrace: Float[] FinalA: Float ClampCount: Int }
+record M4TraceSummary {
+    RepresentationKind: String TickCount: Int InitializeCount: Int PredictCount: Int ObserveCount: Int ComputeGainCount: Int CorrectCount: Int AdaptNoiseModelCount: Int RecordCount: Int AdvanceCount: Int DoneCount: Int
+    DoneReached: Bool FirstState: String LastState: String SampleCount: Int RecoveredCount: Int InnovationCount: Int ATraceCount: Int FirstRecovered: Float LastRecovered: Float FirstInnovation: Float LastInnovation: Float FirstA: Float FinalA: Float ClampCount: Int
+}
+record M4MetricRow { Method: String OutputSNRDb: Float Nrmse: Float WhitenessCost: Float Correlation: Float FinalA: Float }
+record M4ScienceSummary { FixedOutputSNRDb: Float AdaptiveOutputSNRDb: Float DeltaOutputSNRDb: Float FixedWhitenessCost: Float AdaptiveWhitenessCost: Float WhitenessRatio: Float Label: String }
+record M4Run {
+    Case: M4Case Clean: Float[] Observed: Float[] ProceduralAdaptive: M4AdaptiveResult OctomataAdaptive: M4AdaptiveResult FixedBaseline: Shared.KalmanResult Trace: M4TraceSummary
+    Metrics: M4MetricRow[] Science: M4ScienceSummary MaxRecoveredDiff: Float MaxInnovationDiff: Float MaxADiff: Float FinalADiff: Float ToleranceUsed: Float
+}
+
+flow M4AdaptiveMachine(observed: Float[]) -> Bool {
+    board {
+        Index: Int SampleCount: Int Measurement: Float Estimate: Float Velocity: Float NoiseState: Float Covariance: Float VelocityCovariance: Float NoiseCovariance: Float
+        PredictedEstimate: Float PredictedVelocity: Float PredictedNoiseState: Float PredictedCovariance: Float PredictedVelocityCovariance: Float PredictedNoiseCovariance: Float
+        Innovation: Float PreviousInnovation: Float Gain: Float VelocityGain: Float NoiseGain: Float A: Float ProposedA: Float LearningRate: Float ClampCount: Int
+        RecoveredCurrent: Float RecordReady: Bool DoneFlag: Bool
+    }
+    state Initialize {
+        board.Index = 0
+        board.SampleCount = Len(observed)
+        board.Measurement = 0.0
+        board.Estimate = 0.0
+        board.Velocity = 0.0
+        board.NoiseState = 0.0
+        board.Covariance = 1.0
+        board.VelocityCovariance = 1.0
+        board.NoiseCovariance = 1.0
+        board.PredictedEstimate = 0.0
+        board.PredictedVelocity = 0.0
+        board.PredictedNoiseState = 0.0
+        board.PredictedCovariance = 1.0
+        board.PredictedVelocityCovariance = 1.0
+        board.PredictedNoiseCovariance = 1.0
+        board.Innovation = 0.0
+        board.PreviousInnovation = 0.0
+        board.Gain = 0.0
+        board.VelocityGain = 0.0
+        board.NoiseGain = 0.0
+        board.A = 0.0
+        board.ProposedA = 0.0
+        board.LearningRate = 0.05
+        board.ClampCount = 0
+        board.RecoveredCurrent = 0.0
+        board.RecordReady = false
+        board.DoneFlag = false
+        goto Predict
+    }
+    state Predict { board.RecordReady = false when { case board.Index >= board.SampleCount -> goto Done else -> goto Observe } }
+    state Observe {
+        board.Measurement = observed[board.Index]
+        board.PredictedEstimate = board.Estimate + board.Velocity
+        board.PredictedVelocity = board.Velocity
+        board.PredictedNoiseState = board.A * board.NoiseState
+        board.PredictedCovariance = board.Covariance + board.VelocityCovariance + 1e-3
+        board.PredictedVelocityCovariance = board.VelocityCovariance + 1e-2
+        board.PredictedNoiseCovariance = board.A * board.A * board.NoiseCovariance + 0.1
+        goto ComputeGain
+    }
+    state ComputeGain {
+        board.Innovation = board.Measurement - (board.PredictedEstimate + board.PredictedNoiseState)
+        let s = board.PredictedCovariance + board.PredictedNoiseCovariance + 1.0
+        board.Gain = board.PredictedCovariance / s
+        board.VelocityGain = board.PredictedVelocityCovariance / s
+        board.NoiseGain = board.PredictedNoiseCovariance / s
+        goto Correct
+    }
+    state Correct {
+        board.Estimate = board.PredictedEstimate + board.Gain * board.Innovation
+        board.Velocity = board.PredictedVelocity + board.VelocityGain * board.Innovation
+        board.NoiseState = board.PredictedNoiseState + board.NoiseGain * board.Innovation
+        board.Covariance = (1.0 - board.Gain) * board.PredictedCovariance
+        board.VelocityCovariance = (1.0 - board.VelocityGain) * board.PredictedVelocityCovariance
+        board.NoiseCovariance = (1.0 - board.NoiseGain) * board.PredictedNoiseCovariance
+        goto AdaptNoiseModel
+    }
+    state AdaptNoiseModel {
+        board.ProposedA = board.A + board.LearningRate * board.PreviousInnovation * board.Innovation
+        board.A = board.ProposedA
+        if board.A > 0.99 { board.A = 0.99 }
+        if board.A < -0.99 { board.A = -0.99 }
+        board.PreviousInnovation = board.Innovation
+        goto Record
+    }
+    state Record { board.RecoveredCurrent = board.Estimate board.RecordReady = true goto Advance }
+    state Advance { board.Index = board.Index + 1 suspend goto Predict }
+    state Done { board.DoneFlag = true return true }
+}
+
+fn M4TinyCase() -> M4Case { return M4Case { SampleRate: 2000.0 Duration: 0.5 MessageHz: 25.0 InputSNRDb: -12.0 Seed: 12345 } }
+fn M4SampleCount(c: M4Case) -> Int { return FloorToInt(c.SampleRate * c.Duration) }
+fn M4BuildClean(c: M4Case) -> Float[] { let n = M4SampleCount(c) var clean: Float[] = [] var x = 0.0 let dx = 1.0 / c.SampleRate for i in 0..n { clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * x)) x = x + dx } return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0) }
+fn M4CountState(history: String[], name: String) -> Int { var c = 0 for i in 0..Len(history) { if history[i] == name { c = c + 1 } } return c }
+fn M4MaxAbsDiff(a: Float[], b: Float[]) -> Float { var m = 0.0 for i in 0..Len(a) { let d = Abs(a[i] - b[i]) if d > m { m = d } } return m }
+
+fn M4ProceduralAdaptive(observed: Float[]) -> M4AdaptiveResult {
+    var x0 = 0.0
+    var x1 = 0.0
+    var xn = 0.0
+    var p00 = 1.0
+    var p11 = 1.0
+    var p22 = 1.0
+    var a = 0.0
+    var prevInnovation = 0.0
+    var clampCount = 0
+    var out: Float[] = []
+    var innovation: Float[] = []
+    var aTrace: Float[] = []
+    for k in 0..Len(observed) {
+        let x0Pred = x0 + x1
+        let x1Pred = x1
+        let xnPred = a * xn
+        let p00Pred = p00 + p11 + 1e-3
+        let p11Pred = p11 + 1e-2
+        let p22Pred = a * a * p22 + 0.1
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + 1.0
+        let k0 = p00Pred / s
+        let k1 = p11Pred / s
+        let k2 = p22Pred / s
+        x0 = x0Pred + k0 * y
+        x1 = x1Pred + k1 * y
+        xn = xnPred + k2 * y
+        p00 = (1.0 - k0) * p00Pred
+        p11 = (1.0 - k1) * p11Pred
+        p22 = (1.0 - k2) * p22Pred
+        a = a + 0.05 * prevInnovation * y
+        if a > 0.99 { a = 0.99 }
+        if a < -0.99 { a = -0.99 }
+        prevInnovation = y
+        out = Append(out, x0)
+        innovation = Append(innovation, y)
+        aTrace = Append(aTrace, a)
+    }
+    return M4AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount }
+}
+
+fn RunM4Adaptive(c: M4Case) -> M4Run ! Error {
+    let clean = M4BuildClean(c)
+    let observed = Shared.AddNoiseAtSnr(clean, Shared.GenerateBrownNoise(Len(clean), c.Seed), c.InputSNRDb)
+    let procedural = M4ProceduralAdaptive(observed)
+    let fixed = Shared.FixedWhiteKalmanFilter(observed)
+    let machine = M4AdaptiveMachine(observed)
+    var recovered: Float[] = []
+    var innovation: Float[] = []
+    var aTrace: Float[] = []
+    while Complete(machine) == false {
+        Step(machine)
+        let snapshot = BoardSnapshot(machine)!
+        if snapshot.RecordReady {
+            recovered = Append(recovered, snapshot.RecoveredCurrent)
+            innovation = Append(innovation, snapshot.Innovation)
+            aTrace = Append(aTrace, snapshot.A)
+        }
+    }
+    let _ = Result(machine)!
+    let history = StateHistory(machine)
+    let finalSnapshot = BoardSnapshot(machine)!
+    let oct = M4AdaptiveResult { Recovered: recovered Innovation: innovation ATrace: aTrace FinalA: finalSnapshot.A ClampCount: finalSnapshot.ClampCount }
+    let tol = 1e-9
+    let metrics = [
+        M4MetricRow { Method: "ProceduralAdaptive" OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, procedural.Recovered)) Nrmse: Shared.Nrmse(clean, procedural.Recovered) WhitenessCost: Shared.WhitenessCost(procedural.Innovation) Correlation: Shared.Correlation(clean, procedural.Recovered) FinalA: procedural.FinalA },
+        M4MetricRow { Method: "OctomataAdaptive" OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, oct.Recovered)) Nrmse: Shared.Nrmse(clean, oct.Recovered) WhitenessCost: Shared.WhitenessCost(oct.Innovation) Correlation: Shared.Correlation(clean, oct.Recovered) FinalA: oct.FinalA },
+        M4MetricRow { Method: "FixedBaseline" OutputSNRDb: Shared.MeasureSnrDb(clean, Shared.Sub(clean, fixed.Recovered)) Nrmse: Shared.Nrmse(clean, fixed.Recovered) WhitenessCost: Shared.WhitenessCost(fixed.Innovation) Correlation: Shared.Correlation(clean, fixed.Recovered) FinalA: fixed.FinalA }
+    ]
+    let snrEpsilonDb = 0.01
+    let whitenessRelativeEpsilon = 0.01
+    let delta = metrics[1].OutputSNRDb - metrics[2].OutputSNRDb
+    let ratio = metrics[1].WhitenessCost / (metrics[2].WhitenessCost + 1e-12)
+    var label = "NoMeaningfulWin"
+    if delta > snrEpsilonDb and ratio < 1.0 - whitenessRelativeEpsilon { label = "AdaptiveWin" }
+    if delta <= snrEpsilonDb and ratio < 1.0 - whitenessRelativeEpsilon { label = "WhitenessOnly" }
+    if delta > snrEpsilonDb and ratio >= 1.0 - whitenessRelativeEpsilon { label = "RecoveryOnly" }
+    let science = M4ScienceSummary { FixedOutputSNRDb: metrics[2].OutputSNRDb AdaptiveOutputSNRDb: metrics[1].OutputSNRDb DeltaOutputSNRDb: delta FixedWhitenessCost: metrics[2].WhitenessCost AdaptiveWhitenessCost: metrics[1].WhitenessCost WhitenessRatio: ratio Label: label }
+    let trace = M4TraceSummary {
+        RepresentationKind: "RealOctomataScalarBoardAdaptiveAR1" TickCount: Len(history) InitializeCount: M4CountState(history, "Initialize") PredictCount: M4CountState(history, "Predict") ObserveCount: M4CountState(history, "Observe") ComputeGainCount: M4CountState(history, "ComputeGain") CorrectCount: M4CountState(history, "Correct") AdaptNoiseModelCount: M4CountState(history, "AdaptNoiseModel") RecordCount: M4CountState(history, "Record") AdvanceCount: M4CountState(history, "Advance") DoneCount: M4CountState(history, "Done")
+        DoneReached: finalSnapshot.DoneFlag FirstState: if Len(history) > 0 { history[0] } else { "" } LastState: if Len(history) > 0 { history[Len(history)-1] } else { "" }
+        SampleCount: Len(clean) RecoveredCount: Len(recovered) InnovationCount: Len(innovation) ATraceCount: Len(aTrace)
+        FirstRecovered: if Len(recovered)>0 { recovered[0] } else { 0.0 } LastRecovered: if Len(recovered)>0 { recovered[Len(recovered)-1] } else { 0.0 }
+        FirstInnovation: if Len(innovation)>0 { innovation[0] } else { 0.0 } LastInnovation: if Len(innovation)>0 { innovation[Len(innovation)-1] } else { 0.0 }
+        FirstA: if Len(aTrace)>0 { aTrace[0] } else { 0.0 } FinalA: oct.FinalA ClampCount: oct.ClampCount
+    }
+    return M4Run { Case: c Clean: clean Observed: observed ProceduralAdaptive: procedural OctomataAdaptive: oct FixedBaseline: fixed Trace: trace Metrics: metrics Science: science MaxRecoveredDiff: M4MaxAbsDiff(procedural.Recovered, oct.Recovered) MaxInnovationDiff: M4MaxAbsDiff(procedural.Innovation, oct.Innovation) MaxADiff: M4MaxAbsDiff(procedural.ATrace, oct.ATrace) FinalADiff: Abs(procedural.FinalA - oct.FinalA) ToleranceUsed: tol }
+}
+
+fn M4ArtifactWriteAll() -> Int {
+    let run = RunM4Adaptive(M4TinyCase())!
+    let report = Markdown.Report([
+        Markdown.Title("FM Brown-Noise Kalman M4"),
+        Markdown.Subtitle("Octomata adaptive AR(1) scalar-board estimator loop"),
+        Markdown.Section("Goal", [Markdown.KeyValueTable(["goal"], ["Can adaptive AR(1) colored-noise Kalman estimation be represented as explicit Octomata states with visible adaptation while matching a procedural baseline on a deterministic tiny case?"])]),
+        Markdown.Section("Representation", [Markdown.KeyValueTable(["representation", "boardArrays", "externalAccumulators"], [run.Trace.RepresentationKind, "none", "recovered/innovation/aTrace external via BoardSnapshot(machine)!"])]),
+        Markdown.Section("State-machine phases", [Markdown.Bullets(["Initialize", "Predict", "Observe", "ComputeGain", "Correct", "AdaptNoiseModel", "Record", "Advance", "Done"])]),
+        Markdown.Section("Procedural-vs-Octomata adaptive equivalence", [Markdown.KeyValueTable(["tolerance", "maxRecoveredAbsDiff", "maxInnovationAbsDiff", "maxATraceAbsDiff", "finalADiff", "clampCountProcedural", "clampCountOctomata"], [String.From<Float>(run.ToleranceUsed), String.From<Float>(run.MaxRecoveredDiff), String.From<Float>(run.MaxInnovationDiff), String.From<Float>(run.MaxADiff), String.From<Float>(run.FinalADiff), String.From<Int>(run.ProceduralAdaptive.ClampCount), String.From<Int>(run.OctomataAdaptive.ClampCount)])]),
+        Markdown.Section("Fixed-vs-adaptive science comparison", [Markdown.KeyValueTable(["fixedOutputSNRDb", "adaptiveOutputSNRDb", "deltaOutputSNRDb", "fixedWhitenessCost", "adaptiveWhitenessCost", "whitenessRatio", "label", "finalA"], [String.From<Float>(run.Science.FixedOutputSNRDb), String.From<Float>(run.Science.AdaptiveOutputSNRDb), String.From<Float>(run.Science.DeltaOutputSNRDb), String.From<Float>(run.Science.FixedWhitenessCost), String.From<Float>(run.Science.AdaptiveWhitenessCost), String.From<Float>(run.Science.WhitenessRatio), run.Science.Label, String.From<Float>(run.OctomataAdaptive.FinalA)])]),
+        Markdown.Section("Trace summary", [Markdown.KeyValueTable(["doneReached", "sampleCount", "ticks", "initialize", "predict", "observe", "computeGain", "correct", "adaptNoiseModel", "record", "advance", "done", "firstState", "lastState", "recoveredCount", "innovationCount", "aTraceCount", "firstInnovation", "lastInnovation", "firstRecovered", "lastRecovered", "firstA", "finalA", "clampCount"], [ToString(run.Trace.DoneReached), String.From<Int>(run.Trace.SampleCount), String.From<Int>(run.Trace.TickCount), String.From<Int>(run.Trace.InitializeCount), String.From<Int>(run.Trace.PredictCount), String.From<Int>(run.Trace.ObserveCount), String.From<Int>(run.Trace.ComputeGainCount), String.From<Int>(run.Trace.CorrectCount), String.From<Int>(run.Trace.AdaptNoiseModelCount), String.From<Int>(run.Trace.RecordCount), String.From<Int>(run.Trace.AdvanceCount), String.From<Int>(run.Trace.DoneCount), run.Trace.FirstState, run.Trace.LastState, String.From<Int>(run.Trace.RecoveredCount), String.From<Int>(run.Trace.InnovationCount), String.From<Int>(run.Trace.ATraceCount), String.From<Float>(run.Trace.FirstInnovation), String.From<Float>(run.Trace.LastInnovation), String.From<Float>(run.Trace.FirstRecovered), String.From<Float>(run.Trace.LastRecovered), String.From<Float>(run.Trace.FirstA), String.From<Float>(run.Trace.FinalA), String.From<Int>(run.Trace.ClampCount)])]),
+        Markdown.Section("Limitations", [Markdown.Callout("note", ["M4 uses scalar incremental lag-1 adaptation a <- clamp(a + learningRate*e[k-1]*e[k]) for scalar-board visibility.", "Shared adaptive windowed update (window=64) is a different variant and is explicitly not claimed as equivalent."])]),
+        Markdown.Section("Next recommendation", [Markdown.KeyValueTable(["next"], ["Try windowed adaptation with external innovation history in driver while preserving scalar-only board fields."])])
+    ])
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.octagon", run)
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.md", report)
+    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M4/metrics.csv", [["method", "outputSNRDb", "nrmse", "whitenessCost", "correlation", "finalA"], [run.Metrics[0].Method, String.From<Float>(run.Metrics[0].OutputSNRDb), String.From<Float>(run.Metrics[0].Nrmse), String.From<Float>(run.Metrics[0].WhitenessCost), String.From<Float>(run.Metrics[0].Correlation), String.From<Float>(run.Metrics[0].FinalA)], [run.Metrics[1].Method, String.From<Float>(run.Metrics[1].OutputSNRDb), String.From<Float>(run.Metrics[1].Nrmse), String.From<Float>(run.Metrics[1].WhitenessCost), String.From<Float>(run.Metrics[1].Correlation), String.From<Float>(run.Metrics[1].FinalA)], [run.Metrics[2].Method, String.From<Float>(run.Metrics[2].OutputSNRDb), String.From<Float>(run.Metrics[2].Nrmse), String.From<Float>(run.Metrics[2].WhitenessCost), String.From<Float>(run.Metrics[2].Correlation), String.From<Float>(run.Metrics[2].FinalA)]])
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M4/metrics.json", Json.Object(String.Concat(["{\"tolerance\":", String.From<Float>(run.ToleranceUsed), ",\"maxRecoveredDiff\":", String.From<Float>(run.MaxRecoveredDiff), ",\"maxInnovationDiff\":", String.From<Float>(run.MaxInnovationDiff), ",\"maxADiff\":", String.From<Float>(run.MaxADiff), ",\"finalADiff\":", String.From<Float>(run.FinalADiff), "}"])))
+    return 0
+}

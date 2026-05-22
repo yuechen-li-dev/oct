@@ -1,0 +1,70 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.FlowSmoke")]
+fn M4FlowReachesDone() -> Void ! Error { let run = RunM4Adaptive(M4TinyCase())? Assert.True(run.Trace.DoneReached, "done reached") }
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.FlowSmoke")]
+fn M4LengthsMatchSampleCount() -> Void ! Error {
+    let run = RunM4Adaptive(M4TinyCase())?
+    let expected = M4SampleCount(run.Case)
+    Assert.Equal(expected, Len(run.OctomataAdaptive.Recovered), "recovered")
+    Assert.Equal(expected, Len(run.OctomataAdaptive.Innovation), "innovation")
+    Assert.Equal(expected, Len(run.OctomataAdaptive.ATrace), "a trace")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.FlowSmoke")]
+fn M4ProceduralAndOctomataEquivalentWithinTolerance() -> Void ! Error {
+    let run = RunM4Adaptive(M4TinyCase())?
+    Assert.True(run.MaxRecoveredDiff <= run.ToleranceUsed, "recovered diff")
+    Assert.True(run.MaxInnovationDiff <= run.ToleranceUsed, "innovation diff")
+    Assert.True(run.MaxADiff <= run.ToleranceUsed, "a diff")
+    Assert.True(run.FinalADiff <= run.ToleranceUsed, "final a diff")
+    Assert.Equal(run.ProceduralAdaptive.ClampCount, run.OctomataAdaptive.ClampCount, "clamp count")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.FlowSmoke")]
+fn M4MetricsFiniteAndTraceContainsAdaptNoiseModel() -> Void ! Error {
+    let run = RunM4Adaptive(M4TinyCase())?
+    for i in 0..Len(run.Metrics) {
+        Assert.True(Abs(run.Metrics[i].OutputSNRDb) < 1e300, "snr finite")
+        Assert.True(Abs(run.Metrics[i].Nrmse) < 1e300, "nrmse finite")
+        Assert.True(Abs(run.Metrics[i].WhitenessCost) < 1e300, "whiteness finite")
+        Assert.True(Abs(run.Metrics[i].Correlation) <= 1.0 + 1e-9, "correlation finite")
+    }
+    Assert.True(run.Trace.AdaptNoiseModelCount > 0, "adapt state present")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.FlowSmoke")]
+fn M4BoardSnapshotPathExercised() -> Void ! Error {
+    let run = RunM4Adaptive(M4TinyCase())?
+    Assert.Equal("RealOctomataScalarBoardAdaptiveAR1", run.Trace.RepresentationKind, "representation")
+    Assert.Equal(run.Trace.SampleCount, run.Trace.RecoveredCount, "recovered count")
+    Assert.Equal(run.Trace.SampleCount, run.Trace.InnovationCount, "innovation count")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M4")]
+[Suite("Experiments.FmBrownNoiseKalman.M4.Artifacts")]
+fn M4ArtifactsWrite() -> Void ! Error {
+    let _ = M4ArtifactWriteAll()
+    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.octagon")?
+    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.md")?
+    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/metrics.csv")?
+    let json = IO.Load("Experiments/FmBrownNoiseKalman/M4/metrics.json")?
+    Assert.True(Len(octagon) > 0, "octagon")
+    Assert.True(Len(md) > 0, "markdown")
+    Assert.True(Len(csv) > 0, "csv")
+    Assert.True(Len(json) > 0, "json")
+}
