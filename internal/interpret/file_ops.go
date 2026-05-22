@@ -49,3 +49,24 @@ func FileWriteTextForSidecar(path string, text string) error {
 func FileExistsForSidecar(path string) (bool, error) {
 	return fileExists(path)
 }
+
+func FileDeleteForSidecar(path string) error {
+	if err := os.Remove(path); err != nil {
+		return mapPathError(path, err)
+	}
+	return nil
+}
+
+func DirectoryMakeForSidecar(path string) error {
+	if err := os.Mkdir(path, 0o755); err != nil {
+		return mapPathError(path, err)
+	}
+	return nil
+}
+
+func DirectoryMakeAllForSidecar(path string) error {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return mapPathError(path, err)
+	}
+	return nil
+}

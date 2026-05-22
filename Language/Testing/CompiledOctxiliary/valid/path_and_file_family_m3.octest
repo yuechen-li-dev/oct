@@ -1,0 +1,30 @@
+package Main
+
+
+[Fact]
+fn PathDirectLoweringCompiledNoSidecarM3() -> Void {
+    let joined = PathJoin(["tmp", "x.txt"])
+    Assert.True(Contains(joined, "tmp"), "PathJoin should include segment")
+    Assert.Equal("x.txt", PathBaseName("tmp/x.txt"), "PathBaseName should extract file")
+    Assert.Equal(".txt", PathExtension("tmp/x.txt"), "PathExtension should extract extension")
+    Assert.Equal("x", PathStem("tmp/x.txt"), "PathStem should extract stem")
+    Assert.Equal("tmp", PathParent("tmp/x.txt"), "PathParent should extract parent")
+    Assert.Equal("tmp/x.txt", PathClean("tmp/./x.txt"), "PathClean should normalize path")
+}
+
+[Fact]
+fn DirectoryMakeAllAndFileDeleteCompiledViaSidecarM3() -> Void ! Error {
+    let root = ".tmp/m3-dir"
+    let nested = PathJoin([root, "a", "b"])
+    let file = PathJoin([nested, "payload.txt"])
+    let _mk = DirectoryMakeAll(nested)?
+    let _w = FileWriteText(file, "m3")?
+    Assert.True(FileExists(file), "FileExists should see created file")
+    let _d = FileDelete(file)?
+    Assert.False(FileExists(file), "FileDelete should remove created file")
+}
+
+[Fact]
+fn MissingSidecarStillOnlyAffectsSidecarBackedOpsM3() -> Void {
+    Assert.True(FileExists("docs/internal/octxiliary.md"), "FileExists direct lowering should not require sidecar")
+}
