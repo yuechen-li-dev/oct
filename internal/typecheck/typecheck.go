@@ -2687,7 +2687,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" {
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -5065,8 +5065,64 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 		delegate = "JsonSave"
 	case "ArtifactWriteOctagon":
 		delegate = "WriteOctagon"
+	case "ArtifactProgress":
+		delegate = ""
+	case "ArtifactCheckpoint":
+		delegate = ""
 	default:
 		return ExprType{}, fmt.Errorf("runtime invariant violation: unknown artifact builtin '%s'", callee)
+	}
+	if callee == "ArtifactCheckpoint" {
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Checkpoint' expects 1 arguments, got %d", len(arguments))
+		}
+		labelType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if labelType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if labelType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Checkpoint' argument 1 expects String, got %s", labelType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
+	}
+	if callee == "ArtifactProgress" {
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects 3 arguments, got %d", len(arguments))
+		}
+		labelType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if labelType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if labelType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 1 expects String, got %s", labelType.ValueType)
+		}
+		currentType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if currentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if currentType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 2 expects Int, got %s", currentType.ValueType)
+		}
+		totalType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if totalType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if totalType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 3 expects Int, got %s", totalType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 	}
 	_, err := c.checkBuiltinCallExpr(scope, delegate, nil, arguments, ctx)
 	if err != nil {

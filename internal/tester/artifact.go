@@ -56,7 +56,18 @@ func executeArtifactsSingleRoot(path string, stdout io.Writer) error {
 	for _, artifact := range artifacts {
 		qualified := fmt.Sprintf("%s.%s", artifact.pkg, artifact.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, artifact.filePath))
-		if err := interpret.ExecuteFunction(program, artifact.pkg, artifact.name, stdout); err != nil {
+		err := interpret.ExecuteFunctionWithArgsAndOptions(program, artifact.pkg, artifact.name, nil, stdout, interpret.ExecuteOptions{
+			ArtifactProgressRecorder: func(event interpret.ArtifactProgressEvent) {
+				if event.Kind == "checkpoint" {
+					_, _ = fmt.Fprintf(stdout, "CHECKPOINT %s: %s\n", qualified, event.Label)
+					return
+				}
+				if event.Kind == "progress" {
+					_, _ = fmt.Fprintf(stdout, "PROGRESS %s: %s %d/%d\n", qualified, event.Label, event.Current, event.Total)
+				}
+			},
+		})
+		if err != nil {
 			_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): %v\n", qualified, shortPath(path, artifact.filePath), err)
 			return fmt.Errorf("1 artifact(s) failed")
 		}

@@ -296,21 +296,23 @@ func (v Value) String() string {
 }
 
 type interpreter struct {
-	functions      map[string]ast.FunctionDecl
-	records        map[string]ast.RecordDecl
-	enums          map[string]ast.EnumDecl
-	flows          map[string]ast.FlowDecl
-	functionSource map[string]string
-	flowSource     map[string]string
-	packageImports map[string]map[string]struct{}
-	stdout         io.Writer
-	workbooks      wrapperHandleStore[*xlsxWorkbook]
-	images         wrapperHandleStore[*wrapperImage]
-	pdfPages       wrapperHandleStore[*wrapperPDFPage]
-	uiMounts       wrapperHandleStore[*uiMount]
-	wrappers       wrapperBuiltinRegistry
-	assertRecorder func()
-	ctx            context.Context
+	functions                map[string]ast.FunctionDecl
+	records                  map[string]ast.RecordDecl
+	enums                    map[string]ast.EnumDecl
+	flows                    map[string]ast.FlowDecl
+	functionSource           map[string]string
+	flowSource               map[string]string
+	packageImports           map[string]map[string]struct{}
+	stdout                   io.Writer
+	workbooks                wrapperHandleStore[*xlsxWorkbook]
+	images                   wrapperHandleStore[*wrapperImage]
+	pdfPages                 wrapperHandleStore[*wrapperPDFPage]
+	uiMounts                 wrapperHandleStore[*uiMount]
+	wrappers                 wrapperBuiltinRegistry
+	assertRecorder           func()
+	artifactProgressRecorder func(event ArtifactProgressEvent)
+	currentFunctionName      string
+	ctx                      context.Context
 }
 
 type xlsxWorkbook struct {
@@ -318,9 +320,18 @@ type xlsxWorkbook struct {
 }
 
 type ExecuteOptions struct {
-	OutputPathPrefix  string
-	AssertionRecorder func()
-	Context           context.Context
+	OutputPathPrefix         string
+	AssertionRecorder        func()
+	ArtifactProgressRecorder func(event ArtifactProgressEvent)
+	Context                  context.Context
+}
+
+type ArtifactProgressEvent struct {
+	Kind     string
+	Function string
+	Label    string
+	Current  int64
+	Total    int64
 }
 
 type SkipTestError struct {
@@ -436,7 +447,9 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 
 	interpreter := newInterpreter(program, stdout)
 	interpreter.assertRecorder = options.AssertionRecorder
+	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
 	interpreter.ctx = options.Context
+	interpreter.currentFunctionName = functionName
 	key := pkgName + "." + functionName
 	function, ok := interpreter.functions[key]
 	if !ok {
