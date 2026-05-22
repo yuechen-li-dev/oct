@@ -494,9 +494,9 @@ fn RunM4bSweep() -> M4bReport ! Error {
 }
 
 fn M4bArtifactWriteAll() -> Int {
-    ArtifactCheckpoint("artifactStart")
+    Artifact.Checkpoint("artifactStart")
     let report = RunM4bSweep()!
-    ArtifactCheckpoint("beforeMarkdownReportBuild")
+    Artifact.Checkpoint("beforeMarkdownReportBuild")
 
     var csv = [["seed","inputSNRDb","messageHz","deltaOutputSNRDb","whitenessRatio","finalA","clampCount","label"]]
     for i in 0..Len(report.Cases) {
@@ -544,13 +544,13 @@ fn M4bArtifactWriteAll() -> Int {
             ])
         ])
     ])
-    ArtifactCheckpoint("beforeOctagonBuildWrite")
+    Artifact.Checkpoint("beforeOctagonBuildWrite")
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.octagon", report)
-    ArtifactCheckpoint("beforeMarkdownWrite")
+    Artifact.Checkpoint("beforeMarkdownWrite")
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.md", md)
-    ArtifactCheckpoint("beforeCsvWrite")
+    Artifact.Checkpoint("beforeCsvWrite")
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M4b/sweep_metrics.csv", csv)
-    ArtifactCheckpoint("beforeJsonWrite")
+    Artifact.Checkpoint("beforeJsonWrite")
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json",
         Json.Object(String.Concat([
@@ -564,7 +564,7 @@ fn M4bArtifactWriteAll() -> Int {
             "}"
         ]))
     )
-    ArtifactCheckpoint("done")
+    Artifact.Checkpoint("done")
 
     return 0
 }

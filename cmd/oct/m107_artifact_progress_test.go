@@ -10,8 +10,9 @@ import (
 
 func TestOctArtifactPrintsProgressAndCheckpointEvents(t *testing.T) {
 	root := t.TempDir()
+	writeOctPkgFile(t, root, "Artifact", "artifact.oct", "package Artifact\nfn Checkpoint(label: String) -> Void { ArtifactCheckpoint(label) }\nfn Progress(label: String, current: Int, total: Int) -> Void { ArtifactProgress(label, current, total) }\n")
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
-	writeOctPkgFile(t, root, "Main", "artifact.octest", "package Main\n[Artifact]\nfn Emit() -> Void {\nArtifactCheckpoint(\"start\")\nArtifactProgress(\"work\", 1, 3)\nArtifactProgress(\"work\", 3, 3)\nArtifactCheckpoint(\"done\")\n}\n")
+	writeOctPkgFile(t, root, "Main", "artifact.octest", "package Main\nimport Artifact\n[Artifact]\nfn Emit() -> Void {\nArtifact.Checkpoint(\"start\")\nArtifact.Progress(\"work\", 1, 3)\nArtifact.Progress(\"work\", 3, 3)\nArtifact.Checkpoint(\"done\")\n}\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
