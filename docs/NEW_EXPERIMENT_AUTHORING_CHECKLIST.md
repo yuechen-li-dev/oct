@@ -8,6 +8,7 @@
 - Milestones should not import each other; place shared helpers under `Shared`.
 - Use Markdown report pattern: `Markdown.Title` + `Markdown.Subtitle` + `Markdown.Report([...])`.
 - In artifact functions, prefer `Artifact.Write*` sinks.
+- For long-running `[Artifact]` loops/phases, emit explicit progress with `Artifact.Progress(label, current, total)` and phase boundaries with `Artifact.Checkpoint(label)`.
 - Use `String.From<T>` / `String.Concat` for report-string construction.
 - Use `FloorToInt` / `CeilToInt` / `RoundToInt` instead of `Int(...)` conversion-style calls.
 - Use `Result(machine)!` only when completion is guaranteed; otherwise propagate/handle fallibility.

@@ -139,6 +139,12 @@ func TestCheckValidPrograms(t *testing.T) {
 	}
 }
 
+func TestArtifactProgressBuiltinTypeErrors(t *testing.T) {
+	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Progress(\"x\", 1) }", "function Main: function 'Artifact.Progress' expects 3 arguments, got 2")
+	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Progress(\"x\", \"1\", 3) }", "function Main: function 'Artifact.Progress' argument 2 expects Int, got String")
+	assertTypeErrorContains(t, "import Artifact fn Main() -> Void { Artifact.Checkpoint(1) }", "function Main: function 'Artifact.Checkpoint' argument 1 expects String, got Int")
+}
+
 func TestCheckRejectsReturnTypeMismatches(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int { return 1.0 }", "function Main: function expects Int, but return is Float")
 	assertTypeErrorContains(t, "fn Main() -> Float { return true }", "function Main: function expects Float, but return is Bool")

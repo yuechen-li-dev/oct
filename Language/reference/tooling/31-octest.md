@@ -113,6 +113,9 @@ fn EmitReferenceData() -> Void {
 
 - Artifact functions write files explicitly from user code.
 - Prefer `Artifact.Write*` for artifact emission (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
+- Use `Artifact.Checkpoint(label)` for explicit phase boundaries and `Artifact.Progress(label, current, total)` for deterministic progress emission in long-running artifact functions.
+- `oct artifact` prints plain CI-friendly lines (`CHECKPOINT <Function>: <label>`, `PROGRESS <Function>: <label> <current>/<total>`); this is runner output and does not change artifact file contents.
+- Progress/checkpoint calls are explicit (no automatic loop inference), non-fallible, and become no-op when no artifact progress recorder is configured.
 - Artifact lane execution does not impose a mandatory output directory.
 
 ### `.octagon` guidance
