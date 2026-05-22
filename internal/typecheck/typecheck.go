@@ -400,6 +400,9 @@ func (c checker) registerFunctionSignatures(file ast.File) error {
 	for _, flow := range file.Flows {
 		signature, err := c.resolveFlowSignature(flow)
 		if err != nil {
+			if strings.HasPrefix(err.Error(), "board field ") {
+				return fmt.Errorf("flow %s %w", flow.Name, err)
+			}
 			return fmt.Errorf("flow %s: %w", flow.Name, err)
 		}
 		c.flows[flow.Name] = signature
@@ -507,7 +510,7 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 		for _, field := range flow.Board {
 			fieldType, err := c.resolveFlowBoardFieldType(field.Type)
 			if err != nil {
-				return flowSignature{}, err
+				return flowSignature{}, fmt.Errorf("board field %s: %w", field.Name, err)
 			}
 			fields[field.Name] = fieldType
 			fieldOrder = append(fieldOrder, field.Name)
