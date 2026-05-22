@@ -1,0 +1,10 @@
+package MainValid
+
+[Fact]
+fn FileReadTextCompiledSidecarM0() -> Void ! Error {
+    let path = "octxiliary_m0_file.txt"
+    let _ = FileWriteText(path, "hello sidecar")!
+    let text = FileReadText(path)?
+    Assert.Equal("hello sidecar", text, "compiled FileReadText should route through Octxiliary")
+    let _d = FileDelete(path)!
+}

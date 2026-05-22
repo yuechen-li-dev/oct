@@ -3593,6 +3593,11 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
+	if usedBuiltins["FileReadText"] {
+		for _, pkg := range []string{"encoding/binary", "errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+			importSet[pkg] = struct{}{}
+		}
+	}
 	if usedBuiltins["LoadOctagon"] {
 		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8"} {
 			importSet[pkg] = struct{}{}
@@ -3763,6 +3768,11 @@ func emitGo(m MIRModule) (string, error) {
 		if usedBuiltins["WriteOctagon"] {
 			b.WriteString(__octWriteHelpers)
 		}
+		if usedBuiltins["FileReadText"] {
+			for _, pkg := range []string{"encoding/binary", "errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+				importSet[pkg] = struct{}{}
+			}
+		}
 		if usedBuiltins["LoadOctagon"] {
 			b.WriteString(__octLoadHelpers)
 			loadTypeNames := make([]string, 0, len(loadTypes))
@@ -3780,6 +3790,9 @@ func emitGo(m MIRModule) (string, error) {
 				b.WriteString("}\n\n")
 			}
 		}
+	}
+	if usedBuiltins["FileReadText"] {
+		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
 		b.WriteString(__octBatchHelpers)
@@ -5429,6 +5442,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":
 				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), st.Args[0]), nil
+			case "FileReadText":
+				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
 			case "Step":
 				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
 			case "Active":
@@ -5694,3 +5709,39 @@ func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Resul
 	}
 	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
+
+const __octOctxiliaryHelpers = `
+var __octOctxiliaryOnce sync.Once
+var __octOctxiliaryCmd *exec.Cmd
+var __octOctxiliaryIn io.WriteCloser
+var __octOctxiliaryOut io.ReadCloser
+var __octOctxiliaryErr error
+var __octOctxiliaryMu sync.Mutex
+var __octOctxiliaryReqID int
+
+func __octFileReadText(path string) __octResult_String {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileReadText", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return __octResult_String{Err: resp.Error, IsErr: true} }
+	return __octResult_String{Value: resp.Text}
+}
+func __octOctxiliaryEnsure() error {
+	__octOctxiliaryOnce.Do(func(){
+		path := filepath.Join(filepath.Dir(os.Args[0]), "octxiliary-io")
+		if _, err := os.Stat(path); err != nil { path = os.Getenv("OCT_WRAPPER_PATH") }
+		if path == "" { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside .octbin") ; return }
+		cmd := exec.Command(path)
+		in, _ := cmd.StdinPipe(); out, _ := cmd.StdoutPipe(); if err := cmd.Start(); err != nil { __octOctxiliaryErr = err; return }
+		__octOctxiliaryCmd, __octOctxiliaryIn, __octOctxiliaryOut = cmd, in, out
+		if err := octxiliary.WriteHandshake(in); err != nil { __octOctxiliaryErr = err; return }
+		if err := octxiliary.ReadHandshake(out); err != nil { __octOctxiliaryErr = err; return }
+	})
+	return __octOctxiliaryErr
+}
+`

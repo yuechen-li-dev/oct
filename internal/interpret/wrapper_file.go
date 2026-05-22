@@ -34,11 +34,11 @@ func (i *interpreter) evalFileReadTextBuiltin(env *environment, pkgName string, 
 	if errResult != nil {
 		return *errResult, nil
 	}
-	contents, readErr := os.ReadFile(path)
+	text, readErr := fileReadText(path)
 	if readErr != nil {
-		return wrapperErrorResult(callee, mapPathError(path, readErr)), nil
+		return wrapperErrorResult(callee, readErr), nil
 	}
-	return wrapperStringResult(string(contents)), nil
+	return wrapperStringResult(text), nil
 }
 
 func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
