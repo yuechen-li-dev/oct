@@ -72,7 +72,7 @@ Each message:
 
 ### M0 request shape (narrow)
 
-For `FileReadText` only:
+For M1 `FileReadText`/`FileWriteText` only:
 - `{ id: Int, family: String, function: String, path: String }`
 
 ### M0 response shape
@@ -95,7 +95,7 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
 
 - Sidecar process owns wrapper-family handle stores.
 - Compiled caller transports opaque handles only.
-- M0 builtin (`FileReadText`) does not use handles.
+- M1 builtins (`FileReadText`, `FileWriteText`) do not use handles.
 
 ## Deferred beyond M0
 

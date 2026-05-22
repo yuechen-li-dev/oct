@@ -60,15 +60,8 @@ func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string,
 	if errResult != nil {
 		return *errResult, nil
 	}
-	if writeErr := os.WriteFile(path, []byte(text), 0o644); writeErr != nil {
-		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
-			if retryErr := os.WriteFile(path, []byte(text), 0o644); retryErr == nil {
-				return wrapperIntResult(0), nil
-			} else {
-				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
-			}
-		}
-		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
+	if writeErr := fileWriteText(path, text); writeErr != nil {
+		return wrapperErrorResult(callee, writeErr), nil
 	}
 	return wrapperIntResult(0), nil
 }
@@ -85,14 +78,11 @@ func (i *interpreter) evalFileExistsBuiltin(env *environment, pkgName string, ca
 	if errResult != nil {
 		return *errResult, nil
 	}
-	_, statErr := os.Stat(path)
-	if statErr == nil {
-		return wrapperBoolResult(true), nil
+	exists, existsErr := fileExists(path)
+	if existsErr != nil {
+		return wrapperErrorResult(callee, existsErr), nil
 	}
-	if errors.Is(statErr, os.ErrNotExist) {
-		return wrapperBoolResult(false), nil
-	}
-	return wrapperErrorResult(callee, mapPathError(path, statErr)), nil
+	return wrapperBoolResult(exists), nil
 }
 
 func (i *interpreter) evalFileDeleteBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {

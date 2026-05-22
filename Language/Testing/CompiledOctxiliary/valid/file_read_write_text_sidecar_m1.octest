@@ -1,0 +1,15 @@
+package Main
+
+[Fact]
+fn FileReadTextCompiledSidecarM0() -> Void ! Error {
+    let text = FileReadText("docs/internal/octxiliary.md")?
+    Assert.True(Contains(text, "Octxiliary"), "compiled FileReadText should route through Octxiliary")
+}
+
+[Fact]
+fn FileWriteReadTextCompiledSidecarM1RoundTrip() -> Void ! Error {
+    let path = ".tmp/octxiliary_m1_roundtrip.txt"
+    let _w = FileWriteText(path, "Octxiliary-M1")?
+    let actual = FileReadText(path)?
+    Assert.Equal("Octxiliary-M1", actual, "compiled FileWriteText + FileReadText should round-trip through Octxiliary")
+}
