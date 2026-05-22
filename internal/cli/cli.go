@@ -17,10 +17,13 @@ import (
 
 func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return writeUsage(stderr)
+		return writeTopLevelHelp(stdout)
 	}
 
 	command := args[0]
+	if command == "--help" || command == "-h" || command == "help" {
+		return writeTopLevelHelp(stdout)
+	}
 
 	switch command {
 	case "pkg":
@@ -28,8 +31,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	case "exp":
 		return executeExp(args[1:], stdout, stderr)
 	case "run":
+		if isHelpArg(args[1:]) {
+			return writeRunHelp(stdout)
+		}
 		if len(args) != 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct run --help for usage"))
 		}
 		path := args[1]
 		if err := run.Execute(path, stdout); err != nil {
@@ -37,8 +43,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "build":
+		if isHelpArg(args[1:]) {
+			return writeBuildHelp(stdout)
+		}
 		if len(args) != 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct build --help for usage"))
 		}
 		path := args[1]
 		result, err := build.Compile(path)
@@ -48,6 +57,9 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
 	case "fmt":
+		if isHelpArg(args[1:]) {
+			return writeFmtHelp(stdout)
+		}
 		fmtOptions, err := parseFmtOptions(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, command, err)
@@ -57,8 +69,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "test":
+		if isHelpArg(args[1:]) {
+			return writeTestHelp(stdout)
+		}
 		if len(args) < 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct test --help for usage"))
 		}
 		options, paths, err := parseTestOptions(args[1:])
 		if err != nil {
@@ -71,8 +86,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "artifact":
+		if isHelpArg(args[1:]) {
+			return writeArtifactHelp(stdout)
+		}
 		if len(args) != 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct artifact --help for usage"))
 		}
 		path := args[1]
 		if err := tester.ExecuteArtifacts(path, stdout); err != nil {
@@ -80,8 +98,11 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "bench":
+		if isHelpArg(args[1:]) {
+			return writeBenchHelp(stdout)
+		}
 		if len(args) < 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct bench --help for usage"))
 		}
 		path := args[1]
 		options, err := parseBenchOptions(path, args[2:])
@@ -94,7 +115,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		return nil
 	case "prometheus-sgemm":
 		if len(args) < 2 {
-			return writeUsage(stderr)
+			return reportCommandError(stderr, command, fmt.Errorf("missing backend path; run oct %s --help for usage", command))
 		}
 		path := args[1]
 		octagonOut, err := parseBenchOctagonOut(args[2:])
@@ -139,13 +160,14 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	default:
-		return writeUsage(stderr)
+		return reportCommandError(stderr, command, fmt.Errorf("unknown command %q; run oct --help for available commands", command))
 	}
 }
+func isHelpArg(args []string) bool { return len(args) == 1 && (args[0] == "--help" || args[0] == "-h") }
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return writeUsage(stderr)
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync>"))
 	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
@@ -301,8 +323,32 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	}
 	return result, nil
 }
-func writeUsage(stderr io.Writer) error {
-	_, err := fmt.Fprintln(stderr, "usage: oct <run|build|fmt|test|artifact|bench|prometheus-sgemm> <file-or-root|cpu|prometheus>\n       oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]\n       oct prometheus-m1-async [--octagon-out <file.octagon>]\n       oct pkg <get|list|sync> [args]\n       oct exp run <git-url>")
+func writeTopLevelHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  pkg        Package manager commands\n  exp        Run experiment repos\n\nrun 'oct <command> --help' for command details.")
+	return err
+}
+func writeRunHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct run <file-or-root>\nRun a program entrypoint.")
+	return err
+}
+func writeBuildHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root>\nCompile a program and emit an artifact.")
+	return err
+}
+func writeFmtHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode readable|compact|en-llm] [--check]\nFormat Oct source files.")
+	return err
+}
+func writeTestHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]\nRun octest files.\nOptions: --suite, --execution\nExample: oct test Language/Testing --execution compiled")
+	return err
+}
+func writeArtifactHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root>\nRun artifact generation for discovered artifact blocks.")
+	return err
+}
+func writeBenchHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct bench <file-or-root> [--octagon-out <file.octagon>] [--profile] [--profile-format <octagon|pprof|both>] [--filter <pattern>]\nRun benchmark suites with optional profiling.")
 	return err
 }
 
