@@ -96,6 +96,21 @@ func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesCallExpressionStatementInMain(t *testing.T) {
+	file := parseSource(t, "fn main() -> Int { SimplePasses() return 0 }")
+	fn := file.Functions[0]
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("expected two statements, got %d", len(fn.Body.Statements))
+	}
+	exprStmt, ok := fn.Body.Statements[0].(ast.ExprStmt)
+	if !ok {
+		t.Fatalf("expected first statement to be ExprStmt, got %T", fn.Body.Statements[0])
+	}
+	if _, ok := exprStmt.Value.(ast.CallExpr); !ok {
+		t.Fatalf("expected expression statement to contain CallExpr, got %T", exprStmt.Value)
+	}
+}
+
 func TestBuildFileParsesPackageQualifiedTypeReferences(t *testing.T) {
 	file := parseSource(t, "import Geometry\nfn UsePoint(p: Geometry.Point) -> Geometry.Point { return p }")
 

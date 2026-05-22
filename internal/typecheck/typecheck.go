@@ -952,7 +952,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		return true, nil
 	case ast.ExprStmt:
-		if _, ok := node.Value.(ast.CallExpr); !ok {
+		if !isPermittedExpressionStatementCall(node.Value) {
 			return false, fmt.Errorf("function %s: This standalone expression cannot be ran. In Oct, a statement like this must be a function call (for side effects), an assignment, or a return. If you meant to keep the value, assign it to a variable; if you meant to return it, use return.", ctx.name)
 		}
 		valueType, err := c.checkExpr(scope, node.Value, ctx)
@@ -1117,6 +1117,19 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		return allReturned, nil
 	default:
 		return false, fmt.Errorf("function %s: unsupported statement %T", ctx.name, stmt)
+	}
+}
+
+func isPermittedExpressionStatementCall(expr ast.Expr) bool {
+	switch node := expr.(type) {
+	case ast.CallExpr:
+		return true
+	case ast.ParenExpr:
+		return isPermittedExpressionStatementCall(node.Inner)
+	case ast.UnwrapExpr:
+		return isPermittedExpressionStatementCall(node.Inner)
+	default:
+		return false
 	}
 }
 
