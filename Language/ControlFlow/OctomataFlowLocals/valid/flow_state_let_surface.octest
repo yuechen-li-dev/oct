@@ -1,0 +1,33 @@
+package Main
+
+flow LocalLetFlow() -> Float {
+    board {
+        P: Float
+        Gain: Float
+        Flag: Bool
+        Count: Int
+    }
+
+    state Start {
+        board.P = 3.0
+        let denom = board.P + 1.0
+        let ready = denom > 0.0
+        let step = 2
+        if ready {
+            board.Gain = board.P / denom
+            board.Count = step + 1
+            board.Flag = true
+            return board.Gain
+        }
+        board.Flag = false
+        return 0.0
+    }
+}
+
+[Fact]
+fn FlowStateLocalLetCompiled() -> Void {
+    let machine = LocalLetFlow()
+    Step(machine)
+    let out = Assert.LGTM(Result(machine), "result should be available after step")
+    Assert.Equal(0.75, out, "state local let should lower in compiled mode")
+}
