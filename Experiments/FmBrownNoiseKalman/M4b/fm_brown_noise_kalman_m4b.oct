@@ -1,0 +1,564 @@
+package FmBrownNoiseKalman
+
+import Shared
+import String
+import Artifact
+import Markdown
+import Json
+
+record M4bCase {
+    SampleRate: Float
+    Duration: Float
+    MessageHz: Float
+    InputSNRDb: Float
+    Seed: Int
+}
+
+record M4bAdaptiveResult {
+    Recovered: Float[]
+    Innovation: Float[]
+    ATrace: Float[]
+    FinalA: Float
+    ClampCount: Int
+}
+
+record M4bCaseMetrics {
+    Seed: Int
+    InputSNRDb: Float
+    MessageHz: Float
+    SampleRate: Float
+    Duration: Float
+    SampleCount: Int
+
+    FixedOutputSNRDb: Float
+    FixedNRMSE: Float
+    FixedWhitenessCost: Float
+    FixedCorrelation: Float
+
+    AdaptiveOutputSNRDb: Float
+    AdaptiveNRMSE: Float
+    AdaptiveWhitenessCost: Float
+    AdaptiveCorrelation: Float
+    FinalA: Float
+    ClampCount: Int
+
+    DeltaOutputSNRDb: Float
+    DeltaNRMSE: Float
+    WhitenessRatio: Float
+    DeltaWhitenessCost: Float
+
+    MaxRecoveredDiffOctomataVsProcedural: Float
+    MaxInnovationDiffOctomataVsProcedural: Float
+    MaxATraceDiff: Float
+    EquivalencePass: Bool
+
+    Label: String
+}
+
+record M4bSummary {
+    TotalCases: Int
+    AdaptiveWinCount: Int
+    RecoveryOnlyCount: Int
+    WhitenessOnlyCount: Int
+    NoMeaningfulWinCount: Int
+
+    MeanDeltaOutputSNRDb: Float
+    BestDeltaOutputSNRDb: Float
+    WorstDeltaOutputSNRDb: Float
+
+    MeanWhitenessRatio: Float
+    BestWhitenessRatio: Float
+    WorstWhitenessRatio: Float
+
+    FinalAMin: Float
+    FinalAMax: Float
+    FinalAMean: Float
+    ClampTotal: Int
+}
+
+record M4bReport {
+    Cases: M4bCaseMetrics[]
+    Summary: M4bSummary
+}
+
+flow M4bAdaptiveMachine(observed: Float[]) -> Bool {
+    board {
+        Index: Int
+        SampleCount: Int
+        Measurement: Float
+        Estimate: Float
+        Velocity: Float
+        NoiseState: Float
+        Covariance: Float
+        VelocityCovariance: Float
+        NoiseCovariance: Float
+
+        PredictedEstimate: Float
+        PredictedVelocity: Float
+        PredictedNoiseState: Float
+        PredictedCovariance: Float
+        PredictedVelocityCovariance: Float
+        PredictedNoiseCovariance: Float
+
+        Innovation: Float
+        PreviousInnovation: Float
+
+        Gain: Float
+        VelocityGain: Float
+        NoiseGain: Float
+
+        A: Float
+        ProposedA: Float
+        LearningRate: Float
+        ClampCount: Int
+
+        RecoveredCurrent: Float
+        RecordReady: Bool
+        DoneFlag: Bool
+    }
+
+    state Initialize {
+        board.Index = 0
+        board.SampleCount = Len(observed)
+        board.Measurement = 0.0
+        board.Estimate = 0.0
+        board.Velocity = 0.0
+        board.NoiseState = 0.0
+        board.Covariance = 1.0
+        board.VelocityCovariance = 1.0
+        board.NoiseCovariance = 1.0
+
+        board.PredictedEstimate = 0.0
+        board.PredictedVelocity = 0.0
+        board.PredictedNoiseState = 0.0
+        board.PredictedCovariance = 1.0
+        board.PredictedVelocityCovariance = 1.0
+        board.PredictedNoiseCovariance = 1.0
+
+        board.Innovation = 0.0
+        board.PreviousInnovation = 0.0
+        board.Gain = 0.0
+        board.VelocityGain = 0.0
+        board.NoiseGain = 0.0
+
+        board.A = 0.0
+        board.ProposedA = 0.0
+        board.LearningRate = 0.05
+        board.ClampCount = 0
+
+        board.RecoveredCurrent = 0.0
+        board.RecordReady = false
+        board.DoneFlag = false
+        goto Predict
+    }
+
+    state Predict {
+        board.RecordReady = false
+        when {
+            case board.Index >= board.SampleCount -> goto Done
+            else -> goto Observe
+        }
+    }
+
+    state Observe {
+        board.Measurement = observed[board.Index]
+        board.PredictedEstimate = board.Estimate + board.Velocity
+        board.PredictedVelocity = board.Velocity
+        board.PredictedNoiseState = board.A * board.NoiseState
+
+        board.PredictedCovariance = board.Covariance + board.VelocityCovariance + 1e-3
+        board.PredictedVelocityCovariance = board.VelocityCovariance + 1e-2
+        board.PredictedNoiseCovariance = board.A * board.A * board.NoiseCovariance + 0.1
+        goto ComputeGain
+    }
+
+    state ComputeGain {
+        board.Innovation = board.Measurement - (board.PredictedEstimate + board.PredictedNoiseState)
+        let s = board.PredictedCovariance + board.PredictedNoiseCovariance + 1.0
+        board.Gain = board.PredictedCovariance / s
+        board.VelocityGain = board.PredictedVelocityCovariance / s
+        board.NoiseGain = board.PredictedNoiseCovariance / s
+        goto Correct
+    }
+
+    state Correct {
+        board.Estimate = board.PredictedEstimate + board.Gain * board.Innovation
+        board.Velocity = board.PredictedVelocity + board.VelocityGain * board.Innovation
+        board.NoiseState = board.PredictedNoiseState + board.NoiseGain * board.Innovation
+
+        board.Covariance = (1.0 - board.Gain) * board.PredictedCovariance
+        board.VelocityCovariance = (1.0 - board.VelocityGain) * board.PredictedVelocityCovariance
+        board.NoiseCovariance = (1.0 - board.NoiseGain) * board.PredictedNoiseCovariance
+        goto AdaptNoiseModel
+    }
+
+    state AdaptNoiseModel {
+        board.ProposedA = board.A + board.LearningRate * board.PreviousInnovation * board.Innovation
+        board.A = board.ProposedA
+
+        if board.A > 0.99 {
+            board.A = 0.99
+            board.ClampCount = board.ClampCount + 1
+        }
+        if board.A < -0.99 {
+            board.A = -0.99
+            board.ClampCount = board.ClampCount + 1
+        }
+
+        board.PreviousInnovation = board.Innovation
+        goto Record
+    }
+
+    state Record {
+        board.RecoveredCurrent = board.Estimate
+        board.RecordReady = true
+        goto Advance
+    }
+
+    state Advance {
+        board.Index = board.Index + 1
+        suspend
+        goto Predict
+    }
+
+    state Done {
+        board.DoneFlag = true
+        return true
+    }
+}
+
+fn M4bSampleCount(c: M4bCase) -> Int {
+    return FloorToInt(c.SampleRate * c.Duration)
+}
+
+fn M4bBuildClean(c: M4bCase) -> Float[] {
+    let n = M4bSampleCount(c)
+    var clean: Float[] = []
+    var x = 0.0
+    let dx = 1.0 / c.SampleRate
+    for i in 0..n {
+        clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * x))
+        x = x + dx
+    }
+    return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0)
+}
+
+fn M4bMaxAbsDiff(a: Float[], b: Float[]) -> Float {
+    var m = 0.0
+    for i in 0..Len(a) {
+        let d = Abs(a[i] - b[i])
+        if d > m {
+            m = d
+        }
+    }
+    return m
+}
+
+fn M4bProceduralAdaptive(observed: Float[]) -> M4bAdaptiveResult {
+    var x0 = 0.0
+    var x1 = 0.0
+    var xn = 0.0
+    var p00 = 1.0
+    var p11 = 1.0
+    var p22 = 1.0
+    var a = 0.0
+    var prevInnovation = 0.0
+    var clampCount = 0
+
+    var out: Float[] = []
+    var innovation: Float[] = []
+    var aTrace: Float[] = []
+
+    for k in 0..Len(observed) {
+        let x0Pred = x0 + x1
+        let x1Pred = x1
+        let xnPred = a * xn
+
+        let p00Pred = p00 + p11 + 1e-3
+        let p11Pred = p11 + 1e-2
+        let p22Pred = a * a * p22 + 0.1
+
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + 1.0
+        let k0 = p00Pred / s
+        let k1 = p11Pred / s
+        let k2 = p22Pred / s
+
+        x0 = x0Pred + k0 * y
+        x1 = x1Pred + k1 * y
+        xn = xnPred + k2 * y
+
+        p00 = (1.0 - k0) * p00Pred
+        p11 = (1.0 - k1) * p11Pred
+        p22 = (1.0 - k2) * p22Pred
+
+        a = a + 0.05 * prevInnovation * y
+        if a > 0.99 {
+            a = 0.99
+            clampCount = clampCount + 1
+        }
+        if a < -0.99 {
+            a = -0.99
+            clampCount = clampCount + 1
+        }
+        prevInnovation = y
+
+        out = Append(out, x0)
+        innovation = Append(innovation, y)
+        aTrace = Append(aTrace, a)
+    }
+
+    return M4bAdaptiveResult {
+        Recovered: out
+        Innovation: innovation
+        ATrace: aTrace
+        FinalA: a
+        ClampCount: clampCount
+    }
+}
+
+fn M4bLabel(deltaSNR: Float, fixedW: Float, adaptiveW: Float) -> String {
+    let snrEpsilonDb = 0.01
+    let whitenessRelativeEpsilon = 0.01
+
+    let recoveryImproved = deltaSNR > snrEpsilonDb
+    let whiteningImproved = adaptiveW < fixedW * (1.0 - whitenessRelativeEpsilon)
+
+    if recoveryImproved and whiteningImproved {
+        return "AdaptiveWin"
+    }
+    if recoveryImproved and whiteningImproved == false {
+        return "RecoveryOnly"
+    }
+    if recoveryImproved == false and whiteningImproved {
+        return "WhitenessOnly"
+    }
+    return "NoMeaningfulWin"
+}
+
+fn RunM4bCase(c: M4bCase) -> M4bCaseMetrics ! Error {
+    let clean = M4bBuildClean(c)
+    let observed = Shared.AddNoiseAtSnr(clean, Shared.GenerateBrownNoise(Len(clean), c.Seed), c.InputSNRDb)
+
+    let procedural = M4bProceduralAdaptive(observed)
+    let fixed = Shared.FixedWhiteKalmanFilter(observed)
+
+    let machine = M4bAdaptiveMachine(observed)
+    var recovered: Float[] = []
+    var innovation: Float[] = []
+    var aTrace: Float[] = []
+
+    while Complete(machine) == false {
+        Step(machine)
+        let snapshot = BoardSnapshot(machine)!
+        if snapshot.RecordReady {
+            recovered = Append(recovered, snapshot.RecoveredCurrent)
+            innovation = Append(innovation, snapshot.Innovation)
+            aTrace = Append(aTrace, snapshot.A)
+        }
+    }
+
+    let _ = Result(machine)!
+
+    let adaptiveOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, recovered))
+    let fixedOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, fixed.Recovered))
+
+    let adaptiveW = Shared.WhitenessCost(innovation)
+    let fixedW = Shared.WhitenessCost(fixed.Innovation)
+
+    let delta = adaptiveOutputSNR - fixedOutputSNR
+    let ratio = adaptiveW / (fixedW + 1e-12)
+
+    let maxRecoveredDiff = M4bMaxAbsDiff(procedural.Recovered, recovered)
+    let maxInnovationDiff = M4bMaxAbsDiff(procedural.Innovation, innovation)
+    let maxADiff = M4bMaxAbsDiff(procedural.ATrace, aTrace)
+    let eqPass = maxRecoveredDiff <= 1e-9 and maxInnovationDiff <= 1e-9 and maxADiff <= 1e-9
+
+    return M4bCaseMetrics {
+        Seed: c.Seed
+        InputSNRDb: c.InputSNRDb
+        MessageHz: c.MessageHz
+        SampleRate: c.SampleRate
+        Duration: c.Duration
+        SampleCount: Len(clean)
+
+        FixedOutputSNRDb: fixedOutputSNR
+        FixedNRMSE: Shared.Nrmse(clean, fixed.Recovered)
+        FixedWhitenessCost: fixedW
+        FixedCorrelation: Shared.Correlation(clean, fixed.Recovered)
+
+        AdaptiveOutputSNRDb: adaptiveOutputSNR
+        AdaptiveNRMSE: Shared.Nrmse(clean, recovered)
+        AdaptiveWhitenessCost: adaptiveW
+        AdaptiveCorrelation: Shared.Correlation(clean, recovered)
+        FinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 }
+        ClampCount: if Complete(machine) { BoardSnapshot(machine)!.ClampCount } else { 0 }
+
+        DeltaOutputSNRDb: delta
+        DeltaNRMSE: Shared.Nrmse(clean, recovered) - Shared.Nrmse(clean, fixed.Recovered)
+        WhitenessRatio: ratio
+        DeltaWhitenessCost: adaptiveW - fixedW
+
+        MaxRecoveredDiffOctomataVsProcedural: maxRecoveredDiff
+        MaxInnovationDiffOctomataVsProcedural: maxInnovationDiff
+        MaxATraceDiff: maxADiff
+        EquivalencePass: eqPass
+
+        Label: M4bLabel(delta, fixedW, adaptiveW)
+    }
+}
+
+fn RunM4bSweep() -> M4bReport ! Error {
+    let seeds = [12345, 23456, 34567]
+    let snrs = [-18.0, -12.0, -6.0]
+    let messageHzs = [10.0, 25.0, 50.0]
+
+    var rows: M4bCaseMetrics[] = []
+    for i in 0..Len(seeds) {
+        for j in 0..Len(snrs) {
+            for k in 0..Len(messageHzs) {
+                rows = Append(rows, RunM4bCase(M4bCase {
+                    SampleRate: 2000.0
+                    Duration: 0.5
+                    MessageHz: messageHzs[k]
+                    InputSNRDb: snrs[j]
+                    Seed: seeds[i]
+                })!)
+            }
+        }
+    }
+
+    var aw = 0
+    var ro = 0
+    var wo = 0
+    var nw = 0
+    var sumDelta = 0.0
+    var sumRatio = 0.0
+    var sumA = 0.0
+    var clampTotal = 0
+
+    var bestDelta = rows[0].DeltaOutputSNRDb
+    var worstDelta = rows[0].DeltaOutputSNRDb
+    var bestRatio = rows[0].WhitenessRatio
+    var worstRatio = rows[0].WhitenessRatio
+    var minA = rows[0].FinalA
+    var maxA = rows[0].FinalA
+
+    for i in 0..Len(rows) {
+        let r = rows[i]
+
+        if r.Label == "AdaptiveWin" { aw = aw + 1 }
+        if r.Label == "RecoveryOnly" { ro = ro + 1 }
+        if r.Label == "WhitenessOnly" { wo = wo + 1 }
+        if r.Label == "NoMeaningfulWin" { nw = nw + 1 }
+
+        sumDelta = sumDelta + r.DeltaOutputSNRDb
+        sumRatio = sumRatio + r.WhitenessRatio
+        sumA = sumA + r.FinalA
+        clampTotal = clampTotal + r.ClampCount
+
+        if r.DeltaOutputSNRDb > bestDelta { bestDelta = r.DeltaOutputSNRDb }
+        if r.DeltaOutputSNRDb < worstDelta { worstDelta = r.DeltaOutputSNRDb }
+        if r.WhitenessRatio > bestRatio { bestRatio = r.WhitenessRatio }
+        if r.WhitenessRatio < worstRatio { worstRatio = r.WhitenessRatio }
+        if r.FinalA < minA { minA = r.FinalA }
+        if r.FinalA > maxA { maxA = r.FinalA }
+    }
+
+    let n = Float(Len(rows))
+    let summary = M4bSummary {
+        TotalCases: Len(rows)
+        AdaptiveWinCount: aw
+        RecoveryOnlyCount: ro
+        WhitenessOnlyCount: wo
+        NoMeaningfulWinCount: nw
+
+        MeanDeltaOutputSNRDb: sumDelta / n
+        BestDeltaOutputSNRDb: bestDelta
+        WorstDeltaOutputSNRDb: worstDelta
+
+        MeanWhitenessRatio: sumRatio / n
+        BestWhitenessRatio: bestRatio
+        WorstWhitenessRatio: worstRatio
+
+        FinalAMin: minA
+        FinalAMax: maxA
+        FinalAMean: sumA / n
+        ClampTotal: clampTotal
+    }
+
+    return M4bReport {
+        Cases: rows
+        Summary: summary
+    }
+}
+
+fn M4bArtifactWriteAll() -> Int {
+    let report = RunM4bSweep()!
+
+    var csv = [["seed","inputSNRDb","messageHz","deltaOutputSNRDb","whitenessRatio","finalA","clampCount","label"]]
+    for i in 0..Len(report.Cases) {
+        let r = report.Cases[i]
+        csv = Append(csv, [
+            String.From<Int>(r.Seed),
+            String.From<Float>(r.InputSNRDb),
+            String.From<Float>(r.MessageHz),
+            String.From<Float>(r.DeltaOutputSNRDb),
+            String.From<Float>(r.WhitenessRatio),
+            String.From<Float>(r.FinalA),
+            String.From<Int>(r.ClampCount),
+            r.Label
+        ])
+    }
+
+    let md = Markdown.Report([
+        Markdown.Title("FM Brown-Noise Kalman M4b"),
+        Markdown.Subtitle("Focused scalar incremental adaptive AR(1) sweep"),
+        Markdown.Section("Question", [
+            Markdown.Paragraph("Does scalar incremental adaptive AR(1) generally improve residual whiteness, recovered-message fidelity, both, or neither across a bounded deterministic grid?")
+        ]),
+        Markdown.Section("Sweep grid", [
+            Markdown.KeyValueTable(
+                ["seeds", "inputSNRDb", "messageHz", "sampleRate", "duration", "sampleCount", "totalCases"],
+                ["12345,23456,34567", "-18,-12,-6", "10,25,50", "2000", "0.5", "1000", String.From<Int>(report.Summary.TotalCases)]
+            )
+        ]),
+        Markdown.Section("Label policy", [
+            Markdown.KeyValueTable(
+                ["snrEpsilonDb", "whitenessRelativeEpsilon", "labels"],
+                ["0.01", "0.01", "AdaptiveWin/RecoveryOnly/WhitenessOnly/NoMeaningfulWin"]
+            )
+        ]),
+        Markdown.Section("Overall results", [
+            Markdown.KeyValueTable(
+                ["adaptiveWin", "recoveryOnly", "whitenessOnly", "noMeaningfulWin", "meanDeltaOutputSNRDb", "meanWhitenessRatio", "finalAMin", "finalAMax", "finalAMean", "clampTotal"],
+                [String.From<Int>(report.Summary.AdaptiveWinCount), String.From<Int>(report.Summary.RecoveryOnlyCount), String.From<Int>(report.Summary.WhitenessOnlyCount), String.From<Int>(report.Summary.NoMeaningfulWinCount), String.From<Float>(report.Summary.MeanDeltaOutputSNRDb), String.From<Float>(report.Summary.MeanWhitenessRatio), String.From<Float>(report.Summary.FinalAMin), String.From<Float>(report.Summary.FinalAMax), String.From<Float>(report.Summary.FinalAMean), String.From<Int>(report.Summary.ClampTotal)]
+            )
+        ]),
+        Markdown.Section("Interpretation", [
+            Markdown.Callout("note", [
+                "This is a bounded 27-case toy sweep on direct-message brown noise without FM/IQ realism.",
+                "Results indicate whether whitening gains are systematic and whether they co-occur with recovery gains under the M4 scalar incremental adaptation semantics."
+            ])
+        ])
+    ])
+
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.octagon", report)
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.md", md)
+    Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M4b/sweep_metrics.csv", csv)
+    Artifact.WriteJson(
+        "Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json",
+        Json.Object(String.Concat([
+            "{\"totalCases\":", String.From<Int>(report.Summary.TotalCases),
+            ",\"adaptiveWin\":", String.From<Int>(report.Summary.AdaptiveWinCount),
+            ",\"recoveryOnly\":", String.From<Int>(report.Summary.RecoveryOnlyCount),
+            ",\"whitenessOnly\":", String.From<Int>(report.Summary.WhitenessOnlyCount),
+            ",\"noMeaningfulWin\":", String.From<Int>(report.Summary.NoMeaningfulWinCount),
+            ",\"meanDeltaOutputSNRDb\":", String.From<Float>(report.Summary.MeanDeltaOutputSNRDb),
+            ",\"meanWhitenessRatio\":", String.From<Float>(report.Summary.MeanWhitenessRatio),
+            "}"
+        ]))
+    )
+
+    return 0
+}

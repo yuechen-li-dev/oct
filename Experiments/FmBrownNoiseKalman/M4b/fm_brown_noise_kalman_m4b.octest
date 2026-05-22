@@ -1,0 +1,51 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4b")]
+[Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
+fn M4bGridSizeIs27() -> Void ! Error {
+    let report = RunM4bSweep()?
+    Assert.Equal(27, Len(report.Cases), "grid")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4b")]
+[Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
+fn M4bMetricsFiniteAndEquivalencePasses() -> Void ! Error {
+    let report = RunM4bSweep()?
+    for i in 0..Len(report.Cases) {
+        let c = report.Cases[i]
+        Assert.True(Abs(c.DeltaOutputSNRDb) < 1e300, "delta snr finite")
+        Assert.True(Abs(c.WhitenessRatio) < 1e300, "ratio finite")
+        Assert.True(Abs(c.FinalA) < 1e300, "finalA finite")
+        Assert.True(c.EquivalencePass, "equivalence")
+    }
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M4b")]
+[Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
+fn M4bLabelCountsSumTo27() -> Void ! Error {
+    let report = RunM4bSweep()?
+    let total = report.Summary.AdaptiveWinCount + report.Summary.RecoveryOnlyCount + report.Summary.WhitenessOnlyCount + report.Summary.NoMeaningfulWinCount
+    Assert.Equal(27, total, "label sum")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M4b")]
+[Suite("Experiments.FmBrownNoiseKalman.M4b.Artifacts")]
+fn M4bArtifactsWrite() -> Void ! Error {
+    let _ = M4bArtifactWriteAll()
+    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.octagon")?
+    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4b/m4b_scalar_adaptive_sweep_report.md")?
+    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4b/sweep_metrics.csv")?
+    let json = IO.Load("Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json")?
+    let findings = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4b/FINDINGS.md")?
+    Assert.True(Len(octagon) > 0, "octagon")
+    Assert.True(Len(md) > 0, "markdown")
+    Assert.True(Len(csv) > 0, "csv")
+    Assert.True(Len(json) > 0, "json")
+    Assert.True(Len(findings) > 0, "findings")
+}
