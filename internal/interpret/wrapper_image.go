@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"oct/internal/ast"
-	"oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/dimension"
 )
 
 var imagePixelDimension = mustImageDimension("px")

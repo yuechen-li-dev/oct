@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/ast"
-	"oct/internal/cli"
-	"oct/internal/octagon"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
 func TestOctBenchOctagonOutEmitsSingleLoadableFile(t *testing.T) {

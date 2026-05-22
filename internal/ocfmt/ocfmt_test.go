@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/parse"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func TestFormatSourceIdempotent(t *testing.T) {

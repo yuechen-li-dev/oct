@@ -1,4 +1,4 @@
-module oct
+module github.com/yuechen-li-dev/oct
 
 go 1.24.0
 

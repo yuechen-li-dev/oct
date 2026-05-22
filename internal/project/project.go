@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"oct/internal/ast"
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/pkgmgr"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/parse"
+	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type Package struct {

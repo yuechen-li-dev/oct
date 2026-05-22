@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"oct/internal/ast"
-	"oct/internal/builtin"
-	"oct/internal/dimension"
-	"oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/builtin"
+	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
 const decisionLadderIfElseDiagnostic = "nested decision-ladder `if/else` is not allowed in Oct by design. Use a condition-switch expression instead:\nlet value = switch {\n    case cond1 => value1\n    case cond2 => value2\n    else => defaultValue\n}"

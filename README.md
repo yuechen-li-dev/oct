@@ -66,6 +66,29 @@ fn Main() -> Int {
 }
 ```
 
+## Install (Go modules)
+
+Install the main Oct CLI:
+
+```bash
+go install github.com/yuechen-li-dev/oct/cmd/oct@latest
+```
+
+Install the optional Octxiliary sidecar (needed for compiled programs that use Octxiliary-backed file/directory operations):
+
+```bash
+go install github.com/yuechen-li-dev/oct/cmd/octxiliary-io@latest
+```
+
+`oct` is the primary CLI. `octxiliary-io` is optional unless your compiled program path requires sidecar-backed wrappers.
+
+Ensure your Go bin directory is on `PATH` (commonly `$(go env GOPATH)/bin` or your configured `GOBIN`), then verify:
+
+```bash
+oct --help
+octxiliary-io --help
+```
+
 ## Prometheus (EVT transition scaffold)
 
 Prometheus is now scaffolded as an **optional** runtime capability:

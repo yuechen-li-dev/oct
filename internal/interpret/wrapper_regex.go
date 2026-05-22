@@ -3,7 +3,7 @@ package interpret
 import (
 	"regexp"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func regexWrapperBuiltins() map[string]wrapperBuiltinHandler {

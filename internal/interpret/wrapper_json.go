@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func jsonWrapperBuiltins() map[string]wrapperBuiltinHandler {

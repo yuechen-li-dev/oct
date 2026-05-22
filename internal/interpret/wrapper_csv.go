@@ -6,18 +6,18 @@ import (
 	"os"
 	"strconv"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func csvWrapperBuiltins() map[string]wrapperBuiltinHandler {
 	return map[string]wrapperBuiltinHandler{
-		"CsvRead":       (*interpreter).evalCSVReadBuiltin,
-		"CsvReadRows":   (*interpreter).evalCSVReadBuiltin,
-		"CsvReadTable":  (*interpreter).evalCSVReadTableBuiltin,
-		"CsvReadMatrix": (*interpreter).evalCSVReadMatrixBuiltin,
-		"CsvWrite":      (*interpreter).evalCSVWriteBuiltin,
-		"CsvWriteRows":  (*interpreter).evalCSVWriteBuiltin,
-		"CsvWriteTable": (*interpreter).evalCSVWriteTableBuiltin,
+		"CsvRead":        (*interpreter).evalCSVReadBuiltin,
+		"CsvReadRows":    (*interpreter).evalCSVReadBuiltin,
+		"CsvReadTable":   (*interpreter).evalCSVReadTableBuiltin,
+		"CsvReadMatrix":  (*interpreter).evalCSVReadMatrixBuiltin,
+		"CsvWrite":       (*interpreter).evalCSVWriteBuiltin,
+		"CsvWriteRows":   (*interpreter).evalCSVWriteBuiltin,
+		"CsvWriteTable":  (*interpreter).evalCSVWriteTableBuiltin,
 		"CsvWriteMatrix": (*interpreter).evalCSVWriteMatrixBuiltin,
 	}
 }

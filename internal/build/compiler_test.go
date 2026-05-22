@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/interpret"
-	"oct/internal/octagon"
-	"oct/internal/project"
-	"oct/internal/typecheck"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 func TestLowerProgramBuildsMIRShape(t *testing.T) {

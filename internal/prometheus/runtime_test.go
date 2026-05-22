@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/octagon"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
 func fakeReactorPath(t *testing.T) string {

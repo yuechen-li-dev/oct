@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func validateManifestFile(packageName string, file ast.File) error {

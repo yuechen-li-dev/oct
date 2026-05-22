@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {

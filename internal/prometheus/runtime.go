@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
 )
 
 const (

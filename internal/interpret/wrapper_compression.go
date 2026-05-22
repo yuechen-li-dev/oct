@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func compressionWrapperBuiltins() map[string]wrapperBuiltinHandler {

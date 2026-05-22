@@ -1,8 +1,8 @@
 package ast
 
 import (
-	"oct/internal/dimension"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type File struct {

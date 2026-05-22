@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"oct/internal/ast"
-	"oct/internal/build"
-	"oct/internal/interpret"
-	"oct/internal/project"
-	"oct/internal/typecheck"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/build"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 type testCase struct {

@@ -4,7 +4,7 @@ import (
 	"os"
 	"sort"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func directoryWrapperBuiltins() map[string]wrapperBuiltinHandler {

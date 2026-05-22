@@ -3,7 +3,7 @@ package interpret
 import (
 	"time"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func timeWrapperBuiltins() map[string]wrapperBuiltinHandler {

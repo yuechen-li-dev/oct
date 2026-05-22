@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestPkgGetPkgGetFetchesIntoSharedCache(t *testing.T) {

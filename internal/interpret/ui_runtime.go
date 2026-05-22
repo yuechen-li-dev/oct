@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 type uiirNodeKind string

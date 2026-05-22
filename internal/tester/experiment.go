@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
 )
 
 type milestoneKind int

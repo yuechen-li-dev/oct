@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"oct/internal/ast"
-	"oct/internal/dimension"
-	"oct/internal/lex"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func BuildFile(result lex.Result) (ast.File, error) {
@@ -1869,7 +1869,7 @@ func (p *parser) parseRecordLiteralFields(context string, requireAtLeastOne bool
 		if p.current().Kind == lex.EOF {
 			return nil, p.errorAtCurrent("expected '}' to close " + context)
 		}
-		name, err := p.expectIdentifierLike("expected "+context+" field name")
+		name, err := p.expectIdentifierLike("expected " + context + " field name")
 		if err != nil {
 			return nil, err
 		}

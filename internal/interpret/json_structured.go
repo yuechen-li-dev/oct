@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 type jsonCompatGraphRow struct {

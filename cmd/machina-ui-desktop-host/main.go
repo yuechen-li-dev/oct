@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"oct/internal/machina/desktophost"
+	"github.com/yuechen-li-dev/oct/internal/machina/desktophost"
 )
 
 func main() {

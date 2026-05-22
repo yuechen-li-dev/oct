@@ -13,7 +13,7 @@ import (
 
 	pprofprofile "github.com/google/pprof/profile"
 
-	"oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
 )
 
 type benchmarkProfiler struct {
