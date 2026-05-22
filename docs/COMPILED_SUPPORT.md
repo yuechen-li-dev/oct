@@ -42,6 +42,29 @@ Notes:
 - Compiler audit found active support in `lowerFlow`, `emitGoFlow`, and MIR builtin emission for Step/Active/Result/Complete/StateHistory/ResumeTarget.
 - No stale “unsupported Step/Result/etc” gate was found ahead of those paths; stale wording was only in generic non-flow statement diagnostics and was narrowed.
 
+
+
+## Flow expression parity matrix (compiled)
+
+| AST expression kind | Normal compiled | Flow compiled | Safe for flow M0 | Decision | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `ast.IntegerLiteral` / `ast.FloatLiteral` / `ast.BoolLiteral` / `ast.StringLiteralExpr` | Yes | Yes | Yes | Keep | Baseline literal support in both paths. |
+| `ast.IdentifierExpr` | Yes | Yes | Yes | Keep | Flow identifiers include params + flow locals. |
+| `ast.BinaryExpr` / `ast.UnaryExpr` | Yes | Yes | Yes | Keep | Arithmetic/logical/comparison operators are already available. |
+| `ast.ParenExpr` | Yes | **Yes (added in this sweep)** | Yes | Implement now | Lower/type-infer now recurse into inner expression. |
+| `ast.CallExpr` | Yes | Yes (builtin-only) | Yes (pure only) | Keep allowlist | Flow keeps non-fallible pure builtin-only boundary. |
+| `ast.IndexExpr` | Yes | Yes (single-dimension array only) | Yes | Keep scoped | Matrix/vector/string indexing still deferred in flow path. |
+| `ast.FieldAccessExpr` | Yes | Partial (`board.<field>`) | Yes (board access) | Defer broader | Record/snapshot field access outside `board` remains intentionally unsupported in flow path. |
+| `ast.ArrayLiteralExpr` | Yes | No | Maybe | Defer | Not required for current scalar-board M0 parity and would expand flow type surface. |
+| `ast.RecordLiteralExpr` | Yes | No | Maybe | Defer | Not required for current Octomata flow parity fixtures; potential follow-up if explicit flow return-record use is required. |
+| `ast.RecordUpdateExpr` (`with`) | Yes | No | Maybe | Defer | Wider record semantics not needed for current M0 flow support target. |
+| `ast.IfExpr` / `ast.SwitchExpr` | Yes | No | Maybe | Defer | Statement-level `if`/`when` already exists for flow control; expression-level forms not required in this sweep. |
+| `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
+| `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
+| `ast.MatchExpr` / `ast.BatchExpr` / runtime-heavy expression forms | Partial | No | No | Defer | Outside current pure, deterministic local flow-expression scope. |
+
+M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed; the next expected blocker is compiled `BoardSnapshot` support, which remains deferred by design in this pass.
+
 ## Current deferred / partial categories
 
 - Markdown wrapper-heavy paths are still largely interpreted/fallback territory.

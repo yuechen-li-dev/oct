@@ -1,0 +1,56 @@
+package Main
+
+flow ParenMathFlow() -> Float {
+    board { X: Float; P: Float }
+    state Start {
+        board.X = (1.0 + 2.0) * 3.0
+        let denom = (board.P + 1.0)
+        board.X = board.X + (board.P / (denom + 1.0))
+        return board.X
+    }
+}
+
+flow IndexParenFlow(xs: Float[], i: Int) -> Float {
+    board { X: Float; Index: Int }
+    state Start {
+        board.Index = i
+        board.X = (xs[board.Index]) + 1.0
+        return board.X
+    }
+}
+
+flow PureCallsFlow() -> Float {
+    board { X: Float; Y: Float }
+    state Start {
+        board.X = Sqrt(4.0) + Abs(0.0 - 3.0)
+        board.Y = 1.0
+        if (board.X > 0.0) and (board.Y < 2.0) {
+            board.X = board.X + 2.0
+        }
+        return board.X
+    }
+}
+
+[Fact]
+fn FlowExprParenAndLetCompiled() -> Void {
+    let m = ParenMathFlow()
+    Step(m)
+    let out = Assert.LGTM(Result(m), "result should be available")
+    Assert.Equal(9.0, out, "paren + let flow expr should compile and evaluate")
+}
+
+[Fact]
+fn FlowExprIndexAndParenCompiled() -> Void {
+    let m = IndexParenFlow([3.0, 5.0], 1)
+    Step(m)
+    let out = Assert.LGTM(Result(m), "result should be available")
+    Assert.Equal(6.0, out, "index + paren flow expr should compile and evaluate")
+}
+
+[Fact]
+fn FlowExprPureCallsAndLogicCompiled() -> Void {
+    let m = PureCallsFlow()
+    Step(m)
+    let out = Assert.LGTM(Result(m), "result should be available")
+    Assert.Equal(7.0, out, "pure calls + logical condition should compile and evaluate")
+}

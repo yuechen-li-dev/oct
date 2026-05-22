@@ -1,0 +1,15 @@
+expect error: "compiled mode does not yet support flow expression ast.ArrayLiteralExpr"
+
+package MainInvalid
+
+flow UnsupportedExprFlow() -> Float {
+    board { X: Float }
+    state Start {
+        board.X = [1.0, 2.0][0]
+        return board.X
+    }
+}
+
+fn Main() -> Int {
+    return 0
+}
