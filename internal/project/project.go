@@ -305,22 +305,30 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 				if milestoneEntry.IsDir() || milestoneEntry.Name() == "manifest.oct" {
 					continue
 				}
-				ext := filepath.Ext(milestoneEntry.Name())
+				name := milestoneEntry.Name()
+				if isGeneratedTestRunnerFile(name) && !isExplicitlySelected(selected, filepath.Join(milestoneDir, name)) {
+					continue
+				}
+				ext := filepath.Ext(name)
 				if ext != ".oct" && (!includeTests || ext != ".octest") {
 					continue
 				}
-				files = append(files, filepath.Join(milestoneDir, milestoneEntry.Name()))
+				files = append(files, filepath.Join(milestoneDir, name))
 			}
 			continue
 		}
 		if entry.Name() == "manifest.oct" {
 			continue
 		}
-		ext := filepath.Ext(entry.Name())
+		name := entry.Name()
+		if isGeneratedTestRunnerFile(name) && !isExplicitlySelected(selected, filepath.Join(directory, name)) {
+			continue
+		}
+		ext := filepath.Ext(name)
 		if ext != ".oct" && (!includeTests || ext != ".octest") {
 			continue
 		}
-		files = append(files, filepath.Join(directory, entry.Name()))
+		files = append(files, filepath.Join(directory, name))
 	}
 	sort.Strings(files)
 	if len(selected) > 0 {
@@ -349,6 +357,22 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func isGeneratedTestRunnerFile(name string) bool {
+	return strings.HasPrefix(name, "zz_oct_test_runner_") && filepath.Ext(name) == ".octest"
+}
+
+func isExplicitlySelected(selected map[string]struct{}, path string) bool {
+	if len(selected) == 0 {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	_, ok := selected[filepath.Clean(absPath)]
+	return ok
 }
 
 func isMilestoneDir(name string) bool {
