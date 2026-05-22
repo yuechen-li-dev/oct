@@ -73,7 +73,7 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - `DirectoryMakeAll` remains wrapper/deferred for compiled mode, including flow-expression contexts.
 - OctErgonomicsLab M1 now has an explicit suite split: `Experiments.OctErgonomicsLab.M1.FlowSmoke` is compiled-green, while `Experiments.OctErgonomicsLab.M1.Artifacts` remains interpreted fallback because `DirectoryMakeAll` is still deferred in compiled mode.
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
-- Octxiliary M0 architecture is documented in `docs/internal/octxiliary.md`; compiled `FileReadText` and `FileWriteText` now route through the Octxiliary sidecar bridge; `FileExists` remains deferred in compiled mode because its current non-fallible signature conflicts with missing-sidecar error policy. All other wrapper builtins remain deferred.
+- Octxiliary M2 policy: fallible wrapper operations (`FileReadText`, `FileWriteText`) route through the Octxiliary sidecar and propagate sidecar/process/protocol failures as `Error`; simple non-fallible host queries such as `FileExists(path: String) -> Bool` compile directly to host runtime checks so compiled execution does not require `OCT_WRAPPER_PATH` for that query. All other wrapper builtins remain deferred unless explicitly documented.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 
 ## Recent sweep summary

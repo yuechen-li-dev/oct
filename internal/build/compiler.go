@@ -2465,6 +2465,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "String", true, true, nil
 			case "FileWriteText":
 				return normalized, "Int", true, true, nil
+			case "FileExists":
+				return normalized, "Bool", true, false, nil
 			default:
 				return "", "", false, false, unsupportedBuiltin(x.Name)
 			}
@@ -2882,6 +2884,14 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "Int", nil
+	case "FileExists":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Bool", nil
 	case "StringByteLength":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -5472,6 +5482,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
 			case "FileWriteText":
 				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "FileExists":
+				return fmt.Sprintf("%s = func() bool { _, __err := os.Stat(%s); return __err == nil }()", st.Target, st.Args[0]), nil
 			case "Step":
 				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
 			case "Active":
@@ -5737,6 +5749,8 @@ func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Resul
 	}
 	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
+
+
 
 const __octOctxiliaryHelpers = `
 var __octOctxiliaryOnce sync.Once
