@@ -27,16 +27,39 @@ func main() {
 		}
 		req, _ := octxiliary.ParseRequest(frame)
 		resp := octxiliary.Response{ID: req.ID}
-		if !((req.Family == "IO.File" || req.Family == "File") && (req.Function == "FileReadText" || req.Function == "ReadText")) {
+		if !isFileFamily(req.Family) {
 			resp.Error = "unsupported Octxiliary function family/function: " + req.Family + "/" + req.Function
-		} else if text, readErr := interpret.FileReadTextForSidecar(req.Path); readErr != nil {
-			resp.Error = readErr.Error()
 		} else {
-			resp.OK = true
-			resp.Text = text
+			switch req.Function {
+			case "FileReadText", "ReadText":
+				if text, readErr := interpret.FileReadTextForSidecar(req.Path); readErr != nil {
+					resp.Error = readErr.Error()
+				} else {
+					resp.OK = true
+					resp.Text = text
+				}
+			case "FileWriteText", "WriteText":
+				if writeErr := interpret.FileWriteTextForSidecar(req.Path, req.Text); writeErr != nil {
+					resp.Error = writeErr.Error()
+				} else {
+					resp.OK = true
+				}
+			case "FileExists", "Exists":
+				if exists, existsErr := interpret.FileExistsForSidecar(req.Path); existsErr != nil {
+					resp.Error = existsErr.Error()
+				} else {
+					resp.OK = true
+					resp.Exists = exists
+					resp.HasExists = true
+				}
+			default:
+				resp.Error = "unsupported Octxiliary function family/function: " + req.Family + "/" + req.Function
+			}
 		}
 		if err := octxiliary.WriteFrame(os.Stdout, octxiliary.EncodeResponse(resp)); err != nil {
 			log.Fatal(err)
 		}
 	}
 }
+
+func isFileFamily(family string) bool { return family == "IO.File" || family == "File" }

@@ -15,11 +15,14 @@ const ABIMinor uint16 = 1
 type Request struct {
 	ID                     int
 	Family, Function, Path string
+	Text                   string
 }
 type Response struct {
 	ID          int
 	OK          bool
 	Text, Error string
+	Exists      bool
+	HasExists   bool
 }
 
 func WriteHandshake(w io.Writer) error {
@@ -65,16 +68,25 @@ func ReadFrame(r io.Reader) (string, error) {
 }
 
 func EncodeRequest(req Request) string {
+	if req.Text != "" {
+		return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q text: %q }", req.ID, req.Family, req.Function, req.Path, req.Text)
+	}
 	return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q }", req.ID, req.Family, req.Function, req.Path)
 }
 func EncodeResponse(resp Response) string {
 	if resp.OK {
+		if resp.HasExists {
+			return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true exists: %t }", resp.ID, resp.Exists)
+		}
 		return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true text: %q }", resp.ID, resp.Text)
 	}
 	return fmt.Sprintf("OctxiliaryResponse { id: %d ok: false error: %q }", resp.ID, resp.Error)
 }
 func ParseRequest(s string) (Request, error) {
 	var req Request
+	if _, err := fmt.Sscanf(s, "OctxiliaryRequest { id: %d family: %q function: %q path: %q text: %q }", &req.ID, &req.Family, &req.Function, &req.Path, &req.Text); err == nil {
+		return req, nil
+	}
 	if _, err := fmt.Sscanf(s, "OctxiliaryRequest { id: %d family: %q function: %q path: %q }", &req.ID, &req.Family, &req.Function, &req.Path); err != nil {
 		return Request{}, err
 	}
@@ -84,6 +96,11 @@ func ParseResponse(s string) (Response, error) {
 	var r Response
 	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: true text: %q }", &r.ID, &r.Text); err == nil {
 		r.OK = true
+		return r, nil
+	}
+	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: true exists: %t }", &r.ID, &r.Exists); err == nil {
+		r.OK = true
+		r.HasExists = true
 		return r, nil
 	}
 	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: false error: %q }", &r.ID, &r.Error); err != nil {

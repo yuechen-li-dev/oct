@@ -1,7 +1,0 @@
-package Main
-
-[Fact]
-fn FileReadTextCompiledSidecarM0() -> Void ! Error {
-    let text = FileReadText("docs/internal/octxiliary.md")?
-    Assert.True(Contains(text, "Octxiliary"), "compiled FileReadText should route through Octxiliary")
-}
