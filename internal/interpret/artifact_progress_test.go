@@ -12,7 +12,14 @@ import (
 
 func TestArtifactProgressRecorderReceivesOrderedEvents(t *testing.T) {
 	root := t.TempDir()
-	source := "package Main\n[Artifact]\nfn Emit() -> Void {\nArtifactCheckpoint(\"start\")\nArtifactProgress(\"work\", 1, 3)\nArtifactProgress(\"work\", 3, 3)\nArtifactCheckpoint(\"done\")\n}\n"
+	artifactPkg := "package Artifact\nfn Checkpoint(label: String) -> Void { ArtifactCheckpoint(label) }\nfn Progress(label: String, current: Int, total: Int) -> Void { ArtifactProgress(label, current, total) }\n"
+	source := "package Main\nimport Artifact\n[Artifact]\nfn Emit() -> Void {\nArtifact.Checkpoint(\"start\")\nArtifact.Progress(\"work\", 1, 3)\nArtifact.Progress(\"work\", 3, 3)\nArtifact.Checkpoint(\"done\")\n}\n"
+	if err := os.Mkdir(filepath.Join(root, "Artifact"), 0o755); err != nil {
+		t.Fatalf("mkdir artifact pkg: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Artifact", "artifact.oct"), []byte(artifactPkg), 0o644); err != nil {
+		t.Fatalf("write artifact pkg: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "artifact.octest"), []byte(source), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
