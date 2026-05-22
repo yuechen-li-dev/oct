@@ -1,0 +1,25 @@
+package Main
+
+[Fact]
+fn FileWriteLinesReadLinesRoundTripCompiledSidecarM4() -> Void ! Error {
+    let path = ".tmp/m4-lines/roundtrip.txt"
+    let _mk = DirectoryMakeAll(PathParent(path))?
+    let _w = FileWriteLines(path, ["alpha", "beta", "gamma"])?
+    let lines = FileReadLines(path)?
+    Assert.Equal(3, Len(lines), "compiled FileReadLines should return expected line count")
+    Assert.Equal("alpha", lines[0], "line 0")
+    Assert.Equal("beta", lines[1], "line 1")
+    Assert.Equal("gamma", lines[2], "line 2")
+}
+
+[Fact]
+fn FileWriteLinesReadLinesPreserveEmptyLinesCompiledSidecarM4() -> Void ! Error {
+    let path = ".tmp/m4-lines/empty-lines.txt"
+    let _mk = DirectoryMakeAll(PathParent(path))?
+    let _w = FileWriteLines(path, ["", "middle", ""])?
+    let lines = FileReadLines(path)?
+    Assert.Equal(3, Len(lines), "ReadLines should preserve leading/trailing empty lines")
+    Assert.Equal("", lines[0], "leading empty line should persist")
+    Assert.Equal("middle", lines[1], "middle text line should persist")
+    Assert.Equal("", lines[2], "trailing empty line should persist")
+}

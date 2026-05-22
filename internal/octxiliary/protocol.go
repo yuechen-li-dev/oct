@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 )
 
 var handshakeMagic = []byte{'O', 'C', 'T', 'W', 'R', 'A', 'P', 0}
@@ -16,11 +18,14 @@ type Request struct {
 	ID                     int
 	Family, Function, Path string
 	Text                   string
+	Lines                  []string
+	HasLines               bool
 }
 type Response struct {
 	ID          int
 	OK          bool
 	Text, Error string
+	Lines       []string
 	Exists      bool
 	HasExists   bool
 }
@@ -68,6 +73,9 @@ func ReadFrame(r io.Reader) (string, error) {
 }
 
 func EncodeRequest(req Request) string {
+	if req.HasLines {
+		return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q lines: { %s } }", req.ID, req.Family, req.Function, req.Path, encodeLinesList(req.Lines))
+	}
 	if req.Text != "" {
 		return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q text: %q }", req.ID, req.Family, req.Function, req.Path, req.Text)
 	}
@@ -75,6 +83,9 @@ func EncodeRequest(req Request) string {
 }
 func EncodeResponse(resp Response) string {
 	if resp.OK {
+		if resp.Lines != nil {
+			return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true lines: { %s } }", resp.ID, encodeLinesList(resp.Lines))
+		}
 		if resp.HasExists {
 			return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true exists: %t }", resp.ID, resp.Exists)
 		}
@@ -84,6 +95,11 @@ func EncodeResponse(resp Response) string {
 }
 func ParseRequest(s string) (Request, error) {
 	var req Request
+	if parsed, ok := parseRequestWithLines(s); ok {
+		req = parsed
+		req.HasLines = true
+		return req, nil
+	}
 	if _, err := fmt.Sscanf(s, "OctxiliaryRequest { id: %d family: %q function: %q path: %q text: %q }", &req.ID, &req.Family, &req.Function, &req.Path, &req.Text); err == nil {
 		return req, nil
 	}
@@ -94,6 +110,11 @@ func ParseRequest(s string) (Request, error) {
 }
 func ParseResponse(s string) (Response, error) {
 	var r Response
+	if parsed, ok := parseResponseWithLines(s); ok {
+		r = parsed
+		r.OK = true
+		return r, nil
+	}
 	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: true text: %q }", &r.ID, &r.Text); err == nil {
 		r.OK = true
 		return r, nil
@@ -109,3 +130,132 @@ func ParseResponse(s string) (Response, error) {
 	return r, nil
 }
 func NewReader(r io.Reader) *bufio.Reader { return bufio.NewReader(r) }
+
+func encodeLinesList(lines []string) string {
+	parts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		parts = append(parts, strconv.Quote(line))
+	}
+	return strings.Join(parts, " ")
+}
+
+func parseRequestWithLines(s string) (Request, bool) {
+	var req Request
+	prefix := "OctxiliaryRequest { id: "
+	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, " }") {
+		return req, false
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(s, prefix), " }")
+	var err error
+	req.ID, body, err = scanIntThen(body, " family: ")
+	if err != nil {
+		return req, false
+	}
+	req.Family, body, err = scanQuotedThen(body, " function: ")
+	if err != nil {
+		return req, false
+	}
+	req.Function, body, err = scanQuotedThen(body, " path: ")
+	if err != nil {
+		return req, false
+	}
+	req.Path, body, err = scanQuotedThen(body, " lines: { ")
+	if err != nil || !strings.HasSuffix(body, " }") {
+		return req, false
+	}
+	req.Lines, err = parseLinesList(strings.TrimSuffix(body, " }"))
+	if err != nil {
+		return req, false
+	}
+	return req, true
+}
+
+func parseResponseWithLines(s string) (Response, bool) {
+	var resp Response
+	prefix := "OctxiliaryResponse { id: "
+	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, " }") {
+		return resp, false
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(s, prefix), " }")
+	var err error
+	resp.ID, body, err = scanIntThen(body, " ok: true lines: { ")
+	if err != nil || !strings.HasSuffix(body, " }") {
+		return resp, false
+	}
+	resp.Lines, err = parseLinesList(strings.TrimSuffix(body, " }"))
+	if err != nil {
+		return resp, false
+	}
+	return resp, true
+}
+
+func scanIntThen(s, delim string) (int, string, error) {
+	idx := strings.Index(s, delim)
+	if idx < 0 {
+		return 0, "", fmt.Errorf("missing delimiter")
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s[:idx]))
+	if err != nil {
+		return 0, "", err
+	}
+	return n, s[idx+len(delim):], nil
+}
+func scanQuotedThen(s, delim string) (string, string, error) {
+	if len(s) == 0 || s[0] != '"' {
+		return "", "", fmt.Errorf("missing quote")
+	}
+	i := 1
+	escaped := false
+	for i < len(s) {
+		ch := s[i]
+		if ch == '\\' && !escaped {
+			escaped = true
+			i++
+			continue
+		}
+		if ch == '"' && !escaped {
+			break
+		}
+		escaped = false
+		i++
+	}
+	if i >= len(s) {
+		return "", "", fmt.Errorf("unterminated quote")
+	}
+	token := s[:i+1]
+	value, err := strconv.Unquote(token)
+	if err != nil {
+		return "", "", err
+	}
+	rest := s[i+1:]
+	if !strings.HasPrefix(rest, delim) {
+		return "", "", fmt.Errorf("missing delimiter")
+	}
+	return value, rest[len(delim):], nil
+}
+func parseLinesList(s string) ([]string, error) {
+	out := []string{}
+	rest := strings.TrimSpace(s)
+	for rest != "" {
+		v, next, err := scanQuotedThen(rest, " ")
+		if err != nil {
+			// allow last token without trailing space
+			if len(rest) > 0 && rest[0] == '"' {
+				i := strings.LastIndex(rest, "\"")
+				if i <= 0 {
+					return nil, err
+				}
+				v2, e2 := strconv.Unquote(rest[:i+1])
+				if e2 != nil {
+					return nil, err
+				}
+				out = append(out, v2)
+				return out, nil
+			}
+			return nil, err
+		}
+		out = append(out, v)
+		rest = strings.TrimSpace(next)
+	}
+	return out, nil
+}

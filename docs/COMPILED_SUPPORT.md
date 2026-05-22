@@ -71,8 +71,8 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
 - **Direct compiled (no sidecar):** `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
-- **Octxiliary sidecar-backed compiled (`... ! Error`):** `FileReadText`, `FileWriteText`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
-- **Deferred wrapper builtins in this family:** `FileReadBytes`, `FileWriteBytes`, `FileReadLines`, `FileWriteLines`, `DirectoryList`, `DirectoryRemoveAll`.
+- **Octxiliary sidecar-backed compiled (`... ! Error`):** `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
+- **Deferred wrapper builtins in this family:** `FileReadBytes`, `FileWriteBytes`, `DirectoryList`, `DirectoryRemoveAll`.
 - Sidecar-backed compiled calls require Octxiliary availability (`octxiliary-io` beside `.octbin` or `OCT_WRAPPER_PATH`).
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
 - Octxiliary policy: fallible wrapper operations listed above route through the Octxiliary sidecar and propagate sidecar/process/protocol failures as `Error`; simple non-fallible host queries such as `FileExists(path: String) -> Bool` compile directly to host runtime checks so compiled execution does not require `OCT_WRAPPER_PATH` for that query. All other wrappers remain deferred unless explicitly listed as compiled-supported.
