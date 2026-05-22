@@ -1,0 +1,19 @@
+expect error: "assignment to board.Value: undefined variable: x"
+
+package Main
+
+flow CrossStateLocalRef() -> Int {
+    board {
+        Value: Int
+    }
+
+    state A {
+        let x = 1
+        goto B
+    }
+
+    state B {
+        board.Value = x
+        return board.Value
+    }
+}

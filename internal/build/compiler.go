@@ -83,6 +83,14 @@ type MIRFlowFieldAssign struct {
 
 func (MIRFlowFieldAssign) mirFlowStmt() {}
 
+type MIRFlowLetStmt struct {
+	Name  string
+	Type  string
+	Value MIRFlowExpr
+}
+
+func (MIRFlowLetStmt) mirFlowStmt() {}
+
 type MIRFlowReturn struct {
 	Value MIRFlowExpr
 }
@@ -140,7 +148,8 @@ type MIRFlowLiteralExpr struct {
 func (MIRFlowLiteralExpr) mirFlowExpr() {}
 
 type MIRFlowIdentifierExpr struct {
-	Name string
+	Name    string
+	IsLocal bool
 }
 
 func (MIRFlowIdentifierExpr) mirFlowExpr() {}
@@ -2890,6 +2899,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 
 func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
 	env := map[string]string{}
+	locals := map[string]bool{}
 	boardFieldTypes := map[string]string{}
 	for _, p := range flow.Parameters {
 		env[p.Name] = typeRefStringForPackage(pkgName, p.Type)
@@ -2912,7 +2922,9 @@ func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow,
 		env["board"] = "__flow_board_" + flow.Name
 	}
 	for _, st := range flow.States {
-		lowered, err := lowerFlowBlock(st.Body, env, pkg.Name, boardFieldTypes)
+		stateEnv := cloneFlowEnv(env)
+		stateLocals := cloneFlowLocals(locals)
+		lowered, err := lowerFlowBlock(st.Body, stateEnv, stateLocals, pkg.Name, boardFieldTypes)
 		if err != nil {
 			return MIRFlow{}, fmt.Errorf("state %s: %w", st.Name, err)
 		}
@@ -2921,10 +2933,26 @@ func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow,
 	return out, nil
 }
 
-func lowerFlowBlock(block ast.Block, env map[string]string, pkg string, boardFieldTypes map[string]string) ([]MIRFlowStmt, error) {
+func cloneFlowEnv(env map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range env {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneFlowLocals(locals map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for k, v := range locals {
+		out[k] = v
+	}
+	return out
+}
+
+func lowerFlowBlock(block ast.Block, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) ([]MIRFlowStmt, error) {
 	out := make([]MIRFlowStmt, 0, len(block.Statements))
 	for _, stmt := range block.Statements {
-		s, err := lowerFlowStmt(stmt, env, pkg, boardFieldTypes)
+		s, err := lowerFlowStmt(stmt, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -2933,8 +2961,28 @@ func lowerFlowBlock(block ast.Block, env map[string]string, pkg string, boardFie
 	return out, nil
 }
 
-func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string, boardFieldTypes map[string]string) (MIRFlowStmt, error) {
+func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowStmt, error) {
 	switch s := stmt.(type) {
+	case ast.LetStmt:
+		if _, exists := env[s.Name]; exists {
+			return nil, fmt.Errorf("flow local '%s' conflicts with existing binding", s.Name)
+		}
+		v, t, fallible, err := lowerFlowExprTyped(s.Value, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		if fallible {
+			return nil, fmt.Errorf("fallible calls are not supported in compiled flow let bindings; handle outside the flow or use non-fallible helper")
+		}
+		if s.TypeHint != nil {
+			hint := typeRefStringForPackage(pkg, *s.TypeHint)
+			if hint != t {
+				return nil, fmt.Errorf("flow let '%s' expected %s, got %s", s.Name, hint, t)
+			}
+		}
+		env[s.Name] = t
+		locals[s.Name] = true
+		return MIRFlowLetStmt{Name: s.Name, Type: t, Value: v}, nil
 	case ast.GotoStmt:
 		return MIRFlowGoto{Target: s.Target}, nil
 	case ast.SuspendStmt:
@@ -2944,7 +2992,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string, boardFieldT
 	case ast.ResumeStmt:
 		return MIRFlowResume{}, nil
 	case ast.FieldAssignStmt:
-		v, err := lowerFlowExpr(s.Value, env, pkg, boardFieldTypes)
+		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -2953,23 +3001,23 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string, boardFieldT
 		if s.Value == nil {
 			return MIRFlowReturn{}, nil
 		}
-		v, err := lowerFlowExpr(s.Value, env, pkg, boardFieldTypes)
+		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
 		return MIRFlowReturn{Value: v}, nil
 	case ast.IfStmt:
-		cond, err := lowerFlowExpr(s.Condition, env, pkg, boardFieldTypes)
+		cond, err := lowerFlowExpr(s.Condition, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
-		thenBody, err := lowerFlowBlock(s.ThenBody, env, pkg, boardFieldTypes)
+		thenBody, err := lowerFlowBlock(s.ThenBody, cloneFlowEnv(env), cloneFlowLocals(locals), pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
 		var elseBody []MIRFlowStmt
 		if s.ElseBody != nil {
-			elseBody, err = lowerFlowBlock(*s.ElseBody, env, pkg, boardFieldTypes)
+			elseBody, err = lowerFlowBlock(*s.ElseBody, cloneFlowEnv(env), cloneFlowLocals(locals), pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -2978,17 +3026,17 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string, boardFieldT
 	case ast.WhenStmt:
 		cases := make([]MIRFlowWhenCase, 0, len(s.Cases))
 		for _, c := range s.Cases {
-			cond, err := lowerFlowExpr(c.Condition, env, pkg, boardFieldTypes)
+			cond, err := lowerFlowExpr(c.Condition, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
-			action, err := lowerFlowWhenAction(c.Action, env, pkg, boardFieldTypes)
+			action, err := lowerFlowWhenAction(c.Action, cloneFlowEnv(env), cloneFlowLocals(locals), pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
 			cases = append(cases, MIRFlowWhenCase{Condition: cond, Action: action})
 		}
-		elseAction, err := lowerFlowWhenAction(s.Else, env, pkg, boardFieldTypes)
+		elseAction, err := lowerFlowWhenAction(s.Else, cloneFlowEnv(env), cloneFlowLocals(locals), pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -2998,14 +3046,14 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, pkg string, boardFieldT
 	}
 }
 
-func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, pkg string, boardFieldTypes map[string]string) (MIRFlowWhenAction, error) {
+func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowWhenAction, error) {
 	switch a := action.(type) {
 	case ast.WhenGotoAction:
 		return MIRFlowWhenGoto{Target: a.Target}, nil
 	case ast.WhenSuspendAction:
 		return MIRFlowWhenSuspend{}, nil
 	case ast.WhenReturnAction:
-		v, err := lowerFlowExpr(a.Value, env, pkg, boardFieldTypes)
+		v, err := lowerFlowExpr(a.Value, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -3013,7 +3061,7 @@ func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, pkg strin
 	case ast.WhenBlockAction:
 		statements := make([]MIRFlowStmt, 0, len(a.Statements))
 		for _, statement := range a.Statements {
-			lowered, err := lowerFlowStmt(statement, env, pkg, boardFieldTypes)
+			lowered, err := lowerFlowStmt(statement, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -3025,7 +3073,27 @@ func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, pkg strin
 	}
 }
 
-func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
+func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, bool, error) {
+	v, err := lowerFlowExpr(expr, env, locals, pkg, boardFieldTypes)
+	if err != nil {
+		return nil, "", false, err
+	}
+	t, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
+	if err != nil {
+		return nil, "", false, err
+	}
+	fallible := false
+	if call, ok := expr.(ast.CallExpr); ok {
+		_, _, _, isFallible, err := resolveFlowCall(call.Callee)
+		if err != nil {
+			return nil, "", false, err
+		}
+		fallible = isFallible
+	}
+	return v, t, fallible, nil
+}
+
+func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
 		return MIRFlowLiteralExpr{Value: e.Value}, nil
@@ -3042,19 +3110,19 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 		if _, ok := env[e.Name]; !ok {
 			return nil, fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
-		return MIRFlowIdentifierExpr{Name: e.Name}, nil
+		return MIRFlowIdentifierExpr{Name: e.Name, IsLocal: locals[e.Name]}, nil
 	case ast.BinaryExpr:
-		l, err := lowerFlowExpr(e.Left, env, pkg, boardFieldTypes)
+		l, err := lowerFlowExpr(e.Left, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
-		r, err := lowerFlowExpr(e.Right, env, pkg, boardFieldTypes)
+		r, err := lowerFlowExpr(e.Right, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
 		return MIRFlowBinaryExpr{Left: l, Operator: e.Operator, Right: r}, nil
 	case ast.UnaryExpr:
-		v, err := lowerFlowExpr(e.Operand, env, pkg, boardFieldTypes)
+		v, err := lowerFlowExpr(e.Operand, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -3072,7 +3140,7 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 		}
 		args := make([]MIRFlowExpr, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
-			v, err := lowerFlowExpr(arg, env, pkg, boardFieldTypes)
+			v, err := lowerFlowExpr(arg, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -3097,11 +3165,11 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 		if idxType != "Int" {
 			return nil, fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
 		}
-		target, err := lowerFlowExpr(e.Target, env, pkg, boardFieldTypes)
+		target, err := lowerFlowExpr(e.Target, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
-		idx, err := lowerFlowExpr(e.Indices[0], env, pkg, boardFieldTypes)
+		idx, err := lowerFlowExpr(e.Indices[0], env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -3115,31 +3183,31 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, pkg string, boardFieldT
 		if err != nil {
 			return nil, err
 		}
-		h, err := lowerFlowExpr(e.Policy.Hysteresis, env, pkg, boardFieldTypes)
+		h, err := lowerFlowExpr(e.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
-		m, err := lowerFlowExpr(e.Policy.MinCommit, env, pkg, boardFieldTypes)
+		m, err := lowerFlowExpr(e.Policy.MinCommit, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
 		cases := make([]MIRFlowUtilityCase, 0, len(e.Cases))
 		for _, c := range e.Cases {
-			val, err := lowerFlowExpr(c.Value, env, pkg, boardFieldTypes)
+			val, err := lowerFlowExpr(c.Value, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
-			cond, err := lowerFlowExpr(c.Condition, env, pkg, boardFieldTypes)
+			cond, err := lowerFlowExpr(c.Condition, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
-			score, err := lowerFlowExpr(c.Score, env, pkg, boardFieldTypes)
+			score, err := lowerFlowExpr(c.Score, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
 			cases = append(cases, MIRFlowUtilityCase{Value: val, Condition: cond, Score: score})
 		}
-		elseExpr, err := lowerFlowExpr(e.Else, env, pkg, boardFieldTypes)
+		elseExpr, err := lowerFlowExpr(e.Else, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -4807,6 +4875,12 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 			return fmt.Sprintf("f.board.%s = %s\nf.instruction++\ncontinue", s.Field, v), nil
 		}
 		return fmt.Sprintf("f.%s.%s = %s\nf.instruction++\ncontinue", s.Target, s.Field, v), nil
+	case MIRFlowLetStmt:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s := %s\nf.instruction++\ncontinue", s.Name, v), nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
@@ -4897,6 +4971,12 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 	switch s := stmt.(type) {
 	case MIRFlowRemember:
 		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState", nil
+	case MIRFlowLetStmt:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s := %s", s.Name, v), nil
 	case MIRFlowFieldAssign:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -4950,6 +5030,9 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	case MIRFlowLiteralExpr:
 		return e.Value, nil
 	case MIRFlowIdentifierExpr:
+		if e.IsLocal {
+			return e.Name, nil
+		}
 		return "f." + e.Name, nil
 	case MIRFlowFieldExpr:
 		if e.Target == "board" {

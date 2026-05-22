@@ -1,0 +1,15 @@
+expect error: "fallible expression must be handled explicitly"
+
+package Main
+
+flow FallibleLocalRef() -> Float {
+    board {
+        Value: Float
+    }
+
+    state Start {
+        let x = CsvRead("ignored.csv")
+        board.Value = 1.0
+        return board.Value
+    }
+}
