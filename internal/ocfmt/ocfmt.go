@@ -18,10 +18,11 @@ import (
 type Mode string
 
 const (
-	ModeDefault  Mode = ""
-	ModeReadable Mode = "readable"
-	ModeCompact  Mode = "compact"
-	ModeEnLLM    Mode = "en-llm"
+	ModeDefault      Mode = ""
+	ModeReadable     Mode = "readable"
+	ModeCompact      Mode = "compact"
+	ModeEnLLM        Mode = "en-llm"
+	ModeEnLLMCompact Mode = "en-llm-compact"
 )
 
 type Options struct {
@@ -79,7 +80,7 @@ func formatSourceWithDiagnostics(src string, options Options) (string, DecisionD
 	if err != nil {
 		return "", DecisionDiagnostics{}, err
 	}
-	if mode == ModeCompact {
+	if mode == ModeEnLLMCompact {
 		out, _, err := formatRegularSource("<format>.oct", src, mode, false)
 		return out, DecisionDiagnostics{}, err
 	}
@@ -88,15 +89,17 @@ func formatSourceWithDiagnostics(src string, options Options) (string, DecisionD
 }
 func resolveMode(mode Mode) (Mode, error) {
 	switch mode {
-	case ModeDefault, ModeReadable, ModeCompact:
+	case ModeDefault, ModeReadable:
 		if mode == ModeDefault {
-			return ModeReadable, nil
+			return ModeEnLLM, nil
 		}
+		return ModeEnLLM, nil
+	case ModeCompact:
+		return ModeEnLLMCompact, nil
+	case ModeEnLLM, ModeEnLLMCompact:
 		return mode, nil
-	case ModeEnLLM:
-		return ModeReadable, nil
 	default:
-		return "", fmt.Errorf("unsupported format mode %q (expected readable, compact, or en-llm)", mode)
+		return "", fmt.Errorf("invalid --mode %q; expected en-llm|en-llm-compact", mode)
 	}
 }
 func formatRegularSource(path string, src string, mode Mode, withDiag bool) (string, DecisionDiagnostics, error) {
@@ -107,7 +110,7 @@ func formatRegularSource(path string, src string, mode Mode, withDiag bool) (str
 	if _, err := parse.BuildFile(lexed); err != nil {
 		return "", DecisionDiagnostics{}, err
 	}
-	if mode == ModeCompact {
+	if mode == ModeEnLLMCompact {
 		return normalizeCompact(src), DecisionDiagnostics{}, nil
 	}
 	return normalizeReadable(src, withDiag)
@@ -195,28 +198,14 @@ func normalize(src string, compact bool, withDiag bool) (string, DecisionDiagnos
 		code, comment := splitCodeAndComment(trimmed)
 		normCode := normalizeCode(code, compact)
 		if !compact {
-			expanded, trace, err := expandReadableLine(normCode, indent, comment)
-			if err != nil {
-				return "", DecisionDiagnostics{}, err
-			}
-			if trace.Winner != "" && withDiag {
-				diags.Traces = append(diags.Traces, trace)
-			}
-			if len(expanded) > 0 {
-				if comment != "" {
-					expanded[len(expanded)-1] += " " + comment
+			line := strings.Repeat("    ", indent) + normCode
+			if comment != "" {
+				if normCode != "" {
+					line += " "
 				}
-				out = append(out, expanded...)
-			} else {
-				line := strings.Repeat("    ", indent) + normCode
-				if comment != "" {
-					if normCode != "" {
-						line += " "
-					}
-					line += comment
-				}
-				out = append(out, line)
+				line += comment
 			}
+			out = append(out, line)
 		} else {
 			line := strings.Repeat("    ", indent) + normCode
 			if comment != "" {
