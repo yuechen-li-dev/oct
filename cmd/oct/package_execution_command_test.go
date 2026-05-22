@@ -124,7 +124,7 @@ func TestBuildAndBuiltinsCoexist(t *testing.T) {
 	}
 }
 
-func TestQualifiedQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
+func TestQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\nfn MakePoint() -> Point { return Point { X: 4m Y: 2m } }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn UsePoint(p: Geometry.Point) -> Float<m> { return p.X }\nfn Main() -> Float<m> { return UsePoint(Geometry.MakePoint()) }\n")
@@ -138,7 +138,7 @@ func TestQualifiedQualifiedRecordTypeInSignatureAndFieldAccess(t *testing.T) {
 	}
 }
 
-func TestQualifiedQualifiedRecordConstruction(t *testing.T) {
+func TestQualifiedRecordConstruction(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Geometry", "geometry.oct", "package Geometry\nrecord Point { X: Float<m> Y: Float<m> }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Geometry\nfn Main() -> Geometry.Point { return Geometry.Point { X: 1m Y: 2m } }\n")
@@ -152,7 +152,7 @@ func TestQualifiedQualifiedRecordConstruction(t *testing.T) {
 	}
 }
 
-func TestQualifiedQualifiedEnumValueReference(t *testing.T) {
+func TestQualifiedEnumValueReference(t *testing.T) {
 	root := t.TempDir()
 	writePkgFile(t, root, "Physics", "physics.oct", "package Physics\nenum Method { Euler Rk4 }\n")
 	writePkgFile(t, root, "Main", "main.oct", "package Main\nimport Physics\nfn Main() -> Physics.Method { return Physics.Method.Euler }\n")
