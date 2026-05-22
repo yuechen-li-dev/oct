@@ -109,4 +109,4 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 3. Isolate and clear remaining M2/M2b compiled blockers with focused fixtures.
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
 
-| BoardSnapshot(machine) | Supported | Not yet supported | `OctomataBoardSnapshot` (runtime only) | Interpreted support is available; compiled lowering not yet implemented in M0. |
+| BoardSnapshot(machine) | Supported | Supported (M0 scalar board fields) | `OctomataBoardSnapshot`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support is currently limited to detached/read-only snapshots of scalar board fields (`Bool`, `Int`, `Float`, `String`). Board arrays remain unsupported in compiled M0. |

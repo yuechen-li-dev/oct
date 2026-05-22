@@ -513,6 +513,16 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: variantNames})
 		}
 		for _, flow := range pkg.Flows {
+			if len(flow.Board) > 0 {
+				snapshot := MIRRecord{Package: pkgName, Name: flow.Name + "BoardSnapshot"}
+				for _, field := range flow.Board {
+					snapshot.Fields = append(snapshot.Fields, MIRField{
+						Name: field.Name,
+						Type: typeRefStringForPackage(pkgName, field.Type),
+					})
+				}
+				module.Records = append(module.Records, snapshot)
+			}
 			mirFlow, err := lowerFlow(pkgName, flow, pkg)
 			if err != nil {
 				return MIRModule{}, fmt.Errorf("flow %s.%s: %w", pkgName, flow.Name, err)
@@ -1769,6 +1779,28 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if builtin && callee == "Append" && len(argTypes) > 0 {
 			ret = argTypes[0]
 		}
+		if builtin && callee == "BoardSnapshot" {
+			if len(argTypes) != 1 {
+				return "", "", false, fmt.Errorf("BoardSnapshot expects 1 argument")
+			}
+			flowRet, ok := parseFlowInstanceType(argTypes[0])
+			if !ok {
+				return "", "", false, fmt.Errorf("BoardSnapshot expects FlowInstance argument")
+			}
+			snapshotType := ""
+			for _, flowDecl := range c.pkg.Flows {
+				if typeRefStringForPackage(c.pkg.Name, flowDecl.ReturnType) == flowRet && len(flowDecl.Board) > 0 {
+					if snapshotType != "" {
+						return "", "", false, fmt.Errorf("compiled BoardSnapshot requires unambiguous flow identity for return type %s", flowRet)
+					}
+					snapshotType = c.pkg.Name + "." + flowDecl.Name + "BoardSnapshot"
+				}
+			}
+			if snapshotType == "" {
+				return "", "", false, fmt.Errorf("compiled mode does not yet support builtin BoardSnapshot")
+			}
+			ret = snapshotType
+		}
 		localType := ret
 		if fallible {
 			localType = fallibleType(ret)
@@ -2160,6 +2192,17 @@ func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, 
 			}
 		}
 	}
+	for _, flow := range pkg.Flows {
+		if flow.Name+"BoardSnapshot" != typeName {
+			continue
+		}
+		for _, field := range flow.Board {
+			if field.Name == fieldName {
+				return typeRefStringForPackage(pkgName, field.Type), true
+			}
+		}
+		return "", false
+	}
 	return "", false
 }
 
@@ -2304,7 +2347,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
 		switch x.Name {
-		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget":
+		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget", "BoardSnapshot":
 			switch x.Name {
 			case "Step":
 				return "Step", "Int", true, false, nil
@@ -2318,6 +2361,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return "StateHistory", "String[]", true, false, nil
 			case "ResumeTarget":
 				return "ResumeTarget", "String", true, false, nil
+			case "BoardSnapshot":
+				return "BoardSnapshot", "", true, true, nil
 			}
 		}
 		if x.Name == "Len" {
@@ -3657,7 +3702,7 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "type __octFlowInstance_%s interface {\n", goSafeName(t))
 		b.WriteString("\t__octStep()\n\t__octActive() string\n\t__octComplete() bool\n")
 		fmt.Fprintf(&b, "\t__octResult() (%s, bool)\n", goFlowResultType(t))
-		b.WriteString("\t__octStateHistory() []string\n\t__octResumeTarget() string\n}\n\n")
+		b.WriteString("\t__octStateHistory() []string\n\t__octResumeTarget() string\n\t__octBoardSnapshot() (any, bool)\n}\n\n")
 		fmt.Fprintf(&b, "type __octResultFlow_%s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goSafeName(t), goFlowResultType(t))
 	}
 	for _, flow := range m.Flows {
@@ -3762,6 +3807,9 @@ func emitGo(m MIRModule) (string, error) {
 				localType = "__octVoid"
 			}
 			fmt.Fprintf(&b, "\tvar %s %s\n", l.Name, localType)
+			if l.Name != "_" {
+				fmt.Fprintf(&b, "\t_ = %s\n", l.Name)
+			}
 		}
 		labelToIdx := map[string]int{}
 		for i, bb := range fn.Blocks {
@@ -4819,7 +4867,20 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octResumeTarget() string {\n", structName)
 	b.WriteString("\tif !f.hasResumeTarget { return \"\" }\n\treturn f.__octStateName(f.resumeTarget)\n}\n\n")
+	fmt.Fprintf(b, "func (f *%s) __octBoardSnapshot() (any, bool) {\n", structName)
+	if len(flow.Board) == 0 {
+		b.WriteString("\treturn nil, false\n}\n\n")
+	} else {
+		fmt.Fprintf(b, "\treturn %s_%sBoardSnapshot{\n", flow.Package, flow.Name)
+		for _, field := range flow.Board {
+			fmt.Fprintf(b, "\t\t%s: f.board.%s,\n", field.Name, field.Name)
+		}
+		b.WriteString("\t}, true\n}\n\n")
+	}
 	fmt.Fprintf(b, "func (f *%s) __octStep() {\n", structName)
+	for _, local := range collectFlowLetLocals(flow) {
+		fmt.Fprintf(b, "\tvar %s %s\n", local.Name, goType(local.Type))
+	}
 	b.WriteString("\tif f.completed { return }\n")
 	entryID := 0
 	for idx, st := range flow.States {
@@ -4856,6 +4917,49 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	return nil
 }
 
+func collectFlowLetLocals(flow MIRFlow) []MIRField {
+	seen := map[string]struct{}{}
+	locals := []MIRField{}
+	var visitStmt func(MIRFlowStmt)
+	var visitWhenAction func(MIRFlowWhenAction)
+	visitWhenAction = func(action MIRFlowWhenAction) {
+		switch a := action.(type) {
+		case MIRFlowWhenBlock:
+			for _, st := range a.Statements {
+				visitStmt(st)
+			}
+		}
+	}
+	visitStmt = func(stmt MIRFlowStmt) {
+		switch s := stmt.(type) {
+		case MIRFlowLetStmt:
+			if _, ok := seen[s.Name]; ok {
+				return
+			}
+			seen[s.Name] = struct{}{}
+			locals = append(locals, MIRField{Name: s.Name, Type: s.Type})
+		case MIRFlowIf:
+			for _, st := range s.Then {
+				visitStmt(st)
+			}
+			for _, st := range s.Else {
+				visitStmt(st)
+			}
+		case MIRFlowWhen:
+			for _, c := range s.Cases {
+				visitWhenAction(c.Action)
+			}
+			visitWhenAction(s.Else)
+		}
+	}
+	for _, state := range flow.States {
+		for _, st := range state.Statements {
+			visitStmt(st)
+		}
+	}
+	return locals
+}
+
 func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
 	switch s := stmt.(type) {
 	case MIRFlowGoto:
@@ -4884,7 +4988,7 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s := %s\nf.instruction++\ncontinue", s.Name, v), nil
+		return fmt.Sprintf("%s = %s\nf.instruction++\ncontinue", s.Name, v), nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
@@ -4980,7 +5084,7 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s := %s", s.Name, v), nil
+		return fmt.Sprintf("%s = %s", s.Name, v), nil
 	case MIRFlowFieldAssign:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -5338,6 +5442,9 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
 			case "ResumeTarget":
 				return fmt.Sprintf("%s = %s.__octResumeTarget()", st.Target, st.Args[0]), nil
+			case "BoardSnapshot":
+				return fmt.Sprintf("%s = func() %s { __snap, __ok := %s.__octBoardSnapshot(); if !__ok { return %s{Err: \"BoardSnapshot() requires a flow with a declared board\", IsErr: true} }; __typed, __typedOk := __snap.(%s); if !__typedOk { return %s{Err: \"BoardSnapshot() flow snapshot type mismatch\", IsErr: true} }; return %s{Value: __typed} }()",
+					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "MatMulMV":
 				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "MatMulMM":
