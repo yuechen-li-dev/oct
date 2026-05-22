@@ -2463,7 +2463,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Void", true, false, nil
 			case "FileReadText":
 				return normalized, "String", true, true, nil
-			case "FileWriteText":
+			case "FileReadLines":
+				return normalized, "String[]", true, true, nil
+			case "FileWriteText", "FileWriteLines":
 				return normalized, "Int", true, true, nil
 			case "FileExists":
 				return normalized, "Bool", true, false, nil
@@ -2880,11 +2882,20 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "String", nil
 
-	case "FileWriteText":
+	case "FileReadLines":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+
+	case "FileWriteText", "FileWriteLines":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
 		}
-		if argTypes[0] != "String" || argTypes[1] != "String" {
+		if argTypes[0] != "String" || (name == "FileWriteText" && argTypes[1] != "String") || (name == "FileWriteLines" && argTypes[1] != "String[]") {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "Int", nil
@@ -2970,7 +2981,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
 		}
-		if argTypes[0] != "String" || argTypes[1] != "String" {
+		if argTypes[0] != "String" || (name == "FileWriteText" && argTypes[1] != "String") || (name == "FileWriteLines" && argTypes[1] != "String[]") {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "Bool", nil
@@ -3646,7 +3657,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
@@ -3686,8 +3697,9 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "\t%q\n", name)
 	}
 	b.WriteString(")\n\n")
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		resultTypes["String"] = struct{}{}
+		resultTypes["String[]"] = struct{}{}
 	}
 	resultTypes["Int"] = struct{}{}
 	resultNames := make([]string, 0, len(resultTypes))
@@ -3724,6 +3736,11 @@ func emitGo(m MIRModule) (string, error) {
 			valueType = "__octVoid"
 		}
 		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), valueType)
+	}
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+		if _, ok := resultTypes["String[]"]; !ok {
+			b.WriteString("type octResult_StringSlice struct {\n\tValue []string\n\tErr string\n\tIsErr bool\n}\n\n")
+		}
 	}
 	for _, r := range m.Records {
 		emittedRecordTypes[r.Package+"."+r.Name] = struct{}{}
@@ -3825,7 +3842,7 @@ func emitGo(m MIRModule) (string, error) {
 		if usedBuiltins["WriteOctagon"] {
 			b.WriteString(__octWriteHelpers)
 		}
-		if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+		if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
@@ -3848,7 +3865,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
 		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
@@ -5514,6 +5531,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
 			case "FileWriteText":
 				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "FileReadLines":
+				return fmt.Sprintf("%s = __octFileReadLines(%s)", st.Target, st.Args[0]), nil
+			case "FileWriteLines":
+				return fmt.Sprintf("%s = __octFileWriteLines(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "FileExists":
 				return fmt.Sprintf("%s = func() bool { _, __err := os.Stat(%s); return __err == nil }()", st.Target, st.Args[0]), nil
 			case "PathJoin":
@@ -5828,6 +5849,33 @@ func __octFileWriteText(path string, text string) octResult_Int {
 	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	__octOctxiliaryReqID++
 	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileWriteText", Path: path, Text: text}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
+
+
+func __octFileReadLines(path string) octResult_StringSlice {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileReadLines", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_StringSlice{Err: resp.Error, IsErr: true} }
+	return octResult_StringSlice{Value: resp.Lines}
+}
+
+func __octFileWriteLines(path string, lines []string) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileWriteLines", Path: path, Lines: lines, HasLines: true}
 	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	resp, _ := octxiliary.ParseResponse(frame)

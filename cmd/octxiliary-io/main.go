@@ -25,8 +25,15 @@ func main() {
 			}
 			log.Fatal(err)
 		}
-		req, _ := octxiliary.ParseRequest(frame)
+		req, parseErr := octxiliary.ParseRequest(frame)
 		resp := octxiliary.Response{ID: req.ID}
+		if parseErr != nil {
+			resp.Error = "invalid Octxiliary request payload: " + parseErr.Error()
+			if err := octxiliary.WriteFrame(os.Stdout, octxiliary.EncodeResponse(resp)); err != nil {
+				log.Fatal(err)
+			}
+			continue
+		}
 		if !isFileFamily(req.Family) {
 			resp.Error = "unsupported Octxiliary function family/function: " + req.Family + "/" + req.Function
 		} else {
@@ -40,6 +47,19 @@ func main() {
 				}
 			case "FileWriteText", "WriteText":
 				if writeErr := interpret.FileWriteTextForSidecar(req.Path, req.Text); writeErr != nil {
+					resp.Error = writeErr.Error()
+				} else {
+					resp.OK = true
+				}
+			case "FileReadLines", "ReadLines":
+				if lines, readErr := interpret.ReadLinesForSidecar(req.Path); readErr != nil {
+					resp.Error = readErr.Error()
+				} else {
+					resp.OK = true
+					resp.Lines = lines
+				}
+			case "FileWriteLines", "WriteLines":
+				if writeErr := interpret.WriteLinesForSidecar(req.Path, req.Lines); writeErr != nil {
 					resp.Error = writeErr.Error()
 				} else {
 					resp.OK = true

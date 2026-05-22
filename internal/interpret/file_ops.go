@@ -3,6 +3,7 @@ package interpret
 import (
 	"errors"
 	"os"
+	"strings"
 )
 
 func fileReadText(path string) (string, error) {
@@ -27,6 +28,32 @@ func fileWriteText(path string, text string) error {
 	return nil
 }
 
+func readLines(path string) ([]string, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, mapPathError(path, err)
+	}
+	lines := splitLinesPreservingTerminal(strings.ReplaceAll(string(contents), "\r\n", "\n"))
+	return lines, nil
+}
+
+func writeLines(path string, lines []string) error {
+	payload := ""
+	if len(lines) > 0 {
+		payload = strings.Join(lines, "\n") + "\n"
+	}
+	if writeErr := os.WriteFile(path, []byte(payload), 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			if retryErr := os.WriteFile(path, []byte(payload), 0o644); retryErr == nil {
+				return nil
+			} else {
+				return mapPathError(path, retryErr)
+			}
+		}
+		return mapPathError(path, writeErr)
+	}
+	return nil
+}
 func fileExists(path string) (bool, error) {
 	_, statErr := os.Stat(path)
 	if statErr == nil {
@@ -69,4 +96,12 @@ func DirectoryMakeAllForSidecar(path string) error {
 		return mapPathError(path, err)
 	}
 	return nil
+}
+
+func ReadLinesForSidecar(path string) ([]string, error) {
+	return readLines(path)
+}
+
+func WriteLinesForSidecar(path string, lines []string) error {
+	return writeLines(path, lines)
 }

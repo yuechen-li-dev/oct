@@ -166,11 +166,10 @@ func (i *interpreter) evalFileReadLinesBuiltin(env *environment, pkgName string,
 	if errResult != nil {
 		return *errResult, nil
 	}
-	contents, readErr := os.ReadFile(path)
+	lines, readErr := readLines(path)
 	if readErr != nil {
-		return wrapperErrorResult(callee, mapPathError(path, readErr)), nil
+		return wrapperErrorResult(callee, readErr), nil
 	}
-	lines := splitLinesPreservingTerminal(strings.ReplaceAll(string(contents), "\r\n", "\n"))
 	return wrapperStringArrayResult(lines), nil
 }
 
@@ -197,19 +196,8 @@ func (i *interpreter) evalFileWriteLinesBuiltin(env *environment, pkgName string
 	if decodeErr != nil {
 		return wrapperErrorResult(callee, decodeErr), nil
 	}
-	payload := ""
-	if len(lines) > 0 {
-		payload = strings.Join(lines, "\n") + "\n"
-	}
-	if writeErr := os.WriteFile(path, []byte(payload), 0o644); writeErr != nil {
-		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
-			if retryErr := os.WriteFile(path, []byte(payload), 0o644); retryErr == nil {
-				return wrapperIntResult(0), nil
-			} else {
-				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
-			}
-		}
-		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
+	if writeErr := writeLines(path, lines); writeErr != nil {
+		return wrapperErrorResult(callee, writeErr), nil
 	}
 	return wrapperIntResult(0), nil
 }

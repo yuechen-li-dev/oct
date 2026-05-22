@@ -125,6 +125,6 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
 - Path helpers (`PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`) remain direct compiled lowerings and do not use Octxiliary.
 - Current compiled split:
   - Direct/no-sidecar: `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
-  - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
-  - Deferred in this family: `FileReadBytes`, `FileWriteBytes`, `FileReadLines`, `FileWriteLines`, `DirectoryList`, `DirectoryRemoveAll`.
+  - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
+  - Deferred in this family: `FileReadBytes`, `FileWriteBytes`, `DirectoryList`, `DirectoryRemoveAll`.
 - Protocol remains framed Octagon transport (no JSON protocol).
