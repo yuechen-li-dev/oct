@@ -27,8 +27,8 @@ func main() {
 		}
 		req, _ := octxiliary.ParseRequest(frame)
 		resp := octxiliary.Response{ID: req.ID}
-		if req.Family != "IO.File" || req.Function != "FileReadText" {
-			resp.Error = "unsupported Octxiliary function family/function"
+		if !((req.Family == "IO.File" || req.Family == "File") && (req.Function == "FileReadText" || req.Function == "ReadText")) {
+			resp.Error = "unsupported Octxiliary function family/function: " + req.Family + "/" + req.Function
 		} else if text, readErr := interpret.FileReadTextForSidecar(req.Path); readErr != nil {
 			resp.Error = readErr.Error()
 		} else {

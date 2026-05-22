@@ -2461,6 +2461,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "String", true, false, nil
 			case "Require":
 				return normalized, "Void", true, false, nil
+			case "FileReadText":
+				return normalized, "String", true, true, nil
 			default:
 				return "", "", false, false, unsupportedBuiltin(x.Name)
 			}
@@ -2861,6 +2863,14 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Matrix<" + elemType + ">", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
+	case "FileReadText":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String", nil
 	case "StringByteLength":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -3594,7 +3604,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usedBuiltins["FileReadText"] {
-		for _, pkg := range []string{"encoding/binary", "errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -3633,6 +3643,9 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "\t%q\n", name)
 	}
 	b.WriteString(")\n\n")
+	if usedBuiltins["FileReadText"] {
+		resultTypes["String"] = struct{}{}
+	}
 	resultNames := make([]string, 0, len(resultTypes))
 	for t := range resultTypes {
 		resultNames = append(resultNames, t)
@@ -3769,7 +3782,7 @@ func emitGo(m MIRModule) (string, error) {
 			b.WriteString(__octWriteHelpers)
 		}
 		if usedBuiltins["FileReadText"] {
-			for _, pkg := range []string{"encoding/binary", "errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
 		}
@@ -5719,17 +5732,17 @@ var __octOctxiliaryErr error
 var __octOctxiliaryMu sync.Mutex
 var __octOctxiliaryReqID int
 
-func __octFileReadText(path string) __octResult_String {
+func __octFileReadText(path string) octResult_String {
 	__octOctxiliaryMu.Lock()
 	defer __octOctxiliaryMu.Unlock()
-	if err := __octOctxiliaryEnsure(); err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_String{Err: err.Error(), IsErr: true} }
 	__octOctxiliaryReqID++
 	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileReadText", Path: path}
-	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
-	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return __octResult_String{Err: err.Error(), IsErr: true} }
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_String{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_String{Err: err.Error(), IsErr: true} }
 	resp, _ := octxiliary.ParseResponse(frame)
-	if !resp.OK { return __octResult_String{Err: resp.Error, IsErr: true} }
-	return __octResult_String{Value: resp.Text}
+	if !resp.OK { return octResult_String{Err: resp.Error, IsErr: true} }
+	return octResult_String{Value: resp.Text}
 }
 func __octOctxiliaryEnsure() error {
 	__octOctxiliaryOnce.Do(func(){

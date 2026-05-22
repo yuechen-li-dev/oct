@@ -73,7 +73,7 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - `DirectoryMakeAll` remains wrapper/deferred for compiled mode, including flow-expression contexts.
 - OctErgonomicsLab M1 now has an explicit suite split: `Experiments.OctErgonomicsLab.M1.FlowSmoke` is compiled-green, while `Experiments.OctErgonomicsLab.M1.Artifacts` remains interpreted fallback because `DirectoryMakeAll` is still deferred in compiled mode.
 - IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
-- Octxiliary M0 architecture is documented in `docs/internal/octxilary.md`; compiled `FileReadText` now routes through the Octxiliary sidecar bridge, while all other wrapper builtins remain deferred.
+- Octxiliary M0 architecture is documented in `docs/internal/octxiliary.md`; compiled `FileReadText` now routes through the Octxiliary sidecar bridge, while all other wrapper builtins remain deferred.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 
 ## Recent sweep summary

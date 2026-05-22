@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 )
 
 var handshakeMagic = []byte{'O', 'C', 'T', 'W', 'R', 'A', 'P', 0}
@@ -25,30 +23,28 @@ type Response struct {
 }
 
 func WriteHandshake(w io.Writer) error {
-	_, e := w.Write(handshakeMagic)
-	if e != nil {
-		return e
+	if _, err := w.Write(handshakeMagic); err != nil {
+		return err
 	}
 	return binary.Write(w, binary.LittleEndian, []uint16{ABIMajor, ABIMinor})
 }
 func ReadHandshake(r io.Reader) error {
 	m := make([]byte, len(handshakeMagic))
-	if _, e := io.ReadFull(r, m); e != nil {
-		return e
+	if _, err := io.ReadFull(r, m); err != nil {
+		return err
 	}
 	if string(m) != string(handshakeMagic) {
 		return fmt.Errorf("invalid OCTWRAP handshake")
 	}
 	var abi [2]uint16
-	if e := binary.Read(r, binary.LittleEndian, &abi); e != nil {
-		return e
+	if err := binary.Read(r, binary.LittleEndian, &abi); err != nil {
+		return err
 	}
 	if abi[0] != ABIMajor {
 		return fmt.Errorf("unsupported OCTWRAP ABI major %d", abi[0])
 	}
 	return nil
 }
-
 func WriteFrame(w io.Writer, body string) error {
 	if err := binary.Write(w, binary.LittleEndian, uint32(len(body))); err != nil {
 		return err
@@ -77,33 +73,22 @@ func EncodeResponse(resp Response) string {
 	}
 	return fmt.Sprintf("OctxiliaryResponse { id: %d ok: false error: %q }", resp.ID, resp.Error)
 }
-
 func ParseRequest(s string) (Request, error) {
-	return Request{ID: mustInt(field(s, "id")), Family: mustStr(field(s, "family")), Function: mustStr(field(s, "function")), Path: mustStr(field(s, "path"))}, nil
+	var req Request
+	if _, err := fmt.Sscanf(s, "OctxiliaryRequest { id: %d family: %q function: %q path: %q }", &req.ID, &req.Family, &req.Function, &req.Path); err != nil {
+		return Request{}, err
+	}
+	return req, nil
 }
 func ParseResponse(s string) (Response, error) {
-	ok := strings.Contains(s, "ok: true")
-	r := Response{ID: mustInt(field(s, "id")), OK: ok}
-	if ok {
-		r.Text = mustStr(field(s, "text"))
-	} else {
-		r.Error = mustStr(field(s, "error"))
+	var r Response
+	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: true text: %q }", &r.ID, &r.Text); err == nil {
+		r.OK = true
+		return r, nil
+	}
+	if _, err := fmt.Sscanf(s, "OctxiliaryResponse { id: %d ok: false error: %q }", &r.ID, &r.Error); err != nil {
+		return Response{}, err
 	}
 	return r, nil
 }
-
-func field(s, k string) string {
-	i := strings.Index(s, k+":")
-	if i < 0 {
-		return ""
-	}
-	t := strings.TrimSpace(s[i+len(k)+1:])
-	return strings.FieldsFunc(t, func(r rune) bool { return r == '\n' || r == '}' })[0]
-}
-func mustInt(v string) int { n, _ := strconv.Atoi(strings.Trim(v, ",")); return n }
-func mustStr(v string) string {
-	x, _ := strconv.Unquote(strings.Trim(strings.TrimSpace(v), ","))
-	return x
-}
-
 func NewReader(r io.Reader) *bufio.Reader { return bufio.NewReader(r) }
