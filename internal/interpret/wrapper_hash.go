@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func hashWrapperBuiltins() map[string]wrapperBuiltinHandler {

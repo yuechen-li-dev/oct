@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestTopLevelHelpFlag(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestExperimentArtifactAttributionExperimentRootArtifactPrefixesMilestoneOutputsAndExcludesAuxiliary(t *testing.T) {

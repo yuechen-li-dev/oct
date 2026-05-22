@@ -1,3 +1,4 @@
+// Command octxiliary-io is the Octxiliary sidecar used by compiled Oct programs to call supported file and directory wrapper operations.
 package main
 
 import (
@@ -6,8 +7,8 @@ import (
 	"log"
 	"os"
 
-	"oct/internal/interpret"
-	"oct/internal/octxiliary"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/octxiliary"
 )
 
 func main() {

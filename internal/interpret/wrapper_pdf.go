@@ -10,7 +10,7 @@ import (
 	"runtime"
 
 	"codeberg.org/go-pdf/fpdf"
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 const (

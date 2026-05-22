@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"oct/internal/build"
+	"github.com/yuechen-li-dev/oct/internal/build"
 )
 
 var octFailHeaderPattern = regexp.MustCompile(`^expect error:\s*"(.*)"\s*$`)

@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func archiveWrapperBuiltins() map[string]wrapperBuiltinHandler {

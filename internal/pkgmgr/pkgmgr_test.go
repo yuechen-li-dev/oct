@@ -17,13 +17,13 @@ func TestNormalizeSourceNormalizesWindowsFileURLForms(t *testing.T) {
 		},
 		{
 			name:   "host drive form",
-			input:  "file://C:/Users/oct/repo",
-			output: "file:///C:/Users/oct/repo",
+			input:  "file://C:/Users/github.com/yuechen-li-dev/oct/repo",
+			output: "file:///C:/Users/github.com/yuechen-li-dev/oct/repo",
 		},
 		{
 			name:   "already normalized",
-			input:  "file:///C:/Users/oct/repo",
-			output: "file:///C:/Users/oct/repo",
+			input:  "file:///C:/Users/github.com/yuechen-li-dev/oct/repo",
+			output: "file:///C:/Users/github.com/yuechen-li-dev/oct/repo",
 		},
 	}
 

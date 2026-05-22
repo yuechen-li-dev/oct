@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func TestAnalyzeTokenizesFrozenSubset(t *testing.T) {

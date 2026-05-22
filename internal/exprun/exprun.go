@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"oct/internal/pkgmgr"
-	"oct/internal/tester"
+	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
+	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
 const experimentKind = "Experiment"

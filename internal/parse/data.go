@@ -3,8 +3,8 @@ package parse
 import (
 	"fmt"
 
-	"oct/internal/ast"
-	"oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/lex"
 )
 
 func BuildDataValue(result lex.Result) (ast.Expr, error) {

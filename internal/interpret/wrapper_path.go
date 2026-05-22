@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/ast"
 )
 
 func pathWrapperBuiltins() map[string]wrapperBuiltinHandler {

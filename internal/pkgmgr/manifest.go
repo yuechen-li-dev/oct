@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"oct/internal/ast"
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/parse"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type ManifestMetadata struct {

@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type TokenKind string

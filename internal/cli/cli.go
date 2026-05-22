@@ -6,13 +6,13 @@ import (
 	"io"
 	"strings"
 
-	"oct/internal/build"
-	"oct/internal/exprun"
-	"oct/internal/ocfmt"
-	"oct/internal/pkgmgr"
-	"oct/internal/prometheus"
-	"oct/internal/run"
-	"oct/internal/tester"
+	"github.com/yuechen-li-dev/oct/internal/build"
+	"github.com/yuechen-li-dev/oct/internal/exprun"
+	"github.com/yuechen-li-dev/oct/internal/ocfmt"
+	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
+	"github.com/yuechen-li-dev/oct/internal/prometheus"
+	"github.com/yuechen-li-dev/oct/internal/run"
+	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
 func Execute(args []string, stdout io.Writer, stderr io.Writer) error {

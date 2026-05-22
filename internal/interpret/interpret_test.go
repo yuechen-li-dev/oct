@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/project"
-	"oct/internal/typecheck"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 func TestExecuteMainResumeWithEmptySlotFailsDeterministically(t *testing.T) {

@@ -1,9 +1,10 @@
+// Command oct is the command-line driver for Oct, a scientific programming language focused on correctness, testing, artifacts, and compiled execution.
 package main
 
 import (
 	"os"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func main() {

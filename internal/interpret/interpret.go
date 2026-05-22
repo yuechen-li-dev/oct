@@ -15,11 +15,11 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"oct/internal/ast"
-	"oct/internal/builtin"
-	"oct/internal/dimension"
-	"oct/internal/octagon"
-	"oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/builtin"
+	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
+	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
 func markdownNormalizeInline(text string) string {

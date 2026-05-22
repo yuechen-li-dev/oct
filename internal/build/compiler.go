@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strings"
 
-	"oct/internal/ast"
-	"oct/internal/builtin"
-	"oct/internal/project"
-	"oct/internal/typecheck"
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/builtin"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 type Result struct {
@@ -3653,12 +3653,12 @@ func emitGo(m MIRModule) (string, error) {
 		importSet["reflect"] = struct{}{}
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
-		for _, pkg := range []string{"oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
+		for _, pkg := range []string{"github.com/yuechen-li-dev/oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
 	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
-		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -3843,7 +3843,7 @@ func emitGo(m MIRModule) (string, error) {
 			b.WriteString(__octWriteHelpers)
 		}
 		if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
-			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "oct/internal/octxiliary"} {
+			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
 		}

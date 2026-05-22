@@ -9,10 +9,10 @@ import (
 	"slices"
 	"strings"
 
-	"oct/internal/judgment"
-	"oct/internal/lex"
-	"oct/internal/parse"
-	"oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/judgment"
+	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/parse"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type Mode string

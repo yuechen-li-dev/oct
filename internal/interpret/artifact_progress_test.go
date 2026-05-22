@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"oct/internal/project"
-	"oct/internal/typecheck"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 func TestArtifactProgressRecorderReceivesOrderedEvents(t *testing.T) {

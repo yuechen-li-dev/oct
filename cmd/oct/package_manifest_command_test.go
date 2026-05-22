@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestBuildAcceptsValidManifestedPackageTree(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestRunCommandExecutesMainPrograms(t *testing.T) {

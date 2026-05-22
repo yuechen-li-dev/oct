@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestSelectionIsolationExplicitFileDoesNotRunImportedPackageTests(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"oct/internal/cli"
-	"oct/internal/octagon"
+	"github.com/yuechen-li-dev/oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
 func TestOctBenchRunsDiscoveredBenchmarks(t *testing.T) {
