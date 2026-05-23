@@ -1,0 +1,55 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M5")]
+[Suite("Experiments.FmBrownNoiseKalman.M5.FlowSmoke")]
+fn M5GridSizeIs27() -> Void ! Error {
+    let report = RunM5Sweep()?
+    Assert.Equal(27, Len(report.Cases), "grid")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M5")]
+[Suite("Experiments.FmBrownNoiseKalman.M5.FlowSmoke")]
+fn M5MetricsFiniteAndEquivalencePasses() -> Void ! Error {
+    let report = RunM5Sweep()?
+    for i in 0..Len(report.Cases) {
+        let c = report.Cases[i]
+        Assert.True(Abs(c.ScalarDeltaOutputSNRDb) < 1e300, "scalar finite")
+        Assert.True(Abs(c.WindowedDeltaOutputSNRDb) < 1e300, "windowed finite")
+        Assert.True(Abs(c.ScalarWhitenessRatio) < 1e300, "scalar ratio finite")
+        Assert.True(Abs(c.WindowedWhitenessRatio) < 1e300, "windowed ratio finite")
+        Assert.True(c.EquivalencePass, "equivalence")
+    }
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M5")]
+fn M5LabelsAndGroupsAreComplete() -> Void ! Error {
+    let report = RunM5Sweep()?
+    let scalarTotal = report.Summary.ScalarAdaptiveWinCount + report.Summary.ScalarRecoveryOnlyCount + report.Summary.ScalarWhitenessOnlyCount + report.Summary.ScalarNoMeaningfulWinCount
+    let windowedTotal = report.Summary.WindowedAdaptiveWinCount + report.Summary.WindowedRecoveryOnlyCount + report.Summary.WindowedWhitenessOnlyCount + report.Summary.WindowedNoMeaningfulWinCount
+    Assert.Equal(27, scalarTotal, "scalar label sum")
+    Assert.Equal(27, windowedTotal, "windowed label sum")
+    Assert.Equal(3, Len(report.ByInputSNRDb), "snr groups")
+    Assert.Equal(3, Len(report.ByMessageHz), "hz groups")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M5")]
+[Suite("Experiments.FmBrownNoiseKalman.M5.Artifacts")]
+fn M5ArtifactsWrite() -> Void ! Error {
+    let _ = M5ArtifactWriteAll()
+    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M5/m5_windowed_adaptive_comparison_report.octagon")?
+    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M5/m5_windowed_adaptive_comparison_report.md")?
+    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M5/sweep_metrics.csv")?
+    let json = IO.Load("Experiments/FmBrownNoiseKalman/M5/sweep_summary.json")?
+    let findings = IO.ReadLines("Experiments/FmBrownNoiseKalman/M5/FINDINGS.md")?
+    Assert.True(Len(octagon) > 0, "octagon")
+    Assert.True(Len(md) > 0, "markdown")
+    Assert.True(Len(csv) > 0, "csv")
+    Assert.True(Len(json) > 0, "json")
+    Assert.True(Len(findings) > 0, "findings")
+}
