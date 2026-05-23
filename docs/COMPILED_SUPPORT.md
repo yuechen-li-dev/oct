@@ -113,3 +113,12 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
 
 | BoardSnapshot(machine) | Supported | Supported (M0 scalar board fields) | `OctomataBoardSnapshot`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support is currently limited to detached/read-only snapshots of scalar board fields (`Bool`, `Int`, `Float`, `String`). Board arrays remain unsupported in compiled M0. |
+
+## 2026-05-23 SmartGreenhouse compiled convergence pass 2
+
+- `ast.MatchExpr` now has compiled M0 support for enum-tag dispatch with optional single payload binding and expression-valued arms.
+- Added focused fixture: `Language/ControlFlow/EnumPayloadMatchCompiled/valid/payload_match.octest` (compiled/auto/default green).
+- `examples/SmartGreenhouseController --execution compiled` now passes `EnumPayloadMatchWorks`; the prior blocker `unsupported expression ast.MatchExpr` is resolved.
+- Remaining SmartGreenhouse compiled blockers (unchanged semantics):
+  - Matrix/vector codegen mismatch in generated Go (`[]float64` emitted where scalar/vector ops are expected) in `MatrixVectorDistinctFromArray`.
+  - Runtime assertion failure `battery consumed` in `FlowCompletesAndHistoryPresent`.

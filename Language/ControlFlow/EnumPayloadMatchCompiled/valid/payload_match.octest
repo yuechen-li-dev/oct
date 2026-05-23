@@ -1,0 +1,39 @@
+package Main
+
+enum Reading {
+    Valid(Float)
+    Missing(String)
+}
+
+enum Status {
+    Idle
+    Active
+}
+
+fn Normalize(reading: Reading) -> Float {
+    return match reading {
+        case Reading.Valid(v) => v
+        case Reading.Missing(reason) => 0.0
+    }
+}
+
+[Fact]
+fn PayloadMatchReturnsValue() -> Void {
+    Assert.Near(Normalize(Reading.Valid(2.0)), 2.0, 0.0001, "valid")
+    Assert.Near(Normalize(Reading.Missing("n/a")), 0.0, 0.0001, "missing")
+}
+
+[Fact]
+fn PayloadMatchArithmetic() -> Void {
+    Assert.Near(Normalize(Reading.Valid(2.0)) + 1.0, 3.0, 0.0001, "arithmetic")
+}
+
+[Fact]
+fn NonPayloadEnumMatch() -> Void {
+    let status = Status.Active
+    let code = match status {
+        case Status.Idle => 0
+        case Status.Active => 1
+    }
+    Assert.Equal(code, 1, "code")
+}
