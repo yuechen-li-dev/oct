@@ -140,8 +140,9 @@ func TestCheckValidPrograms(t *testing.T) {
 }
 
 func TestArtifactProgressBuiltinTypeErrors(t *testing.T) {
-	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", 1) }", "function Main: function 'Artifact.Progress' expects 3 arguments, got 2")
-	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", \"1\", 3) }", "function Main: function 'Artifact.Progress' argument 2 expects Int, got String")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", 1) }", "function Main: function 'Artifact.Progress' expects (label: String, current: Int, total: Int); got 2 arguments. Use Artifact.Checkpoint(label) for message-only progress")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\", \"1\", 3) }", "function Main: function 'Artifact.Progress' expects (label: String, current: Int, total: Int); argument 2 expects Int, got String. Use Artifact.Checkpoint(label) for message-only progress")
+	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Progress(\"x\") }", "function Main: function 'Artifact.Progress' expects (label: String, current: Int, total: Int); got 1 arguments. Use Artifact.Checkpoint(label) for message-only progress")
 	assertTypeErrorContainsWithArtifactImport(t, "fn Main() -> Void { Artifact.Checkpoint(1) }", "function Main: function 'Artifact.Checkpoint' argument 1 expects String, got Int")
 }
 

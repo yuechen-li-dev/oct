@@ -5090,7 +5090,7 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 	}
 	if callee == "ArtifactProgress" {
 		if len(arguments) != 3 {
-			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects 3 arguments, got %d", len(arguments))
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects (label: String, current: Int, total: Int); got %d arguments. Use Artifact.Checkpoint(label) for message-only progress", len(arguments))
 		}
 		labelType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
@@ -5100,7 +5100,7 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if labelType.ValueType != (Type{Base: BaseTypeString}) {
-			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 1 expects String, got %s", labelType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects (label: String, current: Int, total: Int); argument 1 expects String, got %s. Use Artifact.Checkpoint(label) for message-only progress", labelType.ValueType)
 		}
 		currentType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
@@ -5110,7 +5110,7 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if currentType.ValueType != (Type{Base: BaseTypeInt}) {
-			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 2 expects Int, got %s", currentType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects (label: String, current: Int, total: Int); argument 2 expects Int, got %s. Use Artifact.Checkpoint(label) for message-only progress", currentType.ValueType)
 		}
 		totalType, err := c.checkExpr(scope, arguments[2], ctx)
 		if err != nil {
@@ -5120,7 +5120,7 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if totalType.ValueType != (Type{Base: BaseTypeInt}) {
-			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' argument 3 expects Int, got %s", totalType.ValueType)
+			return ExprType{}, fmt.Errorf("function 'Artifact.Progress' expects (label: String, current: Int, total: Int); argument 3 expects Int, got %s. Use Artifact.Checkpoint(label) for message-only progress", totalType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 	}

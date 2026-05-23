@@ -465,6 +465,19 @@ func TestAnalyzeRejectsInvalidToken(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRejectsSemicolonWithGuidance(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { let a = 1; return a }"}
+
+	_, err := Analyze(file)
+	if err == nil {
+		t.Fatal("expected invalid token error")
+	}
+
+	if got := err.Error(); !strings.Contains(got, "does not use semicolons") {
+		t.Fatalf("expected semicolon guidance in error, got %q", got)
+	}
+}
+
 func TestAnalyzeTokenizesScientificNotationFloats(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Float { return 2e11 + 2.0e11 + 1e-6 + 1.5e-6 + 6E3 + 3.25E-2 }"}
 
