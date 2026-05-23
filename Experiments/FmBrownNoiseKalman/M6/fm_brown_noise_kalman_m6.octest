@@ -1,0 +1,30 @@
+package FmBrownNoiseKalman
+
+import IO
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M6")]
+fn M6GridSizeIs27() -> Void ! Error {
+    let report = RunM6Sweep()?
+    Assert.Equal(27, Len(report.Cases), "grid")
+}
+
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M6")]
+fn M6GuardedMetricsPresent() -> Void ! Error {
+    let report = RunM6Sweep()?
+    let s = report.Summary
+    Assert.Equal(27, s.GuardedAdaptiveWinCount + s.GuardedRecoveryOnlyCount + s.GuardedWhitenessOnlyCount + s.GuardedNoMeaningfulWinCount, "guarded labels")
+    Assert.True(Abs(s.GuardedMeanDeltaOutputSNRDb) < 1e300, "guarded snr finite")
+    Assert.True(Abs(s.GuardedMeanWhitenessRatio) < 1e300, "guarded whiteness finite")
+    Assert.True(s.GuardAcceptedTotal + s.GuardAttenuatedTotal + s.GuardRejectedTotal == 27 * 1000, "guard counters")
+    Assert.True(s.EquivalencePassCount >= 0, "equivalence reported")
+}
+
+[Artifact]
+[Suite("Experiments.FmBrownNoiseKalman.M6")]
+fn M6ArtifactsWrite() -> Void ! Error {
+    let _ = M6ArtifactWriteAll()
+    Assert.True(Len(IO.ReadLines("Experiments/FmBrownNoiseKalman/M6/FINDINGS.md")?) > 0, "findings")
+    Assert.True(Len(IO.Load("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json")?) > 0, "json")
+}
