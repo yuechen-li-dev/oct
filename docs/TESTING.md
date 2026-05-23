@@ -1,49 +1,67 @@
-# Testing Guide
+# Testing policy
+
+## Default unit workflow
+
+Use the default unit-test command for local iteration and normal CI:
+
+```bash
+go test ./...
+```
+
+Default tests should remain focused on:
+- fast unit tests,
+- small compiled smoke regressions,
+- core CLI/compiler behavior.
+
+Default tests should **not** require:
+- long science/benchmark sweeps,
+- large artifact sweeps,
+- real Prometheus sidecars/reactors,
+- Octxiliary sidecars.
+
+## Slow test workflow
+
+Slow integration/science style tests are gated by:
+
+```bash
+OCT_RUN_SLOW_TESTS=1 go test ./...
+```
+
+Use this mode before releases or when specifically validating broader compiled/runtime paths.
+
+## Prometheus integration workflow
+
+Real Prometheus reactor integration remains separately gated:
+
+```bash
+OCT_RUN_PROMETHEUS_INTEGRATION=1 OCT_PROMETHEUS_REACTOR=<path-to-reactor> go test ./...
+```
+
+This gate is independent from `OCT_RUN_SLOW_TESTS`; both may be used together when needed.
+
+## Explicit compiled/runtime checks
+
+Keep explicit command checks available for focused regression validation:
+
+```bash
+go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled
+go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M5 --suite Experiments.FmBrownNoiseKalman.M5.FlowSmoke --execution compiled
+go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M4 --suite Experiments.FmBrownNoiseKalman.M4.FlowSmoke --execution compiled
+go build -o .tmp/octxiliary-io ./cmd/octxiliary-io
+OCT_WRAPPER_PATH=$(pwd)/.tmp/octxiliary-io go run ./cmd/oct test Language/Testing/CompiledOctxiliary/valid --execution compiled
+go run ./cmd/oct test Libraries/String --execution compiled
+```
 
 ## Semantic Contracts
-
-Language semantics are specified as:
-
-- `.octest` for valid behavior
-- `.octfail` for invalid/rejected behavior
 
 These contracts live under `Language/` and are the canonical source for language behavior.
 
 ## Implementation and Integration Tests
 
-Go-side tests should validate implementation and integration boundaries (CLI/runtime/backend mechanics), not duplicate language semantics already expressed in `Language/`.
-
-## Practical Commands
-
-In this environment, prefer:
-
-- `go run ./cmd/oct test <path>` for contract execution
-- `go run ./cmd/oct bench <path>` for benchmark execution
-- `go run ./cmd/oct bench <path> --profile` to emit the default Oct-native benchmark profile artifact
-- `go run ./cmd/oct bench <path> --profile --profile-format pprof` to emit raw Go `pprof` CPU profile data
-
-When the `oct` binary is available, `oct test <path>` is equivalent workflow intent.
-When the `oct` binary is available, `oct bench <path> --profile` is equivalent workflow intent.
-
-## Benchmark Profiling (CPU, opt-in)
-
-Benchmark profiling is a CLI/runtime execution option, not Oct source syntax.
-
-- Enable with `--profile` on `oct bench`.
-- Default output artifact path is deterministic:
-  - directory target: `<target>/bench.cpu.octagon`
-  - file target: `<target-file>.bench.cpu.octagon` in the same directory
-- Raw pprof output remains available with `--profile-format pprof` (or `both`):
-  - directory target: `<target>/bench.cpu.pprof`
-  - file target: `<target-file>.bench.cpu.pprof` in the same directory
-- Oct captures CPU profile data through pprof internally, then exposes an Oct-native summary artifact by default.
-
-Without `--profile`, benchmark behavior is unchanged and no CPU profile artifact is emitted.
+Go-side tests should validate implementation and integration boundaries, including CLI orchestration, compile/run boundaries, and artifact wiring.
 
 ## Test Placement Rules
 
-- language behavior contract → `Language/`
-- reusable package behavior → `Libraries/` package tests/contracts
-- fixture/transitional input data → `testdata/`
-
-Do not treat `testdata/` as the canonical owner of language semantics.
+- Language semantics belong in `Language/*.octest` and `Language/*.octfail`.
+- Go-side tests should validate implementation and integration boundaries.
+- Keep reusable user code in `Packages/` and temporary fixtures in `testdata/`.

@@ -14,6 +14,7 @@ import (
 )
 
 func TestRunCommandExecutesMainPrograms(t *testing.T) {
+	skipUnlessSlow(t)
 	validRoots := []struct {
 		root string
 		pass string

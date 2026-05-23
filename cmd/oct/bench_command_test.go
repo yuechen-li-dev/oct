@@ -162,6 +162,7 @@ func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 }
 
 func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
+	skipUnlessSlow(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "bench.octest", strings.Join([]string{

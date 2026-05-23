@@ -176,6 +176,7 @@ func TestCompileForTestLowersBenchmarkFunctionIntoMIRAndRuns(t *testing.T) {
 }
 
 func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T) {
+	skipUnlessSlow(t)
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
 		t.Fatal(err)
@@ -1825,6 +1826,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunVectorsMatricesM93(t *testing.T) {
+	skipUnlessSlow(t)
 	tests := []struct {
 		name   string
 		source string
@@ -2115,6 +2117,7 @@ fn main() -> Int {
 }
 
 func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *testing.T) {
+	skipUnlessSlow(t)
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
 		t.Fatal(err)
