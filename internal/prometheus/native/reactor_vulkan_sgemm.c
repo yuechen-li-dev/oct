@@ -27,6 +27,8 @@
 #include "reactor_dominatus_sgemm_adapter.h"
 #include "reactor_dominatus_slot_adapter.h"
 #include "reactor_dominatus_measurement_filter.h"
+#include "reactor_dominatus_predictor.h"
+#include "reactor_dominatus_prestage.h"
 #include "reactor_judgment_engine.h"
 #include "reactor_slot_hfsm.h"
 #include "reactor_vulkan_fp16_spirv.h"
@@ -512,6 +514,12 @@ typedef struct prometheus_runtime {
   prom_dominatus_measurement_filter_state p14_measurement_filter_state;
   prom_dominatus_filtered_evidence p14_last_filtered_evidence;
   uint64_t p14_measurement_tick;
+  prom_dominatus_predictor_state p15_predictor_state;
+  prom_dominatus_prestage_params p15_prestage_params;
+  prom_dominatus_correction_event p15_last_correction;
+  prom_dominatus_prediction_entry p15_last_prediction_issued;
+  prom_dominatus_reservation_decision p15_last_reservation;
+  prom_dominatus_prestage_decision p15_last_prestage;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -4489,6 +4497,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   prom_dominatus_measurement_filter_init(&runtime->p14_measurement_filter_state, NULL);
   memset(&runtime->p14_last_filtered_evidence, 0, sizeof(runtime->p14_last_filtered_evidence));
   runtime->p14_measurement_tick = 0u;
+  prom_dominatus_predictor_init(&runtime->p15_predictor_state, NULL);
+  runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
   prom_slot_hfsm_init(&runtime->slots[1], 1u);
@@ -6070,6 +6080,43 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
           rt->p14_measurement_tick += 1u;
           rt->p14_last_filtered_evidence =
               prom_dominatus_measurement_filter_update(&rt->p14_measurement_filter_state, duration, rt->p14_measurement_tick);
+          {
+            prom_dominatus_predictor_evidence pe =
+                prom_dominatus_predictor_evidence_from_filtered(&rt->p14_last_filtered_evidence);
+            prom_dominatus_physical_observation po;
+            memset(&po, 0, sizeof(po));
+            po.tick = rt->p14_measurement_tick;
+            po.actual_ready = 1u;
+            po.slot_valid = 1u;
+            po.memory_budget_ok = 1u;
+            po.outstanding_depth_cap = rt->p15_predictor_state.params.max_outstanding_depth;
+            memset(&rt->p15_last_prediction_issued, 0, sizeof(rt->p15_last_prediction_issued));
+            rt->p15_last_correction = prom_dominatus_predictor_update(&rt->p15_predictor_state, &pe, &po, po.tick,
+                                                                       &rt->p15_last_prediction_issued);
+            rt->p15_last_reservation = prom_dominatus_predictor_try_reserve_future(
+                &rt->p15_predictor_state,
+                &rt->p15_predictor_state.reservations,
+                &rt->p15_predictor_state.future_lease_seam.last_request,
+                po.tick);
+            {
+              prom_dominatus_prestage_input pi;
+              memset(&pi, 0, sizeof(pi));
+              pi.valid = rt->p15_last_reservation.valid;
+              pi.request_id = rt->p15_last_reservation.request_id;
+              pi.current_tick = po.tick;
+              pi.target_tick = rt->p15_last_reservation.target_tick;
+              pi.reservation_is_reserved = rt->p15_last_reservation.reserved;
+              pi.confidence = rt->p15_last_reservation.confidence;
+              pi.warmup = pe.warmup;
+              pi.recent_miss_count = (uint32_t)rt->p15_predictor_state.correction_count;
+              pi.slot_valid = po.slot_valid;
+              pi.memory_budget_ok = po.memory_budget_ok;
+              pi.outstanding_depth = po.outstanding_depth;
+              pi.outstanding_depth_cap = po.outstanding_depth_cap;
+              pi.resource_pressure_low = 1u;
+              rt->p15_last_prestage = prom_dominatus_prestage_evaluate(&rt->p15_prestage_params, &pi);
+            }
+          }
         }
       }
     }
@@ -8131,6 +8178,44 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p14_m8_filter_warm_transferred = rt->p14_last_filtered_evidence.warm_transferred;
   out_diag->p14_m8_filter_sample_count = rt->p14_last_filtered_evidence.sample_count;
   out_diag->p14_m8_filter_outlier_count = rt->p14_last_filtered_evidence.outlier_count;
+  out_diag->p15_predictor_valid = rt->p14_last_filtered_evidence.valid;
+  out_diag->p15_prediction_confidence = rt->p15_predictor_state.prediction_confidence;
+  out_diag->p15_lookahead_depth = rt->p15_predictor_state.lookahead_depth;
+  out_diag->p15_prediction_issued = rt->p15_last_prediction_issued.active;
+  out_diag->p15_prediction_matured = rt->p15_last_correction.prediction_matured;
+  out_diag->p15_predicted_ready_tick = rt->p15_last_correction.target_tick;
+  out_diag->p15_actual_ready_tick = rt->p15_last_correction.prediction_matured != 0u ? rt->p15_last_correction.tick : 0u;
+  out_diag->p15_prediction_error_ticks = rt->p15_last_correction.arrival_error_ticks;
+  out_diag->p15_correction_count = rt->p15_predictor_state.correction_count;
+  out_diag->p15_correction_action = (uint32_t)rt->p15_last_correction.action;
+  out_diag->p15_fallback_active = rt->p15_predictor_state.fallback_active;
+  out_diag->p15_fallback_reason = rt->p15_predictor_state.fallback_reason;
+  out_diag->p15_future_lease_valid = rt->p15_predictor_state.future_lease_seam.last_request.valid;
+  out_diag->p15_future_lease_request_id = rt->p15_predictor_state.future_lease_seam.last_request.request_id;
+  out_diag->p15_future_lease_state = (uint32_t)rt->p15_predictor_state.future_lease_seam.last_request.state;
+  out_diag->p15_future_lease_target_tick = rt->p15_predictor_state.future_lease_seam.last_request.target_tick;
+  out_diag->p15_future_lease_confidence = rt->p15_predictor_state.future_lease_seam.last_request.confidence;
+  out_diag->p15_future_lease_reason = rt->p15_predictor_state.future_lease_seam.last_request.cancel_reason;
+  out_diag->p15_reservation_valid = rt->p15_last_reservation.valid;
+  out_diag->p15_reservation_request_id = rt->p15_last_reservation.request_id;
+  out_diag->p15_reservation_state = (uint32_t)rt->p15_last_reservation.new_state;
+  out_diag->p15_reservation_reserved = rt->p15_last_reservation.reserved;
+  out_diag->p15_reservation_denied = rt->p15_last_reservation.denied;
+  out_diag->p15_reservation_cancelled = rt->p15_last_reservation.cancelled;
+  out_diag->p15_reservation_matured = rt->p15_last_reservation.matured;
+  out_diag->p15_reservation_expired = rt->p15_last_reservation.expired;
+  out_diag->p15_reservation_reason = rt->p15_last_reservation.reason;
+  out_diag->p15_reservation_active_count = rt->p15_last_reservation.active_count;
+  out_diag->p15_prestage_valid = rt->p15_last_prestage.valid;
+  out_diag->p15_prestage_state = (uint32_t)rt->p15_last_prestage.state;
+  out_diag->p15_prestage_allowed = rt->p15_last_prestage.allowed;
+  out_diag->p15_prestage_submitted = rt->p15_last_prestage.submitted;
+  out_diag->p15_prestage_block_reasons = rt->p15_last_prestage.block_reasons;
+  out_diag->p15_prestage_confidence = rt->p15_last_prestage.confidence;
+  out_diag->p15_prestage_target_tick = rt->p15_last_prestage.target_tick;
+  out_diag->p15_prestage_lead_ticks = rt->p15_last_prestage.lead_ticks;
+  out_diag->p15_prestage_cost_estimate = rt->p15_last_prestage.cost_estimate;
+  out_diag->p15_prestage_benefit_estimate = rt->p15_last_prestage.benefit_estimate;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
