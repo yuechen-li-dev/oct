@@ -10,6 +10,12 @@ import (
 	"testing"
 )
 
+func requirePrometheusIntegration(t *testing.T) {
+	if os.Getenv("OCT_RUN_PROMETHEUS_INTEGRATION") != "1" {
+		t.Skip("set OCT_RUN_PROMETHEUS_INTEGRATION=1 and OCT_PROMETHEUS_REACTOR=<path-to-prometheus_reactor.dll> to run real Prometheus integration tests")
+	}
+}
+
 func windowsReactorDLLPath(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -31,6 +37,7 @@ func windowsReactorDLLPath(t *testing.T) string {
 }
 
 func TestWindowsLoaderCanOpenRealReactorDLL(t *testing.T) {
+	requirePrometheusIntegration(t)
 	path := windowsReactorDLLPath(t)
 	if _, err := os.Stat(path); err != nil {
 		t.Skipf("reactor DLL not present at %s: %v", path, err)
@@ -55,6 +62,7 @@ func TestWindowsLoaderCanOpenRealReactorDLL(t *testing.T) {
 }
 
 func TestWindowsRunSGEMMUsesRealReactorWhenDLLAvailable(t *testing.T) {
+	requirePrometheusIntegration(t)
 	path := windowsReactorDLLPath(t)
 	t.Setenv(reactorEnvVar, path)
 
@@ -82,6 +90,7 @@ func TestWindowsRunSGEMMUsesRealReactorWhenDLLAvailable(t *testing.T) {
 }
 
 func TestWindowsRepeatedPrometheusRunsStayStable(t *testing.T) {
+	requirePrometheusIntegration(t)
 	path := windowsReactorDLLPath(t)
 	t.Setenv(reactorEnvVar, path)
 

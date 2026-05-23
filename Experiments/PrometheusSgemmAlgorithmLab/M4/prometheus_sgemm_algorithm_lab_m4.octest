@@ -574,6 +574,19 @@ fn M6a_K16x16x512_KDecomposition_K16() -> Void { Print(M6MeasureKDecomposition(1
 [Benchmark]
 fn M6a_K16x16x512_KDecomposition_K32() -> Void { Print(M6MeasureKDecomposition(16, 16, 512, 32)!) }
 
+fn FamilyLabel(strategy: MatMulStrategy) -> String {
+    return switch strategy {
+        case MatMulStrategy.Baseline => "SingleCall"
+        case MatMulStrategy.IKJ => "SingleCall"
+        case MatMulStrategy.KIJ => "SingleCall"
+        case MatMulStrategy.Blocked => "Blocked"
+        case MatMulStrategy.BlockedIKJ => "Blocked"
+        case MatMulStrategy.KBlocked => "KDecomposition"
+        case MatMulStrategy.KBlockedIKJ => "KDecomposition"
+        case MatMulStrategy.StagedIKJ => "KDecomposition"
+    }
+}
+
 fn StrategyLabel(strategy: MatMulStrategy) -> String {
     return switch strategy {
         case MatMulStrategy.Baseline => "Baseline"

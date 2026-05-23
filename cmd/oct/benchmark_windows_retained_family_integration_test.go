@@ -14,6 +14,7 @@ import (
 )
 
 func TestWindowsBenchRetainedFamiliesUsePrometheusBackend(t *testing.T) {
+	requirePrometheusIntegration(t)
 	root := windowsRepoRoot(t)
 	experiment := filepath.Join(root, "Experiments", "PrometheusSgemmAlgorithmLab", "M4")
 	reactor := windowsReactorDLL(t)
