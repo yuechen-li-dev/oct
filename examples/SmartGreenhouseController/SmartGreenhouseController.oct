@@ -1,0 +1,153 @@
+package SmartGreenhouseController
+
+enum ControlMode {
+    Heat
+    Vent
+    Irrigate
+    Idle
+}
+
+enum SensorReading {
+    Valid(Float < K >)
+    Missing(String)
+    Saturated(Float < K >)
+}
+
+enum ComfortClass {
+    Cold
+    Comfort
+    Hot
+}
+
+record GreenhouseState {
+    AirTemp: Float < K >
+    SoilMoisture: Float
+    LightLevel: Float
+    BatteryCharge: Float
+}
+
+record ControlDecision {
+    Mode: ControlMode
+    FanSpeed: Float
+    HeaterPower: Float
+    IrrigationRate: Float
+}
+
+fn ComfortBand(temp: Float < K >) -> ComfortClass {
+    return switch {
+        case temp < 291.15K -> ComfortClass.Cold
+        case temp > 298.15K -> ComfortClass.Hot
+        else -> ComfortClass.Comfort
+    }
+}
+
+fn NormalizeTemperature(reading: SensorReading, fallback: Float < K >) -> Float < K > {
+    return match reading {
+        case SensorReading.Valid(v) -> v
+        case SensorReading.Missing(_reason) -> fallback
+        case SensorReading.Saturated(limit) -> limit
+    }
+}
+
+fn WarmByOneStep(state: GreenhouseState, dt: Float < s >) -> GreenhouseState {
+    let delta = 0.25K *(dt / 1.0s)
+    return state with {AirTemp: state.AirTemp + delta}
+}
+
+fn PredictDeviation(nextInput: Vector < Float >) -> Vector < Float > {
+    let A = matrix[[0.95, 0.05][0.03, 0.90]]
+    let b = vector[0.01, - 0.02]
+    return(A @ nextInput) + b
+}
+
+fn ScoreMode(state: GreenhouseState, mode: ControlMode) -> Int {
+    let modeBias = switch mode {
+        case ControlMode.Heat -> 8
+        case ControlMode.Vent -> 6
+        case ControlMode.Irrigate -> 7
+        else -> 3
+    }
+    let comfort = switch ComfortBand(state.AirTemp) {
+        case ComfortClass.Cold -> if mode == ControlMode.Heat {10} else {0}
+        case ComfortClass.Hot -> if mode == ControlMode.Vent {10} else {1}
+        else -> if mode == ControlMode.Idle {9} else {4}
+    }
+    return modeBias + comfort
+}
+
+fn BatchModeScores(state: GreenhouseState) -> Int[] {
+    let candidates =[ControlMode.Heat, ControlMode.Vent, ControlMode.Irrigate, ControlMode.Idle]
+    return batch candidates as mode {
+        return ScoreMode(state, mode)
+    }
+}
+
+flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
+    board {
+        StepIndex: Int
+        LastModeCode: Int
+        TempK: Float
+        Moisture: Float
+        Battery: Float
+    }
+
+    state Initialize {
+        board.StepIndex = 0
+        board.LastModeCode = 0
+        board.TempK = initial.AirTemp / 1.0K
+        board.Moisture = initial.SoilMoisture
+        board.Battery = initial.BatteryCharge
+        goto Decide
+    }
+
+    state Decide {
+        let modeCode = when policy {
+            hysteresis: 1
+            min_commit: 2
+        } {
+            case 1 when board.TempK < 292.15 score 90
+            case 2 when board.TempK > 299.15 score 88
+            case 3 when board.Moisture < 0.42 score 86
+            else 0
+        }
+        board.LastModeCode = modeCode
+        goto Apply
+    }
+
+    state Apply {
+        if board.LastModeCode == 1 {
+            board.TempK = board.TempK + 0.6
+            board.Battery = board.Battery - 0.02
+        }
+        if board.LastModeCode == 2 {
+            board.TempK = board.TempK - 0.7
+            board.Battery = board.Battery - 0.01
+        }
+        if board.LastModeCode == 3 {
+            board.Moisture = board.Moisture + 0.08
+            board.Battery = board.Battery - 0.015
+        }
+        if board.LastModeCode == 0 {
+            board.TempK = board.TempK - 0.05
+            board.Moisture = board.Moisture - 0.01
+        }
+        goto Advance
+    }
+
+    state Advance {
+        board.StepIndex = board.StepIndex + 1
+        when {
+            case board.StepIndex >= maxSteps -> goto Done
+            else -> goto Decide
+        }
+    }
+
+    state Done {
+        return GreenhouseState {
+            AirTemp: board.TempK * 1.0K
+            SoilMoisture: board.Moisture
+            LightLevel: initial.LightLevel
+            BatteryCharge: board.Battery
+        }
+    }
+}
