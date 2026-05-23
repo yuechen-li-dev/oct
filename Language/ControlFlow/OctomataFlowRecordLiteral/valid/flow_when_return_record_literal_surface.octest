@@ -1,0 +1,29 @@
+record Summary {
+    Count: Int
+    Value: Float
+    Label: String
+}
+
+flow MakeSummaryWhen() -> Summary {
+    board {
+        Count: Int
+        Value: Float
+    }
+
+    state Start {
+        board.Count = 2
+        board.Value = 3.5
+        when {
+            case board.Count == 2 => return Summary { Count: board.Count Value: board.Value Label: "done" }
+            else => return Summary { Count: 0 Value: 0.0 Label: "fallback" }
+        }
+    }
+}
+
+[Fact]
+test flow_when_return_record_literal_surface() {
+    let machine = MakeSummaryWhen()
+    Step(machine)
+    let out = Result(machine)!
+    Assert.Equal(out.Label, "done", "when branch return should support record literal")
+}

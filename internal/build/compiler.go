@@ -194,6 +194,15 @@ type MIRFlowIndexExpr struct {
 
 func (MIRFlowIndexExpr) mirFlowExpr() {}
 
+type MIRFlowRecordLiteralExpr struct {
+	TypeName   string
+	FieldNames []string
+	FieldVals  []MIRFlowExpr
+	RetType    string
+}
+
+func (MIRFlowRecordLiteralExpr) mirFlowExpr() {}
+
 type MIRFlowUtilityWhenExpr struct {
 	SiteID     int
 	ResultType string
@@ -3287,6 +3296,27 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			Index:      idx,
 			ResultType: strings.TrimSuffix(targetType, "[]"),
 		}, nil
+	case ast.RecordLiteralExpr:
+		typeName := e.TypeName
+		if !strings.Contains(typeName, ".") {
+			typeName = pkg + "." + typeName
+		}
+		fieldValues := make([]MIRFlowExpr, 0, len(e.Fields))
+		fieldNames := make([]string, 0, len(e.Fields))
+		for _, f := range e.Fields {
+			v, err := lowerFlowExpr(f.Value, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			fieldValues = append(fieldValues, v)
+			fieldNames = append(fieldNames, f.Name)
+		}
+		return MIRFlowRecordLiteralExpr{
+			TypeName:   typeName,
+			FieldNames: fieldNames,
+			FieldVals:  fieldValues,
+			RetType:    typeName,
+		}, nil
 	case ast.UtilityWhenExpr:
 		resultType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 		if err != nil {
@@ -3405,6 +3435,11 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			return "", fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
 		}
 		return strings.TrimSuffix(targetType, "[]"), nil
+	case ast.RecordLiteralExpr:
+		if strings.Contains(e.TypeName, ".") {
+			return e.TypeName, nil
+		}
+		return pkg + "." + e.TypeName, nil
 	case ast.UtilityWhenExpr:
 		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 	case ast.ParenExpr:
@@ -3575,6 +3610,8 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 		return fmt.Sprintf("%s(%s)", e.Callee, strings.Join(args, ", "))
 	case MIRFlowIndexExpr:
 		return fmt.Sprintf("%s[%s]", dumpFlowExpr(e.Target), dumpFlowExpr(e.Index))
+	case MIRFlowRecordLiteralExpr:
+		return fmt.Sprintf("%s{...}", e.TypeName)
 	case MIRFlowUtilityWhenExpr:
 		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
 	default:
@@ -5294,6 +5331,16 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("%s[%s]", target, idx), nil
+	case MIRFlowRecordLiteralExpr:
+		parts := make([]string, 0, len(e.FieldNames))
+		for i := range e.FieldNames {
+			v, err := emitGoFlowExpr(e.FieldVals[i], pkg)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s", e.FieldNames[i], v))
+		}
+		return fmt.Sprintf("%s{%s}", goType(e.TypeName), strings.Join(parts, ", ")), nil
 	case MIRFlowUtilityWhenExpr:
 		h, err := emitGoFlowExpr(e.Hysteresis, pkg)
 		if err != nil {

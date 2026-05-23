@@ -1,0 +1,50 @@
+record Summary {
+    Count: Int
+    Value: Float
+    Label: String
+}
+
+flow MakeSummary() -> Summary {
+    board {
+        Count: Int
+        Value: Float
+    }
+
+    state Start {
+        board.Count = 2
+        board.Value = 3.5
+        return Summary { Count: board.Count Value: board.Value Label: "ok" }
+    }
+}
+
+flow MakeSummaryWithLocalLabel() -> Summary {
+    board {
+        Count: Int
+        Value: Float
+    }
+
+    state Start {
+        board.Count = 2
+        board.Value = 3.5
+        let label = "done"
+        return Summary { Count: board.Count Value: board.Value Label: label }
+    }
+}
+
+[Fact]
+test flow_return_record_literal_surface() {
+    let machine = MakeSummary()
+    Step(machine)
+    let out = Result(machine)!
+    Assert.Equal(out.Count, 2, "Count should match board field")
+    Assert.Equal(out.Value, 3.5, "Value should match board field")
+    Assert.Equal(out.Label, "ok", "Label should match literal string")
+}
+
+[Fact]
+test flow_return_record_literal_uses_local_let() {
+    let machine = MakeSummaryWithLocalLabel()
+    Step(machine)
+    let out = Result(machine)!
+    Assert.Equal(out.Label, "done", "Local let should be usable in record literal")
+}

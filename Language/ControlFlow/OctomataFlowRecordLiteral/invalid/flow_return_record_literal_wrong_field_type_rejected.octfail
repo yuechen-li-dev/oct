@@ -1,0 +1,22 @@
+expect error: "record 'Summary' field 'Label' expects String, got Int"
+
+package Main
+
+record Summary {
+    Count: Int
+    Value: Float
+    Label: String
+}
+
+flow MakeSummaryWrongType() -> Summary {
+    board {
+        Count: Int
+        Value: Float
+    }
+
+    state Start {
+        board.Count = 2
+        board.Value = 3.5
+        return Summary { Count: board.Count Value: board.Value Label: 1 }
+    }
+}
