@@ -26,7 +26,7 @@ func TestOctTestRunsFactFilesAndReportsPassFail(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := cli.Execute([]string{"test", root}, &stdout, &stderr)
+	err := cli.Execute([]string{"test", root, "--all-packages"}, &stdout, &stderr)
 	if err == nil {
 		t.Fatalf("expected test failure")
 	}
@@ -195,8 +195,14 @@ func TestOctTestSuiteSelection(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	err := cli.Execute([]string{"test", root, "--suite", "Libraries.Bad"}, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "no tests found for suite `Libraries.Bad`") {
+		t.Fatalf("expected default entry-package filtering for library suite, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	err = cli.Execute([]string{"test", root, "--suite", "Libraries.Bad", "--all-packages"}, &stdout, &stderr)
 	if err == nil || !strings.Contains(stdout.String(), "FAIL Lib.Bad") {
-		t.Fatalf("expected library suite failure, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+		t.Fatalf("expected --all-packages library suite failure, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 	stdout.Reset()
 	stderr.Reset()

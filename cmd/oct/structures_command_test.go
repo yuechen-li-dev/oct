@@ -9,7 +9,7 @@ import (
 
 func TestAxialStiffnessMatrix(t *testing.T) {
 	root := setupM22eFixture(t)
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIArgs("test", root, "--all-packages")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}

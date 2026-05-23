@@ -50,7 +50,10 @@ go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M4 --suite Experiments.FmBr
 go build -o .tmp/octxiliary-io ./cmd/octxiliary-io
 OCT_WRAPPER_PATH=$(pwd)/.tmp/octxiliary-io go run ./cmd/oct test Language/Testing/CompiledOctxiliary/valid --execution compiled
 go run ./cmd/oct test Libraries/String --execution compiled
+go run ./cmd/oct test Language/Testing --all-packages
 ```
+
+By default, `oct test <path>` executes tests only from the selected entry package/root. Transitive imports are still loaded for typechecking and symbol resolution, but imported-package tests are not executed unless `--all-packages` is passed.
 
 ## Semantic Contracts
 

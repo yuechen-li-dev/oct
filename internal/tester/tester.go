@@ -35,8 +35,9 @@ type testCase struct {
 var defaultTestCycleTime = 30 * time.Second
 
 type TestOptions struct {
-	Suite     string
-	Execution string
+	Suite       string
+	Execution   string
+	AllPackages bool
 }
 
 func Execute(path string, stdout io.Writer) error {
@@ -128,6 +129,15 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 		}
 		return tests[i].caseIndex < tests[j].caseIndex
 	})
+	if !options.AllPackages {
+		filtered := make([]testCase, 0, len(tests))
+		for _, tc := range tests {
+			if tc.pkg == program.Entry {
+				filtered = append(filtered, tc)
+			}
+		}
+		tests = filtered
+	}
 	if options.Suite != "" {
 		filtered := make([]testCase, 0, len(tests))
 		for _, tc := range tests {

@@ -9,7 +9,7 @@ import (
 
 func TestOctFailOctFailDoesNotBreakOctestExecution(t *testing.T) {
 	root := filepath.Join("..", "..", "testdata", "m24g", "valid")
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIArgs("test", root, "--all-packages")
 	if err != nil {
 		t.Fatalf("expected valid .octest suite to pass, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
