@@ -56,7 +56,7 @@ Notes:
 | `ast.IndexExpr` | Yes | Yes (single-dimension array only) | Yes | Keep scoped | Matrix/vector/string indexing still deferred in flow path. |
 | `ast.FieldAccessExpr` | Yes | Partial (`board.<field>`) | Yes (board access) | Defer broader | Record/snapshot field access outside `board` remains intentionally unsupported in flow path. |
 | `ast.ArrayLiteralExpr` | Yes | No | Maybe | Defer | Not required for current scalar-board M0 parity and would expand flow type surface. |
-| `ast.RecordLiteralExpr` | Yes | No | Maybe | Defer | Not required for current Octomata flow parity fixtures; potential follow-up if explicit flow return-record use is required. |
+| `ast.RecordLiteralExpr` | Yes | Yes (record construction for flow return/value expressions) | Yes (named-field record construction) | Implemented | Compiled flow lowering now supports named-field record literals for direct value construction (including return paths). Imported/advanced record forms remain bounded by existing flow type resolution. |
 | `ast.RecordUpdateExpr` (`with`) | Yes | No | Maybe | Defer | Wider record semantics not needed for current M0 flow support target. |
 | `ast.IfExpr` / `ast.SwitchExpr` | Yes | No | Maybe | Defer | Statement-level `if`/`when` already exists for flow control; expression-level forms not required in this sweep. |
 | `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
