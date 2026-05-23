@@ -14,6 +14,12 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
+func requirePrometheusIntegration(t *testing.T) {
+	if os.Getenv("OCT_RUN_PROMETHEUS_INTEGRATION") != "1" {
+		t.Skip("set OCT_RUN_PROMETHEUS_INTEGRATION=1 and OCT_PROMETHEUS_REACTOR=<path-to-prometheus_reactor.dll> to run real Prometheus integration tests")
+	}
+}
+
 func windowsRepoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -40,6 +46,7 @@ func windowsReactorDLL(t *testing.T) string {
 }
 
 func TestWindowsBenchUsesPrometheusBackendAndWritesOctagon(t *testing.T) {
+	requirePrometheusIntegration(t)
 	root := windowsRepoRoot(t)
 	experiment := filepath.Join(root, "Experiments", "PrometheusBenchmarkHarness", "M0")
 	reactor := windowsReactorDLL(t)

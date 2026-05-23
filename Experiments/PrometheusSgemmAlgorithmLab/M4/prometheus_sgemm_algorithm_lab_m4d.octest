@@ -31,12 +31,25 @@ fn M4dSelectionForShape(shape: String, m: Int, n: Int, k: Int) -> M4dCaseSelecti
         M: m
         N: n
         K: k
-        ChosenStrategy: StrategyLabel(chosen)
-        ChosenFamily: FamilyLabel(chosen)
+        ChosenStrategy: M4dStrategyLabel(chosen)
+        ChosenFamily: M4dFamilyLabel(chosen)
     }
 }
 
-fn FamilyLabel(strategy: MatMulStrategy) -> String {
+fn M4dStrategyLabel(strategy: MatMulStrategy) -> String {
+    return switch strategy {
+        case MatMulStrategy.Baseline => "Baseline"
+        case MatMulStrategy.IKJ => "IKJ"
+        case MatMulStrategy.KIJ => "KIJ"
+        case MatMulStrategy.Blocked => "Blocked"
+        case MatMulStrategy.BlockedIKJ => "BlockedIKJ"
+        case MatMulStrategy.KBlocked => "KBlocked"
+        case MatMulStrategy.KBlockedIKJ => "KBlockedIKJ"
+        case MatMulStrategy.StagedIKJ => "StagedIKJ"
+    }
+}
+
+fn M4dFamilyLabel(strategy: MatMulStrategy) -> String {
     return switch strategy {
         case MatMulStrategy.Baseline => "SingleCall"
         case MatMulStrategy.IKJ => "SingleCall"
