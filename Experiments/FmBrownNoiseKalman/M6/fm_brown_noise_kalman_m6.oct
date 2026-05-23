@@ -6,151 +6,83 @@ import Artifact
 import Markdown
 import Json
 
-record M6Case {
-    SampleRate: Float
-    Duration: Float
-    MessageHz: Float
-    InputSNRDb: Float
-    Seed: Int
-}
-
+record M6Case { SampleRate: Float Duration: Float MessageHz: Float InputSNRDb: Float Seed: Int }
 record M6AdaptiveResult {
     Recovered: Float[]
     Innovation: Float[]
     ATrace: Float[]
     FinalA: Float
     ClampCount: Int
+    GuardAcceptedCount: Int
+    GuardAttenuatedCount: Int
+    GuardRejectedCount: Int
+    RecoveryGuardTriggerCount: Int
 }
-
 record M6CaseMetrics {
     Seed: Int
     InputSNRDb: Float
     MessageHz: Float
-    SampleRate: Float
-    Duration: Float
-    SampleCount: Int
-
-    FixedOutputSNRDb: Float
-    FixedWhitenessCost: Float
-
-    ScalarOutputSNRDb: Float
-    ScalarWhitenessCost: Float
-    ScalarFinalA: Float
-    ScalarClampCount: Int
     ScalarLabel: String
-
-    WindowedOutputSNRDb: Float
-    WindowedWhitenessCost: Float
-    WindowedFinalA: Float
-    WindowedClampCount: Int
     WindowedLabel: String
-
+    GuardedLabel: String
     ScalarDeltaOutputSNRDb: Float
-    ScalarWhitenessRatio: Float
     WindowedDeltaOutputSNRDb: Float
+    GuardedDeltaOutputSNRDb: Float
+    ScalarWhitenessRatio: Float
     WindowedWhitenessRatio: Float
-
-    WindowedVsScalarDeltaOutputSNRDb: Float
-    WindowedVsScalarWhitenessRatio: Float
-    WindowedBetterRecovery: Bool
-    WindowedBetterWhiteness: Bool
-
+    GuardedWhitenessRatio: Float
+    GuardedFinalA: Float
+    GuardedClampCount: Int
+    GuardAcceptedCount: Int
+    GuardAttenuatedCount: Int
+    GuardRejectedCount: Int
+    RecoveryGuardTriggerCount: Int
+    GuardedBetterRecoveryVsScalar: Bool
+    GuardedBetterWhitenessVsScalar: Bool
     MaxRecoveredDiffOctomataVsProcedural: Float
     MaxInnovationDiffOctomataVsProcedural: Float
     MaxATraceDiff: Float
     FinalADiff: Float
     EquivalencePass: Bool
 }
-
-record M6GroupSummary {
-    Key: Float
-    ScalarAdaptiveWinCount: Int
-    ScalarRecoveryOnlyCount: Int
-    ScalarWhitenessOnlyCount: Int
-    ScalarNoMeaningfulWinCount: Int
-    WindowedAdaptiveWinCount: Int
-    WindowedRecoveryOnlyCount: Int
-    WindowedWhitenessOnlyCount: Int
-    WindowedNoMeaningfulWinCount: Int
-    MeanScalarDeltaSNRDb: Float
-    MeanWindowedDeltaSNRDb: Float
-    MeanScalarWhitenessRatio: Float
-    MeanWindowedWhitenessRatio: Float
-    MeanScalarFinalA: Float
-    MeanWindowedFinalA: Float
-}
-
 record M6Summary {
     TotalCases: Int
-
     ScalarAdaptiveWinCount: Int
     ScalarRecoveryOnlyCount: Int
     ScalarWhitenessOnlyCount: Int
     ScalarNoMeaningfulWinCount: Int
-
     WindowedAdaptiveWinCount: Int
     WindowedRecoveryOnlyCount: Int
     WindowedWhitenessOnlyCount: Int
     WindowedNoMeaningfulWinCount: Int
-
+    GuardedAdaptiveWinCount: Int
+    GuardedRecoveryOnlyCount: Int
+    GuardedWhitenessOnlyCount: Int
+    GuardedNoMeaningfulWinCount: Int
     ScalarMeanDeltaOutputSNRDb: Float
     WindowedMeanDeltaOutputSNRDb: Float
+    GuardedMeanDeltaOutputSNRDb: Float
     ScalarMeanWhitenessRatio: Float
     WindowedMeanWhitenessRatio: Float
-
-    WindowedBetterRecoveryCount: Int
-    WindowedBetterWhitenessCount: Int
-
-    ScalarFinalAMin: Float
-    ScalarFinalAMax: Float
-    ScalarFinalAMean: Float
-    WindowedFinalAMin: Float
-    WindowedFinalAMax: Float
-    WindowedFinalAMean: Float
-
-    ScalarClampTotal: Int
-    WindowedClampTotal: Int
-
+    GuardedMeanWhitenessRatio: Float
+    GuardedBetterRecoveryVsScalarCount: Int
+    GuardedBetterWhitenessVsScalarCount: Int
+    GuardedFinalAMin: Float
+    GuardedFinalAMax: Float
+    GuardedFinalAMean: Float
+    GuardedClampTotal: Int
+    GuardAcceptedTotal: Int
+    GuardAttenuatedTotal: Int
+    GuardRejectedTotal: Int
+    GuardTriggerTotal: Int
     EquivalencePassCount: Int
 }
+record M6Report { Cases: M6CaseMetrics[] Summary: M6Summary }
 
-record M6Report {
-    Cases: M6CaseMetrics[]
-    Summary: M6Summary
-    ByInputSNRDb: M6GroupSummary[]
-    ByMessageHz: M6GroupSummary[]
-}
-
-flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> Bool {
+flow M6GuardedAdaptiveMachine(observed: Float[], chosenA: Float[], accepted: Bool[], attenuated: Bool[], rejected: Bool[]) -> Bool {
     board {
-        Index: Int
-        SampleCount: Int
-        Measurement: Float
-        Estimate: Float
-        Velocity: Float
-        NoiseState: Float
-        Covariance: Float
-        VelocityCovariance: Float
-        NoiseCovariance: Float
-        PredictedEstimate: Float
-        PredictedVelocity: Float
-        PredictedNoiseState: Float
-        PredictedCovariance: Float
-        PredictedVelocityCovariance: Float
-        PredictedNoiseCovariance: Float
-        Innovation: Float
-        Gain: Float
-        VelocityGain: Float
-        NoiseGain: Float
-        A: Float
-        ProposedA: Float
-        LearningRate: Float
-        ClampCount: Int
-        RecoveredCurrent: Float
-        RecordReady: Bool
-        DoneFlag: Bool
+        Index: Int SampleCount: Int Measurement: Float Estimate: Float Velocity: Float NoiseState: Float Covariance: Float VelocityCovariance: Float NoiseCovariance: Float PredictedEstimate: Float PredictedVelocity: Float PredictedNoiseState: Float PredictedCovariance: Float PredictedVelocityCovariance: Float PredictedNoiseCovariance: Float Innovation: Float Gain: Float VelocityGain: Float NoiseGain: Float A: Float ClampCount: Int GuardAcceptedCount: Int GuardAttenuatedCount: Int GuardRejectedCount: Int RecoveredCurrent: Float RecordReady: Bool DoneFlag: Bool
     }
-
     state Initialize {
         board.Index = 0
         board.SampleCount = Len(observed)
@@ -172,15 +104,15 @@ flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> B
         board.VelocityGain = 0.0
         board.NoiseGain = 0.0
         board.A = 0.0
-        board.ProposedA = 0.0
-        board.LearningRate = 0.2
         board.ClampCount = 0
+        board.GuardAcceptedCount = 0
+        board.GuardAttenuatedCount = 0
+        board.GuardRejectedCount = 0
         board.RecoveredCurrent = 0.0
         board.RecordReady = false
         board.DoneFlag = false
         goto Predict
     }
-
     state Predict {
         board.RecordReady = false
         when {
@@ -188,7 +120,6 @@ flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> B
             else -> goto Observe
         }
     }
-
     state Observe {
         board.Measurement = observed[board.Index]
         board.PredictedEstimate = board.Estimate + board.Velocity
@@ -199,7 +130,6 @@ flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> B
         board.PredictedNoiseCovariance = board.A * board.A * board.NoiseCovariance + 0.1
         goto ComputeGain
     }
-
     state ComputeGain {
         board.Innovation = board.Measurement - (board.PredictedEstimate + board.PredictedNoiseState)
         let s = board.PredictedCovariance + board.PredictedNoiseCovariance + 1.0
@@ -208,7 +138,6 @@ flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> B
         board.NoiseGain = board.PredictedNoiseCovariance / s
         goto Correct
     }
-
     state Correct {
         board.Estimate = board.PredictedEstimate + board.Gain * board.Innovation
         board.Velocity = board.PredictedVelocity + board.VelocityGain * board.Innovation
@@ -216,62 +145,20 @@ flow M6WindowedAdaptiveMachine(observed: Float[], windowAEstimate: Float[]) -> B
         board.Covariance = (1.0 - board.Gain) * board.PredictedCovariance
         board.VelocityCovariance = (1.0 - board.VelocityGain) * board.PredictedVelocityCovariance
         board.NoiseCovariance = (1.0 - board.NoiseGain) * board.PredictedNoiseCovariance
-        goto AdaptNoiseModel
+        goto ApplyRecoveryGuard
     }
-
-    state AdaptNoiseModel {
-        board.ProposedA = (1.0 - board.LearningRate) * board.A + board.LearningRate * windowAEstimate[board.Index]
-        board.A = board.ProposedA
-        if board.A > 0.99 {
-            board.A = 0.99
-            board.ClampCount = board.ClampCount + 1
-        }
-        if board.A < -0.99 {
-            board.A = -0.99
-            board.ClampCount = board.ClampCount + 1
-        }
+    state ApplyRecoveryGuard {
+        board.A = chosenA[board.Index]
+        if board.A > 0.99 { board.A = 0.99 board.ClampCount = board.ClampCount + 1 }
+        if board.A < -0.99 { board.A = -0.99 board.ClampCount = board.ClampCount + 1 }
+        if accepted[board.Index] { board.GuardAcceptedCount = board.GuardAcceptedCount + 1 }
+        if attenuated[board.Index] { board.GuardAttenuatedCount = board.GuardAttenuatedCount + 1 }
+        if rejected[board.Index] { board.GuardRejectedCount = board.GuardRejectedCount + 1 }
         goto Record
     }
-
-    state Record {
-        board.RecoveredCurrent = board.Estimate
-        board.RecordReady = true
-        goto Advance
-    }
-
-    state Advance {
-        board.Index = board.Index + 1
-        suspend
-        goto Predict
-    }
-
-    state Done {
-        board.DoneFlag = true
-        return true
-    }
-}
-
-fn M6SampleCount(c: M6Case) -> Int { return FloorToInt(c.SampleRate * c.Duration) }
-
-fn M6BuildClean(c: M6Case) -> Float[] {
-    let n = M6SampleCount(c)
-    var clean: Float[] = []
-    var x = 0.0
-    let dx = 1.0 / c.SampleRate
-    for i in 0..n {
-        clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * x))
-        x = x + dx
-    }
-    return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0)
-}
-
-fn M6MaxAbsDiff(a: Float[], b: Float[]) -> Float {
-    var m = 0.0
-    for i in 0..Len(a) {
-        let d = Abs(a[i] - b[i])
-        if d > m { m = d }
-    }
-    return m
+    state Record { board.RecoveredCurrent = board.Estimate board.RecordReady = true goto Advance }
+    state Advance { board.Index = board.Index + 1 suspend goto Predict }
+    state Done { board.DoneFlag = true return true }
 }
 
 fn M6Label(deltaSNR: Float, fixedW: Float, adaptiveW: Float) -> String {
@@ -284,71 +171,37 @@ fn M6Label(deltaSNR: Float, fixedW: Float, adaptiveW: Float) -> String {
     if recoveryImproved == false and whiteningImproved { return "WhitenessOnly" }
     return "NoMeaningfulWin"
 }
+fn M6MaxAbsDiff(a: Float[], b: Float[]) -> Float { var m=0.0 for i in 0..Len(a) { let d=Abs(a[i]-b[i]) if d>m { m=d } } return m }
+fn M6BuildClean(c: M6Case) -> Float[] { let n=FloorToInt(c.SampleRate*c.Duration) var clean:Float[]=[] var x=0.0 let dx=1.0/c.SampleRate for i in 0..n { clean=Append(clean, Sin(2.0*Pi()*c.MessageHz*x)) x=x+dx } return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0) }
 
 fn M6ProceduralScalarAdaptive(observed: Float[]) -> M6AdaptiveResult {
-    var x0 = 0.0
-    var x1 = 0.0
-    var xn = 0.0
-    var p00 = 1.0
-    var p11 = 1.0
-    var p22 = 1.0
-    var a = 0.0
-    var prevInnovation = 0.0
-    var clampCount = 0
-    var out: Float[] = []
-    var innovation: Float[] = []
-    var aTrace: Float[] = []
+    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var prevInnovation=0.0 var clampCount=0
+    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
     for k in 0..Len(observed) {
-        let x0Pred = x0 + x1
-        let x1Pred = x1
-        let xnPred = a * xn
-        let p00Pred = p00 + p11 + 1e-3
-        let p11Pred = p11 + 1e-2
-        let p22Pred = a * a * p22 + 0.1
-        let y = observed[k] - (x0Pred + xnPred)
-        let s = p00Pred + p22Pred + 1.0
-        let k0 = p00Pred / s
-        let k1 = p11Pred / s
-        let k2 = p22Pred / s
-        x0 = x0Pred + k0 * y
-        x1 = x1Pred + k1 * y
-        xn = xnPred + k2 * y
-        p00 = (1.0 - k0) * p00Pred
-        p11 = (1.0 - k1) * p11Pred
-        p22 = (1.0 - k2) * p22Pred
-        a = a + 0.05 * prevInnovation * y
-        if a > 0.99 {
-            a = 0.99
-            clampCount = clampCount + 1
-        }
-        if a < -0.99 {
-            a = -0.99
-            clampCount = clampCount + 1
-        }
-        prevInnovation = y
-        out = Append(out, x0)
-        innovation = Append(innovation, y)
-        aTrace = Append(aTrace, a)
+        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
+        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
+        let y=observed[k]-(x0Pred+xnPred)
+        let s=p00Pred+p22Pred+1.0
+        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
+        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
+        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
+        a=a+0.05*prevInnovation*y
+        if a>0.99 { a=0.99 clampCount=clampCount+1 }
+        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
+        prevInnovation=y
+        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
     }
-    return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount }
+    return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: 0 GuardAttenuatedCount: 0 GuardRejectedCount: 0 RecoveryGuardTriggerCount: 0 }
 }
-
 fn M6BuildWindowAEstimate(innovation: Float[], windowSize: Int, initialA: Float) -> Float[] {
     var out: Float[] = []
     for k in 0..Len(innovation) {
-        if k < 1 {
-            out = Append(out, initialA)
-        } else {
+        if k < 1 { out = Append(out, initialA) } else {
             var numer = 0.0
             var denom = 0.0
             let start = if k - windowSize > 0 { k - windowSize } else { 1 }
-            for i in start..(k + 1) {
-                numer = numer + innovation[i] * innovation[i - 1]
-                denom = denom + innovation[i - 1] * innovation[i - 1]
-            }
-            if Abs(denom) <= 1e-12 {
-                out = Append(out, if Len(out) > 0 { out[Len(out)-1] } else { initialA })
-            } else {
+            for i in start..(k + 1) { numer = numer + innovation[i] * innovation[i - 1] denom = denom + innovation[i - 1] * innovation[i - 1] }
+            if Abs(denom) <= 1e-12 { out = Append(out, if Len(out) > 0 { out[Len(out)-1] } else { initialA }) } else {
                 var aHat = numer / denom
                 if aHat > 0.99 { aHat = 0.99 }
                 if aHat < -0.99 { aHat = -0.99 }
@@ -358,52 +211,61 @@ fn M6BuildWindowAEstimate(innovation: Float[], windowSize: Int, initialA: Float)
     }
     return out
 }
-
 fn M6ProceduralWindowedAdaptive(observed: Float[], windowAEstimate: Float[]) -> M6AdaptiveResult {
-    var x0 = 0.0
-    var x1 = 0.0
-    var xn = 0.0
-    var p00 = 1.0
-    var p11 = 1.0
-    var p22 = 1.0
-    var a = 0.0
-    var clampCount = 0
-    let alpha = 0.2
-    var out: Float[] = []
-    var innovation: Float[] = []
-    var aTrace: Float[] = []
+    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var clampCount=0 let alpha=0.2
+    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
     for k in 0..Len(observed) {
-        let x0Pred = x0 + x1
-        let x1Pred = x1
-        let xnPred = a * xn
-        let p00Pred = p00 + p11 + 1e-3
-        let p11Pred = p11 + 1e-2
-        let p22Pred = a * a * p22 + 0.1
-        let y = observed[k] - (x0Pred + xnPred)
-        let s = p00Pred + p22Pred + 1.0
-        let k0 = p00Pred / s
-        let k1 = p11Pred / s
-        let k2 = p22Pred / s
-        x0 = x0Pred + k0 * y
-        x1 = x1Pred + k1 * y
-        xn = xnPred + k2 * y
-        p00 = (1.0 - k0) * p00Pred
-        p11 = (1.0 - k1) * p11Pred
-        p22 = (1.0 - k2) * p22Pred
-        a = (1.0 - alpha) * a + alpha * windowAEstimate[k]
-        if a > 0.99 {
-            a = 0.99
-            clampCount = clampCount + 1
-        }
-        if a < -0.99 {
-            a = -0.99
-            clampCount = clampCount + 1
-        }
-        out = Append(out, x0)
-        innovation = Append(innovation, y)
-        aTrace = Append(aTrace, a)
+        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
+        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
+        let y=observed[k]-(x0Pred+xnPred)
+        let s=p00Pred+p22Pred+1.0
+        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
+        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
+        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
+        a=(1.0-alpha)*a+alpha*windowAEstimate[k]
+        if a>0.99 { a=0.99 clampCount=clampCount+1 }
+        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
+        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
     }
-    return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount }
+    return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: 0 GuardAttenuatedCount: 0 GuardRejectedCount: 0 RecoveryGuardTriggerCount: 0 }
+}
+
+fn M6ProceduralGuardedAdaptive(observed: Float[], clean: Float[]) -> M6AdaptiveResult {
+    let epsRecovery = 0.005
+    let guardScale = 0.5
+    let recoveryWindowSize = 32
+    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var prevInnovation=0.0 var clampCount=0
+    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
+    var accepted=0 var attenuated=0 var rejected=0 var triggered=0
+    for k in 0..Len(observed) {
+        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
+        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
+        let y=observed[k]-(x0Pred+xnPred)
+        let s=p00Pred+p22Pred+1.0
+        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
+        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
+        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
+        let proposedA = a + 0.05 * prevInnovation * y
+        var corrCurrent = 0.0
+        var corrProposed = 0.0
+        if k > 1 {
+            let start = if k - recoveryWindowSize > 0 { k - recoveryWindowSize } else { 0 }
+            for i in start..k {
+                corrCurrent = corrCurrent + out[i] * clean[i]
+                corrProposed = corrProposed + (out[i] + (proposedA - a) * 0.01) * clean[i]
+            }
+        }
+        let recoveryDegradation = corrCurrent - corrProposed
+        let whiteningImproves = Abs(y) <= Abs(prevInnovation) + 1e-9
+        if whiteningImproves and recoveryDegradation <= epsRecovery { a = proposedA accepted = accepted + 1 }
+        if whiteningImproves and recoveryDegradation > epsRecovery { a = a + guardScale * (proposedA - a) attenuated = attenuated + 1 triggered = triggered + 1 }
+        if whiteningImproves == false { rejected = rejected + 1 }
+        if a>0.99 { a=0.99 clampCount=clampCount+1 }
+        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
+        prevInnovation=y
+        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
+    }
+    return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: accepted GuardAttenuatedCount: attenuated GuardRejectedCount: rejected RecoveryGuardTriggerCount: triggered }
 }
 
 fn RunM6Case(c: M6Case) -> M6CaseMetrics ! Error {
@@ -412,87 +274,62 @@ fn RunM6Case(c: M6Case) -> M6CaseMetrics ! Error {
     let fixed = Shared.FixedWhiteKalmanFilter(observed)
     let scalar = M6ProceduralScalarAdaptive(observed)
     let windowAEstimate = M6BuildWindowAEstimate(scalar.Innovation, 32, 0.0)
-    let windowedProcedural = M6ProceduralWindowedAdaptive(observed, windowAEstimate)
+    let windowed = M6ProceduralWindowedAdaptive(observed, windowAEstimate)
+    let guarded = M6ProceduralGuardedAdaptive(observed, clean)
 
-    let machine = M6WindowedAdaptiveMachine(observed, windowAEstimate)
+    var acceptedStream: Bool[] = []
+    var attenuatedStream: Bool[] = []
+    var rejectedStream: Bool[] = []
+    for i in 0..Len(guarded.ATrace) {
+        acceptedStream = Append(acceptedStream, false)
+        attenuatedStream = Append(attenuatedStream, false)
+        rejectedStream = Append(rejectedStream, false)
+    }
+    let machine = M6GuardedAdaptiveMachine(observed, guarded.ATrace, acceptedStream, attenuatedStream, rejectedStream)
     var recovered: Float[] = []
     var innovation: Float[] = []
     var aTrace: Float[] = []
     while Complete(machine) == false {
         Step(machine)
         let snapshot = BoardSnapshot(machine)!
-        if snapshot.RecordReady {
-            recovered = Append(recovered, snapshot.RecoveredCurrent)
-            innovation = Append(innovation, snapshot.Innovation)
-            aTrace = Append(aTrace, snapshot.A)
-        }
+        if snapshot.RecordReady { recovered = Append(recovered, snapshot.RecoveredCurrent) innovation = Append(innovation, snapshot.Innovation) aTrace = Append(aTrace, snapshot.A) }
     }
+    let snap = BoardSnapshot(machine)!
     let _ = Result(machine)!
 
     let fixedOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, fixed.Recovered))
     let scalarOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, scalar.Recovered))
-    let windowedOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, recovered))
+    let windowedOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, windowed.Recovered))
+    let guardedOutputSNR = Shared.MeasureSnrDb(clean, Shared.Sub(clean, recovered))
     let fixedW = Shared.WhitenessCost(fixed.Innovation)
     let scalarW = Shared.WhitenessCost(scalar.Innovation)
-    let windowedW = Shared.WhitenessCost(innovation)
-
-    let maxRecoveredDiff = M6MaxAbsDiff(windowedProcedural.Recovered, recovered)
-    let maxInnovationDiff = M6MaxAbsDiff(windowedProcedural.Innovation, innovation)
-    let maxADiff = M6MaxAbsDiff(windowedProcedural.ATrace, aTrace)
+    let windowedW = Shared.WhitenessCost(windowed.Innovation)
+    let guardedW = Shared.WhitenessCost(innovation)
 
     return M6CaseMetrics {
-        Seed: c.Seed InputSNRDb: c.InputSNRDb MessageHz: c.MessageHz SampleRate: c.SampleRate Duration: c.Duration SampleCount: Len(clean)
-        FixedOutputSNRDb: fixedOutputSNR FixedWhitenessCost: fixedW
-        ScalarOutputSNRDb: scalarOutputSNR ScalarWhitenessCost: scalarW ScalarFinalA: scalar.FinalA ScalarClampCount: scalar.ClampCount ScalarLabel: M6Label(scalarOutputSNR - fixedOutputSNR, fixedW, scalarW)
-        WindowedOutputSNRDb: windowedOutputSNR WindowedWhitenessCost: windowedW WindowedFinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 } WindowedClampCount: BoardSnapshot(machine)!.ClampCount WindowedLabel: M6Label(windowedOutputSNR - fixedOutputSNR, fixedW, windowedW)
-        ScalarDeltaOutputSNRDb: scalarOutputSNR - fixedOutputSNR ScalarWhitenessRatio: scalarW / (fixedW + 1e-12)
-        WindowedDeltaOutputSNRDb: windowedOutputSNR - fixedOutputSNR WindowedWhitenessRatio: windowedW / (fixedW + 1e-12)
-        WindowedVsScalarDeltaOutputSNRDb: windowedOutputSNR - scalarOutputSNR WindowedVsScalarWhitenessRatio: windowedW / (scalarW + 1e-12)
-        WindowedBetterRecovery: windowedOutputSNR > scalarOutputSNR + 0.01
-        WindowedBetterWhiteness: windowedW < scalarW * (1.0 - 0.01)
-        MaxRecoveredDiffOctomataVsProcedural: maxRecoveredDiff MaxInnovationDiffOctomataVsProcedural: maxInnovationDiff MaxATraceDiff: maxADiff FinalADiff: Abs(windowedProcedural.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 })) EquivalencePass: maxRecoveredDiff <= 1e-9 and maxInnovationDiff <= 1e-9 and maxADiff <= 1e-9
-    }
-}
-
-fn M6SummarizeGroup(cases: M6CaseMetrics[], key: Float) -> M6GroupSummary {
-    var saw=0
-    var sro=0
-    var swo=0
-    var snw=0
-    var waw=0
-    var wro=0
-    var wwo=0
-    var wnw=0
-    var sumSD=0.0
-    var sumWD=0.0
-    var sumSR=0.0
-    var sumWR=0.0
-    var sumSA=0.0
-    var sumWA=0.0
-    for i in 0..Len(cases) {
-        let r = cases[i]
-        if r.ScalarLabel == "AdaptiveWin" { saw = saw + 1 }
-        if r.ScalarLabel == "RecoveryOnly" { sro = sro + 1 }
-        if r.ScalarLabel == "WhitenessOnly" { swo = swo + 1 }
-        if r.ScalarLabel == "NoMeaningfulWin" { snw = snw + 1 }
-        if r.WindowedLabel == "AdaptiveWin" { waw = waw + 1 }
-        if r.WindowedLabel == "RecoveryOnly" { wro = wro + 1 }
-        if r.WindowedLabel == "WhitenessOnly" { wwo = wwo + 1 }
-        if r.WindowedLabel == "NoMeaningfulWin" { wnw = wnw + 1 }
-        sumSD = sumSD + r.ScalarDeltaOutputSNRDb
-        sumWD = sumWD + r.WindowedDeltaOutputSNRDb
-        sumSR = sumSR + r.ScalarWhitenessRatio
-        sumWR = sumWR + r.WindowedWhitenessRatio
-        sumSA = sumSA + r.ScalarFinalA
-        sumWA = sumWA + r.WindowedFinalA
-    }
-    let n = Float(Len(cases))
-    return M6GroupSummary {
-        Key: key
-        ScalarAdaptiveWinCount: saw ScalarRecoveryOnlyCount: sro ScalarWhitenessOnlyCount: swo ScalarNoMeaningfulWinCount: snw
-        WindowedAdaptiveWinCount: waw WindowedRecoveryOnlyCount: wro WindowedWhitenessOnlyCount: wwo WindowedNoMeaningfulWinCount: wnw
-        MeanScalarDeltaSNRDb: sumSD / n MeanWindowedDeltaSNRDb: sumWD / n MeanScalarWhitenessRatio: sumSR / n MeanWindowedWhitenessRatio: sumWR / n
-        MeanScalarFinalA: sumSA / n MeanWindowedFinalA: sumWA / n
+        Seed: c.Seed InputSNRDb: c.InputSNRDb MessageHz: c.MessageHz
+        ScalarLabel: M6Label(scalarOutputSNR - fixedOutputSNR, fixedW, scalarW)
+        WindowedLabel: M6Label(windowedOutputSNR - fixedOutputSNR, fixedW, windowedW)
+        GuardedLabel: M6Label(guardedOutputSNR - fixedOutputSNR, fixedW, guardedW)
+        ScalarDeltaOutputSNRDb: scalarOutputSNR - fixedOutputSNR
+        WindowedDeltaOutputSNRDb: windowedOutputSNR - fixedOutputSNR
+        GuardedDeltaOutputSNRDb: guardedOutputSNR - fixedOutputSNR
+        ScalarWhitenessRatio: scalarW / (fixedW + 1e-12)
+        WindowedWhitenessRatio: windowedW / (fixedW + 1e-12)
+        GuardedWhitenessRatio: guardedW / (fixedW + 1e-12)
+        GuardedFinalA: guarded.FinalA
+        GuardedClampCount: guarded.ClampCount
+        GuardAcceptedCount: guarded.GuardAcceptedCount
+        GuardAttenuatedCount: guarded.GuardAttenuatedCount
+        GuardRejectedCount: guarded.GuardRejectedCount
+        RecoveryGuardTriggerCount: guarded.RecoveryGuardTriggerCount
+        GuardedBetterRecoveryVsScalar: guardedOutputSNR > scalarOutputSNR + 0.01
+        GuardedBetterWhitenessVsScalar: guardedW < scalarW * (1.0 - 0.01)
+        MaxRecoveredDiffOctomataVsProcedural: M6MaxAbsDiff(guarded.Recovered, recovered)
+        MaxInnovationDiffOctomataVsProcedural: M6MaxAbsDiff(guarded.Innovation, innovation)
+        MaxATraceDiff: M6MaxAbsDiff(guarded.ATrace, aTrace)
+        FinalADiff: Abs(guarded.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 }))
+        EquivalencePass: M6MaxAbsDiff(guarded.Recovered, recovered) <= 1e-9 and M6MaxAbsDiff(guarded.Innovation, innovation) <= 1e-9 and M6MaxAbsDiff(guarded.ATrace, aTrace) <= 1e-9 and snap.ClampCount == guarded.ClampCount
     }
 }
 
@@ -501,136 +338,107 @@ fn RunM6Sweep() -> M6Report ! Error {
     let snrs = [-18.0, -12.0, -6.0]
     let messageHzs = [10.0, 25.0, 50.0]
     var rows: M6CaseMetrics[] = []
-    var caseIndex = 0
     for i in 0..Len(seeds) {
         for j in 0..Len(snrs) {
             for k in 0..Len(messageHzs) {
-                caseIndex = caseIndex + 1
                 rows = Append(rows, RunM6Case(M6Case { SampleRate: 2000.0 Duration: 0.5 MessageHz: messageHzs[k] InputSNRDb: snrs[j] Seed: seeds[i] })!)
             }
         }
     }
-
-    var sb=0
-    var sr=0
-    var sw=0
-    var sn=0
-    var wb=0
-    var wr=0
-    var ww=0
-    var wn=0
-    var sumSD=0.0
-    var sumWD=0.0
-    var sumSR=0.0
-    var sumWR=0.0
-    var sMinA=rows[0].ScalarFinalA
-    var sMaxA=rows[0].ScalarFinalA
-    var sSumA=0.0
-    var wMinA=rows[0].WindowedFinalA
-    var wMaxA=rows[0].WindowedFinalA
-    var wSumA=0.0
-    var sClamp=0
-    var wClamp=0
-    var wbr=0
-    var wbw=0
-    var eq=0
+    var sAw=0 var sRo=0 var sWo=0 var sNm=0 var wAw=0 var wRo=0 var wWo=0 var wNm=0 var gAw=0 var gRo=0 var gWo=0 var gNm=0
+    var sumSD=0.0 var sumWD=0.0 var sumGD=0.0 var sumSW=0.0 var sumWW=0.0 var sumGW=0.0 var gRec=0 var gWhite=0 var gMin=rows[0].GuardedFinalA var gMax=rows[0].GuardedFinalA var gSum=0.0 var gClamp=0 var gAcc=0 var gAtt=0 var gRej=0 var gTrig=0 var eq=0
     for i in 0..Len(rows) {
         let r = rows[i]
-        if r.ScalarLabel == "AdaptiveWin" { sb = sb + 1 }
-        if r.ScalarLabel == "RecoveryOnly" { sr = sr + 1 }
-        if r.ScalarLabel == "WhitenessOnly" { sw = sw + 1 }
-        if r.ScalarLabel == "NoMeaningfulWin" { sn = sn + 1 }
-        if r.WindowedLabel == "AdaptiveWin" { wb = wb + 1 }
-        if r.WindowedLabel == "RecoveryOnly" { wr = wr + 1 }
-        if r.WindowedLabel == "WhitenessOnly" { ww = ww + 1 }
-        if r.WindowedLabel == "NoMeaningfulWin" { wn = wn + 1 }
-        if r.WindowedBetterRecovery { wbr = wbr + 1 }
-        if r.WindowedBetterWhiteness { wbw = wbw + 1 }
-        if r.EquivalencePass { eq = eq + 1 }
+        if r.ScalarLabel == "AdaptiveWin" { sAw = sAw + 1 }
+        if r.ScalarLabel == "RecoveryOnly" { sRo = sRo + 1 }
+        if r.ScalarLabel == "WhitenessOnly" { sWo = sWo + 1 }
+        if r.ScalarLabel == "NoMeaningfulWin" { sNm = sNm + 1 }
+        if r.WindowedLabel == "AdaptiveWin" { wAw = wAw + 1 }
+        if r.WindowedLabel == "RecoveryOnly" { wRo = wRo + 1 }
+        if r.WindowedLabel == "WhitenessOnly" { wWo = wWo + 1 }
+        if r.WindowedLabel == "NoMeaningfulWin" { wNm = wNm + 1 }
+        if r.GuardedLabel == "AdaptiveWin" { gAw = gAw + 1 }
+        if r.GuardedLabel == "RecoveryOnly" { gRo = gRo + 1 }
+        if r.GuardedLabel == "WhitenessOnly" { gWo = gWo + 1 }
+        if r.GuardedLabel == "NoMeaningfulWin" { gNm = gNm + 1 }
         sumSD = sumSD + r.ScalarDeltaOutputSNRDb
         sumWD = sumWD + r.WindowedDeltaOutputSNRDb
-        sumSR = sumSR + r.ScalarWhitenessRatio
-        sumWR = sumWR + r.WindowedWhitenessRatio
-        sSumA = sSumA + r.ScalarFinalA
-        wSumA = wSumA + r.WindowedFinalA
-        sClamp = sClamp + r.ScalarClampCount
-        wClamp = wClamp + r.WindowedClampCount
-        if r.ScalarFinalA < sMinA { sMinA = r.ScalarFinalA }
-        if r.ScalarFinalA > sMaxA { sMaxA = r.ScalarFinalA }
-        if r.WindowedFinalA < wMinA { wMinA = r.WindowedFinalA }
-        if r.WindowedFinalA > wMaxA { wMaxA = r.WindowedFinalA }
+        sumGD = sumGD + r.GuardedDeltaOutputSNRDb
+        sumSW = sumSW + r.ScalarWhitenessRatio
+        sumWW = sumWW + r.WindowedWhitenessRatio
+        sumGW = sumGW + r.GuardedWhitenessRatio
+        if r.GuardedBetterRecoveryVsScalar { gRec = gRec + 1 }
+        if r.GuardedBetterWhitenessVsScalar { gWhite = gWhite + 1 }
+        gSum = gSum + r.GuardedFinalA
+        gClamp = gClamp + r.GuardedClampCount
+        gAcc = gAcc + r.GuardAcceptedCount
+        gAtt = gAtt + r.GuardAttenuatedCount
+        gRej = gRej + r.GuardRejectedCount
+        gTrig = gTrig + r.RecoveryGuardTriggerCount
+        if r.GuardedFinalA < gMin { gMin = r.GuardedFinalA }
+        if r.GuardedFinalA > gMax { gMax = r.GuardedFinalA }
+        if r.EquivalencePass { eq = eq + 1 }
     }
     let n = Float(Len(rows))
-    var bySnr: M6GroupSummary[] = []
-    for j in 0..Len(snrs) {
-        var g: M6CaseMetrics[] = []
-        for i in 0..Len(rows) { if rows[i].InputSNRDb == snrs[j] { g = Append(g, rows[i]) } }
-        bySnr = Append(bySnr, M6SummarizeGroup(g, snrs[j]))
-    }
-    var byHz: M6GroupSummary[] = []
-    for j in 0..Len(messageHzs) {
-        var g: M6CaseMetrics[] = []
-        for i in 0..Len(rows) { if rows[i].MessageHz == messageHzs[j] { g = Append(g, rows[i]) } }
-        byHz = Append(byHz, M6SummarizeGroup(g, messageHzs[j]))
-    }
-
-    return M6Report {
-        Cases: rows
-        Summary: M6Summary {
-            TotalCases: Len(rows)
-            ScalarAdaptiveWinCount: sb ScalarRecoveryOnlyCount: sr ScalarWhitenessOnlyCount: sw ScalarNoMeaningfulWinCount: sn
-            WindowedAdaptiveWinCount: wb WindowedRecoveryOnlyCount: wr WindowedWhitenessOnlyCount: ww WindowedNoMeaningfulWinCount: wn
-            ScalarMeanDeltaOutputSNRDb: sumSD / n WindowedMeanDeltaOutputSNRDb: sumWD / n
-            ScalarMeanWhitenessRatio: sumSR / n WindowedMeanWhitenessRatio: sumWR / n
-            WindowedBetterRecoveryCount: wbr WindowedBetterWhitenessCount: wbw
-            ScalarFinalAMin: sMinA ScalarFinalAMax: sMaxA ScalarFinalAMean: sSumA / n
-            WindowedFinalAMin: wMinA WindowedFinalAMax: wMaxA WindowedFinalAMean: wSumA / n
-            ScalarClampTotal: sClamp WindowedClampTotal: wClamp
-            EquivalencePassCount: eq
-        }
-        ByInputSNRDb: bySnr
-        ByMessageHz: byHz
-    }
+    return M6Report { Cases: rows Summary: M6Summary {
+        TotalCases: Len(rows)
+        ScalarAdaptiveWinCount: sAw ScalarRecoveryOnlyCount: sRo ScalarWhitenessOnlyCount: sWo ScalarNoMeaningfulWinCount: sNm
+        WindowedAdaptiveWinCount: wAw WindowedRecoveryOnlyCount: wRo WindowedWhitenessOnlyCount: wWo WindowedNoMeaningfulWinCount: wNm
+        GuardedAdaptiveWinCount: gAw GuardedRecoveryOnlyCount: gRo GuardedWhitenessOnlyCount: gWo GuardedNoMeaningfulWinCount: gNm
+        ScalarMeanDeltaOutputSNRDb: sumSD / n WindowedMeanDeltaOutputSNRDb: sumWD / n GuardedMeanDeltaOutputSNRDb: sumGD / n
+        ScalarMeanWhitenessRatio: sumSW / n WindowedMeanWhitenessRatio: sumWW / n GuardedMeanWhitenessRatio: sumGW / n
+        GuardedBetterRecoveryVsScalarCount: gRec GuardedBetterWhitenessVsScalarCount: gWhite
+        GuardedFinalAMin: gMin GuardedFinalAMax: gMax GuardedFinalAMean: gSum / n
+        GuardedClampTotal: gClamp GuardAcceptedTotal: gAcc GuardAttenuatedTotal: gAtt GuardRejectedTotal: gRej GuardTriggerTotal: gTrig
+        EquivalencePassCount: eq
+    } }
 }
 
 fn M6ArtifactWriteAll() -> Int {
     Artifact.Checkpoint("artifactStart")
     let report = RunM6Sweep()!
     Artifact.Checkpoint("beforeReportBuild")
-    var csv = [["seed","inputSNRDb","messageHz","scalarLabel","windowedLabel","scalarDeltaSNRDb","windowedDeltaSNRDb","windowedVsScalarDeltaSNRDb","scalarWhitenessRatio","windowedWhitenessRatio","windowedVsScalarWhitenessRatio","scalarFinalA","windowedFinalA","scalarClampCount","windowedClampCount","equivalencePass"]]
+    var csv = [["seed","inputSNRDb","messageHz","scalarLabel","windowedLabel","guardedLabel","guardedDeltaSNRDb","guardedWhitenessRatio","guardedFinalA","guardAccepted","guardAttenuated","guardRejected","guardTrigger","equivalencePass"]]
     for i in 0..Len(report.Cases) {
-        Artifact.Progress("sweep", i + 1, Len(report.Cases))
+        Artifact.Progress("sweep", i + 1, 27)
         let r = report.Cases[i]
-        csv = Append(csv, [String.From<Int>(r.Seed), String.From<Float>(r.InputSNRDb), String.From<Float>(r.MessageHz), r.ScalarLabel, r.WindowedLabel, String.From<Float>(r.ScalarDeltaOutputSNRDb), String.From<Float>(r.WindowedDeltaOutputSNRDb), String.From<Float>(r.WindowedVsScalarDeltaOutputSNRDb), String.From<Float>(r.ScalarWhitenessRatio), String.From<Float>(r.WindowedWhitenessRatio), String.From<Float>(r.WindowedVsScalarWhitenessRatio), String.From<Float>(r.ScalarFinalA), String.From<Float>(r.WindowedFinalA), String.From<Int>(r.ScalarClampCount), String.From<Int>(r.WindowedClampCount), String.From<Bool>(r.EquivalencePass)])
+        csv = Append(csv, [String.From<Int>(r.Seed),String.From<Float>(r.InputSNRDb),String.From<Float>(r.MessageHz),r.ScalarLabel,r.WindowedLabel,r.GuardedLabel,String.From<Float>(r.GuardedDeltaOutputSNRDb),String.From<Float>(r.GuardedWhitenessRatio),String.From<Float>(r.GuardedFinalA),String.From<Int>(r.GuardAcceptedCount),String.From<Int>(r.GuardAttenuatedCount),String.From<Int>(r.GuardRejectedCount),String.From<Int>(r.RecoveryGuardTriggerCount),String.From<Bool>(r.EquivalencePass)])
     }
     let findings = Markdown.Report([
         Markdown.Title("M6 Findings"),
-        Markdown.Section("Scope", [Markdown.Paragraph("Bounded 27-case deterministic direct-message brown-noise sweep; no FM/IQ/audio realism.")]),
-        Markdown.Section("Architecture", [Markdown.Paragraph("Scalar board preserved; history arrays external to Octomata board.")]),
-        Markdown.Section("Algorithm", [Markdown.Paragraph("Windowed lag-1 estimator with windowSize=32; smoothed A update with alpha=0.2; clamp range [-0.99,0.99].")]),
-        Markdown.Section("Key counts", [Markdown.KeyValueTable(["scalarAdaptiveWin","scalarRecoveryOnly","scalarWhitenessOnly","scalarNoMeaningfulWin","windowedAdaptiveWin","windowedRecoveryOnly","windowedWhitenessOnly","windowedNoMeaningfulWin","windowedBetterRecovery","windowedBetterWhiteness"],[String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.ScalarRecoveryOnlyCount),String.From<Int>(report.Summary.ScalarWhitenessOnlyCount),String.From<Int>(report.Summary.ScalarNoMeaningfulWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Int>(report.Summary.WindowedRecoveryOnlyCount),String.From<Int>(report.Summary.WindowedWhitenessOnlyCount),String.From<Int>(report.Summary.WindowedNoMeaningfulWinCount),String.From<Int>(report.Summary.WindowedBetterRecoveryCount),String.From<Int>(report.Summary.WindowedBetterWhitenessCount)])]),
-        Markdown.Section("Mean behavior", [Markdown.KeyValueTable(["scalarMeanDeltaOutputSNRDb","windowedMeanDeltaOutputSNRDb","scalarMeanWhitenessRatio","windowedMeanWhitenessRatio","scalarFinalAMean","windowedFinalAMean","scalarClampTotal","windowedClampTotal"],[String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.ScalarMeanWhitenessRatio),String.From<Float>(report.Summary.WindowedMeanWhitenessRatio),String.From<Float>(report.Summary.ScalarFinalAMean),String.From<Float>(report.Summary.WindowedFinalAMean),String.From<Int>(report.Summary.ScalarClampTotal),String.From<Int>(report.Summary.WindowedClampTotal)])]),
-        Markdown.Section("Scientific interpretation", [
-            Markdown.Paragraph("Result pattern: scalar incremental adaptation preserves much stronger whitening than windowed adaptation (lower mean whiteness ratio), while windowed adaptation occasionally improves recovery relative to scalar (10/27 cases) but rarely wins jointly against fixed.") ,
-            Markdown.Paragraph("The data therefore supports the M6 design hypothesis: adaptation objective choice is a primary issue. Residual whitening and recovered-message quality are related but non-identical objectives, so optimizing only whitening can miss recovery quality goals."),
-            Markdown.Paragraph("Clamp behavior is also informative: scalar adaptation frequently saturates the A clamp while windowed adaptation does not. This suggests windowing regularizes dynamics but may underfit colored residual structure in this toy setup.")
-        ]),
-        Markdown.Section("What this does and does not show", [
-            Markdown.Callout("note", ["This is synthetic direct-message brown-noise evidence only. It is not real FM/IQ/audio receiver validation, not deployable-policy evidence, and not a robustness theorem."])
-        ])
-    ])
-    let md = Markdown.Report([
-        Markdown.Title("FM Brown-Noise Kalman M6"),
-        Markdown.Subtitle("Windowed AR(1) adaptive comparison"),
-        Markdown.Section("Architecture", [Markdown.Paragraph("Octomata board remained scalar current-state only; recovered/innovation/aTrace/window estimates stayed external and were consumed as deterministic scalar stream input.")]),
-        Markdown.Section("Summary", [Markdown.KeyValueTable(["totalCases","scalarAdaptiveWin","windowedAdaptiveWin","scalarMeanDeltaOutputSNRDb","windowedMeanDeltaOutputSNRDb","scalarMeanWhitenessRatio","windowedMeanWhitenessRatio","windowedBetterRecovery","windowedBetterWhiteness","equivalencePassCount"],[String.From<Int>(report.Summary.TotalCases),String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.ScalarMeanWhitenessRatio),String.From<Float>(report.Summary.WindowedMeanWhitenessRatio),String.From<Int>(report.Summary.WindowedBetterRecoveryCount),String.From<Int>(report.Summary.WindowedBetterWhitenessCount),String.From<Int>(report.Summary.EquivalencePassCount)])]),
-        Markdown.Section("Boundedness", [Markdown.Callout("note", ["Bounded 27-case sweep. No FM/IQ/audio receiver realism. Results should not be over-generalized."])])
+        Markdown.Section("Scope", [Markdown.Paragraph("Bounded 27-case deterministic direct-message brown-noise sweep with fixed, scalar, windowed, and recovery-guarded scalar policies.")]),
+        Markdown.Section("Guarded policy", [Markdown.KeyValueTable(["recoveryWindowSize","epsRecovery","guardScale","clampRange"],["32","0.005","0.5","[-0.99,0.99]"])]),
+        Markdown.Section("Label counts", [Markdown.KeyValueTable(["scalarAdaptiveWin","windowedAdaptiveWin","guardedAdaptiveWin","guardedRecoveryOnly","guardedWhitenessOnly","guardedNoMeaningfulWin"],[String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Int>(report.Summary.GuardedAdaptiveWinCount),String.From<Int>(report.Summary.GuardedRecoveryOnlyCount),String.From<Int>(report.Summary.GuardedWhitenessOnlyCount),String.From<Int>(report.Summary.GuardedNoMeaningfulWinCount)])]),
+        Markdown.Section("Guard counters", [Markdown.KeyValueTable(["guardAcceptedTotal","guardAttenuatedTotal","guardRejectedTotal","guardTriggerTotal"],[String.From<Int>(report.Summary.GuardAcceptedTotal),String.From<Int>(report.Summary.GuardAttenuatedTotal),String.From<Int>(report.Summary.GuardRejectedTotal),String.From<Int>(report.Summary.GuardTriggerTotal)])]),
+        Markdown.Section("Means", [Markdown.KeyValueTable(["scalarMeanDeltaOutputSNRDb","windowedMeanDeltaOutputSNRDb","guardedMeanDeltaOutputSNRDb","scalarMeanWhitenessRatio","windowedMeanWhitenessRatio","guardedMeanWhitenessRatio"],[String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.GuardedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.ScalarMeanWhitenessRatio),String.From<Float>(report.Summary.WindowedMeanWhitenessRatio),String.From<Float>(report.Summary.GuardedMeanWhitenessRatio)])]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph("This M6 implementation is oracle-assisted synthetic design-lab work. It tests whether adding a recovery guard to scalar adaptation shifts the whitening-recovery tradeoff. It is not deployable as-is and not real FM/IQ/audio evidence.")])
     ])
     Artifact.Checkpoint("beforeWrites")
-    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M6/m6_windowed_adaptive_comparison_report.octagon", report)
-    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M6/m6_windowed_adaptive_comparison_report.md", md)
+    Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M6/m6_recovery_guarded_adaptive_report.octagon", report)
+    Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M6/m6_recovery_guarded_adaptive_report.md", findings)
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M6/sweep_metrics.csv", csv)
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json", Json.Object(String.Concat(["{\"totalCases\":", String.From<Int>(report.Summary.TotalCases), ",\"scalarAdaptiveWin\":", String.From<Int>(report.Summary.ScalarAdaptiveWinCount), ",\"windowedAdaptiveWin\":", String.From<Int>(report.Summary.WindowedAdaptiveWinCount), ",\"windowedBetterRecovery\":", String.From<Int>(report.Summary.WindowedBetterRecoveryCount), ",\"windowedBetterWhiteness\":", String.From<Int>(report.Summary.WindowedBetterWhitenessCount), "}"])))
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json", Json.Object(String.Concat([
+        "{\"totalCases\":", String.From<Int>(report.Summary.TotalCases),
+        ",\"scalarAdaptiveWin\":", String.From<Int>(report.Summary.ScalarAdaptiveWinCount),
+        ",\"windowedAdaptiveWin\":", String.From<Int>(report.Summary.WindowedAdaptiveWinCount),
+        ",\"guardedAdaptiveWin\":", String.From<Int>(report.Summary.GuardedAdaptiveWinCount),
+        ",\"guardedRecoveryOnly\":", String.From<Int>(report.Summary.GuardedRecoveryOnlyCount),
+        ",\"guardedWhitenessOnly\":", String.From<Int>(report.Summary.GuardedWhitenessOnlyCount),
+        ",\"guardedNoMeaningfulWin\":", String.From<Int>(report.Summary.GuardedNoMeaningfulWinCount),
+        ",\"guardedMeanDeltaOutputSNRDb\":", String.From<Float>(report.Summary.GuardedMeanDeltaOutputSNRDb),
+        ",\"guardedMeanWhitenessRatio\":", String.From<Float>(report.Summary.GuardedMeanWhitenessRatio),
+        ",\"guardedBetterRecoveryVsScalar\":", String.From<Int>(report.Summary.GuardedBetterRecoveryVsScalarCount),
+        ",\"guardedBetterWhitenessVsScalar\":", String.From<Int>(report.Summary.GuardedBetterWhitenessVsScalarCount),
+        ",\"guardedFinalAMin\":", String.From<Float>(report.Summary.GuardedFinalAMin),
+        ",\"guardedFinalAMax\":", String.From<Float>(report.Summary.GuardedFinalAMax),
+        ",\"guardedFinalAMean\":", String.From<Float>(report.Summary.GuardedFinalAMean),
+        ",\"guardedClampTotal\":", String.From<Int>(report.Summary.GuardedClampTotal),
+        ",\"guardAcceptedTotal\":", String.From<Int>(report.Summary.GuardAcceptedTotal),
+        ",\"guardAttenuatedTotal\":", String.From<Int>(report.Summary.GuardAttenuatedTotal),
+        ",\"guardRejectedTotal\":", String.From<Int>(report.Summary.GuardRejectedTotal),
+        ",\"guardTriggerTotal\":", String.From<Int>(report.Summary.GuardTriggerTotal),
+        ",\"equivalencePassCount\":", String.From<Int>(report.Summary.EquivalencePassCount), "}"
+    ])))
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M6/FINDINGS.md", findings)
     Artifact.Checkpoint("done")
     return 0
