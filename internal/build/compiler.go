@@ -1533,6 +1533,42 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				}
 			}
 		}
+		if leftElem, ok := parseVectorElemType(lt); ok {
+			if rightElem, ok := parseVectorElemType(rt); ok {
+				ret := "Vector<" + unifyLinearElemType(leftElem, rightElem) + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:  tmp,
+					Callee:  "VecBinaryVV:" + e.Operator,
+					Args:    []string{l, r},
+					Builtin: true,
+					RetType: ret,
+				})
+				return tmp, ret, false, nil
+			}
+			if isNumericTypeString(rt) {
+				tmp := c.temp(lt)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:  tmp,
+					Callee:  "VecBinaryVS:" + e.Operator,
+					Args:    []string{l, r},
+					Builtin: true,
+					RetType: lt,
+				})
+				return tmp, lt, false, nil
+			}
+		}
+		if rightElem, ok := parseVectorElemType(rt); ok && isNumericTypeString(lt) {
+			tmp := c.temp(rt)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+				Target:  tmp,
+				Callee:  "VecBinarySV:" + e.Operator,
+				Args:    []string{l, r},
+				Builtin: true,
+				RetType: "Vector<" + rightElem + ">",
+			})
+			return tmp, rt, false, nil
+		}
 		ret := lt
 		switch e.Operator {
 		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
@@ -1968,6 +2004,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, err
 		}
 		elemType := strings.TrimSuffix(targetType, "[]")
+		if vectorElem, ok := parseVectorElemType(targetType); ok {
+			elemType = vectorElem
+		}
 		tmp := c.temp(elemType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s]", target, idx)})
 		return tmp, elemType, false, nil
@@ -2845,6 +2884,10 @@ func isFloatScalarTypeString(t string) bool {
 
 func isIntScalarTypeString(t string) bool {
 	return t == "Int" || (strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">"))
+}
+
+func isNumericTypeString(t string) bool {
+	return isIntScalarTypeString(t) || isFloatScalarTypeString(t)
 }
 
 func unifyLinearElemType(leftElem, rightElem string) string {
@@ -4166,6 +4209,19 @@ func __octMatMulMV[T __octNumber](left [][]T, right []T) []T {
 	return result
 }
 
+func __octVecAddVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] + right[i] }; return out }
+func __octVecSubVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] - right[i] }; return out }
+func __octVecMulVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] * right[i] }; return out }
+func __octVecDivVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] / right[i] }; return out }
+func __octVecAddVS[T __octNumber](left []T, right T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] + right }; return out }
+func __octVecSubVS[T __octNumber](left []T, right T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] - right }; return out }
+func __octVecMulVS[T __octNumber](left []T, right T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] * right }; return out }
+func __octVecDivVS[T __octNumber](left []T, right T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] / right }; return out }
+func __octVecAddSV[T __octNumber](left T, right []T) []T { out := make([]T, len(right)); for i := range right { out[i] = left + right[i] }; return out }
+func __octVecSubSV[T __octNumber](left T, right []T) []T { out := make([]T, len(right)); for i := range right { out[i] = left - right[i] }; return out }
+func __octVecMulSV[T __octNumber](left T, right []T) []T { out := make([]T, len(right)); for i := range right { out[i] = left * right[i] }; return out }
+func __octVecDivSV[T __octNumber](left T, right []T) []T { out := make([]T, len(right)); for i := range right { out[i] = left / right[i] }; return out }
+
 func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 	if len(left) == 0 || len(right) == 0 {
 		return [][]T{}
@@ -5303,13 +5359,13 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		if err != nil {
 			return "", err
 		}
-		thenSrc, err := emitGoFlowBlock(s.Then, pkg, stateIDs, resultType)
+		thenSrc, err := emitGoFlowInlineBlock(s.Then, pkg, stateIDs, resultType)
 		if err != nil {
 			return "", err
 		}
 		out := "if " + cond + " {\n" + thenSrc + "\n}"
 		if len(s.Else) > 0 {
-			elseSrc, err := emitGoFlowBlock(s.Else, pkg, stateIDs, resultType)
+			elseSrc, err := emitGoFlowInlineBlock(s.Else, pkg, stateIDs, resultType)
 			if err != nil {
 				return "", err
 			}
@@ -5338,6 +5394,42 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		return strings.Join(lines, "\n"), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow statement %T", stmt))
+	}
+}
+
+func emitGoFlowInlineBlock(stmts []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	lines := make([]string, 0, len(stmts))
+	for _, stmt := range stmts {
+		src, err := emitGoFlowInlineStmt(stmt, pkg, stateIDs, resultType)
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, src)
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+	switch s := stmt.(type) {
+	case MIRFlowFieldAssign:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		if s.Target == "board" {
+			return fmt.Sprintf("f.board.%s = %s", s.Field, v), nil
+		}
+		return fmt.Sprintf("f.%s.%s = %s", s.Target, s.Field, v), nil
+	case MIRFlowLetStmt:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s = %s", s.Name, v), nil
+	case MIRFlowIf:
+		return emitGoFlowStmt(s, pkg, stateIDs, resultType)
+	default:
+		return emitGoFlowStmt(s, pkg, stateIDs, resultType)
 	}
 }
 
@@ -5788,6 +5880,30 @@ func goStmt(s MIRStmt) (string, error) {
 					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "MatMulMV":
 				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVV:+":
+				return fmt.Sprintf("%s = __octVecAddVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVV:-":
+				return fmt.Sprintf("%s = __octVecSubVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVV:*":
+				return fmt.Sprintf("%s = __octVecMulVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVV:/":
+				return fmt.Sprintf("%s = __octVecDivVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVS:+":
+				return fmt.Sprintf("%s = __octVecAddVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVS:-":
+				return fmt.Sprintf("%s = __octVecSubVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVS:*":
+				return fmt.Sprintf("%s = __octVecMulVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinaryVS:/":
+				return fmt.Sprintf("%s = __octVecDivVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinarySV:+":
+				return fmt.Sprintf("%s = __octVecAddSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinarySV:-":
+				return fmt.Sprintf("%s = __octVecSubSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinarySV:*":
+				return fmt.Sprintf("%s = __octVecMulSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecBinarySV:/":
+				return fmt.Sprintf("%s = __octVecDivSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "MatMulMM":
 				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "PrometheusMatMulMM":
