@@ -39,7 +39,12 @@ type MIRRecord struct {
 type MIREnum struct {
 	Package  string
 	Name     string
-	Variants []string
+	Variants []MIREnumVariant
+}
+
+type MIREnumVariant struct {
+	Name        string
+	PayloadType string
 }
 
 type MIRFlow struct {
@@ -515,11 +520,15 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			module.Records = append(module.Records, mr)
 		}
 		for _, e := range pkg.Enums {
-			variantNames := make([]string, 0, len(e.Variants))
+			variants := make([]MIREnumVariant, 0, len(e.Variants))
 			for _, variant := range e.Variants {
-				variantNames = append(variantNames, variant.Name)
+				payloadType := ""
+				if variant.Payload != nil {
+					payloadType = typeRefStringForPackage(pkgName, *variant.Payload)
+				}
+				variants = append(variants, MIREnumVariant{Name: variant.Name, PayloadType: payloadType})
 			}
-			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: variantNames})
+			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: variants})
 		}
 		for _, flow := range pkg.Flows {
 			if len(flow.Board) > 0 {
@@ -1571,6 +1580,17 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s%s)", op, v)})
 		return tmp, t, false, nil
 	case ast.CallExpr:
+		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
+			if enumType, variant, ok := c.flattenEnumVariantExpr(calleeField); ok {
+				enumValue, resolvedEnumType, enumFound, err := c.resolveEnumVariantConstructor(enumType, variant, e.Arguments)
+				if err != nil {
+					return "", "", false, err
+				}
+				if enumFound {
+					return enumValue, resolvedEnumType, false, nil
+				}
+			}
+		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "error" {
 			if len(e.Arguments) != 1 {
 				return "", "", false, fmt.Errorf("error() expects one argument")
@@ -2009,6 +2029,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		return c.lowerIfExpr(e)
 	case ast.SwitchExpr:
 		return c.lowerSwitchExpr(e)
+	case ast.MatchExpr:
+		return c.lowerMatchExpr(e)
 	case ast.RangeExpr:
 		return "", "", false, unsupported("range")
 	case ast.PropagateExpr:
@@ -2355,6 +2377,51 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 	return out, resultType, false, nil
 }
 
+func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error) {
+	subject, subjectType, _, err := c.lowerExpr(e.Subject)
+	if err != nil {
+		return "", "", false, err
+	}
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+	var out, resultType string
+	nextID := c.cur
+	for i, matchCase := range e.Cases {
+		matchID := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", matchID)})
+		fallthroughID := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", fallthroughID)})
+		cond := c.temp("Bool")
+		c.blocks[nextID].Statements = append(c.blocks[nextID].Statements, MIRAssign{Target: cond, Value: fmt.Sprintf("(%s.Tag == %s_%s_tag)", subject, enumShortName(subjectType), matchCase.Variant)})
+		c.blocks[nextID].Terminator = MIRBranch{Cond: cond, TrueTarget: c.blocks[matchID].Label, FalseTarget: c.blocks[fallthroughID].Label}
+		c.cur = matchID
+		if matchCase.Binding != "" {
+			bindingType, ok := c.lookupEnumVariantPayloadType(subjectType, matchCase.Variant)
+			if !ok {
+				bindingType = "any"
+			}
+			c.locals[matchCase.Binding] = bindingType
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: matchCase.Binding, Value: fmt.Sprintf("%s.Payload.(%s)", subject, goType(bindingType))})
+		}
+		value, valueType, _, err := c.lowerExpr(matchCase.Value)
+		if err != nil {
+			return "", "", false, err
+		}
+		if out == "" {
+			out = c.temp(valueType)
+			resultType = valueType
+		}
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: value})
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		nextID = fallthroughID
+		if i == len(e.Cases)-1 {
+			c.blocks[nextID].Terminator = MIRFail{Value: fmt.Sprintf("%q", "non-exhaustive match reached in compiled mode")}
+		}
+	}
+	c.cur = mergeID
+	return out, resultType, false, nil
+}
+
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
@@ -2629,12 +2696,82 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 		}
 		for _, declaredVariant := range enumDecl.Variants {
 			if declaredVariant.Name == variant {
-				return fmt.Sprintf("%s_%s", enumName, variant), enumPkg + "." + enumName, true, nil
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, enumName, enumName, variant), enumPkg + "." + enumName, true, nil
 			}
 		}
 		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
 	}
 	return "", "", false, nil
+}
+
+func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string, args []ast.Expr) (string, string, bool, error) {
+	enumPkg := c.pkg.Name
+	enumName := enumType
+	if dot := strings.Index(enumType, "."); dot >= 0 {
+		enumPkg = enumType[:dot]
+		enumName = enumType[dot+1:]
+	}
+	pkg, ok := c.program.Packages[enumPkg]
+	if !ok {
+		return "", "", false, nil
+	}
+	for _, enumDecl := range pkg.Enums {
+		if enumDecl.Name != enumName {
+			continue
+		}
+		for _, declaredVariant := range enumDecl.Variants {
+			if declaredVariant.Name != variant {
+				continue
+			}
+			if declaredVariant.Payload == nil {
+				if len(args) != 0 {
+					return "", "", true, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
+				}
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, enumName, enumName, variant), enumPkg + "." + enumName, true, nil
+			}
+			if len(args) != 1 {
+				return "", "", true, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
+			}
+			payload, _, _, err := c.lowerExpr(args[0])
+			if err != nil {
+				return "", "", true, err
+			}
+			return fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPkg, enumName, enumName, variant, payload), enumPkg + "." + enumName, true, nil
+		}
+		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
+	}
+	return "", "", false, nil
+}
+
+func enumShortName(enumType string) string {
+	if dot := strings.Index(enumType, "."); dot >= 0 {
+		return enumType[dot+1:]
+	}
+	return enumType
+}
+
+func (c *lowerCtx) lookupEnumVariantPayloadType(enumType string, variant string) (string, bool) {
+	enumPkg := c.pkg.Name
+	enumName := enumType
+	if dot := strings.Index(enumType, "."); dot >= 0 {
+		enumPkg = enumType[:dot]
+		enumName = enumType[dot+1:]
+	}
+	pkg, ok := c.program.Packages[enumPkg]
+	if !ok {
+		return "", false
+	}
+	for _, enumDecl := range pkg.Enums {
+		if enumDecl.Name != enumName {
+			continue
+		}
+		for _, declaredVariant := range enumDecl.Variants {
+			if declaredVariant.Name == variant && declaredVariant.Payload != nil {
+				return typeRefStringForPackage(enumPkg, *declaredVariant.Payload), true
+			}
+		}
+	}
+	return "", false
 }
 
 func typeRefString(t ast.TypeRef) string {
@@ -3809,9 +3946,9 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	for _, e := range m.Enums {
-		fmt.Fprintf(&b, "type %s_%s int\nconst (\n", e.Package, e.Name)
+		fmt.Fprintf(&b, "type %s_%s struct {\n\tTag int\n\tPayload any\n}\nconst (\n", e.Package, e.Name)
 		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "\t%s_%s %s_%s = %d\n", e.Name, v, e.Package, e.Name, i)
+			fmt.Fprintf(&b, "\t%s_%s_tag = %d\n", e.Name, v.Name, i)
 		}
 		b.WriteString(")\n\n")
 	}
@@ -3876,7 +4013,7 @@ func emitGo(m MIRModule) (string, error) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				fmt.Fprintf(&b, "%q", v)
+				fmt.Fprintf(&b, "%q", v.Name)
 			}
 			b.WriteString("}},\n")
 		}
