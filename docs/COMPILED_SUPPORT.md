@@ -122,3 +122,12 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - Remaining SmartGreenhouse compiled blockers (unchanged semantics):
   - Matrix/vector codegen mismatch in generated Go (`[]float64` emitted where scalar/vector ops are expected) in `MatrixVectorDistinctFromArray`.
   - Runtime assertion failure `battery consumed` in `FlowCompletesAndHistoryPresent`.
+
+## 2026-05-23 SmartGreenhouse compiled convergence pass 3
+
+- Fixed compiled vector codegen mismatch by lowering vector arithmetic operators to dedicated compiled helpers instead of raw Go `+/-/*//` on slices, preserving vector semantics distinct from arrays.
+- Fixed compiled vector indexing type propagation so indexing `Vector<T>` now lowers to scalar `T` (instead of incorrectly carrying `Vector<T>`).
+- Fixed compiled flow `if` block emission so sequential field updates inside a single conditional no longer short-circuit after the first assignment.
+- `examples/SmartGreenhouseController --execution compiled` is now fully green, including:
+  - `MatrixVectorDistinctFromArray`
+  - `FlowCompletesAndHistoryPresent`

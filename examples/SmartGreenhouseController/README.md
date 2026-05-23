@@ -22,5 +22,6 @@ go run ./cmd/oct test examples/SmartGreenhouseController --execution auto
 
 ## Notes
 
+- Compiled mode is currently green for this example (`go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled`).
 - The flow uses scalar `board` fields (`Int`/`Float`) so snapshots can be observed directly in tests.
 - Candidate selection in `when policy` is intentionally static; dynamic candidate sets are demonstrated elsewhere via `Libraries/Octomata` helpers.
