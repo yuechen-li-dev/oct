@@ -1690,6 +1690,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				case "Assert.Equal":
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Equal", Args: args, Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
+				case "Assert.Near":
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Near", Args: args, Builtin: true, RetType: "Void"})
+					return "_", "Void", false, nil
 				}
 			}
 			switch calleeName {
@@ -3683,11 +3686,14 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] {
+	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] || usedBuiltins["Assert.Near"] {
 		importSet["os"] = struct{}{}
 	}
 	if usedBuiltins["Assert.Equal"] {
 		importSet["reflect"] = struct{}{}
+	}
+	if usedBuiltins["Assert.Near"] {
+		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		for _, pkg := range []string{"github.com/yuechen-li-dev/oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
@@ -4889,6 +4895,10 @@ func flowHasUtilityWhen(flow MIRFlow) bool {
 
 func flowStmtHasUtility(stmt MIRFlowStmt) bool {
 	switch s := stmt.(type) {
+	case MIRFlowFieldAssign:
+		return flowExprHasUtility(s.Value)
+	case MIRFlowLetStmt:
+		return flowExprHasUtility(s.Value)
 	case MIRFlowReturn:
 		return flowExprHasUtility(s.Value)
 	case MIRFlowIf:
@@ -4938,6 +4948,22 @@ func flowExprHasUtility(expr MIRFlowExpr) bool {
 		return flowExprHasUtility(e.Left) || flowExprHasUtility(e.Right)
 	case MIRFlowUnaryExpr:
 		return flowExprHasUtility(e.Operand)
+	case MIRFlowCallExpr:
+		for _, arg := range e.Args {
+			if flowExprHasUtility(arg) {
+				return true
+			}
+		}
+		return false
+	case MIRFlowIndexExpr:
+		return flowExprHasUtility(e.Target) || flowExprHasUtility(e.Index)
+	case MIRFlowRecordLiteralExpr:
+		for _, field := range e.FieldVals {
+			if flowExprHasUtility(field) {
+				return true
+			}
+		}
+		return false
 	case MIRFlowUtilityWhenExpr:
 		return true
 	default:
@@ -5471,6 +5497,11 @@ func goStmt(s MIRStmt) (string, error) {
 					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2]), nil
 				}
 				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Target), nil
+			case "Assert.Near":
+				if st.Target == "_" {
+					return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+				}
+				return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
