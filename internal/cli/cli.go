@@ -340,7 +340,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeTestHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]\nRun octest files.\nOptions: --suite, --execution\nExample: oct test Language/Testing --execution compiled")
+	_, err := fmt.Fprintln(out, "usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages]\nRun octest files.\nOptions: --suite, --execution, --all-packages\nExample: oct test Language/Testing --execution compiled --all-packages")
 	return err
 }
 func writeArtifactHelp(out io.Writer) error {
@@ -440,7 +440,7 @@ func parseTestOptions(args []string) (tester.TestOptions, []string, error) {
 		}
 		if arg == "--execution" {
 			if i+1 >= len(args) {
-				return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]")
+				return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages]")
 			}
 			i++
 			options.Execution = strings.TrimSpace(args[i])
@@ -449,10 +449,14 @@ func parseTestOptions(args []string) (tester.TestOptions, []string, error) {
 			}
 			continue
 		}
+		if arg == "--all-packages" {
+			options.AllPackages = true
+			continue
+		}
 		paths = append(paths, arg)
 	}
 	if len(paths) == 0 {
-		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>]")
+		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages]")
 	}
 	return options, paths, nil
 }
