@@ -8,6 +8,7 @@ import (
 )
 
 func TestBasicVec2ForceOperation(t *testing.T) {
+	skipUnlessSlow(t)
 	root := setupM22bFixture(t)
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

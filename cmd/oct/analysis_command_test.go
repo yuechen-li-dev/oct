@@ -9,6 +9,7 @@ import (
 )
 
 func TestBasicAnalysisResult(t *testing.T) {
+	skipUnlessSlow(t)
 	root := setupM22cFixture(t)
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

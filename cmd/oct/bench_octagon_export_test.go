@@ -48,6 +48,7 @@ func TestOctBenchOctagonOutEmitsSingleLoadableFile(t *testing.T) {
 }
 
 func TestOctBenchOctagonOutDeterministicStructureAcrossRuns(t *testing.T) {
+	skipUnlessSlow(t)
 	root := t.TempDir()
 	outputOne := filepath.Join(root, "bench-one.octagon")
 	outputTwo := filepath.Join(root, "bench-two.octagon")
