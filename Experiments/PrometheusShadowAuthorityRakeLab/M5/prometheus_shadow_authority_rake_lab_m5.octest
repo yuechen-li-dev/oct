@@ -1,0 +1,97 @@
+package PrometheusShadowAuthorityRakeLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5.FlowSmoke")]
+fn ScenarioCountIsExpectedM5() -> Void ! Error {
+    Assert.Equal(16, Len(BuildScenariosM5()), "scenario count")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn DefaultOffMaturedReservationDoesNotConsume() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[0])
+    Assert.True(r.DispatchSource == "Judgment" and not r.ReservationConsumed and r.BlockReason == "Disabled", "default off")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn EnabledHealthyMaturedMatchUsesAndConsumes() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[1])
+    Assert.True(r.DispatchSource == "ShadowReservation" and r.ReservationConsumed and r.FeedforwardUsed, "matured match")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn EnabledNoMaturedReservationFallsBack() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[2])
+    Assert.True(r.DispatchSource == "Judgment" and r.BlockReason == "ReservationNotReady", "pending reservation fallback")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn ShapeMismatchFallsBackAndDoesNotConsume() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[3])
+    Assert.True(r.DispatchSource == "Judgment" and r.BlockReason == "ShapeMismatch" and not r.ReservationConsumed, "shape mismatch")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn ReasonBindingBlockedFallsBackAndDoesNotConsume() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[8])
+    Assert.True(r.BlockReason == "ReasonBinding" and not r.ReservationConsumed, "reason binding")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn MarginBlockedFallsBack() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[9])
+    Assert.True(r.BlockReason == "MarginFailed" and r.DispatchSource == "Judgment", "margin")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn DedupConsumeOnceConsumesOnce() -> Void ! Error {
+    let r1 = RunScenarioM5(BuildScenariosM5()[11])
+    let r2 = RunScenarioM5(BuildScenariosM5()[12])
+    Assert.True(r1.ReservationConsumed and (not r2.ReservationConsumed) and r2.BlockReason == "AlreadyConsumed", "dedup")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn LookaheadAppliedOnlyWhenEligible() -> Void ! Error {
+    let r1 = RunScenarioM5(BuildScenariosM5()[13])
+    let r2 = RunScenarioM5(BuildScenariosM5()[14])
+    Assert.True(r1.LookaheadApplied == 4 and r2.LookaheadApplied == 0, "lookahead")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+fn PrestageEligibleDiagnosticOnlyInEligibleCase() -> Void ! Error {
+    let r1 = RunScenarioM5(BuildScenariosM5()[15])
+    let r2 = RunScenarioM5(BuildScenariosM5()[2])
+    Assert.True(r1.PrestageAllowed and not r2.PrestageAllowed, "prestage")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5.FlowSmoke")]
+fn BoardSnapshotPathExercisedM5() -> Void ! Error {
+    let r = RunScenarioM5(BuildScenariosM5()[1])
+    Assert.True(r.LookaheadApplied > 0 and r.ExpectedBehaviorMet, "snapshot path")
+}
+
+[Artifact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M5.Artifacts")]
+fn ArtifactOutputsExistM5() -> Void ! Error {
+    let _ = PrometheusShadowAuthorityRakeM5ArtifactWriteAll()
+
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M5/shadow_authority_m5_feedforward_contract_report.octagon")?) > 0, "octagon")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M5/shadow_authority_m5_feedforward_contract_report.md")?) > 0, "md")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M5/scenario_metrics.csv")?) > 0, "csv")
+    Assert.True(Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M5/scenario_summary.json")?) > 0, "json")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M5/FINDINGS.md")?) > 0, "findings")
+}

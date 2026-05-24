@@ -1,0 +1,17 @@
+scenarioName,dispatchSource,feedforwardUsed,reservationConsumed,blockReason,expectedBehaviorMet,reservationStateBefore,reservationStateAfter,lookaheadRecommended,lookaheadApplied,prestageAllowed,fallbackToJudgment,consumedCount,blockCount,notes
+DefaultOffMaturedReservation,Judgment,false,false,Disabled,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+EnabledHealthyMaturedMatch,ShadowReservation,true,true,None,true,Matured,Consumed,3,3,true,false,1,0,validate-first-then-consume
+EnabledNoMaturedReservation,Judgment,false,false,ReservationNotReady,true,Pending,Pending,3,0,false,true,0,1,validate-first-then-consume
+ShapeMismatch,Judgment,false,false,ShapeMismatch,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+VariantMismatch,Judgment,false,false,VariantMismatch,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+CapabilityMismatch,Judgment,false,false,CapabilityMismatch,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+StaleReservation,Judgment,false,false,StaleReservation,true,Stale,Stale,3,0,false,true,0,1,validate-first-then-consume
+CancelledReservation,Judgment,false,false,CancelledReservation,true,Cancelled,Cancelled,3,0,false,true,0,1,validate-first-then-consume
+ReasonBindingBlocked,Judgment,false,false,ReasonBinding,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+MarginBlocked,Judgment,false,false,MarginFailed,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+FallbackRequired,Judgment,false,false,FallbackRequired,true,Matured,Matured,3,3,true,true,0,1,validate-first-then-consume
+DedupConsumeOnce_First,ShadowReservation,true,true,None,true,Matured,Consumed,2,2,true,false,1,0,validate-first-then-consume
+DedupConsumeOnce_Second,Judgment,false,false,AlreadyConsumed,true,Consumed,Consumed,2,0,false,true,0,1,validate-first-then-consume
+LookaheadAppliedOnlyWhenEligible,ShadowReservation,true,true,None,true,Matured,Consumed,9,4,true,false,1,0,validate-first-then-consume
+LookaheadBlockedCase,Judgment,false,false,NotHealthy,true,Matured,Matured,3,0,false,true,0,1,validate-first-then-consume
+PrestageEligibleDiagnostic,ShadowReservation,true,true,None,true,Matured,Consumed,4,4,true,false,1,0,validate-first-then-consume
