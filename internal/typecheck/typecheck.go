@@ -3041,6 +3041,25 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeFloat, Dimension: valueType.ValueType.Dimension}}, nil
 	}
+	if callee == "Clamp01" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Clamp01' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'Clamp01' expects 1 argument, got %d", len(arguments))
+		}
+		valueType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if valueType.ValueType != (Type{Base: BaseTypeFloat}) {
+			return ExprType{}, fmt.Errorf("function 'Clamp01' argument 1 expects Float, got %s", valueType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeFloat}}, nil
+	}
 	if callee == "StringFrom" {
 		if len(typeArguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'String.From' requires an explicit type argument, e.g. String.From<Int>(value)")

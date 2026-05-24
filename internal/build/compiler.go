@@ -225,6 +225,20 @@ type MIRFlowUtilityCase struct {
 	Score     MIRFlowExpr
 }
 
+type MIRFlowSwitchExpr struct {
+	Subject    MIRFlowExpr
+	Cases      []MIRFlowSwitchCase
+	Else       MIRFlowExpr
+	ResultType string
+}
+
+func (MIRFlowSwitchExpr) mirFlowExpr() {}
+
+type MIRFlowSwitchCase struct {
+	Match MIRFlowExpr
+	Value MIRFlowExpr
+}
+
 type MIRField struct {
 	Name string
 	Type string
@@ -2571,7 +2585,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, ret, true, false, nil
 			case "RoundToInt", "FloorToInt", "CeilToInt":
 				return normalized, "Int", true, false, nil
-			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue":
+			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "Clamp01":
 				return normalized, "Float", true, false, nil
 			case "Abs":
 				return normalized, "Float", true, false, nil
@@ -3541,6 +3555,38 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			Cases:      cases,
 			Else:       elseExpr,
 		}, nil
+	case ast.SwitchExpr:
+		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		var subject MIRFlowExpr
+		if e.Subject != nil {
+			subject, err = lowerFlowExpr(e.Subject, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+		}
+		cases := make([]MIRFlowSwitchCase, 0, len(e.Cases))
+		for _, switchCase := range e.Cases {
+			matchExpr, err := lowerFlowExpr(switchCase.Match, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			valueExpr, err := lowerFlowExpr(switchCase.Value, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, MIRFlowSwitchCase{Match: matchExpr, Value: valueExpr})
+		}
+		var elseExpr MIRFlowExpr
+		if e.Else != nil {
+			elseExpr, err = lowerFlowExpr(e.Else, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return MIRFlowSwitchExpr{Subject: subject, Cases: cases, Else: elseExpr, ResultType: resultType}, nil
 	case ast.ParenExpr:
 		return lowerFlowExpr(e.Inner, env, locals, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3625,6 +3671,27 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 		return pkg + "." + e.TypeName, nil
 	case ast.UtilityWhenExpr:
 		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
+	case ast.SwitchExpr:
+		var resultType string
+		for _, switchCase := range e.Cases {
+			caseType, err := inferFlowExprType(switchCase.Value, env, pkg, boardFieldTypes)
+			if err != nil {
+				return "", err
+			}
+			if resultType == "" {
+				resultType = caseType
+			}
+		}
+		if e.Else != nil {
+			elseType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
+			if err != nil {
+				return "", err
+			}
+			if resultType == "" {
+				resultType = elseType
+			}
+		}
+		return resultType, nil
 	case ast.ParenExpr:
 		return inferFlowExprType(e.Inner, env, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3654,7 +3721,7 @@ func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
 		return "", "", false, false, unsupportedBuiltin(ident.Name)
 	}
 	switch ident.Name {
-	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue":
+	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Clamp01":
 		return ident.Name, "Float", true, false, nil
 	case "FloorToInt", "CeilToInt", "RoundToInt":
 		return ident.Name, "Int", true, false, nil
@@ -5628,6 +5695,43 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		}
 		return fmt.Sprintf("__octUtilSelect[%s](f.utilitySites, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
 			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
+	case MIRFlowSwitchExpr:
+		parts := make([]string, 0, len(e.Cases)+1)
+		subject := ""
+		if e.Subject != nil {
+			s, err := emitGoFlowExpr(e.Subject, pkg)
+			if err != nil {
+				return "", err
+			}
+			subject = s
+		}
+		for idx, c := range e.Cases {
+			match, err := emitGoFlowExpr(c.Match, pkg)
+			if err != nil {
+				return "", err
+			}
+			value, err := emitGoFlowExpr(c.Value, pkg)
+			if err != nil {
+				return "", err
+			}
+			cond := match
+			if subject != "" {
+				cond = fmt.Sprintf("(%s == %s)", subject, match)
+			}
+			keyword := "if"
+			if idx > 0 {
+				keyword = "else if"
+			}
+			parts = append(parts, fmt.Sprintf("%s %s { return %s }", keyword, cond, value))
+		}
+		if e.Else != nil {
+			elseExpr, err := emitGoFlowExpr(e.Else, pkg)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, fmt.Sprintf("return %s", elseExpr))
+		}
+		return fmt.Sprintf("func() %s { %s }()", goType(e.ResultType), strings.Join(parts, " ")), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}
@@ -5673,6 +5777,10 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 		return "math.Pi", nil
 	case "E":
 		return "math.E", nil
+	case "Float":
+		return fmt.Sprintf("float64(%s)", args[0]), nil
+	case "Clamp01":
+		return fmt.Sprintf("func(__v float64) float64 { if __v < 0.0 { return 0.0 }; if __v > 1.0 { return 1.0 }; return __v }(%s)", args[0]), nil
 	case "FloorToInt":
 		return fmt.Sprintf("int(math.Floor(%s))", args[0]), nil
 	case "CeilToInt":
@@ -5735,6 +5843,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
 				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
+			case "Clamp01":
+				return fmt.Sprintf("%s = func(__v float64) float64 { if __v < 0.0 { return 0.0 }; if __v > 1.0 { return 1.0 }; return __v }(%s)", st.Target, st.Args[0]), nil
 			case "Complex":
 				return fmt.Sprintf("%s = complex(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
 			case "Pi":

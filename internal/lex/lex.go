@@ -266,6 +266,16 @@ func (l *lexer) nextToken() (Token, error) {
 		return Token{Kind: At, Lexeme: "@", Line: line, Column: column}, nil
 	case ';':
 		return Token{}, fmt.Errorf("invalid token at %d:%d: ';' (Oct does not use semicolons to separate statements; use one statement per line)", line, column)
+	case '&':
+		if l.matchString("&&") {
+			return Token{}, fmt.Errorf("invalid token at %d:%d: '&&' is not an Oct operator; use 'and'", line, column)
+		}
+		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
+	case '|':
+		if l.matchString("||") {
+			return Token{}, fmt.Errorf("invalid token at %d:%d: '||' is not an Oct operator; use 'or'", line, column)
+		}
+		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	default:
 		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	}
