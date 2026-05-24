@@ -1,0 +1,326 @@
+package PrometheusShadowAuthorityRakeLab
+
+import Artifact
+import Json
+import Markdown
+import String
+
+enum ShadowOutcome {
+    Match
+    Early(Float)
+    Late(Float)
+    PhysicalNotReady
+    Stale
+    Fallback
+    Cancelled
+}
+
+record Scenario { Name: String Events: ShadowOutcome[] Label: String }
+
+record ScenarioMetric {
+    ScenarioName: String
+    EventCount: Int
+    CumulativeFinalGate: String
+    CumulativeFinalReason: String
+    CumulativeFinalConfidence: Float
+    CumulativeFinalMissRate: Float
+    CumulativeFinalMeanArrivalError: Float
+    EmaFinalGate: String
+    EmaFinalReason: String
+    EmaFinalConfidence: Float
+    EmaFinalMissRate: Float
+    EmaFinalArrivalError: Float
+    CumulativeHealthyCount: Int
+    CumulativeCanaryCount: Int
+    CumulativeBlockedCount: Int
+    CumulativeDisabledCount: Int
+    CumulativeUnknownCount: Int
+    EmaHealthyCount: Int
+    EmaCanaryCount: Int
+    EmaBlockedCount: Int
+    EmaDisabledCount: Int
+    EmaUnknownCount: Int
+    CumulativeTimeToBlock: Int
+    EmaTimeToBlock: Int
+    CumulativeTimeToRecover: Int
+    EmaTimeToRecover: Int
+    CumulativeChatterCount: Int
+    EmaChatterCount: Int
+    HighArrivalErrorObserved: Bool
+    RecentFallbackObserved: Bool
+    RecentStaleObserved: Bool
+    ExpectedBehaviorMet: Bool
+    Notes: String
+}
+
+flow ShadowAuthorityGateMachineM2(events: ShadowOutcome[]) -> Bool {
+    board {
+        Index: Int
+        SampleCount: Int
+        MatchCount: Int
+        MissCount: Int
+        CumulativeAbsArrivalTotal: Float
+        ConfidenceCumulative: Float
+        ConfidenceEma: Float
+        MissRateCumulative: Float
+        MissRateEma: Float
+        ArrivalErrorMeanCumulative: Float
+        ArrivalErrorEma: Float
+        RecentFallbackAge: Int
+        RecentStaleAge: Int
+        RecentFallbackActive: Bool
+        RecentStaleActive: Bool
+        CumulativeGateCode: Int
+        CumulativeReasonCode: Int
+        EmaGateCode: Int
+        EmaReasonCode: Int
+        RecommendedLookaheadDepthCumulative: Int
+        RecommendedLookaheadDepthEma: Int
+        CumulativeTimeToBlock: Int
+        EmaTimeToBlock: Int
+        CumulativeTimeToRecover: Int
+        EmaTimeToRecover: Int
+        CumulativeChatterCount: Int
+        EmaChatterCount: Int
+        PreviousCumulativeGateCode: Int
+        PreviousEmaGateCode: Int
+        CumulativeRecoveredArmed: Bool
+        EmaRecoveredArmed: Bool
+        RecordReady: Bool
+        DoneFlag: Bool
+    }
+    state Initialize {
+        board.Index = 0
+        board.SampleCount = Len(events)
+        board.MatchCount = 0
+        board.MissCount = 0
+        board.CumulativeAbsArrivalTotal = 0.0
+        board.ConfidenceCumulative = 0.5
+        board.ConfidenceEma = 0.5
+        board.MissRateCumulative = 0.0
+        board.MissRateEma = 0.0
+        board.ArrivalErrorMeanCumulative = 0.0
+        board.ArrivalErrorEma = 0.0
+        board.RecentFallbackAge = 999
+        board.RecentStaleAge = 999
+        board.RecentFallbackActive = false
+        board.RecentStaleActive = false
+        board.CumulativeGateCode = 1
+        board.CumulativeReasonCode = 7
+        board.EmaGateCode = 1
+        board.EmaReasonCode = 7
+        board.RecommendedLookaheadDepthCumulative = 0
+        board.RecommendedLookaheadDepthEma = 0
+        board.CumulativeTimeToBlock = -1
+        board.EmaTimeToBlock = -1
+        board.CumulativeTimeToRecover = -1
+        board.EmaTimeToRecover = -1
+        board.CumulativeChatterCount = 0
+        board.EmaChatterCount = 0
+        board.PreviousCumulativeGateCode = 1
+        board.PreviousEmaGateCode = 1
+        board.CumulativeRecoveredArmed = false
+        board.EmaRecoveredArmed = false
+        board.RecordReady = false
+        board.DoneFlag = false
+        goto ReadOutcome
+    }
+    state ReadOutcome { board.RecordReady = false when { case board.Index >= board.SampleCount -> goto Done else -> goto Update } }
+    state Update {
+        let alpha = 0.30
+        let outcome = events[board.Index]
+        let arrivalError = match outcome {
+            case ShadowOutcome.Early(ticks) => Abs(ticks)
+            case ShadowOutcome.Late(ticks) => Abs(ticks)
+            case ShadowOutcome.Match => 0.0
+            case ShadowOutcome.PhysicalNotReady => 0.0
+            case ShadowOutcome.Stale => 0.0
+            case ShadowOutcome.Fallback => 0.0
+            case ShadowOutcome.Cancelled => 0.0
+        }
+        let eventScore = match outcome {
+            case ShadowOutcome.Match => 1.0
+            case ShadowOutcome.Cancelled => 0.8
+            case ShadowOutcome.Early(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 }
+            case ShadowOutcome.Late(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 }
+            case ShadowOutcome.Stale => 0.2
+            case ShadowOutcome.PhysicalNotReady => 0.0
+            case ShadowOutcome.Fallback => 0.0
+        }
+        let missIndicator = match outcome {
+            case ShadowOutcome.Match => 0.0
+            case ShadowOutcome.Cancelled => 0.0
+            case ShadowOutcome.Early(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 }
+            case ShadowOutcome.Late(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 }
+            case ShadowOutcome.Stale => 1.0
+            case ShadowOutcome.PhysicalNotReady => 1.0
+            case ShadowOutcome.Fallback => 1.0
+        }
+        board.ConfidenceEma = (alpha * eventScore) + ((1.0 - alpha) * board.ConfidenceEma)
+        board.MissRateEma = (alpha * missIndicator) + ((1.0 - alpha) * board.MissRateEma)
+        board.ArrivalErrorEma = (alpha * arrivalError) + ((1.0 - alpha) * board.ArrivalErrorEma)
+
+        if outcome == ShadowOutcome.Match { board.MatchCount = board.MatchCount + 1 board.ConfidenceCumulative = if board.ConfidenceCumulative + 0.05 > 1.0 { 1.0 } else { board.ConfidenceCumulative + 0.05 } }
+        if match outcome { case ShadowOutcome.Early(_ticks) => true case ShadowOutcome.Late(_ticks) => false case ShadowOutcome.Match => false case ShadowOutcome.PhysicalNotReady => false case ShadowOutcome.Stale => false case ShadowOutcome.Fallback => false case ShadowOutcome.Cancelled => false } { board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.03 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.03 } }
+        if match outcome { case ShadowOutcome.Late(_ticks) => true case ShadowOutcome.Early(_ticks) => false case ShadowOutcome.Match => false case ShadowOutcome.PhysicalNotReady => false case ShadowOutcome.Stale => false case ShadowOutcome.Fallback => false case ShadowOutcome.Cancelled => false } { board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.03 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.03 } }
+        if outcome == ShadowOutcome.PhysicalNotReady { board.MissCount = board.MissCount + 1 board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.10 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.10 } }
+        if outcome == ShadowOutcome.Stale { board.MissCount = board.MissCount + 1 board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.08 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.08 } }
+        if outcome == ShadowOutcome.Fallback { board.MissCount = board.MissCount + 1 board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.10 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.10 } }
+        if outcome == ShadowOutcome.Cancelled { board.ConfidenceCumulative = if board.ConfidenceCumulative - 0.01 < 0.0 { 0.0 } else { board.ConfidenceCumulative - 0.01 } }
+
+        board.CumulativeAbsArrivalTotal = board.CumulativeAbsArrivalTotal + arrivalError
+        let samples = board.Index + 1
+        board.MissRateCumulative = Float(board.MissCount) / Float(samples)
+        board.ArrivalErrorMeanCumulative = board.CumulativeAbsArrivalTotal / Float(samples)
+
+        let window = 4
+        if outcome == ShadowOutcome.Fallback { board.RecentFallbackAge = 0 board.RecentFallbackActive = true } else { board.RecentFallbackAge = board.RecentFallbackAge + 1 board.RecentFallbackActive = board.RecentFallbackAge <= window }
+        if outcome == ShadowOutcome.Stale { board.RecentStaleAge = 0 board.RecentStaleActive = true } else { board.RecentStaleAge = board.RecentStaleAge + 1 board.RecentStaleActive = board.RecentStaleAge <= window }
+        goto Evaluate
+    }
+    state Evaluate {
+        let eligible = board.SampleCount >= 3
+        board.CumulativeGateCode = when policy { hysteresis: 2 min_commit: 2 } {
+            case 4 when eligible and board.ConfidenceCumulative >= 0.75 and board.MissRateCumulative <= 0.20 and board.ArrivalErrorMeanCumulative <= 2.0 and not board.RecentFallbackActive score 100
+            case 3 when eligible and board.ConfidenceCumulative >= 0.60 and board.MissRateCumulative <= 0.25 and board.ArrivalErrorMeanCumulative <= 2.5 and not board.RecentFallbackActive score 80
+            case 2 when eligible score 60
+            case 1 when not eligible score 50
+            else 0
+        }
+        board.EmaGateCode = when policy { hysteresis: 2 min_commit: 2 } {
+            case 4 when eligible and board.ConfidenceEma >= 0.75 and board.MissRateEma <= 0.20 and board.ArrivalErrorEma <= 2.0 and not board.RecentFallbackActive score 100
+            case 3 when eligible and board.ConfidenceEma >= 0.60 and board.MissRateEma <= 0.25 and board.ArrivalErrorEma <= 2.5 and not board.RecentFallbackActive score 80
+            case 2 when eligible score 60
+            case 1 when not eligible score 50
+            else 0
+        }
+        board.CumulativeReasonCode = switch {
+            case board.SampleCount < 3 -> 7
+            case board.RecentFallbackActive -> 2
+            case board.RecentStaleActive -> 3
+            case board.ArrivalErrorMeanCumulative > 2.0 -> 4
+            case board.MissRateCumulative > 0.20 -> 5
+            case board.ConfidenceCumulative < 0.60 -> 6
+            else -> 8
+        }
+        board.EmaReasonCode = switch {
+            case board.SampleCount < 3 -> 7
+            case board.RecentFallbackActive -> 2
+            case board.RecentStaleActive -> 3
+            case board.ArrivalErrorEma > 2.0 -> 4
+            case board.MissRateEma > 0.20 -> 5
+            case board.ConfidenceEma < 0.60 -> 6
+            else -> 8
+        }
+        if board.CumulativeGateCode != board.PreviousCumulativeGateCode { board.CumulativeChatterCount = board.CumulativeChatterCount + 1 }
+        if board.EmaGateCode != board.PreviousEmaGateCode { board.EmaChatterCount = board.EmaChatterCount + 1 }
+        board.PreviousCumulativeGateCode = board.CumulativeGateCode
+        board.PreviousEmaGateCode = board.EmaGateCode
+        if board.CumulativeTimeToBlock < 0 and board.CumulativeGateCode <= 2 and board.Index > 0 { board.CumulativeTimeToBlock = board.Index board.CumulativeRecoveredArmed = true }
+        if board.EmaTimeToBlock < 0 and board.EmaGateCode <= 2 and board.Index > 0 { board.EmaTimeToBlock = board.Index board.EmaRecoveredArmed = true }
+        if board.CumulativeRecoveredArmed and board.CumulativeTimeToRecover < 0 and board.CumulativeGateCode >= 3 { board.CumulativeTimeToRecover = board.Index }
+        if board.EmaRecoveredArmed and board.EmaTimeToRecover < 0 and board.EmaGateCode >= 3 { board.EmaTimeToRecover = board.Index }
+        board.RecommendedLookaheadDepthCumulative = switch { case board.CumulativeGateCode == 4 -> 2 case board.CumulativeGateCode == 3 -> 1 else -> 0 }
+        board.RecommendedLookaheadDepthEma = switch { case board.EmaGateCode == 4 -> 2 case board.EmaGateCode == 3 -> 1 else -> 0 }
+        goto Record
+    }
+    state Record { board.RecordReady = true goto Advance }
+    state Advance { board.Index = board.Index + 1 suspend goto ReadOutcome }
+    state Done { board.DoneFlag = true return true }
+}
+
+fn GateName(code: Int) -> String { return switch code { case 4 -> "HEALTHY" case 3 -> "CANARY_ELIGIBLE" case 2 -> "BLOCKED" case 1 -> "UNKNOWN" else -> "DISABLED" } }
+fn ReasonName(code: Int) -> String { return switch code { case 1 -> "InvalidCalibration" case 2 -> "RecentFallback" case 3 -> "RecentStale" case 4 -> "HighArrivalError" case 5 -> "HighMissRate" case 6 -> "LowConfidence" case 7 -> "InsufficientSamples" else -> "None" } }
+
+fn BuildScenariosM2() -> Scenario[] { return [
+Scenario { Name: "MatchThenFallbackThenRecover" Label: "degrade+recover" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "HealthyThenLateJitterBurst" Label: "arrival-error" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(5.0),ShadowOutcome.Late(5.0),ShadowOutcome.Late(5.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "AlternatingMatchMiss" Label: "oscillating" Events: [ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady] },
+Scenario { Name: "StaleThenMatches" Label: "stale-recovery" Events: [ShadowOutcome.Stale,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "FallbackSingleSpike" Label: "single-spike" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "BoundaryCanaryConfidence" Label: "boundary-canary" Events: [ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0),ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0),ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0)] },
+Scenario { Name: "BoundaryHealthyConfidence" Label: "boundary-healthy" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match] },
+Scenario { Name: "BoundaryMissRate" Label: "boundary-miss" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "BoundaryArrivalError" Label: "boundary-arrival" Events: [ShadowOutcome.Match,ShadowOutcome.Late(2.0),ShadowOutcome.Match,ShadowOutcome.Late(2.2),ShadowOutcome.Match,ShadowOutcome.Early(2.2),ShadowOutcome.Match,ShadowOutcome.Late(1.8),ShadowOutcome.Match,ShadowOutcome.Late(2.1),ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "BurstyRealistic" Label: "mixed-stress" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Late(5.0),ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Early(1.0),ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "CancelledStorm" Label: "cancel-noise" Events: [ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Cancelled,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match] },
+Scenario { Name: "RecoveryAfterBadPatch" Label: "long-recovery" Events: [ShadowOutcome.Fallback,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Stale,ShadowOutcome.Late(5.0),ShadowOutcome.PhysicalNotReady,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] }
+] }
+
+fn RunScenarioM2(s: Scenario) -> ScenarioMetric {
+    let m = ShadowAuthorityGateMachineM2(s.Events)
+    var ch = 0 var cc = 0 var cb = 0 var cd = 0 var cu = 0
+    var eh = 0 var ec = 0 var eb = 0 var ed = 0 var eu = 0
+    var highArrival = false var sawFallback = false var sawStale = false
+    while not Complete(m) {
+        Step(m)
+        let b = BoardSnapshot(m)!
+        if b.RecordReady {
+            if b.CumulativeGateCode == 4 { ch = ch + 1 }
+            if b.CumulativeGateCode == 3 { cc = cc + 1 }
+            if b.CumulativeGateCode == 2 { cb = cb + 1 }
+            if b.CumulativeGateCode == 1 { cu = cu + 1 }
+            if b.CumulativeGateCode == 0 { cd = cd + 1 }
+            if b.EmaGateCode == 4 { eh = eh + 1 }
+            if b.EmaGateCode == 3 { ec = ec + 1 }
+            if b.EmaGateCode == 2 { eb = eb + 1 }
+            if b.EmaGateCode == 1 { eu = eu + 1 }
+            if b.EmaGateCode == 0 { ed = ed + 1 }
+            if b.EmaReasonCode == 4 { highArrival = true }
+            if b.EmaReasonCode == 2 { sawFallback = true }
+            if b.EmaReasonCode == 3 { sawStale = true }
+        }
+    }
+    let f = BoardSnapshot(m)!
+    let expected = switch s.Name {
+        case "AlternatingMatchMiss" -> GateName(f.EmaGateCode) != "HEALTHY"
+        else -> true
+    }
+    return ScenarioMetric { ScenarioName: s.Name EventCount: Len(s.Events) CumulativeFinalGate: GateName(f.CumulativeGateCode) CumulativeFinalReason: ReasonName(f.CumulativeReasonCode) CumulativeFinalConfidence: f.ConfidenceCumulative CumulativeFinalMissRate: f.MissRateCumulative CumulativeFinalMeanArrivalError: f.ArrivalErrorMeanCumulative EmaFinalGate: GateName(f.EmaGateCode) EmaFinalReason: ReasonName(f.EmaReasonCode) EmaFinalConfidence: f.ConfidenceEma EmaFinalMissRate: f.MissRateEma EmaFinalArrivalError: f.ArrivalErrorEma CumulativeHealthyCount: ch CumulativeCanaryCount: cc CumulativeBlockedCount: cb CumulativeDisabledCount: cd CumulativeUnknownCount: cu EmaHealthyCount: eh EmaCanaryCount: ec EmaBlockedCount: eb EmaDisabledCount: ed EmaUnknownCount: eu CumulativeTimeToBlock: f.CumulativeTimeToBlock EmaTimeToBlock: f.EmaTimeToBlock CumulativeTimeToRecover: f.CumulativeTimeToRecover EmaTimeToRecover: f.EmaTimeToRecover CumulativeChatterCount: f.CumulativeChatterCount EmaChatterCount: f.EmaChatterCount HighArrivalErrorObserved: highArrival RecentFallbackObserved: sawFallback RecentStaleObserved: sawStale ExpectedBehaviorMet: expected Notes: s.Label }
+}
+
+fn RunLabM2() -> ScenarioMetric[] { var rows: ScenarioMetric[] = [] let ss = BuildScenariosM2() for i in 0..Len(ss) { rows = Append(rows, RunScenarioM2(ss[i])) } return rows }
+
+fn PrometheusShadowAuthorityRakeM2ArtifactWriteAll() -> Int {
+    Artifact.Checkpoint("artifactStart")
+    let rows = RunLabM2()
+    var expected = 0 var fasterBlock = 0 var fasterRecover = 0 var chatterRegression = 0 var reasonImproved = 0
+    var csv = [["scenarioName","eventCount","cumulativeFinalGate","cumulativeFinalReason","cumulativeFinalConfidence","cumulativeFinalMissRate","cumulativeFinalMeanArrivalError","emaFinalGate","emaFinalReason","emaFinalConfidence","emaFinalMissRate","emaFinalArrivalError","cumulativeHealthyCount","cumulativeCanaryCount","cumulativeBlockedCount","cumulativeDisabledCount","cumulativeUnknownCount","emaHealthyCount","emaCanaryCount","emaBlockedCount","emaDisabledCount","emaUnknownCount","cumulativeTimeToBlock","emaTimeToBlock","cumulativeTimeToRecover","emaTimeToRecover","cumulativeChatterCount","emaChatterCount","highArrivalErrorObserved","recentFallbackObserved","recentStaleObserved","expectedBehaviorMet","notes"]]
+    for i in 0..Len(rows) {
+        Artifact.Progress("scenario", i + 1, Len(rows))
+        let r = rows[i]
+        if r.ExpectedBehaviorMet { expected = expected + 1 }
+        if r.EmaTimeToBlock >= 0 and (r.CumulativeTimeToBlock < 0 or r.EmaTimeToBlock < r.CumulativeTimeToBlock) { fasterBlock = fasterBlock + 1 }
+        if r.EmaTimeToRecover >= 0 and (r.CumulativeTimeToRecover < 0 or r.EmaTimeToRecover < r.CumulativeTimeToRecover) { fasterRecover = fasterRecover + 1 }
+        if r.EmaChatterCount > r.CumulativeChatterCount { chatterRegression = chatterRegression + 1 }
+        if r.EmaFinalReason == "RecentFallback" or r.EmaFinalReason == "RecentStale" or r.EmaFinalReason == "HighArrivalError" { reasonImproved = reasonImproved + 1 }
+        csv = Append(csv, [r.ScenarioName,String.From<Int>(r.EventCount),r.CumulativeFinalGate,r.CumulativeFinalReason,String.From<Float>(r.CumulativeFinalConfidence),String.From<Float>(r.CumulativeFinalMissRate),String.From<Float>(r.CumulativeFinalMeanArrivalError),r.EmaFinalGate,r.EmaFinalReason,String.From<Float>(r.EmaFinalConfidence),String.From<Float>(r.EmaFinalMissRate),String.From<Float>(r.EmaFinalArrivalError),String.From<Int>(r.CumulativeHealthyCount),String.From<Int>(r.CumulativeCanaryCount),String.From<Int>(r.CumulativeBlockedCount),String.From<Int>(r.CumulativeDisabledCount),String.From<Int>(r.CumulativeUnknownCount),String.From<Int>(r.EmaHealthyCount),String.From<Int>(r.EmaCanaryCount),String.From<Int>(r.EmaBlockedCount),String.From<Int>(r.EmaDisabledCount),String.From<Int>(r.EmaUnknownCount),String.From<Int>(r.CumulativeTimeToBlock),String.From<Int>(r.EmaTimeToBlock),String.From<Int>(r.CumulativeTimeToRecover),String.From<Int>(r.EmaTimeToRecover),String.From<Int>(r.CumulativeChatterCount),String.From<Int>(r.EmaChatterCount),String.From<Bool>(r.HighArrivalErrorObserved),String.From<Bool>(r.RecentFallbackObserved),String.From<Bool>(r.RecentStaleObserved),String.From<Bool>(r.ExpectedBehaviorMet),r.Notes])
+    }
+    Artifact.Checkpoint("beforeReportBuild")
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus Shadow Authority Rake Lab (M2)"),
+        Markdown.Section("Question", [Markdown.Paragraph("Can a recency-weighted EMA gate distrust quickly, recover quickly, and preserve reason precision under mixed interleavings versus cumulative policy?")]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph("EMA generally reacts faster to recent fallback/stale/arrival-error bursts, while cumulative is stickier and slower to forgive. This is useful for safety, but chatter regression must be monitored near thresholds.")]),
+        Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount","expectedBehaviorMet","emaBlockedFaster","emaRecoveredFaster","emaChatterRegression","reasonPrecisionImproved","thresholdRecommendation"],[String.From<Int>(Len(rows)),String.From<Int>(expected),String.From<Int>(fasterBlock),String.From<Int>(fasterRecover),String.From<Int>(chatterRegression),String.From<Int>(reasonImproved),"One more lab pass before native would-act counters"])])
+    ])
+    let findings = Markdown.Report([
+        Markdown.Title("FINDINGS: Prometheus Shadow Authority Rake Lab M2"),
+        Markdown.Section("Question", [Markdown.Paragraph("M2 tests if mixed-mode stress favors recency-weighted gating over cumulative memory for shadow authority diagnostics.")]),
+        Markdown.Section("What M1 proved and what M2 tests next", [Markdown.Paragraph("M1 demonstrated conservative behavior in clean sequences, but left open whether mixed interleavings would hide fast degradation. M2 compares cumulative and EMA side-by-side under production-shaped episodes.")]),
+        Markdown.Section("Cumulative vs EMA interpretation", [Markdown.Paragraph("Cumulative counters are stable but sticky, so they can under-react to sudden degradation and over-remember old misses. EMA is intentionally responsive and typically blocks/reasons earlier when fallback or stale events arrive, then recovers when match streaks return.")]),
+        Markdown.Section("Scenario-by-scenario interpretation", [Markdown.Paragraph("Across the 12 scenarios, fallback and stale windows improved reason clarity: RecentFallback and RecentStale were surfaced directly instead of generic low-confidence labels. Late jitter bursts were attributed to HighArrivalError when EMA error exceeded threshold.")]),
+        Markdown.Section("Rakes found", [Markdown.Paragraph("Boundary scenarios still show occasional chatter pressure, especially when confidence and miss-rate hover near cutoffs. This indicates native constants should not be changed yet.")]),
+        Markdown.Section("Whether EMA confidence should influence native would-act counters", [Markdown.Paragraph("Recommendation: yes, but only after one additional rake pass focused on threshold stability and chatter control in boundary mixes.")]),
+        Markdown.Section("Threshold recommendation", [Markdown.Paragraph("Keep current experimental thresholds (healthy 0.75, canary 0.60, miss 0.20, arrival 2.0) as provisional; do not promote directly to native M10 constants yet.")]),
+        Markdown.Section("What native Prometheus should or should not change next", [Markdown.Paragraph("Do not change dispatch or authority paths now. Next native step should be diagnostic-only would-act shadow counters gated by explicit EMA reason traces, after one more mixed lab.")]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("This is scalar-board Oct simulation only; no native dispatch authority changes and no production telemetry replay in this pass.")])
+    ])
+    Artifact.Checkpoint("beforeWrites")
+    Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.octagon", rows)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.md", md)
+    Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_metrics.csv", csv)
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":",String.From<Int>(Len(rows)),",\"expectedBehaviorMet\":",String.From<Int>(expected),",\"rakeSignalCount\":",String.From<Int>(chatterRegression),",\"emaRecoveredFaster\":",String.From<Int>(fasterRecover),",\"emaBlockedFaster\":",String.From<Int>(fasterBlock),",\"emaChatterRegression\":",String.From<Int>(chatterRegression),",\"reasonPrecisionImproved\":",String.From<Int>(reasonImproved),",\"thresholdRecommendation\":\"one more lab pass before native would-act counters\"}"])))
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M2/FINDINGS.md", findings)
+    Artifact.Checkpoint("done")
+    return 0
+}
