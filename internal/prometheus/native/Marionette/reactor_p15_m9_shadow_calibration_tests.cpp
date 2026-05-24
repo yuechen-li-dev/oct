@@ -74,10 +74,14 @@ FACT(PrometheusP15M9ShadowCalibration_StateClassification)
     prom_dominatus_shadow_calibration_update(&state, &m1);
     prom_dominatus_shadow_calibration_update(&state, &m2);
     prom_dominatus_shadow_calibration_update(&state, &m3);
+    auto m4 = base_snapshot(PROM_DOM_SHADOW_MISMATCH_MATCH, 0); m4.issued_tick = 7u; m4.target_tick = 8u; m4.predicted_ready_tick = 8u;
+    auto m5 = base_snapshot(PROM_DOM_SHADOW_MISMATCH_MATCH, 0); m5.issued_tick = 9u; m5.target_tick = 10u; m5.predicted_ready_tick = 10u;
+    prom_dominatus_shadow_calibration_update(&state, &m4);
+    prom_dominatus_shadow_calibration_update(&state, &m5);
     ASSERT_EQUAL(PROM_SHADOW_LOOKAHEAD_HEALTHY, state.lookahead_diagnostic_state, "high confidence healthy");
 
     auto bad = base_snapshot(PROM_DOM_SHADOW_MISMATCH_PHYSICAL_NOT_READY, 0);
-    bad.issued_tick = 7u; bad.target_tick = 8u; bad.predicted_ready_tick = 8u;
+    bad.issued_tick = 11u; bad.target_tick = 12u; bad.predicted_ready_tick = 12u;
     for (int i = 0; i < 6; ++i) {
         bad.issued_tick += 2u;
         bad.target_tick += 2u;

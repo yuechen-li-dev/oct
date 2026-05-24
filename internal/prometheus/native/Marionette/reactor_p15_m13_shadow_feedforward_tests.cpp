@@ -1,3 +1,4 @@
+#include <vector>
 #include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
 #include "test_harness.h"
@@ -158,4 +159,94 @@ FACT(PrometheusP15M13ShadowFeedforward_StaleReservationExpiresAndCannotConsume)
                  "reservation should expire when stale");
     ASSERT_EQUAL(0u, prom_dominatus_reservation_consume_matured(&reservations, 8u, 3u).valid,
                  "expired reservation must not be consumable");
+}
+
+
+FACT(PrometheusP15M13ShadowFeedforward_DefaultOffMaturedReservationDoesNotConsume)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    std::vector<float> a(64u, 1.0f);
+    std::vector<float> b(64u, 1.0f);
+    std::vector<float> c(64u, 0.0f);
+    uint32_t stage = 0u;
+    int detail = 0;
+    (void)prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diag query succeeds");
+    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "canary default off");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "default-off cannot use feedforward");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_reservation_consumed_count, "default-off must not consume reservations");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+
+FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySgemm)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    cfg.p15_shadow_canary_enabled = 1u;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM feedforward integration cannot be asserted");
+    }
+
+    std::vector<float> a(64u, 1.0f);
+    std::vector<float> b(64u, 1.0f);
+    std::vector<float> c(64u, 0.0f);
+    uint32_t stage = 0u;
+    int detail = 0;
+    const int baseline_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
+    if (baseline_status != PROM_OK) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("baseline sgemm failed in environment; feedforward happy-path cannot be asserted");
+    }
+
+    PrometheusSgemmPolicyDiagnostics baseline{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &baseline), "baseline diag query succeeds");
+
+    const uint64_t target_tick = 1u;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_p15_test_seed_matured_reservation(handle,
+                                                                              baseline.p13_m2_occupancy_shape_class,
+                                                                              baseline.p13_m2_occupancy_selected_variant,
+                                                                              target_tick),
+                 "test seam should seed matured matching reservation");
+
+    const int feedforward_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
+    if (feedforward_status != PROM_OK) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("feedforward sgemm failed in environment; happy-path consume cannot be asserted");
+    }
+
+    PrometheusSgemmPolicyDiagnostics used{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &used), "used diag query succeeds");
+    ASSERT_EQUAL(1u, used.p15_shadow_feedforward_used, "enabled healthy matured reservation should drive feedforward use");
+    ASSERT_EQUAL(1u, used.p15_shadow_feedforward_source, "source should be shadow reservation");
+    ASSERT_EQUAL(baseline.p13_m2_occupancy_selected_variant, used.p15_shadow_feedforward_reserved_variant_id,
+                 "reserved variant should match seeded variant");
+    ASSERT_TRUE(used.p15_shadow_feedforward_reservation_consumed_count >= 1u, "reservation should be consumed");
+    const uint64_t consumed_after_first_use = used.p15_shadow_feedforward_reservation_consumed_count;
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "second sgemm should succeed");
+    PrometheusSgemmPolicyDiagnostics after_second{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &after_second), "second diag query succeeds");
+    ASSERT_EQUAL(consumed_after_first_use, after_second.p15_shadow_feedforward_reservation_consumed_count,
+                 "same reservation should not be consumed twice");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
