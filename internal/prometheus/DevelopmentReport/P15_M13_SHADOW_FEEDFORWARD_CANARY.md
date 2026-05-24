@@ -45,11 +45,27 @@ This resolves missing production lifecycle heartbeat without introducing overrid
 - Authority enabled propagation verified at evaluation time via new API.
 - Existing default-off guarantee and consume semantics retained.
 
+## P15 closeout hardening (2026-05-24)
+- Canary `evaluation_count` semantics are now explicit: it counts **enabled canary evaluations only**. Disabled-but-valid timing attempts increment `block_disabled_count` and do not increment `evaluation_count`.
+- Added sized diagnostics export API:
+  - `prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(handle, out, out_size)`
+  - performs bounded write by filling full diagnostics and copying only `min(out_size, sizeof(struct))` bytes.
+  - existing unsized API remains a compatibility wrapper using full struct size.
+- Added tests for truncated diagnostics buffers to ensure sentinel bytes are not overwritten.
+- Startup diagnostics visibility remains deterministic: config-time `p15_shadow_canary_enabled` propagates to `p15_shadow_authority_enabled` prior to first dispatch.
+- Feedforward remains **agree-and-confirm**:
+  - matured reservation must match judgment-selected shape+variant to consume,
+  - mismatch increments `p15_shadow_feedforward_variant_mismatch_count`/shape mismatch counters,
+  - dispatch falls back to normal judgment; no override mode.
+
 ## Deferred items (explicitly not expanded in this pass)
-- Feedforward override mode (still deferred; agree-and-confirm only).
-- `PrometheusSgemmPolicyDiagnostics` struct-size ABI guard (defer to dedicated ABI-hardening pass).
 - Real hardware Windows/RTX validation.
-- Software Vulkan baseline SGEMM environment limitation (if present in CI/container).
+- Feedforward override mode (still deferred; agree-and-confirm only).
+- Pretransfer/prestage real action path.
+- P16 vendor-path split of authority/canary if required.
+- HealthyMarginGate one-dispatch lag remains structural (dispatch reads prior post-dispatch canary state).
+- Dedup remains not gate-aware by design in this phase.
+- `authority_enabled` and `canary_enabled` remain aliased in P15 configuration (intentional for Phase 1).
 
 ## Structural note
 - HealthyMarginGate and feedforward decision can still exhibit one-dispatch lag relative to newly observed timing due to dispatch-before-next-measurement ordering. This pass intentionally does not invent synthetic timing.

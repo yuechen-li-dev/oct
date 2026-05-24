@@ -885,7 +885,6 @@ uint32_t prom_dominatus_shadow_canary_should_attempt(prom_dominatus_shadow_canar
                                                      const prom_dominatus_shadow_snapshot* snapshot) {
   const double healthy_base = 0.75;
   if (state == NULL || params == NULL || gate == NULL || calibration == NULL || snapshot == NULL || snapshot->valid == 0u) return 0u;
-  state->evaluation_count += 1u;
   state->enabled = params->enabled;
   state->last_action_allowed = 0u;
   state->last_action_kind = PROM_SHADOW_CANARY_ACTION_NONE;
@@ -898,6 +897,7 @@ uint32_t prom_dominatus_shadow_canary_should_attempt(prom_dominatus_shadow_canar
     state->block_disabled_count += 1u;
     return 0u;
   }
+  state->evaluation_count += 1u;
   if (gate->state != PROM_SHADOW_AUTHORITY_HEALTHY || state->healthy_margin_passed == 0u || state->reason_binding_passed == 0u) {
     state->action_blocked_count += 1u;
     switch (gate->reason) {

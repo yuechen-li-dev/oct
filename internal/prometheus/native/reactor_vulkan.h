@@ -74,6 +74,9 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
                                                   int* out_detail_code);
 int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id);
 int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag);
+int prom_reactor_runtime_sgemm_policy_diagnostics_sized_impl(void* handle,
+                                                             PrometheusSgemmPolicyDiagnostics* out_diag,
+                                                             uint32_t out_size);
 int prom_reactor_runtime_p15_test_seed_matured_reservation_impl(void* handle, uint32_t shape_class, uint32_t variant_id, uint64_t target_tick);
 int prom_reactor_runtime_sgemm_batch_diagnostics_impl(void* handle, PrometheusSgemmBatchDiagnostics* out_diag);
 

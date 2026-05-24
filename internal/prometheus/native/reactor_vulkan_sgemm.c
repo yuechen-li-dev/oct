@@ -8040,7 +8040,7 @@ int prom_reactor_runtime_p15_test_seed_matured_reservation_impl(void* handle,
   return PROM_OK;
 }
 
-int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
+static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
   prom_dom_sgemm_m35_snapshot m35_snapshot;
   prom_dom_transfer_queue_snapshot transfer_snapshot;
@@ -8610,6 +8610,26 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p11_m3_arena_budget_limit_bytes = rt->arena_budget_limit_bytes;
   out_diag->p11_m3_arena_last_failure_reason = rt->arena_last_failure_detail;
   return PROM_OK;
+}
+
+
+int prom_reactor_runtime_sgemm_policy_diagnostics_sized_impl(void* handle,
+                                                             PrometheusSgemmPolicyDiagnostics* out_diag,
+                                                             uint32_t out_size) {
+  PrometheusSgemmPolicyDiagnostics full_diag;
+  size_t copy_size;
+  if (out_diag == NULL || out_size == 0u) return PROM_ERROR;
+  memset(out_diag, 0, (size_t)out_size);
+  if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
+  if (((prometheus_runtime*)handle)->magic != PROMETHEUS_RUNTIME_MAGIC) return PROM_INVALID_HANDLE;
+  if (prom_reactor_runtime_sgemm_policy_diagnostics_fill(handle, &full_diag) != PROM_OK) return PROM_ERROR;
+  copy_size = (size_t)out_size < sizeof(full_diag) ? (size_t)out_size : sizeof(full_diag);
+  memcpy(out_diag, &full_diag, copy_size);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
+  return prom_reactor_runtime_sgemm_policy_diagnostics_sized_impl(handle, out_diag, (uint32_t)sizeof(PrometheusSgemmPolicyDiagnostics));
 }
 
 int prom_reactor_runtime_sgemm_batch_diagnostics_impl(void* handle, PrometheusSgemmBatchDiagnostics* out_diag) {

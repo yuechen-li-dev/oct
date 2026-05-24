@@ -1,4 +1,5 @@
 #include <vector>
+#include <cstring>
 #include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
 #include "test_harness.h"
@@ -33,6 +34,36 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledFlagPropagatesToAuthority)
     ASSERT_EQUAL(1u, diag.p15_shadow_canary_enabled, "enabled canary exported");
     ASSERT_EQUAL(1u, diag.p15_shadow_authority_enabled, "authority should track canary feature flag");
     ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "no dispatch means no feedforward use");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusP15M13ShadowFeedforward_DiagnosticsSizedNullAndZeroSafe)
+{
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(nullptr, nullptr, 0u),
+                 "null handle/null out/zero size must fail safely");
+}
+
+FACT(PrometheusP15M13ShadowFeedforward_DiagnosticsSizedTruncatedDoesNotOverwriteSentinel)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    cfg.p15_shadow_canary_enabled = 1u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+    struct Tiny {
+        uint8_t bytes[64];
+        uint8_t sentinel[16];
+    } tiny{};
+    memset(tiny.bytes, 0xAB, sizeof(tiny.bytes));
+    memset(tiny.sentinel, 0xCD, sizeof(tiny.sentinel));
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(
+                     handle, reinterpret_cast<PrometheusSgemmPolicyDiagnostics*>(tiny.bytes), (uint32_t)sizeof(tiny.bytes)),
+                 "sized diagnostics should succeed for truncated buffer");
+    for (uint32_t i = 0u; i < sizeof(tiny.sentinel); ++i) {
+        ASSERT_EQUAL((uint8_t)0xCD, tiny.sentinel[i], "sentinel bytes must remain untouched");
+    }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 

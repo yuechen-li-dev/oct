@@ -39,6 +39,33 @@ FACT(PrometheusP15M12ShadowCanary_DefaultsDisabledNoOp)
     ASSERT_EQUAL(0u, state.action_applied_count, "no action applied");
     ASSERT_EQUAL(0u, state.reservation_attempt_count, "reservation not attempted in should-attempt stage");
     ASSERT_EQUAL(1u, state.block_disabled_count, "disabled block counted");
+    ASSERT_EQUAL(0u, state.evaluation_count, "disabled should not increment enabled evaluation count");
+}
+
+FACT(PrometheusP15M12ShadowCanary_DisabledValidTimingDoesNotIncrementEnabledEvaluation)
+{
+    prom_dominatus_shadow_canary_state state{};
+    prom_dominatus_shadow_canary_init(&state);
+    auto params = prom_dominatus_shadow_canary_default_params();
+    auto cal = healthy_calibration();
+    auto gate = prom_dominatus_shadow_authority_gate_evaluate(&cal);
+    auto snap = make_snapshot(101u, 102u, 103u);
+    ASSERT_EQUAL(0u, prom_dominatus_shadow_canary_should_attempt(&state, &params, &gate, &cal, &snap), "disabled canary should not attempt");
+    ASSERT_EQUAL(0u, state.evaluation_count, "disabled canary should not count as enabled evaluation");
+    ASSERT_EQUAL(1u, state.block_disabled_count, "disabled path block count increments");
+}
+
+FACT(PrometheusP15M12ShadowCanary_EnabledValidTimingIncrementsEvaluation)
+{
+    prom_dominatus_shadow_canary_state state{};
+    prom_dominatus_shadow_canary_init(&state);
+    auto params = prom_dominatus_shadow_canary_default_params();
+    params.enabled = 1u;
+    auto cal = healthy_calibration();
+    auto gate = prom_dominatus_shadow_authority_gate_evaluate(&cal);
+    auto snap = make_snapshot(111u, 112u, 113u);
+    (void)prom_dominatus_shadow_canary_should_attempt(&state, &params, &gate, &cal, &snap);
+    ASSERT_EQUAL(1u, state.evaluation_count, "enabled canary should increment evaluation count");
 }
 
 FACT(PrometheusP15M12ShadowCanary_EnabledHealthyAttemptsAndDedup)

@@ -930,6 +930,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_consume_async(void* handle
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_abandon_async(void* handle, int task_id);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle,
                                                                          PrometheusSgemmPolicyDiagnostics* out_diag);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(void* handle,
+                                                                               PrometheusSgemmPolicyDiagnostics* out_diag,
+                                                                               uint32_t out_size);
 PROM_REACTOR_API int prometheus_reactor_runtime_p15_test_seed_matured_reservation(void* handle,
                                                                                     uint32_t shape_class,
                                                                                     uint32_t variant_id,
