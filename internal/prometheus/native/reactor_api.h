@@ -739,6 +739,18 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint64_t p15_shadow_correction_count;
   uint64_t p15_shadow_stale_count;
   uint64_t p15_shadow_miss_count;
+  uint32_t p15_shadow_calibration_valid;
+  uint64_t p15_shadow_calibration_sample_count;
+  uint64_t p15_shadow_calibration_match_count;
+  uint64_t p15_shadow_calibration_miss_count;
+  uint64_t p15_shadow_calibration_early_count;
+  uint64_t p15_shadow_calibration_late_count;
+  uint64_t p15_shadow_calibration_stale_count;
+  uint64_t p15_shadow_calibration_fallback_count;
+  double p15_shadow_calibration_confidence;
+  double p15_shadow_calibration_mean_abs_arrival_error_ticks;
+  uint32_t p15_shadow_calibration_last_mismatch_kind;
+  uint32_t p15_shadow_lookahead_state;
   uint32_t p13_m5_timestamp_valid_bits;
   float p13_m5_timestamp_period_ns;
   uint32_t p10_m4_last_slot_event_kind;
