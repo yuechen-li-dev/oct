@@ -499,6 +499,10 @@ prom_dominatus_reservation_decision prom_dominatus_reservation_expire_stale(
     prom_dominatus_reservation_state_set* state,
     const prom_dominatus_reservation_params* params,
     uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_reservation_consume_matured(
+    prom_dominatus_reservation_state_set* state,
+    uint32_t shape_class,
+    uint32_t variant_id);
 prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
     prom_dominatus_predictor_state* predictor,
     prom_dominatus_reservation_state_set* reservations,
