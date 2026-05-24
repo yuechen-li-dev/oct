@@ -42,6 +42,34 @@ typedef enum prom_dominatus_reservation_state {
   PROM_DOM_RESERVATION_YIELDED
 } prom_dominatus_reservation_state;
 
+typedef enum prom_dominatus_shadow_state {
+  PROM_DOM_SHADOW_STATE_UNKNOWN = 0,
+  PROM_DOM_SHADOW_STATE_IDLE,
+  PROM_DOM_SHADOW_STATE_FORECAST_ISSUED,
+  PROM_DOM_SHADOW_STATE_FUTURE_LEASE_REQUESTED,
+  PROM_DOM_SHADOW_STATE_RESERVED,
+  PROM_DOM_SHADOW_STATE_PRESTAGE_ELIGIBLE,
+  PROM_DOM_SHADOW_STATE_PREDICTED_READY,
+  PROM_DOM_SHADOW_STATE_MATURED,
+  PROM_DOM_SHADOW_STATE_CANCELLED,
+  PROM_DOM_SHADOW_STATE_STALE,
+  PROM_DOM_SHADOW_STATE_FALLBACK
+} prom_dominatus_shadow_state;
+
+typedef enum prom_dominatus_shadow_mismatch_kind {
+  PROM_DOM_SHADOW_MISMATCH_NONE = 0,
+  PROM_DOM_SHADOW_MISMATCH_MATCH,
+  PROM_DOM_SHADOW_MISMATCH_LATE,
+  PROM_DOM_SHADOW_MISMATCH_EARLY,
+  PROM_DOM_SHADOW_MISMATCH_PHYSICAL_NOT_READY,
+  PROM_DOM_SHADOW_MISMATCH_SHADOW_NOT_READY,
+  PROM_DOM_SHADOW_MISMATCH_CANCELLED,
+  PROM_DOM_SHADOW_MISMATCH_STALE,
+  PROM_DOM_SHADOW_MISMATCH_FALLBACK,
+  PROM_DOM_SHADOW_MISMATCH_HARD_GATE,
+  PROM_DOM_SHADOW_MISMATCH_INVALID_PREDICTION
+} prom_dominatus_shadow_mismatch_kind;
+
 #define PROM_DOM_RESERVATION_CAP 16u
 
 typedef struct prom_dominatus_predictor_evidence {
@@ -194,6 +222,27 @@ typedef struct prom_dominatus_correction_event {
   uint64_t target_tick;
 } prom_dominatus_correction_event;
 
+typedef struct prom_dominatus_shadow_snapshot {
+  uint32_t valid;
+  prom_dominatus_shadow_state shadow_state;
+  uint32_t physical_state;
+  uint64_t issued_tick;
+  uint64_t target_tick;
+  uint64_t predicted_ready_tick;
+  uint64_t actual_ready_tick;
+  int64_t arrival_error_ticks;
+  double prediction_confidence;
+  prom_dominatus_shadow_mismatch_kind mismatch_kind;
+  uint32_t matched;
+  uint32_t stale;
+  uint32_t cancelled;
+  uint32_t fallback;
+  prom_dominatus_correction_action correction_action;
+  uint64_t correction_count;
+  uint64_t stale_count;
+  uint64_t miss_count;
+} prom_dominatus_shadow_snapshot;
+
 typedef struct prom_dominatus_predictor_params {
   double confidence_threshold_depth1;
   double confidence_threshold_depth2;
@@ -307,6 +356,13 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
     prom_dominatus_reservation_state_set* reservations,
     const prom_dominatus_future_lease_request* future_request,
     uint64_t tick);
+prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
+    const prom_dominatus_predictor_state* predictor,
+    const prom_dominatus_prediction_entry* last_issued,
+    const prom_dominatus_correction_event* correction,
+    const prom_dominatus_reservation_decision* reservation,
+    uint32_t prestage_allowed,
+    uint64_t current_tick);
 
 #ifdef __cplusplus
 }
