@@ -436,6 +436,24 @@ typedef struct prom_batch_slot_runtime {
 
 typedef struct prom_batch_shared_state prom_batch_shared_state;
 
+typedef struct prom_p15_feedforward_dispatch_state {
+  uint32_t valid;
+  uint32_t enabled;
+  uint32_t used;
+  uint32_t source;
+  uint32_t block_reason;
+  uint32_t reserved_variant_id;
+  uint64_t fallback_to_judgment_count;
+  uint64_t reservation_consumed_count;
+  uint64_t no_matured_reservation_count;
+  uint64_t shape_mismatch_count;
+  uint64_t variant_mismatch_count;
+  uint64_t stale_reservation_count;
+  uint64_t reason_binding_block_count;
+  uint64_t margin_block_count;
+  uint64_t dedup_block_count;
+} prom_p15_feedforward_dispatch_state;
+
 typedef struct prometheus_runtime {
   uint32_t magic;
   uint32_t available;
@@ -526,6 +544,7 @@ typedef struct prometheus_runtime {
   prom_dominatus_shadow_would_act_state p15_shadow_would_act_state;
   prom_dominatus_shadow_canary_params p15_shadow_canary_params;
   prom_dominatus_shadow_canary_state p15_shadow_canary_state;
+  prom_p15_feedforward_dispatch_state p15_feedforward_dispatch_state;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -4988,6 +5007,37 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   occupancy_facts.k = k;
   occupancy_facts.work_units = work_units;
   prom_judgment_engine_select_occupancy_variant(&occupancy_facts, &occupancy_decision);
+  rt->p15_feedforward_dispatch_state.valid = 1u;
+  rt->p15_feedforward_dispatch_state.enabled = rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u;
+  rt->p15_feedforward_dispatch_state.used = 0u;
+  rt->p15_feedforward_dispatch_state.source = 0u;
+  rt->p15_feedforward_dispatch_state.block_reason = 0u;
+  rt->p15_feedforward_dispatch_state.reserved_variant_id = 0u;
+  if (rt->p15_feedforward_dispatch_state.enabled == 0u) {
+    rt->p15_feedforward_dispatch_state.block_reason = 1u;
+  } else if (rt->p15_shadow_authority_gate.state != PROM_SHADOW_AUTHORITY_HEALTHY) {
+    rt->p15_feedforward_dispatch_state.block_reason = 2u;
+    rt->p15_feedforward_dispatch_state.reason_binding_block_count += 1u;
+  } else if (rt->p15_shadow_canary_state.healthy_margin_passed == 0u) {
+    rt->p15_feedforward_dispatch_state.block_reason = 3u;
+    rt->p15_feedforward_dispatch_state.margin_block_count += 1u;
+  } else if (rt->p15_shadow_canary_state.reason_binding_passed == 0u) {
+    rt->p15_feedforward_dispatch_state.block_reason = 4u;
+    rt->p15_feedforward_dispatch_state.reason_binding_block_count += 1u;
+  } else {
+    prom_dominatus_reservation_decision consume =
+        prom_dominatus_reservation_consume_matured(&rt->p15_predictor_state.reservations, occupancy_decision.shape_class, occupancy_decision.selected_variant);
+    if (consume.valid != 0u && consume.yielded != 0u) {
+      rt->p15_feedforward_dispatch_state.used = 1u;
+      rt->p15_feedforward_dispatch_state.source = 1u;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = occupancy_decision.selected_variant;
+      rt->p15_feedforward_dispatch_state.reservation_consumed_count += 1u;
+    } else {
+      rt->p15_feedforward_dispatch_state.block_reason = 5u;
+      rt->p15_feedforward_dispatch_state.no_matured_reservation_count += 1u;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+    }
+  }
   rt->slot_diag.p13_m2_occupancy_device_band = occupancy_decision.device_band;
   rt->slot_diag.p13_m2_occupancy_shape_class = occupancy_decision.shape_class;
   rt->slot_diag.p13_m2_occupancy_selected_variant = occupancy_decision.selected_variant;
@@ -8376,6 +8426,21 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p15_shadow_canary_block_disabled_count = rt->p15_shadow_canary_state.block_disabled_count;
   out_diag->p15_shadow_canary_block_no_future_lease_count = rt->p15_shadow_canary_state.block_no_future_lease_count;
   out_diag->p15_shadow_canary_block_reservation_failed_count = rt->p15_shadow_canary_state.block_reservation_failed_count;
+  out_diag->p15_shadow_feedforward_valid = rt->p15_feedforward_dispatch_state.valid;
+  out_diag->p15_shadow_feedforward_enabled = rt->p15_feedforward_dispatch_state.enabled;
+  out_diag->p15_shadow_feedforward_used = rt->p15_feedforward_dispatch_state.used;
+  out_diag->p15_shadow_feedforward_source = rt->p15_feedforward_dispatch_state.source;
+  out_diag->p15_shadow_feedforward_block_reason = rt->p15_feedforward_dispatch_state.block_reason;
+  out_diag->p15_shadow_feedforward_reserved_variant_id = rt->p15_feedforward_dispatch_state.reserved_variant_id;
+  out_diag->p15_shadow_feedforward_fallback_to_judgment_count = rt->p15_feedforward_dispatch_state.fallback_to_judgment_count;
+  out_diag->p15_shadow_feedforward_reservation_consumed_count = rt->p15_feedforward_dispatch_state.reservation_consumed_count;
+  out_diag->p15_shadow_feedforward_no_matured_reservation_count = rt->p15_feedforward_dispatch_state.no_matured_reservation_count;
+  out_diag->p15_shadow_feedforward_shape_mismatch_count = rt->p15_feedforward_dispatch_state.shape_mismatch_count;
+  out_diag->p15_shadow_feedforward_variant_mismatch_count = rt->p15_feedforward_dispatch_state.variant_mismatch_count;
+  out_diag->p15_shadow_feedforward_stale_reservation_count = rt->p15_feedforward_dispatch_state.stale_reservation_count;
+  out_diag->p15_shadow_feedforward_reason_binding_block_count = rt->p15_feedforward_dispatch_state.reason_binding_block_count;
+  out_diag->p15_shadow_feedforward_margin_block_count = rt->p15_feedforward_dispatch_state.margin_block_count;
+  out_diag->p15_shadow_feedforward_dedup_block_count = rt->p15_feedforward_dispatch_state.dedup_block_count;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
