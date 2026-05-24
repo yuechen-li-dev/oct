@@ -54,7 +54,7 @@
     TimeToFirstCanary: (3)
     TimeToFirstHealthy: (7)
     TimeToRecoverAfterMiss: (-1)
-    MaxArrivalError: (3)
+    MaxArrivalError: (1)
     MeanArrivalError: (0.25)
     MissRate: (0)
     Notes: "diagnostic-only rake lab"
@@ -74,8 +74,8 @@
     TimeToFirstCanary: (-1)
     TimeToFirstHealthy: (-1)
     TimeToRecoverAfterMiss: (-1)
-    MaxArrivalError: (8)
-    MeanArrivalError: (0.6666666666666666)
+    MaxArrivalError: (5)
+    MeanArrivalError: (3.3333333333333335)
     MissRate: (0)
     Notes: "diagnostic-only rake lab"
 }, ScenarioMetric {
@@ -194,8 +194,8 @@
     TimeToFirstCanary: (4)
     TimeToFirstHealthy: (-1)
     TimeToRecoverAfterMiss: (7)
-    MaxArrivalError: (3)
-    MeanArrivalError: (0.25)
+    MaxArrivalError: (2)
+    MeanArrivalError: (0.3333333333333333)
     MissRate: (0.08333333333333333)
     Notes: "diagnostic-only rake lab"
 }]
