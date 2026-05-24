@@ -740,3 +740,81 @@ prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evalua
   }
   return out;
 }
+
+void prom_dominatus_shadow_would_act_init(prom_dominatus_shadow_would_act_state* state) {
+  if (state == NULL) return;
+  memset(state, 0, sizeof(*state));
+  state->initialized = 1u;
+  state->valid = 1u;
+}
+
+static void prom_dominatus_shadow_would_act_count_reason(prom_dominatus_shadow_would_act_state* state,
+                                                         prom_dominatus_shadow_authority_reason reason) {
+  switch (reason) {
+    case PROM_SHADOW_AUTHORITY_REASON_LOW_CONFIDENCE: state->blocked_low_confidence_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_HIGH_MISS_RATE: state->blocked_high_miss_rate_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR: state->blocked_high_arrival_error_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK: state->blocked_recent_fallback_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE: state->blocked_recent_stale_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_INSUFFICIENT_SAMPLES: state->blocked_insufficient_samples_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_INVALID_CALIBRATION: state->blocked_invalid_calibration_count += 1u; break;
+    case PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED: state->blocked_lookahead_disabled_count += 1u; break;
+    default: break;
+  }
+}
+
+void prom_dominatus_shadow_would_act_update(prom_dominatus_shadow_would_act_state* state,
+                                            const prom_dominatus_shadow_authority_gate* gate,
+                                            const prom_dominatus_shadow_calibration_state* calibration,
+                                            const prom_dominatus_shadow_snapshot* snapshot) {
+  prom_dominatus_shadow_authority_reason bound_reason;
+  if (state == NULL || gate == NULL || calibration == NULL || snapshot == NULL || snapshot->valid == 0u) return;
+  if (state->initialized == 0u) prom_dominatus_shadow_would_act_init(state);
+  if (state->last_counted_issued_tick == snapshot->issued_tick &&
+      state->last_counted_target_tick == snapshot->target_tick &&
+      state->last_counted_predicted_ready_tick == snapshot->predicted_ready_tick) return;
+  state->last_counted_issued_tick = snapshot->issued_tick;
+  state->last_counted_target_tick = snapshot->target_tick;
+  state->last_counted_predicted_ready_tick = snapshot->predicted_ready_tick;
+  state->evaluation_count += 1u;
+  state->last_gate_state = gate->state;
+  state->last_reason = gate->reason;
+  state->last_recommended_lookahead_depth = gate->recommended_lookahead_depth;
+  state->last_would_act = 0u;
+  state->last_would_block_reason = PROM_SHADOW_AUTHORITY_REASON_NONE;
+
+  bound_reason = gate->reason;
+  if (bound_reason == PROM_SHADOW_AUTHORITY_REASON_NONE) {
+    if (calibration->fallback_count > 0u && calibration->last_mismatch_kind == PROM_DOM_SHADOW_MISMATCH_FALLBACK)
+      bound_reason = PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK;
+    else if (calibration->lookahead_diagnostic_state == PROM_SHADOW_LOOKAHEAD_DISABLED)
+      bound_reason = PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED;
+    else if (calibration->stale_count > 0u && calibration->last_mismatch_kind == PROM_DOM_SHADOW_MISMATCH_STALE)
+      bound_reason = PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE;
+    else if (gate->arrival_error_gate_passed == 0u) bound_reason = PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR;
+  }
+
+  if (gate->state == PROM_SHADOW_AUTHORITY_HEALTHY || gate->state == PROM_SHADOW_AUTHORITY_CANARY_ELIGIBLE) {
+    if (bound_reason == PROM_SHADOW_AUTHORITY_REASON_NONE) {
+      state->would_act_count += 1u;
+      state->last_would_act = 1u;
+      if (gate->state == PROM_SHADOW_AUTHORITY_HEALTHY) state->would_healthy_count += 1u;
+      else state->would_canary_count += 1u;
+      return;
+    }
+    state->overpromotion_guard_count += 1u;
+    if (bound_reason == PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK ||
+        bound_reason == PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED)
+      state->healthy_suppressed_by_recent_fallback_count += 1u;
+    else if (bound_reason == PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE)
+      state->healthy_suppressed_by_recent_stale_count += 1u;
+    else if (bound_reason == PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR)
+      state->healthy_suppressed_by_arrival_error_count += 1u;
+  }
+
+  state->would_block_count += 1u;
+  state->last_would_block_reason = bound_reason;
+  prom_dominatus_shadow_would_act_count_reason(state, bound_reason);
+  if (gate->state == PROM_SHADOW_AUTHORITY_UNKNOWN) state->would_unknown_count += 1u;
+  else if (gate->state == PROM_SHADOW_AUTHORITY_DISABLED) state->would_disabled_count += 1u;
+}

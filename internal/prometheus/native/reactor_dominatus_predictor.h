@@ -319,6 +319,38 @@ typedef struct prom_dominatus_shadow_authority_gate {
   uint32_t authority_would_act;
 } prom_dominatus_shadow_authority_gate;
 
+typedef struct prom_dominatus_shadow_would_act_state {
+  uint32_t initialized;
+  uint32_t valid;
+  uint64_t evaluation_count;
+  uint64_t would_act_count;
+  uint64_t would_block_count;
+  uint64_t would_unknown_count;
+  uint64_t would_disabled_count;
+  uint64_t would_canary_count;
+  uint64_t would_healthy_count;
+  uint64_t blocked_low_confidence_count;
+  uint64_t blocked_high_miss_rate_count;
+  uint64_t blocked_high_arrival_error_count;
+  uint64_t blocked_recent_fallback_count;
+  uint64_t blocked_recent_stale_count;
+  uint64_t blocked_insufficient_samples_count;
+  uint64_t blocked_invalid_calibration_count;
+  uint64_t blocked_lookahead_disabled_count;
+  uint64_t overpromotion_guard_count;
+  uint64_t healthy_suppressed_by_recent_fallback_count;
+  uint64_t healthy_suppressed_by_recent_stale_count;
+  uint64_t healthy_suppressed_by_arrival_error_count;
+  uint32_t last_would_act;
+  prom_dominatus_shadow_authority_reason last_would_block_reason;
+  prom_dominatus_shadow_authority_state last_gate_state;
+  prom_dominatus_shadow_authority_reason last_reason;
+  uint32_t last_recommended_lookahead_depth;
+  uint64_t last_counted_issued_tick;
+  uint64_t last_counted_target_tick;
+  uint64_t last_counted_predicted_ready_tick;
+} prom_dominatus_shadow_would_act_state;
+
 typedef struct prom_dominatus_predictor_params {
   double confidence_threshold_depth1;
   double confidence_threshold_depth2;
@@ -445,6 +477,11 @@ void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_
                                               const prom_dominatus_shadow_snapshot* snapshot);
 prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
     const prom_dominatus_shadow_calibration_state* calibration);
+void prom_dominatus_shadow_would_act_init(prom_dominatus_shadow_would_act_state* state);
+void prom_dominatus_shadow_would_act_update(prom_dominatus_shadow_would_act_state* state,
+                                            const prom_dominatus_shadow_authority_gate* gate,
+                                            const prom_dominatus_shadow_calibration_state* calibration,
+                                            const prom_dominatus_shadow_snapshot* snapshot);
 
 #ifdef __cplusplus
 }
