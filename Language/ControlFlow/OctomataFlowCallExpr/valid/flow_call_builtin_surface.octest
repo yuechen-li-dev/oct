@@ -33,6 +33,23 @@ flow LenStringFlow() -> Int {
     }
 }
 
+flow FloatBuiltinFlow(count: Int, total: Int) -> Float {
+    board {
+        Count: Int
+        Total: Int
+        Ratio: Float
+        Score: Float
+    }
+    state Start {
+        let base = Float(count)
+        board.Count = count
+        board.Total = total
+        board.Ratio = Float(board.Count) / Float(board.Total)
+        board.Score = Clamp01(Float(board.Count) / 10.0)
+        return base + board.Ratio + board.Score
+    }
+}
+
 [Fact]
 fn FlowBuiltinCallExprCompiled() -> Void {
     let machine = CallBuiltinFlow()
@@ -55,4 +72,12 @@ fn FlowLenStringCallExprCompiled() -> Void {
     Step(machine)
     let out = Assert.LGTM(Result(machine), "result should be available after string len step")
     Assert.Equal(3, out, "flow len call expression should evaluate for strings")
+}
+
+[Fact]
+fn FlowFloatBuiltinCallExprCompiled() -> Void {
+    let machine = FloatBuiltinFlow(4, 5)
+    Step(machine)
+    let out = Assert.LGTM(Result(machine), "result should be available after float conversion step")
+    Assert.Near(5.2, out, 0.000001, "flow Float(Int) conversion should evaluate in let, assignment, return, and nested expressions")
 }

@@ -3862,7 +3862,7 @@ func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
 		return "", "", false, false, unsupportedBuiltin(ident.Name)
 	}
 	switch ident.Name {
-	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Clamp01":
+	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Float", "Clamp01":
 		return ident.Name, "Float", true, false, nil
 	case "FloorToInt", "CeilToInt", "RoundToInt":
 		return ident.Name, "Int", true, false, nil
