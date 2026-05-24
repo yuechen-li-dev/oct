@@ -1,0 +1,60 @@
+package PrometheusShadowAuthorityRakeLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn ScenarioCountIsExpected() -> Void ! Error { Assert.Equal(12, Len(BuildScenariosM2()), "scenario count") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn PerfectLikeSequenceGetsHealthyUnderEma() -> Void ! Error { let r = RunScenarioM2(BuildScenariosM2()[0]) Assert.True(r.EmaHealthyCount > 0, "ema healthy") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn FallbackRecoverBlocksThenRecovers() -> Void ! Error { let r = RunScenarioM2(BuildScenariosM2()[0]) Assert.True(r.EmaTimeToBlock >= 0 and r.EmaTimeToRecover >= 0, "block recover") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn LateJitterHasHighArrivalReason() -> Void ! Error { Assert.True(RunScenarioM2(BuildScenariosM2()[1]).HighArrivalErrorObserved, "arrival reason") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn StaleThenMatchesHasRecentStale() -> Void ! Error { Assert.True(RunScenarioM2(BuildScenariosM2()[3]).RecentStaleObserved, "stale reason") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn AlternatingMatchMissNotHealthy() -> Void ! Error { Assert.True(RunScenarioM2(BuildScenariosM2()[2]).EmaFinalGate != "HEALTHY", "alternating") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn BoundaryChatterNotExplosive() -> Void ! Error { let r = RunScenarioM2(BuildScenariosM2()[5]) Assert.True(r.EmaChatterCount <= 8, "chatter") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn EmaBlocksFasterInAtLeastOne() -> Void ! Error { let rows = RunLabM2() var ok = false for i in 0..Len(rows) { if rows[i].EmaTimeToBlock >= 0 and (rows[i].CumulativeTimeToBlock < 0 or rows[i].EmaTimeToBlock <= rows[i].CumulativeTimeToBlock) { ok = true } } Assert.True(ok, "faster block") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.FlowSmoke")]
+fn EmaRecoversFasterInAtLeastOne() -> Void ! Error { let rows = RunLabM2() var ok = false for i in 0..Len(rows) { if rows[i].EmaTimeToRecover >= 0 and (rows[i].CumulativeTimeToRecover < 0 or rows[i].EmaTimeToRecover < rows[i].CumulativeTimeToRecover) { ok = true } } Assert.True(ok, "faster recover") }
+
+[Artifact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M2.Artifacts")]
+fn ArtifactOutputsExist() -> Void ! Error {
+    let _ = PrometheusShadowAuthorityRakeM2ArtifactWriteAll()
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.octagon")?) > 0, "octagon")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.md")?) > 0, "md")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_metrics.csv")?) > 0, "csv")
+    Assert.True(Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_summary.json")?) > 0, "json")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M2/FINDINGS.md")?) > 0, "findings")
+}
