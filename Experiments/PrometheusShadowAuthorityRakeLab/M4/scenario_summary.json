@@ -1,0 +1,1 @@
+{"scenarioCount":9,"variantCount":4,"rowCount":36,"expectedBehaviorMet":34,"rakeSignal":2,"boundaryOverPromotionBaseline":1,"boundaryOverPromotionMargin":0,"boundaryOverPromotionStreak":1,"boundaryOverPromotionMarginAndStreak":0,"healthySuppressedByMarginTotal":68,"healthySuppressedByStreakTotal":66,"recoveryStillPossibleCount":4,"recommendation":"HealthyMarginGate"}

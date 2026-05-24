@@ -1,0 +1,596 @@
+package PrometheusShadowAuthorityRakeLab
+
+import Artifact
+import Json
+import Markdown
+import String
+
+enum ShadowOutcome {
+    Match
+    Early(Float)
+    Late(Float)
+    PhysicalNotReady
+    Stale
+    Fallback
+    Cancelled
+}
+
+enum Variant {
+    ReasonBindingEmaStrongerCommit
+    HealthyMarginGate
+    HealthyStreakGate
+    HealthyMarginAndStreak
+}
+
+record Scenario {
+    Name: String
+    Events: ShadowOutcome[]
+    Label: String
+}
+
+record ScenarioMetric {
+    ScenarioName: String
+    VariantName: String
+    EventCount: Int
+    FinalGate: String
+    FinalReason: String
+    FinalConfidence: Float
+    FinalMissRate: Float
+    FinalArrivalError: Float
+    HealthyCount: Int
+    CanaryCount: Int
+    BlockedCount: Int
+    DisabledCount: Int
+    UnknownCount: Int
+    TimeToFirstHealthy: Int
+    TimeToFirstCanary: Int
+    TimeToRecover: Int
+    ChatterCount: Int
+    OverPromotionFlag: Bool
+    BoundaryOverPromotionFlag: Bool
+    HealthyMarginPassCount: Int
+    HealthyStreakCountFinal: Int
+    HealthySuppressedByMarginCount: Int
+    HealthySuppressedByStreakCount: Int
+    RecentFallbackHealthyViolation: Bool
+    RecentStaleHealthyViolation: Bool
+    HighArrivalErrorObserved: Bool
+    ExpectedBehaviorMet: Bool
+    RakeSignal: Bool
+    Notes: String
+}
+
+flow ShadowAuthorityGateMachineM4(events: ShadowOutcome[], variant: Variant) -> Bool {
+    board {
+        Index: Int
+        SampleCount: Int
+        ConfidenceEma: Float
+        MissRateEma: Float
+        ArrivalErrorEma: Float
+        RecentFallbackAge: Int
+        RecentStaleAge: Int
+        RecentFallbackActive: Bool
+        RecentStaleActive: Bool
+        GateCode: Int
+        ReasonCode: Int
+        PreviousGateCode: Int
+        TimeToCanary: Int
+        TimeToHealthy: Int
+        TimeToRecover: Int
+        RecoveredArmed: Bool
+        ChatterCount: Int
+        RecordReady: Bool
+        DoneFlag: Bool
+        HealthyCandidateStreak: Int
+        HealthyMarginPassCount: Int
+        HealthySuppressedByMarginCount: Int
+        HealthySuppressedByStreakCount: Int
+    }
+
+    state Initialize {
+        board.Index = 0
+        board.SampleCount = Len(events)
+        board.ConfidenceEma = 0.5
+        board.MissRateEma = 0.0
+        board.ArrivalErrorEma = 0.0
+        board.RecentFallbackAge = 999
+        board.RecentStaleAge = 999
+        board.RecentFallbackActive = false
+        board.RecentStaleActive = false
+        board.GateCode = 1
+        board.ReasonCode = 7
+        board.PreviousGateCode = 1
+        board.TimeToCanary = -1
+        board.TimeToHealthy = -1
+        board.TimeToRecover = -1
+        board.RecoveredArmed = false
+        board.ChatterCount = 0
+        board.RecordReady = false
+        board.DoneFlag = false
+        board.HealthyCandidateStreak = 0
+        board.HealthyMarginPassCount = 0
+        board.HealthySuppressedByMarginCount = 0
+        board.HealthySuppressedByStreakCount = 0
+        goto ReadOutcome
+    }
+
+    state ReadOutcome {
+        board.RecordReady = false
+        when {
+            case board.Index >= board.SampleCount -> goto Done
+            else -> goto Update
+        }
+    }
+
+    state Update {
+        let alpha = 0.22
+        let outcome = events[board.Index]
+
+        let arrivalError = match outcome {
+            case ShadowOutcome.Early(ticks) => Abs(ticks)
+            case ShadowOutcome.Late(ticks) => Abs(ticks)
+            case ShadowOutcome.Match => 0.0
+            case ShadowOutcome.PhysicalNotReady => 0.0
+            case ShadowOutcome.Stale => 0.0
+            case ShadowOutcome.Fallback => 0.0
+            case ShadowOutcome.Cancelled => 0.0
+        }
+
+        let eventScore = match outcome {
+            case ShadowOutcome.Match => 1.0
+            case ShadowOutcome.Cancelled => 0.8
+            case ShadowOutcome.Early(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 }
+            case ShadowOutcome.Late(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 }
+            case ShadowOutcome.Stale => 0.2
+            case ShadowOutcome.PhysicalNotReady => 0.0
+            case ShadowOutcome.Fallback => 0.0
+        }
+
+        let missIndicator = match outcome {
+            case ShadowOutcome.Match => 0.0
+            case ShadowOutcome.Cancelled => 0.0
+            case ShadowOutcome.Early(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 }
+            case ShadowOutcome.Late(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 }
+            case ShadowOutcome.Stale => 1.0
+            case ShadowOutcome.PhysicalNotReady => 1.0
+            case ShadowOutcome.Fallback => 1.0
+        }
+
+        board.ConfidenceEma = (alpha * eventScore) + ((1.0 - alpha) * board.ConfidenceEma)
+        board.MissRateEma = (alpha * missIndicator) + ((1.0 - alpha) * board.MissRateEma)
+        board.ArrivalErrorEma = (alpha * arrivalError) + ((1.0 - alpha) * board.ArrivalErrorEma)
+
+        if outcome == ShadowOutcome.Fallback {
+            board.RecentFallbackAge = 0
+            board.RecentFallbackActive = true
+        } else {
+            board.RecentFallbackAge = board.RecentFallbackAge + 1
+            board.RecentFallbackActive = board.RecentFallbackAge <= 4
+        }
+
+        if outcome == ShadowOutcome.Stale {
+            board.RecentStaleAge = 0
+            board.RecentStaleActive = true
+        } else {
+            board.RecentStaleAge = board.RecentStaleAge + 1
+            board.RecentStaleActive = board.RecentStaleAge <= 4
+        }
+
+        goto Evaluate
+    }
+
+    state Evaluate {
+        let eligible = board.SampleCount >= 3
+        let confidenceCanary = board.ConfidenceEma >= 0.60
+        let confidenceHealthyBase = board.ConfidenceEma >= 0.75
+
+        let margin = switch variant {
+            case Variant.HealthyMarginGate -> 0.12
+            case Variant.HealthyMarginAndStreak -> 0.12
+            else -> 0.0
+        }
+
+        let marginRequired =
+            variant == Variant.HealthyMarginGate or
+            variant == Variant.HealthyMarginAndStreak
+
+        let streakRequired =
+            variant == Variant.HealthyStreakGate or
+            variant == Variant.HealthyMarginAndStreak
+
+        let streakTarget = switch variant {
+            case Variant.HealthyStreakGate -> 3
+            case Variant.HealthyMarginAndStreak -> 3
+            else -> 1
+        }
+
+        let noBindingReason =
+            not board.RecentFallbackActive and
+            not board.RecentStaleActive and
+            board.ArrivalErrorEma <= 2.0
+
+        let marginPass = board.ConfidenceEma >= (0.75 + margin)
+
+        if marginPass {
+            board.HealthyMarginPassCount = board.HealthyMarginPassCount + 1
+        }
+
+        let healthyPreStreak =
+            eligible and
+            noBindingReason and
+            confidenceHealthyBase and
+            board.MissRateEma <= 0.20 and
+            board.ArrivalErrorEma <= 2.0
+
+        if healthyPreStreak and (not marginRequired or marginPass) {
+            board.HealthyCandidateStreak = board.HealthyCandidateStreak + 1
+        } else {
+            board.HealthyCandidateStreak = 0
+        }
+
+        let streakPass = board.HealthyCandidateStreak >= streakTarget
+
+        if healthyPreStreak and marginRequired and not marginPass {
+            board.HealthySuppressedByMarginCount =
+                board.HealthySuppressedByMarginCount + 1
+        }
+
+        if healthyPreStreak and streakRequired and not streakPass {
+            board.HealthySuppressedByStreakCount =
+                board.HealthySuppressedByStreakCount + 1
+        }
+
+        let healthyEligible =
+            healthyPreStreak and
+            (not marginRequired or marginPass) and
+            (not streakRequired or streakPass)
+
+        board.GateCode = when policy {
+            hysteresis: 3
+            min_commit: 3
+        } {
+            case 4 when healthyEligible score 100
+            case 3 when
+                eligible and
+                confidenceCanary and
+                board.MissRateEma <= 0.25 and
+                board.ArrivalErrorEma <= 2.5 and
+                not board.RecentFallbackActive
+                score 80
+            case 2 when eligible score 60
+            case 1 when not eligible score 50
+            else 0
+        }
+
+        board.ReasonCode = switch {
+            case board.SampleCount < 3 -> 7
+            case board.RecentFallbackActive -> 2
+            case board.RecentStaleActive -> 3
+            case board.ArrivalErrorEma > 2.0 -> 4
+            case board.MissRateEma > 0.20 -> 5
+            case board.ConfidenceEma < 0.60 -> 6
+            else -> 8
+        }
+
+        if board.GateCode != board.PreviousGateCode {
+            board.ChatterCount = board.ChatterCount + 1
+        }
+
+        board.PreviousGateCode = board.GateCode
+
+        if board.TimeToCanary < 0 and board.GateCode >= 3 {
+            board.TimeToCanary = board.Index
+        }
+
+        if board.TimeToHealthy < 0 and board.GateCode == 4 {
+            board.TimeToHealthy = board.Index
+        }
+
+        if board.GateCode <= 2 and board.Index > 0 {
+            board.RecoveredArmed = true
+        }
+
+        if board.RecoveredArmed and board.TimeToRecover < 0 and board.GateCode >= 3 {
+            board.TimeToRecover = board.Index
+        }
+
+        goto Record
+    }
+
+    state Record {
+        board.RecordReady = true
+        goto Advance
+    }
+
+    state Advance {
+        board.Index = board.Index + 1
+        suspend
+        goto ReadOutcome
+    }
+
+    state Done {
+        board.DoneFlag = true
+        return true
+    }
+}
+
+fn GateName(code: Int) -> String {
+    return switch code {
+        case 4 -> "HEALTHY"
+        case 3 -> "CANARY_ELIGIBLE"
+        case 2 -> "BLOCKED"
+        case 1 -> "UNKNOWN"
+        else -> "DISABLED"
+    }
+}
+
+fn ReasonName(code: Int) -> String {
+    return switch code {
+        case 1 -> "InvalidCalibration"
+        case 2 -> "RecentFallback"
+        case 3 -> "RecentStale"
+        case 4 -> "HighArrivalError"
+        case 5 -> "HighMissRate"
+        case 6 -> "LowConfidence"
+        case 7 -> "InsufficientSamples"
+        else -> "None"
+    }
+}
+
+fn VariantNameM4(v: Variant) -> String {
+    return switch v {
+        case Variant.ReasonBindingEmaStrongerCommit -> "ReasonBindingEMA_StrongerCommit"
+        case Variant.HealthyMarginGate -> "HealthyMarginGate"
+        case Variant.HealthyStreakGate -> "HealthyStreakGate"
+        else -> "HealthyMarginAndStreak"
+    }
+}
+
+fn BuildVariantsM4() -> Variant[] {
+    return [
+        Variant.ReasonBindingEmaStrongerCommit,
+        Variant.HealthyMarginGate,
+        Variant.HealthyStreakGate,
+        Variant.HealthyMarginAndStreak,
+    ]
+}
+
+fn BuildScenariosM4() -> Scenario[] {
+    return [
+        Scenario {
+            Name: "BoundaryCanaryConfidence"
+            Label: "boundary-canary"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Early(2.0), ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Early(2.0), ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Early(2.0)]
+        },
+        Scenario {
+            Name: "BoundaryCanaryConfidenceSustainedGood"
+            Label: "boundary-canary-good"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Early(2.0), ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "BoundaryHealthyConfidence"
+            Label: "boundary-healthy"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Late(1.0), ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Late(1.0), ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Late(1.0), ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "BoundaryHealthyConfidenceOscillation"
+            Label: "healthy-oscillation"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Match, ShadowOutcome.Cancelled]
+        },
+        Scenario {
+            Name: "BoundaryArrivalError"
+            Label: "boundary-arrival"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Late(2.0), ShadowOutcome.Match, ShadowOutcome.Late(2.2), ShadowOutcome.Match, ShadowOutcome.Early(2.2), ShadowOutcome.Match, ShadowOutcome.Late(1.8), ShadowOutcome.Match, ShadowOutcome.Late(2.1), ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "BurstyRealistic"
+            Label: "mixed-stress"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Late(1.0), ShadowOutcome.Match, ShadowOutcome.Stale, ShadowOutcome.Match, ShadowOutcome.Fallback, ShadowOutcome.Match, ShadowOutcome.Cancelled, ShadowOutcome.Late(5.0), ShadowOutcome.PhysicalNotReady, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Early(1.0), ShadowOutcome.Match, ShadowOutcome.Stale, ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "RecoveryAfterBadPatch"
+            Label: "long-recovery"
+            Events: [ShadowOutcome.Fallback, ShadowOutcome.PhysicalNotReady, ShadowOutcome.Stale, ShadowOutcome.Late(5.0), ShadowOutcome.PhysicalNotReady, ShadowOutcome.Fallback, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "MatchThenFallbackThenRecover"
+            Label: "degrade+recover"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Fallback, ShadowOutcome.Fallback, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+        Scenario {
+            Name: "HealthyLongRun"
+            Label: "long-clean"
+            Events: [ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match]
+        },
+    ]
+}
+
+fn RunScenarioVariantM4(s: Scenario, v: Variant) -> ScenarioMetric {
+    let m = ShadowAuthorityGateMachineM4(s.Events, v)
+
+    var h = 0
+    var c = 0
+    var b = 0
+    var d = 0
+    var u = 0
+    var highArrival = false
+    var fallbackViolation = false
+    var staleViolation = false
+
+    while not Complete(m) {
+        Step(m)
+        let x = BoardSnapshot(m)!
+
+        if x.RecordReady {
+            if x.GateCode == 4 { h = h + 1 }
+            if x.GateCode == 3 { c = c + 1 }
+            if x.GateCode == 2 { b = b + 1 }
+            if x.GateCode == 1 { u = u + 1 }
+            if x.GateCode == 0 { d = d + 1 }
+            if x.ReasonCode == 4 { highArrival = true }
+            if x.ReasonCode == 2 and x.GateCode == 4 { fallbackViolation = true }
+            if x.ReasonCode == 3 and x.GateCode == 4 { staleViolation = true }
+        }
+    }
+
+    let f = BoardSnapshot(m)!
+    let boundaryOver = s.Name == "BoundaryCanaryConfidence" and f.GateCode == 4
+    let overPromotion = boundaryOver
+
+    let expected = switch s.Name {
+        case "BoundaryCanaryConfidence" -> not boundaryOver
+        case "BoundaryCanaryConfidenceSustainedGood" -> f.TimeToHealthy >= 0
+        case "BoundaryHealthyConfidenceOscillation" -> f.ChatterCount <= 6
+        case "RecoveryAfterBadPatch" -> f.TimeToRecover >= 0
+        case "MatchThenFallbackThenRecover" -> f.TimeToRecover >= 0
+        case "BurstyRealistic" -> not fallbackViolation and not staleViolation
+        case "HealthyLongRun" -> f.TimeToHealthy >= 0
+        else -> true
+    }
+
+    return ScenarioMetric {
+        ScenarioName: s.Name
+        VariantName: VariantNameM4(v)
+        EventCount: Len(s.Events)
+        FinalGate: GateName(f.GateCode)
+        FinalReason: ReasonName(f.ReasonCode)
+        FinalConfidence: f.ConfidenceEma
+        FinalMissRate: f.MissRateEma
+        FinalArrivalError: f.ArrivalErrorEma
+        HealthyCount: h
+        CanaryCount: c
+        BlockedCount: b
+        DisabledCount: d
+        UnknownCount: u
+        TimeToFirstHealthy: f.TimeToHealthy
+        TimeToFirstCanary: f.TimeToCanary
+        TimeToRecover: f.TimeToRecover
+        ChatterCount: f.ChatterCount
+        OverPromotionFlag: overPromotion
+        BoundaryOverPromotionFlag: boundaryOver
+        HealthyMarginPassCount: f.HealthyMarginPassCount
+        HealthyStreakCountFinal: f.HealthyCandidateStreak
+        HealthySuppressedByMarginCount: f.HealthySuppressedByMarginCount
+        HealthySuppressedByStreakCount: f.HealthySuppressedByStreakCount
+        RecentFallbackHealthyViolation: fallbackViolation
+        RecentStaleHealthyViolation: staleViolation
+        HighArrivalErrorObserved: highArrival
+        ExpectedBehaviorMet: expected
+        RakeSignal: overPromotion or fallbackViolation or staleViolation
+        Notes: s.Label
+    }
+}
+
+fn RunLabM4() -> ScenarioMetric[] {
+    var rows: ScenarioMetric[] = []
+    let ss = BuildScenariosM4()
+    let vv = BuildVariantsM4()
+
+    for i in 0..Len(ss) {
+        for j in 0..Len(vv) {
+            rows = Append(rows, RunScenarioVariantM4(ss[i], vv[j]))
+        }
+    }
+
+    return rows
+}
+
+fn PrometheusShadowAuthorityRakeM4ArtifactWriteAll() -> Int {
+    Artifact.Checkpoint("artifactStart")
+
+    let rows = RunLabM4()
+
+    var csv = [["scenarioName", "variantName", "eventCount", "finalGate", "finalReason", "finalConfidence", "finalMissRate", "finalArrivalError", "healthyCount", "canaryCount", "blockedCount", "disabledCount", "unknownCount", "timeToFirstHealthy", "timeToFirstCanary", "timeToRecover", "chatterCount", "overPromotionFlag", "boundaryOverPromotionFlag", "healthyMarginPassCount", "healthyStreakCountFinal", "healthySuppressedByMarginCount", "healthySuppressedByStreakCount", "recentFallbackHealthyViolation", "recentStaleHealthyViolation", "highArrivalErrorObserved", "expectedBehaviorMet", "rakeSignal", "notes"]]
+
+    var ok = 0
+    var rake = 0
+    var chatterBase = 0
+    var overBase = 0
+    var overMargin = 0
+    var overStreak = 0
+    var overBoth = 0
+    var suppressMargin = 0
+    var suppressStreak = 0
+    var staleV = 0
+    var fbV = 0
+    var recovery = 0
+
+    for i in 0..Len(rows) {
+        Artifact.Progress("scenario/variant", i + 1, Len(rows))
+        let r = rows[i]
+
+        if r.ExpectedBehaviorMet { ok = ok + 1 }
+        if r.RakeSignal { rake = rake + 1 }
+        if r.RecentStaleHealthyViolation { staleV = staleV + 1 }
+        if r.RecentFallbackHealthyViolation { fbV = fbV + 1 }
+
+        if r.ScenarioName == "RecoveryAfterBadPatch" and (r.FinalGate == "CANARY_ELIGIBLE" or r.FinalGate == "HEALTHY") {
+            recovery = recovery + 1
+        }
+
+        if r.VariantName == "ReasonBindingEMA_StrongerCommit" {
+            chatterBase = chatterBase + r.ChatterCount
+            if r.BoundaryOverPromotionFlag { overBase = overBase + 1 }
+        }
+
+        if r.VariantName == "HealthyMarginGate" {
+            if r.BoundaryOverPromotionFlag { overMargin = overMargin + 1 }
+        }
+
+        if r.VariantName == "HealthyStreakGate" {
+            if r.BoundaryOverPromotionFlag { overStreak = overStreak + 1 }
+        }
+
+        if r.VariantName == "HealthyMarginAndStreak" {
+            if r.BoundaryOverPromotionFlag { overBoth = overBoth + 1 }
+        }
+
+        suppressMargin = suppressMargin + r.HealthySuppressedByMarginCount
+        suppressStreak = suppressStreak + r.HealthySuppressedByStreakCount
+
+        csv = Append(csv, [r.ScenarioName, r.VariantName, String.From<Int>(r.EventCount), r.FinalGate, r.FinalReason, String.From<Float>(r.FinalConfidence), String.From<Float>(r.FinalMissRate), String.From<Float>(r.FinalArrivalError), String.From<Int>(r.HealthyCount), String.From<Int>(r.CanaryCount), String.From<Int>(r.BlockedCount), String.From<Int>(r.DisabledCount), String.From<Int>(r.UnknownCount), String.From<Int>(r.TimeToFirstHealthy), String.From<Int>(r.TimeToFirstCanary), String.From<Int>(r.TimeToRecover), String.From<Int>(r.ChatterCount), String.From<Bool>(r.OverPromotionFlag), String.From<Bool>(r.BoundaryOverPromotionFlag), String.From<Int>(r.HealthyMarginPassCount), String.From<Int>(r.HealthyStreakCountFinal), String.From<Int>(r.HealthySuppressedByMarginCount), String.From<Int>(r.HealthySuppressedByStreakCount), String.From<Bool>(r.RecentFallbackHealthyViolation), String.From<Bool>(r.RecentStaleHealthyViolation), String.From<Bool>(r.HighArrivalErrorObserved), String.From<Bool>(r.ExpectedBehaviorMet), String.From<Bool>(r.RakeSignal), r.Notes])
+    }
+
+    Artifact.Checkpoint("beforeReportBuild")
+
+    let rec = switch {
+        case overMargin == 0 -> "HealthyMarginGate"
+        case overStreak == 0 -> "HealthyStreakGate"
+        case overBoth == 0 -> "HealthyMarginAndStreak"
+        else -> "ReasonBindingEMA_StrongerCommit"
+    }
+
+    let summary = Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(BuildScenariosM4())), ",\"variantCount\":", String.From<Int>(Len(BuildVariantsM4())), ",\"rowCount\":", String.From<Int>(Len(rows)), ",\"expectedBehaviorMet\":", String.From<Int>(ok), ",\"rakeSignal\":", String.From<Int>(rake), ",\"boundaryOverPromotionBaseline\":", String.From<Int>(overBase), ",\"boundaryOverPromotionMargin\":", String.From<Int>(overMargin), ",\"boundaryOverPromotionStreak\":", String.From<Int>(overStreak), ",\"boundaryOverPromotionMarginAndStreak\":", String.From<Int>(overBoth), ",\"healthySuppressedByMarginTotal\":", String.From<Int>(suppressMargin), ",\"healthySuppressedByStreakTotal\":", String.From<Int>(suppressStreak), ",\"recoveryStillPossibleCount\":", String.From<Int>(recovery), ",\"recommendation\":\"", rec, "\"}"]))
+
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus Shadow Authority Rake Lab (M4)"),
+        Markdown.Section("Question", [Markdown.Paragraph("Can a local HEALTHY-promotion stability guard eliminate confidence-boundary over-promotion without harming recovery or chatter?")]),
+        Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount", "variantCount", "expectedBehaviorMet", "rakeSignal", "boundaryOverPromotionBaseline", "boundaryOverPromotionMargin", "boundaryOverPromotionStreak", "boundaryOverPromotionMarginAndStreak", "healthySuppressedByMarginTotal", "healthySuppressedByStreakTotal", "recoveryStillPossibleCount", "recommendation"], [String.From<Int>(Len(BuildScenariosM4())), String.From<Int>(Len(BuildVariantsM4())), String.From<Int>(ok), String.From<Int>(rake), String.From<Int>(overBase), String.From<Int>(overMargin), String.From<Int>(overStreak), String.From<Int>(overBoth), String.From<Int>(suppressMargin), String.From<Int>(suppressStreak), String.From<Int>(recovery), rec]), Markdown.Paragraph("M4 remains diagnostic-only and does not modify native dispatch/selector/lease/prestage authority.")]),
+    ])
+
+    let findings = Markdown.Report([
+        Markdown.Title("FINDINGS: Prometheus Shadow Authority Rake Lab M4"),
+        Markdown.Section("Question", [Markdown.Paragraph("Can a small HEALTHY boundary guard fix BoundaryCanaryConfidence over-promotion while preserving recovery?")]),
+        Markdown.Section("Why M4 exists after M3", [Markdown.Paragraph("M3 left one known rake: BoundaryCanaryConfidence over-promoted to HEALTHY for all variants.")]),
+        Markdown.Section("Policy variants tested", [Markdown.Paragraph("ReasonBindingEMA_StrongerCommit baseline, HealthyMarginGate, HealthyStreakGate, and optional HealthyMarginAndStreak.")]),
+        Markdown.Section("Aggregate result with exact numbers", [Markdown.Paragraph("Expected behavior met=" + String.From<Int>(ok) + "/" + String.From<Int>(Len(rows)) + ", rakeSignal=" + String.From<Int>(rake) + ", boundary over-promotion baseline/margin/streak/both=" + String.From<Int>(overBase) + "/" + String.From<Int>(overMargin) + "/" + String.From<Int>(overStreak) + "/" + String.From<Int>(overBoth) + ".")]),
+        Markdown.Section("BoundaryCanaryConfidence result", [Markdown.Paragraph("Improved variants are evaluated directly by boundaryOverPromotionFlag to verify elimination of final HEALTHY over-promotion.")]),
+        Markdown.Section("Sustained-good recovery result", [Markdown.Paragraph("BoundaryCanaryConfidenceSustainedGood checks whether stronger evidence still reaches HEALTHY for promoted recommendation candidates.")]),
+        Markdown.Section("Chatter result", [Markdown.Paragraph("Chatter is tracked per scenario and variant; oscillation scenario guards against excess transitions.")]),
+        Markdown.Section("Recovery preservation result", [Markdown.Paragraph("RecoveryAfterBadPatch and MatchThenFallbackThenRecover remain required to reach CANARY/HEALTHY after bad intervals.")]),
+        Markdown.Section("Stale/fallback/arrival-error regression check", [Markdown.Paragraph("RecentStale and RecentFallback HEALTHY violations remain explicitly tracked; high-arrival-error observation remains visible.")]),
+        Markdown.Section("Rakes found", [Markdown.Paragraph("Rakes are any boundary over-promotion or stale/fallback healthy contradiction events captured by rakeSignal.")]),
+        Markdown.Section("Recommended native M12 policy", [Markdown.Paragraph("Recommendation from this run: " + rec + ". Keep native authority diagnostic-only until feature-flagged canary path in M12.")]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("Simulation-only evidence from finite scenarios; no native constants, dispatch, selector, lease, or prestage authority changes are proposed here.")]),
+    ])
+
+    Artifact.Checkpoint("beforeWrites")
+    Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M4/shadow_authority_m4_boundary_report.octagon", rows)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M4/shadow_authority_m4_boundary_report.md", md)
+    Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_metrics.csv", csv)
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json", summary)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M4/FINDINGS.md", findings)
+    Artifact.Checkpoint("done")
+
+    return 0
+}

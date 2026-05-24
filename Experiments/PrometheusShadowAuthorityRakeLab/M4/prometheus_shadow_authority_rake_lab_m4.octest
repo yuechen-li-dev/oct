@@ -1,0 +1,103 @@
+package PrometheusShadowAuthorityRakeLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4.FlowSmoke")]
+fn ScenarioCountIsExpectedM4() -> Void ! Error {
+    Assert.Equal(9, Len(BuildScenariosM4()), "scenario count")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4.FlowSmoke")]
+fn VariantCountIsExpectedM4() -> Void ! Error {
+    Assert.Equal(4, Len(BuildVariantsM4()), "variant count")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn BoundaryOverPromotionEliminatedForRecommendedVariant() -> Void ! Error {
+    let s = BuildScenariosM4()[0]
+    let r = RunScenarioVariantM4(s, Variant.HealthyMarginGate)
+    Assert.True(not r.BoundaryOverPromotionFlag, "boundary over-promotion")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn SustainedGoodStillReachesHealthy() -> Void ! Error {
+    let s = BuildScenariosM4()[1]
+    let r = RunScenarioVariantM4(s, Variant.HealthyMarginGate)
+    Assert.True(r.TimeToFirstHealthy >= 0, "eventual healthy")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn OscillationChatterBounded() -> Void ! Error {
+    let s = BuildScenariosM4()[3]
+    let r = RunScenarioVariantM4(s, Variant.HealthyMarginGate)
+    Assert.True(r.ChatterCount <= 6, "oscillation chatter")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn RecoveryAfterBadPatchStillRecoversM4() -> Void ! Error {
+    let r = RunScenarioVariantM4(BuildScenariosM4()[6], Variant.HealthyMarginGate)
+    Assert.True(r.TimeToRecover >= 0, "recovery")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn MatchThenFallbackThenRecoverStillRecoversM4() -> Void ! Error {
+    let r = RunScenarioVariantM4(BuildScenariosM4()[7], Variant.HealthyMarginGate)
+    Assert.True(r.TimeToRecover >= 0, "fallback recover")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn BurstyStillNoFallbackOrStaleHealthyViolation() -> Void ! Error {
+    let r = RunScenarioVariantM4(BuildScenariosM4()[5], Variant.HealthyMarginGate)
+    Assert.True(
+        not r.RecentFallbackHealthyViolation and not r.RecentStaleHealthyViolation,
+        "safety"
+    )
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+fn BoardSnapshotAndWhenPolicyPathExercisedM4() -> Void ! Error {
+    let r = RunScenarioVariantM4(
+        BuildScenariosM4()[2],
+        Variant.ReasonBindingEmaStrongerCommit
+    )
+    Assert.True(r.EventCount > 0 and r.TimeToFirstCanary >= 0, "board and policy path")
+}
+
+[Artifact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M4.Artifacts")]
+fn ArtifactOutputsExistM4() -> Void ! Error {
+    let _ = PrometheusShadowAuthorityRakeM4ArtifactWriteAll()
+
+    Assert.True(
+        Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/shadow_authority_m4_boundary_report.octagon")?) > 0,
+        "octagon"
+    )
+    Assert.True(
+        Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/shadow_authority_m4_boundary_report.md")?) > 0,
+        "md"
+    )
+    Assert.True(
+        Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_metrics.csv")?) > 0,
+        "csv"
+    )
+    Assert.True(
+        Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json")?) > 0,
+        "json"
+    )
+    Assert.True(
+        Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/FINDINGS.md")?) > 0,
+        "findings"
+    )
+}
