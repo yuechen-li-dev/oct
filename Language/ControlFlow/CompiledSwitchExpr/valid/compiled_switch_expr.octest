@@ -1,0 +1,28 @@
+package Main
+
+fn Classify(n: Int) -> Int {
+    return switch n {
+        case 0 => 0
+        case 1 => 10
+        else => 20
+    }
+}
+
+fn SwitchReturn(n: Int) -> Int {
+    return switch n {
+        case 2 => 5
+        else => 7
+    }
+}
+
+[Fact]
+fn SwitchExprWorks() -> Void {
+    let base = switch 3 {
+        case 1 => 1
+        case 3 => 3
+        else => 0
+    }
+    Assert.Equal(7, base + 4, "switch result used in arithmetic")
+    Assert.Equal(10, Classify(1), "switch int classification")
+    Assert.Equal(7, SwitchReturn(9), "switch used as function return")
+}

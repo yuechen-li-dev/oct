@@ -1,0 +1,15 @@
+package Main
+
+[Fact]
+fn FloatIntConverts() -> Void {
+    let x: Int = 3
+    let y: Float = Float(x)
+    Assert.Near(3.0, y, 1e-9, "Float(Int) converts")
+}
+
+[Fact]
+fn Clamp01Clamps() -> Void {
+    Assert.Near(0.0, Clamp01(0.0 - 0.25), 1e-9, "Clamp01 low")
+    Assert.Near(0.5, Clamp01(0.5), 1e-9, "Clamp01 mid")
+    Assert.Near(1.0, Clamp01(1.25), 1e-9, "Clamp01 high")
+}

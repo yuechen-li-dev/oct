@@ -141,6 +141,7 @@ var names = map[string]struct{}{
 	"UISignature":              {},
 	"FormatFloat":              {},
 	"Float":                    {},
+	"Clamp01":                  {},
 	"ToString":                 {},
 	"Contains":                 {},
 	"StartsWith":               {},

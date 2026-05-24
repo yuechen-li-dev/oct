@@ -131,3 +131,6 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - `examples/SmartGreenhouseController --execution compiled` is now fully green, including:
   - `MatrixVectorDistinctFromArray`
   - `FlowCompletesAndHistoryPresent`
+
+
+- Compiled mode supports `Float(Int) -> Float`, `Clamp01(Float) -> Float`, and switch expressions in flow blocks (expression form only; no `else if` syntax).

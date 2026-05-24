@@ -1325,6 +1325,9 @@ func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
 }
 
 func (p *parser) parsePrefixExpr() (ast.Expr, error) {
+	if p.current().Kind == lex.Bang {
+		return nil, p.errorAtCurrent("'!' is not boolean not in Oct; use 'not' (postfix 'expr!' remains valid unwrap syntax)")
+	}
 	if p.match(lex.Minus) {
 		operand, err := p.parsePrefixExpr()
 		if err != nil {
@@ -1831,6 +1834,9 @@ func (p *parser) parseIfExpr() (ast.Expr, error) {
 }
 
 func (p *parser) parseIfExprBranch(name string) (ast.Expr, error) {
+	if name == "else" && p.current().Kind == lex.KeywordIf {
+		return nil, p.errorAtCurrent("Oct does not support `else if`; use a switch expression for multi-way branching, or put a nested `if` inside the `else { ... }` block.")
+	}
 	if _, err := p.expect(lex.LeftBrace, fmt.Sprintf("expected '{' to start if expression %s branch", name)); err != nil {
 		return nil, err
 	}
