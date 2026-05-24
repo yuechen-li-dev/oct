@@ -1,0 +1,280 @@
+package PrometheusShadowAuthorityRakeLab
+
+import Artifact
+import Json
+import Markdown
+import String
+
+enum ShadowOutcome {
+    Match
+    Early
+    Late
+    PhysicalNotReady
+    Stale
+    Fallback
+    Cancelled
+}
+
+record Scenario {
+    Name: String
+    Events: ShadowOutcome[]
+}
+
+record ScenarioMetric {
+    ScenarioName: String
+    EventCount: Int
+    FinalConfidence: Float
+    FinalGate: String
+    FinalReason: String
+    FinalLookaheadState: String
+    RecommendedLookaheadDepth: Int
+    HealthyCount: Int
+    CanaryEligibleCount: Int
+    BlockedCount: Int
+    DisabledCount: Int
+    UnknownCount: Int
+    TimeToFirstCanary: Int
+    TimeToFirstHealthy: Int
+    TimeToRecoverAfterMiss: Int
+    MaxArrivalError: Float
+    MeanArrivalError: Float
+    MissRate: Float
+    Notes: String
+}
+
+flow ShadowAuthorityGateMachine(events: ShadowOutcome[]) -> Bool {
+    board {
+        Index: Int
+        SampleCount: Int
+        MatchCount: Int
+        MissCount: Int
+        EarlyCount: Int
+        LateCount: Int
+        StaleCount: Int
+        FallbackCount: Int
+        CancelCount: Int
+        TotalAbsArrivalErrorTicks: Float
+        MaxAbsArrivalErrorTicks: Float
+        Confidence: Float
+        MissRate: Float
+        MeanAbsArrivalErrorTicks: Float
+        LookaheadCode: Int
+        GateCode: Int
+        ReasonCode: Int
+        RecommendedLookaheadDepth: Int
+        HadRecentMiss: Bool
+        RecoveredAt: Int
+        FirstCanaryAt: Int
+        FirstHealthyAt: Int
+        RecordReady: Bool
+        DoneFlag: Bool
+    }
+    state Initialize {
+        board.Index = 0
+        board.SampleCount = Len(events)
+        board.MatchCount = 0
+        board.MissCount = 0
+        board.EarlyCount = 0
+        board.LateCount = 0
+        board.StaleCount = 0
+        board.FallbackCount = 0
+        board.CancelCount = 0
+        board.TotalAbsArrivalErrorTicks = 0.0
+        board.MaxAbsArrivalErrorTicks = 0.0
+        board.Confidence = 0.5
+        board.MissRate = 0.0
+        board.MeanAbsArrivalErrorTicks = 0.0
+        board.LookaheadCode = 0
+        board.GateCode = 0
+        board.ReasonCode = 1
+        board.RecommendedLookaheadDepth = 0
+        board.HadRecentMiss = false
+        board.RecoveredAt = -1
+        board.FirstCanaryAt = -1
+        board.FirstHealthyAt = -1
+        board.RecordReady = false
+        board.DoneFlag = false
+        goto ReadOutcome
+    }
+    state ReadOutcome {
+        board.RecordReady = false
+        when { case board.Index >= board.SampleCount -> goto Done else -> goto UpdateCalibration }
+    }
+    state UpdateCalibration {
+        let outcome = events[board.Index]
+        if outcome == ShadowOutcome.Match {
+            board.MatchCount = board.MatchCount + 1
+            board.Confidence = board.Confidence + 0.05
+            if board.Confidence > 1.0 { board.Confidence = 1.0 }
+        }
+        if outcome == ShadowOutcome.Early {
+            board.EarlyCount = board.EarlyCount + 1
+            board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0
+            board.Confidence = board.Confidence - 0.02
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if outcome == ShadowOutcome.Late {
+            board.LateCount = board.LateCount + 1
+            board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0
+            board.Confidence = board.Confidence - 0.02
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if outcome == ShadowOutcome.PhysicalNotReady {
+            board.MissCount = board.MissCount + 1
+            board.HadRecentMiss = true
+            board.Confidence = board.Confidence - 0.10
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if outcome == ShadowOutcome.Stale {
+            board.StaleCount = board.StaleCount + 1
+            board.Confidence = board.Confidence - 0.05
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if outcome == ShadowOutcome.Fallback {
+            board.FallbackCount = board.FallbackCount + 1
+            board.Confidence = board.Confidence - 0.05
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if outcome == ShadowOutcome.Cancelled {
+            board.CancelCount = board.CancelCount + 1
+            board.Confidence = board.Confidence - 0.01
+            if board.Confidence < 0.0 { board.Confidence = 0.0 }
+        }
+        if board.TotalAbsArrivalErrorTicks > board.MaxAbsArrivalErrorTicks { board.MaxAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks }
+        goto ComputeRates
+    }
+    state ComputeRates {
+        let samples = board.MatchCount + board.MissCount + board.EarlyCount + board.LateCount + board.StaleCount + board.FallbackCount + board.CancelCount
+        if samples > 0 {
+            board.MissRate = Float(board.MissCount + board.StaleCount + board.FallbackCount) / Float(samples)
+            board.MeanAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks / Float(samples)
+        }
+        goto EvaluateLookahead
+    }
+    state EvaluateLookahead {
+        board.LookaheadCode = if board.FallbackCount > 0 { 0 } else { 1 }
+        goto EvaluateGate
+    }
+    state EvaluateGate {
+        let gate = when policy { hysteresis: 2 min_commit: 2 } {
+            case 4 when board.LookaheadCode == 1 and board.Confidence >= 0.75 and board.MissRate <= 0.20 and board.MeanAbsArrivalErrorTicks <= 2.0 score 100
+            case 3 when board.LookaheadCode == 1 and board.Confidence >= 0.60 and board.MissRate <= 0.20 and board.MeanAbsArrivalErrorTicks <= 2.0 score 80
+            case 2 when board.SampleCount >= 3 score 60
+            case 1 when board.SampleCount < 3 score 50
+            else 0
+        }
+        board.GateCode = gate
+        board.ReasonCode = switch {
+            case board.LookaheadCode == 0 => 6
+            case board.SampleCount < 3 => 1
+            case board.Confidence < 0.60 => 2
+            case board.MissRate > 0.20 => 3
+            case board.MeanAbsArrivalErrorTicks > 2.0 => 4
+            else => 0
+        }
+        board.RecommendedLookaheadDepth = switch {
+            case board.GateCode == 4 and board.MeanAbsArrivalErrorTicks < 1.0 => 2
+            case board.GateCode >= 3 => 1
+            else => 0
+        }
+        if board.FirstCanaryAt < 0 and board.GateCode >= 3 { board.FirstCanaryAt = board.Index }
+        if board.FirstHealthyAt < 0 and board.GateCode == 4 { board.FirstHealthyAt = board.Index }
+        if board.HadRecentMiss and board.RecoveredAt < 0 and board.GateCode >= 3 { board.RecoveredAt = board.Index }
+        if board.GateCode >= 3 { board.HadRecentMiss = false }
+        goto Record
+    }
+    state Record { board.RecordReady = true goto Advance }
+    state Advance { board.Index = board.Index + 1 suspend goto ReadOutcome }
+    state Done { board.DoneFlag = true return true }
+}
+
+fn GateName(code: Int) -> String {
+    return switch code {
+        case 4 => "HEALTHY"
+        case 3 => "CANARY_ELIGIBLE"
+        case 2 => "BLOCKED"
+        case 1 => "UNKNOWN"
+        else => "DISABLED"
+    }
+}
+fn ReasonName(code: Int) -> String {
+    return switch code {
+        case 6 => "LookaheadDisabled"
+        case 1 => "InsufficientSamples"
+        case 2 => "LowConfidence"
+        case 3 => "HighMissRate"
+        case 4 => "HighArrivalError"
+        else => "None"
+    }
+}
+fn LookaheadName(code: Int) -> String {
+    return switch code {
+        case 0 => "DISABLED"
+        else => "ENABLED"
+    }
+}
+
+fn BuildScenarios() -> Scenario[] { return [
+Scenario { Name: "PerfectMatches" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "ColdStart" Events: [ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "LateJitterSmall" Events: [ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "LateJitterLarge" Events: [ShadowOutcome.Late,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Late] },
+Scenario { Name: "PhysicalNotReadyBurst" Events: [ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.PhysicalNotReady,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "RecoveryAfterMisses" Events: [ShadowOutcome.PhysicalNotReady,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "FallbackBurst" Events: [ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "StalePredictions" Events: [ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "CancelledNoise" Events: [ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "MixedRealistic" Events: [ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Early,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match] }
+] }
+
+fn RunScenario(s: Scenario) -> ScenarioMetric {
+    let m = ShadowAuthorityGateMachine(s.Events)
+    var healthy = 0
+    var canary = 0
+    var blocked = 0
+    var disabled = 0
+    var unknown = 0
+    while not Complete(m) {
+        Step(m)
+        let b = BoardSnapshot(m)!
+        if b.RecordReady {
+            if b.GateCode == 4 { healthy = healthy + 1 }
+            if b.GateCode == 3 { canary = canary + 1 }
+            if b.GateCode == 2 { blocked = blocked + 1 }
+            if b.GateCode == 1 { unknown = unknown + 1 }
+            if b.GateCode == 0 { disabled = disabled + 1 }
+        }
+    }
+    let f = BoardSnapshot(m)!
+    return ScenarioMetric { ScenarioName: s.Name EventCount: Len(s.Events) FinalConfidence: f.Confidence FinalGate: GateName(f.GateCode) FinalReason: ReasonName(f.ReasonCode) FinalLookaheadState: LookaheadName(f.LookaheadCode) RecommendedLookaheadDepth: f.RecommendedLookaheadDepth HealthyCount: healthy CanaryEligibleCount: canary BlockedCount: blocked DisabledCount: disabled UnknownCount: unknown TimeToFirstCanary: f.FirstCanaryAt TimeToFirstHealthy: f.FirstHealthyAt TimeToRecoverAfterMiss: f.RecoveredAt MaxArrivalError: f.MaxAbsArrivalErrorTicks MeanArrivalError: f.MeanAbsArrivalErrorTicks MissRate: f.MissRate Notes: "diagnostic-only rake lab" }
+}
+
+fn RunLab() -> ScenarioMetric[] {
+    var rows: ScenarioMetric[] = []
+    let scenarios = BuildScenarios()
+    for i in 0..Len(scenarios) {
+        rows = Append(rows, RunScenario(scenarios[i]))
+    }
+    return rows
+}
+
+fn PrometheusShadowAuthorityRakeArtifactWriteAll() -> Int {
+    Artifact.Checkpoint("artifactStart")
+    let rows = RunLab()
+    var csv = [["scenarioName","eventCount","finalConfidence","finalGate","finalReason","finalLookaheadState","recommendedLookaheadDepth","healthyCount","canaryEligibleCount","blockedCount","disabledCount","unknownCount","timeToFirstCanary","timeToFirstHealthy","timeToRecoverAfterMiss","maxArrivalError","meanArrivalError","missRate","notes"]]
+    for i in 0..Len(rows) {
+        Artifact.Progress("scenario", i + 1, Len(rows))
+        let r = rows[i]
+        csv = Append(csv, [r.ScenarioName,String.From<Int>(r.EventCount),String.From<Float>(r.FinalConfidence),r.FinalGate,r.FinalReason,r.FinalLookaheadState,String.From<Int>(r.RecommendedLookaheadDepth),String.From<Int>(r.HealthyCount),String.From<Int>(r.CanaryEligibleCount),String.From<Int>(r.BlockedCount),String.From<Int>(r.DisabledCount),String.From<Int>(r.UnknownCount),String.From<Int>(r.TimeToFirstCanary),String.From<Int>(r.TimeToFirstHealthy),String.From<Int>(r.TimeToRecoverAfterMiss),String.From<Float>(r.MaxArrivalError),String.From<Float>(r.MeanArrivalError),String.From<Float>(r.MissRate),r.Notes])
+    }
+    Artifact.Checkpoint("beforeReportBuild")
+    let md = Markdown.Report([Markdown.Title("Prometheus Shadow Authority Rake Lab (M1)"),Markdown.Section("Question", [Markdown.Paragraph("Can a scalar-board Octomata model of P15 M8/M9/M10-style shadow authority diagnostics hold conservative gating under deterministic synthetic scenario stress?")]),Markdown.Section("Why this lab exists", [Markdown.Paragraph("Rake-lab policy shaping before native authority changes; this is simulation evidence only.")]),Markdown.Section("Findings", [Markdown.KeyValueTable(["scenarioCount","note"],[String.From<Int>(Len(rows)),"Uses Octomata flow + when policy hysteresis/min_commit"])]),Markdown.Section("Next step", [Markdown.Paragraph("Use these diagnostics to decide whether native would-act counters should be added without changing dispatch authority.")])])
+    Artifact.Checkpoint("beforeWrites")
+    Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.octagon", rows)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.md", md)
+    Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_metrics.csv", csv)
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(rows)), ",\"recommendation\":\"add more mixed scenarios before native would-act counters\"}"])))
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M1/FINDINGS.md", md)
+    Artifact.Checkpoint("done")
+    return 0
+}
