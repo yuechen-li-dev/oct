@@ -1,0 +1,31 @@
+package Main
+
+enum ShadowOutcome {
+    Match
+    Late(Float)
+}
+
+flow MakeOutcome() -> Float {
+    board {
+        Value: Float
+    }
+
+    state Start {
+        let fromTag = ShadowOutcome.Match
+        let fromPayload = ShadowOutcome.Late(5.0)
+        let value = match ShadowOutcome.Late(3.0) {
+            case ShadowOutcome.Late(ticks) => ticks + (match fromPayload {
+                case ShadowOutcome.Late(payloadTicks) => payloadTicks
+                case ShadowOutcome.Match => 0.0
+            })
+            case ShadowOutcome.Match => 0.0
+        }
+        let settled = match fromTag {
+            case ShadowOutcome.Match => value
+            case ShadowOutcome.Late(ticks) => ticks
+        }
+        let lifted = Abs(settled)
+        board.Value = lifted
+        return board.Value
+    }
+}

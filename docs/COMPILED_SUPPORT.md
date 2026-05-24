@@ -54,7 +54,7 @@ Notes:
 | `ast.ParenExpr` | Yes | **Yes (added in this sweep)** | Yes | Implement now | Lower/type-infer now recurse into inner expression. |
 | `ast.CallExpr` | Yes | Yes (builtin-only) | Yes (pure only) | Keep allowlist | Flow keeps non-fallible pure builtin-only boundary. |
 | `ast.IndexExpr` | Yes | Yes (single-dimension array only) | Yes | Keep scoped | Matrix/vector/string indexing still deferred in flow path. |
-| `ast.FieldAccessExpr` | Yes | Partial (`board.<field>`) | Yes (board access) | Defer broader | Record/snapshot field access outside `board` remains intentionally unsupported in flow path. |
+| `ast.FieldAccessExpr` | Yes | Partial (`board.<field>` + enum variant values/constructors) | Yes (M0 board + enum constructors) | Scoped support | Compiled flow now supports enum `Type.Variant` values and `Type.Variant(payload)` constructors in expression positions; arbitrary object/member field access remains unsupported. |
 | `ast.ArrayLiteralExpr` | Yes | No | Maybe | Defer | Not required for current scalar-board M0 parity and would expand flow type surface. |
 | `ast.RecordLiteralExpr` | Yes | Yes (record construction for flow return/value expressions) | Yes (named-field record construction) | Implemented | Compiled flow lowering now supports named-field record literals for direct value construction (including return paths). Imported/advanced record forms remain bounded by existing flow type resolution. |
 | `ast.RecordUpdateExpr` (`with`) | Yes | No | Maybe | Defer | Wider record semantics not needed for current M0 flow support target. |
