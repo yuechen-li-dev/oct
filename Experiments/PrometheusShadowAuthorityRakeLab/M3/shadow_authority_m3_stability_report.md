@@ -19,3 +19,7 @@ Can EMA reason arbitration and threshold stability controls reduce boundary chat
 | recentStaleHealthyViolationCount | 1 |
 | recentFallbackHealthyViolationCount | 0 |
 | recommendation | ReasonBindingEMA_StrongerCommit |
+
+Variant-level evidence: baseline chatter=33, reason-binding chatter=33, stronger-commit chatter=30. Over-promotion totals trend down across variants in this run.
+
+See FINDINGS.md for full scenario-by-scenario interpretation and recommendation rationale.
