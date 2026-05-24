@@ -5018,6 +5018,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   } else if (rt->p15_shadow_authority_gate.state != PROM_SHADOW_AUTHORITY_HEALTHY) {
     rt->p15_feedforward_dispatch_state.block_reason = 2u;
     rt->p15_feedforward_dispatch_state.reason_binding_block_count += 1u;
+  } else if (occupancy_decision.fallback_used != 0u) {
+    rt->p15_feedforward_dispatch_state.block_reason = 6u;
+    rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
   } else if (rt->p15_shadow_canary_state.healthy_margin_passed == 0u) {
     rt->p15_feedforward_dispatch_state.block_reason = 3u;
     rt->p15_feedforward_dispatch_state.margin_block_count += 1u;
@@ -7984,6 +7987,40 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
 // ============================================================================
 // SGEMM Diagnostics Export
 // ============================================================================
+
+int prom_reactor_runtime_p15_test_seed_matured_reservation_impl(void* handle,
+                                                          uint32_t shape_class,
+                                                          uint32_t variant_id,
+                                                          uint64_t target_tick) {
+  prom_dominatus_future_lease_request req;
+  prom_dominatus_reservation_decision d;
+  prometheus_runtime* rt;
+  if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) return PROM_INVALID_HANDLE;
+  if (rt->p15_shadow_canary_params.enabled == 0u) return PROM_ERROR;
+  memset(&req, 0, sizeof(req));
+  req.valid = 1u;
+  req.request_id = target_tick != 0u ? target_tick : 1u;
+  req.target_tick = target_tick;
+  req.shape_class = shape_class;
+  req.variant_id = variant_id;
+  req.lookahead_depth = 1u;
+  req.confidence = 0.95;
+  d = prom_dominatus_reservation_request_from_future_lease(&rt->p15_predictor_state.reservations,
+                                                            &rt->p15_predictor_state.reservation_params,
+                                                            &req,
+                                                            target_tick > 0u ? target_tick - 1u : 0u);
+  if (d.reserved == 0u) return PROM_ERROR;
+  d = prom_dominatus_reservation_mature(&rt->p15_predictor_state.reservations, target_tick);
+  if (d.matured == 0u) return PROM_ERROR;
+  rt->p15_shadow_authority_gate.valid = 1u;
+  rt->p15_shadow_authority_gate.state = PROM_SHADOW_AUTHORITY_HEALTHY;
+  rt->p15_shadow_authority_gate.authority_enabled = 1u;
+  rt->p15_shadow_canary_state.healthy_margin_passed = 1u;
+  rt->p15_shadow_canary_state.reason_binding_passed = 1u;
+  return PROM_OK;
+}
 
 int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusSgemmPolicyDiagnostics* out_diag) {
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();

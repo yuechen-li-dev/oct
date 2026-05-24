@@ -88,6 +88,14 @@ int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle, Prometheus
   return prom_reactor_runtime_sgemm_policy_diagnostics_impl(handle, out_diag);
 }
 
+
+int prometheus_reactor_runtime_p15_test_seed_matured_reservation(void* handle,
+                                                                 uint32_t shape_class,
+                                                                 uint32_t variant_id,
+                                                                 uint64_t target_tick) {
+  return prom_reactor_runtime_p15_test_seed_matured_reservation_impl(handle, shape_class, variant_id, target_tick);
+}
+
 int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle, PrometheusSgemmBatchDiagnostics* out_diag) {
   return prom_reactor_runtime_sgemm_batch_diagnostics_impl(handle, out_diag);
 }

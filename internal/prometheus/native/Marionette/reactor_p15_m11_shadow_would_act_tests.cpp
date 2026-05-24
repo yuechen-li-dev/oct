@@ -67,7 +67,7 @@ FACT(PrometheusP15M11ShadowWouldAct_ReasonBindingAndDedup)
     calibration.sample_count = 10u;
     calibration.match_count = 9u;
     calibration.miss_count = 1u;
-    calibration.total_abs_arrival_error_ticks = 20u;
+    calibration.total_abs_arrival_error_ticks = 21u;
     calibration.confidence = 0.9;
     calibration.lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_HEALTHY;
 
