@@ -1,0 +1,30 @@
+package Main
+
+record Outcome {
+    Score: Float
+    Ready: Bool
+}
+
+flow IfExprFlow(error: Float, ready: Bool) -> Outcome {
+    board { Penalty: Float Score: Float Ready: Bool }
+    state Start {
+        let penalty = if board.Penalty > 2.0 { 1.0 } else { 0.0 }
+        board.Score = if error > 1.0 and ready { 10.0 } else { 2.0 }
+        board.Ready = if ready or error < 0.5 { true } else { false }
+        return Outcome {
+            Score: if board.Score > 5.0 { board.Score - penalty } else { board.Score }
+            Ready: if board.Ready { true } else { false }
+        }
+    }
+}
+
+[Fact]
+fn FlowIfExprLetAssignReturnAndNested() -> Void {
+    let f1 = IfExprFlow(2.5, true)
+    Step(f1)
+    Assert.True(Complete(f1), "flow should complete")
+
+    let f2 = IfExprFlow(0.2, false)
+    Step(f2)
+    Assert.True(Complete(f2), "second flow should complete")
+}
