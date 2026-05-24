@@ -473,6 +473,26 @@ prom_dominatus_reservation_decision prom_dominatus_reservation_expire_stale(
   { prom_dominatus_reservation_decision d; memset(&d,0,sizeof(d)); return d; }
 }
 
+prom_dominatus_reservation_decision prom_dominatus_reservation_consume_matured(
+    prom_dominatus_reservation_state_set* state,
+    uint32_t shape_class,
+    uint32_t variant_id) {
+  uint32_t i;
+  int found = -1;
+  uint64_t best_tick = 0u;
+  for (i = 0u; state != NULL && i < PROM_DOM_RESERVATION_CAP; ++i) {
+    const prom_dominatus_reservation_request* e = &state->entries[i];
+    if (e->valid == 0u || e->state != PROM_DOM_RESERVATION_MATURED) continue;
+    if (e->shape_class != shape_class || e->variant_id != variant_id) continue;
+    if (found < 0 || e->target_tick < best_tick) {
+      found = (int)i;
+      best_tick = e->target_tick;
+    }
+  }
+  if (found >= 0) return reservation_transition(state, (uint64_t)found, PROM_DOM_RESERVATION_YIELDED, 0u);
+  { prom_dominatus_reservation_decision d; memset(&d, 0, sizeof(d)); return d; }
+}
+
 prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
     prom_dominatus_predictor_state* predictor,
     prom_dominatus_reservation_state_set* reservations,
