@@ -1,91 +1,55 @@
-# P15 M13 Shadow Feedforward Canary (Meaningful Progression)
+# P15 M13 Shadow Feedforward Canary (Reservation Lifecycle Heartbeat + Diagnostics Correctness)
 
-## 2026-05-24 audit snapshot
-- SGEMM path still uses normal occupancy/judgment selectors and does not invoke dispatch-time `prom_dominatus_reservation_consume_matured(...)`.
-- Reservation consume API remains helper-level only (M13b seam).
-- Canary/authority diagnostics export exists; feedforward-specific dispatch diagnostics are still not present.
+## Claude audit summary (2026-05-24)
+- Root cause confirmed: production path created canary/future reservations but did not continuously advance reservation lifecycle.
+- `prom_dominatus_reservation_mature(...)` was only reached through the test seed helper.
+- `prom_dominatus_reservation_expire_stale(...)` was not called in production timing/dispatch flow.
+- Dispatch consume only scanned `MATURED` entries (`prom_dominatus_reservation_consume_matured(...)`), so production `feedforward_used` remained 0 unless tests injected matured reservations.
+- Stale `RESERVED` entries could accumulate and eventually block reservation capacity.
 
-## Exact unresolved blocker
-End-to-end SGEMM dispatch actuator wiring for matured reservation consume/use/fallback is not yet integrated in `reactor_vulkan_sgemm.c`.
+## Production heartbeat fix
+- Added `prom_dominatus_predictor_advance_reservations(...)` in native predictor layer.
+- Helper deterministically advances lifecycle in bounded steps:
+  1. expire stale reserved entries,
+  2. mature ready reserved entries.
+- SGEMM now calls this helper:
+  - once on dispatch path before any feedforward consume attempt (earliest safe point),
+  - once on valid GPU timing update path after predictor evidence/correction update.
 
-## Next patch plan (tests-first)
-1. Add Marionette red tests for dispatch-time default-off/fallback/consume-success integration.
-2. Insert feedforward seam at SGEMM variant/path-selection point with healthy+reason-binding+margin gate.
-3. Add feedforward diagnostics fields/counters for used/block/fallback attribution.
-4. Add software Vulkan smoke (run or precise skip reason).
+This resolves missing production lifecycle heartbeat without introducing override behavior.
 
-## M13 retry (current pass)
+## Expire-stale behavior
+- Expiration is now part of production heartbeat; stale `RESERVED` entries are transitioned to `EXPIRED` using existing reservation params (`expiry_slack_ticks`).
+- This prevents indefinite accumulation of stale reservations in the fixed-capacity ring.
 
-- Added one SGEMM-path Marionette coverage case for default-off behavior (`PrometheusP15M13ShadowFeedforward_DefaultOffMaturedReservationDoesNotConsume`).
-- Updated dispatch branch to preserve strict judgment fallback when occupancy fallback is already required.
-- Feedforward consume remains gated by: feature enabled, healthy authority, healthy margin, reason-binding pass, and non-fallback occupancy decision.
-- Consume path now records reserved variant from consumed reservation payload.
+## Authority enabled propagation hardening
+- Added `prom_dominatus_shadow_authority_gate_evaluate_with_enabled(...)`.
+- Production SGEMM now evaluates gate with `enabled` passed in directly, eliminating fragile post-evaluation patching.
+- Legacy `prom_dominatus_shadow_authority_gate_evaluate(...)` remains as compatibility wrapper (enabled=0).
 
-## M13d enabled happy-path SGEMM integration attempt
+## Feedforward mode: agree-and-confirm (explicit)
+- This pass keeps feedforward in agree-and-confirm mode.
+- A matured reservation is consumed only if it matches selected occupancy/judgment shape+variant.
+- On mismatch or absence, dispatch falls back to judgment path.
+- No override semantics introduced.
 
-1. **Red phase added**
-   - Added `PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySgemm`.
-   - Initial red run failed with:
-     - SGEMM runtime unavailable in this environment,
-     - `p15_shadow_feedforward_used == 0` and source/consume assertions failing.
+## Mismatch diagnostics wired
+- Dispatch path now increments mismatch counters when matured reservations exist but cannot be consumed due to disagreement:
+  - `p15_shadow_feedforward_shape_mismatch_count`
+  - `p15_shadow_feedforward_variant_mismatch_count`
+- Existing fallback/no-matured attribution remains intact.
 
-2. **Test-only seam added (narrow)**
-   - Added `prometheus_reactor_runtime_p15_test_seed_matured_reservation(...)` test seam API.
-   - Seam behavior:
-     - seeds a reservation with provided `shape_class`, `variant_id`, and `target_tick`,
-     - matures it immediately via reservation helper,
-     - forces canary gate state fields needed for deterministic healthy-path attempt.
-   - Scope: deterministic Marionette integration setup only.
+## Tests added
+- Reservation heartbeat matures reserved entries through production helper.
+- Reservation heartbeat expires stale entries through production helper.
+- Authority enabled propagation verified at evaluation time via new API.
+- Existing default-off guarantee and consume semantics retained.
 
-3. **Happy-path wiring status**
-   - Existing SGEMM feedforward consume branch remains in dispatch path.
-   - Test now seeds matching matured reservation and reruns SGEMM to attempt feedforward consume/use.
+## Deferred items (explicitly not expanded in this pass)
+- Feedforward override mode (still deferred; agree-and-confirm only).
+- `PrometheusSgemmPolicyDiagnostics` struct-size ABI guard (defer to dedicated ABI-hardening pass).
+- Real hardware Windows/RTX validation.
+- Software Vulkan baseline SGEMM environment limitation (if present in CI/container).
 
-4. **Current acceptance evidence**
-   - In this container, Vulkan runtime is unavailable; test now **skips** with explicit reason.
-   - This preserves deterministic reporting but does not provide a runnable happy-path proof in this environment.
-
-5. **Non-goals preserved**
-   - default-off behavior unchanged,
-   - no pre-transfer enabled,
-   - no selector rewrite,
-   - no broad dispatch rewrite.
-
-## M13e software Vulkan + Marionette stabilization
-
-- Environment probe run:
-  - `uname -a`
-  - `/etc/os-release` indicates Ubuntu 24.04.4 LTS.
-  - `vulkaninfo` present.
-- Software Vulkan install/probe:
-  - attempted `apt-get update` (third-party mirrors returned 403 but Ubuntu mirrors succeeded with warnings).
-  - installed `mesa-vulkan-drivers` (new package) and confirmed `libvulkan1` + `vulkan-tools` present.
-  - discovered ICDs under `/usr/share/vulkan/icd.d/`, including `lvp_icd.json`.
-  - set `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`.
-  - `vulkaninfo --summary` reports llvmpipe (lavapipe) CPU Vulkan device.
-
-- M13d happy-path result in this container:
-  - test `PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySgemm` now reaches runtime probe stage under software Vulkan env,
-  - but baseline SGEMM call still fails in this environment, so test emits explicit SKIP with reason:
-    `baseline sgemm failed in environment; feedforward happy-path cannot be asserted`.
-  - This is reported as an environment blocker, not a pass.
-
-- Full-suite failing groups root cause and fix:
-  - `PrometheusP15M11ShadowWouldAct_ReasonBindingAndDedup`:
-    - stale test fixture had arrival-error total at gate boundary expectations.
-    - updated fixture to exceed gate threshold deterministically.
-  - `PrometheusP15M9ShadowCalibration_StateClassification`:
-    - stale expectation assumed HEALTHY after only three matches.
-    - updated fixture to apply enough consistent matches for confidence to enter HEALTHY bucket before miss sequence.
-
-- Validation results:
-  - M11 group: pass.
-  - M9 group: pass.
-  - M13 group: pass with one explicit environment SKIP (enabled happy-path SGEMM test).
-  - full Marionette suite: pass (0 failed; remaining skips are explicit scenario/environment skips).
-
-- Non-goals preserved:
-  - default-off behavior unchanged,
-  - no pre-transfer action enabled,
-  - no selector/judgment global rewrite,
-  - no broad dispatch rewrite.
+## Structural note
+- HealthyMarginGate and feedforward decision can still exhibit one-dispatch lag relative to newly observed timing due to dispatch-before-next-measurement ordering. This pass intentionally does not invent synthetic timing.

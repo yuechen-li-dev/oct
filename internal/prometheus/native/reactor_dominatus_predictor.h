@@ -508,6 +508,9 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
     prom_dominatus_reservation_state_set* reservations,
     const prom_dominatus_future_lease_request* future_request,
     uint64_t tick);
+prom_dominatus_reservation_decision prom_dominatus_predictor_advance_reservations(
+    prom_dominatus_predictor_state* predictor,
+    uint64_t tick);
 prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
     const prom_dominatus_predictor_state* predictor,
     const prom_dominatus_prediction_entry* last_issued,
@@ -521,6 +524,9 @@ void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_
                                               const prom_dominatus_shadow_snapshot* snapshot);
 prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
     const prom_dominatus_shadow_calibration_state* calibration);
+prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate_with_enabled(
+    const prom_dominatus_shadow_calibration_state* calibration,
+    uint32_t authority_enabled);
 void prom_dominatus_shadow_would_act_init(prom_dominatus_shadow_would_act_state* state);
 void prom_dominatus_shadow_would_act_update(prom_dominatus_shadow_would_act_state* state,
                                             const prom_dominatus_shadow_authority_gate* gate,

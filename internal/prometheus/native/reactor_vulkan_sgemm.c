@@ -5007,6 +5007,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   occupancy_facts.k = k;
   occupancy_facts.work_units = work_units;
   prom_judgment_engine_select_occupancy_variant(&occupancy_facts, &occupancy_decision);
+  (void)prom_dominatus_predictor_advance_reservations(&rt->p15_predictor_state, rt->p14_measurement_tick);
   rt->p15_feedforward_dispatch_state.valid = 1u;
   rt->p15_feedforward_dispatch_state.enabled = rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u;
   rt->p15_feedforward_dispatch_state.used = 0u;
@@ -5036,9 +5037,25 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       rt->p15_feedforward_dispatch_state.reserved_variant_id = occupancy_decision.selected_variant;
       rt->p15_feedforward_dispatch_state.reservation_consumed_count += 1u;
     } else {
+      uint32_t i;
+      uint32_t saw_shape_mismatch = 0u;
+      uint32_t saw_variant_mismatch = 0u;
+      for (i = 0u; i < PROM_DOM_RESERVATION_CAP; ++i) {
+        const prom_dominatus_reservation_request* e = &rt->p15_predictor_state.reservations.entries[i];
+        if (e->valid == 0u || e->state != PROM_DOM_RESERVATION_MATURED) continue;
+        if (e->shape_class != occupancy_decision.shape_class) {
+          saw_shape_mismatch = 1u;
+          continue;
+        }
+        if (e->variant_id != occupancy_decision.selected_variant) {
+          saw_variant_mismatch = 1u;
+        }
+      }
       rt->p15_feedforward_dispatch_state.block_reason = 5u;
       rt->p15_feedforward_dispatch_state.no_matured_reservation_count += 1u;
       rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      if (saw_shape_mismatch != 0u) rt->p15_feedforward_dispatch_state.shape_mismatch_count += 1u;
+      if (saw_variant_mismatch != 0u) rt->p15_feedforward_dispatch_state.variant_mismatch_count += 1u;
     }
   }
   rt->slot_diag.p13_m2_occupancy_device_band = occupancy_decision.device_band;
@@ -6159,6 +6176,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
             memset(&rt->p15_last_prediction_issued, 0, sizeof(rt->p15_last_prediction_issued));
             rt->p15_last_correction = prom_dominatus_predictor_update(&rt->p15_predictor_state, &pe, &po, po.tick,
                                                                        &rt->p15_last_prediction_issued);
+            (void)prom_dominatus_predictor_advance_reservations(&rt->p15_predictor_state, po.tick);
             rt->p15_last_reservation = prom_dominatus_predictor_try_reserve_future(
                 &rt->p15_predictor_state,
                 &rt->p15_predictor_state.reservations,
@@ -6189,8 +6207,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                                            rt->p15_last_prestage.allowed,
                                                                            po.tick);
             prom_dominatus_shadow_calibration_update(&rt->p15_shadow_calibration, &rt->p15_last_shadow);
-            rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate(&rt->p15_shadow_calibration);
-            rt->p15_shadow_authority_gate.authority_enabled = rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u;
+            rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate_with_enabled(
+                &rt->p15_shadow_calibration, rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u);
             if (rt->p15_shadow_canary_params.enabled != 0u &&
                 rt->p15_shadow_authority_gate.state == PROM_SHADOW_AUTHORITY_HEALTHY &&
                 rt->p15_shadow_authority_gate.recommended_lookahead_depth > 0u) {
