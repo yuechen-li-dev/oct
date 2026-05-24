@@ -520,6 +520,7 @@ typedef struct prometheus_runtime {
   prom_dominatus_prediction_entry p15_last_prediction_issued;
   prom_dominatus_reservation_decision p15_last_reservation;
   prom_dominatus_prestage_decision p15_last_prestage;
+  prom_dominatus_shadow_snapshot p15_last_shadow;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -6116,6 +6117,12 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
               pi.resource_pressure_low = 1u;
               rt->p15_last_prestage = prom_dominatus_prestage_evaluate(&rt->p15_prestage_params, &pi);
             }
+            rt->p15_last_shadow = prom_dominatus_shadow_snapshot_evaluate(&rt->p15_predictor_state,
+                                                                           &rt->p15_last_prediction_issued,
+                                                                           &rt->p15_last_correction,
+                                                                           &rt->p15_last_reservation,
+                                                                           rt->p15_last_prestage.allowed,
+                                                                           po.tick);
           }
         }
       }
@@ -8216,6 +8223,24 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p15_prestage_lead_ticks = rt->p15_last_prestage.lead_ticks;
   out_diag->p15_prestage_cost_estimate = rt->p15_last_prestage.cost_estimate;
   out_diag->p15_prestage_benefit_estimate = rt->p15_last_prestage.benefit_estimate;
+  out_diag->p15_shadow_valid = rt->p15_last_shadow.valid;
+  out_diag->p15_shadow_state = (uint32_t)rt->p15_last_shadow.shadow_state;
+  out_diag->p15_shadow_physical_state = rt->p15_last_shadow.physical_state;
+  out_diag->p15_shadow_issued_tick = rt->p15_last_shadow.issued_tick;
+  out_diag->p15_shadow_target_tick = rt->p15_last_shadow.target_tick;
+  out_diag->p15_shadow_predicted_ready_tick = rt->p15_last_shadow.predicted_ready_tick;
+  out_diag->p15_shadow_actual_ready_tick = rt->p15_last_shadow.actual_ready_tick;
+  out_diag->p15_shadow_arrival_error_ticks = rt->p15_last_shadow.arrival_error_ticks;
+  out_diag->p15_shadow_prediction_confidence = rt->p15_last_shadow.prediction_confidence;
+  out_diag->p15_shadow_mismatch_kind = (uint32_t)rt->p15_last_shadow.mismatch_kind;
+  out_diag->p15_shadow_matched = rt->p15_last_shadow.matched;
+  out_diag->p15_shadow_stale = rt->p15_last_shadow.stale;
+  out_diag->p15_shadow_cancelled = rt->p15_last_shadow.cancelled;
+  out_diag->p15_shadow_fallback = rt->p15_last_shadow.fallback;
+  out_diag->p15_shadow_correction_action = (uint32_t)rt->p15_last_shadow.correction_action;
+  out_diag->p15_shadow_correction_count = rt->p15_last_shadow.correction_count;
+  out_diag->p15_shadow_stale_count = rt->p15_last_shadow.stale_count;
+  out_diag->p15_shadow_miss_count = rt->p15_last_shadow.miss_count;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

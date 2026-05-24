@@ -191,6 +191,34 @@ enum {
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
 
+enum {
+  PROM_SHADOW_STATE_UNKNOWN = 0,
+  PROM_SHADOW_STATE_IDLE = 1,
+  PROM_SHADOW_STATE_FORECAST_ISSUED = 2,
+  PROM_SHADOW_STATE_FUTURE_LEASE_REQUESTED = 3,
+  PROM_SHADOW_STATE_RESERVED = 4,
+  PROM_SHADOW_STATE_PRESTAGE_ELIGIBLE = 5,
+  PROM_SHADOW_STATE_PREDICTED_READY = 6,
+  PROM_SHADOW_STATE_MATURED = 7,
+  PROM_SHADOW_STATE_CANCELLED = 8,
+  PROM_SHADOW_STATE_STALE = 9,
+  PROM_SHADOW_STATE_FALLBACK = 10,
+};
+
+enum {
+  PROM_SHADOW_MISMATCH_NONE = 0,
+  PROM_SHADOW_MISMATCH_MATCH = 1,
+  PROM_SHADOW_MISMATCH_LATE = 2,
+  PROM_SHADOW_MISMATCH_EARLY = 3,
+  PROM_SHADOW_MISMATCH_PHYSICAL_NOT_READY = 4,
+  PROM_SHADOW_MISMATCH_SHADOW_NOT_READY = 5,
+  PROM_SHADOW_MISMATCH_CANCELLED = 6,
+  PROM_SHADOW_MISMATCH_STALE = 7,
+  PROM_SHADOW_MISMATCH_FALLBACK = 8,
+  PROM_SHADOW_MISMATCH_HARD_GATE = 9,
+  PROM_SHADOW_MISMATCH_INVALID_PREDICTION = 10,
+};
+
 typedef struct PrometheusSgemmBatchEntry {
   const float* a;
   const float* b;
@@ -693,6 +721,24 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p15_prestage_lead_ticks;
   double p15_prestage_cost_estimate;
   double p15_prestage_benefit_estimate;
+  uint32_t p15_shadow_valid;
+  uint32_t p15_shadow_state;
+  uint32_t p15_shadow_physical_state;
+  uint64_t p15_shadow_issued_tick;
+  uint64_t p15_shadow_target_tick;
+  uint64_t p15_shadow_predicted_ready_tick;
+  uint64_t p15_shadow_actual_ready_tick;
+  int64_t p15_shadow_arrival_error_ticks;
+  double p15_shadow_prediction_confidence;
+  uint32_t p15_shadow_mismatch_kind;
+  uint32_t p15_shadow_matched;
+  uint32_t p15_shadow_stale;
+  uint32_t p15_shadow_cancelled;
+  uint32_t p15_shadow_fallback;
+  uint32_t p15_shadow_correction_action;
+  uint64_t p15_shadow_correction_count;
+  uint64_t p15_shadow_stale_count;
+  uint64_t p15_shadow_miss_count;
   uint32_t p13_m5_timestamp_valid_bits;
   float p13_m5_timestamp_period_ns;
   uint32_t p10_m4_last_slot_event_kind;

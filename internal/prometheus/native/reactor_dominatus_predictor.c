@@ -487,3 +487,75 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
   }
   return d;
 }
+
+prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
+    const prom_dominatus_predictor_state* predictor,
+    const prom_dominatus_prediction_entry* last_issued,
+    const prom_dominatus_correction_event* correction,
+    const prom_dominatus_reservation_decision* reservation,
+    uint32_t prestage_allowed,
+    uint64_t current_tick) {
+  prom_dominatus_shadow_snapshot out;
+  memset(&out, 0, sizeof(out));
+  out.shadow_state = PROM_DOM_SHADOW_STATE_UNKNOWN;
+  out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_NONE;
+  out.physical_state = 0u;
+  if (predictor == NULL) return out;
+  out.valid = 1u;
+  out.prediction_confidence = predictor->prediction_confidence;
+  out.correction_action = correction != NULL ? correction->action : PROM_DOM_CORRECTION_ACTION_NONE;
+  out.correction_count = predictor->correction_count;
+  out.stale_count = predictor->stale_prediction_count;
+  if (correction != NULL && correction->valid != 0u && correction->prediction_matured != 0u && correction->predicted_ready != 0u &&
+      correction->actual_ready == 0u) out.miss_count = 1u;
+  if (predictor->fallback_active != 0u) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_FALLBACK;
+    out.fallback = 1u;
+    out.mismatch_kind = correction != NULL && correction->action == PROM_DOM_CORRECTION_ACTION_MARK_STALE
+                            ? PROM_DOM_SHADOW_MISMATCH_HARD_GATE
+                            : PROM_DOM_SHADOW_MISMATCH_FALLBACK;
+    return out;
+  }
+  if (last_issued == NULL || last_issued->active == 0u) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_IDLE;
+    return out;
+  }
+  out.issued_tick = last_issued->issued_tick;
+  out.target_tick = last_issued->target_tick;
+  out.predicted_ready_tick = last_issued->target_tick;
+  out.shadow_state = PROM_DOM_SHADOW_STATE_FORECAST_ISSUED;
+  if (last_issued->future_lease_state == PROM_DOM_FUTURE_LEASE_REQUESTED) out.shadow_state = PROM_DOM_SHADOW_STATE_FUTURE_LEASE_REQUESTED;
+  if (reservation != NULL && reservation->valid != 0u && reservation->reserved != 0u) out.shadow_state = PROM_DOM_SHADOW_STATE_RESERVED;
+  if (prestage_allowed != 0u && out.shadow_state >= PROM_DOM_SHADOW_STATE_RESERVED) out.shadow_state = PROM_DOM_SHADOW_STATE_PRESTAGE_ELIGIBLE;
+  if (reservation != NULL && reservation->cancelled != 0u) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_CANCELLED;
+    out.cancelled = 1u;
+    out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_CANCELLED;
+    return out;
+  }
+  if (current_tick > out.target_tick + 1u && correction == NULL) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_STALE;
+    out.stale = 1u;
+    out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_STALE;
+    return out;
+  }
+  if (correction != NULL && correction->valid != 0u && correction->prediction_matured != 0u) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_MATURED;
+    out.actual_ready_tick = correction->actual_ready != 0u ? correction->tick : 0u;
+    out.arrival_error_ticks = correction->arrival_error_ticks;
+    out.physical_state = correction->actual_ready != 0u ? 1u : 0u;
+    if (correction->predicted_ready == 0u) {
+      out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_SHADOW_NOT_READY;
+    } else if (correction->actual_ready == 0u) {
+      out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_PHYSICAL_NOT_READY;
+    } else {
+      out.matched = 1u;
+      if (correction->arrival_error_ticks == 0) out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_MATCH;
+      else if (correction->arrival_error_ticks > 0) out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_LATE;
+      else out.mismatch_kind = PROM_DOM_SHADOW_MISMATCH_EARLY;
+    }
+  } else if (current_tick >= out.predicted_ready_tick) {
+    out.shadow_state = PROM_DOM_SHADOW_STATE_PREDICTED_READY;
+  }
+  return out;
+}
