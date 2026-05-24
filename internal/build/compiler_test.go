@@ -16,6 +16,7 @@ import (
 )
 
 func TestLowerProgramBuildsMIRShape(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -85,6 +86,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunSubsetProgram(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	os.Mkdir(filepath.Join(root, "Main"), 0o755)
 	os.Mkdir(filepath.Join(root, "Math"), 0o755)
@@ -223,6 +225,7 @@ func TestCompileForTestLowersBenchmarkPrometheusBlockIntoMIRAndRuns(t *testing.T
 }
 
 func TestCompileAndRunCrossPackageFallibleAndEnum(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
 		t.Fatal(err)
@@ -336,6 +339,7 @@ fn Manifest() -> PackageManifest {
 }
 
 func TestCompileAndRunNamedRecordArraySurface(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -382,6 +386,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunLoopLoweringParity(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -465,6 +470,7 @@ fn main() -> Int {
 }
 
 func TestCompileFailsWhenImportedPackageMissingSymbol(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
 		t.Fatal(err)
@@ -689,6 +695,7 @@ fn Manifest() -> PackageManifest {
 }
 
 func TestCompileAndRunBatchParameterSweepAndOrder(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -717,6 +724,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunBatchDeterministicRepeatedRuns(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -752,6 +760,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunBatchEmptyAndSingleElement(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	emptyPath := filepath.Join(root, "empty.octagon")
 	if err := os.WriteFile(emptyPath, []byte("[]\n"), 0o644); err != nil {
@@ -1058,6 +1067,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunOctagonRoundTrip(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	artifactPath := filepath.Join(root, "roundtrip.octagon")
 	mainPath := filepath.Join(root, "main.oct")

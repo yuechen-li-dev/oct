@@ -6,6 +6,7 @@ import (
 )
 
 func TestIOCoreWrappers(t *testing.T) {
+	t.Parallel()
 	root := "../../Libraries/IO"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

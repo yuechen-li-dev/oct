@@ -8,6 +8,7 @@ import (
 )
 
 func TestNativeHostBoundaryConditionSwitchContractsRunAsNativeOctTests(t *testing.T) {
+	t.Parallel()
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "ConditionSwitch", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

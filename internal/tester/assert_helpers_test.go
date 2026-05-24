@@ -20,7 +20,12 @@ func writeTestFile(t *testing.T, root string, rel string, contents string) {
 	}
 }
 
+func executeInterpreted(root string, out *bytes.Buffer) error {
+	return ExecuteWithOptions(root, out, TestOptions{Execution: "interpreted"})
+}
+
 func TestAssertFallibleHelpersPass(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "helper_pass.octest", `package Main
 
@@ -40,12 +45,13 @@ fn UsesHelpers() -> Void {
 `)
 
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected pass, got %v (%s)", err, out.String())
 	}
 }
 
 func TestAssertLGTMFailureIncludesUnderlyingError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "helper_lgtm_fail.octest", `package Main
 
@@ -61,7 +67,7 @@ fn FailsWithMessage() -> Void {
 `)
 
 	var out bytes.Buffer
-	err := Execute(root, &out)
+	err := executeInterpreted(root, &out)
 	if err == nil {
 		t.Fatalf("expected failure, got pass (%s)", out.String())
 	}
@@ -75,6 +81,7 @@ fn FailsWithMessage() -> Void {
 }
 
 func TestAssertErrorFailureOnSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "helper_error_fail.octest", `package Main
 
@@ -89,7 +96,7 @@ fn FailsWhenOk() -> Void {
 `)
 
 	var out bytes.Buffer
-	err := Execute(root, &out)
+	err := executeInterpreted(root, &out)
 	if err == nil {
 		t.Fatalf("expected failure, got pass (%s)", out.String())
 	}
@@ -99,6 +106,7 @@ fn FailsWhenOk() -> Void {
 }
 
 func TestZeroAssertFactFails(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "zero_fact.octest", `package Main
 
@@ -108,7 +116,7 @@ fn EmptyFact() -> Void {
 }
 `)
 	var out bytes.Buffer
-	err := Execute(root, &out)
+	err := executeInterpreted(root, &out)
 	if err == nil {
 		t.Fatalf("expected failure for zero-assert fact, got pass (%s)", out.String())
 	}
@@ -118,6 +126,7 @@ fn EmptyFact() -> Void {
 }
 
 func TestAssertedFactPasses(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "asserted_fact.octest", `package Main
 
@@ -127,12 +136,13 @@ fn AssertedFact() -> Void {
 }
 `)
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected pass, got %v (%s)", err, out.String())
 	}
 }
 
 func TestZeroAssertTheoryRowFails(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "zero_theory.octest", `package Main
 
@@ -143,7 +153,7 @@ fn EmptyTheory(x: Int) -> Void {
 }
 `)
 	var out bytes.Buffer
-	err := Execute(root, &out)
+	err := executeInterpreted(root, &out)
 	if err == nil {
 		t.Fatalf("expected failure for zero-assert theory row, got pass (%s)", out.String())
 	}
@@ -154,6 +164,7 @@ fn EmptyTheory(x: Int) -> Void {
 }
 
 func TestAssertedTheoryRowsPass(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "asserted_theory.octest", `package Main
 
@@ -165,12 +176,13 @@ fn Positive(x: Int) -> Void {
 }
 `)
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected pass, got %v (%s)", err, out.String())
 	}
 }
 
 func TestSkipTestFactReportsSkip(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "skip_fact.octest", `package Main
 
@@ -180,7 +192,7 @@ fn SkippedFact() -> Void {
 }
 `)
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected pass with skip, got %v (%s)", err, out.String())
 	}
 	log := out.String()
@@ -190,6 +202,7 @@ fn SkippedFact() -> Void {
 }
 
 func TestSkipTestIsTerminal(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "skip_terminal.octest", `package Main
 
@@ -200,7 +213,7 @@ fn SkipStopsExecution() -> Void {
 }
 `)
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected skip, got %v (%s)", err, out.String())
 	}
 	if strings.Contains(out.String(), "FAIL") {
@@ -209,6 +222,7 @@ fn SkipStopsExecution() -> Void {
 }
 
 func TestSkipTestTheoryRowOnlySkipsCurrentRow(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestFile(t, root, "skip_theory.octest", `package Main
 
@@ -223,7 +237,7 @@ fn MaybeSkip(x: Int) -> Void {
 }
 `)
 	var out bytes.Buffer
-	if err := Execute(root, &out); err != nil {
+	if err := executeInterpreted(root, &out); err != nil {
 		t.Fatalf("expected mixed pass/skip, got %v (%s)", err, out.String())
 	}
 	log := out.String()
@@ -233,6 +247,7 @@ fn MaybeSkip(x: Int) -> Void {
 }
 
 func TestSkipTestValidationAndLaneRestrictions(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		rel     string
@@ -250,7 +265,7 @@ func TestSkipTestValidationAndLaneRestrictions(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, root, tc.rel, tc.source)
 			var out bytes.Buffer
-			err := Execute(root, &out)
+			err := executeInterpreted(root, &out)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("expected error containing %q, got err=%v out=%q", tc.wantErr, err, out.String())
 			}
@@ -293,7 +308,7 @@ fn TheoryOverride(x: Int) -> Void {
 }
 `)
 	var out bytes.Buffer
-	err := Execute(root, &out)
+	err := executeInterpreted(root, &out)
 	if err == nil {
 		t.Fatalf("expected timeout failures, got pass (%s)", out.String())
 	}

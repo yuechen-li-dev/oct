@@ -8,6 +8,7 @@ import (
 )
 
 func TestStringErgonomics(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		source       string
