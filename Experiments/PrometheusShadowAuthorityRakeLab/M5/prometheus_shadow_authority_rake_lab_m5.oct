@@ -1,0 +1,400 @@
+package PrometheusShadowAuthorityRakeLab
+
+import Artifact
+import Json
+import Markdown
+import String
+
+enum ReservationState {
+    None
+    Pending
+    Matured
+    Consumed
+    Stale
+    Cancelled
+}
+
+enum BlockReason {
+    None
+    Disabled
+    NotHealthy
+    MarginFailed
+    ReasonBinding
+    NoMaturedReservation
+    ShapeMismatch
+    VariantMismatch
+    CapabilityMismatch
+    StaleReservation
+    CancelledReservation
+    AlreadyConsumed
+    FallbackRequired
+    ReservationNotReady
+}
+
+enum DispatchSource {
+    Judgment
+    ShadowReservation
+}
+
+record Scenario {
+    Name: String
+    CanaryEnabled: Bool
+    GateHealthy: Bool
+    HealthyMarginPassed: Bool
+    ReasonBindingPassed: Bool
+    ReservationState: ReservationState
+    ReservationShapeClass: Int
+    DispatchShapeClass: Int
+    ReservationVariantId: Int
+    DispatchPreferredVariantId: Int
+    CapabilityValid: Bool
+    FallbackRequired: Bool
+    LookaheadRecommended: Int
+    FirstAttempt: Bool
+}
+
+record ScenarioMetric {
+    ScenarioName: String
+    DispatchSource: String
+    FeedforwardUsed: Bool
+    ReservationConsumed: Bool
+    BlockReason: String
+    ExpectedBehaviorMet: Bool
+    ReservationStateBefore: String
+    ReservationStateAfter: String
+    LookaheadRecommended: Int
+    LookaheadApplied: Int
+    PrestageAllowed: Bool
+    FallbackToJudgment: Bool
+    ConsumedCount: Int
+    BlockCount: Int
+    Notes: String
+}
+
+flow FeedforwardDispatchDecisionMachineM5(s: Scenario) -> Bool {
+    board {
+        CurrentTick: Int
+        TargetTick: Int
+        CanaryEnabled: Bool
+        GateHealthy: Bool
+        HealthyMarginPassed: Bool
+        ReasonBindingPassed: Bool
+        ReservationStateCode: Int
+        ReservationShapeClass: Int
+        DispatchShapeClass: Int
+        ReservationVariantId: Int
+        DispatchPreferredVariantId: Int
+        CapabilityValid: Bool
+        FallbackRequired: Bool
+        ReservationMatured: Bool
+        ReservationConsumed: Bool
+        FeedforwardUsed: Bool
+        DispatchSourceCode: Int
+        BlockReasonCode: Int
+        LookaheadRecommended: Int
+        LookaheadApplied: Int
+        PrestageAllowed: Bool
+        RecordReady: Bool
+        DoneFlag: Bool
+    }
+
+    state Initialize {
+        board.CurrentTick = 10
+        board.TargetTick = 10
+        board.CanaryEnabled = s.CanaryEnabled
+        board.GateHealthy = s.GateHealthy
+        board.HealthyMarginPassed = s.HealthyMarginPassed
+        board.ReasonBindingPassed = s.ReasonBindingPassed
+        board.ReservationStateCode = ReservationStateCode(s.ReservationState)
+        board.ReservationShapeClass = s.ReservationShapeClass
+        board.DispatchShapeClass = s.DispatchShapeClass
+        board.ReservationVariantId = s.ReservationVariantId
+        board.DispatchPreferredVariantId = s.DispatchPreferredVariantId
+        board.CapabilityValid = s.CapabilityValid
+        board.FallbackRequired = s.FallbackRequired
+        board.ReservationMatured = s.ReservationState == ReservationState.Matured
+        board.ReservationConsumed = false
+        board.FeedforwardUsed = false
+        board.DispatchSourceCode = 0
+        board.BlockReasonCode = 0
+        board.LookaheadRecommended = s.LookaheadRecommended
+        board.LookaheadApplied = 0
+        board.PrestageAllowed = false
+        board.RecordReady = false
+        board.DoneFlag = false
+        goto EvaluateAuthority
+    }
+
+    state EvaluateAuthority {
+        board.BlockReasonCode = switch {
+            case not board.CanaryEnabled -> 1
+            case not board.GateHealthy -> 2
+            case not board.HealthyMarginPassed -> 3
+            case not board.ReasonBindingPassed -> 4
+            case board.FallbackRequired -> 12
+            else -> 0
+        }
+        goto FindReservation
+    }
+
+    state FindReservation {
+        if board.BlockReasonCode != 0 {
+            goto ChooseDispatchSource
+        }
+
+        board.BlockReasonCode = switch {
+            case board.ReservationStateCode == 0 -> 5
+            case board.ReservationStateCode == 1 -> 13
+            case board.ReservationStateCode == 3 -> 11
+            case board.ReservationStateCode == 4 -> 9
+            case board.ReservationStateCode == 5 -> 10
+            case board.ReservationStateCode == 2 -> 0
+            else -> 5
+        }
+
+        goto ValidateReservation
+    }
+
+    state ValidateReservation {
+        if board.BlockReasonCode != 0 {
+            goto ChooseDispatchSource
+        }
+
+        board.BlockReasonCode = switch {
+            case board.ReservationShapeClass != board.DispatchShapeClass -> 6
+            case board.ReservationVariantId != board.DispatchPreferredVariantId -> 7
+            case not board.CapabilityValid -> 8
+            else -> 0
+        }
+        goto ChooseDispatchSource
+    }
+
+    state ChooseDispatchSource {
+        if board.BlockReasonCode == 0 {
+            board.DispatchSourceCode = 1
+            board.FeedforwardUsed = true
+        } else {
+            board.DispatchSourceCode = 0
+            board.FeedforwardUsed = false
+        }
+
+        board.PrestageAllowed =
+            board.CanaryEnabled and
+            board.GateHealthy and
+            board.HealthyMarginPassed and
+            board.ReasonBindingPassed and
+            board.ReservationStateCode == 2 and
+            board.ReservationShapeClass == board.DispatchShapeClass and
+            board.ReservationVariantId == board.DispatchPreferredVariantId and
+            board.CapabilityValid
+
+        if board.PrestageAllowed {
+            board.LookaheadApplied = ClampLookahead(board.LookaheadRecommended)
+        } else {
+            board.LookaheadApplied = 0
+        }
+
+        goto ConsumeIfUsed
+    }
+
+    state ConsumeIfUsed {
+        if board.FeedforwardUsed {
+            board.ReservationConsumed = true
+            board.ReservationStateCode = 3
+        }
+
+        board.RecordReady = true
+        goto Done
+    }
+
+    state Done {
+        board.DoneFlag = true
+        return true
+    }
+}
+
+fn ClampLookahead(x: Int) -> Int {
+    return switch {
+        case x < 1 -> 1
+        case x > 4 -> 4
+        else -> x
+    }
+}
+
+fn ReservationStateCode(x: ReservationState) -> Int {
+    return switch x {
+        case ReservationState.None -> 0
+        case ReservationState.Pending -> 1
+        case ReservationState.Matured -> 2
+        case ReservationState.Consumed -> 3
+        case ReservationState.Stale -> 4
+        else -> 5
+    }
+}
+
+fn ReservationStateName(code: Int) -> String {
+    return switch code {
+        case 0 -> "None"
+        case 1 -> "Pending"
+        case 2 -> "Matured"
+        case 3 -> "Consumed"
+        case 4 -> "Stale"
+        else -> "Cancelled"
+    }
+}
+
+fn BlockReasonName(code: Int) -> String {
+    return switch code {
+        case 0 -> "None"
+        case 1 -> "Disabled"
+        case 2 -> "NotHealthy"
+        case 3 -> "MarginFailed"
+        case 4 -> "ReasonBinding"
+        case 5 -> "NoMaturedReservation"
+        case 6 -> "ShapeMismatch"
+        case 7 -> "VariantMismatch"
+        case 8 -> "CapabilityMismatch"
+        case 9 -> "StaleReservation"
+        case 10 -> "CancelledReservation"
+        case 11 -> "AlreadyConsumed"
+        case 12 -> "FallbackRequired"
+        else -> "ReservationNotReady"
+    }
+}
+
+fn DispatchSourceName(code: Int) -> String {
+    return switch code {
+        case 1 -> "ShadowReservation"
+        else -> "Judgment"
+    }
+}
+
+fn BuildScenariosM5() -> Scenario[] {
+    return [
+        Scenario { Name: "DefaultOffMaturedReservation" CanaryEnabled: false GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "EnabledHealthyMaturedMatch" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "EnabledNoMaturedReservation" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Pending ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "ShapeMismatch" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 2 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "VariantMismatch" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 12 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "CapabilityMismatch" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: false FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "StaleReservation" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Stale ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "CancelledReservation" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Cancelled ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "ReasonBindingBlocked" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: false ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "MarginBlocked" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: false ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "FallbackRequired" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: true LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "DedupConsumeOnce_First" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 2 FirstAttempt: true },
+        Scenario { Name: "DedupConsumeOnce_Second" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Consumed ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 2 FirstAttempt: false },
+        Scenario { Name: "LookaheadAppliedOnlyWhenEligible" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 9 FirstAttempt: true },
+        Scenario { Name: "LookaheadBlockedCase" CanaryEnabled: true GateHealthy: false HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 3 FirstAttempt: true },
+        Scenario { Name: "PrestageEligibleDiagnostic" CanaryEnabled: true GateHealthy: true HealthyMarginPassed: true ReasonBindingPassed: true ReservationState: ReservationState.Matured ReservationShapeClass: 1 DispatchShapeClass: 1 ReservationVariantId: 11 DispatchPreferredVariantId: 11 CapabilityValid: true FallbackRequired: false LookaheadRecommended: 4 FirstAttempt: true }
+    ]
+}
+
+fn RunScenarioM5(s: Scenario) -> ScenarioMetric {
+    let m = FeedforwardDispatchDecisionMachineM5(s)
+    while not Complete(m) { Step(m) }
+    let b = BoardSnapshot(m)!
+
+    let expected = switch s.Name {
+        case "DefaultOffMaturedReservation" -> b.DispatchSourceCode == 0 and (not b.ReservationConsumed) and b.BlockReasonCode == 1
+        case "EnabledHealthyMaturedMatch" -> b.DispatchSourceCode == 1 and b.ReservationConsumed and b.BlockReasonCode == 0
+        case "EnabledNoMaturedReservation" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 13
+        case "ShapeMismatch" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 6 and (not b.ReservationConsumed)
+        case "VariantMismatch" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 7 and (not b.ReservationConsumed)
+        case "CapabilityMismatch" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 8 and (not b.ReservationConsumed)
+        case "StaleReservation" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 9
+        case "CancelledReservation" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 10
+        case "ReasonBindingBlocked" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 4
+        case "MarginBlocked" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 3
+        case "FallbackRequired" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 12
+        case "DedupConsumeOnce_First" -> b.DispatchSourceCode == 1 and b.ReservationConsumed
+        case "DedupConsumeOnce_Second" -> b.DispatchSourceCode == 0 and b.BlockReasonCode == 11 and (not b.FeedforwardUsed)
+        case "LookaheadAppliedOnlyWhenEligible" -> b.LookaheadApplied == 4
+        case "LookaheadBlockedCase" -> b.LookaheadApplied == 0
+        case "PrestageEligibleDiagnostic" -> b.PrestageAllowed and b.DispatchSourceCode == 1
+        else -> true
+    }
+
+    let consumedCount = if b.ReservationConsumed and s.FirstAttempt { 1 } else { 0 }
+    let blockCount = if b.BlockReasonCode == 0 { 0 } else { 1 }
+
+    return ScenarioMetric {
+        ScenarioName: s.Name
+        DispatchSource: DispatchSourceName(b.DispatchSourceCode)
+        FeedforwardUsed: b.FeedforwardUsed
+        ReservationConsumed: b.ReservationConsumed
+        BlockReason: BlockReasonName(b.BlockReasonCode)
+        ExpectedBehaviorMet: expected
+        ReservationStateBefore: ReservationStateName(ReservationStateCode(s.ReservationState))
+        ReservationStateAfter: ReservationStateName(b.ReservationStateCode)
+        LookaheadRecommended: b.LookaheadRecommended
+        LookaheadApplied: b.LookaheadApplied
+        PrestageAllowed: b.PrestageAllowed
+        FallbackToJudgment: b.DispatchSourceCode == 0
+        ConsumedCount: consumedCount
+        BlockCount: blockCount
+        Notes: "validate-first-then-consume"
+    }
+}
+
+fn RunLabM5() -> ScenarioMetric[] {
+    var rows: ScenarioMetric[] = []
+    let ss = BuildScenariosM5()
+    for i in 0..Len(ss) {
+        rows = Append(rows, RunScenarioM5(ss[i]))
+    }
+    return rows
+}
+
+fn PrometheusShadowAuthorityRakeM5ArtifactWriteAll() -> Int {
+    let rows = RunLabM5()
+    var csv = [["scenarioName", "dispatchSource", "feedforwardUsed", "reservationConsumed", "blockReason", "expectedBehaviorMet", "reservationStateBefore", "reservationStateAfter", "lookaheadRecommended", "lookaheadApplied", "prestageAllowed", "fallbackToJudgment", "consumedCount", "blockCount", "notes"]]
+    var ok = 0
+    var ff = 0
+    var fb = 0
+    var consume = 0
+    var noConsumeOnBlocked = 0
+    var violations = 0
+
+    for i in 0..Len(rows) {
+        let r = rows[i]
+        if r.ExpectedBehaviorMet { ok = ok + 1 }
+        if r.FeedforwardUsed { ff = ff + 1 }
+        if r.FallbackToJudgment { fb = fb + 1 }
+        consume = consume + r.ConsumedCount
+        if r.BlockCount == 1 and (not r.ReservationConsumed) { noConsumeOnBlocked = noConsumeOnBlocked + 1 }
+        if r.BlockCount == 1 and r.ReservationConsumed { violations = violations + 1 }
+        csv = Append(csv, [r.ScenarioName, r.DispatchSource, String.From<Bool>(r.FeedforwardUsed), String.From<Bool>(r.ReservationConsumed), r.BlockReason, String.From<Bool>(r.ExpectedBehaviorMet), r.ReservationStateBefore, r.ReservationStateAfter, String.From<Int>(r.LookaheadRecommended), String.From<Int>(r.LookaheadApplied), String.From<Bool>(r.PrestageAllowed), String.From<Bool>(r.FallbackToJudgment), String.From<Int>(r.ConsumedCount), String.From<Int>(r.BlockCount), r.Notes])
+    }
+
+    let rec = "Validate first, then consume only if dispatch source is ShadowReservation."
+    let summary = Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(rows)), ",\"expectedBehaviorMet\":", String.From<Int>(ok), ",\"feedforwardUseCount\":", String.From<Int>(ff), ",\"judgmentFallbackCount\":", String.From<Int>(fb), ",\"consumedCount\":", String.From<Int>(consume), ",\"noConsumeOnBlockedCount\":", String.From<Int>(noConsumeOnBlocked), ",\"contractViolationCount\":", String.From<Int>(violations), ",\"recommendedNativeContract\":\"", rec, "\"}"]))
+
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus Shadow Authority Rake Lab (M5)"),
+        Markdown.Section("Question", [Markdown.Paragraph("When a reservation matures, should dispatch consume first or validate first for feedforward actuator use?")]),
+        Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount", "expectedBehaviorMet", "feedforwardUseCount", "judgmentFallbackCount", "consumedCount", "noConsumeOnBlockedCount", "contractViolationCount"], [String.From<Int>(Len(rows)), String.From<Int>(ok), String.From<Int>(ff), String.From<Int>(fb), String.From<Int>(consume), String.From<Int>(noConsumeOnBlocked), String.From<Int>(violations)]), Markdown.Paragraph(rec)])
+    ])
+
+    let findings = Markdown.Report([
+        Markdown.Title("FINDINGS: Prometheus Shadow Authority Rake Lab M5"),
+        Markdown.Section("Question", [Markdown.Paragraph("M5 asks for the dispatch-time feedforward actuator contract after native M13 failed to converge end-to-end.")]),
+        Markdown.Section("Why M5 exists after failed/native M13 convergence", [Markdown.Paragraph("Native M13 had a reservation consume seam but did not fully own SGEMM feedforward dispatch path; this lab specifies deterministic validate-before-consume protocol.")]),
+        Markdown.Section("Contract decisions", [Markdown.Paragraph("Disabled never consumes. Validate shape/variant/capability/fallback/reason-binding/margin before consume. Consume only when feedforward is selected.")]),
+        Markdown.Section("Scenario results with exact counts", [Markdown.Paragraph("scenarioCount=" + String.From<Int>(Len(rows)) + ", expectedBehaviorMet=" + String.From<Int>(ok) + ", feedforwardUseCount=" + String.From<Int>(ff) + ", judgmentFallbackCount=" + String.From<Int>(fb) + ", consumedCount=" + String.From<Int>(consume) + ", noConsumeOnBlockedCount=" + String.From<Int>(noConsumeOnBlocked) + ", contractViolationCount=" + String.From<Int>(violations) + ".")]),
+        Markdown.Section("Validate-before-consume conclusion", [Markdown.Paragraph("Consume must happen after validation and only when dispatch source is ShadowReservation.")]),
+        Markdown.Section("Dispatch precedence recommendation", [Markdown.Paragraph("Feedforward has precedence only after all gates and reservation validations pass; otherwise Judgment is mandatory fallback.")]),
+        Markdown.Section("Lookahead feedback recommendation", [Markdown.Paragraph("Lookahead applies only for enabled+healthy+margin+reason-binding pass with valid matured reservation context; it does not imply feedforward use by itself.")]),
+        Markdown.Section("Prestage diagnostic recommendation", [Markdown.Paragraph("PrestageAllowed remains diagnostic-only in M5; no transfer or pretransfer behavior is modeled.")]),
+        Markdown.Section("Native M13 retry instructions", [Markdown.Paragraph("1) Validate reservation context first. 2) Select ShadowReservation only on full pass. 3) Consume exactly once at dispatch commit. 4) Enforce tie-break by earliest target_tick then stable reservation id if equal.")]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("M5 is Oct lab modeling only; no native Prometheus code changes, no runtime semantics changes, and no production-readiness claim.")])
+    ])
+
+    Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M5/shadow_authority_m5_feedforward_contract_report.octagon", rows)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M5/shadow_authority_m5_feedforward_contract_report.md", md)
+    Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M5/scenario_metrics.csv", csv)
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M5/scenario_summary.json", summary)
+    Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M5/FINDINGS.md", findings)
+
+    return 0
+}
