@@ -4536,6 +4536,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     if (cfg->struct_size >= sizeof(PrometheusReactorConfig)) {
       runtime->test_flags = cfg->test_flags;
       runtime->p15_shadow_canary_params.enabled = cfg->p15_shadow_canary_enabled != 0u ? 1u : 0u;
+      runtime->p15_shadow_canary_state.enabled = runtime->p15_shadow_canary_params.enabled;
+      runtime->p15_shadow_authority_gate.authority_enabled = runtime->p15_shadow_canary_params.enabled;
     }
   }
   runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
@@ -6135,6 +6137,15 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                                            po.tick);
             prom_dominatus_shadow_calibration_update(&rt->p15_shadow_calibration, &rt->p15_last_shadow);
             rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate(&rt->p15_shadow_calibration);
+            rt->p15_shadow_authority_gate.authority_enabled = rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u;
+            if (rt->p15_shadow_canary_params.enabled != 0u &&
+                rt->p15_shadow_authority_gate.state == PROM_SHADOW_AUTHORITY_HEALTHY &&
+                rt->p15_shadow_authority_gate.recommended_lookahead_depth > 0u) {
+              uint32_t depth = rt->p15_shadow_authority_gate.recommended_lookahead_depth;
+              if (depth < 1u) depth = 1u;
+              if (depth > 4u) depth = 4u;
+              rt->p15_predictor_state.lookahead_depth = depth;
+            }
             prom_dominatus_shadow_would_act_update(
                 &rt->p15_shadow_would_act_state, &rt->p15_shadow_authority_gate, &rt->p15_shadow_calibration, &rt->p15_last_shadow);
             if (prom_dominatus_shadow_canary_should_attempt(&rt->p15_shadow_canary_state,
