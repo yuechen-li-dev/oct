@@ -134,4 +134,4 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
   - `FlowCompletesAndHistoryPresent`
 
 
-- Compiled mode supports `Float(Int) -> Float`, `Clamp01(Float) -> Float`, and switch expressions in flow blocks (expression form only; no `else if` syntax).
+- Compiled mode supports `Float(Int) -> Float` in flow expressions (including `let`, assignment RHS, return expressions, and nested arithmetic), `Clamp01(Float) -> Float`, and switch expressions in flow blocks (expression form only; no `else if` syntax).
