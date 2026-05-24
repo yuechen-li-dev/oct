@@ -1,0 +1,20 @@
+expect error: "enum 'ShadowOutcome' has no variant 'Miss'"
+
+package MainInvalid
+
+enum ShadowOutcome {
+    Match
+    Late(Float)
+}
+
+flow MakeOutcome() -> Float {
+    board {
+        Value: Float
+    }
+
+    state Start {
+        let value = ShadowOutcome.Miss(1.0)
+        board.Value = 0.0
+        return board.Value
+    }
+}

@@ -2857,17 +2857,23 @@ func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg 
 }
 
 func lowerFlowEnumVariantExpr(program project.Program, currentPkg string, enumName string, variant string) (string, string, bool) {
-	pkg, ok := program.Packages[currentPkg]
+	enumPkg := currentPkg
+	localEnumName := enumName
+	if dot := strings.Index(enumName, "."); dot >= 0 {
+		enumPkg = enumName[:dot]
+		localEnumName = enumName[dot+1:]
+	}
+	pkg, ok := program.Packages[enumPkg]
 	if !ok {
 		return "", "", false
 	}
 	for _, enumDecl := range pkg.Enums {
-		if enumDecl.Name != enumName {
+		if enumDecl.Name != localEnumName {
 			continue
 		}
 		for _, declaredVariant := range enumDecl.Variants {
 			if declaredVariant.Name == variant {
-				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", currentPkg, enumName, enumName, variant), currentPkg + "." + enumName, true
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, localEnumName, localEnumName, variant), enumPkg + "." + localEnumName, true
 			}
 		}
 	}
@@ -3465,6 +3471,13 @@ func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]
 	}
 	fallible := false
 	if call, ok := expr.(ast.CallExpr); ok {
+		if calleeField, ok := call.Callee.(ast.FieldAccessExpr); ok {
+			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
+				if _, _, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant); enumFound {
+					return v, t, false, nil
+				}
+			}
+		}
 		_, _, _, isFallible, err := resolveFlowCall(call.Callee)
 		if err != nil {
 			return nil, "", false, err
@@ -3509,6 +3522,32 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 		}
 		return MIRFlowUnaryExpr{Operator: e.Operator, Operand: v}, nil
 	case ast.CallExpr:
+		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
+			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
+				enumExpr, _, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant)
+				if enumFound {
+					payloadType, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
+					if !hasPayload {
+						if len(e.Arguments) != 0 {
+							return nil, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
+						}
+						return MIRFlowLiteralExpr{Value: enumExpr}, nil
+					}
+					if len(e.Arguments) != 1 {
+						return nil, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
+					}
+					payloadExpr, err := lowerFlowExpr(e.Arguments[0], env, locals, pkg, boardFieldTypes)
+					if err != nil {
+						return nil, err
+					}
+					payload, err := emitGoFlowExpr(payloadExpr, pkg)
+					if err != nil {
+						return nil, err
+					}
+					return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: flowBox(%s, %q)}", enumPackageName(enumType, pkg), enumShortName(enumType), enumShortName(enumType), variant, payload, payloadType)}, nil
+				}
+			}
+		}
 		callee, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
 		if err != nil {
 			return nil, err
@@ -3762,6 +3801,30 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			return inferFlowExprType(e.Left, env, pkg, boardFieldTypes)
 		}
 	case ast.CallExpr:
+		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
+			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
+				if _, resolvedType, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant); enumFound {
+					payloadType, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
+					if !hasPayload {
+						if len(e.Arguments) != 0 {
+							return "", fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
+						}
+						return resolvedType, nil
+					}
+					if len(e.Arguments) != 1 {
+						return "", fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
+					}
+					argType, err := inferFlowExprType(e.Arguments[0], env, pkg, boardFieldTypes)
+					if err != nil {
+						return "", err
+					}
+					if argType != payloadType {
+						return "", fmt.Errorf("enum '%s' variant '%s' payload expects %s, got %s", enumType, variant, payloadType, argType)
+					}
+					return resolvedType, nil
+				}
+			}
+		}
 		_, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
 		if err != nil {
 			return "", err
@@ -3879,6 +3942,21 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}
+}
+
+func enumPackageName(enumType string, currentPkg string) string {
+	if dot := strings.Index(enumType, "."); dot >= 0 {
+		return enumType[:dot]
+	}
+	return currentPkg
+}
+
+func flattenFlowEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
+	enumType, ok := flattenEnumTypeExpr(expr.Target)
+	if !ok {
+		return "", "", false
+	}
+	return enumType, expr.Field, true
 }
 
 func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
