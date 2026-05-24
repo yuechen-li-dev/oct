@@ -521,6 +521,7 @@ typedef struct prometheus_runtime {
   prom_dominatus_reservation_decision p15_last_reservation;
   prom_dominatus_prestage_decision p15_last_prestage;
   prom_dominatus_shadow_snapshot p15_last_shadow;
+  prom_dominatus_shadow_calibration_state p15_shadow_calibration;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -4499,6 +4500,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   memset(&runtime->p14_last_filtered_evidence, 0, sizeof(runtime->p14_last_filtered_evidence));
   runtime->p14_measurement_tick = 0u;
   prom_dominatus_predictor_init(&runtime->p15_predictor_state, NULL);
+  prom_dominatus_shadow_calibration_init(&runtime->p15_shadow_calibration);
   runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
@@ -6123,6 +6125,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                                            &rt->p15_last_reservation,
                                                                            rt->p15_last_prestage.allowed,
                                                                            po.tick);
+            prom_dominatus_shadow_calibration_update(&rt->p15_shadow_calibration, &rt->p15_last_shadow);
           }
         }
       }
@@ -8241,6 +8244,21 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p15_shadow_correction_count = rt->p15_last_shadow.correction_count;
   out_diag->p15_shadow_stale_count = rt->p15_last_shadow.stale_count;
   out_diag->p15_shadow_miss_count = rt->p15_last_shadow.miss_count;
+  out_diag->p15_shadow_calibration_valid = rt->p15_shadow_calibration.valid;
+  out_diag->p15_shadow_calibration_sample_count = rt->p15_shadow_calibration.sample_count;
+  out_diag->p15_shadow_calibration_match_count = rt->p15_shadow_calibration.match_count;
+  out_diag->p15_shadow_calibration_miss_count = rt->p15_shadow_calibration.miss_count;
+  out_diag->p15_shadow_calibration_early_count = rt->p15_shadow_calibration.early_count;
+  out_diag->p15_shadow_calibration_late_count = rt->p15_shadow_calibration.late_count;
+  out_diag->p15_shadow_calibration_stale_count = rt->p15_shadow_calibration.stale_count;
+  out_diag->p15_shadow_calibration_fallback_count = rt->p15_shadow_calibration.fallback_count;
+  out_diag->p15_shadow_calibration_confidence = rt->p15_shadow_calibration.confidence;
+  out_diag->p15_shadow_calibration_mean_abs_arrival_error_ticks =
+      rt->p15_shadow_calibration.sample_count == 0u
+          ? 0.0
+          : (double)rt->p15_shadow_calibration.total_abs_arrival_error_ticks / (double)rt->p15_shadow_calibration.sample_count;
+  out_diag->p15_shadow_calibration_last_mismatch_kind = (uint32_t)rt->p15_shadow_calibration.last_mismatch_kind;
+  out_diag->p15_shadow_lookahead_state = (uint32_t)rt->p15_shadow_calibration.lookahead_diagnostic_state;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

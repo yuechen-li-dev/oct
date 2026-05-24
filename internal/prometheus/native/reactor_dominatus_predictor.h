@@ -70,6 +70,14 @@ typedef enum prom_dominatus_shadow_mismatch_kind {
   PROM_DOM_SHADOW_MISMATCH_INVALID_PREDICTION
 } prom_dominatus_shadow_mismatch_kind;
 
+typedef enum prom_dominatus_shadow_lookahead_state {
+  PROM_SHADOW_LOOKAHEAD_UNKNOWN = 0,
+  PROM_SHADOW_LOOKAHEAD_HEALTHY,
+  PROM_SHADOW_LOOKAHEAD_CAUTION,
+  PROM_SHADOW_LOOKAHEAD_UNRELIABLE,
+  PROM_SHADOW_LOOKAHEAD_DISABLED
+} prom_dominatus_shadow_lookahead_state;
+
 #define PROM_DOM_RESERVATION_CAP 16u
 
 typedef struct prom_dominatus_predictor_evidence {
@@ -243,6 +251,34 @@ typedef struct prom_dominatus_shadow_snapshot {
   uint64_t miss_count;
 } prom_dominatus_shadow_snapshot;
 
+typedef struct prom_dominatus_shadow_calibration_state {
+  uint32_t initialized;
+  uint32_t valid;
+  uint64_t sample_count;
+  uint64_t match_count;
+  uint64_t miss_count;
+  uint64_t early_count;
+  uint64_t late_count;
+  uint64_t physical_not_ready_count;
+  uint64_t cancelled_count;
+  uint64_t stale_count;
+  uint64_t fallback_count;
+  uint64_t consecutive_match_count;
+  uint64_t consecutive_miss_count;
+  uint64_t total_abs_arrival_error_ticks;
+  int64_t signed_arrival_error_sum_ticks;
+  uint64_t max_abs_arrival_error_ticks;
+  prom_dominatus_shadow_mismatch_kind last_mismatch_kind;
+  int64_t last_arrival_error_ticks;
+  double confidence;
+  prom_dominatus_shadow_lookahead_state lookahead_diagnostic_state;
+  uint32_t disabled_reason;
+  uint32_t caution_reason;
+  uint64_t last_counted_issued_tick;
+  uint64_t last_counted_target_tick;
+  uint64_t last_counted_predicted_ready_tick;
+} prom_dominatus_shadow_calibration_state;
+
 typedef struct prom_dominatus_predictor_params {
   double confidence_threshold_depth1;
   double confidence_threshold_depth2;
@@ -363,6 +399,10 @@ prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
     const prom_dominatus_reservation_decision* reservation,
     uint32_t prestage_allowed,
     uint64_t current_tick);
+void prom_dominatus_shadow_calibration_init(prom_dominatus_shadow_calibration_state* state);
+void prom_dominatus_shadow_calibration_reset(prom_dominatus_shadow_calibration_state* state);
+void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_state* state,
+                                              const prom_dominatus_shadow_snapshot* snapshot);
 
 #ifdef __cplusplus
 }

@@ -559,3 +559,104 @@ prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
   }
   return out;
 }
+
+static double shadow_calibration_clamp(double value) {
+  if (value < 0.0) return 0.0;
+  if (value > 1.0) return 1.0;
+  return value;
+}
+
+void prom_dominatus_shadow_calibration_init(prom_dominatus_shadow_calibration_state* state) {
+  if (state == NULL) return;
+  memset(state, 0, sizeof(*state));
+  state->initialized = 1u;
+  state->valid = 1u;
+  state->confidence = 0.5;
+  state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_UNKNOWN;
+  state->last_mismatch_kind = PROM_DOM_SHADOW_MISMATCH_NONE;
+}
+
+void prom_dominatus_shadow_calibration_reset(prom_dominatus_shadow_calibration_state* state) {
+  prom_dominatus_shadow_calibration_init(state);
+}
+
+void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_state* state,
+                                              const prom_dominatus_shadow_snapshot* snapshot) {
+  double delta = 0.0;
+  uint64_t abs_error = 0u;
+  if (state == NULL || snapshot == NULL || snapshot->valid == 0u) return;
+  if (state->initialized == 0u) prom_dominatus_shadow_calibration_init(state);
+  if (snapshot->mismatch_kind == PROM_DOM_SHADOW_MISMATCH_NONE) return;
+  if (state->last_counted_issued_tick == snapshot->issued_tick &&
+      state->last_counted_target_tick == snapshot->target_tick &&
+      state->last_counted_predicted_ready_tick == snapshot->predicted_ready_tick) return;
+  state->last_counted_issued_tick = snapshot->issued_tick;
+  state->last_counted_target_tick = snapshot->target_tick;
+  state->last_counted_predicted_ready_tick = snapshot->predicted_ready_tick;
+  state->sample_count += 1u;
+  state->last_mismatch_kind = snapshot->mismatch_kind;
+  state->last_arrival_error_ticks = snapshot->arrival_error_ticks;
+  abs_error = snapshot->arrival_error_ticks < 0 ? (uint64_t)(-snapshot->arrival_error_ticks) : (uint64_t)snapshot->arrival_error_ticks;
+  state->total_abs_arrival_error_ticks += abs_error;
+  state->signed_arrival_error_sum_ticks += snapshot->arrival_error_ticks;
+  if (abs_error > state->max_abs_arrival_error_ticks) state->max_abs_arrival_error_ticks = abs_error;
+
+  switch (snapshot->mismatch_kind) {
+    case PROM_DOM_SHADOW_MISMATCH_MATCH:
+      state->match_count += 1u;
+      state->consecutive_match_count += 1u;
+      state->consecutive_miss_count = 0u;
+      delta = 0.05;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_EARLY:
+      state->early_count += 1u;
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = abs_error <= 1u ? -0.02 : -0.04;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_LATE:
+      state->late_count += 1u;
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = abs_error <= 1u ? -0.02 : -0.04;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_PHYSICAL_NOT_READY:
+      state->miss_count += 1u;
+      state->physical_not_ready_count += 1u;
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = -0.10;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_STALE:
+      state->stale_count += 1u;
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = -0.05;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_FALLBACK:
+    case PROM_DOM_SHADOW_MISMATCH_HARD_GATE:
+      state->fallback_count += 1u;
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = -0.05;
+      break;
+    case PROM_DOM_SHADOW_MISMATCH_CANCELLED:
+      state->cancelled_count += 1u;
+      state->consecutive_match_count = 0u;
+      delta = -0.01;
+      break;
+    default:
+      state->consecutive_match_count = 0u;
+      state->consecutive_miss_count += 1u;
+      delta = -0.03;
+      break;
+  }
+  state->confidence = shadow_calibration_clamp(state->confidence + delta);
+  state->disabled_reason = state->fallback_count > 0u ? 1u : 0u;
+  state->caution_reason = state->consecutive_miss_count >= 2u ? 1u : 0u;
+  if (state->disabled_reason != 0u) state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_DISABLED;
+  else if (state->sample_count < 3u) state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_UNKNOWN;
+  else if (state->confidence >= 0.75 && state->miss_count * 10u <= state->sample_count * 2u) state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_HEALTHY;
+  else if (state->confidence >= 0.45) state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_CAUTION;
+  else state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_UNRELIABLE;
+}
