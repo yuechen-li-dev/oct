@@ -20,7 +20,20 @@ fn ColdStartUnknown() -> Void ! Error { Assert.Equal("UNKNOWN", RunScenario(Buil
 [Fact]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
-fn PhysicalNotReadyBurstBlockedOrCanary() -> Void ! Error { let g = RunScenario(BuildScenarios()[4]).FinalGate; Assert.True(g == "BLOCKED" or g == "CANARY_ELIGIBLE", "pnr") }
+fn LateJitterLargeUsesArrivalPayload() -> Void ! Error {
+    let reason = RunScenario(BuildScenarios()[3]).FinalReason
+    Assert.True(reason == "HighArrivalError" or reason == "LowConfidence", "late jitter reason")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn PhysicalNotReadyBurstBlockedOrCanary() -> Void ! Error { let g = RunScenario(BuildScenarios()[4]).FinalGate Assert.True(g == "BLOCKED" or g == "CANARY_ELIGIBLE", "pnr") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn RecoveryAfterMissesReachesCanaryOrHealthy() -> Void ! Error { let g = RunScenario(BuildScenarios()[5]).FinalGate Assert.True(g == "CANARY_ELIGIBLE" or g == "HEALTHY", "recovery") }
 
 [Fact]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
