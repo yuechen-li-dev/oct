@@ -2856,6 +2856,24 @@ func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg 
 	return "", false
 }
 
+func lowerFlowEnumVariantExpr(program project.Program, currentPkg string, enumName string, variant string) (string, string, bool) {
+	pkg, ok := program.Packages[currentPkg]
+	if !ok {
+		return "", "", false
+	}
+	for _, enumDecl := range pkg.Enums {
+		if enumDecl.Name != enumName {
+			continue
+		}
+		for _, declaredVariant := range enumDecl.Variants {
+			if declaredVariant.Name == variant {
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", currentPkg, enumName, enumName, variant), currentPkg + "." + enumName, true
+			}
+		}
+	}
+	return "", "", false
+}
+
 func typeRefString(t ast.TypeRef) string {
 	return typeRefStringForPackage("", t)
 }
@@ -3704,6 +3722,11 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 				return nil, fmt.Errorf("board has no field '%s'", e.Field)
 			}
 		}
+		if _, ok := env[targetIdent.Name]; !ok {
+			if enumExpr, _, ok := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, targetIdent.Name, e.Field); ok {
+				return MIRFlowLiteralExpr{Value: enumExpr}, nil
+			}
+		}
 		return MIRFlowFieldExpr{Target: targetIdent.Name, Field: e.Field}, nil
 	default:
 		return nil, unsupported(fmt.Sprintf("flow expression %T", expr))
@@ -3846,6 +3869,11 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 				return "", fmt.Errorf("board has no field '%s'", e.Field)
 			}
 			return t, nil
+		}
+		if _, ok := env[targetIdent.Name]; !ok {
+			if _, enumType, ok := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, targetIdent.Name, e.Field); ok {
+				return enumType, nil
+			}
 		}
 		return "", unsupported(fmt.Sprintf("flow field access %s.%s", targetIdent.Name, e.Field))
 	default:
@@ -4025,6 +4053,7 @@ func emitGo(m MIRModule) (string, error) {
 		if flowHasUtilityWhen(flow) {
 			needsUtilityHelpers = true
 		}
+		collectFlowBuiltins(flow, usedBuiltins)
 	}
 	for _, fn := range m.Functions {
 		if fn.UsesUtilityWhen {
@@ -4379,6 +4408,105 @@ func emitGo(m MIRModule) (string, error) {
 	b.WriteString("	}\n")
 	b.WriteString("}\n")
 	return b.String(), nil
+}
+
+func collectFlowBuiltins(flow MIRFlow, usedBuiltins map[string]bool) {
+	for _, state := range flow.States {
+		for _, stmt := range state.Statements {
+			collectFlowBuiltinsStmt(stmt, usedBuiltins)
+		}
+	}
+}
+
+func collectFlowBuiltinsStmt(stmt MIRFlowStmt, usedBuiltins map[string]bool) {
+	switch s := stmt.(type) {
+	case MIRFlowLetStmt:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowFieldAssign:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowReturn:
+		if s.Value != nil {
+			collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+		}
+	case MIRFlowIf:
+		collectFlowBuiltinsExpr(s.Condition, usedBuiltins)
+		for _, nested := range s.Then {
+			collectFlowBuiltinsStmt(nested, usedBuiltins)
+		}
+		for _, nested := range s.Else {
+			collectFlowBuiltinsStmt(nested, usedBuiltins)
+		}
+	case MIRFlowWhen:
+		for _, c := range s.Cases {
+			collectFlowBuiltinsExpr(c.Condition, usedBuiltins)
+			collectFlowBuiltinsWhenAction(c.Action, usedBuiltins)
+		}
+		collectFlowBuiltinsWhenAction(s.Else, usedBuiltins)
+	}
+}
+
+func collectFlowBuiltinsWhenAction(action MIRFlowWhenAction, usedBuiltins map[string]bool) {
+	switch a := action.(type) {
+	case MIRFlowWhenReturn:
+		collectFlowBuiltinsExpr(a.Value, usedBuiltins)
+	case MIRFlowWhenBlock:
+		for _, stmt := range a.Statements {
+			collectFlowBuiltinsStmt(stmt, usedBuiltins)
+		}
+	}
+}
+
+func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
+	switch e := expr.(type) {
+	case MIRFlowBinaryExpr:
+		collectFlowBuiltinsExpr(e.Left, usedBuiltins)
+		collectFlowBuiltinsExpr(e.Right, usedBuiltins)
+	case MIRFlowUnaryExpr:
+		collectFlowBuiltinsExpr(e.Operand, usedBuiltins)
+	case MIRFlowCallExpr:
+		if e.Builtin {
+			usedBuiltins[e.Callee] = true
+		}
+		for _, arg := range e.Args {
+			collectFlowBuiltinsExpr(arg, usedBuiltins)
+		}
+	case MIRFlowIndexExpr:
+		collectFlowBuiltinsExpr(e.Target, usedBuiltins)
+		collectFlowBuiltinsExpr(e.Index, usedBuiltins)
+	case MIRFlowRecordLiteralExpr:
+		for _, fieldVal := range e.FieldVals {
+			collectFlowBuiltinsExpr(fieldVal, usedBuiltins)
+		}
+	case MIRFlowUtilityWhenExpr:
+		collectFlowBuiltinsExpr(e.Hysteresis, usedBuiltins)
+		collectFlowBuiltinsExpr(e.MinCommit, usedBuiltins)
+		for _, c := range e.Cases {
+			collectFlowBuiltinsExpr(c.Value, usedBuiltins)
+			collectFlowBuiltinsExpr(c.Condition, usedBuiltins)
+			collectFlowBuiltinsExpr(c.Score, usedBuiltins)
+		}
+		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
+	case MIRFlowSwitchExpr:
+		if e.Subject != nil {
+			collectFlowBuiltinsExpr(e.Subject, usedBuiltins)
+		}
+		for _, c := range e.Cases {
+			collectFlowBuiltinsExpr(c.Match, usedBuiltins)
+			collectFlowBuiltinsExpr(c.Value, usedBuiltins)
+		}
+		if e.Else != nil {
+			collectFlowBuiltinsExpr(e.Else, usedBuiltins)
+		}
+	case MIRFlowMatchExpr:
+		collectFlowBuiltinsExpr(e.Subject, usedBuiltins)
+		for _, c := range e.Cases {
+			collectFlowBuiltinsExpr(c.Value, usedBuiltins)
+		}
+	case MIRFlowIfExpr:
+		collectFlowBuiltinsExpr(e.Condition, usedBuiltins)
+		collectFlowBuiltinsExpr(e.Then, usedBuiltins)
+		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
+	}
 }
 
 const __octSharedOctagonHelpers = `
@@ -5841,7 +5969,7 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		return fmt.Sprintf("__octUtilSelect[%s](f.utilitySites, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
 			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
 	case MIRFlowSwitchExpr:
-		parts := make([]string, 0, len(e.Cases)+1)
+		ifChain := make([]string, 0, len(e.Cases))
 		subject := ""
 		if e.Subject != nil {
 			s, err := emitGoFlowExpr(e.Subject, pkg)
@@ -5867,16 +5995,20 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			if idx > 0 {
 				keyword = "else if"
 			}
-			parts = append(parts, fmt.Sprintf("%s %s { return %s }", keyword, cond, value))
+			ifChain = append(ifChain, fmt.Sprintf("%s %s { return %s }", keyword, cond, value))
 		}
+		body := strings.Join(ifChain, " ")
 		if e.Else != nil {
 			elseExpr, err := emitGoFlowExpr(e.Else, pkg)
 			if err != nil {
 				return "", err
 			}
-			parts = append(parts, fmt.Sprintf("return %s", elseExpr))
+			if body != "" {
+				body += "; "
+			}
+			body += fmt.Sprintf("return %s", elseExpr)
 		}
-		return fmt.Sprintf("func() %s { %s }()", goType(e.ResultType), strings.Join(parts, " ")), nil
+		return fmt.Sprintf("func() %s { %s }()", goType(e.ResultType), body), nil
 	case MIRFlowMatchExpr:
 		subject, err := emitGoFlowExpr(e.Subject, pkg)
 		if err != nil {
