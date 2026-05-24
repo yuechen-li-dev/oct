@@ -523,6 +523,7 @@ typedef struct prometheus_runtime {
   prom_dominatus_shadow_snapshot p15_last_shadow;
   prom_dominatus_shadow_calibration_state p15_shadow_calibration;
   prom_dominatus_shadow_authority_gate p15_shadow_authority_gate;
+  prom_dominatus_shadow_would_act_state p15_shadow_would_act_state;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -4502,6 +4503,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->p14_measurement_tick = 0u;
   prom_dominatus_predictor_init(&runtime->p15_predictor_state, NULL);
   prom_dominatus_shadow_calibration_init(&runtime->p15_shadow_calibration);
+  prom_dominatus_shadow_would_act_init(&runtime->p15_shadow_would_act_state);
   runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
@@ -6128,6 +6130,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                                            po.tick);
             prom_dominatus_shadow_calibration_update(&rt->p15_shadow_calibration, &rt->p15_last_shadow);
             rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate(&rt->p15_shadow_calibration);
+            prom_dominatus_shadow_would_act_update(
+                &rt->p15_shadow_would_act_state, &rt->p15_shadow_authority_gate, &rt->p15_shadow_calibration, &rt->p15_last_shadow);
           }
         }
       }
@@ -8276,6 +8280,32 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p15_shadow_authority_match_rate = rt->p15_shadow_authority_gate.match_rate;
   out_diag->p15_shadow_authority_miss_rate = rt->p15_shadow_authority_gate.miss_rate;
   out_diag->p15_shadow_authority_mean_abs_arrival_error_ticks = rt->p15_shadow_authority_gate.mean_abs_arrival_error_ticks;
+  out_diag->p15_shadow_would_act_valid = rt->p15_shadow_would_act_state.valid;
+  out_diag->p15_shadow_would_act_evaluation_count = rt->p15_shadow_would_act_state.evaluation_count;
+  out_diag->p15_shadow_would_act_count = rt->p15_shadow_would_act_state.would_act_count;
+  out_diag->p15_shadow_would_block_count = rt->p15_shadow_would_act_state.would_block_count;
+  out_diag->p15_shadow_would_unknown_count = rt->p15_shadow_would_act_state.would_unknown_count;
+  out_diag->p15_shadow_would_disabled_count = rt->p15_shadow_would_act_state.would_disabled_count;
+  out_diag->p15_shadow_would_canary_count = rt->p15_shadow_would_act_state.would_canary_count;
+  out_diag->p15_shadow_would_healthy_count = rt->p15_shadow_would_act_state.would_healthy_count;
+  out_diag->p15_shadow_would_block_low_confidence_count = rt->p15_shadow_would_act_state.blocked_low_confidence_count;
+  out_diag->p15_shadow_would_block_high_miss_rate_count = rt->p15_shadow_would_act_state.blocked_high_miss_rate_count;
+  out_diag->p15_shadow_would_block_high_arrival_error_count = rt->p15_shadow_would_act_state.blocked_high_arrival_error_count;
+  out_diag->p15_shadow_would_block_recent_fallback_count = rt->p15_shadow_would_act_state.blocked_recent_fallback_count;
+  out_diag->p15_shadow_would_block_recent_stale_count = rt->p15_shadow_would_act_state.blocked_recent_stale_count;
+  out_diag->p15_shadow_would_block_insufficient_samples_count = rt->p15_shadow_would_act_state.blocked_insufficient_samples_count;
+  out_diag->p15_shadow_would_block_invalid_calibration_count = rt->p15_shadow_would_act_state.blocked_invalid_calibration_count;
+  out_diag->p15_shadow_would_block_lookahead_disabled_count = rt->p15_shadow_would_act_state.blocked_lookahead_disabled_count;
+  out_diag->p15_shadow_would_healthy_suppressed_by_recent_fallback_count =
+      rt->p15_shadow_would_act_state.healthy_suppressed_by_recent_fallback_count;
+  out_diag->p15_shadow_would_healthy_suppressed_by_recent_stale_count =
+      rt->p15_shadow_would_act_state.healthy_suppressed_by_recent_stale_count;
+  out_diag->p15_shadow_would_healthy_suppressed_by_arrival_error_count =
+      rt->p15_shadow_would_act_state.healthy_suppressed_by_arrival_error_count;
+  out_diag->p15_shadow_would_last_would_act = rt->p15_shadow_would_act_state.last_would_act;
+  out_diag->p15_shadow_would_last_reason = (uint32_t)rt->p15_shadow_would_act_state.last_would_block_reason;
+  out_diag->p15_shadow_would_last_gate_state = (uint32_t)rt->p15_shadow_would_act_state.last_gate_state;
+  out_diag->p15_shadow_would_last_recommended_lookahead_depth = rt->p15_shadow_would_act_state.last_recommended_lookahead_depth;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
