@@ -61,7 +61,8 @@ Notes:
 | `ast.IfExpr` / `ast.SwitchExpr` | Yes | No | Maybe | Defer | Statement-level `if`/`when` already exists for flow control; expression-level forms not required in this sweep. |
 | `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
 | `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
-| `ast.MatchExpr` / `ast.BatchExpr` / runtime-heavy expression forms | Partial | No | No | Defer | Outside current pure, deterministic local flow-expression scope. |
+| `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
+| `ast.BatchExpr` / runtime-heavy expression forms | Partial | No | No | Defer | Outside current pure, deterministic local flow-expression scope. |
 
 M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed, and compiled `BoardSnapshot` support is now green for M0 scalar board fields (`Bool`/`Int`/`Float`/`String`) with board arrays intentionally unsupported.
 
