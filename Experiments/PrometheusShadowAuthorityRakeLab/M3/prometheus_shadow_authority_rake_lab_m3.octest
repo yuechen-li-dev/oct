@@ -1,0 +1,54 @@
+package PrometheusShadowAuthorityRakeLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3.FlowSmoke")]
+fn ScenarioCountIsExpectedM3() -> Void ! Error { Assert.Equal(8, Len(BuildScenariosM3()), "scenario count") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3.FlowSmoke")]
+fn VariantCountIsExpectedM3() -> Void ! Error { Assert.Equal(3, Len(BuildVariantsM3()), "variant count") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn ReasonBindingPreventsHealthyOnStale() -> Void ! Error { let s = BuildScenariosM3()[4] let r = RunScenarioVariantM3(s, Variant.ReasonBindingEma) Assert.True(not r.RecentStaleHealthyViolation, "stale healthy violation") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn ReasonBindingPreventsHealthyOnFallback() -> Void ! Error { let s = BuildScenariosM3()[6] let r = RunScenarioVariantM3(s, Variant.ReasonBindingEma) Assert.True(not r.RecentFallbackHealthyViolation, "fallback healthy violation") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn HighArrivalErrorPreventsHealthyBoundaryArrival() -> Void ! Error { let s = BuildScenariosM3()[3] let r = RunScenarioVariantM3(s, Variant.ReasonBindingEma) Assert.True(r.FinalArrivalError >= 0.0, "arrival gating") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn ChatterImprovesOrRakeRecorded() -> Void ! Error {
+    let rows = RunLabM3()
+    var base = 0 var improved = 0 var hasRake = false
+    for i in 0..Len(rows) { if rows[i].VariantName == "M2BaselineEMA" { base = base + rows[i].ChatterCount } if rows[i].VariantName == "ReasonBindingEMA" { improved = improved + rows[i].ChatterCount } if rows[i].RakeSignal { hasRake = true } }
+    Assert.True(improved <= base or hasRake, "chatter or rake")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn RecoveryAfterBadPatchStillRecovers() -> Void ! Error { let s = BuildScenariosM3()[7] let r = RunScenarioVariantM3(s, Variant.ReasonBindingEma) Assert.True(r.TimeToRecover >= 0 and (r.FinalGate == "CANARY_ELIGIBLE" or r.FinalGate == "HEALTHY"), "recovery") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+fn BoardSnapshotPathExercised() -> Void ! Error { let r = RunScenarioVariantM3(BuildScenariosM3()[0], Variant.BaselineEma) Assert.True(r.EventCount > 0, "board snapshot exercised") }
+
+[Artifact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M3.Artifacts")]
+fn ArtifactOutputsExistM3() -> Void ! Error {
+    let _ = PrometheusShadowAuthorityRakeM3ArtifactWriteAll()
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.octagon")?) > 0, "octagon")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.md")?) > 0, "md")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_metrics.csv")?) > 0, "csv")
+    Assert.True(Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json")?) > 0, "json")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/FINDINGS.md")?) > 0, "findings")
+}

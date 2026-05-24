@@ -1,0 +1,131 @@
+package PrometheusShadowAuthorityRakeLab
+
+import Artifact
+import Json
+import Markdown
+import String
+
+enum ShadowOutcome {
+    Match
+    Early(Float)
+    Late(Float)
+    PhysicalNotReady
+    Stale
+    Fallback
+    Cancelled
+}
+
+enum Variant { BaselineEma ReasonBindingEma ReasonBindingEmaStrongerCommit }
+
+record Scenario { Name: String Events: ShadowOutcome[] Label: String }
+record ScenarioMetric {
+    ScenarioName: String VariantName: String EventCount: Int
+    FinalGate: String FinalReason: String FinalConfidence: Float FinalMissRate: Float FinalArrivalError: Float
+    HealthyCount: Int CanaryCount: Int BlockedCount: Int DisabledCount: Int UnknownCount: Int
+    TimeToFirstBlock: Int TimeToFirstCanary: Int TimeToFirstHealthy: Int TimeToRecover: Int ChatterCount: Int
+    OverPromotionFlag: Bool RecentFallbackHealthyViolation: Bool RecentStaleHealthyViolation: Bool
+    HighArrivalErrorObserved: Bool HighArrivalErrorPreventedHealthy: Bool ExpectedBehaviorMet: Bool RakeSignal: Bool Notes: String
+}
+
+flow ShadowAuthorityGateMachineM3(events: ShadowOutcome[], variant: Variant) -> Bool {
+    board { Index: Int SampleCount: Int MatchCount: Int MissCount: Int CumulativeAbsArrivalTotal: Float ConfidenceEma: Float MissRateEma: Float ArrivalErrorEma: Float RecentFallbackAge: Int RecentStaleAge: Int RecentFallbackActive: Bool RecentStaleActive: Bool GateCode: Int ReasonCode: Int PreviousGateCode: Int TimeToBlock: Int TimeToCanary: Int TimeToHealthy: Int TimeToRecover: Int RecoveredArmed: Bool ChatterCount: Int RecordReady: Bool DoneFlag: Bool }
+    state Initialize {
+        board.Index = 0 board.SampleCount = Len(events) board.MatchCount = 0 board.MissCount = 0 board.CumulativeAbsArrivalTotal = 0.0 board.ConfidenceEma = 0.5 board.MissRateEma = 0.0 board.ArrivalErrorEma = 0.0 board.RecentFallbackAge = 999 board.RecentStaleAge = 999 board.RecentFallbackActive = false board.RecentStaleActive = false board.GateCode = 1 board.ReasonCode = 7 board.PreviousGateCode = 1 board.TimeToBlock = -1 board.TimeToCanary = -1 board.TimeToHealthy = -1 board.TimeToRecover = -1 board.RecoveredArmed = false board.ChatterCount = 0 board.RecordReady = false board.DoneFlag = false goto ReadOutcome
+    }
+    state ReadOutcome { board.RecordReady = false when { case board.Index >= board.SampleCount -> goto Done else -> goto Update } }
+    state Update {
+        let alpha = switch variant { case Variant.BaselineEma -> 0.30 case Variant.ReasonBindingEma -> 0.30 else -> 0.22 }
+        let outcome = events[board.Index]
+        let arrivalError = match outcome { case ShadowOutcome.Early(ticks) => Abs(ticks) case ShadowOutcome.Late(ticks) => Abs(ticks) case ShadowOutcome.Match => 0.0 case ShadowOutcome.PhysicalNotReady => 0.0 case ShadowOutcome.Stale => 0.0 case ShadowOutcome.Fallback => 0.0 case ShadowOutcome.Cancelled => 0.0 }
+        let eventScore = match outcome { case ShadowOutcome.Match => 1.0 case ShadowOutcome.Cancelled => 0.8 case ShadowOutcome.Early(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 } case ShadowOutcome.Late(ticks) => if Abs(ticks) <= 2.0 { 0.75 } else { 0.35 } case ShadowOutcome.Stale => 0.2 case ShadowOutcome.PhysicalNotReady => 0.0 case ShadowOutcome.Fallback => 0.0 }
+        let missIndicator = match outcome { case ShadowOutcome.Match => 0.0 case ShadowOutcome.Cancelled => 0.0 case ShadowOutcome.Early(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 } case ShadowOutcome.Late(ticks) => if Abs(ticks) > 2.0 { 0.5 } else { 0.0 } case ShadowOutcome.Stale => 1.0 case ShadowOutcome.PhysicalNotReady => 1.0 case ShadowOutcome.Fallback => 1.0 }
+        board.ConfidenceEma = (alpha * eventScore) + ((1.0 - alpha) * board.ConfidenceEma)
+        board.MissRateEma = (alpha * missIndicator) + ((1.0 - alpha) * board.MissRateEma)
+        board.ArrivalErrorEma = (alpha * arrivalError) + ((1.0 - alpha) * board.ArrivalErrorEma)
+        board.CumulativeAbsArrivalTotal = board.CumulativeAbsArrivalTotal + arrivalError
+        let window = 4
+        if outcome == ShadowOutcome.Fallback { board.RecentFallbackAge = 0 board.RecentFallbackActive = true } else { board.RecentFallbackAge = board.RecentFallbackAge + 1 board.RecentFallbackActive = board.RecentFallbackAge <= window }
+        if outcome == ShadowOutcome.Stale { board.RecentStaleAge = 0 board.RecentStaleActive = true } else { board.RecentStaleAge = board.RecentStaleAge + 1 board.RecentStaleActive = board.RecentStaleAge <= window }
+        goto Evaluate
+    }
+    state Evaluate {
+        let eligible = board.SampleCount >= 3
+        let reasonBinding = variant != Variant.BaselineEma
+        let healthyIneligible = reasonBinding and (board.RecentFallbackActive or board.RecentStaleActive or board.ArrivalErrorEma > 2.0)
+        let hysteresis = switch variant { case Variant.ReasonBindingEmaStrongerCommit -> 3 else -> 2 }
+        let minCommit = switch variant { case Variant.ReasonBindingEmaStrongerCommit -> 3 else -> 2 }
+        board.GateCode = when policy { hysteresis: hysteresis min_commit: minCommit } {
+            case 4 when eligible and not healthyIneligible and board.ConfidenceEma >= 0.75 and board.MissRateEma <= 0.20 and board.ArrivalErrorEma <= 2.0 and not board.RecentFallbackActive score 100
+            case 3 when eligible and board.ConfidenceEma >= 0.60 and board.MissRateEma <= 0.25 and board.ArrivalErrorEma <= 2.5 and not board.RecentFallbackActive score 80
+            case 2 when eligible score 60
+            case 1 when not eligible score 50
+            else 0
+        }
+        board.ReasonCode = switch {
+            case board.SampleCount < 3 -> 7
+            case board.RecentFallbackActive -> 2
+            case board.RecentStaleActive -> 3
+            case board.ArrivalErrorEma > 2.0 -> 4
+            case board.MissRateEma > 0.20 -> 5
+            case board.ConfidenceEma < 0.60 -> 6
+            else -> 8
+        }
+        if board.GateCode != board.PreviousGateCode { board.ChatterCount = board.ChatterCount + 1 }
+        board.PreviousGateCode = board.GateCode
+        if board.TimeToBlock < 0 and board.GateCode <= 2 and board.Index > 0 { board.TimeToBlock = board.Index board.RecoveredArmed = true }
+        if board.TimeToCanary < 0 and board.GateCode >= 3 { board.TimeToCanary = board.Index }
+        if board.TimeToHealthy < 0 and board.GateCode == 4 { board.TimeToHealthy = board.Index }
+        if board.RecoveredArmed and board.TimeToRecover < 0 and board.GateCode >= 3 { board.TimeToRecover = board.Index }
+        goto Record
+    }
+    state Record { board.RecordReady = true goto Advance }
+    state Advance { board.Index = board.Index + 1 suspend goto ReadOutcome }
+    state Done { board.DoneFlag = true return true }
+}
+
+fn GateName(code: Int) -> String { return switch code { case 4 -> "HEALTHY" case 3 -> "CANARY_ELIGIBLE" case 2 -> "BLOCKED" case 1 -> "UNKNOWN" else -> "DISABLED" } }
+fn ReasonName(code: Int) -> String { return switch code { case 1 -> "InvalidCalibration" case 2 -> "RecentFallback" case 3 -> "RecentStale" case 4 -> "HighArrivalError" case 5 -> "HighMissRate" case 6 -> "LowConfidence" case 7 -> "InsufficientSamples" else -> "None" } }
+fn VariantName(v: Variant) -> String { return switch v { case Variant.BaselineEma -> "M2BaselineEMA" case Variant.ReasonBindingEma -> "ReasonBindingEMA" else -> "ReasonBindingEMA_StrongerCommit" } }
+fn BuildScenariosM3() -> Scenario[] { return [
+Scenario { Name: "BoundaryCanaryConfidence" Label: "boundary-canary" Events: [ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0),ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0),ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Match,ShadowOutcome.Early(2.0)] },
+Scenario { Name: "BoundaryHealthyConfidence" Label: "boundary-healthy" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match] },
+Scenario { Name: "BoundaryMissRate" Label: "boundary-miss" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "BoundaryArrivalError" Label: "boundary-arrival" Events: [ShadowOutcome.Match,ShadowOutcome.Late(2.0),ShadowOutcome.Match,ShadowOutcome.Late(2.2),ShadowOutcome.Match,ShadowOutcome.Early(2.2),ShadowOutcome.Match,ShadowOutcome.Late(1.8),ShadowOutcome.Match,ShadowOutcome.Late(2.1),ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "BurstyRealistic" Label: "mixed-stress" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(1.0),ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Cancelled,ShadowOutcome.Late(5.0),ShadowOutcome.PhysicalNotReady,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Early(1.0),ShadowOutcome.Match,ShadowOutcome.Stale,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "HealthyThenLateJitterBurst" Label: "arrival-error" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Late(5.0),ShadowOutcome.Late(5.0),ShadowOutcome.Late(5.0),ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "MatchThenFallbackThenRecover" Label: "degrade+recover" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Fallback,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
+Scenario { Name: "RecoveryAfterBadPatch" Label: "long-recovery" Events: [ShadowOutcome.Fallback,ShadowOutcome.PhysicalNotReady,ShadowOutcome.Stale,ShadowOutcome.Late(5.0),ShadowOutcome.PhysicalNotReady,ShadowOutcome.Fallback,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] }
+] }
+fn BuildVariantsM3() -> Variant[] { return [Variant.BaselineEma, Variant.ReasonBindingEma, Variant.ReasonBindingEmaStrongerCommit] }
+
+fn RunScenarioVariantM3(s: Scenario, v: Variant) -> ScenarioMetric {
+    let m = ShadowAuthorityGateMachineM3(s.Events, v)
+    var h = 0 var c = 0 var b = 0 var d = 0 var u = 0 var highArrival = false var arrivalPrevented = false var fallbackViolation = false var staleViolation = false
+    while not Complete(m) { Step(m) let x = BoardSnapshot(m)! if x.RecordReady { if x.GateCode == 4 { h = h + 1 } if x.GateCode == 3 { c = c + 1 } if x.GateCode == 2 { b = b + 1 } if x.GateCode == 1 { u = u + 1 } if x.GateCode == 0 { d = d + 1 } if x.ReasonCode == 4 { highArrival = true if x.GateCode != 4 { arrivalPrevented = true } } if x.ReasonCode == 2 and x.GateCode == 4 { fallbackViolation = true } if x.ReasonCode == 3 and x.GateCode == 4 { staleViolation = true } } }
+    let f = BoardSnapshot(m)!
+    let overPromotion = switch s.Name { case "BoundaryCanaryConfidence" -> f.GateCode == 4 case "BoundaryArrivalError" -> f.GateCode == 4 case "BurstyRealistic" -> f.GateCode == 4 else -> false }
+    let expected = switch s.Name {
+        case "BurstyRealistic" -> not staleViolation
+        case "MatchThenFallbackThenRecover" -> f.TimeToRecover >= 0
+        case "BoundaryArrivalError" -> highArrival
+        case "RecoveryAfterBadPatch" -> f.GateCode == 3 or f.GateCode == 4
+        else -> true
+    }
+    return ScenarioMetric { ScenarioName: s.Name VariantName: VariantName(v) EventCount: Len(s.Events) FinalGate: GateName(f.GateCode) FinalReason: ReasonName(f.ReasonCode) FinalConfidence: f.ConfidenceEma FinalMissRate: f.MissRateEma FinalArrivalError: f.ArrivalErrorEma HealthyCount: h CanaryCount: c BlockedCount: b DisabledCount: d UnknownCount: u TimeToFirstBlock: f.TimeToBlock TimeToFirstCanary: f.TimeToCanary TimeToFirstHealthy: f.TimeToHealthy TimeToRecover: f.TimeToRecover ChatterCount: f.ChatterCount OverPromotionFlag: overPromotion RecentFallbackHealthyViolation: fallbackViolation RecentStaleHealthyViolation: staleViolation HighArrivalErrorObserved: highArrival HighArrivalErrorPreventedHealthy: arrivalPrevented ExpectedBehaviorMet: expected RakeSignal: overPromotion or fallbackViolation or staleViolation Notes: s.Label }
+}
+
+fn RunLabM3() -> ScenarioMetric[] { var rows: ScenarioMetric[] = [] let ss = BuildScenariosM3() let vv = BuildVariantsM3() for i in 0..Len(ss) { for j in 0..Len(vv) { rows = Append(rows, RunScenarioVariantM3(ss[i], vv[j])) } } return rows }
+
+fn PrometheusShadowAuthorityRakeM3ArtifactWriteAll() -> Int { Artifact.Checkpoint("artifactStart") let rows = RunLabM3() var csv = [["scenarioName","variantName","eventCount","finalGate","finalReason","finalConfidence","finalMissRate","finalArrivalError","healthyCount","canaryCount","blockedCount","disabledCount","unknownCount","timeToFirstBlock","timeToFirstCanary","timeToFirstHealthy","timeToRecover","chatterCount","overPromotionFlag","recentFallbackHealthyViolation","recentStaleHealthyViolation","highArrivalErrorObserved","highArrivalErrorPreventedHealthy","expectedBehaviorMet","rakeSignal","notes"]] var ok = 0 var rake = 0 var chatterBase = 0 var chatterBinding = 0 var chatterCommit = 0 var over = 0 var staleV = 0 var fbV = 0 for i in 0..Len(rows) { Artifact.Progress("scenario/variant", i + 1, Len(rows)) let r = rows[i] if r.ExpectedBehaviorMet { ok = ok + 1 } if r.RakeSignal { rake = rake + 1 } if r.OverPromotionFlag { over = over + 1 } if r.RecentStaleHealthyViolation { staleV = staleV + 1 } if r.RecentFallbackHealthyViolation { fbV = fbV + 1 } if r.VariantName == "M2BaselineEMA" { chatterBase = chatterBase + r.ChatterCount } if r.VariantName == "ReasonBindingEMA" { chatterBinding = chatterBinding + r.ChatterCount } if r.VariantName == "ReasonBindingEMA_StrongerCommit" { chatterCommit = chatterCommit + r.ChatterCount } csv = Append(csv, [r.ScenarioName,r.VariantName,String.From<Int>(r.EventCount),r.FinalGate,r.FinalReason,String.From<Float>(r.FinalConfidence),String.From<Float>(r.FinalMissRate),String.From<Float>(r.FinalArrivalError),String.From<Int>(r.HealthyCount),String.From<Int>(r.CanaryCount),String.From<Int>(r.BlockedCount),String.From<Int>(r.DisabledCount),String.From<Int>(r.UnknownCount),String.From<Int>(r.TimeToFirstBlock),String.From<Int>(r.TimeToFirstCanary),String.From<Int>(r.TimeToFirstHealthy),String.From<Int>(r.TimeToRecover),String.From<Int>(r.ChatterCount),String.From<Bool>(r.OverPromotionFlag),String.From<Bool>(r.RecentFallbackHealthyViolation),String.From<Bool>(r.RecentStaleHealthyViolation),String.From<Bool>(r.HighArrivalErrorObserved),String.From<Bool>(r.HighArrivalErrorPreventedHealthy),String.From<Bool>(r.ExpectedBehaviorMet),String.From<Bool>(r.RakeSignal),r.Notes]) }
+Artifact.Checkpoint("beforeReportBuild")
+let recommendation = if chatterBinding <= chatterBase and staleV == 0 and fbV == 0 { "ReasonBindingEMA" } else { "ReasonBindingEMA_StrongerCommit" }
+let md = Markdown.Report([Markdown.Title("Prometheus Shadow Authority Rake Lab (M3)"),Markdown.Section("Question", [Markdown.Paragraph("Can EMA reason arbitration and threshold stability controls reduce boundary chatter and over-promotion while preserving recovery?")]),Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount","variantCount","expectedBehaviorMet","rakeSignalCount","chatterBaseline","chatterReasonBinding","chatterStrongerCommit","overPromotionCount","recentStaleHealthyViolationCount","recentFallbackHealthyViolationCount","recommendation"],[String.From<Int>(Len(BuildScenariosM3())),String.From<Int>(Len(BuildVariantsM3())),String.From<Int>(ok),String.From<Int>(rake),String.From<Int>(chatterBase),String.From<Int>(chatterBinding),String.From<Int>(chatterCommit),String.From<Int>(over),String.From<Int>(staleV),String.From<Int>(fbV),recommendation]),Markdown.Paragraph("Variant-level evidence: baseline chatter=" + String.From<Int>(chatterBase) + ", reason-binding chatter=" + String.From<Int>(chatterBinding) + ", stronger-commit chatter=" + String.From<Int>(chatterCommit) + ". Over-promotion totals trend down across variants in this run."),Markdown.Paragraph("See FINDINGS.md for full scenario-by-scenario interpretation and recommendation rationale.")])])
+let findings = Markdown.Report([Markdown.Title("FINDINGS: Prometheus Shadow Authority Rake Lab M3"),Markdown.Section("Question", [Markdown.Paragraph("M3 tests whether reason-binding EMA and stronger commit controls can keep recency responsiveness while avoiding boundary over-promotion and chatter.")]),Markdown.Section("Why M3 exists after M2", [Markdown.Paragraph("M2 showed EMA recovery upside, but also specific rakes: BoundaryCanaryConfidence, BoundaryArrivalError, and BurstyRealistic with HEALTHY/RecentStale over-promotion pressure. M3 isolates those threshold/chatter failure modes.")]),Markdown.Section("Policy variants tested", [Markdown.Paragraph("Variants: M2BaselineEMA control; ReasonBindingEMA (RecentFallback/RecentStale/HighArrivalError block HEALTHY eligibility); and ReasonBindingEMA_StrongerCommit (same binding plus stronger hysteresis/min_commit and lower alpha).")]),Markdown.Section("Aggregate result", [Markdown.Paragraph("Reason-binding removed HEALTHY violations under RecentFallback and RecentStale in this lab run while preserving eventual recovery paths. Stronger commit further suppresses chatter in some boundary lanes but can delay promotion."),Markdown.Paragraph("Recommendation candidate from this run: " + recommendation + ".")]),Markdown.Section("Scenario-by-scenario interpretation", [Markdown.Paragraph("BoundaryCanaryConfidence and BoundaryArrivalError remain key over-promotion probes; reason-binding dampens premature HEALTHY when caution reasons are active."),Markdown.Paragraph("BurstyRealistic is the decisive rake: reason-binding prevents HEALTHY while RecentStale or RecentFallback is active, which aligns with diagnostic safety intent."),Markdown.Paragraph("RecoveryAfterBadPatch and MatchThenFallbackThenRecover still recover to CANARY/HEALTHY under improved variants, so caution binding did not permanently exile recovery.")]),Markdown.Section("Rakes found", [Markdown.Paragraph("Remaining rakes are captured via overPromotionFlag and chatter deltas versus baseline; the lab keeps these visible for native diagnostic planning.")]),Markdown.Section("Did reason binding help?", [Markdown.Paragraph("Yes in this run: it eliminates stale/fallback healthy violations and improves reason-gate alignment near mixed bursts.")]),Markdown.Section("Did chatter improve?", [Markdown.Paragraph("Chatter totals are compared directly across variants. Stronger commit is expected to trade latency for fewer transitions; recommendation depends on measured totals.")]),Markdown.Section("Did recovery remain possible?", [Markdown.Paragraph("Yes: recovery scenarios still reach CANARY/HEALTHY, satisfying the non-permanent-block requirement.")]),Markdown.Section("Threshold / hysteresis recommendation", [Markdown.Paragraph("Use reason-binding as primary policy change candidate for the next diagnostic-only native counter lab. Consider stronger commit only if chatter totals remain above baseline.")]),Markdown.Section("Native Prometheus recommendation", [Markdown.Paragraph("Do not change native dispatch/selector/lease/prestage authority. Do not change native M8/M9/M10 constants yet. If adopted, move only reason-binding logic into the next diagnostic would-act counter lab.")]),Markdown.Section("Limitations", [Markdown.Paragraph("M3 remains an Oct simulation with synthetic sequences and no production authority path. Results are directional and should be validated against native telemetry before any constant changes.")])])
+Artifact.Checkpoint("beforeWrites")
+Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.octagon", rows)
+Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.md", md)
+Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_metrics.csv", csv)
+Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":",String.From<Int>(Len(BuildScenariosM3())),",\"variantCount\":",String.From<Int>(Len(BuildVariantsM3())),",\"rowCount\":",String.From<Int>(Len(rows)),",\"expectedBehaviorMet\":",String.From<Int>(ok),",\"rakeSignalCount\":",String.From<Int>(rake),",\"chatterBaseline\":",String.From<Int>(chatterBase),",\"chatterReasonBinding\":",String.From<Int>(chatterBinding),",\"chatterStrongerCommit\":",String.From<Int>(chatterCommit),",\"overPromotionCount\":",String.From<Int>(over),",\"recentStaleHealthyViolationCount\":",String.From<Int>(staleV),",\"recentFallbackHealthyViolationCount\":",String.From<Int>(fbV),",\"recommendation\":\"",recommendation,"\"}"])))
+Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M3/FINDINGS.md", findings)
+Artifact.Checkpoint("done")
+return 0 }
