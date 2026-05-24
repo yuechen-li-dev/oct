@@ -524,6 +524,8 @@ typedef struct prometheus_runtime {
   prom_dominatus_shadow_calibration_state p15_shadow_calibration;
   prom_dominatus_shadow_authority_gate p15_shadow_authority_gate;
   prom_dominatus_shadow_would_act_state p15_shadow_would_act_state;
+  prom_dominatus_shadow_canary_params p15_shadow_canary_params;
+  prom_dominatus_shadow_canary_state p15_shadow_canary_state;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -4504,6 +4506,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   prom_dominatus_predictor_init(&runtime->p15_predictor_state, NULL);
   prom_dominatus_shadow_calibration_init(&runtime->p15_shadow_calibration);
   prom_dominatus_shadow_would_act_init(&runtime->p15_shadow_would_act_state);
+  runtime->p15_shadow_canary_params = prom_dominatus_shadow_canary_default_params();
+  prom_dominatus_shadow_canary_init(&runtime->p15_shadow_canary_state);
   runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
@@ -4531,6 +4535,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
     if (cfg->struct_size >= sizeof(PrometheusReactorConfig)) {
       runtime->test_flags = cfg->test_flags;
+      runtime->p15_shadow_canary_params.enabled = cfg->p15_shadow_canary_enabled != 0u ? 1u : 0u;
     }
   }
   runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
@@ -6132,6 +6137,36 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
             rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate(&rt->p15_shadow_calibration);
             prom_dominatus_shadow_would_act_update(
                 &rt->p15_shadow_would_act_state, &rt->p15_shadow_authority_gate, &rt->p15_shadow_calibration, &rt->p15_last_shadow);
+            if (prom_dominatus_shadow_canary_should_attempt(&rt->p15_shadow_canary_state,
+                                                            &rt->p15_shadow_canary_params,
+                                                            &rt->p15_shadow_authority_gate,
+                                                            &rt->p15_shadow_calibration,
+                                                            &rt->p15_last_shadow) != 0u) {
+              if (rt->p15_predictor_state.future_lease_seam.last_request.valid == 0u) {
+                rt->p15_shadow_canary_state.action_blocked_count += 1u;
+                rt->p15_shadow_canary_state.block_no_future_lease_count += 1u;
+              } else {
+                prom_dominatus_reservation_decision canary_reservation = prom_dominatus_predictor_try_reserve_future(
+                    &rt->p15_predictor_state,
+                    &rt->p15_predictor_state.reservations,
+                    &rt->p15_predictor_state.future_lease_seam.last_request,
+                    po.tick);
+                rt->p15_shadow_canary_state.reservation_attempt_count += 1u;
+                if (canary_reservation.valid != 0u && canary_reservation.reserved != 0u) {
+                  rt->p15_shadow_canary_state.action_applied_count += 1u;
+                  rt->p15_shadow_canary_state.reservation_success_count += 1u;
+                  rt->p15_shadow_canary_state.last_applied_issued_tick = rt->p15_last_shadow.issued_tick;
+                  rt->p15_shadow_canary_state.last_applied_target_tick = rt->p15_last_shadow.target_tick;
+                  rt->p15_shadow_canary_state.last_applied_predicted_ready_tick = rt->p15_last_shadow.predicted_ready_tick;
+                } else {
+                  rt->p15_shadow_canary_state.action_blocked_count += 1u;
+                  rt->p15_shadow_canary_state.block_reservation_failed_count += 1u;
+                  rt->p15_shadow_canary_state.reservation_rejected_count += 1u;
+                }
+              }
+            } else if (rt->p15_shadow_canary_params.enabled == 0u) {
+              rt->p15_shadow_canary_state.block_disabled_count += 1u;
+            }
           }
         }
       }
@@ -8306,6 +8341,30 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
   out_diag->p15_shadow_would_last_reason = (uint32_t)rt->p15_shadow_would_act_state.last_would_block_reason;
   out_diag->p15_shadow_would_last_gate_state = (uint32_t)rt->p15_shadow_would_act_state.last_gate_state;
   out_diag->p15_shadow_would_last_recommended_lookahead_depth = rt->p15_shadow_would_act_state.last_recommended_lookahead_depth;
+  out_diag->p15_shadow_canary_valid = rt->p15_shadow_canary_state.valid;
+  out_diag->p15_shadow_canary_enabled = rt->p15_shadow_canary_state.enabled;
+  out_diag->p15_shadow_canary_last_action_allowed = rt->p15_shadow_canary_state.last_action_allowed;
+  out_diag->p15_shadow_canary_last_action_kind = (uint32_t)rt->p15_shadow_canary_state.last_action_kind;
+  out_diag->p15_shadow_canary_last_block_reason = (uint32_t)rt->p15_shadow_canary_state.last_block_reason;
+  out_diag->p15_shadow_canary_requested_lookahead_depth = rt->p15_shadow_canary_state.requested_lookahead_depth;
+  out_diag->p15_shadow_canary_healthy_margin_passed = rt->p15_shadow_canary_state.healthy_margin_passed;
+  out_diag->p15_shadow_canary_reason_binding_passed = rt->p15_shadow_canary_state.reason_binding_passed;
+  out_diag->p15_shadow_canary_evaluation_count = rt->p15_shadow_canary_state.evaluation_count;
+  out_diag->p15_shadow_canary_action_allowed_count = rt->p15_shadow_canary_state.action_allowed_count;
+  out_diag->p15_shadow_canary_action_applied_count = rt->p15_shadow_canary_state.action_applied_count;
+  out_diag->p15_shadow_canary_action_blocked_count = rt->p15_shadow_canary_state.action_blocked_count;
+  out_diag->p15_shadow_canary_reservation_attempt_count = rt->p15_shadow_canary_state.reservation_attempt_count;
+  out_diag->p15_shadow_canary_reservation_success_count = rt->p15_shadow_canary_state.reservation_success_count;
+  out_diag->p15_shadow_canary_reservation_rejected_count = rt->p15_shadow_canary_state.reservation_rejected_count;
+  out_diag->p15_shadow_canary_block_low_confidence_count = rt->p15_shadow_canary_state.block_low_confidence_count;
+  out_diag->p15_shadow_canary_block_high_miss_rate_count = rt->p15_shadow_canary_state.block_high_miss_rate_count;
+  out_diag->p15_shadow_canary_block_high_arrival_error_count = rt->p15_shadow_canary_state.block_high_arrival_error_count;
+  out_diag->p15_shadow_canary_block_recent_fallback_count = rt->p15_shadow_canary_state.block_recent_fallback_count;
+  out_diag->p15_shadow_canary_block_recent_stale_count = rt->p15_shadow_canary_state.block_recent_stale_count;
+  out_diag->p15_shadow_canary_block_insufficient_samples_count = rt->p15_shadow_canary_state.block_insufficient_samples_count;
+  out_diag->p15_shadow_canary_block_disabled_count = rt->p15_shadow_canary_state.block_disabled_count;
+  out_diag->p15_shadow_canary_block_no_future_lease_count = rt->p15_shadow_canary_state.block_no_future_lease_count;
+  out_diag->p15_shadow_canary_block_reservation_failed_count = rt->p15_shadow_canary_state.block_reservation_failed_count;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

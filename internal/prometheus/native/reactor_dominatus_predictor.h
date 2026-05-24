@@ -351,6 +351,46 @@ typedef struct prom_dominatus_shadow_would_act_state {
   uint64_t last_counted_predicted_ready_tick;
 } prom_dominatus_shadow_would_act_state;
 
+typedef enum prom_dominatus_shadow_canary_action_kind {
+  PROM_SHADOW_CANARY_ACTION_NONE = 0,
+  PROM_SHADOW_CANARY_ACTION_PREPLAN_RESERVATION = 1,
+} prom_dominatus_shadow_canary_action_kind;
+
+typedef struct prom_dominatus_shadow_canary_params {
+  uint32_t enabled;
+  double healthy_margin;
+} prom_dominatus_shadow_canary_params;
+
+typedef struct prom_dominatus_shadow_canary_state {
+  uint32_t valid;
+  uint32_t enabled;
+  uint32_t last_action_allowed;
+  prom_dominatus_shadow_canary_action_kind last_action_kind;
+  prom_dominatus_shadow_authority_reason last_block_reason;
+  uint32_t requested_lookahead_depth;
+  uint32_t healthy_margin_passed;
+  uint32_t reason_binding_passed;
+  uint64_t evaluation_count;
+  uint64_t action_allowed_count;
+  uint64_t action_applied_count;
+  uint64_t action_blocked_count;
+  uint64_t reservation_attempt_count;
+  uint64_t reservation_success_count;
+  uint64_t reservation_rejected_count;
+  uint64_t block_low_confidence_count;
+  uint64_t block_high_miss_rate_count;
+  uint64_t block_high_arrival_error_count;
+  uint64_t block_recent_fallback_count;
+  uint64_t block_recent_stale_count;
+  uint64_t block_insufficient_samples_count;
+  uint64_t block_disabled_count;
+  uint64_t block_no_future_lease_count;
+  uint64_t block_reservation_failed_count;
+  uint64_t last_applied_issued_tick;
+  uint64_t last_applied_target_tick;
+  uint64_t last_applied_predicted_ready_tick;
+} prom_dominatus_shadow_canary_state;
+
 typedef struct prom_dominatus_predictor_params {
   double confidence_threshold_depth1;
   double confidence_threshold_depth2;
@@ -482,6 +522,13 @@ void prom_dominatus_shadow_would_act_update(prom_dominatus_shadow_would_act_stat
                                             const prom_dominatus_shadow_authority_gate* gate,
                                             const prom_dominatus_shadow_calibration_state* calibration,
                                             const prom_dominatus_shadow_snapshot* snapshot);
+prom_dominatus_shadow_canary_params prom_dominatus_shadow_canary_default_params(void);
+void prom_dominatus_shadow_canary_init(prom_dominatus_shadow_canary_state* state);
+uint32_t prom_dominatus_shadow_canary_should_attempt(prom_dominatus_shadow_canary_state* state,
+                                                     const prom_dominatus_shadow_canary_params* params,
+                                                     const prom_dominatus_shadow_authority_gate* gate,
+                                                     const prom_dominatus_shadow_calibration_state* calibration,
+                                                     const prom_dominatus_shadow_snapshot* snapshot);
 
 #ifdef __cplusplus
 }

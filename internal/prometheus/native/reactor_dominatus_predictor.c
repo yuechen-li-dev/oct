@@ -818,3 +818,38 @@ void prom_dominatus_shadow_would_act_update(prom_dominatus_shadow_would_act_stat
   if (gate->state == PROM_SHADOW_AUTHORITY_UNKNOWN) state->would_unknown_count += 1u;
   else if (gate->state == PROM_SHADOW_AUTHORITY_DISABLED) state->would_disabled_count += 1u;
 }
+
+prom_dominatus_shadow_canary_params prom_dominatus_shadow_canary_default_params(void) {
+  prom_dominatus_shadow_canary_params p = {0u, 0.05};
+  return p;
+}
+
+void prom_dominatus_shadow_canary_init(prom_dominatus_shadow_canary_state* state) {
+  if (state == NULL) return;
+  memset(state, 0, sizeof(*state));
+  state->valid = 1u;
+}
+
+uint32_t prom_dominatus_shadow_canary_should_attempt(prom_dominatus_shadow_canary_state* state,
+                                                     const prom_dominatus_shadow_canary_params* params,
+                                                     const prom_dominatus_shadow_authority_gate* gate,
+                                                     const prom_dominatus_shadow_calibration_state* calibration,
+                                                     const prom_dominatus_shadow_snapshot* snapshot) {
+  const double healthy_base = 0.75;
+  if (state == NULL || params == NULL || gate == NULL || calibration == NULL || snapshot == NULL || snapshot->valid == 0u) return 0u;
+  state->evaluation_count += 1u;
+  state->enabled = params->enabled;
+  state->requested_lookahead_depth = gate->recommended_lookahead_depth;
+  state->healthy_margin_passed = calibration->confidence >= (healthy_base + params->healthy_margin) ? 1u : 0u;
+  state->reason_binding_passed = (snapshot->fallback == 0u && snapshot->stale == 0u) ? 1u : 0u;
+  if (params->enabled == 0u || gate->state != PROM_SHADOW_AUTHORITY_HEALTHY || state->healthy_margin_passed == 0u ||
+      state->reason_binding_passed == 0u)
+    return 0u;
+  if (state->last_applied_issued_tick == snapshot->issued_tick &&
+      state->last_applied_target_tick == snapshot->target_tick &&
+      state->last_applied_predicted_ready_tick == snapshot->predicted_ready_tick) return 0u;
+  state->last_action_allowed = 1u;
+  state->last_action_kind = PROM_SHADOW_CANARY_ACTION_PREPLAN_RESERVATION;
+  state->action_allowed_count += 1u;
+  return 1u;
+}
