@@ -660,3 +660,83 @@ void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_
   else if (state->confidence >= 0.45) state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_CAUTION;
   else state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_UNRELIABLE;
 }
+
+prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
+    const prom_dominatus_shadow_calibration_state* calibration) {
+  const uint64_t min_samples = 3u;
+  const double min_confidence_for_canary = 0.60;
+  const double min_confidence_for_healthy = 0.75;
+  const double max_miss_rate = 0.20;
+  const double max_mean_abs_arrival_error_ticks = 2.0;
+  prom_dominatus_shadow_authority_gate out;
+  double miss_rate = 0.0;
+  memset(&out, 0, sizeof(out));
+  out.state = PROM_SHADOW_AUTHORITY_UNKNOWN;
+  out.reason = PROM_SHADOW_AUTHORITY_REASON_INSUFFICIENT_SAMPLES;
+  if (calibration == NULL || calibration->initialized == 0u || calibration->valid == 0u) {
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_INVALID_CALIBRATION;
+    return out;
+  }
+  out.valid = 1u;
+  out.confidence = calibration->confidence;
+  out.sample_count = calibration->sample_count;
+  if (calibration->sample_count > 0u) {
+    out.match_rate = (double)calibration->match_count / (double)calibration->sample_count;
+    miss_rate = (double)calibration->miss_count / (double)calibration->sample_count;
+    out.miss_rate = miss_rate;
+    out.mean_abs_arrival_error_ticks =
+        (double)calibration->total_abs_arrival_error_ticks / (double)calibration->sample_count;
+  }
+  out.sample_gate_passed = calibration->sample_count >= min_samples ? 1u : 0u;
+  out.confidence_gate_passed = calibration->confidence >= min_confidence_for_canary ? 1u : 0u;
+  out.miss_rate_gate_passed = miss_rate <= max_miss_rate ? 1u : 0u;
+  out.arrival_error_gate_passed = out.mean_abs_arrival_error_ticks <= max_mean_abs_arrival_error_ticks ? 1u : 0u;
+  out.lookahead_state_gate_passed =
+      calibration->lookahead_diagnostic_state != PROM_SHADOW_LOOKAHEAD_DISABLED &&
+              calibration->lookahead_diagnostic_state != PROM_SHADOW_LOOKAHEAD_UNRELIABLE
+          ? 1u
+          : 0u;
+  if (calibration->lookahead_diagnostic_state == PROM_SHADOW_LOOKAHEAD_DISABLED) {
+    out.state = PROM_SHADOW_AUTHORITY_DISABLED;
+    out.reason = calibration->fallback_count > 0u ? PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK
+                                                   : PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED;
+    return out;
+  }
+  if (calibration->stale_count > 0u && calibration->last_mismatch_kind == PROM_DOM_SHADOW_MISMATCH_STALE) {
+    out.state = PROM_SHADOW_AUTHORITY_BLOCKED;
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE;
+    return out;
+  }
+  if (out.sample_gate_passed == 0u) return out;
+  if (out.lookahead_state_gate_passed == 0u) {
+    out.state = PROM_SHADOW_AUTHORITY_BLOCKED;
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_LOW_CONFIDENCE;
+    return out;
+  }
+  if (out.confidence_gate_passed == 0u) {
+    out.state = PROM_SHADOW_AUTHORITY_BLOCKED;
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_LOW_CONFIDENCE;
+    return out;
+  }
+  if (out.miss_rate_gate_passed == 0u) {
+    out.state = PROM_SHADOW_AUTHORITY_BLOCKED;
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_HIGH_MISS_RATE;
+    return out;
+  }
+  if (out.arrival_error_gate_passed == 0u) {
+    out.state = PROM_SHADOW_AUTHORITY_BLOCKED;
+    out.reason = PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR;
+    return out;
+  }
+  out.canary_allowed = 1u;
+  out.authority_would_act = 1u;
+  out.reason = PROM_SHADOW_AUTHORITY_REASON_NONE;
+  if (calibration->confidence >= min_confidence_for_healthy) {
+    out.state = PROM_SHADOW_AUTHORITY_HEALTHY;
+    out.recommended_lookahead_depth = out.mean_abs_arrival_error_ticks <= 1.0 ? 2u : 1u;
+  } else {
+    out.state = PROM_SHADOW_AUTHORITY_CANARY_ELIGIBLE;
+    out.recommended_lookahead_depth = 1u;
+  }
+  return out;
+}

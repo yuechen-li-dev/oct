@@ -78,6 +78,26 @@ typedef enum prom_dominatus_shadow_lookahead_state {
   PROM_SHADOW_LOOKAHEAD_DISABLED
 } prom_dominatus_shadow_lookahead_state;
 
+typedef enum prom_dominatus_shadow_authority_state {
+  PROM_SHADOW_AUTHORITY_UNKNOWN = 0,
+  PROM_SHADOW_AUTHORITY_BLOCKED,
+  PROM_SHADOW_AUTHORITY_CANARY_ELIGIBLE,
+  PROM_SHADOW_AUTHORITY_HEALTHY,
+  PROM_SHADOW_AUTHORITY_DISABLED
+} prom_dominatus_shadow_authority_state;
+
+typedef enum prom_dominatus_shadow_authority_reason {
+  PROM_SHADOW_AUTHORITY_REASON_NONE = 0,
+  PROM_SHADOW_AUTHORITY_REASON_INSUFFICIENT_SAMPLES,
+  PROM_SHADOW_AUTHORITY_REASON_LOW_CONFIDENCE,
+  PROM_SHADOW_AUTHORITY_REASON_HIGH_MISS_RATE,
+  PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR,
+  PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED,
+  PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK,
+  PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE,
+  PROM_SHADOW_AUTHORITY_REASON_INVALID_CALIBRATION
+} prom_dominatus_shadow_authority_reason;
+
 #define PROM_DOM_RESERVATION_CAP 16u
 
 typedef struct prom_dominatus_predictor_evidence {
@@ -279,6 +299,26 @@ typedef struct prom_dominatus_shadow_calibration_state {
   uint64_t last_counted_predicted_ready_tick;
 } prom_dominatus_shadow_calibration_state;
 
+typedef struct prom_dominatus_shadow_authority_gate {
+  uint32_t valid;
+  prom_dominatus_shadow_authority_state state;
+  prom_dominatus_shadow_authority_reason reason;
+  double confidence;
+  uint64_t sample_count;
+  double match_rate;
+  double miss_rate;
+  double mean_abs_arrival_error_ticks;
+  uint32_t recommended_lookahead_depth;
+  uint32_t confidence_gate_passed;
+  uint32_t sample_gate_passed;
+  uint32_t miss_rate_gate_passed;
+  uint32_t arrival_error_gate_passed;
+  uint32_t lookahead_state_gate_passed;
+  uint32_t canary_allowed;
+  uint32_t authority_enabled;
+  uint32_t authority_would_act;
+} prom_dominatus_shadow_authority_gate;
+
 typedef struct prom_dominatus_predictor_params {
   double confidence_threshold_depth1;
   double confidence_threshold_depth2;
@@ -403,6 +443,8 @@ void prom_dominatus_shadow_calibration_init(prom_dominatus_shadow_calibration_st
 void prom_dominatus_shadow_calibration_reset(prom_dominatus_shadow_calibration_state* state);
 void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_state* state,
                                               const prom_dominatus_shadow_snapshot* snapshot);
+prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
+    const prom_dominatus_shadow_calibration_state* calibration);
 
 #ifdef __cplusplus
 }
