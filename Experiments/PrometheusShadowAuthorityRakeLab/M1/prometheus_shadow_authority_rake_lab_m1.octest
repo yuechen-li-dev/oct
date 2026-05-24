@@ -20,10 +20,7 @@ fn ColdStartUnknown() -> Void ! Error { Assert.Equal("UNKNOWN", RunScenario(Buil
 [Fact]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
-fn PhysicalNotReadyBurstBlockedOrCanary() -> Void ! Error {
-    let g = RunScenario(BuildScenarios()[4]).FinalGate
-    Assert.True(g == "BLOCKED" or g == "CANARY_ELIGIBLE", "pnr")
-}
+fn PhysicalNotReadyBurstBlockedOrCanary() -> Void ! Error { let g = RunScenario(BuildScenarios()[4]).FinalGate; Assert.True(g == "BLOCKED" or g == "CANARY_ELIGIBLE", "pnr") }
 
 [Fact]
 [Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]

@@ -102,44 +102,13 @@ flow ShadowAuthorityGateMachine(events: ShadowOutcome[]) -> Bool {
     }
     state UpdateCalibration {
         let outcome = events[board.Index]
-        if outcome == ShadowOutcome.Match {
-            board.MatchCount = board.MatchCount + 1
-            board.Confidence = board.Confidence + 0.05
-            if board.Confidence > 1.0 { board.Confidence = 1.0 }
-        }
-        if outcome == ShadowOutcome.Early {
-            board.EarlyCount = board.EarlyCount + 1
-            board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0
-            board.Confidence = board.Confidence - 0.02
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
-        if outcome == ShadowOutcome.Late {
-            board.LateCount = board.LateCount + 1
-            board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0
-            board.Confidence = board.Confidence - 0.02
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
-        if outcome == ShadowOutcome.PhysicalNotReady {
-            board.MissCount = board.MissCount + 1
-            board.HadRecentMiss = true
-            board.Confidence = board.Confidence - 0.10
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
-        if outcome == ShadowOutcome.Stale {
-            board.StaleCount = board.StaleCount + 1
-            board.Confidence = board.Confidence - 0.05
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
-        if outcome == ShadowOutcome.Fallback {
-            board.FallbackCount = board.FallbackCount + 1
-            board.Confidence = board.Confidence - 0.05
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
-        if outcome == ShadowOutcome.Cancelled {
-            board.CancelCount = board.CancelCount + 1
-            board.Confidence = board.Confidence - 0.01
-            if board.Confidence < 0.0 { board.Confidence = 0.0 }
-        }
+        if outcome == ShadowOutcome.Match { board.MatchCount = board.MatchCount + 1 board.Confidence = Min(1.0, board.Confidence + 0.05) }
+        if outcome == ShadowOutcome.Early { board.EarlyCount = board.EarlyCount + 1 board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0 board.Confidence = Max(0.0, board.Confidence - 0.02) }
+        if outcome == ShadowOutcome.Late { board.LateCount = board.LateCount + 1 board.TotalAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks + 1.0 board.Confidence = Max(0.0, board.Confidence - 0.02) }
+        if outcome == ShadowOutcome.PhysicalNotReady { board.MissCount = board.MissCount + 1 board.HadRecentMiss = true board.Confidence = Max(0.0, board.Confidence - 0.10) }
+        if outcome == ShadowOutcome.Stale { board.StaleCount = board.StaleCount + 1 board.Confidence = Max(0.0, board.Confidence - 0.05) }
+        if outcome == ShadowOutcome.Fallback { board.FallbackCount = board.FallbackCount + 1 board.Confidence = Max(0.0, board.Confidence - 0.05) }
+        if outcome == ShadowOutcome.Cancelled { board.CancelCount = board.CancelCount + 1 board.Confidence = Max(0.0, board.Confidence - 0.01) }
         if board.TotalAbsArrivalErrorTicks > board.MaxAbsArrivalErrorTicks { board.MaxAbsArrivalErrorTicks = board.TotalAbsArrivalErrorTicks }
         goto ComputeRates
     }
@@ -164,19 +133,8 @@ flow ShadowAuthorityGateMachine(events: ShadowOutcome[]) -> Bool {
             else 0
         }
         board.GateCode = gate
-        board.ReasonCode = switch {
-            case board.LookaheadCode == 0 => 6
-            case board.SampleCount < 3 => 1
-            case board.Confidence < 0.60 => 2
-            case board.MissRate > 0.20 => 3
-            case board.MeanAbsArrivalErrorTicks > 2.0 => 4
-            else => 0
-        }
-        board.RecommendedLookaheadDepth = switch {
-            case board.GateCode == 4 and board.MeanAbsArrivalErrorTicks < 1.0 => 2
-            case board.GateCode >= 3 => 1
-            else => 0
-        }
+        board.ReasonCode = if board.LookaheadCode == 0 { 6 } else if board.SampleCount < 3 { 1 } else if board.Confidence < 0.60 { 2 } else if board.MissRate > 0.20 { 3 } else if board.MeanAbsArrivalErrorTicks > 2.0 { 4 } else { 0 }
+        board.RecommendedLookaheadDepth = if board.GateCode == 4 and board.MeanAbsArrivalErrorTicks < 1.0 { 2 } else if board.GateCode >= 3 { 1 } else { 0 }
         if board.FirstCanaryAt < 0 and board.GateCode >= 3 { board.FirstCanaryAt = board.Index }
         if board.FirstHealthyAt < 0 and board.GateCode == 4 { board.FirstHealthyAt = board.Index }
         if board.HadRecentMiss and board.RecoveredAt < 0 and board.GateCode >= 3 { board.RecoveredAt = board.Index }
@@ -188,31 +146,9 @@ flow ShadowAuthorityGateMachine(events: ShadowOutcome[]) -> Bool {
     state Done { board.DoneFlag = true return true }
 }
 
-fn GateName(code: Int) -> String {
-    return switch code {
-        case 4 => "HEALTHY"
-        case 3 => "CANARY_ELIGIBLE"
-        case 2 => "BLOCKED"
-        case 1 => "UNKNOWN"
-        else => "DISABLED"
-    }
-}
-fn ReasonName(code: Int) -> String {
-    return switch code {
-        case 6 => "LookaheadDisabled"
-        case 1 => "InsufficientSamples"
-        case 2 => "LowConfidence"
-        case 3 => "HighMissRate"
-        case 4 => "HighArrivalError"
-        else => "None"
-    }
-}
-fn LookaheadName(code: Int) -> String {
-    return switch code {
-        case 0 => "DISABLED"
-        else => "ENABLED"
-    }
-}
+fn GateName(code: Int) -> String { return if code == 4 { "HEALTHY" } else if code == 3 { "CANARY_ELIGIBLE" } else if code == 2 { "BLOCKED" } else if code == 1 { "UNKNOWN" } else { "DISABLED" } }
+fn ReasonName(code: Int) -> String { return if code == 6 { "LookaheadDisabled" } else if code == 1 { "InsufficientSamples" } else if code == 2 { "LowConfidence" } else if code == 3 { "HighMissRate" } else if code == 4 { "HighArrivalError" } else { "None" } }
+fn LookaheadName(code: Int) -> String { return if code == 0 { "DISABLED" } else { "ENABLED" } }
 
 fn BuildScenarios() -> Scenario[] { return [
 Scenario { Name: "PerfectMatches" Events: [ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match,ShadowOutcome.Match] },
@@ -234,8 +170,8 @@ fn RunScenario(s: Scenario) -> ScenarioMetric {
     var blocked = 0
     var disabled = 0
     var unknown = 0
-    while not Complete(m) {
-        Step(m)
+    while !Complete(m) {
+        let _ = Step(m)
         let b = BoardSnapshot(m)!
         if b.RecordReady {
             if b.GateCode == 4 { healthy = healthy + 1 }
