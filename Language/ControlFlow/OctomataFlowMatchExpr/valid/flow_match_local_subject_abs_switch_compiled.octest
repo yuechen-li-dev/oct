@@ -1,0 +1,34 @@
+package Main
+
+enum ShadowOutcome {
+    Match
+    Late(Float)
+}
+
+flow FlowLocalMatchSubject(input: ShadowOutcome) -> Float {
+    board {
+        Score: Float
+        Guard: Int
+    }
+    state Start {
+        let outcome = input
+        let score = match outcome {
+            case ShadowOutcome.Late(ticks) => Abs(ticks)
+            case ShadowOutcome.Match => 0.0
+        }
+        board.Guard = switch board.Guard {
+            case 0 => 1
+            case 1 => 2
+            else => 3
+        }
+        board.Score = score
+        return board.Score + Float(board.Guard)
+    }
+}
+
+[Fact]
+fn FlowMatchLocalSubjectAndAbsAndSwitch() -> Void {
+    let f = FlowLocalMatchSubject(ShadowOutcome.Late(5.0))
+    Step(f)
+    Assert.True(Complete(f), "flow should complete")
+}
