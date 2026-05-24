@@ -839,12 +839,31 @@ uint32_t prom_dominatus_shadow_canary_should_attempt(prom_dominatus_shadow_canar
   if (state == NULL || params == NULL || gate == NULL || calibration == NULL || snapshot == NULL || snapshot->valid == 0u) return 0u;
   state->evaluation_count += 1u;
   state->enabled = params->enabled;
+  state->last_action_allowed = 0u;
+  state->last_action_kind = PROM_SHADOW_CANARY_ACTION_NONE;
+  state->last_block_reason = gate->reason;
   state->requested_lookahead_depth = gate->recommended_lookahead_depth;
   state->healthy_margin_passed = calibration->confidence >= (healthy_base + params->healthy_margin) ? 1u : 0u;
   state->reason_binding_passed = (snapshot->fallback == 0u && snapshot->stale == 0u) ? 1u : 0u;
-  if (params->enabled == 0u || gate->state != PROM_SHADOW_AUTHORITY_HEALTHY || state->healthy_margin_passed == 0u ||
-      state->reason_binding_passed == 0u)
+  if (params->enabled == 0u) {
+    state->action_blocked_count += 1u;
+    state->block_disabled_count += 1u;
     return 0u;
+  }
+  if (gate->state != PROM_SHADOW_AUTHORITY_HEALTHY || state->healthy_margin_passed == 0u || state->reason_binding_passed == 0u) {
+    state->action_blocked_count += 1u;
+    switch (gate->reason) {
+      case PROM_SHADOW_AUTHORITY_REASON_LOW_CONFIDENCE: state->block_low_confidence_count += 1u; break;
+      case PROM_SHADOW_AUTHORITY_REASON_HIGH_MISS_RATE: state->block_high_miss_rate_count += 1u; break;
+      case PROM_SHADOW_AUTHORITY_REASON_HIGH_ARRIVAL_ERROR: state->block_high_arrival_error_count += 1u; break;
+      case PROM_SHADOW_AUTHORITY_REASON_RECENT_FALLBACK:
+      case PROM_SHADOW_AUTHORITY_REASON_LOOKAHEAD_DISABLED: state->block_recent_fallback_count += 1u; break;
+      case PROM_SHADOW_AUTHORITY_REASON_RECENT_STALE: state->block_recent_stale_count += 1u; break;
+      case PROM_SHADOW_AUTHORITY_REASON_INSUFFICIENT_SAMPLES: state->block_insufficient_samples_count += 1u; break;
+      default: state->block_low_confidence_count += 1u; break;
+    }
+    return 0u;
+  }
   if (state->last_applied_issued_tick == snapshot->issued_tick &&
       state->last_applied_target_tick == snapshot->target_tick &&
       state->last_applied_predicted_ready_tick == snapshot->predicted_ready_tick) return 0u;
