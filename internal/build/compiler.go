@@ -255,6 +255,15 @@ type MIRFlowMatchCase struct {
 	Value       MIRFlowExpr
 }
 
+type MIRFlowIfExpr struct {
+	Condition  MIRFlowExpr
+	Then       MIRFlowExpr
+	Else       MIRFlowExpr
+	ResultType string
+}
+
+func (MIRFlowIfExpr) mirFlowExpr() {}
+
 type MIRField struct {
 	Name string
 	Type string
@@ -3665,6 +3674,24 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			})
 		}
 		return MIRFlowMatchExpr{Subject: subject, SubjectType: subjectType, Cases: cases, ResultType: resultType}, nil
+	case ast.IfExpr:
+		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		condition, err := lowerFlowExpr(e.Condition, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		thenExpr, err := lowerFlowExpr(e.ThenExpr, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		elseExpr, err := lowerFlowExpr(e.ElseExpr, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowIfExpr{Condition: condition, Then: thenExpr, Else: elseExpr, ResultType: resultType}, nil
 	case ast.ParenExpr:
 		return lowerFlowExpr(e.Inner, env, locals, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3794,6 +3821,18 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			}
 		}
 		return resultType, nil
+	case ast.IfExpr:
+		thenType, err := inferFlowExprType(e.ThenExpr, env, pkg, boardFieldTypes)
+		if err != nil {
+			return "", err
+		}
+		if _, err := inferFlowExprType(e.Condition, env, pkg, boardFieldTypes); err != nil {
+			return "", err
+		}
+		if _, err := inferFlowExprType(e.ElseExpr, env, pkg, boardFieldTypes); err != nil {
+			return "", err
+		}
+		return thenType, nil
 	case ast.ParenExpr:
 		return inferFlowExprType(e.Inner, env, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3966,6 +4005,8 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 		return fmt.Sprintf("%s{...}", e.TypeName)
 	case MIRFlowUtilityWhenExpr:
 		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
+	case MIRFlowIfExpr:
+		return fmt.Sprintf("if %s { %s } else { %s }", dumpFlowExpr(e.Condition), dumpFlowExpr(e.Then), dumpFlowExpr(e.Else))
 	default:
 		return fmt.Sprintf("unsupported-flow-expr(%T)", expr)
 	}
@@ -5328,6 +5369,8 @@ func flowExprHasUtility(expr MIRFlowExpr) bool {
 		return false
 	case MIRFlowUtilityWhenExpr:
 		return true
+	case MIRFlowIfExpr:
+		return flowExprHasUtility(e.Condition) || flowExprHasUtility(e.Then) || flowExprHasUtility(e.Else)
 	default:
 		return false
 	}
@@ -5855,6 +5898,20 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		}
 		switchCases = append(switchCases, `default: panic("non-exhaustive match reached in compiled flow mode")`)
 		return fmt.Sprintf("func() %s { %s := %s; switch %s.Tag {\n%s\n} }()", goType(e.ResultType), subjectVar, subject, subjectVar, strings.Join(switchCases, "\n")), nil
+	case MIRFlowIfExpr:
+		condition, err := emitGoFlowExpr(e.Condition, pkg)
+		if err != nil {
+			return "", err
+		}
+		thenExpr, err := emitGoFlowExpr(e.Then, pkg)
+		if err != nil {
+			return "", err
+		}
+		elseExpr, err := emitGoFlowExpr(e.Else, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("func() %s { if %s { return %s }; return %s }()", goType(e.ResultType), condition, thenExpr, elseExpr), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}

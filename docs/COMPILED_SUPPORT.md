@@ -58,7 +58,7 @@ Notes:
 | `ast.ArrayLiteralExpr` | Yes | No | Maybe | Defer | Not required for current scalar-board M0 parity and would expand flow type surface. |
 | `ast.RecordLiteralExpr` | Yes | Yes (record construction for flow return/value expressions) | Yes (named-field record construction) | Implemented | Compiled flow lowering now supports named-field record literals for direct value construction (including return paths). Imported/advanced record forms remain bounded by existing flow type resolution. |
 | `ast.RecordUpdateExpr` (`with`) | Yes | No | Maybe | Defer | Wider record semantics not needed for current M0 flow support target. |
-| `ast.IfExpr` / `ast.SwitchExpr` | Yes | No | Maybe | Defer | Statement-level `if`/`when` already exists for flow control; expression-level forms not required in this sweep. |
+| `ast.IfExpr` / `ast.SwitchExpr` | Yes | `ast.IfExpr`: **Yes (M0)**, `ast.SwitchExpr`: Yes | Yes | Implemented for `IfExpr` | Compiled flow now supports expression `if { } else { }` with Bool condition and same-typed branches; `else if` syntax remains unsupported by language policy. |
 | `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
 | `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
 | `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
