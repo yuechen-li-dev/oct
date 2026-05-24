@@ -464,6 +464,7 @@ typedef struct PrometheusCaps {
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
+  uint32_t p15_shadow_canary_enabled;
 } PrometheusReactorConfig;
 
 typedef struct PrometheusAsyncStatus {
@@ -789,6 +790,30 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p15_shadow_would_last_reason;
   uint32_t p15_shadow_would_last_gate_state;
   uint32_t p15_shadow_would_last_recommended_lookahead_depth;
+  uint32_t p15_shadow_canary_valid;
+  uint32_t p15_shadow_canary_enabled;
+  uint32_t p15_shadow_canary_last_action_allowed;
+  uint32_t p15_shadow_canary_last_action_kind;
+  uint32_t p15_shadow_canary_last_block_reason;
+  uint32_t p15_shadow_canary_requested_lookahead_depth;
+  uint32_t p15_shadow_canary_healthy_margin_passed;
+  uint32_t p15_shadow_canary_reason_binding_passed;
+  uint64_t p15_shadow_canary_evaluation_count;
+  uint64_t p15_shadow_canary_action_allowed_count;
+  uint64_t p15_shadow_canary_action_applied_count;
+  uint64_t p15_shadow_canary_action_blocked_count;
+  uint64_t p15_shadow_canary_reservation_attempt_count;
+  uint64_t p15_shadow_canary_reservation_success_count;
+  uint64_t p15_shadow_canary_reservation_rejected_count;
+  uint64_t p15_shadow_canary_block_low_confidence_count;
+  uint64_t p15_shadow_canary_block_high_miss_rate_count;
+  uint64_t p15_shadow_canary_block_high_arrival_error_count;
+  uint64_t p15_shadow_canary_block_recent_fallback_count;
+  uint64_t p15_shadow_canary_block_recent_stale_count;
+  uint64_t p15_shadow_canary_block_insufficient_samples_count;
+  uint64_t p15_shadow_canary_block_disabled_count;
+  uint64_t p15_shadow_canary_block_no_future_lease_count;
+  uint64_t p15_shadow_canary_block_reservation_failed_count;
   uint32_t p13_m5_timestamp_valid_bits;
   float p13_m5_timestamp_period_ns;
   uint32_t p10_m4_last_slot_event_kind;
