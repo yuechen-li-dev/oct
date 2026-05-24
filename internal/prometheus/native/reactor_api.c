@@ -88,6 +88,12 @@ int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* handle, Prometheus
   return prom_reactor_runtime_sgemm_policy_diagnostics_impl(handle, out_diag);
 }
 
+int prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(void* handle,
+                                                              PrometheusSgemmPolicyDiagnostics* out_diag,
+                                                              uint32_t out_size) {
+  return prom_reactor_runtime_sgemm_policy_diagnostics_sized_impl(handle, out_diag, out_size);
+}
+
 
 int prometheus_reactor_runtime_p15_test_seed_matured_reservation(void* handle,
                                                                  uint32_t shape_class,
