@@ -135,6 +135,7 @@ namespace marionette::tests
     [[nodiscard]] std::string FormatValue(double value);
     [[nodiscard]] std::string FormatValue(float value);
     [[nodiscard]] std::string FormatValue(int value);
+    [[nodiscard]] std::string FormatValue(int64_t value);
     [[nodiscard]] std::string FormatValue(std::size_t value);
     [[nodiscard]] std::string FormatValue(const char* value);
     [[nodiscard]] std::string FormatValue(const std::string& value);

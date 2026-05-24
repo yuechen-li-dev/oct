@@ -515,6 +515,11 @@ namespace marionette::tests
         return std::to_string(value);
     }
 
+    [[nodiscard]] std::string FormatValue(int64_t value)
+    {
+        return std::to_string(value);
+    }
+
     [[nodiscard]] std::string FormatValue(std::size_t value)
     {
         return std::to_string(value);
