@@ -1,0 +1,40 @@
+package PrometheusShadowAuthorityRakeLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn ScenarioCountIs10() -> Void ! Error { Assert.Equal(10, Len(BuildScenarios()), "scenario count") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn PerfectMatchesReachesHealthy() -> Void ! Error { Assert.Equal("HEALTHY", RunScenario(BuildScenarios()[0]).FinalGate, "perfect") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn ColdStartUnknown() -> Void ! Error { Assert.Equal("UNKNOWN", RunScenario(BuildScenarios()[1]).FinalGate, "cold start") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn PhysicalNotReadyBurstBlockedOrCanary() -> Void ! Error { let g = RunScenario(BuildScenarios()[4]).FinalGate; Assert.True(g == "BLOCKED" or g == "CANARY_ELIGIBLE", "pnr") }
+
+[Fact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.FlowSmoke")]
+fn FallbackBurstDisablesLookahead() -> Void ! Error { Assert.Equal("DISABLED", RunScenario(BuildScenarios()[6]).FinalLookaheadState, "fallback") }
+
+[Artifact]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1")]
+[Suite("Experiments.PrometheusShadowAuthorityRakeLab.M1.Artifacts")]
+fn ArtifactOutputsExist() -> Void ! Error {
+    let _ = PrometheusShadowAuthorityRakeArtifactWriteAll()
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.octagon")?) > 0, "octagon")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.md")?) > 0, "md")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_metrics.csv")?) > 0, "csv")
+    Assert.True(Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_summary.json")?) > 0, "json")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M1/FINDINGS.md")?) > 0, "findings")
+}
