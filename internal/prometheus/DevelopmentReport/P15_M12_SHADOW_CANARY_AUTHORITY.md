@@ -31,3 +31,32 @@ No pre-transfer and no real prestage action is enabled.
 - no pre-transfer
 - no real prestage action
 - no default behavior change
+
+## M12b dedicated Marionette/native test matrix and bugfix pass
+
+### Coverage added
+- Added `internal/prometheus/native/Marionette/reactor_p15_m12_shadow_canary_tests.cpp` with focused Vulkan-free canary tests for:
+  - default-off no-op
+  - enabled healthy allow path + de-dup
+  - margin block
+  - recent stale block
+  - lookahead-disabled/recent-fallback class block
+  - high arrival error block
+  - low confidence block
+  - high miss-rate block
+  - insufficient samples block
+  - diagnostics export visibility under invalid timing path
+
+### Bugs found/fixed by tests
+- `prom_dominatus_shadow_canary_should_attempt(...)` previously returned no-attempt for blocked cases without incrementing canary block counters and without consistently resetting last action fields per evaluation.
+- Fixed narrowly in predictor layer by:
+  - resetting last action fields each evaluation,
+  - counting disabled blocks in helper,
+  - mapping gate reasons to canary block counters when canary is enabled but blocked.
+
+### Authority status after M12b
+- Feature flag exists: `PrometheusReactorConfig.p15_shadow_canary_enabled`.
+- Default remains off (`0`), with explicit disabled no-op behavior.
+- M12 action remains strictly scoped to future lease/pre-plan reservation seam (`prom_dominatus_predictor_try_reserve_future(...)`).
+- No pretransfer behavior enabled.
+- No selector/dispatch behavior changes.
