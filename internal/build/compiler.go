@@ -239,6 +239,22 @@ type MIRFlowSwitchCase struct {
 	Value MIRFlowExpr
 }
 
+type MIRFlowMatchExpr struct {
+	Subject     MIRFlowExpr
+	SubjectType string
+	Cases       []MIRFlowMatchCase
+	ResultType  string
+}
+
+func (MIRFlowMatchExpr) mirFlowExpr() {}
+
+type MIRFlowMatchCase struct {
+	Variant     string
+	Binding     string
+	BindingType string
+	Value       MIRFlowExpr
+}
+
 type MIRField struct {
 	Name string
 	Type string
@@ -555,7 +571,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				}
 				module.Records = append(module.Records, snapshot)
 			}
-			mirFlow, err := lowerFlow(pkgName, flow, pkg)
+			mirFlow, err := lowerFlow(program, pkgName, flow, pkg)
 			if err != nil {
 				return MIRModule{}, fmt.Errorf("flow %s.%s: %w", pkgName, flow.Name, err)
 			}
@@ -2804,13 +2820,17 @@ func enumShortName(enumType string) string {
 }
 
 func (c *lowerCtx) lookupEnumVariantPayloadType(enumType string, variant string) (string, bool) {
-	enumPkg := c.pkg.Name
+	return lookupEnumVariantPayloadTypeForProgram(c.program, c.pkg.Name, enumType, variant)
+}
+
+func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg string, enumType string, variant string) (string, bool) {
+	enumPkg := currentPkg
 	enumName := enumType
 	if dot := strings.Index(enumType, "."); dot >= 0 {
 		enumPkg = enumType[:dot]
 		enumName = enumType[dot+1:]
 	}
-	pkg, ok := c.program.Packages[enumPkg]
+	pkg, ok := program.Packages[enumPkg]
 	if !ok {
 		return "", false
 	}
@@ -3212,7 +3232,26 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 	}
 }
 
-func lowerFlow(pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
+var flowLowerProgram project.Program
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneBoolMap(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
+	flowLowerProgram = program
 	env := map[string]string{}
 	locals := map[string]bool{}
 	boardFieldTypes := map[string]string{}
@@ -3587,6 +3626,45 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			}
 		}
 		return MIRFlowSwitchExpr{Subject: subject, Cases: cases, Else: elseExpr, ResultType: resultType}, nil
+	case ast.MatchExpr:
+		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		subjectType, err := inferFlowExprType(e.Subject, env, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		subject, err := lowerFlowExpr(e.Subject, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		cases := make([]MIRFlowMatchCase, 0, len(e.Cases))
+		for _, matchCase := range e.Cases {
+			caseLocals := cloneBoolMap(locals)
+			caseEnv := cloneStringMap(env)
+			bindingType := ""
+			if matchCase.Binding != "" {
+				if t, ok := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, subjectType, matchCase.Variant); ok {
+					bindingType = t
+				} else {
+					bindingType = "any"
+				}
+				caseLocals[matchCase.Binding] = true
+				caseEnv[matchCase.Binding] = bindingType
+			}
+			valueExpr, err := lowerFlowExpr(matchCase.Value, caseEnv, caseLocals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, MIRFlowMatchCase{
+				Variant:     matchCase.Variant,
+				Binding:     matchCase.Binding,
+				BindingType: bindingType,
+				Value:       valueExpr,
+			})
+		}
+		return MIRFlowMatchExpr{Subject: subject, SubjectType: subjectType, Cases: cases, ResultType: resultType}, nil
 	case ast.ParenExpr:
 		return lowerFlowExpr(e.Inner, env, locals, pkg, boardFieldTypes)
 	case ast.FieldAccessExpr:
@@ -3689,6 +3767,30 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			}
 			if resultType == "" {
 				resultType = elseType
+			}
+		}
+		return resultType, nil
+	case ast.MatchExpr:
+		subjectType, err := inferFlowExprType(e.Subject, env, pkg, boardFieldTypes)
+		if err != nil {
+			return "", err
+		}
+		var resultType string
+		for _, matchCase := range e.Cases {
+			caseEnv := cloneStringMap(env)
+			if matchCase.Binding != "" {
+				if t, ok := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, subjectType, matchCase.Variant); ok {
+					caseEnv[matchCase.Binding] = t
+				} else {
+					caseEnv[matchCase.Binding] = "any"
+				}
+			}
+			caseType, err := inferFlowExprType(matchCase.Value, caseEnv, pkg, boardFieldTypes)
+			if err != nil {
+				return "", err
+			}
+			if resultType == "" {
+				resultType = caseType
 			}
 		}
 		return resultType, nil
@@ -5732,6 +5834,27 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			parts = append(parts, fmt.Sprintf("return %s", elseExpr))
 		}
 		return fmt.Sprintf("func() %s { %s }()", goType(e.ResultType), strings.Join(parts, " ")), nil
+	case MIRFlowMatchExpr:
+		subject, err := emitGoFlowExpr(e.Subject, pkg)
+		if err != nil {
+			return "", err
+		}
+		subjectVar := "__oct_match_subject"
+		switchCases := make([]string, 0, len(e.Cases))
+		for _, c := range e.Cases {
+			body := ""
+			if c.Binding != "" {
+				body = fmt.Sprintf("%s := %s.Payload.(%s); _ = %s; ", c.Binding, subjectVar, goType(c.BindingType), c.Binding)
+			}
+			value, err := emitGoFlowExpr(c.Value, pkg)
+			if err != nil {
+				return "", err
+			}
+			body += fmt.Sprintf("return %s", value)
+			switchCases = append(switchCases, fmt.Sprintf("case %s_%s_tag: %s", enumShortName(e.SubjectType), c.Variant, body))
+		}
+		switchCases = append(switchCases, `default: panic("non-exhaustive match reached in compiled flow mode")`)
+		return fmt.Sprintf("func() %s { %s := %s; switch %s.Tag {\n%s\n} }()", goType(e.ResultType), subjectVar, subject, subjectVar, strings.Join(switchCases, "\n")), nil
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}

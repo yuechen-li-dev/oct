@@ -1,0 +1,41 @@
+package Main
+
+enum Reading {
+    Valid(Float)
+    Missing(String)
+}
+
+enum Mode {
+    Auto
+    Manual
+}
+
+flow MatchFlow(reading: Reading, mode: Mode) -> Float {
+    board { Value: Float }
+    state Start {
+        let x = match reading {
+            case Reading.Valid(v) => v
+            case Reading.Missing(reason) => 0.0
+        }
+        board.Value = match reading {
+            case Reading.Valid(v) => v
+            case Reading.Missing(reason) => board.Value
+        }
+        let adjusted = match mode {
+            case Mode.Auto => board.Value
+            case Mode.Manual => board.Value + 1.0
+        }
+        return adjusted + x
+    }
+}
+
+[Fact]
+fn FlowMatchExprPayloadAndTag() -> Void {
+    let m1 = MatchFlow(Reading.Valid(2.5), Mode.Auto)
+    Step(m1)
+    Assert.True(Complete(m1), "first flow should complete")
+
+    let m2 = MatchFlow(Reading.Missing("n/a"), Mode.Manual)
+    Step(m2)
+    Assert.True(Complete(m2), "second flow should complete")
+}
