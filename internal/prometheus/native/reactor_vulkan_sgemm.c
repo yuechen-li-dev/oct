@@ -522,6 +522,7 @@ typedef struct prometheus_runtime {
   prom_dominatus_prestage_decision p15_last_prestage;
   prom_dominatus_shadow_snapshot p15_last_shadow;
   prom_dominatus_shadow_calibration_state p15_shadow_calibration;
+  prom_dominatus_shadow_authority_gate p15_shadow_authority_gate;
   uint32_t in_flight_submit;
   /* Legacy-owned init-time capability constant; Dominatus consumes this via staged SGEMM facts. */
   uint32_t software_vulkan;
@@ -6126,6 +6127,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                                            rt->p15_last_prestage.allowed,
                                                                            po.tick);
             prom_dominatus_shadow_calibration_update(&rt->p15_shadow_calibration, &rt->p15_last_shadow);
+            rt->p15_shadow_authority_gate = prom_dominatus_shadow_authority_gate_evaluate(&rt->p15_shadow_calibration);
           }
         }
       }
@@ -8259,6 +8261,21 @@ int prom_reactor_runtime_sgemm_policy_diagnostics_impl(void* handle, PrometheusS
           : (double)rt->p15_shadow_calibration.total_abs_arrival_error_ticks / (double)rt->p15_shadow_calibration.sample_count;
   out_diag->p15_shadow_calibration_last_mismatch_kind = (uint32_t)rt->p15_shadow_calibration.last_mismatch_kind;
   out_diag->p15_shadow_lookahead_state = (uint32_t)rt->p15_shadow_calibration.lookahead_diagnostic_state;
+  out_diag->p15_shadow_authority_valid = rt->p15_shadow_authority_gate.valid;
+  out_diag->p15_shadow_authority_state = (uint32_t)rt->p15_shadow_authority_gate.state;
+  out_diag->p15_shadow_authority_reason = (uint32_t)rt->p15_shadow_authority_gate.reason;
+  out_diag->p15_shadow_authority_canary_allowed = rt->p15_shadow_authority_gate.canary_allowed;
+  out_diag->p15_shadow_authority_would_act = rt->p15_shadow_authority_gate.authority_would_act;
+  out_diag->p15_shadow_authority_enabled = rt->p15_shadow_authority_gate.authority_enabled;
+  out_diag->p15_shadow_authority_recommended_lookahead_depth = rt->p15_shadow_authority_gate.recommended_lookahead_depth;
+  out_diag->p15_shadow_authority_confidence_gate_passed = rt->p15_shadow_authority_gate.confidence_gate_passed;
+  out_diag->p15_shadow_authority_sample_gate_passed = rt->p15_shadow_authority_gate.sample_gate_passed;
+  out_diag->p15_shadow_authority_miss_rate_gate_passed = rt->p15_shadow_authority_gate.miss_rate_gate_passed;
+  out_diag->p15_shadow_authority_arrival_error_gate_passed = rt->p15_shadow_authority_gate.arrival_error_gate_passed;
+  out_diag->p15_shadow_authority_lookahead_gate_passed = rt->p15_shadow_authority_gate.lookahead_state_gate_passed;
+  out_diag->p15_shadow_authority_match_rate = rt->p15_shadow_authority_gate.match_rate;
+  out_diag->p15_shadow_authority_miss_rate = rt->p15_shadow_authority_gate.miss_rate;
+  out_diag->p15_shadow_authority_mean_abs_arrival_error_ticks = rt->p15_shadow_authority_gate.mean_abs_arrival_error_ticks;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

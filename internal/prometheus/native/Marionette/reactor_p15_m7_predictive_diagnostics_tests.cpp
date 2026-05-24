@@ -37,6 +37,7 @@ FACT(PrometheusReactor_Sgemm_P15_PredictiveDiagnostics_FieldsPresentAndDefaultOf
                 "prestage should show disabled block when evaluated");
     ASSERT_TRUE(diag.p15_shadow_calibration_confidence >= 0.0 && diag.p15_shadow_calibration_confidence <= 1.0,
                 "calibration confidence must remain clamped");
+    ASSERT_EQUAL(0u, diag.p15_shadow_authority_enabled, "authority remains diagnostic-only/off");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
@@ -56,6 +57,7 @@ FACT(PrometheusReactor_Sgemm_P15_PredictiveDiagnostics_InvalidTimingNoAdvance)
     ASSERT_EQUAL(0u, diag.p15_predictor_valid, "invalid timing should keep predictor invalid");
     ASSERT_EQUAL(0u, diag.p15_prediction_issued, "invalid timing should not issue prediction");
     ASSERT_EQUAL(0u, diag.p15_shadow_calibration_sample_count, "invalid timing should not advance calibration samples");
+    ASSERT_EQUAL(0u, diag.p15_shadow_authority_canary_allowed, "invalid timing must not imply canary eligibility");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
