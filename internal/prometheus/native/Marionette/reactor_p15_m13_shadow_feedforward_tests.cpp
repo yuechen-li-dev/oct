@@ -161,6 +161,52 @@ FACT(PrometheusP15M13ShadowFeedforward_StaleReservationExpiresAndCannotConsume)
                  "expired reservation must not be consumable");
 }
 
+FACT(PrometheusP15M13ShadowFeedforward_ReservationHeartbeatMaturesReservedEntries)
+{
+    prom_dominatus_predictor_state predictor{};
+    prom_dominatus_predictor_init(&predictor, nullptr);
+    predictor.reservation_params.expiry_slack_ticks = 0u;
+
+    prom_dominatus_future_lease_request req{};
+    req.valid = 1u;
+    req.request_id = 61u;
+    req.target_tick = 15u;
+    req.shape_class = 2u;
+    req.variant_id = 7u;
+    req.lookahead_depth = 1u;
+    req.confidence = 0.9;
+    ASSERT_EQUAL(1u, prom_dominatus_predictor_try_reserve_future(&predictor, &predictor.reservations, &req, 14u).reserved,
+                 "reservation should be created");
+
+    const auto advanced = prom_dominatus_predictor_advance_reservations(&predictor, 15u);
+    ASSERT_EQUAL(1u, advanced.matured, "heartbeat should mature reservation");
+    ASSERT_EQUAL(1u, prom_dominatus_reservation_consume_matured(&predictor.reservations, 2u, 7u).yielded,
+                 "matured reservation should be consumable");
+}
+
+FACT(PrometheusP15M13ShadowFeedforward_ReservationHeartbeatExpiresStaleEntries)
+{
+    prom_dominatus_predictor_state predictor{};
+    prom_dominatus_predictor_init(&predictor, nullptr);
+    predictor.reservation_params.expiry_slack_ticks = 0u;
+
+    prom_dominatus_future_lease_request req{};
+    req.valid = 1u;
+    req.request_id = 62u;
+    req.target_tick = 8u;
+    req.shape_class = 4u;
+    req.variant_id = 3u;
+    req.lookahead_depth = 1u;
+    req.confidence = 0.9;
+    ASSERT_EQUAL(1u, prom_dominatus_predictor_try_reserve_future(&predictor, &predictor.reservations, &req, 7u).reserved,
+                 "reservation should be created");
+
+    const auto advanced = prom_dominatus_predictor_advance_reservations(&predictor, 9u);
+    ASSERT_EQUAL(1u, advanced.expired, "heartbeat should expire stale reservation");
+    ASSERT_EQUAL(0u, prom_dominatus_reservation_consume_matured(&predictor.reservations, 4u, 3u).valid,
+                 "expired reservation must not consume");
+}
+
 
 FACT(PrometheusP15M13ShadowFeedforward_DefaultOffMaturedReservationDoesNotConsume)
 {

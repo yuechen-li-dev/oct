@@ -508,6 +508,27 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_try_reserve_future(
   return d;
 }
 
+prom_dominatus_reservation_decision prom_dominatus_predictor_advance_reservations(
+    prom_dominatus_predictor_state* predictor,
+    uint64_t tick) {
+  prom_dominatus_reservation_decision out;
+  prom_dominatus_reservation_decision d;
+  if (predictor == NULL) {
+    memset(&out, 0, sizeof(out));
+    return out;
+  }
+  memset(&out, 0, sizeof(out));
+  do {
+    d = prom_dominatus_reservation_expire_stale(&predictor->reservations, &predictor->reservation_params, tick);
+    if (d.valid != 0u) out = d;
+  } while (d.expired != 0u);
+  do {
+    d = prom_dominatus_reservation_mature(&predictor->reservations, tick);
+    if (d.valid != 0u) out = d;
+  } while (d.matured != 0u);
+  return out;
+}
+
 prom_dominatus_shadow_snapshot prom_dominatus_shadow_snapshot_evaluate(
     const prom_dominatus_predictor_state* predictor,
     const prom_dominatus_prediction_entry* last_issued,
@@ -683,6 +704,12 @@ void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_
 
 prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
     const prom_dominatus_shadow_calibration_state* calibration) {
+  return prom_dominatus_shadow_authority_gate_evaluate_with_enabled(calibration, 0u);
+}
+
+prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate_with_enabled(
+    const prom_dominatus_shadow_calibration_state* calibration,
+    uint32_t authority_enabled) {
   const uint64_t min_samples = 3u;
   const double min_confidence_for_canary = 0.60;
   const double min_confidence_for_healthy = 0.75;
@@ -693,6 +720,7 @@ prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evalua
   memset(&out, 0, sizeof(out));
   out.state = PROM_SHADOW_AUTHORITY_UNKNOWN;
   out.reason = PROM_SHADOW_AUTHORITY_REASON_INSUFFICIENT_SAMPLES;
+  out.authority_enabled = authority_enabled != 0u ? 1u : 0u;
   if (calibration == NULL || calibration->initialized == 0u || calibration->valid == 0u) {
     out.reason = PROM_SHADOW_AUTHORITY_REASON_INVALID_CALIBRATION;
     return out;

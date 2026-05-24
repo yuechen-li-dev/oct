@@ -79,3 +79,13 @@ FACT(PrometheusP15M10ShadowAuthority_BlockedReasons)
                  prom_dominatus_shadow_authority_gate_evaluate(&stale).reason,
                  "recent stale should block");
 }
+
+FACT(PrometheusP15M10ShadowAuthority_EnabledPropagatesInEvaluation)
+{
+    prom_dominatus_shadow_calibration_state calibration{};
+    prom_dominatus_shadow_calibration_init(&calibration);
+    auto disabled = prom_dominatus_shadow_authority_gate_evaluate_with_enabled(&calibration, 0u);
+    auto enabled = prom_dominatus_shadow_authority_gate_evaluate_with_enabled(&calibration, 1u);
+    ASSERT_EQUAL(0u, disabled.authority_enabled, "disabled configuration remains disabled");
+    ASSERT_EQUAL(1u, enabled.authority_enabled, "enabled configuration propagates during evaluation");
+}
