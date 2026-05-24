@@ -1,0 +1,11 @@
+scenarioName,eventCount,finalConfidence,finalGate,finalReason,finalLookaheadState,recommendedLookaheadDepth,healthyCount,canaryEligibleCount,blockedCount,disabledCount,unknownCount,timeToFirstCanary,timeToFirstHealthy,timeToRecoverAfterMiss,maxArrivalError,meanArrivalError,missRate,notes
+PerfectMatches,12,1,HEALTHY,None,ENABLED,2,8,2,2,0,0,2,4,-1,0,0,0,diagnostic-only rake lab
+ColdStart,2,0.6000000000000001,UNKNOWN,InsufficientSamples,ENABLED,0,0,0,0,0,2,-1,-1,-1,0,0,0,diagnostic-only rake lab
+LateJitterSmall,12,0.8900000000000003,HEALTHY,None,ENABLED,2,3,6,3,0,0,3,7,-1,3,0.25,0,diagnostic-only rake lab
+LateJitterLarge,12,0.54,BLOCKED,LowConfidence,ENABLED,0,0,0,12,0,0,-1,-1,-1,8,0.6666666666666666,0,diagnostic-only rake lab
+PhysicalNotReadyBurst,12,0.6500000000000002,BLOCKED,HighMissRate,ENABLED,0,0,0,12,0,0,-1,-1,-1,0,0,0.25,diagnostic-only rake lab
+RecoveryAfterMisses,12,0.8000000000000003,HEALTHY,None,ENABLED,2,1,2,9,0,0,9,11,9,0,0,0.16666666666666666,diagnostic-only rake lab
+FallbackBurst,12,0.8000000000000003,BLOCKED,LookaheadDisabled,DISABLED,0,0,0,12,0,0,-1,-1,-1,0,0,0.25,diagnostic-only rake lab
+StalePredictions,12,0.8000000000000003,BLOCKED,HighMissRate,ENABLED,0,0,0,12,0,0,-1,-1,-1,0,0,0.25,diagnostic-only rake lab
+CancelledNoise,12,0.9200000000000004,HEALTHY,None,ENABLED,2,4,4,4,0,0,4,8,-1,0,0,0,diagnostic-only rake lab
+MixedRealistic,12,0.6800000000000003,CANARY_ELIGIBLE,None,ENABLED,1,0,4,8,0,0,4,-1,7,3,0.25,0.08333333333333333,diagnostic-only rake lab
