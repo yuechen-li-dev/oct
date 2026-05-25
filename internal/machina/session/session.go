@@ -141,6 +141,15 @@ func (s *Session[TState]) State() TState {
 	return s.state
 }
 
+func (s *Session[TState]) Commands() ([]render.Command, error) {
+	if s == nil {
+		return nil, fmt.Errorf("session.err.nil_session: session is required")
+	}
+	out := make([]render.Command, len(s.commands))
+	copy(out, s.commands)
+	return out, nil
+}
+
 func validateViewport(viewport layout.Rect) error {
 	if viewport.Width <= 0 || viewport.Height <= 0 {
 		return fmt.Errorf("session.err.invalid_viewport: viewport width/height must be > 0")
