@@ -9,6 +9,11 @@ This is an audit and planning milestone only.
 - No renderer migration.
 - No Gio integration.
 
+## Status notes after planning milestones
+
+- **M108 status (implemented):** `internal/machina/session` now provides a headless, backend-neutral native session loop contract that composes projection -> lowering -> layout -> hittest -> render commands -> deterministic snapshot, plus pointer dispatch and rebuild.
+- This preserves the M102 production direction while keeping Gio/window/pixel work out of scope for M108.
+
 Post-M101 architecture baseline:
 
 - `internal/machina/uiir` owns UIIR model + canonical ABI/JSON/signatures/event codecs.
