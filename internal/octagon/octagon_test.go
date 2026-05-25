@@ -1,6 +1,7 @@
 package octagon
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,5 +71,19 @@ func TestLoadRejectsNonOctagonExtension(t *testing.T) {
 	_, err := Load(filepath.Join("..", "..", "README.md"))
 	if err == nil || !strings.Contains(err.Error(), ".octagon extension") {
 		t.Fatalf("expected extension error, got %v", err)
+	}
+}
+
+func TestLoadAcceptsUnaryNegativeNumericLiterals(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "negative_literals.octagon")
+	content := "Record { Scalars: [-1, -1.0, -0.5] Value: -1.25 Gravity: -9.81m/s^2 }"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	if _, err := Load(path); err != nil {
+		t.Fatalf("load unary negative numeric literals: %v", err)
 	}
 }
