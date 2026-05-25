@@ -6,72 +6,46 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	machinalayout "github.com/yuechen-li-dev/oct/internal/machina/layout"
+	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 )
 
-type uiirNodeKind string
+type uiirNodeKind = machinauiir.NodeKind
 
 const (
-	uiirNodeText         uiirNodeKind = "Text"
-	uiirNodeButton       uiirNodeKind = "Button"
-	uiirNodeColumn       uiirNodeKind = "Column"
-	uiirNodeRow          uiirNodeKind = "Row"
-	uiirNodeGrid         uiirNodeKind = "Grid"
-	uiirNodeSpacer       uiirNodeKind = "Spacer"
-	uiirNodeAbsoluteBox  uiirNodeKind = "AbsoluteBox"
-	uiirNodeAnchorBox    uiirNodeKind = "AnchorBox"
-	uiirRootLayoutExtent float64      = 1000.0
-	uiirAbsCoordLimit    float64      = 1000000.0
-	uiirMinZOrder        int64        = -5
-	uiirMaxZOrder        int64        = 5
+	uiirNodeText         uiirNodeKind = machinauiir.NodeText
+	uiirNodeButton       uiirNodeKind = machinauiir.NodeButton
+	uiirNodeColumn       uiirNodeKind = machinauiir.NodeColumn
+	uiirNodeRow          uiirNodeKind = machinauiir.NodeRow
+	uiirNodeGrid         uiirNodeKind = machinauiir.NodeGrid
+	uiirNodeSpacer       uiirNodeKind = machinauiir.NodeSpacer
+	uiirNodeAbsoluteBox  uiirNodeKind = machinauiir.NodeAbsoluteBox
+	uiirNodeAnchorBox    uiirNodeKind = machinauiir.NodeAnchorBox
+	uiirRootLayoutExtent float64      = machinalayout.RootLayoutExtent
+	uiirAbsCoordLimit    float64      = machinalayout.AbsCoordLimit
+	uiirMinZOrder        int64        = machinalayout.MinZOrder
+	uiirMaxZOrder        int64        = machinalayout.MaxZOrder
 )
 
-type uiirBoxKind string
+type uiirBoxKind = machinauiir.BoxKind
 
 const (
-	uiirBoxAbsolute uiirBoxKind = "absolute"
-	uiirBoxAnchored uiirBoxKind = "anchored"
+	uiirBoxAbsolute uiirBoxKind = machinauiir.BoxAbsolute
+	uiirBoxAnchored uiirBoxKind = machinauiir.BoxAnchored
 )
 
-type uiirBoxSpec struct {
-	Kind         uiirBoxKind
-	ZOrder       int64
-	X            float64
-	Y            float64
-	Width        float64
-	Height       float64
-	Left         float64
-	Top          float64
-	Right        float64
-	Bottom       float64
-	ResolvedRect *uiirResolvedBox
-}
+type uiirBoxSpec = machinauiir.BoxSpec
 
-type uiirResolvedBox struct {
-	X      float64
-	Y      float64
-	Width  float64
-	Height float64
-}
+type uiirResolvedBox = machinauiir.ResolvedRect
 
-type uiirNode struct {
-	NodeID   string
-	Key      string
-	Kind     uiirNodeKind
-	Text     string
-	Label    string
-	Event    string
-	Enabled  bool
-	Children []*uiirNode
-	Box      *uiirBoxSpec
-	Layout   *uiirResolvedBox
-}
+type uiirNode = machinauiir.Node
 
 type uiMount struct {
 	Root   *uiirNode
 	Events []string
 }
 
-const uiirJSONABI = "machina.uiir.v1"
+const uiirJSONABI = machinauiir.JSONABI
 
 var uiirJSONNull = json.RawMessage("null")
 
@@ -114,59 +88,22 @@ type uiirSerializedRect struct {
 	Height float64 `json:"height"`
 }
 
-type uiirSerializedEvent struct {
-	Token   string          `json:"token"`
-	Payload json.RawMessage `json:"payload"`
-}
+type uiirSerializedEvent = machinauiir.SerializedEvent
 
 func serializeUIIRCanonicalJSON(root *uiirNode) (string, error) {
-	if root == nil {
-		return "", fmt.Errorf("uiir serialization requires non-nil root")
-	}
-	doc := uiirSerializedDocument{
-		ABI:  uiirJSONABI,
-		Root: serializeUIIRNode(withUIIRNodeIDs(root)),
-	}
-	payload, err := json.Marshal(doc)
-	if err != nil {
-		return "", fmt.Errorf("uiir serialization failed: %w", err)
-	}
-	return string(payload), nil
+	return machinauiir.SerializeCanonicalJSON(root)
 }
 
 func deserializeUIIRCanonicalJSON(serialized string) (*uiirNode, error) {
-	var doc uiirSerializedDocument
-	if err := json.Unmarshal([]byte(serialized), &doc); err != nil {
-		return nil, fmt.Errorf("uiir deserialization failed: %w", err)
-	}
-	if doc.ABI != uiirJSONABI {
-		return nil, fmt.Errorf("uiir deserialization failed: unsupported abi %q", doc.ABI)
-	}
-	return deserializeUIIRNode(doc.Root)
+	return machinauiir.DeserializeCanonicalJSON(serialized)
 }
 
 func serializeUIIREventCanonicalJSON(token string, payload json.RawMessage) (string, error) {
-	if token == "" {
-		return "", fmt.Errorf("ui event serialization requires non-empty token")
-	}
-	event := uiirSerializedEvent{Token: token, Payload: uiirNormalizedPayload(payload)}
-	bytes, err := json.Marshal(event)
-	if err != nil {
-		return "", fmt.Errorf("ui event serialization failed: %w", err)
-	}
-	return string(bytes), nil
+	return machinauiir.SerializeEventCanonicalJSON(token, payload)
 }
 
 func deserializeUIIREventCanonicalJSON(serialized string) (uiirSerializedEvent, error) {
-	var event uiirSerializedEvent
-	if err := json.Unmarshal([]byte(serialized), &event); err != nil {
-		return uiirSerializedEvent{}, fmt.Errorf("ui event deserialization failed: %w", err)
-	}
-	if event.Token == "" {
-		return uiirSerializedEvent{}, fmt.Errorf("ui event deserialization failed: token is required")
-	}
-	event.Payload = uiirNormalizedPayload(event.Payload)
-	return event, nil
+	return machinauiir.DeserializeEventCanonicalJSON(serialized)
 }
 
 func uiirNormalizedPayload(payload json.RawMessage) json.RawMessage {
@@ -311,6 +248,11 @@ func deserializeUIIRBox(box *uiirSerializedBox) (*uiirBoxSpec, error) {
 }
 
 func cloneUIIR(node *uiirNode) *uiirNode {
+	return machinauiir.Clone(node)
+}
+
+/* legacy local clone retained for bridge scaffolding */
+func cloneUIIRLegacy(node *uiirNode) *uiirNode {
 	if node == nil {
 		return nil
 	}
@@ -332,11 +274,7 @@ func cloneUIIR(node *uiirNode) *uiirNode {
 	}
 }
 
-func withUIIRNodeIDs(node *uiirNode) *uiirNode {
-	root := cloneUIIR(node)
-	assignUIIRNodeIDs(root, "0")
-	return root
-}
+func withUIIRNodeIDs(node *uiirNode) *uiirNode { return machinauiir.WithNodeIDs(node) }
 
 func assignUIIRNodeIDs(node *uiirNode, id string) {
 	if node == nil {
@@ -349,6 +287,11 @@ func assignUIIRNodeIDs(node *uiirNode, id string) {
 }
 
 func uiirSignature(node *uiirNode) string {
+	return machinauiir.Signature(node)
+}
+
+/* legacy local signature retained for bridge scaffolding */
+func uiirSignatureLegacy(node *uiirNode) string {
 	if node == nil {
 		return "<nil>"
 	}
@@ -395,6 +338,11 @@ func uiirBoxSignature(spec *uiirBoxSpec) string {
 }
 
 func uiirTreeContainsEvent(node *uiirNode, token string) bool {
+	return machinauiir.TreeContainsEvent(node, token)
+}
+
+/* legacy local event matcher retained for bridge scaffolding */
+func uiirTreeContainsEventLegacy(node *uiirNode, token string) bool {
 	if node == nil {
 		return false
 	}
@@ -815,6 +763,11 @@ func (i interpreter) evalUIArg(env *environment, pkgName string, expr ast.Expr, 
 }
 
 func resolveUIIRBoxes(node *uiirNode, parent *uiirResolvedBox) (*uiirNode, error) {
+	return machinalayout.ResolveBoxes(node, parent)
+}
+
+/* legacy local layout resolver retained for bridge scaffolding */
+func resolveUIIRBoxesLegacy(node *uiirNode, parent *uiirResolvedBox) (*uiirNode, error) {
 	if node == nil {
 		return nil, nil
 	}

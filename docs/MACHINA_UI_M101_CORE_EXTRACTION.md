@@ -22,3 +22,9 @@ Wire `internal/interpret` and WASM runtime/lowering to consume the new core pack
 ## M101b1 Bridge/Parity Step
 
 The extracted core package now has conversion/parity coverage against the current interpreter-local implementation. This intentionally does not switch `ValueUI` yet. The next step is to switch `ValueUI` and production builtins once parity is proven.
+
+## M101b2 Production Switch
+
+M101b2 switched production interpreter UI values and WASM runtime/lowering to consume `internal/machina/uiir` and `internal/machina/layout` directly. The interpreter now acts as an Oct adapter over Machina UI core rather than owning production UIIR semantics.
+
+Compatibility bridge/parity helpers from M101b1 are intentionally retained as temporary scaffolding and cleanup candidates for M101b3.
