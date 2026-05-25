@@ -108,7 +108,7 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 
 `Libraries/UI` is the canonical standard-library authoring surface for Machina UI (Machine Native UI) in Oct.
 
-Use `UI.*` in Oct programs (`UI.Text`, `UI.Button`, `UI.Row`, `UI.Column`, `UI.Canvas`, `UI.Grid`, `UI.Spacer`, placement helpers, and mount/patch/emit wrappers).
+Use `UI.*` in Oct programs (`UI.Text`, `UI.Button`, `UI.Row`, `UI.Column`, `UI.Canvas`, `UI.Grid`, `UI.GridRows`, `UI.Spacer`, placement helpers, and mount/patch/emit wrappers). `UI.GridRows(UI[][])` is the M114 nested-array deterministic grid API (rows x columns, rectangular only).
 Treat raw UI builtins (`UIText`, `UIButton`, `UIPlaceAbsolute`, etc.) as backing runtime implementation details.
 
 M0 scope is semantic UI construction plus current absolute/anchored box placement.

@@ -54,6 +54,45 @@ type Node struct {
 	Children []*Node
 	Box      *BoxSpec
 	Layout   *ResolvedRect
+	Grid     *GridSpec
+	Cell     *CellSpec
+	GridRows int64
+	GridCols int64
+}
+
+type GridTrackKind string
+
+const (
+	GridTrackFixed GridTrackKind = "fixed"
+	GridTrackFill  GridTrackKind = "fill"
+)
+
+type GridTrack struct {
+	Kind   GridTrackKind
+	Size   float64
+	Weight float64
+}
+
+type GridSpec struct {
+	Columns   []GridTrack
+	Rows      []GridTrack
+	ColumnGap float64
+	RowGap    float64
+	Padding   EdgeInsets
+}
+
+type CellSpec struct {
+	Column     int64
+	Row        int64
+	ColumnSpan int64
+	RowSpan    int64
+}
+
+type EdgeInsets struct {
+	Top    float64
+	Right  float64
+	Bottom float64
+	Left   float64
 }
 
 type SerializedEvent struct {
@@ -75,7 +114,30 @@ type serializedNode struct {
 	Box      *serializedBox   `json:"box"`
 	Layout   *serializedRect  `json:"layout"`
 	Children []serializedNode `json:"children"`
+	Grid     *serializedGrid  `json:"grid"`
+	Cell     *serializedCell  `json:"cell"`
+	GridRows int64            `json:"gridRows,omitempty"`
+	GridCols int64            `json:"gridColumns,omitempty"`
 }
+type serializedGrid struct {
+	Columns   []serializedGridTrack `json:"columns"`
+	Rows      []serializedGridTrack `json:"rows"`
+	ColumnGap float64               `json:"columnGap"`
+	RowGap    float64               `json:"rowGap"`
+	Padding   serializedInsets      `json:"padding"`
+}
+type serializedGridTrack struct {
+	Kind   string  `json:"kind"`
+	Size   float64 `json:"size,omitempty"`
+	Weight float64 `json:"weight,omitempty"`
+}
+type serializedCell struct {
+	Column     int64 `json:"column"`
+	Row        int64 `json:"row"`
+	ColumnSpan int64 `json:"columnSpan"`
+	RowSpan    int64 `json:"rowSpan"`
+}
+type serializedInsets struct{ Top, Right, Bottom, Left float64 }
 type serializedBox struct {
 	Kind     string                 `json:"kind"`
 	Z        int64                  `json:"z"`
@@ -155,7 +217,7 @@ func Clone(node *Node) *Node {
 	for _, c := range node.Children {
 		ch = append(ch, Clone(c))
 	}
-	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout)}
+	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols}
 }
 func WithNodeIDs(node *Node) *Node { root := Clone(node); assignNodeIDs(root, "0"); return root }
 func assignNodeIDs(node *Node, id string) {
@@ -189,6 +251,12 @@ func Signature(node *Node) string {
 		}
 		if node.Box != nil {
 			return p + "(" + boxSignature(node.Box) + ")" + layoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
+		}
+		if node.Kind == NodeGrid && node.Grid != nil {
+			return p + "(gridSpec)" + layoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
+		}
+		if node.Cell != nil {
+			return p + "(cell=" + fmt.Sprintf("%d,%d,%d,%d", node.Cell.Column, node.Cell.Row, node.Cell.ColumnSpan, node.Cell.RowSpan) + ")" + layoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
 		}
 		return p + layoutSuffix(node.Layout) + "[" + strings.Join(parts, ",") + "]"
 	default:
@@ -232,8 +300,35 @@ func serializeNode(node *Node) serializedNode {
 	case NodeAbsoluteBox, NodeAnchorBox:
 		s.Box = serializeBox(node.Box)
 	}
+	if node.Grid != nil {
+		s.Grid = serializeGrid(node.Grid)
+	}
+	if node.Cell != nil {
+		s.Cell = &serializedCell{Column: node.Cell.Column, Row: node.Cell.Row, ColumnSpan: node.Cell.ColumnSpan, RowSpan: node.Cell.RowSpan}
+	}
+	s.GridRows = node.GridRows
+	s.GridCols = node.GridCols
 	for _, c := range node.Children {
 		s.Children = append(s.Children, serializeNode(c))
+	}
+	return s
+}
+func serializeGrid(grid *GridSpec) *serializedGrid {
+	if grid == nil {
+		return nil
+	}
+	s := &serializedGrid{
+		Columns:   make([]serializedGridTrack, 0, len(grid.Columns)),
+		Rows:      make([]serializedGridTrack, 0, len(grid.Rows)),
+		ColumnGap: grid.ColumnGap,
+		RowGap:    grid.RowGap,
+		Padding:   serializedInsets{Top: grid.Padding.Top, Right: grid.Padding.Right, Bottom: grid.Padding.Bottom, Left: grid.Padding.Left},
+	}
+	for _, c := range grid.Columns {
+		s.Columns = append(s.Columns, serializedGridTrack{Kind: string(c.Kind), Size: c.Size, Weight: c.Weight})
+	}
+	for _, r := range grid.Rows {
+		s.Rows = append(s.Rows, serializedGridTrack{Kind: string(r.Kind), Size: r.Size, Weight: r.Weight})
 	}
 	return s
 }
@@ -284,6 +379,14 @@ func deserializeNode(node serializedNode) (*Node, error) {
 	default:
 		return nil, fmt.Errorf("uiir node deserialization failed: unsupported kind %q", node.Kind)
 	}
+	if node.Grid != nil {
+		r.Grid = deserializeGrid(node.Grid)
+	}
+	if node.Cell != nil {
+		r.Cell = &CellSpec{Column: node.Cell.Column, Row: node.Cell.Row, ColumnSpan: node.Cell.ColumnSpan, RowSpan: node.Cell.RowSpan}
+	}
+	r.GridRows = node.GridRows
+	r.GridCols = node.GridCols
 	for _, c := range node.Children {
 		n, err := deserializeNode(c)
 		if err != nil {
@@ -292,6 +395,25 @@ func deserializeNode(node serializedNode) (*Node, error) {
 		r.Children = append(r.Children, n)
 	}
 	return r, nil
+}
+func deserializeGrid(grid *serializedGrid) *GridSpec {
+	if grid == nil {
+		return nil
+	}
+	out := &GridSpec{
+		Columns:   make([]GridTrack, 0, len(grid.Columns)),
+		Rows:      make([]GridTrack, 0, len(grid.Rows)),
+		ColumnGap: grid.ColumnGap,
+		RowGap:    grid.RowGap,
+		Padding:   EdgeInsets{Top: grid.Padding.Top, Right: grid.Padding.Right, Bottom: grid.Padding.Bottom, Left: grid.Padding.Left},
+	}
+	for _, c := range grid.Columns {
+		out.Columns = append(out.Columns, GridTrack{Kind: GridTrackKind(c.Kind), Size: c.Size, Weight: c.Weight})
+	}
+	for _, r := range grid.Rows {
+		out.Rows = append(out.Rows, GridTrack{Kind: GridTrackKind(r.Kind), Size: r.Size, Weight: r.Weight})
+	}
+	return out
 }
 func deserializeBox(box *serializedBox) (*BoxSpec, error) {
 	if box == nil {
@@ -324,6 +446,19 @@ func cloneRect(r *ResolvedRect) *ResolvedRect {
 		return nil
 	}
 	return &ResolvedRect{X: r.X, Y: r.Y, Width: r.Width, Height: r.Height}
+}
+func cloneGrid(spec *GridSpec) *GridSpec {
+	if spec == nil {
+		return nil
+	}
+	out := &GridSpec{Columns: append([]GridTrack{}, spec.Columns...), Rows: append([]GridTrack{}, spec.Rows...), ColumnGap: spec.ColumnGap, RowGap: spec.RowGap, Padding: spec.Padding}
+	return out
+}
+func cloneCell(spec *CellSpec) *CellSpec {
+	if spec == nil {
+		return nil
+	}
+	return &CellSpec{Column: spec.Column, Row: spec.Row, ColumnSpan: spec.ColumnSpan, RowSpan: spec.RowSpan}
 }
 func layoutSuffix(r *ResolvedRect) string {
 	if r == nil {

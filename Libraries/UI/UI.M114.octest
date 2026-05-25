@@ -1,0 +1,12 @@
+package UI
+
+[Fact]
+fn M114GridRows2x2Signature() -> Void {
+    let sig = Signature(GridRows([
+        [Text("A"), Text("B")],
+        [Text("C"), Spacer()]
+    ]))
+
+    Assert.True(Contains(sig, "Grid#"), "grid rows should produce grid node")
+    Assert.True(Contains(sig, "Spacer#"), "explicit empty cells should use spacer")
+}

@@ -52,3 +52,8 @@ M113 adds deterministic internal grid layout primitives in `internal/machina/lay
 - Add Oct `UI.*` authoring surface for grid/cell.
 - Add lowering support once UIIR carries explicit track/cell metadata.
 - Migrate Storefront to grid placement after internal contracts are exposed.
+
+
+## M114 authoring bridge
+
+M114 adds Oct-facing nested-array authoring via `UI.GridRows(UI[][])`. It lowers to internal `GridArrange` + `CellFrame` with equal fill tracks (weight=1), no spans, no auto-placement, no CSS-grid semantics.

@@ -193,6 +193,41 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 			return *errResult, nil
 		}
 		return evalResult{value: Value{Kind: ValueUI, UI: node}}, nil
+	case "UIGridRows":
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIGridRows expects 1 argument")
+		}
+		cells, err := i.evalExpr(env, pkgName, argumentExprs[0]); if err != nil { return evalResult{}, err }
+		if cells.value.Kind != ValueArray {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIGridRows expects UI[][]")
+		}
+		rows := len(cells.value.Array)
+		if rows == 0 {
+			return wrapperErrorResult(callee, fmt.Errorf("UI.Grid: grid requires at least one row")), nil
+		}
+		columns := -1
+		nodes := make([]*uiirNode, 0)
+		for r, row := range cells.value.Array {
+			if row.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: UIGridRows expects UI[][]")
+			}
+			if columns < 0 {
+				columns = len(row.Array)
+				if columns == 0 {
+					return wrapperErrorResult(callee, fmt.Errorf("UI.Grid: grid requires at least one column")), nil
+				}
+			} else if len(row.Array) != columns {
+				return wrapperErrorResult(callee, fmt.Errorf("UI.Grid: ragged rows: row 0 has %d cells, row %d has %d cells", columns, r, len(row.Array))), nil
+			}
+			for c := range row.Array {
+				cell := row.Array[c]
+				if cell.Kind != ValueUI || cell.UI == nil {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: UIGridRows cell expects UI")
+				}
+				nodes = append(nodes, cloneUIIR(cell.UI))
+			}
+		}
+		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeGrid, Children: nodes, GridRows: int64(rows), GridCols: int64(columns)}}}, nil
 	case "UIMount":
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIMount expects 1 argument")

@@ -3859,6 +3859,22 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}
+	if callee == "UIGridRows" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIGridRows' does not accept type arguments")
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function 'UIGridRows' expects 1 argument, got %d", len(arguments))
+		}
+		rowsType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if rowsType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 2) {
+			return ExprType{}, fmt.Errorf("function 'UIGridRows' argument 1 expects UI[][], got %s", rowsType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
 	if callee == "UIPlaceAbsolute" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' does not accept type arguments")

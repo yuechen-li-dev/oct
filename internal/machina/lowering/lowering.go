@@ -80,7 +80,25 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) e
 		out.Semantics[id] = Semantics{Role: RoleContainer}
 	case uiir.NodeGrid:
 		row.Frame = inferFrame(node, parent)
-		row.Arrange = &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: layout.AxisVertical}
+		if node.GridRows > 0 && node.GridCols > 0 {
+			row.Arrange = &layout.ArrangeSpec{Kind: layout.GridArrange}
+			for i := int64(0); i < node.GridCols; i++ {
+				row.Arrange.Columns = append(row.Arrange.Columns, layout.GridTrack{Kind: layout.GridTrackFill, Weight: 1})
+			}
+			for i := int64(0); i < node.GridRows; i++ {
+				row.Arrange.Rows = append(row.Arrange.Rows, layout.GridTrack{Kind: layout.GridTrackFill, Weight: 1})
+			}
+		} else if node.Grid != nil {
+			row.Arrange = &layout.ArrangeSpec{Kind: layout.GridArrange, ColumnGap: node.Grid.ColumnGap, RowGap: node.Grid.RowGap, Padding: layout.EdgeInsets{Top: node.Grid.Padding.Top, Right: node.Grid.Padding.Right, Bottom: node.Grid.Padding.Bottom, Left: node.Grid.Padding.Left}}
+			for _, c := range node.Grid.Columns {
+				row.Arrange.Columns = append(row.Arrange.Columns, layout.GridTrack{Kind: layout.GridTrackKind(c.Kind), Size: c.Size, Weight: c.Weight})
+			}
+			for _, r := range node.Grid.Rows {
+				row.Arrange.Rows = append(row.Arrange.Rows, layout.GridTrack{Kind: layout.GridTrackKind(r.Kind), Size: r.Size, Weight: r.Weight})
+			}
+		} else {
+			row.Arrange = &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: layout.AxisVertical}
+		}
 		out.Semantics[id] = Semantics{Role: RoleContainer}
 	case uiir.NodeAbsoluteBox, uiir.NodeAnchorBox:
 		if node.Box == nil {
@@ -97,6 +115,24 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) e
 	}
 	if parent == nil {
 		row.Frame = layout.FrameSpec{Kind: layout.RootFrame}
+	} else if node.Cell != nil {
+		row.Frame = layout.FrameSpec{Kind: layout.CellFrame, Column: int(node.Cell.Column), Row: int(node.Cell.Row), ColumnSpan: int(node.Cell.ColumnSpan), RowSpan: int(node.Cell.RowSpan)}
+	} else if parent != nil {
+		for i := len(out.Rows) - 1; i >= 0; i-- {
+			parentRow := out.Rows[i]
+			if parentRow.ID != *parent {
+				continue
+			}
+			if parentRow.Arrange != nil && parentRow.Arrange.Kind == layout.GridArrange {
+				cols := len(parentRow.Arrange.Columns)
+				if cols > 0 {
+					r := order / cols
+					c := order % cols
+					row.Frame = layout.FrameSpec{Kind: layout.CellFrame, Column: c, Row: r, ColumnSpan: 1, RowSpan: 1}
+				}
+			}
+			break
+		}
 	}
 	out.Rows = append(out.Rows, row)
 	for i, child := range node.Children {
