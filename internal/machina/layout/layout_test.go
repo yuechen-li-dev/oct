@@ -1,6 +1,9 @@
 package layout
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func ptr(id NodeID) *NodeID { return &id }
 
@@ -117,5 +120,77 @@ func TestInvalidRootAndCycleAndConveniencePath(t *testing.T) {
 	}
 	if a.Nodes["child"].Rect != b.Nodes["child"].Rect {
 		t.Fatalf("mismatch %#v %#v", a.Nodes["child"].Rect, b.Nodes["child"].Rect)
+	}
+}
+
+func TestGridBasicFillGapPaddingSpanDeterminism(t *testing.T) {
+	rows := []LayoutRow{
+		{ID: "root", Frame: FrameSpec{Kind: RootFrame}, Arrange: &ArrangeSpec{Kind: GridArrange, Padding: EdgeInsets{Top: 10, Left: 10, Right: 10, Bottom: 10}, ColumnGap: 10, RowGap: 10, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 50}, {Kind: GridTrackFill, Weight: 2}, {Kind: GridTrackFill, Weight: 1}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 20}, {Kind: GridTrackFill, Weight: 1}}}},
+		{ID: "a", Parent: ptr("root"), Order: 2, Frame: FrameSpec{Kind: CellFrame, Column: 0, Row: 0, ColumnSpan: 1, RowSpan: 1}},
+		{ID: "b", Parent: ptr("root"), Order: 0, Frame: FrameSpec{Kind: CellFrame, Column: 1, Row: 0, ColumnSpan: 1, RowSpan: 1}},
+		{ID: "c", Parent: ptr("root"), Order: 1, Frame: FrameSpec{Kind: CellFrame, Column: 2, Row: 0, ColumnSpan: 1, RowSpan: 2}},
+		{ID: "d", Parent: ptr("root"), Order: 3, Frame: FrameSpec{Kind: CellFrame, Column: 0, Row: 1, ColumnSpan: 2, RowSpan: 1}},
+	}
+	out, err := ResolveRows(rows, Rect{Width: 310, Height: 130})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Children["root"][0] != "b" || out.Children["root"][1] != "c" || out.Children["root"][2] != "a" || out.Children["root"][3] != "d" {
+		t.Fatalf("deterministic order mismatch: %#v", out.Children["root"])
+	}
+	if out.Nodes["a"].Rect != (Rect{X: 10, Y: 10, Width: 50, Height: 20}) {
+		t.Fatalf("a rect %#v", out.Nodes["a"].Rect)
+	}
+	if out.Nodes["b"].Rect != (Rect{X: 70, Y: 10, Width: 146.66666666666666, Height: 20}) {
+		t.Fatalf("b rect %#v", out.Nodes["b"].Rect)
+	}
+	if out.Nodes["c"].Rect != (Rect{X: 226.66666666666666, Y: 10, Width: 73.33333333333333, Height: 110}) {
+		t.Fatalf("c rect %#v", out.Nodes["c"].Rect)
+	}
+	if out.Nodes["d"].Rect != (Rect{X: 10, Y: 40, Width: 206.66666666666666, Height: 80}) {
+		t.Fatalf("d rect %#v", out.Nodes["d"].Rect)
+	}
+}
+
+func TestGridValidationErrors(t *testing.T) {
+	base := func(arr *ArrangeSpec, children ...LayoutRow) []LayoutRow {
+		rows := []LayoutRow{{ID: "root", Frame: FrameSpec{Kind: RootFrame}, Arrange: arr}}
+		return append(rows, children...)
+	}
+	_, err := CompileRows(base(&ArrangeSpec{Kind: GridArrange, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 1}}}))
+	if err == nil || !strings.Contains(err.Error(), "invalid_grid_columns") {
+		t.Fatalf("expected invalid columns: %v", err)
+	}
+	_, err = CompileRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 1}}}))
+	if err == nil || !strings.Contains(err.Error(), "invalid_grid_rows") {
+		t.Fatalf("expected invalid rows: %v", err)
+	}
+	_, err = CompileRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: -1}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 1}}}))
+	if err == nil || !strings.Contains(err.Error(), "invalid_grid_track_size") {
+		t.Fatalf("expected invalid size: %v", err)
+	}
+	_, err = CompileRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFill, Weight: 0}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 1}}}))
+	if err == nil || !strings.Contains(err.Error(), "invalid_grid_track_weight") {
+		t.Fatalf("expected invalid weight: %v", err)
+	}
+	_, err = ResolveRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 100}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 1}}, Padding: EdgeInsets{Left: 60, Right: 60}}, LayoutRow{ID: "x", Parent: ptr("root"), Frame: FrameSpec{Kind: CellFrame, Column: 0, Row: 0, ColumnSpan: 1, RowSpan: 1}}), Rect{Width: 100, Height: 10})
+	if err == nil || !strings.Contains(err.Error(), "grid_negative_content_size") {
+		t.Fatalf("expected negative content: %v", err)
+	}
+	_, err = ResolveRows(base(&ArrangeSpec{Kind: GridArrange, ColumnGap: 20, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 60}, {Kind: GridTrackFixed, Size: 60}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 1}}}, LayoutRow{ID: "x0", Parent: ptr("root"), Frame: FrameSpec{Kind: CellFrame, Column: 0, Row: 0, ColumnSpan: 1, RowSpan: 1}}), Rect{Width: 100, Height: 100})
+	if err == nil || !strings.Contains(err.Error(), "grid_negative_remaining_space") {
+		t.Fatalf("expected negative remaining: %v", err)
+	}
+	_, err = ResolveRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 10}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 10}}}, LayoutRow{ID: "x", Parent: ptr("root"), Frame: FrameSpec{Kind: FixedFrame, Width: 1, Height: 1}}), Rect{Width: 100, Height: 100})
+	if err == nil || !strings.Contains(err.Error(), "invalid_grid_child_frame_kind") {
+		t.Fatalf("expected child kind: %v", err)
+	}
+	_, err = CompileRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 10}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 10}}}, LayoutRow{ID: "x", Parent: ptr("root"), Frame: FrameSpec{Kind: CellFrame, Column: -1, Row: 0, ColumnSpan: 1, RowSpan: 1}}))
+	if err == nil || !strings.Contains(err.Error(), "invalid_cell_frame") {
+		t.Fatalf("expected invalid cell: %v", err)
+	}
+	_, err = ResolveRows(base(&ArrangeSpec{Kind: GridArrange, Columns: []GridTrack{{Kind: GridTrackFixed, Size: 10}}, Rows: []GridTrack{{Kind: GridTrackFixed, Size: 10}}}, LayoutRow{ID: "x", Parent: ptr("root"), Frame: FrameSpec{Kind: CellFrame, Column: 1, Row: 0, ColumnSpan: 1, RowSpan: 1}}), Rect{Width: 100, Height: 100})
+	if err == nil || !strings.Contains(err.Error(), "grid_cell_out_of_range") {
+		t.Fatalf("expected out of range: %v", err)
 	}
 }
