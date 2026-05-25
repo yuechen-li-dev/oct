@@ -396,7 +396,14 @@ func isMilestoneDir(name string) bool {
 	if idx == len(name) {
 		return true
 	}
-	return idx+1 == len(name) && name[idx] >= 'a' && name[idx] <= 'z'
+	for idx < len(name) {
+		ch := name[idx]
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
+			return false
+		}
+		idx++
+	}
+	return true
 }
 
 func (b *builder) validateManifest(packageName string, directory string) (map[string]struct{}, error) {
@@ -406,9 +413,22 @@ func (b *builder) validateManifest(packageName string, directory string) (map[st
 	manifestPath := filepath.Join(directory, "manifest.oct")
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("package manifest missing")
+			if isMilestoneDir(filepath.Base(directory)) && isExperimentFamilyRoot(filepath.Dir(directory)) {
+				parentManifestPath := filepath.Join(filepath.Dir(directory), "manifest.oct")
+				if _, parentErr := os.Stat(parentManifestPath); parentErr == nil {
+					manifestPath = parentManifestPath
+				} else if parentErr != nil && !os.IsNotExist(parentErr) {
+					return nil, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
+				} else {
+					return nil, fmt.Errorf("package manifest missing")
+				}
+			} else {
+				return nil, fmt.Errorf("package manifest missing")
+			}
 		}
-		return nil, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
+		}
 	}
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
@@ -502,10 +522,14 @@ func containingExperimentFamilyRoot(root string) (string, bool) {
 	if parent == "." || parent == clean {
 		return "", false
 	}
-	if !hasFileAt(parent, "manifest.oct") || !hasFileAt(parent, "REPORT.md") {
+	if !isExperimentFamilyRoot(parent) {
 		return "", false
 	}
 	return parent, true
+}
+
+func isExperimentFamilyRoot(dir string) bool {
+	return hasFileAt(dir, "manifest.oct") && hasFileAt(dir, "REPORT.md")
 }
 
 func hasFileAt(root string, name string) bool {
