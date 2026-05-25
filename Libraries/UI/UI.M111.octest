@@ -1,0 +1,111 @@
+package UI
+
+record DispatchState {
+    SelectedNav: String
+    SelectedProduct: String
+}
+
+fn DispatchNavTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: ["nav.shop", "nav.support", "nav.shop"]
+        Values: ["Shop", "Support", "Duplicate"]
+    }
+}
+
+fn DispatchProducts() -> String[] {
+    return ["harbor-board", "linen-notebook"]
+}
+
+fn DispatchUpdate(model: DispatchState, event: String) -> DispatchState {
+    let nav = ResolveEventValue(event, DispatchNavTable()) !
+    if nav != "" { return model with { SelectedNav: nav } }
+
+    let inspect = MatchEventPrefix(event, "storefront.inspect.", DispatchProducts()) !
+    if inspect != "" { return model with { SelectedProduct: inspect } }
+
+    return model
+}
+
+[Fact]
+fn M111ResolveEventValueExactMatch() -> Void {
+    let resolved = ResolveEventValue("nav.support", DispatchNavTable()) !
+    Assert.Equal("Support", resolved, "event should resolve to aligned value")
+}
+
+[Fact]
+fn M111ResolveEventValueFirstMatchWins() -> Void {
+    let resolved = ResolveEventValue("nav.shop", DispatchNavTable()) !
+    Assert.Equal("Shop", resolved, "first matching event should win when duplicates exist")
+}
+
+[Fact]
+fn M111ResolveEventValueNoMatchReturnsEmpty() -> Void {
+    Assert.Equal("", ResolveEventValue("nav.unknown", DispatchNavTable()) !, "unknown event should return empty")
+}
+
+[Fact]
+fn M111ResolveEventValueEmptyTableReturnsEmpty() -> Void {
+    let table = EventValueDispatch { Events: [] Values: [] }
+    Assert.Equal("", ResolveEventValue("nav.shop", table) !, "empty table should resolve empty")
+}
+
+
+
+[Fact]
+fn M111ResolveEventValueLengthMismatchFailsClearly() -> Void {
+    let invalid = EventValueDispatch { Events: ["a"] Values: [] }
+    Assert.Error(ResolveEventValue("a", invalid), "ragged dispatch table should fail")
+}
+
+[Fact]
+fn M111MatchEventPrefixReturnsAllowedSuffix() -> Void {
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", DispatchProducts()) !
+    Assert.Equal("harbor-board", suffix, "allowed suffix should be returned")
+}
+
+[Fact]
+fn M111MatchEventPrefixDisallowedSuffixReturnsEmpty() -> Void {
+    let suffix = MatchEventPrefix("storefront.inspect.unknown", "storefront.inspect.", DispatchProducts()) !
+    Assert.Equal("", suffix, "disallowed suffix should return empty")
+}
+
+[Fact]
+fn M111MatchEventPrefixWrongPrefixReturnsEmpty() -> Void {
+    let suffix = MatchEventPrefix("storefront.cart.harbor-board", "storefront.inspect.", DispatchProducts()) !
+    Assert.Equal("", suffix, "wrong prefix should return empty")
+}
+
+
+
+[Fact]
+fn M111MatchEventPrefixEmptyPrefixFailsClearly() -> Void {
+    Assert.Error(MatchEventPrefix("storefront.inspect.harbor-board", "", DispatchProducts()), "empty prefix should fail")
+}
+
+[Fact]
+fn M111MatchEventPrefixRequiresExactSuffixSegment() -> Void {
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board.extra", "storefront.inspect.", DispatchProducts()) !
+    Assert.Equal("", suffix, "helper should not accept partial suffix matches")
+}
+
+[Fact]
+fn M111MatchEventPrefixEmptyAllowedSuffixesReturnsEmpty() -> Void {
+    let allowed: String[] = []
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", allowed) !
+    Assert.Equal("", suffix, "empty allowed suffix list should reject all matches")
+}
+
+[Fact]
+fn M111HelpersSupportExplicitUpdateWithWith() -> Void {
+    let state = DispatchState { SelectedNav: "" SelectedProduct: "" }
+
+    let nav = DispatchUpdate(state, "nav.support")
+    Assert.Equal("Support", nav.SelectedNav, "update should apply resolved nav value")
+
+    let inspect = DispatchUpdate(state, "storefront.inspect.harbor-board")
+    Assert.Equal("harbor-board", inspect.SelectedProduct, "update should apply resolved suffix value")
+
+    let unknown = DispatchUpdate(state, "storefront.unknown")
+    Assert.Equal("", unknown.SelectedNav, "unknown event should keep nav unchanged")
+    Assert.Equal("", unknown.SelectedProduct, "unknown event should keep product unchanged")
+}

@@ -1,5 +1,7 @@
 package StorefrontM7
 
+import UI
+
 [Fact]
 fn StorefrontM7ViewRendersDeterministically() -> Void {
     let first = Init()
@@ -31,9 +33,9 @@ fn StorefrontM7SelectionAndCartFlowWorks() -> Void {
 fn StorefrontM7EventFamiliesArePredictable() -> Void {
     Assert.Equal("storefront.inspect.harbor-board", InspectEvent("harbor-board"), "inspect family should produce canonical event")
     Assert.Equal("storefront.cart.add.harbor-board", AddToCartEvent("harbor-board"), "add family should produce canonical event")
-    Assert.Equal("harbor-board", MatchCatalogEvent(InspectEvent("harbor-board"), InspectPrefix()), "inspect match should resolve known product")
-    Assert.Equal("harbor-board", MatchCatalogEvent(AddToCartEvent("harbor-board"), AddToCartPrefix()), "add match should resolve known product")
-    Assert.Equal("", MatchCatalogEvent(InspectEvent("missing-product"), InspectPrefix()), "unknown product should not match catalog")
+    Assert.Equal("harbor-board", UI.MatchEventPrefix(InspectEvent("harbor-board"), InspectPrefix(), CatalogProductIds()) !, "inspect match should resolve known product")
+    Assert.Equal("harbor-board", UI.MatchEventPrefix(AddToCartEvent("harbor-board"), AddToCartPrefix(), CatalogProductIds()) !, "add match should resolve known product")
+    Assert.Equal("", UI.MatchEventPrefix(InspectEvent("missing-product"), InspectPrefix(), CatalogProductIds()) !, "unknown product should not match catalog")
 }
 
 [Fact]
@@ -93,8 +95,8 @@ fn StorefrontM7CatalogAndGridStayExplicit() -> Void {
 
 [Fact]
 fn StorefrontM7DispatchTablesAreDeterministicAndNoMatchIsStable() -> Void {
-    Assert.Equal("Shop", ResolveDispatch(NavShopEvent(), NavDispatchTable()), "nav dispatch should resolve canonical value")
-    Assert.Equal("", ResolveDispatch("storefront.nav.unknown", NavDispatchTable()), "unknown nav event should not resolve")
+    Assert.Equal("Shop", UI.ResolveEventValue(NavShopEvent(), NavDispatchTable()) !, "nav dispatch should resolve canonical value")
+    Assert.Equal("", UI.ResolveEventValue("storefront.nav.unknown", NavDispatchTable()) !, "unknown nav event should not resolve")
 
     let model = Init()
     let unchanged = Update(model, "storefront.unknown.event")

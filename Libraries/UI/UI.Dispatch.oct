@@ -1,0 +1,45 @@
+package UI
+
+record EventValueDispatch {
+    Events: String[]
+    Values: String[]
+}
+
+fn ResolveEventValue(event: String, table: EventValueDispatch) -> String ! Error {
+    let count = Len(table.Events)
+    if count != Len(table.Values) {
+        return error("UI.ResolveEventValue requires Events and Values length match")
+    }
+    if count == 0 { return "" }
+
+    for i in 0 .. count {
+        if event == table.Events[i] {
+            return table.Values[i]
+        }
+    }
+
+    return ""
+}
+
+fn ContainsAllowed(value: String, allowed: String[]) -> Bool {
+    for i in 0 .. Len(allowed) {
+        if value == allowed[i] { return true }
+    }
+    return false
+}
+
+fn MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) -> String ! Error {
+    if prefix == "" {
+        return error("UI.MatchEventPrefix requires non-empty prefix")
+    }
+    if Len(allowedSuffixes) == 0 { return "" }
+
+    for i in 0 .. Len(allowedSuffixes) {
+        let suffix = allowedSuffixes[i]
+        if event == prefix + suffix {
+            return suffix
+        }
+    }
+
+    return ""
+}
