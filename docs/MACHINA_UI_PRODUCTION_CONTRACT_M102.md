@@ -339,3 +339,7 @@ M101 successfully established core extraction boundaries. The highest-leverage n
 ## M105 status
 
 M105 adds an internal lowering layer (`internal/machina/lowering`) that converts semantic UIIR into M104 layout rows plus deterministic actions/semantics metadata (and a style placeholder map). This remains internal-only in M105 and is not yet wired into runtime mount/patch/render paths.
+
+## M106 status
+
+M106 adds an internal pure hit-testing package (`internal/machina/hittest`) that maps root-local coordinates to symbolic actions from M105 action metadata over M104 resolved geometry. It is deterministic (reverse pre-order winner policy), uses half-open bounds, and remains internal-only without runtime/backend wiring changes.
