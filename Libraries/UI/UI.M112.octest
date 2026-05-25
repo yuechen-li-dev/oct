@@ -1,0 +1,63 @@
+package UI
+
+[Fact]
+fn M112RgbSetsAlpha255() -> Void {
+    let c = Rgb(1, 2, 3)
+    Assert.Equal(1, c.R, "rgb should preserve red")
+    Assert.Equal(2, c.G, "rgb should preserve green")
+    Assert.Equal(3, c.B, "rgb should preserve blue")
+    Assert.Equal(255, c.A, "rgb should set alpha to 255")
+}
+
+[Fact]
+fn M112RgbaPreservesChannels() -> Void {
+    let c = Rgba(1, 2, 3, 4)
+    Assert.Equal(1, c.R, "rgba should preserve red")
+    Assert.Equal(2, c.G, "rgba should preserve green")
+    Assert.Equal(3, c.B, "rgba should preserve blue")
+    Assert.Equal(4, c.A, "rgba should preserve alpha")
+}
+
+[Fact]
+fn M112InsetsHelpers() -> Void {
+    let all = InsetsAll(8px)
+    Assert.Equal(8px, all.Top, "InsetsAll should set top")
+    Assert.Equal(8px, all.Right, "InsetsAll should set right")
+    Assert.Equal(8px, all.Bottom, "InsetsAll should set bottom")
+    Assert.Equal(8px, all.Left, "InsetsAll should set left")
+
+    let xy = InsetsXY(4px, 8px)
+    Assert.Equal(8px, xy.Top, "InsetsXY should map y to top")
+    Assert.Equal(4px, xy.Right, "InsetsXY should map x to right")
+    Assert.Equal(8px, xy.Bottom, "InsetsXY should map y to bottom")
+    Assert.Equal(4px, xy.Left, "InsetsXY should map x to left")
+}
+
+[Fact]
+fn M112DefaultTextStyleDeterministic() -> Void {
+    let a = DefaultTextStyle()
+    let b = DefaultTextStyle()
+
+    Assert.Equal(14px, a.Size, "default text size should be deterministic")
+    Assert.True(a.Weight > 0, "default text weight should be positive")
+    Assert.Equal(a.Size, b.Size, "repeated calls should match")
+    Assert.Equal(a.Weight, b.Weight, "repeated calls should match")
+    Assert.Equal(a.Color.R, b.Color.R, "repeated calls should match")
+    Assert.Equal(a.Color.G, b.Color.G, "repeated calls should match")
+    Assert.Equal(a.Color.B, b.Color.B, "repeated calls should match")
+    Assert.Equal(a.Color.A, b.Color.A, "repeated calls should match")
+}
+
+[Fact]
+fn M112DefaultStyleDeterministicAndWithUpdate() -> Void {
+    let base = DefaultStyle()
+    let again = DefaultStyle()
+    let next = base with { Radius: 8px }
+
+    Assert.Equal(base.Radius, again.Radius, "default style should be deterministic")
+    Assert.Equal(base.Padding.Left, again.Padding.Left, "default style should be deterministic")
+    Assert.Equal(0px, base.Radius, "base radius should use default")
+    Assert.Equal(8px, next.Radius, "with update should override radius")
+    Assert.Equal(0px, base.Radius, "with update should not mutate base")
+}
+

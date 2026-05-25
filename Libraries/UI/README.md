@@ -84,6 +84,40 @@ fn Update(model: StoreState, event: String) -> StoreState {
 }
 ```
 
+
+## Style records (M112, data-only)
+
+`UI` now includes a small typed style surface made of immutable records:
+
+- `UI.Color`
+- `UI.Insets`
+- `UI.TextStyle`
+- `UI.Style`
+
+Helper constructors:
+
+- `UI.Rgb(r, g, b)`
+- `UI.Rgba(r, g, b, a)`
+- `UI.InsetsAll(value)`
+- `UI.InsetsXY(x, y)`
+- `UI.DefaultTextStyle()`
+- `UI.DefaultStyle()`
+
+These are plain Oct records, so customization is explicit and immutable via `with` updates.
+There are no CSS strings, class names, selectors, or cascade semantics.
+
+```oct
+let base = UI.DefaultStyle()
+let card = base with {
+    Background: UI.Rgb(245, 245, 245)
+    Radius: 8px
+    Padding: UI.InsetsAll(12px)
+}
+```
+
+M112 is an Oct-facing style data contract only.
+Applying styles in lowering/render backends is future work.
+
 ## Example
 
 ```oct

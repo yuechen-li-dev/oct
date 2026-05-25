@@ -24,6 +24,9 @@ type Semantics struct {
 	Focusable bool
 }
 
+// Style is a placeholder metadata slot consumed by renderer contracts.
+// M112 adds Oct-facing immutable style records in Libraries/UI; wiring those
+// records into lowering metadata is intentionally deferred.
 type Style struct{}
 
 type Result struct {
