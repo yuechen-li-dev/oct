@@ -13,6 +13,7 @@ UI.Row(children: UI[]) -> UI
 UI.Column(children: UI[]) -> UI
 UI.Canvas(children: UI[]) -> UI
 UI.Grid(children: UI[]) -> UI
+UI.GridRows(cells: UI[][]) -> UI
 UI.Spacer() -> UI
 
 UI.Absolute(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UI.UIBox
@@ -141,3 +142,8 @@ fn View(state: AppState) -> UI {
     ])
 }
 ```
+
+
+## Deterministic grid/cell authoring (M114)
+
+`UI.GridRows` is the M114 deterministic nested-array grid API (outer array = rows, inner arrays = columns). Rows must be rectangular and non-empty; there is no auto-placement or spans. Use `UI.Spacer()` for explicit empty cells. `UI.Grid(children: UI[])` remains as the legacy flat compatibility wrapper.

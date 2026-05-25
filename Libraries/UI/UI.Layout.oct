@@ -21,7 +21,6 @@ record UIBox {
     Bottom: Float<ui>
     Z: Int
 }
-
 fn Column(children: UI[]) -> UI {
     return UIColumn(children)
 }
@@ -36,6 +35,9 @@ fn Canvas(children: UI[]) -> UI {
 
 fn Grid(children: UI[]) -> UI {
     return UIGrid(children)
+}
+fn GridRows(cells: UI[][]) -> UI {
+    return UIGridRows(cells)
 }
 
 fn Spacer() -> UI {

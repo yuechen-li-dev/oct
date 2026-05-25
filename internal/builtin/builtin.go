@@ -130,6 +130,7 @@ var names = map[string]struct{}{
 	"UIRow":                    {},
 	"UICanvas":                 {},
 	"UIGrid":                   {},
+	"UIGridRows":               {},
 	"UISpacer":                 {},
 	"UIPlaceAbsolute":          {},
 	"UIPlaceAnchored":          {},
