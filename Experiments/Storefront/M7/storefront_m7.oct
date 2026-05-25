@@ -17,7 +17,7 @@ fn SourceStructure() -> SourceParts {
     return SourceParts {
         FileKind: "machina-ui-storefront"
         Data: ["CatalogTable", "CategoryLabelMapping", "SortLabelMapping"]
-        Placement: ["ProductGrid", "CardSlotPlacements", "View"]
+        Placement: ["ProductGridRows", "View"]
         Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "UI.ResolveEventValue", "UI.MatchEventPrefix"]
         Behavior: ["Init", "Update", "ProductById", "CategoryVisible"]
         Composition: ["HeaderBar", "HeroBlock", "FilterRail", "ProductAreaHeader", "ProductCard", "SupportBand", "Footer"]
@@ -41,16 +41,6 @@ record ProductCatalog {
     Prices: Float[]
     Badges: String[]
     Categories: String[]
-}
-
-record ProductPlacementGrid {
-    ProductIds: String[]
-    RowStarts: Int[]
-    RowLengths: Int[]
-    ColumnX: Float<px>[]
-    RowY: Float<px>[]
-    CardWidth: Float<px>
-    CardHeight: Float<px>
 }
 
 record StoreState {
@@ -420,34 +410,19 @@ fn Footer(model: StoreState) -> UI {
     ])
 }
 
-fn ProductGrid() -> ProductPlacementGrid {
-    return ProductPlacementGrid {
-        ProductIds: ["harbor-board", "linen-notebook", "cable-dock", "focus-timer", "cork-tray", "steel-ruler"]
-        RowStarts: [0, 3]
-        RowLengths: [3, 3]
-        ColumnX: [320.0 px, 570.0 px, 820.0 px]
-        RowY: [236.0 px, 408.0 px]
-        CardWidth: 232.0 px
-        CardHeight: 158.0 px
-    }
-}
-
-fn CardSlotPlacements(model: StoreState, grid: ProductPlacementGrid) -> UI[] {
-    let firstFrame = UI.AbsoluteBox(grid.ColumnX[0], grid.RowY[0], grid.CardWidth, grid.CardHeight)
-    var out = [UI.Place(firstFrame, ProductCardSlot(ProductById(grid.ProductIds[0]), model))]
-
-    for row in 0 .. Len(grid.RowStarts) {
-        for col in 0 .. grid.RowLengths[row] {
-            if row != 0 or col != 0 {
-                let frame = UI.AbsoluteBox(grid.ColumnX[col], grid.RowY[row], grid.CardWidth, grid.CardHeight)
-                let productIndex = grid.RowStarts[row] + col
-                let productId = grid.ProductIds[productIndex]
-                let product = ProductById(productId)
-                out = Append(out, UI.Place(frame, ProductCardSlot(product, model)))
-            }
-        }
-    }
-    return out
+fn ProductGridRows(model: StoreState) -> UI[][] {
+    return [
+        [
+            ProductCardSlot(ProductById("harbor-board"), model),
+            ProductCardSlot(ProductById("linen-notebook"), model),
+            ProductCardSlot(ProductById("cable-dock"), model)
+        ],
+        [
+            ProductCardSlot(ProductById("focus-timer"), model),
+            ProductCardSlot(ProductById("cork-tray"), model),
+            ProductCardSlot(ProductById("steel-ruler"), model)
+        ]
+    ]
 }
 
 fn View(model: StoreState) -> UI {
@@ -465,22 +440,15 @@ fn View(model: StoreState) -> UI {
     let SupportBottom = 0.91 ui
     let FooterTop = 0.92 ui
 
-    let grid = ProductGrid()
-    let cardPlacements = CardSlotPlacements(model, grid)
-
     var nodes = [
         UI.Place(UI.AnchoredBox(0.01 ui, HeaderTop, 0.99 ui, HeaderBottom), HeaderBar(model)),
         UI.Place(UI.AnchoredBox(0.01 ui, AnnouncementTop, 0.99 ui, AnnouncementBottom), AnnouncementStrip()),
         UI.Place(UI.AnchoredBox(0.01 ui, HeroTop, 0.99 ui, HeroBottom), HeroBlock(model)),
         UI.Place(UI.AnchoredBox(0.01 ui, FiltersTop, 0.26 ui, FiltersBottom), FilterRail(model)),
-        UI.Place(UI.AnchoredBox(0.27 ui, GridTop, 0.99 ui, GridBottom), ProductAreaHeader(model)),
+        UI.Place(UI.AnchoredBox(0.27 ui, GridTop, 0.99 ui, GridBottom), UI.Column([ProductAreaHeader(model), UI.GridRows(ProductGridRows(model))])),
         UI.Place(UI.AnchoredBox(0.27 ui, SupportTop, 0.99 ui, SupportBottom), SupportBand(model)),
         UI.Place(UI.AnchoredBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui), Footer(model))
     ]
-
-    for i in 0 .. Len(cardPlacements) {
-        nodes = Append(nodes, cardPlacements[i])
-    }
 
     return UI.Canvas(nodes)
 }

@@ -74,22 +74,22 @@ fn StorefrontM7FilterAndFeaturedTogglesArePredictable() -> Void {
 }
 
 [Fact]
-fn StorefrontM7CatalogAndGridStayExplicit() -> Void {
+fn StorefrontM7CatalogAndGridRowsStayExplicit() -> Void {
     let catalog = CatalogTable()
     Assert.Equal(6, Len(catalog.Ids), "catalog should expose six product rows")
     Assert.Equal("harbor-board", catalog.Ids[0], "first catalog row should be harbor board")
     Assert.Equal("steel-ruler", catalog.Ids[5], "last catalog row should be steel ruler")
 
-    let grid = ProductGrid()
-    Assert.Equal(2, Len(grid.RowStarts), "grid should expose two storefront rows")
-    Assert.Equal(3, grid.RowLengths[0], "each grid row should keep three explicit columns")
-    Assert.Equal("harbor-board", grid.ProductIds[grid.RowStarts[0]], "grid row 0 col 0 should map to harbor board")
-    Assert.Equal("steel-ruler", grid.ProductIds[grid.RowStarts[1] + 2], "grid row 1 col 2 should map to steel ruler")
+    let rows = ProductGridRows(Init())
+    Assert.Equal(2, Len(rows), "grid rows should expose two storefront rows")
+    Assert.Equal(3, Len(rows[0]), "first grid row should keep three columns")
+    Assert.Equal(3, Len(rows[1]), "second grid row should keep three columns")
+}
 
-    Assert.Equal(320.0, grid.ColumnX[0] / (1.0 px), "first column x should stay explicit")
-    Assert.Equal(820.0, grid.ColumnX[2] / (1.0 px), "last column x should stay explicit")
-    Assert.Equal(236.0, grid.RowY[0] / (1.0 px), "first row y should stay explicit")
-    Assert.Equal(408.0, grid.RowY[1] / (1.0 px), "second row y should stay explicit")
+[Fact]
+fn StorefrontM7ViewUsesGridRowsComposition() -> Void {
+    let signature = UI.Signature(UI.GridRows(ProductGridRows(Init())))
+    Assert.True(Contains(signature, "Grid#"), "grid rows helper should produce canonical grid node")
 }
 
 
