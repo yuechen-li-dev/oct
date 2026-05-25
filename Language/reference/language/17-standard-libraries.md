@@ -103,6 +103,21 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 - The builtin reference intentionally no longer carries the full wrapper catalog; that content is conceptually owned by this page.
 - If a library module exists in `Libraries/` but lacks matching detailed reference coverage under `Language/reference`, treat that as a documentation gap to close incrementally.
 
+
+## UI (Machina UI authoring surface)
+
+`Libraries/UI` is the canonical standard-library authoring surface for Machina UI (Machine Native UI) in Oct.
+
+Use `UI.*` in Oct programs (`UI.Text`, `UI.Button`, `UI.Row`, `UI.Column`, `UI.Canvas`, `UI.Grid`, `UI.Spacer`, placement helpers, and mount/patch/emit wrappers).
+Treat raw UI builtins (`UIText`, `UIButton`, `UIPlaceAbsolute`, etc.) as backing runtime implementation details.
+
+M0 scope is semantic UI construction plus current absolute/anchored box placement.
+Layout is unit-aware:
+- `UI.Absolute(...)` uses `Float<px>`
+- `UI.Anchor(...)` uses `Float<ui>`
+
+No CSS/style system is part of M0. Style records and richer layout/lowering milestones are future work.
+
 ## String
 
 `Libraries/String/String.Core.oct` provides deterministic report-focused text helpers.
