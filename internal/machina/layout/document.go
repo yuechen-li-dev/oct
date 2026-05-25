@@ -22,19 +22,24 @@ const (
 	AnchorFrame   FrameKind = "anchor"
 	FixedFrame    FrameKind = "fixed"
 	FillFrame     FrameKind = "fill"
+	CellFrame     FrameKind = "cell"
 )
 
 type FrameSpec struct {
-	Kind   FrameKind
-	X      float64
-	Y      float64
-	Width  float64
-	Height float64
-	Left   float64
-	Top    float64
-	Right  float64
-	Bottom float64
-	Weight float64
+	Kind       FrameKind
+	X          float64
+	Y          float64
+	Width      float64
+	Height     float64
+	Left       float64
+	Top        float64
+	Right      float64
+	Bottom     float64
+	Weight     float64
+	Column     int
+	Row        int
+	ColumnSpan int
+	RowSpan    int
 }
 
 type Axis string
@@ -50,6 +55,7 @@ const (
 	AxisVertical   Axis = "vertical"
 
 	StackArrange ArrangeKind = "stack"
+	GridArrange  ArrangeKind = "grid"
 
 	AlignStart  ArrangeAlign = "start"
 	AlignCenter ArrangeAlign = "center"
@@ -61,6 +67,19 @@ const (
 	JustifySpaceBetween ArrangeJustify = "space-between"
 )
 
+type GridTrackKind string
+
+const (
+	GridTrackFixed GridTrackKind = "fixed"
+	GridTrackFill  GridTrackKind = "fill"
+)
+
+type GridTrack struct {
+	Kind   GridTrackKind
+	Size   float64
+	Weight float64
+}
+
 type EdgeInsets struct {
 	Top    float64
 	Right  float64
@@ -69,12 +88,16 @@ type EdgeInsets struct {
 }
 
 type ArrangeSpec struct {
-	Kind    ArrangeKind
-	Axis    Axis
-	Gap     float64
-	Padding EdgeInsets
-	Align   ArrangeAlign
-	Justify ArrangeJustify
+	Kind      ArrangeKind
+	Axis      Axis
+	Gap       float64
+	Padding   EdgeInsets
+	Align     ArrangeAlign
+	Justify   ArrangeJustify
+	Columns   []GridTrack
+	Rows      []GridTrack
+	ColumnGap float64
+	RowGap    float64
 }
 
 type LayoutRow struct {
