@@ -116,7 +116,9 @@ Layout is unit-aware:
 - `UI.Absolute(...)` uses `Float<px>`
 - `UI.Anchor(...)` uses `Float<ui>`
 
-No CSS/style system is part of M0. Style records and richer layout/lowering milestones are future work.
+No CSS/class/cascade system is part of M0.
+
+M112 adds a small immutable typed style-data surface in `Libraries/UI` (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style` plus deterministic helper constructors). This remains data-only; style application in lowering/render pipelines is future work.
 
 Small dispatch helpers are available for explicit update functions: `UI.EventValueDispatch`, `UI.ResolveEventValue`, and `UI.MatchEventPrefix`. These helpers are deterministic and do not provide generic record mutation or state-framework behavior.
 

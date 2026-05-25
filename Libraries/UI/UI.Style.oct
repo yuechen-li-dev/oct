@@ -1,0 +1,93 @@
+package UI
+
+record Color {
+    R: Int
+    G: Int
+    B: Int
+    A: Int
+}
+
+record Insets {
+    Top: Int<px>
+    Right: Int<px>
+    Bottom: Int<px>
+    Left: Int<px>
+}
+
+record TextStyle {
+    Size: Int<px>
+    Color: Color
+    Weight: Int
+}
+
+record Style {
+    Background: Color
+    Foreground: Color
+    BorderColor: Color
+    BorderWidth: Int<px>
+    Radius: Int<px>
+    Padding: Insets
+}
+
+fn ValidateChannel(value: Int, name: String) -> Void {
+    Require(value >= 0, "UI." + name + " must be >= 0")
+    Require(value <= 255, "UI." + name + " must be <= 255")
+}
+
+fn ValidatePxNonNegative(value: Int<px>, name: String) -> Void {
+    Require(value >= 0px, "UI." + name + " must be >= 0px")
+}
+
+fn Rgba(r: Int, g: Int, b: Int, a: Int) -> Color {
+    ValidateChannel(r, "Rgba.r")
+    ValidateChannel(g, "Rgba.g")
+    ValidateChannel(b, "Rgba.b")
+    ValidateChannel(a, "Rgba.a")
+
+    return Color { R: r G: g B: b A: a }
+}
+
+fn Rgb(r: Int, g: Int, b: Int) -> Color {
+    return Rgba(r, g, b, 255)
+}
+
+fn InsetsAll(value: Int<px>) -> Insets {
+    ValidatePxNonNegative(value, "InsetsAll.value")
+    return Insets {
+        Top: value
+        Right: value
+        Bottom: value
+        Left: value
+    }
+}
+
+fn InsetsXY(x: Int<px>, y: Int<px>) -> Insets {
+    ValidatePxNonNegative(x, "InsetsXY.x")
+    ValidatePxNonNegative(y, "InsetsXY.y")
+
+    return Insets {
+        Top: y
+        Right: x
+        Bottom: y
+        Left: x
+    }
+}
+
+fn DefaultTextStyle() -> TextStyle {
+    return TextStyle {
+        Size: 14px
+        Color: Rgb(0, 0, 0)
+        Weight: 400
+    }
+}
+
+fn DefaultStyle() -> Style {
+    return Style {
+        Background: Rgb(255, 255, 255)
+        Foreground: Rgb(0, 0, 0)
+        BorderColor: Rgb(210, 210, 210)
+        BorderWidth: 1px
+        Radius: 0px
+        Padding: InsetsAll(0px)
+    }
+}

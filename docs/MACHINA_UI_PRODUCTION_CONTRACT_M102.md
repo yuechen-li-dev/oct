@@ -15,6 +15,7 @@ This is an audit and planning milestone only.
 - **M109 status (implemented):** optional `machina_gio` backend spike now lives under `internal/machina/backend/gio`, consuming render commands and feeding pointer coordinates through `session.PointerDown` without semantic ownership changes.
 - This preserves the M102 production direction while keeping Gio/window/pixel work out of scope for M108.
 - **M111 status (implemented):** `Libraries/UI` now includes small pure dispatch helpers (`UI.EventValueDispatch`, `UI.ResolveEventValue`, `UI.MatchEventPrefix`) for explicit `Update` flows without reflection-like record mutation.
+- **M112 status (implemented):** `Libraries/UI` now includes typed immutable style records (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style`) and deterministic helper constructors (`UI.Rgb/Rgba`, `UI.InsetsAll/InsetsXY`, default style constructors). This milestone is Oct-facing data only and does not alter lowering/render/runtime behavior.
 
 Post-M101 architecture baseline:
 
@@ -138,7 +139,7 @@ Location:
 | Contract area | Exists today? | Current location | Gap | Suggested milestone |
 |---|---|---|---|---|
 | `Libraries/UI` authoring surface | Partial | `Libraries/UI/*.oct` | Present but still thin wrappers over raw builtins; no production contract docs/tests for semantic layering | M103 |
-| Immutable style records | No | N/A | No style/theme record model yet | M112 |
+| Immutable style records | Yes (M112 data-only) | `Libraries/UI/UI.Style.oct` | Renderer/lowering style application remains future work; no CSS/class/cascade semantics introduced | Follow-up milestone(s) |
 | Semantic UIIR stability | Yes (v1 baseline) | `internal/machina/uiir/uiir.go` | Need explicit governance/compat policy tests for evolution | M103/M105 |
 | Layout rows | No | N/A | Semantic tree not lowered to flat row IR | M104 |
 | Layout document | No | N/A | No first-class `LayoutDocument` type | M104 |
