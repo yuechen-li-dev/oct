@@ -12,6 +12,7 @@ This is an audit and planning milestone only.
 ## Status notes after planning milestones
 
 - **M108 status (implemented):** `internal/machina/session` now provides a headless, backend-neutral native session loop contract that composes projection -> lowering -> layout -> hittest -> render commands -> deterministic snapshot, plus pointer dispatch and rebuild.
+- **M109 status (implemented):** optional `machina_gio` backend spike now lives under `internal/machina/backend/gio`, consuming render commands and feeding pointer coordinates through `session.PointerDown` without semantic ownership changes.
 - This preserves the M102 production direction while keeping Gio/window/pixel work out of scope for M108.
 
 Post-M101 architecture baseline:
