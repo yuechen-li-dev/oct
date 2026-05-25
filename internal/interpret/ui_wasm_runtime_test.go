@@ -13,6 +13,12 @@ type testCounterState struct {
 }
 
 type testCounterWasmApp struct{}
+type wasmRenderedDocument struct {
+	ABI  string `json:"abi"`
+	Root struct {
+		Kind string `json:"kind"`
+	} `json:"root"`
+}
 
 func (testCounterWasmApp) InitialState() any {
 	return testCounterState{Route: "route.home", Count: 0}
@@ -67,7 +73,7 @@ func TestUIWasmRuntimeInitAndRenderBoundary(t *testing.T) {
 	if rt.ExportMachinaUIBufferPtr() != 0 {
 		t.Fatalf("buffer ptr must be deterministic scratch base")
 	}
-	var doc uiirSerializedDocument
+	var doc wasmRenderedDocument
 	if err := json.Unmarshal(rt.HostReadOutput(), &doc); err != nil {
 		t.Fatalf("rendered output is not valid canonical uiir json: %v", err)
 	}
