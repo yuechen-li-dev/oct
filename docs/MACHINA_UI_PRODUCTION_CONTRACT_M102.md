@@ -343,3 +343,7 @@ M105 adds an internal lowering layer (`internal/machina/lowering`) that converts
 ## M106 status
 
 M106 adds an internal pure hit-testing package (`internal/machina/hittest`) that maps root-local coordinates to symbolic actions from M105 action metadata over M104 resolved geometry. It is deterministic (reverse pre-order winner policy), uses half-open bounds, and remains internal-only without runtime/backend wiring changes.
+
+## M107 status note
+
+M107 adds internal backend-neutral render command stream and deterministic snapshot recording under `internal/machina/render` for CI-friendly command snapshots. This does not change runtime/interpreter/WebView/WASM behavior.
