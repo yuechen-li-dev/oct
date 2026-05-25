@@ -1,10 +1,23 @@
 package PrometheusFftAlgorithmLab
 
 import Artifact
+import IO
 import Markdown
 import String
 
 record M1RunBundle { Cases: FftCase[] Results: FftResultsArtifact Traces: FftPlanTrace[] RejectN0: Bool RejectN3: Bool }
+fn M1TestArtifactOutDir() -> String { return "out/prometheus_fft_algorithm_lab/m1" }
+
+fn M1TestArtifactPath(fileName: String) -> String {
+    return M1TestArtifactOutDir() + "/" + fileName
+}
+
+fn M1TestVerifyArtifactWrittenNonEmpty(path: String) -> Void {
+    Assert.True(IO.Exists(path), "artifact must exist: " + path)
+    let lines = IO.ReadLines(path)!
+    Assert.True(Len(lines) > 0, "artifact must be non-empty: " + path)
+    Assert.True(not (Len(lines) == 1 and lines[0] == ""), "artifact must not contain only a single empty line: " + path)
+}
 fn RunM1Lab() -> M1RunBundle {
     let tol = 0.0001
     let cases = BuildCases()
@@ -60,21 +73,42 @@ fn M1RepresentativeTracesPresent() -> Void {
 }
 [Artifact]
 fn EmitM1FftCases() -> Void {
+    Artifact.Checkpoint("emitCasesStart")
+    let _mk = IO.MakeAll(M1TestArtifactOutDir())!
+    let path = M1TestArtifactPath("m1_fft_cases.octagon")
     let run = RunM1Lab()
-    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_cases.octagon", run.Cases)
+    Artifact.Checkpoint("emitCasesWrite")
+    Artifact.WriteOctagon(path, run.Cases)
+    M1TestVerifyArtifactWrittenNonEmpty(path)
+    Artifact.Checkpoint("emitCasesDone")
 }
 [Artifact]
 fn EmitM1FftResults() -> Void {
+    Artifact.Checkpoint("emitResultsStart")
+    let _mk = IO.MakeAll(M1TestArtifactOutDir())!
+    let path = M1TestArtifactPath("m1_fft_results.octagon")
     let run = RunM1Lab()
-    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_results.octagon", run.Results)
+    Artifact.Checkpoint("emitResultsWrite")
+    Artifact.WriteOctagon(path, run.Results)
+    M1TestVerifyArtifactWrittenNonEmpty(path)
+    Artifact.Checkpoint("emitResultsDone")
 }
 [Artifact]
 fn EmitM1FftPlanTraces() -> Void {
+    Artifact.Checkpoint("emitTracesStart")
+    let _mk = IO.MakeAll(M1TestArtifactOutDir())!
+    let path = M1TestArtifactPath("m1_fft_plan_traces.octagon")
     let run = RunM1Lab()
-    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_plan_traces.octagon", run.Traces)
+    Artifact.Checkpoint("emitTracesWrite")
+    Artifact.WriteOctagon(path, run.Traces)
+    M1TestVerifyArtifactWrittenNonEmpty(path)
+    Artifact.Checkpoint("emitTracesDone")
 }
 [Artifact]
 fn EmitM1FftReport() -> Void {
+    Artifact.Checkpoint("emitReportStart")
+    let _mk = IO.MakeAll(M1TestArtifactOutDir())!
+    let path = M1TestArtifactPath("m1_fft_report.md")
     let run = RunM1Lab()
     let md = Markdown.Report([
         Markdown.Title("Prometheus FFT Algorithm Lab M1 (Oct correctness tapeout)"),
@@ -83,5 +117,8 @@ fn EmitM1FftReport() -> Void {
         Markdown.Section("Summary", [Markdown.KeyValueTable(["total","passed","failed","tolerance","rejectN0","rejectN3"],[String.From<Int>(run.Results.Summary.Total),String.From<Int>(run.Results.Summary.Passed),String.From<Int>(run.Results.Summary.Failed),String.From<Float>(run.Results.Summary.Tolerance),String.From<Bool>(run.RejectN0),String.From<Bool>(run.RejectN3)])]),
         Markdown.Section("Limitations", [Markdown.Paragraph("Reference path prioritizes determinism and clarity over performance. Twiddle and stage traces are captured for representative N=8/N=16 cases only.")])
     ])
-    Artifact.WriteMarkdown("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_report.md", md)
+    Artifact.Checkpoint("emitReportWrite")
+    Artifact.WriteMarkdown(path, md)
+    M1TestVerifyArtifactWrittenNonEmpty(path)
+    Artifact.Checkpoint("emitReportDone")
 }
