@@ -1,0 +1,24 @@
+package Main
+
+fn Code(x: Int) -> Int {
+    return x + 1
+}
+
+flow Good() -> Int {
+    board {
+        Value: Int
+    }
+
+    state Start {
+        board.Value = Code(1)
+        return board.Value
+    }
+}
+
+[Fact]
+fn FlowLocalHelperCallCompiles() -> Void {
+    let f = Good()
+    Step(f)
+    Assert.True(Complete(f), "flow with local helper call should compile and complete")
+    Assert.Equal(2, Result(f)!, "local helper call value should be used in flow expression")
+}

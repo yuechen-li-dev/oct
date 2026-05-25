@@ -728,10 +728,15 @@ func isReachableFunction(reachable map[string]map[string]struct{}, pkgName strin
 func collectReachableFunctions(program project.Program) map[string]map[string]struct{} {
 	reachable := map[string]map[string]struct{}{}
 	functions := map[string]map[string]ast.FunctionDecl{}
+	flows := map[string]map[string]ast.FlowDecl{}
 	for pkgName, pkg := range program.Packages {
 		functions[pkgName] = map[string]ast.FunctionDecl{}
 		for _, fn := range pkg.Functions {
 			functions[pkgName][fn.Name] = fn
+		}
+		flows[pkgName] = map[string]ast.FlowDecl{}
+		for _, flow := range pkg.Flows {
+			flows[pkgName][flow.Name] = flow
 		}
 	}
 	queue := [][2]string{{program.Entry, "main"}, {program.Entry, "Main"}}
@@ -744,15 +749,25 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 			continue
 		}
 		seen[key] = struct{}{}
-		fn, ok := functions[item[0]][item[1]]
-		if !ok {
+		fn, isFn := functions[item[0]][item[1]]
+		flow, isFlow := flows[item[0]][item[1]]
+		if !isFn && !isFlow {
 			continue
 		}
 		if _, ok := reachable[item[0]]; !ok {
 			reachable[item[0]] = map[string]struct{}{}
 		}
 		reachable[item[0]][item[1]] = struct{}{}
-		for _, call := range collectFunctionCalls(fn.Body) {
+		calls := make([][2]string, 0)
+		if isFn {
+			calls = append(calls, collectFunctionCalls(fn.Body)...)
+		}
+		if isFlow {
+			for _, state := range flow.States {
+				calls = append(calls, collectFunctionCalls(state.Body)...)
+			}
+		}
+		for _, call := range calls {
 			targetPkg := call[0]
 			if targetPkg == "" {
 				targetPkg = item[0]
@@ -820,6 +835,26 @@ func collectFunctionCalls(block ast.Block) [][2]string {
 			calls = append(calls, collectFunctionCalls(s.Body)...)
 		case ast.PrometheusStmt:
 			calls = append(calls, collectFunctionCalls(s.Body)...)
+		case ast.WhenStmt:
+			for _, c := range s.Cases {
+				calls = append(calls, collectExprCalls(c.Condition)...)
+				switch a := c.Action.(type) {
+				case ast.WhenReturnAction:
+					calls = append(calls, collectExprCalls(a.Value)...)
+				case ast.WhenBlockAction:
+					for _, nested := range a.Statements {
+						calls = append(calls, collectFunctionCalls(ast.Block{Statements: []ast.Stmt{nested}})...)
+					}
+				}
+			}
+			switch a := s.Else.(type) {
+			case ast.WhenReturnAction:
+				calls = append(calls, collectExprCalls(a.Value)...)
+			case ast.WhenBlockAction:
+				for _, nested := range a.Statements {
+					calls = append(calls, collectFunctionCalls(ast.Block{Statements: []ast.Stmt{nested}})...)
+				}
+			}
 		}
 	}
 	return calls
@@ -3478,7 +3513,7 @@ func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]
 				}
 			}
 		}
-		_, _, _, isFallible, err := resolveFlowCall(call.Callee)
+		_, _, _, isFallible, err := resolveFlowCall(call.Callee, pkg)
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -3548,12 +3583,9 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 				}
 			}
 		}
-		callee, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
+		callee, ret, builtin, fallible, err := resolveFlowCall(e.Callee, pkg)
 		if err != nil {
 			return nil, err
-		}
-		if !builtin {
-			return nil, unsupported("non-builtin calls in compiled flow expressions")
 		}
 		if fallible {
 			return nil, fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
@@ -3825,12 +3857,9 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 				}
 			}
 		}
-		_, ret, builtin, fallible, err := resolveFlowCall(e.Callee)
+		_, ret, _, fallible, err := resolveFlowCall(e.Callee, pkg)
 		if err != nil {
 			return "", err
-		}
-		if !builtin {
-			return "", unsupported("non-builtin calls in compiled flow expressions")
 		}
 		if fallible {
 			return "", fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
@@ -3959,25 +3988,43 @@ func flattenFlowEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
 	return enumType, expr.Field, true
 }
 
-func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
-	ident, ok := callee.(ast.IdentifierExpr)
-	if !ok {
-		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
+func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, error) {
+	resolveBuiltin := func(name string) (string, string, bool, bool, error) {
+		switch name {
+		case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Float", "Clamp01":
+			return name, "Float", true, false, nil
+		case "FloorToInt", "CeilToInt", "RoundToInt":
+			return name, "Int", true, false, nil
+		case "Len":
+			return name, "Int", true, false, nil
+		case "FormatFloat":
+			return name, "String", true, false, nil
+		default:
+			return "", "", false, false, unsupportedBuiltin(name)
+		}
 	}
-	if !builtin.IsName(ident.Name) {
-		return "", "", false, false, fmt.Errorf("compiled flow expressions do not yet support calling local/helper function `%s`; use a switch expression, inline expression, supported builtin, or compute the value outside the flow", ident.Name)
+	resolvePkgFn := func(pkgName, fnName string) (string, string, bool, bool, error) {
+		declPkg, ok := flowLowerProgram.Packages[pkgName]
+		if !ok { return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgName) }
+		for _, fn := range declPkg.Functions {
+			if fn.Name == fnName { return pkgName+"."+fnName, typeRefStringForPackage(pkgName, fn.ReturnType), false, fn.IsFallible, nil }
+		}
+		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgName, fnName)
 	}
-	switch ident.Name {
-	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Float", "Clamp01":
-		return ident.Name, "Float", true, false, nil
-	case "FloorToInt", "CeilToInt", "RoundToInt":
-		return ident.Name, "Int", true, false, nil
-	case "Len":
-		return ident.Name, "Int", true, false, nil
-	case "FormatFloat":
-		return ident.Name, "String", true, false, nil
+	switch x := callee.(type) {
+	case ast.IdentifierExpr:
+		if builtin.IsName(x.Name) { return resolveBuiltin(x.Name) }
+		resolved, ret, builtinCall, fallible, err := resolvePkgFn(pkg, x.Name)
+		if err != nil { return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name) }
+		return resolved, ret, builtinCall, fallible, nil
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
+		if !ok { return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee)) }
+		qualified := pkgIdent.Name+"."+x.Field
+		if builtin.IsName(qualified) { return resolveBuiltin(qualified) }
+		return resolvePkgFn(pkgIdent.Name, x.Field)
 	default:
-		return "", "", false, false, unsupportedBuiltin(ident.Name)
+		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
 	}
 }
 
@@ -5991,7 +6038,7 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			args = append(args, v)
 		}
 		if !e.Builtin {
-			return "", unsupported("non-builtin calls in compiled flow expressions")
+			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(e.Callee, ".", "_"), strings.Join(args, ", ")), nil
 		}
 		return emitGoBuiltinCallExpr(e.Callee, args)
 	case MIRFlowIndexExpr:
