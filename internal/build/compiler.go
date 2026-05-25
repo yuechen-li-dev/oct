@@ -3965,7 +3965,7 @@ func resolveFlowCall(callee ast.Expr) (string, string, bool, bool, error) {
 		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
 	}
 	if !builtin.IsName(ident.Name) {
-		return "", "", false, false, unsupportedBuiltin(ident.Name)
+		return "", "", false, false, fmt.Errorf("compiled flow expressions do not yet support calling local/helper function `%s`; use a switch expression, inline expression, supported builtin, or compute the value outside the flow", ident.Name)
 	}
 	switch ident.Name {
 	case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Float", "Clamp01":
