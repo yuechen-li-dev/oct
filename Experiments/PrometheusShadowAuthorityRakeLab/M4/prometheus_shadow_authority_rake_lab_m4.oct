@@ -351,7 +351,7 @@ fn BuildVariantsM4() -> Variant[] {
         Variant.ReasonBindingEmaStrongerCommit,
         Variant.HealthyMarginGate,
         Variant.HealthyStreakGate,
-        Variant.HealthyMarginAndStreak,
+        Variant.HealthyMarginAndStreak
     ]
 }
 
@@ -401,7 +401,7 @@ fn BuildScenariosM4() -> Scenario[] {
             Name: "HealthyLongRun"
             Label: "long-clean"
             Events: [ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match, ShadowOutcome.Match]
-        },
+        }
     ]
 }
 
@@ -565,7 +565,7 @@ fn PrometheusShadowAuthorityRakeM4ArtifactWriteAll() -> Int {
     let md = Markdown.Report([
         Markdown.Title("Prometheus Shadow Authority Rake Lab (M4)"),
         Markdown.Section("Question", [Markdown.Paragraph("Can a local HEALTHY-promotion stability guard eliminate confidence-boundary over-promotion without harming recovery or chatter?")]),
-        Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount", "variantCount", "expectedBehaviorMet", "rakeSignal", "boundaryOverPromotionBaseline", "boundaryOverPromotionMargin", "boundaryOverPromotionStreak", "boundaryOverPromotionMarginAndStreak", "healthySuppressedByMarginTotal", "healthySuppressedByStreakTotal", "recoveryStillPossibleCount", "recommendation"], [String.From<Int>(Len(BuildScenariosM4())), String.From<Int>(Len(BuildVariantsM4())), String.From<Int>(ok), String.From<Int>(rake), String.From<Int>(overBase), String.From<Int>(overMargin), String.From<Int>(overStreak), String.From<Int>(overBoth), String.From<Int>(suppressMargin), String.From<Int>(suppressStreak), String.From<Int>(recovery), rec]), Markdown.Paragraph("M4 remains diagnostic-only and does not modify native dispatch/selector/lease/prestage authority.")]),
+        Markdown.Section("Aggregate", [Markdown.KeyValueTable(["scenarioCount", "variantCount", "expectedBehaviorMet", "rakeSignal", "boundaryOverPromotionBaseline", "boundaryOverPromotionMargin", "boundaryOverPromotionStreak", "boundaryOverPromotionMarginAndStreak", "healthySuppressedByMarginTotal", "healthySuppressedByStreakTotal", "recoveryStillPossibleCount", "recommendation"], [String.From<Int>(Len(BuildScenariosM4())), String.From<Int>(Len(BuildVariantsM4())), String.From<Int>(ok), String.From<Int>(rake), String.From<Int>(overBase), String.From<Int>(overMargin), String.From<Int>(overStreak), String.From<Int>(overBoth), String.From<Int>(suppressMargin), String.From<Int>(suppressStreak), String.From<Int>(recovery), rec]), Markdown.Paragraph("M4 remains diagnostic-only and does not modify native dispatch/selector/lease/prestage authority.")])
     ])
 
     let findings = Markdown.Report([
@@ -581,7 +581,7 @@ fn PrometheusShadowAuthorityRakeM4ArtifactWriteAll() -> Int {
         Markdown.Section("Stale/fallback/arrival-error regression check", [Markdown.Paragraph("RecentStale and RecentFallback HEALTHY violations remain explicitly tracked; high-arrival-error observation remains visible.")]),
         Markdown.Section("Rakes found", [Markdown.Paragraph("Rakes are any boundary over-promotion or stale/fallback healthy contradiction events captured by rakeSignal.")]),
         Markdown.Section("Recommended native M12 policy", [Markdown.Paragraph("Recommendation from this run: " + rec + ". Keep native authority diagnostic-only until feature-flagged canary path in M12.")]),
-        Markdown.Section("Limitations", [Markdown.Paragraph("Simulation-only evidence from finite scenarios; no native constants, dispatch, selector, lease, or prestage authority changes are proposed here.")]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("Simulation-only evidence from finite scenarios; no native constants, dispatch, selector, lease, or prestage authority changes are proposed here.")])
     ])
 
     Artifact.Checkpoint("beforeWrites")
