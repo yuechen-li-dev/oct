@@ -1,0 +1,87 @@
+package PrometheusFftAlgorithmLab
+
+import Artifact
+import Markdown
+import String
+
+record M1RunBundle { Cases: FftCase[] Results: FftResultsArtifact Traces: FftPlanTrace[] RejectN0: Bool RejectN3: Bool }
+fn RunM1Lab() -> M1RunBundle {
+    let tol = 0.0001
+    let cases = BuildCases()
+    var results: FftResult[] = []
+    var traces: FftPlanTrace[] = []
+    var passed = 0
+    for i in 0..Len(cases) {
+        let c = cases[i]
+        let input = BuildComplex(c.InputRe, c.InputIm)
+        let oracle = DftForward(input)
+        let fftRun = FftRadix2ForwardWithTrace(input, c.CaseName, c.N == 8 or c.N == 16)
+        let fft = fftRun.Output
+        for t in 0..Len(fftRun.Traces) { traces = Append(traces, fftRun.Traces[t]) }
+        let fwd = MaxErrors(fft, oracle)
+        let inv = FftRadix2Inverse(fft)
+        let rte = MaxErrors(inv, input)
+        let pass = fwd.Abs <= tol and rte.Abs <= tol
+        if pass { passed = passed + 1 }
+        results = Append(results, FftResult { CaseName: c.CaseName N: c.N ForwardMaxReError: fwd.Re ForwardMaxImError: fwd.Im ForwardMaxAbsError: fwd.Abs RoundtripMaxReError: rte.Re RoundtripMaxImError: rte.Im RoundtripMaxAbsError: rte.Abs Pass: pass Notes: "" })
+    }
+    return M1RunBundle {
+        Cases: cases
+        Results: FftResultsArtifact { Summary: FftSummary { Total: Len(results) Passed: passed Failed: Len(results) - passed Tolerance: tol } Rows: results }
+        Traces: traces
+        RejectN0: not IsPowerOfTwo(0)
+        RejectN3: not IsPowerOfTwo(3)
+    }
+}
+[Fact]
+fn M1PowerOfTwoContract() -> Void {
+    Assert.True(IsPowerOfTwo(1), "N=1 must be accepted")
+    Assert.True(IsPowerOfTwo(2), "N=2 must be accepted")
+    Assert.True(IsPowerOfTwo(16), "N=16 must be accepted")
+    Assert.True(not IsPowerOfTwo(0), "N=0 must be rejected")
+    Assert.True(not IsPowerOfTwo(3), "N=3 must be rejected")
+}
+[Fact]
+fn M1AllCasesPassTolerance() -> Void {
+    let run = RunM1Lab()
+    Assert.True(run.Results.Summary.Total == run.Results.Summary.Passed, "all M1 FFT cases must pass tolerance")
+    Assert.True(run.Results.Summary.Failed == 0, "failed case count must be zero")
+}
+[Fact]
+fn M1RepresentativeTracesPresent() -> Void {
+    let run = RunM1Lab()
+    var seenN8 = false
+    var seenN16 = false
+    for i in 0..Len(run.Traces) {
+        if run.Traces[i].N == 8 { seenN8 = true }
+        if run.Traces[i].N == 16 { seenN16 = true }
+    }
+    Assert.True(seenN8 and seenN16, "trace artifact must include N=8 and N=16 stage entries")
+}
+[Artifact]
+fn EmitM1FftCases() -> Void {
+    let run = RunM1Lab()
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_cases.octagon", run.Cases)
+}
+[Artifact]
+fn EmitM1FftResults() -> Void {
+    let run = RunM1Lab()
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_results.octagon", run.Results)
+}
+[Artifact]
+fn EmitM1FftPlanTraces() -> Void {
+    let run = RunM1Lab()
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_plan_traces.octagon", run.Traces)
+}
+[Artifact]
+fn EmitM1FftReport() -> Void {
+    let run = RunM1Lab()
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus FFT Algorithm Lab M1 (Oct correctness tapeout)"),
+        Markdown.Section("Representation + Semantics", [Markdown.Paragraph("Complex values use explicit parallel arrays (Re/Im). Forward FFT is unnormalized; inverse FFT divides by N.")]),
+        Markdown.Section("Test Matrix", [Markdown.Paragraph("N in {1,2,4,8,16}; families: impulse, constant, alternating sign, single-bin tone, optional two-bin tone (N>=4), deterministic arbitrary. Non-power-of-two and N=0 are explicit rejection checks.")]),
+        Markdown.Section("Summary", [Markdown.KeyValueTable(["total","passed","failed","tolerance","rejectN0","rejectN3"],[String.From<Int>(run.Results.Summary.Total),String.From<Int>(run.Results.Summary.Passed),String.From<Int>(run.Results.Summary.Failed),String.From<Float>(run.Results.Summary.Tolerance),String.From<Bool>(run.RejectN0),String.From<Bool>(run.RejectN3)])]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("Reference path prioritizes determinism and clarity over performance. Twiddle and stage traces are captured for representative N=8/N=16 cases only.")])
+    ])
+    Artifact.WriteMarkdown("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_report.md", md)
+}

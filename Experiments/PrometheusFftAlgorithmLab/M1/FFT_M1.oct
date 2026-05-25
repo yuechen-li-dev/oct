@@ -1,0 +1,220 @@
+package PrometheusFftAlgorithmLab
+
+import Artifact
+import Markdown
+import String
+
+record ComplexVector { Re: Float[] Im: Float[] }
+record FftCase { CaseName: String N: Int InputRe: Float[] InputIm: Float[] CaseFamily: String ExpectedSource: String }
+record FftResult {
+    CaseName: String N: Int
+    ForwardMaxReError: Float ForwardMaxImError: Float ForwardMaxAbsError: Float
+    RoundtripMaxReError: Float RoundtripMaxImError: Float RoundtripMaxAbsError: Float
+    Pass: Bool Notes: String
+}
+record FftPlanTrace {
+    CaseName: String N: Int StageIndex: Int Span: Int HalfSpan: Int TwiddleStep: Int Role: String SnapshotRe: String SnapshotIm: String
+}
+record FftSummary { Total: Int Passed: Int Failed: Int Tolerance: Float }
+record FftRun { Output: ComplexVector Traces: FftPlanTrace[] }
+record ErrorTriplet { Re: Float Im: Float Abs: Float }
+record FftResultsArtifact { Summary: FftSummary Rows: FftResult[] }
+
+fn IsPowerOfTwo(n: Int) -> Bool { if n <= 0 { return false } var x = n while x > 1 { if x % 2 != 0 { return false } x = x / 2 } return true }
+fn EmptyComplex() -> ComplexVector { return ComplexVector { Re: [] Im: [] } }
+fn BuildComplex(re: Float[], im: Float[]) -> ComplexVector { return ComplexVector { Re: re Im: im } }
+
+fn DftForward(x: ComplexVector) -> ComplexVector {
+    let n = Len(x.Re)
+    var outRe: Float[] = []
+    var outIm: Float[] = []
+    for k in 0..n {
+        var sumRe = 0.0
+        var sumIm = 0.0
+        for t in 0..n {
+            let theta = -2.0 * Pi() * Float(k * t) / Float(n)
+            let c = Cos(theta)
+            let s = Sin(theta)
+            sumRe = sumRe + (x.Re[t] * c) - (x.Im[t] * s)
+            sumIm = sumIm + (x.Re[t] * s) + (x.Im[t] * c)
+        }
+        outRe = Append(outRe, sumRe)
+        outIm = Append(outIm, sumIm)
+    }
+    return BuildComplex(outRe, outIm)
+}
+
+fn DftInverseNormalized(x: ComplexVector) -> ComplexVector {
+    let n = Len(x.Re)
+    var outRe: Float[] = []
+    var outIm: Float[] = []
+    for t in 0..n {
+        var sumRe = 0.0
+        var sumIm = 0.0
+        for k in 0..n {
+            let theta = 2.0 * Pi() * Float(k * t) / Float(n)
+            let c = Cos(theta)
+            let s = Sin(theta)
+            sumRe = sumRe + (x.Re[k] * c) - (x.Im[k] * s)
+            sumIm = sumIm + (x.Re[k] * s) + (x.Im[k] * c)
+        }
+        outRe = Append(outRe, sumRe / Float(n))
+        outIm = Append(outIm, sumIm / Float(n))
+    }
+    return BuildComplex(outRe, outIm)
+}
+
+fn ReverseBits(value: Int, bits: Int) -> Int { var r = 0 var v = value for _i in 0..bits { r = (r * 2) + (v % 2) v = v / 2 } return r }
+fn Log2Pow2(n: Int) -> Int { var x = n var b = 0 while x > 1 { x = x / 2 b = b + 1 } return b }
+
+fn Snapshot(xs: Float[]) -> String { var parts: String[] = [] for i in 0..Len(xs) { parts = Append(parts, String.From<Float>(xs[i])) } return String.Join(parts, ",") }
+
+fn FftRadix2ForwardWithTrace(x: ComplexVector, caseName: String, captureTrace: Bool) -> FftRun {
+    let n = Len(x.Re)
+    if n == 0 { return FftRun { Output: EmptyComplex() Traces: [] } }
+    if not IsPowerOfTwo(n) { return FftRun { Output: EmptyComplex() Traces: [] } }
+    let bits = Log2Pow2(n)
+    var re: Float[] = []
+    var im: Float[] = []
+    for i in 0..n {
+        let j = ReverseBits(i, bits)
+        re = Append(re, x.Re[j])
+        im = Append(im, x.Im[j])
+    }
+    var traces: FftPlanTrace[] = []
+    var span = 2
+    var stage = 0
+    while span <= n {
+        let half = span / 2
+        let step = n / span
+        var start = 0
+        while start < n {
+            for j in 0..half {
+                let tw = j * step
+                let theta = -2.0 * Pi() * Float(tw) / Float(n)
+                let wr = Cos(theta)
+                let wi = Sin(theta)
+                let i0 = start + j
+                let i1 = i0 + half
+                let tr = (wr * re[i1]) - (wi * im[i1])
+                let ti = (wr * im[i1]) + (wi * re[i1])
+                let ur = re[i0]
+                let ui = im[i0]
+                re[i0] = ur + tr
+                im[i0] = ui + ti
+                re[i1] = ur - tr
+                im[i1] = ui - ti
+            }
+            start = start + span
+        }
+        if captureTrace {
+            traces = Append(traces, FftPlanTrace { CaseName: caseName N: n StageIndex: stage Span: span HalfSpan: half TwiddleStep: step Role: "inPlace" SnapshotRe: Snapshot(re) SnapshotIm: Snapshot(im) })
+        }
+        span = span * 2
+        stage = stage + 1
+    }
+    return FftRun { Output: BuildComplex(re, im) Traces: traces }
+}
+
+fn FftRadix2Forward(x: ComplexVector) -> ComplexVector { return FftRadix2ForwardWithTrace(x, "", false).Output }
+fn FftRadix2Inverse(x: ComplexVector) -> ComplexVector {
+    let n = Len(x.Re)
+    var conjIm: Float[] = []
+    for i in 0..n { conjIm = Append(conjIm, -x.Im[i]) }
+    let y = FftRadix2Forward(BuildComplex(x.Re, conjIm))
+    var outRe: Float[] = []
+    var outIm: Float[] = []
+    for i in 0..n { outRe = Append(outRe, y.Re[i] / Float(n)) outIm = Append(outIm, -y.Im[i] / Float(n)) }
+    return BuildComplex(outRe, outIm)
+}
+
+fn MaxErrors(a: ComplexVector, b: ComplexVector) -> ErrorTriplet {
+    var maxRe = 0.0 var maxIm = 0.0 var maxAbs = 0.0
+    for i in 0..Len(a.Re) {
+        let er = Abs(a.Re[i] - b.Re[i])
+        let ei = Abs(a.Im[i] - b.Im[i])
+        let ea = Sqrt((er * er) + (ei * ei))
+        if er > maxRe { maxRe = er }
+        if ei > maxIm { maxIm = ei }
+        if ea > maxAbs { maxAbs = ea }
+    }
+    return ErrorTriplet { Re: maxRe Im: maxIm Abs: maxAbs }
+}
+
+fn BuildDeterministicCase(name: String, n: Int, family: String, src: String, mode: Int) -> FftCase {
+    var re: Float[] = [] var im: Float[] = []
+    for i in 0..n {
+        let x = Float(i)
+        let xr = switch mode {
+            case 0 -> if i == 0 { 1.0 } else { 0.0 }
+            case 1 -> 1.0
+            case 2 -> if i % 2 == 0 { 1.0 } else { -1.0 }
+            case 3 -> Cos(2.0 * Pi() * x / Float(n))
+            case 4 -> Cos(2.0 * Pi() * x / Float(n)) + 0.5 * Sin(4.0 * Pi() * x / Float(n))
+            else -> 0.25 + 0.1 * x
+        }
+        let xi = switch mode {
+            case 0 -> 0.0
+            case 1 -> 0.0
+            case 2 -> 0.0
+            case 3 -> Sin(2.0 * Pi() * x / Float(n))
+            case 4 -> 0.25 * Sin(2.0 * Pi() * x / Float(n))
+            else -> -0.2 + (0.05 * x)
+        }
+        re = Append(re, xr)
+        im = Append(im, xi)
+    }
+    return FftCase { CaseName: name N: n InputRe: re InputIm: im CaseFamily: family ExpectedSource: src }
+}
+
+fn BuildCases() -> FftCase[] {
+    var cases: FftCase[] = []
+    let ns = [1,2,4,8,16]
+    for idx in 0..Len(ns) {
+        let n = ns[idx]
+        cases = Append(cases, BuildDeterministicCase("impulse_n" + String.From<Int>(n), n, "impulse", "known impulse spectrum", 0))
+        cases = Append(cases, BuildDeterministicCase("constant_n" + String.From<Int>(n), n, "constant", "known DC-only spectrum", 1))
+        cases = Append(cases, BuildDeterministicCase("alternating_n" + String.From<Int>(n), n, "alternating-sign", "known nyquist/DC behavior", 2))
+        cases = Append(cases, BuildDeterministicCase("single_bin_tone_n" + String.From<Int>(n), n, "single-bin-tone", "analytic e^(j2πn/N)", 3))
+        cases = Append(cases, BuildDeterministicCase("arbitrary_n" + String.From<Int>(n), n, "arbitrary", "deterministic affine/trig mix", 5))
+        if n >= 4 { cases = Append(cases, BuildDeterministicCase("two_bin_tone_n" + String.From<Int>(n), n, "two-bin-tone", "deterministic 2-bin mixture", 4)) }
+    }
+    return cases
+}
+
+fn PrometheusFftAlgorithmLabM1ArtifactWriteAll() -> Int {
+    let tol = 0.0001
+    let badN0 = IsPowerOfTwo(0)
+    let badN3 = IsPowerOfTwo(3)
+    let cases = BuildCases()
+    var results: FftResult[] = []
+    var traces: FftPlanTrace[] = []
+    var passed = 0
+    for i in 0..Len(cases) {
+        let c = cases[i]
+        let input = BuildComplex(c.InputRe, c.InputIm)
+        let oracle = DftForward(input)
+        let fftRun = FftRadix2ForwardWithTrace(input, c.CaseName, c.N == 8 or c.N == 16)
+        let fft = fftRun.Output
+        for t in 0..Len(fftRun.Traces) { traces = Append(traces, fftRun.Traces[t]) }
+        let fwd = MaxErrors(fft, oracle)
+        let inv = FftRadix2Inverse(fft)
+        let rte = MaxErrors(inv, input)
+        let pass = fwd.Abs <= tol and rte.Abs <= tol
+        if pass { passed = passed + 1 }
+        results = Append(results, FftResult { CaseName: c.CaseName N: c.N ForwardMaxReError: fwd.Re ForwardMaxImError: fwd.Im ForwardMaxAbsError: fwd.Abs RoundtripMaxReError: rte.Re RoundtripMaxImError: rte.Im RoundtripMaxAbsError: rte.Abs Pass: pass Notes: "" })
+    }
+    let summary = FftSummary { Total: Len(results) Passed: passed Failed: Len(results)-passed Tolerance: tol }
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_cases.octagon", cases)
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_results.octagon", FftResultsArtifact { Summary: summary Rows: results })
+    Artifact.WriteOctagon("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_plan_traces.octagon", traces)
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus FFT Algorithm Lab M1 (Oct correctness tapeout)"),
+        Markdown.Section("Representation + Semantics", [Markdown.Paragraph("Complex values use explicit parallel arrays (Re/Im). Forward FFT is unnormalized; inverse FFT divides by N.")]),
+        Markdown.Section("Test Matrix", [Markdown.Paragraph("N in {1,2,4,8,16}; families: impulse, constant, alternating sign, single-bin tone, optional two-bin tone (N>=4), deterministic arbitrary. Non-power-of-two and N=0 are explicit rejection checks.")]),
+        Markdown.Section("Summary", [Markdown.KeyValueTable(["total","passed","failed","tolerance","rejectN0","rejectN3"],[String.From<Int>(summary.Total),String.From<Int>(summary.Passed),String.From<Int>(summary.Failed),String.From<Float>(summary.Tolerance),String.From<Bool>(not badN0),String.From<Bool>(not badN3)])]),
+        Markdown.Section("Limitations", [Markdown.Paragraph("Reference path prioritizes determinism and clarity over performance. Twiddle and stage traces are captured for representative N=8/N=16 cases only.")])
+    ])
+    Artifact.WriteMarkdown("Experiments/PrometheusFftAlgorithmLab/M1/m1_fft_report.md", md)
+    return 0
+}
