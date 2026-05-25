@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/cli"
+	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
 func TestPrometheusFftAlgorithmLabM1ArtifactWritesDeterministicVisibleOutputs(t *testing.T) {
@@ -49,5 +50,15 @@ func TestPrometheusFftAlgorithmLabM1ArtifactWritesDeterministicVisibleOutputs(t 
 		}
 	}
 
+	octagonArtifacts := []string{
+		filepath.Join(outDir, "m1_fft_cases.octagon"),
+		filepath.Join(outDir, "m1_fft_results.octagon"),
+		filepath.Join(outDir, "m1_fft_plan_traces.octagon"),
+	}
+	for _, artifactPath := range octagonArtifacts {
+		if _, err := octagon.Load(artifactPath); err != nil {
+			t.Fatalf("load fft octagon artifact %s: %v", artifactPath, err)
+		}
+	}
 
 }

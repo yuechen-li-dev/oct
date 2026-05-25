@@ -60,7 +60,19 @@ func validateDataValue(expr ast.Expr) error {
 	case ast.BinaryExpr:
 		return fmt.Errorf(".octagon does not allow arithmetic or computed expressions")
 	case ast.UnaryExpr:
-		return fmt.Errorf(".octagon does not allow unary computed expressions")
+		if node.Operator != "-" {
+			return fmt.Errorf(".octagon does not allow unary computed expressions")
+		}
+		switch value := node.Operand.(type) {
+		case ast.IntegerLiteral:
+			return nil
+		case ast.FloatLiteral:
+			return nil
+		case ast.ParenExpr:
+			return validateDataValue(value.Inner)
+		default:
+			return fmt.Errorf(".octagon unary minus requires a numeric literal operand")
+		}
 	case ast.RangeExpr:
 		return fmt.Errorf(".octagon does not allow range expressions")
 	case ast.PropagateExpr, ast.UnwrapExpr:
