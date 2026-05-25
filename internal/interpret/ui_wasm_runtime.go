@@ -2,6 +2,8 @@ package interpret
 
 import (
 	"fmt"
+	machinalayout "github.com/yuechen-li-dev/oct/internal/machina/layout"
+	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 )
 
 const (
@@ -17,7 +19,7 @@ const uiWasmDefaultMemoryBytes uint32 = 64 * 1024
 type uiWasmBoundaryApp interface {
 	InitialState() any
 	Dispatch(state any, event uiirSerializedEvent) (any, error)
-	Project(state any) (*uiirNode, error)
+	Project(state any) (*machinauiir.Node, error)
 }
 
 type uiWasmRuntime struct {
@@ -58,11 +60,11 @@ func (rt *uiWasmRuntime) ExportMachinaUIRender() int32 {
 	if err != nil {
 		return rt.setError(uiWasmStatusRuntimeError, fmt.Sprintf("render projection failed: %v", err))
 	}
-	resolved, err := resolveUIIRBoxes(withUIIRNodeIDs(root), &uiirResolvedBox{X: 0, Y: 0, Width: uiirRootLayoutExtent, Height: uiirRootLayoutExtent})
+	resolved, err := machinalayout.ResolveBoxes(machinauiir.WithNodeIDs(root), &machinauiir.ResolvedRect{X: 0, Y: 0, Width: machinalayout.RootLayoutExtent, Height: machinalayout.RootLayoutExtent})
 	if err != nil {
 		return rt.setError(uiWasmStatusRuntimeError, fmt.Sprintf("render layout resolution failed: %v", err))
 	}
-	encoded, err := serializeUIIRCanonicalJSON(resolved)
+	encoded, err := machinauiir.SerializeCanonicalJSON(resolved)
 	if err != nil {
 		return rt.setError(uiWasmStatusRuntimeError, fmt.Sprintf("render serialization failed: %v", err))
 	}
@@ -81,7 +83,7 @@ func (rt *uiWasmRuntime) ExportMachinaUIDispatchEventJSON(ptr uint32, length uin
 	if err != nil {
 		return rt.setError(uiWasmStatusInvalidInput, err.Error())
 	}
-	event, err := deserializeUIIREventCanonicalJSON(string(payload))
+	event, err := machinauiir.DeserializeEventCanonicalJSON(string(payload))
 	if err != nil {
 		return rt.setError(uiWasmStatusInvalidInput, err.Error())
 	}

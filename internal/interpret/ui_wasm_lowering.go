@@ -2,6 +2,7 @@ package interpret
 
 import (
 	"fmt"
+	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"sort"
 	"strings"
 )
@@ -59,15 +60,15 @@ func buildMachinaUIDirectWasmStamp(fragments map[string]m98bRenderTemplate) []by
 
 func buildMachinaUIM98bRenderTemplates() (map[string]m98bRenderTemplate, error) {
 	const countMarker = "__M98B_COUNT__"
-	homeFalse, err := serializeUIIRCanonicalJSON(machinaM98bHomeNode(false, countMarker))
+	homeFalse, err := machinauiir.SerializeCanonicalJSON(machinaM98bHomeNode(false, countMarker))
 	if err != nil {
 		return nil, fmt.Errorf("machina ui wasm emission failed creating home(false) template: %w", err)
 	}
-	homeTrue, err := serializeUIIRCanonicalJSON(machinaM98bHomeNode(true, countMarker))
+	homeTrue, err := machinauiir.SerializeCanonicalJSON(machinaM98bHomeNode(true, countMarker))
 	if err != nil {
 		return nil, fmt.Errorf("machina ui wasm emission failed creating home(true) template: %w", err)
 	}
-	stats, err := serializeUIIRCanonicalJSON(machinaM98bStatsNode(countMarker))
+	stats, err := machinauiir.SerializeCanonicalJSON(machinaM98bStatsNode(countMarker))
 	if err != nil {
 		return nil, fmt.Errorf("machina ui wasm emission failed creating stats template: %w", err)
 	}
@@ -87,23 +88,23 @@ func buildMachinaUIM98bRenderTemplates() (map[string]m98bRenderTemplate, error) 
 	return renderTemplates, nil
 }
 
-func machinaM98bHomeNode(canDec bool, countValue string) *uiirNode {
-	return &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{
-		{Kind: uiirNodeText, Text: "route=home"},
-		{Kind: uiirNodeText, Text: "count=" + countValue},
-		{Kind: uiirNodeRow, Children: []*uiirNode{
-			{Kind: uiirNodeButton, Label: "Increment", Event: "counter.increment", Enabled: true},
-			{Kind: uiirNodeButton, Label: "Decrement", Event: "counter.decrement", Enabled: canDec},
-			{Kind: uiirNodeButton, Label: "Stats", Event: "route.stats", Enabled: true},
+func machinaM98bHomeNode(canDec bool, countValue string) *machinauiir.Node {
+	return &uiirNode{Kind: machinauiir.NodeColumn, Children: []*machinauiir.Node{
+		{Kind: machinauiir.NodeText, Text: "route=home"},
+		{Kind: machinauiir.NodeText, Text: "count=" + countValue},
+		{Kind: machinauiir.NodeRow, Children: []*machinauiir.Node{
+			{Kind: machinauiir.NodeButton, Label: "Increment", Event: "counter.increment", Enabled: true},
+			{Kind: machinauiir.NodeButton, Label: "Decrement", Event: "counter.decrement", Enabled: canDec},
+			{Kind: machinauiir.NodeButton, Label: "Stats", Event: "route.stats", Enabled: true},
 		}},
 	}}
 }
 
-func machinaM98bStatsNode(countValue string) *uiirNode {
-	return &uiirNode{Kind: uiirNodeColumn, Children: []*uiirNode{
-		{Kind: uiirNodeText, Text: "route=stats"},
-		{Kind: uiirNodeText, Text: "count=" + countValue},
-		{Kind: uiirNodeButton, Label: "Home", Event: "route.home", Enabled: true},
+func machinaM98bStatsNode(countValue string) *machinauiir.Node {
+	return &uiirNode{Kind: machinauiir.NodeColumn, Children: []*machinauiir.Node{
+		{Kind: machinauiir.NodeText, Text: "route=stats"},
+		{Kind: machinauiir.NodeText, Text: "count=" + countValue},
+		{Kind: machinauiir.NodeButton, Label: "Home", Event: "route.home", Enabled: true},
 	}}
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
+	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"github.com/yuechen-li-dev/oct/internal/octagon"
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
@@ -133,7 +134,7 @@ type Value struct {
 	Enum      EnumValue
 	Function  FunctionValue
 	Flow      *FlowRuntimeInstance
-	UI        *uiirNode
+	UI        *machinauiir.Node
 	DiffOp    DifferentialOpValue
 	FieldOp   FieldOpValue
 	Tuple     []Value

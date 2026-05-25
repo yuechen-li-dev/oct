@@ -82,8 +82,18 @@ type serializedBox struct {
 	Absolute *serializedRect        `json:"absolute"`
 	Anchored *serializedBoxAnchored `json:"anchored"`
 }
-type serializedBoxAnchored struct{ Left, Top, Right, Bottom float64 }
-type serializedRect struct{ X, Y, Width, Height float64 }
+type serializedBoxAnchored struct {
+	Left   float64 `json:"left"`
+	Top    float64 `json:"top"`
+	Right  float64 `json:"right"`
+	Bottom float64 `json:"bottom"`
+}
+type serializedRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
 
 var jsonNull = json.RawMessage("null")
 
