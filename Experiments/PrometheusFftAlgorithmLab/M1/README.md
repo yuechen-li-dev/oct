@@ -2,6 +2,10 @@
 
 Oct-side correctness tapeout for radix-2 FFT using explicit Re/Im arrays.
 
+## Package convention
+
+The experiment-level manifest lives at `Experiments/PrometheusFftAlgorithmLab/manifest.oct`. Milestone folders do not need their own manifests. You can still target `M1` directly with `oct test`/`oct artifact`, and package context resolves from the experiment root.
+
 ## Run
 
 - `go run ./cmd/oct test Experiments/PrometheusFftAlgorithmLab/M1`
