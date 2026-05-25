@@ -2,8 +2,8 @@ package StorefrontM7
 
 [Fact]
 fn StorefrontM7ViewRendersDeterministically() -> Void {
-    let first = Signature(View(Init()))
-    let second = Signature(View(Init()))
+    let first = UISignature(View(Init()))
+    let second = UISignature(View(Init()))
 
     Assert.True(Len(first) > 0, "view should produce opaque UI signature")
     Assert.Equal(first, second, "same state should render same signature")
@@ -11,37 +11,37 @@ fn StorefrontM7ViewRendersDeterministically() -> Void {
 
 [Fact]
 fn StorefrontM7SelectionAndCartFlowWorks() -> Void {
-    let mounted = MountUI(View(Init()))
+    let mounted = UIMount(View(Init()))
 
-    let emitCategory = Emit(mounted, CategoryDeskEvent()) !
+    let emitCategory = UIEmit(mounted, CategoryDeskEvent()) !
     Assert.Equal(0, emitCategory, "category event should emit")
-    let categoryEvents = DrainEvents(mounted)
+    let categoryEvents = UIDrainEvents(mounted)
     Assert.Equal(1, Len(categoryEvents), "category click should enqueue one event")
 
     var model = Init()
     model = Update(model, categoryEvents[0])
     Assert.Equal("desk", model.SelectedCategory, "category state should update")
 
-    let emitSelect = Emit(mounted, InspectEvent("harbor-board")) !
+    let emitSelect = UIEmit(mounted, InspectEvent("harbor-board")) !
     Assert.Equal(0, emitSelect, "product inspect event should emit")
-    let selectEvents = DrainEvents(mounted)
+    let selectEvents = UIDrainEvents(mounted)
     Assert.Equal(1, Len(selectEvents), "inspect click should enqueue one event")
 
     model = Update(model, selectEvents[0])
     Assert.Equal("harbor-board", model.SelectedProduct, "selected product should update")
 
-    let emitAdd = Emit(mounted, AddToCartEvent("harbor-board")) !
+    let emitAdd = UIEmit(mounted, AddToCartEvent("harbor-board")) !
     Assert.Equal(0, emitAdd, "add-to-cart should emit")
-    let addEvents = DrainEvents(mounted)
+    let addEvents = UIDrainEvents(mounted)
     Assert.Equal(1, Len(addEvents), "add click should enqueue one event")
 
     model = Update(model, addEvents[0])
     Assert.Near(1.0, model.CartCount, 0.000001, "cart count should increase")
 
-    let patched = PatchUI(mounted, View(model))
+    let patched = UIPatch(mounted, View(model))
     Assert.Equal(0, patched, "patch with updated model should succeed")
 
-    Assert.Equal(0, UnmountUI(mounted), "unmount should succeed")
+    Assert.Equal(0, UIUnmount(mounted), "unmount should succeed")
 }
 
 [Fact]
@@ -84,7 +84,7 @@ fn StorefrontM7FilterAndFeaturedTogglesArePredictable() -> Void {
     Assert.Equal("price", model.SortBy, "sort should update")
     Assert.Equal("Cable Lab", model.FeaturedTab, "featured tab should switch")
 
-    let signature = Signature(View(model))
+    let signature = UISignature(View(model))
     Assert.True(Len(signature) > 0, "view should still render after toggles")
 }
 
