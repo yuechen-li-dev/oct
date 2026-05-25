@@ -330,3 +330,8 @@ M101 successfully established core extraction boundaries. The highest-leverage n
 
 `Libraries/UI` uses `UI.Mount(root: UI) -> UI.MountRef` as the canonical lifecycle shape.
 `MountRef` is the explicit handle record returned by the `UI.Mount` function; this avoids record/function name collision in Oct namespaces.
+
+## M104 status note
+
+- M104 adds an internal deterministic layout-row substrate (`LayoutRow`/`LayoutDocument`/`ResolvedLayoutDocument`) under `internal/machina/layout`.
+- This is internal-only and does not change `Libraries/UI`, UIIR ABI, runtime mount/patch behavior, or WebView/WASM compatibility paths.
