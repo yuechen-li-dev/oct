@@ -1,0 +1,18 @@
+expect error: "fallible expression must be handled explicitly"
+
+package MainInvalid
+
+fn MightFail(x: Int) -> Int ! Error {
+    return x
+}
+
+flow Bad() -> Int {
+    board {
+        Value: Int
+    }
+
+    state Start {
+        board.Value = MightFail(1)
+        return board.Value
+    }
+}
