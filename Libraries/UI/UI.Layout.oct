@@ -1,6 +1,6 @@
 package UI
 
-record Mount {
+record MountRef {
     Handle: Int
 }
 
@@ -42,11 +42,11 @@ fn Spacer() -> UI {
     return UISpacer()
 }
 
-fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
-    return AbsoluteBoxZ(x, y, width, height, 0)
+fn Absolute(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
+    return AbsoluteZ(x, y, width, height, 0)
 }
 
-fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
+fn AbsoluteZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
     return UIBox {
         Kind: BoxKind.Absolute
         X: x
@@ -61,11 +61,11 @@ fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>,
     }
 }
 
-fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
-    return AnchoredBoxZ(left, top, right, bottom, 0)
+fn Anchor(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
+    return AnchorZ(left, top, right, bottom, 0)
 }
 
-fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int) -> UIBox {
+fn AnchorZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int) -> UIBox {
     return UIBox {
         Kind: BoxKind.Anchored
         X: 0.0 px
@@ -80,6 +80,22 @@ fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float
     }
 }
 
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
+    return Absolute(x, y, width, height)
+}
+
+fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
+    return AbsoluteZ(x, y, width, height, z)
+}
+
+fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
+    return Anchor(left, top, right, bottom)
+}
+
+fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int) -> UIBox {
+    return AnchorZ(left, top, right, bottom, z)
+}
+
 fn Place(box: UIBox, child: UI) -> UI {
     return switch box.Kind {
         case BoxKind.Absolute => UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, box.Z)
@@ -87,23 +103,35 @@ fn Place(box: UIBox, child: UI) -> UI {
     }
 }
 
-fn MountUI(root: UI) -> Mount {
-    return Mount { Handle: UIMount(root) }
+fn Mount(root: UI) -> MountRef {
+    return MountRef { Handle: UIMount(root) }
 }
 
-fn PatchUI(mount: Mount, next: UI) -> Int {
+fn Patch(mount: MountRef, next: UI) -> Int {
     return UIPatch(mount.Handle, next)
 }
 
-fn UnmountUI(mount: Mount) -> Int {
+fn Unmount(mount: MountRef) -> Int {
     return UIUnmount(mount.Handle)
 }
 
-fn Emit(mount: Mount, event: String) -> Int ! Error {
+fn MountUI(root: UI) -> MountRef {
+    return Mount(root)
+}
+
+fn PatchUI(mount: MountRef, next: UI) -> Int {
+    return Patch(mount, next)
+}
+
+fn UnmountUI(mount: MountRef) -> Int {
+    return Unmount(mount)
+}
+
+fn Emit(mount: MountRef, event: String) -> Int ! Error {
     return UIEmit(mount.Handle, event)?
 }
 
-fn DrainEvents(mount: Mount) -> String[] {
+fn DrainEvents(mount: MountRef) -> String[] {
     return UIDrainEvents(mount.Handle)
 }
 

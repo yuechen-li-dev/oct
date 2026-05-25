@@ -1,0 +1,82 @@
+package UI
+
+[Fact]
+fn M103TextParityWithRawBuiltinSignature() -> Void {
+    Assert.Equal(Signature(Text("hello")), UISignature(UIText("hello")), "UI.Text should match UIText signature")
+}
+
+[Fact]
+fn M103ButtonSignatureIncludesEnabledState() -> Void {
+    let enabled = Signature(Button("Save", "evt.save", true))
+    let disabled = Signature(Button("Save", "evt.save", false))
+
+    Assert.True(Contains(enabled, "Button#"), "button wrapper should lower to button node")
+    Assert.True(enabled != disabled, "enabled flag should affect the resulting signature")
+}
+
+[Fact]
+fn M103RowAndColumnCompositionSignatures() -> Void {
+    let row = Signature(Row([Text("left"), Text("right")]))
+    let column = Signature(Column([Text("top"), Text("bottom")]))
+
+    Assert.True(Contains(row, "Row#"), "row wrapper should produce row uiir node")
+    Assert.True(Contains(column, "Column#"), "column wrapper should produce column uiir node")
+}
+
+[Fact]
+fn M103CanvasPlacementAbsoluteAndAnchored() -> Void {
+    let absolute = Signature(Canvas([
+        Place(Absolute(10.0 px, 20.0 px, 100.0 px, 50.0 px), Text("abs"))
+    ]))
+    let anchored = Signature(Canvas([
+        Place(Anchor(0.1 ui, 0.2 ui, 0.8 ui, 0.7 ui), Text("anc"))
+    ]))
+
+    Assert.True(Contains(absolute, "AbsoluteBox#"), "absolute placement should lower to absolute box")
+    Assert.True(Contains(anchored, "AnchorBox#"), "anchor placement should lower to anchor box")
+}
+
+[Fact]
+fn M103GridAndSpacerWrappers() -> Void {
+    let sig = Signature(Grid([Spacer(), Text("cell")]))
+    Assert.True(Contains(sig, "Grid#"), "grid wrapper should lower to grid node")
+    Assert.True(Contains(sig, "Spacer#"), "spacer wrapper should lower to spacer node")
+}
+
+[Fact]
+fn M103MountEmitDrainAndMissingEventError() -> Void {
+    let mounted = Mount(Column([
+        Button("Save", "evt.save", true)
+    ]))
+
+    Assert.Equal(0, Emit(mounted, "evt.save") !, "known event should emit")
+    let events = DrainEvents(mounted)
+    Assert.Equal(1, Len(events), "drain should capture emitted event")
+    Assert.Equal("evt.save", events[0], "event token should be preserved")
+
+    Assert.Error(Emit(mounted, "evt.missing"), "missing event should fail cleanly")
+    Assert.Equal(0, Unmount(mounted), "cleanup should succeed")
+}
+
+[Fact]
+fn M103CanonicalAliasesMatchCompatibilityNames() -> Void {
+    let canonical = Signature(Canvas([
+        Place(Absolute(2.0 px, 3.0 px, 4.0 px, 5.0 px), Text("x")),
+        Place(Anchor(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui), Text("y"))
+    ]))
+
+    let compatibility = Signature(Canvas([
+        Place(AbsoluteBox(2.0 px, 3.0 px, 4.0 px, 5.0 px), Text("x")),
+        Place(AnchoredBox(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui), Text("y"))
+    ]))
+
+    Assert.Equal(canonical, compatibility, "canonical and compatibility placement names should match")
+}
+
+
+[Fact]
+fn M103MountReturnsMountRefHandle() -> Void {
+    let mount = Mount(Text("hello"))
+    Assert.True(mount.Handle >= 0, "Mount should return a MountRef handle record")
+    Assert.Equal(0, Unmount(mount), "cleanup should succeed")
+}

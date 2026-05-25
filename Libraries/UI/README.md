@@ -1,187 +1,75 @@
-# Machina UI (Machine Native User Interface) for Oct
+# UI standard library (Machina UI M0)
 
-Machina UI is the UI system first implemented in Oct. It is intentionally machine-native and explicit: source should read as authored layout and composition, not as hidden browser-style layout side effects.
+`UI` is Oct's standard-library authoring surface for Machina UI (Machine Native UI).
+For Oct user code, prefer `UI.*` functions. Raw `UI*` builtins are runtime backing details.
 
-The design goal is predictable rendering and deterministic behavior with clear boundaries between representation data, transition wiring, and procedural updates.
+## Canonical M0 API
 
-## Canonical Machina UI File Structure
+```oct
+UI.Text(content: String) -> UI
+UI.Button(label: String, event: String, enabled: Bool) -> UI
 
-- **Data**  
-  Catalogs, label maps, and other pure data tables that represent canonical facts.
+UI.Row(children: UI[]) -> UI
+UI.Column(children: UI[]) -> UI
+UI.Canvas(children: UI[]) -> UI
+UI.Grid(children: UI[]) -> UI
+UI.Spacer() -> UI
 
-- **Placement**  
-  Slot/grid tables and explicit geometry values used to place UI deterministically.
+UI.Absolute(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UI.UIBox
+UI.Anchor(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UI.UIBox
+UI.Place(box: UI.UIBox, child: UI) -> UI
 
-- **Dispatch**  
-  Exact-key transition tables and small resolvers for direct key-to-result lookups.
+UI.Mount(root: UI) -> UI.MountRef
+UI.Patch(mount: UI.MountRef, next: UI) -> Int
+UI.Unmount(mount: UI.MountRef) -> Int
+UI.Emit(mount: UI.MountRef, event: String) -> Int ! Error
+UI.DrainEvents(mount: UI.MountRef) -> String[]
+UI.Signature(node: UI) -> String
+```
 
-- **Behavior**  
-  Procedural update logic, event-family matching, and derived transitions that are not pure table lookup.
+Compatibility aliases remain available in M0:
+- `AbsoluteBox` / `AnchoredBox` (+ `...Z` variants)
+- `MountUI` / `PatchUI` / `UnmountUI`
 
-- **Composition**  
-  Section builders, card builders, and local UI helpers that assemble UI and emit events.
+Prefer canonical names in new code.
 
-- **Surface**  
-  The final assembled `View` (or equivalent top-level UI value).
+`MountRef` is the canonical handle/reference record returned by `UI.Mount`.
+The distinct naming (`Mount` function, `MountRef` record) intentionally avoids record/function namespace collision in Oct.
 
-## Representation Rules
+## M0 scope (and non-scope)
 
-- Exact-key pure mappings should be tables.
-- Exact-key simple transitions should be dispatch tables.
-- Placement should remain explicit and deterministic.
-- Procedural/dynamic logic should remain code.
-- Composition emits events; behavior defines meaning.
+M0 is semantic UI construction with the current explicit box placement model.
+It is intentionally not layout rows, hit-testing, render command streams, style/theme records, dispatch helpers, or CSS-like styling.
 
----
+Layout is unit-aware:
+- absolute coordinates/sizes use `Float<px>`
+- anchor fractions use `Float<ui>`
 
-## 🔷 UIIR vs MIR — Boundary Principle
+Events are symbolic strings.
+State should live in Oct records/app logic; UI is usually a pure projection `View(state) -> UI`.
 
-Machina UI deliberately separates **UIIR (presentation)** from **MIR (computation)**, even though both operate over similar underlying data and state.
+Octomata is not Dominatus and does not provide stack push/pop UI semantics.
 
-At a data level, frontend and backend are not fundamentally different — both are mostly state, records, and transformations. However, they **lower to different semantic targets**:
+## Example
 
-* **MIR (backend / core)**
-  Handles computation, control flow, analysis, persistence, and general program logic.
+```oct
+package Example
 
-* **UIIR (frontend / UI)**
-  Handles presentation, layout, interaction surfaces, and event bindings.
+import UI
 
-This separation is intentional and must be preserved.
+record AppState {
+    Count: Float
+}
 
-### Core rule
-
-> **UIIR is a presentation IR, not a general execution IR.**
-
-UIIR must not absorb responsibilities such as:
-
-* arbitrary computation or service logic
-* persistence or data orchestration
-* backend-style control flow beyond UI interaction
-
-Likewise, MIR should not take on UI layout or rendering responsibilities.
-
-### Interface boundary
-
-Even when both sides run in the same environment (e.g. Wasm):
-
-* MIR and UIIR communicate through an **explicit interface boundary**
-* typically via:
-
-  * events (UI → core)
-  * state or projections (core → UI)
-
-This follows the principle of separation of concerns — keeping UI and logic independent improves maintainability, testability, and clarity
-
-### Design intent
-
-* Shared state models are encouraged
-* Shared domain logic is allowed
-* **Lowering remains separate**
-
-This ensures:
-
-* UIIR stays small, declarative, and LLM-friendly
-* MIR remains the single place for general computation
-* future targets (native, Wasm, etc.) stay composable
-
-### Anti-goal
-
-Do **not** merge UIIR and MIR into a single IR.
-
-That leads to:
-
-* bloated responsibilities
-* unclear semantics
-* “god runtime” anti-patterns
-* loss of clarity in both UI and computation layers
-
----
-
-## M94 Control Contract (Octomata-aligned)
-
-Machina UI apps are modeled as control systems:
-
-- **State**: explicit app state records (route + durable values)
-- **Events**: `UIEvent { Token, Payload }` with deterministic token dispatch
-- **Transitions**: Octomata `flow/state` control (no hidden callback loop)
-- **View projection**: pure state -> `UI` projection suitable for signature/snapshot tests
-
-Reference implementation: `UI.AppModel.oct` + `UI.M94.octest`.
-
-## M95 Presentation Contract (UIIR)
-
-Machina UI projection now lowers into **UIIR** (UI Intermediate Representation), a deterministic declarative tree that is distinct from Oct procedural MIR.
-
-- **Control stays in Octomata** (`state` + `events` + `transitions`).
-- **Presentation lowers to UIIR** (`Text`, `Button`, `AbsoluteBox`, `AnchorBox`, `Row`, `Column`, `Grid`, `Spacer`).
-- **Stable ordering and identity** are encoded in signatures via deterministic node IDs.
-- **Layout worldview** is led by `AbsoluteBox` and `AnchorBox`; row/column/grid/spacer remain helper composition nodes.
-- `UIBox.Kind` is now modeled as a closed `BoxKind` enum (`Absolute` | `Anchored`) instead of legacy magic strings (`"absolute"` / `"anchored"`).
-- `AbsoluteBox` coordinates/sizes are `px`; `AnchoredBox` coordinates are normalized `ui`.
-- `AbsoluteBox` / `AnchoredBox` support bounded optional z-order (`-5..5`, default `0`), and same-z overlap is rendered deterministically in stable node order.
-
-Current scope is representation only: no Wasm lowering, no host rendering ABI, and no effects runtime in this milestone.
-
-## M96 Serialized ABI Truth Surface
-
-M96 locks the canonical serialized cross-boundary representation for:
-
-- **UIIR trees/nodes** (deterministic JSON)
-- **event values** (`token` + `payload`)
-
-The ABI surface is documented in:
-
-- `docs/MACHINA_UI_UIIR_ABI.md`
-
-This contract is the stable bridge for future Wasm exports and native/web hosts. It remains intentionally separate from procedural MIR and from any host rendering strategy.
-
-## M97 Wasm Runtime Boundary Skeleton
-
-M97 adds the first Machina UI Wasm runtime boundary skeleton in the Go runtime layer.
-
-- explicit init/render/dispatch boundary functions
-- pointer/length event input crossing discipline
-- deterministic output buffer contract for canonical M96 UIIR JSON
-- focused runtime-layer tests for boundary behavior
-
-Reference docs: `docs/MACHINA_UI_WASM_RUNTIME_M97.md`.
-
-
-## M98 Real Wasm Emission Slice
-
-M98 is the first milestone where Machina UI is emitted as a real `.wasm` artifact and executed through real Wasm exports + linear memory.
-
-- emitted artifact path is host-selected via `interpret.EmitMachinaUIWasmArtifact(outputPath)`
-- exported boundary remains the M97 contract (`init`, `render`, `dispatch(ptr,len)`, `buffer ptr/len`)
-- serialized UI surface remains canonical M96 JSON ABI (`machina.uiir.v1`)
-- no host renderer exists in this milestone
-- this remains a bounded Machina UI Wasm slice, not a full Oct-to-Wasm backend
-
-Reference docs: `docs/MACHINA_UI_WASM_EMISSION_M98.md`.
-
-## M99 Browser Host Renderer
-
-M99 is the first host milestone with visible rendering using the real emitted Wasm artifact.
-
-- browser host lives at `tools/machina-ui-host/`
-- consumes the same locked M96 UIIR JSON ABI
-- dispatches canonical event JSON back into Wasm
-- keeps Wasm as the source of truth for state/transitions/UIIR generation
-
-Reference docs: `docs/MACHINA_UI_HOST_RENDERER_M99.md`.
-
-## M100/M100b Native Host (desktop webview path)
-
-M100 extends the same host/runtime contract into a desktop webview boundary.
-M100b completes the first real native shell slice around that shared runtime.
-
-- desktop webview adapter lives at `tools/machina-ui-desktop/`
-- reuses browser host runtime/renderer (`tools/machina-ui-host/host.js`) directly
-- consumes the same emitted `.ui.wasm` artifact and `machina.uiir.v1` JSON ABI
-- dispatches the same canonical event JSON contract
-- real native shell launcher lives at `cmd/machina-ui-desktop-host` + `internal/machina/desktophost`
-- real webview binding is intentionally bounded behind `-tags machina_desktop_webview` (`linux`/`darwin`, `cgo`)
-
-These milestones prove “one UI runtime, multiple hosts” while keeping native packaging scope explicit and bounded.
-
-Reference docs: `docs/MACHINA_UI_NATIVE_HOST_M100.md`.
+fn View(state: AppState) -> UI {
+    return UI.Canvas([
+        UI.Place(
+            UI.Anchor(0.1 ui, 0.1 ui, 0.9 ui, 0.3 ui),
+            UI.Column([
+                UI.Text("count=" + FormatFloat(state.Count, 0)),
+                UI.Button("Increment", "counter.increment", true)
+            ])
+        )
+    ])
+}
+```

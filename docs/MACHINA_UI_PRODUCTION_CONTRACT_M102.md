@@ -324,3 +324,9 @@ Location:
 ## Conclusion
 
 M101 successfully established core extraction boundaries. The highest-leverage next step is **M103** to lock the `UI.*` authoring contract, then proceed to **M104/M105** for internal layout/lowering architecture.
+
+
+## M103b note: Mount handle naming
+
+`Libraries/UI` uses `UI.Mount(root: UI) -> UI.MountRef` as the canonical lifecycle shape.
+`MountRef` is the explicit handle record returned by the `UI.Mount` function; this avoids record/function name collision in Oct namespaces.

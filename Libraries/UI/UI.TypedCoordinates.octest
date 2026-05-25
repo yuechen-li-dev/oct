@@ -20,8 +20,8 @@ fn AbsoluteBoxAcceptsPixelConstants() -> Void {
 fn AnchoredBoxAcceptsUIConstants() -> Void {
     let left = 0.01 ui
     let top = 0.08 ui
-    let right = 1.10 ui
-    let bottom = 1.25 ui
+    let right = 0.90 ui
+    let bottom = 0.95 ui
 
     let ui = Canvas([
         Place(AnchoredBox(left, top, right, bottom), Text("anchored-box"))
@@ -49,4 +49,18 @@ fn BoxKindIsClosedEnumDomain() -> Void {
 
     Assert.Equal("abs", absoluteKind, "absolute constructor should set absolute enum kind")
     Assert.Equal("anc", anchoredKind, "anchored constructor should set anchored enum kind")
+}
+
+
+[Fact]
+fn AnchorAndAnchoredBoxCompatibilityAcceptUIConstants() -> Void {
+    let canonical = Signature(Canvas([
+        Place(Anchor(0.10 ui, 0.20 ui, 0.70 ui, 0.80 ui), Text("a"))
+    ]))
+
+    let compatibility = Signature(Canvas([
+        Place(AnchoredBox(0.10 ui, 0.20 ui, 0.70 ui, 0.80 ui), Text("a"))
+    ]))
+
+    Assert.Equal(canonical, compatibility, "Anchor and AnchoredBox should match for ui constants")
 }
