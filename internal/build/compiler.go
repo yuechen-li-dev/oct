@@ -3526,7 +3526,7 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
 				enumExpr, _, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant)
 				if enumFound {
-					payloadType, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
+					_, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
 					if !hasPayload {
 						if len(e.Arguments) != 0 {
 							return nil, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
@@ -3544,7 +3544,7 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 					if err != nil {
 						return nil, err
 					}
-					return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: flowBox(%s, %q)}", enumPackageName(enumType, pkg), enumShortName(enumType), enumShortName(enumType), variant, payload, payloadType)}, nil
+					return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPackageName(enumType, pkg), enumShortName(enumType), enumShortName(enumType), variant, payload)}, nil
 				}
 			}
 		}
