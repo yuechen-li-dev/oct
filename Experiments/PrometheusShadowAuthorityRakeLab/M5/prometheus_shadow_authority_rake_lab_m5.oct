@@ -105,7 +105,14 @@ flow FeedforwardDispatchDecisionMachineM5(s: Scenario) -> Bool {
         board.GateHealthy = s.GateHealthy
         board.HealthyMarginPassed = s.HealthyMarginPassed
         board.ReasonBindingPassed = s.ReasonBindingPassed
-        board.ReservationStateCode = ReservationStateCode(s.ReservationState)
+        board.ReservationStateCode = switch s.ReservationState {
+            case ReservationState.None -> 0
+            case ReservationState.Pending -> 1
+            case ReservationState.Matured -> 2
+            case ReservationState.Consumed -> 3
+            case ReservationState.Stale -> 4
+            else -> 5
+        }
         board.ReservationShapeClass = s.ReservationShapeClass
         board.DispatchShapeClass = s.DispatchShapeClass
         board.ReservationVariantId = s.ReservationVariantId
@@ -189,7 +196,11 @@ flow FeedforwardDispatchDecisionMachineM5(s: Scenario) -> Bool {
             board.CapabilityValid
 
         if board.PrestageAllowed {
-            board.LookaheadApplied = ClampLookahead(board.LookaheadRecommended)
+            board.LookaheadApplied = switch {
+                case board.LookaheadRecommended < 1 -> 1
+                case board.LookaheadRecommended > 4 -> 4
+                else -> board.LookaheadRecommended
+            }
         } else {
             board.LookaheadApplied = 0
         }
