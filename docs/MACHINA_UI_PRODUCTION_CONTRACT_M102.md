@@ -335,3 +335,7 @@ M101 successfully established core extraction boundaries. The highest-leverage n
 
 - M104 adds an internal deterministic layout-row substrate (`LayoutRow`/`LayoutDocument`/`ResolvedLayoutDocument`) under `internal/machina/layout`.
 - This is internal-only and does not change `Libraries/UI`, UIIR ABI, runtime mount/patch behavior, or WebView/WASM compatibility paths.
+
+## M105 status
+
+M105 adds an internal lowering layer (`internal/machina/lowering`) that converts semantic UIIR into M104 layout rows plus deterministic actions/semantics metadata (and a style placeholder map). This remains internal-only in M105 and is not yet wired into runtime mount/patch/render paths.
