@@ -39,7 +39,7 @@ The distinct naming (`Mount` function, `MountRef` record) intentionally avoids r
 ## M0 scope (and non-scope)
 
 M0 is semantic UI construction with the current explicit box placement model.
-It is intentionally not layout rows, hit-testing, render command streams, style/theme records, dispatch helpers, or CSS-like styling.
+It is intentionally not layout rows, hit-testing, render command streams, style/theme records, or CSS-like styling.
 
 Layout is unit-aware:
 - absolute coordinates/sizes use `Float<px>`
@@ -49,6 +49,40 @@ Events are symbolic strings.
 State should live in Oct records/app logic; UI is usually a pure projection `View(state) -> UI`.
 
 Octomata is not Dominatus and does not provide stack push/pop UI semantics.
+
+
+## Dispatch helpers (M111, small/pure)
+
+`UI` includes tiny deterministic dispatch helpers for explicit app update functions:
+
+```oct
+record EventValueDispatch {
+    Events: String[]
+    Values: String[]
+}
+
+UI.ResolveEventValue(event: String, table: UI.EventValueDispatch) -> String
+UI.MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) -> String
+```
+
+These helpers are **not** a router/store/state framework.
+They do not mutate records and do not perform reflection-like field updates.
+You still write explicit `Update(model, event)` functions and explicit `with` state updates.
+
+```oct
+fn Update(model: StoreState, event: String) -> StoreState {
+    let nav = UI.ResolveEventValue(event, UI.EventValueDispatch {
+        Events: ["nav.shop", "nav.support"]
+        Values: ["Shop", "Support"]
+    })
+
+    if nav != "" {
+        return model with { SelectedNav: nav }
+    }
+
+    return model
+}
+```
 
 ## Example
 

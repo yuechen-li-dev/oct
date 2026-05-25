@@ -18,7 +18,7 @@ fn SourceStructure() -> SourceParts {
         FileKind: "machina-ui-storefront"
         Data: ["CatalogTable", "CategoryLabelMapping", "SortLabelMapping"]
         Placement: ["ProductGrid", "CardSlotPlacements", "View"]
-        Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "ResolveDispatch", "MatchCatalogEvent"]
+        Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "UI.ResolveEventValue", "UI.MatchEventPrefix"]
         Behavior: ["Init", "Update", "ProductById", "CategoryVisible"]
         Composition: ["HeaderBar", "HeroBlock", "FilterRail", "ProductAreaHeader", "ProductCard", "SupportBand", "Footer"]
         Surface: ["View"]
@@ -65,10 +65,6 @@ record StoreState {
     CartCount: Float
 }
 
-record EventValueDispatch {
-    Events: String[]
-    Values: String[]
-}
 
 record KeyLabelMapping {
     Keys: String[]
@@ -163,75 +159,56 @@ fn FeaturedDeskKitsEvent() -> String { return "storefront.featured.deskkits" }
 fn FeaturedNotebookSetsEvent() -> String { return "storefront.featured.notebooksets" }
 fn FeaturedCableLabEvent() -> String { return "storefront.featured.cablelab" }
 
-fn MatchCatalogEvent(event: String, prefix: String) -> String {
-    let productIds = CatalogProductIds()
-    for i in 0 .. Len(productIds) {
-        if event == prefix + productIds[i] {
-            return productIds[i]
-        }
-    }
-    return ""
-}
-
-fn NavDispatchTable() -> EventValueDispatch {
-    return EventValueDispatch {
+fn NavDispatchTable() -> UI.EventValueDispatch {
+    return UI.EventValueDispatch {
         Events: [NavShopEvent(), NavBundlesEvent(), NavJournalEvent(), NavSupportEvent()]
         Values: ["Shop", "Bundles", "Journal", "Support"]
     }
 }
 
-fn CategoryDispatchTable() -> EventValueDispatch {
-    return EventValueDispatch {
+fn CategoryDispatchTable() -> UI.EventValueDispatch {
+    return UI.EventValueDispatch {
         Events: [CategoryAllEvent(), CategoryDeskEvent(), CategoryPaperEvent(), CategoryCableEvent()]
         Values: ["all", "desk", "paper", "cable"]
     }
 }
 
-fn SortDispatchTable() -> EventValueDispatch {
-    return EventValueDispatch {
+fn SortDispatchTable() -> UI.EventValueDispatch {
+    return UI.EventValueDispatch {
         Events: [SortFeaturedEvent(), SortPriceEvent(), SortNewestEvent()]
         Values: ["featured", "price", "newest"]
     }
 }
 
-fn FeaturedDispatchTable() -> EventValueDispatch {
-    return EventValueDispatch {
+fn FeaturedDispatchTable() -> UI.EventValueDispatch {
+    return UI.EventValueDispatch {
         Events: [FeaturedDeskKitsEvent(), FeaturedNotebookSetsEvent(), FeaturedCableLabEvent()]
         Values: ["Desk Kits", "Notebook Sets", "Cable Lab"]
     }
 }
 
-fn ResolveDispatch(event: String, table: EventValueDispatch) -> String {
-    for i in 0 .. Len(table.Events) {
-        if event == table.Events[i] {
-            return table.Values[i]
-        }
-    }
-
-    return ""
-}
 
 fn Update(model: StoreState, event: String) -> StoreState {
-    let nav = ResolveDispatch(event, NavDispatchTable())
+    let nav = UI.ResolveEventValue(event, NavDispatchTable()) !
     if nav != "" { return model with { SelectedNav: nav } }
 
-    let category = ResolveDispatch(event, CategoryDispatchTable())
+    let category = UI.ResolveEventValue(event, CategoryDispatchTable()) !
     if category != "" { return model with { SelectedCategory: category } }
 
     if event == ToggleNewEvent() { return model with { NewOnly: not model.NewOnly } }
     if event == ToggleInStockEvent() { return model with { InStockOnly: not model.InStockOnly } }
     if event == ToggleBestSellerEvent() { return model with { BestSellerOnly: not model.BestSellerOnly } }
 
-    let sortBy = ResolveDispatch(event, SortDispatchTable())
+    let sortBy = UI.ResolveEventValue(event, SortDispatchTable()) !
     if sortBy != "" { return model with { SortBy: sortBy } }
 
-    let featuredTab = ResolveDispatch(event, FeaturedDispatchTable())
+    let featuredTab = UI.ResolveEventValue(event, FeaturedDispatchTable()) !
     if featuredTab != "" { return model with { FeaturedTab: featuredTab } }
 
-    let inspectMatch = MatchCatalogEvent(event, InspectPrefix())
+    let inspectMatch = UI.MatchEventPrefix(event, InspectPrefix(), CatalogProductIds()) !
     if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
 
-    let addMatch = MatchCatalogEvent(event, AddToCartPrefix())
+    let addMatch = UI.MatchEventPrefix(event, AddToCartPrefix(), CatalogProductIds()) !
     if addMatch != "" { return model with { CartCount: model.CartCount + 1.0 } }
 
     return model
