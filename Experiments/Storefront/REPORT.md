@@ -781,3 +781,32 @@ Storefront now appears sufficiently stable to propose a canonical Machina UI aut
 - avoid expanding this into a framework DSL or metadata-heavy system
 
 This closes the Storefront experiment with a practical source-shape convention that improves human and LLM navigation while preserving runtime simplicity.
+
+---
+
+# Storefront M110 Report (Canonical UI Surface Migration)
+
+## What changed in M110
+
+- Confirmed latest Storefront milestone is `Experiments/Storefront/M7/`.
+- Migrated `storefront_m7.oct` from locally defined UI wrapper scaffolding to canonical `import UI` + `UI.*` authoring calls.
+- Removed duplicated local wrappers and wrapper records (`Mount`, `UIBox`, and local wrapper helpers) from the M7 source.
+- Preserved app state/update/view architecture and unit-aware layout (`Float<px>` for absolute placement; `Float<ui>` for anchored placement).
+
+## Scope and non-goals
+
+This was a refactor-only authoring-surface migration:
+
+- No Storefront redesign
+- No style/theme records
+- No dispatch-helper rewrite
+- No grid/cell layout introduction
+- No Gio wiring
+- No migration to the newer Go session pipeline
+- No UIIR ABI/runtime changes
+
+## Status
+
+- Latest Storefront source now uses canonical `UI.*` construction/placement surface.
+- Local wrapper duplication is removed in M7 source.
+- Dispatch/style/layout-row migrations remain future work.
