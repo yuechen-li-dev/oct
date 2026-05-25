@@ -18,3 +18,7 @@ The interpreter currently has many direct references across runtime and tests; t
 ## Next step
 
 Wire `internal/interpret` and WASM runtime/lowering to consume the new core packages directly, then remove duplicated interpreter-local core implementations.
+
+## M101b1 Bridge/Parity Step
+
+The extracted core package now has conversion/parity coverage against the current interpreter-local implementation. This intentionally does not switch `ValueUI` yet. The next step is to switch `ValueUI` and production builtins once parity is proven.
