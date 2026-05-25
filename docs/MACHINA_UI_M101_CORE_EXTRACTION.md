@@ -27,4 +27,6 @@ The extracted core package now has conversion/parity coverage against the curren
 
 M101b2 switched production interpreter UI values and WASM runtime/lowering to consume `internal/machina/uiir` and `internal/machina/layout` directly. The interpreter now acts as an Oct adapter over Machina UI core rather than owning production UIIR semantics.
 
-Compatibility bridge/parity helpers from M101b1 are intentionally retained as temporary scaffolding and cleanup candidates for M101b3.
+## M101b3 Cleanup After Production Switch
+
+M101b3 removed obsolete bridge/interpreter-local UIIR scaffolding after production switched to `internal/machina/uiir`. The interpreter now contains only adapter/session code for Machina UI, while UIIR/layout semantics live in `internal/machina`.

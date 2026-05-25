@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	machinalayout "github.com/yuechen-li-dev/oct/internal/machina/layout"
 )
 
 func TestUIIRSignatureIsDeterministicForSameState(t *testing.T) {
@@ -43,7 +45,7 @@ func TestUIIRTreeContainsOnlyEnabledEvents(t *testing.T) {
 
 func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
 	parent := &uiirResolvedBox{X: 0, Y: 0, Width: 1000, Height: 1000}
-	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -2, X: 15, Y: 25, Width: 200, Height: 80}, parent)
+	resolved, err := machinalayout.ResolveBox(&uiirBoxSpec{Kind: uiirBoxAbsolute, ZOrder: -2, X: 15, Y: 25, Width: 200, Height: 80}, parent)
 	if err != nil {
 		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
@@ -54,7 +56,7 @@ func TestUIIRResolveAbsoluteBoxPlacement(t *testing.T) {
 
 func TestUIIRResolveAnchoredBoxPlacement(t *testing.T) {
 	parent := &uiirResolvedBox{X: 10, Y: 20, Width: 400, Height: 200}
-	resolved, err := resolveUIIRBox(&uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 3, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
+	resolved, err := machinalayout.ResolveBox(&uiirBoxSpec{Kind: uiirBoxAnchored, ZOrder: 3, Left: 0.25, Top: 0.10, Right: 0.75, Bottom: 0.60}, parent)
 	if err != nil {
 		t.Fatalf("resolveUIIRBox returned unexpected error: %v", err)
 	}
