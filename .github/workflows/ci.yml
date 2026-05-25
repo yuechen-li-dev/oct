@@ -59,43 +59,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  native-webview-smoke-linux:
-    name: native-webview-smoke-linux
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install native webview dependencies
-        run: |
-          pwd
-          test -f ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
-          ls -l ./tools/machina-ui-desktop
-          sudo bash ./tools/machina-ui-desktop/setup_linux_webview_deps.sh
-          sudo apt-get install -y dbus-x11
-          if ! pkg-config --exists webkit2gtk-4.0 && pkg-config --exists webkit2gtk-4.1; then
-            mkdir -p "${RUNNER_TEMP}/pkgconfig-compat"
-            pcdir="$(pkg-config --variable pcfiledir webkit2gtk-4.1)"
-            ln -sf "${pcdir}/webkit2gtk-4.1.pc" "${RUNNER_TEMP}/pkgconfig-compat/webkit2gtk-4.0.pc"
-            echo "PKG_CONFIG_PATH=${RUNNER_TEMP}/pkgconfig-compat:${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
-          fi
-
-      - name: Build native desktop host (tagged)
-        env:
-          CGO_ENABLED: "1"
-        run: |
-          go build -tags machina_desktop_webview ./cmd/machina-ui-desktop-host
-
-      - name: Run native webview smoke test
-        env:
-          CGO_ENABLED: "1"
-          MACHINA_WEBVIEW_SMOKE: "1"
-        run: |
-          xvfb-run -a dbus-run-session -- go test -tags machina_desktop_webview ./internal/machina/desktophost -run TestWebviewDriverFactoryConstructsAndInitializesNativeBinding -count=1
+  # Note: native WebView shell smoke is intentionally not in normal CI as of M116.
+  # Machina deterministic core lanes remain untagged/headless; run WebView manually:
+  #   MACHINA_WEBVIEW_SMOKE=1 go test -tags machina_desktop_webview ./internal/machina/desktophost -run TestWebviewDriverFactoryConstructsAndInitializesNativeBinding -count=1

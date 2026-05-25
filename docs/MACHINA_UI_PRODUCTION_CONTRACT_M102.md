@@ -16,6 +16,7 @@ This is an audit and planning milestone only.
 - This preserves the M102 production direction while keeping Gio/window/pixel work out of scope for M108.
 - **M111 status (implemented):** `Libraries/UI` now includes small pure dispatch helpers (`UI.EventValueDispatch`, `UI.ResolveEventValue`, `UI.MatchEventPrefix`) for explicit `Update` flows without reflection-like record mutation.
 - **M112 status (implemented):** `Libraries/UI` now includes typed immutable style records (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style`) and deterministic helper constructors (`UI.Rgb/Rgba`, `UI.InsetsAll/InsetsXY`, default style constructors). This milestone is Oct-facing data only and does not alter lowering/render/runtime behavior.
+- **M116 status (implemented):** Machina UI has reached a coherent v1 checkpoint (`docs/MACHINA_UI_V1_CHECKPOINT_M116.md`) and normal CI has demoted native WebView smoke from default lanes; WebView remains compatibility/demo infrastructure while deterministic core lanes remain primary.
 - **M113 status (implemented):** `internal/machina/layout` now includes internal-only `GridArrange` + `CellFrame` resolution with fixed/fill tracks, gap/padding/span handling, and deterministic validation/error paths. M114 revised adds public nested-array `UI.GridRows(UI[][])` authoring lowered to internal grid/cell layout defaults (equal fill tracks, explicit rectangular rows).
 
 Post-M101 architecture baseline:
