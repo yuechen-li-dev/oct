@@ -113,8 +113,8 @@ Treat raw UI builtins (`UIText`, `UIButton`, `UIPlaceAbsolute`, etc.) as backing
 
 M0 scope is semantic UI construction plus current absolute/anchored box placement.
 Layout is unit-aware:
-- `UI.Absolute(...)` uses `Float<px>`
-- `UI.Anchor(...)` uses `Float<ui>`
+- `UI.AbsoluteBox(..., child)` uses `Float<px>` and is canonical for canvas placement
+- `UI.AnchorBox(..., child)` uses `Float<ui>` and is canonical for canvas placement
 
 No CSS/class/cascade system is part of M0.
 

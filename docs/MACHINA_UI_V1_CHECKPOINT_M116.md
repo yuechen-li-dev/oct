@@ -34,7 +34,7 @@ Renderer backends (Gio, WebView) are consumers of this spine and do not own UI s
 Current public surface includes:
 
 - Structural wrappers (`UI.Text`, `UI.Button`, `UI.Row`, `UI.Column`, `UI.Canvas`, `UI.Grid`, `UI.Spacer`).
-- Placement wrappers (`UI.Absolute`, `UI.Anchor`, `UI.Place`) with unit-aware coordinates.
+- Direct placement constructors (`UI.AbsoluteBox`, `UI.AnchorBox`, plus `...Z`) are canonical with unit-aware coordinates; `UIBox + Place` is compatibility-only.
 - Deterministic grid/cell authoring via nested arrays: `UI.GridRows(UI[][])`.
 - Lifecycle wrappers (`UI.Mount`, `UI.Patch`, `UI.Unmount`, `UI.Emit`, `UI.DrainEvents`, `UI.Signature`) and `UI.MountRef`.
 - Dispatch helpers (`UI.EventValueDispatch`, `UI.ResolveEventValue`, `UI.MatchEventPrefix`).

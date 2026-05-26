@@ -26,10 +26,10 @@ fn M103RowAndColumnCompositionSignatures() -> Void {
 [Fact]
 fn M103CanvasPlacementAbsoluteAndAnchored() -> Void {
     let absolute = Signature(Canvas([
-        Place(Absolute(10.0 px, 20.0 px, 100.0 px, 50.0 px), Text("abs"))
+        AbsoluteBox(10.0 px, 20.0 px, 100.0 px, 50.0 px, Text("abs"))
     ]))
     let anchored = Signature(Canvas([
-        Place(Anchor(0.1 ui, 0.2 ui, 0.8 ui, 0.7 ui), Text("anc"))
+        AnchorBox(0.1 ui, 0.2 ui, 0.8 ui, 0.7 ui, Text("anc"))
     ]))
 
     Assert.True(Contains(absolute, "AbsoluteBox#"), "absolute placement should lower to absolute box")
@@ -61,13 +61,13 @@ fn M103MountEmitDrainAndMissingEventError() -> Void {
 [Fact]
 fn M103CanonicalAliasesMatchCompatibilityNames() -> Void {
     let canonical = Signature(Canvas([
-        Place(Absolute(2.0 px, 3.0 px, 4.0 px, 5.0 px), Text("x")),
-        Place(Anchor(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui), Text("y"))
+        AbsoluteBox(2.0 px, 3.0 px, 4.0 px, 5.0 px, Text("x")),
+        AnchorBox(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui, Text("y"))
     ]))
 
     let compatibility = Signature(Canvas([
-        Place(AbsoluteBox(2.0 px, 3.0 px, 4.0 px, 5.0 px), Text("x")),
-        Place(AnchoredBox(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui), Text("y"))
+        Place(Absolute(2.0 px, 3.0 px, 4.0 px, 5.0 px), Text("x")),
+        Place(Anchor(0.1 ui, 0.2 ui, 0.8 ui, 0.9 ui), Text("y"))
     ]))
 
     Assert.Equal(canonical, compatibility, "canonical and compatibility placement names should match")

@@ -89,7 +89,7 @@ There is already a `Libraries/UI` package that wraps builtins and introduces uni
 
 - `UI.Text`, `UI.Button`
 - `UI.Column`, `UI.Row`, `UI.Canvas`, `UI.Grid`, `UI.Spacer`
-- `UI.UIBox` + `BoxKind` + placement helpers with `Float<px>` and `Float<ui>` fields
+- Direct child-taking placement constructors (`UI.AbsoluteBox`, `UI.AnchorBox`) are canonical. Legacy `UIBox + Place` remains compatibility-only for existing code.
 - mount/patch/unmount/emit/drain/signature wrappers
 
 Location:
