@@ -124,3 +124,66 @@ FACT(PrometheusReactor_FftBenchmarkVariantUnavailable)
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
+
+FACT(PrometheusReactor_FftInvalidAndDestroyedHandle)
+{
+    PrometheusComplex32 in[2]{};
+    PrometheusComplex32 out[2]{};
+    PrometheusFftRequest req = make_valid_req(in, out);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    ASSERT_EQUAL(PROM_INVALID_HANDLE,
+                 prometheus_reactor_runtime_fft(nullptr, &req, &stage, &detail),
+                 "null handle should be rejected");
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+
+    ASSERT_EQUAL(PROM_INVALID_HANDLE,
+                 prometheus_reactor_runtime_fft(handle, &req, &stage, &detail),
+                 "destroyed handle should be rejected");
+}
+
+FACT(PrometheusReactor_FftDiagnosticsSizedAndCallFreshness)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusFftDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_fft_diagnostics_sized(handle, &diag, 1u),
+                 "undersized diagnostics struct should return partial snapshot like SGEMM sized diagnostics");
+
+    PrometheusComplex32 in[8]{};
+    PrometheusComplex32 out[8]{};
+    PrometheusFftRequest req = make_valid_req(in, out);
+    req.element_count = 8u;
+    req.stride_elements = 0u;
+
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_fft(handle, &req, &stage, &detail), "fft execution should be unavailable");
+    ASSERT_EQUAL(PROM_FFT_DETAIL_UNAVAILABLE, detail, "first call detail should be unavailable");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_diagnostics(handle, &diag), "fft diagnostics should succeed");
+    ASSERT_EQUAL(8u, diag.last_effective_stride_elements, "stride_elements=0 should record contiguous effective stride");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_CPU_ORACLE_RESERVED), diag.requested_path_id,
+                 "first call should set requested path to cpu oracle reserved");
+
+    req = make_valid_req(in, out);
+    req.input = nullptr;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_fft(handle, &req, &stage, &detail), "second call should fail validation");
+    ASSERT_EQUAL(PROM_FFT_DETAIL_NULL_INPUT, detail, "second call should report current validation failure");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_diagnostics(handle, &diag), "fft diagnostics should succeed");
+    ASSERT_EQUAL(PROM_FFT_DETAIL_NULL_INPUT, diag.last_failure_detail,
+                 "diagnostics should report latest failure and not stale unavailable detail");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_NONE), diag.requested_path_id,
+                 "failed validation should not keep stale requested path from prior call");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_UNAVAILABLE), diag.executed_path_id,
+                 "executed path should remain unavailable");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}

@@ -69,3 +69,17 @@
   - `out/prometheus/native/marionette_tests PrometheusReactor_Fft`
   - `go test ./internal/... ./cmd/oct`
 
+
+## P16 M2 Reviewer hardening addendum (2026-05-26)
+- Reviewed ABI routing, diagnostics defaults, validation matrix, and capability non-claim posture.
+- Verified no FFT capability claim was introduced (`PrometheusCaps` unchanged behavior) and runtime FFT execution remains default-off/unavailable.
+- Reviewed shared runtime handle validation seam (`prom_reactor_runtime_validate_handle`) for coupling risk; helper remains narrowly scoped to registry/magic validation and does not expose SGEMM controller/arena internals.
+- Added Marionette hardening coverage for:
+  - invalid and destroyed handle rejection on FFT runtime APIs;
+  - partial-sized FFT diagnostics semantics parity with SGEMM sized diagnostics;
+  - diagnostics freshness across consecutive calls (no stale requested path leakage after subsequent validation failure);
+  - effective stride recording when `stride_elements==0` on unavailable execution path.
+- No FFT execution behavior was enabled; unavailable semantics are unchanged.
+
+### Deferred follow-up noted by audit
+- FFT diagnostics slot registry currently uses a fixed 32-slot side table keyed by handle address. If runtime cardinality grows beyond that during long-lived test processes, diagnostics lookup can return internal error despite valid handles. This is outside P16 M2 scope but should be aligned with shared runtime handle cardinality in a future hardening pass.
