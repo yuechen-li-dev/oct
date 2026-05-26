@@ -108,7 +108,7 @@ FACT(PrometheusReactor_FftValidationFailures)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
-FACT(PrometheusReactor_FftBenchmarkVariantUnavailable)
+FACT(PrometheusReactor_FftBenchmarkVariantExecutesSmallRadix2)
 {
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
@@ -118,16 +118,16 @@ FACT(PrometheusReactor_FftBenchmarkVariantUnavailable)
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;
 
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail),
-                 "benchmark variant should be unavailable in M2");
-    ASSERT_EQUAL(PROM_FFT_DETAIL_UNAVAILABLE, detail, "benchmark detail should remain unavailable");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail),
+                 "benchmark variant should execute in M4 for small shapes");
+    ASSERT_EQUAL(0, detail, "benchmark detail should report success");
 
     PrometheusFftDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_diagnostics(handle, &diag), "fft diagnostics should succeed");
     ASSERT_EQUAL(2u, diag.requested_radix, "diag should record requested benchmark variant");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_VULKAN_RADIX2_RESERVED), diag.requested_path_id,
                  "requested path should reflect benchmark request");
-    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_UNAVAILABLE), diag.executed_path_id,
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_VULKAN_RADIX2_RESERVED), diag.executed_path_id,
                  "executed path remains unavailable");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
@@ -214,6 +214,7 @@ FACT(PrometheusReactor_FftPlanDeterministicN1N8N16AndFlags)
     ASSERT_EQUAL(1u, diag.plan_valid, "n=1 should still produce deterministic plan metadata");
     ASSERT_EQUAL(0u, diag.plan_pass_count, "n=1 pass count");
     ASSERT_EQUAL(0u, diag.plan_log2_element_count, "n=1 log2");
+    ASSERT_EQUAL(0u, diag.ping_pong_swap_count, "n=1 swap count");
 
     req = make_valid_req(in, out);
     req.element_count = 8u;
@@ -223,6 +224,7 @@ FACT(PrometheusReactor_FftPlanDeterministicN1N8N16AndFlags)
     ASSERT_EQUAL(2u, diag.plan_first_span, "n=8 first span");
     ASSERT_EQUAL(8u, diag.plan_last_span, "n=8 last span");
     ASSERT_EQUAL(1u, diag.plan_bit_reversal_required, "n>1 requires bit reversal step");
+    ASSERT_EQUAL(3u, diag.ping_pong_swap_count, "n=8 swap count equals pass count");
 
     req = make_valid_req(in, out);
     req.element_count = 16u;
@@ -232,8 +234,56 @@ FACT(PrometheusReactor_FftPlanDeterministicN1N8N16AndFlags)
     ASSERT_EQUAL(4u, diag.plan_pass_count, "n=16 pass count");
     ASSERT_EQUAL(2u, diag.plan_first_span, "n=16 first span");
     ASSERT_EQUAL(16u, diag.plan_last_span, "n=16 last span");
-    ASSERT_EQUAL(3u, diag.ping_pong_swap_count, "n=16 swap count");
+    ASSERT_EQUAL(4u, diag.ping_pong_swap_count, "n=16 swap count equals pass count");
     ASSERT_EQUAL(2u, diag.plan_direction, "inverse flag should set inverse direction");
 
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_FftBenchmarkCorrectnessSmallCases)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    PrometheusComplex32 in2[2]{{1.0f,0.0f},{3.0f,0.0f}};
+    PrometheusComplex32 out2[2]{};
+    PrometheusFftRequest req = make_valid_req(in2, out2);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail), "n=2 benchmark runs");
+    ASSERT_NEAR(4.0f, out2[0].real, 1e-5f, "n=2 dc");
+    ASSERT_NEAR(-2.0f, out2[1].real, 1e-5f, "n=2 nyquist");
+
+    PrometheusComplex32 in4[4]{{1,0},{0,0},{0,0},{0,0}};
+    PrometheusComplex32 out4[4]{};
+    req = make_valid_req(in4, out4); req.element_count = 4u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail), "n=4 impulse");
+    for (int i=0;i<4;++i) ASSERT_NEAR(1.0f, out4[i].real, 1e-5f, "n=4 impulse all ones");
+
+    PrometheusComplex32 in8[8]{{1,0},{-1,0},{1,0},{-1,0},{1,0},{-1,0},{1,0},{-1,0}};
+    PrometheusComplex32 out8[8]{};
+    req = make_valid_req(in8, out8); req.element_count = 8u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail), "n=8 alternating");
+    ASSERT_NEAR(8.0f, out8[4].real, 1e-4f, "n=8 bin4");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusReactor_FftProductionStillUnavailableAndUnsupportedBenchmarkShape)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusComplex32 in[32]{};
+    PrometheusComplex32 out[32]{};
+    PrometheusFftRequest req = make_valid_req(in, out);
+    req.element_count = 32u;
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail), "unsupported benchmark shape should fail");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_fft(handle, &req, &stage, &detail), "production fft remains unavailable");
+    PrometheusFftDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_fft_diagnostics(handle, &diag), "diag");
+    ASSERT_EQUAL(0u, diag.production_enabled, "prod disabled");
+    ASSERT_EQUAL(0u, diag.capability_reported, "caps unclaimed");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
