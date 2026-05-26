@@ -257,6 +257,7 @@ enum {
   PROM_FFT_DETAIL_INVALID_STRIDE = -6708,
   PROM_FFT_DETAIL_SIZE_OVERFLOW = -6709,
   PROM_FFT_DETAIL_ZERO_BATCH_COUNT = -6710,
+  PROM_FFT_DETAIL_INVERSE_NORMALIZE_REQUIRES_INVERSE = -6711,
 };
 
 typedef struct PrometheusFftRequest {
@@ -298,6 +299,17 @@ typedef struct PrometheusFftDiagnostics {
   uint64_t twiddle_arena_reuse_count;
   uint64_t twiddle_arena_grow_count;
   uint32_t selector_cache_valid;
+  uint32_t plan_valid;
+  uint32_t plan_element_count;
+  uint32_t plan_log2_element_count;
+  uint32_t plan_first_span;
+  uint32_t plan_last_span;
+  uint32_t plan_radix_mask;
+  uint32_t plan_bit_reversal_required;
+  uint32_t plan_first_source_role;
+  uint32_t plan_first_destination_role;
+  uint32_t plan_direction;
+  uint32_t plan_twiddle_mode;
   uint64_t selector_cache_reuse_count;
   uint64_t selector_cache_recompute_count;
   uint64_t selector_cache_invalidation_count;
