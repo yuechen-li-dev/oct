@@ -16,9 +16,10 @@ UI.Grid(children: UI[]) -> UI
 UI.GridRows(cells: UI[][]) -> UI
 UI.Spacer() -> UI
 
-UI.Absolute(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UI.UIBox
-UI.Anchor(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UI.UIBox
-UI.Place(box: UI.UIBox, child: UI) -> UI
+UI.AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, child: UI) -> UI
+UI.AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int, child: UI) -> UI
+UI.AnchorBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, child: UI) -> UI
+UI.AnchorBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int, child: UI) -> UI
 
 UI.Mount(root: UI) -> UI.MountRef
 UI.Patch(mount: UI.MountRef, next: UI) -> Int
@@ -28,8 +29,11 @@ UI.DrainEvents(mount: UI.MountRef) -> String[]
 UI.Signature(node: UI) -> String
 ```
 
-Compatibility aliases remain available in M0:
-- `AbsoluteBox` / `AnchoredBox` (+ `...Z` variants)
+Compatibility aliases remain available for pre-M117 two-step placement authoring:
+- `Absolute` / `AbsoluteZ`
+- `Anchor` / `AnchorZ`
+- `Place(box, child)`
+- `AnchoredBox` / `AnchoredBoxZ`
 - `MountUI` / `PatchUI` / `UnmountUI`
 
 Prefer canonical names in new code.
@@ -119,6 +123,24 @@ let card = base with {
 M112 is an Oct-facing style data contract only.
 Applying styles in lowering/render backends is future work.
 
+## Canvas/content authoring rule
+
+Canvas is a placement surface. Content is a content surface. These do not mix.
+
+Canvas children should be positioned regions:
+- `UI.AnchorBox(...)`
+- `UI.AbsoluteBox(...)`
+
+Inside those regions, use content trees:
+- `UI.Row`
+- `UI.Column`
+- `UI.GridRows`
+- `UI.Text`
+- `UI.Button`
+- `UI.Spacer`
+
+Component functions should usually return content trees. If a helper calls `AnchorBox` or `AbsoluteBox`, it is probably writing page layout rather than reusable content.
+
 ## Example
 
 ```oct
@@ -132,8 +154,7 @@ record AppState {
 
 fn View(state: AppState) -> UI {
     return UI.Canvas([
-        UI.Place(
-            UI.Anchor(0.1 ui, 0.1 ui, 0.9 ui, 0.3 ui),
+        UI.AnchorBox(0.1 ui, 0.1 ui, 0.9 ui, 0.3 ui,
             UI.Column([
                 UI.Text("count=" + FormatFloat(state.Count, 0)),
                 UI.Button("Increment", "counter.increment", true)

@@ -82,14 +82,23 @@ fn AnchorZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>,
     }
 }
 
-fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>) -> UIBox {
-    return Absolute(x, y, width, height)
+fn AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, child: UI) -> UI {
+    return UIPlaceAbsolute(x, y, width, height, child, 0)
 }
 
-fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int) -> UIBox {
-    return AbsoluteZ(x, y, width, height, z)
+fn AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int, child: UI) -> UI {
+    return UIPlaceAbsolute(x, y, width, height, child, z)
 }
 
+fn AnchorBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, child: UI) -> UI {
+    return UIPlaceAnchored(left, top, right, bottom, child, 0)
+}
+
+fn AnchorBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int, child: UI) -> UI {
+    return UIPlaceAnchored(left, top, right, bottom, child, z)
+}
+
+// Compatibility aliases for pre-M117 two-step placement authoring.
 fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>) -> UIBox {
     return Anchor(left, top, right, bottom)
 }
@@ -98,6 +107,8 @@ fn AnchoredBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float
     return AnchorZ(left, top, right, bottom, z)
 }
 
+
+// Compatibility helper for pre-M117 two-step placement authoring.
 fn Place(box: UIBox, child: UI) -> UI {
     return switch box.Kind {
         case BoxKind.Absolute => UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, box.Z)

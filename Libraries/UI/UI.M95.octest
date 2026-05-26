@@ -39,8 +39,8 @@ fn M95UIIRStructuralNodeKindsAreExplicit() -> Void {
             ])
         ]),
         Canvas([
-            Place(AbsoluteBox(8.0 px, 12.0 px, 48.0 px, 20.0 px), Text("absolute")),
-            Place(AnchoredBox(0.1 ui, 0.2 ui, 0.9 ui, 0.8 ui), Text("anchored"))
+            AbsoluteBox(8.0 px, 12.0 px, 48.0 px, 20.0 px, Text("absolute")),
+            AnchorBox(0.1 ui, 0.2 ui, 0.9 ui, 0.8 ui, Text("anchored"))
         ])
     ])
 
