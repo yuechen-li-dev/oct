@@ -15,6 +15,18 @@ typedef struct prom_vk_buffer {
   VkDeviceSize size;
 } prom_vk_buffer;
 
+typedef struct prom_vk_runtime_services {
+  VkInstance instance;
+  VkPhysicalDevice physical_device;
+  VkDevice device;
+  VkQueue compute_queue;
+  uint32_t compute_queue_family_index;
+  VkCommandPool compute_command_pool;
+  uint32_t backend_available;
+  uint32_t backend_reason_code;
+  uint32_t test_flags;
+} prom_vk_runtime_services;
+
 void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
 int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
 uint32_t prom_vk_find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties);
@@ -31,6 +43,7 @@ void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer);
 int prom_reactor_runtime_create_impl(void* config, void** out_handle);
 
 int prom_reactor_runtime_validate_handle(void* handle);
+int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services* out_services);
 
 int prom_reactor_runtime_fft_impl(void* handle,
                                   const PrometheusFftRequest* request,
