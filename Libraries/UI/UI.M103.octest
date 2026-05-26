@@ -7,8 +7,8 @@ fn M103TextParityWithRawBuiltinSignature() -> Void {
 
 [Fact]
 fn M103ButtonSignatureIncludesEnabledState() -> Void {
-    let enabled = Signature(Button("Save", "evt.save", true))
-    let disabled = Signature(Button("Save", "evt.save", false))
+    let enabled = Signature(Button("Save", Token("evt.save"), true))
+    let disabled = Signature(Button("Save", Token("evt.save"), false))
 
     Assert.True(Contains(enabled, "Button#"), "button wrapper should lower to button node")
     Assert.True(enabled != disabled, "enabled flag should affect the resulting signature")
@@ -46,7 +46,7 @@ fn M103GridAndSpacerWrappers() -> Void {
 [Fact]
 fn M103MountEmitDrainAndMissingEventError() -> Void {
     let mounted = Mount(Column([
-        Button("Save", "evt.save", true)
+        Button("Save", Token("evt.save"), true)
     ]))
 
     Assert.Equal(0, Emit(mounted, "evt.save") !, "known event should emit")

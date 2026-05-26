@@ -1,18 +1,30 @@
 package UI
 
+record EventToken {
+    Value: String
+}
+
 record UIEvent {
-    Token: String
+    Token: EventToken
     Payload: String
 }
 
-fn Event(token: String, payload: String) -> UIEvent {
+fn Token(value: String) -> EventToken {
+    return EventToken { Value: value }
+}
+
+fn EventTokenValue(token: EventToken) -> String {
+    return token.Value
+}
+
+fn Event(token: EventToken, payload: String) -> UIEvent {
     return UIEvent {
         Token: token
         Payload: payload
     }
 }
 
-fn EventToken(event: UIEvent) -> String {
+fn EventTokenOf(event: UIEvent) -> EventToken {
     return event.Token
 }
 

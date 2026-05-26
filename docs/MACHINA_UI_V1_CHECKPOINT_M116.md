@@ -103,3 +103,6 @@ Reason:
 
 - deterministic Machina core correctness is validated in renderer-independent lanes;
 - native WebView/windowing is a compatibility/demo lane with environment-heavy dependencies and expected future refactor pressure.
+
+
+- Authoring boundary note: UI events/actions are authored as nominal `UI.EventToken` values in `Libraries/UI`, while runtime/UIIR token transport remains string-backed for compatibility in current lanes.
