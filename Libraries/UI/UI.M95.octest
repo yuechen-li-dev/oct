@@ -1,29 +1,33 @@
 package UI
 
 [Fact]
-fn M95UIIRProjectionDeterministicForSameState() -> Void {
-    let snapshot = AppState {
-        Route: CounterRouteHome()
-        Count: 4
-    }
+fn M95UIIRProjectionDeterministicForSameTree() -> Void {
+    let snapshot = Column([
+        Text("route=home"),
+        Text("count=4"),
+        Row([
+            Button("Increment", "counter.increment", true),
+            Button("Decrement", "counter.decrement", true)
+        ])
+    ])
 
-    let left = Signature(CounterProject(snapshot))
-    let right = Signature(CounterProject(snapshot))
-    Assert.Equal(left, right, "same state must project to identical UIIR signature")
+    let left = Signature(snapshot)
+    let right = Signature(snapshot)
+    Assert.Equal(left, right, "same UI tree must project to identical UIIR signature")
 }
 
 [Fact]
-fn M95UIIRProjectionChangesWhenStateChanges() -> Void {
-    let home = Signature(CounterProject(AppState {
-        Route: CounterRouteHome()
-        Count: 1
-    }))
-    let stats = Signature(CounterProject(AppState {
-        Route: CounterRouteStats()
-        Count: 1
-    }))
+fn M95UIIRProjectionChangesWhenTreeChanges() -> Void {
+    let home = Signature(Column([
+        Text("route=home"),
+        Button("Stats", "route.stats", true)
+    ]))
+    let stats = Signature(Column([
+        Text("route=stats"),
+        Button("Home", "route.home", true)
+    ]))
 
-    Assert.True(home != stats, "mode changes must alter projected UIIR shape")
+    Assert.True(home != stats, "different UI trees must alter projected UIIR shape")
 }
 
 [Fact]
@@ -72,17 +76,4 @@ fn M95UIIRRowColumnOrderingIsStable() -> Void {
     ]))
 
     Assert.True(left != right, "child order must be preserved in canonical UIIR")
-}
-
-[Fact]
-fn M95UIIRRoutingStyleModeSwitchStillProjectsCleanly() -> Void {
-    let toStats = CounterTransition(CounterInitialState(), Event(CounterGoStatsToken(), "")) !
-    let statsSig = Signature(CounterProject(toStats))
-
-    let backHome = CounterTransition(toStats, Event(CounterGoHomeToken(), "")) !
-    let homeSig = Signature(CounterProject(backHome))
-
-    Assert.True(Contains(statsSig, "Button#"), "routed mode should still expose interactable UIIR buttons")
-    Assert.True(Contains(homeSig, "Button#"), "return mode should still expose interactable UIIR buttons")
-    Assert.True(statsSig != homeSig, "routed projection should differ across modes")
 }

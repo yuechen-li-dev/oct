@@ -56,6 +56,25 @@ State should live in Oct records/app logic; UI is usually a pure projection `Vie
 Octomata is not Dominatus and does not provide stack push/pop UI semantics.
 
 
+## Generic event vocabulary
+
+`UI` exposes a tiny, domain-independent event record surface:
+
+```oct
+record UI.UIEvent {
+    Token: String
+    Payload: String
+}
+
+UI.Event(token: String, payload: String) -> UI.UIEvent
+UI.EventToken(event: UI.UIEvent) -> String
+UI.EventPayload(event: UI.UIEvent) -> String
+```
+
+This vocabulary is intentionally small and does not define an app model, app contract, or runtime-owned state container.
+Session/runtime app contracts used for backend integration live in internal Go packages, not in the Oct standard-library API surface.
+
+
 ## Dispatch helpers (M111, small/pure)
 
 `UI` includes tiny deterministic dispatch helpers for explicit app update functions:
