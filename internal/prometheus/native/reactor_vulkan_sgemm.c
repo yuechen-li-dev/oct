@@ -2840,6 +2840,12 @@ static int registry_contains(void* handle) {
   return found;
 }
 
+int prom_reactor_runtime_validate_handle(void* handle) {
+  if (handle == NULL || !registry_contains(handle)) return 0;
+  if (((prometheus_runtime*)handle)->magic != PROMETHEUS_RUNTIME_MAGIC) return 0;
+  return 1;
+}
+
 static int registry_add(void* handle) {
   size_t i;
   int added = 0;

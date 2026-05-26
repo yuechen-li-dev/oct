@@ -29,6 +29,23 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
 void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer);
 
 int prom_reactor_runtime_create_impl(void* config, void** out_handle);
+
+int prom_reactor_runtime_validate_handle(void* handle);
+
+int prom_reactor_runtime_fft_impl(void* handle,
+                                  const PrometheusFftRequest* request,
+                                  uint32_t* out_stage,
+                                  int* out_detail_code);
+int prom_reactor_runtime_fft_benchmark_variant_impl(void* handle,
+                                                    const PrometheusFftRequest* request,
+                                                    uint32_t requested_variant,
+                                                    uint32_t* out_stage,
+                                                    int* out_detail_code);
+int prom_reactor_runtime_fft_diagnostics_impl(void* handle, PrometheusFftDiagnostics* out_diag);
+int prom_reactor_runtime_fft_diagnostics_sized_impl(void* handle,
+                                                    PrometheusFftDiagnostics* out_diag,
+                                                    uint32_t out_size);
+
 int prom_reactor_runtime_destroy_impl(void* handle);
 int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps);
 int prom_reactor_runtime_sgemm_impl(void* handle,
