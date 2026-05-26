@@ -2845,6 +2845,30 @@ int prom_reactor_runtime_validate_handle(void* handle) {
   if (((prometheus_runtime*)handle)->magic != PROMETHEUS_RUNTIME_MAGIC) return 0;
   return 1;
 }
+int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services* out_services) {
+  prometheus_runtime* rt;
+  if (out_services == NULL) return PROM_ERROR;
+  memset(out_services, 0, sizeof(*out_services));
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+
+  rt = (prometheus_runtime*)handle;
+  out_services->instance = rt->instance;
+  out_services->physical_device = rt->physical_device;
+  out_services->device = rt->device;
+  out_services->compute_queue = rt->compute_queue;
+  out_services->compute_queue_family_index = rt->queue_family_index;
+  out_services->compute_command_pool = rt->command_pool;
+  out_services->backend_available = rt->available;
+  out_services->backend_reason_code = rt->reason_code;
+  out_services->test_flags = rt->test_flags;
+
+  if (rt->available == 0u) return PROM_ERROR;
+  if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
+    return PROM_ERROR;
+  }
+  return PROM_OK;
+}
+
 
 static int registry_add(void* handle) {
   size_t i;

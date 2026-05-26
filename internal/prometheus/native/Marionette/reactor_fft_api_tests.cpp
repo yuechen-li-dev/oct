@@ -1,6 +1,7 @@
 #include "test_harness.h"
 
 #include "../reactor_api.h"
+#include "../reactor_vulkan.h"
 
 #include <cstdint>
 
@@ -16,6 +17,48 @@ FACT(PrometheusReactor_FftDiagnosticsDefaultState)
     ASSERT_EQUAL(0u, diag.production_enabled, "fft production path must remain disabled");
     ASSERT_EQUAL(0u, diag.benchmark_enabled, "fft benchmark path defaults off");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_FFT_PATH_UNAVAILABLE), diag.executed_path_id, "executed path should default unavailable");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+
+FACT(PrometheusReactor_FftVkServiceSeamRejectsInvalidAndDestroyedHandle)
+{
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_INVALID_HANDLE,
+                 prom_reactor_runtime_get_vk_services(nullptr, &services),
+                 "null handle should be rejected");
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+
+    ASSERT_EQUAL(PROM_INVALID_HANDLE,
+                 prom_reactor_runtime_get_vk_services(handle, &services),
+                 "destroyed handle should be rejected");
+}
+
+FACT(PrometheusReactor_FftVkServiceSeamReportsAvailabilityTruthfully)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    prom_vk_runtime_services services{};
+    int status = prom_reactor_runtime_get_vk_services(handle, &services);
+    if (status == PROM_OK)
+    {
+        ASSERT_EQUAL(1u, services.backend_available, "available runtime should report available backend");
+        ASSERT_TRUE(services.device != VK_NULL_HANDLE, "service seam should expose device");
+        ASSERT_TRUE(services.compute_queue != VK_NULL_HANDLE, "service seam should expose compute queue");
+        ASSERT_TRUE(services.compute_command_pool != VK_NULL_HANDLE, "service seam should expose command pool");
+    }
+    else
+    {
+        ASSERT_EQUAL(PROM_ERROR, status, "unavailable backend should return PROM_ERROR");
+        ASSERT_EQUAL(0u, services.backend_available, "unavailable runtime should report unavailable backend");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_REASON_VULKAN_UNAVAILABLE), services.backend_reason_code,
+                     "unavailable runtime should report vulkan unavailable reason");
+    }
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
