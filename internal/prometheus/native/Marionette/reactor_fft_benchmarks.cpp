@@ -18,5 +18,7 @@ BENCHMARK_WITH_ITERATIONS(PrometheusReactor_Fft_Radix2Benchmark_N16, 2000)
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;
     (void)context;
-    (void)prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, 2u, &stage, &detail);
+    (void)prometheus_reactor_runtime_fft_benchmark_variant(handle, &req, PROM_FFT_BENCHMARK_VARIANT_RADIX2, &stage, &detail);
+    (void)stage;
+    (void)detail;
 }

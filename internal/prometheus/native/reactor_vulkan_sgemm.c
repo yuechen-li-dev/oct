@@ -4669,6 +4669,7 @@ int prom_reactor_runtime_destroy_impl(void* handle) {
   }
 
   registry_remove(handle);
+  prom_fft_diag_forget_handle(handle);
   vk_runtime_cleanup(runtime);
   free(runtime);
   return PROM_OK;

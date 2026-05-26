@@ -45,6 +45,7 @@ int prom_reactor_runtime_fft_diagnostics_impl(void* handle, PrometheusFftDiagnos
 int prom_reactor_runtime_fft_diagnostics_sized_impl(void* handle,
                                                     PrometheusFftDiagnostics* out_diag,
                                                     uint32_t out_size);
+void prom_fft_diag_forget_handle(void* handle);
 
 int prom_reactor_runtime_destroy_impl(void* handle);
 int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps);

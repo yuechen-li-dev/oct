@@ -1,14 +1,12 @@
 #include "reactor_vulkan.h"
 
 #include <string.h>
-#include <math.h>
 
 #define PROM_FFT_DIRECTION_FORWARD 1u
 #define PROM_FFT_DIRECTION_INVERSE 2u
 #define PROM_FFT_MAX_PLAN_PASSES 32u
 #define PROM_FFT_RADIX_BASELINE 2u
 #define PROM_FFT_TWIDDLE_MODE_INLINE_BASELINE 1u
-#define PROM_FFT_BENCHMARK_VARIANT_RADIX2 2u
 
 #define PROM_FFT_BUFFER_ROLE_NONE 0u
 #define PROM_FFT_BUFFER_ROLE_INPUT 1u
@@ -139,53 +137,6 @@ static void prom_fft_build_plan(const PrometheusFftRequest* request, uint32_t di
   out_plan->ping_pong_swap_count = out_plan->pass_count;
 }
 
-static uint32_t prom_fft_reverse_bits(uint32_t value, uint32_t width) {
-  uint32_t i;
-  uint32_t out = 0u;
-  for (i = 0u; i < width; ++i) {
-    out = (out << 1u) | (value & 1u);
-    value >>= 1u;
-  }
-  return out;
-}
-
-static void prom_fft_execute_forward_radix2(const PrometheusComplex32* input, PrometheusComplex32* output, const prom_fft_plan* plan) {
-  uint32_t i;
-  uint32_t pass_i;
-  if (plan->element_count == 1u) {
-    output[0] = input[0];
-    return;
-  }
-  for (i = 0u; i < plan->element_count; ++i) {
-    output[prom_fft_reverse_bits(i, plan->log2_element_count)] = input[i];
-  }
-  for (pass_i = 0u; pass_i < plan->pass_count; ++pass_i) {
-    uint32_t span = plan->passes[pass_i].span;
-    uint32_t half_span = plan->passes[pass_i].half_span;
-    uint32_t start;
-    for (start = 0u; start < plan->element_count; start += span) {
-      uint32_t j;
-      for (j = 0u; j < half_span; ++j) {
-        uint32_t even_index = start + j;
-        uint32_t odd_index = even_index + half_span;
-        float angle = -2.0f * 3.14159265358979323846f * (float)j / (float)span;
-        float tw_re = cosf(angle);
-        float tw_im = sinf(angle);
-        float odd_re = output[odd_index].real;
-        float odd_im = output[odd_index].imag;
-        float t_re = tw_re * odd_re - tw_im * odd_im;
-        float t_im = tw_re * odd_im + tw_im * odd_re;
-        float even_re = output[even_index].real;
-        float even_im = output[even_index].imag;
-        output[even_index].real = even_re + t_re;
-        output[even_index].imag = even_im + t_im;
-        output[odd_index].real = even_re - t_re;
-        output[odd_index].imag = even_im - t_im;
-      }
-    }
-  }
-}
-
 static void prom_fft_apply_plan_diag(PrometheusFftDiagnostics* diag, const prom_fft_plan* plan) {
   diag->plan_valid = 1u;
   diag->plan_element_count = plan->element_count;
@@ -258,20 +209,29 @@ int prom_reactor_runtime_fft_benchmark_variant_impl(void* handle,
           request->element_count <= 16u && (request->flags & PROM_FFT_FLAG_INVERSE) == 0u) {
         prom_fft_plan plan;
         prom_fft_build_plan(request, PROM_FFT_DIRECTION_FORWARD, &plan);
-        prom_fft_execute_forward_radix2(request->input, request->output, &plan);
         prom_fft_apply_plan_diag(diag, &plan);
-        diag->benchmark_enabled = 1u;
-        diag->last_validation_status = PROM_FFT_PATH_STATUS_BENCHMARK_ENABLED;
         diag->requested_path_id = PROM_FFT_PATH_VULKAN_RADIX2_RESERVED;
-        diag->executed_path_id = PROM_FFT_PATH_VULKAN_RADIX2_RESERVED;
-        diag->executed_radix = PROM_FFT_RADIX_BASELINE;
-        diag->last_failure_detail = 0;
-        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
-        return PROM_OK;
+        diag->executed_path_id = PROM_FFT_PATH_UNAVAILABLE;
+        diag->last_validation_status = PROM_FFT_PATH_STATUS_REGISTERED;
+        diag->last_failure_detail = PROM_FFT_DETAIL_UNAVAILABLE;
+        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_FFT_DETAIL_UNAVAILABLE);
       }
     }
   }
   return status;
+}
+
+
+void prom_fft_diag_forget_handle(void* handle) {
+  uint32_t i;
+  if (handle == NULL) return;
+  for (i = 0u; i < 32u; ++i) {
+    if (g_fft_diag_slots[i].handle == handle) {
+      g_fft_diag_slots[i].handle = NULL;
+      g_fft_diag_slots[i].diag = prom_fft_default_diag();
+      return;
+    }
+  }
 }
 
 int prom_reactor_runtime_fft_diagnostics_sized_impl(void* handle, PrometheusFftDiagnostics* out_diag, uint32_t out_size) {
