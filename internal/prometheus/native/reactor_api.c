@@ -106,6 +106,30 @@ int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle, PrometheusS
   return prom_reactor_runtime_sgemm_batch_diagnostics_impl(handle, out_diag);
 }
 
+
+int prometheus_reactor_runtime_fft(void* handle,
+                                   const PrometheusFftRequest* request,
+                                   uint32_t* out_stage,
+                                   int* out_detail_code) {
+  return prom_reactor_runtime_fft_impl(handle, request, out_stage, out_detail_code);
+}
+
+int prometheus_reactor_runtime_fft_benchmark_variant(void* handle,
+                                                     const PrometheusFftRequest* request,
+                                                     uint32_t requested_variant,
+                                                     uint32_t* out_stage,
+                                                     int* out_detail_code) {
+  return prom_reactor_runtime_fft_benchmark_variant_impl(handle, request, requested_variant, out_stage, out_detail_code);
+}
+
+int prometheus_reactor_runtime_fft_diagnostics(void* handle, PrometheusFftDiagnostics* out_diag) {
+  return prom_reactor_runtime_fft_diagnostics_impl(handle, out_diag);
+}
+
+int prometheus_reactor_runtime_fft_diagnostics_sized(void* handle, PrometheusFftDiagnostics* out_diag, uint32_t out_size) {
+  return prom_reactor_runtime_fft_diagnostics_sized_impl(handle, out_diag, out_size);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

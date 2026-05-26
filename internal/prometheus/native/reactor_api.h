@@ -219,6 +219,91 @@ enum {
   PROM_SHADOW_MISMATCH_INVALID_PREDICTION = 10,
 };
 
+
+typedef struct PrometheusComplex32 {
+  float real;
+  float imag;
+} PrometheusComplex32;
+
+enum {
+  PROM_FFT_FLAG_FORWARD = 1u << 0,
+  PROM_FFT_FLAG_INVERSE = 1u << 1,
+  PROM_FFT_FLAG_INVERSE_NORMALIZE = 1u << 2,
+  PROM_FFT_FLAG_BENCHMARK_ALLOW_NON_PRODUCTION_PATH = 1u << 3,
+};
+
+enum {
+  PROM_FFT_PATH_NONE = 0,
+  PROM_FFT_PATH_UNAVAILABLE = 1,
+  PROM_FFT_PATH_CPU_ORACLE_RESERVED = 2,
+  PROM_FFT_PATH_VULKAN_RADIX2_RESERVED = 3,
+};
+
+enum {
+  PROM_FFT_PATH_STATUS_UNAVAILABLE = 0,
+  PROM_FFT_PATH_STATUS_REGISTERED = 1,
+  PROM_FFT_PATH_STATUS_BENCHMARK_ENABLED = 2,
+  PROM_FFT_PATH_STATUS_PRODUCTION_ENABLED = 3,
+};
+
+enum {
+  PROM_FFT_DETAIL_UNAVAILABLE = -6701,
+  PROM_FFT_DETAIL_INVALID_REQUEST = -6702,
+  PROM_FFT_DETAIL_NULL_INPUT = -6703,
+  PROM_FFT_DETAIL_NULL_OUTPUT = -6704,
+  PROM_FFT_DETAIL_ZERO_ELEMENT_COUNT = -6705,
+  PROM_FFT_DETAIL_NON_POWER_OF_TWO = -6706,
+  PROM_FFT_DETAIL_INVALID_DIRECTION_FLAGS = -6707,
+  PROM_FFT_DETAIL_INVALID_STRIDE = -6708,
+  PROM_FFT_DETAIL_SIZE_OVERFLOW = -6709,
+  PROM_FFT_DETAIL_ZERO_BATCH_COUNT = -6710,
+};
+
+typedef struct PrometheusFftRequest {
+  uint32_t struct_size;
+  const PrometheusComplex32* input;
+  PrometheusComplex32* output;
+  uint32_t element_count;
+  uint32_t batch_count;
+  uint32_t stride_elements;
+  uint32_t flags;
+} PrometheusFftRequest;
+
+typedef struct PrometheusFftDiagnostics {
+  uint32_t struct_size;
+  uint32_t api_declared;
+  uint32_t capability_reported;
+  uint32_t production_enabled;
+  uint32_t benchmark_enabled;
+  uint32_t last_element_count;
+  uint32_t last_batch_count;
+  uint32_t last_stride_elements;
+  uint32_t last_effective_stride_elements;
+  uint32_t last_flags;
+  uint32_t last_direction;
+  uint32_t last_validation_status;
+  int32_t last_failure_detail;
+  uint32_t requested_path_id;
+  uint32_t executed_path_id;
+  uint32_t requested_radix;
+  uint32_t executed_radix;
+  uint32_t fallback_reason;
+  uint32_t plan_pass_count;
+  uint32_t ping_pong_swap_count;
+  uint32_t final_output_role;
+  uint64_t ping_arena_reuse_count;
+  uint64_t ping_arena_grow_count;
+  uint64_t pong_arena_reuse_count;
+  uint64_t pong_arena_grow_count;
+  uint64_t twiddle_arena_reuse_count;
+  uint64_t twiddle_arena_grow_count;
+  uint32_t selector_cache_valid;
+  uint64_t selector_cache_reuse_count;
+  uint64_t selector_cache_recompute_count;
+  uint64_t selector_cache_invalidation_count;
+  uint64_t selector_cache_last_dependency_mask;
+} PrometheusFftDiagnostics;
+
 typedef struct PrometheusSgemmBatchEntry {
   const float* a;
   const float* b;
@@ -939,6 +1024,21 @@ PROM_REACTOR_API int prometheus_reactor_runtime_p15_test_seed_matured_reservatio
                                                                                     uint64_t target_tick);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle,
                                                                         PrometheusSgemmBatchDiagnostics* out_diag);
+
+PROM_REACTOR_API int prometheus_reactor_runtime_fft(void* handle,
+                                                    const PrometheusFftRequest* request,
+                                                    uint32_t* out_stage,
+                                                    int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_fft_benchmark_variant(void* handle,
+                                                                      const PrometheusFftRequest* request,
+                                                                      uint32_t requested_variant,
+                                                                      uint32_t* out_stage,
+                                                                      int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_fft_diagnostics(void* handle,
+                                                                PrometheusFftDiagnostics* out_diag);
+PROM_REACTOR_API int prometheus_reactor_runtime_fft_diagnostics_sized(void* handle,
+                                                                      PrometheusFftDiagnostics* out_diag,
+                                                                      uint32_t out_size);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);
