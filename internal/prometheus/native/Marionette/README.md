@@ -4,7 +4,7 @@ Marionette is a powerful yet ultra-lightweight test harness for C++.
 
 ## Building
 
-Marionette has no external dependencies. Compile all `.cpp` files in `Marionette/` together into a single binary with any C++20 compiler. The only required define is `MARIONETTE_TEST_REPO_ROOT`, which tells the harness where to write artifact output.
+Marionette has no external dependencies. Compile all `.cpp` files in `Marionette/` together into a single binary with any C++20+ compiler. The only required define is `MARIONETTE_TEST_REPO_ROOT`, which tells the harness where to write artifact output.
 
 **g++ / clang++**
 
