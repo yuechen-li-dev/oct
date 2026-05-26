@@ -7,7 +7,8 @@ For Oct user code, prefer `UI.*` functions. Raw `UI*` builtins are runtime backi
 
 ```oct
 UI.Text(content: String) -> UI
-UI.Button(label: String, event: String, enabled: Bool) -> UI
+UI.Button(label: String, event: UI.EventToken, enabled: Bool) -> UI
+UI.ButtonRaw(label: String, event: String, enabled: Bool) -> UI
 
 UI.Row(children: UI[]) -> UI
 UI.Column(children: UI[]) -> UI
@@ -50,7 +51,7 @@ Layout is unit-aware:
 - absolute coordinates/sizes use `Float<px>`
 - anchor fractions use `Float<ui>`
 
-Events are symbolic strings.
+Events are nominal `UI.EventToken` values at the authoring boundary (string-backed at runtime interop boundaries).
 State should live in Oct records/app logic; UI is usually a pure projection `View(state) -> UI`.
 
 Octomata is not Dominatus and does not provide stack push/pop UI semantics.
@@ -61,13 +62,19 @@ Octomata is not Dominatus and does not provide stack push/pop UI semantics.
 `UI` exposes a tiny, domain-independent event record surface:
 
 ```oct
+record UI.EventToken {
+    Value: String
+}
+
 record UI.UIEvent {
-    Token: String
+    Token: UI.EventToken
     Payload: String
 }
 
-UI.Event(token: String, payload: String) -> UI.UIEvent
-UI.EventToken(event: UI.UIEvent) -> String
+UI.Token(value: String) -> UI.EventToken
+UI.EventTokenValue(token: UI.EventToken) -> String
+UI.Event(token: UI.EventToken, payload: String) -> UI.UIEvent
+UI.EventTokenOf(event: UI.UIEvent) -> UI.EventToken
 UI.EventPayload(event: UI.UIEvent) -> String
 ```
 
@@ -176,7 +183,7 @@ fn View(state: AppState) -> UI {
         UI.AnchorBox(0.1 ui, 0.1 ui, 0.9 ui, 0.3 ui,
             UI.Column([
                 UI.Text("count=" + FormatFloat(state.Count, 0)),
-                UI.Button("Increment", "counter.increment", true)
+                UI.Button("Increment", Token("counter.increment"), true)
             ])
         )
     ])

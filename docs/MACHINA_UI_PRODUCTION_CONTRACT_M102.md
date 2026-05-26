@@ -357,3 +357,6 @@ M106 adds an internal pure hit-testing package (`internal/machina/hittest`) that
 ## M107 status note
 
 M107 adds internal backend-neutral render command stream and deterministic snapshot recording under `internal/machina/render` for CI-friendly command snapshots. This does not change runtime/interpreter/WebView/WASM behavior.
+
+
+- Authoring boundary note: UI events/actions are authored as nominal `UI.EventToken` values in `Libraries/UI`, while runtime/UIIR token transport remains string-backed for compatibility in current lanes.

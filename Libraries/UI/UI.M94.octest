@@ -2,27 +2,27 @@ package UI
 
 [Fact]
 fn M94UIEventCarriesTokenAndPayload() -> Void {
-    let event = Event("counter.increment", "count=1")
-    Assert.Equal("counter.increment", event.Token, "event token should be stored in UIEvent")
+    let event = Event(Token("counter.increment"), "count=1")
+    Assert.Equal("counter.increment", EventTokenValue(event.Token), "event token should be stored in UIEvent")
     Assert.Equal("count=1", event.Payload, "event payload should be stored in UIEvent")
 }
 
 [Fact]
 fn M94EventTokenAccessorIsDeterministic() -> Void {
-    let event = Event("route.stats", "")
-    Assert.Equal("route.stats", EventToken(event), "token accessor should return original token")
-    Assert.Equal("route.stats", EventToken(event), "token accessor should be deterministic")
+    let event = Event(Token("route.stats"), "")
+    Assert.Equal("route.stats", EventTokenValue(EventTokenOf(event)), "token accessor should return original token")
+    Assert.Equal("route.stats", EventTokenValue(EventTokenOf(event)), "token accessor should be deterministic")
 }
 
 [Fact]
 fn M94EventPayloadAccessorIsDeterministic() -> Void {
-    let event = Event("evt.save", "doc=alpha")
+    let event = Event(Token("evt.save"), "doc=alpha")
     Assert.Equal("doc=alpha", EventPayload(event), "payload accessor should return original payload")
     Assert.Equal("doc=alpha", EventPayload(event), "payload accessor should be deterministic")
 }
 
 [Fact]
 fn M94EventSupportsEmptyPayload() -> Void {
-    let event = Event("nav.home", "")
+    let event = Event(Token("nav.home"), "")
     Assert.Equal("", EventPayload(event), "empty payload should round-trip")
 }

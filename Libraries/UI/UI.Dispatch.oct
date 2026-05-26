@@ -43,3 +43,11 @@ fn MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) ->
 
     return ""
 }
+
+fn ResolveEventTokenValue(event: EventToken, table: EventValueDispatch) -> String ! Error {
+    return ResolveEventValue(EventTokenValue(event), table) !
+}
+
+fn MatchEventTokenPrefix(event: EventToken, prefix: EventToken, allowedSuffixes: String[]) -> String ! Error {
+    return MatchEventPrefix(EventTokenValue(event), EventTokenValue(prefix), allowedSuffixes) !
+}

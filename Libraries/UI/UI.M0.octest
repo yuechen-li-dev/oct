@@ -3,8 +3,8 @@ package UI
 [Fact]
 fn WidgetConstructorsReturnUI() -> Void {
     let text = Text("hello")
-    let button = Button("ok", "app.ok", true)
-    let disabledButton = Button("disabled", "app.disabled", false)
+    let button = Button("ok", Token("app.ok"), true)
+    let disabledButton = Button("disabled", Token("app.disabled"), false)
     let column = Column([text, button, disabledButton])
     let row = Row([text, button])
 
@@ -45,12 +45,12 @@ fn MountPatchUnmountLifecycleWorks() -> Void {
 [Fact]
 fn ExplicitEventTokensDriveStateTransition() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
-    let emitted = Emit(mounted, CounterIncrementEvent()) !
+    let emitted = Emit(mounted, CounterIncrementEventValue()) !
     Assert.Equal(0, emitted, "event emission should succeed")
 
     let events = DrainEvents(mounted)
     Assert.Equal(1, Len(events), "exactly one event should be queued")
-    Assert.Equal(CounterIncrementEvent(), events[0], "button event token should be preserved")
+    Assert.Equal(CounterIncrementEventValue(), events[0], "button event token should be preserved")
 
     let next = CounterUpdate(CounterState { Count: 0 Voltage: 0.0 }, events[0])
     Assert.Equal(1, next.Count, "application state must update explicitly from event token")
@@ -69,7 +69,7 @@ fn ExplicitEventTokensDriveStateTransition() -> Void {
 fn DisabledButtonPreventsEventEmission() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
 
-    Assert.Error(Emit(mounted, CounterDecrementEvent()), "disabled decrement button should not emit")
+    Assert.Error(Emit(mounted, CounterDecrementEventValue()), "disabled decrement button should not emit")
 
     Assert.Equal(0, Len(DrainEvents(mounted)), "disabled emission should not enqueue events")
     Assert.Equal(0, UnmountUI(mounted), "cleanup should succeed")
@@ -78,12 +78,12 @@ fn DisabledButtonPreventsEventEmission() -> Void {
 [Fact]
 fn EnabledButtonStillEmitsAfterRerender() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 1 Voltage: 0.25 }))
-    let emitted = Emit(mounted, CounterDecrementEvent()) !
+    let emitted = Emit(mounted, CounterDecrementEventValue()) !
     Assert.Equal(0, emitted, "enabled decrement should emit")
 
     let events = DrainEvents(mounted)
     Assert.Equal(1, Len(events), "enabled decrement should enqueue exactly one event")
-    Assert.Equal(CounterDecrementEvent(), events[0], "decrement event should stay explicit")
+    Assert.Equal(CounterDecrementEventValue(), events[0], "decrement event should stay explicit")
 
     let next = CounterUpdate(CounterState { Count: 1 Voltage: 0.25 }, events[0])
     Assert.Equal(0, next.Count, "decrement should reduce count")

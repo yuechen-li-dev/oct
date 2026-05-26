@@ -6,8 +6,8 @@ fn M95UIIRProjectionDeterministicForSameTree() -> Void {
         Text("route=home"),
         Text("count=4"),
         Row([
-            Button("Increment", "counter.increment", true),
-            Button("Decrement", "counter.decrement", true)
+            Button("Increment", Token("counter.increment"), true),
+            Button("Decrement", Token("counter.decrement"), true)
         ])
     ])
 
@@ -20,11 +20,11 @@ fn M95UIIRProjectionDeterministicForSameTree() -> Void {
 fn M95UIIRProjectionChangesWhenTreeChanges() -> Void {
     let home = Signature(Column([
         Text("route=home"),
-        Button("Stats", "route.stats", true)
+        Button("Stats", Token("route.stats"), true)
     ]))
     let stats = Signature(Column([
         Text("route=stats"),
-        Button("Home", "route.home", true)
+        Button("Home", Token("route.home"), true)
     ]))
 
     Assert.True(home != stats, "different UI trees must alter projected UIIR shape")
@@ -34,7 +34,7 @@ fn M95UIIRProjectionChangesWhenTreeChanges() -> Void {
 fn M95UIIRStructuralNodeKindsAreExplicit() -> Void {
     let ui = Column([
         Text("title"),
-        Button("Save", "evt.save", true),
+        Button("Save", Token("evt.save"), true),
         Row([
             Spacer(),
             Grid([

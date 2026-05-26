@@ -122,6 +122,8 @@ M112 adds a small immutable typed style-data surface in `Libraries/UI` (`UI.Colo
 
 Small dispatch helpers are available for explicit update functions: `UI.EventValueDispatch`, `UI.ResolveEventValue`, and `UI.MatchEventPrefix`. These helpers are deterministic and do not provide generic record mutation or state-framework behavior.
 
+UI event authoring is nominal: `UI.EventToken` values are used in `UI.Button` and `UI.UIEvent` APIs. Runtime bridge/event drain surfaces may remain string-backed (`UI.DrainEvents` returns `String[]`) for compatibility.
+
 ## String
 
 `Libraries/String/String.Core.oct` provides deterministic report-focused text helpers.

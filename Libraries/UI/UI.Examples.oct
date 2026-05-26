@@ -27,14 +27,14 @@ fn CounterView(model: CounterState) -> UI {
 }
 
 fn CounterUpdate(model: CounterState, event: String) -> CounterState {
-    if event == CounterIncrementEvent() {
+    if event == CounterIncrementEventValue() {
         return CounterState {
             Count: model.Count + 1
             Voltage: model.Voltage + 0.25
         }
     }
 
-    if event == CounterDecrementEvent() {
+    if event == CounterDecrementEventValue() {
         if model.Count > 0 {
             return CounterState {
                 Count: model.Count - 1
@@ -47,12 +47,20 @@ fn CounterUpdate(model: CounterState, event: String) -> CounterState {
     return model
 }
 
-fn CounterIncrementEvent() -> String {
-    return "counter.increment"
+fn CounterIncrementEvent() -> EventToken {
+    return Token("counter.increment")
 }
 
-fn CounterDecrementEvent() -> String {
-    return "counter.decrement"
+fn CounterDecrementEvent() -> EventToken {
+    return Token("counter.decrement")
+}
+
+fn CounterIncrementEventValue() -> String {
+    return EventTokenValue(CounterIncrementEvent())
+}
+
+fn CounterDecrementEventValue() -> String {
+    return EventTokenValue(CounterDecrementEvent())
 }
 
 fn CounterCountText(value: Int) -> String {

@@ -124,55 +124,55 @@ fn ProductById(productId: String) -> Product {
 
 fn InspectPrefix() -> String { return "storefront.inspect." }
 fn AddToCartPrefix() -> String { return "storefront.cart.add." }
-fn InspectEvent(productId: String) -> String { return InspectPrefix() + productId }
-fn AddToCartEvent(productId: String) -> String { return AddToCartPrefix() + productId }
+fn InspectEvent(productId: String) -> UI.EventToken { return UI.Token(InspectPrefix() + productId) }
+fn AddToCartEvent(productId: String) -> UI.EventToken { return UI.Token(AddToCartPrefix() + productId) }
 
-fn NavShopEvent() -> String { return "storefront.nav.shop" }
-fn NavBundlesEvent() -> String { return "storefront.nav.bundles" }
-fn NavJournalEvent() -> String { return "storefront.nav.journal" }
-fn NavSupportEvent() -> String { return "storefront.nav.support" }
+fn NavShopEvent() -> UI.EventToken { return UI.Token("storefront.nav.shop") }
+fn NavBundlesEvent() -> UI.EventToken { return UI.Token("storefront.nav.bundles") }
+fn NavJournalEvent() -> UI.EventToken { return UI.Token("storefront.nav.journal") }
+fn NavSupportEvent() -> UI.EventToken { return UI.Token("storefront.nav.support") }
 
-fn CategoryAllEvent() -> String { return "storefront.category.all" }
-fn CategoryDeskEvent() -> String { return "storefront.category.desk" }
-fn CategoryPaperEvent() -> String { return "storefront.category.paper" }
-fn CategoryCableEvent() -> String { return "storefront.category.cable" }
+fn CategoryAllEvent() -> UI.EventToken { return UI.Token("storefront.category.all") }
+fn CategoryDeskEvent() -> UI.EventToken { return UI.Token("storefront.category.desk") }
+fn CategoryPaperEvent() -> UI.EventToken { return UI.Token("storefront.category.paper") }
+fn CategoryCableEvent() -> UI.EventToken { return UI.Token("storefront.category.cable") }
 
-fn ToggleNewEvent() -> String { return "storefront.filter.new" }
-fn ToggleInStockEvent() -> String { return "storefront.filter.instock" }
-fn ToggleBestSellerEvent() -> String { return "storefront.filter.bestseller" }
+fn ToggleNewEvent() -> UI.EventToken { return UI.Token("storefront.filter.new") }
+fn ToggleInStockEvent() -> UI.EventToken { return UI.Token("storefront.filter.instock") }
+fn ToggleBestSellerEvent() -> UI.EventToken { return UI.Token("storefront.filter.bestseller") }
 
-fn SortFeaturedEvent() -> String { return "storefront.sort.featured" }
-fn SortPriceEvent() -> String { return "storefront.sort.price" }
-fn SortNewestEvent() -> String { return "storefront.sort.newest" }
+fn SortFeaturedEvent() -> UI.EventToken { return UI.Token("storefront.sort.featured") }
+fn SortPriceEvent() -> UI.EventToken { return UI.Token("storefront.sort.price") }
+fn SortNewestEvent() -> UI.EventToken { return UI.Token("storefront.sort.newest") }
 
-fn FeaturedDeskKitsEvent() -> String { return "storefront.featured.deskkits" }
-fn FeaturedNotebookSetsEvent() -> String { return "storefront.featured.notebooksets" }
-fn FeaturedCableLabEvent() -> String { return "storefront.featured.cablelab" }
+fn FeaturedDeskKitsEvent() -> UI.EventToken { return UI.Token("storefront.featured.deskkits") }
+fn FeaturedNotebookSetsEvent() -> UI.EventToken { return UI.Token("storefront.featured.notebooksets") }
+fn FeaturedCableLabEvent() -> UI.EventToken { return UI.Token("storefront.featured.cablelab") }
 
 fn NavDispatchTable() -> UI.EventValueDispatch {
     return UI.EventValueDispatch {
-        Events: [NavShopEvent(), NavBundlesEvent(), NavJournalEvent(), NavSupportEvent()]
+        Events: [UI.EventTokenValue(NavShopEvent()), UI.EventTokenValue(NavBundlesEvent()), UI.EventTokenValue(NavJournalEvent()), UI.EventTokenValue(NavSupportEvent())]
         Values: ["Shop", "Bundles", "Journal", "Support"]
     }
 }
 
 fn CategoryDispatchTable() -> UI.EventValueDispatch {
     return UI.EventValueDispatch {
-        Events: [CategoryAllEvent(), CategoryDeskEvent(), CategoryPaperEvent(), CategoryCableEvent()]
+        Events: [UI.EventTokenValue(CategoryAllEvent()), UI.EventTokenValue(CategoryDeskEvent()), UI.EventTokenValue(CategoryPaperEvent()), UI.EventTokenValue(CategoryCableEvent())]
         Values: ["all", "desk", "paper", "cable"]
     }
 }
 
 fn SortDispatchTable() -> UI.EventValueDispatch {
     return UI.EventValueDispatch {
-        Events: [SortFeaturedEvent(), SortPriceEvent(), SortNewestEvent()]
+        Events: [UI.EventTokenValue(SortFeaturedEvent()), UI.EventTokenValue(SortPriceEvent()), UI.EventTokenValue(SortNewestEvent())]
         Values: ["featured", "price", "newest"]
     }
 }
 
 fn FeaturedDispatchTable() -> UI.EventValueDispatch {
     return UI.EventValueDispatch {
-        Events: [FeaturedDeskKitsEvent(), FeaturedNotebookSetsEvent(), FeaturedCableLabEvent()]
+        Events: [UI.EventTokenValue(FeaturedDeskKitsEvent()), UI.EventTokenValue(FeaturedNotebookSetsEvent()), UI.EventTokenValue(FeaturedCableLabEvent())]
         Values: ["Desk Kits", "Notebook Sets", "Cable Lab"]
     }
 }
@@ -185,9 +185,9 @@ fn Update(model: StoreState, event: String) -> StoreState {
     let category = UI.ResolveEventValue(event, CategoryDispatchTable()) !
     if category != "" { return model with { SelectedCategory: category } }
 
-    if event == ToggleNewEvent() { return model with { NewOnly: not model.NewOnly } }
-    if event == ToggleInStockEvent() { return model with { InStockOnly: not model.InStockOnly } }
-    if event == ToggleBestSellerEvent() { return model with { BestSellerOnly: not model.BestSellerOnly } }
+    if event == UI.EventTokenValue(ToggleNewEvent()) { return model with { NewOnly: not model.NewOnly } }
+    if event == UI.EventTokenValue(ToggleInStockEvent()) { return model with { InStockOnly: not model.InStockOnly } }
+    if event == UI.EventTokenValue(ToggleBestSellerEvent()) { return model with { BestSellerOnly: not model.BestSellerOnly } }
 
     let sortBy = UI.ResolveEventValue(event, SortDispatchTable()) !
     if sortBy != "" { return model with { SortBy: sortBy } }
@@ -263,11 +263,11 @@ fn SelectedProductLabel(value: String) -> String {
     return value
 }
 
-fn NavItem(label: String, event: String, selected: Bool) -> UI {
+fn NavItem(label: String, event: UI.EventToken, selected: Bool) -> UI {
     return UI.Button(label, event, not selected)
 }
 
-fn FilterChip(label: String, event: String, active: Bool) -> UI {
+fn FilterChip(label: String, event: UI.EventToken, active: Bool) -> UI {
     if active {
         return UI.Button("● " + label, event, true)
     }
