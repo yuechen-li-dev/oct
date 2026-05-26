@@ -148,8 +148,42 @@ do_build \
   "$NATIVE_DIR/Marionette/test_main_benchmarks.cpp" \
   ""
 
-# Step 5: Report
-echo "[5/5] Build complete."
+# Step 5: Validate runnable harness + smoke
+echo "[5/5] Validating Marionette harness binary..."
+MAIN_BIN="$OUT_DIR/marionette_tests"
+if [[ ! -f "$MAIN_BIN" ]]; then
+  echo "ERROR: Expected Marionette binary missing: $MAIN_BIN" >&2
+  exit 1
+fi
+if [[ ! -x "$MAIN_BIN" ]]; then
+  chmod +x "$MAIN_BIN"
+fi
+if [[ ! -x "$MAIN_BIN" ]]; then
+  echo "ERROR: Marionette binary is not executable: $MAIN_BIN" >&2
+  exit 1
+fi
+if command -v file >/dev/null 2>&1; then
+  BIN_TYPE=$(file -b "$MAIN_BIN")
+  echo "  file: $BIN_TYPE"
+  if [[ "$BIN_TYPE" != *"ELF"* ]]; then
+    echo "ERROR: Expected Linux ELF executable for $MAIN_BIN but got: $BIN_TYPE" >&2
+    exit 1
+  fi
+else
+  echo "  file: unavailable (\`file\` command not installed); using readelf fallback"
+  if ! readelf -h "$MAIN_BIN" >/dev/null 2>&1; then
+    echo "ERROR: Could not parse ELF header for $MAIN_BIN" >&2
+    exit 1
+  fi
+fi
+if [[ -f "$OUT_DIR/marionette_tests.exe" ]]; then
+  echo "  note: Found Windows artifact at $OUT_DIR/marionette_tests.exe (Linux harness uses marionette_tests)"
+fi
+
+echo "  running smoke filter: PrometheusNativeHarness_Smoke"
+"$MAIN_BIN" PrometheusNativeHarness_Smoke
+
+echo "Build complete."
 echo "Built Marionette tests:      $OUT_DIR/marionette_tests"
 if [[ -f "$OUT_DIR/marionette_slow_tests" ]]; then echo "Built Marionette slow tests:  $OUT_DIR/marionette_slow_tests"; fi
 if [[ -f "$OUT_DIR/marionette_benchmarks" ]]; then echo "Built Marionette benchmarks:  $OUT_DIR/marionette_benchmarks"; fi

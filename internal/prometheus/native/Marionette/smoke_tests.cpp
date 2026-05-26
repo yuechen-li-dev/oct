@@ -107,3 +107,8 @@ FACT(SmokeFactSupportsNearAssertions)
     const float measured = 10.05f;
     ASSERT_NEAR(expected, measured, 0.1f, "near assertions should pass when difference is in tolerance");
 }
+
+FACT(PrometheusNativeHarness_Smoke)
+{
+    ASSERT_TRUE(true, "native Marionette harness smoke check should always run in non-Vulkan environments");
+}
