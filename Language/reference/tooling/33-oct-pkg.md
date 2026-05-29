@@ -6,6 +6,43 @@
 Package metadata is declared in `manifest.oct`.
 Dependency sync is explicit and command-driven.
 
+## Manifest schema
+
+`manifest.oct` declares package metadata in package `Manifest`.
+The current schema is:
+
+```oct
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+
+    // Optional metadata
+    Kind: String
+    EntryMilestone: String
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+
+    // Optional metadata
+    Source: String
+}
+```
+
+Required `PackageManifest` fields are `Name`, `Version`, `Description`, and `Dependencies`.
+Optional `PackageManifest` fields are `Kind` and `EntryMilestone`.
+Required `Dependency` fields are `Name` and `VersionRequirement`.
+Optional `Dependency` fields are `Source`.
+
+Missing `Kind` is treated as the legacy/default package kind for now.
+Wrapper metadata is not defined yet; this schema only describes the existing optional fields.
+Do not declare wrapper sidecars or wrapper registry metadata in `manifest.oct` yet.
+
 ## Rules
 
 - Manifest metadata is declared by `fn Manifest() -> PackageManifest` in `manifest.oct`.
