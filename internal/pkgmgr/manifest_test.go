@@ -248,6 +248,47 @@ func TestLoadManifestMetadataRejectsUnsupportedFields(t *testing.T) {
 	})
 }
 
+func TestLoadManifestMetadataRejectsOptionalLiteralFieldsOmittedFromDeclarations(t *testing.T) {
+	cases := []struct {
+		name        string
+		recordPatch string
+		depPatch    string
+		bodyPatch   string
+		want        string
+	}{
+		{
+			name:        "kind",
+			recordPatch: "    Dependencies: Dependency[]",
+			depPatch:    "}",
+			bodyPatch:   "        Kind: \"experiment\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			want:        "Kind",
+		},
+		{
+			name:        "entry milestone",
+			recordPatch: "    Dependencies: Dependency[]",
+			depPatch:    "}",
+			bodyPatch:   "        EntryMilestone: \"M0\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			want:        "EntryMilestone",
+		},
+		{
+			name:        "source",
+			recordPatch: "    Dependencies: Dependency[]",
+			depPatch:    "}",
+			bodyPatch:   "        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" Source: \"builtin\" }]",
+			want:        "Source",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifestPath := writeManifest(t, validManifestWithEdits(tc.recordPatch, tc.depPatch, tc.bodyPatch))
+			_, err := loadManifestMetadata(manifestPath)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected undeclared optional field %s error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func TestLoadManifestMetadataRejectsNonStringOptionalFields(t *testing.T) {
 	cases := []struct {
 		name        string

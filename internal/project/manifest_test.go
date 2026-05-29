@@ -38,6 +38,29 @@ func TestLoadRejectsUnsupportedManifestFields(t *testing.T) {
 	})
 }
 
+func TestLoadRejectsOptionalLiteralFieldsOmittedFromDeclarations(t *testing.T) {
+	cases := []struct {
+		name        string
+		declaration string
+		want        string
+	}{
+		{name: "Kind", declaration: "    Kind: String\n", want: "Kind"},
+		{name: "EntryMilestone", declaration: "    EntryMilestone: String\n", want: "EntryMilestone"},
+		{name: "Source", declaration: "    Source: String\n", want: "Source"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			manifest := strings.Replace(optionalManifestSource("Main"), tc.declaration, "", 1)
+			writeProjectPackage(t, root, "Main", manifest, "package Main\nfn Main() -> Int { return 0 }\n")
+			_, err := Load(root)
+			if err == nil {
+				t.Fatalf("expected undeclared optional field %s to be rejected", tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsNonStringOptionalManifestFields(t *testing.T) {
 	cases := []struct {
 		name string

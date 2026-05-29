@@ -63,11 +63,13 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	}); err != nil {
 		return ManifestMetadata{}, err
 	}
+	manifestRecord, _ := findRecord(file, "PackageManifest")
+	dependencyRecord, _ := findRecord(file, "Dependency")
 	manifestFn, ok := findManifestFunction(file)
 	if !ok {
 		return ManifestMetadata{}, fmt.Errorf("manifest.oct must define fn Manifest() -> PackageManifest")
 	}
-	return extractManifestReturn(manifestFn)
+	return extractManifestReturn(manifestFn, recordFieldSet(manifestRecord), recordFieldSet(dependencyRecord))
 }
 
 func requireRecordShape(file ast.File, recordName string, required map[string]ast.TypeRef, optional map[string]ast.TypeRef) error {
@@ -137,7 +139,7 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 	return ast.FunctionDecl{}, false
 }
 
-func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
+func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool) (ManifestMetadata, error) {
 	if len(fn.Body.Statements) != 1 {
 		return ManifestMetadata{}, fmt.Errorf("manifest function must contain a single return statement")
 	}
@@ -150,7 +152,7 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		return ManifestMetadata{}, fmt.Errorf("manifest function must return PackageManifest literal")
 	}
 
-	fieldValues, err := manifestLiteralFields(recordExpr)
+	fieldValues, err := literalFields(recordExpr, manifestFields)
 	if err != nil {
 		return ManifestMetadata{}, err
 	}
@@ -184,7 +186,7 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		if !ok || recordDep.TypeName != "Dependency" {
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d must be a Dependency literal", idx)
 		}
-		depFields, err := dependencyLiteralFields(recordDep)
+		depFields, err := literalFields(recordDep, dependencyFields)
 		if err != nil {
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d: %w", idx, err)
 		}
@@ -212,25 +214,12 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 	}, nil
 }
 
-func manifestLiteralFields(recordExpr ast.RecordLiteralExpr) (map[string]ast.Expr, error) {
-	allowed := map[string]bool{
-		"Name":           true,
-		"Version":        true,
-		"Description":    true,
-		"Dependencies":   true,
-		"Kind":           true,
-		"EntryMilestone": true,
+func recordFieldSet(record ast.RecordDecl) map[string]bool {
+	fields := make(map[string]bool, len(record.Fields))
+	for _, field := range record.Fields {
+		fields[field.Name] = true
 	}
-	return literalFields(recordExpr, allowed)
-}
-
-func dependencyLiteralFields(recordExpr ast.RecordLiteralExpr) (map[string]ast.Expr, error) {
-	allowed := map[string]bool{
-		"Name":               true,
-		"VersionRequirement": true,
-		"Source":             true,
-	}
-	return literalFields(recordExpr, allowed)
+	return fields
 }
 
 func literalFields(recordExpr ast.RecordLiteralExpr, allowed map[string]bool) (map[string]ast.Expr, error) {

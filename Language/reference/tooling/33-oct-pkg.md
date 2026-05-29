@@ -38,6 +38,7 @@ Required `PackageManifest` fields are `Name`, `Version`, `Description`, and `Dep
 Optional `PackageManifest` fields are `Kind` and `EntryMilestone`.
 Required `Dependency` fields are `Name` and `VersionRequirement`.
 Optional `Dependency` fields are `Source`.
+Optional fields are allowed by the manifest schema, but record literals must still match the fields declared in the local `manifest.oct` record definitions.
 
 Missing `Kind` is treated as the legacy/default package kind for now.
 Wrapper metadata is not defined yet; this schema only describes the existing optional fields.
