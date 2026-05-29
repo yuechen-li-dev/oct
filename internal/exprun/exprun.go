@@ -13,7 +13,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
-const experimentKind = "Experiment"
+const experimentKind = "experiment"
 
 type Result struct {
 	GetResult      pkgmgr.GetResult
@@ -39,7 +39,7 @@ func RunFromGit(source string, stdout io.Writer) (Result, error) {
 	_, _ = fmt.Fprintf(stdout, "experiment fetch: %s\n", status)
 
 	manifest := getResult.Manifest
-	if manifest.Kind != "" && manifest.Kind != experimentKind {
+	if manifest.Kind != experimentKind {
 		return Result{}, fmt.Errorf("fetched package is not an experiment (manifest Kind=%q)", manifest.Kind)
 	}
 	if !hasFile(getResult.Path, "REPORT.md") {

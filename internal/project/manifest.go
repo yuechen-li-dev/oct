@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/manifestkind"
 )
 
 func validateManifestFile(packageName string, file ast.File) error {
@@ -172,15 +173,28 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manif
 			}
 		}
 	}
+	kindValue := ""
 	if kind, ok := fields["Kind"]; ok {
-		if _, ok := kind.(ast.StringLiteralExpr); !ok {
+		kindLiteral, ok := kind.(ast.StringLiteralExpr)
+		if !ok {
 			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
+		kindValue = kindLiteral.Value
 	}
+	normalizedKind, err := manifestkind.Normalize(kindValue)
+	if err != nil {
+		return err
+	}
+	entryMilestoneValue := ""
 	if entryMilestone, ok := fields["EntryMilestone"]; ok {
-		if _, ok := entryMilestone.(ast.StringLiteralExpr); !ok {
+		entryMilestoneLiteral, ok := entryMilestone.(ast.StringLiteralExpr)
+		if !ok {
 			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
+		entryMilestoneValue = entryMilestoneLiteral.Value
+	}
+	if err := manifestkind.ValidateEntryMilestone(normalizedKind, entryMilestoneValue); err != nil {
+		return err
 	}
 	return nil
 }

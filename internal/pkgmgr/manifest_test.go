@@ -52,6 +52,9 @@ func TestLoadManifestMetadataExtractsIdentityAndDependencies(t *testing.T) {
 	if metadata.Description != "demo package" {
 		t.Fatalf("expected description, got %q", metadata.Description)
 	}
+	if metadata.Kind != "pure" {
+		t.Fatalf("expected missing Kind to normalize to pure, got %q", metadata.Kind)
+	}
 	expectedDeps := []DependencyMetadata{
 		{Name: "Signal", VersionRequirement: "^1.2.0", Source: "file:///tmp/signal"},
 		{Name: "Numerics", VersionRequirement: "~0.4", Source: "file:///tmp/numerics"},
@@ -195,6 +198,123 @@ func TestLoadManifestMetadataExtractsOptionalFields(t *testing.T) {
 	}
 	if len(metadata.Dependencies) != 1 || metadata.Dependencies[0].Source != "builtin" {
 		t.Fatalf("expected dependency source builtin, got %#v", metadata.Dependencies)
+	}
+}
+
+func TestLoadManifestMetadataPackageKindSemantics(t *testing.T) {
+	cases := []struct {
+		name           string
+		recordPatch    string
+		bodyPatch      string
+		wantKind       string
+		wantEntry      string
+		wantErr        bool
+		wantErrContent string
+	}{
+		{
+			name:        "missing Kind normalizes to pure",
+			recordPatch: "    Dependencies: Dependency[]",
+			bodyPatch:   "        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "pure",
+		},
+		{
+			name:        "empty Kind normalizes to pure",
+			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "pure",
+		},
+		{
+			name:        "pure Kind accepted",
+			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"pure\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "pure",
+		},
+		{
+			name:        "experiment Kind accepted",
+			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"experiment\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "experiment",
+		},
+		{
+			name:        "wrapper Kind accepted as reserved",
+			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"wrapper\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "wrapper",
+		},
+		{
+			name:           "invalid Kind rejected",
+			recordPatch:    "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        Kind: \"banana\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "Kind",
+		},
+		{
+			name:        "EntryMilestone accepted for experiment",
+			recordPatch: "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"experiment\"\n        EntryMilestone: \"M0\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "experiment",
+			wantEntry:   "M0",
+		},
+		{
+			name:           "EntryMilestone rejected for default kind",
+			recordPatch:    "    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        EntryMilestone: \"M0\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "EntryMilestone",
+		},
+		{
+			name:           "EntryMilestone rejected for pure",
+			recordPatch:    "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        Kind: \"pure\"\n        EntryMilestone: \"M0\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "EntryMilestone",
+		},
+		{
+			name:           "EntryMilestone rejected for wrapper",
+			recordPatch:    "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        Kind: \"wrapper\"\n        EntryMilestone: \"M0\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "EntryMilestone",
+		},
+		{
+			name:        "empty EntryMilestone accepted for default kind",
+			recordPatch: "    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        EntryMilestone: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "pure",
+		},
+		{
+			name:        "empty EntryMilestone accepted for pure",
+			recordPatch: "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"pure\"\n        EntryMilestone: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "pure",
+		},
+		{
+			name:        "empty EntryMilestone accepted for wrapper",
+			recordPatch: "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"wrapper\"\n        EntryMilestone: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "wrapper",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifestPath := writeManifest(t, validManifestWithEdits(tc.recordPatch, "}", tc.bodyPatch))
+			metadata, err := loadManifestMetadata(manifestPath)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrContent) {
+					t.Fatalf("expected %s error, got %v", tc.wantErrContent, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("load manifest metadata: %v", err)
+			}
+			if metadata.Kind != tc.wantKind {
+				t.Fatalf("expected kind %q, got %q", tc.wantKind, metadata.Kind)
+			}
+			if metadata.EntryMilestone != tc.wantEntry {
+				t.Fatalf("expected entry milestone %q, got %q", tc.wantEntry, metadata.EntryMilestone)
+			}
+		})
 	}
 }
 
