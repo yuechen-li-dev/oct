@@ -123,8 +123,13 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
 
 - Added sidecar dispatch for `FileDelete`, `DirectoryMake`, and `DirectoryMakeAll` with existing narrow request shape (`path` string only).
 - Path helpers (`PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`) remain direct compiled lowerings and do not use Octxiliary.
+- Protocol remains framed Octagon transport (no JSON protocol).
+
+## M4 IO-family completion
+
+- Added byte payload support to the narrow protocol for `FileReadBytes` and `FileWriteBytes`; byte lists are deterministic textual integer lists and each value must be in `[0, 255]`.
+- Added sidecar dispatch for `DirectoryList` and `DirectoryRemoveAll`; directory listing returns sorted entry names only.
 - Current compiled split:
   - Direct/no-sidecar: `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
-  - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileDelete`, `DirectoryMake`, `DirectoryMakeAll`.
-  - Deferred in this family: `FileReadBytes`, `FileWriteBytes`, `DirectoryList`, `DirectoryRemoveAll`.
-- Protocol remains framed Octagon transport (no JSON protocol).
+  - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, `DirectoryRemoveAll`.
+  - Deferred in this family: none for the IO file/directory wrapper set listed above.

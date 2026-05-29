@@ -1182,6 +1182,24 @@ func unsupportedBuiltin(name string) error {
 	return unsupported("builtin " + name)
 }
 
+func isOctxiliaryBuiltin(name string) bool {
+	switch canonicalCompiledBuiltinName(name) {
+	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
+		return true
+	default:
+		return false
+	}
+}
+
+func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
+	for name := range usedBuiltins {
+		if isOctxiliaryBuiltin(name) {
+			return true
+		}
+	}
+	return false
+}
+
 func canonicalCompiledBuiltinName(name string) string {
 	switch name {
 	case "String.ByteLength":
@@ -2078,11 +2096,16 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, err
 		}
 		elemType := strings.TrimSuffix(targetType, "[]")
+		valueExpr := fmt.Sprintf("%s[%s]", target, idx)
+		if targetType == "Bytes" {
+			elemType = "Int"
+			valueExpr = fmt.Sprintf("int(%s[%s])", target, idx)
+		}
 		if vectorElem, ok := parseVectorElemType(targetType); ok {
 			elemType = vectorElem
 		}
 		tmp := c.temp(elemType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s]", target, idx)})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
 		return tmp, elemType, false, nil
 	case ast.RecordLiteralExpr:
 		vals := []string{}
@@ -2655,13 +2678,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Void", true, false, nil
 			case "FileReadText":
 				return normalized, "String", true, true, nil
-			case "FileReadLines":
+			case "FileReadBytes":
+				return normalized, "Bytes", true, true, nil
+			case "FileReadLines", "DirectoryList":
 				return normalized, "String[]", true, true, nil
-			case "FileWriteText", "FileWriteLines":
+			case "FileWriteText", "FileWriteLines", "FileWriteBytes":
 				return normalized, "Int", true, true, nil
 			case "FileExists":
 				return normalized, "Bool", true, false, nil
-			case "FileDelete", "DirectoryMake", "DirectoryMakeAll":
+			case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
 				return normalized, "Int", true, true, nil
 			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
 				return normalized, "String", true, false, nil
@@ -3176,7 +3201,16 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "String", nil
 
-	case "FileReadLines":
+	case "FileReadBytes":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Bytes", nil
+
+	case "FileReadLines", "DirectoryList":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -3185,11 +3219,11 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "String[]", nil
 
-	case "FileWriteText", "FileWriteLines":
+	case "FileWriteText", "FileWriteLines", "FileWriteBytes":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
 		}
-		if argTypes[0] != "String" || (name == "FileWriteText" && argTypes[1] != "String") || (name == "FileWriteLines" && argTypes[1] != "String[]") {
+		if argTypes[0] != "String" || (name == "FileWriteText" && argTypes[1] != "String") || (name == "FileWriteLines" && argTypes[1] != "String[]") || (name == "FileWriteBytes" && argTypes[1] != "Bytes") {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "Int", nil
@@ -3201,7 +3235,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 		}
 		return "Bool", nil
-	case "FileDelete", "DirectoryMake", "DirectoryMakeAll":
+	case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
@@ -4005,23 +4039,35 @@ func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, e
 	}
 	resolvePkgFn := func(pkgName, fnName string) (string, string, bool, bool, error) {
 		declPkg, ok := flowLowerProgram.Packages[pkgName]
-		if !ok { return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgName) }
+		if !ok {
+			return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgName)
+		}
 		for _, fn := range declPkg.Functions {
-			if fn.Name == fnName { return pkgName+"."+fnName, typeRefStringForPackage(pkgName, fn.ReturnType), false, fn.IsFallible, nil }
+			if fn.Name == fnName {
+				return pkgName + "." + fnName, typeRefStringForPackage(pkgName, fn.ReturnType), false, fn.IsFallible, nil
+			}
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgName, fnName)
 	}
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
-		if builtin.IsName(x.Name) { return resolveBuiltin(x.Name) }
+		if builtin.IsName(x.Name) {
+			return resolveBuiltin(x.Name)
+		}
 		resolved, ret, builtinCall, fallible, err := resolvePkgFn(pkg, x.Name)
-		if err != nil { return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name) }
+		if err != nil {
+			return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
+		}
 		return resolved, ret, builtinCall, fallible, nil
 	case ast.FieldAccessExpr:
 		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
-		if !ok { return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee)) }
-		qualified := pkgIdent.Name+"."+x.Field
-		if builtin.IsName(qualified) { return resolveBuiltin(qualified) }
+		if !ok {
+			return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
+		}
+		qualified := pkgIdent.Name + "." + x.Field
+		if builtin.IsName(qualified) {
+			return resolveBuiltin(qualified)
+		}
 		return resolvePkgFn(pkgIdent.Name, x.Field)
 	default:
 		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
@@ -4244,7 +4290,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usesOctxiliaryBuiltins(usedBuiltins) {
 		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
@@ -4269,6 +4315,7 @@ func emitGo(m MIRModule) (string, error) {
 		importSet["math/big"] = struct{}{}
 	}
 	if usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"] {
+		importSet["math"] = struct{}{}
 		importSet["crypto/rand"] = struct{}{}
 		importSet["encoding/binary"] = struct{}{}
 		importSet["math/big"] = struct{}{}
@@ -4284,7 +4331,8 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "\t%q\n", name)
 	}
 	b.WriteString(")\n\n")
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usesOctxiliaryBuiltins(usedBuiltins) {
+		resultTypes["Bytes"] = struct{}{}
 		resultTypes["String"] = struct{}{}
 		resultTypes["String[]"] = struct{}{}
 	}
@@ -4324,7 +4372,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), valueType)
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usesOctxiliaryBuiltins(usedBuiltins) {
 		if _, ok := resultTypes["String[]"]; !ok {
 			b.WriteString("type octResult_StringSlice struct {\n\tValue []string\n\tErr string\n\tIsErr bool\n}\n\n")
 		}
@@ -4429,7 +4477,7 @@ func emitGo(m MIRModule) (string, error) {
 		if usedBuiltins["WriteOctagon"] {
 			b.WriteString(__octWriteHelpers)
 		}
-		if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+		if usesOctxiliaryBuiltins(usedBuiltins) {
 			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
@@ -4452,7 +4500,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	if usedBuiltins["FileReadText"] || usedBuiltins["FileReadLines"] || usedBuiltins["FileWriteText"] || usedBuiltins["FileWriteLines"] || usedBuiltins["FileDelete"] || usedBuiltins["DirectoryMake"] || usedBuiltins["DirectoryMakeAll"] {
+	if usesOctxiliaryBuiltins(usedBuiltins) {
 		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
@@ -6385,6 +6433,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
 			case "FileWriteText":
 				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "FileReadBytes":
+				return fmt.Sprintf("%s = __octFileReadBytes(%s)", st.Target, st.Args[0]), nil
+			case "FileWriteBytes":
+				return fmt.Sprintf("%s = __octFileWriteBytes(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "FileReadLines":
 				return fmt.Sprintf("%s = __octFileReadLines(%s)", st.Target, st.Args[0]), nil
 			case "FileWriteLines":
@@ -6405,10 +6457,14 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = filepath.Clean(%s)", st.Target, st.Args[0]), nil
 			case "FileDelete":
 				return fmt.Sprintf("%s = __octFileDelete(%s)", st.Target, st.Args[0]), nil
+			case "DirectoryList":
+				return fmt.Sprintf("%s = __octDirectoryList(%s)", st.Target, st.Args[0]), nil
 			case "DirectoryMake":
 				return fmt.Sprintf("%s = __octDirectoryMake(%s)", st.Target, st.Args[0]), nil
 			case "DirectoryMakeAll":
 				return fmt.Sprintf("%s = __octDirectoryMakeAll(%s)", st.Target, st.Args[0]), nil
+			case "DirectoryRemoveAll":
+				return fmt.Sprintf("%s = __octDirectoryRemoveAll(%s)", st.Target, st.Args[0]), nil
 			case "Step":
 				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
 			case "Active":
@@ -6622,6 +6678,8 @@ func goType(t string) string {
 		return "bool"
 	case "String":
 		return "string"
+	case "Bytes":
+		return "[]byte"
 	case "Error":
 		return "string"
 	case "Void":
@@ -6734,6 +6792,31 @@ func __octFileWriteText(path string, text string) octResult_Int {
 	return octResult_Int{Value: 0}
 }
 
+func __octFileReadBytes(path string) octResult_Bytes {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Bytes{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileReadBytes", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Bytes{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Bytes{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Bytes{Err: resp.Error, IsErr: true} }
+	return octResult_Bytes{Value: resp.Bytes}
+}
+
+func __octFileWriteBytes(path string, data []byte) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "IO.File", Function: "FileWriteBytes", Path: path, Bytes: data, HasBytes: true}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
 
 func __octFileReadLines(path string) octResult_StringSlice {
 	__octOctxiliaryMu.Lock()
@@ -6774,6 +6857,19 @@ func __octFileDelete(path string) octResult_Int {
 	return octResult_Int{Value: 0}
 }
 
+func __octDirectoryList(path string) octResult_StringSlice {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "Directory", Function: "DirectoryList", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_StringSlice{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_StringSlice{Err: resp.Error, IsErr: true} }
+	return octResult_StringSlice{Value: resp.Lines}
+}
+
 func __octDirectoryMake(path string) octResult_Int {
 	__octOctxiliaryMu.Lock()
 	defer __octOctxiliaryMu.Unlock()
@@ -6799,6 +6895,20 @@ func __octDirectoryMakeAll(path string) octResult_Int {
 	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
 	return octResult_Int{Value: 0}
 }
+
+func __octDirectoryRemoveAll(path string) octResult_Int {
+	__octOctxiliaryMu.Lock()
+	defer __octOctxiliaryMu.Unlock()
+	if err := __octOctxiliaryEnsure(); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	__octOctxiliaryReqID++
+	req := octxiliary.Request{ID: __octOctxiliaryReqID, Family: "Directory", Function: "DirectoryRemoveAll", Path: path}
+	if err := octxiliary.WriteFrame(__octOctxiliaryIn, octxiliary.EncodeRequest(req)); err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	frame, err := octxiliary.ReadFrame(__octOctxiliaryOut); if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	resp, _ := octxiliary.ParseResponse(frame)
+	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
+	return octResult_Int{Value: 0}
+}
+
 func __octOctxiliaryEnsure() error {
 	__octOctxiliaryOnce.Do(func(){
 		path := filepath.Join(filepath.Dir(os.Args[0]), "octxiliary-io")

@@ -52,6 +52,19 @@ func main() {
 				} else {
 					resp.OK = true
 				}
+			case "FileReadBytes", "ReadBytes":
+				if bytes, readErr := interpret.FileReadBytesForSidecar(req.Path); readErr != nil {
+					resp.Error = readErr.Error()
+				} else {
+					resp.OK = true
+					resp.Bytes = bytes
+				}
+			case "FileWriteBytes", "WriteBytes":
+				if writeErr := interpret.FileWriteBytesForSidecar(req.Path, req.Bytes); writeErr != nil {
+					resp.Error = writeErr.Error()
+				} else {
+					resp.OK = true
+				}
 			case "FileReadLines", "ReadLines":
 				if lines, readErr := interpret.ReadLinesForSidecar(req.Path); readErr != nil {
 					resp.Error = readErr.Error()
@@ -85,9 +98,22 @@ func main() {
 				} else {
 					resp.OK = true
 				}
+			case "DirectoryList", "List":
+				if names, listErr := interpret.DirectoryListForSidecar(req.Path); listErr != nil {
+					resp.Error = listErr.Error()
+				} else {
+					resp.OK = true
+					resp.Lines = names
+				}
 			case "DirectoryMakeAll":
 				if mkdirErr := interpret.DirectoryMakeAllForSidecar(req.Path); mkdirErr != nil {
 					resp.Error = mkdirErr.Error()
+				} else {
+					resp.OK = true
+				}
+			case "DirectoryRemoveAll", "RemoveAll":
+				if removeErr := interpret.DirectoryRemoveAllForSidecar(req.Path); removeErr != nil {
+					resp.Error = removeErr.Error()
 				} else {
 					resp.OK = true
 				}

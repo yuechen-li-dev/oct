@@ -1,0 +1,28 @@
+package Main
+
+[Fact]
+fn FileBytesCompiledViaSidecarM4() -> Void ! Error {
+    let path = ".tmp/octxiliary_m4_bytes.bin"
+    let bytes = Random.CryptoRandBytes(8)?
+    let _w = FileWriteBytes(path, bytes)?
+    let actual = FileReadBytes(path)?
+
+    Assert.Equal(Len(bytes), Len(actual), "byte length should round-trip")
+    Assert.Equal(bytes[0], actual[0], "first byte should round-trip")
+}
+
+[Fact]
+fn DirectoryListAndRemoveAllCompiledViaSidecarM4() -> Void ! Error {
+    let root = ".tmp/octxiliary-m4-dir"
+    let nested = PathJoin([root, "nested"])
+    let file = PathJoin([nested, "payload.txt"])
+
+    let _mk = DirectoryMakeAll(nested)?
+    let _w = FileWriteText(file, "m4")?
+
+    let names = DirectoryList(nested)?
+    Assert.True(Len(names) >= 1, "DirectoryList should see created payload")
+
+    let _rm = DirectoryRemoveAll(root)?
+    Assert.False(FileExists(file), "DirectoryRemoveAll should remove nested payload")
+}
