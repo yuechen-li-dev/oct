@@ -2,7 +2,6 @@ package pkgmgr
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
@@ -64,11 +63,13 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	}); err != nil {
 		return ManifestMetadata{}, err
 	}
+	manifestRecord, _ := findRecord(file, "PackageManifest")
+	dependencyRecord, _ := findRecord(file, "Dependency")
 	manifestFn, ok := findManifestFunction(file)
 	if !ok {
 		return ManifestMetadata{}, fmt.Errorf("manifest.oct must define fn Manifest() -> PackageManifest")
 	}
-	return extractManifestReturn(manifestFn)
+	return extractManifestReturn(manifestFn, recordFieldSet(manifestRecord), recordFieldSet(dependencyRecord))
 }
 
 func requireRecordShape(file ast.File, recordName string, required map[string]ast.TypeRef, optional map[string]ast.TypeRef) error {
@@ -138,7 +139,7 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 	return ast.FunctionDecl{}, false
 }
 
-func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
+func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool) (ManifestMetadata, error) {
 	if len(fn.Body.Statements) != 1 {
 		return ManifestMetadata{}, fmt.Errorf("manifest function must contain a single return statement")
 	}
@@ -151,9 +152,9 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		return ManifestMetadata{}, fmt.Errorf("manifest function must return PackageManifest literal")
 	}
 
-	fieldValues := map[string]ast.Expr{}
-	for _, field := range recordExpr.Fields {
-		fieldValues[field.Name] = field.Value
+	fieldValues, err := literalFields(recordExpr, manifestFields)
+	if err != nil {
+		return ManifestMetadata{}, err
 	}
 	name, err := stringField(fieldValues, "Name")
 	if err != nil {
@@ -185,9 +186,9 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		if !ok || recordDep.TypeName != "Dependency" {
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d must be a Dependency literal", idx)
 		}
-		depFields := map[string]ast.Expr{}
-		for _, field := range recordDep.Fields {
-			depFields[field.Name] = field.Value
+		depFields, err := literalFields(recordDep, dependencyFields)
+		if err != nil {
+			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d: %w", idx, err)
 		}
 		depName, err := stringField(depFields, "Name")
 		if err != nil {
@@ -201,18 +202,7 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		if err != nil {
 			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d: %w", idx, err)
 		}
-		if len(depFields) != 2 && len(depFields) != 3 {
-			keys := make([]string, 0, len(depFields))
-			for key := range depFields {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			return ManifestMetadata{}, fmt.Errorf("manifest dependency at index %d has unsupported fields", idx)
-		}
 		deps = append(deps, DependencyMetadata{Name: depName, VersionRequirement: depReq, Source: depSource})
-	}
-	if len(fieldValues) < 4 || len(fieldValues) > 6 {
-		return ManifestMetadata{}, fmt.Errorf("manifest return literal has unsupported fields")
 	}
 	return ManifestMetadata{
 		Name:           name,
@@ -222,6 +212,28 @@ func extractManifestReturn(fn ast.FunctionDecl) (ManifestMetadata, error) {
 		EntryMilestone: entryMilestone,
 		Dependencies:   deps,
 	}, nil
+}
+
+func recordFieldSet(record ast.RecordDecl) map[string]bool {
+	fields := make(map[string]bool, len(record.Fields))
+	for _, field := range record.Fields {
+		fields[field.Name] = true
+	}
+	return fields
+}
+
+func literalFields(recordExpr ast.RecordLiteralExpr, allowed map[string]bool) (map[string]ast.Expr, error) {
+	fields := make(map[string]ast.Expr, len(recordExpr.Fields))
+	for _, field := range recordExpr.Fields {
+		if !allowed[field.Name] {
+			return nil, fmt.Errorf("manifest return literal has unsupported field '%s'", field.Name)
+		}
+		if _, exists := fields[field.Name]; exists {
+			return nil, fmt.Errorf("manifest return literal contains duplicate field '%s'", field.Name)
+		}
+		fields[field.Name] = field.Value
+	}
+	return fields, nil
 }
 
 func stringField(fields map[string]ast.Expr, fieldName string) (string, error) {

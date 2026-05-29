@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 )
@@ -17,11 +16,13 @@ func validateManifestFile(packageName string, file ast.File) error {
 	if err := requireDependencyRecord(file); err != nil {
 		return err
 	}
+	manifestRecord, _ := findRecord(file, "PackageManifest")
+	dependencyRecord, _ := findRecord(file, "Dependency")
 	manifestFn, ok := findManifestFunction(file)
 	if !ok {
 		return fmt.Errorf("manifest.oct must define fn Manifest() -> PackageManifest")
 	}
-	if err := validateManifestFunctionBody(packageName, manifestFn); err != nil {
+	if err := validateManifestFunctionBody(packageName, manifestFn, recordFieldSet(manifestRecord), recordFieldSet(dependencyRecord)); err != nil {
 		return err
 	}
 	return nil
@@ -38,7 +39,11 @@ func requirePackageManifestRecord(file ast.File) error {
 		"Description":  {Name: "String"},
 		"Dependencies": {Name: "Dependency", IsArray: true},
 	}
-	if err := validateRecordFields(record, required); err != nil {
+	optional := map[string]ast.TypeRef{
+		"Kind":           {Name: "String"},
+		"EntryMilestone": {Name: "String"},
+	}
+	if err := validateRecordFields(record, required, optional); err != nil {
 		return fmt.Errorf("manifest.oct has invalid PackageManifest record: %w", err)
 	}
 	return nil
@@ -53,23 +58,41 @@ func requireDependencyRecord(file ast.File) error {
 		"Name":               {Name: "String"},
 		"VersionRequirement": {Name: "String"},
 	}
-	if err := validateRecordFields(record, required); err != nil {
+	optional := map[string]ast.TypeRef{
+		"Source": {Name: "String"},
+	}
+	if err := validateRecordFields(record, required, optional); err != nil {
 		return fmt.Errorf("manifest.oct has invalid Dependency record: %w", err)
 	}
 	return nil
 }
 
-func validateRecordFields(record ast.RecordDecl, required map[string]ast.TypeRef) error {
-	if len(record.Fields) != len(required) {
-		return fmt.Errorf("expected %d fields, got %d", len(required), len(record.Fields))
+func validateRecordFields(record ast.RecordDecl, required map[string]ast.TypeRef, optional map[string]ast.TypeRef) error {
+	minFields := len(required)
+	maxFields := len(required) + len(optional)
+	if len(record.Fields) < minFields || len(record.Fields) > maxFields {
+		return fmt.Errorf("expected %d-%d fields, got %d", minFields, maxFields, len(record.Fields))
 	}
+	seen := map[string]bool{}
 	for _, field := range record.Fields {
 		requiredType, ok := required[field.Name]
 		if !ok {
+			requiredType, ok = optional[field.Name]
+		}
+		if !ok {
 			return fmt.Errorf("unexpected field '%s'", field.Name)
 		}
+		if seen[field.Name] {
+			return fmt.Errorf("duplicate field '%s'", field.Name)
+		}
+		seen[field.Name] = true
 		if field.Type.Name != requiredType.Name || field.Type.IsArray != requiredType.IsArray || field.Type.Package != "" {
 			return fmt.Errorf("field '%s' has wrong type", field.Name)
+		}
+	}
+	for field := range required {
+		if !seen[field] {
+			return fmt.Errorf("missing required field '%s'", field)
 		}
 	}
 	return nil
@@ -97,7 +120,7 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 	return ast.FunctionDecl{}, false
 }
 
-func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl) error {
+func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool) error {
 	if len(fn.Body.Statements) != 1 {
 		return fmt.Errorf("manifest function returned invalid package metadata")
 	}
@@ -109,9 +132,9 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl) error
 	if !ok || recordExpr.TypeName != "PackageManifest" {
 		return fmt.Errorf("manifest function returned invalid package metadata")
 	}
-	fields := make(map[string]ast.Expr)
-	for _, field := range recordExpr.Fields {
-		fields[field.Name] = field.Value
+	fields, err := literalFields(recordExpr, manifestFields)
+	if err != nil {
+		return err
 	}
 	if nameExpr, ok := fields["Name"].(ast.StringLiteralExpr); !ok {
 		return fmt.Errorf("manifest function returned invalid package metadata")
@@ -133,9 +156,9 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl) error
 		if !ok || recordDep.TypeName != "Dependency" {
 			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
-		depFields := make(map[string]ast.Expr)
-		for _, field := range recordDep.Fields {
-			depFields[field.Name] = field.Value
+		depFields, err := literalFields(recordDep, dependencyFields)
+		if err != nil {
+			return err
 		}
 		if _, ok := depFields["Name"].(ast.StringLiteralExpr); !ok {
 			return fmt.Errorf("manifest function returned invalid package metadata")
@@ -143,19 +166,45 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl) error
 		if _, ok := depFields["VersionRequirement"].(ast.StringLiteralExpr); !ok {
 			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
-		if len(depFields) != 2 {
+		if source, ok := depFields["Source"]; ok {
+			if _, ok := source.(ast.StringLiteralExpr); !ok {
+				return fmt.Errorf("manifest function returned invalid package metadata")
+			}
+		}
+	}
+	if kind, ok := fields["Kind"]; ok {
+		if _, ok := kind.(ast.StringLiteralExpr); !ok {
 			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
 	}
-	if len(fields) != 4 {
-		keys := make([]string, 0, len(fields))
-		for key := range fields {
-			keys = append(keys, key)
+	if entryMilestone, ok := fields["EntryMilestone"]; ok {
+		if _, ok := entryMilestone.(ast.StringLiteralExpr); !ok {
+			return fmt.Errorf("manifest function returned invalid package metadata")
 		}
-		sort.Strings(keys)
-		return fmt.Errorf("manifest function returned invalid package metadata")
 	}
 	return nil
+}
+
+func recordFieldSet(record ast.RecordDecl) map[string]bool {
+	fields := make(map[string]bool, len(record.Fields))
+	for _, field := range record.Fields {
+		fields[field.Name] = true
+	}
+	return fields
+}
+
+func literalFields(recordExpr ast.RecordLiteralExpr, allowed map[string]bool) (map[string]ast.Expr, error) {
+	fields := make(map[string]ast.Expr, len(recordExpr.Fields))
+	for _, field := range recordExpr.Fields {
+		if !allowed[field.Name] {
+			return nil, fmt.Errorf("manifest function returned invalid package metadata")
+		}
+		if _, exists := fields[field.Name]; exists {
+			return nil, fmt.Errorf("manifest function returned invalid package metadata")
+		}
+		fields[field.Name] = field.Value
+	}
+	return fields, nil
 }
 
 func manifestDependencySet(file ast.File) map[string]struct{} {
