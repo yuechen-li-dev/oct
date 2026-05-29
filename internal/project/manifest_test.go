@@ -84,6 +84,48 @@ func TestLoadRejectsNonStringOptionalManifestFields(t *testing.T) {
 	}
 }
 
+func TestLoadValidatesPackageKindSemantics(t *testing.T) {
+	cases := []struct {
+		name                  string
+		kindLiteral           string
+		includeKind           bool
+		entryLiteral          string
+		includeEntryMilestone bool
+		wantErr               bool
+		wantErrContent        string
+	}{
+		{name: "missing Kind accepted as default pure"},
+		{name: "empty Kind accepted as default pure", includeKind: true},
+		{name: "pure Kind accepted", kindLiteral: "pure", includeKind: true},
+		{name: "experiment Kind accepted", kindLiteral: "experiment", includeKind: true},
+		{name: "wrapper Kind accepted as reserved", kindLiteral: "wrapper", includeKind: true},
+		{name: "invalid Kind rejected", kindLiteral: "banana", includeKind: true, wantErr: true, wantErrContent: "Kind"},
+		{name: "EntryMilestone rejected for default kind", entryLiteral: "M0", includeEntryMilestone: true, wantErr: true, wantErrContent: "EntryMilestone"},
+		{name: "EntryMilestone rejected for pure", kindLiteral: "pure", includeKind: true, entryLiteral: "M0", includeEntryMilestone: true, wantErr: true, wantErrContent: "EntryMilestone"},
+		{name: "EntryMilestone rejected for wrapper", kindLiteral: "wrapper", includeKind: true, entryLiteral: "M0", includeEntryMilestone: true, wantErr: true, wantErrContent: "EntryMilestone"},
+		{name: "EntryMilestone accepted for experiment", kindLiteral: "experiment", includeKind: true, entryLiteral: "M0", includeEntryMilestone: true},
+		{name: "empty EntryMilestone accepted for pure", kindLiteral: "pure", includeKind: true, includeEntryMilestone: true},
+		{name: "empty EntryMilestone accepted for wrapper", kindLiteral: "wrapper", includeKind: true, includeEntryMilestone: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			manifest := packageKindManifestSource("Main", tc.kindLiteral, tc.entryLiteral, tc.includeKind, tc.includeEntryMilestone)
+			writeProjectPackage(t, root, "Main", manifest, "package Main\nfn Main() -> Int { return 0 }\n")
+			_, err := Load(root)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrContent) {
+					t.Fatalf("expected %s error, got %v", tc.wantErrContent, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load should accept manifest: %v", err)
+			}
+		})
+	}
+}
+
 func writeProjectPackage(t *testing.T, root string, name string, manifest string, source string) {
 	t.Helper()
 	pkgDir := filepath.Join(root, name)
@@ -96,6 +138,43 @@ func writeProjectPackage(t *testing.T, root string, name string, manifest string
 	if err := os.WriteFile(filepath.Join(pkgDir, strings.ToLower(name)+".oct"), []byte(source), 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
+}
+
+func packageKindManifestSource(name string, kind string, entryMilestone string, includeKind bool, includeEntryMilestone bool) string {
+	kindLine := ""
+	if includeKind {
+		kindLine = "        Kind: \"" + kind + "\"\n"
+	}
+	entryLine := ""
+	if includeEntryMilestone {
+		entryLine = "        EntryMilestone: \"" + entryMilestone + "\"\n"
+	}
+	return strings.Join([]string{
+		"package Manifest",
+		"",
+		"record PackageManifest {",
+		"    Name: String",
+		"    Version: String",
+		"    Description: String",
+		"    Kind: String",
+		"    EntryMilestone: String",
+		"    Dependencies: Dependency[]",
+		"}",
+		"",
+		"record Dependency {",
+		"    Name: String",
+		"    VersionRequirement: String",
+		"}",
+		"",
+		"fn Manifest() -> PackageManifest {",
+		"    return PackageManifest {",
+		"        Name: \"" + name + "\"",
+		"        Version: \"0.1.0\"",
+		"        Description: \"package kind semantics\"",
+		kindLine + entryLine + "        Dependencies: []",
+		"    }",
+		"}",
+	}, "\n") + "\n"
 }
 
 func optionalManifestSource(name string) string {

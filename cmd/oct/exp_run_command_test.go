@@ -16,7 +16,7 @@ func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("DemoExperiment", "0.1.0", "Experiment", "", depLiterals(baseDep)),
+		Manifest: experimentManifestWithDeps("DemoExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{
 			"M0": milestoneFactSource("M0Runs"),
 		},
@@ -45,7 +45,7 @@ func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("CacheExperiment", "0.1.0", "Experiment", "", depLiterals(baseDep)),
+		Manifest: experimentManifestWithDeps("CacheExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{
 			"M0": milestoneFactSource("CacheRuns"),
 		},
@@ -88,7 +88,7 @@ func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 
 	depSource := createGitRepoWithManifest(t, manifestWithDeps("Signal", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("DepsExperiment", "0.1.0", "Experiment", "", []string{
+		Manifest: experimentManifestWithDeps("DepsExperiment", "0.1.0", "experiment", "", []string{
 			`Dependency { Name: "Signal" VersionRequirement: "^1.0.0" Source: "` + depSource + `" }`,
 		}),
 		Milestones: map[string]string{"M0": milestoneFactSource("DepsRun")},
@@ -115,7 +115,7 @@ func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("BadExperiment", "0.1.0", "Experiment", "", depLiterals(baseDep)),
+		Manifest: experimentManifestWithDeps("BadExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		NoReport: true,
 		Milestones: map[string]string{
 			"M0": milestoneFactSource("ShouldNotRun"),
@@ -136,7 +136,7 @@ func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("EntryExperiment", "0.1.0", "Experiment", "M1", depLiterals(baseDep)),
+		Manifest: experimentManifestWithDeps("EntryExperiment", "0.1.0", "experiment", "M1", depLiterals(baseDep)),
 		Milestones: map[string]string{
 			"M0": milestoneFactSource("ShouldNotRunM0"),
 			"M1": milestoneFactSource("RunsM1"),
@@ -166,7 +166,7 @@ func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest:   experimentManifestWithDeps("EntryMissing", "0.1.0", "Experiment", "M7", depLiterals(baseDep)),
+		Manifest:   experimentManifestWithDeps("EntryMissing", "0.1.0", "experiment", "M7", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("M0Runs")},
 	})
 
@@ -184,7 +184,7 @@ func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest: experimentManifestWithDeps("FallbackExperiment", "0.1.0", "Experiment", "", depLiterals(baseDep)),
+		Manifest: experimentManifestWithDeps("FallbackExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{
 			"M0":  milestoneFactSource("CanonicalRuns"),
 			"Mx1": milestoneFactSource("AuxShouldNotRun"),
@@ -208,7 +208,7 @@ func TestExpRunExpRunDeterministicForRepeatedRuns(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
-		Manifest:   experimentManifestWithDeps("DeterministicExperiment", "0.1.0", "Experiment", "", depLiterals(baseDep)),
+		Manifest:   experimentManifestWithDeps("DeterministicExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("DeterministicRuns")},
 	})
 

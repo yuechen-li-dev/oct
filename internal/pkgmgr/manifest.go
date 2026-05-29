@@ -5,6 +5,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/manifestkind"
 	"github.com/yuechen-li-dev/oct/internal/parse"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
@@ -172,8 +173,15 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 	if err != nil {
 		return ManifestMetadata{}, err
 	}
+	normalizedKind, err := normalizePackageKind(kind)
+	if err != nil {
+		return ManifestMetadata{}, err
+	}
 	entryMilestone, err := optionalStringField(fieldValues, "EntryMilestone")
 	if err != nil {
+		return ManifestMetadata{}, err
+	}
+	if err := validateEntryMilestoneForKind(normalizedKind, entryMilestone); err != nil {
 		return ManifestMetadata{}, err
 	}
 	depsExpr, ok := fieldValues["Dependencies"].(ast.ArrayLiteralExpr)
@@ -208,7 +216,7 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 		Name:           name,
 		Version:        version,
 		Description:    description,
-		Kind:           kind,
+		Kind:           normalizedKind,
 		EntryMilestone: entryMilestone,
 		Dependencies:   deps,
 	}, nil
@@ -258,4 +266,12 @@ func optionalStringField(fields map[string]ast.Expr, fieldName string) (string, 
 		return "", fmt.Errorf("manifest field '%s' must be a string literal", fieldName)
 	}
 	return str.Value, nil
+}
+
+func normalizePackageKind(kind string) (string, error) {
+	return manifestkind.Normalize(kind)
+}
+
+func validateEntryMilestoneForKind(kind string, entryMilestone string) error {
+	return manifestkind.ValidateEntryMilestone(kind, entryMilestone)
 }

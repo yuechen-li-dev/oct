@@ -40,8 +40,17 @@ Required `Dependency` fields are `Name` and `VersionRequirement`.
 Optional `Dependency` fields are `Source`.
 Optional fields are allowed by the manifest schema, but record literals must still match the fields declared in the local `manifest.oct` record definitions.
 
-Missing `Kind` is treated as the legacy/default package kind for now.
-Wrapper metadata is not defined yet; this schema only describes the existing optional fields.
+## Package kinds
+
+Missing `Kind` or `Kind: ""` defaults to `pure`.
+Allowed package kind values are:
+
+- `pure`: an ordinary Oct source package.
+- `experiment`: an experiment package; it may specify `EntryMilestone`.
+- `wrapper`: reserved for future wrapper packages. The kind is recognized, but wrapper metadata and sidecar build support are not implemented yet.
+
+`EntryMilestone` is valid only for `Kind: "experiment"`; `EntryMilestone: ""` is treated as omitted.
+Wrapper metadata remains undefined.
 Do not declare wrapper sidecars or wrapper registry metadata in `manifest.oct` yet.
 
 ## Rules
