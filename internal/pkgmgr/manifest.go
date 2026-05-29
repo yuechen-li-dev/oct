@@ -6,6 +6,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
 	"github.com/yuechen-li-dev/oct/internal/manifestkind"
+	"github.com/yuechen-li-dev/oct/internal/manifestwrapper"
 	"github.com/yuechen-li-dev/oct/internal/parse"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
@@ -17,7 +18,14 @@ type ManifestMetadata struct {
 	Kind           string
 	EntryMilestone string
 	Dependencies   []DependencyMetadata
+	Wrappers       []WrapperMetadata
 }
+
+// WrapperMetadata describes validated wrapper package metadata declared in manifest.oct.
+type WrapperMetadata = manifestwrapper.Metadata
+
+// WrapperFunctionMetadata describes a validated wrapper function in manifest.oct.
+type WrapperFunctionMetadata = manifestwrapper.FunctionMetadata
 
 type DependencyMetadata struct {
 	Name               string `json:"name"`
@@ -53,6 +61,7 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	}, map[string]ast.TypeRef{
 		"Kind":           {Name: "String"},
 		"EntryMilestone": {Name: "String"},
+		"Wrappers":       manifestwrapper.PackageManifestWrappersType(),
 	}); err != nil {
 		return ManifestMetadata{}, err
 	}
@@ -66,11 +75,26 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	}
 	manifestRecord, _ := findRecord(file, "PackageManifest")
 	dependencyRecord, _ := findRecord(file, "Dependency")
+	var wrapperFields map[string]bool
+	var wrapperFunctionFields map[string]bool
+	manifestFields := recordFieldSet(manifestRecord)
+	if manifestFields["Wrappers"] {
+		if err := requireRecordShape(file, "Wrapper", manifestwrapper.WrapperRequiredFields(), nil); err != nil {
+			return ManifestMetadata{}, err
+		}
+		if err := requireRecordShape(file, "WrapperFunction", manifestwrapper.WrapperFunctionRequiredFields(), nil); err != nil {
+			return ManifestMetadata{}, err
+		}
+		wrapperRecord, _ := findRecord(file, "Wrapper")
+		wrapperFunctionRecord, _ := findRecord(file, "WrapperFunction")
+		wrapperFields = recordFieldSet(wrapperRecord)
+		wrapperFunctionFields = recordFieldSet(wrapperFunctionRecord)
+	}
 	manifestFn, ok := findManifestFunction(file)
 	if !ok {
 		return ManifestMetadata{}, fmt.Errorf("manifest.oct must define fn Manifest() -> PackageManifest")
 	}
-	return extractManifestReturn(manifestFn, recordFieldSet(manifestRecord), recordFieldSet(dependencyRecord))
+	return extractManifestReturn(manifestFn, manifestFields, recordFieldSet(dependencyRecord), wrapperFields, wrapperFunctionFields)
 }
 
 func requireRecordShape(file ast.File, recordName string, required map[string]ast.TypeRef, optional map[string]ast.TypeRef) error {
@@ -140,7 +164,7 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 	return ast.FunctionDecl{}, false
 }
 
-func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool) (ManifestMetadata, error) {
+func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool, wrapperFields map[string]bool, wrapperFunctionFields map[string]bool) (ManifestMetadata, error) {
 	if len(fn.Body.Statements) != 1 {
 		return ManifestMetadata{}, fmt.Errorf("manifest function must contain a single return statement")
 	}
@@ -184,6 +208,18 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 	if err := validateEntryMilestoneForKind(normalizedKind, entryMilestone); err != nil {
 		return ManifestMetadata{}, err
 	}
+	wrappersPresent := false
+	var wrappers []WrapperMetadata
+	if wrappersExpr, ok := fieldValues["Wrappers"]; ok {
+		wrappersPresent = true
+		wrappers, err = manifestwrapper.ExtractWrappers(wrappersExpr, wrapperFields, wrapperFunctionFields)
+		if err != nil {
+			return ManifestMetadata{}, err
+		}
+	}
+	if err := manifestwrapper.ValidateWrapperKindRules(normalizedKind, wrappersPresent, len(wrappers)); err != nil {
+		return ManifestMetadata{}, err
+	}
 	depsExpr, ok := fieldValues["Dependencies"].(ast.ArrayLiteralExpr)
 	if !ok {
 		return ManifestMetadata{}, fmt.Errorf("manifest field 'Dependencies' must be a Dependency[] literal")
@@ -219,6 +255,7 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 		Kind:           normalizedKind,
 		EntryMilestone: entryMilestone,
 		Dependencies:   deps,
+		Wrappers:       wrappers,
 	}, nil
 }
 
