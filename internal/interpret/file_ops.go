@@ -3,6 +3,7 @@ package interpret
 import (
 	"errors"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -73,6 +74,28 @@ func FileWriteTextForSidecar(path string, text string) error {
 	return fileWriteText(path, text)
 }
 
+func FileReadBytesForSidecar(path string) ([]byte, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, mapPathError(path, err)
+	}
+	return contents, nil
+}
+
+func FileWriteBytesForSidecar(path string, data []byte) error {
+	if writeErr := os.WriteFile(path, data, 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
+			if retryErr := os.WriteFile(path, data, 0o644); retryErr == nil {
+				return nil
+			} else {
+				return mapPathError(path, retryErr)
+			}
+		}
+		return mapPathError(path, writeErr)
+	}
+	return nil
+}
+
 func FileExistsForSidecar(path string) (bool, error) {
 	return fileExists(path)
 }
@@ -93,6 +116,26 @@ func DirectoryMakeForSidecar(path string) error {
 
 func DirectoryMakeAllForSidecar(path string) error {
 	if err := os.MkdirAll(path, 0o755); err != nil {
+		return mapPathError(path, err)
+	}
+	return nil
+}
+
+func DirectoryListForSidecar(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, mapPathError(path, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func DirectoryRemoveAllForSidecar(path string) error {
+	if err := os.RemoveAll(path); err != nil {
 		return mapPathError(path, err)
 	}
 	return nil

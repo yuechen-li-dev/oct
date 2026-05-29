@@ -20,12 +20,15 @@ type Request struct {
 	Text                   string
 	Lines                  []string
 	HasLines               bool
+	Bytes                  []byte
+	HasBytes               bool
 }
 type Response struct {
 	ID          int
 	OK          bool
 	Text, Error string
 	Lines       []string
+	Bytes       []byte
 	Exists      bool
 	HasExists   bool
 }
@@ -73,6 +76,9 @@ func ReadFrame(r io.Reader) (string, error) {
 }
 
 func EncodeRequest(req Request) string {
+	if req.HasBytes {
+		return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q bytes: { %s } }", req.ID, req.Family, req.Function, req.Path, encodeBytesList(req.Bytes))
+	}
 	if req.HasLines {
 		return fmt.Sprintf("OctxiliaryRequest { id: %d family: %q function: %q path: %q lines: { %s } }", req.ID, req.Family, req.Function, req.Path, encodeLinesList(req.Lines))
 	}
@@ -83,6 +89,9 @@ func EncodeRequest(req Request) string {
 }
 func EncodeResponse(resp Response) string {
 	if resp.OK {
+		if resp.Bytes != nil {
+			return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true bytes: { %s } }", resp.ID, encodeBytesList(resp.Bytes))
+		}
 		if resp.Lines != nil {
 			return fmt.Sprintf("OctxiliaryResponse { id: %d ok: true lines: { %s } }", resp.ID, encodeLinesList(resp.Lines))
 		}
@@ -95,6 +104,13 @@ func EncodeResponse(resp Response) string {
 }
 func ParseRequest(s string) (Request, error) {
 	var req Request
+	if parsed, ok, err := parseRequestWithBytes(s); ok {
+		if err != nil {
+			return Request{}, err
+		}
+		parsed.HasBytes = true
+		return parsed, nil
+	}
 	if parsed, ok := parseRequestWithLines(s); ok {
 		req = parsed
 		req.HasLines = true
@@ -110,6 +126,13 @@ func ParseRequest(s string) (Request, error) {
 }
 func ParseResponse(s string) (Response, error) {
 	var r Response
+	if parsed, ok, err := parseResponseWithBytes(s); ok {
+		if err != nil {
+			return Response{}, err
+		}
+		parsed.OK = true
+		return parsed, nil
+	}
 	if parsed, ok := parseResponseWithLines(s); ok {
 		r = parsed
 		r.OK = true
@@ -131,12 +154,54 @@ func ParseResponse(s string) (Response, error) {
 }
 func NewReader(r io.Reader) *bufio.Reader { return bufio.NewReader(r) }
 
+func encodeBytesList(bytes []byte) string {
+	parts := make([]string, 0, len(bytes))
+	for _, b := range bytes {
+		parts = append(parts, strconv.Itoa(int(b)))
+	}
+	return strings.Join(parts, " ")
+}
+
 func encodeLinesList(lines []string) string {
 	parts := make([]string, 0, len(lines))
 	for _, line := range lines {
 		parts = append(parts, strconv.Quote(line))
 	}
 	return strings.Join(parts, " ")
+}
+
+func parseRequestWithBytes(s string) (Request, bool, error) {
+	var req Request
+	prefix := "OctxiliaryRequest { id: "
+	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, " }") || !strings.Contains(s, " bytes: { ") {
+		return req, false, nil
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(s, prefix), " }")
+	var err error
+	req.ID, body, err = scanIntThen(body, " family: ")
+	if err != nil {
+		return req, true, err
+	}
+	req.Family, body, err = scanQuotedThen(body, " function: ")
+	if err != nil {
+		return req, true, err
+	}
+	req.Function, body, err = scanQuotedThen(body, " path: ")
+	if err != nil {
+		return req, true, err
+	}
+	req.Path, body, err = scanQuotedThen(body, " bytes: { ")
+	if err != nil {
+		return req, true, err
+	}
+	if !strings.HasSuffix(body, " }") {
+		return req, true, fmt.Errorf("malformed bytes payload")
+	}
+	req.Bytes, err = parseBytesList(strings.TrimSuffix(body, " }"))
+	if err != nil {
+		return req, true, err
+	}
+	return req, true, nil
 }
 
 func parseRequestWithLines(s string) (Request, bool) {
@@ -168,6 +233,28 @@ func parseRequestWithLines(s string) (Request, bool) {
 		return req, false
 	}
 	return req, true
+}
+
+func parseResponseWithBytes(s string) (Response, bool, error) {
+	var resp Response
+	prefix := "OctxiliaryResponse { id: "
+	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, " }") || !strings.Contains(s, " bytes: { ") {
+		return resp, false, nil
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(s, prefix), " }")
+	var err error
+	resp.ID, body, err = scanIntThen(body, " ok: true bytes: { ")
+	if err != nil {
+		return resp, true, err
+	}
+	if !strings.HasSuffix(body, " }") {
+		return resp, true, fmt.Errorf("malformed bytes payload")
+	}
+	resp.Bytes, err = parseBytesList(strings.TrimSuffix(body, " }"))
+	if err != nil {
+		return resp, true, err
+	}
+	return resp, true, nil
 }
 
 func parseResponseWithLines(s string) (Response, bool) {
@@ -256,6 +343,25 @@ func parseLinesList(s string) ([]string, error) {
 		}
 		out = append(out, v)
 		rest = strings.TrimSpace(next)
+	}
+	return out, nil
+}
+
+func parseBytesList(s string) ([]byte, error) {
+	out := []byte{}
+	rest := strings.TrimSpace(s)
+	if rest == "" {
+		return out, nil
+	}
+	for _, field := range strings.Fields(rest) {
+		n, err := strconv.Atoi(field)
+		if err != nil {
+			return nil, err
+		}
+		if n < 0 || n > 255 {
+			return nil, fmt.Errorf("byte value %d outside [0, 255]", n)
+		}
+		out = append(out, byte(n))
 	}
 	return out, nil
 }
