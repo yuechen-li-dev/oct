@@ -236,10 +236,11 @@ func TestLoadManifestMetadataPackageKindSemantics(t *testing.T) {
 			wantKind:    "experiment",
 		},
 		{
-			name:        "wrapper Kind accepted as reserved",
-			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
-			bodyPatch:   "        Kind: \"wrapper\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
-			wantKind:    "wrapper",
+			name:           "wrapper Kind requires Wrappers",
+			recordPatch:    "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        Kind: \"wrapper\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "Wrappers",
 		},
 		{
 			name:           "invalid Kind rejected",
@@ -289,10 +290,11 @@ func TestLoadManifestMetadataPackageKindSemantics(t *testing.T) {
 			wantKind:    "pure",
 		},
 		{
-			name:        "empty EntryMilestone accepted for wrapper",
-			recordPatch: "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
-			bodyPatch:   "        Kind: \"wrapper\"\n        EntryMilestone: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
-			wantKind:    "wrapper",
+			name:           "empty EntryMilestone for wrapper still requires Wrappers",
+			recordPatch:    "    Kind: String\n    EntryMilestone: String\n    Dependencies: Dependency[]",
+			bodyPatch:      "        Kind: \"wrapper\"\n        EntryMilestone: \"\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantErr:        true,
+			wantErrContent: "Wrappers",
 		},
 	}
 	for _, tc := range cases {
@@ -475,4 +477,208 @@ func validManifestWithEdits(packageRecordTail string, dependencyRecordTail strin
 		"    }",
 		"}",
 	}, "\n") + "\n"
+}
+
+func TestLoadManifestMetadataExtractsWrapperMetadata(t *testing.T) {
+	metadata, err := loadManifestMetadata(writeManifest(t, validWrapperManifestSource("Xlsx")))
+	if err != nil {
+		t.Fatalf("load wrapper manifest: %v", err)
+	}
+	if metadata.Kind != "wrapper" {
+		t.Fatalf("expected wrapper kind, got %q", metadata.Kind)
+	}
+	expected := []WrapperMetadata{{
+		Name:           "xlsx",
+		Family:         "Xlsx",
+		Protocol:       "octxiliary.v0",
+		SidecarCommand: "octxiliary-xlsx",
+		GoModuleDir:    "octxiliary",
+		Functions: []WrapperFunctionMetadata{
+			{OctName: "ReadSheetNames", WireName: "XlsxReadSheetNames", Args: []string{"String"}, Return: "String[]", Fallible: true},
+			{OctName: "WriteBytes", WireName: "XlsxWriteBytes", Args: []string{"String", "Bytes"}, Return: "Int", Fallible: false},
+		},
+	}}
+	if !reflect.DeepEqual(metadata.Wrappers, expected) {
+		t.Fatalf("unexpected wrappers:\ngot  %#v\nwant %#v", metadata.Wrappers, expected)
+	}
+}
+
+func TestLoadManifestMetadataAllowsEmptyWrappersForNonWrapperKinds(t *testing.T) {
+	cases := []struct {
+		name  string
+		kind  string
+		entry string
+	}{
+		{name: "pure", kind: "pure"},
+		{name: "experiment", kind: "experiment", entry: "M0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := nonWrapperManifestWithEmptyWrappers("DemoPkg", tc.kind, tc.entry)
+			metadata, err := loadManifestMetadata(writeManifest(t, src))
+			if err != nil {
+				t.Fatalf("load manifest: %v", err)
+			}
+			if metadata.Kind != tc.kind {
+				t.Fatalf("expected kind %q, got %q", tc.kind, metadata.Kind)
+			}
+			if len(metadata.Wrappers) != 0 {
+				t.Fatalf("expected no wrapper metadata, got %#v", metadata.Wrappers)
+			}
+		})
+	}
+}
+
+func TestLoadManifestMetadataRejectsMalformedWrapperMetadata(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "wrapper omitted Wrappers", src: strings.Replace(validWrapperManifestSource("Xlsx"), "        Dependencies: []\n        Wrappers: [\n"+wrapperArrayLiteral()+"\n        ]", "        Dependencies: []", 1), want: "Wrappers"},
+		{name: "wrapper empty Wrappers", src: strings.Replace(validWrapperManifestSource("Xlsx"), "[\n"+wrapperArrayLiteral()+"\n        ]", "[]", 1), want: "non-empty Wrappers"},
+		{name: "pure non-empty Wrappers", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Kind: \"wrapper\"", "Kind: \"pure\"", 1), want: "Wrappers"},
+		{name: "experiment non-empty Wrappers", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Kind: \"wrapper\"", "Kind: \"experiment\"", 1), want: "Wrappers"},
+		{name: "wrapper non-empty EntryMilestone", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Kind: \"wrapper\"", "Kind: \"wrapper\"\n        EntryMilestone: \"M0\"", 1), want: "EntryMilestone"},
+		{name: "literal Wrappers undeclared", src: strings.Replace(validWrapperManifestSource("Xlsx"), "    Wrappers: Wrapper[]\n", "", 1), want: "Wrappers"},
+		{name: "missing Wrapper record", src: removeRecord(validWrapperManifestSource("Xlsx"), "Wrapper"), want: "Wrapper"},
+		{name: "missing WrapperFunction record", src: removeRecord(validWrapperManifestSource("Xlsx"), "WrapperFunction"), want: "WrapperFunction"},
+		{name: "empty wrapper Name", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Name: \"xlsx\"", "Name: \"\"", 1), want: "Name"},
+		{name: "empty Family", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Family: \"Xlsx\"", "Family: \"\"", 1), want: "Family"},
+		{name: "invalid Protocol", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Protocol: \"octxiliary.v0\"", "Protocol: \"other\"", 1), want: "Protocol"},
+		{name: "empty SidecarCommand", src: strings.Replace(validWrapperManifestSource("Xlsx"), "SidecarCommand: \"octxiliary-xlsx\"", "SidecarCommand: \"\"", 1), want: "SidecarCommand"},
+		{name: "empty GoModuleDir", src: strings.Replace(validWrapperManifestSource("Xlsx"), "GoModuleDir: \"octxiliary\"", "GoModuleDir: \"\"", 1), want: "GoModuleDir"},
+		{name: "absolute GoModuleDir", src: strings.Replace(validWrapperManifestSource("Xlsx"), "GoModuleDir: \"octxiliary\"", "GoModuleDir: \"/tmp/octxiliary\"", 1), want: "relative"},
+		{name: "traversal GoModuleDir", src: strings.Replace(validWrapperManifestSource("Xlsx"), "GoModuleDir: \"octxiliary\"", "GoModuleDir: \"../octxiliary\"", 1), want: "path traversal"},
+		{name: "empty Functions", src: strings.Replace(validWrapperManifestSource("Xlsx"), "[\n"+functionArrayLiteral()+"\n]", "[]", 1), want: "Functions"},
+		{name: "duplicate Wrapper Name", src: strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+wrapperArrayLiteral(), 1), want: "duplicate Wrapper.Name"},
+		{name: "duplicate Wrapper Family", src: duplicateWrapperFamilySource(), want: "duplicate Wrapper.Family"},
+		{name: "empty OctName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "OctName: \"ReadSheetNames\"", "OctName: \"\"", 1), want: "OctName"},
+		{name: "empty WireName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "WireName: \"XlsxReadSheetNames\"", "WireName: \"\"", 1), want: "WireName"},
+		{name: "unsupported Arg type", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Args: [\"String\"]", "Args: [\"Record\"]", 1), want: "unsupported transport type"},
+		{name: "unsupported Return type", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Return: \"String[]\"", "Return: \"Handle\"", 1), want: "unsupported transport type"},
+		{name: "duplicate OctName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "OctName: \"WriteBytes\"", "OctName: \"ReadSheetNames\"", 1), want: "duplicate OctName"},
+		{name: "duplicate WireName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "WireName: \"XlsxWriteBytes\"", "WireName: \"XlsxReadSheetNames\"", 1), want: "duplicate WireName"},
+		{name: "Fallible not Bool", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Fallible: true", "Fallible: \"true\"", 1), want: "Fallible"},
+		{name: "Args not array", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Args: [\"String\"]", "Args: \"String\"", 1), want: "Args"},
+		{name: "Args non-string", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Args: [\"String\"]", "Args: [3]", 1), want: "Args"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := loadManifestMetadata(writeManifest(t, tc.src))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func validWrapperManifestSource(name string) string {
+	return strings.Join([]string{
+		"package Manifest",
+		"",
+		"record PackageManifest {",
+		"    Name: String",
+		"    Version: String",
+		"    Description: String",
+		"    Kind: String",
+		"    EntryMilestone: String",
+		"    Dependencies: Dependency[]",
+		"    Wrappers: Wrapper[]",
+		"}",
+		"",
+		"record Dependency {",
+		"    Name: String",
+		"    VersionRequirement: String",
+		"}",
+		"",
+		"record Wrapper {",
+		"    Name: String",
+		"    Family: String",
+		"    Protocol: String",
+		"    SidecarCommand: String",
+		"    GoModuleDir: String",
+		"    Functions: WrapperFunction[]",
+		"}",
+		"",
+		"record WrapperFunction {",
+		"    OctName: String",
+		"    WireName: String",
+		"    Args: String[]",
+		"    Return: String",
+		"    Fallible: Bool",
+		"}",
+		"",
+		"fn Manifest() -> PackageManifest {",
+		"    return PackageManifest {",
+		"        Name: \"" + name + "\"",
+		"        Version: \"0.1.0\"",
+		"        Description: \"Excel workbook wrapper library\"",
+		"        Kind: \"wrapper\"",
+		"        Dependencies: []",
+		"        Wrappers: [",
+		wrapperArrayLiteral(),
+		"        ]",
+		"    }",
+		"}",
+	}, "\n") + "\n"
+}
+
+func wrapperArrayLiteral() string {
+	return strings.Join([]string{
+		"Wrapper {",
+		"Name: \"xlsx\"",
+		"Family: \"Xlsx\"",
+		"Protocol: \"octxiliary.v0\"",
+		"SidecarCommand: \"octxiliary-xlsx\"",
+		"GoModuleDir: \"octxiliary\"",
+		"Functions: [",
+		functionArrayLiteral(),
+		"]",
+		"}",
+	}, "\n")
+}
+
+func functionArrayLiteral() string {
+	return strings.Join([]string{
+		"WrapperFunction {",
+		"OctName: \"ReadSheetNames\"",
+		"WireName: \"XlsxReadSheetNames\"",
+		"Args: [\"String\"]",
+		"Return: \"String[]\"",
+		"Fallible: true",
+		"},",
+		"WrapperFunction {",
+		"OctName: \"WriteBytes\"",
+		"WireName: \"XlsxWriteBytes\"",
+		"Args: [\"String\", \"Bytes\"]",
+		"Return: \"Int\"",
+		"Fallible: false",
+		"}",
+	}, "\n")
+}
+
+func nonWrapperManifestWithEmptyWrappers(name string, kind string, entry string) string {
+	entryLine := ""
+	if entry != "" {
+		entryLine = "        EntryMilestone: \"" + entry + "\"\n"
+	}
+	return strings.Replace(validWrapperManifestSource(name), "        Kind: \"wrapper\"\n        Dependencies: []\n        Wrappers: [\n"+wrapperArrayLiteral()+"\n        ]", "        Kind: \""+kind+"\"\n"+entryLine+"        Dependencies: []\n        Wrappers: []", 1)
+}
+
+func removeRecord(src string, name string) string {
+	start := strings.Index(src, "record "+name+" {")
+	if start < 0 {
+		return src
+	}
+	end := strings.Index(src[start:], "}\n")
+	if end < 0 {
+		return src
+	}
+	return src[:start] + src[start+end+2:]
+}
+
+func duplicateWrapperFamilySource() string {
+	second := strings.Replace(wrapperArrayLiteral(), "Name: \"xlsx\"", "Name: \"xlsx2\"", 1)
+	return strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+second, 1)
 }

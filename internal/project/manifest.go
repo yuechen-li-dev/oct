@@ -5,6 +5,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/manifestkind"
+	"github.com/yuechen-li-dev/oct/internal/manifestwrapper"
 )
 
 func validateManifestFile(packageName string, file ast.File) error {
@@ -19,11 +20,26 @@ func validateManifestFile(packageName string, file ast.File) error {
 	}
 	manifestRecord, _ := findRecord(file, "PackageManifest")
 	dependencyRecord, _ := findRecord(file, "Dependency")
+	manifestFields := recordFieldSet(manifestRecord)
+	var wrapperFields map[string]bool
+	var wrapperFunctionFields map[string]bool
+	if manifestFields["Wrappers"] {
+		if err := requireWrapperRecord(file); err != nil {
+			return err
+		}
+		if err := requireWrapperFunctionRecord(file); err != nil {
+			return err
+		}
+		wrapperRecord, _ := findRecord(file, "Wrapper")
+		wrapperFunctionRecord, _ := findRecord(file, "WrapperFunction")
+		wrapperFields = recordFieldSet(wrapperRecord)
+		wrapperFunctionFields = recordFieldSet(wrapperFunctionRecord)
+	}
 	manifestFn, ok := findManifestFunction(file)
 	if !ok {
 		return fmt.Errorf("manifest.oct must define fn Manifest() -> PackageManifest")
 	}
-	if err := validateManifestFunctionBody(packageName, manifestFn, recordFieldSet(manifestRecord), recordFieldSet(dependencyRecord)); err != nil {
+	if err := validateManifestFunctionBody(packageName, manifestFn, manifestFields, recordFieldSet(dependencyRecord), wrapperFields, wrapperFunctionFields); err != nil {
 		return err
 	}
 	return nil
@@ -43,6 +59,7 @@ func requirePackageManifestRecord(file ast.File) error {
 	optional := map[string]ast.TypeRef{
 		"Kind":           {Name: "String"},
 		"EntryMilestone": {Name: "String"},
+		"Wrappers":       manifestwrapper.PackageManifestWrappersType(),
 	}
 	if err := validateRecordFields(record, required, optional); err != nil {
 		return fmt.Errorf("manifest.oct has invalid PackageManifest record: %w", err)
@@ -64,6 +81,28 @@ func requireDependencyRecord(file ast.File) error {
 	}
 	if err := validateRecordFields(record, required, optional); err != nil {
 		return fmt.Errorf("manifest.oct has invalid Dependency record: %w", err)
+	}
+	return nil
+}
+
+func requireWrapperRecord(file ast.File) error {
+	record, ok := findRecord(file, "Wrapper")
+	if !ok {
+		return fmt.Errorf("manifest.oct must define record Wrapper")
+	}
+	if err := validateRecordFields(record, manifestwrapper.WrapperRequiredFields(), nil); err != nil {
+		return fmt.Errorf("manifest.oct has invalid Wrapper record: %w", err)
+	}
+	return nil
+}
+
+func requireWrapperFunctionRecord(file ast.File) error {
+	record, ok := findRecord(file, "WrapperFunction")
+	if !ok {
+		return fmt.Errorf("manifest.oct must define record WrapperFunction")
+	}
+	if err := validateRecordFields(record, manifestwrapper.WrapperFunctionRequiredFields(), nil); err != nil {
+		return fmt.Errorf("manifest.oct has invalid WrapperFunction record: %w", err)
 	}
 	return nil
 }
@@ -121,7 +160,7 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 	return ast.FunctionDecl{}, false
 }
 
-func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool) error {
+func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool, wrapperFields map[string]bool, wrapperFunctionFields map[string]bool) error {
 	if len(fn.Body.Statements) != 1 {
 		return fmt.Errorf("manifest function returned invalid package metadata")
 	}
@@ -194,6 +233,19 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manif
 		entryMilestoneValue = entryMilestoneLiteral.Value
 	}
 	if err := manifestkind.ValidateEntryMilestone(normalizedKind, entryMilestoneValue); err != nil {
+		return err
+	}
+	wrappersPresent := false
+	wrapperCount := 0
+	if wrappersExpr, ok := fields["Wrappers"]; ok {
+		wrappersPresent = true
+		wrappers, err := manifestwrapper.ExtractWrappers(wrappersExpr, wrapperFields, wrapperFunctionFields)
+		if err != nil {
+			return err
+		}
+		wrapperCount = len(wrappers)
+	}
+	if err := manifestwrapper.ValidateWrapperKindRules(normalizedKind, wrappersPresent, wrapperCount); err != nil {
 		return err
 	}
 	return nil
