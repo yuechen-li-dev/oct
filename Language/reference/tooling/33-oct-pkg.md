@@ -2,7 +2,7 @@
 
 ## Overview
 
-`oct pkg` manages package fetch, cache inspection, and dependency sync.
+`oct pkg` manages package fetch, cache inspection, dependency sync, and planning-only wrapper inspection.
 Package metadata is declared in `manifest.oct`.
 Dependency sync is explicit and command-driven.
 
@@ -111,6 +111,20 @@ The registry version is the stable string `octxiliary.registry.v0`. A registry l
 
 The `.octagon` artifact uses data-only record names `OctxiliaryRegistry`, `OctxiliarySidecar`, and `OctxiliaryFunction`; no package declaration is emitted. Registry output is deterministic, uses safe string quoting, and preserves the Go module path exactly as resolved by wrapper build planning. The artifact is a resolved planning artifact, not a build lockfile and not a final install/cache layout contract.
 
+## Wrapper planning command
+
+M5f exposes wrapper build planning through:
+
+```text
+oct pkg wrappers [--registry-out <path>]
+```
+
+`oct pkg wrappers` runs from the current directory as the package or project root. It reads the current `manifest.oct`, uses the same direct-dependency sync conventions as `oct pkg sync` to inspect the current package/project graph, builds the wrapper build plan for the current root plus synced direct dependencies, and prints a deterministic human-readable summary. The summary reports whether native wrappers are present, whether future native build permission would be required, the number of planned sidecars, and stable sidecar fields in plan order.
+
+`oct pkg wrappers --registry-out <path>` builds the same plan, converts it to the inert Octxiliary registry artifact, and writes deterministic `.octagon` text to `<path>`. The path must end in `.octagon`; parent directories may be created by the writer. The command reports the written registry path.
+
+Wrapper planning itself does not download Go modules, run `go mod download`, run `go build`, generate sidecar binaries, execute wrapper sidecars, discover sidecars at runtime, generate lockfiles, change the Octxiliary protocol, or add compiler/runtime registry consumption. It may fetch or reuse package metadata according to the same package-manager dependency sync assumptions as `oct pkg sync`. Native build permission prompts and any real native build execution remain future work. Existing `oct pkg get` and `oct pkg sync` commands do not implicitly write wrapper registries.
+
 ## Rules
 
 - Manifest metadata is declared by `fn Manifest() -> PackageManifest` in `manifest.oct`.
@@ -123,8 +137,11 @@ The `.octagon` artifact uses data-only record names `OctxiliaryRegistry`, `Octxi
 - `oct pkg sync` reads the current project's manifest and syncs direct dependencies.
 - `oct pkg sync` operates on the current directory as the project root.
 - Sync output includes project path, manifest path, dependency count, per-dependency status, and completion line.
-- Usage is strict: `oct pkg <get|list|sync>`.
-- Present limitations: package operations are manifest-driven and direct-dependency oriented; no additional package-manager surfaces are defined here.
+- `oct pkg wrappers` reads the current package/project graph and prints a deterministic wrapper build plan summary.
+- `oct pkg wrappers --registry-out <path>` writes an inert Octxiliary registry artifact to a `.octagon` path.
+- `oct pkg wrappers` always reports that no wrapper sidecars were built or executed.
+- Usage is strict: `oct pkg <get|list|sync|wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
+- Present limitations: package operations are manifest-driven and direct-dependency oriented; wrapper planning has no runtime consumption, lockfile generation, native build prompts, native build execution, or sidecar execution.
 
 See also [13 Packages](../language/13-packages.md) for language-level `package` / `import` rules.
 
@@ -136,10 +153,15 @@ Valid:
 oct pkg get https://example.com/repo.git
 oct pkg list
 oct pkg sync
+oct pkg wrappers
+oct pkg wrappers --registry-out .oct/octxiliary-registry.octagon
 ```
 
 Invalid:
 
 ```text
 oct pkg sync extra-arg
+oct pkg wrappers extra
+oct pkg wrappers --registry-out
+oct pkg wrappers --registry-out registry.txt extra
 ```

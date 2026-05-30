@@ -1,6 +1,9 @@
 package pkgmgr
 
 import (
+	"net/url"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -194,4 +197,120 @@ func testWrapperMetadata(name string, family string, command string, moduleDir s
 			{OctName: "WriteBytes", WireName: "XlsxWriteBytes", Args: []string{"String", "Bytes"}, Return: "Int", Fallible: false},
 		},
 	}
+}
+
+func TestBuildWrapperPlanForProjectIncludesCurrentRoot(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "manifest.oct")
+	if err := os.WriteFile(manifestPath, []byte(validWrapperManifestSource("Xlsx")), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	manager := &Manager{cacheDir: filepath.Join(t.TempDir(), "cache")}
+
+	plan, err := manager.BuildWrapperPlanForProject(root)
+	if err != nil {
+		t.Fatalf("build project wrapper plan: %v", err)
+	}
+	if plan.Root != root {
+		t.Fatalf("Root = %q, want %q", plan.Root, root)
+	}
+	if len(plan.Sidecars) != 1 || plan.Sidecars[0].PackageName != "Xlsx" || plan.Sidecars[0].GoModulePath != filepath.Join(root, "octxiliary") {
+		t.Fatalf("unexpected sidecars: %#v", plan.Sidecars)
+	}
+}
+
+func TestBuildWrapperPlanForProjectIncludesSyncedDependencies(t *testing.T) {
+	requireGitForPkgMgr(t)
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	wrapperSource := createPkgMgrGitRepoWithManifest(t, validWrapperManifestSource("Xlsx"))
+	root := t.TempDir()
+	manifest := projectManifestSourceForPkgMgr([]string{`Dependency { Name: "Xlsx" VersionRequirement: "^0.1.0" Source: "` + wrapperSource + `" }`})
+	if err := os.WriteFile(filepath.Join(root, "manifest.oct"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write root manifest: %v", err)
+	}
+	manager := &Manager{cacheDir: cacheDir}
+
+	plan, err := manager.BuildWrapperPlanForProject(root)
+	if err != nil {
+		t.Fatalf("build project wrapper plan: %v", err)
+	}
+	if len(plan.Sidecars) != 1 || plan.Sidecars[0].PackageName != "Xlsx" {
+		t.Fatalf("unexpected sidecars: %#v", plan.Sidecars)
+	}
+	if !strings.Contains(plan.Sidecars[0].GoModulePath, cacheDir) {
+		t.Fatalf("expected dependency module path under cache %q, got %q", cacheDir, plan.Sidecars[0].GoModulePath)
+	}
+}
+
+func requireGitForPkgMgr(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not available: %v", err)
+	}
+}
+
+func createPkgMgrGitRepoWithManifest(t *testing.T, manifest string) string {
+	t.Helper()
+	repoDir := filepath.Join(t.TempDir(), "remote")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runPkgMgrCmd(t, repoDir, "git", "init")
+	runPkgMgrCmd(t, repoDir, "git", "config", "user.name", "oct-test")
+	runPkgMgrCmd(t, repoDir, "git", "config", "user.email", "oct-test@example.com")
+	if err := os.WriteFile(filepath.Join(repoDir, "manifest.oct"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write repo manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "main.oct"), []byte("package Demo\n"), 0o644); err != nil {
+		t.Fatalf("write repo source: %v", err)
+	}
+	runPkgMgrCmd(t, repoDir, "git", "add", ".")
+	runPkgMgrCmd(t, repoDir, "git", "commit", "-m", "init")
+	path := filepath.ToSlash(repoDir)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
+func runPkgMgrCmd(t *testing.T, dir string, name string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("command %s %v failed: %v\noutput:%s", name, args, err, string(out))
+	}
+}
+
+func projectManifestSourceForPkgMgr(depLiterals []string) string {
+	deps := ""
+	if len(depLiterals) > 0 {
+		deps = "\n            " + strings.Join(depLiterals, ",\n            ") + "\n        "
+	}
+	return strings.Join([]string{
+		"package Manifest",
+		"",
+		"record PackageManifest {",
+		"    Name: String",
+		"    Version: String",
+		"    Description: String",
+		"    Dependencies: Dependency[]",
+		"}",
+		"",
+		"record Dependency {",
+		"    Name: String",
+		"    VersionRequirement: String",
+		"    Source: String",
+		"}",
+		"",
+		"fn Manifest() -> PackageManifest {",
+		"    return PackageManifest {",
+		"        Name: \"Main\"",
+		"        Version: \"0.1.0\"",
+		"        Description: \"main project\"",
+		"        Dependencies: [" + deps + "]",
+		"    }",
+		"}",
+	}, "\n") + "\n"
 }

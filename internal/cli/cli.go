@@ -167,7 +167,7 @@ func isHelpArg(args []string) bool { return len(args) == 1 && (args[0] == "--hel
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers>"))
 	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
@@ -265,9 +265,115 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintln(stdout, "sync complete")
 		return err
+	case "wrappers":
+		registryOut, err := parsePkgWrappersArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "pkg wrappers", err)
+		}
+		plan, err := manager.BuildWrapperPlanForProject(".")
+		if err != nil {
+			return reportCommandError(stderr, "pkg wrappers", err)
+		}
+		if err := writePkgWrappersSummary(stdout, plan); err != nil {
+			return err
+		}
+		if registryOut != "" {
+			registry, err := pkgmgr.BuildOctxiliaryRegistry(plan)
+			if err != nil {
+				return reportCommandError(stderr, "pkg wrappers", err)
+			}
+			if err := pkgmgr.WriteOctxiliaryRegistryOctagon(registryOut, registry); err != nil {
+				return reportCommandError(stderr, "pkg wrappers", err)
+			}
+			if _, err := fmt.Fprintf(stdout, "Wrote Octxiliary registry: %s\n", registryOut); err != nil {
+				return err
+			}
+		}
+		_, err = fmt.Fprintln(stdout, "No wrapper sidecars were built or executed.")
+		return err
 	default:
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers>"))
 	}
+}
+
+func parsePkgWrappersArgs(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	if len(args) != 2 || args[0] != "--registry-out" || strings.TrimSpace(args[1]) == "" {
+		return "", fmt.Errorf("usage: oct pkg wrappers [--registry-out <path>]")
+	}
+	return args[1], nil
+}
+
+func writePkgWrappersSummary(stdout io.Writer, plan pkgmgr.WrapperBuildPlan) error {
+	if _, err := fmt.Fprintln(stdout, "Wrapper build plan:"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "native wrappers: %s\n", yesNo(plan.HasNativeWrappers)); err != nil {
+		return err
+	}
+	if plan.HasNativeWrappers {
+		if _, err := fmt.Fprintf(stdout, "requires native build permission: %s\n", yesNo(plan.RequiresNativeBuildPermission)); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "sidecars: %d\n", len(plan.Sidecars)); err != nil {
+		return err
+	}
+	if len(plan.Sidecars) == 0 {
+		_, err := fmt.Fprintln(stdout)
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout); err != nil {
+		return err
+	}
+	for _, sidecar := range plan.Sidecars {
+		if _, err := fmt.Fprintf(stdout, "* package %s %s\n", sidecar.PackageName, wrapperPackageVersion(plan, sidecar.PackageName)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  wrapper: %s\n", sidecar.WrapperName); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  family: %s\n", sidecar.Family); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  command: %s\n", sidecar.SidecarCommand); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  protocol: %s\n", sidecar.Protocol); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  module: %s\n", sidecar.GoModuleDir); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  module path: %s\n", sidecar.GoModulePath); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  functions: %d\n", len(sidecar.Functions)); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(stdout); err != nil {
+		return err
+	}
+	return nil
+}
+
+func wrapperPackageVersion(plan pkgmgr.WrapperBuildPlan, packageName string) string {
+	for _, pkg := range plan.Packages {
+		if pkg.PackageName == packageName {
+			return pkg.Version
+		}
+	}
+	return ""
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
 
 func executeExp(args []string, stdout io.Writer, stderr io.Writer) error {
