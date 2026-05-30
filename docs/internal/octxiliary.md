@@ -213,3 +213,18 @@ The production `cmd/octxiliary-time` sidecar uses the existing `OCTWRAP` handsha
 The public Oct APIs remain `NowIso8601`, `ParseIso8601`, `FormatIso8601`, `UnixSecondsNow`, and `FormatUnixSeconds`. `ParseIso8601` and `FormatIso8601` preserve the existing Time API by returning normalized RFC3339/ISO-8601 text, not Unix seconds. Invalid time strings return sidecar errors (`ok: false`) instead of panics. `UnixSecondsNow` returns host Unix seconds as `Int`.
 
 This extends the M7/M8 proof from hash and compression wrappers to time-dependent host helpers without changing the M6 transport set. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M9 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.
+
+## M10 Text/Regex standard-library generic wrapper migration
+
+M10 migrates `Libraries/Text` onto the generic wrapper path to prove compact host-backed regex/text operations through manifest-declared Octxiliary calls. The package manifest declares `Kind: "wrapper"` and a `Text` wrapper family using protocol `octxiliary.v0`, sidecar command `octxiliary-text`, and package-local Go module directory `octxiliary`.
+
+The production `cmd/octxiliary-text` sidecar uses the existing `OCTWRAP` handshake/framing and generic typed-value request shape. It dispatches `Family: "Text"` for these manifest-declared wire functions:
+
+- `RegexIsMatch(String, String) -> Bool ! Error`
+- `RegexFindAll(String, String) -> String[] ! Error`
+- `RegexReplaceAll(String, String, String) -> String ! Error`
+- `RegexSplit(String, String) -> String[] ! Error`
+
+The public Oct APIs remain `IsMatch(pattern, text)`, `FindAll(pattern, text)`, `ReplaceAll(pattern, text, replacement)`, and `Split(pattern, text)`. Compiled lowering intercepts those public functions through manifest metadata and invokes the corresponding regex wire functions instead of lowering the interpreted wrapper bodies. Invalid regex patterns return sidecar errors (`ok: false`) instead of panics.
+
+The Text sidecar follows Go standard-library `regexp` syntax and behavior, matching the existing interpreter-backed Text implementation. This extends the M7/M8/M9 proof to `String, String -> Bool`, `String, String -> String[]`, and compact text transforms without changing the M6 transport set. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M10 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.

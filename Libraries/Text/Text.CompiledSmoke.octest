@@ -1,0 +1,8 @@
+package Text
+
+[Fact]
+fn TextCompiledRegexSmoke() -> Void {
+    let matched = IsMatch("[a-z]+[0-9]+", "abc123")!
+    Assert.True(matched, "compiled regex should use text octxiliary sidecar")
+    return
+}
