@@ -197,3 +197,19 @@ The production `cmd/octxiliary-compression` sidecar uses the existing `OCTWRAP` 
 The public Oct APIs remain `CompressBytes`, `DecompressBytes`, `CompressFile`, and `DecompressFile`; compiled lowering intercepts those manifest-declared public functions and invokes the corresponding gzip wire functions instead of lowering the interpreted wrapper bodies. Invalid gzip payloads and file errors are returned as sidecar errors (`ok: false`) instead of panics.
 
 This extends the M7 proof from string-return hashing to `Bytes -> Bytes` transforms and file-producing gzip helpers without changing the M6 transport set. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M8 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.
+
+## M9 Time standard-library generic wrapper migration
+
+M9 migrates `Libraries/Time` onto the generic wrapper path to prove host/time helpers through manifest-declared Octxiliary calls. The package manifest declares `Kind: "wrapper"` and a `Time` wrapper family using protocol `octxiliary.v0`, sidecar command `octxiliary-time`, and package-local Go module directory `octxiliary`.
+
+The production `cmd/octxiliary-time` sidecar uses the existing `OCTWRAP` handshake/framing and generic typed-value request shape. It dispatches `Family: "Time"` for these manifest-declared wire functions:
+
+- `TimeNowIso8601() -> String`
+- `TimeParseIso8601(String) -> String ! Error`
+- `TimeFormatIso8601(String) -> String ! Error`
+- `TimeUnixSecondsNow() -> Int`
+- `TimeFormatUnixSecond(Int) -> String ! Error`
+
+The public Oct APIs remain `NowIso8601`, `ParseIso8601`, `FormatIso8601`, `UnixSecondsNow`, and `FormatUnixSeconds`. `ParseIso8601` and `FormatIso8601` preserve the existing Time API by returning normalized RFC3339/ISO-8601 text, not Unix seconds. Invalid time strings return sidecar errors (`ok: false`) instead of panics. `UnixSecondsNow` returns host Unix seconds as `Int`.
+
+This extends the M7/M8 proof from hash and compression wrappers to time-dependent host helpers without changing the M6 transport set. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M9 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.

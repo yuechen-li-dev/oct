@@ -10,9 +10,22 @@ fn TimeParseFormatIso8601Sanity() -> Void {
 }
 
 [Fact]
+fn TimeDeterministicIso8601Fixtures() -> Void {
+    let epoch = ParseIso8601("1970-01-01T00:00:00Z")!
+    Assert.Equal("1970-01-01T00:00:00Z", epoch, "unix epoch should parse deterministically")
+    let y2k = ParseIso8601("2000-01-01T00:00:00Z")!
+    Assert.Equal("2000-01-01T00:00:00Z", y2k, "y2k timestamp should parse deterministically")
+    let y2kFormatted = FormatUnixSeconds(946684800)!
+    Assert.Equal("2000-01-01T00:00:00Z", y2kFormatted, "unix seconds should format deterministically")
+    return
+}
+
+[Fact]
 fn TimeUnixSecondsFormattingSanity() -> Void {
     let now = UnixSecondsNow()
-    Assert.True(now > 0, "unix seconds now should be positive")
+    Assert.True(now > 946684800, "unix seconds now should be after 2000-01-01")
+    let currentIso = NowIso8601()
+    Assert.True(Len(currentIso) > 0, "current iso timestamp should be non-empty")
     let epoch = FormatUnixSeconds(0)!
     Assert.Equal("1970-01-01T00:00:00Z", epoch, "unix epoch should format deterministically")
     return
@@ -20,6 +33,13 @@ fn TimeUnixSecondsFormattingSanity() -> Void {
 
 [Fact]
 fn TimeInvalidIso8601Fails() -> Void {
-    Assert.Error(ParseIso8601("not-a-time"), "invalid iso8601 text should fail")
+    match ParseIso8601("not-a-time") {
+        ok(value) => {
+            Assert.True(false, "invalid iso8601 text should fail")
+        }
+        err(e) => {
+            Assert.True(true, "invalid iso8601 text should fail")
+        }
+    }
     return
 }

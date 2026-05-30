@@ -272,3 +272,67 @@ func pkgWrappersCompressionLiteral() string {
 		"}",
 	}, "\n")
 }
+
+func TestPkgWrappersTimePackage(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Time", pkgWrappersTimeLiteral()))
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers")
+	if err != nil {
+		t.Fatalf("expected pkg wrappers success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"native wrappers: yes",
+		"sidecars: 1",
+		"* package Time 0.1.0",
+		"wrapper: time",
+		"family: Time",
+		"command: octxiliary-time",
+		"protocol: octxiliary.v0",
+		"functions: 5",
+		"No wrapper sidecars were built or executed.",
+	)
+}
+
+func TestPkgWrappersTimeRegistryOutput(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Time", pkgWrappersTimeLiteral()))
+	registryPath := filepath.Join(t.TempDir(), "time-registry.octagon")
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers", "--registry-out", registryPath)
+	if err != nil {
+		t.Fatalf("expected pkg wrappers registry success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"Wrote Octxiliary registry: "+registryPath,
+		"No wrapper sidecars were built or executed.",
+	)
+	body, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("expected registry file: %v", err)
+	}
+	registry := string(body)
+	assertOutputContains(t, registry,
+		"Family: \"Time\"",
+		"SidecarCommand: \"octxiliary-time\"",
+	)
+}
+
+func pkgWrappersTimeLiteral() string {
+	return strings.Join([]string{
+		"Wrapper {",
+		"Name: \"time\"",
+		"Family: \"Time\"",
+		"Protocol: \"octxiliary.v0\"",
+		"SidecarCommand: \"octxiliary-time\"",
+		"GoModuleDir: \"octxiliary\"",
+		"Functions: [",
+		"WrapperFunction { OctName: \"NowIso8601\" WireName: \"TimeNowIso8601\" Args: [] Return: \"String\" Fallible: false },",
+		"WrapperFunction { OctName: \"ParseIso8601\" WireName: \"TimeParseIso8601\" Args: [\"String\"] Return: \"String\" Fallible: true },",
+		"WrapperFunction { OctName: \"FormatIso8601\" WireName: \"TimeFormatIso8601\" Args: [\"String\"] Return: \"String\" Fallible: true },",
+		"WrapperFunction { OctName: \"UnixSecondsNow\" WireName: \"TimeUnixSecondsNow\" Args: [] Return: \"Int\" Fallible: false },",
+		"WrapperFunction { OctName: \"FormatUnixSeconds\" WireName: \"TimeFormatUnixSecond\" Args: [\"Int\"] Return: \"String\" Fallible: true }",
+		"]",
+		"}",
+	}, "\n")
+}
