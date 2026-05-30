@@ -1,8 +1,16 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-05-22._
+_Last updated: 2026-05-30._
 
 This file is the **source of truth** for compiled support posture.
+
+## M14 Markdown compiled support
+
+- `Libraries/Markdown` is compiled as ordinary deterministic report construction. It is **not** an Octxiliary wrapper package, and no `octxiliary-markdown` sidecar is required.
+- Scalar/list/report helpers now lower directly in generated Go: headings, paragraphs, blank lines, horizontal rules, bullets, numbered lists, code blocks, callouts, images, figures, key-value tables, sections, subsections, report flattening, and escape helpers.
+- `Markdown.Report(blocks: String[][]) -> String[]` uses the existing compiled `String[][]` value path for block composition.
+- Columnar record table helpers (`Markdown.Table` and `Markdown.TableWithColumns`) compile as direct in-process helpers over generated record structs; this does not add record transport or an Octxiliary boundary.
+- Package-level compiled verification: `go run ./cmd/oct test Libraries/Markdown --execution compiled`.
 
 ## Current green surfaces
 

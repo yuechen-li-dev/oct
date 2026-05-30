@@ -86,7 +86,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Interpolation` | pass | pass | fail, 16 / 12 | `generated_go_error`, `missing_manifest` | `CubicSpline*` | Generated Go confuses scalar/list variables (`float64` as `[]float64`); error-path `Assert` gaps. | M10/M9 |
 | `Libraries/Json` | fail | fail | fail before facts | `missing_manifest` / layout | package root | No fact tests found; package has implementation only. | M9 / add tests if desired |
 | `Libraries/LinearAlgebra` | pass | pass | fail, 18 / 24 | `missing_manifest`, `generated_go_error` | `MatrixDimensionMismatchRaisesError`, `JacobiEigen*` | Many core facts compile; generated Go has int/float loop-index confusion in eigen routines; error tests miss `Assert`. | M10/M9 |
-| `Libraries/Markdown` | pass | pass | fail, 3 / 3 | `unsupported_builtin` | `MarkdownH1`, `MarkdownCallout`, `MarkdownReport` | Invalid `.octfail` guidance passes; positive markdown helpers are builtin-backed and not compiled. | M6 or direct compiled helpers |
+| `Libraries/Markdown` | pass | pass | pass, 3 / 0 | none for focused Markdown M14 coverage | `MarkdownH1`, `MarkdownCallout`, `MarkdownReport`, scalar/list/report helpers, table helpers | M14 lowers deterministic Markdown helpers directly in generated Go with no Octxiliary sidecar. `String[][]` report composition is now supported; columnar record tables compile in process without adding record transport. | done M14 |
 | `Libraries/Mathematics` | pass | pass | fail, 6 / 15 | `unsupported_language_lowering`, `unsupported_builtin`, `missing_manifest` | `RootFind*`, `IndexOfMax*`, `DerivativePolynomial*` | Function callback lowering and `Idx` builtin are missing; error tests need `Assert`. | M8/M10/M9 |
 | `Libraries/Mechanics` | pass | pass | fail, 48 / 17 | `unsupported_builtin`, `generated_go_error` | `Idx`, continuum/matrix stress helpers | Broad pure-Oct mechanics coverage compiles; remaining gaps are `Idx` and generated Go matrix/list arithmetic issues. | M8/M10 |
 | `Libraries/Numerics` | pass | pass | fail, 0 / 6 | `unsupported_language_lowering` | `BisectionFindsSquareRoot`, `NewtonFindsSquareRoot` | Root-finder tests use function arguments/callbacks not lowered. | M8 |
@@ -194,11 +194,10 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 - Category: `unsupported_builtin`
 - Command: `go run ./cmd/oct test Libraries/Markdown --execution compiled`
 - Package/test path: `Libraries/Markdown/Markdown.Core.octest`
-- Failing tests/functions: `MarkdownBlocksM0`, `MarkdownM1Helpers`, `MarkdownReportAndTablesM0`.
-- Error excerpt: `function Markdown.MarkdownBlocksM0: compiled mode does not yet support builtin MarkdownH1`
-- Likely cause: markdown helper builtins are not lowered in compiled mode.
-- Proposed fix class: direct compiled helpers or generic wrapper lowering, depending on intended ownership.
-- Proposed milestone: M6 or M8.
+- Current status after M14: `MarkdownBlocksM0`, `MarkdownM1Helpers`, and `MarkdownReportAndTablesM0` pass in compiled mode.
+- Implementation note: deterministic Markdown helpers are direct compiled helpers, not Octxiliary wrappers.
+- Resolution: M14 added direct compiled helper lowering for Markdown without adding an Octxiliary sidecar.
+- Follow-up: keep Markdown in direct-helper coverage; do not route it through generic wrapper lowering.
 
 ### M5G-F009 — UI widget/canvas/mount bridge not compiled
 
@@ -393,7 +392,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Interpolation` | linear/cubic spline | partial | `pure_oct` | scalar/list generated Go type confusion; `Assert` | high |
 | `Json` | JSON package helpers | no facts | `wrapper_registry_generic_octxiliary` | no tests at package root; JSON builtins unsupported through IO | high |
 | `LinearAlgebra` | matrix/eigen | partial | `pure_oct` / maybe `compiled_helper` for heavy kernels later | generated Go int/float loop variables; `Assert` | high |
-| `Markdown` | report/table/callout helpers | fail positives | `compiled_helper` or `wrapper_registry_generic_octxiliary` | markdown builtins unsupported | medium |
+| `Markdown` | report/table/callout helpers | migrated M14 | `compiled_helper` | none for focused scalar/list/report/table coverage; no sidecar | done |
 | `Mathematics` | calculus/core/transforms | partial | `pure_oct` plus `direct_builtin` | `Idx`; function callback lowering; `Assert` | high |
 | `Mechanics` | continuum/stress/shaft/fatigue | broad partial | `pure_oct` | `Idx`; matrix/list generated Go errors | high |
 | `Numerics` | roots | fail | `pure_oct` plus function-value lowering | callback lowering | high |

@@ -1222,6 +1222,24 @@ func isOctxiliaryBuiltin(name string) bool {
 	}
 }
 
+func isMarkdownCompiledBuiltin(name string) bool {
+	switch canonicalCompiledBuiltinName(name) {
+	case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
+		return true
+	default:
+		return false
+	}
+}
+
+func compiledMarkdownBuiltinReturnType(name string) string {
+	switch canonicalCompiledBuiltinName(name) {
+	case "MarkdownEscapeText", "MarkdownEscapeTableCell":
+		return "String"
+	default:
+		return "String[]"
+	}
+}
+
 func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
 	for name := range usedBuiltins {
 		if isOctxiliaryBuiltin(name) {
@@ -1261,6 +1279,46 @@ func canonicalCompiledBuiltinName(name string) string {
 		return "StringQuoteJSON"
 	case "Random.Gaussian", "Gaussian":
 		return "Random.RandNormal"
+	case "Markdown.H1", "Markdown.Title":
+		return "MarkdownH1"
+	case "Markdown.H2", "Markdown.Subtitle":
+		return "MarkdownH2"
+	case "Markdown.H3":
+		return "MarkdownH3"
+	case "Markdown.Paragraph":
+		return "MarkdownParagraph"
+	case "Markdown.Blank":
+		return "MarkdownBlank"
+	case "Markdown.HorizontalRule":
+		return "MarkdownHorizontalRule"
+	case "Markdown.Bullets":
+		return "MarkdownBullets"
+	case "Markdown.Numbered":
+		return "MarkdownNumbered"
+	case "Markdown.CodeBlock":
+		return "MarkdownCodeBlock"
+	case "Markdown.Callout":
+		return "MarkdownCallout"
+	case "Markdown.Image":
+		return "MarkdownImage"
+	case "Markdown.Figure":
+		return "MarkdownFigure"
+	case "Markdown.Table":
+		return "MarkdownTable"
+	case "Markdown.TableWithColumns":
+		return "MarkdownTableWithColumns"
+	case "Markdown.KeyValueTable":
+		return "MarkdownKeyValueTable"
+	case "Markdown.Section":
+		return "MarkdownSection"
+	case "Markdown.Subsection":
+		return "MarkdownSubsection"
+	case "Markdown.Report":
+		return "MarkdownReport"
+	case "Markdown.EscapeText":
+		return "MarkdownEscapeText"
+	case "Markdown.EscapeTableCell":
+		return "MarkdownEscapeTableCell"
 	default:
 		return name
 	}
@@ -1969,6 +2027,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if builtin && callee == "Append" && len(argTypes) > 0 {
 			ret = argTypes[0]
+		}
+		if builtin && isMarkdownCompiledBuiltin(callee) {
+			checkedRet, err := compiledBuiltinReturnType(callee, argTypes)
+			if err != nil {
+				return "", "", false, err
+			}
+			ret = checkedRet
 		}
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
@@ -2749,6 +2814,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 					ret = "String[]"
 				}
 				return normalized, ret, true, false, nil
+			case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
+				return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
 			case "RoundToInt", "FloorToInt", "CeilToInt":
 				return normalized, "Int", true, false, nil
 			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "Clamp01":
@@ -2784,8 +2851,16 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return "", "", false, false, fmt.Errorf("unsupported call target")
 		}
 		builtinName := pkgIdent.Name + "." + x.Field
+		if pkgIdent.Name == "Markdown" {
+			if aliasName, mapped := builtin.ResolveNamespacedAlias(pkgIdent.Name, x.Field); mapped {
+				return aliasName, compiledMarkdownBuiltinReturnType(aliasName), true, false, nil
+			}
+		}
 		if builtin.IsName(builtinName) {
 			canonical := canonicalCompiledBuiltinName(builtinName)
+			if isMarkdownCompiledBuiltin(canonical) {
+				return canonical, compiledMarkdownBuiltinReturnType(canonical), true, false, nil
+			}
 			switch builtinName {
 			case "Random.RngSeed":
 				return builtinName, "Random.Rng", true, false, nil
@@ -3454,6 +3529,91 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		if argTypes[0] != "String" {
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+	case "MarkdownEscapeText", "MarkdownEscapeTableCell":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String", nil
+	case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+	case "MarkdownBlank", "MarkdownHorizontalRule":
+		if len(argTypes) != 0 {
+			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
+		}
+		return "String[]", nil
+	case "MarkdownBullets", "MarkdownNumbered":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+	case "MarkdownCodeBlock", "MarkdownCallout":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "String[]", nil
+	case "MarkdownImage", "MarkdownFigure":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "String[]", nil
+	case "MarkdownKeyValueTable":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String[]" || argTypes[1] != "String[]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "String[]", nil
+	case "MarkdownReport":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String[][]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+	case "MarkdownSection", "MarkdownSubsection":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String[][]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "String[]", nil
+	case "MarkdownTable":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] == "String[][]" || argTypes[0] == "String[]" || argTypes[0] == "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[]", nil
+	case "MarkdownTableWithColumns":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[1] != "String[]" || argTypes[0] == "String[][]" || argTypes[0] == "String[]" || argTypes[0] == "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for types (%s, %s)", name, argTypes[0], argTypes[1])
 		}
 		return "String[]", nil
 	default:
@@ -4576,6 +4736,16 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["StringSplitLines"] || usedBuiltins["StringEscapeJSON"] {
 		b.WriteString(__octStringHelpers)
 	}
+	needsMarkdownHelpers := false
+	for builtinName := range usedBuiltins {
+		if isMarkdownCompiledBuiltin(builtinName) {
+			needsMarkdownHelpers = true
+			break
+		}
+	}
+	if needsMarkdownHelpers {
+		b.WriteString(__octMarkdownHelpers)
+	}
 	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
 		b.WriteString("type __octParsedKind int\n\n")
 		b.WriteString("const (\n")
@@ -5094,6 +5264,13 @@ func __octCryptoRandFloat01() (float64, error) {
 `
 
 func builtinImportDeps(name string) []string {
+	name = canonicalCompiledBuiltinName(name)
+	if isMarkdownCompiledBuiltin(name) {
+		if name == "MarkdownTable" || name == "MarkdownTableWithColumns" {
+			return []string{"reflect", "strings"}
+		}
+		return []string{"strings"}
+	}
 	switch name {
 	case "Contains", "StartsWith", "EndsWith", "Trim", "Lower", "Upper", "Join":
 		return []string{"strings"}
@@ -5177,6 +5354,184 @@ func __octStringSplitLines(text string) []string {
 func __octStringEscapeJSON(text string) string {
 	quoted := strconv.Quote(text)
 	return quoted[1 : len(quoted)-1]
+}
+`
+
+const __octMarkdownHelpers = `
+func __octMarkdownNormalizeInline(text string) string {
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.ReplaceAll(normalized, "\n", " ")
+	return strings.TrimSpace(normalized)
+}
+
+func __octMarkdownEscapeTableCell(text string) string {
+	return strings.ReplaceAll(__octMarkdownNormalizeInline(text), "|", "\\|")
+}
+
+func __octMarkdownLongestBacktickRun(text string) int {
+	longest := 0
+	current := 0
+	for _, r := range text {
+		if r == 96 {
+			current++
+			if current > longest { longest = current }
+			continue
+		}
+		current = 0
+	}
+	return longest
+}
+
+func __octMarkdownCodeFence(language string, body []string) string {
+	longest := __octMarkdownLongestBacktickRun(strings.TrimSpace(language))
+	for _, line := range body {
+		if run := __octMarkdownLongestBacktickRun(line); run > longest { longest = run }
+	}
+	fenceLength := 3
+	if longest + 1 > fenceLength { fenceLength = longest + 1 }
+	return strings.Repeat(string(rune(96)), fenceLength)
+}
+
+func __octMarkdownList(items []string, numbered bool) []string {
+	out := make([]string, 0, len(items))
+	for idx, item := range items {
+		prefix := "- "
+		if numbered { prefix = fmt.Sprintf("%d. ", idx+1) }
+		out = append(out, prefix + __octMarkdownNormalizeInline(item))
+	}
+	return out
+}
+
+func __octMarkdownCodeBlock(language string, body []string) []string {
+	fence := __octMarkdownCodeFence(language, body)
+	out := []string{fence + strings.TrimSpace(language)}
+	out = append(out, body...)
+	out = append(out, fence)
+	return out
+}
+
+func __octMarkdownCallout(kind string, lines []string) []string {
+	labelMap := map[string]string{"note": "Note", "info": "Info", "warning": "Warning", "danger": "Danger", "success": "Success"}
+	label, ok := labelMap[kind]
+	if !ok { panic(fmt.Sprintf("runtime error: MarkdownCallout unsupported kind '%s' (supported: note, info, warning, danger, success)", kind)) }
+	if len(lines) == 0 { return []string{"> **" + label + ":**"} }
+	out := make([]string, 0, len(lines))
+	for idx, line := range lines {
+		normalized := __octMarkdownNormalizeInline(line)
+		if idx == 0 {
+			if normalized == "" { out = append(out, "> **" + label + ":**") } else { out = append(out, "> **" + label + ":** " + normalized) }
+			continue
+		}
+		if normalized == "" { out = append(out, ">") } else { out = append(out, "> " + normalized) }
+	}
+	return out
+}
+
+func __octMarkdownImage(path string, caption string) []string {
+	alt := strings.ReplaceAll(__octMarkdownNormalizeInline(caption), "]", "\\]")
+	return []string{"![" + alt + "](" + path + ")"}
+}
+
+func __octMarkdownFigure(path string, caption string) []string {
+	image := __octMarkdownImage(path, caption)[0]
+	return []string{image, "", "*Figure: " + __octMarkdownNormalizeInline(caption) + "*"}
+}
+
+func __octMarkdownFlattenBlocks(blocks [][]string) []string {
+	out := []string{}
+	for _, block := range blocks {
+		if len(block) == 0 { continue }
+		if len(out) > 0 { out = append(out, "") }
+		out = append(out, block...)
+	}
+	return out
+}
+
+func __octMarkdownSection(title string, blocks [][]string, subsection bool) []string {
+	prefix := "## "
+	if subsection { prefix = "### " }
+	out := []string{prefix + __octMarkdownNormalizeInline(title)}
+	lines := __octMarkdownFlattenBlocks(blocks)
+	if len(lines) == 0 { return out }
+	out = append(out, "")
+	out = append(out, lines...)
+	return out
+}
+
+func __octMarkdownKeyValueTable(keys []string, values []string) []string {
+	if len(keys) != len(values) { panic("runtime error: MarkdownKeyValueTable keys and values must have equal lengths") }
+	out := []string{"| key | value |", "| --- | --- |"}
+	for idx := range keys {
+		out = append(out, "| " + __octMarkdownEscapeTableCell(keys[idx]) + " | " + __octMarkdownEscapeTableCell(values[idx]) + " |")
+	}
+	return out
+}
+
+func __octMarkdownRecordColumns(table any, requested []string, explicit bool) ([]string, [][]string) {
+	v := reflect.ValueOf(table)
+	if v.Kind() == reflect.Pointer { v = v.Elem() }
+	if v.Kind() != reflect.Struct { panic("runtime error: MarkdownTable expects record-of-string-columns") }
+	t := v.Type()
+	columns := make([]string, 0, t.NumField())
+	fieldByName := map[string]reflect.Value{}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		columns = append(columns, field.Name)
+		fieldByName[field.Name] = v.Field(i)
+	}
+	if len(columns) == 0 { panic("runtime error: MarkdownTable requires at least one column") }
+	if explicit {
+		seen := map[string]struct{}{}
+		columns = []string{}
+		for _, name := range requested {
+			if strings.TrimSpace(name) == "" { panic("runtime error: MarkdownTableWithColumns column names must be non-empty") }
+			if _, ok := fieldByName[name]; !ok { panic(fmt.Sprintf("runtime error: MarkdownTableWithColumns unknown column '%s'", name)) }
+			if _, dup := seen[name]; dup { panic(fmt.Sprintf("runtime error: MarkdownTableWithColumns duplicate requested column '%s'", name)) }
+			seen[name] = struct{}{}
+			columns = append(columns, name)
+		}
+		if len(columns) == 0 { panic("runtime error: MarkdownTableWithColumns requires at least one requested column") }
+	}
+	rowCount := -1
+	colArrays := make([][]string, 0, len(columns))
+	for _, name := range columns {
+		field := fieldByName[name]
+		if field.Kind() != reflect.Slice || field.Type().Elem().Kind() != reflect.String { panic(fmt.Sprintf("runtime error: Markdown table column '%s' must be String[]", name)) }
+		arr := make([]string, field.Len())
+		for i := 0; i < field.Len(); i++ { arr[i] = field.Index(i).String() }
+		if rowCount == -1 { rowCount = len(arr) } else if rowCount != len(arr) { panic("runtime error: Markdown table columns must have equal lengths") }
+		colArrays = append(colArrays, arr)
+	}
+	return columns, colArrays
+}
+
+func __octMarkdownTable(table any) []string {
+	columns, colArrays := __octMarkdownRecordColumns(table, nil, false)
+	return __octMarkdownRenderTable(columns, colArrays)
+}
+
+func __octMarkdownTableWithColumns(table any, requested []string) []string {
+	columns, colArrays := __octMarkdownRecordColumns(table, requested, true)
+	return __octMarkdownRenderTable(columns, colArrays)
+}
+
+func __octMarkdownRenderTable(columns []string, colArrays [][]string) []string {
+	header := "|"
+	sep := "|"
+	for _, name := range columns {
+		header += " " + __octMarkdownEscapeTableCell(name) + " |"
+		sep += " --- |"
+	}
+	out := []string{header, sep}
+	rowCount := 0
+	if len(colArrays) > 0 { rowCount = len(colArrays[0]) }
+	for r := 0; r < rowCount; r++ {
+		line := "|"
+		for c := 0; c < len(columns); c++ { line += " " + __octMarkdownEscapeTableCell(colArrays[c][r]) + " |" }
+		out = append(out, line)
+	}
+	return out
 }
 `
 
@@ -6646,6 +7001,46 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octStringEscapeJSON(%s)", st.Target, st.Args[0]), nil
 			case "StringQuoteJSON":
 				return fmt.Sprintf("%s = strconv.Quote(%s)", st.Target, st.Args[0]), nil
+			case "MarkdownEscapeText":
+				return fmt.Sprintf("%s = __octMarkdownNormalizeInline(%s)", st.Target, st.Args[0]), nil
+			case "MarkdownEscapeTableCell":
+				return fmt.Sprintf("%s = __octMarkdownEscapeTableCell(%s)", st.Target, st.Args[0]), nil
+			case "MarkdownH1":
+				return fmt.Sprintf("%s = []string{\"# \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+			case "MarkdownH2":
+				return fmt.Sprintf("%s = []string{\"## \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+			case "MarkdownH3":
+				return fmt.Sprintf("%s = []string{\"### \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+			case "MarkdownParagraph":
+				return fmt.Sprintf("%s = []string{__octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+			case "MarkdownBlank":
+				return fmt.Sprintf("%s = []string{\"\"}", st.Target), nil
+			case "MarkdownHorizontalRule":
+				return fmt.Sprintf("%s = []string{\"---\"}", st.Target), nil
+			case "MarkdownBullets":
+				return fmt.Sprintf("%s = __octMarkdownList(%s, false)", st.Target, st.Args[0]), nil
+			case "MarkdownNumbered":
+				return fmt.Sprintf("%s = __octMarkdownList(%s, true)", st.Target, st.Args[0]), nil
+			case "MarkdownCodeBlock":
+				return fmt.Sprintf("%s = __octMarkdownCodeBlock(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownCallout":
+				return fmt.Sprintf("%s = __octMarkdownCallout(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownImage":
+				return fmt.Sprintf("%s = __octMarkdownImage(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownFigure":
+				return fmt.Sprintf("%s = __octMarkdownFigure(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownKeyValueTable":
+				return fmt.Sprintf("%s = __octMarkdownKeyValueTable(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownReport":
+				return fmt.Sprintf("%s = __octMarkdownFlattenBlocks(%s)", st.Target, st.Args[0]), nil
+			case "MarkdownSection":
+				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, false)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownSubsection":
+				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, true)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MarkdownTable":
+				return fmt.Sprintf("%s = __octMarkdownTable(%s)", st.Target, st.Args[0]), nil
+			case "MarkdownTableWithColumns":
+				return fmt.Sprintf("%s = __octMarkdownTableWithColumns(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "fft":
 				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
 			case "WriteOctagon":

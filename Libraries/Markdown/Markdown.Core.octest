@@ -51,7 +51,9 @@ fn MarkdownReportAndTablesM0() -> Void {
     let ordered = MarkdownTableWithColumns(table, ["OutputSNRDb", "Mode"])
     Assert.Equal("| OutputSNRDb | Mode |", ordered[0], "explicit order")
 
-    let zero = ZeroTable { Metric: [] Value: [] }
+    let zeroMetrics: String[] = []
+    let zeroValues: String[] = []
+    let zero = ZeroTable { Metric: zeroMetrics Value: zeroValues }
     let zeroLines = MarkdownTable(zero)
     Assert.Equal(2, Len(zeroLines), "zero rows")
 }
