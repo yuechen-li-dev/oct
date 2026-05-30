@@ -133,3 +133,37 @@ Missing sidecar maps to fallible `Error` string (not panic) for wrapper calls.
   - Direct/no-sidecar: `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
   - Sidecar-backed/fallible: `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, `DirectoryRemoveAll`.
   - Deferred in this family: none for the IO file/directory wrapper set listed above.
+
+## M6 generic scalar/list/bytes wrapper lowering
+
+M6 adds the first generic compiled call path for manifest-declared wrapper functions. The older M4 IO file/directory helpers still exist unchanged for the established `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, and `DirectoryRemoveAll` fast path; M6 layers generic metadata-driven calls beside that path rather than replacing it.
+
+Generic requests and responses use typed `OctxiliaryValue` envelopes inside the existing `OCTWRAP` handshake and framed textual protocol:
+
+- requests carry ordered `args: [OctxiliaryValue ...]` payloads,
+- responses carry one typed `value: OctxiliaryValue ...` payload,
+- sidecar errors still use the existing `ok: false error: ...` response shape.
+
+The supported M6 transport set is intentionally limited to the M5c wrapper manifest types:
+
+- `Void`
+- `Int`
+- `Float`
+- `Bool`
+- `String`
+- `String[]`
+- `Bytes`
+
+`String[]` is encoded as a deterministic quoted string list. `Bytes` is encoded as a deterministic integer list. Floats use stable `strconv.FormatFloat` rendering for protocol round-trip. Unknown kinds and malformed typed payloads are rejected during parse.
+
+Compiled lowering now recognizes wrapper functions from package manifest metadata loaded with the project. When a call targets a manifest-declared wrapper function, the compiler validates the argument and return transport types, emits typed `octxiliary.Value` arguments, calls the sidecar using the wrapper family, wire function name, and sidecar command, then converts the typed result back into the compiled fallible result representation. Sidecar failures propagate through `... ! Error` results.
+
+Generic sidecar discovery uses the sidecar command from wrapper metadata:
+
+1. executable beside the compiled `.octbin`, named by `SidecarCommand`,
+2. `OCT_WRAPPER_PATH` as a directory containing `SidecarCommand`,
+3. `OCT_WRAPPER_PATH` as an explicit executable only when its basename matches `SidecarCommand`.
+
+A missing generic sidecar reports a message in the form `Octxiliary sidecar "<name>" not found; set OCT_WRAPPER_PATH or place it beside .octbin`.
+
+M6 is infrastructure only. It proves the path with the isolated `octxiliary-test-wrapper` fixture and does not migrate Archive, Compression, Hash, Plot, Pdf, Text/Regex, Time, Image, CSV, JSON, XLSX, or Markdown wrappers. Handles, records, maps, nested arrays beyond `String[]`, dynamic `any`, sidecar builds, lockfiles, native permission prompts, and broad standard-library migration remain future work.

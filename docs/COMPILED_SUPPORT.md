@@ -135,3 +135,18 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 
 
 - Compiled mode supports `Float(Int) -> Float` in flow expressions (including `let`, assignment RHS, return expressions, and nested arithmetic), `Clamp01(Float) -> Float`, and switch expressions in flow blocks (expression form only; no `else if` syntax).
+
+## M6 Octxiliary generic wrapper lowering status
+
+M6 adds metadata-driven compiled lowering for manifest-declared Octxiliary wrapper functions whose argument and return transport types are limited to `Void`, `Int`, `Float`, `Bool`, `String`, `String[]`, and `Bytes`.
+
+This is a generic sidecar call path: compiled code uses wrapper manifest metadata (family, wire name, sidecar command, argument types, return type, and fallibility) to emit a typed Octxiliary request instead of teaching the compiler one bespoke builtin per wrapper function. Fallible wrapper calls return compiled fallible result structs and propagate sidecar/protocol errors as `Error` values.
+
+The M4 hardcoded IO file/directory compiled helpers remain supported and coexist with the generic path. M6 does not migrate the standard-library wrapper backlog identified in M5g; Archive, Compression, Hash, Plot, Pdf, Text/Regex, Time, Image, CSV, JSON, XLSX, Markdown helpers, handle transports, record transports, and generated-Go numeric hardening remain M7+ work.
+
+Current proof fixture:
+
+- `Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest`
+- `cmd/octxiliary-test-wrapper`
+
+The fixture covers generic `String`, `String[]`, `Bytes`, `Int`, `Float`, `Bool`, `Void` return, missing sidecar diagnostics, and fallible sidecar-error propagation without changing real standard-library wrapper surfaces.

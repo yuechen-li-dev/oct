@@ -34,6 +34,10 @@ type DependencyMetadata struct {
 }
 
 func loadManifestMetadata(path string) (ManifestMetadata, error) {
+	return LoadManifestMetadata(path)
+}
+
+func LoadManifestMetadata(path string) (ManifestMetadata, error) {
 	file, err := source.Load(path)
 	if err != nil {
 		return ManifestMetadata{}, fmt.Errorf("read manifest %s: %w", path, err)

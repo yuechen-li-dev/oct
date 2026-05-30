@@ -1,0 +1,61 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Kind: String
+    Dependencies: Dependency[]
+    Wrappers: Wrapper[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    Functions: WrapperFunction[]
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "Compiled Octxiliary test package"
+        Kind: "wrapper"
+        Dependencies: []
+        Wrappers: [
+            Wrapper {
+                Name: "test-wrapper"
+                Family: "TestWrapper"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-test-wrapper"
+                GoModuleDir: "wrappers/test"
+                Functions: [
+                    WrapperFunction { OctName: "EchoString" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "JoinStrings" WireName: "TestJoinStrings" Args: ["String[]"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "BytesLen" WireName: "TestBytesLen" Args: ["Bytes"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Not" WireName: "TestNot" Args: ["Bool"] Return: "Bool" Fallible: true },
+                    WrapperFunction { OctName: "AddInt" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Half" WireName: "TestHalf" Args: ["Float"] Return: "Float" Fallible: true },
+                    WrapperFunction { OctName: "Touch" WireName: "TestTouch" Args: [] Return: "Void" Fallible: true },
+                    WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true }
+                ]
+            }
+        ]
+    }
+}
