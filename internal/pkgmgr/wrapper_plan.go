@@ -42,6 +42,36 @@ type WrapperSidecarPlan struct {
 	Functions      []WrapperFunctionMetadata
 }
 
+// BuildWrapperPlanForProject syncs the current package/project dependency metadata
+// using the same direct-dependency conventions as pkg sync, then creates a
+// planning-only wrapper sidecar plan for the current root plus synced
+// dependencies. It does not build Go modules, download Go module contents,
+// execute sidecars, generate registries, or perform runtime discovery.
+func (m *Manager) BuildWrapperPlanForProject(projectRoot string) (WrapperBuildPlan, error) {
+	syncResult, err := m.Sync(projectRoot)
+	if err != nil {
+		return WrapperBuildPlan{}, err
+	}
+	rootMetadata, err := loadManifestMetadata(syncResult.ManifestPath)
+	if err != nil {
+		return WrapperBuildPlan{}, err
+	}
+	inputs := []wrapperPlanInput{{
+		root:      syncResult.ProjectPath,
+		cachePath: syncResult.ProjectPath,
+		metadata:  rootMetadata,
+	}}
+	for _, dep := range syncResult.Dependencies {
+		inputs = append(inputs, wrapperPlanInput{
+			root:      dep.GetResult.Path,
+			source:    dep.Source,
+			cachePath: dep.GetResult.Path,
+			metadata:  dep.GetResult.Manifest,
+		})
+	}
+	return buildWrapperPlan(inputs, syncResult.ProjectPath)
+}
+
 // BuildWrapperPlanForManifest creates a planning-only wrapper sidecar plan for a
 // single manifest rooted at rootPath.
 func BuildWrapperPlanForManifest(rootPath string, metadata ManifestMetadata) (WrapperBuildPlan, error) {
