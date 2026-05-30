@@ -104,7 +104,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Structures` | pass | pass | pass, 3 / 0 | none | n/a | Structures core compiles successfully. | keep monitored |
 | `Libraries/Text` | pass | pass | fail, 0 / 2 | `unsupported_builtin` | `RegexIsMatch` | Regex wrapper/builtin surface not lowered. | M6 |
 | `Libraries/Thermofluids` | pass | pass | fail, 3 / 8 | `generated_go_error`, `missing_manifest` | `CylindricalGeometryHandChecks`, validation tests | Unit exponent type syntax errors plus `Assert` gaps. | M10/M9 |
-| `Libraries/Time` | pass | pass | fail, 0 / 3 | `unsupported_builtin` / `unsupported_wrapper` | `TimeParseIso8601`, `TimeUnixSecondsNow` | Time external helpers are not compiled. | M6 |
+| `Libraries/Time` | pass | pass | pass, 4 / 0 | none | n/a | Migrated in M9 to generic Octxiliary wrapper lowering through `octxiliary-time`; public parse/format APIs preserve normalized RFC3339 string return values. | keep monitored |
 | `Libraries/UI` | pass | pass | fail, 23 / 30 | `unsupported_builtin`, `missing_manifest`, `generated_go_error`, `expected_interpreted_only` for live UI lanes | `UIButton`, `UICanvas`, `UIMount`, `UIColumn`, `M111ResolveEventValueEmptyTableReturnsEmpty` | Pure model/layout facts partly compile; widget/canvas/mount bridge should remain a separate reactor/UI project, not generic numeric lowering. | M6 for pure wrappers; reactor_bridge project for live UI |
 | `Libraries/Wireless` | pass | pass | pass, 15 / 0 | none | n/a | Wireless pure-Oct library compiles successfully. | keep monitored |
 
@@ -183,7 +183,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 - Category: `unsupported_builtin` / `unsupported_wrapper`
 - Commands: per-library compiled commands for `Archive`, `Compression`, `Hash`, `Plot`, `Pdf`, `Text`, `Time`, `Image`
 - Original failing symbols: `ZipListEntries`, `GzipCompressBytes`, `GzipCompressFile`, `GzipDecompressBytes`, `HashSha256Bytes`, `HashSha256File`, `HashSha256Text`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`, `ImageLoad`.
-- Current status after M8: Hash was migrated in M7 and Compression was migrated in M8; the remaining symbols are `ZipListEntries`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`, and `ImageLoad`.
+- Current status after M9: Hash was migrated in M7, Compression was migrated in M8, and Time was migrated in M9; the remaining symbols are `ZipListEntries`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, and `ImageLoad`.
 - Error excerpt from original M5g inventory: `function Hash.Sha256Text: compiled mode does not yet support builtin HashSha256Text`
 - Likely cause: these wrapper/direct-host builtins have interpreted implementations but no compiled lowering.
 - Proposed fix class: generic scalar/list/bytes wrapper lowering first; choose direct helper only where wrapper protocol is inappropriate.
@@ -443,7 +443,7 @@ These failures should not be fixed as part of M5g and should not be conflated wi
 
 From per-library compiled failures, representative unsupported builtins include:
 
-- Wrapper/external data helpers still not migrated after M8: `ZipListEntries`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `ImageLoad`, `PdfNewPage`, `PdfDrawText`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`.
+- Wrapper/external data helpers still not migrated after M9: `ZipListEntries`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `ImageLoad`, `PdfNewPage`, `PdfDrawText`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`.
 - Direct compiled builtin candidates: `Real`, `Idx`, `Abs for type Complex`.
 - UI/reactor bridge helpers: `UIButton`, `UICanvas`, `UIMount`, `UIColumn`, `UIGrid`, `UISignature`, `UIGridRows`.
 
