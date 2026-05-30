@@ -72,7 +72,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Artifact` | pass | pass | pass, 1 / 0 | none | n/a | Dedicated artifact package compiles/runs in test lane; artifact lane also passes directly. | keep monitored |
 | `Libraries/ArtifactUsage` | fail | fail | fail before facts | `missing_manifest` | package root | `package manifest missing`; this is layout/manifest inventory, not compiler lowering. | M9 |
 | `Libraries/Complex` | pass | pass | fail, 0 / 9 | `unsupported_builtin` | `ComplexSin`, `ComplexSinh`, `ComplexTan` | Complex helpers depend on `Real`, currently unsupported in compiled lowering. | M8 |
-| `Libraries/Compression` | pass | pass | fail, 0 / 3 | `unsupported_builtin` / `unsupported_wrapper` | `CompressBytes`, `CompressFile`, `DecompressBytes` | Gzip builtins are wrapper-style external helpers. | M6 |
+| `Libraries/Compression` | pass | pass | migrated, focused compiled pass | none for focused Compression M8 coverage | `CompressBytes`, `DecompressBytes`, `CompressFile`, `DecompressFile` | Migrated in M8 to generic Octxiliary wrapper lowering through manifest metadata and `octxiliary-compression`; byte and file gzip round-trips are covered with focused compiled tests. | done M8 |
 | `Libraries/Cooking` | pass | pass | fail, 38 / 2 | `missing_manifest` | `GramsPerCupUnknownIngredientErrors`, `IsSafeTemperatureUnknownProteinErrors` | Most pure-Oct facts compile; error-path tests require `Assert` package visibility. | M9 |
 | `Libraries/Csv` | fail | fail | fail before facts | `missing_manifest` / layout | package root | No fact tests found; package has implementation only. | M9 / add tests if desired |
 | `Libraries/Deployment` | pass | pass | fail, 4 / 2 | `missing_manifest` | Gitea validation error-path tests | Pure string helpers mostly compile; `Assert` dependency not visible. | M9 |
@@ -182,11 +182,12 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 
 - Category: `unsupported_builtin` / `unsupported_wrapper`
 - Commands: per-library compiled commands for `Archive`, `Compression`, `Hash`, `Plot`, `Pdf`, `Text`, `Time`, `Image`
-- Failing symbols: `ZipListEntries`, `GzipCompressBytes`, `GzipCompressFile`, `GzipDecompressBytes`, `HashSha256Bytes`, `HashSha256File`, `HashSha256Text`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`, `ImageLoad`.
-- Error excerpt: `function Hash.Sha256Text: compiled mode does not yet support builtin HashSha256Text`
+- Original failing symbols: `ZipListEntries`, `GzipCompressBytes`, `GzipCompressFile`, `GzipDecompressBytes`, `HashSha256Bytes`, `HashSha256File`, `HashSha256Text`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`, `ImageLoad`.
+- Current status after M8: Hash was migrated in M7 and Compression was migrated in M8; the remaining symbols are `ZipListEntries`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `PdfNewPage`, `PdfDrawText`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`, and `ImageLoad`.
+- Error excerpt from original M5g inventory: `function Hash.Sha256Text: compiled mode does not yet support builtin HashSha256Text`
 - Likely cause: these wrapper/direct-host builtins have interpreted implementations but no compiled lowering.
 - Proposed fix class: generic scalar/list/bytes wrapper lowering first; choose direct helper only where wrapper protocol is inappropriate.
-- Proposed milestone: M6/M7.
+- Proposed milestone: M6/M7/M8 for Hash and Compression; future wrapper milestones for remaining packages.
 
 ### M5G-F008 — markdown helpers not compiled
 
@@ -377,14 +378,14 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Artifact` | artifact-lane smoke | pass | `pure_oct` / artifact runner | none in package lane | low |
 | `ArtifactUsage` | artifact usage fixture | fail before facts | `artifact_lane` / layout | missing manifest/root shape | medium |
 | `Complex` | complex trig/hyperbolic | fail | `direct_builtin` / `compiled_helper` | `Real` unsupported | medium |
-| `Compression` | gzip bytes/files | fail | `wrapper_registry_generic_octxiliary` | gzip builtins unsupported | high |
+| `Compression` | gzip bytes/files | migrated M8 | `wrapper_registry_generic_octxiliary` | none for focused gzip coverage | done |
 | `Cooking` | unit conversions/recipes | mostly pass | `pure_oct` | `Assert` visibility for error paths | medium |
 | `Csv` | CSV helpers | no facts | `wrapper_registry_generic_octxiliary` | no tests at package root; CSV builtins unsupported through IO | high |
 | `Deployment` | Gitea command/config helpers | mostly pass | `pure_oct` | `Assert` visibility | medium |
 | `DifferentialEquations` | Euler/RK4 with derivative callbacks | fail | `pure_oct` plus function-value lowering | callback/local helper lowering | high |
 | `Distributions` | probability distributions | partial | `pure_oct` / `direct_builtin` math | `Assert` visibility | medium |
 | `Geometry` | planar/solid dimensional math | partial | `pure_oct` | generated Go dimension exponent type names | high |
-| `Hash` | sha256 bytes/text/file | fail | `wrapper_registry_generic_octxiliary` or `compiled_helper` | hash builtins unsupported | high |
+| `Hash` | sha256 bytes/text/file | migrated M7 | `wrapper_registry_generic_octxiliary` | none for focused sha256 coverage | done |
 | `IO` | file/directory | reaches runtime, fails sidecar | `octxiliary_sidecar` | sidecar availability | high |
 | `IO` | CSV/JSON/XLSX | fail | `wrapper_registry_generic_octxiliary` | generic wrapper lowering missing | high |
 | `IfErrNotEqualNil` | legacy nil/error fixture | fail parse | `expected_interpreted_only` or cleanup | syntax not accepted by current parser | low |
@@ -442,7 +443,7 @@ These failures should not be fixed as part of M5g and should not be conflated wi
 
 From per-library compiled failures, representative unsupported builtins include:
 
-- Wrapper/external data helpers: `ZipListEntries`, `GzipCompressBytes`, `GzipCompressFile`, `GzipDecompressBytes`, `HashSha256Bytes`, `HashSha256File`, `HashSha256Text`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `ImageLoad`, `PdfNewPage`, `PdfDrawText`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`.
+- Wrapper/external data helpers still not migrated after M8: `ZipListEntries`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `ImageLoad`, `PdfNewPage`, `PdfDrawText`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`, `TimeParseIso8601`, `TimeUnixSecondsNow`.
 - Direct compiled builtin candidates: `Real`, `Idx`, `Abs for type Complex`.
 - UI/reactor bridge helpers: `UIButton`, `UICanvas`, `UIMount`, `UIColumn`, `UIGrid`, `UISignature`, `UIGridRows`.
 

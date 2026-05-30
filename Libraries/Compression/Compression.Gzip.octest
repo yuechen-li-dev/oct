@@ -1,40 +1,68 @@
 package Compression
 
 [Fact]
-fn GzipCompressAndDecompressBytesRoundTrip() -> Void {
+fn GzipCompressAndDecompressBytesRoundTrip() -> Void ! Error {
     let path = "mx103c_gzip_src.txt"
-    let _w = FileWriteText(path, "gzip bytes roundtrip")!
-    let input = FileReadBytes(path)!
-    let compressed = CompressBytes(input)!
-    let restored = DecompressBytes(compressed)!
+    let _w = FileWriteText(path, "gzip bytes roundtrip")?
+    let input = FileReadBytes(path)?
+    let compressed = CompressBytes(input)?
+    let restored = DecompressBytes(compressed)?
     Assert.Equal(Len(input), Len(restored), "gzip roundtrip should preserve byte length")
     Assert.Equal(input[0], restored[0], "gzip roundtrip should preserve first byte")
-    let _d = FileDelete(path)!
-    return
+    let _d = FileDelete(path)?
 }
 
 [Fact]
-fn GzipCompressAndDecompressFileRoundTrip() -> Void {
+fn GzipCompressAndDecompressTextBytesRoundTrip() -> Void ! Error {
+    let path = "m8_gzip_text_bytes_src.txt"
+    let _w = FileWriteText(path, "hello compression")?
+    let input = FileReadBytes(path)?
+    let compressed = CompressBytes(input)?
+    let restored = DecompressBytes(compressed)?
+    Assert.Equal(Len(input), Len(restored), "text-ish byte roundtrip should preserve length")
+    Assert.Equal(104, restored[0], "text-ish byte roundtrip should preserve first byte")
+    let _d = FileDelete(path)?
+}
+
+[Fact]
+fn GzipCompressAndDecompressFileRoundTrip() -> Void ! Error {
     let src = "mx103c_gzip_file_src.txt"
     let compressed = "mx103c_gzip_file.gz"
     let out = "mx103c_gzip_file_out.txt"
-    let _w = FileWriteText(src, "file compression")!
-    let _c = CompressFile(src, compressed)!
-    let _d = DecompressFile(compressed, out)!
-    let recovered = FileReadText(out)!
+    let _w = FileWriteText(src, "file compression")?
+    let _c = CompressFile(src, compressed)?
+    let _d = DecompressFile(compressed, out)?
+    let recovered = FileReadText(out)?
     Assert.Equal("file compression", recovered, "file gzip helpers should roundtrip text")
-    let _cleanupA = FileDelete(src)!
-    let _cleanupB = FileDelete(compressed)!
-    let _cleanupC = FileDelete(out)!
-    return
+    let _cleanupA = FileDelete(src)?
+    let _cleanupB = FileDelete(compressed)?
+    let _cleanupC = FileDelete(out)?
 }
 
 [Fact]
-fn GzipDecompressRejectsInvalidPayload() -> Void {
+fn GzipDecompressRejectsInvalidPayload() -> Void ! Error {
     let path = "mx103c_invalid_gzip.txt"
-    let _w = FileWriteText(path, "not-gzip")!
-    let bytes = FileReadBytes(path)!
-    Assert.Error(DecompressBytes(bytes), "invalid gzip payload should fail")
-    let _d = FileDelete(path)!
-    return
+    let _w = FileWriteText(path, "not-gzip")?
+    let bytes = FileReadBytes(path)?
+    match DecompressBytes(bytes) {
+        ok(value) => {
+            Assert.True(false, "invalid gzip payload should fail")
+        }
+        err(e) => {
+            Assert.True(true, "invalid gzip payload should fail")
+        }
+    }
+    let _d = FileDelete(path)?
+}
+
+[Fact]
+fn GzipCompressMissingFileFails() -> Void ! Error {
+    match CompressFile("m8_missing_gzip_file.txt", "m8_missing_gzip_file.gz") {
+        ok(value) => {
+            Assert.True(false, "missing gzip input file should fail")
+        }
+        err(e) => {
+            Assert.True(true, "missing gzip input file should fail")
+        }
+    }
 }

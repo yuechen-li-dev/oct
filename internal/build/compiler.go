@@ -3101,7 +3101,7 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 
 func isBuiltinTypeName(name string) bool {
 	switch name {
-	case "Int", "Float", "Complex", "Bool", "String", "Error", "Void":
+	case "Int", "Float", "Complex", "Bool", "String", "Bytes", "Error", "Void":
 		return true
 	default:
 		return false

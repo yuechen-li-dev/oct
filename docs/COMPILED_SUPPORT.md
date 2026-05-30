@@ -142,9 +142,9 @@ M6 adds metadata-driven compiled lowering for manifest-declared Octxiliary wrapp
 
 This is a generic sidecar call path: compiled code uses wrapper manifest metadata (family, wire name, sidecar command, argument types, return type, and fallibility) to emit a typed Octxiliary request instead of teaching the compiler one bespoke builtin per wrapper function. Fallible wrapper calls return compiled fallible result structs and propagate sidecar/protocol errors as `Error` values.
 
-The M4 hardcoded IO file/directory compiled helpers remain supported and coexist with the generic path. M7 migrates the first real standard-library generic wrapper package: `Libraries/Hash` now compiles `Sha256Text`, `Sha256Bytes`, and `Sha256File` through manifest metadata and `cmd/octxiliary-hash`. The `octxiliary-hash` executable must be available beside the compiled `.octbin` or discoverable through `OCT_WRAPPER_PATH`.
+The M4 hardcoded IO file/directory compiled helpers remain supported and coexist with the generic path. M7 migrates the first real standard-library generic wrapper package: `Libraries/Hash` now compiles `Sha256Text`, `Sha256Bytes`, and `Sha256File` through manifest metadata and `cmd/octxiliary-hash`. M8 migrates `Libraries/Compression` so `CompressBytes`, `DecompressBytes`, `CompressFile`, and `DecompressFile` compile through manifest metadata and `cmd/octxiliary-compression`; this is the current proof for `Bytes -> Bytes` wrapper transforms. The required sidecar executable (`octxiliary-hash` or `octxiliary-compression`) must be available beside the compiled `.octbin` or discoverable through `OCT_WRAPPER_PATH`.
 
-The remaining standard-library wrapper backlog identified in M5g is still future work: Archive, Compression, Plot, Pdf, Text/Regex, Time, Image, CSV, JSON, XLSX, Markdown helpers, handle transports, record transports, and generated-Go numeric hardening are not completed by M7.
+The remaining standard-library wrapper backlog identified in M5g is still future work: Archive, Plot, Pdf, Text/Regex, Time, Image, CSV, JSON, XLSX, Markdown helpers, handle transports, record transports, and generated-Go numeric hardening are not completed by M8.
 
 Current proof fixture:
 
