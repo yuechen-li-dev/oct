@@ -1,0 +1,3 @@
+package Main
+[Fact]
+fn GenericWrapperM16RecordArgMismatchRejected() -> Void ! Error { let value = BadRecordArgMismatch("x")? Assert.Equal("x", value, "unreachable") }

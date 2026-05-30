@@ -1,5 +1,10 @@
 package Main
 
+record TestOptions {
+    Count: Int
+    Name: String
+}
+
 fn EchoString(value: String) -> String ! Error {
     return error("TestWrapper.EchoString requires compiled Octxiliary lowering")
 }
@@ -18,6 +23,14 @@ fn EchoStringRows(rows: String[][]) -> String[][] ! Error {
 
 fn RowCount(rows: String[][]) -> Int ! Error {
     return error("TestWrapper.RowCount requires compiled Octxiliary lowering")
+}
+
+fn SumFloats(values: Float[]) -> Float ! Error {
+    return error("TestWrapper.SumFloats requires compiled Octxiliary lowering")
+}
+
+fn DescribeOptions(options: TestOptions) -> String ! Error {
+    return error("TestWrapper.DescribeOptions requires compiled Octxiliary lowering")
 }
 
 fn Not(value: Bool) -> Bool ! Error {

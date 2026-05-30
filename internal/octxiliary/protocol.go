@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -24,18 +25,28 @@ const (
 	ValueString       ValueKind = "String"
 	ValueStringArray  ValueKind = "String[]"
 	ValueStringMatrix ValueKind = "String[][]"
+	ValueFloatArray   ValueKind = "Float[]"
 	ValueBytes        ValueKind = "Bytes"
+	ValueRecord       ValueKind = "Record"
 )
 
+type FieldValue struct {
+	Name  string
+	Value Value
+}
+
 type Value struct {
-	Kind     ValueKind
-	Int      int
-	Float    float64
-	Bool     bool
-	String   string
-	Strings  []string
-	Strings2 [][]string
-	Bytes    []byte
+	Kind       ValueKind
+	Int        int
+	Float      float64
+	Bool       bool
+	String     string
+	Strings    []string
+	Strings2   [][]string
+	Floats     []float64
+	Bytes      []byte
+	RecordType string
+	Fields     []FieldValue
 }
 
 type Request struct {
@@ -227,8 +238,12 @@ func encodeValue(value Value) string {
 		return fmt.Sprintf(`OctxiliaryValue { kind: "String[]" strings: [ %s ] }`, encodeLinesList(value.Strings))
 	case ValueStringMatrix:
 		return fmt.Sprintf(`OctxiliaryValue { kind: "String[][]" strings2: [ %s ] }`, encodeStringMatrixList(value.Strings2))
+	case ValueFloatArray:
+		return fmt.Sprintf(`OctxiliaryValue { kind: "Float[]" floats: [ %s ] }`, encodeFloatList(value.Floats))
 	case ValueBytes:
 		return fmt.Sprintf(`OctxiliaryValue { kind: "Bytes" bytes: { %s } }`, encodeBytesList(value.Bytes))
+	case ValueRecord:
+		return fmt.Sprintf(`OctxiliaryValue { kind: "Record" recordType: %q fields: [ %s ] }`, value.RecordType, encodeFieldValues(value.Fields))
 	default:
 		return fmt.Sprintf(`OctxiliaryValue { kind: %q }`, string(value.Kind))
 	}
@@ -254,6 +269,26 @@ func encodeStringMatrixList(rows [][]string) string {
 	parts := make([]string, 0, len(rows))
 	for _, row := range rows {
 		parts = append(parts, fmt.Sprintf("[ %s ]", encodeLinesList(row)))
+	}
+	return strings.Join(parts, " ")
+}
+
+func encodeFloatList(values []float64) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			parts = append(parts, "<non-finite>")
+			continue
+		}
+		parts = append(parts, strconv.FormatFloat(value, 'g', -1, 64))
+	}
+	return strings.Join(parts, " ")
+}
+
+func encodeFieldValues(fields []FieldValue) string {
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		parts = append(parts, fmt.Sprintf(`OctxiliaryField { name: %q value: %s }`, field.Name, encodeValue(field.Value)))
 	}
 	return strings.Join(parts, " ")
 }
@@ -431,11 +466,34 @@ func parseValue(s string) (Value, error) {
 		if err != nil {
 			return Value{}, err
 		}
+	case ValueFloatArray:
+		if !strings.HasPrefix(rest, "floats: [ ") || !strings.HasSuffix(rest, " ]") {
+			return Value{}, fmt.Errorf("Float[] value missing floats payload")
+		}
+		value.Floats, err = parseFloatList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rest, "floats: [ "), " ]")))
+		if err != nil {
+			return Value{}, err
+		}
 	case ValueBytes:
 		if !strings.HasPrefix(rest, "bytes: { ") || !strings.HasSuffix(rest, " }") {
 			return Value{}, fmt.Errorf("Bytes value missing bytes payload")
 		}
 		value.Bytes, err = parseBytesList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rest, "bytes: { "), " }")))
+		if err != nil {
+			return Value{}, err
+		}
+	case ValueRecord:
+		if !strings.HasPrefix(rest, "recordType: ") {
+			return Value{}, fmt.Errorf("Record value missing recordType payload")
+		}
+		value.RecordType, rest, err = scanQuotedThen(strings.TrimPrefix(rest, "recordType: "), " fields: [ ")
+		if err != nil {
+			return Value{}, err
+		}
+		if !strings.HasSuffix(rest, " ]") {
+			return Value{}, fmt.Errorf("Record value missing fields payload")
+		}
+		value.Fields, err = parseFieldValues(strings.TrimSpace(strings.TrimSuffix(rest, " ]")))
 		if err != nil {
 			return Value{}, err
 		}
@@ -732,4 +790,102 @@ func takeBracketList(s string) (string, string, error) {
 		}
 	}
 	return "", "", fmt.Errorf("unterminated row list")
+}
+
+func parseFloatList(s string) ([]float64, error) {
+	out := []float64{}
+	rest := strings.TrimSpace(s)
+	if rest == "" {
+		return out, nil
+	}
+	for _, field := range strings.Fields(rest) {
+		v, err := strconv.ParseFloat(field, 64)
+		if err != nil {
+			return nil, err
+		}
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil, fmt.Errorf("Float[] value contains non-finite float %q", field)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func parseFieldValues(s string) ([]FieldValue, error) {
+	fields := []FieldValue{}
+	rest := strings.TrimSpace(s)
+	for rest != "" {
+		fieldText, next, err := takeFieldText(rest)
+		if err != nil {
+			return nil, err
+		}
+		field, err := parseFieldValue(fieldText)
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, field)
+		rest = strings.TrimSpace(next)
+	}
+	return fields, nil
+}
+
+func takeFieldText(s string) (string, string, error) {
+	prefix := "OctxiliaryField { "
+	if !strings.HasPrefix(s, prefix) {
+		return "", "", fmt.Errorf("expected OctxiliaryField")
+	}
+	depth := 0
+	inQuote := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if inQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inQuote = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inQuote = true
+			continue
+		}
+		switch ch {
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+			if depth == 0 {
+				return s[:i+1], s[i+1:], nil
+			}
+		}
+	}
+	return "", "", fmt.Errorf("unterminated OctxiliaryField")
+}
+
+func parseFieldValue(s string) (FieldValue, error) {
+	prefix := "OctxiliaryField { name: "
+	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, " }") {
+		return FieldValue{}, fmt.Errorf("malformed OctxiliaryField")
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(s, prefix), " }")
+	name, rest, err := scanQuotedThen(body, " value: ")
+	if err != nil {
+		return FieldValue{}, err
+	}
+	if strings.TrimSpace(rest) == "" {
+		return FieldValue{}, fmt.Errorf("OctxiliaryField missing value")
+	}
+	value, err := parseValue(strings.TrimSpace(rest))
+	if err != nil {
+		return FieldValue{}, err
+	}
+	return FieldValue{Name: name, Value: value}, nil
 }

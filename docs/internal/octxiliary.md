@@ -255,3 +255,14 @@ The codec preserves outer row order, cell order, empty outer arrays, empty rows,
 The `octxiliary-csv` executable must be available beside the compiled `.octbin` or through `OCT_WRAPPER_PATH`. Missing sidecars report a clear fallible error such as `Octxiliary sidecar "octxiliary-csv" not found`.
 
 Still deferred after M13: records, handles, dynamic `Any`, `Float[]`, `Float[][]`, `Int[]`, `Bytes[]`, Markdown table records/nested blocks, Plot/Pdf/Image/XLSX wrappers, structured JSON graph helpers, compiled Complex, compiled Einstein notation, package-manager sidecar builds, and broad generated-Go numeric/type hardening.
+
+## M16 Plot transport expansion
+
+M16 extends generic Octxiliary with two deliberately narrow transports needed by `Libraries/Plot`:
+
+- `Float[]` encodes a Go `[]float64` as `OctxiliaryValue { kind: "Float[]" floats: [ ... ] }`. Encoding uses `strconv.FormatFloat(v, 'g', -1, 64)` and parsing uses `strconv.ParseFloat(..., 64)`. Empty arrays round-trip. M16 rejects malformed float tokens and non-finite values (`NaN`, `+Inf`, `-Inf`) at parse/sidecar validation boundaries.
+- Declared, non-recursive record **arguments** encode as `OctxiliaryValue { kind: "Record" recordType: "..." fields: [ ... ] }`. Record schemas are declared in wrapper manifest `TransportTypes` and the compiler packs fields in manifest order. `Int<...>` fields such as `Int<px>` are transported as `Int` values while retaining their declared field type in metadata.
+
+Record returns are still unsupported. Nested records, recursive records, maps, handles, dynamic `Any`, `Float[][]`, broad `Int[]`, and package-manager sidecar builds remain out of scope.
+
+`Libraries/Plot` is now a wrapper package served by `cmd/octxiliary-plot`. Compiled `Line`, `Scatter`, and `Histogram` calls use `Float[]` plot data plus declared `Plot.Size` and `Plot.Labels` record arguments. `DefaultSize` and `DefaultLabels` remain pure/local Oct helpers. The `octxiliary-plot` sidecar must be available beside the compiled `.octbin` or discoverable through `OCT_WRAPPER_PATH`; missing sidecars report `Octxiliary sidecar "octxiliary-plot" not found`.

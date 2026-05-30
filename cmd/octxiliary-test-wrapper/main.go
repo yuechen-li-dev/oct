@@ -92,6 +92,26 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueFloat, Float: req.Args[0].Float / 2}, nil
+	case "TestSumFloats":
+		if err := expect(req.Args, octxiliary.ValueFloatArray); err != nil {
+			return octxiliary.Value{}, err
+		}
+		total := 0.0
+		for _, value := range req.Args[0].Floats {
+			total += value
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueFloat, Float: total}, nil
+	case "TestDescribeOptions":
+		if err := expect(req.Args, octxiliary.ValueRecord); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if req.Args[0].RecordType != "Main.TestOptions" || len(req.Args[0].Fields) != 2 || req.Args[0].Fields[0].Name != "Count" || req.Args[0].Fields[1].Name != "Name" {
+			return octxiliary.Value{}, fmt.Errorf("unexpected record payload %#v", req.Args[0])
+		}
+		if req.Args[0].Fields[0].Value.Kind != octxiliary.ValueInt || req.Args[0].Fields[1].Value.Kind != octxiliary.ValueString {
+			return octxiliary.Value{}, fmt.Errorf("unexpected record field kinds")
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueString, String: fmt.Sprintf("%s:%d", req.Args[0].Fields[1].Value.String, req.Args[0].Fields[0].Value.Int)}, nil
 	case "TestTouch", "TestTouchDirect":
 		if err := expect(req.Args); err != nil {
 			return octxiliary.Value{}, err

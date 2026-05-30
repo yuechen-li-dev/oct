@@ -8,6 +8,8 @@ fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
     Assert.Equal(4, BytesLen(bytes)?, "Bytes wrapper should return length")
     Assert.Equal(5, AddInt(2, 3)?, "Int wrapper should add")
     Assert.Near(4.0, Half(8.0)?, 0.000001, "Float wrapper should halve")
+    Assert.Near(4.5, SumFloats([1.0, 2.5, 1.0])?, 0.000001, "Float[] wrapper should sum")
+    Assert.Equal("demo:7", DescribeOptions(TestOptions { Count: 7 Name: "demo" })?, "record argument wrapper should preserve fields")
     Assert.False(Not(true)?, "Bool wrapper should invert")
     let rows = EchoStringRows([["a", "b"], ["c"]])?
     Assert.Equal(2, Len(rows), "String[][] wrapper should preserve outer row count")

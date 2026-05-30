@@ -1,0 +1,3 @@
+package Main
+[Fact]
+fn GenericWrapperM16UndeclaredRecordArgRejected() -> Void ! Error { let value = BadUndeclaredArg(TestOptions { Count: 1 Name: "x" })? Assert.Equal("x", value, "unreachable") }

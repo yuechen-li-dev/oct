@@ -26,6 +26,8 @@ type WrapperMetadata = manifestwrapper.Metadata
 
 // WrapperFunctionMetadata describes a validated wrapper function in manifest.oct.
 type WrapperFunctionMetadata = manifestwrapper.FunctionMetadata
+type TransportTypeMetadata = manifestwrapper.TransportTypeMetadata
+type TransportFieldMetadata = manifestwrapper.TransportFieldMetadata
 
 type DependencyMetadata struct {
 	Name               string `json:"name"`
@@ -83,11 +85,21 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 	var wrapperFunctionFields map[string]bool
 	manifestFields := recordFieldSet(manifestRecord)
 	if manifestFields["Wrappers"] {
-		if err := requireRecordShape(file, "Wrapper", manifestwrapper.WrapperRequiredFields(), nil); err != nil {
+		if err := requireRecordShape(file, "Wrapper", manifestwrapper.WrapperRequiredFields(), manifestwrapper.WrapperOptionalFields()); err != nil {
 			return ManifestMetadata{}, err
 		}
 		if err := requireRecordShape(file, "WrapperFunction", manifestwrapper.WrapperFunctionRequiredFields(), nil); err != nil {
 			return ManifestMetadata{}, err
+		}
+		if _, ok := findRecord(file, "WrapperTransportType"); ok {
+			if err := requireRecordShape(file, "WrapperTransportType", manifestwrapper.WrapperTransportTypeRequiredFields(), nil); err != nil {
+				return ManifestMetadata{}, err
+			}
+		}
+		if _, ok := findRecord(file, "WrapperTransportField"); ok {
+			if err := requireRecordShape(file, "WrapperTransportField", manifestwrapper.WrapperTransportFieldRequiredFields(), nil); err != nil {
+				return ManifestMetadata{}, err
+			}
 		}
 		wrapperRecord, _ := findRecord(file, "Wrapper")
 		wrapperFunctionRecord, _ := findRecord(file, "WrapperFunction")

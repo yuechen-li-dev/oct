@@ -192,3 +192,11 @@ Compiled support now includes:
 Raw CSV row reads preserve ragged rows and exact parsed string cells. CSV writes emit exactly the supplied row-major string data through Go's standard `encoding/csv` writer. The `octxiliary-csv` sidecar must be discoverable beside the `.octbin` or through `OCT_WRAPPER_PATH`.
 
 Still unsupported/deferred: Markdown structured table transports, Plot numeric arrays, Pdf/Image/XLSX handle-backed workflows, structured JSON graph helpers, record transport, handle transport, dynamic `Any`, and broad nested-array generalization.
+
+## M16 Octxiliary Plot status
+
+M16 adds generic `Float[]` transport and manifest-declared, non-recursive record argument transport. This migrates `Libraries/Plot.Line`, `Libraries/Plot.Scatter`, and `Libraries/Plot.Histogram` to compiled wrapper lowering through `cmd/octxiliary-plot` while preserving the public Oct signatures.
+
+`Plot.Size` and `Plot.Labels` are declared as wrapper `TransportTypes`; compiled code packs those generated Go record structs into ordered Octxiliary record arguments. Dimensioned `Int<px>` size fields are dimension-erased over the wire as `Int` payloads. `DefaultSize` and `DefaultLabels` remain pure/local and do not call the sidecar.
+
+Still unsupported/deferred after M16: record returns, nested or recursive records, handles, dynamic `Any`, maps, `Float[][]`, broad `Int[]`, Image/Pdf/Xlsx migration, structured JSON graph helpers, Markdown-as-Octxiliary, package-manager sidecar builds, native permission prompts, and lockfiles. The `octxiliary-plot` executable must be beside the compiled `.octbin` or on `OCT_WRAPPER_PATH`.

@@ -1,0 +1,3 @@
+package Main
+record TestOptions { Count: Int Name: String }
+fn BadRecordArgMismatch(value: String) -> String ! Error { return error("BadRecordArgMismatch should fail during compiled lowering") }

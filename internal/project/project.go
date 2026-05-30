@@ -15,6 +15,7 @@ import (
 )
 
 type WrapperMetadata = pkgmgr.WrapperMetadata
+type TransportTypeMetadata = pkgmgr.TransportTypeMetadata
 
 type Package struct {
 	Name      string

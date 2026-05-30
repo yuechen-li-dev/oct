@@ -2,13 +2,11 @@ package interpret
 
 import (
 	"fmt"
-	"path/filepath"
 
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/plotrender"
 )
 
 const (
@@ -16,12 +14,12 @@ const (
 	defaultPlotHeight = 4 * vg.Inch
 )
 
-type plotKind string
+type plotKind = plotrender.Kind
 
 const (
-	plotKindLine      plotKind = "line"
-	plotKindScatter   plotKind = "scatter"
-	plotKindHistogram plotKind = "histogram"
+	plotKindLine      = plotrender.KindLine
+	plotKindScatter   = plotrender.KindScatter
+	plotKindHistogram = plotrender.KindHistogram
 )
 
 type plotRenderRequest struct {
@@ -140,83 +138,18 @@ func toPlotData(functionName string, value Value, label string) ([]float64, erro
 }
 
 func renderPlot(request plotRenderRequest) error {
-	request.outputPath = attributedOutputPath(request.outputPath)
-	if filepath.Ext(request.outputPath) != ".png" {
-		return fmt.Errorf("runtime error: plot output path must end with .png")
-	}
-	if request.width <= 0 || request.height <= 0 {
-		return fmt.Errorf("runtime error: function '%s' requires width and height to be positive", request.functionName)
-	}
-
-	p := plot.New()
-	if request.title != "" {
-		p.Title.Text = request.title
-	}
-	if request.xLabel != "" {
-		p.X.Label.Text = request.xLabel
-	}
-	if request.yLabel != "" {
-		p.Y.Label.Text = request.yLabel
-	}
-
-	switch request.kind {
-	case plotKindLine, plotKindScatter:
-		if len(request.xs) == 0 || len(request.ys) == 0 {
-			return fmt.Errorf("runtime error: function '%s' requires non-empty x and y arrays", request.functionName)
-		}
-		if len(request.xs) != len(request.ys) {
-			return fmt.Errorf("runtime error: function '%s' requires x and y arrays of equal length", request.functionName)
-		}
-		points := make(plotter.XYs, len(request.xs))
-		for idx := range request.xs {
-			points[idx].X = request.xs[idx]
-			points[idx].Y = request.ys[idx]
-		}
-		switch request.kind {
-		case plotKindLine:
-			line, err := plotter.NewLine(points)
-			if err != nil {
-				return fmt.Errorf("runtime error: plotting backend failed: %w", err)
-			}
-			p.Add(line)
-			if request.legend != "" {
-				p.Legend.Add(request.legend, line)
-			}
-		case plotKindScatter:
-			scatter, err := plotter.NewScatter(points)
-			if err != nil {
-				return fmt.Errorf("runtime error: plotting backend failed: %w", err)
-			}
-			p.Add(scatter)
-			if request.legend != "" {
-				p.Legend.Add(request.legend, scatter)
-			}
-		}
-	case plotKindHistogram:
-		if len(request.xs) == 0 {
-			return fmt.Errorf("runtime error: function '%s' requires non-empty values array", request.functionName)
-		}
-		if request.histogramBin <= 0 {
-			return fmt.Errorf("runtime error: function '%s' requires a positive bin count", request.functionName)
-		}
-		values := make(plotter.Values, len(request.xs))
-		for idx := range request.xs {
-			values[idx] = request.xs[idx]
-		}
-		histogram, err := plotter.NewHist(values, request.histogramBin)
-		if err != nil {
-			return fmt.Errorf("runtime error: plotting backend failed: %w", err)
-		}
-		p.Add(histogram)
-		if request.legend != "" {
-			p.Legend.Add(request.legend, histogram)
-		}
-	default:
-		return fmt.Errorf("runtime invariant violation: unsupported plotting kind '%s'", request.kind)
-	}
-
-	if err := p.Save(request.width, request.height, filepath.Clean(request.outputPath)); err != nil {
-		return fmt.Errorf("runtime error: plotting backend failed: %w", err)
-	}
-	return nil
+	return plotrender.Render(plotrender.Request{
+		FunctionName: request.functionName,
+		Kind:         request.kind,
+		XS:           request.xs,
+		YS:           request.ys,
+		OutputPath:   attributedOutputPath(request.outputPath),
+		Width:        request.width,
+		Height:       request.height,
+		Title:        request.title,
+		XLabel:       request.xLabel,
+		YLabel:       request.yLabel,
+		Legend:       request.legend,
+		HistogramBin: request.histogramBin,
+	})
 }

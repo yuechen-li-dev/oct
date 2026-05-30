@@ -4,7 +4,9 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Kind: String
     Dependencies: Dependency[]
+    Wrappers: Wrapper[]
 }
 
 record Dependency {
@@ -12,11 +14,75 @@ record Dependency {
     VersionRequirement: String
 }
 
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
+    Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Plot"
         Version: "0.1.0"
         Description: "Advanced plotting wrappers with explicit sizing and labels"
+        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Wrappers: [
+            Wrapper {
+                Name: "plot"
+                Family: "Plot"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-plot"
+                GoModuleDir: "octxiliary"
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "Plot.Size"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Width" Type: "Int<px>" },
+                            WrapperTransportField { Name: "Height" Type: "Int<px>" }
+                        ]
+                    },
+                    WrapperTransportType {
+                        Name: "Plot.Labels"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Title" Type: "String" },
+                            WrapperTransportField { Name: "X" Type: "String" },
+                            WrapperTransportField { Name: "Y" Type: "String" },
+                            WrapperTransportField { Name: "Legend" Type: "String" }
+                        ]
+                    }
+                ]
+                Functions: [
+                    WrapperFunction { OctName: "Line" WireName: "PlotRenderLine" Args: ["Float[]", "Float[]", "String", "Plot.Size", "Plot.Labels"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Scatter" WireName: "PlotRenderScatter" Args: ["Float[]", "Float[]", "String", "Plot.Size", "Plot.Labels"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Histogram" WireName: "PlotRenderHistogram" Args: ["Float[]", "Int", "String", "Plot.Size", "Plot.Labels"] Return: "Int" Fallible: true }
+                ]
+            }
+        ]
     }
 }
