@@ -26,7 +26,7 @@ func main() {
 		if parseErr != nil {
 			resp.OK = false
 			resp.Error = parseErr.Error()
-			_ = octxiliary.WriteFrame(os.Stdout, octxiliary.EncodeResponse(resp))
+			_ = octxiliary.WriteResponseFrame(os.Stdout, resp)
 			continue
 		}
 		value, err := dispatch(req)
@@ -38,7 +38,7 @@ func main() {
 			resp.Value = value
 			resp.HasValue = true
 		}
-		if err := octxiliary.WriteFrame(os.Stdout, octxiliary.EncodeResponse(resp)); err != nil {
+		if err := octxiliary.WriteResponseFrame(os.Stdout, resp); err != nil {
 			return
 		}
 	}

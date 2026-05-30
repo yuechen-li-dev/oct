@@ -102,6 +102,13 @@ func WriteFrame(w io.Writer, body string) error {
 	_, err := io.WriteString(w, body)
 	return err
 }
+
+func WriteResponseFrame(w io.Writer, resp Response) error {
+	if err := ValidateResponse(resp); err != nil {
+		return err
+	}
+	return WriteFrame(w, EncodeResponse(resp))
+}
 func ReadFrame(r io.Reader) (string, error) {
 	var n uint32
 	if err := binary.Read(r, binary.LittleEndian, &n); err != nil {
@@ -112,6 +119,54 @@ func ReadFrame(r io.Reader) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func ValidateValue(value Value) error {
+	return validateValue(value, "")
+}
+
+func ValidateRequest(req Request) error {
+	if !req.HasArgs {
+		return nil
+	}
+	for i, arg := range req.Args {
+		if err := validateValue(arg, fmt.Sprintf("arg %d", i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ValidateResponse(resp Response) error {
+	if !resp.OK || !resp.HasValue {
+		return nil
+	}
+	return validateValue(resp.Value, "response value")
+}
+
+func validateValue(value Value, context string) error {
+	switch value.Kind {
+	case ValueFloatArray:
+		for i, f := range value.Floats {
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				if context != "" {
+					return fmt.Errorf("%s: Float[] contains non-finite value at index %d", context, i)
+				}
+				return fmt.Errorf("Float[] contains non-finite value at index %d", i)
+			}
+		}
+	case ValueRecord:
+		for _, field := range value.Fields {
+			fieldContext := fmt.Sprintf("record field %q", field.Name)
+			if context != "" {
+				fieldContext = context + ": " + fieldContext
+			}
+			if err := validateValue(field.Value, fieldContext); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func EncodeRequest(req Request) string {
@@ -276,10 +331,6 @@ func encodeStringMatrixList(rows [][]string) string {
 func encodeFloatList(values []float64) string {
 	parts := make([]string, 0, len(values))
 	for _, value := range values {
-		if math.IsNaN(value) || math.IsInf(value, 0) {
-			parts = append(parts, "<non-finite>")
-			continue
-		}
 		parts = append(parts, strconv.FormatFloat(value, 'g', -1, 64))
 	}
 	return strings.Join(parts, " ")

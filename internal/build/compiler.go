@@ -7587,9 +7587,11 @@ func __octOctxiliaryGenericCall(sidecarCommand string, family string, function s
 	if client.err != nil { return octxiliary.Value{}, client.err }
 	client.reqID++
 	req := octxiliary.Request{ID: client.reqID, Family: family, Function: function, Args: args, HasArgs: true}
+	if err := octxiliary.ValidateRequest(req); err != nil { return octxiliary.Value{}, err }
 	if err := octxiliary.WriteFrame(client.in, octxiliary.EncodeRequest(req)); err != nil { return octxiliary.Value{}, err }
 	frame, err := octxiliary.ReadFrame(client.out); if err != nil { return octxiliary.Value{}, err }
 	resp, err := octxiliary.ParseResponse(frame); if err != nil { return octxiliary.Value{}, err }
+	if err := octxiliary.ValidateResponse(resp); err != nil { return octxiliary.Value{}, err }
 	if !resp.OK { return octxiliary.Value{}, errors.New(resp.Error) }
 	if !resp.HasValue { return octxiliary.Value{}, errors.New("Octxiliary generic response missing typed value") }
 	if resp.Value.Kind != expected { return octxiliary.Value{}, fmt.Errorf("Octxiliary generic response kind mismatch: expected %s, got %s", expected, resp.Value.Kind) }

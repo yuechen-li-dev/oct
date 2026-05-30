@@ -1,6 +1,10 @@
 package octxiliary
 
-import "testing"
+import (
+	"math"
+	"strings"
+	"testing"
+)
 
 func TestRequestRoundTrip(t *testing.T) {
 	req := Request{ID: 1, Family: "IO.File", Function: "FileReadText", Path: "/tmp/a"}
@@ -239,6 +243,108 @@ func TestGenericFloatArrayNonFiniteRejected(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected non-finite Float[] token %s to be rejected", token)
 		}
+	}
+}
+
+func TestValidateValueRejectsFloatArrayNaN(t *testing.T) {
+	err := ValidateValue(Value{Kind: ValueFloatArray, Floats: []float64{math.NaN()}})
+	if err == nil {
+		t.Fatal("expected NaN Float[] validation error")
+	}
+	if !strings.Contains(err.Error(), "Float[] contains non-finite value") || !strings.Contains(err.Error(), "index 0") {
+		t.Fatalf("expected clear Float[] index error, got %v", err)
+	}
+}
+
+func TestValidateValueRejectsFloatArrayInf(t *testing.T) {
+	cases := []struct {
+		name  string
+		value float64
+	}{
+		{name: "positive", value: math.Inf(1)},
+		{name: "negative", value: math.Inf(-1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateValue(Value{Kind: ValueFloatArray, Floats: []float64{1, tc.value}})
+			if err == nil {
+				t.Fatal("expected Inf Float[] validation error")
+			}
+			if !strings.Contains(err.Error(), "Float[] contains non-finite value") || !strings.Contains(err.Error(), "index 1") {
+				t.Fatalf("expected clear Float[] index error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRequestRejectsGenericNonFiniteFloatArray(t *testing.T) {
+	req := Request{ID: 50, Family: "Plot", Function: "PlotRenderLine", HasArgs: true, Args: []Value{{Kind: ValueFloatArray, Floats: []float64{1, math.NaN()}}}}
+	err := ValidateRequest(req)
+	if err == nil {
+		t.Fatal("expected generic request validation error")
+	}
+	if !strings.Contains(err.Error(), "arg 0") || !strings.Contains(err.Error(), "index 1") {
+		t.Fatalf("expected arg and index in validation error, got %v", err)
+	}
+}
+
+func TestValidateRequestIgnoresLegacyRequestWithoutArgs(t *testing.T) {
+	req := Request{ID: 51, Family: "IO.File", Function: "FileReadText", Path: "/tmp/x", Args: []Value{{Kind: ValueFloatArray, Floats: []float64{math.NaN()}}}}
+	if err := ValidateRequest(req); err != nil {
+		t.Fatalf("expected legacy request without HasArgs to validate, got %v", err)
+	}
+}
+
+func TestValidateResponseRejectsTypedNonFiniteFloatArray(t *testing.T) {
+	resp := Response{ID: 52, OK: true, HasValue: true, Value: Value{Kind: ValueFloatArray, Floats: []float64{math.Inf(1)}}}
+	err := ValidateResponse(resp)
+	if err == nil {
+		t.Fatal("expected typed response validation error")
+	}
+	if !strings.Contains(err.Error(), "response value") || !strings.Contains(err.Error(), "index 0") {
+		t.Fatalf("expected response and index in validation error, got %v", err)
+	}
+}
+
+func TestValidateResponseIgnoresUntypedOrErrorResponse(t *testing.T) {
+	value := Value{Kind: ValueFloatArray, Floats: []float64{math.NaN()}}
+	cases := []Response{
+		{ID: 53, OK: true, HasValue: false, Value: value},
+		{ID: 54, OK: false, HasValue: true, Value: value, Error: "failed"},
+	}
+	for _, resp := range cases {
+		if err := ValidateResponse(resp); err != nil {
+			t.Fatalf("expected response %#v to validate, got %v", resp, err)
+		}
+	}
+}
+
+func TestValidateValueRejectsRecordFieldNonFiniteFloatArray(t *testing.T) {
+	value := Value{Kind: ValueRecord, RecordType: "Plot.Payload", Fields: []FieldValue{{Name: "Values", Value: Value{Kind: ValueFloatArray, Floats: []float64{1, math.Inf(-1)}}}}}
+	err := ValidateValue(value)
+	if err == nil {
+		t.Fatal("expected record field validation error")
+	}
+	if !strings.Contains(err.Error(), "record field \"Values\"") || !strings.Contains(err.Error(), "index 1") {
+		t.Fatalf("expected field and index in validation error, got %v", err)
+	}
+}
+
+func TestValidateValueAcceptsFiniteFloatArrayRoundTrip(t *testing.T) {
+	value := Value{Kind: ValueFloatArray, Floats: []float64{0, 1.25, -3.5}}
+	if err := ValidateValue(value); err != nil {
+		t.Fatalf("expected finite Float[] to validate, got %v", err)
+	}
+	got, err := ParseResponse(EncodeResponse(Response{ID: 55, OK: true, HasValue: true, Value: value}))
+	if err != nil || got.Value.Kind != ValueFloatArray || len(got.Value.Floats) != 3 || got.Value.Floats[2] != -3.5 {
+		t.Fatalf("finite Float[] roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestEncodeFloatListNoNonFinitePlaceholder(t *testing.T) {
+	encoded := EncodeResponse(Response{ID: 56, OK: true, HasValue: true, Value: Value{Kind: ValueFloatArray, Floats: []float64{math.NaN()}}})
+	if strings.Contains(encoded, "<non-finite>") {
+		t.Fatalf("encoder emitted deprecated non-finite placeholder: %s", encoded)
 	}
 }
 
