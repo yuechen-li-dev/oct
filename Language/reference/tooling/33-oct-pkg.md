@@ -95,6 +95,14 @@ Each `WrapperFunction` must declare non-empty `OctName`, non-empty `WireName`, `
 Within a single wrapper, duplicate `WrapperFunction.OctName` values and duplicate `WrapperFunction.WireName` values are rejected.
 Do not declare sidecar build commands or runtime registry behavior beyond this source-level manifest contract.
 
+## Wrapper build planning
+
+M5d adds internal package-manager planning support for wrapper manifests. Wrapper manifests can now be inspected as native wrapper build plans for fetched packages and synced dependency graphs. A plan identifies which packages are `Kind: "wrapper"`, each package-local `GoModuleDir`, the resolved package-local Go module path, sidecar command names, wrapper families, protocols, and exposed function metadata.
+
+Wrapper build planning is inspection-only. It does not build Go modules, run `go mod download`, run `go build`, generate sidecar binaries, generate `.octagon` registries, generate lockfiles, discover runtime sidecars, lower generic wrappers, execute sidecars, or change the Octxiliary protocol.
+
+Planning treats wrapper packages as native-code packages and marks them as requiring explicit future native build permission. Permission prompts, native build execution, runtime registry generation, and `.octagon` lockfiles remain future work.
+
 ## Rules
 
 - Manifest metadata is declared by `fn Manifest() -> PackageManifest` in `manifest.oct`.
