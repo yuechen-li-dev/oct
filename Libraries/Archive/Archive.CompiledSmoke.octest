@@ -1,0 +1,12 @@
+package Archive
+
+[Fact]
+fn ArchiveCompiledMissingZipFails() -> Void {
+    var failed = false
+    match ListEntries("m11_missing_archive.zip") {
+        ok(entries) => { failed = Len(entries) < 0 }
+        err(reason) => { failed = true }
+    }
+    Assert.True(failed, "compiled archive sidecar should report missing archives")
+    return
+}

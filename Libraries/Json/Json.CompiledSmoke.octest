@@ -1,0 +1,12 @@
+package Json
+
+[Fact]
+fn JsonCompiledMissingFileFails() -> Void {
+    var failed = false
+    match Load("m11_missing_json_file.json") {
+        ok(value) => { failed = Len(value) < 0 }
+        err(reason) => { failed = true }
+    }
+    Assert.True(failed, "compiled json sidecar should report missing files")
+    return
+}

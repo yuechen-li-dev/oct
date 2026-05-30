@@ -33,22 +33,21 @@ record WrapperFunction {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "Archive"
+        Name: "Json"
         Version: "0.1.0"
-        Description: "Thin archive wrappers for practical zip workflows"
+        Description: "Thin JSON file wrappers with string payloads"
         Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
         Wrappers: [
             Wrapper {
-                Name: "archive"
-                Family: "Archive"
+                Name: "json"
+                Family: "Json"
                 Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-archive"
+                SidecarCommand: "octxiliary-json"
                 GoModuleDir: "octxiliary"
                 Functions: [
-                    WrapperFunction { OctName: "ListEntries" WireName: "ZipListEntries" Args: ["String"] Return: "String[]" Fallible: true },
-                    WrapperFunction { OctName: "ExtractAll" WireName: "ZipExtractAll" Args: ["String", "String"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "CreateFromFiles" WireName: "ZipCreateFromFiles" Args: ["String", "String[]"] Return: "Int" Fallible: true }
+                    WrapperFunction { OctName: "Save" WireName: "JsonSave" Args: ["String", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Load" WireName: "JsonLoad" Args: ["String"] Return: "String" Fallible: true }
                 ]
             }
         ]
