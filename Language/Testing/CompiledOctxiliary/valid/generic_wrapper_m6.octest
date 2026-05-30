@@ -27,6 +27,9 @@ fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
     }
     TouchDirect()
     Assert.True(true, "non-fallible Void wrapper should continue execution")
+    let handle = CreateHandle()
+    Assert.True(handle.Handle > 0, "handle return should reconstruct public record")
+    Assert.Equal(handle.Handle, UseHandle(handle)?, "handle arg should pass typed handle to sidecar")
 }
 
 [Fact]

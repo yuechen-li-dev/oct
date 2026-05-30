@@ -56,3 +56,15 @@ fn TouchDirect() -> Void {
 fn AlwaysFails() -> String ! Error {
     return error("TestWrapper.AlwaysFails requires compiled Octxiliary lowering")
 }
+
+record TestHandle {
+    Handle: Int
+}
+
+fn CreateHandle() -> TestHandle {
+    return TestHandle { Handle: 0 }
+}
+
+fn UseHandle(handle: TestHandle) -> Int ! Error {
+    return error("TestWrapper.UseHandle requires compiled Octxiliary lowering")
+}

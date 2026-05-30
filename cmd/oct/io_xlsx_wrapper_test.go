@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,5 +43,19 @@ func TestIOXlsxWrapper(t *testing.T) {
 	}
 	if info.Size() == 0 {
 		t.Fatalf("expected non-empty xlsx artifact at %s", outputPath)
+	}
+}
+
+func TestCompiledIOXlsxMissingSidecarDiagnostic(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Xlsx.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected missing xlsx sidecar failure, got success:\n%s", string(out))
+	}
+	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-xlsx" not found`) {
+		t.Fatalf("expected xlsx missing sidecar diagnostic, got:\n%s", string(out))
 	}
 }

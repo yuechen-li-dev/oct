@@ -1931,6 +1931,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				case "Assert.Near":
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Near", Args: args, Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
+				case "Assert.Error":
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Error", Args: args, Builtin: true, RetType: "Void"})
+					return "_", "Void", false, nil
 				}
 			}
 			switch calleeName {
@@ -2056,10 +2059,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, argTypes[i])
 				}
 			}
-			if findTransportRecord(meta.TransportTypes, meta.Return).ok {
-				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses declared record transport type %s; record returns are not supported", meta.PackageName, meta.OctName, meta.Return)
-			}
-			if !isOctxiliaryTransportType(meta.Return) {
+			if transport := findTransportRecord(meta.TransportTypes, meta.Return); transport.ok {
+				if transport.typ.Kind != "handle" {
+					return "", "", false, fmt.Errorf("wrapper function %s.%s return uses declared record transport type %s; record returns are not supported", meta.PackageName, meta.OctName, meta.Return)
+				}
+			} else if !isOctxiliaryTransportType(meta.Return) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses unsupported transport type %s", meta.PackageName, meta.OctName, meta.Return)
 			}
 			localType := meta.Return
@@ -4571,6 +4575,9 @@ func emitGo(m MIRModule) (string, error) {
 					if generic.Fallible {
 						resultTypes[generic.RetType] = struct{}{}
 					}
+					if transport := findTransportRecord(generic.TransportTypes, generic.RetType); transport.ok && transport.typ.Kind == "handle" {
+						resultTypes[generic.RetType] = struct{}{}
+					}
 				}
 			}
 		}
@@ -4597,7 +4604,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] || usedBuiltins["Assert.Near"] {
+	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] || usedBuiltins["Assert.Near"] || usedBuiltins["Assert.Error"] {
 		importSet["os"] = struct{}{}
 	}
 	if usedBuiltins["Assert.Equal"] {
@@ -6796,6 +6803,13 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 }
 
 func octxiliaryKindExpr(t string) string {
+	return octxiliaryKindExprWithTransport(t, nil)
+}
+
+func octxiliaryKindExprWithTransport(t string, transportTypes []project.TransportTypeMetadata) string {
+	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
+		return "octxiliary.ValueHandle"
+	}
 	switch t {
 	case "Void":
 		return "octxiliary.ValueVoid"
@@ -6825,6 +6839,10 @@ func octxiliaryValueExpr(t string, expr string) (string, error) {
 }
 
 func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []project.TransportTypeMetadata) (string, error) {
+	return octxiliaryValueExprWithTransportFamily(t, expr, transportTypes, "")
+}
+
+func octxiliaryValueExprWithTransportFamily(t string, expr string, transportTypes []project.TransportTypeMetadata, family string) (string, error) {
 	switch t {
 	case "Void":
 		return "octxiliary.Value{Kind: octxiliary.ValueVoid}", nil
@@ -6846,10 +6864,13 @@ func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []pr
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueBytes, Bytes: %s}", expr), nil
 	default:
 		if record := findTransportRecord(transportTypes, t); record.ok {
+			if record.typ.Kind == "handle" {
+				return fmt.Sprintf("func() octxiliary.Value { __handleID := %s.Handle; return octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: %q, HandleType: %q, HandleID: __handleID} }()", expr, family, t), nil
+			}
 			fields := make([]string, 0, len(record.typ.Fields))
 			for _, field := range record.typ.Fields {
 				fieldType := transportRuntimeBaseType(field.Type)
-				fieldExpr, err := octxiliaryValueExprWithTransport(fieldType, expr+"."+field.Name, transportTypes)
+				fieldExpr, err := octxiliaryValueExprWithTransportFamily(fieldType, expr+"."+field.Name, transportTypes, family)
 				if err != nil {
 					return "", err
 				}
@@ -6862,6 +6883,13 @@ func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []pr
 }
 
 func octxiliaryValueExtractExpr(t string, value string) string {
+	return octxiliaryValueExtractExprWithTransport(t, value, nil)
+}
+
+func octxiliaryValueExtractExprWithTransport(t string, value string, transportTypes []project.TransportTypeMetadata) string {
+	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
+		return fmt.Sprintf("%s{Handle: %s.HandleID}", goType(t), value)
+	}
 	switch t {
 	case "Void":
 		return "__octVoid{}"
@@ -6901,23 +6929,34 @@ func goStmt(s MIRStmt) (string, error) {
 	case MIRGenericOctxiliaryCall:
 		valueArgs := make([]string, 0, len(st.Args))
 		for i, arg := range st.Args {
-			valueExpr, err := octxiliaryValueExprWithTransport(st.ArgTypes[i], arg, st.TransportTypes)
+			valueExpr, err := octxiliaryValueExprWithTransportFamily(st.ArgTypes[i], arg, st.TransportTypes, st.Family)
 			if err != nil {
 				return "", err
 			}
 			valueArgs = append(valueArgs, valueExpr)
 		}
-		call := fmt.Sprintf("__octOctxiliaryGenericCall(%q, %q, %q, []octxiliary.Value{%s}, %s)", st.SidecarCommand, st.Family, st.WireName, strings.Join(valueArgs, ", "), octxiliaryKindExpr(st.RetType))
+		call := fmt.Sprintf("__octOctxiliaryGenericCall(%q, %q, %q, []octxiliary.Value{%s}, %s)", st.SidecarCommand, st.Family, st.WireName, strings.Join(valueArgs, ", "), octxiliaryKindExprWithTransport(st.RetType, st.TransportTypes))
+		retValidation := ""
+		if transport := findTransportRecord(st.TransportTypes, st.RetType); transport.ok && transport.typ.Kind == "handle" {
+			retValidation = fmt.Sprintf("if __err := __octOctxiliaryValidateHandle(__value, %q, %q); __err != nil { ", st.Family, st.RetType)
+		}
+		extractExpr := octxiliaryValueExtractExprWithTransport(st.RetType, "__value", st.TransportTypes)
 		if st.Fallible {
 			if st.RetType == "Void" {
 				return fmt.Sprintf("%s = func() %s { __value, __err := %s; _ = __value; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __octVoid{}} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			}
-			return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: %s} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType), octxiliaryValueExtractExpr(st.RetType, "__value")), nil
+			if retValidation != "" {
+				return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; %sreturn %s{Err: __err.Error(), IsErr: true} }; return %s{Value: %s} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), retValidation, goResultTypeName(st.RetType), goResultTypeName(st.RetType), extractExpr), nil
+			}
+			return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: %s} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType), extractExpr), nil
 		}
 		if st.RetType == "Void" {
 			return fmt.Sprintf("%s = func() __octVoid { __value, __err := %s; _ = __value; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return __octVoid{} }()", st.Target, call), nil
 		}
-		return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, octxiliaryValueExtractExpr(st.RetType, "__value")), nil
+		if retValidation != "" {
+			return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; %spanic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, retValidation, extractExpr), nil
+		}
+		return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, extractExpr), nil
 	case MIRCall:
 		if st.Builtin {
 			switch canonicalCompiledBuiltinName(st.Callee) {
@@ -6951,6 +6990,11 @@ func goStmt(s MIRStmt) (string, error) {
 					return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
 				}
 				return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Target), nil
+			case "Assert.Error":
+				if st.Target == "_" {
+					return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+				}
+				return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
@@ -7596,6 +7640,14 @@ func __octOctxiliaryGenericCall(sidecarCommand string, family string, function s
 	if !resp.HasValue { return octxiliary.Value{}, errors.New("Octxiliary generic response missing typed value") }
 	if resp.Value.Kind != expected { return octxiliary.Value{}, fmt.Errorf("Octxiliary generic response kind mismatch: expected %s, got %s", expected, resp.Value.Kind) }
 	return resp.Value, nil
+}
+
+func __octOctxiliaryValidateHandle(value octxiliary.Value, family string, handleType string) error {
+	if value.Kind != octxiliary.ValueHandle { return fmt.Errorf("Octxiliary handle response kind mismatch: expected Handle, got %s", value.Kind) }
+	if value.HandleFamily != family { return fmt.Errorf("Octxiliary handle response family mismatch: expected %s, got %s", family, value.HandleFamily) }
+	if value.HandleType != handleType { return fmt.Errorf("Octxiliary handle response type mismatch: expected %s, got %s", handleType, value.HandleType) }
+	if value.HandleID <= 0 { return fmt.Errorf("Octxiliary handle response ID must be positive") }
+	return nil
 }
 
 func __octOctxiliaryGenericClient(sidecarCommand string) *__octOctxiliaryClient {

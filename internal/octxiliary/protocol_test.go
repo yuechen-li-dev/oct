@@ -373,3 +373,63 @@ func TestGenericMalformedRecordFieldRejected(t *testing.T) {
 		t.Fatal("expected malformed record field parse error")
 	}
 }
+
+func TestHandleRequestArgRoundTrip(t *testing.T) {
+	value := Value{Kind: ValueHandle, HandleFamily: "Xlsx", HandleType: "IO.Workbook", HandleID: 1}
+	got, err := ParseRequest(EncodeRequest(Request{ID: 60, Family: "Xlsx", Function: "XlsxAddSheet", HasArgs: true, Args: []Value{value}}))
+	if err != nil || len(got.Args) != 1 || got.Args[0].Kind != ValueHandle || got.Args[0].HandleFamily != "Xlsx" || got.Args[0].HandleType != "IO.Workbook" || got.Args[0].HandleID != 1 {
+		t.Fatalf("handle request roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestHandleResponseValueRoundTrip(t *testing.T) {
+	value := Value{Kind: ValueHandle, HandleFamily: "Xlsx", HandleType: "IO.Workbook", HandleID: 2}
+	got, err := ParseResponse(EncodeResponse(Response{ID: 61, OK: true, HasValue: true, Value: value}))
+	if err != nil || !got.HasValue || got.Value.Kind != ValueHandle || got.Value.HandleFamily != "Xlsx" || got.Value.HandleType != "IO.Workbook" || got.Value.HandleID != 2 {
+		t.Fatalf("handle response roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestHandleMissingFamilyRejected(t *testing.T) {
+	if err := ValidateValue(Value{Kind: ValueHandle, HandleType: "IO.Workbook", HandleID: 1}); err == nil || !strings.Contains(err.Error(), "handleFamily") {
+		t.Fatalf("expected handleFamily validation error, got %v", err)
+	}
+	_, err := ParseResponse(`OctxiliaryResponse { id: 62 ok: true value: OctxiliaryValue { kind: "Handle" handleType: "IO.Workbook" handleID: 1 } }`)
+	if err == nil || !strings.Contains(err.Error(), "handleFamily") {
+		t.Fatalf("expected missing handleFamily parse error, got %v", err)
+	}
+}
+
+func TestHandleMissingTypeRejected(t *testing.T) {
+	if err := ValidateValue(Value{Kind: ValueHandle, HandleFamily: "Xlsx", HandleID: 1}); err == nil || !strings.Contains(err.Error(), "handleType") {
+		t.Fatalf("expected handleType validation error, got %v", err)
+	}
+	_, err := ParseResponse(`OctxiliaryResponse { id: 63 ok: true value: OctxiliaryValue { kind: "Handle" handleFamily: "Xlsx" handleID: 1 } }`)
+	if err == nil || !strings.Contains(err.Error(), "handleType") {
+		t.Fatalf("expected missing handleType parse error, got %v", err)
+	}
+}
+
+func TestHandleNonPositiveIDRejected(t *testing.T) {
+	for _, id := range []int{0, -1} {
+		err := ValidateValue(Value{Kind: ValueHandle, HandleFamily: "Xlsx", HandleType: "IO.Workbook", HandleID: id})
+		if err == nil || !strings.Contains(err.Error(), "positive") {
+			t.Fatalf("expected positive handleID validation error for %d, got %v", id, err)
+		}
+	}
+	_, err := ParseResponse(`OctxiliaryResponse { id: 64 ok: true value: OctxiliaryValue { kind: "Handle" handleFamily: "Xlsx" handleType: "IO.Workbook" handleID: 0 } }`)
+	if err == nil || !strings.Contains(err.Error(), "positive") {
+		t.Fatalf("expected non-positive handleID parse error, got %v", err)
+	}
+}
+
+func TestHandleNestedInsideRecordValidates(t *testing.T) {
+	value := Value{Kind: ValueRecord, RecordType: "Test.Payload", Fields: []FieldValue{{Name: "Workbook", Value: Value{Kind: ValueHandle, HandleFamily: "Xlsx", HandleType: "IO.Workbook", HandleID: 3}}}}
+	if err := ValidateValue(value); err != nil {
+		t.Fatalf("expected nested handle record to validate, got %v", err)
+	}
+	value.Fields[0].Value.HandleID = 0
+	if err := ValidateValue(value); err == nil || !strings.Contains(err.Error(), "record field \"Workbook\"") || !strings.Contains(err.Error(), "positive") {
+		t.Fatalf("expected nested handle validation error, got %v", err)
+	}
+}

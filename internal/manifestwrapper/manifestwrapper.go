@@ -274,10 +274,11 @@ func extractFunction(record ast.RecordLiteralExpr, functionFields map[string]boo
 	if err != nil {
 		return FunctionMetadata{}, err
 	}
-	if isDeclaredTransportType(returnType, transportTypes) {
-		return FunctionMetadata{}, fmt.Errorf("Return uses declared record transport type %q; record returns are not supported", returnType)
-	}
-	if !IsSupportedTransportType(returnType) {
+	if declared, ok := findDeclaredTransportType(returnType, transportTypes); ok {
+		if declared.Kind != "handle" {
+			return FunctionMetadata{}, fmt.Errorf("Return uses declared record transport type %q; record returns are not supported", returnType)
+		}
+	} else if !IsSupportedTransportType(returnType) {
 		return FunctionMetadata{}, fmt.Errorf("Return has unsupported transport type %q", returnType)
 	}
 	fallible, ok := fields["Fallible"].(ast.BoolLiteral)
@@ -318,8 +319,8 @@ func extractTransportTypes(expr ast.Expr) ([]TransportTypeMetadata, error) {
 		if err != nil {
 			return nil, fmt.Errorf("TransportTypes element at index %d: %w", idx, err)
 		}
-		if kind != "record" {
-			return nil, fmt.Errorf("TransportTypes element at index %d: Kind must be %q", idx, "record")
+		if kind != "record" && kind != "handle" {
+			return nil, fmt.Errorf("TransportTypes element at index %d: Kind must be %q or %q", idx, "record", "handle")
 		}
 		fieldArray, ok := fields["Fields"].(ast.ArrayLiteralExpr)
 		if !ok {
@@ -328,6 +329,17 @@ func extractTransportTypes(expr ast.Expr) ([]TransportTypeMetadata, error) {
 		transportFields, err := extractTransportFields(fieldArray)
 		if err != nil {
 			return nil, fmt.Errorf("TransportTypes element at index %d: %w", idx, err)
+		}
+		if kind == "handle" {
+			if len(transportFields) != 1 {
+				return nil, fmt.Errorf("TransportTypes element at index %d: handle transport type must have exactly one field", idx)
+			}
+			if transportFields[0].Name != "Handle" {
+				return nil, fmt.Errorf("TransportTypes element at index %d: handle transport field must be named Handle", idx)
+			}
+			if transportFields[0].Type != "Int" {
+				return nil, fmt.Errorf("TransportTypes element at index %d: handle transport field Handle must have type Int", idx)
+			}
 		}
 		out = append(out, TransportTypeMetadata{Name: name, Kind: kind, Fields: transportFields})
 	}
@@ -380,12 +392,17 @@ func IsSupportedTransportFieldType(t string) bool {
 }
 
 func isDeclaredTransportType(name string, types []TransportTypeMetadata) bool {
+	_, ok := findDeclaredTransportType(name, types)
+	return ok
+}
+
+func findDeclaredTransportType(name string, types []TransportTypeMetadata) (TransportTypeMetadata, bool) {
 	for _, typ := range types {
 		if typ.Name == name {
-			return true
+			return typ, true
 		}
 	}
-	return false
+	return TransportTypeMetadata{}, false
 }
 
 func wrapperLiteralFields(record ast.RecordLiteralExpr, allowed map[string]bool) (map[string]ast.Expr, error) {

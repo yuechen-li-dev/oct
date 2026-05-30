@@ -122,6 +122,19 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.Value{}, fmt.Errorf("test wrapper forced failure")
+	case "TestCreateHandle":
+		if err := expect(req.Args); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: "TestWrapper", HandleType: "Main.TestHandle", HandleID: 77}, nil
+	case "TestUseHandle":
+		if err := expect(req.Args, octxiliary.ValueHandle); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if req.Args[0].HandleFamily != "TestWrapper" || req.Args[0].HandleType != "Main.TestHandle" || req.Args[0].HandleID <= 0 {
+			return octxiliary.Value{}, fmt.Errorf("unexpected handle payload %#v", req.Args[0])
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: req.Args[0].HandleID}, nil
 	default:
 		return octxiliary.Value{}, fmt.Errorf("unknown function %q", req.Function)
 	}

@@ -20,7 +20,19 @@ record Wrapper {
     Protocol: String
     SidecarCommand: String
     GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
     Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
 }
 
 record WrapperFunction {
@@ -45,9 +57,33 @@ fn Manifest() -> PackageManifest {
                 Protocol: "octxiliary.v0"
                 SidecarCommand: "octxiliary-csv"
                 GoModuleDir: "octxiliary"
+                TransportTypes: []
                 Functions: [
                     WrapperFunction { OctName: "Read" WireName: "CsvRead" Args: ["String"] Return: "String[][]" Fallible: true },
                     WrapperFunction { OctName: "Write" WireName: "CsvWrite" Args: ["String", "String[][]"] Return: "Int" Fallible: true }
+                ]
+            },
+            Wrapper {
+                Name: "xlsx"
+                Family: "Xlsx"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-xlsx"
+                GoModuleDir: "octxiliary"
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "IO.Workbook"
+                        Kind: "handle"
+                        Fields: [
+                            WrapperTransportField { Name: "Handle" Type: "Int" }
+                        ]
+                    }
+                ]
+                Functions: [
+                    WrapperFunction { OctName: "CreateWorkbook" WireName: "XlsxCreateWorkbook" Args: [] Return: "IO.Workbook" Fallible: false },
+                    WrapperFunction { OctName: "AddSheet" WireName: "XlsxAddSheet" Args: ["IO.Workbook", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "SetCellString" WireName: "XlsxSetCellString" Args: ["IO.Workbook", "String", "String", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "SetCellFloat" WireName: "XlsxSetCellFloat" Args: ["IO.Workbook", "String", "String", "Float"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "SaveWorkbook" WireName: "XlsxSaveWorkbook" Args: ["IO.Workbook", "String"] Return: "Int" Fallible: true }
                 ]
             }
         ]

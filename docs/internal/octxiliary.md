@@ -266,3 +266,17 @@ M16 extends generic Octxiliary with two deliberately narrow transports needed by
 Record returns are still unsupported. Nested records, recursive records, maps, handles, dynamic `Any`, `Float[][]`, broad `Int[]`, and package-manager sidecar builds remain out of scope.
 
 `Libraries/Plot` is now a wrapper package served by `cmd/octxiliary-plot`. Compiled `Line`, `Scatter`, and `Histogram` calls use `Float[]` plot data plus declared `Plot.Size` and `Plot.Labels` record arguments. `DefaultSize` and `DefaultLabels` remain pure/local Oct helpers. The `octxiliary-plot` sidecar must be available beside the compiled `.octbin` or discoverable through `OCT_WRAPPER_PATH`; missing sidecars report `Octxiliary sidecar "octxiliary-plot" not found`.
+
+## M18 handle transport M0
+
+M18 adds first-class generic `Handle` values to the Octxiliary protocol. A handle frame is a typed capability owned by one sidecar process, encoded as:
+
+```oct
+OctxiliaryValue { kind: "Handle" handleFamily: "Xlsx" handleType: "IO.Workbook" handleID: 1 }
+```
+
+The protocol validates that `handleFamily` and `handleType` are non-empty and that `handleID` is positive. The wire format never carries host pointers, and handle IDs have no serialization or persistence guarantee across program runs.
+
+Handle transport is deliberately narrower than records: manifests may declare `WrapperTransportType.Kind == "handle"` only for an Oct record with exactly one field, `Handle: Int`. The public Oct record remains an ordinary record, but compiled wrapper lowering packs it as a typed sidecar capability and reconstructs the public record from typed handle returns.
+
+M18 migrates `IO.Xlsx` to generic Octxiliary through `cmd/octxiliary-xlsx`. Workbook handles live for the lifetime of that sidecar process, are monotonically allocated, are not reused in M0, and have no `Close`/destructor API yet. Cross-family handles, Image/Pdf migration, handle serialization, a shared global broker, and package-manager native sidecar builds remain deferred. `octxiliary-xlsx` must be available beside the compiled `.octbin` or through `OCT_WRAPPER_PATH`.
