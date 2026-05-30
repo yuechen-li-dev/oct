@@ -209,3 +209,66 @@ func pkgWrappersLiteral(name string, family string, command string, moduleDir st
 		"}",
 	}, "\n")
 }
+
+func TestPkgWrappersCompressionPackage(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Compression", pkgWrappersCompressionLiteral()))
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers")
+	if err != nil {
+		t.Fatalf("expected pkg wrappers success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"native wrappers: yes",
+		"sidecars: 1",
+		"* package Compression 0.1.0",
+		"wrapper: compression",
+		"family: Compression",
+		"command: octxiliary-compression",
+		"protocol: octxiliary.v0",
+		"functions: 4",
+		"No wrapper sidecars were built or executed.",
+	)
+}
+
+func TestPkgWrappersCompressionRegistryOutput(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Compression", pkgWrappersCompressionLiteral()))
+	registryPath := filepath.Join(t.TempDir(), "compression-registry.octagon")
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers", "--registry-out", registryPath)
+	if err != nil {
+		t.Fatalf("expected pkg wrappers registry success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"Wrote Octxiliary registry: "+registryPath,
+		"No wrapper sidecars were built or executed.",
+	)
+	body, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("expected registry file: %v", err)
+	}
+	registry := string(body)
+	assertOutputContains(t, registry,
+		"Family: \"Compression\"",
+		"SidecarCommand: \"octxiliary-compression\"",
+	)
+}
+
+func pkgWrappersCompressionLiteral() string {
+	return strings.Join([]string{
+		"Wrapper {",
+		"Name: \"compression\"",
+		"Family: \"Compression\"",
+		"Protocol: \"octxiliary.v0\"",
+		"SidecarCommand: \"octxiliary-compression\"",
+		"GoModuleDir: \"octxiliary\"",
+		"Functions: [",
+		"WrapperFunction { OctName: \"CompressBytes\" WireName: \"GzipCompressBytes\" Args: [\"Bytes\"] Return: \"Bytes\" Fallible: true },",
+		"WrapperFunction { OctName: \"DecompressBytes\" WireName: \"GzipDecompressBytes\" Args: [\"Bytes\"] Return: \"Bytes\" Fallible: true },",
+		"WrapperFunction { OctName: \"CompressFile\" WireName: \"GzipCompressFile\" Args: [\"String\", \"String\"] Return: \"Int\" Fallible: true },",
+		"WrapperFunction { OctName: \"DecompressFile\" WireName: \"GzipDecompressFile\" Args: [\"String\", \"String\"] Return: \"Int\" Fallible: true }",
+		"]",
+		"}",
+	}, "\n")
+}
