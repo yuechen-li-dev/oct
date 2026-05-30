@@ -1,0 +1,54 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Kind: String
+    Dependencies: Dependency[]
+    Wrappers: Wrapper[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    Functions: WrapperFunction[]
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "Return mismatch generic wrapper fixture"
+        Kind: "wrapper"
+        Dependencies: []
+        Wrappers: [
+            Wrapper {
+                Name: "test-wrapper"
+                Family: "TestWrapper"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-test-wrapper"
+                GoModuleDir: "wrappers/test"
+                Functions: [
+                    WrapperFunction { OctName: "BadReturn" WireName: "TestEchoString" Args: ["String"] Return: "Int" Fallible: true }
+                ]
+            }
+        ]
+    }
+}

@@ -29,6 +29,36 @@ func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 	}
 }
 
+func TestCompiledGenericOctxiliaryRejectsManifestReturnMismatch(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/return_mismatch/bad_return.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected manifest return mismatch failure, got success:\n%s", string(out))
+	}
+	text := string(out)
+	if !strings.Contains(text, "manifest return") || !strings.Contains(text, "BadReturn") {
+		t.Fatalf("expected manifest return mismatch diagnostic for BadReturn, got:\n%s", text)
+	}
+}
+
+func TestCompiledGenericOctxiliaryRejectsManifestFallibleMismatch(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/fallible_mismatch/bad_fallible.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected manifest fallible mismatch failure, got success:\n%s", string(out))
+	}
+	text := string(out)
+	if !strings.Contains(text, "manifest fallible") || !strings.Contains(text, "BadFallible") {
+		t.Fatalf("expected manifest fallible mismatch diagnostic for BadFallible, got:\n%s", text)
+	}
+}
+
 func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")

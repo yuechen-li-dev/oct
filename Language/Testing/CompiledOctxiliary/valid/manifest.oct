@@ -53,6 +53,7 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "AddInt" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "Half" WireName: "TestHalf" Args: ["Float"] Return: "Float" Fallible: true },
                     WrapperFunction { OctName: "Touch" WireName: "TestTouch" Args: [] Return: "Void" Fallible: true },
+                    WrapperFunction { OctName: "TouchDirect" WireName: "TestTouchDirect" Args: [] Return: "Void" Fallible: false },
                     WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true }
                 ]
             }

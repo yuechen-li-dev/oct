@@ -28,6 +28,10 @@ fn Touch() -> Void ! Error {
     return
 }
 
+fn TouchDirect() -> Void {
+    return
+}
+
 fn AlwaysFails() -> String ! Error {
     return error("TestWrapper.AlwaysFails requires compiled Octxiliary lowering")
 }

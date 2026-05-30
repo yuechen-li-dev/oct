@@ -82,7 +82,7 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueFloat, Float: req.Args[0].Float / 2}, nil
-	case "TestTouch":
+	case "TestTouch", "TestTouchDirect":
 		if err := expect(req.Args); err != nil {
 			return octxiliary.Value{}, err
 		}

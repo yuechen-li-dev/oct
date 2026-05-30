@@ -17,6 +17,8 @@ fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
             Assert.True(false, "Void wrapper should succeed")
         }
     }
+    TouchDirect()
+    Assert.True(true, "non-fallible Void wrapper should continue execution")
 }
 
 [Fact]

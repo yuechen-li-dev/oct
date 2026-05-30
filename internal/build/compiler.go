@@ -1973,6 +1973,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
+			if ret != meta.Return {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest return %s does not match Oct stub return %s", meta.PackageName, meta.OctName, meta.Return, ret)
+			}
+			if fallible != meta.Fallible {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest fallible %t does not match Oct stub fallible %t", meta.PackageName, meta.OctName, meta.Fallible, fallible)
+			}
 			if len(argTypes) != len(meta.Args) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))
 			}
@@ -6493,6 +6499,9 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = func() %s { __value, __err := %s; _ = __value; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __octVoid{}} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			}
 			return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: %s} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType), octxiliaryValueExtractExpr(st.RetType, "__value")), nil
+		}
+		if st.RetType == "Void" {
+			return fmt.Sprintf("%s = func() __octVoid { __value, __err := %s; _ = __value; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return __octVoid{} }()", st.Target, call), nil
 		}
 		return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, octxiliaryValueExtractExpr(st.RetType, "__value")), nil
 	case MIRCall:
