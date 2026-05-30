@@ -72,3 +72,45 @@ func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 		t.Fatalf("expected clear missing sidecar message, got:\n%s", string(out))
 	}
 }
+
+func TestCompiledGenericOctxiliaryRejectsRecordReturn(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", filepath.Join("..", "..", "..", "..", "..", "cmd", "oct"), "pkg", "wrappers")
+	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "record_return")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected record return failure, got success:\n%s", string(out))
+	}
+	text := string(out)
+	if !strings.Contains(text, "record transport type") && !strings.Contains(text, "record returns") {
+		t.Fatalf("expected record return diagnostic, got:\n%s", text)
+	}
+}
+
+func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", filepath.Join("..", "..", "..", "..", "..", "cmd", "oct"), "pkg", "wrappers")
+	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "undeclared_record_arg")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected undeclared record arg failure, got success:\n%s", string(out))
+	}
+	if !strings.Contains(string(out), "unsupported transport type") {
+		t.Fatalf("expected unsupported transport type diagnostic, got:\n%s", string(out))
+	}
+}
+
+func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/record_arg_mismatch/bad_record_arg_mismatch.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected record arg mismatch failure, got success:\n%s", string(out))
+	}
+	text := string(out)
+	if !strings.Contains(text, "argument 1 expects Main.TestOptions, got String") {
+		t.Fatalf("expected record arg mismatch diagnostic, got:\n%s", text)
+	}
+}

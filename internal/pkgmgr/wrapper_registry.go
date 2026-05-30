@@ -30,6 +30,19 @@ type OctxiliarySidecar struct {
 	GoModuleDir    string
 	GoModulePath   string
 	Functions      []OctxiliaryFunction
+	TransportTypes []OctxiliaryTransportType
+}
+
+// OctxiliaryTransportType records a manifest-declared structured transport type.
+type OctxiliaryTransportType struct {
+	Name   string
+	Kind   string
+	Fields []OctxiliaryTransportField
+}
+
+type OctxiliaryTransportField struct {
+	Name string
+	Type string
 }
 
 // OctxiliaryFunction records the Oct-visible and wire-visible metadata for one
@@ -58,6 +71,17 @@ func BuildOctxiliaryRegistry(plan WrapperBuildPlan) (OctxiliaryRegistry, error) 
 				Fallible: function.Fallible,
 			})
 		}
+		var transportTypes []OctxiliaryTransportType
+		if len(sidecar.TransportTypes) > 0 {
+			transportTypes = make([]OctxiliaryTransportType, 0, len(sidecar.TransportTypes))
+		}
+		for _, typ := range sidecar.TransportTypes {
+			fields := make([]OctxiliaryTransportField, 0, len(typ.Fields))
+			for _, field := range typ.Fields {
+				fields = append(fields, OctxiliaryTransportField{Name: field.Name, Type: field.Type})
+			}
+			transportTypes = append(transportTypes, OctxiliaryTransportType{Name: typ.Name, Kind: typ.Kind, Fields: fields})
+		}
 		registry.Sidecars = append(registry.Sidecars, OctxiliarySidecar{
 			PackageName:    sidecar.PackageName,
 			WrapperName:    sidecar.WrapperName,
@@ -67,6 +91,7 @@ func BuildOctxiliaryRegistry(plan WrapperBuildPlan) (OctxiliaryRegistry, error) 
 			GoModuleDir:    sidecar.GoModuleDir,
 			GoModulePath:   sidecar.GoModulePath,
 			Functions:      functions,
+			TransportTypes: transportTypes,
 		})
 	}
 	sort.SliceStable(registry.Sidecars, func(i, j int) bool {
@@ -146,11 +171,68 @@ func renderSidecar(b *strings.Builder, sidecar OctxiliarySidecar, depth int) {
 	renderRegistryField(b, depth+1, "GoModuleDir", strconv.Quote(sidecar.GoModuleDir))
 	renderRegistryField(b, depth+1, "GoModulePath", strconv.Quote(sidecar.GoModulePath))
 	b.WriteString(octxiliaryRegistryIndent(depth + 1))
+	b.WriteString("TransportTypes: ")
+	renderTransportTypeArray(b, sidecar.TransportTypes, depth+1)
+	b.WriteString("\n")
+	b.WriteString(octxiliaryRegistryIndent(depth + 1))
 	b.WriteString("Functions: ")
 	renderFunctionArray(b, sidecar.Functions, depth+1)
 	b.WriteString("\n")
 	b.WriteString(octxiliaryRegistryIndent(depth))
 	b.WriteString("}")
+}
+
+func renderTransportTypeArray(b *strings.Builder, types []OctxiliaryTransportType, depth int) {
+	if len(types) == 0 {
+		b.WriteString("[]")
+		return
+	}
+	b.WriteString("[\n")
+	for i, typ := range types {
+		renderTransportType(b, typ, depth+1)
+		if i != len(types)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(octxiliaryRegistryIndent(depth))
+	b.WriteString("]")
+}
+
+func renderTransportType(b *strings.Builder, typ OctxiliaryTransportType, depth int) {
+	b.WriteString(octxiliaryRegistryIndent(depth))
+	b.WriteString("OctxiliaryTransportType {\n")
+	renderRegistryField(b, depth+1, "Name", strconv.Quote(typ.Name))
+	renderRegistryField(b, depth+1, "Kind", strconv.Quote(typ.Kind))
+	b.WriteString(octxiliaryRegistryIndent(depth + 1))
+	b.WriteString("Fields: ")
+	renderTransportFieldArray(b, typ.Fields, depth+1)
+	b.WriteString("\n")
+	b.WriteString(octxiliaryRegistryIndent(depth))
+	b.WriteString("}")
+}
+
+func renderTransportFieldArray(b *strings.Builder, fields []OctxiliaryTransportField, depth int) {
+	if len(fields) == 0 {
+		b.WriteString("[]")
+		return
+	}
+	b.WriteString("[\n")
+	for i, field := range fields {
+		b.WriteString(octxiliaryRegistryIndent(depth + 1))
+		b.WriteString("OctxiliaryTransportField { ")
+		b.WriteString("Name: ")
+		b.WriteString(strconv.Quote(field.Name))
+		b.WriteString(" Type: ")
+		b.WriteString(strconv.Quote(field.Type))
+		b.WriteString(" }")
+		if i != len(fields)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(octxiliaryRegistryIndent(depth))
+	b.WriteString("]")
 }
 
 func renderFunctionArray(b *strings.Builder, functions []OctxiliaryFunction, depth int) {

@@ -94,7 +94,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Optimization` | pass | pass | fail, 3 / 4 | `unsupported_language_lowering` | objective callback tests | Function argument/callback lowering gap. | M8 |
 | `Libraries/Pdf` | pass | pass | fail, 0 / 6 | `unsupported_builtin` / `unsupported_wrapper` | `PdfNewPage`, `PdfDrawText` | PDF wrapper helpers are not compiled. | M6 |
 | `Libraries/Physics` | fail | fail | fail, 4 / 1 | `compiled_runtime_semantic_failure` / test-shape | `PhysicalConstantsCallableSurface` | Same fact fails interpreted due zero assertions; compiled reports `compiled test run failed: exit status 1: 0`. Not a compiler coverage gap. | test cleanup / M9 |
-| `Libraries/Plot` | pass | pass | fail, 0 / 6 | `unsupported_builtin` / `unsupported_wrapper` | `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram` | Plot wrappers intentionally external; no compiled lowering yet. | M6 |
+| `Libraries/Plot` | pass | pass | pass, 6 / 0 | none for focused Plot M16 coverage | `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram` | M16 migrates Line, Scatter, and Histogram through `octxiliary-plot` using `Float[]` plus declared `Plot.Size`/`Plot.Labels` record arguments. | done M16 |
 | `Libraries/RF` | pass | pass | fail, 34 / 23 | `generated_go_error`, `unsupported_builtin`, `missing_manifest` | `AwgnHelpersGeneralizeAcrossSequenceLengths`, `DbToLinearSeries*` | Generated Go invalid `_` use; `Idx`/`Abs` gaps; some `Assert` error paths. | M10/M8/M9 |
 | `Libraries/Random` | pass | pass | fail, 20 / 2 | `generated_go_error`, `missing_manifest` | `BernoulliAndRangesAndNormalAreNonDegenerate`, `CryptoDiceHelpersSmokeAndValidation` | Mostly compiled; one generated Go record-type variable reuse issue; crypto error-path uses `Assert`. | M10/M9 |
 | `Libraries/Signal` | pass | pass | fail, 28 / 9 | `missing_manifest`, `unsupported_builtin` | `MagnitudeSpectrumLengthMatchesInput`, FIR validation tests | Pure filters compile; complex `Abs` and validation `Assert` remain. | M8/M9 |
@@ -461,7 +461,7 @@ Remaining M5g wrapper candidates are now classified as explicit blockers rather 
 - `Libraries/Csv`: `needs_nested_array_transport` for `String[][]` row APIs.
 - `Libraries/Markdown`: `needs_record_transport` and `needs_nested_array_transport` for table/report helpers.
 - `Libraries/Pdf`: `needs_handle_transport` and `needs_record_transport`.
-- `Libraries/Plot`: `needs_float_array_transport` and `needs_record_transport`.
+- `Libraries/Plot`: migrated in M16 through `Float[]` plus declared non-recursive record argument transport; record returns/handles remain unsupported.
 - `Libraries/Image`: `needs_handle_transport`.
 
 See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the focused M11 table.

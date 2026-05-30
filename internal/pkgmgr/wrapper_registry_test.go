@@ -79,6 +79,7 @@ func TestBuildOctxiliaryRegistryCopiesSingleSidecar(t *testing.T) {
 		"            SidecarCommand: \"octxiliary-xlsx\"\n" +
 		"            GoModuleDir: \"octxiliary\"\n" +
 		"            GoModulePath: \"/cache/Xlsx/octxiliary\"\n" +
+		"            TransportTypes: []\n" +
 		"            Functions: [\n" +
 		"                OctxiliaryFunction {\n" +
 		"                    OctName: \"ReadSheetNames\"\n" +

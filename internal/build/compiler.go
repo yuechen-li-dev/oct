@@ -317,6 +317,7 @@ type MIRGenericOctxiliaryCall struct {
 	ArgTypes       []string
 	RetType        string
 	Fallible       bool
+	TransportTypes []project.TransportTypeMetadata
 }
 
 func (MIRGenericOctxiliaryCall) mirStmt() {}
@@ -2051,9 +2052,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				if argTypes[i] != meta.Args[i] {
 					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d expects %s, got %s", meta.PackageName, meta.OctName, i+1, meta.Args[i], argTypes[i])
 				}
-				if !isOctxiliaryTransportType(argTypes[i]) {
+				if !isOctxiliaryTransportType(argTypes[i]) && !findTransportRecord(meta.TransportTypes, argTypes[i]).ok {
 					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, argTypes[i])
 				}
+			}
+			if findTransportRecord(meta.TransportTypes, meta.Return).ok {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses declared record transport type %s; record returns are not supported", meta.PackageName, meta.OctName, meta.Return)
 			}
 			if !isOctxiliaryTransportType(meta.Return) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses unsupported transport type %s", meta.PackageName, meta.OctName, meta.Return)
@@ -2063,7 +2067,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				localType = fallibleType(meta.Return)
 			}
 			tmp := c.temp(localType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: argTypes, RetType: meta.Return, Fallible: meta.Fallible})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: argTypes, RetType: meta.Return, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
 			return tmp, meta.Return, meta.Fallible, nil
 		}
 		if builtin && callee == "BoardSnapshot" {
@@ -2917,6 +2921,7 @@ type genericWrapperCallMetadata struct {
 	Args           []string
 	Return         string
 	Fallible       bool
+	TransportTypes []project.TransportTypeMetadata
 }
 
 func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrapperCallMetadata, bool) {
@@ -2932,6 +2937,7 @@ func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrap
 					Args:           append([]string(nil), fn.Args...),
 					Return:         fn.Return,
 					Fallible:       fn.Fallible,
+					TransportTypes: append([]project.TransportTypeMetadata(nil), wrapper.TransportTypes...),
 				}, true
 			}
 		}
@@ -2941,11 +2947,32 @@ func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrap
 
 func isOctxiliaryTransportType(t string) bool {
 	switch t {
-	case "Void", "Int", "Float", "Bool", "String", "String[]", "String[][]", "Bytes":
+	case "Void", "Int", "Float", "Bool", "String", "String[]", "String[][]", "Float[]", "Bytes":
 		return true
 	default:
 		return false
 	}
+}
+
+type transportRecordLookup struct {
+	typ project.TransportTypeMetadata
+	ok  bool
+}
+
+func findTransportRecord(types []project.TransportTypeMetadata, name string) transportRecordLookup {
+	for _, typ := range types {
+		if typ.Name == name {
+			return transportRecordLookup{typ: typ, ok: true}
+		}
+	}
+	return transportRecordLookup{}
+}
+
+func transportRuntimeBaseType(t string) string {
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return "Int"
+	}
+	return t
 }
 
 func flattenDirectCallName(expr ast.Expr) (string, bool) {
@@ -6784,6 +6811,8 @@ func octxiliaryKindExpr(t string) string {
 		return "octxiliary.ValueStringArray"
 	case "String[][]":
 		return "octxiliary.ValueStringMatrix"
+	case "Float[]":
+		return "octxiliary.ValueFloatArray"
 	case "Bytes":
 		return "octxiliary.ValueBytes"
 	default:
@@ -6792,6 +6821,10 @@ func octxiliaryKindExpr(t string) string {
 }
 
 func octxiliaryValueExpr(t string, expr string) (string, error) {
+	return octxiliaryValueExprWithTransport(t, expr, nil)
+}
+
+func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []project.TransportTypeMetadata) (string, error) {
 	switch t {
 	case "Void":
 		return "octxiliary.Value{Kind: octxiliary.ValueVoid}", nil
@@ -6807,9 +6840,23 @@ func octxiliaryValueExpr(t string, expr string) (string, error) {
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueStringArray, Strings: %s}", expr), nil
 	case "String[][]":
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueStringMatrix, Strings2: %s}", expr), nil
+	case "Float[]":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueFloatArray, Floats: %s}", expr), nil
 	case "Bytes":
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueBytes, Bytes: %s}", expr), nil
 	default:
+		if record := findTransportRecord(transportTypes, t); record.ok {
+			fields := make([]string, 0, len(record.typ.Fields))
+			for _, field := range record.typ.Fields {
+				fieldType := transportRuntimeBaseType(field.Type)
+				fieldExpr, err := octxiliaryValueExprWithTransport(fieldType, expr+"."+field.Name, transportTypes)
+				if err != nil {
+					return "", err
+				}
+				fields = append(fields, fmt.Sprintf("{Name: %q, Value: %s}", field.Name, fieldExpr))
+			}
+			return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: %q, Fields: []octxiliary.FieldValue{%s}}", t, strings.Join(fields, ", ")), nil
+		}
 		return "", fmt.Errorf("unsupported Octxiliary transport type %s", t)
 	}
 }
@@ -6830,6 +6877,8 @@ func octxiliaryValueExtractExpr(t string, value string) string {
 		return value + ".Strings"
 	case "String[][]":
 		return value + ".Strings2"
+	case "Float[]":
+		return value + ".Floats"
 	case "Bytes":
 		return value + ".Bytes"
 	default:
@@ -6852,7 +6901,7 @@ func goStmt(s MIRStmt) (string, error) {
 	case MIRGenericOctxiliaryCall:
 		valueArgs := make([]string, 0, len(st.Args))
 		for i, arg := range st.Args {
-			valueExpr, err := octxiliaryValueExpr(st.ArgTypes[i], arg)
+			valueExpr, err := octxiliaryValueExprWithTransport(st.ArgTypes[i], arg, st.TransportTypes)
 			if err != nil {
 				return "", err
 			}

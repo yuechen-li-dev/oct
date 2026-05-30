@@ -20,7 +20,19 @@ record Wrapper {
     Protocol: String
     SidecarCommand: String
     GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
     Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
 }
 
 record WrapperFunction {
@@ -45,6 +57,16 @@ fn Manifest() -> PackageManifest {
                 Protocol: "octxiliary.v0"
                 SidecarCommand: "octxiliary-test-wrapper"
                 GoModuleDir: "wrappers/test"
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "Main.TestOptions"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Count" Type: "Int" },
+                            WrapperTransportField { Name: "Name" Type: "String" }
+                        ]
+                    }
+                ]
                 Functions: [
                     WrapperFunction { OctName: "EchoString" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
                     WrapperFunction { OctName: "JoinStrings" WireName: "TestJoinStrings" Args: ["String[]"] Return: "String" Fallible: true },
@@ -54,6 +76,8 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "Not" WireName: "TestNot" Args: ["Bool"] Return: "Bool" Fallible: true },
                     WrapperFunction { OctName: "AddInt" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "Half" WireName: "TestHalf" Args: ["Float"] Return: "Float" Fallible: true },
+                    WrapperFunction { OctName: "SumFloats" WireName: "TestSumFloats" Args: ["Float[]"] Return: "Float" Fallible: true },
+                    WrapperFunction { OctName: "DescribeOptions" WireName: "TestDescribeOptions" Args: ["Main.TestOptions"] Return: "String" Fallible: true },
                     WrapperFunction { OctName: "Touch" WireName: "TestTouch" Args: [] Return: "Void" Fallible: true },
                     WrapperFunction { OctName: "TouchDirect" WireName: "TestTouchDirect" Args: [] Return: "Void" Fallible: false },
                     WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true }

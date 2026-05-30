@@ -44,42 +44,36 @@ fn HistogramWritesConfiguredPng() -> Void {
 
 [Fact]
 fn InvalidOutputPathFails() -> Void {
-    Assert.Error(
-        Line(
-            [0.0, 1.0],
-            [0.0, 1.0],
-            "m104_plot_line.jpg",
-            DefaultSize(),
-            DefaultLabels()
-        ),
-        "line output path must require .png"
-    )
+    match Line([0.0, 1.0], [0.0, 1.0], "m104_plot_line.jpg", DefaultSize(), DefaultLabels()) {
+        ok(value) => {
+            Assert.True(false, "line output path must require .png")
+        }
+        err(e) => {
+            Assert.True(true, "line output path should return an error")
+        }
+    }
 }
 
 [Fact]
 fn MismatchedDataLengthsFail() -> Void {
-    Assert.Error(
-        Scatter(
-            [0.0, 1.0],
-            [0.0],
-            "m104_plot_bad_length.png",
-            DefaultSize(),
-            DefaultLabels()
-        ),
-        "scatter should reject mismatched lengths"
-    )
+    match Scatter([0.0, 1.0], [0.0], "m104_plot_bad_length.png", DefaultSize(), DefaultLabels()) {
+        ok(value) => {
+            Assert.True(false, "scatter should reject mismatched lengths")
+        }
+        err(e) => {
+            Assert.True(true, "scatter length mismatch should return an error")
+        }
+    }
 }
 
 [Fact]
 fn InvalidHistogramBinsFail() -> Void {
-    Assert.Error(
-        Histogram(
-            [0.1, 0.2],
-            0,
-            "m104_plot_bad_bins.png",
-            DefaultSize(),
-            DefaultLabels()
-        ),
-        "histogram should reject non-positive bin count"
-    )
+    match Histogram([0.1, 0.2], 0, "m104_plot_bad_bins.png", DefaultSize(), DefaultLabels()) {
+        ok(value) => {
+            Assert.True(false, "histogram should reject non-positive bin count")
+        }
+        err(e) => {
+            Assert.True(true, "histogram bin count should return an error")
+        }
+    }
 }

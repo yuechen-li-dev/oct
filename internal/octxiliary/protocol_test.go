@@ -200,3 +200,70 @@ func TestGenericStringMatrixMalformedNestedPayloadRejected(t *testing.T) {
 		t.Fatal("expected malformed String[][] payload parse error")
 	}
 }
+
+func TestGenericFloatArrayRequestRoundTrip(t *testing.T) {
+	req := Request{ID: 40, Family: "Plot", Function: "PlotRenderLine", HasArgs: true, Args: []Value{{Kind: ValueFloatArray, Floats: []float64{1, 2.5, -3}}}}
+	got, err := ParseRequest(EncodeRequest(req))
+	if err != nil || !got.HasArgs || len(got.Args) != 1 || got.Args[0].Kind != ValueFloatArray || len(got.Args[0].Floats) != 3 || got.Args[0].Floats[1] != 2.5 || got.Args[0].Floats[2] != -3 {
+		t.Fatalf("Float[] request roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericFloatArrayResponseRoundTrip(t *testing.T) {
+	resp := Response{ID: 41, OK: true, HasValue: true, Value: Value{Kind: ValueFloatArray, Floats: []float64{0.25, -7.5}}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || !got.OK || got.Value.Kind != ValueFloatArray || len(got.Value.Floats) != 2 || got.Value.Floats[0] != 0.25 || got.Value.Floats[1] != -7.5 {
+		t.Fatalf("Float[] response roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericFloatArrayEmptyRoundTrip(t *testing.T) {
+	resp := Response{ID: 42, OK: true, HasValue: true, Value: Value{Kind: ValueFloatArray, Floats: []float64{}}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || got.Value.Kind != ValueFloatArray || len(got.Value.Floats) != 0 {
+		t.Fatalf("empty Float[] response mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericFloatArrayMalformedTokenRejected(t *testing.T) {
+	_, err := ParseResponse(`OctxiliaryResponse { id: 43 ok: true value: OctxiliaryValue { kind: "Float[]" floats: [ 1 bad 2 ] } }`)
+	if err == nil {
+		t.Fatal("expected malformed Float[] payload parse error")
+	}
+}
+
+func TestGenericFloatArrayNonFiniteRejected(t *testing.T) {
+	cases := []string{"NaN", "+Inf", "-Inf"}
+	for _, token := range cases {
+		_, err := ParseResponse(`OctxiliaryResponse { id: 44 ok: true value: OctxiliaryValue { kind: "Float[]" floats: [ ` + token + ` ] } }`)
+		if err == nil {
+			t.Fatalf("expected non-finite Float[] token %s to be rejected", token)
+		}
+	}
+}
+
+func TestGenericRecordValueRoundTrip(t *testing.T) {
+	value := Value{Kind: ValueRecord, RecordType: "Plot.Size", Fields: []FieldValue{
+		{Name: "Width", Value: Value{Kind: ValueInt, Int: 800}},
+		{Name: "Height", Value: Value{Kind: ValueInt, Int: 600}},
+	}}
+	got, err := ParseResponse(EncodeResponse(Response{ID: 45, OK: true, HasValue: true, Value: value}))
+	if err != nil || got.Value.Kind != ValueRecord || got.Value.RecordType != "Plot.Size" || len(got.Value.Fields) != 2 || got.Value.Fields[1].Value.Int != 600 {
+		t.Fatalf("record response roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericRecordStringFieldsRoundTrip(t *testing.T) {
+	value := Value{Kind: ValueRecord, RecordType: "Plot.Labels", Fields: []FieldValue{{Name: "Title", Value: Value{Kind: ValueString, String: "Demo"}}, {Name: "X", Value: Value{Kind: ValueString, String: "x"}}}}
+	got, err := ParseRequest(EncodeRequest(Request{ID: 46, Family: "Plot", Function: "PlotRenderLine", HasArgs: true, Args: []Value{value}}))
+	if err != nil || len(got.Args) != 1 || got.Args[0].RecordType != "Plot.Labels" || got.Args[0].Fields[0].Value.String != "Demo" {
+		t.Fatalf("record request roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericMalformedRecordFieldRejected(t *testing.T) {
+	_, err := ParseResponse(`OctxiliaryResponse { id: 47 ok: true value: OctxiliaryValue { kind: "Record" recordType: "Plot.Size" fields: [ OctxiliaryField { name: "Width" } ] } }`)
+	if err == nil {
+		t.Fatal("expected malformed record field parse error")
+	}
+}

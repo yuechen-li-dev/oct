@@ -30,6 +30,16 @@ func validateManifestFile(packageName string, file ast.File) error {
 		if err := requireWrapperFunctionRecord(file); err != nil {
 			return err
 		}
+		if _, ok := findRecord(file, "WrapperTransportType"); ok {
+			if err := requireWrapperTransportTypeRecord(file); err != nil {
+				return err
+			}
+		}
+		if _, ok := findRecord(file, "WrapperTransportField"); ok {
+			if err := requireWrapperTransportFieldRecord(file); err != nil {
+				return err
+			}
+		}
 		wrapperRecord, _ := findRecord(file, "Wrapper")
 		wrapperFunctionRecord, _ := findRecord(file, "WrapperFunction")
 		wrapperFields = recordFieldSet(wrapperRecord)
@@ -90,8 +100,30 @@ func requireWrapperRecord(file ast.File) error {
 	if !ok {
 		return fmt.Errorf("manifest.oct must define record Wrapper")
 	}
-	if err := validateRecordFields(record, manifestwrapper.WrapperRequiredFields(), nil); err != nil {
+	if err := validateRecordFields(record, manifestwrapper.WrapperRequiredFields(), manifestwrapper.WrapperOptionalFields()); err != nil {
 		return fmt.Errorf("manifest.oct has invalid Wrapper record: %w", err)
+	}
+	return nil
+}
+
+func requireWrapperTransportTypeRecord(file ast.File) error {
+	record, ok := findRecord(file, "WrapperTransportType")
+	if !ok {
+		return fmt.Errorf("manifest.oct must define record WrapperTransportType")
+	}
+	if err := validateRecordFields(record, manifestwrapper.WrapperTransportTypeRequiredFields(), nil); err != nil {
+		return fmt.Errorf("manifest.oct has invalid WrapperTransportType record: %w", err)
+	}
+	return nil
+}
+
+func requireWrapperTransportFieldRecord(file ast.File) error {
+	record, ok := findRecord(file, "WrapperTransportField")
+	if !ok {
+		return fmt.Errorf("manifest.oct must define record WrapperTransportField")
+	}
+	if err := validateRecordFields(record, manifestwrapper.WrapperTransportFieldRequiredFields(), nil); err != nil {
+		return fmt.Errorf("manifest.oct has invalid WrapperTransportField record: %w", err)
 	}
 	return nil
 }

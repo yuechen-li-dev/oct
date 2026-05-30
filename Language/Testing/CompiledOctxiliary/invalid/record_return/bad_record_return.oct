@@ -1,0 +1,10 @@
+package Main
+
+record TestOptions {
+    Count: Int
+    Name: String
+}
+
+fn BadRecordReturn() -> TestOptions ! Error {
+    return error("BadRecordReturn should fail during manifest validation")
+}

@@ -40,6 +40,7 @@ type WrapperSidecarPlan struct {
 	GoModuleDir    string
 	GoModulePath   string
 	Functions      []WrapperFunctionMetadata
+	TransportTypes []TransportTypeMetadata
 }
 
 // BuildWrapperPlanForProject syncs the current package/project dependency metadata
@@ -124,6 +125,7 @@ func buildWrapperPlan(inputs []wrapperPlanInput, root string) (WrapperBuildPlan,
 		})
 		for _, wrapper := range metadata.Wrappers {
 			functions := append([]WrapperFunctionMetadata(nil), wrapper.Functions...)
+			transportTypes := append([]TransportTypeMetadata(nil), wrapper.TransportTypes...)
 			modulePath := wrapperGoModulePath(input.root, wrapper.GoModuleDir)
 			plan.Sidecars = append(plan.Sidecars, WrapperSidecarPlan{
 				PackageName:    metadata.Name,
@@ -134,6 +136,7 @@ func buildWrapperPlan(inputs []wrapperPlanInput, root string) (WrapperBuildPlan,
 				GoModuleDir:    wrapper.GoModuleDir,
 				GoModulePath:   modulePath,
 				Functions:      functions,
+				TransportTypes: transportTypes,
 			})
 		}
 	}
