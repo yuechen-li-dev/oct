@@ -1,0 +1,65 @@
+package Csv
+
+[Fact]
+fn CsvSimpleReadFixture() -> Void ! Error {
+    let path = ".tmp/m13_csv_simple.csv"
+    let _w = Write(path, [["name", "score"], ["Ada", "10"]])?
+    let rows = Read(path)?
+    Assert.Equal(2, Len(rows), "simple csv should preserve row count")
+    Assert.Equal("name", rows[0][0], "simple csv should preserve header cell")
+    Assert.Equal("10", rows[1][1], "simple csv should preserve data cell")
+}
+
+[Fact]
+fn CsvSimpleWriteReadBack() -> Void ! Error {
+    let path = ".tmp/m13_csv_write.csv"
+    let rows = [["name", "score"], ["Ada", "10"]]
+    let status = Write(path, rows)?
+    Assert.Equal(0, status, "csv write should return zero status")
+    let readBack = Read(path)?
+    Assert.Equal("Ada", readBack[1][0], "written csv should read back")
+}
+
+[Fact]
+fn CsvEscapedCellRoundTrip() -> Void ! Error {
+    let path = ".tmp/m13_csv_escaped.csv"
+    let rows = [["a,b", "quote \" here", "line\nbreak", ""]]
+    let _w = Write(path, rows)?
+    let readBack = Read(path)?
+    Assert.Equal("a,b", readBack[0][0], "csv should preserve comma cells")
+    Assert.Equal("quote \" here", readBack[0][1], "csv should preserve quote cells")
+    Assert.Equal("line\nbreak", readBack[0][2], "csv should preserve newline cells")
+    Assert.Equal("", readBack[0][3], "csv should preserve empty string cells")
+}
+
+[Fact]
+fn CsvEmptyOuterRowsWriteReadBack() -> Void ! Error {
+    let path = ".tmp/m13_csv_empty.csv"
+    let rows: String[][] = []
+    let _w = Write(path, rows)?
+    let readBack = Read(path)?
+    Assert.Equal(0, Len(readBack), "empty outer rows should write/read as empty csv")
+}
+
+[Fact]
+fn CsvRaggedRowsRoundTrip() -> Void ! Error {
+    let path = ".tmp/m13_csv_ragged.csv"
+    let _w = Write(path, [["a", "b"], ["c"]])?
+    let readBack = Read(path)?
+    Assert.Equal(2, Len(readBack), "ragged csv should preserve row count")
+    Assert.Equal(2, Len(readBack[0]), "ragged csv should preserve wider row")
+    Assert.Equal(1, Len(readBack[1]), "ragged csv should preserve shorter row")
+    Assert.Equal("c", readBack[1][0], "ragged csv should preserve shorter row cell")
+}
+
+[Fact]
+fn CsvMissingFileReturnsError() -> Void {
+    match Read(".tmp/m13_csv_missing.csv") {
+        ok(rows) => {
+            Assert.True(false, "missing csv should return an error")
+        }
+        err(reason) => {
+            Assert.True(true, "missing csv should return an error")
+        }
+    }
+}

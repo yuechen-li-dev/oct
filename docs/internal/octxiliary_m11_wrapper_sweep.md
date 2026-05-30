@@ -37,3 +37,7 @@ M11 swept the remaining wrapper-style standard-library candidates against the M6
 - Record/dynamic structured data: Markdown table records and IO structured JSON graph recovery.
 - Opaque handles: `Libraries/Image` and `Libraries/Pdf`.
 - Numeric arrays: `Libraries/Plot` `Float[]` plot inputs.
+
+## M13 update
+
+`Csv` is no longer blocked for raw row-major workflows: M13 adds the narrow `String[][]` transport and migrates `Libraries/Csv.Read`/`Write` to `octxiliary-csv`. IO row-major CSV aliases have focused compiled coverage. Structured CSV table/matrix helpers and all record/handle/numeric-array transports remain out of scope.

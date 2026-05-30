@@ -237,3 +237,21 @@ M11 migrated the remaining standard-library wrappers whose public APIs fit the M
 - `Libraries/Json` now declares wrapper metadata for `Save` and `Load`, served by `octxiliary-json`; `Object` remains a direct pure Oct string identity helper.
 
 The sweep intentionally deferred candidates that require transports outside M6: CSV row matrices (`String[][]`), Markdown record/nested block helpers, PDF/Image handles and records, and Plot `Float[]`/record arguments. See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the full blocker table.
+
+## M13 String[][] transport and CSV row-major wrappers
+
+M13 adds exactly one generic Octxiliary transport kind: `String[][]` (Go `[][]string`, wire kind `"String[][]"`). This is a deliberately narrow row-major string-table transport, not a general nested-array mechanism.
+
+Protocol payloads use deterministic nested string lists:
+
+```text
+OctxiliaryValue { kind: "String[][]" strings2: [ [ "a" "b" ] [ "c" ] ] }
+```
+
+The codec preserves outer row order, cell order, empty outer arrays, empty rows, empty string cells, escaped strings, and ragged rows. It does not pad, truncate, transpose, infer numbers, or rectangularize row data.
+
+`Libraries/Csv` now declares wrapper metadata for row-major `Read(path: String) -> String[][] ! Error` and `Write(path: String, rows: String[][]) -> Int ! Error`, served by `cmd/octxiliary-csv`. Raw CSV reads use ragged-row policy (`encoding/csv.Reader.FieldsPerRecord = -1`) so workflows that need lossless parsed rows can compile through the generic sidecar path. `Libraries/IO` row-major `Read`/`Write` aliases also declare the same Csv sidecar metadata for focused compiled use.
+
+The `octxiliary-csv` executable must be available beside the compiled `.octbin` or through `OCT_WRAPPER_PATH`. Missing sidecars report a clear fallible error such as `Octxiliary sidecar "octxiliary-csv" not found`.
+
+Still deferred after M13: records, handles, dynamic `Any`, `Float[]`, `Float[][]`, `Int[]`, `Bytes[]`, Markdown table records/nested blocks, Plot/Pdf/Image/XLSX wrappers, structured JSON graph helpers, compiled Complex, compiled Einstein notation, package-manager sidecar builds, and broad generated-Go numeric/type hardening.

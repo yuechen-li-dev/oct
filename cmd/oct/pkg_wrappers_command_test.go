@@ -399,3 +399,54 @@ func pkgWrappersTextLiteral() string {
 		"}",
 	}, "\n")
 }
+
+func TestPkgWrappersCsvPackage(t *testing.T) {
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Csv", pkgWrappersCsvLiteral()))
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers")
+	if err != nil {
+		t.Fatalf("expected pkg wrappers success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"native wrappers: yes",
+		"wrapper: csv",
+		"family: Csv",
+		"command: octxiliary-csv",
+		"functions: 2",
+	)
+}
+
+func TestPkgWrappersCsvRegistryOutput(t *testing.T) {
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Csv", pkgWrappersCsvLiteral()))
+	registryPath := filepath.Join(t.TempDir(), "csv-registry.octagon")
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers", "--registry-out", registryPath)
+	if err != nil {
+		t.Fatalf("expected pkg wrappers registry success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, "Wrote Octxiliary registry: "+registryPath)
+	body, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("expected registry file: %v", err)
+	}
+	registry := string(body)
+	assertOutputContains(t, registry,
+		"Family: \"Csv\"",
+		"SidecarCommand: \"octxiliary-csv\"",
+		"Return: \"String[][]\"",
+	)
+}
+
+func pkgWrappersCsvLiteral() string {
+	return strings.Join([]string{
+		"Wrapper {",
+		"Name: \"csv\"",
+		"Family: \"Csv\"",
+		"Protocol: \"octxiliary.v0\"",
+		"SidecarCommand: \"octxiliary-csv\"",
+		"GoModuleDir: \"octxiliary\"",
+		"Functions: [",
+		"WrapperFunction { OctName: \"Read\" WireName: \"CsvRead\" Args: [\"String\"] Return: \"String[][]\" Fallible: true },",
+		"WrapperFunction { OctName: \"Write\" WireName: \"CsvWrite\" Args: [\"String\", \"String[][]\"] Return: \"Int\" Fallible: true }",
+		"]",
+		"}",
+	}, "\n")
+}

@@ -9,6 +9,12 @@ fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
     Assert.Equal(5, AddInt(2, 3)?, "Int wrapper should add")
     Assert.Near(4.0, Half(8.0)?, 0.000001, "Float wrapper should halve")
     Assert.False(Not(true)?, "Bool wrapper should invert")
+    let rows = EchoStringRows([["a", "b"], ["c"]])?
+    Assert.Equal(2, Len(rows), "String[][] wrapper should preserve outer row count")
+    Assert.Equal("b", rows[0][1], "String[][] wrapper should preserve cells")
+    Assert.Equal(1, Len(rows[1]), "String[][] wrapper should preserve ragged rows")
+    let emptyRows: String[][] = []
+    Assert.Equal(0, RowCount(emptyRows)?, "String[][] wrapper should preserve empty outer arrays")
     match Touch() {
         ok(value) => {
             Assert.True(true, "Void wrapper should succeed")

@@ -1,0 +1,10 @@
+package IO
+
+[Fact]
+fn IOCsvRowMajorCompiledSmoke() -> Void ! Error {
+    let path = ".tmp/m13_io_csv_rows.csv"
+    let _w = Write(path, [["a", "b"], ["c"]])?
+    let rows = Read(path)?
+    Assert.Equal(2, Len(rows), "IO.Csv row-major Read/Write should compile through csv sidecar")
+    Assert.Equal(1, Len(rows[1]), "IO.Csv row-major aliases should preserve ragged rows")
+}

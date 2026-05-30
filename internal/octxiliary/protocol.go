@@ -17,23 +17,25 @@ const ABIMinor uint16 = 1
 type ValueKind string
 
 const (
-	ValueVoid        ValueKind = "Void"
-	ValueInt         ValueKind = "Int"
-	ValueFloat       ValueKind = "Float"
-	ValueBool        ValueKind = "Bool"
-	ValueString      ValueKind = "String"
-	ValueStringArray ValueKind = "String[]"
-	ValueBytes       ValueKind = "Bytes"
+	ValueVoid         ValueKind = "Void"
+	ValueInt          ValueKind = "Int"
+	ValueFloat        ValueKind = "Float"
+	ValueBool         ValueKind = "Bool"
+	ValueString       ValueKind = "String"
+	ValueStringArray  ValueKind = "String[]"
+	ValueStringMatrix ValueKind = "String[][]"
+	ValueBytes        ValueKind = "Bytes"
 )
 
 type Value struct {
-	Kind    ValueKind
-	Int     int
-	Float   float64
-	Bool    bool
-	String  string
-	Strings []string
-	Bytes   []byte
+	Kind     ValueKind
+	Int      int
+	Float    float64
+	Bool     bool
+	String   string
+	Strings  []string
+	Strings2 [][]string
+	Bytes    []byte
 }
 
 type Request struct {
@@ -223,6 +225,8 @@ func encodeValue(value Value) string {
 		return fmt.Sprintf(`OctxiliaryValue { kind: "String" string: %q }`, value.String)
 	case ValueStringArray:
 		return fmt.Sprintf(`OctxiliaryValue { kind: "String[]" strings: [ %s ] }`, encodeLinesList(value.Strings))
+	case ValueStringMatrix:
+		return fmt.Sprintf(`OctxiliaryValue { kind: "String[][]" strings2: [ %s ] }`, encodeStringMatrixList(value.Strings2))
 	case ValueBytes:
 		return fmt.Sprintf(`OctxiliaryValue { kind: "Bytes" bytes: { %s } }`, encodeBytesList(value.Bytes))
 	default:
@@ -242,6 +246,14 @@ func encodeLinesList(lines []string) string {
 	parts := make([]string, 0, len(lines))
 	for _, line := range lines {
 		parts = append(parts, strconv.Quote(line))
+	}
+	return strings.Join(parts, " ")
+}
+
+func encodeStringMatrixList(rows [][]string) string {
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, fmt.Sprintf("[ %s ]", encodeLinesList(row)))
 	}
 	return strings.Join(parts, " ")
 }
@@ -408,6 +420,14 @@ func parseValue(s string) (Value, error) {
 			return Value{}, fmt.Errorf("String[] value missing strings payload")
 		}
 		value.Strings, err = parseLinesList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rest, "strings: [ "), " ]")))
+		if err != nil {
+			return Value{}, err
+		}
+	case ValueStringMatrix:
+		if !strings.HasPrefix(rest, "strings2: [ ") || !strings.HasSuffix(rest, " ]") {
+			return Value{}, fmt.Errorf("String[][] value missing strings2 payload")
+		}
+		value.Strings2, err = parseStringMatrixList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rest, "strings2: [ "), " ]")))
 		if err != nil {
 			return Value{}, err
 		}
@@ -648,4 +668,68 @@ func parseBytesList(s string) ([]byte, error) {
 		out = append(out, byte(n))
 	}
 	return out, nil
+}
+
+func parseStringMatrixList(s string) ([][]string, error) {
+	rows := [][]string{}
+	rest := strings.TrimSpace(s)
+	for rest != "" {
+		rowText, next, err := takeBracketList(rest)
+		if err != nil {
+			return nil, fmt.Errorf("malformed String[][] payload: %w", err)
+		}
+		if !strings.HasPrefix(rowText, "[ ") || !strings.HasSuffix(rowText, " ]") {
+			return nil, fmt.Errorf("malformed String[][] row payload")
+		}
+		row, err := parseLinesList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rowText, "[ "), " ]")))
+		if err != nil {
+			return nil, fmt.Errorf("malformed String[][] row payload: %w", err)
+		}
+		rows = append(rows, row)
+		rest = strings.TrimSpace(next)
+	}
+	return rows, nil
+}
+
+func takeBracketList(s string) (string, string, error) {
+	if !strings.HasPrefix(s, "[ ") {
+		return "", "", fmt.Errorf("expected row list")
+	}
+	depth := 0
+	inQuote := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if inQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inQuote = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inQuote = true
+			continue
+		}
+		switch ch {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return s[:i+1], s[i+1:], nil
+			}
+		}
+		if depth < 0 {
+			return "", "", fmt.Errorf("unexpected closing bracket")
+		}
+	}
+	return "", "", fmt.Errorf("unterminated row list")
 }

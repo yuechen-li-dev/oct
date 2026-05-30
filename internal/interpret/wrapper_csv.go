@@ -41,18 +41,10 @@ func (i *interpreter) evalCSVReadBuiltin(env *environment, pkgName string, calle
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.FieldsPerRecord = 0
+	reader.FieldsPerRecord = -1
 	rows, readErr := reader.ReadAll()
 	if readErr != nil {
 		return wrapperErrorResult(callee, mapCSVError(readErr)), nil
-	}
-	if len(rows) > 1 {
-		expectedColumns := len(rows[0])
-		for rowIndex := 1; rowIndex < len(rows); rowIndex++ {
-			if len(rows[rowIndex]) != expectedColumns {
-				return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorInvalidData, "inconsistent column count at row %d", rowIndex+1)), nil
-			}
-		}
 	}
 	return wrapperStringMatrixResult(rows), nil
 }

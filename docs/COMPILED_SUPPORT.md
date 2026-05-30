@@ -170,3 +170,17 @@ Deferred after the M11 sweep:
 - `Plot` remains blocked by `Float[]` plot data and record arguments (`needs_float_array_transport`, `needs_record_transport`).
 
 M11 did not add new transport kinds, compiled Complex support, Einstein notation, record transport, handle transport, package-manager sidecar builds, lockfiles, or public API redesigns.
+
+## M13 Octxiliary Csv row-major status
+
+M13 extends generic Octxiliary lowering with exactly `String[][]` transport (`[][]string` in Go; wire kind `"String[][]"`). This unlocks compiled row-major CSV wrappers without adding general nested-array, record, handle, dynamic, numeric-array, Complex, or Einstein support.
+
+Compiled support now includes:
+
+- `Libraries/Csv.Read(path: String) -> String[][] ! Error`
+- `Libraries/Csv.Write(path: String, rows: String[][]) -> Int ! Error`
+- focused `Libraries/IO` row-major `Read`/`Write` aliases when `octxiliary-csv` is available
+
+Raw CSV row reads preserve ragged rows and exact parsed string cells. CSV writes emit exactly the supplied row-major string data through Go's standard `encoding/csv` writer. The `octxiliary-csv` sidecar must be discoverable beside the `.octbin` or through `OCT_WRAPPER_PATH`.
+
+Still unsupported/deferred: Markdown structured table transports, Plot numeric arrays, Pdf/Image/XLSX handle-backed workflows, structured JSON graph helpers, record transport, handle transport, dynamic `Any`, and broad nested-array generalization.

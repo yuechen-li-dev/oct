@@ -49,6 +49,8 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "EchoString" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
                     WrapperFunction { OctName: "JoinStrings" WireName: "TestJoinStrings" Args: ["String[]"] Return: "String" Fallible: true },
                     WrapperFunction { OctName: "BytesLen" WireName: "TestBytesLen" Args: ["Bytes"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "EchoStringRows" WireName: "TestEchoStringRows" Args: ["String[][]"] Return: "String[][]" Fallible: true },
+                    WrapperFunction { OctName: "RowCount" WireName: "TestRowCount" Args: ["String[][]"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "Not" WireName: "TestNot" Args: ["Bool"] Return: "Bool" Fallible: true },
                     WrapperFunction { OctName: "AddInt" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "Half" WireName: "TestHalf" Args: ["Float"] Return: "Float" Fallible: true },
