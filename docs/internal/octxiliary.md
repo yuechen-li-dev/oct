@@ -167,3 +167,17 @@ Generic sidecar discovery uses the sidecar command from wrapper metadata:
 A missing generic sidecar reports a message in the form `Octxiliary sidecar "<name>" not found; set OCT_WRAPPER_PATH or place it beside .octbin`.
 
 M6 is infrastructure only. It proves the path with the isolated `octxiliary-test-wrapper` fixture and does not migrate Archive, Compression, Hash, Plot, Pdf, Text/Regex, Time, Image, CSV, JSON, XLSX, or Markdown wrappers. Handles, records, maps, nested arrays beyond `String[]`, dynamic `any`, sidecar builds, lockfiles, native permission prompts, and broad standard-library migration remain future work.
+
+## M7 Hash standard-library generic wrapper migration
+
+M7 migrates `Libraries/Hash` onto the M6 generic wrapper path as the first real non-IO standard-library wrapper package. The package manifest declares `Kind: "wrapper"` and a `Hash` wrapper family using protocol `octxiliary.v0`, sidecar command `octxiliary-hash`, and package-local Go module directory `octxiliary`.
+
+The production `cmd/octxiliary-hash` sidecar uses the existing `OCTWRAP` handshake/framing and the generic typed-value request shape. It dispatches `Family: "Hash"` for these manifest-declared wire functions:
+
+- `HashSha256Text(String) -> String ! Error`
+- `HashSha256Bytes(Bytes) -> String ! Error`
+- `HashSha256File(String) -> String ! Error`
+
+All three return lowercase hexadecimal SHA-256 strings. `Sha256Text` hashes the UTF-8 bytes of the input string, `Sha256Bytes` hashes the supplied raw byte payload, and `Sha256File` reads and hashes the file contents. File read failures are returned as sidecar errors (`ok: false`) instead of panics.
+
+This proves that a standard-library package can compile through manifest metadata and a sidecar command without adding a bespoke compiler builtin case for each Hash operation. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M7 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.

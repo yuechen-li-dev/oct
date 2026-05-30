@@ -1,10 +1,10 @@
 package Hash
 
-fn Sha256Bytes(data: Bytes) -> String {
+fn Sha256Bytes(data: Bytes) -> String ! Error {
     return HashSha256Bytes(data)
 }
 
-fn Sha256Text(text: String) -> String {
+fn Sha256Text(text: String) -> String ! Error {
     return HashSha256Text(text)
 }
 

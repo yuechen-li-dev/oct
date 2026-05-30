@@ -28,8 +28,9 @@ func TestUtilityWrappers(t *testing.T) {
 		{
 			root: "../../Libraries/Hash",
 			markers: []string{
-				"PASS Hash.Sha256KnownValueChecks",
-				"PASS Hash.Sha256BytesAndFileAgree",
+				"PASS Hash.Sha256TextKnownValueChecks",
+				"PASS Hash.Sha256BytesKnownValueChecks",
+				"PASS Hash.Sha256FileKnownValueChecks",
 				"PASS Hash.Sha256FileMissingFails",
 			},
 		},
