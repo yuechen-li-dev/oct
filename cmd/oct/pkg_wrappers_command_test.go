@@ -336,3 +336,66 @@ func pkgWrappersTimeLiteral() string {
 		"}",
 	}, "\n")
 }
+
+func TestPkgWrappersTextPackage(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Text", pkgWrappersTextLiteral()))
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers")
+	if err != nil {
+		t.Fatalf("expected pkg wrappers success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"native wrappers: yes",
+		"sidecars: 1",
+		"* package Text 0.1.0",
+		"wrapper: text",
+		"family: Text",
+		"command: octxiliary-text",
+		"protocol: octxiliary.v0",
+		"functions: 4",
+		"No wrapper sidecars were built or executed.",
+	)
+}
+
+func TestPkgWrappersTextRegistryOutput(t *testing.T) {
+	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	projectDir := createProjectWithManifest(t, pkgWrappersManifestSource("Text", pkgWrappersTextLiteral()))
+	registryPath := filepath.Join(t.TempDir(), "text-registry.octagon")
+
+	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "wrappers", "--registry-out", registryPath)
+	if err != nil {
+		t.Fatalf("expected pkg wrappers registry success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout,
+		"Wrote Octxiliary registry: "+registryPath,
+		"No wrapper sidecars were built or executed.",
+	)
+	body, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("expected registry file: %v", err)
+	}
+	registry := string(body)
+	assertOutputContains(t, registry,
+		"Family: \"Text\"",
+		"SidecarCommand: \"octxiliary-text\"",
+	)
+}
+
+func pkgWrappersTextLiteral() string {
+	return strings.Join([]string{
+		"Wrapper {",
+		"Name: \"text\"",
+		"Family: \"Text\"",
+		"Protocol: \"octxiliary.v0\"",
+		"SidecarCommand: \"octxiliary-text\"",
+		"GoModuleDir: \"octxiliary\"",
+		"Functions: [",
+		"WrapperFunction { OctName: \"IsMatch\" WireName: \"RegexIsMatch\" Args: [\"String\", \"String\"] Return: \"Bool\" Fallible: true },",
+		"WrapperFunction { OctName: \"FindAll\" WireName: \"RegexFindAll\" Args: [\"String\", \"String\"] Return: \"String[]\" Fallible: true },",
+		"WrapperFunction { OctName: \"ReplaceAll\" WireName: \"RegexReplaceAll\" Args: [\"String\", \"String\", \"String\"] Return: \"String\" Fallible: true },",
+		"WrapperFunction { OctName: \"Split\" WireName: \"RegexSplit\" Args: [\"String\", \"String\"] Return: \"String[]\" Fallible: true }",
+		"]",
+		"}",
+	}, "\n")
+}

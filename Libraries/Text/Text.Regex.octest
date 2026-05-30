@@ -21,6 +21,18 @@ fn RegexMatchFindReplaceSplit() -> Void {
 
 [Fact]
 fn RegexInvalidPatternFails() -> Void {
-    Assert.Error(IsMatch("(", "abc"), "invalid regex should fail")
+    var failed = false
+    match IsMatch("(", "abc") {
+        ok(value) => { failed = value and false }
+        err(reason) => { failed = true }
+    }
+    Assert.True(failed, "invalid regex should fail")
+    return
+}
+
+[Fact]
+fn RegexNegativeMatchReturnsFalse() -> Void {
+    let matched = IsMatch("^[0-9]+$", "abc")!
+    Assert.False(matched, "digits-only pattern should not match alphabetic payload")
     return
 }
