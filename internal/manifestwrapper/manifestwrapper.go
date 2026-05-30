@@ -11,13 +11,14 @@ import (
 const SupportedProtocol = "octxiliary.v0"
 
 var supportedTransportTypes = map[string]bool{
-	"Void":     true,
-	"Int":      true,
-	"Float":    true,
-	"Bool":     true,
-	"String":   true,
-	"String[]": true,
-	"Bytes":    true,
+	"Void":       true,
+	"Int":        true,
+	"Float":      true,
+	"Bool":       true,
+	"String":     true,
+	"String[]":   true,
+	"String[][]": true,
+	"Bytes":      true,
 }
 
 type Metadata struct {

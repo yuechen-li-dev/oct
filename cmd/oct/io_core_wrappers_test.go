@@ -23,7 +23,7 @@ func TestIOCoreWrappers(t *testing.T) {
 		"PASS IO.JsonParseStringifyAndSaveLoadRoundTrip",
 		"PASS IO.JsonParseRejectsInvalidDocument",
 		"PASS IO.CsvReadWriteRoundTrip",
-		"PASS IO.CsvReadRejectsInvalidCsv",
+		"PASS IO.CsvReadPreservesRaggedRows",
 		"PASS IO.FileWriteTextReadTextRoundTripAndOverwrite",
 		"PASS IO.FileReadMissingReportsError",
 		"PASS IO.FileWriteLinesReadLinesPreservesEmptyLines",

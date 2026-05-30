@@ -296,3 +296,7 @@ If M13 implements `String[][]` + CSV, require:
 `String[][]` is the smallest correct post-M6 expansion because it is a typed, bounded extension of `String[]` that directly unlocks `Csv.Read`/`Csv.Write` and the current `IO.Csv` row-major surfaces without records, handles, dynamic `Any`, or standard-library API redesign. It gives Octxiliary one carefully specified structured payload lane while preserving the architectural boundary: Go implements the transport and sidecars; Oct packages express typed wrapper contracts.
 
 **M13 non-goals:** no records, no handles, no dynamic graph/`Any`, no Plot migration, no Markdown migration unless separately scoped as direct helper lowering, no Pdf/Image/XLSX migration, no compiled Complex or Einstein notation work, no broad generated-Go hardening, no package-manager sidecar builds, no native permission prompts, no lockfiles, and no public standard-library API redesign.
+
+## M13 follow-up
+
+The selected M12 next step is implemented narrowly: `String[][]` is now an Octxiliary generic transport for CSV row-major data. It intentionally does not generalize nested arrays beyond string row tables. Ragged rows are preserved for raw CSV read/write workflows. Record, handle, dynamic graph, numeric-array, Markdown, Plot, Pdf/Image/XLSX, structured JSON, Complex, and Einstein support remain future work.

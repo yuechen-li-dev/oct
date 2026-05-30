@@ -143,3 +143,60 @@ func TestGenericMalformedPayloadRejected(t *testing.T) {
 		t.Fatal("expected malformed value payload parse error")
 	}
 }
+
+func TestGenericStringMatrixRequestRoundTrip(t *testing.T) {
+	req := Request{ID: 30, Family: "TestWrapper", Function: "EchoRows", HasArgs: true, Args: []Value{{Kind: ValueStringMatrix, Strings2: [][]string{{"a", "b"}, {"c", "d"}}}}}
+	got, err := ParseRequest(EncodeRequest(req))
+	if err != nil || !got.HasArgs || len(got.Args) != 1 || got.Args[0].Kind != ValueStringMatrix || got.Args[0].Strings2[1][1] != "d" {
+		t.Fatalf("String[][] request roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixResponseRoundTrip(t *testing.T) {
+	resp := Response{ID: 31, OK: true, HasValue: true, Value: Value{Kind: ValueStringMatrix, Strings2: [][]string{{"name", "score"}, {"Ada", "10"}}}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || !got.OK || !got.HasValue || got.Value.Kind != ValueStringMatrix || got.Value.Strings2[1][0] != "Ada" {
+		t.Fatalf("String[][] response roundtrip mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixEmptyOuterRoundTrip(t *testing.T) {
+	resp := Response{ID: 32, OK: true, HasValue: true, Value: Value{Kind: ValueStringMatrix, Strings2: [][]string{}}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || got.Value.Kind != ValueStringMatrix || len(got.Value.Strings2) != 0 {
+		t.Fatalf("empty String[][] response mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixEmptyRowRoundTrip(t *testing.T) {
+	resp := Response{ID: 33, OK: true, HasValue: true, Value: Value{Kind: ValueStringMatrix, Strings2: [][]string{{}}}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || got.Value.Kind != ValueStringMatrix || len(got.Value.Strings2) != 1 || len(got.Value.Strings2[0]) != 0 {
+		t.Fatalf("empty-row String[][] response mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixRaggedRowsRoundTrip(t *testing.T) {
+	rows := [][]string{{"a", "b"}, {"c"}, {"d", "e", "f"}}
+	resp := Response{ID: 34, OK: true, HasValue: true, Value: Value{Kind: ValueStringMatrix, Strings2: rows}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || len(got.Value.Strings2) != 3 || len(got.Value.Strings2[1]) != 1 || got.Value.Strings2[2][2] != "f" {
+		t.Fatalf("ragged String[][] response mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixEscapedCellsRoundTrip(t *testing.T) {
+	rows := [][]string{{"a,b", "quote \" here", "line\nbreak", ""}}
+	resp := Response{ID: 35, OK: true, HasValue: true, Value: Value{Kind: ValueStringMatrix, Strings2: rows}}
+	got, err := ParseResponse(EncodeResponse(resp))
+	if err != nil || len(got.Value.Strings2) != 1 || got.Value.Strings2[0][0] != "a,b" || got.Value.Strings2[0][1] != "quote \" here" || got.Value.Strings2[0][2] != "line\nbreak" || got.Value.Strings2[0][3] != "" {
+		t.Fatalf("escaped String[][] response mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericStringMatrixMalformedNestedPayloadRejected(t *testing.T) {
+	_, err := ParseResponse(`OctxiliaryResponse { id: 36 ok: true value: OctxiliaryValue { kind: "String[][]" strings2: [ [ "a" ] "not-a-row" ] } }`)
+	if err == nil {
+		t.Fatal("expected malformed String[][] payload parse error")
+	}
+}

@@ -2866,7 +2866,7 @@ func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrap
 
 func isOctxiliaryTransportType(t string) bool {
 	switch t {
-	case "Void", "Int", "Float", "Bool", "String", "String[]", "Bytes":
+	case "Void", "Int", "Float", "Bool", "String", "String[]", "String[][]", "Bytes":
 		return true
 	default:
 		return false
@@ -3093,8 +3093,12 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 	if t.HasUnit {
 		base = fmt.Sprintf("%s<%s>", base, t.Dimension.String())
 	}
-	if t.IsArray {
-		return base + "[]"
+	if t.IsArray || t.ArrayDepth > 0 {
+		depth := t.ArrayDepth
+		if depth == 0 {
+			depth = 1
+		}
+		return base + strings.Repeat("[]", depth)
 	}
 	return base
 }
@@ -6423,6 +6427,8 @@ func octxiliaryKindExpr(t string) string {
 		return "octxiliary.ValueString"
 	case "String[]":
 		return "octxiliary.ValueStringArray"
+	case "String[][]":
+		return "octxiliary.ValueStringMatrix"
 	case "Bytes":
 		return "octxiliary.ValueBytes"
 	default:
@@ -6444,6 +6450,8 @@ func octxiliaryValueExpr(t string, expr string) (string, error) {
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueString, String: %s}", expr), nil
 	case "String[]":
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueStringArray, Strings: %s}", expr), nil
+	case "String[][]":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueStringMatrix, Strings2: %s}", expr), nil
 	case "Bytes":
 		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueBytes, Bytes: %s}", expr), nil
 	default:
@@ -6465,6 +6473,8 @@ func octxiliaryValueExtractExpr(t string, value string) string {
 		return value + ".String"
 	case "String[]":
 		return value + ".Strings"
+	case "String[][]":
+		return value + ".Strings2"
 	case "Bytes":
 		return value + ".Bytes"
 	default:

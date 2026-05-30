@@ -466,3 +466,7 @@ Remaining M5g wrapper candidates are now classified as explicit blockers rather 
 - `Libraries/Image`: `needs_handle_transport`.
 
 See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the focused M11 table.
+
+## M13 coverage update
+
+`Libraries/Csv` row-major `Read`/`Write` is migrated to generic Octxiliary via the new narrow `String[][]` transport and `octxiliary-csv`. Raw CSV preserves ragged rows. IO row-major aliases have focused compiled coverage. Csv table/matrix helpers, Markdown, Plot, Pdf, Image, XLSX, records, handles, dynamic values, numeric array transports, Complex, and Einstein notation remain future work.

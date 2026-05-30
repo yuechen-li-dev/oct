@@ -62,6 +62,16 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueString, String: strings.Join(req.Args[0].Strings, ",")}, nil
+	case "TestEchoStringRows":
+		if err := expect(req.Args, octxiliary.ValueStringMatrix); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueStringMatrix, Strings2: req.Args[0].Strings2}, nil
+	case "TestRowCount":
+		if err := expect(req.Args, octxiliary.ValueStringMatrix); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: len(req.Args[0].Strings2)}, nil
 	case "TestBytesLen":
 		if err := expect(req.Args, octxiliary.ValueBytes); err != nil {
 			return octxiliary.Value{}, err

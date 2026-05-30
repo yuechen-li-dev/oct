@@ -33,14 +33,14 @@ record WrapperFunction {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "IO"
+        Name: "Csv"
         Version: "0.1.0"
-        Description: "Thin IO wrappers for practical external package integration"
+        Description: "Thin CSV wrappers for raw row-major string tables"
         Kind: "wrapper"
-        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }, Dependency { Name: "IO" VersionRequirement: "0.1.0" }]
         Wrappers: [
             Wrapper {
-                Name: "io-csv"
+                Name: "csv"
                 Family: "Csv"
                 Protocol: "octxiliary.v0"
                 SidecarCommand: "octxiliary-csv"

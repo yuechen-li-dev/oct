@@ -91,10 +91,12 @@ fn CsvReadWriteRoundTrip() -> Void {
 }
 
 [Fact]
-fn CsvReadRejectsInvalidCsv() -> Void {
-    let path = "io_mx103b_invalid.csv"
+fn CsvReadPreservesRaggedRows() -> Void {
+    let path = "io_mx103b_ragged.csv"
     let _w = Write(path, [["a", "b"], ["c"]])!
-    Assert.Error(Read(path), "invalid csv should fail")
+    let rows = Read(path)!
+    Assert.Equal(2, Len(rows), "ragged csv should preserve row count")
+    Assert.Equal(1, Len(rows[1]), "ragged csv should preserve shorter row")
     let _d = Delete(path)!
 }
 

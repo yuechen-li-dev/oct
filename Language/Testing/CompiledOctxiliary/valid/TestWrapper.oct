@@ -12,6 +12,14 @@ fn BytesLen(values: Bytes) -> Int ! Error {
     return error("TestWrapper.BytesLen requires compiled Octxiliary lowering")
 }
 
+fn EchoStringRows(rows: String[][]) -> String[][] ! Error {
+    return error("TestWrapper.EchoStringRows requires compiled Octxiliary lowering")
+}
+
+fn RowCount(rows: String[][]) -> Int ! Error {
+    return error("TestWrapper.RowCount requires compiled Octxiliary lowering")
+}
+
 fn Not(value: Bool) -> Bool ! Error {
     return error("TestWrapper.Not requires compiled Octxiliary lowering")
 }
