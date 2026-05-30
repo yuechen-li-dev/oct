@@ -7179,7 +7179,12 @@ func __octOctxiliarySidecarPath(sidecarCommand string) (string, error) {
 func __octOctxiliaryEnsure() error {
 	__octOctxiliaryOnce.Do(func(){
 		path := filepath.Join(filepath.Dir(os.Args[0]), "octxiliary-io")
-		if _, err := os.Stat(path); err != nil { path = os.Getenv("OCT_WRAPPER_PATH") }
+		if _, err := os.Stat(path); err != nil {
+			wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
+			if wrapperPath != "" {
+				if info, statErr := os.Stat(wrapperPath); statErr == nil && info.IsDir() { path = filepath.Join(wrapperPath, "octxiliary-io") } else { path = wrapperPath }
+			}
+		}
 		if path == "" { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside .octbin") ; return }
 		cmd := exec.Command(path)
 		in, _ := cmd.StdinPipe(); out, _ := cmd.StdoutPipe(); if err := cmd.Start(); err != nil { __octOctxiliaryErr = err; return }

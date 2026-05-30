@@ -4,7 +4,9 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Kind: String
     Dependencies: Dependency[]
+    Wrappers: Wrapper[]
 }
 
 record Dependency {
@@ -12,11 +14,43 @@ record Dependency {
     VersionRequirement: String
 }
 
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    Functions: WrapperFunction[]
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Hash"
         Version: "0.1.0"
         Description: "Thin hashing wrappers for practical SHA-256 workflows"
+        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Wrappers: [
+            Wrapper {
+                Name: "hash"
+                Family: "Hash"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-hash"
+                GoModuleDir: "octxiliary"
+                Functions: [
+                    WrapperFunction { OctName: "Sha256Bytes" WireName: "HashSha256Bytes" Args: ["Bytes"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "Sha256Text" WireName: "HashSha256Text" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "Sha256File" WireName: "HashSha256File" Args: ["String"] Return: "String" Fallible: true }
+                ]
+            }
+        ]
     }
 }
