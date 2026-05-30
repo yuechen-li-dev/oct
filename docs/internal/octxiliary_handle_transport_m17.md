@@ -364,3 +364,7 @@ Exact M18 non-goals:
 - no public API redesign unless an implementation blocker is found and documented.
 
 Rationale: `IO.Xlsx` is the smallest real handle-backed standard-library blocker and exercises the essential missing mechanics: first-class handle wire values, manifest-declared handle types, handle argument packing, handle return reconstruction, positive-ID validation, sidecar table ownership, and process-lifetime semantics. Starting with Xlsx proves the capability model without image codec complexity or Pdf cross-family interop. Image should follow once M0 is stable; Pdf should follow Image or receive its own design/migration pass because page handles, text style records, and image interop need separate policy decisions.
+
+## M18 update
+
+M18 implements the recommended M0 handle transport and migrates `IO.Xlsx` first. `IO.Workbook` is declared as a manifest `handle` transport type with the public `Handle: Int` field, while the wire value carries `handleFamily`, `handleType`, and positive sidecar-local `handleID` fields. The lifecycle remains sidecar-process lifetime only: no Close/destructor, no cross-family handles, no serialization across runs, and no Image/Pdf migration were added.

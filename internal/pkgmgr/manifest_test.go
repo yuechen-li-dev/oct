@@ -682,3 +682,41 @@ func duplicateWrapperFamilySource() string {
 	second := strings.Replace(wrapperArrayLiteral(), "Name: \"xlsx\"", "Name: \"xlsx2\"", 1)
 	return strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+second, 1)
 }
+
+func TestLoadManifestMetadataHandleTransportTypes(t *testing.T) {
+	valid := strings.Join([]string{
+		"package Manifest",
+		"record PackageManifest { Name: String Version: String Description: String Kind: String Dependencies: Dependency[] Wrappers: Wrapper[] }",
+		"record Dependency { Name: String VersionRequirement: String }",
+		"record Wrapper { Name: String Family: String Protocol: String SidecarCommand: String GoModuleDir: String TransportTypes: WrapperTransportType[] Functions: WrapperFunction[] }",
+		"record WrapperTransportType { Name: String Kind: String Fields: WrapperTransportField[] }",
+		"record WrapperTransportField { Name: String Type: String }",
+		"record WrapperFunction { OctName: String WireName: String Args: String[] Return: String Fallible: Bool }",
+		"fn Manifest() -> PackageManifest { return PackageManifest { Name: \"IO\" Version: \"0.1.0\" Description: \"io\" Kind: \"wrapper\" Dependencies: [] Wrappers: [Wrapper { Name: \"xlsx\" Family: \"Xlsx\" Protocol: \"octxiliary.v0\" SidecarCommand: \"octxiliary-xlsx\" GoModuleDir: \"octxiliary\" TransportTypes: [WrapperTransportType { Name: \"IO.Workbook\" Kind: \"handle\" Fields: [WrapperTransportField { Name: \"Handle\" Type: \"Int\" }] }] Functions: [WrapperFunction { OctName: \"CreateWorkbook\" WireName: \"XlsxCreateWorkbook\" Args: [] Return: \"IO.Workbook\" Fallible: false }, WrapperFunction { OctName: \"AddSheet\" WireName: \"XlsxAddSheet\" Args: [\"IO.Workbook\", \"String\"] Return: \"Int\" Fallible: true }] }] } }",
+	}, "\n") + "\n"
+	metadata, err := loadManifestMetadata(writeManifest(t, valid))
+	if err != nil {
+		t.Fatalf("valid handle transport manifest rejected: %v", err)
+	}
+	if got := metadata.Wrappers[0].TransportTypes[0]; got.Kind != "handle" || got.Name != "IO.Workbook" || len(got.Fields) != 1 || got.Fields[0].Name != "Handle" || got.Fields[0].Type != "Int" {
+		t.Fatalf("unexpected handle metadata: %#v", got)
+	}
+
+	cases := []struct{ name, src, want string }{
+		{"zero fields", strings.Replace(valid, "Fields: [WrapperTransportField { Name: \"Handle\" Type: \"Int\" }]", "Fields: []", 1), "Fields"},
+		{"two fields", strings.Replace(valid, "WrapperTransportField { Name: \"Handle\" Type: \"Int\" }", "WrapperTransportField { Name: \"Handle\" Type: \"Int\" }, WrapperTransportField { Name: \"Other\" Type: \"Int\" }", 1), "exactly one"},
+		{"wrong field name", strings.Replace(valid, "Name: \"Handle\" Type: \"Int\"", "Name: \"ID\" Type: \"Int\"", 1), "Handle"},
+		{"wrong field type", strings.Replace(valid, "Name: \"Handle\" Type: \"Int\"", "Name: \"Handle\" Type: \"String\"", 1), "Int"},
+		{"record return rejected", strings.Replace(strings.Replace(valid, "Kind: \"handle\"", "Kind: \"record\"", 1), "Return: \"IO.Workbook\"", "Return: \"IO.Workbook\"", 1), "record returns"},
+		{"undeclared custom arg", strings.Replace(valid, "Args: [\"IO.Workbook\", \"String\"]", "Args: [\"Other.Workbook\", \"String\"]", 1), "unsupported transport type"},
+		{"undeclared custom return", strings.Replace(valid, "Return: \"IO.Workbook\"", "Return: \"Other.Workbook\"", 1), "unsupported transport type"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := loadManifestMetadata(writeManifest(t, tc.src))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}

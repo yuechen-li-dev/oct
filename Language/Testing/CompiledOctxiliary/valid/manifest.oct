@@ -65,6 +65,13 @@ fn Manifest() -> PackageManifest {
                             WrapperTransportField { Name: "Count" Type: "Int" },
                             WrapperTransportField { Name: "Name" Type: "String" }
                         ]
+                    },
+                    WrapperTransportType {
+                        Name: "Main.TestHandle"
+                        Kind: "handle"
+                        Fields: [
+                            WrapperTransportField { Name: "Handle" Type: "Int" }
+                        ]
                     }
                 ]
                 Functions: [
@@ -80,7 +87,9 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "DescribeOptions" WireName: "TestDescribeOptions" Args: ["Main.TestOptions"] Return: "String" Fallible: true },
                     WrapperFunction { OctName: "Touch" WireName: "TestTouch" Args: [] Return: "Void" Fallible: true },
                     WrapperFunction { OctName: "TouchDirect" WireName: "TestTouchDirect" Args: [] Return: "Void" Fallible: false },
-                    WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true }
+                    WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "CreateHandle" WireName: "TestCreateHandle" Args: [] Return: "Main.TestHandle" Fallible: false },
+                    WrapperFunction { OctName: "UseHandle" WireName: "TestUseHandle" Args: ["Main.TestHandle"] Return: "Int" Fallible: true }
                 ]
             }
         ]

@@ -28,6 +28,7 @@ const (
 	ValueFloatArray   ValueKind = "Float[]"
 	ValueBytes        ValueKind = "Bytes"
 	ValueRecord       ValueKind = "Record"
+	ValueHandle       ValueKind = "Handle"
 )
 
 type FieldValue struct {
@@ -36,17 +37,20 @@ type FieldValue struct {
 }
 
 type Value struct {
-	Kind       ValueKind
-	Int        int
-	Float      float64
-	Bool       bool
-	String     string
-	Strings    []string
-	Strings2   [][]string
-	Floats     []float64
-	Bytes      []byte
-	RecordType string
-	Fields     []FieldValue
+	Kind         ValueKind
+	Int          int
+	Float        float64
+	Bool         bool
+	String       string
+	Strings      []string
+	Strings2     [][]string
+	Floats       []float64
+	Bytes        []byte
+	RecordType   string
+	Fields       []FieldValue
+	HandleFamily string
+	HandleType   string
+	HandleID     int
 }
 
 type Request struct {
@@ -145,6 +149,13 @@ func ValidateResponse(resp Response) error {
 }
 
 func validateValue(value Value, context string) error {
+	fail := func(format string, args ...any) error {
+		msg := fmt.Sprintf(format, args...)
+		if context != "" {
+			return fmt.Errorf("%s: %s", context, msg)
+		}
+		return fmt.Errorf("%s", msg)
+	}
 	switch value.Kind {
 	case ValueFloatArray:
 		for i, f := range value.Floats {
@@ -154,6 +165,16 @@ func validateValue(value Value, context string) error {
 				}
 				return fmt.Errorf("Float[] contains non-finite value at index %d", i)
 			}
+		}
+	case ValueHandle:
+		if value.HandleFamily == "" {
+			return fail("Handle value missing handleFamily")
+		}
+		if value.HandleType == "" {
+			return fail("Handle value missing handleType")
+		}
+		if value.HandleID <= 0 {
+			return fail("Handle value handleID must be positive")
 		}
 	case ValueRecord:
 		for _, field := range value.Fields {
@@ -299,6 +320,8 @@ func encodeValue(value Value) string {
 		return fmt.Sprintf(`OctxiliaryValue { kind: "Bytes" bytes: { %s } }`, encodeBytesList(value.Bytes))
 	case ValueRecord:
 		return fmt.Sprintf(`OctxiliaryValue { kind: "Record" recordType: %q fields: [ %s ] }`, value.RecordType, encodeFieldValues(value.Fields))
+	case ValueHandle:
+		return fmt.Sprintf(`OctxiliaryValue { kind: "Handle" handleFamily: %q handleType: %q handleID: %d }`, value.HandleFamily, value.HandleType, value.HandleID)
 	default:
 		return fmt.Sprintf(`OctxiliaryValue { kind: %q }`, string(value.Kind))
 	}
@@ -531,6 +554,31 @@ func parseValue(s string) (Value, error) {
 		}
 		value.Bytes, err = parseBytesList(strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(rest, "bytes: { "), " }")))
 		if err != nil {
+			return Value{}, err
+		}
+	case ValueHandle:
+		if !strings.HasPrefix(rest, "handleFamily: ") {
+			return Value{}, fmt.Errorf("Handle value missing handleFamily payload")
+		}
+		if !strings.Contains(rest, " handleType: ") {
+			return Value{}, fmt.Errorf("Handle value missing handleType payload")
+		}
+		value.HandleFamily, rest, err = scanQuotedThen(strings.TrimPrefix(rest, "handleFamily: "), " handleType: ")
+		if err != nil {
+			return Value{}, err
+		}
+		if !strings.Contains(rest, " handleID: ") {
+			return Value{}, fmt.Errorf("Handle value missing handleID payload")
+		}
+		value.HandleType, rest, err = scanQuotedThen(rest, " handleID: ")
+		if err != nil {
+			return Value{}, err
+		}
+		value.HandleID, err = strconv.Atoi(strings.TrimSpace(rest))
+		if err != nil {
+			return Value{}, err
+		}
+		if err := validateValue(value, ""); err != nil {
 			return Value{}, err
 		}
 	case ValueRecord:
