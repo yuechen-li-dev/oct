@@ -306,6 +306,21 @@ type MIRCall struct {
 
 func (MIRCall) mirStmt() {}
 
+type MIRGenericOctxiliaryCall struct {
+	Target         string
+	PackageName    string
+	OctName        string
+	Family         string
+	WireName       string
+	SidecarCommand string
+	Args           []string
+	ArgTypes       []string
+	RetType        string
+	Fallible       bool
+}
+
+func (MIRGenericOctxiliaryCall) mirStmt() {}
+
 type MIRDestructureCall struct {
 	Targets  []string
 	Callee   string
@@ -593,6 +608,9 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsArtifact {
 				continue
 			}
+			if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
+				continue
+			}
 			if fn.IsTestFile && !fn.IsBenchmark {
 				if pkgName != program.Entry {
 					continue
@@ -642,6 +660,11 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				if targetPkg == "" {
 					targetPkg = item[0]
 				}
+				if pkg, ok := program.Packages[targetPkg]; ok {
+					if _, isWrapper := findGenericWrapperFunction(pkg, call[1]); isWrapper {
+						continue
+					}
+				}
 				builtinName := targetPkg + "." + call[1]
 				if builtin.IsName(builtinName) || builtin.IsName(call[1]) {
 					continue
@@ -652,6 +675,9 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 		for pkgName, pkg := range program.Packages {
 			for _, fn := range pkg.Functions {
 				if !isReachableFunction(reachable, pkgName, fn.Name) {
+					continue
+				}
+				if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
 					continue
 				}
 				if _, ok := emitted[pkgName]; ok {
@@ -774,6 +800,11 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 			}
 			if targetPkg == "" || call[1] == "" {
 				continue
+			}
+			if pkg, ok := program.Packages[targetPkg]; ok {
+				if _, isWrapper := findGenericWrapperFunction(pkg, call[1]); isWrapper {
+					continue
+				}
 			}
 			builtinName := call[1]
 			if targetPkg != "" {
@@ -1939,6 +1970,37 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if builtin && callee == "Append" && len(argTypes) > 0 {
 			ret = argTypes[0]
 		}
+		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
+			return "", "", false, err
+		} else if ok {
+			if ret != meta.Return {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest return %s does not match Oct stub return %s", meta.PackageName, meta.OctName, meta.Return, ret)
+			}
+			if fallible != meta.Fallible {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest fallible %t does not match Oct stub fallible %t", meta.PackageName, meta.OctName, meta.Fallible, fallible)
+			}
+			if len(argTypes) != len(meta.Args) {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))
+			}
+			for i := range argTypes {
+				if argTypes[i] != meta.Args[i] {
+					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d expects %s, got %s", meta.PackageName, meta.OctName, i+1, meta.Args[i], argTypes[i])
+				}
+				if !isOctxiliaryTransportType(argTypes[i]) {
+					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, argTypes[i])
+				}
+			}
+			if !isOctxiliaryTransportType(meta.Return) {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses unsupported transport type %s", meta.PackageName, meta.OctName, meta.Return)
+			}
+			localType := meta.Return
+			if meta.Fallible {
+				localType = fallibleType(meta.Return)
+			}
+			tmp := c.temp(localType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: argTypes, RetType: meta.Return, Fallible: meta.Fallible})
+			return tmp, meta.Return, meta.Fallible, nil
+		}
 		if builtin && callee == "BoardSnapshot" {
 			if len(argTypes) != 1 {
 				return "", "", false, fmt.Errorf("BoardSnapshot expects 1 argument")
@@ -2558,6 +2620,27 @@ func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error)
 	return out, resultType, false, nil
 }
 
+func (c *lowerCtx) genericWrapperMetadataForCallee(callee ast.Expr) (genericWrapperCallMetadata, bool, error) {
+	switch x := callee.(type) {
+	case ast.IdentifierExpr:
+		meta, ok := findGenericWrapperFunction(c.pkg, x.Name)
+		return meta, ok, nil
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
+		if !ok {
+			return genericWrapperCallMetadata{}, false, nil
+		}
+		importPkg, ok := c.program.Packages[pkgIdent.Name]
+		if !ok {
+			return genericWrapperCallMetadata{}, false, nil
+		}
+		meta, found := findGenericWrapperFunction(importPkg, x.Field)
+		return meta, found, nil
+	default:
+		return genericWrapperCallMetadata{}, false, nil
+	}
+}
+
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
@@ -2747,6 +2830,46 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:
 		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
+	}
+}
+
+type genericWrapperCallMetadata struct {
+	PackageName    string
+	OctName        string
+	Family         string
+	WireName       string
+	SidecarCommand string
+	Args           []string
+	Return         string
+	Fallible       bool
+}
+
+func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrapperCallMetadata, bool) {
+	for _, wrapper := range pkg.Wrappers {
+		for _, fn := range wrapper.Functions {
+			if fn.OctName == fnName {
+				return genericWrapperCallMetadata{
+					PackageName:    pkg.Name,
+					OctName:        fn.OctName,
+					Family:         wrapper.Family,
+					WireName:       fn.WireName,
+					SidecarCommand: wrapper.SidecarCommand,
+					Args:           append([]string(nil), fn.Args...),
+					Return:         fn.Return,
+					Fallible:       fn.Fallible,
+				}, true
+			}
+		}
+	}
+	return genericWrapperCallMetadata{}, false
+}
+
+func isOctxiliaryTransportType(t string) bool {
+	switch t {
+	case "Void", "Int", "Float", "Bool", "String", "String[]", "Bytes":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -4219,6 +4342,7 @@ func emitGo(m MIRModule) (string, error) {
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
 	needsUtilityHelpers := false
+	usesGenericOctxiliary := false
 	for _, flow := range m.Flows {
 		flowResultTypes[flow.Return] = struct{}{}
 		if flowHasUtilityWhen(flow) {
@@ -4250,6 +4374,12 @@ func emitGo(m MIRModule) (string, error) {
 				if batch, ok := st.(MIRBatchMap); ok {
 					usedBuiltins["BatchMap"] = true
 					resultTypes[batch.ResultType+"[]"] = struct{}{}
+				}
+				if generic, ok := st.(MIRGenericOctxiliaryCall); ok {
+					usesGenericOctxiliary = true
+					if generic.Fallible {
+						resultTypes[generic.RetType] = struct{}{}
+					}
 				}
 			}
 		}
@@ -4290,7 +4420,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usesOctxiliaryBuiltins(usedBuiltins) {
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
@@ -4331,7 +4461,7 @@ func emitGo(m MIRModule) (string, error) {
 		fmt.Fprintf(&b, "\t%q\n", name)
 	}
 	b.WriteString(")\n\n")
-	if usesOctxiliaryBuiltins(usedBuiltins) {
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		resultTypes["Bytes"] = struct{}{}
 		resultTypes["String"] = struct{}{}
 		resultTypes["String[]"] = struct{}{}
@@ -4372,7 +4502,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 		fmt.Fprintf(&b, "type %s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goResultTypeName(t), valueType)
 	}
-	if usesOctxiliaryBuiltins(usedBuiltins) {
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		if _, ok := resultTypes["String[]"]; !ok {
 			b.WriteString("type octResult_StringSlice struct {\n\tValue []string\n\tErr string\n\tIsErr bool\n}\n\n")
 		}
@@ -4500,7 +4630,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	if usesOctxiliaryBuiltins(usedBuiltins) {
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
@@ -6279,6 +6409,69 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	}
 }
 
+func octxiliaryKindExpr(t string) string {
+	switch t {
+	case "Void":
+		return "octxiliary.ValueVoid"
+	case "Int":
+		return "octxiliary.ValueInt"
+	case "Float":
+		return "octxiliary.ValueFloat"
+	case "Bool":
+		return "octxiliary.ValueBool"
+	case "String":
+		return "octxiliary.ValueString"
+	case "String[]":
+		return "octxiliary.ValueStringArray"
+	case "Bytes":
+		return "octxiliary.ValueBytes"
+	default:
+		return "octxiliary.ValueKind(\"" + t + "\")"
+	}
+}
+
+func octxiliaryValueExpr(t string, expr string) (string, error) {
+	switch t {
+	case "Void":
+		return "octxiliary.Value{Kind: octxiliary.ValueVoid}", nil
+	case "Int":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueInt, Int: %s}", expr), nil
+	case "Float":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueFloat, Float: %s}", expr), nil
+	case "Bool":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueBool, Bool: %s}", expr), nil
+	case "String":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueString, String: %s}", expr), nil
+	case "String[]":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueStringArray, Strings: %s}", expr), nil
+	case "Bytes":
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueBytes, Bytes: %s}", expr), nil
+	default:
+		return "", fmt.Errorf("unsupported Octxiliary transport type %s", t)
+	}
+}
+
+func octxiliaryValueExtractExpr(t string, value string) string {
+	switch t {
+	case "Void":
+		return "__octVoid{}"
+	case "Int":
+		return value + ".Int"
+	case "Float":
+		return value + ".Float"
+	case "Bool":
+		return value + ".Bool"
+	case "String":
+		return value + ".String"
+	case "String[]":
+		return value + ".Strings"
+	case "Bytes":
+		return value + ".Bytes"
+	default:
+		return value
+	}
+}
+
 func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
@@ -6291,6 +6484,26 @@ func goStmt(s MIRStmt) (string, error) {
 			parts = append(parts, fmt.Sprintf("%s: %s", st.FieldNames[i], st.FieldVals[i]))
 		}
 		return fmt.Sprintf("%s = %s{%s}", st.Target, goType(st.TypeName), strings.Join(parts, ", ")), nil
+	case MIRGenericOctxiliaryCall:
+		valueArgs := make([]string, 0, len(st.Args))
+		for i, arg := range st.Args {
+			valueExpr, err := octxiliaryValueExpr(st.ArgTypes[i], arg)
+			if err != nil {
+				return "", err
+			}
+			valueArgs = append(valueArgs, valueExpr)
+		}
+		call := fmt.Sprintf("__octOctxiliaryGenericCall(%q, %q, %q, []octxiliary.Value{%s}, %s)", st.SidecarCommand, st.Family, st.WireName, strings.Join(valueArgs, ", "), octxiliaryKindExpr(st.RetType))
+		if st.Fallible {
+			if st.RetType == "Void" {
+				return fmt.Sprintf("%s = func() %s { __value, __err := %s; _ = __value; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __octVoid{}} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+			}
+			return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: %s} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType), octxiliaryValueExtractExpr(st.RetType, "__value")), nil
+		}
+		if st.RetType == "Void" {
+			return fmt.Sprintf("%s = func() __octVoid { __value, __err := %s; _ = __value; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return __octVoid{} }()", st.Target, call), nil
+		}
+		return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, octxiliaryValueExtractExpr(st.RetType, "__value")), nil
 	case MIRCall:
 		if st.Builtin {
 			switch canonicalCompiledBuiltinName(st.Callee) {
@@ -6765,6 +6978,9 @@ var __octOctxiliaryOut io.ReadCloser
 var __octOctxiliaryErr error
 var __octOctxiliaryMu sync.Mutex
 var __octOctxiliaryReqID int
+type __octOctxiliaryClient struct { cmd *exec.Cmd; in io.WriteCloser; out io.ReadCloser; mu sync.Mutex; reqID int; err error }
+var __octOctxiliaryGenericMu sync.Mutex
+var __octOctxiliaryGenericClients = map[string]*__octOctxiliaryClient{}
 
 func __octFileReadText(path string) octResult_String {
 	__octOctxiliaryMu.Lock()
@@ -6907,6 +7123,57 @@ func __octDirectoryRemoveAll(path string) octResult_Int {
 	resp, _ := octxiliary.ParseResponse(frame)
 	if !resp.OK { return octResult_Int{Err: resp.Error, IsErr: true} }
 	return octResult_Int{Value: 0}
+}
+
+
+func __octOctxiliaryGenericCall(sidecarCommand string, family string, function string, args []octxiliary.Value, expected octxiliary.ValueKind) (octxiliary.Value, error) {
+	client := __octOctxiliaryGenericClient(sidecarCommand)
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.err != nil { return octxiliary.Value{}, client.err }
+	client.reqID++
+	req := octxiliary.Request{ID: client.reqID, Family: family, Function: function, Args: args, HasArgs: true}
+	if err := octxiliary.WriteFrame(client.in, octxiliary.EncodeRequest(req)); err != nil { return octxiliary.Value{}, err }
+	frame, err := octxiliary.ReadFrame(client.out); if err != nil { return octxiliary.Value{}, err }
+	resp, err := octxiliary.ParseResponse(frame); if err != nil { return octxiliary.Value{}, err }
+	if !resp.OK { return octxiliary.Value{}, errors.New(resp.Error) }
+	if !resp.HasValue { return octxiliary.Value{}, errors.New("Octxiliary generic response missing typed value") }
+	if resp.Value.Kind != expected { return octxiliary.Value{}, fmt.Errorf("Octxiliary generic response kind mismatch: expected %s, got %s", expected, resp.Value.Kind) }
+	return resp.Value, nil
+}
+
+func __octOctxiliaryGenericClient(sidecarCommand string) *__octOctxiliaryClient {
+	__octOctxiliaryGenericMu.Lock()
+	defer __octOctxiliaryGenericMu.Unlock()
+	if client, ok := __octOctxiliaryGenericClients[sidecarCommand]; ok { return client }
+	client := &__octOctxiliaryClient{}
+	path, err := __octOctxiliarySidecarPath(sidecarCommand)
+	if err != nil { client.err = err; __octOctxiliaryGenericClients[sidecarCommand] = client; return client }
+	cmd := exec.Command(path)
+	in, _ := cmd.StdinPipe(); out, _ := cmd.StdoutPipe(); if err := cmd.Start(); err != nil { client.err = err; __octOctxiliaryGenericClients[sidecarCommand] = client; return client }
+	client.cmd, client.in, client.out = cmd, in, out
+	if err := octxiliary.WriteHandshake(in); err != nil { client.err = err; __octOctxiliaryGenericClients[sidecarCommand] = client; return client }
+	if err := octxiliary.ReadHandshake(out); err != nil { client.err = err; __octOctxiliaryGenericClients[sidecarCommand] = client; return client }
+	__octOctxiliaryGenericClients[sidecarCommand] = client
+	return client
+}
+
+func __octOctxiliarySidecarPath(sidecarCommand string) (string, error) {
+	if sidecarCommand == "" { return "", errors.New("Octxiliary sidecar command is empty") }
+	candidate := filepath.Join(filepath.Dir(os.Args[0]), sidecarCommand)
+	if _, err := os.Stat(candidate); err == nil { return candidate, nil }
+	wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
+	if wrapperPath != "" {
+		if info, err := os.Stat(wrapperPath); err == nil {
+			if info.IsDir() {
+				candidate = filepath.Join(wrapperPath, sidecarCommand)
+				if _, err := os.Stat(candidate); err == nil { return candidate, nil }
+			} else if filepath.Base(wrapperPath) == sidecarCommand {
+				return wrapperPath, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("Octxiliary sidecar %q not found; set OCT_WRAPPER_PATH or place it beside .octbin", sidecarCommand)
 }
 
 func __octOctxiliaryEnsure() error {

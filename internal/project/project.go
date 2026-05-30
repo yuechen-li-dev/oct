@@ -14,6 +14,8 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
+type WrapperMetadata = pkgmgr.WrapperMetadata
+
 type Package struct {
 	Name      string
 	Directory string
@@ -22,6 +24,7 @@ type Package struct {
 	Enums     []ast.EnumDecl
 	Functions []ast.FunctionDecl
 	Flows     []ast.FlowDecl
+	Wrappers  []WrapperMetadata
 }
 
 type Program struct {
@@ -156,6 +159,11 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 	return Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages}, nil
 }
 
+type manifestValidationResult struct {
+	Dependencies map[string]struct{}
+	Wrappers     []WrapperMetadata
+}
+
 type builder struct {
 	root             string
 	repoRoot         string
@@ -186,13 +194,13 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("unknown package '%s'", packageName)
 	}
-	manifestDeps, err := b.validateManifest(packageName, directory)
+	manifestInfo, err := b.validateManifest(packageName, directory)
 	if err != nil {
 		return err
 	}
-	b.manifestDeps[packageName] = manifestDeps
+	b.manifestDeps[packageName] = manifestInfo.Dependencies
 
-	pkg := Package{Name: packageName, Directory: directory}
+	pkg := Package{Name: packageName, Directory: directory, Wrappers: manifestInfo.Wrappers}
 	importSet := make(map[string]struct{})
 	declSet := make(map[string]struct{})
 	for _, file := range files {
@@ -406,10 +414,7 @@ func isMilestoneDir(name string) bool {
 	return true
 }
 
-func (b *builder) validateManifest(packageName string, directory string) (map[string]struct{}, error) {
-	if !b.requireManifests {
-		return nil, nil
-	}
+func (b *builder) validateManifest(packageName string, directory string) (manifestValidationResult, error) {
 	manifestPath := filepath.Join(directory, "manifest.oct")
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
@@ -418,26 +423,42 @@ func (b *builder) validateManifest(packageName string, directory string) (map[st
 				if _, parentErr := os.Stat(parentManifestPath); parentErr == nil {
 					manifestPath = parentManifestPath
 				} else if parentErr != nil && !os.IsNotExist(parentErr) {
-					return nil, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
+					return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
+				} else if b.requireManifests {
+					return manifestValidationResult{}, fmt.Errorf("package manifest missing")
 				} else {
-					return nil, fmt.Errorf("package manifest missing")
+					return manifestValidationResult{}, nil
 				}
+			} else if b.requireManifests {
+				return manifestValidationResult{}, fmt.Errorf("package manifest missing")
 			} else {
-				return nil, fmt.Errorf("package manifest missing")
+				return manifestValidationResult{}, nil
 			}
-		}
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
+		} else {
+			return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
 		}
 	}
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
-		return nil, err
+		if !b.requireManifests {
+			return manifestValidationResult{}, nil
+		}
+		return manifestValidationResult{}, err
 	}
 	if err := validateManifestFile(packageName, manifestFile); err != nil {
-		return nil, err
+		if !b.requireManifests {
+			return manifestValidationResult{}, nil
+		}
+		return manifestValidationResult{}, err
 	}
-	return manifestDependencySet(manifestFile), nil
+	metadata, err := pkgmgr.LoadManifestMetadata(manifestPath)
+	if err != nil {
+		if !b.requireManifests {
+			return manifestValidationResult{}, nil
+		}
+		return manifestValidationResult{}, err
+	}
+	return manifestValidationResult{Dependencies: manifestDependencySet(manifestFile), Wrappers: metadata.Wrappers}, nil
 }
 
 func (b *builder) resolveImportDirectory(packageName string, importName string) (string, error) {

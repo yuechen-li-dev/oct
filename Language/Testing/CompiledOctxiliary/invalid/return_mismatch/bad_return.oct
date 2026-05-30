@@ -1,0 +1,5 @@
+package Main
+
+fn BadReturn(value: String) -> String ! Error {
+    return error("BadReturn should fail during compiled lowering")
+}

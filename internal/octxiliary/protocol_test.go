@@ -83,3 +83,63 @@ func TestInvalidByteLessThan0Fails(t *testing.T) {
 		t.Fatal("expected parse error")
 	}
 }
+
+func TestGenericRequestRoundTripAllSupportedArgs(t *testing.T) {
+	req := Request{ID: 20, Family: "TestWrapper", Function: "All", HasArgs: true, Args: []Value{
+		{Kind: ValueVoid},
+		{Kind: ValueInt, Int: 7},
+		{Kind: ValueFloat, Float: 3.5},
+		{Kind: ValueBool, Bool: true},
+		{Kind: ValueString, String: "hello"},
+		{Kind: ValueStringArray, Strings: []string{"a", "", "b"}},
+		{Kind: ValueBytes, Bytes: []byte{0, 1, 255}},
+	}}
+	got, err := ParseRequest(EncodeRequest(req))
+	if err != nil || !got.HasArgs || len(got.Args) != len(req.Args) {
+		t.Fatalf("generic request roundtrip mismatch: %#v err=%v", got, err)
+	}
+	if got.Args[1].Int != 7 || got.Args[2].Float != 3.5 || !got.Args[3].Bool || got.Args[4].String != "hello" || got.Args[5].Strings[1] != "" || got.Args[6].Bytes[2] != 255 {
+		t.Fatalf("generic request payload mismatch: %#v", got.Args)
+	}
+}
+
+func TestGenericResponseRoundTripSupportedReturnKinds(t *testing.T) {
+	cases := []Value{
+		{Kind: ValueVoid},
+		{Kind: ValueInt, Int: 9},
+		{Kind: ValueFloat, Float: 4.25},
+		{Kind: ValueBool, Bool: true},
+		{Kind: ValueString, String: "ok"},
+		{Kind: ValueStringArray, Strings: []string{"x", "y"}},
+		{Kind: ValueBytes, Bytes: []byte{2, 3}},
+	}
+	for _, value := range cases {
+		resp := Response{ID: 21, OK: true, HasValue: true, Value: value}
+		got, err := ParseResponse(EncodeResponse(resp))
+		if err != nil || !got.OK || !got.HasValue || got.Value.Kind != value.Kind {
+			t.Fatalf("generic response roundtrip mismatch for %s: %#v err=%v", value.Kind, got, err)
+		}
+	}
+}
+
+func TestGenericEmptyStringArrayAndBytesRoundTrip(t *testing.T) {
+	req := Request{ID: 22, Family: "TestWrapper", Function: "Empty", HasArgs: true, Args: []Value{{Kind: ValueStringArray, Strings: []string{}}, {Kind: ValueBytes, Bytes: []byte{}}}}
+	got, err := ParseRequest(EncodeRequest(req))
+	if err != nil || len(got.Args) != 2 || len(got.Args[0].Strings) != 0 || len(got.Args[1].Bytes) != 0 {
+		t.Fatalf("empty generic payload mismatch: %#v err=%v", got, err)
+	}
+}
+
+func TestGenericUnknownKindRejected(t *testing.T) {
+	_, err := ParseRequest(`OctxiliaryRequest { id: 23 family: "TestWrapper" function: "Bad" args: [ OctxiliaryValue { kind: "Handle" } ] }`)
+	if err == nil {
+		t.Fatal("expected unknown kind parse error")
+	}
+}
+
+func TestGenericMalformedPayloadRejected(t *testing.T) {
+	_, err := ParseResponse(`OctxiliaryResponse { id: 24 ok: true value: OctxiliaryValue { kind: "Int" string: "wrong" } }`)
+	if err == nil {
+		t.Fatal("expected malformed value payload parse error")
+	}
+}

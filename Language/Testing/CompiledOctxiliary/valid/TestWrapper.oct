@@ -1,0 +1,37 @@
+package Main
+
+fn EchoString(value: String) -> String ! Error {
+    return error("TestWrapper.EchoString requires compiled Octxiliary lowering")
+}
+
+fn JoinStrings(values: String[]) -> String ! Error {
+    return error("TestWrapper.JoinStrings requires compiled Octxiliary lowering")
+}
+
+fn BytesLen(values: Bytes) -> Int ! Error {
+    return error("TestWrapper.BytesLen requires compiled Octxiliary lowering")
+}
+
+fn Not(value: Bool) -> Bool ! Error {
+    return error("TestWrapper.Not requires compiled Octxiliary lowering")
+}
+
+fn AddInt(left: Int, right: Int) -> Int ! Error {
+    return error("TestWrapper.AddInt requires compiled Octxiliary lowering")
+}
+
+fn Half(value: Float) -> Float ! Error {
+    return error("TestWrapper.Half requires compiled Octxiliary lowering")
+}
+
+fn Touch() -> Void ! Error {
+    return
+}
+
+fn TouchDirect() -> Void {
+    return
+}
+
+fn AlwaysFails() -> String ! Error {
+    return error("TestWrapper.AlwaysFails requires compiled Octxiliary lowering")
+}

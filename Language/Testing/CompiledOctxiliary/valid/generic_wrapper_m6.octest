@@ -1,0 +1,34 @@
+package Main
+
+[Fact]
+fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
+    Assert.Equal("hello", EchoString("hello")?, "String wrapper should echo")
+    Assert.Equal("a,b", JoinStrings(["a", "b"])?, "String[] wrapper should join")
+    let bytes = Random.CryptoRandBytes(4)?
+    Assert.Equal(4, BytesLen(bytes)?, "Bytes wrapper should return length")
+    Assert.Equal(5, AddInt(2, 3)?, "Int wrapper should add")
+    Assert.Near(4.0, Half(8.0)?, 0.000001, "Float wrapper should halve")
+    Assert.False(Not(true)?, "Bool wrapper should invert")
+    match Touch() {
+        ok(value) => {
+            Assert.True(true, "Void wrapper should succeed")
+        }
+        err(e) => {
+            Assert.True(false, "Void wrapper should succeed")
+        }
+    }
+    TouchDirect()
+    Assert.True(true, "non-fallible Void wrapper should continue execution")
+}
+
+[Fact]
+fn GenericWrapperM6SidecarErrorPropagates() -> Void ! Error {
+    match AlwaysFails() {
+        ok(value) => {
+            Assert.True(false, value)
+        }
+        err(e) => {
+            Assert.True(true, "sidecar error should propagate through fallible result")
+        }
+    }
+}
