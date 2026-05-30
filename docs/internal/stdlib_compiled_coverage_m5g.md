@@ -450,3 +450,19 @@ From per-library compiled failures, representative unsupported builtins include:
 ## Appendix B. Inventory logs
 
 Raw command logs were written outside the repository under `/tmp/oct-m5g` during this audit. They are intentionally not committed because the milestone asks for grouped inventory rather than large log dumps.
+
+## M11 update — wrapper sweep
+
+M11 resolved the M5g archive gap by migrating `Libraries/Archive` to generic Octxiliary wrapper lowering and adding `cmd/octxiliary-archive`.
+
+M11 also migrated the safe `Libraries/Json` public file helpers (`Save` and `Load`) to generic wrapper lowering with `cmd/octxiliary-json`. Broader `Libraries/IO` JSON graph/structured helpers remain blocked by record and nested-array transport requirements.
+
+Remaining M5g wrapper candidates are now classified as explicit blockers rather than silently pending:
+
+- `Libraries/Csv`: `needs_nested_array_transport` for `String[][]` row APIs.
+- `Libraries/Markdown`: `needs_record_transport` and `needs_nested_array_transport` for table/report helpers.
+- `Libraries/Pdf`: `needs_handle_transport` and `needs_record_transport`.
+- `Libraries/Plot`: `needs_float_array_transport` and `needs_record_transport`.
+- `Libraries/Image`: `needs_handle_transport`.
+
+See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the focused M11 table.

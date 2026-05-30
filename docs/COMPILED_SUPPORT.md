@@ -154,3 +154,19 @@ Current proof fixture:
 - `cmd/octxiliary-test-wrapper`
 
 The fixture covers generic `String`, `String[]`, `Bytes`, `Int`, `Float`, `Bool`, `Void` return, missing sidecar diagnostics, and fallible sidecar-error propagation without changing real standard-library wrapper surfaces.
+
+## M11 generic wrapper sweep
+
+Compiled generic Octxiliary wrapper lowering now covers these additional standard-library packages:
+
+- `Archive`: `ListEntries`, `ExtractAll`, and `CreateFromFiles` through `octxiliary-archive` using `String`, `String[]`, and `Int` transports.
+- `Json`: `Save` and `Load` through `octxiliary-json` using `String` and `Int` transports; `Object` remains direct pure Oct.
+
+Deferred after the M11 sweep:
+
+- `Csv` remains blocked by `String[][]` row data (`needs_nested_array_transport`).
+- `Markdown` remains blocked by record-of-`String[]` tables and nested block arrays (`needs_record_transport`, `needs_nested_array_transport`).
+- `Pdf` and `Image` remain blocked by opaque handles and record arguments (`needs_handle_transport`, `needs_record_transport`).
+- `Plot` remains blocked by `Float[]` plot data and record arguments (`needs_float_array_transport`, `needs_record_transport`).
+
+M11 did not add new transport kinds, compiled Complex support, Einstein notation, record transport, handle transport, package-manager sidecar builds, lockfiles, or public API redesigns.

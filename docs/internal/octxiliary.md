@@ -228,3 +228,12 @@ The production `cmd/octxiliary-text` sidecar uses the existing `OCTWRAP` handsha
 The public Oct APIs remain `IsMatch(pattern, text)`, `FindAll(pattern, text)`, `ReplaceAll(pattern, text, replacement)`, and `Split(pattern, text)`. Compiled lowering intercepts those public functions through manifest metadata and invokes the corresponding regex wire functions instead of lowering the interpreted wrapper bodies. Invalid regex patterns return sidecar errors (`ok: false`) instead of panics.
 
 The Text sidecar follows Go standard-library `regexp` syntax and behavior, matching the existing interpreter-backed Text implementation. This extends the M7/M8/M9 proof to `String, String -> Bool`, `String, String -> String[]`, and compact text transforms without changing the M6 transport set. The M4 IO file/directory sidecar path remains in place and coexists with generic wrappers. Package-manager wrapper planning remains inspection-only: M10 does not add sidecar builds, downloads, lockfiles, permission prompts, or runtime registry consumption.
+
+## M11 wrapper sweep
+
+M11 migrated the remaining standard-library wrappers whose public APIs fit the M6 generic typed transport set without adding new compiler concepts:
+
+- `Libraries/Archive` now declares wrapper metadata for `ListEntries`, `ExtractAll`, and `CreateFromFiles`, served by `octxiliary-archive`.
+- `Libraries/Json` now declares wrapper metadata for `Save` and `Load`, served by `octxiliary-json`; `Object` remains a direct pure Oct string identity helper.
+
+The sweep intentionally deferred candidates that require transports outside M6: CSV row matrices (`String[][]`), Markdown record/nested block helpers, PDF/Image handles and records, and Plot `Float[]`/record arguments. See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the full blocker table.

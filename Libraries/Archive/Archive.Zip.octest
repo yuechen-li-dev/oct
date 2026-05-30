@@ -32,6 +32,11 @@ fn ZipListEntriesAndExtractAllRoundTrip() -> Void {
 
 [Fact]
 fn ZipListEntriesMissingArchiveFails() -> Void {
-    Assert.Error(ListEntries("mx103c_missing.zip"), "listing a missing archive should fail")
+    var failed = false
+    match ListEntries("mx103c_missing.zip") {
+        ok(entries) => { failed = Len(entries) < 0 }
+        err(reason) => { failed = true }
+    }
+    Assert.True(failed, "listing a missing archive should fail")
     return
 }
