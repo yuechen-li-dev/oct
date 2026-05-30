@@ -99,9 +99,17 @@ Do not declare sidecar build commands or runtime registry behavior beyond this s
 
 M5d adds internal package-manager planning support for wrapper manifests. Wrapper manifests can now be inspected as native wrapper build plans for fetched packages and synced dependency graphs. A plan identifies which packages are `Kind: "wrapper"`, each package-local `GoModuleDir`, the resolved package-local Go module path, sidecar command names, wrapper families, protocols, and exposed function metadata.
 
-Wrapper build planning is inspection-only. It does not build Go modules, run `go mod download`, run `go build`, generate sidecar binaries, generate `.octagon` registries, generate lockfiles, discover runtime sidecars, lower generic wrappers, execute sidecars, or change the Octxiliary protocol.
+Wrapper build planning is inspection-only. It does not build Go modules, run `go mod download`, run `go build`, generate sidecar binaries, generate lockfiles, discover runtime sidecars, lower generic wrappers, execute sidecars, or change the Octxiliary protocol.
 
-Planning treats wrapper packages as native-code packages and marks them as requiring explicit future native build permission. Permission prompts, native build execution, runtime registry generation, and `.octagon` lockfiles remain future work.
+Planning treats wrapper packages as native-code packages and marks them as requiring explicit future native build permission. Permission prompts, native build execution, runtime registry consumption, and `.octagon` lockfiles remain future work.
+
+## Octxiliary registry artifact
+
+M5e adds an internal package-manager artifact model that can render wrapper build plans as deterministic `.octagon` text. The registry is inert metadata for future build, runtime, and compiler integration; writing it does not build, download, execute, discover, or register sidecars. It also does not generate lockfiles and does not add compiled wrapper lowering.
+
+The registry version is the stable string `octxiliary.registry.v0`. A registry lists the resolved sidecars from the wrapper build plan, including package name, wrapper name, family, protocol, sidecar command, Go module directory, resolved Go module path, and function metadata. Function metadata includes the Oct name, wire name, argument transport type strings, return transport type string, and fallibility.
+
+The `.octagon` artifact uses data-only record names `OctxiliaryRegistry`, `OctxiliarySidecar`, and `OctxiliaryFunction`; no package declaration is emitted. Registry output is deterministic, uses safe string quoting, and preserves the Go module path exactly as resolved by wrapper build planning. The artifact is a resolved planning artifact, not a build lockfile and not a final install/cache layout contract.
 
 ## Rules
 
