@@ -98,6 +98,9 @@ func WrapperFunctionRequiredFields() map[string]ast.TypeRef {
 }
 
 func IsSupportedTransportType(t string) bool {
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return true
+	}
 	return supportedTransportTypes[t]
 }
 

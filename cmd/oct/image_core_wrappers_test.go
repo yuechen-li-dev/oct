@@ -6,12 +6,14 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestImageCoreWrappers(t *testing.T) {
-	if err := synthesizeImageCoreFixtures(); err != nil {
+	if err := synthesizeImageCoreFixtures("."); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
 	t.Cleanup(func() {
@@ -19,6 +21,7 @@ func TestImageCoreWrappers(t *testing.T) {
 			"mx103d_fixture_rect.png",
 			"mx103d_fixture_rect.jpg",
 			"mx103d_fixture_corrupt.img",
+			"mx103d_roundtrip.jpg",
 		} {
 			_ = os.Remove(path)
 		}
@@ -45,7 +48,65 @@ func TestImageCoreWrappers(t *testing.T) {
 	}
 }
 
-func synthesizeImageCoreFixtures() error {
+func TestCompiledImageCoreWrappers(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	if err := synthesizeImageCoreFixtures(repo); err != nil {
+		t.Fatalf("synthesize fixtures: %v", err)
+	}
+	t.Cleanup(func() {
+		for _, path := range []string{
+			"mx103d_fixture_rect.png",
+			"mx103d_fixture_rect.jpg",
+			"mx103d_fixture_corrupt.img",
+			"mx103d_roundtrip.jpg",
+		} {
+			_ = os.Remove(filepath.Join(repo, path))
+		}
+	})
+
+	binDir := t.TempDir()
+	sidecar := filepath.Join(binDir, "octxiliary-image")
+	build := exec.Command("go", "build", "-o", sidecar, "./cmd/octxiliary-image")
+	build.Dir = repo
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build image sidecar: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Image", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("compiled Image tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+	for _, marker := range []string{
+		"PASS Image.LoadInspectAndSaveRoundTrip",
+		"PASS Image.MetadataMatchesJpegFixture",
+		"PASS Image.LoadMissingFails",
+		"PASS Image.LoadCorruptImageFails",
+		"PASS Image.SaveUnsupportedExtensionFails",
+	} {
+		if !strings.Contains(string(out), marker) {
+			t.Fatalf("expected marker %q in compiled output, got:\n%s", marker, string(out))
+		}
+	}
+}
+
+func TestCompiledImageMissingSidecarDiagnostic(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Image/Image.Core.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected missing image sidecar failure, got success:\n%s", string(out))
+	}
+	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-image" not found`) {
+		t.Fatalf("expected image missing sidecar diagnostic, got:\n%s", string(out))
+	}
+}
+
+func synthesizeImageCoreFixtures(dir string) error {
 	rect := image.NewRGBA(image.Rect(0, 0, 3, 2))
 	palette := []color.RGBA{
 		{R: 255, G: 0, B: 0, A: 255},
@@ -63,13 +124,13 @@ func synthesizeImageCoreFixtures() error {
 		}
 	}
 
-	if err := writePNG("mx103d_fixture_rect.png", rect); err != nil {
+	if err := writePNG(filepath.Join(dir, "mx103d_fixture_rect.png"), rect); err != nil {
 		return err
 	}
-	if err := writeJPEG("mx103d_fixture_rect.jpg", rect); err != nil {
+	if err := writeJPEG(filepath.Join(dir, "mx103d_fixture_rect.jpg"), rect); err != nil {
 		return err
 	}
-	return os.WriteFile("mx103d_fixture_corrupt.img", []byte("not an image payload\n"), 0o644)
+	return os.WriteFile(filepath.Join(dir, "mx103d_fixture_corrupt.img"), []byte("not an image payload\n"), 0o644)
 }
 
 func writePNG(path string, data image.Image) error {

@@ -368,3 +368,9 @@ Rationale: `IO.Xlsx` is the smallest real handle-backed standard-library blocker
 ## M18 update
 
 M18 implements the recommended M0 handle transport and migrates `IO.Xlsx` first. `IO.Workbook` is declared as a manifest `handle` transport type with the public `Handle: Int` field, while the wire value carries `handleFamily`, `handleType`, and positive sidecar-local `handleID` fields. The lifecycle remains sidecar-process lifetime only: no Close/destructor, no cross-family handles, no serialization across runs, and no Image/Pdf migration were added.
+
+## M19 Image realization note
+
+M19 applies the M17/M18 handle model to `Libraries/Image`. `Image.ImageHandle` is declared as a manifest handle transport with exactly `Handle: Int`, while the wire payload remains a typed `Handle` with family `Image`, type `Image.ImageHandle`, and a positive sidecar-local ID. The public `ImageHandle` record is reconstructed only at the Oct boundary; the sidecar never treats it as a plain integer handle without family/type validation.
+
+`cmd/octxiliary-image` owns decoded images and format metadata for the sidecar process lifetime. It supports PNG/JPEG load, PNG/JPEG save by extension, width/height integer payloads for public `Int<px>` returns, and format strings. Invalid handles produce sidecar errors; for non-fallible `Width`, `Height`, and `Format`, compiled lowering converts those sidecar errors into runtime failures. M19 deliberately leaves Pdf unmigrated and does not introduce cross-family Image/Pdf handle sharing or Close/destructor semantics.

@@ -280,3 +280,13 @@ The protocol validates that `handleFamily` and `handleType` are non-empty and th
 Handle transport is deliberately narrower than records: manifests may declare `WrapperTransportType.Kind == "handle"` only for an Oct record with exactly one field, `Handle: Int`. The public Oct record remains an ordinary record, but compiled wrapper lowering packs it as a typed sidecar capability and reconstructs the public record from typed handle returns.
 
 M18 migrates `IO.Xlsx` to generic Octxiliary through `cmd/octxiliary-xlsx`. Workbook handles live for the lifetime of that sidecar process, are monotonically allocated, are not reused in M0, and have no `Close`/destructor API yet. Cross-family handles, Image/Pdf migration, handle serialization, a shared global broker, and package-manager native sidecar builds remain deferred. `octxiliary-xlsx` must be available beside the compiled `.octbin` or through `OCT_WRAPPER_PATH`.
+
+## M19 Image handle migration
+
+M19 migrates `Libraries/Image` to generic Octxiliary handle transport through `cmd/octxiliary-image`. The public Oct API is unchanged: `ImageHandle` remains `record ImageHandle { Handle: Int }`, `Load` and `Save` remain fallible, and `Width`, `Height`, and `Format` remain non-fallible.
+
+On the wire, an image handle is not transported as an `Int`. Compiled code packs and validates `OctxiliaryValue { kind: "Handle" handleFamily: "Image" handleType: "Image.ImageHandle" handleID: <positive> }`. The sidecar owns the image table for the process lifetime, allocates positive monotonically increasing IDs, does not reuse IDs in M0, does not persist handles across runs, and has no `Close` or destructor API yet.
+
+The Image sidecar preserves the interpreted MVP format surface: PNG and JPEG decode via Go's standard `image` stack, and saves are selected by `.png`, `.jpg`, or `.jpeg` extension. Missing files, corrupt images, unsupported save extensions, and invalid handles return sidecar errors. Because `Width`, `Height`, and `Format` are public non-fallible APIs, compiled generic lowering converts sidecar errors from those calls into runtime failures; fallible `Load` and `Save` continue to return `Error` values.
+
+M19 intentionally does not migrate `Pdf`, add Pdf/Image handle interop, allow cross-family handles, add a shared broker, add handle serialization, add general record returns, or add package-manager sidecar builds. `octxiliary-image` must be available beside the compiled `.octbin` or discoverable via `OCT_WRAPPER_PATH`; otherwise compiled Image calls report `Octxiliary sidecar "octxiliary-image" not found`.
