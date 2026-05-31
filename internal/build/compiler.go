@@ -2950,6 +2950,9 @@ func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrap
 }
 
 func isOctxiliaryTransportType(t string) bool {
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return true
+	}
 	switch t {
 	case "Void", "Int", "Float", "Bool", "String", "String[]", "String[][]", "Float[]", "Bytes":
 		return true
@@ -6810,6 +6813,9 @@ func octxiliaryKindExprWithTransport(t string, transportTypes []project.Transpor
 	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
 		return "octxiliary.ValueHandle"
 	}
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return "octxiliary.ValueInt"
+	}
 	switch t {
 	case "Void":
 		return "octxiliary.ValueVoid"
@@ -6843,6 +6849,9 @@ func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []pr
 }
 
 func octxiliaryValueExprWithTransportFamily(t string, expr string, transportTypes []project.TransportTypeMetadata, family string) (string, error) {
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueInt, Int: %s}", expr), nil
+	}
 	switch t {
 	case "Void":
 		return "octxiliary.Value{Kind: octxiliary.ValueVoid}", nil
@@ -6889,6 +6898,9 @@ func octxiliaryValueExtractExpr(t string, value string) string {
 func octxiliaryValueExtractExprWithTransport(t string, value string, transportTypes []project.TransportTypeMetadata) string {
 	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
 		return fmt.Sprintf("%s{Handle: %s.HandleID}", goType(t), value)
+	}
+	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
+		return value + ".Int"
 	}
 	switch t {
 	case "Void":

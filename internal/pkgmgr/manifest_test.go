@@ -573,6 +573,17 @@ func TestLoadManifestMetadataRejectsMalformedWrapperMetadata(t *testing.T) {
 	}
 }
 
+func TestLoadManifestMetadataAllowsDimensionedIntTransport(t *testing.T) {
+	src := strings.Replace(validWrapperManifestSource("Image"), "Return: \"String[]\"", "Return: \"Int<px>\"", 1)
+	metadata, err := loadManifestMetadata(writeManifest(t, src))
+	if err != nil {
+		t.Fatalf("dimensioned Int transport manifest rejected: %v", err)
+	}
+	if got := metadata.Wrappers[0].Functions[0].Return; got != "Int<px>" {
+		t.Fatalf("expected dimensioned Int return to be preserved, got %q", got)
+	}
+}
+
 func validWrapperManifestSource(name string) string {
 	return strings.Join([]string{
 		"package Manifest",

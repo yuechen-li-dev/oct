@@ -16,7 +16,6 @@ fn LoadInspectAndSaveRoundTrip() -> Void {
     Assert.Equal(2px, Height(jpg), "jpg height should survive roundtrip")
     Assert.Equal("jpeg", Format(jpg), "jpg reload should report jpeg decoder format")
 
-    let _deleted = FileDelete(jpgPath)!
 }
 
 [Fact]
