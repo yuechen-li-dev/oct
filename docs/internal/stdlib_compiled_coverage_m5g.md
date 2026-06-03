@@ -398,7 +398,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Numerics` | roots | fail | `pure_oct` plus function-value lowering | callback lowering | high |
 | `Octomata` | state/control helpers | strong partial | `pure_oct` | generated Go import/type cleanup; `Assert` | high |
 | `Optimization` | optimization callbacks | partial | `pure_oct` plus function-value lowering | callback lowering | high |
-| `Pdf` | PDF document helpers | fail | `wrapper_registry_generic_octxiliary` | PDF builtins unsupported | high |
+| `Pdf` | text/page/save PDF helpers | migrated M21 focused subset | `wrapper_registry_generic_octxiliary` + `handle_transport` + `record_transport` | image drawing remains compiled-deferred; no cross-family Image handles | partial |
 | `Physics` | constants | test-shape failure | `pure_oct` | zero-assertion fact/test cleanup | low |
 | `Plot` | line/scatter/histogram | fail | `wrapper_registry_generic_octxiliary` | plot builtins unsupported | high |
 | `RF` | RF math/sequences | partial | `pure_oct` / `direct_builtin` | generated Go `_`; `Idx`; complex `Abs`; `Assert` | high |
@@ -460,7 +460,7 @@ Remaining M5g wrapper candidates are now classified as explicit blockers rather 
 
 - `Libraries/Csv`: `needs_nested_array_transport` for `String[][]` row APIs.
 - `Libraries/Markdown`: `needs_record_transport` and `needs_nested_array_transport` for table/report helpers.
-- `Libraries/Pdf`: `needs_handle_transport` and `needs_record_transport`.
+- `Libraries/Pdf`: text/page/save migrated in M21 using `Pdf.PdfPage` handle transport and `Pdf.TextStyle` record transport; image drawing remains deferred because cross-family Image handles are not supported.
 - `Libraries/Plot`: migrated in M16 through `Float[]` plus declared non-recursive record argument transport; record returns/handles remain unsupported.
 - `Libraries/Image`: `needs_handle_transport`.
 

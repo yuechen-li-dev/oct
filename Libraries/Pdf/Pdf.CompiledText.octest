@@ -1,0 +1,39 @@
+package Pdf
+
+[Fact]
+fn CompiledBasicTextSave() -> Void {
+    let out = "m21_pdf_compiled_text.pdf"
+    let page = NewPage(320px, 180px)!
+    let draw = DrawText(page, 12px, 16px, "hello from compiled Pdf")!
+    Assert.Equal(0, draw, "draw text should return zero")
+    let save = Save(page, out)!
+    Assert.Equal(0, save, "save should return zero")
+    Assert.True(FileExists(out), "compiled pdf output should exist")
+}
+
+[Fact]
+fn CompiledStyledTextSave() -> Void {
+    let out = "m21_pdf_compiled_styled.pdf"
+    let page = NewPage(360px, 220px)!
+    let defaultStyle = DefaultTextStyle()
+    let drawDefault = DrawTextStyled(page, 10px, 20px, "default style", defaultStyle)!
+    Assert.Equal(0, drawDefault, "default styled draw should return zero")
+    let style = TextStyle { Size: 20px ColorR: 24 ColorG: 100 ColorB: 220 }
+    let drawCustom = DrawTextStyled(page, 10px, 48px, "custom style", style)!
+    Assert.Equal(0, drawCustom, "custom styled draw should return zero")
+    let save = Save(page, out)!
+    Assert.Equal(0, save, "styled save should return zero")
+    Assert.True(FileExists(out), "compiled styled pdf output should exist")
+}
+
+[Fact]
+fn CompiledInvalidPageHandleFails() -> Void {
+    let bogus = PdfPage { Handle: 99999 }
+    Assert.Error(DrawText(bogus, 1px, 1px, "x"), "invalid page handle should fail in compiled mode")
+}
+
+[Fact]
+fn CompiledSaveInvalidPathFails() -> Void {
+    let page = NewPage(120px, 80px)!
+    Assert.Error(Save(page, "/definitely/missing/m21/nope/out.pdf"), "invalid save path should fail in compiled mode")
+}

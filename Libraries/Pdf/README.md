@@ -25,6 +25,19 @@ PDF units are an internal backend detail.
 - `Save(page: PdfPage, path: String) -> Int ! Error`
 - `DefaultTextStyle() -> TextStyle`
 
+## Compiled support (M21)
+
+Compiled Oct supports the Pdf text/page/save subset through `octxiliary-pdf`:
+
+- `NewPage`
+- `DrawText`
+- `DrawTextStyled`
+- `Save`
+
+`PdfPage` is a Pdf-sidecar-owned handle, and `TextStyle` is transported as a record argument. `DefaultTextStyle()` remains pure Oct.
+
+Compiled image drawing is intentionally deferred: `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` are not compiled-supported, and Pdf compiled code must not consume `Image.ImageHandle` values from `octxiliary-image`. Future compiled image interop should use a Pdf-owned import API or path/bytes helper rather than cross-family handle sharing.
+
 ## Font behavior (MVP)
 
 - Default Latin font target: **Inter**.
