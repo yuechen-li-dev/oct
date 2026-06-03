@@ -475,3 +475,11 @@ Future follow-up:
 - Run a dedicated Pdf image milestone after M21.
 - Compare `Pdf.LoadImage` / `Pdf.ImportImage` against `DrawImageFile` / `DrawImageBytes` with user ergonomics, caching, validation, and interpreted compatibility as explicit criteria.
 - Keep the cross-sidecar broker rejected unless the project intentionally starts a broader post-M0 handle lifecycle/ownership design.
+
+## M21 implementation update
+
+M21 implements the M20 recommended first slice. `Libraries/Pdf/manifest.oct` declares Pdf as an `octxiliary.v0` wrapper package with sidecar command `octxiliary-pdf`, `Pdf.PdfPage` as a handle transport type, and `Pdf.TextStyle` as a record argument transport type.
+
+The compiled-supported public functions are exactly `NewPage`, `DrawText`, `DrawTextStyled`, and `Save`. `DefaultTextStyle()` remains pure/local Oct. `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` remain absent from compiled wrapper metadata.
+
+The sidecar keeps a Pdf-local page handle table with positive monotonically increasing IDs. It does not accept Image-family handles and does not implement image drawing. Future compiled image interop should add a Pdf-owned import/path/bytes API rather than sharing `octxiliary-image` handle values.

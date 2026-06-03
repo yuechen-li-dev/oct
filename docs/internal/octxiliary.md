@@ -290,3 +290,18 @@ On the wire, an image handle is not transported as an `Int`. Compiled code packs
 The Image sidecar preserves the interpreted MVP format surface: PNG and JPEG decode via Go's standard `image` stack, and saves are selected by `.png`, `.jpg`, or `.jpeg` extension. Missing files, corrupt images, unsupported save extensions, and invalid handles return sidecar errors. Because `Width`, `Height`, and `Format` are public non-fallible APIs, compiled generic lowering converts sidecar errors from those calls into runtime failures; fallible `Load` and `Save` continue to return `Error` values.
 
 M19 intentionally does not migrate `Pdf`, add Pdf/Image handle interop, allow cross-family handles, add a shared broker, add handle serialization, add general record returns, or add package-manager sidecar builds. `octxiliary-image` must be available beside the compiled `.octbin` or discoverable via `OCT_WRAPPER_PATH`; otherwise compiled Image calls report `Octxiliary sidecar "octxiliary-image" not found`.
+
+## M21 Pdf text/page/save sidecar
+
+M21 adds `cmd/octxiliary-pdf` for the safe `Libraries/Pdf` compiled subset:
+
+- `NewPage(width: Int<px>, height: Int<px>) -> Pdf.PdfPage ! Error`
+- `DrawText(page: Pdf.PdfPage, x: Int<px>, y: Int<px>, text: String) -> Int ! Error`
+- `DrawTextStyled(page: Pdf.PdfPage, x: Int<px>, y: Int<px>, text: String, style: Pdf.TextStyle) -> Int ! Error`
+- `Save(page: Pdf.PdfPage, path: String) -> Int ! Error`
+
+`Pdf.PdfPage` is transported as a Pdf-family sidecar-owned handle. `Pdf.TextStyle` is transported as a manifest-declared record argument. `DefaultTextStyle()` remains pure/local Oct and is not a sidecar function.
+
+Pdf image interop remains intentionally deferred in compiled mode. `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` are not declared as compiled wrapper functions or transport types. Compiled Pdf must not consume `Image.ImageHandle` values from `octxiliary-image`; M0 handles are sidecar-family-local capabilities. Future image interop should use a Pdf-owned import API or path/bytes drawing helper rather than raw cross-family handle sharing.
+
+Compiled programs using the Pdf subset require `octxiliary-pdf` beside the `.octbin` or discoverable through `OCT_WRAPPER_PATH`.

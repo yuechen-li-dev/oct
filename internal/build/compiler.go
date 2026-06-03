@@ -2051,12 +2051,14 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if len(argTypes) != len(meta.Args) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))
 			}
+			effectiveArgTypes := append([]string(nil), argTypes...)
 			for i := range argTypes {
-				if argTypes[i] != meta.Args[i] {
+				if !wrapperArgTypeMatches(meta.Args[i], argTypes[i]) {
 					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d expects %s, got %s", meta.PackageName, meta.OctName, i+1, meta.Args[i], argTypes[i])
 				}
-				if !isOctxiliaryTransportType(argTypes[i]) && !findTransportRecord(meta.TransportTypes, argTypes[i]).ok {
-					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, argTypes[i])
+				effectiveArgTypes[i] = meta.Args[i]
+				if !isOctxiliaryTransportType(meta.Args[i]) && !findTransportRecord(meta.TransportTypes, meta.Args[i]).ok {
+					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, meta.Args[i])
 				}
 			}
 			if transport := findTransportRecord(meta.TransportTypes, meta.Return); transport.ok {
@@ -2071,7 +2073,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				localType = fallibleType(meta.Return)
 			}
 			tmp := c.temp(localType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: argTypes, RetType: meta.Return, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: effectiveArgTypes, RetType: meta.Return, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
 			return tmp, meta.Return, meta.Fallible, nil
 		}
 		if builtin && callee == "BoardSnapshot" {
@@ -2947,6 +2949,16 @@ func findGenericWrapperFunction(pkg project.Package, fnName string) (genericWrap
 		}
 	}
 	return genericWrapperCallMetadata{}, false
+}
+
+func wrapperArgTypeMatches(manifestType string, actualType string) bool {
+	if manifestType == actualType {
+		return true
+	}
+	if strings.HasPrefix(manifestType, "Int<") && strings.HasSuffix(manifestType, ">") && actualType == "Int" {
+		return true
+	}
+	return false
 }
 
 func isOctxiliaryTransportType(t string) bool {

@@ -4,7 +4,9 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Kind: String
     Dependencies: Dependency[]
+    Wrappers: Wrapper[]
 }
 
 record Dependency {
@@ -12,11 +14,75 @@ record Dependency {
     VersionRequirement: String
 }
 
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
+    Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Pdf"
         Version: "0.1.0"
         Description: "Pixel-native PDF page composition wrappers"
+        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Wrappers: [
+            Wrapper {
+                Name: "pdf"
+                Family: "Pdf"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-pdf"
+                GoModuleDir: "octxiliary"
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "Pdf.PdfPage"
+                        Kind: "handle"
+                        Fields: [
+                            WrapperTransportField { Name: "Handle" Type: "Int" }
+                        ]
+                    },
+                    WrapperTransportType {
+                        Name: "Pdf.TextStyle"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Size" Type: "Int<px>" },
+                            WrapperTransportField { Name: "ColorR" Type: "Int" },
+                            WrapperTransportField { Name: "ColorG" Type: "Int" },
+                            WrapperTransportField { Name: "ColorB" Type: "Int" }
+                        ]
+                    }
+                ]
+                Functions: [
+                    WrapperFunction { OctName: "NewPage" WireName: "PdfNewPage" Args: ["Int<px>", "Int<px>"] Return: "Pdf.PdfPage" Fallible: true },
+                    WrapperFunction { OctName: "DrawText" WireName: "PdfDrawText" Args: ["Pdf.PdfPage", "Int<px>", "Int<px>", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "DrawTextStyled" WireName: "PdfDrawTextStyled" Args: ["Pdf.PdfPage", "Int<px>", "Int<px>", "String", "Pdf.TextStyle"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "Save" WireName: "PdfSave" Args: ["Pdf.PdfPage", "String"] Return: "Int" Fallible: true }
+                ]
+            }
+        ]
     }
 }

@@ -3,11 +3,17 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestPdfCoreWrappers(t *testing.T) {
+	t.Cleanup(func() {
+		_ = os.Remove("m21_pdf_compiled_text.pdf")
+		_ = os.Remove("m21_pdf_compiled_styled.pdf")
+	})
 	root := "../../Libraries/Pdf"
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -27,6 +33,54 @@ func TestPdfCoreWrappers(t *testing.T) {
 		if !strings.Contains(stdout, marker) {
 			t.Fatalf("expected marker %q in stdout, got %q", marker, stdout)
 		}
+	}
+}
+
+func TestCompiledPdfTextWrappers(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	t.Cleanup(func() {
+		_ = os.Remove(filepath.Join(repo, "m21_pdf_compiled_text.pdf"))
+		_ = os.Remove(filepath.Join(repo, "m21_pdf_compiled_styled.pdf"))
+	})
+	binDir := t.TempDir()
+	buildPdfOctxiliarySidecar(t, repo, binDir)
+
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Pdf/Pdf.CompiledText.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("compiled Pdf text tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+	assertOutputContains(t, string(out),
+		"PASS Pdf.CompiledBasicTextSave",
+		"PASS Pdf.CompiledStyledTextSave",
+		"PASS Pdf.CompiledInvalidPageHandleFails",
+		"PASS Pdf.CompiledSaveInvalidPathFails",
+	)
+}
+
+func TestCompiledPdfMissingSidecarDiagnostic(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Pdf/Pdf.CompiledText.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected missing pdf sidecar failure, got success:\n%s", string(out))
+	}
+	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-pdf" not found`) {
+		t.Fatalf("expected pdf missing sidecar diagnostic, got:\n%s", string(out))
+	}
+}
+
+func buildPdfOctxiliarySidecar(t *testing.T, repo string, binDir string) {
+	t.Helper()
+	outPath := filepath.Join(binDir, "octxiliary-pdf")
+	build := exec.Command("go", "build", "-o", outPath, "./cmd/octxiliary-pdf")
+	build.Dir = repo
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build octxiliary-pdf: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 }
 

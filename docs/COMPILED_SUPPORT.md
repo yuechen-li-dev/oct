@@ -208,3 +208,16 @@ M19 migrates `Libraries/Image` to compiled generic wrapper lowering through `cmd
 `Image.ImageHandle` is a sidecar-owned, process-lifetime handle capability. The public record still has a single `Handle: Int` field, but compiled transport carries family `Image`, handle type `Image.ImageHandle`, and a sidecar-local positive ID. Handles are not serializable across program runs and are not shared with `Pdf` or any other family. There is still no `Close`/destructor API.
 
 `Width`, `Height`, and `Format` remain non-fallible. If an invalid/stale Image handle reaches one of those operations in compiled mode, the sidecar error becomes a runtime failure through the generic non-fallible wrapper path. `Load` and `Save` remain fallible and report missing files, corrupt images, unsupported save extensions, and invalid handles as `Error` values. The `octxiliary-image` executable must be beside the compiled `.octbin` or available through `OCT_WRAPPER_PATH`.
+
+## M21 Pdf compiled subset
+
+`Libraries/Pdf` now has focused compiled support for the text/page/save subset through `octxiliary-pdf`:
+
+- `Pdf.NewPage(width: Int<px>, height: Int<px>) -> Pdf.PdfPage ! Error`
+- `Pdf.DrawText(page: Pdf.PdfPage, x: Int<px>, y: Int<px>, text: String) -> Int ! Error`
+- `Pdf.DrawTextStyled(page: Pdf.PdfPage, x: Int<px>, y: Int<px>, text: String, style: Pdf.TextStyle) -> Int ! Error`
+- `Pdf.Save(page: Pdf.PdfPage, path: String) -> Int ! Error`
+
+`Pdf.PdfPage` is a sidecar-owned handle and `Pdf.TextStyle` is a record argument transport. `Pdf.DefaultTextStyle()` remains pure/local Oct.
+
+Deferred in compiled mode: `Pdf.DrawImage`, `Pdf.DrawImageSized`, and compiled `Pdf.ImageHandle` support. `octxiliary-pdf` does not consume `Image.ImageHandle` values from `octxiliary-image`; cross-family handle sharing remains unsupported. Put `octxiliary-pdf` beside the compiled `.octbin` or set `OCT_WRAPPER_PATH` to a directory containing it.
