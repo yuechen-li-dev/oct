@@ -1,8 +1,15 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-05-30._
+_Last updated: 2026-06-03._
 
 This file is the **source of truth** for compiled support posture.
+
+
+## M23 generated-Go hardening status
+
+M23 fixed several generated-Go hardening blockers from the M22 standard-library compiled inventory without changing Octxiliary transports or public APIs. Geometry and Thermofluids now compile green in focused `Libraries/* --execution compiled` checks, and Octomata's stale `math` import failures are resolved. Analysis normalization syntax failures are fixed; one Analysis local-maxima compiled test still reaches runtime but exits with zero assertions.
+
+Still deferred after M23: Complex support, Einstein/tensor notation, broad callback/function-value lowering, PDF image interop, live UI bridge support, legacy structured IO cleanup, and package manifest/dependency cleanup. Remaining generated numeric/shape work includes LinearAlgebra eigen loop-variable type mismatches, Interpolation spline array/shape mismatches, and Statistics Float/Int arithmetic shape issues.
 
 ## M14 Markdown compiled support
 

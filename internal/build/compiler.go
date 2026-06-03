@@ -985,7 +985,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
-		mirFn.Params = append(mirFn.Params, MIRField{Name: p.Name, Type: t})
+		mirFn.Params = append(mirFn.Params, MIRField{Name: goIdent(p.Name), Type: t})
 		ctx.locals[p.Name] = t
 	}
 	ctx.blocks = append(ctx.blocks, MIRBlock{Label: "entry"})
@@ -1009,13 +1009,13 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	for n, t := range ctx.locals {
 		isParam := false
 		for _, p := range mirFn.Params {
-			if p.Name == n {
+			if p.Name == goIdent(n) {
 				isParam = true
 				break
 			}
 		}
 		if !isParam {
-			mirFn.Locals = append(mirFn.Locals, MIRField{Name: n, Type: t})
+			mirFn.Locals = append(mirFn.Locals, MIRField{Name: goIdent(n), Type: t})
 		}
 	}
 	sort.Slice(mirFn.Locals, func(i, j int) bool { return mirFn.Locals[i].Name < mirFn.Locals[j].Name })
@@ -1043,7 +1043,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 			c.locals[s.Name] = t
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
 		case ast.VarStmt:
 			var v, t string
 			var err error
@@ -1057,7 +1057,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 			c.locals[s.Name] = t
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
 		case ast.AssignStmt:
 			v, _, _, err := c.lowerExpr(s.Value)
 			if err != nil {
@@ -1066,7 +1066,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if _, ok := c.locals[s.Name]; !ok {
 				return fmt.Errorf("assignment to unknown local '%s'", s.Name)
 			}
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: v})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
 		case ast.DestructureAssignStmt:
 			call, ok := s.Value.(ast.CallExpr)
 			if !ok {
@@ -1101,7 +1101,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				args = append(args, v)
 			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRDestructureCall{
-				Targets:  append([]string(nil), s.Names...),
+				Targets:  goIdentList(s.Names),
 				Callee:   callee,
 				Args:     args,
 				Builtin:  builtin,
@@ -1491,14 +1491,14 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	previousLoopTemp := ""
 	if hadPrevious {
 		previousLoopTemp = c.temp(previousType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: previousLoopTemp, Value: s.Name})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: previousLoopTemp, Value: goIdent(s.Name)})
 		c.locals[s.Name] = "Int"
 	}
 
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: startLocal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: startLocal})
 	c.cur = condID
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        fmt.Sprintf("(%s < %s)", s.Name, endLocal),
+		Cond:        fmt.Sprintf("(%s < %s)", goIdent(s.Name), endLocal),
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1512,7 +1512,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	c.cur = incrID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: fmt.Sprintf("(%s + %s)", s.Name, stepLocal)})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: fmt.Sprintf("(%s + %s)", goIdent(s.Name), stepLocal)})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
 
 	c.cur = stepFailID
@@ -1523,7 +1523,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 
 	c.cur = exitID
 	if hadPrevious {
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.Name, Value: previousLoopTemp})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: previousLoopTemp})
 		c.locals[s.Name] = previousType
 	}
 	return nil
@@ -1671,7 +1671,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if !ok {
 			return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
-		return e.Name, t, false, nil
+		return goIdent(e.Name), t, false, nil
 	case ast.BinaryExpr:
 		l, lt, _, err := c.lowerExpr(e.Left)
 		if err != nil {
@@ -2019,12 +2019,16 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if err != nil {
 			return "", "", false, err
 		}
+		expectedArgTypes := c.resolveCallArgTypes(e.Callee)
 		args := make([]string, 0, len(e.Arguments))
 		argTypes := make([]string, 0, len(e.Arguments))
-		for _, a := range e.Arguments {
+		for i, a := range e.Arguments {
 			v, at, _, err := c.lowerExpr(a)
 			if err != nil {
 				return "", "", false, err
+			}
+			if i < len(expectedArgTypes) {
+				v = goCoerceArg(v, at, expectedArgTypes[i])
 			}
 			args = append(args, v)
 			argTypes = append(argTypes, at)
@@ -2714,6 +2718,50 @@ func (c *lowerCtx) genericWrapperMetadataForCallee(callee ast.Expr) (genericWrap
 	default:
 		return genericWrapperCallMetadata{}, false, nil
 	}
+}
+
+func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
+	pkgName := c.pkg.Name
+	fnName := ""
+	switch x := callee.(type) {
+	case ast.IdentifierExpr:
+		fnName = x.Name
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
+		if !ok {
+			return nil
+		}
+		pkgName = pkgIdent.Name
+		fnName = x.Field
+	default:
+		return nil
+	}
+	pkg, ok := c.program.Packages[pkgName]
+	if !ok {
+		return nil
+	}
+	for _, fn := range pkg.Functions {
+		if fn.Name != fnName {
+			continue
+		}
+		out := make([]string, 0, len(fn.Parameters))
+		for _, param := range fn.Parameters {
+			out = append(out, typeRefStringForPackage(pkgName, param.Type))
+		}
+		return out
+	}
+	return nil
+}
+
+func goCoerceArg(expr string, actual string, expected string) string {
+	if actual == "Int" && isFloatLikeType(expected) {
+		return fmt.Sprintf("float64(%s)", expr)
+	}
+	return expr
+}
+
+func isFloatLikeType(t string) bool {
+	return t == "Float" || (strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">"))
 }
 
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
@@ -4900,7 +4948,14 @@ func emitGo(m MIRModule) (string, error) {
 				}
 				fmt.Fprintf(&b, "\t\t\t%s\n", src)
 			}
-			term, err := goTerminator(bb.Terminator, labelToIdx)
+			terminator := bb.Terminator
+			if terminator == nil {
+				if i+1 >= len(fn.Blocks) {
+					return "", fmt.Errorf("unsupported MIR terminator <nil> in final block %s.%s:%s", fn.Package, fn.Name, bb.Label)
+				}
+				terminator = MIRJump{Target: fn.Blocks[i+1].Label}
+			}
+			term, err := goTerminator(terminator, labelToIdx)
 			if err != nil {
 				return "", err
 			}
@@ -4933,7 +4988,48 @@ func emitGo(m MIRModule) (string, error) {
 	b.WriteString("		os.Exit(1)\n")
 	b.WriteString("	}\n")
 	b.WriteString("}\n")
-	return b.String(), nil
+	return pruneGeneratedImports(b.String()), nil
+}
+
+func pruneGeneratedImports(src string) string {
+	start := strings.Index(src, "import (\n")
+	if start < 0 {
+		return src
+	}
+	bodyStart := start + len("import (\n")
+	endRel := strings.Index(src[bodyStart:], ")\n\n")
+	if endRel < 0 {
+		return src
+	}
+	end := bodyStart + endRel
+	importBlock := src[bodyStart:end]
+	body := src[end+len(")\n\n"):]
+	kept := make([]string, 0)
+	for _, line := range strings.Split(importBlock, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		pkg := strings.Trim(trimmed, "\"")
+		ident := generatedImportIdent(pkg)
+		if ident == "" || strings.Contains(body, ident+".") {
+			kept = append(kept, line)
+		}
+	}
+	return src[:bodyStart] + strings.Join(kept, "\n") + "\n" + src[end:]
+}
+
+func generatedImportIdent(pkg string) string {
+	switch pkg {
+	case "github.com/yuechen-li-dev/oct/internal/octxiliary":
+		return "octxiliary"
+	case "github.com/yuechen-li-dev/oct/internal/prometheus":
+		return "prometheus"
+	}
+	if idx := strings.LastIndex(pkg, "/"); idx >= 0 {
+		return pkg[idx+1:]
+	}
+	return pkg
 }
 
 func collectFlowBuiltins(flow MIRFlow, usedBuiltins map[string]bool) {
@@ -7438,6 +7534,32 @@ func goType(t string) string {
 	return t
 }
 
+func goIdentList(names []string) []string {
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = goIdent(name)
+	}
+	return out
+}
+
+func goIdent(name string) string {
+	if name == "_" || strings.HasPrefix(name, "_t") {
+		return name
+	}
+	if goKeywords[name] {
+		return "oct_" + name
+	}
+	return name
+}
+
+var goKeywords = map[string]bool{
+	"break": true, "default": true, "func": true, "interface": true, "select": true,
+	"case": true, "defer": true, "go": true, "map": true, "struct": true,
+	"chan": true, "else": true, "goto": true, "package": true, "switch": true,
+	"const": true, "fallthrough": true, "if": true, "range": true, "type": true,
+	"continue": true, "for": true, "import": true, "return": true, "var": true,
+}
+
 func goFlowResultType(t string) string {
 	if t == "Void" {
 		return "__octVoid"
@@ -7450,7 +7572,7 @@ func goResultTypeName(valueType string) string {
 }
 
 func goSafeName(valueType string) string {
-	s := strings.NewReplacer("[]", "Slice", ".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "<", "_", ">", "").Replace(valueType)
+	s := strings.NewReplacer("[]", "Slice", ".", "_", "[", "_", "]", "", ",", "_", " ", "", "*", "_ptr_", "<", "_", ">", "", "^", "_pow_", "+", "_plus_", "-", "_minus_", "/", "_per_").Replace(valueType)
 	for strings.Contains(s, "__") {
 		s = strings.ReplaceAll(s, "__", "_")
 	}
