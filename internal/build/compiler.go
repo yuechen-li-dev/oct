@@ -483,6 +483,8 @@ func compilerModuleRoot() (string, error) {
 
 type einsteinTermMeta struct {
 	Labels []string
+	Rank   int
+	Type   string
 }
 
 type lowerCtx struct {
@@ -1309,7 +1311,7 @@ func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
 }
 
 func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] || usedBuiltins["EinAddVV"] || usedBuiltins["EinSubVV"] || usedBuiltins["EinDotVV"] || usedBuiltins["EinOuterVV"] || usedBuiltins["EinMulMV"] || usedBuiltins["EinMulVM"] {
 		return true
 	}
 	for name := range usedBuiltins {
@@ -1861,17 +1863,18 @@ func (c *lowerCtx) einTerm(value string) (einsteinTermMeta, bool) {
 }
 
 func (c *lowerCtx) setEinTerm(value string, labels []string) {
+	c.setEinTermMeta(value, labels, len(labels), "")
+}
+
+func (c *lowerCtx) setEinTermMeta(value string, labels []string, rank int, typ string) {
 	if c.einTerms == nil {
 		c.einTerms = map[string]einsteinTermMeta{}
 	}
-	c.einTerms[value] = einsteinTermMeta{Labels: append([]string(nil), labels...)}
+	c.einTerms[value] = einsteinTermMeta{Labels: append([]string(nil), labels...), Rank: rank, Type: typ}
 }
 
 func einsteinMulFreeLabels(left []string, right []string) ([]string, error) {
-	if len(left) != 2 || len(right) != 2 {
-		return nil, fmt.Errorf("compiled Einstein matrix helpers require rank-2 labels")
-	}
-	ordered := []string{left[0], left[1], right[0], right[1]}
+	ordered := append(append([]string{}, left...), right...)
 	counts := map[string]int{}
 	for _, label := range ordered {
 		counts[label]++
@@ -1891,10 +1894,22 @@ func einsteinMulFreeLabels(left []string, right []string) ([]string, error) {
 			return nil, fmt.Errorf("compiled Einstein multiplication index '%s' appears %d times; only 1 (free) or 2 (contracted) are allowed", label, count)
 		}
 	}
-	if len(free) != 2 {
-		return nil, fmt.Errorf("compiled Einstein multiplication requires exactly 2 free indices, got %d", len(free))
+	if len(free) > 2 {
+		return nil, fmt.Errorf("compiled Einstein multiplication result rank %d is not supported in M36; rank-N tensors are deferred", len(free))
 	}
 	return free, nil
+}
+
+func einsteinLabelsMatch(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
@@ -1945,36 +1960,98 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if !rightIndexed {
 				return "", "", false, fmt.Errorf("compiled indexed tensor expressions must appear on both sides of '%s'", e.Operator)
 			}
-			leftElem, leftMatrix := parseMatrixElemType(lt)
-			rightElem, rightMatrix := parseMatrixElemType(rt)
-			if !leftMatrix || !rightMatrix {
-				return "", "", false, fmt.Errorf("compiled indexed tensor expressions require matrix operands")
+			leftElem, leftVector := parseVectorElemType(lt)
+			if !leftVector {
+				leftElem, _ = parseMatrixElemType(lt)
 			}
-			ret := "Matrix<" + unifyLinearElemType(leftElem, rightElem) + ">"
-			tmp := c.temp(ret)
+			rightElem, rightVector := parseVectorElemType(rt)
+			if !rightVector {
+				rightElem, _ = parseMatrixElemType(rt)
+			}
+			retElem := unifyLinearElemType(leftElem, rightElem)
 			switch e.Operator {
-			case "*":
-				free, err := einsteinMulFreeLabels(leftTerm.Labels, rightTerm.Labels)
-				if err != nil {
-					return "", "", false, err
-				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMul", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
-				c.setEinTerm(tmp, free)
-				return tmp, ret, false, nil
 			case "+", "-":
-				if len(leftTerm.Labels) != 2 || len(rightTerm.Labels) != 2 {
-					return "", "", false, fmt.Errorf("compiled Einstein addition/subtraction requires rank-2 labels")
+				if leftTerm.Rank != rightTerm.Rank {
+					return "", "", false, fmt.Errorf("compiled Einstein addition/subtraction requires matching indexed term ranks (left rank=%d, right rank=%d)", leftTerm.Rank, rightTerm.Rank)
 				}
-				if leftTerm.Labels[0] != rightTerm.Labels[0] || leftTerm.Labels[1] != rightTerm.Labels[1] {
+				if leftTerm.Rank != 1 && leftTerm.Rank != 2 {
+					return "", "", false, fmt.Errorf("compiled Einstein addition/subtraction supports only rank-1 vectors and rank-2 matrices, got rank %d", leftTerm.Rank)
+				}
+				if !einsteinLabelsMatch(leftTerm.Labels, rightTerm.Labels) {
 					return "", "", false, fmt.Errorf("compiled Einstein '%s' requires matching free-index order", e.Operator)
 				}
 				callee := "EinAdd"
 				if e.Operator == "-" {
 					callee = "EinSub"
 				}
+				if leftTerm.Rank == 1 {
+					if !leftVector || !rightVector {
+						return "", "", false, fmt.Errorf("compiled rank-1 Einstein addition/subtraction requires vector operands")
+					}
+					ret := "Vector<" + retElem + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee + "VV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: ret})
+					c.setEinTermMeta(tmp, leftTerm.Labels, 1, ret)
+					return tmp, ret, false, nil
+				}
+				ret := "Matrix<" + retElem + ">"
+				tmp := c.temp(ret)
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
-				c.setEinTerm(tmp, leftTerm.Labels)
+				c.setEinTermMeta(tmp, leftTerm.Labels, 2, ret)
 				return tmp, ret, false, nil
+			case "*":
+				free, err := einsteinMulFreeLabels(leftTerm.Labels, rightTerm.Labels)
+				if err != nil {
+					return "", "", false, err
+				}
+				if leftTerm.Rank == 2 && rightTerm.Rank == 2 {
+					if len(free) != 2 {
+						return "", "", false, fmt.Errorf("compiled matrix/matrix scalar double contractions are deferred in M36")
+					}
+					ret := "Matrix<" + retElem + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMul", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
+					c.setEinTermMeta(tmp, free, 2, ret)
+					return tmp, ret, false, nil
+				}
+				if leftTerm.Rank == 1 && rightTerm.Rank == 1 {
+					if !leftVector || !rightVector {
+						return "", "", false, fmt.Errorf("compiled rank-1 Einstein multiplication requires vector operands")
+					}
+					if len(free) == 0 {
+						tmp := c.temp(retElem)
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDotVV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: retElem})
+						return tmp, retElem, false, nil
+					}
+					if len(free) == 2 {
+						ret := "Matrix<" + retElem + ">"
+						tmp := c.temp(ret)
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinOuterVV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: ret})
+						c.setEinTermMeta(tmp, free, 2, ret)
+						return tmp, ret, false, nil
+					}
+				}
+				if leftTerm.Rank == 2 && rightTerm.Rank == 1 {
+					if len(free) != 1 {
+						return "", "", false, fmt.Errorf("compiled matrix-vector indexed contraction requires exactly 1 free index, got %d", len(free))
+					}
+					ret := "Vector<" + retElem + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulMV", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], free[0]}, Builtin: true, RetType: ret})
+					c.setEinTermMeta(tmp, free, 1, ret)
+					return tmp, ret, false, nil
+				}
+				if leftTerm.Rank == 1 && rightTerm.Rank == 2 {
+					if len(free) != 1 {
+						return "", "", false, fmt.Errorf("compiled vector-matrix indexed contraction requires exactly 1 free index, got %d", len(free))
+					}
+					ret := "Vector<" + retElem + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulVM", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0], rightTerm.Labels[1], free[0]}, Builtin: true, RetType: ret})
+					c.setEinTermMeta(tmp, free, 1, ret)
+					return tmp, ret, false, nil
+				}
+				return "", "", false, fmt.Errorf("compiled indexed multiplication supports rank-1 vectors and rank-2 matrices only (left rank=%d, right rank=%d)", leftTerm.Rank, rightTerm.Rank)
 			default:
 				return "", "", false, fmt.Errorf("compiled indexed tensor expressions only support '+', '-', and '*'")
 			}
@@ -2646,7 +2723,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if firstType == "Index" && secondType == "Index" {
 				tmp := c.temp(targetType)
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: target})
-				c.setEinTerm(tmp, []string{first, second})
+				c.setEinTermMeta(tmp, []string{first, second}, 2, targetType)
 				return tmp, targetType, false, nil
 			}
 			return "", "", false, fmt.Errorf("compiled mode matrix indexing expects either [Int, Int] element access or [Index, Index] Einstein term access, got [%s, %s]", firstType, secondType)
@@ -2659,7 +2736,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, err
 		}
 		if idxType == "Index" {
-			return "", "", false, fmt.Errorf("compiled vector rank-1 indexed terms are deferred to M37")
+			if _, ok := parseVectorElemType(targetType); ok {
+				tmp := c.temp(targetType)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: target})
+				c.setEinTermMeta(tmp, []string{idx}, 1, targetType)
+				return tmp, targetType, false, nil
+			}
+			return "", "", false, fmt.Errorf("compiled mode single-dimension indexing requires Int index, got %s", idxType)
 		}
 		if idxType != "Int" {
 			return "", "", false, fmt.Errorf("compiled mode single-dimension indexing requires Int index, got %s", idxType)
@@ -5998,6 +6081,153 @@ func __octEinDimByLabel(label string, dim int, dims map[string]int) {
 	dims[label] = dim
 }
 
+
+func __octVectorDimByLabel(label string, length int, dims map[string]int) {
+	__octEinDimByLabel(label, length, dims)
+}
+
+func __octEinAddVV[T __octNumber](left []T, l0 string, right []T, r0 string) []T {
+	return __octEinAddSubVV(left, l0, right, r0, false)
+}
+
+func __octEinSubVV[T __octNumber](left []T, l0 string, right []T, r0 string) []T {
+	return __octEinAddSubVV(left, l0, right, r0, true)
+}
+
+func __octEinAddSubVV[T __octNumber](left []T, l0 string, right []T, r0 string, subtract bool) []T {
+	op := "EinAdd"
+	if subtract {
+		op = "EinSub"
+	}
+	if l0 == "" || r0 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if l0 != r0 {
+		panic(fmt.Sprintf("runtime error: %s requires matching free-index order on both vector terms (left=[%s], right=[%s])", op, l0, r0))
+	}
+	if len(left) != len(right) {
+		panic(fmt.Sprintf("runtime error: %s requires matching vector lengths for index '%s'; got %d and %d", op, l0, len(left), len(right)))
+	}
+	out := make([]T, len(left))
+	for i := range left {
+		if subtract {
+			out[i] = left[i] - right[i]
+		} else {
+			out[i] = left[i] + right[i]
+		}
+	}
+	return out
+}
+
+func __octEinDotVV[T __octNumber](left []T, l0 string, right []T, r0 string) T {
+	if l0 == "" || r0 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if l0 != r0 {
+		panic(fmt.Sprintf("runtime error: EinDot requires matching contracted vector indices (left=[%s], right=[%s])", l0, r0))
+	}
+	if len(left) != len(right) {
+		panic(fmt.Sprintf("runtime error: EinDot requires matching vector lengths for index '%s'; got %d and %d", l0, len(left), len(right)))
+	}
+	var acc T
+	for i := range left {
+		acc += left[i] * right[i]
+	}
+	return acc
+}
+
+func __octEinOuterVV[T __octNumber](left []T, l0 string, right []T, r0 string) [][]T {
+	if l0 == "" || r0 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if l0 == r0 {
+		panic(fmt.Sprintf("runtime error: EinOuter requires distinct free vector indices (left=[%s], right=[%s])", l0, r0))
+	}
+	out := make([][]T, len(left))
+	for i := range left {
+		row := make([]T, len(right))
+		for j := range right {
+			row[j] = left[i] * right[j]
+		}
+		out[i] = row
+	}
+	return out
+}
+
+func __octEinMulMV[T __octNumber](left [][]T, l0 string, l1 string, right []T, r0 string, free0 string) []T {
+	leftRows, leftCols := __octMatrixDims(left, "EinMulMV", "left")
+	if l0 == "" || l1 == "" || r0 == "" || free0 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if l0 == l1 {
+		panic(fmt.Sprintf("runtime error: EinMulMV requires distinct matrix indices (left=[%s,%s])", l0, l1))
+	}
+	dims := map[string]int{}
+	__octEinDimByLabel(l0, leftRows, dims)
+	__octEinDimByLabel(l1, leftCols, dims)
+	__octVectorDimByLabel(r0, len(right), dims)
+	if free0 == l0 && r0 == l1 {
+		out := make([]T, leftRows)
+		for row := 0; row < leftRows; row++ {
+			var acc T
+			for col := 0; col < leftCols; col++ {
+				acc += left[row][col] * right[col]
+			}
+			out[row] = acc
+		}
+		return out
+	}
+	if free0 == l1 && r0 == l0 {
+		out := make([]T, leftCols)
+		for col := 0; col < leftCols; col++ {
+			var acc T
+			for row := 0; row < leftRows; row++ {
+				acc += left[row][col] * right[row]
+			}
+			out[col] = acc
+		}
+		return out
+	}
+	panic(fmt.Sprintf("runtime error: EinMulMV requires one matrix index to contract with the vector index (left=[%s,%s], right=[%s], free=[%s])", l0, l1, r0, free0))
+}
+
+func __octEinMulVM[T __octNumber](left []T, l0 string, right [][]T, r0 string, r1 string, free0 string) []T {
+	rightRows, rightCols := __octMatrixDims(right, "EinMulVM", "right")
+	if l0 == "" || r0 == "" || r1 == "" || free0 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if r0 == r1 {
+		panic(fmt.Sprintf("runtime error: EinMulVM requires distinct matrix indices (right=[%s,%s])", r0, r1))
+	}
+	dims := map[string]int{}
+	__octVectorDimByLabel(l0, len(left), dims)
+	__octEinDimByLabel(r0, rightRows, dims)
+	__octEinDimByLabel(r1, rightCols, dims)
+	if free0 == r1 && l0 == r0 {
+		out := make([]T, rightCols)
+		for col := 0; col < rightCols; col++ {
+			var acc T
+			for row := 0; row < rightRows; row++ {
+				acc += left[row] * right[row][col]
+			}
+			out[col] = acc
+		}
+		return out
+	}
+	if free0 == r0 && l0 == r1 {
+		out := make([]T, rightRows)
+		for row := 0; row < rightRows; row++ {
+			var acc T
+			for col := 0; col < rightCols; col++ {
+				acc += left[col] * right[row][col]
+			}
+			out[row] = acc
+		}
+		return out
+	}
+	panic(fmt.Sprintf("runtime error: EinMulVM requires the vector index to contract with one matrix index (left=[%s], right=[%s,%s], free=[%s])", l0, r0, r1, free0))
+}
+
 func __octEinFreeAndContracted(l0 string, l1 string, r0 string, r1 string) ([]string, []string) {
 	ordered := []string{l0, l1, r0, r1}
 	counts := map[string]int{}
@@ -7992,6 +8222,18 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octEinAddMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
 			case "EinSub":
 				return fmt.Sprintf("%s = __octEinSubMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+			case "EinAddVV":
+				return fmt.Sprintf("%s = __octEinAddVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+			case "EinSubVV":
+				return fmt.Sprintf("%s = __octEinSubVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+			case "EinDotVV":
+				return fmt.Sprintf("%s = __octEinDotVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+			case "EinOuterVV":
+				return fmt.Sprintf("%s = __octEinOuterVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+			case "EinMulMV":
+				return fmt.Sprintf("%s = __octEinMulMV(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+			case "EinMulVM":
+				return fmt.Sprintf("%s = __octEinMulVM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
 			case "Len":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":

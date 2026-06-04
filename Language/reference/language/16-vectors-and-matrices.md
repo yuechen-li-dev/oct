@@ -192,15 +192,14 @@ Continuum mechanics contracts use this surface to express field-form equations s
 
 ## Interpreted vs compiled support
 
-Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M36 adds interpreted-only vector rank-1 indexed terms and mixed vector/matrix indexed contractions.
+Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M37 adds compiled parity for the M36 vector rank-1 indexed surface and mixed vector/matrix indexed contractions.
 
-- Interpreted mode supports `Vector[Int]` concrete element access and `Vector[Index]` rank-1 indexed terms.
-- Interpreted mode supports rank-1 vector indexed `+`/`-`, vector dot product, vector outer product, matrix-vector indexed contraction, vector-matrix indexed contraction, and the existing rank-2 matrix indexed `*`, `+`, and `-`.
+- Interpreted and compiled modes support `Vector[Int]` concrete element access and `Vector[Index]` rank-1 indexed terms.
+- Interpreted and compiled modes support rank-1 vector indexed `+`/`-`, vector dot product (`a[i] * b[i]`), vector outer product (`a[i] * b[j]`), matrix-vector indexed contraction (`A[i, j] * x[j]`), vector-matrix indexed contraction (`x[i] * A[i, j]`), and the existing rank-2 matrix indexed `*`, `+`, and `-`.
 - Arrays remain non-tensor-indexable.
-- Compiled mode supports concrete vector/matrix indexing, `@` helper lowering, `Idx`, and rank-2 matrix indexed Einstein `*`, `+`, and `-`.
-- Compiled vector rank-1 indexed terms and mixed vector/matrix indexed contractions are deferred to M37.
+- Compiled mode supports concrete vector/matrix indexing, `@` helper lowering, `Idx`, rank-2 matrix indexed Einstein `*`, `+`, and `-`, and rank-1 vector indexed Einstein `+`, `-`, dot, outer, matrix-vector, and vector-matrix contractions.
 - Scalar/double contractions such as `A[i, j] * B[j, i]`, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, covariant/contravariant variance, and raising/lowering remain unsupported.
-- `@` behavior is unchanged in M36.
+- `@` behavior is unchanged in M37; vector-matrix and vector-vector `@` remain unsupported.
 - Differential tensor operators are not documented as compiled-parity guarantees in the current corpus.
 
 Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
@@ -208,7 +207,7 @@ Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and 
 - **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-vector and matrix-matrix, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
 - **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
 - **M33 compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, and rank-2 matrix indexed `*`, `+`, and `-` over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
-- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms. Compiled vector indexing remains concrete `Int` element access only until M37.
+- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms, and vector indexing must use one concrete `Int` for element access or one `Index` label for rank-1 Einstein terms. Arrays remain concrete storage and require `Int` indexing.
 
 ## Examples
 
