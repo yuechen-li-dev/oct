@@ -1,0 +1,57 @@
+package Main
+
+fn Square(x: Float) -> Float {
+    return x * x
+}
+
+fn AddPair(x: Float, y: Float) -> Float {
+    return x + y
+}
+
+fn Apply(Square: fn(Float) -> Float, x: Float) -> Float {
+    return Square(x)
+}
+
+fn SumApply(Square: fn(Float) -> Float, n: Int) -> Float {
+    var total = 0.0
+    for i in 0..n {
+        total = total + Square(Float(i))
+    }
+    return total
+}
+
+fn Forward(Square: fn(Float) -> Float, x: Float) -> Float {
+    return Apply(Square, x)
+}
+
+fn ApplyPair(AddPair: fn(Float, Float) -> Float, x: Float, y: Float) -> Float {
+    return AddPair(x, y)
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledCallbacks")]
+[InlineData(1)]
+fn NamedFunctionPassedToHelper(_id: Int) -> Void {
+    Assert.Near(9.0, Apply(Square, 3.0), 0.000001, "named callback applies")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledCallbacks")]
+[InlineData(1)]
+fn CallbackParameterCalledInLoop(_id: Int) -> Void {
+    Assert.Near(30.0, SumApply(Square, 5), 0.000001, "callback loop sum")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledCallbacks")]
+[InlineData(1)]
+fn CallbackPassedThroughHelper(_id: Int) -> Void {
+    Assert.Near(16.0, Forward(Square, 4.0), 0.000001, "callback pass-through")
+}
+
+[Theory]
+[Suite("Language.Testing.CompiledCallbacks")]
+[InlineData(1)]
+fn TwoScalarArgumentCallback(_id: Int) -> Void {
+    Assert.Near(7.0, ApplyPair(AddPair, 3.0, 4.0), 0.000001, "two-argument callback applies")
+}

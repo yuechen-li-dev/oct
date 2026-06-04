@@ -5,6 +5,12 @@ _Last updated: 2026-06-04._
 This file is the **source of truth** for compiled support posture.
 
 
+## M27a named callback/function-value lowering status
+
+Compiled mode now supports the narrow standard-library callback pattern of passing named top-level functions to monomorphic function-typed parameters and invoking callback parameters inside ordinary compiled functions. The supported current shapes are `fn(Float) -> Float` and `fn(Float, Float) -> Float`; these lower to Go `func(float64) float64` and `func(float64, float64) float64`. This is not a broad first-class function system: lambdas, closures, partial application, aggregate-stored function values, returned function values, fallible callbacks, and Octxiliary callback transport remain deferred.
+
+Focused package results after M27a: `Libraries/Mathematics --execution compiled` is 21 passed / 0 failed, `Libraries/Numerics --execution compiled` is 6 passed / 0 failed, and `Libraries/Optimization --execution compiled` is 7 passed / 0 failed. `Libraries/DifferentialEquations --execution compiled` improves to 2 passed / 4 failed; the remaining solve failures are generated-Go Int/Float coercions for `steps: Int`, not callback identifier lowering. See `docs/internal/stdlib_compiled_coverage_m27a.md` for the detailed M27a delta.
+
 ## M26 Complex compiled support status
 
 M26 adds compiled scalar `Complex` support on top of Go `complex128`. The compiled backend now lowers the current interpreted/typechecked Complex surface used by the standard libraries: `I`, `Complex`, `ComplexPolar`, `Real`, `Imag`, `Arg`, `Conj`, `Abs(Complex)`, Complex `Exp`/`Ln`, and Complex arithmetic mixed with dimensionless `Int`/`Float` where the typechecker already permits it. `Real` and `Imag` use generated helpers so Oct locals named `real` or `imag` do not shadow Go's predeclared functions.
