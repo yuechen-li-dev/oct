@@ -5,11 +5,11 @@ _Last updated: 2026-06-03._
 This file is the **source of truth** for compiled support posture.
 
 
-## M23 generated-Go hardening status
+## M24 numeric/shape lowering status
 
-M23 fixed several generated-Go hardening blockers from the M22 standard-library compiled inventory without changing Octxiliary transports or public APIs. Geometry and Thermofluids now compile green in focused `Libraries/* --execution compiled` checks, and Octomata's stale `math` import failures are resolved. Analysis normalization syntax failures are fixed; one Analysis local-maxima compiled test still reaches runtime but exits with zero assertions.
+M24 extends the M23 generated-Go hardening work without changing Octxiliary transports or public APIs. Interpolation, LinearAlgebra, and Random now compile green in focused `Libraries/* --execution compiled` checks, and Statistics improves from generated-Go numeric type failures to 32 passed / 3 runtime failures. Analysis still has one local-maxima compiled test that reaches runtime but exits with zero assertions.
 
-Still deferred after M23: Complex support, Einstein/tensor notation, broad callback/function-value lowering, PDF image interop, live UI bridge support, legacy structured IO cleanup, and package manifest/dependency cleanup. Remaining generated numeric/shape work includes LinearAlgebra eigen loop-variable type mismatches, Interpolation spline array/shape mismatches, and Statistics Float/Int arithmetic shape issues.
+Still deferred after M24: Complex support, Einstein/tensor notation, broad callback/function-value lowering, PDF image interop, live UI bridge support, legacy structured IO cleanup, and package manifest/dependency cleanup. Remaining generated numeric/shape work is narrower: Statistics `SortedCopy` runtime/index behavior, Analysis compiled zero-assertion runner/test shape, and any Mechanics/RF array cases that do not require Complex or Einstein/tensor support.
 
 ## M14 Markdown compiled support
 

@@ -482,6 +482,7 @@ type lowerCtx struct {
 	pkg               project.Package
 	program           project.Program
 	locals            map[string]string
+	goNames           map[string]string
 	blocks            []MIRBlock
 	cur               int
 	tempID            int
@@ -981,12 +982,13 @@ func resolveCallTarget(callee ast.Expr) [2]string {
 }
 
 func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) ([]MIRFunction, error) {
-	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn}
+	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, goNames: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn}
 	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
 		mirFn.Params = append(mirFn.Params, MIRField{Name: goIdent(p.Name), Type: t})
 		ctx.locals[p.Name] = t
+		ctx.goNames[p.Name] = goIdent(p.Name)
 	}
 	ctx.blocks = append(ctx.blocks, MIRBlock{Label: "entry"})
 	ctx.cur = 0
@@ -1015,7 +1017,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 			}
 		}
 		if !isParam {
-			mirFn.Locals = append(mirFn.Locals, MIRField{Name: goIdent(n), Type: t})
+			mirFn.Locals = append(mirFn.Locals, MIRField{Name: ctx.goLocalName(n), Type: t})
 		}
 	}
 	sort.Slice(mirFn.Locals, func(i, j int) bool { return mirFn.Locals[i].Name < mirFn.Locals[j].Name })
@@ -1042,8 +1044,8 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if err != nil {
 				return err
 			}
-			c.locals[s.Name] = t
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
+			c.declareLocal(s.Name, t)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.VarStmt:
 			var v, t string
 			var err error
@@ -1056,17 +1058,19 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if err != nil {
 				return err
 			}
-			c.locals[s.Name] = t
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
+			c.declareLocal(s.Name, t)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.AssignStmt:
-			v, _, _, err := c.lowerExpr(s.Value)
+			targetType, ok := c.locals[s.Name]
+			if !ok {
+				return fmt.Errorf("assignment to unknown local '%s'", s.Name)
+			}
+			v, t, _, err := c.withExpectedType(targetType, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
 			if err != nil {
 				return err
 			}
-			if _, ok := c.locals[s.Name]; !ok {
-				return fmt.Errorf("assignment to unknown local '%s'", s.Name)
-			}
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: v})
+			v = coerceExprToType(v, t, targetType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.DestructureAssignStmt:
 			call, ok := s.Value.(ast.CallExpr)
 			if !ok {
@@ -1129,12 +1133,12 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				if len(indexExprs) != 2 {
 					return fmt.Errorf("matrix index assignment requires exactly 2 indices, got %d", len(indexExprs))
 				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", s.Target, indexExprs[0], indexExprs[1]), Value: val})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", c.goLocalName(s.Target), indexExprs[0], indexExprs[1]), Value: val})
 			case strings.HasPrefix(targetType, "[]"), strings.HasSuffix(targetType, "[]"):
 				if len(indexExprs) != 1 {
 					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
 				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", s.Target, indexExprs[0]), Value: val})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", c.goLocalName(s.Target), indexExprs[0]), Value: val})
 			default:
 				return fmt.Errorf("index assignment requires array or matrix local, got %s", targetType)
 			}
@@ -1151,7 +1155,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				c.blocks[c.cur].Terminator = MIRReturn{}
 				continue
 			}
-			v, t, _, err := c.lowerExpr(s.Value)
+			v, t, _, err := c.withExpectedType(c.retType, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
 			if err != nil {
 				return err
 			}
@@ -1426,17 +1430,17 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	if !ok {
 		return unsupported("for range expression")
 	}
-	start, _, _, err := c.lowerExpr(rangeExpr.Start)
+	start, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(rangeExpr.Start) })
 	if err != nil {
 		return err
 	}
-	end, _, _, err := c.lowerExpr(rangeExpr.End)
+	end, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(rangeExpr.End) })
 	if err != nil {
 		return err
 	}
 	step := "1"
 	if rangeExpr.Step != nil {
-		step, _, _, err = c.lowerExpr(rangeExpr.Step)
+		step, _, _, err = c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(rangeExpr.Step) })
 		if err != nil {
 			return err
 		}
@@ -1485,20 +1489,18 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	previousType, hadPrevious := c.locals[s.Name]
-	if !hadPrevious {
-		c.locals[s.Name] = "Int"
-	}
-	previousLoopTemp := ""
+	previousGoName := c.goLocalName(s.Name)
+	loopGoName := goIdent(s.Name)
 	if hadPrevious {
-		previousLoopTemp = c.temp(previousType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: previousLoopTemp, Value: goIdent(s.Name)})
-		c.locals[s.Name] = "Int"
+		loopGoName = c.temp("Int")
 	}
+	c.locals[s.Name] = "Int"
+	c.goNames[s.Name] = loopGoName
 
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: startLocal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: startLocal})
 	c.cur = condID
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        fmt.Sprintf("(%s < %s)", goIdent(s.Name), endLocal),
+		Cond:        fmt.Sprintf("(%s < %s)", c.goLocalName(s.Name), endLocal),
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1512,7 +1514,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	c.cur = incrID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: fmt.Sprintf("(%s + %s)", goIdent(s.Name), stepLocal)})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: fmt.Sprintf("(%s + %s)", c.goLocalName(s.Name), stepLocal)})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
 
 	c.cur = stepFailID
@@ -1523,8 +1525,8 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 
 	c.cur = exitID
 	if hadPrevious {
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: goIdent(s.Name), Value: previousLoopTemp})
 		c.locals[s.Name] = previousType
+		c.goNames[s.Name] = previousGoName
 	}
 	return nil
 }
@@ -1633,7 +1635,79 @@ func (c *lowerCtx) temp(t string) string {
 	name := fmt.Sprintf("_t%d", c.tempID)
 	c.tempID++
 	c.locals[name] = t
+	if c.goNames != nil {
+		c.goNames[name] = name
+	}
 	return name
+}
+
+func (c *lowerCtx) goLocalName(name string) string {
+	if c.goNames != nil {
+		if goName, ok := c.goNames[name]; ok {
+			return goName
+		}
+	}
+	return goIdent(name)
+}
+
+func (c *lowerCtx) declareLocal(name, typ string) {
+	previousType, hadPrevious := c.locals[name]
+	previousGoName := c.goLocalName(name)
+	if c.goNames != nil && hadPrevious && previousType != typ {
+		shadowKey := fmt.Sprintf("__shadow_%s_%d", name, c.tempID)
+		c.tempID++
+		c.locals[shadowKey] = previousType
+		c.goNames[shadowKey] = previousGoName
+	}
+	c.locals[name] = typ
+	if c.goNames == nil {
+		return
+	}
+	if hadPrevious && previousType == typ {
+		return
+	}
+	base := goIdent(name)
+	candidate := base
+	used := map[string]struct{}{}
+	for _, goName := range c.goNames {
+		used[goName] = struct{}{}
+	}
+	for i := 1; ; i++ {
+		if _, exists := used[candidate]; !exists {
+			c.goNames[name] = candidate
+			return
+		}
+		candidate = fmt.Sprintf("%s_%d", base, i)
+	}
+}
+
+func (c *lowerCtx) currentExpectedType() (string, bool) {
+	if len(c.expectedTypeStack) == 0 {
+		return "", false
+	}
+	current := c.expectedTypeStack[len(c.expectedTypeStack)-1]
+	if current == "" {
+		return "", false
+	}
+	return current, true
+}
+
+func coerceExprToType(value, from, to string) string {
+	if from == to {
+		return value
+	}
+	if isIntScalarTypeString(from) && isFloatScalarTypeString(to) {
+		return fmt.Sprintf("float64(%s)", value)
+	}
+	return value
+}
+
+func coerceNumericBinaryOperands(left, leftType, right, rightType, resultType string) (string, string) {
+	if isFloatScalarTypeString(resultType) {
+		left = coerceExprToType(left, leftType, resultType)
+		right = coerceExprToType(right, rightType, resultType)
+	}
+	return left, right
 }
 
 func (c *lowerCtx) expectedArrayElemType() (string, bool) {
@@ -1656,6 +1730,9 @@ func (c *lowerCtx) withExpectedType(expected string, fn func() (string, string, 
 func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
+		if expected, ok := c.currentExpectedType(); ok && isFloatScalarTypeString(expected) {
+			return fmt.Sprintf("float64(%s)", e.Value), expected, false, nil
+		}
 		return e.Value, "Int", false, nil
 	case ast.FloatLiteral:
 		return e.Value, "Float", false, nil
@@ -1671,13 +1748,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if !ok {
 			return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
-		return goIdent(e.Name), t, false, nil
+		return c.goLocalName(e.Name), t, false, nil
 	case ast.BinaryExpr:
-		l, lt, _, err := c.lowerExpr(e.Left)
+		l, lt, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Left) })
 		if err != nil {
 			return "", "", false, err
 		}
-		r, rt, _, err := c.lowerExpr(e.Right)
+		r, rt, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Right) })
 		if err != nil {
 			return "", "", false, err
 		}
@@ -1775,6 +1852,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if op == "or" {
 			op = "||"
+		}
+		if isNumericTypeString(lt) && isNumericTypeString(rt) {
+			l, r = coerceNumericBinaryOperands(l, lt, r, rt, ret)
+			if ret == "Bool" && (isFloatScalarTypeString(lt) || isFloatScalarTypeString(rt)) {
+				l, r = coerceNumericBinaryOperands(l, lt, r, rt, "Float")
+			}
 		}
 		if op == "%" {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
@@ -2116,20 +2199,27 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.ArrayLiteralExpr:
 		vals := []string{}
 		typeName := "Int"
-		if len(e.Elements) == 0 {
-			if hint, ok := c.expectedArrayElemType(); ok {
-				typeName = hint
-			}
+		hint, hasHint := c.expectedArrayElemType()
+		if hasHint {
+			typeName = hint
 		}
 		for i, el := range e.Elements {
-			v, t, _, err := c.lowerExpr(el)
+			var v, t string
+			var err error
+			if hasHint {
+				v, t, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(el) })
+			} else {
+				v, t, _, err = c.lowerExpr(el)
+			}
 			if err != nil {
 				return "", "", false, err
 			}
-			vals = append(vals, v)
-			if i == 0 {
+			if hasHint {
+				v = coerceExprToType(v, t, hint)
+			} else if i == 0 {
 				typeName = t
 			}
+			vals = append(vals, v)
 		}
 		tmp := c.temp(typeName + "[]")
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
@@ -2217,11 +2307,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if len(e.Indices) != 2 {
 				return "", "", false, fmt.Errorf("compiled mode matrix indexing requires exactly 2 indices")
 			}
-			r, _, _, err := c.lowerExpr(e.Indices[0])
+			r, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
 			if err != nil {
 				return "", "", false, err
 			}
-			cIdx, _, _, err := c.lowerExpr(e.Indices[1])
+			cIdx, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[1]) })
 			if err != nil {
 				return "", "", false, err
 			}
@@ -2232,7 +2322,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if len(e.Indices) != 1 {
 			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
 		}
-		idx, _, _, err := c.lowerExpr(e.Indices[0])
+		idx, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
 		if err != nil {
 			return "", "", false, err
 		}
@@ -2251,17 +2341,27 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.RecordLiteralExpr:
 		vals := []string{}
 		names := []string{}
-		for _, f := range e.Fields {
-			v, _, _, err := c.lowerExpr(f.Value)
-			if err != nil {
-				return "", "", false, err
-			}
-			vals = append(vals, v)
-			names = append(names, f.Name)
-		}
 		typeName := e.TypeName
 		if !strings.Contains(typeName, ".") {
 			typeName = c.pkg.Name + "." + typeName
+		}
+		for _, f := range e.Fields {
+			fieldType, hasFieldType := c.lookupRecordFieldType(typeName, f.Name)
+			var v, t string
+			var err error
+			if hasFieldType {
+				v, t, _, err = c.withExpectedType(fieldType, func() (string, string, bool, error) { return c.lowerExpr(f.Value) })
+			} else {
+				v, t, _, err = c.lowerExpr(f.Value)
+			}
+			if err != nil {
+				return "", "", false, err
+			}
+			if hasFieldType {
+				v = coerceExprToType(v, t, fieldType)
+			}
+			vals = append(vals, v)
+			names = append(names, f.Name)
 		}
 		tmp := c.temp(typeName)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
@@ -2420,14 +2520,18 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	}
 	sort.Strings(captureNames)
 	workerLocals := make(map[string]string, len(captureNames)+1)
+	workerGoNames := make(map[string]string, len(captureNames)+1)
 	workerLocals[e.ItemName] = itemType
+	workerGoNames[e.ItemName] = goIdent(e.ItemName)
 	for _, captureName := range captureNames {
 		workerLocals[captureName] = c.locals[captureName]
+		workerGoNames[captureName] = c.goLocalName(captureName)
 	}
 	wctx := &lowerCtx{
 		pkg:     c.pkg,
 		program: c.program,
 		locals:  workerLocals,
+		goNames: workerGoNames,
 		blocks:  []MIRBlock{{Label: "entry"}},
 		cur:     0,
 		retType: retPlaceholder,
@@ -2442,9 +2546,9 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	if wctx.lastRet == "" {
 		return MIRFunction{}, "", nil, fmt.Errorf("batch body return type could not be inferred")
 	}
-	params := []MIRField{{Name: e.ItemName, Type: itemType}}
+	params := []MIRField{{Name: goIdent(e.ItemName), Type: itemType}}
 	for _, captureName := range captureNames {
-		params = append(params, MIRField{Name: captureName, Type: c.locals[captureName]})
+		params = append(params, MIRField{Name: c.goLocalName(captureName), Type: c.locals[captureName]})
 	}
 	worker := MIRFunction{
 		Package:    c.pkg.Name,
@@ -2460,10 +2564,10 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 		paramNames[param.Name] = struct{}{}
 	}
 	for n, t := range wctx.locals {
-		if _, isParam := paramNames[n]; isParam {
+		if _, isParam := paramNames[wctx.goLocalName(n)]; isParam {
 			continue
 		}
-		worker.Locals = append(worker.Locals, MIRField{Name: n, Type: t})
+		worker.Locals = append(worker.Locals, MIRField{Name: wctx.goLocalName(n), Type: t})
 	}
 	sort.Slice(worker.Locals, func(i, j int) bool { return worker.Locals[i].Name < worker.Locals[j].Name })
 	return worker, wctx.lastRet, captureNames, nil
