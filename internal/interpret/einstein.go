@@ -110,23 +110,27 @@ func evalEinsteinBinaryMatrices(op string, left Value, leftLabels []string, righ
 			}
 		}
 		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: result}}, free, nil
-	case "EinAdd":
+	case "EinAdd", "EinSub":
+		operator := "+"
+		if op == "EinSub" {
+			operator = "-"
+		}
 		if leftLabels[0] == leftLabels[1] || rightLabels[0] == rightLabels[1] {
-			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
+			return Value{}, nil, fmt.Errorf("runtime error: %s requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", op, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 		if leftLabels[0] != rightLabels[0] || leftLabels[1] != rightLabels[1] {
-			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
+			return Value{}, nil, fmt.Errorf("runtime error: %s requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", op, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 		}
 		if left.Matrix.Rows != right.Matrix.Rows || left.Matrix.Cols != right.Matrix.Cols {
-			return Value{}, nil, fmt.Errorf("runtime error: EinAdd requires matching matrix shapes")
+			return Value{}, nil, fmt.Errorf("runtime error: %s requires matching matrix shapes", op)
 		}
 		result := make([]Value, len(left.Matrix.Elements))
 		for idx := range left.Matrix.Elements {
-			sum, err := evalBinaryExpr("+", left.Matrix.Elements[idx], right.Matrix.Elements[idx])
+			cell, err := evalBinaryExpr(operator, left.Matrix.Elements[idx], right.Matrix.Elements[idx])
 			if err != nil {
 				return Value{}, nil, err
 			}
-			result[idx] = sum
+			result[idx] = cell
 		}
 		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: left.Matrix.Rows, Cols: left.Matrix.Cols, Elements: result}}, append([]string{}, leftLabels...), nil
 	default:
@@ -143,7 +147,9 @@ func evalEinsteinIndexedBinaryExpr(operator string, left evalResult, right evalR
 		return evalEinsteinBinaryMatrices("EinMul", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
 	case "+":
 		return evalEinsteinBinaryMatrices("EinAdd", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
+	case "-":
+		return evalEinsteinBinaryMatrices("EinSub", left.einTerm.matrix, left.einTerm.labels, right.einTerm.matrix, right.einTerm.labels)
 	default:
-		return Value{}, nil, fmt.Errorf("runtime error: indexed tensor expressions only support '+' and '*' in M1")
+		return Value{}, nil, fmt.Errorf("runtime error: indexed tensor expressions only support '+', '-', and '*' in M32")
 	}
 }

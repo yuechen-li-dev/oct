@@ -9,7 +9,7 @@ This page is intentionally limited to the **core builtin language/runtime surfac
 For practical file/data/time/text/archive/compression/hash APIs, see [17 standard libraries](./17-standard-libraries.md).
 For the Prometheus experimental subsystem, see [23 Prometheus](../runtime/23-prometheus.md).
 For `.octest`-only assert helpers, see [31 octest](../tooling/31-octest.md).
-For matrix and tensor-focused language surface, see [16 vectors and matrices](./16-vectors-and-matrices.md) and [tensors](../tensors.md).
+For matrix and tensor-focused language surface, see [16 vectors, matrices, and tensors](./16-vectors-and-matrices.md); [tensors](../tensors.md) is retained as a compatibility pointer.
 
 ## 1) Core utilities
 
