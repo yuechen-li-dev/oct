@@ -1,4 +1,4 @@
-expect error: "index 'i' appears 3 times in [i,i]*[i,j]; only 1 (free) or 2 (contracted) are allowed in M0"
+expect error: "trace-style contraction '[i,i]' is not supported in M3; use Trace(...) for now"
 
 package Main
 
