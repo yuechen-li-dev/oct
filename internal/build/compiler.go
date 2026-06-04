@@ -7822,12 +7822,12 @@ func goStmt(s MIRStmt) (string, error) {
 			}
 		}
 		if st.FunctionValue {
-			if st.RetType == "Void" || goType(st.RetType) == "" {
+			if st.Target == "_" && st.RetType == "Void" {
 				return fmt.Sprintf("%s(%s)", st.Callee, strings.Join(st.Args, ", ")), nil
 			}
 			return fmt.Sprintf("%s = %s(%s)", st.Target, st.Callee, strings.Join(st.Args, ", ")), nil
 		}
-		if st.RetType == "Void" || goType(st.RetType) == "" {
+		if st.Target == "_" && st.RetType == "Void" {
 			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
