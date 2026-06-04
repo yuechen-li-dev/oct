@@ -1,0 +1,11 @@
+expect error: "EinAdd requires matching free-index order"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let a = vector[1, 2]
+    let b = vector[3, 4]
+    let _ = a[i] + b[j]
+}

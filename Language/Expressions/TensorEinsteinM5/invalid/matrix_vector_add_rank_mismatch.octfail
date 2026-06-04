@@ -1,0 +1,11 @@
+expect error: "EinAdd requires matching indexed term ranks"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let x = vector[10, 20]
+    let _ = A[i, j] + x[i]
+}

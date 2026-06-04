@@ -1,0 +1,9 @@
+expect error: "trace-style contraction '[i,i]' is not supported in M3; use Trace(...) for now"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let A = matrix[[1, 2] [3, 4]]
+    let _ = A[i, i]
+}

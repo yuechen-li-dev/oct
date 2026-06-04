@@ -366,8 +366,20 @@ type evalResult struct {
 }
 
 type einsteinIndexedTerm struct {
-	matrix Value
+	value  Value
 	labels []string
+	rank   int
+}
+
+func einsteinTermForValue(value Value, labels []string) *einsteinIndexedTerm {
+	switch value.Kind {
+	case ValueVector:
+		return &einsteinIndexedTerm{value: value, labels: labels, rank: 1}
+	case ValueMatrix:
+		return &einsteinIndexedTerm{value: value, labels: labels, rank: 2}
+	default:
+		return nil
+	}
 }
 
 type callResult struct {
@@ -1371,8 +1383,17 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			}
 			return evalResult{value: Value{Kind: ValueInt, Int: int64(target.value.Bytes[indices[0]])}}, nil
 		case ValueVector:
+			if allIndexIndices {
+				if len(indexLabels) != 1 {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: vector Einstein term access requires exactly 1 index, got %d", len(indexLabels))
+				}
+				if strings.TrimSpace(indexLabels[0]) == "" {
+					return evalResult{}, fmt.Errorf("runtime error: Einstein indices must be non-empty")
+				}
+				return evalResult{einTerm: &einsteinIndexedTerm{value: target.value, labels: indexLabels, rank: 1}}, nil
+			}
 			if !allIntIndices {
-				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires Int index")
+				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing expects either [Int] element access or [Index] Einstein term access")
 			}
 			if len(indices) != 1 {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: vector indexing requires exactly 1 index, got %d", len(indices))
@@ -1392,7 +1413,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				if indexLabels[0] == indexLabels[1] {
 					return evalResult{}, fmt.Errorf("runtime error: trace-style contraction '[%s,%s]' is not supported in M3; use Trace(...) for now", indexLabels[0], indexLabels[1])
 				}
-				return evalResult{einTerm: &einsteinIndexedTerm{matrix: target.value, labels: indexLabels}}, nil
+				return evalResult{einTerm: &einsteinIndexedTerm{value: target.value, labels: indexLabels, rank: 2}}, nil
 			}
 			if !allIntIndices {
 				return evalResult{}, fmt.Errorf("runtime invariant violation: matrix indexing requires either Int,Int element access or Index,Index Einstein term access")
@@ -1516,7 +1537,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			}
 			return evalResult{
 				value:   result,
-				einTerm: &einsteinIndexedTerm{matrix: result, labels: labels},
+				einTerm: einsteinTermForValue(result, labels),
 			}, nil
 		}
 		value, err := evalBinaryExpr(node.Operator, left.value, right.value)

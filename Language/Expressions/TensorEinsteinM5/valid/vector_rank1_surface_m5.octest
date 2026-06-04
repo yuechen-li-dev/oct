@@ -1,0 +1,73 @@
+package MainValid
+
+[Fact]
+fn ConcreteVectorIndexingStillWorks() -> Void {
+    let v = vector[10, 20]
+    Assert.Equal(10, v[0], "v0")
+}
+
+[Fact]
+fn VectorIndexedAdditionAndSubtractionReturnVectors() -> Void {
+    let i = Idx("i")
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+
+    let sum = a[i] + b[i]
+    Assert.Equal(11, sum[0], "sum0")
+    Assert.Equal(33, sum[2], "sum2")
+
+    let diff = b[i] - a[i]
+    Assert.Equal(9, diff[0], "diff0")
+    Assert.Equal(27, diff[2], "diff2")
+}
+
+[Fact]
+fn VectorIndexedDotAndOuterProduct() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+
+    let dot = a[i] * b[i]
+    Assert.Equal(140, dot, "dot")
+
+    let outer = a[i] * b[j]
+    Assert.Equal(10, outer[0, 0], "outer00")
+    Assert.Equal(90, outer[2, 2], "outer22")
+}
+
+[Fact]
+fn MixedMatrixVectorIndexedContractionsReturnVectors() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let x = vector[10, 20]
+
+    let y = A[i, j] * x[j]
+    Assert.Equal(50, y[0], "mv0")
+    Assert.Equal(110, y[1], "mv1")
+
+    let z = x[i] * A[i, j]
+    Assert.Equal(70, z[0], "vm0")
+    Assert.Equal(100, z[1], "vm1")
+}
+
+[Fact]
+fn ReindexedVectorIntermediateAndMatrixRegressionWork() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+
+    let c = a[i] + b[i]
+    let d = c[i] - a[i]
+    Assert.Equal(10, d[0], "d0")
+    Assert.Equal(30, d[2], "d2")
+
+    let A = matrix[[1, 2] [3, 4]]
+    let B = matrix[[5, 6] [7, 8]]
+    let C = A[i, k] * B[k, j]
+    Assert.Equal(19, C[0, 0], "c00")
+    Assert.Equal(50, C[1, 1], "c11")
+}

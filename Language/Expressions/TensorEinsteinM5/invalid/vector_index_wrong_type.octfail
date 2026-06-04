@@ -1,0 +1,8 @@
+expect error: "vector indexing expects either [Int] element access or [Index] Einstein term access, got [String]"
+
+package Main
+
+fn Main() -> Void {
+    let v = vector[1, 2]
+    let _ = v["i"]
+}

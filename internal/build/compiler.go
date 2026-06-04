@@ -2654,9 +2654,15 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if len(e.Indices) != 1 {
 			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
 		}
-		idx, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
+		idx, idxType, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
 		if err != nil {
 			return "", "", false, err
+		}
+		if idxType == "Index" {
+			return "", "", false, fmt.Errorf("compiled vector rank-1 indexed terms are deferred to M37")
+		}
+		if idxType != "Int" {
+			return "", "", false, fmt.Errorf("compiled mode single-dimension indexing requires Int index, got %s", idxType)
 		}
 		elemType := strings.TrimSuffix(targetType, "[]")
 		valueExpr := fmt.Sprintf("%s[%s]", target, idx)
