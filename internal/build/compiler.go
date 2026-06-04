@@ -22,12 +22,14 @@ type Result struct {
 }
 
 type MIRModule struct {
-	EntryPackage string
-	EntryFunc    string
-	Records      []MIRRecord
-	Enums        []MIREnum
-	Flows        []MIRFlow
-	Functions    []MIRFunction
+	EntryPackage  string
+	EntryFunc     string
+	EntryReturn   string
+	EntryFallible bool
+	Records       []MIRRecord
+	Enums         []MIREnum
+	Flows         []MIRFlow
+	Functions     []MIRFunction
 }
 
 type MIRRecord struct {
@@ -297,12 +299,13 @@ type MIRAssign struct {
 func (MIRAssign) mirStmt() {}
 
 type MIRCall struct {
-	Target   string
-	Callee   string
-	Args     []string
-	ArgTypes []string
-	Builtin  bool
-	RetType  string
+	Target        string
+	Callee        string
+	Args          []string
+	ArgTypes      []string
+	Builtin       bool
+	RetType       string
+	FunctionValue bool
 }
 
 func (MIRCall) mirStmt() {}
@@ -527,7 +530,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			for _, block := range mf.Blocks {
 				for _, stmt := range block.Statements {
 					call, ok := stmt.(MIRCall)
-					if !ok || call.Builtin {
+					if !ok || call.Builtin || call.FunctionValue {
 						continue
 					}
 					targetPkg := defaultPkg
@@ -658,7 +661,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if !ok {
 				continue
 			}
-			for _, call := range collectFunctionCalls(fn.Body) {
+			for _, call := range collectFunctionDeclCalls(fn) {
 				targetPkg := call[0]
 				if targetPkg == "" {
 					targetPkg = item[0]
@@ -707,7 +710,19 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 	if module.EntryFunc == "" {
 		return MIRModule{}, fmt.Errorf("entry package '%s' is missing main/Main function", program.Entry)
 	}
+	module.EntryReturn, module.EntryFallible = lookupEntryFunctionShape(program, module.EntryPackage, module.EntryFunc)
 	return module, nil
+}
+
+func lookupEntryFunctionShape(program project.Program, pkgName string, fnName string) (string, bool) {
+	if pkg, ok := program.Packages[pkgName]; ok {
+		for _, fn := range pkg.Functions {
+			if fn.Name == fnName {
+				return typeRefStringForPackage(pkgName, fn.ReturnType), fn.IsFallible
+			}
+		}
+	}
+	return "", false
 }
 
 func validateUserCallSymbols(module MIRModule) error {
@@ -725,7 +740,7 @@ func validateUserCallSymbols(module MIRModule) error {
 		for _, block := range fn.Blocks {
 			for _, stmt := range block.Statements {
 				call, ok := stmt.(MIRCall)
-				if !ok || call.Builtin {
+				if !ok || call.Builtin || call.FunctionValue {
 					continue
 				}
 				if _, ok := defs[call.Callee]; !ok {
@@ -789,7 +804,7 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 		reachable[item[0]][item[1]] = struct{}{}
 		calls := make([][2]string, 0)
 		if isFn {
-			calls = append(calls, collectFunctionCalls(fn.Body)...)
+			calls = append(calls, collectFunctionDeclCalls(fn)...)
 		}
 		if isFlow {
 			for _, state := range flow.States {
@@ -829,65 +844,75 @@ func collectReachableFunctions(program project.Program) map[string]map[string]st
 }
 
 func collectFunctionCalls(block ast.Block) [][2]string {
+	return collectFunctionCallsWithLocals(block, map[string]struct{}{})
+}
+
+func collectFunctionDeclCalls(fn ast.FunctionDecl) [][2]string {
+	functionValueLocals := map[string]struct{}{}
+	for _, param := range fn.Parameters {
+		if param.Type.Function != nil {
+			functionValueLocals[param.Name] = struct{}{}
+		}
+	}
+	return collectFunctionCallsWithLocals(fn.Body, functionValueLocals)
+}
+
+func collectFunctionCallsWithLocals(block ast.Block, functionValueLocals map[string]struct{}) [][2]string {
 	calls := make([][2]string, 0)
 	for _, stmt := range block.Statements {
 		switch s := stmt.(type) {
 		case ast.LetStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.VarStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.AssignStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.DestructureAssignStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.IndexAssignStmt:
 			for _, idx := range s.Indices {
-				calls = append(calls, collectExprCalls(idx)...)
+				calls = append(calls, collectExprCallsWithLocals(idx, functionValueLocals)...)
 			}
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.FieldAssignStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.ReturnStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.ExprStmt:
-			calls = append(calls, collectExprCalls(s.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.ForStmt:
-			calls = append(calls, collectExprCalls(s.Range)...)
-			calls = append(calls, collectFunctionCalls(s.Body)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Range, functionValueLocals)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.Body, functionValueLocals)...)
 		case ast.MatchStmt:
-			calls = append(calls, collectExprCalls(s.Subject)...)
-			calls = append(calls, collectFunctionCalls(s.OkBody)...)
-			calls = append(calls, collectFunctionCalls(s.ErrBody)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Subject, functionValueLocals)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.OkBody, functionValueLocals)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.ErrBody, functionValueLocals)...)
 		case ast.IfStmt:
-			calls = append(calls, collectExprCalls(s.Condition)...)
-			calls = append(calls, collectFunctionCalls(s.ThenBody)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Condition, functionValueLocals)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.ThenBody, functionValueLocals)...)
 			if s.ElseBody != nil {
-				calls = append(calls, collectFunctionCalls(*s.ElseBody)...)
+				calls = append(calls, collectFunctionCallsWithLocals(*s.ElseBody, functionValueLocals)...)
 			}
 		case ast.WhileStmt:
-			calls = append(calls, collectExprCalls(s.Condition)...)
-			calls = append(calls, collectFunctionCalls(s.Body)...)
+			calls = append(calls, collectExprCallsWithLocals(s.Condition, functionValueLocals)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.Body, functionValueLocals)...)
 		case ast.PrometheusStmt:
-			calls = append(calls, collectFunctionCalls(s.Body)...)
+			calls = append(calls, collectFunctionCallsWithLocals(s.Body, functionValueLocals)...)
 		case ast.WhenStmt:
 			for _, c := range s.Cases {
-				calls = append(calls, collectExprCalls(c.Condition)...)
+				calls = append(calls, collectExprCallsWithLocals(c.Condition, functionValueLocals)...)
 				switch a := c.Action.(type) {
 				case ast.WhenReturnAction:
-					calls = append(calls, collectExprCalls(a.Value)...)
+					calls = append(calls, collectExprCallsWithLocals(a.Value, functionValueLocals)...)
 				case ast.WhenBlockAction:
-					for _, nested := range a.Statements {
-						calls = append(calls, collectFunctionCalls(ast.Block{Statements: []ast.Stmt{nested}})...)
-					}
+					calls = append(calls, collectFunctionCallsWithLocals(ast.Block{Statements: a.Statements}, functionValueLocals)...)
 				}
 			}
 			switch a := s.Else.(type) {
 			case ast.WhenReturnAction:
-				calls = append(calls, collectExprCalls(a.Value)...)
+				calls = append(calls, collectExprCallsWithLocals(a.Value, functionValueLocals)...)
 			case ast.WhenBlockAction:
-				for _, nested := range a.Statements {
-					calls = append(calls, collectFunctionCalls(ast.Block{Statements: []ast.Stmt{nested}})...)
-				}
+				calls = append(calls, collectFunctionCallsWithLocals(ast.Block{Statements: a.Statements}, functionValueLocals)...)
 			}
 		}
 	}
@@ -895,91 +920,103 @@ func collectFunctionCalls(block ast.Block) [][2]string {
 }
 
 func collectExprCalls(expr ast.Expr) [][2]string {
+	return collectExprCallsWithLocals(expr, map[string]struct{}{})
+}
+
+func collectExprCallsWithLocals(expr ast.Expr, functionValueLocals map[string]struct{}) [][2]string {
 	calls := make([][2]string, 0)
 	switch e := expr.(type) {
 	case ast.CallExpr:
-		calls = append(calls, resolveCallTarget(e.Callee))
+		if call, ok := resolveStaticCallTarget(e.Callee); ok {
+			if _, isFunctionValueLocal := functionValueLocals[call[1]]; !isFunctionValueLocal || call[0] != "" {
+				calls = append(calls, call)
+			}
+		}
 		for _, arg := range e.Arguments {
-			calls = append(calls, collectExprCalls(arg)...)
+			calls = append(calls, collectExprCallsWithLocals(arg, functionValueLocals)...)
+		}
+	case ast.IdentifierExpr:
+		if _, isFunctionValueLocal := functionValueLocals[e.Name]; !isFunctionValueLocal {
+			calls = append(calls, [2]string{"", e.Name})
 		}
 	case ast.FieldAccessExpr:
-		calls = append(calls, collectExprCalls(e.Target)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Target, functionValueLocals)...)
 	case ast.IndexExpr:
-		calls = append(calls, collectExprCalls(e.Target)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Target, functionValueLocals)...)
 		for _, idx := range e.Indices {
 			calls = append(calls, collectExprCalls(idx)...)
 		}
 	case ast.BinaryExpr:
-		calls = append(calls, collectExprCalls(e.Left)...)
-		calls = append(calls, collectExprCalls(e.Right)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Left, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Right, functionValueLocals)...)
 	case ast.UnaryExpr:
-		calls = append(calls, collectExprCalls(e.Operand)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Operand, functionValueLocals)...)
 	case ast.RangeExpr:
-		calls = append(calls, collectExprCalls(e.Start)...)
-		calls = append(calls, collectExprCalls(e.End)...)
-		calls = append(calls, collectExprCalls(e.Step)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Start, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.End, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Step, functionValueLocals)...)
 	case ast.ParenExpr:
-		calls = append(calls, collectExprCalls(e.Inner)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Inner, functionValueLocals)...)
 	case ast.PropagateExpr:
-		calls = append(calls, collectExprCalls(e.Inner)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Inner, functionValueLocals)...)
 	case ast.UnwrapExpr:
-		calls = append(calls, collectExprCalls(e.Inner)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Inner, functionValueLocals)...)
 	case ast.ArrayLiteralExpr:
 		for _, v := range e.Elements {
-			calls = append(calls, collectExprCalls(v)...)
+			calls = append(calls, collectExprCallsWithLocals(v, functionValueLocals)...)
 		}
 	case ast.VectorLiteralExpr:
 		for _, v := range e.Elements {
-			calls = append(calls, collectExprCalls(v)...)
+			calls = append(calls, collectExprCallsWithLocals(v, functionValueLocals)...)
 		}
 	case ast.MatrixLiteralExpr:
 		for _, row := range e.Rows {
 			for _, cell := range row {
-				calls = append(calls, collectExprCalls(cell)...)
+				calls = append(calls, collectExprCallsWithLocals(cell, functionValueLocals)...)
 			}
 		}
 	case ast.SwitchExpr:
-		calls = append(calls, collectExprCalls(e.Subject)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Subject, functionValueLocals)...)
 		for _, c := range e.Cases {
-			calls = append(calls, collectExprCalls(c.Match)...)
-			calls = append(calls, collectExprCalls(c.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Match, functionValueLocals)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Value, functionValueLocals)...)
 		}
-		calls = append(calls, collectExprCalls(e.Else)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Else, functionValueLocals)...)
 	case ast.MatchExpr:
-		calls = append(calls, collectExprCalls(e.Subject)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Subject, functionValueLocals)...)
 		for _, c := range e.Cases {
-			calls = append(calls, collectExprCalls(c.Value)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Value, functionValueLocals)...)
 		}
 	case ast.IfExpr:
-		calls = append(calls, collectExprCalls(e.Condition)...)
-		calls = append(calls, collectExprCalls(e.ThenExpr)...)
-		calls = append(calls, collectExprCalls(e.ElseExpr)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Condition, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.ThenExpr, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.ElseExpr, functionValueLocals)...)
 	case ast.UtilityWhenExpr:
-		calls = append(calls, collectExprCalls(e.Policy.Hysteresis)...)
-		calls = append(calls, collectExprCalls(e.Policy.MinCommit)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Policy.Hysteresis, functionValueLocals)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Policy.MinCommit, functionValueLocals)...)
 		for _, c := range e.Cases {
-			calls = append(calls, collectExprCalls(c.Value)...)
-			calls = append(calls, collectExprCalls(c.Condition)...)
-			calls = append(calls, collectExprCalls(c.Score)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Value, functionValueLocals)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Condition, functionValueLocals)...)
+			calls = append(calls, collectExprCallsWithLocals(c.Score, functionValueLocals)...)
 		}
-		calls = append(calls, collectExprCalls(e.Else)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Else, functionValueLocals)...)
 	case ast.BatchExpr:
-		calls = append(calls, collectExprCalls(e.Input)...)
+		calls = append(calls, collectExprCallsWithLocals(e.Input, functionValueLocals)...)
 		calls = append(calls, collectFunctionCalls(e.Body)...)
 	}
 	return calls
 }
 
-func resolveCallTarget(callee ast.Expr) [2]string {
+func resolveStaticCallTarget(callee ast.Expr) ([2]string, bool) {
 	switch c := callee.(type) {
 	case ast.IdentifierExpr:
-		return [2]string{"", c.Name}
+		return [2]string{"", c.Name}, true
 	case ast.FieldAccessExpr:
 		if pkg, ok := c.Target.(ast.IdentifierExpr); ok {
-			return [2]string{pkg.Name, c.Field}
+			return [2]string{pkg.Name, c.Field}, true
 		}
 	}
-	return [2]string{}
+	return [2]string{}, false
 }
 
 func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) ([]MIRFunction, error) {
@@ -1791,10 +1828,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		return fmt.Sprintf("%q", e.Value), "String", false, nil
 	case ast.IdentifierExpr:
 		t, ok := c.locals[e.Name]
-		if !ok {
-			return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
+		if ok {
+			return c.goLocalName(e.Name), t, false, nil
 		}
-		return c.goLocalName(e.Name), t, false, nil
+		if symbol, signature, ok := c.resolveNamedFunctionValue(e); ok {
+			return symbol, signature, false, nil
+		}
+		return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
 	case ast.BinaryExpr:
 		if e.Operator == "and" || e.Operator == "or" {
 			return c.lowerLogicalBinaryExpr(e)
@@ -2151,6 +2191,34 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.identity", Args: []string{sizeArg}, Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			}
+		}
+		if callTarget, signature, ok, err := c.resolveFunctionValueCall(e.Callee); err != nil {
+			return "", "", false, err
+		} else if ok {
+			args := make([]string, 0, len(e.Arguments))
+			argTypes := make([]string, 0, len(e.Arguments))
+			for i, a := range e.Arguments {
+				var expected string
+				if i < len(signature.Parameters) {
+					expected = signature.Parameters[i]
+				}
+				v, at, _, err := c.withExpectedType(expected, func() (string, string, bool, error) { return c.lowerExpr(a) })
+				if err != nil {
+					return "", "", false, err
+				}
+				if expected != "" {
+					v = goCoerceArg(v, at, expected)
+				}
+				args = append(args, v)
+				argTypes = append(argTypes, at)
+			}
+			localType := signature.ReturnType
+			if signature.Fallible {
+				localType = fallibleType(signature.ReturnType)
+			}
+			tmp := c.temp(localType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callTarget, Args: args, ArgTypes: argTypes, RetType: signature.ReturnType, FunctionValue: true})
+			return tmp, signature.ReturnType, signature.Fallible, nil
 		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
 		if err != nil {
@@ -2878,6 +2946,89 @@ func (c *lowerCtx) genericWrapperMetadataForCallee(callee ast.Expr) (genericWrap
 	}
 }
 
+type compiledFunctionSignature struct {
+	Parameters []string
+	ReturnType string
+	Fallible   bool
+}
+
+func (c *lowerCtx) resolveNamedFunctionValue(expr ast.Expr) (string, string, bool) {
+	switch fn := expr.(type) {
+	case ast.IdentifierExpr:
+		for _, declared := range c.pkg.Functions {
+			if declared.Name == fn.Name {
+				return "fn_" + strings.ReplaceAll(c.pkg.Name+"."+fn.Name, ".", "_"), functionTypeStringForDecl(c.pkg.Name, declared), true
+			}
+		}
+	case ast.FieldAccessExpr:
+		pkgIdent, ok := fn.Target.(ast.IdentifierExpr)
+		if !ok {
+			return "", "", false
+		}
+		importPkg, ok := c.program.Packages[pkgIdent.Name]
+		if !ok {
+			return "", "", false
+		}
+		for _, declared := range importPkg.Functions {
+			if declared.Name == fn.Field {
+				return "fn_" + strings.ReplaceAll(pkgIdent.Name+"."+fn.Field, ".", "_"), functionTypeStringForDecl(pkgIdent.Name, declared), true
+			}
+		}
+	}
+	return "", "", false
+}
+
+func functionTypeStringForDecl(pkgName string, fn ast.FunctionDecl) string {
+	parts := make([]string, 0, len(fn.Parameters))
+	for _, param := range fn.Parameters {
+		parts = append(parts, typeRefStringForPackage(pkgName, param.Type))
+	}
+	result := "fn(" + strings.Join(parts, ", ") + ") -> " + typeRefStringForPackage(pkgName, fn.ReturnType)
+	if fn.IsFallible {
+		result += " ! " + typeRefStringForPackage(pkgName, fn.ErrorType)
+	}
+	return result
+}
+
+func (c *lowerCtx) resolveFunctionValueCall(callee ast.Expr) (string, compiledFunctionSignature, bool, error) {
+	if ident, ok := callee.(ast.IdentifierExpr); ok {
+		if typ, local := c.locals[ident.Name]; local {
+			signature, ok := parseCompiledFunctionType(typ)
+			if !ok {
+				return "", compiledFunctionSignature{}, false, nil
+			}
+			return c.goLocalName(ident.Name), signature, true, nil
+		}
+	}
+	return "", compiledFunctionSignature{}, false, nil
+}
+
+func parseCompiledFunctionType(typ string) (compiledFunctionSignature, bool) {
+	if !strings.HasPrefix(typ, "fn(") {
+		return compiledFunctionSignature{}, false
+	}
+	arrowMarker := ") -> "
+	arrow := strings.LastIndex(typ, arrowMarker)
+	if arrow < 0 {
+		return compiledFunctionSignature{}, false
+	}
+	paramsText := typ[len("fn("):arrow]
+	rest := typ[arrow+len(arrowMarker):]
+	fallible := false
+	returnType := rest
+	if bang := strings.Index(rest, " ! "); bang >= 0 {
+		fallible = true
+		returnType = rest[:bang]
+	}
+	params := []string{}
+	if strings.TrimSpace(paramsText) != "" {
+		for _, part := range strings.Split(paramsText, ",") {
+			params = append(params, strings.TrimSpace(part))
+		}
+	}
+	return compiledFunctionSignature{Parameters: params, ReturnType: strings.TrimSpace(returnType), Fallible: fallible}, true
+}
+
 func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
 	pkgName := c.pkg.Name
 	fnName := ""
@@ -3398,6 +3549,21 @@ func typeRefString(t ast.TypeRef) string {
 }
 
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
+	if t.Function != nil {
+		parts := make([]string, 0, len(t.Function.Parameters))
+		for _, param := range t.Function.Parameters {
+			parts = append(parts, typeRefStringForPackage(currentPkg, param))
+		}
+		result := "fn(" + strings.Join(parts, ", ") + ") -> " + typeRefStringForPackage(currentPkg, t.Function.ReturnType)
+		if t.Function.IsFallible {
+			errorType := "Error"
+			if t.Function.ErrorType != nil {
+				errorType = typeRefStringForPackage(currentPkg, *t.Function.ErrorType)
+			}
+			result += " ! " + errorType
+		}
+		return result
+	}
 	if len(t.TupleOf) > 0 {
 		parts := make([]string, 0, len(t.TupleOf))
 		for _, elem := range t.TupleOf {
@@ -5179,16 +5345,13 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	b.WriteString("var __octAssertionCount int\n\n")
 	b.WriteString("func main() {\n")
-	entryReturn := ""
-	entryFallible := false
-	for _, fn := range m.Functions {
-		if fn.Package == m.EntryPackage && fn.Name == m.EntryFunc {
-			entryReturn = fn.Return
-			entryFallible = fn.IsFallible
-			break
-		}
+	entryReturn := m.EntryReturn
+	entryFallible := m.EntryFallible
+	if entryReturn == "Void" && !entryFallible {
+		b.WriteString("\tfn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
+	} else {
+		b.WriteString("\tresult := fn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
 	}
-	b.WriteString("\tresult := fn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
 	if entryFallible {
 		b.WriteString("\tif result.IsErr { panic(\"oct error: \" + result.Err) }\n")
 		if entryReturn != "Void" {
@@ -7658,6 +7821,12 @@ func goStmt(s MIRStmt) (string, error) {
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
 		}
+		if st.FunctionValue {
+			if st.Target == "_" && st.RetType == "Void" {
+				return fmt.Sprintf("%s(%s)", st.Callee, strings.Join(st.Args, ", ")), nil
+			}
+			return fmt.Sprintf("%s = %s(%s)", st.Target, st.Callee, strings.Join(st.Args, ", ")), nil
+		}
 		if st.Target == "_" && st.RetType == "Void" {
 			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
 		}
@@ -7730,6 +7899,20 @@ func goTerminator(t MIRTerminator, labels map[string]int) (string, error) {
 }
 
 func goType(t string) string {
+	if signature, ok := parseCompiledFunctionType(t); ok {
+		params := make([]string, 0, len(signature.Parameters))
+		for _, param := range signature.Parameters {
+			params = append(params, goType(param))
+		}
+		ret := goType(signature.ReturnType)
+		if signature.Fallible {
+			ret = goResultTypeName(signature.ReturnType)
+		}
+		if ret == "" {
+			return "func(" + strings.Join(params, ", ") + ")"
+		}
+		return "func(" + strings.Join(params, ", ") + ") " + ret
+	}
 	if flowRet, ok := parseFlowInstanceType(t); ok {
 		return "__octFlowInstance_" + goSafeName(flowRet)
 	}
