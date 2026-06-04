@@ -1,0 +1,503 @@
+// =============================================================================
+// Prometheus CUDA PTX Kernel: FP8 E4M3 Tensor Core SGEMM
+// Target:   sm_90 (Hopper H100/H200)
+// Computes: C[M,N] = A[M,K] * B[K,N]  (row-major inputs and output)
+// Inputs:   A: FP8 E4M3 (.e4m3), B: FP8 E4M3 (.e4m3)
+// Output:   C: FP32 (accumulated in FP32 for post-multiply scaling)
+// Instruction: mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+//              + ldmatrix.sync.aligned.m8n8.x4 for fragment loading
+//
+// FP8 Note:
+//   - This kernel operates on raw FP8 bytes. It does NOT apply scaling factors.
+//   - The caller (Prometheus C layer) is responsible for input/output scaling
+//     (absmax scaling, per-tensor or per-channel) before/after this kernel.
+//   - For inference, typical workflow:
+//       scale_A * scale_B * prom_sgemm_fp8_tc(A_fp8, B_fp8, ...) -> C_fp32
+//     The scaling multiply is a separate elementwise pass.
+//   - E4M3 range: ±448.0, smallest normal: 2^-6 ≈ 0.0156
+//
+// CTA tile:  64 rows x 64 cols of C  (same as BF16 kernel)
+// Grid:      (ceil(N/64), ceil(M/64), 1)
+// Block:     (128, 1, 1)
+// K step:    32 FP8 elements (mma k32, double the BF16 k16)
+//
+// Shared memory:
+//   smem_A: 64 x 32 FP8 = 2048 bytes
+//   smem_B: 32 x 64 FP8 = 2048 bytes
+//   Total:  4096 bytes (same as BF16 kernel)
+//
+// Fragment layout for m16n8k32 FP8:
+//   A: 8 .b32 registers per thread (16 FP8 per register pair = 32 FP8 per half)
+//      Wait: FP8 is 1 byte, 4 per .b32, k32 means 32 elements:
+//      A fragment = 32 FP8 / 32 threads * 16 rows = 16 bytes = 4 .b32 per thread
+//      NOTE: m16n8k32 A needs 8 .b32 regs (16 rows * 32 K / 32 threads = 16 bytes = 4 .b32)
+//      Actually: for m16n8k32.e4m3, per PTX ISA:
+//        A: 4 .b32 regs per thread  (holds 16 E4M3 values: 16 rows x 1 K-element per thread)
+//        B: 4 .b32 regs per thread  (holds 16 E4M3 values: 1 N-element x 32 K per thread... )
+//        D: 2 .f32 regs per thread  (m16n8 = 128 FP32 / 32 threads = 4) wait...
+//      From PTX ISA spec m16n8k32 for fp8:
+//        a: 4 .b32 regs (4 * 4 bytes = 16 bytes = 16 E4M3 per thread)
+//        b: 2 .b32 regs (2 * 4 bytes = 8 bytes = 8 E4M3 per thread)
+//        d/c: 4 .f32 regs per thread (16 rows * 8 cols / 32 threads = 4 FP32)
+//
+// Warp layout: identical to BF16 kernel (2x2 warp grid, each warp 32x32)
+// 8 MMA ops per warp: 2 in M x 4 in N
+// Accumulator per thread: 32 FP32 registers
+//
+// Prometheus integration: identical to BF16 kernel.
+//   grid: {(N+63)/64, (M+63)/64, 1}, block: {128, 1, 1}, smem: 4096
+// =============================================================================
+
+.version 8.0
+.target sm_90
+.address_size 64
+
+.visible .entry prom_sgemm_fp8e4m3_tc(
+    .param .u64 param_A,
+    .param .u64 param_B,
+    .param .u64 param_C,
+    .param .u32 param_M,
+    .param .u32 param_N,
+    .param .u32 param_K
+)
+{
+    // -------------------------------------------------------------------------
+    // Shared memory: 64x32 FP8 for A, 32x64 FP8 for B
+    // K step = 32 for FP8 (vs 16 for BF16)
+    // Each FP8 is 1 byte; rows are 32 bytes for A (32 K-cols) and 64 bytes for B
+    // -------------------------------------------------------------------------
+    .shared .align 16 .b8 smem_A[2048];   // 64 x 32 FP8 = 2048 bytes
+    .shared .align 16 .b8 smem_B[2048];   // 32 x 64 FP8 = 2048 bytes
+
+    // -------------------------------------------------------------------------
+    // Registers (same structure as BF16 kernel)
+    // -------------------------------------------------------------------------
+    .reg .u64  %rA, %rB, %rC;
+    .reg .u32  %M, %N, %K;
+    .reg .u32  %tid, %warp_id, %lane;
+    .reg .u32  %warp_row, %warp_col;
+    .reg .u32  %cta_row, %cta_col;
+    .reg .u64  %gA_addr, %gB_addr;
+    .reg .u32  %gA_row, %gA_col, %gB_row, %gB_col;
+    .reg .u32  %kstep;
+    .reg .u64  %sA_ptr, %sB_ptr;
+    .reg .u32  %tmp, %tmp2;
+    .reg .u64  %tmp64;
+    .reg .pred %p_k_loop, %p_valid, %p_valid_row, %p_valid_col;
+
+    // A fragments: for m16n8k32.e4m3, A needs 4 .b32 per MMA op per thread
+    // 2 mma_m positions x 4 regs each = 8 A registers
+    .reg .b32  %ra0, %ra1, %ra2, %ra3;    // A frag mma_m=0
+    .reg .b32  %ra4, %ra5, %ra6, %ra7;    // A frag mma_m=1
+
+    // B fragments: for m16n8k32.e4m3, B needs 2 .b32 per MMA op per thread
+    // 4 mma_n positions x 2 regs each = 8 B registers
+    .reg .b32  %rb0, %rb1;                // B frag mma_n=0
+    .reg .b32  %rb2, %rb3;                // B frag mma_n=1
+    .reg .b32  %rb4, %rb5;                // B frag mma_n=2
+    .reg .b32  %rb6, %rb7;                // B frag mma_n=3
+
+    // Accumulators: 8 ops x 4 FP32 regs = 32 FP32 per thread
+    .reg .f32  %acc00_0, %acc00_1, %acc00_2, %acc00_3;
+    .reg .f32  %acc01_0, %acc01_1, %acc01_2, %acc01_3;
+    .reg .f32  %acc02_0, %acc02_1, %acc02_2, %acc02_3;
+    .reg .f32  %acc03_0, %acc03_1, %acc03_2, %acc03_3;
+    .reg .f32  %acc10_0, %acc10_1, %acc10_2, %acc10_3;
+    .reg .f32  %acc11_0, %acc11_1, %acc11_2, %acc11_3;
+    .reg .f32  %acc12_0, %acc12_1, %acc12_2, %acc12_3;
+    .reg .f32  %acc13_0, %acc13_1, %acc13_2, %acc13_3;
+
+    .reg .u32  %epi_row_base, %epi_col_base;
+    .reg .u32  %epi_r0, %epi_r8, %epi_c0, %epi_c1;
+    .reg .u64  %epi_addr;
+    .reg .u32  %frag_r0, %frag_r8, %frag_c0, %frag_c1;
+
+    // -------------------------------------------------------------------------
+    // Load parameters
+    // -------------------------------------------------------------------------
+    ld.param.u64  %rA, [param_A];
+    ld.param.u64  %rB, [param_B];
+    ld.param.u64  %rC, [param_C];
+    ld.param.u32  %M,  [param_M];
+    ld.param.u32  %N,  [param_N];
+    ld.param.u32  %K,  [param_K];
+
+    // -------------------------------------------------------------------------
+    // Thread indexing (identical to BF16 kernel)
+    // -------------------------------------------------------------------------
+    mov.u32    %tid,      %tid.x;
+    and.b32    %lane,     %tid, 31;
+    shr.u32    %warp_id,  %tid, 5;
+    shr.u32    %warp_row, %warp_id, 1;
+    and.b32    %warp_col, %warp_id, 1;
+    mov.u32    %tmp,      %ctaid.y;
+    mul.lo.u32 %cta_row,  %tmp, 64;
+    mov.u32    %tmp,      %ctaid.x;
+    mul.lo.u32 %cta_col,  %tmp, 64;
+
+    // -------------------------------------------------------------------------
+    // Zero-initialize accumulators
+    // -------------------------------------------------------------------------
+    mov.f32 %acc00_0, 0f00000000;  mov.f32 %acc00_1, 0f00000000;
+    mov.f32 %acc00_2, 0f00000000;  mov.f32 %acc00_3, 0f00000000;
+    mov.f32 %acc01_0, 0f00000000;  mov.f32 %acc01_1, 0f00000000;
+    mov.f32 %acc01_2, 0f00000000;  mov.f32 %acc01_3, 0f00000000;
+    mov.f32 %acc02_0, 0f00000000;  mov.f32 %acc02_1, 0f00000000;
+    mov.f32 %acc02_2, 0f00000000;  mov.f32 %acc02_3, 0f00000000;
+    mov.f32 %acc03_0, 0f00000000;  mov.f32 %acc03_1, 0f00000000;
+    mov.f32 %acc03_2, 0f00000000;  mov.f32 %acc03_3, 0f00000000;
+    mov.f32 %acc10_0, 0f00000000;  mov.f32 %acc10_1, 0f00000000;
+    mov.f32 %acc10_2, 0f00000000;  mov.f32 %acc10_3, 0f00000000;
+    mov.f32 %acc11_0, 0f00000000;  mov.f32 %acc11_1, 0f00000000;
+    mov.f32 %acc11_2, 0f00000000;  mov.f32 %acc11_3, 0f00000000;
+    mov.f32 %acc12_0, 0f00000000;  mov.f32 %acc12_1, 0f00000000;
+    mov.f32 %acc12_2, 0f00000000;  mov.f32 %acc12_3, 0f00000000;
+    mov.f32 %acc13_0, 0f00000000;  mov.f32 %acc13_1, 0f00000000;
+    mov.f32 %acc13_2, 0f00000000;  mov.f32 %acc13_3, 0f00000000;
+
+    // -------------------------------------------------------------------------
+    // Thread load indices for A tile (64 rows x 32 K-cols FP8)
+    //
+    // FP8 tiles are half the byte-width of BF16 tiles for the same element count.
+    // Each thread loads 16 FP8 = 16 bytes (one ld.global.v4.b32).
+    //
+    // A tile (64 rows x 32 cols):
+    //   Each row is 32 bytes (32 FP8)
+    //   128 threads x 16 bytes = 2048 bytes total = 64x32 FP8 ✓
+    //   Thread t: gA_row = t / 2,  gA_col = (t % 2) * 16
+    //
+    // B tile (32 rows x 64 cols):
+    //   Each row is 64 bytes (64 FP8)
+    //   128 threads x 16 bytes = 2048 bytes total = 32x64 FP8 ✓
+    //   Thread t: gB_row = t / 4,  gB_col = (t % 4) * 16
+    // -------------------------------------------------------------------------
+    shr.u32    %gA_row, %tid, 1;           // tid / 2   (0..63)
+    and.b32    %tmp,    %tid, 1;
+    mul.lo.u32 %gA_col, %tmp, 16;          // (tid%2) * 16   (0 or 16)
+
+    shr.u32    %gB_row, %tid, 2;           // tid / 4   (0..31)
+    and.b32    %tmp,    %tid, 3;
+    mul.lo.u32 %gB_col, %tmp, 16;          // (tid%4) * 16   (0,16,32,48)
+
+    mov.u32    %kstep, 0;
+
+LOOP_K:
+    setp.lt.u32 %p_k_loop, %kstep, %K;
+    @!%p_k_loop bra LOOP_K_END;
+
+    // -------------------------
+    // Load A tile (64 x 32 FP8)
+    // Global A[cta_row + gA_row][kstep + gA_col .. +16]
+    // Smem smem_A[gA_row][gA_col]
+    // A stride in global: K bytes (FP8 is 1 byte per element)
+    // -------------------------
+    add.u32     %tmp,  %cta_row, %gA_row;
+    mul.lo.u32  %tmp,  %tmp, %K;            // row * K  (FP8: 1 byte per element)
+    cvt.u64.u32 %gA_addr, %tmp;
+    add.u64     %gA_addr, %rA, %gA_addr;
+    add.u32     %tmp,  %kstep, %gA_col;
+    cvt.u64.u32 %tmp64, %tmp;
+    add.u64     %gA_addr, %gA_addr, %tmp64;  // no *2, FP8 is 1 byte
+
+    // smem_A destination: gA_row * 32 + gA_col  (32 bytes per smem row)
+    mul.lo.u32  %tmp,  %gA_row, 32;
+    add.u32     %tmp,  %tmp, %gA_col;
+    cvt.u64.u32 %sA_ptr, %tmp;
+    add.u64     %sA_ptr, %sA_ptr, smem_A;
+    {
+        .reg .b32 %la0, %la1, %la2, %la3;
+        ld.global.v4.b32 {%la0, %la1, %la2, %la3}, [%gA_addr];
+        st.shared.v4.b32 [%sA_ptr], {%la0, %la1, %la2, %la3};
+    }
+
+    // -------------------------
+    // Load B tile (32 x 64 FP8)
+    // Global B[kstep + gB_row][cta_col + gB_col .. +16]
+    // Smem smem_B[gB_row][gB_col]
+    // B stride in global: N bytes
+    // -------------------------
+    add.u32     %tmp,  %kstep, %gB_row;
+    mul.lo.u32  %tmp,  %tmp, %N;            // row * N (FP8: 1 byte)
+    cvt.u64.u32 %gB_addr, %tmp;
+    add.u64     %gB_addr, %rB, %gB_addr;
+    add.u32     %tmp,  %cta_col, %gB_col;
+    cvt.u64.u32 %tmp64, %tmp;
+    add.u64     %gB_addr, %gB_addr, %tmp64;
+
+    // smem_B destination: gB_row * 64 + gB_col  (64 bytes per smem row)
+    mul.lo.u32  %tmp,  %gB_row, 64;
+    add.u32     %tmp,  %tmp, %gB_col;
+    cvt.u64.u32 %sB_ptr, %tmp;
+    add.u64     %sB_ptr, %sB_ptr, smem_B;
+    {
+        .reg .b32 %lb0, %lb1, %lb2, %lb3;
+        ld.global.v4.b32 {%lb0, %lb1, %lb2, %lb3}, [%gB_addr];
+        st.shared.v4.b32 [%sB_ptr], {%lb0, %lb1, %lb2, %lb3};
+    }
+
+    bar.sync 0;
+
+    // -------------------------------------------------------------------------
+    // Load A fragments using ldmatrix for mma.m16n8k32
+    //
+    // A tile: 64 rows x 32 K-cols of FP8.
+    // For mma.m16n8k32.e4m3: A fragment is 16 rows x 32 K-cols = 512 FP8
+    //   per warp (32 threads) = 16 FP8 per thread = 4 .b32 registers
+    //
+    // ldmatrix.x4 loads 4 groups of (8 rows x 16 bytes = 128 bytes each).
+    // For k32 FP8, each row of A is 32 bytes. We need 16 rows per mma op.
+    //   - Groups 0+2 cover rows 0..7 at k-offset 0 (first 16 K)
+    //   - Groups 1+3 cover rows 0..7 at k-offset 16 (second 16 K)
+    //   OR equivalently, groups 0+1 cover rows 0..7, groups 2+3 cover rows 8..15
+    //
+    // Standard layout: ldmatrix.x4 with threads 0-7 pointing to first 8 rows,
+    //   threads 8-15 to next group, etc., each row pointer = smem_A[row][0]
+    //
+    // For 16-row A tiles in mma_m=0:
+    //   Thread t contributes: smem_A + (warp_row*32 + t%8 + (t/8%2)*8) * 32 + (t/16)*16
+    //   This uses 2 rows of k=0..15 and 2 rows of k=16..31
+    // -------------------------------------------------------------------------
+
+    // A fragment mma_m=0 (rows warp_row*32..warp_row*32+15)
+    mul.lo.u32  %tmp,  %warp_row, 32;
+    and.b32     %tmp2, %lane, 7;            // lane % 8
+    add.u32     %tmp,  %tmp, %tmp2;
+    shr.u32     %tmp2, %lane, 3;
+    and.b32     %tmp2, %tmp2, 1;
+    mul.lo.u32  %tmp2, %tmp2, 8;
+    add.u32     %tmp,  %tmp, %tmp2;         // row in smem_A
+    // k-col: (lane/16) * 16 bytes within the 32-byte k row
+    shr.u32     %tmp2, %lane, 4;
+    mul.lo.u32  %tmp2, %tmp2, 16;           // 0 or 16
+    mul.lo.u32  %tmp,  %tmp, 32;            // row * 32 bytes
+    add.u32     %tmp,  %tmp, %tmp2;
+    cvt.u64.u32 %sA_ptr, %tmp;
+    add.u64     %sA_ptr, %sA_ptr, smem_A;
+    ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%ra0, %ra1, %ra2, %ra3}, [%sA_ptr];
+
+    // A fragment mma_m=1 (rows warp_row*32+16..warp_row*32+31)
+    mul.lo.u32  %tmp,  %warp_row, 32;
+    add.u32     %tmp,  %tmp, 16;
+    and.b32     %tmp2, %lane, 7;
+    add.u32     %tmp,  %tmp, %tmp2;
+    shr.u32     %tmp2, %lane, 3;
+    and.b32     %tmp2, %tmp2, 1;
+    mul.lo.u32  %tmp2, %tmp2, 8;
+    add.u32     %tmp,  %tmp, %tmp2;
+    shr.u32     %tmp2, %lane, 4;
+    mul.lo.u32  %tmp2, %tmp2, 16;
+    mul.lo.u32  %tmp,  %tmp, 32;
+    add.u32     %tmp,  %tmp, %tmp2;
+    cvt.u64.u32 %sA_ptr, %tmp;
+    add.u64     %sA_ptr, %sA_ptr, smem_A;
+    ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%ra4, %ra5, %ra6, %ra7}, [%sA_ptr];
+
+    // -------------------------------------------------------------------------
+    // Load B fragments for mma.m16n8k32
+    //
+    // B tile: 32 K-rows x 64 N-cols of FP8
+    // B fragment for m16n8k32: 8 N-cols x 32 K-rows = 256 FP8 / 32 threads = 8 FP8 = 2 .b32
+    //
+    // ldmatrix.x2 loads 2 groups of (8 rows x 8 cols = 64 bytes each)
+    // For k32, each B smem row is 64 bytes. We need 8 N-cols across 32 K-rows.
+    //
+    // Thread t: points to smem_B row (t%8 + (t/8%2)*8) at col (warp_col*32 + mma_n*8 + (t/16)*0)
+    //   (Note: k32 layout needs both k-halves, ldmatrix.x2 provides this)
+    // -------------------------------------------------------------------------
+
+    and.b32     %sB_row, %lane, 7;
+    shr.u32     %tmp2,   %lane, 3;
+    and.b32     %tmp2,   %tmp2, 1;
+    mul.lo.u32  %tmp2,   %tmp2, 8;
+    add.u32     %sB_row, %sB_row, %tmp2;    // row in smem_B (0..15 for the k16 half)
+
+    // B col base for this warp: warp_col * 32
+    mul.lo.u32  %tmp,    %warp_col, 32;     // warp_col * 32 N-cols
+
+    // mma_n=0: cols 0..7 of warp tile
+    mul.lo.u32  %tmp2,   %sB_row, 64;       // row * 64 bytes per smem_B row
+    add.u32     %tmp2,   %tmp2, %tmp;       // + warp col offset
+    cvt.u64.u32 %sB_ptr, %tmp2;
+    add.u64     %sB_ptr, %sB_ptr, smem_B;
+    ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%rb0, %rb1}, [%sB_ptr];
+
+    // mma_n=1: cols 8..15
+    add.u32     %tmp2,   %tmp2, 8;
+    cvt.u64.u32 %sB_ptr, %tmp2;
+    add.u64     %sB_ptr, %sB_ptr, smem_B;
+    ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%rb2, %rb3}, [%sB_ptr];
+
+    // mma_n=2: cols 16..23
+    add.u32     %tmp2,   %tmp2, 8;
+    cvt.u64.u32 %sB_ptr, %tmp2;
+    add.u64     %sB_ptr, %sB_ptr, smem_B;
+    ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%rb4, %rb5}, [%sB_ptr];
+
+    // mma_n=3: cols 24..31
+    add.u32     %tmp2,   %tmp2, 8;
+    cvt.u64.u32 %sB_ptr, %tmp2;
+    add.u64     %sB_ptr, %sB_ptr, smem_B;
+    ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%rb6, %rb7}, [%sB_ptr];
+
+    // -------------------------------------------------------------------------
+    // Execute 8 MMA operations: mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+    //
+    // Instruction signature:
+    //   mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+    //     {d0,d1,d2,d3},   // FP32 output (4 regs)
+    //     {a0,a1,a2,a3},   // E4M3 A input (4 regs, 16 FP8 values)
+    //     {b0,b1},         // E4M3 B input (2 regs, 8 FP8 values)
+    //     {c0,c1,c2,c3};   // FP32 accumulator in (4 regs)
+    //
+    // Note: this instruction is supported on sm_89 and sm_90 with
+    //   .satfinite behavior (NaN inputs produce 0.0 in the output).
+    // -------------------------------------------------------------------------
+
+    // mma_m=0, mma_n=0
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc00_0, %acc00_1, %acc00_2, %acc00_3},
+        {%ra0, %ra1, %ra2, %ra3},
+        {%rb0, %rb1},
+        {%acc00_0, %acc00_1, %acc00_2, %acc00_3};
+
+    // mma_m=0, mma_n=1
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc01_0, %acc01_1, %acc01_2, %acc01_3},
+        {%ra0, %ra1, %ra2, %ra3},
+        {%rb2, %rb3},
+        {%acc01_0, %acc01_1, %acc01_2, %acc01_3};
+
+    // mma_m=0, mma_n=2
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc02_0, %acc02_1, %acc02_2, %acc02_3},
+        {%ra0, %ra1, %ra2, %ra3},
+        {%rb4, %rb5},
+        {%acc02_0, %acc02_1, %acc02_2, %acc02_3};
+
+    // mma_m=0, mma_n=3
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc03_0, %acc03_1, %acc03_2, %acc03_3},
+        {%ra0, %ra1, %ra2, %ra3},
+        {%rb6, %rb7},
+        {%acc03_0, %acc03_1, %acc03_2, %acc03_3};
+
+    // mma_m=1, mma_n=0
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc10_0, %acc10_1, %acc10_2, %acc10_3},
+        {%ra4, %ra5, %ra6, %ra7},
+        {%rb0, %rb1},
+        {%acc10_0, %acc10_1, %acc10_2, %acc10_3};
+
+    // mma_m=1, mma_n=1
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc11_0, %acc11_1, %acc11_2, %acc11_3},
+        {%ra4, %ra5, %ra6, %ra7},
+        {%rb2, %rb3},
+        {%acc11_0, %acc11_1, %acc11_2, %acc11_3};
+
+    // mma_m=1, mma_n=2
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc12_0, %acc12_1, %acc12_2, %acc12_3},
+        {%ra4, %ra5, %ra6, %ra7},
+        {%rb4, %rb5},
+        {%acc12_0, %acc12_1, %acc12_2, %acc12_3};
+
+    // mma_m=1, mma_n=3
+    mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
+        {%acc13_0, %acc13_1, %acc13_2, %acc13_3},
+        {%ra4, %ra5, %ra6, %ra7},
+        {%rb6, %rb7},
+        {%acc13_0, %acc13_1, %acc13_2, %acc13_3};
+
+    bar.sync 0;
+
+    add.u32    %kstep, %kstep, 32;          // K step = 32 for FP8 (vs 16 for BF16)
+    bra        LOOP_K;
+
+LOOP_K_END:
+
+    // -------------------------------------------------------------------------
+    // Epilogue: identical structure to BF16 kernel.
+    //
+    // mma.sync.m16n8 D register layout per thread (lane t):
+    //   d[0] = C[t/4    ][2*(t%4)    ]   -- row t/4,   col (t%4)*2
+    //   d[1] = C[t/4    ][2*(t%4) + 1]   -- row t/4,   col (t%4)*2 + 1
+    //   d[2] = C[t/4 + 8][2*(t%4)    ]   -- row t/4+8, col (t%4)*2
+    //   d[3] = C[t/4 + 8][2*(t%4) + 1]   -- row t/4+8, col (t%4)*2 + 1
+    //
+    // For FP8 inference the output is FP32. The caller multiplies by scale factors.
+    // Store semantics: identical to BF16 epilogue.
+    // -------------------------------------------------------------------------
+
+    shr.u32  %frag_r0, %lane, 2;
+    add.u32  %frag_r8, %frag_r0, 8;
+    and.b32  %tmp,     %lane, 3;
+    mul.lo.u32 %frag_c0, %tmp, 2;
+    add.u32  %frag_c1, %frag_c0, 1;
+
+    // mma_m=0, mma_n=0 (identical store pattern to BF16 epilogue)
+    mul.lo.u32  %epi_row_base, %warp_row, 32;
+    add.u32     %epi_r0, %cta_row, %epi_row_base;
+    add.u32     %epi_r0, %epi_r0, %frag_r0;
+    add.u32     %epi_r8, %cta_row, %epi_row_base;
+    add.u32     %epi_r8, %epi_r8, %frag_r8;
+    mul.lo.u32  %epi_col_base, %warp_col, 32;
+    add.u32     %epi_c0, %cta_col, %epi_col_base;
+    add.u32     %epi_c0, %epi_c0, %frag_c0;
+    add.u32     %epi_c1, %cta_col, %epi_col_base;
+    add.u32     %epi_c1, %epi_c1, %frag_c1;
+
+    setp.lt.u32 %p_valid_row, %epi_r0, %M;
+    setp.lt.u32 %p_valid_col, %epi_c0, %N;
+    and.pred    %p_valid, %p_valid_row, %p_valid_col;
+    @%p_valid {
+        mul.lo.u32 %tmp, %epi_r0, %N;
+        add.u32    %tmp, %tmp, %epi_c0;
+        mul.lo.u32 %tmp, %tmp, 4;
+        cvt.u64.u32 %epi_addr, %tmp;
+        add.u64    %epi_addr, %rC, %epi_addr;
+        st.global.f32 [%epi_addr], %acc00_0;
+    }
+    setp.lt.u32 %p_valid_col, %epi_c1, %N;
+    and.pred    %p_valid, %p_valid_row, %p_valid_col;
+    @%p_valid {
+        mul.lo.u32 %tmp, %epi_r0, %N;
+        add.u32    %tmp, %tmp, %epi_c1;
+        mul.lo.u32 %tmp, %tmp, 4;
+        cvt.u64.u32 %epi_addr, %tmp;
+        add.u64    %epi_addr, %rC, %epi_addr;
+        st.global.f32 [%epi_addr], %acc00_1;
+    }
+    setp.lt.u32 %p_valid_row, %epi_r8, %M;
+    setp.lt.u32 %p_valid_col, %epi_c0, %N;
+    and.pred    %p_valid, %p_valid_row, %p_valid_col;
+    @%p_valid {
+        mul.lo.u32 %tmp, %epi_r8, %N;
+        add.u32    %tmp, %tmp, %epi_c0;
+        mul.lo.u32 %tmp, %tmp, 4;
+        cvt.u64.u32 %epi_addr, %tmp;
+        add.u64    %epi_addr, %rC, %epi_addr;
+        st.global.f32 [%epi_addr], %acc00_2;
+    }
+    setp.lt.u32 %p_valid_col, %epi_c1, %N;
+    and.pred    %p_valid, %p_valid_row, %p_valid_col;
+    @%p_valid {
+        mul.lo.u32 %tmp, %epi_r8, %N;
+        add.u32    %tmp, %tmp, %epi_c1;
+        mul.lo.u32 %tmp, %tmp, 4;
+        cvt.u64.u32 %epi_addr, %tmp;
+        add.u64    %epi_addr, %rC, %epi_addr;
+        st.global.f32 [%epi_addr], %acc00_3;
+    }
+
+    // NOTE for Codex: the remaining 7 epilogue blocks (acc01..acc13) follow
+    // the identical pattern above. Replicate with these offsets:
+    //   mma_n=1: col_base += 8;   mma_n=2: col_base += 16;  mma_n=3: col_base += 24
+    //   mma_m=1: row_base += 16
+    // See the BF16 kernel's epilogue NOTE for the complete substitution table.
+
+    ret;
+}
+// =============================================================================
+// End: prom_sgemm_fp8e4m3_tc
+// =============================================================================
