@@ -305,3 +305,14 @@ M21 adds `cmd/octxiliary-pdf` for the safe `Libraries/Pdf` compiled subset:
 Pdf image interop remains intentionally deferred in compiled mode. `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` are not declared as compiled wrapper functions or transport types. Compiled Pdf must not consume `Image.ImageHandle` values from `octxiliary-image`; M0 handles are sidecar-family-local capabilities. Future image interop should use a Pdf-owned import API or path/bytes drawing helper rather than raw cross-family handle sharing.
 
 Compiled programs using the Pdf subset require `octxiliary-pdf` beside the `.octbin` or discoverable through `OCT_WRAPPER_PATH`.
+
+## M30 Pdf/Image bytes interop
+
+M30 adds compiled Pdf/Image interop without changing the Octxiliary protocol or adding a new transport type. The compiled Oct binary remains the orchestrator:
+
+1. call `octxiliary-image` through `Image.EncodePng(image)` / `ImageEncodePng` to export an `Image.ImageHandle` as serialized PNG `Bytes`;
+2. pass those bytes as an ordinary `Bytes` argument to `octxiliary-pdf` through `Pdf.DrawImageBytes` or `Pdf.DrawImageBytesSized`.
+
+Handle ownership remains family-local. `octxiliary-image` owns `Image.ImageHandle`, `octxiliary-pdf` owns `Pdf.PdfPage`, and no sidecar consumes another sidecar family's handle. The sidecars do not call each other, and M30 does not add a handle broker, shared registry, Pdf-owned image handle table, path/file drawing helper, or transport/protocol change.
+
+M30's declared Pdf image byte format is PNG. The Pdf sidecar accepts `png` case-insensitively, validates that the byte payload is non-empty and decodes as PNG, then registers/draws the bytes for that draw call only.

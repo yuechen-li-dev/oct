@@ -1,0 +1,40 @@
+package Pdf
+
+import Image
+
+fn M30FixturePath() -> String {
+    if FileExists("Libraries/Pdf/m30_fixture_rect.png") {
+        return "Libraries/Pdf/m30_fixture_rect.png"
+    }
+    return "../../Libraries/Pdf/m30_fixture_rect.png"
+}
+
+[Fact]
+fn ImageEncodePngDrawImageBytesSizedAndSave() -> Void {
+    let pngPath = M30FixturePath()
+    let out = "m30_pdf_image_bytes.pdf"
+
+    let img = Image.Load(pngPath)!
+    let png = Image.EncodePng(img)!
+    Assert.True(Len(png) > 0, "encoded png bytes should be non-empty")
+
+    let page = NewPage(400px, 300px)!
+    let drawSized = DrawImageBytesSized(page, png, "png", 20px, 20px, 160px, 90px)!
+    Assert.Equal(0, drawSized, "sized image bytes draw should return zero")
+    let drawNatural = DrawImageBytes(page, png, "PNG", 220px, 20px)!
+    Assert.Equal(0, drawNatural, "natural image bytes draw should return zero")
+    let save = Save(page, out)!
+    Assert.Equal(0, save, "image bytes pdf save should return zero")
+    Assert.True(FileExists(out), "image bytes pdf output should exist")
+
+    let _d1 = FileDelete(out)!
+}
+
+[Fact]
+fn DrawImageBytesRejectsUnsupportedFormat() -> Void {
+    let pngPath = M30FixturePath()
+    let img = Image.Load(pngPath)!
+    let png = Image.EncodePng(img)!
+    let page = NewPage(120px, 80px)!
+    Assert.Error(DrawImageBytes(page, png, "jpeg", 1px, 1px), "unsupported image bytes format should fail")
+}

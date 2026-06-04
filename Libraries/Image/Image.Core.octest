@@ -7,6 +7,8 @@ fn LoadInspectAndSaveRoundTrip() -> Void {
     Assert.Equal(3px, Width(png), "png width should match fixture")
     Assert.Equal(2px, Height(png), "png height should match fixture")
     Assert.Equal("png", Format(png), "png format should be detected")
+    let encoded = EncodePng(png)!
+    Assert.True(Len(encoded) > 0, "encoded png bytes should be non-empty")
 
     let jpgPath = "mx103d_roundtrip.jpg"
     let _saved = Save(png, jpgPath)!

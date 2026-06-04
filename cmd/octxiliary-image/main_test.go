@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -46,6 +47,39 @@ func TestImageLoadInspectAndSaveWorkflow(t *testing.T) {
 	assertNonEmptyFile(t, savedJPG)
 }
 
+func TestImageEncodePngReturnsDecodableBytes(t *testing.T) {
+	dir := t.TempDir()
+	pngPath := filepath.Join(dir, "rect.png")
+	jpgPath := filepath.Join(dir, "rect.jpg")
+	writeTestPNG(t, pngPath)
+	writeTestJPEG(t, jpgPath)
+
+	table := newImageTable()
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "png", path: pngPath},
+		{name: "jpeg", path: jpgPath},
+	} {
+		handle := loadImageForTest(t, table, tc.path, tc.name)
+		value, err := table.dispatch(octxiliary.Request{Family: imageFamily, Function: "ImageEncodePng", HasArgs: true, Args: []octxiliary.Value{handle}})
+		if err != nil {
+			t.Fatalf("encode %s: %v", tc.name, err)
+		}
+		if value.Kind != octxiliary.ValueBytes || len(value.Bytes) == 0 {
+			t.Fatalf("encode %s got %#v, want non-empty Bytes", tc.name, value)
+		}
+		decoded, err := png.Decode(bytes.NewReader(value.Bytes))
+		if err != nil {
+			t.Fatalf("encoded %s bytes should decode as png: %v", tc.name, err)
+		}
+		if decoded.Bounds().Dx() != 3 || decoded.Bounds().Dy() != 2 {
+			t.Fatalf("encoded %s bounds = %v, want 3x2", tc.name, decoded.Bounds())
+		}
+	}
+}
+
 func TestImageLoadMissingFileErrors(t *testing.T) {
 	table := newImageTable()
 	_, err := table.dispatch(octxiliary.Request{Family: imageFamily, Function: "ImageLoad", HasArgs: true, Args: []octxiliary.Value{{Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "missing.png")}}})
@@ -83,6 +117,10 @@ func TestImageInvalidHandleErrors(t *testing.T) {
 	_, err := table.dispatch(octxiliary.Request{Family: imageFamily, Function: "ImageWidth", HasArgs: true, Args: []octxiliary.Value{badHandle}})
 	if err == nil || !strings.Contains(err.Error(), "unknown image handle") {
 		t.Fatalf("expected invalid handle error, got %v", err)
+	}
+	_, err = table.dispatch(octxiliary.Request{Family: imageFamily, Function: "ImageEncodePng", HasArgs: true, Args: []octxiliary.Value{badHandle}})
+	if err == nil || !strings.Contains(err.Error(), "unknown image handle") {
+		t.Fatalf("expected encode invalid handle error, got %v", err)
 	}
 }
 

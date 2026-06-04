@@ -13,6 +13,10 @@ fn Save(image: ImageHandle, path: String) -> Int ! Error {
     return ImageSave(image.Handle, path)?
 }
 
+fn EncodePng(image: ImageHandle) -> Bytes ! Error {
+    return ImageEncodePng(image.Handle)?
+}
+
 fn Width(image: ImageHandle) -> Int<px> {
     return ImageWidth(image.Handle)
 }

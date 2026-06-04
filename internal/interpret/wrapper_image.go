@@ -1,6 +1,7 @@
 package interpret
 
 import (
+	"bytes"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -21,11 +22,12 @@ type wrapperImage struct {
 
 func imageWrapperBuiltins() map[string]wrapperBuiltinHandler {
 	return map[string]wrapperBuiltinHandler{
-		"ImageLoad":   (*interpreter).evalImageLoadBuiltin,
-		"ImageSave":   (*interpreter).evalImageSaveBuiltin,
-		"ImageWidth":  (*interpreter).evalImageWidthBuiltin,
-		"ImageHeight": (*interpreter).evalImageHeightBuiltin,
-		"ImageFormat": (*interpreter).evalImageFormatBuiltin,
+		"ImageLoad":      (*interpreter).evalImageLoadBuiltin,
+		"ImageSave":      (*interpreter).evalImageSaveBuiltin,
+		"ImageEncodePng": (*interpreter).evalImageEncodePngBuiltin,
+		"ImageWidth":     (*interpreter).evalImageWidthBuiltin,
+		"ImageHeight":    (*interpreter).evalImageHeightBuiltin,
+		"ImageFormat":    (*interpreter).evalImageFormatBuiltin,
 	}
 }
 
@@ -71,6 +73,29 @@ func (i *interpreter) evalImageSaveBuiltin(env *environment, pkgName string, cal
 		return wrapperErrorResult(callee, saveErr), nil
 	}
 	return wrapperIntResult(0), nil
+}
+
+func (i *interpreter) evalImageEncodePngBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(1); err != nil {
+		return evalResult{}, err
+	}
+	handle, errResult, err := call.intArg(0)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if errResult != nil {
+		return *errResult, nil
+	}
+	wrapped, getErr := i.images.get(handle)
+	if getErr != nil {
+		return wrapperErrorResult(callee, getErr), nil
+	}
+	var encoded bytes.Buffer
+	if encodeErr := png.Encode(&encoded, wrapped.image); encodeErr != nil {
+		return wrapperErrorResult(callee, wrapperErrorf(wrapperErrorBackendFailure, "encode png failed: %v", encodeErr)), nil
+	}
+	return wrapperBytesResult(encoded.Bytes()), nil
 }
 
 func (i *interpreter) evalImageWidthBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {

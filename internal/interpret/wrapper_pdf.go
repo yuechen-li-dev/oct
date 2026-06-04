@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"codeberg.org/go-pdf/fpdf"
 	"github.com/yuechen-li-dev/oct/internal/ast"
@@ -32,12 +33,14 @@ type wrapperPDFPage struct {
 
 func pdfWrapperBuiltins() map[string]wrapperBuiltinHandler {
 	return map[string]wrapperBuiltinHandler{
-		"PdfNewPage":        (*interpreter).evalPdfNewPageBuiltin,
-		"PdfDrawText":       (*interpreter).evalPdfDrawTextBuiltin,
-		"PdfDrawTextStyled": (*interpreter).evalPdfDrawTextStyledBuiltin,
-		"PdfDrawImage":      (*interpreter).evalPdfDrawImageBuiltin,
-		"PdfDrawImageSized": (*interpreter).evalPdfDrawImageSizedBuiltin,
-		"PdfSave":           (*interpreter).evalPdfSaveBuiltin,
+		"PdfNewPage":             (*interpreter).evalPdfNewPageBuiltin,
+		"PdfDrawText":            (*interpreter).evalPdfDrawTextBuiltin,
+		"PdfDrawTextStyled":      (*interpreter).evalPdfDrawTextStyledBuiltin,
+		"PdfDrawImage":           (*interpreter).evalPdfDrawImageBuiltin,
+		"PdfDrawImageSized":      (*interpreter).evalPdfDrawImageSizedBuiltin,
+		"PdfDrawImageBytes":      (*interpreter).evalPdfDrawImageBytesBuiltin,
+		"PdfDrawImageBytesSized": (*interpreter).evalPdfDrawImageBytesSizedBuiltin,
+		"PdfSave":                (*interpreter).evalPdfSaveBuiltin,
 	}
 }
 
@@ -148,6 +151,54 @@ func (i *interpreter) evalPdfDrawImageSizedBuiltin(env *environment, pkgName str
 	return wrapperIntResult(0), nil
 }
 
+func (i *interpreter) evalPdfDrawImageBytesBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(5); err != nil {
+		return evalResult{}, err
+	}
+	page, data, format, x, y, errResult, err := i.evalPdfImageBytesArgs(call)
+	if err != nil || errResult != nil {
+		return unwrapWrapperArgResult(errResult, err)
+	}
+	decoded, decodeErr := decodePdfImageBytes(data, format)
+	if decodeErr != nil {
+		return wrapperErrorResult(callee, decodeErr), nil
+	}
+	width := int64(decoded.Bounds().Dx())
+	height := int64(decoded.Bounds().Dy())
+	if drawErr := page.drawImage(decoded, x, y, width, height); drawErr != nil {
+		return wrapperErrorResult(callee, drawErr), nil
+	}
+	return wrapperIntResult(0), nil
+}
+
+func (i *interpreter) evalPdfDrawImageBytesSizedBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
+	if err := call.expectArity(7); err != nil {
+		return evalResult{}, err
+	}
+	page, data, format, x, y, errResult, err := i.evalPdfImageBytesArgs(call)
+	if err != nil || errResult != nil {
+		return unwrapWrapperArgResult(errResult, err)
+	}
+	width, errResult, err := pxArg(call, 5, true)
+	if err != nil || errResult != nil {
+		return unwrapWrapperArgResult(errResult, err)
+	}
+	height, errResult, err := pxArg(call, 6, true)
+	if err != nil || errResult != nil {
+		return unwrapWrapperArgResult(errResult, err)
+	}
+	decoded, decodeErr := decodePdfImageBytes(data, format)
+	if decodeErr != nil {
+		return wrapperErrorResult(callee, decodeErr), nil
+	}
+	if drawErr := page.drawImage(decoded, x, y, width, height); drawErr != nil {
+		return wrapperErrorResult(callee, drawErr), nil
+	}
+	return wrapperIntResult(0), nil
+}
+
 func (i *interpreter) evalPdfSaveBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
 	call := newWrapperCall(i, env, pkgName, callee, argumentExprs)
 	if err := call.expectArity(2); err != nil {
@@ -224,6 +275,49 @@ func (i *interpreter) evalPdfImageArgs(call wrapperCall) (*wrapperPDFPage, image
 		return nil, nil, 0, 0, errResult, err
 	}
 	return page, wrappedImage.image, x, y, nil, nil
+}
+
+func (i *interpreter) evalPdfImageBytesArgs(call wrapperCall) (*wrapperPDFPage, []byte, string, int64, int64, *evalResult, error) {
+	pageHandle, errResult, err := call.intArg(0)
+	if err != nil || errResult != nil {
+		return nil, nil, "", 0, 0, errResult, err
+	}
+	page, getErr := i.pdfPages.get(pageHandle)
+	if getErr != nil {
+		result := wrapperErrorResult(call.callee, getErr)
+		return nil, nil, "", 0, 0, &result, nil
+	}
+	data, errResult, err := call.bytesArg(1)
+	if err != nil || errResult != nil {
+		return nil, nil, "", 0, 0, errResult, err
+	}
+	format, errResult, err := call.stringArg(2)
+	if err != nil || errResult != nil {
+		return nil, nil, "", 0, 0, errResult, err
+	}
+	x, errResult, err := pxArg(call, 3, false)
+	if err != nil || errResult != nil {
+		return nil, nil, "", 0, 0, errResult, err
+	}
+	y, errResult, err := pxArg(call, 4, false)
+	if err != nil || errResult != nil {
+		return nil, nil, "", 0, 0, errResult, err
+	}
+	return page, data, format, x, y, nil, nil
+}
+
+func decodePdfImageBytes(data []byte, format string) (image.Image, error) {
+	if len(data) == 0 {
+		return nil, wrapperErrorf(wrapperErrorInvalidArgument, "image bytes must be non-empty")
+	}
+	if strings.ToLower(format) != "png" {
+		return nil, wrapperErrorf(wrapperErrorInvalidArgument, "unsupported image format %q; only png is supported", format)
+	}
+	decoded, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, wrapperErrorf(wrapperErrorInvalidData, "image bytes are not valid png: %v", err)
+	}
+	return decoded, nil
 }
 
 func newWrapperPDFPage(widthPx int64, heightPx int64) (*wrapperPDFPage, error) {

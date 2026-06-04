@@ -80,6 +80,8 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "NewPage" WireName: "PdfNewPage" Args: ["Int<px>", "Int<px>"] Return: "Pdf.PdfPage" Fallible: true },
                     WrapperFunction { OctName: "DrawText" WireName: "PdfDrawText" Args: ["Pdf.PdfPage", "Int<px>", "Int<px>", "String"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "DrawTextStyled" WireName: "PdfDrawTextStyled" Args: ["Pdf.PdfPage", "Int<px>", "Int<px>", "String", "Pdf.TextStyle"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "DrawImageBytes" WireName: "PdfDrawImageBytes" Args: ["Pdf.PdfPage", "Bytes", "String", "Int<px>", "Int<px>"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "DrawImageBytesSized" WireName: "PdfDrawImageBytesSized" Args: ["Pdf.PdfPage", "Bytes", "String", "Int<px>", "Int<px>", "Int<px>", "Int<px>"] Return: "Int" Fallible: true },
                     WrapperFunction { OctName: "Save" WireName: "PdfSave" Args: ["Pdf.PdfPage", "String"] Return: "Int" Fallible: true }
                 ]
             }

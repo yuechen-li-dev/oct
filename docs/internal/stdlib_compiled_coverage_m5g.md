@@ -82,7 +82,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Hash` | pass | pass | migrated, focused compiled pass | none for focused Hash M7 coverage | `Sha256Bytes`, `Sha256File`, `Sha256Text` | Migrated in M7 to generic Octxiliary wrapper lowering through manifest metadata and `octxiliary-hash`; package still monitored with focused compiled coverage. | done M7 |
 | `Libraries/IO` | pass | pass | focused Xlsx/Csv migrated; broad root may still fail, 1 / 34 | `unsupported_builtin`, `sidecar_environment`, `missing_manifest`, `generated_go_error` | legacy IO root aggregation; file/directory round trips; bytes round trip; migrated CSV/JSON/Xlsx focused paths | File/directory wrappers reach compiled runtime but panic when `OCT_WRAPPER_PATH`/`octxiliary-io` is unavailable. CSV row-major, safe JSON file helpers, and focused IO.Xlsx are now migrated; broader IO root issues remain tracked separately. Bytes alias emits undefined `IO_Bytes`. | M6, M9, M10 |
 | `Libraries/IfErrNotEqualNil` | fail | fail | fail before facts | `unsupported_language_lowering` / syntax | `IfErrNotEqualNil.Core.oct` | Parser rejects `err != nil` style: `expected ')' after parameter list ... near "!"`; likely legacy/synthetic fixture. | expected_interpreted_only or cleanup |
-| `Libraries/Image` | pass | pass | pass, focused Image M19 coverage | none for focused Image M19 coverage | `ImageLoad`, `ImageSave`, `ImageWidth`, `ImageHeight`, `ImageFormat` | M19 migrates Image through `octxiliary-image` with typed `Image.ImageHandle` transport. Fixture generation remains a harness concern for focused tests. | done M19 |
+| `Libraries/Image` | pass | pass | pass, focused Image M19 coverage | none for focused Image M19 coverage | `ImageLoad`, `ImageSave`, `ImageEncodePng`, `ImageWidth`, `ImageHeight`, `ImageFormat` | M19 migrates Image through `octxiliary-image` with typed `Image.ImageHandle` transport; M30 adds PNG `Bytes` export for Pdf interop. Fixture generation remains a harness concern for focused tests. | done M19 |
 | `Libraries/Interpolation` | pass | pass | fail, 16 / 12 | `generated_go_error`, `missing_manifest` | `CubicSpline*` | Generated Go confuses scalar/list variables (`float64` as `[]float64`); error-path `Assert` gaps. | M10/M9 |
 | `Libraries/Json` | fail | fail | fail before facts | `missing_manifest` / layout | package root | No fact tests found; package has implementation only. | M9 / add tests if desired |
 | `Libraries/LinearAlgebra` | pass | pass | fail, 18 / 24 | `missing_manifest`, `generated_go_error` | `MatrixDimensionMismatchRaisesError`, `JacobiEigen*` | Many core facts compile; generated Go has int/float loop-index confusion in eigen routines; error tests miss `Assert`. | M10/M9 |
@@ -92,7 +92,7 @@ Commands were run from repository root. Durations are wall-clock seconds measure
 | `Libraries/Numerics` | pass | pass | fail, 0 / 6 | `unsupported_language_lowering` | `BisectionFindsSquareRoot`, `NewtonFindsSquareRoot` | Root-finder tests use function arguments/callbacks not lowered. | M8 |
 | `Libraries/Octomata` | pass | pass | fail, 71 / 21 | `missing_manifest`, `generated_go_error` | `CommitmentAndEdgeComposeForModeChangeDetection`, validation/error tests | Strong compiled coverage already; generated Go has unused `math` import and some type issues; error tests need `Assert`. | M10/M9 |
 | `Libraries/Optimization` | pass | pass | fail, 3 / 4 | `unsupported_language_lowering` | objective callback tests | Function argument/callback lowering gap. | M8 |
-| `Libraries/Pdf` | pass | pass | fail, 0 / 6 | `unsupported_builtin` / `unsupported_wrapper` | `PdfNewPage`, `PdfDrawText` | PDF wrapper helpers are not compiled. | M6 |
+| `Libraries/Pdf` | pass | pass | focused text/image-bytes pass | legacy image bridge remains compiled-deferred | `PdfNewPage`, `PdfDrawText`, `PdfDrawTextStyled`, `PdfSave`, `PdfDrawImageBytes`, `PdfDrawImageBytesSized` | M21 migrates page/text/save; M30 adds PNG bytes drawing via Oct-mediated Image-to-Pdf transfer. Legacy `PdfDrawImage` / `PdfDrawImageSized` remain interpreted-only bridge APIs. | done M30 |
 | `Libraries/Physics` | fail | fail | fail, 4 / 1 | `compiled_runtime_semantic_failure` / test-shape | `PhysicalConstantsCallableSurface` | Same fact fails interpreted due zero assertions; compiled reports `compiled test run failed: exit status 1: 0`. Not a compiler coverage gap. | test cleanup / M9 |
 | `Libraries/Plot` | pass | pass | pass, 6 / 0 | none for focused Plot M16 coverage | `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram` | M16 migrates Line, Scatter, and Histogram through `octxiliary-plot` using `Float[]` plus declared `Plot.Size`/`Plot.Labels` record arguments. | done M16 |
 | `Libraries/RF` | pass | pass | fail, 34 / 23 | `generated_go_error`, `unsupported_builtin`, `missing_manifest` | `AwgnHelpersGeneralizeAcrossSequenceLengths`, `DbToLinearSeries*` | Generated Go invalid `_` use; `Idx`/`Abs` gaps; some `Assert` error paths. | M10/M8/M9 |
@@ -434,7 +434,7 @@ These failures should not be fixed as part of M5g and should not be conflated wi
 - `Libraries/UI` live widget/canvas/mount behavior (`UIButton`, `UICanvas`, `UIMount`) belongs to a UI/reactor bridge project or explicitly interpreted/manual lane, not the generic numeric/wrapper coverage pass.
 - `Libraries/ArtifactUsage` and `go run ./cmd/oct artifact Libraries` are root/package-layout or artifact-lane issues, not missing scalar lowering.
 - `Libraries/Physics/PhysicalConstantsCallableSurface` fails interpreted too because it completes with zero assertions; this is test-shape cleanup.
-- `Libraries/Image` interpreted tests fail because fixture assets such as `mx103d_fixture_rect.png` are not found from the selected root; compiled image builtin support is still missing, but fixture layout must be separated from compiler gaps.
+- `Libraries/Image` fixture assets such as `mx103d_fixture_rect.png` remain a harness/root concern for direct focused runs; compiled Image support exists, including M30 `ImageEncodePng`.
 - `Libraries/IfErrNotEqualNil` is rejected by the current parser before any compiled inventory can start; it appears to be a legacy/synthetic syntax fixture and should be classified/relocated rather than used as standard compiled coverage.
 - Top-level `Language` inventory is blocked by `Language/Testing/SelectedFileCompiled/sibling_invalid.octfail`; broad language-lane audit needs fixture isolation first.
 
@@ -442,7 +442,7 @@ These failures should not be fixed as part of M5g and should not be conflated wi
 
 From per-library compiled failures, representative unsupported builtins include:
 
-- Wrapper/external data helpers still not migrated after M9: `ZipListEntries`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `ImageLoad`, `PdfNewPage`, `PdfDrawText`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`.
+- Wrapper/external data helpers still not migrated after M9: `ZipListEntries`, `CsvRead`, `CsvReadMatrix`, `CsvReadRows`, `CsvReadTable`, `JsonParse`, `JsonLoad`, `JsonNormalize`, `JsonLoadStructured`, `JsonLower`, `XlsxCreateWorkbook`, `XlsxAddSheet`, `XlsxSaveWorkbook`, `PdfDrawImage`, `PdfDrawImageSized`, `PlotRenderLine`, `PlotRenderScatter`, `PlotRenderHistogram`, `RegexIsMatch`.
 - Direct compiled builtin candidates: `Real`, `Idx`, `Abs for type Complex`.
 - UI/reactor bridge helpers: `UIButton`, `UICanvas`, `UIMount`, `UIColumn`, `UIGrid`, `UISignature`, `UIGridRows`.
 
@@ -460,9 +460,9 @@ Remaining M5g wrapper candidates are now classified as explicit blockers rather 
 
 - `Libraries/Csv`: `needs_nested_array_transport` for `String[][]` row APIs.
 - `Libraries/Markdown`: `needs_record_transport` and `needs_nested_array_transport` for table/report helpers.
-- `Libraries/Pdf`: text/page/save migrated in M21 using `Pdf.PdfPage` handle transport and `Pdf.TextStyle` record transport; image drawing remains deferred because cross-family Image handles are not supported.
+- `Libraries/Pdf`: text/page/save migrated in M21 using `Pdf.PdfPage` handle transport and `Pdf.TextStyle` record transport; M30 adds PNG bytes drawing. Legacy `PdfDrawImage` / `PdfDrawImageSized` remain deferred because cross-family Image handles are not supported.
 - `Libraries/Plot`: migrated in M16 through `Float[]` plus declared non-recursive record argument transport; record returns/handles remain unsupported.
-- `Libraries/Image`: `needs_handle_transport`.
+- `Libraries/Image`: handle transport migrated in M19; M30 adds PNG `Bytes` export.
 
 See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the focused M11 table.
 

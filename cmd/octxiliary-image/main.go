@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -45,6 +46,9 @@ func (t *imageTable) get(value octxiliary.Value) (*storedImage, error) {
 	}
 	if value.HandleFamily != imageFamily || value.HandleType != imageHandle {
 		return nil, fmt.Errorf("expected %s %s handle", imageFamily, imageHandle)
+	}
+	if value.HandleID <= 0 {
+		return nil, fmt.Errorf("image handle ID must be positive")
 	}
 	image, ok := t.images[value.HandleID]
 	if !ok {
@@ -111,6 +115,15 @@ func (t *imageTable) dispatch(req octxiliary.Request) (octxiliary.Value, error) 
 			return octxiliary.Value{}, err
 		}
 		return save(image, req.Args[1].String)
+	case "ImageEncodePng":
+		if err := expect(req.Args, octxiliary.ValueHandle); err != nil {
+			return octxiliary.Value{}, err
+		}
+		image, err := t.get(req.Args[0])
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		return encodePng(image)
 	case "ImageWidth":
 		if err := expect(req.Args, octxiliary.ValueHandle); err != nil {
 			return octxiliary.Value{}, err
@@ -156,6 +169,14 @@ func (t *imageTable) load(path string) (octxiliary.Value, error) {
 	}
 	id := t.allocate(&storedImage{image: decoded, format: format})
 	return octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: imageFamily, HandleType: imageHandle, HandleID: id}, nil
+}
+
+func encodePng(image *storedImage) (octxiliary.Value, error) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.image); err != nil {
+		return octxiliary.Value{}, fmt.Errorf("encode png failed: %v", err)
+	}
+	return octxiliary.Value{Kind: octxiliary.ValueBytes, Bytes: encoded.Bytes()}, nil
 }
 
 func save(image *storedImage, path string) (octxiliary.Value, error) {

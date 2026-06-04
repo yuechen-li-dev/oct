@@ -419,6 +419,7 @@ func TestCheckRejectsInvalidM105PdfBuiltins(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawText(1, 0px, 0px, 5)? }", "function Main: function 'PdfDrawText' argument 4 expects String, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawImage(1, \"img\", 0px, 0px)? }", "function Main: function 'PdfDrawImage' argument 2 expects Int, got String")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawImageSized(1, 2, 0px, 0px, 100, 100px)? }", "function Main: function 'PdfDrawImageSized' argument 5 expects Int<px>, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawImageBytes(1, \"not bytes\", \"png\", 0px, 0px)? }", "function Main: function 'PdfDrawImageBytes' argument 2 expects Bytes, got String")
 	assertTypeErrorContains(t, "fn Main() -> Int ! Error { return PdfDrawTextStyled(1, 0px, 0px, \"x\", 12px, 0, 0)? }", "function Main: function 'PdfDrawTextStyled' expects 8 arguments, got 7")
 	assertTypeErrorContains(t, "fn Main() -> Int { return PdfSave(1, \"out.pdf\") }", "function Main: return value must not be fallible; handle it with '?', '!', or match")
 }

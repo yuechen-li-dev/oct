@@ -411,3 +411,13 @@ Pdf.DrawImageSized(page: PdfPage, image: Pdf.ImageHandle, x: Int<px>, y: Int<px>
 ```
 
 That follow-up must keep `Pdf.ImageHandle` owned by `octxiliary-pdf` and must treat the old raw integer bridge as interpreted compatibility only.
+
+## M30 implementation note
+
+M30 implements the design recommended here with an explicit PNG bytes transfer path:
+
+- `Image.EncodePng(image: Image.ImageHandle) -> Bytes ! Error` exports the Image sidecar's image handle as serialized PNG bytes.
+- `Pdf.DrawImageBytes(...)` and `Pdf.DrawImageBytesSized(...)` pass those bytes to the Pdf sidecar for one direct draw operation.
+- The compiled Oct binary mediates the transfer; `octxiliary-image` and `octxiliary-pdf` still never communicate directly.
+- Handles remain sidecar-family-local. M30 does not add cross-family handles, a global broker, shared registries, Pdf-owned image handles, path/file drawing APIs, or a transport/protocol revision.
+- PNG is the supported M30 image bytes format. Existing interpreted `Pdf.DrawImage` / `Pdf.DrawImageSized` remain legacy bridge APIs and are not migrated to compiled support by M30.
