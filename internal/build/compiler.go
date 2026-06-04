@@ -1727,6 +1727,48 @@ func (c *lowerCtx) withExpectedType(expected string, fn func() (string, string, 
 	return fn()
 }
 
+func (c *lowerCtx) lowerLogicalBinaryExpr(e ast.BinaryExpr) (string, string, bool, error) {
+	left, _, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Left) })
+	if err != nil {
+		return "", "", false, err
+	}
+
+	out := c.temp("Bool")
+	shortValue := "false"
+	rightOnTrue := true
+	if e.Operator == "or" {
+		shortValue = "true"
+		rightOnTrue = false
+	}
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: shortValue})
+
+	rightID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", rightID)})
+	mergeID := len(c.blocks)
+	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
+
+	trueTarget := c.blocks[rightID].Label
+	falseTarget := c.blocks[mergeID].Label
+	if !rightOnTrue {
+		trueTarget = c.blocks[mergeID].Label
+		falseTarget = c.blocks[rightID].Label
+	}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: left, TrueTarget: trueTarget, FalseTarget: falseTarget}
+
+	c.cur = rightID
+	right, _, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Right) })
+	if err != nil {
+		return "", "", false, err
+	}
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: right})
+	if c.blocks[c.cur].Terminator == nil {
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	}
+
+	c.cur = mergeID
+	return out, "Bool", false, nil
+}
+
 func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
@@ -1750,6 +1792,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		return c.goLocalName(e.Name), t, false, nil
 	case ast.BinaryExpr:
+		if e.Operator == "and" || e.Operator == "or" {
+			return c.lowerLogicalBinaryExpr(e)
+		}
 		l, lt, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Left) })
 		if err != nil {
 			return "", "", false, err

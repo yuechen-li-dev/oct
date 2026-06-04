@@ -723,6 +723,40 @@ fn main() -> Int {
 	}
 }
 
+func TestCompileAndRunLogicalOperatorsShortCircuitIndexExpressions(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn main() -> Int {
+    let xs = [10, 20, 30]
+    let j = 0
+    if j > 0 and xs[j - 1] > 0 {
+        return 1
+    }
+    if j == 0 or xs[j - 1] > 0 {
+        return 2
+    }
+    return 3
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "2" {
+		t.Fatalf("expected 2, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileAndRunBatchDeterministicRepeatedRuns(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
