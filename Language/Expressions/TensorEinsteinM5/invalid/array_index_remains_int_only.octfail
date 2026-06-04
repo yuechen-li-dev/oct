@@ -1,0 +1,9 @@
+expect error: "array indexing index must be Int, got Index"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let a = [1.0, 2.0]
+    let _ = a[i]
+}

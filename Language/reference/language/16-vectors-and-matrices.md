@@ -71,15 +71,17 @@ Users create symbolic labels with `Idx("name")`, which returns `Index`.
 
 - `A[i, j]` where `i, j: Index` creates a rank-2 indexed tensor term in interpreted mode.
 - Mixed index forms such as `A[i, 0]` are invalid; matrix indexing expects either `[Int, Int]` concrete element access or `[Index, Index]` Einstein term access.
-- `v[i]` where `i: Index` is future/unsupported in M32; vector rank-1 indexed terms are not implemented yet.
+- `v[i]` where `i: Index` creates a rank-1 indexed vector term in interpreted mode.
+- `v[n]` where `n: Int` remains concrete vector element access.
+- Arrays remain concrete storage values and are not tensor-indexable with `Index` labels.
 - `A[i, i]` trace-style sugar is intentionally unsupported; use `Trace(A)`.
 
 Indexed tensor expressions preserve label structure while they are being composed.
-A materialized indexed expression result is a `Matrix<T>` that can be re-indexed in a later expression.
+A materialized indexed expression result is an ordinary scalar, `Vector<T>`, or `Matrix<T>` value. It does not secretly carry labels after assignment; explicitly index the materialized vector or matrix again to reintroduce labels.
 
 ## Einstein multiplication
 
-`A[i, k] * B[k, j]` performs Einstein multiplication over rank-2 indexed matrix terms.
+Indexed `*` performs Einstein multiplication over rank-1 vector and rank-2 matrix indexed terms in interpreted mode.
 Repeated labels are contracted, and labels appearing once are free indices.
 
 ```oct
@@ -96,12 +98,15 @@ Current constraints:
 
 - Both operands must be indexed terms.
 - A label appearing more than twice is invalid.
-- The current rank-2 implementation requires exactly two free indices for multiplication results.
-- Scalar, dot-product, trace-style, and double-contraction tensor results are not implemented by indexed source syntax in M32.
+- M36 supports interpreted result ranks 0, 1, and 2: scalar, `Vector<T>`, and `Matrix<T>`.
+- Supported interpreted rank-1/rank-2 shapes include `a[i] * b[i]` dot product, `a[i] * b[j]` outer product, `A[i, j] * x[j]` matrix-vector contraction, `x[i] * A[i, j]` vector-matrix contraction, and existing `A[i, k] * B[k, j]` matrix-matrix contraction.
+- Rank-N tensor outputs remain deferred.
+- Rank-2 matrix scalar double contractions such as `A[i, j] * B[j, i]` and `A[i, j] * B[i, j]` remain deferred.
+- Trace-style `A[i, i]` remains unsupported by indexed source syntax.
 
 ## Einstein addition
 
-`A[i, j] + B[i, j]` performs elementwise indexed addition when free-index order matches exactly.
+`a[i] + b[i]` and `A[i, j] + B[i, j]` perform elementwise indexed addition when free-index order matches exactly.
 
 ```oct
 let i = Idx("i")
@@ -114,16 +119,16 @@ let c = a[i, j] + b[i, j]
 
 Validation rules:
 
-- Both operands must be indexed rank-2 matrix terms.
-- Labels within each term must be distinct.
+- Both operands must be indexed terms of the same rank.
+- M36 supports rank-1 vectors and rank-2 matrices.
 - Free-index order must match exactly.
-- Shapes must match at runtime.
-- There is no automatic transposition or reordering for `A[i, j] + B[j, i]`.
+- Shapes or lengths must match at runtime.
+- There is no automatic transposition, reordering, or broadcasting for `A[i, j] + B[j, i]` or `a[i] + b[j]`.
 
 ## Einstein subtraction
 
-M32 supports interpreted rank-2 Einstein subtraction.
-`A[i, j] - B[i, j]` performs elementwise indexed subtraction when free-index order matches exactly.
+M32 added interpreted rank-2 Einstein subtraction, and M36 adds interpreted rank-1 vector subtraction.
+`a[i] - b[i]` and `A[i, j] - B[i, j]` perform elementwise indexed subtraction when free-index order matches exactly.
 
 ```oct
 let i = Idx("i")
@@ -136,11 +141,11 @@ let c = a[i, j] - b[i, j]
 
 Validation mirrors addition:
 
-- Both operands must be indexed rank-2 matrix terms.
-- Labels within each term must be distinct.
+- Both operands must be indexed terms of the same rank.
+- M36 supports rank-1 vectors and rank-2 matrices.
 - Free-index order must match exactly.
-- Shapes must match at runtime.
-- There is no automatic transposition or reordering for `A[i, j] - B[j, i]`.
+- Shapes or lengths must match at runtime.
+- There is no automatic transposition, reordering, or broadcasting for `A[i, j] - B[j, i]` or `a[i] - b[j]`.
 
 ## `@` as Einstein contraction shorthand
 
@@ -150,8 +155,8 @@ It is shorthand for currently supported linear-algebra contractions:
 - `A @ B` is matrix-matrix contraction, conceptually `A[i, k] * B[k, j]`.
 - `A @ x` is matrix-vector contraction, conceptually `A[i, j] * x[j]`.
 
-Vector rank-1 indexed terms are not yet source-level syntax, so `A @ x` has this mathematical meaning even before `x[j]` syntax is implemented.
-Current supported cases are `Matrix<T> @ Vector<U>` and `Matrix<T> @ Matrix<U>`.
+After M36, interpreted source-level `A[i, j] * x[j]` expresses the matrix-vector contraction directly.
+`@` behavior is unchanged by M36: current supported cases are `Matrix<T> @ Vector<U>` and `Matrix<T> @ Matrix<U>`.
 `@` requires dimension compatibility (`left.cols == right.rows` for matrix-matrix).
 For dimension-qualified elements, `@` propagates dimensions by scalar multiplication and addition across contractions:
 
@@ -170,7 +175,7 @@ let bad = A[i, i]
 ```
 
 Use `Trace(A)` instead.
-This keeps trace semantics explicit while the indexed surface remains rank-2 matrix-result only.
+This keeps trace semantics explicit while indexed trace sugar and rank-2 scalar double contractions remain deferred.
 
 ## Differential representational operators
 
@@ -187,12 +192,15 @@ Continuum mechanics contracts use this surface to express field-form equations s
 
 ## Interpreted vs compiled support
 
-Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface.
+Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M36 adds interpreted-only vector rank-1 indexed terms and mixed vector/matrix indexed contractions.
 
+- Interpreted mode supports `Vector[Int]` concrete element access and `Vector[Index]` rank-1 indexed terms.
+- Interpreted mode supports rank-1 vector indexed `+`/`-`, vector dot product, vector outer product, matrix-vector indexed contraction, vector-matrix indexed contraction, and the existing rank-2 matrix indexed `*`, `+`, and `-`.
+- Arrays remain non-tensor-indexable.
 - Compiled mode supports concrete vector/matrix indexing, `@` helper lowering, `Idx`, and rank-2 matrix indexed Einstein `*`, `+`, and `-`.
-- Compiled matrix indexing remains split by index type: `[Int, Int]` is concrete element access, while `[Index, Index]` is an indexed rank-2 matrix term.
-- Vector rank-1 indexed terms remain deferred; `v[i]` where `i: Index` is still unsupported.
+- Compiled vector rank-1 indexed terms and mixed vector/matrix indexed contractions are deferred to M37.
 - Scalar/double contractions such as `A[i, j] * B[j, i]`, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, covariant/contravariant variance, and raising/lowering remain unsupported.
+- `@` behavior is unchanged in M36.
 - Differential tensor operators are not documented as compiled-parity guarantees in the current corpus.
 
 Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
@@ -200,7 +208,7 @@ Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and 
 - **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-vector and matrix-matrix, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
 - **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
 - **M33 compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, and rank-2 matrix indexed `*`, `+`, and `-` over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
-- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms, and non-matrix indexing remains single-dimension.
+- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms. Compiled vector indexing remains concrete `Int` element access only until M37.
 
 ## Examples
 
