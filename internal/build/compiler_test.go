@@ -1436,6 +1436,122 @@ fn main() -> Float {
 	}
 }
 
+func TestCompileCoercesIntArrayLiteralsInFloatArrayContexts(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+record Samples {
+    Values: Float[]
+}
+
+fn Sum(values: Float[]) -> Float {
+    return values[0] + values[1] + values[2]
+}
+
+fn Returned() -> Float[] {
+    return [1, 2, 3]
+}
+
+fn AnnotatedLocal() -> Float[] {
+    let values: Float[] = [1, 2, 3]
+    return values
+}
+
+fn RecordValues() -> Samples {
+    return Samples { Values: [1, 2, 3] }
+}
+
+fn main() -> Float {
+    let fromArg = Sum([1, 2, 3])
+    let fromReturn = Returned()
+    let fromLocal = AnnotatedLocal()
+    let fromRecord = RecordValues()
+    return fromArg + fromReturn[0] + fromLocal[1] + fromRecord.Values[2]
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "12" {
+		t.Fatalf("expected 12, got %q", strings.TrimSpace(string(out)))
+	}
+	dump, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(dump)
+	if strings.Contains(text, "call Main.Sum(_t0)") && strings.Contains(text, "_t0 = [1, 2, 3]") {
+		t.Fatalf("expected Float[] argument literal to be lowered with Float element context, got:\n%s", text)
+	}
+}
+
+func TestCompileUsesTemporaryForDiscardForLoopVariable(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Repeat(value: Float, count: Int) -> Float[] {
+    var out = [value]
+    for _ in 1 .. count {
+        out = Append(out, value)
+    }
+    return out
+}
+
+fn main() -> Int {
+    return Len(Repeat(2.0, 4))
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_KEEP_GEN", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "4" {
+		t.Fatalf("expected 4, got %q", strings.TrimSpace(string(out)))
+	}
+	generatedPaths, err := filepath.Glob(filepath.Join("..", "..", ".octbuild", "gen-*", filepath.Base(result.ArtifactPath)+".gen.go"))
+	if err != nil {
+		t.Fatalf("glob generated Go: %v", err)
+	}
+	var text string
+	for _, path := range generatedPaths {
+		generated, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read generated Go %s: %v", path, err)
+		}
+		if strings.Contains(string(generated), "fn_Main_Repeat") {
+			text = string(generated)
+			break
+		}
+	}
+	if text == "" {
+		t.Fatalf("generated Go for Repeat not found in %v", generatedPaths)
+	}
+	for _, bad := range []string{"if (_ <", "_ = (_ +"} {
+		if strings.Contains(text, bad) {
+			t.Fatalf("generated Go used blank identifier as a loop value (%q):\n%s", bad, text)
+		}
+	}
+}
+
 func TestCompileFlowResultBeforeCompletionFails(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
