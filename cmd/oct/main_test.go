@@ -1422,6 +1422,8 @@ func TestVectorsMatricesRunAndBuild(t *testing.T) {
 		{"scalar expansion", "fn Main() -> Vector<Int> { return vector[1, 2, 3] + 1 }", "vector[2, 3, 4]\n"},
 		{"matrix at vector", "fn Main() -> Vector<Int> { let m = matrix[[1, 2] [3, 4]] let v = vector[10, 20] return m @ v }", "vector[50, 110]\n"},
 		{"matrix at matrix", "fn Main() -> Matrix<Int> { let a = matrix[[1, 2] [3, 4]] let b = matrix[[5, 6] [7, 8]] return a @ b }", "matrix[[19, 22], [43, 50]]\n"},
+		{"vector at matrix", "fn Main() -> Vector<Int> { let x = vector[10, 20] let a = matrix[[1, 2] [3, 4]] return x @ a }", "vector[70, 100]\n"},
+		{"vector at vector", "fn Main() -> Int { return vector[1, 2, 3] @ vector[10, 20, 30] }", "140\n"},
 		{"dimensioned matrix vector", "fn Main() -> Vector<Float<m>> { let k = matrix[[1.0m/s, 0.0m/s] [0.0m/s, 2.0m/s]] let x = vector[3.0s, 4.0s] return k @ x }", "vector[3m, 8m]\n"},
 	}
 	for _, test := range valid {
@@ -1446,7 +1448,6 @@ func TestVectorsMatricesRunAndBuild(t *testing.T) {
 		wantMessage string
 	}{
 		{"ragged matrix", "fn Main() -> Matrix<Int> { return matrix[[1, 2] [3]] }", "matrix rows must all have equal length"},
-		{"vector at vector unsupported", "fn Main() -> Int { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>"},
 		{"vector compare unsupported", "fn Main() -> Bool { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>"},
 	}
 	for _, test := range invalidBuild {

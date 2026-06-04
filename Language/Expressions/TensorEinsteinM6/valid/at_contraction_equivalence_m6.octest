@@ -1,0 +1,78 @@
+package MainValid
+
+[Fact]
+fn MatrixMatrixAtMatchesIndexedContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let k = Idx("k")
+    let A = matrix[[1, 2] [3, 4]]
+    let B = matrix[[5, 6] [7, 8]]
+
+    let byAt = A @ B
+    let byIndex = A[i, k] * B[k, j]
+
+    Assert.Equal(byIndex[0, 0], byAt[0, 0], "mm00")
+    Assert.Equal(byIndex[0, 1], byAt[0, 1], "mm01")
+    Assert.Equal(byIndex[1, 0], byAt[1, 0], "mm10")
+    Assert.Equal(byIndex[1, 1], byAt[1, 1], "mm11")
+}
+
+[Fact]
+fn MatrixVectorAtMatchesIndexedContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let x = vector[10, 20]
+
+    let byAt = A @ x
+    let byIndex = A[i, j] * x[j]
+
+    Assert.Equal(byIndex[0], byAt[0], "mv0")
+    Assert.Equal(byIndex[1], byAt[1], "mv1")
+}
+
+[Fact]
+fn VectorMatrixAtMatchesIndexedContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let x = vector[10, 20]
+    let A = matrix[[1, 2] [3, 4]]
+
+    let byAt = x @ A
+    let byIndex = x[i] * A[i, j]
+
+    Assert.Equal(byIndex[0], byAt[0], "vm0")
+    Assert.Equal(byIndex[1], byAt[1], "vm1")
+}
+
+[Fact]
+fn VectorVectorAtMatchesIndexedDotProduct() -> Void {
+    let i = Idx("i")
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+
+    let byAt = a @ b
+    let byIndex = a[i] * b[i]
+
+    Assert.Equal(byIndex, byAt, "dot")
+}
+
+[Fact]
+fn RectangularMatrixVectorAndVectorMatrixAtWork() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2, 3] [4, 5, 6]]
+    let x = vector[10, 20, 30]
+    let y = vector[7, 11]
+
+    let mvByAt = A @ x
+    let mvByIndex = A[i, j] * x[j]
+    Assert.Equal(mvByIndex[0], mvByAt[0], "rect-mv0")
+    Assert.Equal(mvByIndex[1], mvByAt[1], "rect-mv1")
+
+    let vmByAt = y @ A
+    let vmByIndex = y[i] * A[i, j]
+    Assert.Equal(vmByIndex[0], vmByAt[0], "rect-vm0")
+    Assert.Equal(vmByIndex[1], vmByAt[1], "rect-vm1")
+    Assert.Equal(vmByIndex[2], vmByAt[2], "rect-vm2")
+}

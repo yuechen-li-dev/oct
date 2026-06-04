@@ -5971,6 +5971,20 @@ func (c checker) checkLinearAlgebraBinaryExpr(operator string, leftType Type, ri
 			}
 			return Type{Base: result.Base, Dimension: result.Dimension, IsVector: true}, nil
 		}
+		if leftType.IsVector && rightType.IsMatrix {
+			result, err := c.checkBinaryExpr("*", leftScalar, rightScalar)
+			if err != nil {
+				return Type{}, err
+			}
+			return Type{Base: result.Base, Dimension: result.Dimension, IsVector: true}, nil
+		}
+		if leftType.IsVector && rightType.IsVector {
+			result, err := c.checkBinaryExpr("*", leftScalar, rightScalar)
+			if err != nil {
+				return Type{}, err
+			}
+			return Type{Base: result.Base, Dimension: result.Dimension}, nil
+		}
 		return Type{}, fmt.Errorf("operator '@' not defined for %s and %s", leftType, rightType)
 	}
 
@@ -6009,6 +6023,9 @@ func (c checker) checkLinearAlgebraBinaryExpr(operator string, leftType Type, ri
 }
 
 func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if operator == "@" {
+		return Type{}, fmt.Errorf("operator '@' not defined for %s and %s", leftType, rightType)
+	}
 	if !leftType.IsArray || !rightType.IsArray {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
