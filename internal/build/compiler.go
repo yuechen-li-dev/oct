@@ -1082,6 +1082,11 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if err != nil {
 				return err
 			}
+			if s.TypeHint != nil {
+				hint := typeRefStringForPackage(c.pkg.Name, *s.TypeHint)
+				v = coerceExprToType(v, t, hint)
+				t = hint
+			}
 			c.declareLocal(s.Name, t)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.VarStmt:
@@ -1095,6 +1100,11 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 			if err != nil {
 				return err
+			}
+			if s.TypeHint != nil {
+				hint := typeRefStringForPackage(c.pkg.Name, *s.TypeHint)
+				v = coerceExprToType(v, t, hint)
+				t = hint
 			}
 			c.declareLocal(s.Name, t)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
@@ -1197,6 +1207,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if err != nil {
 				return err
 			}
+			v = coerceExprToType(v, t, c.retType)
 			c.lastRet = t
 			if c.fn.IsFallible {
 				if t == "Error" {
@@ -1529,16 +1540,19 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	previousType, hadPrevious := c.locals[s.Name]
 	previousGoName := c.goLocalName(s.Name)
 	loopGoName := goIdent(s.Name)
-	if hadPrevious {
+	bindLoopName := s.Name != "_"
+	if !bindLoopName || hadPrevious {
 		loopGoName = c.temp("Int")
 	}
-	c.locals[s.Name] = "Int"
-	c.goNames[s.Name] = loopGoName
+	if bindLoopName {
+		c.locals[s.Name] = "Int"
+		c.goNames[s.Name] = loopGoName
+	}
 
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: startLocal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: startLocal})
 	c.cur = condID
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        fmt.Sprintf("(%s < %s)", c.goLocalName(s.Name), endLocal),
+		Cond:        fmt.Sprintf("(%s < %s)", loopGoName, endLocal),
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1552,7 +1566,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	c.cur = incrID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: fmt.Sprintf("(%s + %s)", c.goLocalName(s.Name), stepLocal)})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: fmt.Sprintf("(%s + %s)", loopGoName, stepLocal)})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
 
 	c.cur = stepFailID
@@ -1562,7 +1576,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s) + %q + fmt.Sprint(%s)", "runtime error: range start must be less than or equal to end, got ", startLocal, "..", endLocal)}
 
 	c.cur = exitID
-	if hadPrevious {
+	if bindLoopName && hadPrevious {
 		c.locals[s.Name] = previousType
 		c.goNames[s.Name] = previousGoName
 	}
@@ -1737,6 +1751,9 @@ func coerceExprToType(value, from, to string) string {
 	if isIntScalarTypeString(from) && isFloatScalarTypeString(to) {
 		return fmt.Sprintf("float64(%s)", value)
 	}
+	if isIntArrayTypeString(from) && isFloatArrayTypeString(to) {
+		return fmt.Sprintf("__octIntArrayToFloat(%s)", value)
+	}
 	if isComplexScalarTypeString(to) && isNumericTypeString(from) {
 		return fmt.Sprintf("complex(float64(%s), 0)", value)
 	}
@@ -1816,8 +1833,14 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if expected, ok := c.currentExpectedType(); ok && isFloatScalarTypeString(expected) {
 			return fmt.Sprintf("float64(%s)", e.Value), expected, false, nil
 		}
+		if e.HasUnit {
+			return e.Value, fmt.Sprintf("Int<%s>", e.Dimension.String()), false, nil
+		}
 		return e.Value, "Int", false, nil
 	case ast.FloatLiteral:
+		if e.HasUnit {
+			return e.Value, fmt.Sprintf("Float<%s>", e.Dimension.String()), false, nil
+		}
 		return e.Value, "Float", false, nil
 	case ast.BoolLiteral:
 		if e.Value {
@@ -2228,12 +2251,16 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		args := make([]string, 0, len(e.Arguments))
 		argTypes := make([]string, 0, len(e.Arguments))
 		for i, a := range e.Arguments {
-			v, at, _, err := c.lowerExpr(a)
+			var expected string
+			if i < len(expectedArgTypes) {
+				expected = expectedArgTypes[i]
+			}
+			v, at, _, err := c.withExpectedType(expected, func() (string, string, bool, error) { return c.lowerExpr(a) })
 			if err != nil {
 				return "", "", false, err
 			}
-			if i < len(expectedArgTypes) {
-				v = goCoerceArg(v, at, expectedArgTypes[i])
+			if expected != "" {
+				v = goCoerceArg(v, at, expected)
 			}
 			args = append(args, v)
 			argTypes = append(argTypes, at)
@@ -3063,8 +3090,11 @@ func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
 }
 
 func goCoerceArg(expr string, actual string, expected string) string {
-	if actual == "Int" && isFloatLikeType(expected) {
+	if isIntScalarTypeString(actual) && isFloatLikeType(expected) {
 		return fmt.Sprintf("float64(%s)", expr)
+	}
+	if isIntArrayTypeString(actual) && isFloatArrayTypeString(expected) {
+		return fmt.Sprintf("__octIntArrayToFloat(%s)", expr)
 	}
 	if expected == "Complex" && isNumericTypeString(actual) {
 		return fmt.Sprintf("complex(float64(%s), 0)", expr)
@@ -3628,12 +3658,29 @@ func parseMatrixElemType(t string) (string, bool) {
 	return parseGenericType(t, "Matrix")
 }
 
+func parseArrayElemType(t string) (string, bool) {
+	if !strings.HasSuffix(t, "[]") {
+		return "", false
+	}
+	return strings.TrimSuffix(t, "[]"), true
+}
+
 func isFloatScalarTypeString(t string) bool {
 	return t == "Float" || (strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">"))
 }
 
 func isIntScalarTypeString(t string) bool {
 	return t == "Int" || (strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">"))
+}
+
+func isFloatArrayTypeString(t string) bool {
+	elem, ok := parseArrayElemType(t)
+	return ok && isFloatScalarTypeString(elem)
+}
+
+func isIntArrayTypeString(t string) bool {
+	elem, ok := parseArrayElemType(t)
+	return ok && isIntScalarTypeString(elem)
 }
 
 func isNumericTypeString(t string) bool {
@@ -5192,6 +5239,7 @@ func emitGo(m MIRModule) (string, error) {
 			return "", err
 		}
 	}
+	b.WriteString(__octArrayCoercionHelpers)
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
@@ -5507,6 +5555,16 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
 	}
 }
+
+const __octArrayCoercionHelpers = `
+func __octIntArrayToFloat(values []int) []float64 {
+	out := make([]float64, len(values))
+	for i, value := range values {
+		out[i] = float64(value)
+	}
+	return out
+}
+`
 
 const __octComplexHelpers = `
 func __octComplexReal(value complex128) float64 { return real(value) }

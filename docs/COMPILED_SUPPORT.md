@@ -5,6 +5,14 @@ _Last updated: 2026-06-04._
 This file is the **source of truth** for compiled support posture.
 
 
+## M28a RF compiled cleanup status
+
+M28a makes the full `Libraries/RF --execution compiled` package run compiled-green: the focused run reports 57 passed / 0 failed, while `Libraries/RF/RF.SParameters.octest --execution compiled` remains 7 passed / 0 failed and interpreted RF remains 57 passed / 0 failed. The fixes are generated-Go cleanup only: discard `for _ in ...` loops now use real compiler temporaries instead of reading Go's blank identifier, expected parameter/return/local/record contexts now coerce integer array literals toward `Float[]` where Oct typing permits it, and unit-bearing `Int<unit>[]` values are converted elementwise when passed to `Float<unit>[]` parameters.
+
+Focused `internal/build` regressions cover `Int[]` to `Float[]` argument, return, record-field, and typed-local contexts plus generated-Go inspection that rejects `_` as a loop value. See `docs/internal/stdlib_compiled_coverage_m28a.md` for the M28a delta.
+
+Still deferred after M28a: Einstein/tensor notation, new Complex features, broad callback/function-value support, wrapper migrations, Octxiliary protocol or transport changes, Pdf image interop, UI live/native bridge work, package-manager sidecar lifecycle changes, and RF public API redesign.
+
 ## M27b DifferentialEquations step coercion status
 
 M27b confirms `Libraries/DifferentialEquations --execution compiled` is now compiled-green: the focused run reports 6 passed / 0 failed, matching the interpreted run. The remaining M27a failures were generated-Go `Int`/`Float` coercion leaks around `steps: Int`; the fixed lowering keeps `steps` as an `Int` binding and emits `float64(steps)` only at Float expression sites, not when passing the same binding to `Int`-typed helpers such as solve/validation calls.
