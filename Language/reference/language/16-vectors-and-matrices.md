@@ -185,19 +185,20 @@ Continuum mechanics contracts use this surface to express field-form equations s
 
 ## Interpreted vs compiled support
 
-Indexed tensor notation is currently interpreted-supported.
-Compiled support for `Idx` and indexed Einstein terms remains deferred to M33+.
+Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface.
 
-- Compiled mode currently supports concrete vector/matrix indexing and `@` helper lowering.
-- Compiled mode does not currently support `Idx` / indexed Einstein terms.
+- Compiled mode supports concrete vector/matrix indexing, `@` helper lowering, `Idx`, and rank-2 matrix indexed Einstein `*`, `+`, and `-`.
+- Compiled matrix indexing remains split by index type: `[Int, Int]` is concrete element access, while `[Index, Index]` is an indexed rank-2 matrix term.
+- Vector rank-1 indexed terms remain deferred; `v[i]` where `i: Index` is still unsupported.
+- Scalar/double contractions such as `A[i, j] * B[j, i]`, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, covariant/contravariant variance, and raising/lowering remain unsupported.
 - Differential tensor operators are not documented as compiled-parity guarantees in the current corpus.
-- Do not infer arbitrary rank-N tensors, vector rank-1 indexed terms, broadcasting, covariant/contravariant variance, raising/lowering indices, or compiled indexed tensor lowering from the current indexed matrix surface.
 
 Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
 
 - **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-vector and matrix-matrix, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
 - **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
-- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete indices for element access, and non-matrix indexing remains single-dimension.
+- **M33 compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, and rank-2 matrix indexed `*`, `+`, and `-` over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
+- **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms, and non-matrix indexing remains single-dimension.
 
 ## Examples
 

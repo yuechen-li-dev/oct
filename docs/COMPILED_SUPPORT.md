@@ -271,3 +271,15 @@ Deferred in compiled mode: `Pdf.DrawImage`, `Pdf.DrawImageSized`, and compiled `
 ## M30 Pdf/Image bytes interop
 
 `Image.EncodePng` is compiled-supported and exports an Image-owned handle as PNG `Bytes`. `Pdf.DrawImageBytes` and `Pdf.DrawImageBytesSized` are compiled-supported and consume PNG bytes in the Pdf sidecar. Legacy `Pdf.DrawImage` / `Pdf.DrawImageSized` remain interpreted legacy bridge APIs and compiled-deferred; M30 adds no cross-family handles, sidecar-to-sidecar calls, broker, protocol change, path/file drawing API, or Pdf-owned image handle table.
+
+
+## M33 rank-2 matrix Einstein compiled support
+
+Compiled mode now supports the existing rank-2 matrix indexed Einstein surface:
+
+- `Idx("name") -> Index` lowers to a validated string label.
+- Explicit public `EinMul(A, i, k, B, k, j)` and `EinAdd(A, i, j, B, i, j)` lower to shared generated matrix helpers.
+- Infix `A[i, k] * B[k, j]`, `A[i, j] + B[i, j]`, and `A[i, j] - B[i, j]` are compiled-supported for rank-2 matrices.
+- Nested expression trees preserve labels during lowering, while assigned intermediates remain ordinary matrices and can be reindexed explicitly.
+
+Still deferred: vector rank-1 indexed terms, dot/outer products from vector indexed notation, matrix-vector indexed notation, scalar/double contractions, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels. The `@` operator behavior is unchanged.

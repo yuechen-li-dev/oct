@@ -47,8 +47,8 @@ func TestMechanicsPackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStdout != "" {
 		t.Fatalf("expected empty build stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "compiled mode does not yet support builtin Idx") {
-		t.Fatalf("expected unsupported tensor index builtin diagnostic, got %q", buildStderr)
+	if !strings.Contains(buildStderr, "invalid operation") || !strings.Contains(buildStderr, "mismatched types float64 and [][]float64") {
+		t.Fatalf("expected remaining scalar-matrix generated-Go diagnostic, got %q", buildStderr)
 	}
 	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)

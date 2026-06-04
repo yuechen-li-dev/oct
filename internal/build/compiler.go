@@ -481,6 +481,10 @@ func compilerModuleRoot() (string, error) {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..")), nil
 }
 
+type einsteinTermMeta struct {
+	Labels []string
+}
+
 type lowerCtx struct {
 	expectedTypeStack []string
 	pkg               project.Package
@@ -497,6 +501,7 @@ type lowerCtx struct {
 	lastRet           string
 	usesUtilityWhen   bool
 	inPrometheus      bool
+	einTerms          map[string]einsteinTermMeta
 }
 
 func lowerProgram(program project.Program, options compileOptions) (MIRModule, error) {
@@ -1020,7 +1025,7 @@ func resolveStaticCallTarget(callee ast.Expr) ([2]string, bool) {
 }
 
 func lowerFunction(program project.Program, pkg project.Package, fn ast.FunctionDecl) ([]MIRFunction, error) {
-	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, goNames: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn}
+	ctx := &lowerCtx{pkg: pkg, program: program, locals: map[string]string{}, goNames: map[string]string{}, retType: typeRefStringForPackage(pkg.Name, fn.ReturnType), fn: fn, einTerms: map[string]einsteinTermMeta{}}
 	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
@@ -1827,6 +1832,51 @@ func (c *lowerCtx) lowerLogicalBinaryExpr(e ast.BinaryExpr) (string, string, boo
 	return out, "Bool", false, nil
 }
 
+func (c *lowerCtx) einTerm(value string) (einsteinTermMeta, bool) {
+	if c.einTerms == nil {
+		return einsteinTermMeta{}, false
+	}
+	term, ok := c.einTerms[value]
+	return term, ok
+}
+
+func (c *lowerCtx) setEinTerm(value string, labels []string) {
+	if c.einTerms == nil {
+		c.einTerms = map[string]einsteinTermMeta{}
+	}
+	c.einTerms[value] = einsteinTermMeta{Labels: append([]string(nil), labels...)}
+}
+
+func einsteinMulFreeLabels(left []string, right []string) ([]string, error) {
+	if len(left) != 2 || len(right) != 2 {
+		return nil, fmt.Errorf("compiled Einstein matrix helpers require rank-2 labels")
+	}
+	ordered := []string{left[0], left[1], right[0], right[1]}
+	counts := map[string]int{}
+	for _, label := range ordered {
+		counts[label]++
+	}
+	free := make([]string, 0, 2)
+	seenFree := map[string]struct{}{}
+	for _, label := range ordered {
+		count := counts[label]
+		if count == 1 {
+			if _, seen := seenFree[label]; !seen {
+				free = append(free, label)
+				seenFree[label] = struct{}{}
+			}
+			continue
+		}
+		if count > 2 {
+			return nil, fmt.Errorf("compiled Einstein multiplication index '%s' appears %d times; only 1 (free) or 2 (contracted) are allowed", label, count)
+		}
+	}
+	if len(free) != 2 {
+		return nil, fmt.Errorf("compiled Einstein multiplication requires exactly 2 free indices, got %d", len(free))
+	}
+	return free, nil
+}
+
 func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
@@ -1869,6 +1919,47 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		r, rt, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Right) })
 		if err != nil {
 			return "", "", false, err
+		}
+		if leftTerm, leftIndexed := c.einTerm(l); leftIndexed {
+			rightTerm, rightIndexed := c.einTerm(r)
+			if !rightIndexed {
+				return "", "", false, fmt.Errorf("compiled indexed tensor expressions must appear on both sides of '%s'", e.Operator)
+			}
+			leftElem, leftMatrix := parseMatrixElemType(lt)
+			rightElem, rightMatrix := parseMatrixElemType(rt)
+			if !leftMatrix || !rightMatrix {
+				return "", "", false, fmt.Errorf("compiled indexed tensor expressions require matrix operands")
+			}
+			ret := "Matrix<" + unifyLinearElemType(leftElem, rightElem) + ">"
+			tmp := c.temp(ret)
+			switch e.Operator {
+			case "*":
+				free, err := einsteinMulFreeLabels(leftTerm.Labels, rightTerm.Labels)
+				if err != nil {
+					return "", "", false, err
+				}
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMul", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
+				c.setEinTerm(tmp, free)
+				return tmp, ret, false, nil
+			case "+", "-":
+				if len(leftTerm.Labels) != 2 || len(rightTerm.Labels) != 2 {
+					return "", "", false, fmt.Errorf("compiled Einstein addition/subtraction requires rank-2 labels")
+				}
+				if leftTerm.Labels[0] != rightTerm.Labels[0] || leftTerm.Labels[1] != rightTerm.Labels[1] {
+					return "", "", false, fmt.Errorf("compiled Einstein '%s' requires matching free-index order", e.Operator)
+				}
+				callee := "EinAdd"
+				if e.Operator == "-" {
+					callee = "EinSub"
+				}
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
+				c.setEinTerm(tmp, leftTerm.Labels)
+				return tmp, ret, false, nil
+			default:
+				return "", "", false, fmt.Errorf("compiled indexed tensor expressions only support '+', '-', and '*'")
+			}
+		} else if _, rightIndexed := c.einTerm(r); rightIndexed {
+			return "", "", false, fmt.Errorf("compiled indexed tensor expressions must appear on both sides of '%s'", e.Operator)
 		}
 		if e.Operator == "@" {
 			if leftElem, ok := parseMatrixElemType(lt); ok {
@@ -2275,6 +2366,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			ret = checkedRet
 		}
+		if builtin && (callee == "Idx" || callee == "EinMul" || callee == "EinAdd" || callee == "EinSub") {
+			checkedRet, err := compiledBuiltinReturnType(callee, argTypes)
+			if err != nil {
+				return "", "", false, err
+			}
+			ret = checkedRet
+		}
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
@@ -2456,17 +2554,26 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if len(e.Indices) != 2 {
 				return "", "", false, fmt.Errorf("compiled mode matrix indexing requires exactly 2 indices")
 			}
-			r, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
+			first, firstType, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[0]) })
 			if err != nil {
 				return "", "", false, err
 			}
-			cIdx, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[1]) })
+			second, secondType, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Indices[1]) })
 			if err != nil {
 				return "", "", false, err
 			}
-			tmp := c.temp(matrixElem)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s][%s]", target, r, cIdx)})
-			return tmp, matrixElem, false, nil
+			if firstType == "Int" && secondType == "Int" {
+				tmp := c.temp(matrixElem)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s][%s]", target, first, second)})
+				return tmp, matrixElem, false, nil
+			}
+			if firstType == "Index" && secondType == "Index" {
+				tmp := c.temp(targetType)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: target})
+				c.setEinTerm(tmp, []string{first, second})
+				return tmp, targetType, false, nil
+			}
+			return "", "", false, fmt.Errorf("compiled mode matrix indexing expects either [Int, Int] element access or [Index, Index] Einstein term access, got [%s, %s]", firstType, secondType)
 		}
 		if len(e.Indices) != 1 {
 			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
@@ -2677,14 +2784,15 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 		workerGoNames[captureName] = c.goLocalName(captureName)
 	}
 	wctx := &lowerCtx{
-		pkg:     c.pkg,
-		program: c.program,
-		locals:  workerLocals,
-		goNames: workerGoNames,
-		blocks:  []MIRBlock{{Label: "entry"}},
-		cur:     0,
-		retType: retPlaceholder,
-		fn:      workerDecl,
+		pkg:      c.pkg,
+		program:  c.program,
+		locals:   workerLocals,
+		goNames:  workerGoNames,
+		blocks:   []MIRBlock{{Label: "entry"}},
+		cur:      0,
+		retType:  retPlaceholder,
+		fn:       workerDecl,
+		einTerms: map[string]einsteinTermMeta{},
 	}
 	if err := wctx.lowerBlock(e.Body); err != nil {
 		return MIRFunction{}, "", nil, err
@@ -3142,6 +3250,12 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if x.Name == "Float" {
 			return "Float", "Float", true, false, nil
+		}
+		if x.Name == "Idx" {
+			return "Idx", "Index", true, false, nil
+		}
+		if x.Name == "EinMul" || x.Name == "EinAdd" || x.Name == "EinSub" {
+			return x.Name, "", true, false, nil
 		}
 		if x.Name == "Complex" {
 			return "Complex", "Complex", true, false, nil
@@ -3631,7 +3745,7 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 
 func isBuiltinTypeName(name string) bool {
 	switch name {
-	case "Int", "Float", "Complex", "Bool", "String", "Bytes", "Error", "Void":
+	case "Int", "Float", "Complex", "Bool", "String", "Index", "Bytes", "Error", "Void":
 		return true
 	default:
 		return false
@@ -3741,6 +3855,32 @@ func parseTupleTypeString(t string) ([]string, bool) {
 func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 	name = canonicalCompiledBuiltinName(name)
 	switch name {
+	case "Idx":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function 'Idx' expects 1 arguments, got %d", len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin Idx for type %s", argTypes[0])
+		}
+		return "Index", nil
+	case "EinMul", "EinAdd", "EinSub":
+		if len(argTypes) != 6 {
+			return "", fmt.Errorf("function '%s' expects 6 arguments, got %d", name, len(argTypes))
+		}
+		leftElem, leftMatrix := parseMatrixElemType(argTypes[0])
+		if !leftMatrix {
+			return "", fmt.Errorf("function '%s' argument 1 expects Matrix, got %s", name, argTypes[0])
+		}
+		rightElem, rightMatrix := parseMatrixElemType(argTypes[3])
+		if !rightMatrix {
+			return "", fmt.Errorf("function '%s' argument 4 expects Matrix, got %s", name, argTypes[3])
+		}
+		for _, pos := range []int{1, 2, 4, 5} {
+			if argTypes[pos] != "Index" {
+				return "", fmt.Errorf("function '%s' argument %d expects Index, got %s", name, pos+1, argTypes[pos])
+			}
+		}
+		return "Matrix<" + unifyLinearElemType(leftElem, rightElem) + ">", nil
 	case "fft":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function 'fft' expects 1 arguments, got %d", len(argTypes))
@@ -5097,6 +5237,9 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Assert.Near"] {
 		importSet["math"] = struct{}{}
 	}
+	if usedBuiltins["Idx"] {
+		importSet["strings"] = struct{}{}
+	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		for _, pkg := range []string{"github.com/yuechen-li-dev/oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
 			importSet[pkg] = struct{}{}
@@ -5240,10 +5383,13 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	b.WriteString(__octArrayCoercionHelpers)
+	if usedBuiltins["Idx"] {
+		b.WriteString(__octIndexHelpers)
+	}
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] {
 		b.WriteString(__octLinearAlgebraHelpers)
 	}
 	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] {
@@ -5584,6 +5730,15 @@ func __octTypeKey(t reflect.Type) string {
 }
 `
 
+const __octIndexHelpers = `
+func __octIdx(label string) string {
+	if strings.TrimSpace(label) == "" {
+		panic("runtime error: Idx requires non-empty label")
+	}
+	return label
+}
+`
+
 const __octLinearAlgebraHelpers = `
 type __octNumber interface {
 	~int | ~float64
@@ -5656,6 +5811,152 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 		result[r] = row
 	}
 	return result
+}
+
+func __octMatrixDims[T __octNumber](m [][]T, op string, side string) (int, int) {
+	if len(m) == 0 {
+		return 0, 0
+	}
+	cols := len(m[0])
+	for r := range m {
+		if len(m[r]) != cols {
+			panic(fmt.Sprintf("runtime error: %s requires rectangular %s matrix", op, side))
+		}
+	}
+	return len(m), cols
+}
+
+func __octEinDimByLabel(label string, dim int, dims map[string]int) {
+	if label == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if prev, ok := dims[label]; ok && prev != dim {
+		panic(fmt.Sprintf("runtime error: index '%s' has inconsistent extents", label))
+	}
+	dims[label] = dim
+}
+
+func __octEinFreeAndContracted(l0 string, l1 string, r0 string, r1 string) ([]string, []string) {
+	ordered := []string{l0, l1, r0, r1}
+	counts := map[string]int{}
+	for _, label := range ordered {
+		counts[label]++
+	}
+	free := []string{}
+	contracted := []string{}
+	seenFree := map[string]bool{}
+	seenContracted := map[string]bool{}
+	for _, label := range ordered {
+		switch counts[label] {
+		case 1:
+			if !seenFree[label] {
+				free = append(free, label)
+				seenFree[label] = true
+			}
+		case 2:
+			if !seenContracted[label] {
+				contracted = append(contracted, label)
+				seenContracted[label] = true
+			}
+		default:
+			panic(fmt.Sprintf("runtime error: index '%s' appears %d times in [%s,%s]*[%s,%s]; only 1 (free) or 2 (contracted) are allowed in M33", label, counts[label], l0, l1, r0, r1))
+		}
+	}
+	return free, contracted
+}
+
+func __octEinMulMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string) [][]T {
+	leftRows, leftCols := __octMatrixDims(left, "EinMul", "left")
+	rightRows, rightCols := __octMatrixDims(right, "EinMul", "right")
+	dims := map[string]int{}
+	__octEinDimByLabel(l0, leftRows, dims)
+	__octEinDimByLabel(l1, leftCols, dims)
+	__octEinDimByLabel(r0, rightRows, dims)
+	__octEinDimByLabel(r1, rightCols, dims)
+	free, contracted := __octEinFreeAndContracted(l0, l1, r0, r1)
+	if len(free) != 2 {
+		panic(fmt.Sprintf("runtime error: EinMul requires exactly 2 free indices in M33, got %d for [%s,%s]*[%s,%s]", len(free), l0, l1, r0, r1))
+	}
+	rows := dims[free[0]]
+	cols := dims[free[1]]
+	out := make([][]T, rows)
+	assignments := map[string]int{}
+	for r := 0; r < rows; r++ {
+		row := make([]T, cols)
+		for c := 0; c < cols; c++ {
+			assignments[free[0]] = r
+			assignments[free[1]] = c
+			var acc T
+			accSet := false
+			var loop func(int)
+			loop = func(pos int) {
+				if pos == len(contracted) {
+					product := left[assignments[l0]][assignments[l1]] * right[assignments[r0]][assignments[r1]]
+					if !accSet {
+						acc = product
+						accSet = true
+						return
+					}
+					acc += product
+					return
+				}
+				label := contracted[pos]
+				for v := 0; v < dims[label]; v++ {
+					assignments[label] = v
+					loop(pos + 1)
+				}
+			}
+			loop(0)
+			if !accSet {
+				panic("runtime error: EinMul failed to accumulate contracted terms")
+			}
+			row[c] = acc
+		}
+		out[r] = row
+	}
+	return out
+}
+
+func __octEinAddMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string) [][]T {
+	return __octEinAddSubMM(left, l0, l1, right, r0, r1, false)
+}
+
+func __octEinSubMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string) [][]T {
+	return __octEinAddSubMM(left, l0, l1, right, r0, r1, true)
+}
+
+func __octEinAddSubMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string, subtract bool) [][]T {
+	op := "EinAdd"
+	if subtract {
+		op = "EinSub"
+	}
+	leftRows, leftCols := __octMatrixDims(left, op, "left")
+	rightRows, rightCols := __octMatrixDims(right, op, "right")
+	if l0 == "" || l1 == "" || r0 == "" || r1 == "" {
+		panic("runtime error: Einstein indices must be non-empty")
+	}
+	if l0 == l1 || r0 == r1 {
+		panic(fmt.Sprintf("runtime error: %s requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", op, l0, l1, r0, r1))
+	}
+	if l0 != r0 || l1 != r1 {
+		panic(fmt.Sprintf("runtime error: %s requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", op, l0, l1, r0, r1))
+	}
+	if leftRows != rightRows || leftCols != rightCols {
+		panic(fmt.Sprintf("runtime error: %s requires matching matrix shapes", op))
+	}
+	out := make([][]T, leftRows)
+	for r := range left {
+		row := make([]T, leftCols)
+		for c := range left[r] {
+			if subtract {
+				row[c] = left[r][c] - right[r][c]
+			} else {
+				row[c] = left[r][c] + right[r][c]
+			}
+		}
+		out[r] = row
+	}
+	return out
 }
 
 func __octTrace[T __octNumber](m [][]T) T {
@@ -7521,6 +7822,14 @@ func goStmt(s MIRStmt) (string, error) {
 	case MIRCall:
 		if st.Builtin {
 			switch canonicalCompiledBuiltinName(st.Callee) {
+			case "Idx":
+				return fmt.Sprintf("%s = __octIdx(%s)", st.Target, st.Args[0]), nil
+			case "EinMul":
+				return fmt.Sprintf("%s = __octEinMulMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+			case "EinAdd":
+				return fmt.Sprintf("%s = __octEinAddMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+			case "EinSub":
+				return fmt.Sprintf("%s = __octEinSubMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
 			case "Len":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":
@@ -7990,6 +8299,8 @@ func goType(t string) string {
 	case "Bool":
 		return "bool"
 	case "String":
+		return "string"
+	case "Index":
 		return "string"
 	case "Bytes":
 		return "[]byte"
