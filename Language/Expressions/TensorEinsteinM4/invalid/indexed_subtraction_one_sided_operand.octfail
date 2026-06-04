@@ -1,0 +1,13 @@
+expect error: "indexed tensor expressions must appear on both sides of '-' (left indexed=false, right indexed=true)"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+
+    let a = matrix[[1, 2] [3, 4]]
+    let b = matrix[[5, 6] [7, 8]]
+
+    let _ = a - b[i, j]
+}

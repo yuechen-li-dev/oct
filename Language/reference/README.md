@@ -27,7 +27,7 @@ Start with [00-overview.md](./00-overview.md).
 - [13 Packages](./language/13-packages.md)
 - [14 Variables](./language/14-variables.md)
 - [15 Function Values](./language/15-function-values.md)
-- [16 Vectors and Matrices](./language/16-vectors-and-matrices.md)
+- [16 Vectors, Matrices, and Tensors](./language/16-vectors-and-matrices.md)
 - [17 Standard Libraries](./language/17-standard-libraries.md)
 - [Tensors](./tensors.md)
 

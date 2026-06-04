@@ -5817,8 +5817,8 @@ func (c checker) checkEinsteinBinaryExpr(node ast.BinaryExpr, left ExprType, rig
 	if left.EinTerm == nil || right.EinTerm == nil {
 		return ExprType{}, fmt.Errorf("indexed tensor expressions must appear on both sides of '%s' (left indexed=%t, right indexed=%t)", operator, left.EinTerm != nil, right.EinTerm != nil)
 	}
-	if operator != "*" && operator != "+" {
-		return ExprType{}, fmt.Errorf("indexed tensor expressions only support '+' and '*' in M1")
+	if operator != "*" && operator != "+" && operator != "-" {
+		return ExprType{}, fmt.Errorf("indexed tensor expressions only support '+', '-', and '*' in M32")
 	}
 	leftLabels, leftOK := left.EinTerm.Labels, left.EinTerm.HasLabels
 	rightLabels, rightOK := right.EinTerm.Labels, right.EinTerm.HasLabels
@@ -5831,12 +5831,16 @@ func (c checker) checkEinsteinBinaryExpr(node ast.BinaryExpr, left ExprType, rig
 	var resultLabels [2]string
 	var resultHasLabels bool
 	if leftOK && rightOK {
-		if operator == "+" {
+		if operator == "+" || operator == "-" {
+			opName := "EinAdd"
+			if operator == "-" {
+				opName = "EinSub"
+			}
 			if leftLabels[0] == leftLabels[1] || rightLabels[0] == rightLabels[1] {
-				return ExprType{}, fmt.Errorf("EinAdd requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
+				return ExprType{}, fmt.Errorf("%s requires distinct free indices per matrix term (left=[%s,%s], right=[%s,%s])", opName, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 			}
 			if leftLabels[0] != rightLabels[0] || leftLabels[1] != rightLabels[1] {
-				return ExprType{}, fmt.Errorf("EinAdd requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
+				return ExprType{}, fmt.Errorf("%s requires matching free-index order on both terms (left=[%s,%s], right=[%s,%s])", opName, leftLabels[0], leftLabels[1], rightLabels[0], rightLabels[1])
 			}
 			resultLabels = leftLabels
 			resultHasLabels = true
