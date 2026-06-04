@@ -1,9 +1,17 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-06-03._
+_Last updated: 2026-06-04._
 
 This file is the **source of truth** for compiled support posture.
 
+
+## M25 runtime/index cleanup status
+
+M25 fixes the remaining M24 `Libraries/Statistics` compiled runtime failures and the `Libraries/Analysis` zero-assertion test shape. Statistics and Analysis are now compiled-green in focused package checks: `Libraries/Statistics --execution compiled` reports 36 passed / 0 failed, and `Libraries/Analysis --execution compiled` reports 36 passed / 0 failed.
+
+The Statistics issue was not a library sorting bug: generated-Go lowering for logical `and` / `or` evaluated both operands into temporaries before emitting `&&` / `||`, so `SortedCopy` evaluated `out[j - 1]` after `j` reached zero. Logical binary lowering now emits explicit short-circuit control flow. Analysis was fixed by adding the intended assertion to `LocalMaximaDoesNotIncludeEndpoints`; no runner workaround was added.
+
+Still deferred after M25: Complex support, Einstein/tensor notation, broad callback/function-value lowering, new wrapper migrations, new Octxiliary transports or protocol changes, PDF image interop, live UI bridge support, package-manager sidecar build lifecycle, and public API redesign. The language reference still has a documentation gap: it lists logical operators and deterministic evaluation order but does not explicitly state short-circuit behavior for `and` and `or`.
 
 ## M24 numeric/shape lowering status
 

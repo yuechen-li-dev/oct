@@ -35,6 +35,16 @@ fn MedianHandlesOddAndEvenDeterministically() -> Void {
 }
 
 [Fact]
+fn MedianHandlesReverseSortedRepeatedValues() -> Void {
+    let reverse = [5.0, 4.0, 3.0, 2.0, 1.0]
+    let repeated = [4.0, 1.0, 4.0, 2.0, 4.0]
+
+    Assert.Near(3.0, Median(reverse), 0.000001, "median should handle reverse sorted input")
+    Assert.Near(4.0, Median(repeated), 0.000001, "median should handle repeated values")
+    Assert.Near(5.0, reverse[0], 0.000001, "median should not mutate original input")
+}
+
+[Fact]
 fn PercentileBoundariesAndInterpolation() -> Void {
     let xs = [15.0, 20.0, 35.0, 40.0, 50.0]
 

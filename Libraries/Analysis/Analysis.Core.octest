@@ -280,6 +280,8 @@ fn LocalMaximaDoesNotIncludeEndpoints() -> Void {
     let ys = [10.0, 2.0, 3.0, 2.0, 10.0]
     match LocalMaxima(ys) {
         ok(peaks) => {
+            Assert.Equal(1, Len(peaks), "only the interior local maximum should be returned")
+            Assert.Equal(2, peaks[0], "interior local maximum at index 2")
             for i in 0 .. Len(peaks) {
                 Assert.True(peaks[i] != 0 and peaks[i] != 4, "endpoints not returned as peaks")
             }
