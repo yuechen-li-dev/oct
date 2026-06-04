@@ -1374,6 +1374,68 @@ fn main() -> Float {
 	}
 }
 
+func TestCompileKeepsIntArgumentAfterFloatUse(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn UseSteps(n: Int) -> Int {
+    return n + 1
+}
+
+fn SolveLike(steps: Int) -> Float {
+    let dt = 1.0 / Float(steps)
+    let count = UseSteps(steps)
+    return dt + Float(count)
+}
+
+fn Deriv(t: Float, y: Float) -> Float {
+    return t + y
+}
+
+fn CallbackStep(f: fn(Float, Float) -> Float, steps: Int) -> Float {
+    let dt = 1.0 / Float(steps)
+    return f(dt, 1.0) + Float(steps)
+}
+
+fn SolveWithCallback(steps: Int) -> Float {
+    let dt = 0.5
+    let horizon = dt * steps
+    return CallbackStep(Deriv, steps) + horizon
+}
+
+fn main() -> Float {
+    return SolveLike(4) + SolveWithCallback(4)
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OCT_MIR_DUMP", "1")
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "12.5" {
+		t.Fatalf("expected 12.5, got %q", strings.TrimSpace(string(out)))
+	}
+	dump, err := os.ReadFile(result.MIRDumpPath)
+	if err != nil {
+		t.Fatalf("read MIR dump: %v", err)
+	}
+	text := string(dump)
+	if !strings.Contains(text, "call Main.UseSteps(steps)") {
+		t.Fatalf("expected Int helper call to receive steps without Float coercion, got:\n%s", text)
+	}
+	if strings.Contains(text, "call Main.UseSteps(float64(steps))") || strings.Contains(text, "call Main.CallbackStep(fn_Main_Deriv, float64(steps))") {
+		t.Fatalf("expected Int arguments to remain binding-local Ints, got:\n%s", text)
+	}
+}
+
 func TestCompileFlowResultBeforeCompletionFails(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")

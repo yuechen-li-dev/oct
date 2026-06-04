@@ -5,6 +5,14 @@ _Last updated: 2026-06-04._
 This file is the **source of truth** for compiled support posture.
 
 
+## M27b DifferentialEquations step coercion status
+
+M27b confirms `Libraries/DifferentialEquations --execution compiled` is now compiled-green: the focused run reports 6 passed / 0 failed, matching the interpreted run. The remaining M27a failures were generated-Go `Int`/`Float` coercion leaks around `steps: Int`; the fixed lowering keeps `steps` as an `Int` binding and emits `float64(steps)` only at Float expression sites, not when passing the same binding to `Int`-typed helpers such as solve/validation calls.
+
+A focused internal/build regression now covers the solver-like shape directly, including a callback-shaped helper path: a `steps: Int` parameter is used in Float arithmetic and later passed to `Int` parameters, and the MIR dump is checked to reject `float64(steps)` at those Int call sites. See `docs/internal/stdlib_compiled_coverage_m27b.md` for the M27b delta and verification results.
+
+Still deferred after M27b: broad callback/function-value support beyond named top-level functions and local callback parameters, anonymous lambdas/closures, returned or aggregate-stored function values, fallible callbacks, Einstein/tensor notation, additional Complex work, wrapper migrations, Octxiliary protocol or transport changes, PDF image interop, live UI bridge support, package-manager sidecar lifecycle changes, and DifferentialEquations public API redesign.
+
 ## M27a named callback/function-value lowering status
 
 Compiled mode now supports the narrow standard-library callback pattern of passing named top-level functions to monomorphic function-typed parameters and invoking callback parameters inside ordinary compiled functions. The supported current shapes are `fn(Float) -> Float` and `fn(Float, Float) -> Float`; these lower to Go `func(float64) float64` and `func(float64, float64) float64`. This is not a broad first-class function system: lambdas, closures, partial application, aggregate-stored function values, returned function values, fallible callbacks, and Octxiliary callback transport remain deferred.
