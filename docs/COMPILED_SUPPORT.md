@@ -283,3 +283,12 @@ Compiled mode now supports the existing rank-2 matrix indexed Einstein surface:
 - Nested expression trees preserve labels during lowering, while assigned intermediates remain ordinary matrices and can be reindexed explicitly.
 
 Still deferred: vector rank-1 indexed terms, dot/outer products from vector indexed notation, matrix-vector indexed notation, scalar/double contractions, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels. The `@` operator behavior is unchanged.
+
+
+## M34 Mechanics matrix/scalar compiled cleanup
+
+Compiled mode now supports the ordinary element-wise matrix arithmetic already accepted by interpreted mode and needed by `Libraries/Mechanics`: matrix-matrix `+`, `-`, `*`, `/`, matrix-scalar `+`, `-`, `*`, `/`, and scalar-matrix `+`, `-`, `*`, `/`. Generated helpers validate rectangular matrices and matrix-matrix shape compatibility, return new matrices, and preserve mixed `Int`/`Float` result typing through explicit helper type arguments.
+
+`Libraries/Mechanics` is compiled-supported after M34: the Mechanics suite runs with compiled execution only and no interpreted fallbacks. Mechanics/Continuum stress composition such as `(lambda * vol) * identity + (2.0 * mu) * strain` now lowers through matrix/scalar helpers instead of invalid raw Go operators.
+
+M34 did not expand Einstein notation beyond the rank-2 matrix support described in M33. Vector symbolic indexing, rank-N tensors, scalar/double contractions, trace sugar, broadcasting, variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels remain deferred. The `@` operator behavior is unchanged.

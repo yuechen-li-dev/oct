@@ -41,17 +41,17 @@ func TestMechanicsPackageIntegrationRunAndBuild(t *testing.T) {
 	}
 
 	buildStdout, buildStderr, buildErr := executeCLI("build", entry)
-	if buildErr == nil {
-		t.Fatalf("expected build failure for unsupported compiled feature, got success with stdout %q", buildStdout)
+	if buildErr != nil {
+		t.Fatalf("expected Mechanics build success after matrix/scalar lowering cleanup, got err=%v stderr=%s stdout=%s", buildErr, buildStderr, buildStdout)
 	}
-	if buildStdout != "" {
-		t.Fatalf("expected empty build stdout, got %q", buildStdout)
+	if !strings.Contains(buildStdout, "build succeeded:") {
+		t.Fatalf("expected build success stdout, got %q", buildStdout)
 	}
-	if !strings.Contains(buildStderr, "invalid operation") || !strings.Contains(buildStderr, "mismatched types float64 and [][]float64") {
-		t.Fatalf("expected remaining scalar-matrix generated-Go diagnostic, got %q", buildStderr)
+	if buildStderr != "" {
+		t.Fatalf("expected empty build stderr, got %q", buildStderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+	if _, statErr := os.Stat(entry + ".octbin"); statErr != nil {
+		t.Fatalf("expected compiled artifact after successful Mechanics build, stat err = %v", statErr)
 	}
 }
 

@@ -61,6 +61,8 @@ Concrete indexing uses `Int` indices.
 - `+`, `-`, `*`, `/` on vectors and matrices are element-wise operations.
 - Element-wise vector operations require equal runtime lengths.
 - Element-wise matrix operations require equal runtime shapes.
+- Numeric scalar expansion is supported for vector-scalar, scalar-vector, matrix-scalar, and scalar-matrix arithmetic using those element-wise operators.
+- Compiled mode supports ordinary matrix-matrix and matrix/scalar element-wise arithmetic for the same rank-2 matrix value surface; this does not add broadcasting or new Einstein notation.
 
 ## Symbolic index values and matrix indexed terms
 

@@ -2522,3 +2522,81 @@ fn Main() -> Float {
 		})
 	}
 }
+
+func TestCompileAndRunMatrixScalarElementwiseRegression(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := `package Main
+
+fn MatrixMatches(actual: Matrix<Float>, expected: Matrix<Float>) -> Bool {
+    if actual.rows != expected.rows {
+        return false
+    }
+    if actual.cols != expected.cols {
+        return false
+    }
+    for r in 0..actual.rows {
+        for c in 0..actual.cols {
+            if actual[r, c] != expected[r, c] {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+fn StressLike(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
+    let vol = strain[0, 0] + strain[1, 1]
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    return (lambda * vol) * identity + (2.0 * mu) * strain
+}
+
+fn Main() -> Int {
+    let base = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let scalarLeft = 2.0 * base
+    if not MatrixMatches(scalarLeft, matrix[[2.0, 4.0] [6.0, 8.0]]) {
+        return 1
+    }
+
+    let scalarRight = base * 2.0
+    if not MatrixMatches(scalarRight, matrix[[2.0, 4.0] [6.0, 8.0]]) {
+        return 2
+    }
+
+    let a = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let b = matrix[[10.0, 20.0] [30.0, 40.0]]
+    let added = a + b
+    if not MatrixMatches(added, matrix[[11.0, 22.0] [33.0, 44.0]]) {
+        return 3
+    }
+
+    let subtracted = b - a
+    if not MatrixMatches(subtracted, matrix[[9.0, 18.0] [27.0, 36.0]]) {
+        return 4
+    }
+
+    let stress = StressLike(matrix[[1.0, 0.25] [0.25, 2.0]], 3.0, 4.0)
+    if not MatrixMatches(stress, matrix[[17.0, 2.0] [2.0, 25.0]]) {
+        return 5
+    }
+    return 0
+}
+`
+	mainPath := filepath.Join(root, "Main", "main.oct")
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(root)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "0" {
+		t.Fatalf("expected 0, got %q", strings.TrimSpace(string(out)))
+	}
+}
