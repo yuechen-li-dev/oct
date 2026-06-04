@@ -1308,6 +1308,18 @@ func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
 	return false
 }
 
+func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] {
+		return true
+	}
+	for name := range usedBuiltins {
+		if strings.HasPrefix(name, "MatBinary") {
+			return true
+		}
+	}
+	return false
+}
+
 func canonicalCompiledBuiltinName(name string) string {
 	switch name {
 	case "String.ByteLength":
@@ -1784,6 +1796,14 @@ func (c *lowerCtx) expectedArrayElemType() (string, bool) {
 	return strings.TrimSuffix(current, "[]"), true
 }
 
+func (c *lowerCtx) expectedMatrixElemType() (string, bool) {
+	if len(c.expectedTypeStack) == 0 {
+		return "", false
+	}
+	current := c.expectedTypeStack[len(c.expectedTypeStack)-1]
+	return parseMatrixElemType(current)
+}
+
 func (c *lowerCtx) withExpectedType(expected string, fn func() (string, string, bool, error)) (string, string, bool, error) {
 	c.expectedTypeStack = append(c.expectedTypeStack, expected)
 	defer func() { c.expectedTypeStack = c.expectedTypeStack[:len(c.expectedTypeStack)-1] }()
@@ -2030,6 +2050,50 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				RetType: "Vector<" + rightElem + ">",
 			})
 			return tmp, rt, false, nil
+		}
+		if leftElem, ok := parseMatrixElemType(lt); ok && isLinearElementwiseOperatorString(e.Operator) {
+			if rightElem, ok := parseMatrixElemType(rt); ok {
+				retElem := scalarBinaryResultTypeString(e.Operator, leftElem, rightElem)
+				ret := "Matrix<" + retElem + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:   tmp,
+					Callee:   "MatBinaryMM:" + e.Operator,
+					Args:     []string{l, r},
+					ArgTypes: []string{lt, rt},
+					Builtin:  true,
+					RetType:  ret,
+				})
+				return tmp, ret, false, nil
+			}
+			if isNumericTypeString(rt) {
+				retElem := scalarBinaryResultTypeString(e.Operator, leftElem, rt)
+				ret := "Matrix<" + retElem + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:   tmp,
+					Callee:   "MatBinaryMS:" + e.Operator,
+					Args:     []string{l, r},
+					ArgTypes: []string{lt, rt},
+					Builtin:  true,
+					RetType:  ret,
+				})
+				return tmp, ret, false, nil
+			}
+		}
+		if rightElem, ok := parseMatrixElemType(rt); ok && isNumericTypeString(lt) && isLinearElementwiseOperatorString(e.Operator) {
+			retElem := scalarBinaryResultTypeString(e.Operator, lt, rightElem)
+			ret := "Matrix<" + retElem + ">"
+			tmp := c.temp(ret)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+				Target:   tmp,
+				Callee:   "MatBinarySM:" + e.Operator,
+				Args:     []string{l, r},
+				ArgTypes: []string{lt, rt},
+				Builtin:  true,
+				RetType:  ret,
+			})
+			return tmp, ret, false, nil
 		}
 		ret := lt
 		switch e.Operator {
@@ -2491,17 +2555,29 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.MatrixLiteralExpr:
 		rows := make([]string, 0, len(e.Rows))
 		elemType := "Int"
+		hint, hasHint := c.expectedMatrixElemType()
+		if hasHint {
+			elemType = hint
+		}
 		for _, row := range e.Rows {
 			rowVals := make([]string, 0, len(row))
 			for j, cell := range row {
-				v, t, _, err := c.lowerExpr(cell)
+				var v, t string
+				var err error
+				if hasHint {
+					v, t, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(cell) })
+				} else {
+					v, t, _, err = c.lowerExpr(cell)
+				}
 				if err != nil {
 					return "", "", false, err
 				}
-				rowVals = append(rowVals, v)
-				if len(rows) == 0 && j == 0 {
+				if hasHint {
+					v = coerceExprToType(v, t, hint)
+				} else if len(rows) == 0 && j == 0 {
 					elemType = t
 				}
+				rowVals = append(rowVals, v)
 			}
 			rowType := "Vector<" + elemType + ">"
 			rowTmp := c.temp(rowType)
@@ -3799,6 +3875,26 @@ func isIntArrayTypeString(t string) bool {
 
 func isNumericTypeString(t string) bool {
 	return isIntScalarTypeString(t) || isFloatScalarTypeString(t)
+}
+
+func isLinearElementwiseOperatorString(operator string) bool {
+	return operator == "+" || operator == "-" || operator == "*" || operator == "/"
+}
+
+func scalarBinaryResultTypeString(operator string, leftType string, rightType string) string {
+	switch operator {
+	case "+", "-", "*", "/":
+		if isFloatScalarTypeString(leftType) || isFloatScalarTypeString(rightType) {
+			if strings.HasPrefix(leftType, "Float<") && strings.HasSuffix(leftType, ">") {
+				return leftType
+			}
+			if strings.HasPrefix(rightType, "Float<") && strings.HasSuffix(rightType, ">") {
+				return rightType
+			}
+			return "Float"
+		}
+	}
+	return leftType
 }
 
 func isComplexScalarTypeString(t string) bool {
@@ -5389,7 +5485,7 @@ func emitGo(m MIRModule) (string, error) {
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] {
+	if usesLinearAlgebraHelpers(usedBuiltins) {
 		b.WriteString(__octLinearAlgebraHelpers)
 	}
 	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] {
@@ -5811,6 +5907,66 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 		result[r] = row
 	}
 	return result
+}
+
+func __octMatBinaryValue[L __octNumber, R __octNumber, O __octNumber](left L, right R, op string) O {
+	l := O(left)
+	r := O(right)
+	switch op {
+	case "+":
+		return l + r
+	case "-":
+		return l - r
+	case "*":
+		return l * r
+	case "/":
+		return l / r
+	default:
+		panic(fmt.Sprintf("runtime invariant violation: unsupported matrix binary operator %q", op))
+	}
+}
+
+func __octMatBinaryMM[L __octNumber, R __octNumber, O __octNumber](left [][]L, right [][]R, op string) [][]O {
+	leftRows, leftCols := __octMatrixDims(left, "matrix elementwise "+op, "left")
+	rightRows, rightCols := __octMatrixDims(right, "matrix elementwise "+op, "right")
+	if leftRows != rightRows || leftCols != rightCols {
+		panic(fmt.Sprintf("runtime error: matrix shapes must match; got %dx%d and %dx%d", leftRows, leftCols, rightRows, rightCols))
+	}
+	out := make([][]O, leftRows)
+	for rowIndex := range left {
+		row := make([]O, leftCols)
+		for colIndex := range left[rowIndex] {
+			row[colIndex] = __octMatBinaryValue[L, R, O](left[rowIndex][colIndex], right[rowIndex][colIndex], op)
+		}
+		out[rowIndex] = row
+	}
+	return out
+}
+
+func __octMatBinaryMS[M __octNumber, S __octNumber, O __octNumber](matrix [][]M, scalar S, op string) [][]O {
+	rows, cols := __octMatrixDims(matrix, "matrix-scalar "+op, "left")
+	out := make([][]O, rows)
+	for rowIndex := range matrix {
+		row := make([]O, cols)
+		for colIndex := range matrix[rowIndex] {
+			row[colIndex] = __octMatBinaryValue[M, S, O](matrix[rowIndex][colIndex], scalar, op)
+		}
+		out[rowIndex] = row
+	}
+	return out
+}
+
+func __octMatBinarySM[S __octNumber, M __octNumber, O __octNumber](scalar S, matrix [][]M, op string) [][]O {
+	rows, cols := __octMatrixDims(matrix, "scalar-matrix "+op, "right")
+	out := make([][]O, rows)
+	for rowIndex := range matrix {
+		row := make([]O, cols)
+		for colIndex := range matrix[rowIndex] {
+			row[colIndex] = __octMatBinaryValue[S, M, O](scalar, matrix[rowIndex][colIndex], op)
+		}
+		out[rowIndex] = row
+	}
+	return out
 }
 
 func __octMatrixDims[T __octNumber](m [][]T, op string, side string) (int, int) {
@@ -8111,6 +8267,40 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octVecDivSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "MatMulMM":
 				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MatBinaryMM:+", "MatBinaryMM:-", "MatBinaryMM:*", "MatBinaryMM:/":
+				if len(st.ArgTypes) != 2 {
+					return "", fmt.Errorf("matrix-matrix binary lowering requires argument types")
+				}
+				leftElem, leftOK := parseMatrixElemType(st.ArgTypes[0])
+				rightElem, rightOK := parseMatrixElemType(st.ArgTypes[1])
+				retElem, retOK := parseMatrixElemType(st.RetType)
+				if !leftOK || !rightOK || !retOK {
+					return "", fmt.Errorf("invalid matrix-matrix binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				op := strings.TrimPrefix(st.Callee, "MatBinaryMM:")
+				return fmt.Sprintf("%s = __octMatBinaryMM[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
+			case "MatBinaryMS:+", "MatBinaryMS:-", "MatBinaryMS:*", "MatBinaryMS:/":
+				if len(st.ArgTypes) != 2 {
+					return "", fmt.Errorf("matrix-scalar binary lowering requires argument types")
+				}
+				leftElem, leftOK := parseMatrixElemType(st.ArgTypes[0])
+				retElem, retOK := parseMatrixElemType(st.RetType)
+				if !leftOK || !isNumericTypeString(st.ArgTypes[1]) || !retOK {
+					return "", fmt.Errorf("invalid matrix-scalar binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				op := strings.TrimPrefix(st.Callee, "MatBinaryMS:")
+				return fmt.Sprintf("%s = __octMatBinaryMS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), st.Args[0], st.Args[1], op), nil
+			case "MatBinarySM:+", "MatBinarySM:-", "MatBinarySM:*", "MatBinarySM:/":
+				if len(st.ArgTypes) != 2 {
+					return "", fmt.Errorf("scalar-matrix binary lowering requires argument types")
+				}
+				rightElem, rightOK := parseMatrixElemType(st.ArgTypes[1])
+				retElem, retOK := parseMatrixElemType(st.RetType)
+				if !isNumericTypeString(st.ArgTypes[0]) || !rightOK || !retOK {
+					return "", fmt.Errorf("invalid scalar-matrix binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				op := strings.TrimPrefix(st.Callee, "MatBinarySM:")
+				return fmt.Sprintf("%s = __octMatBinarySM[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
 			case "PrometheusMatMulMM":
 				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Trace":
