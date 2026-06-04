@@ -699,6 +699,8 @@ func TestCheckValidatesM16VectorsMatrices(t *testing.T) {
 		"fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[1, 0] }",
 		"fn Main() -> Vector<Int> { let m = matrix[[1, 2] [3, 4]] let v = vector[10, 20] return m @ v }",
 		"fn Main() -> Matrix<Int> { let a = matrix[[1, 2] [3, 4]] let b = matrix[[5, 6] [7, 8]] return a @ b }",
+		"fn Main() -> Vector<Int> { let v = vector[10, 20] let m = matrix[[1, 2] [3, 4]] return v @ m }",
+		"fn Main() -> Int { return vector[1, 2] @ vector[3, 4] }",
 		"fn Main() -> Vector<Int> { return vector[1, 2, 3] + 1 }",
 	}
 	for _, src := range validPrograms {
@@ -715,7 +717,6 @@ func TestCheckRejectsInvalidM16VectorsMatrices(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return [1, 2] }", "function Main: function expects Vector<Int>, but return is Int[]")
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [1, 2] }", "function Main: function expects Matrix<Int>, but return is Int[]")
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Int> { return [[1, 2] [3, 4]] }", "array indexing requires exactly 1 index, got 2")
-	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] @ vector[3, 4] }", "operator '@' not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Int> { return vector[1, 2] == vector[1, 2] }", "operator \"==\" not defined for Vector<Int> and Vector<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Int { let m = matrix[[1, 2] [3, 4]] return m[0] }", "matrix indexing requires exactly 2 indices, got 1")
 	assertTypeErrorContains(t, "fn Main() -> Int { let v = vector[1, 2] return v[0, 0] }", "vector indexing requires exactly 1 index, got 2")
@@ -759,6 +760,8 @@ func TestCheckValidatesM92DimensionedLinearAlgebra(t *testing.T) {
 		"fn Main() -> Matrix<Float<kg/s^2>> { return matrix[[1.0kg/s^2, 2.0kg/s^2] [3.0kg/s^2, 4.0kg/s^2]] }",
 		"fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] return k @ u }",
 		"fn Main() -> Matrix<Float<kg^2/s^3>> { let a = matrix[[1.0kg/s, 0.0kg/s] [0.0kg/s, 2.0kg/s]] let b = matrix[[3.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 4.0kg/s^2]] return a @ b }",
+		"fn Main() -> Vector<Float<kg*m/s^2>> { let u = vector[4.0m, 5.0m] let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] return u @ k }",
+		"fn Main() -> Float<kg*m/s^2> { return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2] }",
 	}
 	for _, src := range validPrograms {
 		file := parseSource(t, src)
@@ -772,7 +775,6 @@ func TestCheckRejectsInvalidM92DimensionedLinearAlgebra(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { let k = matrix[[2.0kg/s^2, 0.0kg/s^2] [0.0kg/s^2, 3.0kg/s^2]] let u = vector[4.0m, 5.0m] let f = k @ u return f + vector[1.0s, 2.0s] }", "cannot add m*kg/s^2 and s")
 	assertTypeErrorContains(t, "fn Main() -> Vector<Float<m>> { return [1.0m, 2.0m] }", "function Main: function expects Vector<Float<m>>, but return is Float<m>[]")
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Float<kg/s^2>> { return [[1.0kg/s^2, 2.0kg/s^2], [3.0kg/s^2, 4.0kg/s^2]] }", "function Main: function expects Matrix<Float<kg/s^2>>, but return is Float<kg/s^2>[]")
-	assertTypeErrorContains(t, "fn Main() -> Vector<Float<kg*m/s^2>> { return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2] }", "operator '@' not defined for Vector<Float<m>> and Vector<Float<kg/s^2>>")
 }
 
 func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {

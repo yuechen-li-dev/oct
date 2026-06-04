@@ -1311,7 +1311,7 @@ func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
 }
 
 func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] || usedBuiltins["EinAddVV"] || usedBuiltins["EinSubVV"] || usedBuiltins["EinDotVV"] || usedBuiltins["EinOuterVV"] || usedBuiltins["EinMulMV"] || usedBuiltins["EinMulVM"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulVM"] || usedBuiltins["VecDot"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] || usedBuiltins["EinAddVV"] || usedBuiltins["EinSubVV"] || usedBuiltins["EinDotVV"] || usedBuiltins["EinOuterVV"] || usedBuiltins["EinMulMV"] || usedBuiltins["EinMulVM"] {
 		return true
 	}
 	for name := range usedBuiltins {
@@ -2084,6 +2084,33 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
 						Callee:  callee,
+						Args:    []string{l, r},
+						Builtin: true,
+						RetType: ret,
+					})
+					return tmp, ret, false, nil
+				}
+			}
+			if leftElem, ok := parseVectorElemType(lt); ok {
+				if rightElem, ok := parseMatrixElemType(rt); ok {
+					elemType := unifyLinearElemType(leftElem, rightElem)
+					ret := "Vector<" + elemType + ">"
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+						Target:  tmp,
+						Callee:  "MatMulVM",
+						Args:    []string{l, r},
+						Builtin: true,
+						RetType: ret,
+					})
+					return tmp, ret, false, nil
+				}
+				if rightElem, ok := parseVectorElemType(rt); ok {
+					ret := unifyLinearElemType(leftElem, rightElem)
+					tmp := c.temp(ret)
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+						Target:  tmp,
+						Callee:  "VecDot",
 						Args:    []string{l, r},
 						Builtin: true,
 						RetType: ret,
@@ -5950,6 +5977,48 @@ func __octMatMulMV[T __octNumber](left [][]T, right []T) []T {
 	return result
 }
 
+
+func __octMatMulVM[T __octNumber](left []T, right [][]T) []T {
+	if len(right) == 0 {
+		if len(left) != 0 {
+			panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %d and %dx%d", len(left), 0, 0))
+		}
+		return []T{}
+	}
+	rightCols := len(right[0])
+	if len(left) != len(right) {
+		panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %d and %dx%d", len(left), len(right), rightCols))
+	}
+	for r := range right {
+		if len(right[r]) != rightCols {
+			panic(fmt.Sprintf("runtime error: matrix multiplication requires left cols = right rows; got %d and %dx%d", len(left), len(right), len(right[r])))
+		}
+	}
+	result := make([]T, rightCols)
+	for c := 0; c < rightCols; c++ {
+		var acc T
+		for r := range left {
+			acc += left[r] * right[r][c]
+		}
+		result[c] = acc
+	}
+	return result
+}
+
+func __octVecDot[T __octNumber](left []T, right []T) T {
+	if len(left) != len(right) {
+		panic(fmt.Sprintf("runtime error: vector dot product requires matching lengths; got %d and %d", len(left), len(right)))
+	}
+	if len(left) == 0 {
+		panic("runtime error: vector dot product requires non-empty vectors")
+	}
+	var acc T
+	for i := range left {
+		acc += left[i] * right[i]
+	}
+	return acc
+}
+
 func __octVecAddVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] + right[i] }; return out }
 func __octVecSubVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] - right[i] }; return out }
 func __octVecMulVV[T __octNumber](left []T, right []T) []T { out := make([]T, len(left)); for i := range left { out[i] = left[i] * right[i] }; return out }
@@ -8489,6 +8558,10 @@ func goStmt(s MIRStmt) (string, error) {
 					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "MatMulMV":
 				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "MatMulVM":
+				return fmt.Sprintf("%s = __octMatMulVM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "VecDot":
+				return fmt.Sprintf("%s = __octVecDot(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "VecBinaryVV:+":
 				return fmt.Sprintf("%s = __octVecAddVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "VecBinaryVV:-":

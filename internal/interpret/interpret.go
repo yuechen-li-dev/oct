@@ -4882,6 +4882,12 @@ func evalLinearBinaryExpr(operator string, left Value, right Value) (Value, erro
 		if left.Kind == ValueMatrix && right.Kind == ValueVector {
 			return evalMatrixVectorMultiply(left, right)
 		}
+		if left.Kind == ValueVector && right.Kind == ValueMatrix {
+			return evalVectorMatrixMultiply(left, right)
+		}
+		if left.Kind == ValueVector && right.Kind == ValueVector {
+			return evalVectorDot(left, right)
+		}
 		return Value{}, fmt.Errorf("runtime invariant violation: operator '@' not defined for %s and %s", valueTypeName(left), valueTypeName(right))
 	}
 	if !isLinearElementwiseOperator(operator) {
@@ -4975,6 +4981,57 @@ func evalMatrixVectorMultiply(left Value, right Value) (Value, error) {
 		result[r] = acc
 	}
 	return Value{Kind: ValueVector, Vector: result}, nil
+}
+
+func evalVectorMatrixMultiply(left Value, right Value) (Value, error) {
+	if len(left.Vector) != right.Matrix.Rows {
+		return Value{}, fmt.Errorf("runtime error: matrix multiplication requires left cols = right rows; got %d and %dx%d", len(left.Vector), right.Matrix.Rows, right.Matrix.Cols)
+	}
+	result := make([]Value, right.Matrix.Cols)
+	for c := 0; c < right.Matrix.Cols; c++ {
+		acc := Value{}
+		for r := 0; r < right.Matrix.Rows; r++ {
+			term, err := evalBinaryExpr("*", left.Vector[r], right.Matrix.Elements[r*right.Matrix.Cols+c])
+			if err != nil {
+				return Value{}, err
+			}
+			if r == 0 {
+				acc = term
+			} else {
+				acc, err = evalBinaryExpr("+", acc, term)
+				if err != nil {
+					return Value{}, err
+				}
+			}
+		}
+		result[c] = acc
+	}
+	return Value{Kind: ValueVector, Vector: result}, nil
+}
+
+func evalVectorDot(left Value, right Value) (Value, error) {
+	if len(left.Vector) != len(right.Vector) {
+		return Value{}, fmt.Errorf("runtime error: vector dot product requires matching lengths; got %d and %d", len(left.Vector), len(right.Vector))
+	}
+	if len(left.Vector) == 0 {
+		return Value{}, fmt.Errorf("runtime error: vector dot product requires non-empty vectors")
+	}
+	acc := Value{}
+	for idx := range left.Vector {
+		term, err := evalBinaryExpr("*", left.Vector[idx], right.Vector[idx])
+		if err != nil {
+			return Value{}, err
+		}
+		if idx == 0 {
+			acc = term
+		} else {
+			acc, err = evalBinaryExpr("+", acc, term)
+			if err != nil {
+				return Value{}, err
+			}
+		}
+	}
+	return acc, nil
 }
 
 func evalMatrixMultiply(left Value, right Value) (Value, error) {

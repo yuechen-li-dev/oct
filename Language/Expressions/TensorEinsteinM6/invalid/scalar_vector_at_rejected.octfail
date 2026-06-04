@@ -1,0 +1,8 @@
+expect error: "operator '@' not defined for Int and Vector<Int>"
+
+package Main
+
+fn Main() -> Void {
+    let x = vector[1, 2]
+    let _ = 1 @ x
+}

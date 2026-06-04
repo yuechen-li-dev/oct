@@ -2135,6 +2135,30 @@ fn Main() -> Matrix<Int> {
 			want: "[[19 22] [43 50]]",
 		},
 		{
+			name: "vector at matrix compiled",
+			source: `package Main
+
+fn Main() -> Vector<Int> {
+    let x = vector[10, 20]
+    let a = matrix[[1, 2] [3, 4]]
+    return x @ a
+}
+`,
+			want: "[70 100]",
+		},
+		{
+			name: "vector at vector compiled",
+			source: `package Main
+
+fn Main() -> Int {
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+    return a @ b
+}
+`,
+			want: "140",
+		},
+		{
 			name: "matrix tabulate compiled",
 			source: `package Main
 
@@ -2301,18 +2325,6 @@ fn Main() -> Matrix<Int> {
 }
 `,
 			wantErr: "function expects Matrix<Int>, but return is Int[][]",
-		},
-		{
-			name: "vector at vector remains unsupported",
-			source: `package Main
-
-fn Main() -> Int {
-    let a = vector[1, 2]
-    let b = vector[3, 4]
-    return a @ b
-}
-`,
-			wantErr: "operator '@' not defined for Vector<Int> and Vector<Int>",
 		},
 	}
 

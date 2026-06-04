@@ -8,7 +8,7 @@ Tensor notation is an index-aware expression surface over vectors, matrices, and
 
 Arrays and tensors are related but separate concepts.
 Arrays are general ordered collection/storage values, while vectors and matrices are mathematical value categories.
-`@` is Einstein contraction shorthand for the currently supported matrix contractions, distinct from element-wise operators and from arbitrary array multiplication.
+`@` is Einstein contraction shorthand for the currently supported vector and matrix contractions, distinct from element-wise operators and from arbitrary array multiplication.
 
 ## Arrays vs vectors, matrices, and tensors
 
@@ -154,16 +154,19 @@ It is shorthand for currently supported linear-algebra contractions:
 
 - `A @ B` is matrix-matrix contraction, conceptually `A[i, k] * B[k, j]`.
 - `A @ x` is matrix-vector contraction, conceptually `A[i, j] * x[j]`.
+- `x @ A` is vector-matrix contraction, conceptually `x[i] * A[i, j]`.
+- `x @ y` is vector-vector dot product, conceptually `x[i] * y[i]`.
 
-After M36, interpreted source-level `A[i, j] * x[j]` expresses the matrix-vector contraction directly.
-`@` behavior is unchanged by M36: current supported cases are `Matrix<T> @ Vector<U>` and `Matrix<T> @ Matrix<U>`.
-`@` requires dimension compatibility (`left.cols == right.rows` for matrix-matrix).
+After M38, `@` is aligned with the supported rank-1/rank-2 indexed Einstein contractions in interpreted and compiled modes.
+`@` requires runtime dimension compatibility: matrix-matrix and matrix-vector require the left column count to match the right length/row count, vector-matrix requires the vector length to match the matrix row count, and vector-vector requires matching vector lengths.
 For dimension-qualified elements, `@` propagates dimensions by scalar multiplication and addition across contractions:
 
 - `Matrix<Float<D1>> @ Vector<Float<D2>> -> Vector<Float<D1*D2>>`
 - `Matrix<Float<D1>> @ Matrix<Float<D2>> -> Matrix<Float<D1*D2>>`
+- `Vector<Float<D1>> @ Matrix<Float<D2>> -> Vector<Float<D1*D2>>`
+- `Vector<Float<D1>> @ Vector<Float<D2>> -> Float<D1*D2>`
 
-Current unsupported `@` cases include vector-matrix, vector-vector, and arrays.
+Arrays remain unsupported for `@`. `*` remains element-wise outside indexed tensor notation; `@` does not add broadcasting.
 
 ## Trace
 
@@ -192,19 +195,19 @@ Continuum mechanics contracts use this surface to express field-form equations s
 
 ## Interpreted vs compiled support
 
-Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M37 adds compiled parity for the M36 vector rank-1 indexed surface and mixed vector/matrix indexed contractions.
+Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M37 adds compiled parity for the M36 vector rank-1 indexed surface and mixed vector/matrix indexed contractions. M38 aligns `@` with those supported vector/matrix contractions.
 
 - Interpreted and compiled modes support `Vector[Int]` concrete element access and `Vector[Index]` rank-1 indexed terms.
 - Interpreted and compiled modes support rank-1 vector indexed `+`/`-`, vector dot product (`a[i] * b[i]`), vector outer product (`a[i] * b[j]`), matrix-vector indexed contraction (`A[i, j] * x[j]`), vector-matrix indexed contraction (`x[i] * A[i, j]`), and the existing rank-2 matrix indexed `*`, `+`, and `-`.
 - Arrays remain non-tensor-indexable.
-- Compiled mode supports concrete vector/matrix indexing, `@` helper lowering, `Idx`, rank-2 matrix indexed Einstein `*`, `+`, and `-`, and rank-1 vector indexed Einstein `+`, `-`, dot, outer, matrix-vector, and vector-matrix contractions.
+- Compiled mode supports concrete vector/matrix indexing, `@` helper lowering for matrix-matrix, matrix-vector, vector-matrix, and vector-vector dot products, `Idx`, rank-2 matrix indexed Einstein `*`, `+`, and `-`, and rank-1 vector indexed Einstein `+`, `-`, dot, outer, matrix-vector, and vector-matrix contractions.
 - Scalar/double contractions such as `A[i, j] * B[j, i]`, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, covariant/contravariant variance, and raising/lowering remain unsupported.
-- `@` behavior is unchanged in M37; vector-matrix and vector-vector `@` remain unsupported.
+- `@` remains limited to the four supported vector/matrix contractions and does not apply to arrays or scalars.
 - Differential tensor operators are not documented as compiled-parity guarantees in the current corpus.
 
 Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
 
-- **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-vector and matrix-matrix, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
+- **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-matrix, matrix-vector, vector-matrix, and vector-vector dot products, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
 - **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
 - **M33 compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, and rank-2 matrix indexed `*`, `+`, and `-` over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
 - **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms, and vector indexing must use one concrete `Int` for element access or one `Index` label for rank-1 Einstein terms. Arrays remain concrete storage and require `Int` indexing.
