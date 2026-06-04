@@ -219,7 +219,7 @@ Deferred after the M11 sweep:
 
 - `Csv` remains blocked by `String[][]` row data (`needs_nested_array_transport`).
 - `Markdown` remains blocked by record-of-`String[]` tables and nested block arrays (`needs_record_transport`, `needs_nested_array_transport`).
-- `Pdf` and `Image` remain blocked by opaque handles and record arguments (`needs_handle_transport`, `needs_record_transport`).
+- Historical M11 state: `Pdf` and `Image` were still blocked by opaque handles and record arguments (`needs_handle_transport`, `needs_record_transport`); later M19/M21/M30 sections below update that status.
 - `Plot` remains blocked by `Float[]` plot data and record arguments (`needs_float_array_transport`, `needs_record_transport`).
 
 M11 did not add new transport kinds, compiled Complex support, Einstein notation, record transport, handle transport, package-manager sidecar builds, lockfiles, or public API redesigns.
@@ -244,15 +244,15 @@ M16 adds generic `Float[]` transport and manifest-declared, non-recursive record
 
 `Plot.Size` and `Plot.Labels` are declared as wrapper `TransportTypes`; compiled code packs those generated Go record structs into ordered Octxiliary record arguments. Dimensioned `Int<px>` size fields are dimension-erased over the wire as `Int` payloads. `DefaultSize` and `DefaultLabels` remain pure/local and do not call the sidecar.
 
-Still unsupported/deferred after M19: general record returns, nested or recursive records, cross-family handles, handle close/destructor semantics, handle serialization across runs, dynamic `Any`, maps, `Float[][]`, broad `Int[]`, Pdf migration, structured JSON graph helpers, Markdown-as-Octxiliary, package-manager sidecar builds, native permission prompts, and lockfiles. The `octxiliary-plot`, `octxiliary-xlsx`, and `octxiliary-image` executables must be beside the compiled `.octbin` or on `OCT_WRAPPER_PATH`. M18 adds handle transport M0 and migrates `IO.Xlsx`; M19 reuses that handle path for Image; handles are sidecar-owned capabilities, not plain `Int` values.
+Still unsupported/deferred after M19: general record returns, nested or recursive records, cross-family handles, handle close/destructor semantics, handle serialization across runs, dynamic `Any`, maps, `Float[][]`, broad `Int[]`, legacy Pdf image-handle bridge, structured JSON graph helpers, Markdown-as-Octxiliary, package-manager sidecar builds, native permission prompts, and lockfiles. The `octxiliary-plot`, `octxiliary-xlsx`, and `octxiliary-image` executables must be beside the compiled `.octbin` or on `OCT_WRAPPER_PATH`. M18 adds handle transport M0 and migrates `IO.Xlsx`; M19 reuses that handle path for Image; handles are sidecar-owned capabilities, not plain `Int` values.
 
 ## M19 Octxiliary Image status
 
-M19 migrates `Libraries/Image` to compiled generic wrapper lowering through `cmd/octxiliary-image` and handle transport. The public API remains `Load(path: String) -> ImageHandle ! Error`, `Save(image: ImageHandle, path: String) -> Int ! Error`, `Width(image: ImageHandle) -> Int<px>`, `Height(image: ImageHandle) -> Int<px>`, and `Format(image: ImageHandle) -> String`.
+M19 migrates `Libraries/Image` to compiled generic wrapper lowering through `cmd/octxiliary-image` and handle transport. M30 adds `EncodePng(image: ImageHandle) -> Bytes ! Error` for explicit serialized transfer. The public API includes `Load(path: String) -> ImageHandle ! Error`, `Save(image: ImageHandle, path: String) -> Int ! Error`, `EncodePng(image: ImageHandle) -> Bytes ! Error`, `Width(image: ImageHandle) -> Int<px>`, `Height(image: ImageHandle) -> Int<px>`, and `Format(image: ImageHandle) -> String`.
 
 `Image.ImageHandle` is a sidecar-owned, process-lifetime handle capability. The public record still has a single `Handle: Int` field, but compiled transport carries family `Image`, handle type `Image.ImageHandle`, and a sidecar-local positive ID. Handles are not serializable across program runs and are not shared with `Pdf` or any other family. There is still no `Close`/destructor API.
 
-`Width`, `Height`, and `Format` remain non-fallible. If an invalid/stale Image handle reaches one of those operations in compiled mode, the sidecar error becomes a runtime failure through the generic non-fallible wrapper path. `Load` and `Save` remain fallible and report missing files, corrupt images, unsupported save extensions, and invalid handles as `Error` values. The `octxiliary-image` executable must be beside the compiled `.octbin` or available through `OCT_WRAPPER_PATH`.
+`Width`, `Height`, and `Format` remain non-fallible. If an invalid/stale Image handle reaches one of those operations in compiled mode, the sidecar error becomes a runtime failure through the generic non-fallible wrapper path. `Load`, `Save`, and `EncodePng` remain fallible and report missing files, corrupt images, unsupported save extensions, and invalid handles as `Error` values. The `octxiliary-image` executable must be beside the compiled `.octbin` or available through `OCT_WRAPPER_PATH`.
 
 ## M21 Pdf compiled subset
 
@@ -266,3 +266,8 @@ M19 migrates `Libraries/Image` to compiled generic wrapper lowering through `cmd
 `Pdf.PdfPage` is a sidecar-owned handle and `Pdf.TextStyle` is a record argument transport. `Pdf.DefaultTextStyle()` remains pure/local Oct.
 
 Deferred in compiled mode: `Pdf.DrawImage`, `Pdf.DrawImageSized`, and compiled `Pdf.ImageHandle` support. `octxiliary-pdf` does not consume `Image.ImageHandle` values from `octxiliary-image`; cross-family handle sharing remains unsupported. Put `octxiliary-pdf` beside the compiled `.octbin` or set `OCT_WRAPPER_PATH` to a directory containing it.
+
+
+## M30 Pdf/Image bytes interop
+
+`Image.EncodePng` is compiled-supported and exports an Image-owned handle as PNG `Bytes`. `Pdf.DrawImageBytes` and `Pdf.DrawImageBytesSized` are compiled-supported and consume PNG bytes in the Pdf sidecar. Legacy `Pdf.DrawImage` / `Pdf.DrawImageSized` remain interpreted legacy bridge APIs and compiled-deferred; M30 adds no cross-family handles, sidecar-to-sidecar calls, broker, protocol change, path/file drawing API, or Pdf-owned image handle table.

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"codeberg.org/go-pdf/fpdf"
 	"github.com/yuechen-li-dev/oct/internal/octxiliary"
@@ -25,6 +28,7 @@ type pdfPage struct {
 	defaultFontSizePx   int
 	defaultTextColorRGB [3]int
 	fontFallbackUsed    bool
+	imageCounter        int
 }
 
 type textStyle struct {
@@ -56,6 +60,9 @@ func (t *pageTable) get(value octxiliary.Value) (*pdfPage, error) {
 	}
 	if value.HandleFamily != pdfFamily || value.HandleType != pdfPageHandleType {
 		return nil, fmt.Errorf("expected %s %s handle", pdfFamily, pdfPageHandleType)
+	}
+	if value.HandleID <= 0 {
+		return nil, fmt.Errorf("page handle ID must be positive")
 	}
 	page, ok := t.pages[value.HandleID]
 	if !ok {
@@ -158,6 +165,55 @@ func (t *pageTable) dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
+	case "PdfDrawImageBytes":
+		if err := expect(req.Args, octxiliary.ValueHandle, octxiliary.ValueBytes, octxiliary.ValueString, octxiliary.ValueInt, octxiliary.ValueInt); err != nil {
+			return octxiliary.Value{}, err
+		}
+		page, err := t.get(req.Args[0])
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validateCoordinate(req.Args[3].Int, "x"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validateCoordinate(req.Args[4].Int, "y"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		width, height, err := imageBytesDimensions(req.Args[1].Bytes, req.Args[2].String)
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := page.drawImageBytes(req.Args[1].Bytes, req.Args[2].String, req.Args[3].Int, req.Args[4].Int, width, height); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
+	case "PdfDrawImageBytesSized":
+		if err := expect(req.Args, octxiliary.ValueHandle, octxiliary.ValueBytes, octxiliary.ValueString, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueInt); err != nil {
+			return octxiliary.Value{}, err
+		}
+		page, err := t.get(req.Args[0])
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validateCoordinate(req.Args[3].Int, "x"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validateCoordinate(req.Args[4].Int, "y"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validatePositiveSize(req.Args[5].Int, "width"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := validatePositiveSize(req.Args[6].Int, "height"); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if _, _, err := imageBytesDimensions(req.Args[1].Bytes, req.Args[2].String); err != nil {
+			return octxiliary.Value{}, err
+		}
+		if err := page.drawImageBytes(req.Args[1].Bytes, req.Args[2].String, req.Args[3].Int, req.Args[4].Int, req.Args[5].Int, req.Args[6].Int); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
 	case "PdfSave":
 		if err := expect(req.Args, octxiliary.ValueHandle, octxiliary.ValueString); err != nil {
 			return octxiliary.Value{}, err
@@ -242,6 +298,57 @@ func (p *pdfPage) drawText(text string, xPx int, yPx int, fontSizePx int, colorR
 	return nil
 }
 
+func (p *pdfPage) drawImageBytes(data []byte, format string, xPx int, yPx int, widthPx int, heightPx int) error {
+	imageType, err := pdfImageType(format)
+	if err != nil {
+		return err
+	}
+	p.imageCounter++
+	alias := fmt.Sprintf("img_%d", p.imageCounter)
+	options := fpdf.ImageOptions{ImageType: imageType, ReadDpi: false}
+	if info := p.doc.RegisterImageOptionsReader(alias, options, bytes.NewReader(data)); info == nil {
+		if pdfErr := p.doc.Error(); pdfErr != nil {
+			return fmt.Errorf("register image bytes failed: %v", pdfErr)
+		}
+		return fmt.Errorf("register image bytes failed")
+	}
+	p.doc.ImageOptions(alias, pxToPt(xPx), pxToPt(yPx), pxToPt(widthPx), pxToPt(heightPx), false, options, 0, "")
+	if pdfErr := p.doc.Error(); pdfErr != nil {
+		return fmt.Errorf("draw image bytes failed: %v", pdfErr)
+	}
+	return nil
+}
+
+func imageBytesDimensions(data []byte, format string) (int, int, error) {
+	if len(data) == 0 {
+		return 0, 0, fmt.Errorf("image bytes must be non-empty")
+	}
+	imageType, err := pdfImageType(format)
+	if err != nil {
+		return 0, 0, err
+	}
+	switch imageType {
+	case "PNG":
+		decoded, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			return 0, 0, fmt.Errorf("image bytes are not valid png: %v", err)
+		}
+		bounds := decoded.Bounds()
+		return bounds.Dx(), bounds.Dy(), nil
+	default:
+		return 0, 0, fmt.Errorf("unsupported image format %q", format)
+	}
+}
+
+func pdfImageType(format string) (string, error) {
+	switch strings.ToLower(format) {
+	case "png":
+		return "PNG", nil
+	default:
+		return "", fmt.Errorf("unsupported image format %q; only png is supported", format)
+	}
+}
+
 func (p *pdfPage) save(path string) error {
 	if err := p.doc.OutputFileAndClose(path); err != nil {
 		return fmt.Errorf("%s: %v", path, err)
@@ -282,6 +389,13 @@ func decodeTextStyle(value octxiliary.Value) (textStyle, error) {
 func validateCoordinate(value int, name string) error {
 	if value < 0 {
 		return fmt.Errorf("%s coordinate must be non-negative", name)
+	}
+	return nil
+}
+
+func validatePositiveSize(value int, name string) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be positive", name)
 	}
 	return nil
 }

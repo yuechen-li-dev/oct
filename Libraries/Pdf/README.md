@@ -21,7 +21,9 @@ PDF units are an internal backend detail.
 - `DrawTextStyled(page: PdfPage, x: Int<px>, y: Int<px>, text: String, style: TextStyle) -> Int ! Error`
 - `record ImageHandle { Handle: Int }` (bridges to the existing `ImageLoad` handle identity)
 - `DrawImage(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>) -> Int ! Error`
-- `DrawImageSized(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>, width: Int<px>, height: Int<px>) -> Int ! Error`
+- `DrawImageSized(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>, width: Int<px>, height: Int<px>) -> Int ! Error` (legacy interpreted bridge)
+- `DrawImageBytes(page: PdfPage, bytes: Bytes, format: String, x: Int<px>, y: Int<px>) -> Int ! Error`
+- `DrawImageBytesSized(page: PdfPage, bytes: Bytes, format: String, x: Int<px>, y: Int<px>, width: Int<px>, height: Int<px>) -> Int ! Error`
 - `Save(page: PdfPage, path: String) -> Int ! Error`
 - `DefaultTextStyle() -> TextStyle`
 
@@ -36,7 +38,14 @@ Compiled Oct supports the Pdf text/page/save subset through `octxiliary-pdf`:
 
 `PdfPage` is a Pdf-sidecar-owned handle, and `TextStyle` is transported as a record argument. `DefaultTextStyle()` remains pure Oct.
 
-Compiled image drawing is intentionally deferred: `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` are not compiled-supported, and Pdf compiled code must not consume `Image.ImageHandle` values from `octxiliary-image`. Future compiled image interop should use a Pdf-owned import API or path/bytes helper rather than cross-family handle sharing.
+M30 adds compiled Image -> Pdf interop through explicit PNG bytes transfer:
+
+- `Image.EncodePng` exports an Image-owned handle as serialized PNG `Bytes` through `octxiliary-image`.
+- `DrawImageBytes` and `DrawImageBytesSized` consume those bytes through `octxiliary-pdf`.
+- The compiled Oct binary mediates the transfer; sidecars do not talk directly.
+- Handles stay sidecar-family-local. `octxiliary-pdf` never consumes `Image.ImageHandle`.
+
+Legacy `DrawImage`, `DrawImageSized`, and `Pdf.ImageHandle` remain interpreted bridge APIs and are still compiled-deferred. M30 does not add cross-family handles, a broker, path/file drawing APIs, or Pdf-owned imported image handles.
 
 ## Font behavior (MVP)
 
@@ -60,14 +69,15 @@ This keeps the public API pixel-native while preserving deterministic PDF output
 package Example
 
 import Pdf
+import Image
 
 fn Main() -> Int ! Error {
     let page = Pdf.NewPage(640px, 480px)?
     Pdf.DrawText(page, 24px, 28px, "Pixel-native PDF")?
 
-    let raw = ImageLoad("logo.png")?
-    let logo = Pdf.ImageHandle { Handle: raw }
-    Pdf.DrawImageSized(page, logo, 24px, 56px, 192px, 96px)?
+    let logo = Image.Load("logo.png")?
+    let png = Image.EncodePng(logo)?
+    Pdf.DrawImageBytesSized(page, png, "png", 24px, 56px, 192px, 96px)?
 
     Pdf.Save(page, "example.pdf")?
     return 0

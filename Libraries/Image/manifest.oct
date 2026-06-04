@@ -69,6 +69,7 @@ fn Manifest() -> PackageManifest {
                 Functions: [
                     WrapperFunction { OctName: "Load" WireName: "ImageLoad" Args: ["String"] Return: "Image.ImageHandle" Fallible: true },
                     WrapperFunction { OctName: "Save" WireName: "ImageSave" Args: ["Image.ImageHandle", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "EncodePng" WireName: "ImageEncodePng" Args: ["Image.ImageHandle"] Return: "Bytes" Fallible: true },
                     WrapperFunction { OctName: "Width" WireName: "ImageWidth" Args: ["Image.ImageHandle"] Return: "Int<px>" Fallible: false },
                     WrapperFunction { OctName: "Height" WireName: "ImageHeight" Args: ["Image.ImageHandle"] Return: "Int<px>" Fallible: false },
                     WrapperFunction { OctName: "Format" WireName: "ImageFormat" Args: ["Image.ImageHandle"] Return: "String" Fallible: false }

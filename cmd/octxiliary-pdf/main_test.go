@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +28,54 @@ func TestPdfTextPageSaveWorkflow(t *testing.T) {
 	}
 	if info.Size() == 0 {
 		t.Fatalf("saved pdf is empty")
+	}
+}
+
+func TestPdfDrawImageBytesAndSaveWorkflow(t *testing.T) {
+	table := newPageTable()
+	page := createPageForTest(t, table)
+	pngBytes := testPNGBytes(t)
+
+	assertIntResult(t, table, "PdfDrawImageBytes", []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "png"}, {Kind: octxiliary.ValueInt, Int: 10}, {Kind: octxiliary.ValueInt, Int: 12}})
+	assertIntResult(t, table, "PdfDrawImageBytesSized", []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "PNG"}, {Kind: octxiliary.ValueInt, Int: 40}, {Kind: octxiliary.ValueInt, Int: 30}, {Kind: octxiliary.ValueInt, Int: 60}, {Kind: octxiliary.ValueInt, Int: 40}})
+
+	out := filepath.Join(t.TempDir(), "image-bytes.pdf")
+	assertIntResult(t, table, "PdfSave", []octxiliary.Value{page, {Kind: octxiliary.ValueString, String: out}})
+	info, err := os.Stat(out)
+	if err != nil {
+		t.Fatalf("saved pdf missing: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("saved pdf is empty")
+	}
+}
+
+func TestPdfDrawImageBytesValidationErrors(t *testing.T) {
+	table := newPageTable()
+	page := createPageForTest(t, table)
+	pngBytes := testPNGBytes(t)
+
+	for _, tc := range []struct {
+		name     string
+		function string
+		args     []octxiliary.Value
+		want     string
+	}{
+		{name: "invalid bytes", function: "PdfDrawImageBytes", args: []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: []byte("not png")}, {Kind: octxiliary.ValueString, String: "png"}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}}, want: "not valid png"},
+		{name: "unsupported format", function: "PdfDrawImageBytes", args: []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "jpeg"}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}}, want: "unsupported image format"},
+		{name: "invalid coordinate", function: "PdfDrawImageBytes", args: []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "png"}, {Kind: octxiliary.ValueInt, Int: -1}, {Kind: octxiliary.ValueInt, Int: 1}}, want: "coordinate must be non-negative"},
+		{name: "invalid size", function: "PdfDrawImageBytesSized", args: []octxiliary.Value{page, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "png"}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 0}, {Kind: octxiliary.ValueInt, Int: 10}}, want: "width must be positive"},
+	} {
+		_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: tc.function, HasArgs: true, Args: tc.args})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s expected %q error, got %v", tc.name, tc.want, err)
+		}
+	}
+
+	badPage := octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: pdfFamily, HandleType: pdfPageHandleType, HandleID: 999}
+	_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: "PdfDrawImageBytes", HasArgs: true, Args: []octxiliary.Value{badPage, {Kind: octxiliary.ValueBytes, Bytes: pngBytes}, {Kind: octxiliary.ValueString, String: "png"}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}}})
+	if err == nil || !strings.Contains(err.Error(), "unknown page handle") {
+		t.Fatalf("expected invalid page handle error, got %v", err)
 	}
 }
 
@@ -118,4 +170,19 @@ func validTextStyle() octxiliary.Value {
 		{Name: "ColorG", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 100}},
 		{Name: "ColorB", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 220}},
 	}}
+}
+
+func testPNGBytes(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 4, 3))
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 4; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: uint8(50 * x), G: uint8(60 * y), B: 180, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }

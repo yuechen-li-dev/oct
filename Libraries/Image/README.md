@@ -10,6 +10,7 @@ This module intentionally stays narrow so higher-level wrappers (`Plot.Core`, `P
 
 - `Load(path: String) -> ImageHandle ! Error`
 - `Save(image: ImageHandle, path: String) -> Int ! Error`
+- `EncodePng(image: ImageHandle) -> Bytes ! Error`
 - `Width(image: ImageHandle) -> Int<px>`
 - `Height(image: ImageHandle) -> Int<px>`
 - `Format(image: ImageHandle) -> String`
@@ -22,6 +23,7 @@ Image dimensions are returned as `Int<px>` so geometry aligns with existing pixe
 
 - load: PNG, JPEG
 - save: PNG (`.png`), JPEG (`.jpg` / `.jpeg`)
+- encode-to-bytes: PNG (`EncodePng`)
 
 ## Example
 
@@ -33,6 +35,8 @@ fn Main() -> Int ! Error {
     let width = Image.Width(image)
     let height = Image.Height(image)
     Print(ToString(width) + "x" + ToString(height))
+    let pngBytes = Image.EncodePng(image)?
+    Print("encoded bytes: " + ToString(Len(pngBytes)))
     let _saved = Image.Save(image, "copy.jpg")?
     return 0
 }

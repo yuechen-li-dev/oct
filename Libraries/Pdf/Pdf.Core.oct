@@ -36,6 +36,14 @@ fn DrawImageSized(page: PdfPage, image: ImageHandle, x: Int<px>, y: Int<px>, wid
     return PdfDrawImageSized(page.Handle, image.Handle, x, y, width, height)?
 }
 
+fn DrawImageBytes(page: PdfPage, data: Bytes, format: String, x: Int<px>, y: Int<px>) -> Int ! Error {
+    return PdfDrawImageBytes(page.Handle, data, format, x, y)?
+}
+
+fn DrawImageBytesSized(page: PdfPage, data: Bytes, format: String, x: Int<px>, y: Int<px>, width: Int<px>, height: Int<px>) -> Int ! Error {
+    return PdfDrawImageBytesSized(page.Handle, data, format, x, y, width, height)?
+}
+
 fn Save(page: PdfPage, path: String) -> Int ! Error {
     return PdfSave(page.Handle, path)?
 }
