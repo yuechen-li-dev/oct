@@ -282,7 +282,7 @@ Compiled mode now supports the existing rank-2 matrix indexed Einstein surface:
 - Infix `A[i, k] * B[k, j]`, `A[i, j] + B[i, j]`, and `A[i, j] - B[i, j]` are compiled-supported for rank-2 matrices.
 - Nested expression trees preserve labels during lowering, while assigned intermediates remain ordinary matrices and can be reindexed explicitly.
 
-Still deferred in compiled mode: vector rank-1 indexed terms, dot/outer products from vector indexed notation, mixed vector/matrix indexed notation, scalar/double contractions, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels. The `@` operator behavior is unchanged.
+M37 extends compiled indexed notation with vector rank-1 terms, dot/outer products from vector indexed notation, and mixed matrix/vector indexed contractions. Still deferred in compiled mode: matrix/matrix scalar double contractions, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels. The `@` operator behavior is unchanged.
 
 
 ## M34 Mechanics matrix/scalar compiled cleanup
@@ -300,4 +300,12 @@ Interpreted mode now supports `Vector[Index]` as a rank-1 indexed tensor term wh
 
 The interpreted M36 surface supports vector indexed addition/subtraction, vector dot product (`a[i] * b[i]`), vector outer product (`a[i] * b[j]`), matrix-vector indexed contraction (`A[i, j] * x[j]`), and vector-matrix indexed contraction (`x[i] * A[i, j]`). Existing rank-2 matrix indexed `*`, `+`, and `-` support is unchanged.
 
-Compiled support is not expanded in M36: vector rank-1 indexed terms and mixed vector/matrix indexed contractions are deferred to M37. `@` behavior is unchanged. Rank-N tensors, trace-style `A[i, i]`, broadcasting, variance, raising/lowering, Prometheus/reactor/GPU tensor kernels, and rank-2 matrix scalar double contractions remain deferred.
+Compiled support was not expanded in M36: vector rank-1 indexed terms and mixed vector/matrix indexed contractions were deferred to M37. `@` behavior was unchanged. Rank-N tensors, trace-style `A[i, i]`, broadcasting, variance, raising/lowering, Prometheus/reactor/GPU tensor kernels, and rank-2 matrix scalar double contractions remained deferred.
+
+## M37 compiled vector rank-1 Einstein support
+
+Compiled mode now supports `Vector[Index]` as a rank-1 indexed tensor term while preserving `Vector[Int]` as concrete element access. Arrays remain storage values only and are not tensor-indexable.
+
+The interpreted and compiled M37 surface now has parity for vector indexed addition/subtraction (`a[i] + b[i]`, `a[i] - b[i]`), vector dot product (`a[i] * b[i]`), vector outer product (`a[i] * b[j]`), matrix-vector indexed contraction (`A[i, j] * x[j]`), and vector-matrix indexed contraction (`x[i] * A[i, j]`). Existing M33 rank-2 matrix indexed `*`, `+`, and `-` support is unchanged.
+
+M37 does not change `@` behavior and does not add `x @ A` or `x @ y`. Rank-N tensors, trace-style `A[i, i]`, broadcasting, variance, raising/lowering, Prometheus/reactor/GPU tensor kernels, and rank-2 matrix scalar double contractions remain deferred.
