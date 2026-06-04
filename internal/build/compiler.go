@@ -297,11 +297,12 @@ type MIRAssign struct {
 func (MIRAssign) mirStmt() {}
 
 type MIRCall struct {
-	Target  string
-	Callee  string
-	Args    []string
-	Builtin bool
-	RetType string
+	Target   string
+	Callee   string
+	Args     []string
+	ArgTypes []string
+	Builtin  bool
+	RetType  string
 }
 
 func (MIRCall) mirStmt() {}
@@ -1699,6 +1700,9 @@ func coerceExprToType(value, from, to string) string {
 	if isIntScalarTypeString(from) && isFloatScalarTypeString(to) {
 		return fmt.Sprintf("float64(%s)", value)
 	}
+	if isComplexScalarTypeString(to) && isNumericTypeString(from) {
+		return fmt.Sprintf("complex(float64(%s), 0)", value)
+	}
 	return value
 }
 
@@ -1878,7 +1882,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
 			ret = "Bool"
 		case "+", "-", "*", "/":
-			if isFloatScalarTypeString(lt) || isFloatScalarTypeString(rt) {
+			if isComplexScalarTypeString(lt) || isComplexScalarTypeString(rt) {
+				ret = "Complex"
+			} else if isFloatScalarTypeString(lt) || isFloatScalarTypeString(rt) {
 				if strings.HasPrefix(lt, "Float<") && strings.HasSuffix(lt, ">") {
 					ret = lt
 				} else if strings.HasPrefix(rt, "Float<") && strings.HasSuffix(rt, ">") {
@@ -1898,7 +1904,10 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if op == "or" {
 			op = "||"
 		}
-		if isNumericTypeString(lt) && isNumericTypeString(rt) {
+		if ret == "Complex" && isComplexCompatibleScalarTypeString(lt) && isComplexCompatibleScalarTypeString(rt) {
+			l = coerceExprToType(l, lt, "Complex")
+			r = coerceExprToType(r, rt, "Complex")
+		} else if isNumericTypeString(lt) && isNumericTypeString(rt) {
 			l, r = coerceNumericBinaryOperands(l, lt, r, rt, ret)
 			if ret == "Bool" && (isFloatScalarTypeString(lt) || isFloatScalarTypeString(rt)) {
 				l, r = coerceNumericBinaryOperands(l, lt, r, rt, "Float")
@@ -2016,7 +2025,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					RetType: "Matrix<Float>",
 				})
 				return tmp, "Matrix<Float>", false, nil
-			case "Abs", "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
+			case "Abs", "Pi", "E", "I", "Complex", "ComplexPolar", "Real", "Imag", "Arg", "Conj", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Trace", "Grad", "Div", "SymGrad":
 				args := make([]string, 0, len(e.Arguments))
 				argTypes := make([]string, 0, len(e.Arguments))
 				for _, a := range e.Arguments {
@@ -2032,7 +2041,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, err
 				}
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: ident.Name, Args: args, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: ident.Name, Args: args, ArgTypes: argTypes, Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			}
 		}
@@ -2235,11 +2244,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			localType = fallibleType(ret)
 		}
 		if !fallible && localType == "Void" {
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: callee, Args: args, Builtin: builtin, RetType: ret})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 			return "", ret, false, nil
 		}
 		tmp := c.temp(localType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: args, Builtin: builtin, RetType: ret})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 		return tmp, ret, fallible, nil
 	case ast.ArrayLiteralExpr:
 		vals := []string{}
@@ -2906,6 +2915,9 @@ func goCoerceArg(expr string, actual string, expected string) string {
 	if actual == "Int" && isFloatLikeType(expected) {
 		return fmt.Sprintf("float64(%s)", expr)
 	}
+	if expected == "Complex" && isNumericTypeString(actual) {
+		return fmt.Sprintf("complex(float64(%s), 0)", expr)
+	}
 	return expr
 }
 
@@ -3462,6 +3474,14 @@ func isNumericTypeString(t string) bool {
 	return isIntScalarTypeString(t) || isFloatScalarTypeString(t)
 }
 
+func isComplexScalarTypeString(t string) bool {
+	return t == "Complex"
+}
+
+func isComplexCompatibleScalarTypeString(t string) bool {
+	return isNumericTypeString(t) || isComplexScalarTypeString(t)
+}
+
 func unifyLinearElemType(leftElem, rightElem string) string {
 	if strings.HasPrefix(leftElem, "Float<") || strings.HasPrefix(rightElem, "Float<") {
 		if strings.HasPrefix(leftElem, "Float<") {
@@ -3550,7 +3570,31 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
 			return argTypes[0], nil
 		}
+		if isComplexScalarTypeString(argTypes[0]) {
+			return "Float", nil
+		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", argTypes[0])
+	case "I":
+		if len(argTypes) != 0 {
+			return "", fmt.Errorf("function '%s' expects 0 arguments, got %d", name, len(argTypes))
+		}
+		return "Complex", nil
+	case "Real", "Imag", "Arg":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if isComplexScalarTypeString(argTypes[0]) {
+			return "Float", nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+	case "Conj":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if isComplexScalarTypeString(argTypes[0]) {
+			return "Complex", nil
+		}
+		return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
 	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "FloorToInt", "CeilToInt", "RoundToInt", "Math.FloorToInt", "Math.CeilToInt", "BaseValue":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -3563,6 +3607,11 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 				return "Float", nil
 			}
 			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		if name == "Exp" || name == "Ln" {
+			if isComplexScalarTypeString(argTypes[0]) {
+				return "Complex", nil
+			}
 		}
 		if isIntScalarTypeString(argTypes[0]) || isFloatScalarTypeString(argTypes[0]) {
 			return "Float", nil
@@ -3588,6 +3637,16 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "Float", nil
+	case "ComplexPolar":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function 'ComplexPolar' expects 2 arguments, got %d", len(argTypes))
+		}
+		for idx := range argTypes {
+			if !(isIntScalarTypeString(argTypes[idx]) || isFloatScalarTypeString(argTypes[idx])) {
+				return "", fmt.Errorf("compiled mode does not yet support builtin ComplexPolar for type %s", argTypes[idx])
+			}
+		}
+		return "Complex", nil
 	case "Complex":
 		if len(argTypes) != 2 {
 			return "", fmt.Errorf("function 'Complex' expects 2 arguments, got %d", len(argTypes))
@@ -4845,8 +4904,11 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["fft"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
+	}
+	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
+		importSet["math/cmplx"] = struct{}{}
 	}
 	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] {
 		importSet["math"] = struct{}{}
@@ -4969,6 +5031,9 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] {
 		b.WriteString(__octLinearAlgebraHelpers)
+	}
+	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] {
+		b.WriteString(__octComplexHelpers)
 	}
 	if usedBuiltins["fft"] {
 		b.WriteString(__octFFTHelpers)
@@ -5279,6 +5344,12 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
 	}
 }
+
+const __octComplexHelpers = `
+func __octComplexReal(value complex128) float64 { return real(value) }
+func __octComplexImag(value complex128) float64 { return imag(value) }
+func __octComplexAbs(value complex128) float64 { return math.Hypot(real(value), imag(value)) }
+`
 
 const __octSharedOctagonHelpers = `
 func __octTypeKey(t reflect.Type) string {
@@ -7272,11 +7343,26 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = func(__v float64) float64 { if __v < 0.0 { return 0.0 }; if __v > 1.0 { return 1.0 }; return __v }(%s)", st.Target, st.Args[0]), nil
 			case "Complex":
 				return fmt.Sprintf("%s = complex(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+			case "ComplexPolar":
+				return fmt.Sprintf("%s = cmplx.Rect(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+			case "I":
+				return fmt.Sprintf("%s = complex(0, 1)", st.Target), nil
+			case "Real":
+				return fmt.Sprintf("%s = __octComplexReal(%s)", st.Target, st.Args[0]), nil
+			case "Imag":
+				return fmt.Sprintf("%s = __octComplexImag(%s)", st.Target, st.Args[0]), nil
+			case "Arg":
+				return fmt.Sprintf("%s = cmplx.Phase(%s)", st.Target, st.Args[0]), nil
+			case "Conj":
+				return fmt.Sprintf("%s = cmplx.Conj(%s)", st.Target, st.Args[0]), nil
 			case "Pi":
 				return fmt.Sprintf("%s = math.Pi", st.Target), nil
 			case "E":
 				return fmt.Sprintf("%s = math.E", st.Target), nil
 			case "Abs":
+				if len(st.ArgTypes) == 1 && isComplexScalarTypeString(st.ArgTypes[0]) {
+					return fmt.Sprintf("%s = __octComplexAbs(%s)", st.Target, st.Args[0]), nil
+				}
 				if isIntScalarTypeString(st.RetType) {
 					return fmt.Sprintf("%s = func(__v int) int { if __v < 0 { return -__v }; return __v }(%s)", st.Target, st.Args[0]), nil
 				}
@@ -7301,8 +7387,14 @@ func goStmt(s MIRStmt) (string, error) {
 			case "Atan2":
 				return fmt.Sprintf("%s = math.Atan2(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
 			case "Exp":
+				if isComplexScalarTypeString(st.RetType) {
+					return fmt.Sprintf("%s = cmplx.Exp(%s)", st.Target, st.Args[0]), nil
+				}
 				return fmt.Sprintf("%s = math.Exp(float64(%s))", st.Target, st.Args[0]), nil
 			case "Ln":
+				if isComplexScalarTypeString(st.RetType) {
+					return fmt.Sprintf("%s = cmplx.Log(%s)", st.Target, st.Args[0]), nil
+				}
 				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, st.Args[0]), nil
 			case "Pow":
 				return fmt.Sprintf("%s = math.Pow(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil

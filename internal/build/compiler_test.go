@@ -1312,6 +1312,42 @@ fn main() -> Int ! Error {
 	}
 }
 
+func TestCompileAndRunComplexBuiltinsAndArithmetic(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn ShadowedComponentNames(z: Complex) -> Float {
+    let real = 1.0
+    let imag = 2.0
+    return real + imag + Real(z) + Imag(z)
+}
+
+fn main() -> Float {
+    let z = Complex(3.0, 4.0)
+    let polar = ComplexPolar(Abs(z), Arg(z))
+    let conjugate = Conj(z)
+    let logged = Ln(Exp(Complex(0.25, 0.5)))
+    let rotated = I() * z
+    return ShadowedComponentNames(z) + Abs(z) + Real(conjugate) + Imag(conjugate) + Real(polar) + Imag(polar) + Real(logged) + Imag(logged) + Real(rotated) + Imag(rotated)
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "20.75" {
+		t.Fatalf("expected 20.75, got %q", strings.TrimSpace(string(out)))
+	}
+}
+
 func TestCompileAndRunFloatBuiltinConvertsInt(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")

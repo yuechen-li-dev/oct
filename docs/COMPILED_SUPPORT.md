@@ -5,6 +5,14 @@ _Last updated: 2026-06-04._
 This file is the **source of truth** for compiled support posture.
 
 
+## M26 Complex compiled support status
+
+M26 adds compiled scalar `Complex` support on top of Go `complex128`. The compiled backend now lowers the current interpreted/typechecked Complex surface used by the standard libraries: `I`, `Complex`, `ComplexPolar`, `Real`, `Imag`, `Arg`, `Conj`, `Abs(Complex)`, Complex `Exp`/`Ln`, and Complex arithmetic mixed with dimensionless `Int`/`Float` where the typechecker already permits it. `Real` and `Imag` use generated helpers so Oct locals named `real` or `imag` do not shadow Go's predeclared functions.
+
+Focused package results after M26: `Libraries/Complex --execution compiled` is 9 passed / 0 failed, `Libraries/Signal --execution compiled` is 37 passed / 0 failed, and the Complex-dependent `Libraries/RF/RF.SParameters.octest --execution compiled` is 7 passed / 0 failed. `Libraries/Mathematics --execution compiled` improves to 14 passed / 7 failed; the remaining failures are callback/function-value calculus cases (`unknown identifier 'f'`) rather than Complex support. Full `Libraries/RF` still has non-Complex generated-Go placeholder and `Int[]`/`Float[]` coercion failures. See `docs/internal/stdlib_compiled_coverage_m26.md` for the detailed M26 delta.
+
+Still deferred after M26: Einstein/tensor notation, broad callback/function-value lowering, new wrapper migrations, new Octxiliary transports or protocol changes, PDF image interop, live UI bridge support, package-manager sidecar build lifecycle, public API redesign, and arbitrary numeric tower/generic algebra beyond the Complex coercions selected by existing typechecking.
+
 ## M25 runtime/index cleanup status
 
 M25 fixes the remaining M24 `Libraries/Statistics` compiled runtime failures and the `Libraries/Analysis` zero-assertion test shape. Statistics and Analysis are now compiled-green in focused package checks: `Libraries/Statistics --execution compiled` reports 36 passed / 0 failed, and `Libraries/Analysis --execution compiled` reports 36 passed / 0 failed.
