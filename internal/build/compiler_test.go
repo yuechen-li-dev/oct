@@ -2162,3 +2162,115 @@ func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *te
 		t.Fatalf("expected matrix output, got %q", normalized)
 	}
 }
+
+func TestCompileAndRunNumericArrayLoweringM24(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name: "mixed int float arithmetic compiles as float",
+			source: `package Main
+
+fn Main() -> Float {
+    let n = 4
+    let sum = 10.0
+    return sum / n + n * 0.5 - 1
+}
+`,
+			want: "3.5",
+		},
+		{
+			name: "typed float array literal coerces integer elements",
+			source: `package Main
+
+fn Accept(values: Float[]) -> Float {
+    return values[0] + values[1] + values[2]
+}
+
+fn Main() -> Float {
+    return Accept([1, 2, 3])
+}
+`,
+			want: "6",
+		},
+		{
+			name: "record float array field coerces integer literal elements",
+			source: `package Main
+
+record Samples {
+    Values: Float[]
+}
+
+fn Main() -> Float {
+    let samples = Samples { Values: [1, 2, 3] }
+    return samples.Values[2]
+}
+`,
+			want: "3",
+		},
+		{
+			name: "loop index keeps int shape when later float local shadows name",
+			source: `package Main
+
+fn Sum(xs: Float[]) -> Float {
+    var total = 0.0
+    for c in 0..Len(xs) {
+        total = total + xs[c]
+    }
+    let c = 1.5
+    return total + c
+}
+
+fn Main() -> Float {
+    return Sum([1.0, 2.0, 3.0])
+}
+`,
+			want: "7.5",
+		},
+		{
+			name: "same logical name can hold distinct record result shapes",
+			source: `package Main
+
+record FloatBox { Value: Float }
+record BoolBox { Value: Bool }
+
+fn MakeFloat() -> FloatBox { return FloatBox { Value: 1.25 } }
+fn MakeBool() -> BoolBox { return BoolBox { Value: true } }
+
+fn Main() -> Float {
+    let draw = MakeFloat()
+    let first = draw.Value
+    let draw = MakeBool()
+    if draw.Value {
+        return first
+    }
+    return 0.0
+}
+`,
+			want: "1.25",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.oct")
+			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Compile(mainPath)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("run artifact: %v (%s)", err, string(out))
+			}
+			if strings.TrimSpace(string(out)) != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, strings.TrimSpace(string(out)))
+			}
+		})
+	}
+}
