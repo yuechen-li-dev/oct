@@ -10,8 +10,7 @@ import (
 
 func TestCompiledCsvOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	buildCsvOctxiliarySidecar(t, repo, binDir)
+	binDir := sharedTestSidecarDir(t, "octxiliary-csv")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Csv", "--execution", "compiled")
 	cmd.Dir = repo
@@ -46,8 +45,7 @@ func TestCompiledCsvOctxiliaryMissingSidecarMessage(t *testing.T) {
 
 func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	buildCsvOctxiliarySidecar(t, repo, binDir)
+	binDir := sharedTestSidecarDir(t, "octxiliary-csv")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Csv.CompiledSmoke.octest", "--execution", "compiled")
 	cmd.Dir = repo
@@ -57,14 +55,4 @@ func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
 		t.Fatalf("compiled IO csv wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 	assertOutputContains(t, string(out), "PASS IO.IOCsvRowMajorCompiledSmoke")
-}
-
-func buildCsvOctxiliarySidecar(t *testing.T, repo string, binDir string) {
-	t.Helper()
-	outPath := filepath.Join(binDir, "octxiliary-csv")
-	build := exec.Command("go", "build", "-o", outPath, "./cmd/octxiliary-csv")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build octxiliary-csv: %v\n%s", err, strings.TrimSpace(string(out)))
-	}
 }

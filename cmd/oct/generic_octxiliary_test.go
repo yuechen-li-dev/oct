@@ -10,13 +10,7 @@ import (
 
 func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	sidecar := filepath.Join(binDir, "octxiliary-test-wrapper")
-	build := exec.Command("go", "build", "-o", sidecar, "./cmd/octxiliary-test-wrapper")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build test sidecar: %v\n%s", err, strings.TrimSpace(string(out)))
-	}
+	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
@@ -117,13 +111,7 @@ func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
 
 func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	sidecar := filepath.Join(binDir, "octxiliary-test-wrapper")
-	build := exec.Command("go", "build", "-o", sidecar, "./cmd/octxiliary-test-wrapper")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build test sidecar: %v\n%s", err, strings.TrimSpace(string(out)))
-	}
+	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)

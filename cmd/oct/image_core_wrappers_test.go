@@ -64,13 +64,7 @@ func TestCompiledImageCoreWrappers(t *testing.T) {
 		}
 	})
 
-	binDir := t.TempDir()
-	sidecar := filepath.Join(binDir, "octxiliary-image")
-	build := exec.Command("go", "build", "-o", sidecar, "./cmd/octxiliary-image")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build image sidecar: %v\n%s", err, strings.TrimSpace(string(out)))
-	}
+	binDir := sharedTestSidecarDir(t, "octxiliary-image")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Image", "--execution", "compiled")
 	cmd.Dir = repo

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/manifestwrapper"
 	"github.com/yuechen-li-dev/oct/internal/octxiliary"
@@ -83,12 +84,13 @@ type interpretedWrapperClientCache struct {
 }
 
 type interpretedWrapperClient struct {
-	cmd   *exec.Cmd
-	in    io.WriteCloser
-	out   io.ReadCloser
-	mu    sync.Mutex
-	reqID int
-	err   error
+	cmd    *exec.Cmd
+	in     io.WriteCloser
+	out    io.ReadCloser
+	mu     sync.Mutex
+	reqID  int
+	err    error
+	closed bool
 }
 
 func newInterpretedWrapperClientCache() *interpretedWrapperClientCache {
@@ -117,13 +119,22 @@ func (client *interpretedWrapperClient) close() {
 	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if client.closed {
+		return
+	}
+	client.closed = true
 	if client.in != nil {
 		_ = client.in.Close()
 		client.in = nil
 	}
 	if client.cmd != nil && client.cmd.Process != nil {
-		if err := client.cmd.Wait(); err != nil {
+		waitDone := make(chan error, 1)
+		go func(cmd *exec.Cmd) { waitDone <- cmd.Wait() }(client.cmd)
+		select {
+		case <-waitDone:
+		case <-time.After(2 * time.Second):
 			_ = client.cmd.Process.Kill()
+			<-waitDone
 		}
 		client.cmd = nil
 	}
