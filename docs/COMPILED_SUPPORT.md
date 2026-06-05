@@ -282,7 +282,7 @@ Compiled mode now supports the existing rank-2 matrix indexed Einstein surface:
 - Infix `A[i, k] * B[k, j]`, `A[i, j] + B[i, j]`, and `A[i, j] - B[i, j]` are compiled-supported for rank-2 matrices.
 - Nested expression trees preserve labels during lowering, while assigned intermediates remain ordinary matrices and can be reindexed explicitly.
 
-M37 extends compiled indexed notation with vector rank-1 terms, dot/outer products from vector indexed notation, and mixed matrix/vector indexed contractions. M38 aligns compiled `@` with the supported indexed contractions: matrix-matrix (`A @ B`), matrix-vector (`A @ x`), vector-matrix (`x @ A`), and vector-vector dot product (`x @ y`). Still deferred in compiled mode: matrix/matrix scalar double contractions, trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels.
+M37 extends compiled indexed notation with vector rank-1 terms, dot/outer products from vector indexed notation, and mixed matrix/vector indexed contractions. M38 aligns compiled `@` with the supported indexed contractions: matrix-matrix (`A @ B`), matrix-vector (`A @ x`), vector-matrix (`x @ A`), and vector-vector dot product (`x @ y`). M40 adds compiled matrix/matrix scalar double contractions (`A[i, j] * B[i, j]` and `A[i, j] * B[j, i]`). Still deferred in compiled mode: trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, index variance, raising/lowering, and Prometheus/reactor/GPU tensor kernels.
 
 
 ## M34 Mechanics matrix/scalar compiled cleanup
@@ -320,4 +320,13 @@ Compiled and interpreted `@` now cover the same common rank-1/rank-2 contraction
 - `x @ A` is now vector-matrix contraction, equivalent to `x[i] * A[i, j]`.
 - `x @ y` is now vector-vector dot product, equivalent to `x[i] * y[i]`.
 
-Generated compiled helpers validate vector lengths, matrix row/column compatibility, and rectangular matrix shape in the same non-broadcasting style as existing matrix multiplication helpers. Arrays remain unsupported for `@`, and `*` remains element-wise outside indexed tensor notation. Rank-N tensors, matrix/matrix scalar double contractions, trace sugar, covariant/contravariant variance, raising/lowering indices, broadcasting, and Prometheus/reactor/GPU tensor kernels remain deferred.
+Generated compiled helpers validate vector lengths, matrix row/column compatibility, and rectangular matrix shape in the same non-broadcasting style as existing matrix multiplication helpers. Arrays remain unsupported for `@`, and `*` remains element-wise outside indexed tensor notation. Rank-N tensors, matrix/matrix scalar double contractions, trace sugar, covariant/contravariant variance, raising/lowering indices, broadcasting, and Prometheus/reactor/GPU tensor kernels remained deferred after M38.
+
+## M40 matrix/matrix scalar double contractions
+
+Interpreted and compiled indexed tensor notation now support rank-2 matrix/matrix multiplication expressions whose labels are all contracted and whose result is scalar:
+
+- `A[i, j] * B[i, j]` is the Frobenius-style matrix inner product.
+- `A[i, j] * B[j, i]` is a label-aware matrix/matrix scalar double contraction.
+
+The compiled helper validates non-empty labels, rectangular matrix values, repeated label counts, zero free labels, and runtime label extent consistency using matrix slot extents (slot 0 rows, slot 1 columns). Trace-style indexed sugar `A[i, i]` remains unsupported; use `Trace(A)`. Rank-N tensors, arrays as tensors, broadcasting, covariant/contravariant variance, raising/lowering, `@` behavior changes, Prometheus/reactor/GPU tensor kernels, and package-manager federation remain deferred.

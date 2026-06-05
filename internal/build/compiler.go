@@ -1311,7 +1311,7 @@ func usesOctxiliaryBuiltins(usedBuiltins map[string]bool) bool {
 }
 
 func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
-	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulVM"] || usedBuiltins["VecDot"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] || usedBuiltins["EinAddVV"] || usedBuiltins["EinSubVV"] || usedBuiltins["EinDotVV"] || usedBuiltins["EinOuterVV"] || usedBuiltins["EinMulMV"] || usedBuiltins["EinMulVM"] {
+	if usedBuiltins["MatMulMV"] || usedBuiltins["MatMulVM"] || usedBuiltins["VecDot"] || usedBuiltins["MatMulMM"] || usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["Trace"] || usedBuiltins["Grad"] || usedBuiltins["Div"] || usedBuiltins["SymGrad"] || usedBuiltins["EinMul"] || usedBuiltins["EinAdd"] || usedBuiltins["EinSub"] || usedBuiltins["EinAddVV"] || usedBuiltins["EinSubVV"] || usedBuiltins["EinDotVV"] || usedBuiltins["EinOuterVV"] || usedBuiltins["EinMulMV"] || usedBuiltins["EinMulVM"] || usedBuiltins["EinDoubleMM"] {
 		return true
 	}
 	for name := range usedBuiltins {
@@ -2005,8 +2005,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, err
 				}
 				if leftTerm.Rank == 2 && rightTerm.Rank == 2 {
+					if len(free) == 0 {
+						tmp := c.temp(retElem)
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDoubleMM", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: retElem})
+						return tmp, retElem, false, nil
+					}
 					if len(free) != 2 {
-						return "", "", false, fmt.Errorf("compiled matrix/matrix scalar double contractions are deferred in M36")
+						return "", "", false, fmt.Errorf("compiled matrix/matrix indexed contraction requires either 0 or 2 free indices, got %d", len(free))
 					}
 					ret := "Matrix<" + retElem + ">"
 					tmp := c.temp(ret)
@@ -6378,6 +6383,52 @@ func __octEinMulMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T,
 	return out
 }
 
+func __octEinDoubleMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string) T {
+	leftRows, leftCols := __octMatrixDims(left, "EinDoubleMM", "left")
+	rightRows, rightCols := __octMatrixDims(right, "EinDoubleMM", "right")
+	if l0 == l1 || r0 == r1 {
+		panic(fmt.Sprintf("runtime error: EinDoubleMM requires distinct indices per matrix term (left=[%s,%s], right=[%s,%s]); use Trace(...) for single-matrix trace", l0, l1, r0, r1))
+	}
+	dims := map[string]int{}
+	__octEinDimByLabel(l0, leftRows, dims)
+	__octEinDimByLabel(l1, leftCols, dims)
+	__octEinDimByLabel(r0, rightRows, dims)
+	__octEinDimByLabel(r1, rightCols, dims)
+	free, contracted := __octEinFreeAndContracted(l0, l1, r0, r1)
+	if len(free) != 0 {
+		panic(fmt.Sprintf("runtime error: EinDoubleMM requires zero free indices, got %d for [%s,%s]*[%s,%s]", len(free), l0, l1, r0, r1))
+	}
+	if len(contracted) != 2 {
+		panic(fmt.Sprintf("runtime error: EinDoubleMM requires exactly 2 contracted indices, got %d for [%s,%s]*[%s,%s]", len(contracted), l0, l1, r0, r1))
+	}
+	assignments := map[string]int{}
+	var acc T
+	accSet := false
+	var loop func(int)
+	loop = func(pos int) {
+		if pos == len(contracted) {
+			product := left[assignments[l0]][assignments[l1]] * right[assignments[r0]][assignments[r1]]
+			if !accSet {
+				acc = product
+				accSet = true
+				return
+			}
+			acc += product
+			return
+		}
+		label := contracted[pos]
+		for v := 0; v < dims[label]; v++ {
+			assignments[label] = v
+			loop(pos + 1)
+		}
+	}
+	loop(0)
+	if !accSet {
+		panic("runtime error: EinDoubleMM failed to accumulate contracted terms")
+	}
+	return acc
+}
+
 func __octEinAddMM[T __octNumber](left [][]T, l0 string, l1 string, right [][]T, r0 string, r1 string) [][]T {
 	return __octEinAddSubMM(left, l0, l1, right, r0, r1, false)
 }
@@ -8303,6 +8354,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octEinMulMV(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
 			case "EinMulVM":
 				return fmt.Sprintf("%s = __octEinMulVM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+			case "EinDoubleMM":
+				return fmt.Sprintf("%s = __octEinDoubleMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
 			case "Len":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":

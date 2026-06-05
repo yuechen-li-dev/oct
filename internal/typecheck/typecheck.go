@@ -5897,9 +5897,6 @@ func (c checker) checkEinsteinBinaryExpr(node ast.BinaryExpr, left ExprType, rig
 		if len(free) > 2 {
 			return ExprType{}, fmt.Errorf("indexed multiplication result rank %d is not supported in M36; rank-N tensors are deferred", len(free))
 		}
-		if len(free) == 0 && left.EinTerm.Rank == 2 && right.EinTerm.Rank == 2 {
-			return ExprType{}, fmt.Errorf("matrix/matrix scalar double contractions are deferred in M36")
-		}
 		resultLabels = free
 	}
 

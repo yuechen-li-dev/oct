@@ -55,9 +55,6 @@ func evalEinsteinBinaryTerms(op string, left einsteinIndexedTerm, right einstein
 		if len(free) > 2 {
 			return Value{}, nil, fmt.Errorf("runtime error: indexed multiplication result rank %d is not supported in M36; rank-N tensors are deferred", len(free))
 		}
-		if len(free) == 0 && left.rank == 2 && right.rank == 2 {
-			return Value{}, nil, fmt.Errorf("runtime error: matrix/matrix scalar double contractions are deferred in M36")
-		}
 		value, err := evalEinsteinMulResult(left, right, free, contracted, dimByLabel)
 		return value, free, err
 	case "EinAdd", "EinSub":
