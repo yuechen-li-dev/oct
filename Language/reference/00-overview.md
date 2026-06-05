@@ -3,9 +3,9 @@
 ## Overview
 
 Oct is a statically typed language implemented in Go.
-Language behavior is defined by `.octest` and `.octfail` suites in `Language/`.
-This reference restates current behavior in human-readable form.
-If this reference conflicts with implementation or tests, implementation and tests are authoritative.
+Language behavior is defined by the `Language/` contract suites and this reference.
+This reference is the human-readable source of truth for syntax, style conventions, and supported user-facing language features.
+If this reference, implementation, and tests disagree, treat the disagreement as a documentation or implementation gap to surface explicitly rather than silently cargo-culting older code.
 
 ## Start here: practical reading paths
 
@@ -25,7 +25,8 @@ Choose one path based on what you are trying to do:
 ## Rules
 
 - `Language/` suites are the executable language contract.
-- Go code in `cmd/` and `internal/` is the implementation authority.
+- `Language/reference` is the human-readable reference for syntax, style conventions, and supported features.
+- Go code in `cmd/` and `internal/` implements the language; it should not define a second user-facing semantic contract.
 - This reference does not add features.
 - This reference does not relax typing rules.
 - This reference does not define future behavior.

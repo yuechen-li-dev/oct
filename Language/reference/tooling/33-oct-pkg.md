@@ -73,8 +73,8 @@ Allowed package kind values are:
 
 ## Wrapper package source contract
 
-M5c defines wrapper package metadata validation only. A wrapper package declares `Kind: "wrapper"` and supplies `Wrappers: Wrapper[]` in `manifest.oct`.
-The metadata is validated and exposed to package-manager metadata, but sidecar build commands, registry generation, lockfiles, runtime sidecar resolution, wrapper execution, generic wrapper lowering, and handle-backed wrapper support are future work.
+A wrapper package declares `Kind: "wrapper"` and supplies `Wrappers: Wrapper[]` in `manifest.oct`.
+The metadata is validated and exposed to package-manager metadata. Planning and registry output are supported, but sidecar build commands, lockfiles, runtime sidecar resolution, wrapper execution, and native build lifecycle hardening remain future work.
 
 Each `Wrapper` must declare non-empty `Name`, `Family`, `Protocol`, `SidecarCommand`, and `GoModuleDir` fields plus a non-empty `Functions` array.
 `Protocol` must be exactly `octxiliary.v0`.
@@ -82,7 +82,7 @@ Each `Wrapper` must declare non-empty `Name`, `Family`, `Protocol`, `SidecarComm
 Within one package, duplicate `Wrapper.Name` values and duplicate `Wrapper.Family` values are rejected.
 
 Each `WrapperFunction` must declare non-empty `OctName`, non-empty `WireName`, `Args: String[]`, non-empty `Return`, and `Fallible: Bool`.
-`Args` elements and `Return` must use one of the supported M5c transport type strings:
+`Args` elements and `Return` must use one of the supported transport type strings:
 
 - `Void`
 - `Int`
@@ -97,7 +97,7 @@ Do not declare sidecar build commands or runtime registry behavior beyond this s
 
 ## Wrapper build planning
 
-M5d adds internal package-manager planning support for wrapper manifests. Wrapper manifests can now be inspected as native wrapper build plans for fetched packages and synced dependency graphs. A plan identifies which packages are `Kind: "wrapper"`, each package-local `GoModuleDir`, the resolved package-local Go module path, sidecar command names, wrapper families, protocols, and exposed function metadata.
+Wrapper manifests can be inspected as native wrapper build plans for the current package and synced direct dependencies. A plan identifies which packages are `Kind: "wrapper"`, each package-local `GoModuleDir`, the resolved package-local Go module path, sidecar command names, wrapper families, protocols, exposed function metadata, and declared transport type metadata.
 
 Wrapper build planning is inspection-only. It does not build Go modules, run `go mod download`, run `go build`, generate sidecar binaries, generate lockfiles, discover runtime sidecars, lower generic wrappers, execute sidecars, or change the Octxiliary protocol.
 
@@ -105,7 +105,7 @@ Planning treats wrapper packages as native-code packages and marks them as requi
 
 ## Octxiliary registry artifact
 
-M5e adds an internal package-manager artifact model that can render wrapper build plans as deterministic `.octagon` text. The registry is inert metadata for future build, runtime, and compiler integration; writing it does not build, download, execute, discover, or register sidecars. It also does not generate lockfiles and does not add compiled wrapper lowering.
+Wrapper build plans can be rendered as deterministic `.octagon` text. The registry is inert metadata for future build, runtime, and compiler integration; writing it does not build, download, execute, discover, or register sidecars. It also does not generate lockfiles and does not add compiled wrapper lowering.
 
 The registry version is the stable string `octxiliary.registry.v0`. A registry lists the resolved sidecars from the wrapper build plan, including package name, wrapper name, family, protocol, sidecar command, Go module directory, resolved Go module path, and function metadata. Function metadata includes the Oct name, wire name, argument transport type strings, return transport type string, and fallibility.
 
@@ -113,17 +113,31 @@ The `.octagon` artifact uses data-only record names `OctxiliaryRegistry`, `Octxi
 
 ## Wrapper planning command
 
-M5f exposes wrapper build planning through:
+Wrapper build planning is exposed through:
 
 ```text
 oct pkg wrappers [--registry-out <path>]
 ```
 
-`oct pkg wrappers` runs from the current directory as the package or project root. It reads the current `manifest.oct`, uses the same direct-dependency sync conventions as `oct pkg sync` to inspect the current package/project graph, builds the wrapper build plan for the current root plus synced direct dependencies, and prints a deterministic human-readable summary. The summary reports whether native wrappers are present, whether future native build permission would be required, the number of planned sidecars, and stable sidecar fields in plan order.
+`oct pkg wrappers` runs from the current directory as the package or project root. It reads the current `manifest.oct`, inspects wrapper metadata from the current package, fetches only direct dependencies that declare `Source`, and ignores non-fetchable dependencies such as local standard-library names. This keeps local wrapper metadata inspectable even when the manifest also names non-fetchable dependencies such as `OctStd`. The command prints a deterministic human-readable summary. The summary reports whether native wrappers are present, whether future native build permission would be required, the number of planned sidecars, and stable sidecar fields in plan order.
 
 `oct pkg wrappers --registry-out <path>` builds the same plan, converts it to the inert Octxiliary registry artifact, and writes deterministic `.octagon` text to `<path>`. The path must end in `.octagon`; parent directories may be created by the writer. The command reports the written registry path.
 
-Wrapper planning itself does not download Go modules, run `go mod download`, run `go build`, generate sidecar binaries, execute wrapper sidecars, discover sidecars at runtime, generate lockfiles, change the Octxiliary protocol, or add compiler/runtime registry consumption. It may fetch or reuse package metadata according to the same package-manager dependency sync assumptions as `oct pkg sync`. Native build permission prompts and any real native build execution remain future work. Existing `oct pkg get` and `oct pkg sync` commands do not implicitly write wrapper registries.
+Wrapper planning itself does not download Go modules, run `go mod download`, run `go build`, generate sidecar binaries, execute wrapper sidecars, discover sidecars at runtime, generate lockfiles, change the Octxiliary protocol, or add compiler/runtime registry consumption. It may fetch or reuse direct dependency package metadata only when a dependency declares `Source`. Native build permission prompts and any real native build execution remain future work. Existing `oct pkg get` and `oct pkg sync` commands do not implicitly write wrapper registries. The command prints `No wrapper sidecars were built or executed.` after summary/registry output.
+
+## Related package scaffolding
+
+`oct new` creates deterministic package scaffolds that can be inspected by package tooling:
+
+```text
+oct new library <Name>
+oct new experiment <Name>
+oct new wrapper-library <Name>
+```
+
+The current scaffold command has no flags. `<Name>` must be strict PascalCase (`[A-Z][A-Za-z0-9]*`) and is rejected rather than normalized when it contains whitespace, separators, dots, underscores, or reserved names. The target directory is always `./<Name>` relative to the current working directory, and the command fails if that target already exists.
+
+`oct new wrapper-library <Name>` writes wrapper manifest metadata and package-local sidecar reference files, but it does not build or run the generated sidecar scaffold. The generated wrapper-library package can be inspected with `oct pkg wrappers`, and deterministic inert registry metadata can be written with `oct pkg wrappers --registry-out <path>`.
 
 ## Rules
 
@@ -137,11 +151,11 @@ Wrapper planning itself does not download Go modules, run `go mod download`, run
 - `oct pkg sync` reads the current project's manifest and syncs direct dependencies.
 - `oct pkg sync` operates on the current directory as the project root.
 - Sync output includes project path, manifest path, dependency count, per-dependency status, and completion line.
-- `oct pkg wrappers` reads the current package/project graph and prints a deterministic wrapper build plan summary.
+- `oct pkg wrappers` reads the current package wrapper metadata plus direct dependencies that declare `Source`, then prints a deterministic wrapper build plan summary.
 - `oct pkg wrappers --registry-out <path>` writes an inert Octxiliary registry artifact to a `.octagon` path.
 - `oct pkg wrappers` always reports that no wrapper sidecars were built or executed.
 - Usage is strict: `oct pkg <get|list|sync|wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
-- Present limitations: package operations are manifest-driven and direct-dependency oriented; wrapper planning has no runtime consumption, lockfile generation, native build prompts, native build execution, or sidecar execution.
+- Present limitations: package operations are manifest-driven and direct-dependency oriented; wrapper planning has no runtime consumption, lockfile generation, native build prompts, native build execution, or sidecar execution; third-party wrapper manifest hardening and native build lifecycle work remain future work.
 
 See also [13 Packages](../language/13-packages.md) for language-level `package` / `import` rules.
 
@@ -155,6 +169,7 @@ oct pkg list
 oct pkg sync
 oct pkg wrappers
 oct pkg wrappers --registry-out .oct/octxiliary-registry.octagon
+oct new wrapper-library OpenCV
 ```
 
 Invalid:

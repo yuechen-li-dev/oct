@@ -430,31 +430,15 @@ flow StableChoice(nearHot: Bool, nearCold: Bool) -> Int {
 
 This keeps control behavior meaningful instead of reacting to every tiny oscillation.
 
-## `with` in Octomata-based systems
+## Record updates in Octomata-based systems
 
-Use `with` for ordinary immutable record updates.
-Do not use `with` to replace blackboard-owned behavior memory.
+Octomata examples may use ordinary record `with` updates for immutable data-lane state.
+`with` is a general record feature, not an Octomata-specific feature; see [11 Records](../language/11-records.md) for the full syntax and semantics.
 
-- `with` is for data-lane/state-structure updates.
-- Board mutation is for behavior-local control memory.
+Keep the split clear:
 
-`with` is correct for record updates:
-
-```oct
-package Main
-
-record LoopData {
-    Samples: Int
-    AvgTemperature: Float<K>
-}
-
-fn PushSample(d: LoopData, sampleAvg: Float<K>) -> LoopData {
-    return d with {
-        Samples: d.Samples + 1
-        AvgTemperature: sampleAvg
-    }
-}
-```
+- Use record `with` updates for data-lane or application-state values that should remain immutable.
+- Use board field assignment for behavior-local control memory owned by the flow.
 
 Board field update is correct for control memory:
 
@@ -476,7 +460,5 @@ flow AckLoop(ack: Bool) -> String {
     }
 }
 ```
-
-Use `with` and blackboards together, but for different jobs.
 
 See also [22 Batch](./22-batch.md) for array-parallel execution constructs.
