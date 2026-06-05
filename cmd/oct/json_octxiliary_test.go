@@ -10,8 +10,7 @@ import (
 
 func TestCompiledJsonOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	buildJsonOctxiliarySidecars(t, repo, binDir, "octxiliary-json", "octxiliary-io")
+	binDir := sharedTestSidecarDir(t, "octxiliary-json", "octxiliary-io")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Json", "--execution", "compiled")
 	cmd.Dir = repo
@@ -39,17 +38,5 @@ func TestCompiledJsonOctxiliaryMissingSidecarMessage(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-json" not found`) {
 		t.Fatalf("expected clear missing json sidecar message, got:\n%s", string(out))
-	}
-}
-
-func buildJsonOctxiliarySidecars(t *testing.T, repo string, binDir string, sidecars ...string) {
-	t.Helper()
-	for _, sidecar := range sidecars {
-		outPath := filepath.Join(binDir, sidecar)
-		build := exec.Command("go", "build", "-o", outPath, "./cmd/"+sidecar)
-		build.Dir = repo
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build %s: %v\n%s", sidecar, err, strings.TrimSpace(string(out)))
-		}
 	}
 }

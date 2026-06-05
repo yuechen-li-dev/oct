@@ -5463,7 +5463,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
-		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
+		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -5670,7 +5670,7 @@ func emitGo(m MIRModule) (string, error) {
 			b.WriteString(__octWriteHelpers)
 		}
 		if usesOctxiliaryBuiltins(usedBuiltins) {
-			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
+			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
 		}
@@ -5756,6 +5756,9 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	b.WriteString("var __octAssertionCount int\n\n")
 	b.WriteString("func main() {\n")
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
+		b.WriteString("\tdefer __octOctxiliaryClose()\n")
+	}
 	entryReturn := m.EntryReturn
 	entryFallible := m.EntryFallible
 	if entryReturn == "Void" && !entryFallible {
@@ -8979,9 +8982,49 @@ var __octOctxiliaryOut io.ReadCloser
 var __octOctxiliaryErr error
 var __octOctxiliaryMu sync.Mutex
 var __octOctxiliaryReqID int
-type __octOctxiliaryClient struct { cmd *exec.Cmd; in io.WriteCloser; out io.ReadCloser; mu sync.Mutex; reqID int; err error }
+type __octOctxiliaryClient struct { cmd *exec.Cmd; in io.WriteCloser; out io.ReadCloser; mu sync.Mutex; reqID int; err error; closed bool }
 var __octOctxiliaryGenericMu sync.Mutex
 var __octOctxiliaryGenericClients = map[string]*__octOctxiliaryClient{}
+
+func __octOctxiliaryWaitOrKill(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil { return }
+	waitDone := make(chan error, 1)
+	go func(){ waitDone <- cmd.Wait() }()
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+		_ = cmd.Process.Kill()
+		<-waitDone
+	}
+}
+
+func __octOctxiliaryCloseClient(client *__octOctxiliaryClient) {
+	if client == nil { return }
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.closed { return }
+	client.closed = true
+	if client.in != nil { _ = client.in.Close(); client.in = nil }
+	__octOctxiliaryWaitOrKill(client.cmd)
+	client.cmd = nil
+	if client.out != nil { _ = client.out.Close(); client.out = nil }
+}
+
+func __octOctxiliaryClose() {
+	__octOctxiliaryMu.Lock()
+	cmd, in, out := __octOctxiliaryCmd, __octOctxiliaryIn, __octOctxiliaryOut
+	__octOctxiliaryCmd, __octOctxiliaryIn, __octOctxiliaryOut = nil, nil, nil
+	__octOctxiliaryMu.Unlock()
+	if in != nil { _ = in.Close() }
+	__octOctxiliaryWaitOrKill(cmd)
+	if out != nil { _ = out.Close() }
+	__octOctxiliaryGenericMu.Lock()
+	clients := make([]*__octOctxiliaryClient, 0, len(__octOctxiliaryGenericClients))
+	for _, client := range __octOctxiliaryGenericClients { clients = append(clients, client) }
+	__octOctxiliaryGenericClients = map[string]*__octOctxiliaryClient{}
+	__octOctxiliaryGenericMu.Unlock()
+	for _, client := range clients { __octOctxiliaryCloseClient(client) }
+}
 
 func __octFileReadText(path string) octResult_String {
 	__octOctxiliaryMu.Lock()

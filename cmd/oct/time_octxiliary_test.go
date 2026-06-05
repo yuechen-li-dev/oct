@@ -10,8 +10,7 @@ import (
 
 func TestCompiledTimeOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	buildTimeOctxiliarySidecar(t, repo, binDir)
+	binDir := sharedTestSidecarDir(t, "octxiliary-time")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Time", "--execution", "compiled")
 	cmd.Dir = repo
@@ -39,15 +38,5 @@ func TestCompiledTimeOctxiliaryMissingSidecarMessage(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-time" not found`) {
 		t.Fatalf("expected clear missing time sidecar message, got:\n%s", string(out))
-	}
-}
-
-func buildTimeOctxiliarySidecar(t *testing.T, repo string, binDir string) {
-	t.Helper()
-	outPath := filepath.Join(binDir, "octxiliary-time")
-	build := exec.Command("go", "build", "-o", outPath, "./cmd/octxiliary-time")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build octxiliary-time: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 }

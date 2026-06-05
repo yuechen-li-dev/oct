@@ -10,8 +10,7 @@ import (
 
 func TestCompiledTextOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
-	binDir := t.TempDir()
-	buildTextOctxiliarySidecar(t, repo, binDir)
+	binDir := sharedTestSidecarDir(t, "octxiliary-text")
 
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Text", "--execution", "compiled")
 	cmd.Dir = repo
@@ -40,15 +39,5 @@ func TestCompiledTextOctxiliaryMissingSidecarMessage(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-text" not found`) {
 		t.Fatalf("expected clear missing text sidecar message, got:\n%s", string(out))
-	}
-}
-
-func buildTextOctxiliarySidecar(t *testing.T, repo string, binDir string) {
-	t.Helper()
-	outPath := filepath.Join(binDir, "octxiliary-text")
-	build := exec.Command("go", "build", "-o", outPath, "./cmd/octxiliary-text")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build octxiliary-text: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 }
