@@ -2,7 +2,7 @@
 
 ## Overview
 
-`oct` is the primary command surface for compile, run, test, formatting, package, and experimental remote execution workflows.
+`oct` is the primary command surface for compile, run, test, formatting, package scaffolding, package, and experimental remote execution workflows.
 `oct build` writes a compiled artifact.
 `oct run` executes from source.
 
@@ -27,6 +27,9 @@
 - Lane roles are intentionally partitioned: `test` = correctness contracts, `bench` = performance measurement, `artifact` = generated evidence outputs.
 - Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
 - `oct fmt <path> [--mode readable|compact|en-llm] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
+- `oct new <experiment|library|wrapper-library> <Name>` creates a deterministic package scaffold in the current working directory.
+- `oct new` uses strict PascalCase package names and rejects an existing target directory.
+- `oct new wrapper-library` creates manifest wrapper metadata and sidecar reference files but does not build or run the sidecar.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
 - `oct pkg sync` syncs direct manifest dependencies for the current directory.
@@ -46,6 +49,9 @@ oct bench Language --filter HotPath
 oct bench Language --filter Main.Fast --profile
 oct bench Language --profile --profile-format pprof
 oct fmt Language/reference
+oct new library SignalTools
+oct new experiment BrownNoiseKalman
+oct new wrapper-library OpenCV
 oct pkg get https://example.com/repo.git
 oct pkg list
 oct pkg sync
