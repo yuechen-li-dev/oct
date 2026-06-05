@@ -776,3 +776,9 @@ Deferred features:
 - checksum/signature/lockfile policy;
 - sandbox/runtime permission prompts;
 - extern syntax sugar after manifest workflow stability.
+
+## W7b interpreted manifest-only raw dispatch note
+
+W7b adds interpreted execution support for manifest-declared raw wrapper functions that have no source-level `fn` declaration. Public Oct wrapper APIs may call package-local raw names declared in `WrapperFunction.OctName`; when ordinary source-function resolution fails, interpreted execution can resolve that raw name from the package manifest and dispatch through an Octxiliary sidecar.
+
+This does not change the manifest schema and does not add raw-stub syntax. Raw manifest functions remain implementation details by convention. `oct pkg wrappers` remains planning-only: it does not build, install, discover from a package cache, or execute sidecars. In W7b, sidecars are used only when interpreted execution calls a manifest raw wrapper function and discovers the sidecar beside the `oct` executable or through `OCT_WRAPPER_PATH`. There is no PATH lookup.

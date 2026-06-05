@@ -330,3 +330,9 @@ Interpreted and compiled indexed tensor notation now support rank-2 matrix/matri
 - `A[i, j] * B[j, i]` is a label-aware matrix/matrix scalar double contraction.
 
 The compiled helper validates non-empty labels, rectangular matrix values, repeated label counts, zero free labels, and runtime label extent consistency using matrix slot extents (slot 0 rows, slot 1 columns). Trace-style indexed sugar `A[i, i]` remains unsupported; use `Trace(A)`. Rank-N tensors, arrays as tensors, broadcasting, covariant/contravariant variance, raising/lowering, `@` behavior changes, Prometheus/reactor/GPU tensor kernels, and package-manager federation remain deferred.
+
+## Interpreted generic wrapper dispatch status (W7b)
+
+Interpreted execution now has an M0 generic Octxiliary dispatch path for third-party-style wrapper packages. A public Oct function can call a package-local manifest raw function declared in `WrapperFunction.OctName` even when that raw function has no source-level `fn` declaration. Source functions and existing interpreted wrapper builtins still take precedence, so this is a fallback for manifest-only raw names rather than a stdlib wrapper migration.
+
+W7b interpreted discovery matches the focused test scope: sidecars are found beside the current `oct` executable or via `OCT_WRAPPER_PATH` as either a directory containing the sidecar command or an explicit executable path whose basename equals the sidecar command. It does not add PATH lookup, package-cache lookup, sidecar build/install lifecycle, lockfiles, native permission prompts, registry/federation/P2P, `@extern`, or `EXTERNAL` syntax. `oct pkg wrappers` remains planning-only and does not execute sidecars.

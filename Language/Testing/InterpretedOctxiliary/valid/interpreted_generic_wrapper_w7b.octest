@@ -1,0 +1,26 @@
+package Main
+
+[Fact]
+fn InterpretedGenericWrapperW7bSuccess() -> Void ! Error {
+    Assert.Equal("hello", EchoString("hello")?, "String raw wrapper should echo through public function")
+    let bytes = Random.CryptoRandBytes(5)?
+    Assert.Equal(5, ByteLength(bytes)?, "Bytes raw wrapper should return length")
+    Assert.False(BoolNot(true)?, "Bool raw wrapper should invert")
+}
+
+[Fact]
+fn InterpretedGenericWrapperW7bSidecarError() -> Void ! Error {
+    match NotOk() {
+        ok(value) => {
+            Assert.True(false, value)
+        }
+        err(e) => {
+            Assert.True(true, "sidecar error should propagate as Error")
+        }
+    }
+}
+
+[Fact]
+fn InterpretedGenericWrapperW7bSourcePrecedence() -> Void ! Error {
+    Assert.Equal("source:value", ShadowRaw("value")?, "source function should take precedence over manifest raw metadata")
+}

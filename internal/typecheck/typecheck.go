@@ -164,12 +164,13 @@ type functionContext struct {
 
 func Check(file ast.File) error {
 	checker := checker{
-		functions:     make(map[string]functionSignature),
-		functionTypes: make(map[string]functionSignature),
-		records:       make(map[string]recordInfo),
-		enums:         make(map[string]enumInfo),
-		flows:         make(map[string]flowSignature),
-		typeNames:     make(map[string]struct{}),
+		functions:        make(map[string]functionSignature),
+		wrapperFunctions: make(map[string]functionSignature),
+		functionTypes:    make(map[string]functionSignature),
+		records:          make(map[string]recordInfo),
+		enums:            make(map[string]enumInfo),
+		flows:            make(map[string]flowSignature),
+		typeNames:        make(map[string]struct{}),
 	}
 	return checker.checkFile(file)
 }
@@ -180,6 +181,7 @@ func CheckProgram(program project.Program) error {
 		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := checker{
 			functions:                    make(map[string]functionSignature),
+			wrapperFunctions:             make(map[string]functionSignature),
 			functionTypes:                make(map[string]functionSignature),
 			records:                      make(map[string]recordInfo),
 			enums:                        make(map[string]enumInfo),
@@ -201,10 +203,11 @@ func CheckProgram(program project.Program) error {
 				return fmt.Errorf("unknown package '%s'", imp)
 			}
 			imports[imp] = packageSymbols{
-				functions: imported.functions,
-				records:   imported.records,
-				enums:     imported.enums,
-				flows:     imported.flows,
+				functions:        imported.functions,
+				wrapperFunctions: imported.wrapperFunctions,
+				records:          imported.records,
+				enums:            imported.enums,
+				flows:            imported.flows,
 			}
 		}
 		chk.importedPackages = imports
@@ -220,6 +223,9 @@ func CheckProgram(program project.Program) error {
 		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := packageCheckers[name]
 		if err := chk.registerFunctionSignatures(file); err != nil {
+			return err
+		}
+		if err := chk.registerWrapperFunctionSignatures(pkg); err != nil {
 			return err
 		}
 		packageCheckers[name] = chk
@@ -254,6 +260,7 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 
 type checker struct {
 	functions                    map[string]functionSignature
+	wrapperFunctions             map[string]functionSignature
 	functionTypes                map[string]functionSignature
 	records                      map[string]recordInfo
 	enums                        map[string]enumInfo
@@ -264,10 +271,11 @@ type checker struct {
 }
 
 type packageSymbols struct {
-	functions map[string]functionSignature
-	records   map[string]recordInfo
-	enums     map[string]enumInfo
-	flows     map[string]flowSignature
+	functions        map[string]functionSignature
+	wrapperFunctions map[string]functionSignature
+	records          map[string]recordInfo
+	enums            map[string]enumInfo
+	flows            map[string]flowSignature
 }
 
 type recordInfo struct {
@@ -2278,6 +2286,9 @@ regularCall:
 		if signature, ok := c.lookupNamedFunctionSignature(calleeName); ok {
 			return c.checkFunctionCallArguments(calleeName, signature, scope, expr.Arguments, ctx)
 		}
+		if signature, ok := c.lookupNamedWrapperFunctionSignature(calleeName); ok {
+			return c.checkFunctionCallArguments(calleeName, signature, scope, expr.Arguments, ctx)
+		}
 		if dot := strings.Index(calleeName, "."); dot >= 0 {
 			pkgName := calleeName[:dot]
 			symbol := calleeName[dot+1:]
@@ -2404,6 +2415,31 @@ func (c checker) lookupNamedFunctionSignature(name string) (functionSignature, b
 		}
 		lookupName = symbol
 		lookupTable = imported.functions
+		calleePackage = pkgName
+	}
+	signature, ok := lookupTable[lookupName]
+	if !ok {
+		return functionSignature{}, false
+	}
+	if calleePackage != "" {
+		signature = c.qualifyImportedSignature(calleePackage, signature)
+	}
+	return signature, true
+}
+
+func (c checker) lookupNamedWrapperFunctionSignature(name string) (functionSignature, bool) {
+	lookupName := name
+	lookupTable := c.wrapperFunctions
+	calleePackage := ""
+	if dot := strings.Index(name, "."); dot >= 0 {
+		pkgName := name[:dot]
+		symbol := name[dot+1:]
+		imported, ok := c.importedPackages[pkgName]
+		if !ok {
+			return functionSignature{}, false
+		}
+		lookupName = symbol
+		lookupTable = imported.wrapperFunctions
 		calleePackage = pkgName
 	}
 	signature, ok := lookupTable[lookupName]
@@ -5724,6 +5760,9 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		if _, ok := imported.functions[typeRef.Name]; ok {
 			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
 		}
+		if _, ok := imported.wrapperFunctions[typeRef.Name]; ok {
+			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
+		}
 		return Type{}, fmt.Errorf("package '%s' has no type '%s'", typeRef.Package, typeRef.Name)
 	}
 
@@ -6311,4 +6350,73 @@ func checkComplexBinaryExpr(operator string, leftType Type, rightType Type) (Typ
 	default:
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
+}
+
+func (c checker) registerWrapperFunctionSignatures(pkg project.Package) error {
+	for _, wrapper := range pkg.Wrappers {
+		for _, fn := range wrapper.Functions {
+			if _, exists := c.functions[fn.OctName]; exists {
+				continue
+			}
+			parameters := make([]Type, 0, len(fn.Args))
+			for _, arg := range fn.Args {
+				argType, err := c.resolveWrapperManifestType(arg, false)
+				if err != nil {
+					return fmt.Errorf("wrapper function %s.%s argument type %s: %w", pkg.Name, fn.OctName, arg, err)
+				}
+				parameters = append(parameters, argType)
+			}
+			returnType, err := c.resolveWrapperManifestType(fn.Return, true)
+			if err != nil {
+				return fmt.Errorf("wrapper function %s.%s return type %s: %w", pkg.Name, fn.OctName, fn.Return, err)
+			}
+			sig := functionSignature{parameters: parameters, returnType: returnType, isFallible: fn.Fallible}
+			c.wrapperFunctions[fn.OctName] = sig
+		}
+	}
+	return nil
+}
+
+func (c checker) resolveWrapperManifestType(input string, allowVoid bool) (Type, error) {
+	ref, err := wrapperManifestTypeRef(input)
+	if err != nil {
+		return Type{}, err
+	}
+	return c.resolveType(ref, allowVoid)
+}
+
+func wrapperManifestTypeRef(input string) (ast.TypeRef, error) {
+	arrayDepth := 0
+	for strings.HasSuffix(input, "[]") {
+		arrayDepth++
+		input = strings.TrimSuffix(input, "[]")
+	}
+	ref := ast.TypeRef{ArrayDepth: arrayDepth, IsArray: arrayDepth > 0}
+	if left := strings.Index(input, "<"); left >= 0 {
+		if !strings.HasSuffix(input, ">") {
+			return ast.TypeRef{}, fmt.Errorf("invalid dimension-qualified type syntax: %s", input)
+		}
+		dimName := input[left+1 : len(input)-1]
+		dim, ok := dimension.FromBaseName(dimName)
+		if !ok {
+			return ast.TypeRef{}, fmt.Errorf("unknown dimension: %s", dimName)
+		}
+		ref.HasUnit = true
+		ref.Dimension = dim
+		input = input[:left]
+	}
+	parts := strings.Split(input, ".")
+	switch len(parts) {
+	case 1:
+		ref.Name = parts[0]
+	case 2:
+		ref.Package = parts[0]
+		ref.Name = parts[1]
+	default:
+		return ast.TypeRef{}, fmt.Errorf("unsupported manifest type %s", input)
+	}
+	if ref.Name == "" {
+		return ast.TypeRef{}, fmt.Errorf("empty manifest type")
+	}
+	return ref, nil
 }

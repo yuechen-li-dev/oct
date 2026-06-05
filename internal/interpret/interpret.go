@@ -310,6 +310,8 @@ type interpreter struct {
 	pdfPages                 wrapperHandleStore[*wrapperPDFPage]
 	uiMounts                 wrapperHandleStore[*uiMount]
 	wrappers                 wrapperBuiltinRegistry
+	wrapperIndex             interpretedWrapperIndex
+	wrapperClients           *interpretedWrapperClientCache
 	assertRecorder           func()
 	artifactProgressRecorder func(event ArtifactProgressEvent)
 	currentFunctionName      string
@@ -389,44 +391,11 @@ type callResult struct {
 }
 
 func ExecuteMain(program project.Program, stdout io.Writer) (Value, error) {
-	interpreter := interpreter{
-		functions:      make(map[string]ast.FunctionDecl),
-		records:        make(map[string]ast.RecordDecl),
-		enums:          make(map[string]ast.EnumDecl),
-		flows:          make(map[string]ast.FlowDecl),
-		functionSource: make(map[string]string),
-		flowSource:     make(map[string]string),
-		packageImports: make(map[string]map[string]struct{}),
-		stdout:         stdout,
-		workbooks:      newWrapperHandleStore[*xlsxWorkbook]("workbook"),
-		images:         newWrapperHandleStore[*wrapperImage]("image"),
-		pdfPages:       newWrapperHandleStore[*wrapperPDFPage]("pdf page"),
-		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), artifactWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
+	interpreter, err := newInterpreter(program, stdout)
+	if err != nil {
+		return Value{}, err
 	}
-	for pkgName, pkg := range program.Packages {
-		imports := make(map[string]struct{}, len(pkg.Imports))
-		for _, imp := range pkg.Imports {
-			imports[imp] = struct{}{}
-		}
-		interpreter.packageImports[pkgName] = imports
-		for _, record := range pkg.Records {
-			interpreter.records[pkgName+"."+record.Name] = record
-		}
-		for _, enumDecl := range pkg.Enums {
-			interpreter.enums[pkgName+"."+enumDecl.Name] = enumDecl
-		}
-		for _, function := range pkg.Functions {
-			key := pkgName + "." + function.Name
-			interpreter.functions[key] = function
-			interpreter.functionSource[key] = pkgName
-		}
-		for _, flow := range pkg.Flows {
-			key := pkgName + "." + flow.Name
-			interpreter.flows[key] = flow
-			interpreter.flowSource[key] = pkgName
-		}
-	}
+	defer interpreter.close()
 
 	mainFunction, err := interpreter.findMain(program.Entry)
 	if err != nil {
@@ -458,7 +427,11 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 	}
 	defer clearPrefix()
 
-	interpreter := newInterpreter(program, stdout)
+	interpreter, err := newInterpreter(program, stdout)
+	if err != nil {
+		return err
+	}
+	defer interpreter.close()
 	interpreter.assertRecorder = options.AssertionRecorder
 	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
 	interpreter.ctx = options.Context
@@ -493,7 +466,7 @@ func (i interpreter) checkCancelled() error {
 	}
 }
 
-func newInterpreter(program project.Program, stdout io.Writer) interpreter {
+func newInterpreter(program project.Program, stdout io.Writer) (interpreter, error) {
 	interp := interpreter{
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
@@ -508,6 +481,7 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 		pdfPages:       newWrapperHandleStore[*wrapperPDFPage]("pdf page"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), artifactWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
+		wrapperClients: newInterpretedWrapperClientCache(),
 	}
 	for currentPkg, pkg := range program.Packages {
 		imports := make(map[string]struct{}, len(pkg.Imports))
@@ -532,7 +506,16 @@ func newInterpreter(program project.Program, stdout io.Writer) interpreter {
 			interp.flowSource[key] = currentPkg
 		}
 	}
-	return interp
+	index, err := buildInterpretedWrapperIndex(program)
+	if err != nil {
+		return interpreter{}, err
+	}
+	interp.wrapperIndex = index
+	return interp, nil
+}
+
+func (i interpreter) close() {
+	i.wrapperClients.close()
 }
 
 func newEnvironment(parent *environment) *environment {
@@ -2081,14 +2064,19 @@ regularCall:
 		instance := i.instantiateFlow(flowDecl, targetPkg, arguments)
 		return evalResult{value: Value{Kind: ValueFlow, Flow: instance}}, nil
 	}
+	targetPkg := pkgName
+	functionName := functionKey
+	if dot := strings.Index(functionKey, "."); dot >= 0 {
+		targetPkg = functionKey[:dot]
+		functionName = functionKey[dot+1:]
+	}
 	if !ok {
+		if wrapperFn, wrapperOK := i.wrapperIndex.lookup(targetPkg, functionName); wrapperOK {
+			return i.evalGenericWrapperCall(wrapperFn, arguments)
+		}
 		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}
 
-	targetPkg := pkgName
-	if dot := strings.Index(functionKey, "."); dot >= 0 {
-		targetPkg = functionKey[:dot]
-	}
 	result, err := i.executeFunction(function, targetPkg, arguments)
 	if err != nil {
 		return evalResult{}, err

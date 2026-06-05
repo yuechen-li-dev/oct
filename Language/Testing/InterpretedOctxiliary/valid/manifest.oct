@@ -1,0 +1,71 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Kind: String
+    Dependencies: Dependency[]
+    Wrappers: Wrapper[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
+    Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "Interpreted generic Octxiliary wrapper dispatch fixture"
+        Kind: "wrapper"
+        Dependencies: []
+        Wrappers: [
+            Wrapper {
+                Name: "test-wrapper"
+                Family: "TestWrapper"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-test-wrapper"
+                GoModuleDir: "wrappers/test"
+                TransportTypes: []
+                Functions: [
+                    WrapperFunction { OctName: "EchoStringRaw" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "ByteLengthRaw" WireName: "TestBytesLen" Args: ["Bytes"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "BoolNotRaw" WireName: "TestNot" Args: ["Bool"] Return: "Bool" Fallible: true },
+                    WrapperFunction { OctName: "NotOkRaw" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "ShadowRaw" WireName: "TestShadow" Args: ["String"] Return: "String" Fallible: true }
+                ]
+            }
+        ]
+    }
+}

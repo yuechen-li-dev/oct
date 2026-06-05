@@ -1,0 +1,21 @@
+package Main
+
+fn EchoString(text: String) -> String ! Error {
+    return EchoStringRaw(text)?
+}
+
+fn ByteLength(data: Bytes) -> Int ! Error {
+    return ByteLengthRaw(data)?
+}
+
+fn BoolNot(value: Bool) -> Bool ! Error {
+    return BoolNotRaw(value)?
+}
+
+fn NotOk() -> String ! Error {
+    return NotOkRaw()?
+}
+
+fn ShadowRaw(text: String) -> String ! Error {
+    return "source:" + text
+}
