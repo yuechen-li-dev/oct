@@ -8,6 +8,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/build"
 	"github.com/yuechen-li-dev/oct/internal/exprun"
+	"github.com/yuechen-li-dev/oct/internal/newpkg"
 	"github.com/yuechen-li-dev/oct/internal/ocfmt"
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
 	"github.com/yuechen-li-dev/oct/internal/prometheus"
@@ -26,6 +27,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 
 	switch command {
+	case "new":
+		return executeNew(args[1:], stdout, stderr)
 	case "pkg":
 		return executePkg(args[1:], stdout, stderr)
 	case "exp":
@@ -164,6 +167,28 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 }
 func isHelpArg(args []string) bool { return len(args) == 1 && (args[0] == "--help" || args[0] == "-h") }
+
+func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
+	if isHelpArg(args) {
+		return writeNewHelp(stdout)
+	}
+	if len(args) != 2 {
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name>"))
+	}
+	kind := newpkg.Kind(args[0])
+	switch kind {
+	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+		// recognized below
+	default:
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name>"))
+	}
+	name := args[1]
+	if err := newpkg.Write(newpkg.Options{Kind: kind, Name: name, Dir: name}); err != nil {
+		return reportCommandError(stderr, "new", err)
+	}
+	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, name)
+	return err
+}
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
@@ -430,7 +455,11 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  pkg        Package manager commands\n  exp        Run experiment repos\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n\nrun 'oct <command> --help' for command details.")
+	return err
+}
+func writeNewHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name>\nCreate a deterministic package scaffold in the current working directory.")
 	return err
 }
 func writeRunHelp(out io.Writer) error {

@@ -2,6 +2,7 @@ package pkgmgr
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,34 +44,52 @@ type WrapperSidecarPlan struct {
 	TransportTypes []TransportTypeMetadata
 }
 
-// BuildWrapperPlanForProject syncs the current package/project dependency metadata
-// using the same direct-dependency conventions as pkg sync, then creates a
-// planning-only wrapper sidecar plan for the current root plus synced
-// dependencies. It does not build Go modules, download Go module contents,
-// execute sidecars, generate registries, or perform runtime discovery.
+// BuildWrapperPlanForProject creates a planning-only wrapper sidecar plan for
+// the current root plus direct dependencies that declare fetchable Source
+// metadata. Dependencies without Source are ignored for wrapper planning so
+// local package wrapper metadata remains inspectable without requiring a package
+// sync. It does not build Go modules, download Go module contents, execute
+// sidecars, generate registries, or perform runtime discovery.
 func (m *Manager) BuildWrapperPlanForProject(projectRoot string) (WrapperBuildPlan, error) {
-	syncResult, err := m.Sync(projectRoot)
-	if err != nil {
-		return WrapperBuildPlan{}, err
+	if projectRoot == "" {
+		projectRoot = "."
 	}
-	rootMetadata, err := loadManifestMetadata(syncResult.ManifestPath)
+	absRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return WrapperBuildPlan{}, fmt.Errorf("resolve project root: %w", err)
+	}
+	manifestPath := filepath.Join(absRoot, manifestFileName)
+	if _, err := os.Stat(manifestPath); err != nil {
+		if os.IsNotExist(err) {
+			return WrapperBuildPlan{}, fmt.Errorf("project manifest not found: %s", manifestPath)
+		}
+		return WrapperBuildPlan{}, fmt.Errorf("read project manifest %s: %w", manifestPath, err)
+	}
+	rootMetadata, err := loadManifestMetadata(manifestPath)
 	if err != nil {
 		return WrapperBuildPlan{}, err
 	}
 	inputs := []wrapperPlanInput{{
-		root:      syncResult.ProjectPath,
-		cachePath: syncResult.ProjectPath,
+		root:      absRoot,
+		cachePath: absRoot,
 		metadata:  rootMetadata,
 	}}
-	for _, dep := range syncResult.Dependencies {
+	for _, dep := range rootMetadata.Dependencies {
+		if strings.TrimSpace(dep.Source) == "" {
+			continue
+		}
+		getResult, err := m.Get(dep.Source)
+		if err != nil {
+			return WrapperBuildPlan{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+		}
 		inputs = append(inputs, wrapperPlanInput{
-			root:      dep.GetResult.Path,
+			root:      getResult.Path,
 			source:    dep.Source,
-			cachePath: dep.GetResult.Path,
-			metadata:  dep.GetResult.Manifest,
+			cachePath: getResult.Path,
+			metadata:  getResult.Manifest,
 		})
 	}
-	return buildWrapperPlan(inputs, syncResult.ProjectPath)
+	return buildWrapperPlan(inputs, absRoot)
 }
 
 // BuildWrapperPlanForManifest creates a planning-only wrapper sidecar plan for a
