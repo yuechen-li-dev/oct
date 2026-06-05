@@ -771,3 +771,7 @@ Defer:
 - broad transport expansion beyond compiled parity.
 
 W7a ends in **success** for the design milestone if this document is accepted: it identifies the current architectural gap, selects manifest-only raw function resolution for W7b, and constrains the next implementation to a convergent but narrow interpreted Octxiliary dispatch path.
+
+## W7b follow-up status
+
+W7b implements the recommended M0 path described here: interpreted execution can resolve manifest-only raw `WrapperFunction.OctName` entries as a fallback after ordinary source-function resolution, dispatch them through Octxiliary, discover sidecars beside the `oct` executable or through `OCT_WRAPPER_PATH`, and keep `oct pkg wrappers` planning-only. See `docs/internal/interpreted_generic_wrapper_dispatch_w7b.md` for the implemented scope and deferrals.

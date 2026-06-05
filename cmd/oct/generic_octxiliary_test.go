@@ -114,3 +114,44 @@ func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
 		t.Fatalf("expected record arg mismatch diagnostic, got:\n%s", text)
 	}
 }
+
+func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	binDir := t.TempDir()
+	sidecar := filepath.Join(binDir, "octxiliary-test-wrapper")
+	build := exec.Command("go", "build", "-o", sidecar, "./cmd/octxiliary-test-wrapper")
+	build.Dir = repo
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build test sidecar: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("interpreted generic wrapper fixture failed: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+	text := string(out)
+	for _, expected := range []string{"PASS Main.InterpretedGenericWrapperW7bSuccess", "PASS Main.InterpretedGenericWrapperW7bSidecarError", "PASS Main.InterpretedGenericWrapperW7bSourcePrecedence"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected %s, got:\n%s", expected, text)
+		}
+	}
+}
+
+func TestInterpretedGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected missing sidecar failure, got success:\n%s", string(out))
+	}
+	text := string(out)
+	for _, expected := range []string{`wrapper Main.EchoStringRaw`, `family TestWrapper`, `wire TestEchoString`, `Octxiliary sidecar "octxiliary-test-wrapper" not found`, `set OCT_WRAPPER_PATH`} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected missing sidecar diagnostic to contain %q, got:\n%s", expected, text)
+		}
+	}
+}
