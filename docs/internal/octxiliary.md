@@ -1,5 +1,10 @@
 # Octxiliary: Compiled Wrapper Sidecar Bridge
 
+
+## Public sidecar SDK
+
+W1 adds a public Go SDK at `github.com/yuechen-li-dev/oct/pkg/octxiliary` for third-party sidecar authors. Use that package for sidecar business logic instead of importing `internal/octxiliary` directly; Go's `internal/` import rules make the internal package unavailable to external sidecars. See [`octxiliary_sidecar_sdk_w1.md`](./octxiliary_sidecar_sdk_w1.md) for `Serve`, response constructors, argument helpers, dispatcher usage, and W1 non-goals.
+
 ## Purpose
 
 Compiled `.octbin` programs currently cannot execute wrapper-backed standard library builtins because wrapper dispatch/registry state exists only inside interpreter runtime memory.
