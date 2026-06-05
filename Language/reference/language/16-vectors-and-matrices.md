@@ -121,14 +121,14 @@ let c = a[i, j] + b[i, j]
 Validation rules:
 
 - Both operands must be indexed terms of the same rank.
-- M36 supports rank-1 vectors and rank-2 matrices.
+- The current indexed tensor surface supports rank-1 vectors and rank-2 matrices.
 - Free-index order must match exactly.
 - Shapes or lengths must match at runtime.
 - There is no automatic transposition, reordering, or broadcasting for `A[i, j] + B[j, i]` or `a[i] + b[j]`.
 
 ## Einstein subtraction
 
-M32 added interpreted rank-2 Einstein subtraction, and M36 adds interpreted rank-1 vector subtraction.
+Current interpreted tensor notation supports rank-2 matrix subtraction and rank-1 vector subtraction.
 `a[i] - b[i]` and `A[i, j] - B[i, j]` perform elementwise indexed subtraction when free-index order matches exactly.
 
 ```oct
@@ -143,7 +143,7 @@ let c = a[i, j] - b[i, j]
 Validation mirrors addition:
 
 - Both operands must be indexed terms of the same rank.
-- M36 supports rank-1 vectors and rank-2 matrices.
+- The current indexed tensor surface supports rank-1 vectors and rank-2 matrices.
 - Free-index order must match exactly.
 - Shapes or lengths must match at runtime.
 - There is no automatic transposition, reordering, or broadcasting for `A[i, j] - B[j, i]` or `a[i] - b[j]`.
@@ -158,7 +158,7 @@ It is shorthand for currently supported linear-algebra contractions:
 - `x @ A` is vector-matrix contraction, conceptually `x[i] * A[i, j]`.
 - `x @ y` is vector-vector dot product, conceptually `x[i] * y[i]`.
 
-After M38, `@` is aligned with the supported rank-1/rank-2 indexed Einstein contractions in interpreted and compiled modes.
+`@` is aligned with the supported rank-1/rank-2 indexed Einstein contractions in interpreted and compiled modes.
 `@` requires runtime dimension compatibility: matrix-matrix and matrix-vector require the left column count to match the right length/row count, vector-matrix requires the vector length to match the matrix row count, and vector-vector requires matching vector lengths.
 For dimension-qualified elements, `@` propagates dimensions by scalar multiplication and addition across contractions:
 
@@ -196,7 +196,7 @@ Continuum mechanics contracts use this surface to express field-form equations s
 
 ## Interpreted vs compiled support
 
-Indexed rank-2 matrix tensor notation is compiled-supported for the existing M33 surface. M37 adds compiled parity for the M36 vector rank-1 indexed surface and mixed vector/matrix indexed contractions. M38 aligns `@` with those supported vector/matrix contractions. M40 adds compiled and interpreted parity for rank-2 matrix/matrix scalar double contractions.
+Indexed rank-2 matrix tensor notation, rank-1 vector indexed notation, mixed vector/matrix indexed contractions, `@` helper lowering, and rank-2 matrix/matrix scalar double contractions have interpreted and compiled coverage for the supported surface described here.
 
 - Interpreted and compiled modes support `Vector[Int]` concrete element access and `Vector[Index]` rank-1 indexed terms.
 - Interpreted and compiled modes support rank-1 vector indexed `+`/`-`, vector dot product (`a[i] * b[i]`), vector outer product (`a[i] * b[j]`), matrix-vector indexed contraction (`A[i, j] * x[j]`), vector-matrix indexed contraction (`x[i] * A[i, j]`), matrix/matrix scalar double contractions (`A[i, j] * B[i, j]` and `A[i, j] * B[j, i]`), and the existing rank-2 matrix indexed `*`, `+`, and `-`.
@@ -210,7 +210,7 @@ Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and 
 
 - **Corpus-verified in compiled mode:** vector literals, matrix literals, `@` for matrix-matrix, matrix-vector, vector-matrix, and vector-vector dot products, dimensioned matrix `@` vector, `Matrix.tabulate`, `Matrix.fill`, `m.rows`, `m.cols`, and compiled element indexing `m[r, c]`.
 - **Code-implemented in compiler lowering (not explicitly parity-listed in the same corpus block):** `Matrix.zeros<T>` and `Matrix.identity<T>`.
-- **M33/M40 compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, rank-2 matrix indexed `*`, `+`, and `-`, and M40 matrix/matrix scalar double contractions over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
+- **Compiled indexed matrix support:** `Idx`, explicit `EinMul` / `EinAdd`, rank-2 matrix indexed `*`, `+`, and `-`, and matrix/matrix scalar double contractions over `Matrix<T>` where `T` is currently supported by compiled numeric matrix helpers.
 - **Still constrained:** compiled general indexing remains strict; matrix indexing must use exactly two concrete `Int` indices for element access or two `Index` labels for rank-2 Einstein terms, and vector indexing must use one concrete `Int` for element access or one `Index` label for rank-1 Einstein terms. Arrays remain concrete storage and require `Int` indexing.
 
 ## Examples
