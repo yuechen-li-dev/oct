@@ -14,6 +14,8 @@ Relationship to W1:
 
 Recommended next implementation milestone after W2: **W4 — wrapper package manifest validation / registry artifact hardening**. The current code already has substantial manifest extraction, wrapper planning, and deterministic `.octagon` registry rendering, but the schema is still Go-module-specific, does not validate Oct stubs against manifest functions, and does not expose native-sidecar source/build metadata in registry output. Hardening the manifest/registry contract first gives W3 interpreted dispatch a reliable ABI to consume and prevents third-party wrappers from becoming a collection of special cases.
 
+W6 follow-up: `docs/internal/wrapper_manifest_validation_w6.md` records the current validation matrix and implementation outcome. W6 keeps `GoModuleDir` as the production schema, adds same-manifest duplicate sidecar command rejection, preserves planning-only registry rendering, and stages strict source-level stub agreement until a supported raw wrapper stub representation exists.
+
 Deferred features for W2 and the next milestone:
 
 - No `@extern` and no Oct language syntax changes.

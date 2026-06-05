@@ -118,8 +118,8 @@ func TestPkgWrappersConflictFailsClearly(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected conflict failure, stdout=%q stderr=%q", stdout, stderr)
 	}
-	if !strings.Contains(stderr, "duplicate sidecar command") {
-		t.Fatalf("expected duplicate sidecar command error, got %q", stderr)
+	if !strings.Contains(stderr, "duplicate Wrapper.SidecarCommand") {
+		t.Fatalf("expected duplicate Wrapper.SidecarCommand error, got %q", stderr)
 	}
 }
 

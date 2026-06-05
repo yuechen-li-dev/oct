@@ -148,6 +148,7 @@ func ExtractWrappers(expr ast.Expr, wrapperFields map[string]bool, functionField
 	wrappers := make([]Metadata, 0, len(wrappersExpr.Elements))
 	seenNames := map[string]bool{}
 	seenFamilies := map[string]bool{}
+	seenSidecarCommands := map[string]bool{}
 	for idx, item := range wrappersExpr.Elements {
 		wrapperExpr, ok := item.(ast.RecordLiteralExpr)
 		if !ok || wrapperExpr.TypeName != "Wrapper" {
@@ -165,6 +166,10 @@ func ExtractWrappers(expr ast.Expr, wrapperFields map[string]bool, functionField
 			return nil, fmt.Errorf("manifest wrapper at index %d: duplicate Wrapper.Family %q", idx, wrapper.Family)
 		}
 		seenFamilies[wrapper.Family] = true
+		if seenSidecarCommands[wrapper.SidecarCommand] {
+			return nil, fmt.Errorf("manifest wrapper at index %d: duplicate Wrapper.SidecarCommand %q", idx, wrapper.SidecarCommand)
+		}
+		seenSidecarCommands[wrapper.SidecarCommand] = true
 		wrappers = append(wrappers, wrapper)
 	}
 	return wrappers, nil
