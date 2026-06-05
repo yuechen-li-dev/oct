@@ -1,0 +1,9 @@
+expect error: "matrix indexing expects either [Int, Int] element access or [Index, Index] Einstein term access"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let A = matrix[[1, 2] [3, 4]]
+    let _ = A[i, 0]
+}

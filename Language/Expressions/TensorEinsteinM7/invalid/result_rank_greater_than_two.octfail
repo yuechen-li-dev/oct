@@ -1,14 +1,12 @@
 expect error: "indexed multiplication result rank 3 is not supported in M36"
 
-package Main
+package MainInvalid
 
 fn Main() -> Void {
     let i = Idx("i")
     let j = Idx("j")
     let k = Idx("k")
-
-    let a = matrix[[1, 2] [3, 4]]
+    let A = matrix[[1, 2] [3, 4]]
     let x = vector[10, 20]
-
-    let _ = a[i, j] * x[k]
+    let _ = A[i, j] * x[k]
 }

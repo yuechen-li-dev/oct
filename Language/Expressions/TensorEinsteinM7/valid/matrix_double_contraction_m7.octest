@@ -1,0 +1,69 @@
+package MainValid
+
+[Fact]
+fn FrobeniusSameOrderDoubleContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let B = matrix[[10, 20] [30, 40]]
+
+    let s = A[i, j] * B[i, j]
+    Assert.Equal(300, s, "frobenius")
+}
+
+[Fact]
+fn TransposedOrderDoubleContractionUsesSlots() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let B = matrix[[10, 20] [30, 40]]
+
+    let s = A[i, j] * B[j, i]
+    Assert.Equal(290, s, "transposed slots")
+}
+
+[Fact]
+fn RectangularSameOrderDoubleContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2, 3] [4, 5, 6]]
+    let B = matrix[[10, 20, 30] [40, 50, 60]]
+
+    let s = A[i, j] * B[i, j]
+    Assert.Equal(910, s, "rectangular frobenius")
+}
+
+[Fact]
+fn RectangularTransposedCompatibleDoubleContraction() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2, 3] [4, 5, 6]]
+    let B = matrix[[10, 20] [30, 40] [50, 60]]
+
+    let s = A[i, j] * B[j, i]
+    Assert.Equal(860, s, "rectangular transposed")
+}
+
+[Fact]
+fn DoubleContractionComposesWithScalarArithmetic() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1.0, 2.0] [3.0, 4.0]]
+    let B = matrix[[10.0, 20.0] [30.0, 40.0]]
+
+    let energy = 0.5 * (A[i, j] * B[i, j])
+    Assert.Near(150.0, energy, 0.000001, "energy")
+}
+
+[Fact]
+fn DoubleContractionComposesWithVectorDotProduct() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let a = vector[1, 2, 3]
+    let b = vector[10, 20, 30]
+    let A = matrix[[1, 2] [3, 4]]
+    let B = matrix[[10, 20] [30, 40]]
+
+    let total = (a[i] * b[i]) + (A[i, j] * B[i, j])
+    Assert.Equal(440, total, "dot plus double contraction")
+}

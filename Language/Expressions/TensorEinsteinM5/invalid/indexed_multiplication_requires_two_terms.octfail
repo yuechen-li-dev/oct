@@ -1,0 +1,10 @@
+expect error: "indexed tensor expressions must appear on both sides of '*'"
+
+package Main
+
+fn Main() -> Void {
+    let i = Idx("i")
+    let j = Idx("j")
+    let A = matrix[[1, 2] [3, 4]]
+    let _ = A[i, j] * 2
+}
