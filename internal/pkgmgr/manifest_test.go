@@ -553,6 +553,7 @@ func TestLoadManifestMetadataRejectsMalformedWrapperMetadata(t *testing.T) {
 		{name: "empty Functions", src: strings.Replace(validWrapperManifestSource("Xlsx"), "[\n"+functionArrayLiteral()+"\n]", "[]", 1), want: "Functions"},
 		{name: "duplicate Wrapper Name", src: strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+wrapperArrayLiteral(), 1), want: "duplicate Wrapper.Name"},
 		{name: "duplicate Wrapper Family", src: duplicateWrapperFamilySource(), want: "duplicate Wrapper.Family"},
+		{name: "duplicate Wrapper SidecarCommand", src: duplicateWrapperSidecarCommandSource(), want: "duplicate Wrapper.SidecarCommand"},
 		{name: "empty OctName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "OctName: \"ReadSheetNames\"", "OctName: \"\"", 1), want: "OctName"},
 		{name: "empty WireName", src: strings.Replace(validWrapperManifestSource("Xlsx"), "WireName: \"XlsxReadSheetNames\"", "WireName: \"\"", 1), want: "WireName"},
 		{name: "unsupported Arg type", src: strings.Replace(validWrapperManifestSource("Xlsx"), "Args: [\"String\"]", "Args: [\"Record\"]", 1), want: "unsupported transport type"},
@@ -691,6 +692,13 @@ func removeRecord(src string, name string) string {
 
 func duplicateWrapperFamilySource() string {
 	second := strings.Replace(wrapperArrayLiteral(), "Name: \"xlsx\"", "Name: \"xlsx2\"", 1)
+	return strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+second, 1)
+}
+
+func duplicateWrapperSidecarCommandSource() string {
+	second := wrapperArrayLiteral()
+	second = strings.Replace(second, "Name: \"xlsx\"", "Name: \"xlsx2\"", 1)
+	second = strings.Replace(second, "Family: \"Xlsx\"", "Family: \"Xlsx2\"", 1)
 	return strings.Replace(validWrapperManifestSource("Xlsx"), wrapperArrayLiteral(), wrapperArrayLiteral()+",\n"+second, 1)
 }
 
