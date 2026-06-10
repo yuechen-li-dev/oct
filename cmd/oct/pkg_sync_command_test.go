@@ -85,17 +85,17 @@ func TestPkgSyncPkgSyncMissingManifest(t *testing.T) {
 	}
 }
 
-func TestPkgSyncPkgSyncFailsWhenDependencySourceMissing(t *testing.T) {
+func TestPkgSyncPkgSyncFailsWhenRegistryDependencyHasNoRegistries(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	projectDir := createProjectWithManifest(t, projectManifestWithDeps([]string{
-		`Dependency { Name: "Signal" VersionRequirement: "^1.0.0" }`,
+		`Dependency { Name: "Signal" VersionRequirement: "1.0.0" }`,
 	}))
 	stdout, stderr, err := executeCLIInDir(projectDir, "pkg", "sync")
 	if err == nil {
 		t.Fatalf("expected failure, stdout=%q stderr=%q", stdout, stderr)
 	}
-	if !strings.Contains(stderr, "missing fetchable source metadata") {
-		t.Fatalf("expected missing source mapping error, got %q", stderr)
+	if !strings.Contains(stderr, "No package registries configured") {
+		t.Fatalf("expected no registry error, got %q", stderr)
 	}
 }
 

@@ -194,13 +194,26 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers|build-wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>"))
 	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
 		return reportCommandError(stderr, "pkg", err)
 	}
 	switch args[0] {
+	case "registry":
+		return executePkgRegistry(args[1:], stdout, stderr)
+	case "add":
+		name, registryName, err := parsePkgAddArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "pkg add", err)
+		}
+		result, err := pkgmgr.AddDependency(".", name, registryName)
+		if err != nil {
+			return reportCommandError(stderr, "pkg add", err)
+		}
+		_, err = fmt.Fprintf(stdout, "Added dependency %s %s from registry %s\nRun oct pkg sync to fetch package sources.\n", result.Name, result.Version, result.Registry)
+		return err
 	case "get":
 		if len(args) != 2 {
 			return reportCommandError(stderr, "pkg get", fmt.Errorf("usage: oct pkg get <git-url>"))
@@ -276,7 +289,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		if err != nil {
 			return reportCommandError(stderr, "pkg sync", err)
 		}
-		_, err = fmt.Fprintf(stdout, "sync project: %s\nmanifest: %s\ndependencies: %d\n", result.ProjectPath, result.ManifestPath, len(result.Dependencies))
+		_, err = fmt.Fprintf(stdout, "sync project: %s\nmanifest: %s\ndependencies: %d\n", result.ProjectPath, result.ManifestPath, len(result.Dependencies)+len(result.RegistryDependencies))
 		if err != nil {
 			return err
 		}
@@ -290,7 +303,17 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 				return err
 			}
 		}
-		_, err = fmt.Fprintln(stdout, "sync complete")
+		for _, dep := range result.RegistryDependencies {
+			relDest, relErr := filepath.Rel(result.ProjectPath, dep.Destination)
+			if relErr != nil {
+				relDest = dep.Destination
+			}
+			_, err = fmt.Fprintf(stdout, "Resolved %s %s from registry %s\nSynced %s %s to %s\n", dep.Name, dep.Version, dep.Registry, dep.Name, dep.Version, relDest)
+			if err != nil {
+				return err
+			}
+		}
+		_, err = fmt.Fprintf(stdout, "Package sync complete: %d package\nsync complete\n", len(result.Dependencies)+len(result.RegistryDependencies))
 		return err
 	case "build-wrappers":
 		allowNative, err := parsePkgBuildWrappersArgs(args[1:])
@@ -345,8 +368,70 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintln(stdout, "No wrapper sidecars were built or executed.")
 		return err
 	default:
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers|build-wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>"))
 	}
+}
+
+func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error {
+	if len(args) < 1 {
+		return reportCommandError(stderr, "pkg registry", fmt.Errorf("usage: oct pkg registry <add|list|remove>"))
+	}
+	switch args[0] {
+	case "add":
+		if len(args) != 3 {
+			return reportCommandError(stderr, "pkg registry add", fmt.Errorf("usage: oct pkg registry add <name> <path>"))
+		}
+		if _, err := pkgmgr.AddRegistry(".", args[1], args[2]); err != nil {
+			return reportCommandError(stderr, "pkg registry add", err)
+		}
+		_, err := fmt.Fprintf(stdout, "Added package registry %s: %s\n", args[1], args[2])
+		return err
+	case "list":
+		if len(args) != 1 {
+			return reportCommandError(stderr, "pkg registry list", fmt.Errorf("usage: oct pkg registry list"))
+		}
+		config, err := pkgmgr.LoadRegistryConfig(".")
+		if err != nil {
+			return reportCommandError(stderr, "pkg registry list", err)
+		}
+		if len(config.Registries) == 0 {
+			_, err = fmt.Fprintln(stdout, "No package registries configured. Use oct pkg registry add <name> <path>.")
+			return err
+		}
+		if _, err := fmt.Fprintln(stdout, "Configured package registries:"); err != nil {
+			return err
+		}
+		for _, reg := range config.Registries {
+			if _, err := fmt.Fprintf(stdout, "* %s %s\n", reg.Name, reg.Path); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "remove":
+		if len(args) != 2 {
+			return reportCommandError(stderr, "pkg registry remove", fmt.Errorf("usage: oct pkg registry remove <name>"))
+		}
+		if _, err := pkgmgr.RemoveRegistry(".", args[1]); err != nil {
+			return reportCommandError(stderr, "pkg registry remove", err)
+		}
+		_, err := fmt.Fprintf(stdout, "Removed package registry %s\n", args[1])
+		return err
+	default:
+		return reportCommandError(stderr, "pkg registry", fmt.Errorf("usage: oct pkg registry <add|list|remove>"))
+	}
+}
+
+func parsePkgAddArgs(args []string) (string, string, error) {
+	if len(args) != 1 && len(args) != 3 {
+		return "", "", fmt.Errorf("usage: oct pkg add <Name>@<exact-version> [--registry <name>]")
+	}
+	if len(args) == 1 {
+		return args[0], "", nil
+	}
+	if args[1] != "--registry" || strings.TrimSpace(args[2]) == "" {
+		return "", "", fmt.Errorf("usage: oct pkg add <Name>@<exact-version> [--registry <name>]")
+	}
+	return args[0], args[2], nil
 }
 
 func parsePkgBuildWrappersArgs(args []string) (bool, error) {
