@@ -55,9 +55,11 @@ type SyncDependencyResult struct {
 }
 
 type SyncResult struct {
-	ProjectPath  string
-	ManifestPath string
-	Dependencies []SyncDependencyResult
+	ProjectPath            string
+	ManifestPath           string
+	Dependencies           []SyncDependencyResult
+	RegistryDependencies   []RegistrySyncResult
+	SkippedBuiltinPackages []DependencyMetadata
 }
 
 type index struct {
@@ -176,21 +178,37 @@ func (m *Manager) Sync(projectRoot string) (SyncResult, error) {
 		return SyncResult{}, err
 	}
 	result := SyncResult{
-		ProjectPath:  absRoot,
-		ManifestPath: manifestPath,
-		Dependencies: make([]SyncDependencyResult, 0, len(manifest.Dependencies)),
+		ProjectPath:          absRoot,
+		ManifestPath:         manifestPath,
+		Dependencies:         make([]SyncDependencyResult, 0, len(manifest.Dependencies)),
+		RegistryDependencies: make([]RegistrySyncResult, 0, len(manifest.Dependencies)),
 	}
 	for _, dep := range manifest.Dependencies {
-		getResult, err := m.Get(dep.Source)
+		if isBuiltinDependency(dep) {
+			result.SkippedBuiltinPackages = append(result.SkippedBuiltinPackages, dep)
+			continue
+		}
+		if strings.TrimSpace(dep.Source) != "" {
+			getResult, err := m.Get(dep.Source)
+			if err != nil {
+				return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+			}
+			result.Dependencies = append(result.Dependencies, SyncDependencyResult{
+				Name:               dep.Name,
+				VersionRequirement: dep.VersionRequirement,
+				Source:             dep.Source,
+				GetResult:          getResult,
+			})
+			continue
+		}
+		if err := ValidateExactVersion(dep.VersionRequirement); err != nil {
+			return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+		}
+		synced, err := SyncRegistryDependency(absRoot, dep)
 		if err != nil {
 			return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
 		}
-		result.Dependencies = append(result.Dependencies, SyncDependencyResult{
-			Name:               dep.Name,
-			VersionRequirement: dep.VersionRequirement,
-			Source:             dep.Source,
-			GetResult:          getResult,
-		})
+		result.RegistryDependencies = append(result.RegistryDependencies, synced)
 	}
 	return result, nil
 }
@@ -203,9 +221,6 @@ func validateSyncDependencies(deps []DependencyMetadata) error {
 		}
 		if strings.TrimSpace(dep.VersionRequirement) == "" {
 			return fmt.Errorf("dependency %q has empty VersionRequirement", dep.Name)
-		}
-		if strings.TrimSpace(dep.Source) == "" {
-			return fmt.Errorf("dependency %q missing fetchable source metadata (Dependency.Source)", dep.Name)
 		}
 		if prior, ok := seen[dep.Name]; ok {
 			if prior.VersionRequirement != dep.VersionRequirement || prior.Source != dep.Source {
@@ -397,4 +412,8 @@ func gitHead(repoPath string) (string, error) {
 		return "", fmt.Errorf("read git HEAD: %s", strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+func isBuiltinDependency(dep DependencyMetadata) bool {
+	return dep.Name == "OctStd" && strings.TrimSpace(dep.Source) == ""
 }

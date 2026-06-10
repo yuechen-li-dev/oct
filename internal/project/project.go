@@ -91,7 +91,7 @@ func loadFromFile(path string, includeTests bool, explicitSelected []string) (Pr
 		packages:         make(map[string]Package),
 		visiting:         make(map[string]struct{}),
 		visited:          make(map[string]struct{}),
-		manifestDeps:     make(map[string]map[string]struct{}),
+		manifestDeps:     make(map[string]map[string]string),
 	}
 	if includeTests && (filepath.Ext(path) == ".octest" || filepath.Ext(path) == ".oct") {
 		selected := map[string]struct{}{}
@@ -128,7 +128,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 		packages:         make(map[string]Package),
 		visiting:         make(map[string]struct{}),
 		visited:          make(map[string]struct{}),
-		manifestDeps:     make(map[string]map[string]struct{}),
+		manifestDeps:     make(map[string]map[string]string),
 	}
 	mainDir := filepath.Join(root, "Main")
 	if _, err := os.Stat(mainDir); err == nil {
@@ -161,7 +161,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 }
 
 type manifestValidationResult struct {
-	Dependencies map[string]struct{}
+	Dependencies map[string]string
 	Wrappers     []WrapperMetadata
 }
 
@@ -173,7 +173,7 @@ type builder struct {
 	packages         map[string]Package
 	visiting         map[string]struct{}
 	visited          map[string]struct{}
-	manifestDeps     map[string]map[string]struct{}
+	manifestDeps     map[string]map[string]string
 	cachedDeps       map[string]string
 	selectedFiles    map[string]map[string]struct{}
 }
@@ -273,6 +273,9 @@ func (b *builder) loadAllPackagesInRoot() error {
 		if !entry.IsDir() {
 			continue
 		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 		if isMilestoneDir(entry.Name()) {
 			continue
 		}
@@ -326,7 +329,7 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 			}
 			continue
 		}
-		if entry.Name() == "manifest.oct" {
+		if entry.Name() == "manifest.oct" || entry.Name() == pkgmgr.PackageSourceFileName {
 			continue
 		}
 		name := entry.Name()
@@ -492,13 +495,24 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 			strings.Join(searched, ", "),
 		)
 	}
-	if _, declared := deps[importName]; !declared {
+	version, declared := deps[importName]
+	if !declared {
 		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s; manifest mode: enabled; dependency declaration: missing)",
 			importName,
 			packageName,
 			b.root,
 			strings.Join(searched, ", "),
 		)
+	}
+	if version != "" {
+		localDir := filepath.Join(b.root, pkgmgr.ProjectPackagesRelDir, importName, version)
+		files, err := loadPackageFiles(localDir, b.includeTests, b.selectedFiles[importName])
+		if err != nil {
+			return "", err
+		}
+		if len(files) > 0 {
+			return localDir, nil
+		}
 	}
 	cachedDir, ok, err := b.resolveCachedDependencyDir(importName)
 	if err != nil {

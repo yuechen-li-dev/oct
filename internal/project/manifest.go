@@ -305,7 +305,7 @@ func literalFields(recordExpr ast.RecordLiteralExpr, allowed map[string]bool) (m
 	return fields, nil
 }
 
-func manifestDependencySet(file ast.File) map[string]struct{} {
+func manifestDependencySet(file ast.File) map[string]string {
 	manifestFn, ok := findManifestFunction(file)
 	if !ok || len(manifestFn.Body.Statements) != 1 {
 		return nil
@@ -326,23 +326,30 @@ func manifestDependencySet(file ast.File) map[string]struct{} {
 	if !ok {
 		return nil
 	}
-	deps := make(map[string]struct{}, len(depArray.Elements))
+	deps := make(map[string]string, len(depArray.Elements))
 	for _, depExpr := range depArray.Elements {
 		depRecord, ok := depExpr.(ast.RecordLiteralExpr)
 		if !ok || depRecord.TypeName != "Dependency" {
 			continue
 		}
+		name := ""
+		version := ""
 		for _, depField := range depRecord.Fields {
-			if depField.Name != "Name" {
-				continue
+			switch depField.Name {
+			case "Name":
+				nameExpr, ok := depField.Value.(ast.StringLiteralExpr)
+				if ok {
+					name = nameExpr.Value
+				}
+			case "VersionRequirement":
+				versionExpr, ok := depField.Value.(ast.StringLiteralExpr)
+				if ok {
+					version = versionExpr.Value
+				}
 			}
-			nameExpr, ok := depField.Value.(ast.StringLiteralExpr)
-			if !ok {
-				continue
-			}
-			if nameExpr.Value != "" {
-				deps[nameExpr.Value] = struct{}{}
-			}
+		}
+		if name != "" {
+			deps[name] = version
 		}
 	}
 	return deps

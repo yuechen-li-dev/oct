@@ -2,7 +2,7 @@
 
 ## Overview
 
-`oct pkg` manages package fetch, cache inspection, dependency sync, and planning-only wrapper inspection.
+`oct pkg` manages package fetch, cache inspection, local registry configuration, dependency addition/sync, and planning-only wrapper inspection.
 Package metadata is declared in `manifest.oct`.
 Dependency sync is explicit and command-driven.
 
@@ -70,6 +70,79 @@ Allowed package kind values are:
 `EntryMilestone` is valid only for `Kind: "experiment"`; `EntryMilestone: ""` is treated as omitted.
 `Wrappers` must be omitted or empty for `pure` and `experiment` packages.
 `Kind: "wrapper"` requires `Wrappers: Wrapper[]` to be declared and supplied as a non-empty array in the returned `PackageManifest` literal.
+
+
+## Local package registries
+
+`oct pkg` supports a PM2 local, source-oriented package registry flow. Registries are configured per project in:
+
+```text
+.oct/registries.oct
+```
+
+There is no user-global registry config. Manage configured registries with:
+
+```text
+oct pkg registry add <name> <path>
+oct pkg registry list
+oct pkg registry remove <name>
+```
+
+Registry names must be simple stable names matching `[A-Za-z][A-Za-z0-9_-]*`. Relative registry paths are stored as provided and resolved relative to the project root. `oct pkg registry list` succeeds with a clear message when no registries are configured.
+
+A local registry root contains `registry.oct` with this shape:
+
+```oct
+package Registry
+
+record RegistryIndex {
+    Packages: PackageEntry[]
+}
+
+record PackageEntry {
+    Name: String
+    Version: String
+    Kind: String
+    SourceKind: String
+    Source: String
+    Path: String
+    Description: String
+}
+
+fn Registry() -> RegistryIndex {
+    return RegistryIndex {
+        Packages: [
+            PackageEntry {
+                Name: "SignalTools"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: "../SignalTools"
+                Path: "."
+                Description: "Signal helper functions"
+            }
+        ]
+    }
+}
+```
+
+PM2 supports only `SourceKind: "local"`. Registry `Kind` values are `library`, `experiment`, and `wrapper`; `library` maps to ordinary manifests with omitted/empty/normalized pure `Kind`. Versions are exact text only. There is no `latest`, range solving, semver interpretation, remote registry, registry clone, publishing, signing, lockfile, `oct.lock`, or content-addressed package artifact support yet.
+
+Add an exact registry dependency with:
+
+```text
+oct pkg add <Name>@<exact-version> [--registry <name>]
+```
+
+`oct pkg add` resolves the exact package/version first, rejects duplicate dependency names, and writes a `Dependency` entry without `Source`. It does not sync automatically. If multiple registries contain the same exact package/version, the command reports ambiguity and asks for `--registry <name>`.
+
+`oct pkg sync` preserves explicit `Dependency.Source` behavior. Dependencies without `Source` are resolved through configured registries and copied into:
+
+```text
+.oct/packages/<Name>/<Version>/
+```
+
+Each synced package receives `.oct-package-source.oct` metadata with no timestamp. The project loader uses the exact manifest dependency version when searching `.oct/packages`; it does not fall back by name only. Sync copies wrapper package source, including `sidecars/...`, but it does not build sidecars and does not create `.oct/wrappers`. Use `oct pkg build-wrappers --allow-native` only for current-package wrapper sidecar builds.
 
 ## Wrapper package source contract
 
@@ -144,17 +217,19 @@ The current scaffold command has no flags. `<Name>` must be strict PascalCase (`
 - Manifest metadata is declared by `fn Manifest() -> PackageManifest` in `manifest.oct`.
 - `PackageManifest` includes package identity fields and `Dependencies`.
 - `Dependencies` is a `Dependency[]` describing direct dependencies.
-- Current model is direct-dependency fetch/sync from declared sources.
+- Current model is direct-dependency fetch/sync from declared sources or exact local registry entries.
 - `oct pkg get <git-url>` fetches one source into cache (or reports cache hit).
 - `oct pkg get` reports source, cache path, cache key, dependency count, and manifest identity when present.
 - `oct pkg list` shows cached package entries.
+- `oct pkg registry add/list/remove` manages project-local `.oct/registries.oct`.
+- `oct pkg add <Name>@<exact-version> [--registry <name>]` adds a resolved registry dependency without `Source`.
 - `oct pkg sync` reads the current project's manifest and syncs direct dependencies.
 - `oct pkg sync` operates on the current directory as the project root.
 - Sync output includes project path, manifest path, dependency count, per-dependency status, and completion line.
 - `oct pkg wrappers` reads the current package wrapper metadata plus direct dependencies that declare `Source`, then prints a deterministic wrapper build plan summary.
 - `oct pkg wrappers --registry-out <path>` writes an inert Octxiliary registry artifact to a `.octagon` path.
 - `oct pkg wrappers` always reports that no wrapper sidecars were built or executed.
-- Usage is strict: `oct pkg <get|list|sync|wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
+- Usage is strict: `oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
 - Present limitations: package operations are manifest-driven and direct-dependency oriented; wrapper planning has no runtime consumption, lockfile generation, native build prompts, native build execution, or sidecar execution; third-party wrapper manifest hardening and native build lifecycle work remain future work.
 
 See also [13 Packages](../language/13-packages.md) for language-level `package` / `import` rules.
@@ -166,6 +241,9 @@ Valid:
 ```text
 oct pkg get https://example.com/repo.git
 oct pkg list
+oct pkg registry add local ../oct-registry
+oct pkg registry list
+oct pkg add SignalTools@0.1.0
 oct pkg sync
 oct pkg wrappers
 oct pkg wrappers --registry-out .oct/octxiliary-registry.octagon
