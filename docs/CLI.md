@@ -35,3 +35,31 @@ oct new <experiment|library|wrapper-library> <Name>
 Names must match strict PascalCase `[A-Z][A-Za-z0-9]*`; non-PascalCase inputs such as `oct-opencv`, `signal_tools`, and `openCV` are rejected instead of normalized. Reserved names such as `Manifest`, `Main`, built-in scalar/type family names, and top-level command family names are also rejected.
 
 Wrapper-library scaffolds include manifest wrapper metadata and a package-local sidecar reference under `sidecars/octxiliary-<kebab>/`. `oct pkg wrappers` can inspect this metadata and render registry output, but `oct new wrapper-library` does not build or run native sidecars. The generated raw wrapper function is metadata only until future wrapper dispatch/build lifecycle milestones.
+
+
+## `oct pkg` wrapper tooling
+
+Inspection remains inert:
+
+```sh
+oct pkg wrappers
+oct pkg wrappers --registry-out wrappers.octagon
+```
+
+`oct pkg wrappers` reports wrapper metadata and can write a data-only registry artifact. It does not build Go modules, create `.oct/wrappers`, run sidecars, or change runtime discovery.
+
+Native sidecars are built only through the explicit command:
+
+```sh
+oct pkg build-wrappers --allow-native
+```
+
+The command builds current-package Go-module sidecars declared by `GoModuleDir` and writes binaries to `.oct/wrappers/<goos>-<goarch>/<sidecar-command>[.exe]`. It does not run sidecars, does not build dependency/package-cache/registry sidecars, does not fetch packages, and does not add lockfiles or arbitrary build scripts.
+
+Current runtime discovery does not automatically search `.oct/wrappers/<platform>`. After a successful build, use the printed guidance, for example:
+
+```sh
+OCT_WRAPPER_PATH=.oct/wrappers/linux-amd64 oct test .
+```
+
+or place the sidecar in an existing sibling-discovery location.
