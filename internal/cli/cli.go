@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/build"
@@ -192,7 +194,7 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers|build-wrappers>"))
 	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
@@ -290,6 +292,32 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintln(stdout, "sync complete")
 		return err
+	case "build-wrappers":
+		allowNative, err := parsePkgBuildWrappersArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "pkg build-wrappers", err)
+		}
+		if !allowNative {
+			return reportCommandError(stderr, "pkg build-wrappers", fmt.Errorf("native wrapper builds require --allow-native; use oct pkg wrappers to inspect sidecars without building"))
+		}
+		targets, err := manager.BuildWrapperBuildTargetsForProject(".")
+		if err != nil {
+			return reportCommandError(stderr, "pkg build-wrappers", err)
+		}
+		if err := writePkgBuildWrappersSummary(stdout, targets, allowNative); err != nil {
+			return err
+		}
+		if len(targets) == 0 {
+			_, err = fmt.Fprintln(stdout, "No wrapper sidecars to build.")
+			return err
+		}
+		result, err := pkgmgr.BuildWrapperTargets(targets)
+		if err != nil {
+			return reportCommandError(stderr, "pkg build-wrappers", err)
+		}
+		platform := targets[0].Platform
+		_, err = fmt.Fprintf(stdout, "Built wrapper sidecars: %d\nSet OCT_WRAPPER_PATH=.oct/wrappers/%s to use these sidecars with current runtime discovery.\n", len(result.Targets), platform)
+		return err
 	case "wrappers":
 		registryOut, err := parsePkgWrappersArgs(args[1:])
 		if err != nil {
@@ -317,8 +345,18 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintln(stdout, "No wrapper sidecars were built or executed.")
 		return err
 	default:
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|wrappers|build-wrappers>"))
 	}
+}
+
+func parsePkgBuildWrappersArgs(args []string) (bool, error) {
+	if len(args) == 0 {
+		return false, nil
+	}
+	if len(args) == 1 && args[0] == "--allow-native" {
+		return true, nil
+	}
+	return false, fmt.Errorf("usage: oct pkg build-wrappers --allow-native")
 }
 
 func parsePkgWrappersArgs(args []string) (string, error) {
@@ -383,6 +421,67 @@ func writePkgWrappersSummary(stdout io.Writer, plan pkgmgr.WrapperBuildPlan) err
 		return err
 	}
 	return nil
+}
+
+func writePkgBuildWrappersSummary(stdout io.Writer, targets []pkgmgr.WrapperBuildTarget, allowNative bool) error {
+	platform := runtime.GOOS + "-" + runtime.GOARCH
+	outputDir := filepath.Join(".oct", "wrappers", platform)
+	if len(targets) > 0 {
+		platform = targets[0].Platform
+		outputDir = filepath.Dir(targets[0].OutputPath)
+	}
+	if _, err := fmt.Fprintln(stdout, "Wrapper sidecar build:"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "platform: %s\n", platform); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "output dir: %s\n", outputDir); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "sidecars: %d\n", len(targets)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "native permission: %s\n", yesNo(allowNative)); err != nil {
+		return err
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(stdout); err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if _, err := fmt.Fprintf(stdout, "* package %s %s\n", target.PackageName, target.PackageVersion); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  wrapper: %s\n", target.WrapperName); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  family: %s\n", target.Family); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  command: %s\n", target.SidecarCommand); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  protocol: %s\n", target.Protocol); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  module: %s\n", target.GoModuleDir); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  source dir: %s\n", target.SourceDir); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  output path: %s\n", target.OutputPath); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "  functions: %d\n", target.FunctionCount); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(stdout)
+	return err
 }
 
 func wrapperPackageVersion(plan pkgmgr.WrapperBuildPlan, packageName string) string {

@@ -452,7 +452,7 @@ The generated raw wrapper function metadata points at `+"`octxiliary-%s`"+`; upd
 func sidecarGoMod(kebab string) string {
 	return fmt.Sprintf(`module example.com/%s-sidecar
 
-go 1.22
+go 1.24.0
 
 require github.com/yuechen-li-dev/oct v0.0.0
 `, kebab)
