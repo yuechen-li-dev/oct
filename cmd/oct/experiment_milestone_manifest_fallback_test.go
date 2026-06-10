@@ -85,5 +85,5 @@ func TestManifestDetectionIgnoresChildMilestoneManifest(t *testing.T) {
 }
 
 func octStringLiteralPath(path string) string {
-	return strconv.Quote(filepath.ToSlash(path))
+	return strconv.Quote(strings.ReplaceAll(filepath.ToSlash(path), `\`, "/"))
 }

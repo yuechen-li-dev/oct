@@ -104,7 +104,7 @@ func validRegistryForCLI(signalDir string) string {
 record RegistryIndex { Packages: PackageEntry[] }
 record PackageEntry { Name: String Version: String Kind: String SourceKind: String Source: String Path: String Description: String }
 fn Registry() -> RegistryIndex {
-    return RegistryIndex { Packages: [PackageEntry { Name: "SignalTools" Version: "0.1.0" Kind: "library" SourceKind: "local" Source: "` + signalDir + `" Path: "." Description: "Signal helper functions" }] }
+    return RegistryIndex { Packages: [PackageEntry { Name: "SignalTools" Version: "0.1.0" Kind: "library" SourceKind: "local" Source: ` + octStringLiteralPath(signalDir) + ` Path: "." Description: "Signal helper functions" }] }
 }
 `
 }
