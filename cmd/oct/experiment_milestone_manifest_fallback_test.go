@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -39,7 +40,7 @@ func TestExperimentMilestoneManifestFallbackTestAndArtifact(t *testing.T) {
 	}
 
 	artifactOut := filepath.Join(t.TempDir(), "m1.octagon")
-	if err := os.WriteFile(filepath.Join(m1, "artifact.octest"), []byte("package Exp\n[Artifact]\nfn Emit() -> Void { WriteOctagon(\""+artifactOut+"\", 1) }\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(m1, "artifact.octest"), []byte("package Exp\n[Artifact]\nfn Emit() -> Void { WriteOctagon("+octStringLiteralPath(artifactOut)+", 1) }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	artifactStdout, artifactStderr, artifactErr := executeCLI("artifact", m1)
@@ -81,4 +82,8 @@ func TestManifestDetectionIgnoresChildMilestoneManifest(t *testing.T) {
 	if strings.Contains(stderr, "package manifest missing") {
 		t.Fatalf("expected child manifest not to activate root manifest mode, got %q", stderr)
 	}
+}
+
+func octStringLiteralPath(path string) string {
+	return strconv.Quote(filepath.ToSlash(path))
 }

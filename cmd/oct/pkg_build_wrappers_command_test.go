@@ -145,11 +145,19 @@ func TestPkgBuildWrappersGeneratedWrapperLibraryGoldenPath(t *testing.T) {
 		"Built wrapper sidecars: 1",
 		"Set OCT_WRAPPER_PATH=.oct/wrappers/"+runtime.GOOS+"-"+runtime.GOARCH,
 	)
-	info, err := os.Stat(wrapperBinaryPath(packageDir, "octxiliary-open-cv"))
+	wrapperPath := wrapperBinaryPath(packageDir, "octxiliary-open-cv")
+	info, err := os.Stat(wrapperPath)
 	if err != nil {
 		t.Fatalf("expected built wrapper binary: %v", err)
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS == "windows" {
+		if filepath.Ext(wrapperPath) != ".exe" {
+			t.Fatalf("expected Windows wrapper binary to use .exe suffix, got %s", wrapperPath)
+		}
+		if info.Size() == 0 {
+			t.Fatalf("expected non-empty Windows wrapper binary at %s", wrapperPath)
+		}
+	} else if info.Mode()&0o111 == 0 {
 		t.Fatalf("expected executable wrapper binary mode, got %v", info.Mode())
 	}
 	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
