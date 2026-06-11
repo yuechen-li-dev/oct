@@ -43,13 +43,33 @@ when utility TreatmentDecision {
 }
 ```
 
-M0 rules:
+Payload variants are written with explicit qualified construction:
+
+```oct
+enum LabDecision {
+    Observe
+    Retest(Int)
+    Treat(Float)
+    Escalate(String)
+}
+
+when utility LabDecision {
+    case LabDecision.Escalate("critical") when risk >= 0.9 score 100
+    case LabDecision.Treat(2.5) when risk >= 0.6 score 80
+    case LabDecision.Retest(3) when confidence < 0.7 score 70
+    else LabDecision.Observe
+}
+```
+
+Rules:
 
 - The target after `utility` must resolve to an enum type.
 - The expression type is exactly the target enum type; the target is authoritative and is not inferred from arms.
-- Each `case` result and the required `else` fallback must be a qualified tag-only variant of the target enum.
+- Each `case` result and the required `else` fallback must be a qualified variant construction of the target enum.
+- Tag-only candidates use `Enum.Variant`; payload candidates use ordinary explicit construction such as `Enum.Variant(value)`.
+- Payload candidates do not bind payloads and do not introduce pattern matching; use `match` to analyze the selected value later.
+- Payload expressions are evaluated only after utility scoring selects their candidate, or after no case qualifies and the `else` fallback is selected. Losing candidate payloads are not evaluated.
 - Unqualified variants are rejected even when the target enum is known.
-- Payload variant candidates such as `TreatmentDecision.Treat(details)` are deferred and rejected in M0.
 - Not every enum variant must appear as a candidate; `else` is still required.
 - Conditions must be `Bool`, scores must be `Int`, highest score wins, equal scores keep the earliest matching case, and `else` is selected only when no case qualifies.
 

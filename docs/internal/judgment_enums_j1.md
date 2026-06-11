@@ -306,6 +306,27 @@ fn JudgePump(pressure: Float, fault: Bool) -> PumpJudgment {
 }
 ```
 
+
+Payload example:
+
+```oct
+enum LabDecision {
+    Observe
+    Retest(Int)
+    Treat(Float)
+    Escalate(String)
+}
+
+fn Decide(risk: Float, confidence: Float) -> LabDecision {
+    return when utility LabDecision {
+        case LabDecision.Escalate("critical") when risk >= 0.9 score 100
+        case LabDecision.Treat(2.5) when risk >= 0.6 score 80
+        case LabDecision.Retest(3) when confidence < 0.7 score 70
+        else LabDecision.Observe
+    }
+}
+```
+
 Flow using a judgment result:
 
 ```oct
@@ -327,6 +348,15 @@ flow PumpController(pressure: Float, fault: Bool) -> String {
 }
 ```
 
+J3 payload candidates:
+
+- enum-targeted `when utility` supports explicit qualified payload construction, for example `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`;
+- payload expressions are evaluated only for the selected winning candidate, or for the selected `else` fallback when no case qualifies;
+- losing candidate payloads are not evaluated;
+- utility cases do not bind payloads or add pattern matching; selected values are analyzed with ordinary `match`;
+- the semantics remain one-shot utility selection;
+- compiled lowering for payload candidates is intentionally unsupported until it can preserve delayed payload evaluation; test execution falls back to interpreted execution for this surface.
+
 Design boundaries:
 
 - judgment enum utility does not create controller commitment memory;
@@ -346,7 +376,9 @@ Recommended diagnostics:
 | Missing `else` | `enum utility selection requires else fallback` |
 | Condition is not `Bool` | `utility case condition must be Bool` |
 | Score is not `Int` | `utility score must be Int` |
-| Payload variant candidate in M0 | `payload enum variants are not supported in judgment utility cases yet` |
+| Missing payload for payload variant | `enum variant TreatmentDecision.Treat requires a payload` |
+| Payload supplied to tag-only variant | `enum variant TreatmentDecision.Observe does not accept a payload` |
+| Wrong payload type | `payload for TreatmentDecision.Treat must be Float` |
 
 Diagnostic guidance:
 

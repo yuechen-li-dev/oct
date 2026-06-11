@@ -1,8 +1,8 @@
-expect error: "payload for Decision.Run must be String"
+expect error: "enum variant Decision.Run does not accept a payload"
 
 package MainInvalid
 
-enum Decision { Hold Run(String) }
+enum Decision { Hold Run }
 
 fn Judge(flag: Bool) -> Decision {
     return when utility Decision {

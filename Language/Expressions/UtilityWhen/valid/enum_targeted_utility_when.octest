@@ -10,7 +10,7 @@ enum PumpJudgment {
 fn JudgePump(pressure: Float, fault: Bool) -> PumpJudgment {
     return when utility PumpJudgment {
         case PumpJudgment.Fault when fault score 100
-        case PumpJudgment.Run when pressure > 20.0 score 60
+        case PumpJudgment.Run when pressure > 25.0 score 60
         case PumpJudgment.Prime when pressure <= 20.0 score 40
         else PumpJudgment.Hold
     }
@@ -41,4 +41,71 @@ fn EnumTargetedUtilitySelectsJudgments() -> Void {
     Assert.Equal(PumpJudgment.Hold, JudgePump(21.0, false), "else should win when no candidate qualifies")
     Assert.Equal(PumpJudgment.Run, TieJudgment(), "equal scores should keep the earliest case")
     Assert.Equal(3, Classify(JudgePump(10.0, true)), "selected enum should drive switch")
+}
+
+enum LabDecision {
+    Observe
+    Retest(Int)
+    Treat(Float)
+    Escalate(String)
+}
+
+fn JudgeLab(risk: Float, confidence: Float) -> LabDecision {
+    return when utility LabDecision {
+        case LabDecision.Escalate("critical") when risk >= 0.9 score 100
+        case LabDecision.Treat(2.5) when risk >= 0.6 score 80
+        case LabDecision.Retest(3) when confidence < 0.7 score 70
+        else LabDecision.Observe
+    }
+}
+
+fn LabScore(decision: LabDecision) -> Int {
+    return match decision {
+        case LabDecision.Observe => 0
+        case LabDecision.Retest(days) => days
+        case LabDecision.Treat(dose) => 25
+        case LabDecision.Escalate(message) => 100
+    }
+}
+
+fn PayloadBoom() -> Int ! Error {
+    return error("losing payload evaluated")
+}
+
+fn PickSafePayload() -> LabDecision ! Error {
+    return when utility LabDecision {
+        case LabDecision.Retest(PayloadBoom()?) when true score 1
+        case LabDecision.Retest(7) when true score 10
+        else LabDecision.Observe
+    }
+}
+
+fn PickElsePayload() -> LabDecision ! Error {
+    return when utility LabDecision {
+        case LabDecision.Retest(PayloadBoom()?) when false score 100
+        else LabDecision.Retest(4)
+    }
+}
+
+fn TiePayload() -> LabDecision ! Error {
+    return when utility LabDecision {
+        case LabDecision.Retest(8) when true score 5
+        case LabDecision.Retest(PayloadBoom()?) when true score 5
+        else LabDecision.Observe
+    }
+}
+
+[Fact]
+fn EnumTargetedUtilityPayloadCandidatesWork() -> Void {
+    Assert.Equal(100, LabScore(JudgeLab(0.95, 0.9)), "highest payload candidate should win")
+    Assert.Equal(25, LabScore(JudgeLab(0.7, 0.9)), "float payload candidate should win")
+    Assert.Equal(3, LabScore(JudgeLab(0.2, 0.6)), "int payload candidate should win")
+    Assert.Equal(0, LabScore(JudgeLab(0.2, 0.9)), "tag-only else should still work")
+}
+
+[Fact]
+fn EnumTargetedUtilityDelaysPayloadEvaluation() -> Void {
+    Assert.Equal(7, LabScore(Assert.LGTM(PickSafePayload(), "losing lower-score payload should not evaluate")), "selected payload should be returned")
+    Assert.Equal(4, LabScore(Assert.LGTM(PickElsePayload(), "false case payload should not evaluate before else")), "else payload should be returned")
+    Assert.Equal(8, LabScore(Assert.LGTM(TiePayload(), "tie should keep earliest payload and not evaluate later payload")), "earliest tied payload should be returned")
 }
