@@ -56,3 +56,15 @@ func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
 	}
 	assertOutputContains(t, string(out), "PASS IO.IOCsvRowMajorCompiledSmoke")
 }
+
+func TestAutoIOCsvOctxiliarySidecarDiscoveryDoesNotFallback(t *testing.T) {
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", filepath.Join("..", "..", "Libraries", "IO", "IO.Csv.CompiledSmoke.octest"), "octxiliary-csv")
+	if err != nil {
+		t.Fatalf("auto IO csv wrapper test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
+	}
+	assertNoMissingSidecarFallback(t, stdout, stderr)
+	assertOutputContains(t, stdout,
+		"PASS IO.IOCsvRowMajorCompiledSmoke",
+		"Execution summary: compiled: 1 interpreted fallback: 0",
+	)
+}

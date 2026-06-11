@@ -15,14 +15,15 @@ func TestPdfCoreWrappers(t *testing.T) {
 	writeM30PNGFixture(t, filepath.Join("..", "..", "Libraries", "Pdf", "m30_fixture_rect.png"))
 	t.Cleanup(func() {
 		_ = os.Remove(filepath.Join("..", "..", "Libraries", "Pdf", "m30_fixture_rect.png"))
-		_ = os.Remove("m21_pdf_compiled_text.pdf")
-		_ = os.Remove("m21_pdf_compiled_styled.pdf")
+		_ = os.Remove(filepath.Join("..", "..", "m21_pdf_compiled_text.pdf"))
+		_ = os.Remove(filepath.Join("..", "..", "m21_pdf_compiled_styled.pdf"))
 	})
 	root := "../../Libraries/Pdf"
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-pdf", "octxiliary-image", "octxiliary-io")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
+	assertNoMissingSidecarFallback(t, stdout, stderr)
 
 	expectedPasses := []string{
 		"PASS Pdf.BasicPageCreateTextAndSave",

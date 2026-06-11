@@ -8,10 +8,11 @@ import (
 func TestIOCoreWrappers(t *testing.T) {
 	t.Parallel()
 	root := "../../Libraries/IO"
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
+	assertNoMissingSidecarFallback(t, stdout, stderr)
 
 	expectedPasses := []string{
 		"PASS IO.FileReadWriteTextAndDeleteRoundTrip",
