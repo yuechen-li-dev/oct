@@ -183,34 +183,156 @@ func (m *Manager) Sync(projectRoot string) (SyncResult, error) {
 		Dependencies:         make([]SyncDependencyResult, 0, len(manifest.Dependencies)),
 		RegistryDependencies: make([]RegistrySyncResult, 0, len(manifest.Dependencies)),
 	}
-	for _, dep := range manifest.Dependencies {
+	planner := &syncPlanner{
+		manager:      m,
+		projectRoot:  absRoot,
+		rootName:     manifest.Name,
+		result:       &result,
+		seenName:     map[string]plannedNode{},
+		state:        map[string]string{},
+		explicitSeen: map[string]bool{},
+	}
+	if planner.rootName == "" {
+		planner.rootName = "App"
+	}
+	deps := sortedDependencies(manifest.Dependencies)
+	for _, dep := range deps {
 		if isBuiltinDependency(dep) {
 			result.SkippedBuiltinPackages = append(result.SkippedBuiltinPackages, dep)
 			continue
 		}
+		chain := []string{planner.rootName, depLabel(dep)}
 		if strings.TrimSpace(dep.Source) != "" {
-			getResult, err := m.Get(dep.Source)
-			if err != nil {
-				return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+			if err := planner.syncExplicitDependency(dep, chain); err != nil {
+				return SyncResult{}, err
 			}
-			result.Dependencies = append(result.Dependencies, SyncDependencyResult{
-				Name:               dep.Name,
-				VersionRequirement: dep.VersionRequirement,
-				Source:             dep.Source,
-				GetResult:          getResult,
-			})
 			continue
 		}
-		if err := ValidateExactVersion(dep.VersionRequirement); err != nil {
-			return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
+		if err := planner.syncRegistryDependency(dep, chain); err != nil {
+			return SyncResult{}, err
 		}
-		synced, err := SyncRegistryDependency(absRoot, dep)
-		if err != nil {
-			return SyncResult{}, fmt.Errorf("dependency %s: %w", dep.Name, err)
-		}
-		result.RegistryDependencies = append(result.RegistryDependencies, synced)
 	}
 	return result, nil
+}
+
+type plannedNode struct {
+	Name    string
+	Version string
+	Chain   []string
+}
+
+type syncPlanner struct {
+	manager      *Manager
+	projectRoot  string
+	rootName     string
+	result       *SyncResult
+	seenName     map[string]plannedNode
+	state        map[string]string
+	explicitSeen map[string]bool
+}
+
+func (p *syncPlanner) syncRegistryDependency(dep DependencyMetadata, chain []string) error {
+	if err := ValidateExactVersion(dep.VersionRequirement); err != nil {
+		return fmt.Errorf("dependency %s required by %s: %w", dep.Name, formatChain(chain), err)
+	}
+	node := plannedNode{Name: dep.Name, Version: dep.VersionRequirement, Chain: append([]string(nil), chain...)}
+	if prior, ok := p.seenName[node.Name]; ok && prior.Version != node.Version {
+		return fmt.Errorf("conflicting exact versions for dependency %s: %s required by %s and %s required by %s", node.Name, prior.Version, formatChain(prior.Chain), node.Version, formatChain(node.Chain))
+	}
+	p.seenName[node.Name] = node
+	key := nodeKey(node.Name, node.Version)
+	if p.state[key] == "done" {
+		return nil
+	}
+	if p.state[key] == "visiting" {
+		return fmt.Errorf("dependency cycle detected: %s", formatCycle(chain, node.Name, node.Version))
+	}
+	p.state[key] = "visiting"
+	resolved, err := ResolveRegistryPackage(p.projectRoot, node.Name, node.Version, "")
+	if err != nil {
+		return fmt.Errorf("registry dependency %s required by %s: %w", key, formatChain(chain), err)
+	}
+	synced, err := syncResolvedRegistryPackage(p.projectRoot, resolved)
+	if err != nil {
+		return fmt.Errorf("dependency %s required by %s: %w", key, formatChain(chain), err)
+	}
+	manifest, err := LoadManifestMetadata(filepath.Join(synced.Destination, manifestFileName))
+	if err != nil {
+		return fmt.Errorf("load synced manifest for %s required by %s: %w", key, formatChain(chain), err)
+	}
+	for _, child := range sortedDependencies(manifest.Dependencies) {
+		if isBuiltinDependency(child) {
+			p.result.SkippedBuiltinPackages = append(p.result.SkippedBuiltinPackages, child)
+			continue
+		}
+		childChain := append(append([]string(nil), chain...), depLabel(child))
+		if strings.TrimSpace(child.Source) != "" {
+			if err := p.syncExplicitDependency(child, childChain); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := p.syncRegistryDependency(child, childChain); err != nil {
+			return err
+		}
+	}
+	p.state[key] = "done"
+	synced.Chain = append([]string(nil), chain...)
+	p.result.RegistryDependencies = append(p.result.RegistryDependencies, synced)
+	return nil
+}
+
+func (p *syncPlanner) syncExplicitDependency(dep DependencyMetadata, chain []string) error {
+	key := dep.Name + "\x00" + dep.Source
+	if p.explicitSeen[key] {
+		return nil
+	}
+	p.explicitSeen[key] = true
+	getResult, err := p.manager.Get(dep.Source)
+	if err != nil {
+		return fmt.Errorf("dependency %s required by %s: %w", dep.Name, formatChain(chain), err)
+	}
+	p.result.Dependencies = append(p.result.Dependencies, SyncDependencyResult{Name: dep.Name, VersionRequirement: dep.VersionRequirement, Source: dep.Source, GetResult: getResult})
+	return nil
+}
+
+func sortedDependencies(deps []DependencyMetadata) []DependencyMetadata {
+	out := append([]DependencyMetadata(nil), deps...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		if out[i].VersionRequirement != out[j].VersionRequirement {
+			return out[i].VersionRequirement < out[j].VersionRequirement
+		}
+		return out[i].Source < out[j].Source
+	})
+	return out
+}
+
+func depLabel(dep DependencyMetadata) string {
+	if strings.TrimSpace(dep.VersionRequirement) == "" {
+		return dep.Name
+	}
+	return dep.Name + "@" + dep.VersionRequirement
+}
+
+func nodeKey(name string, version string) string {
+	return name + "@" + version
+}
+
+func formatChain(chain []string) string {
+	return strings.Join(chain, " -> ")
+}
+
+func formatCycle(chain []string, name string, version string) string {
+	target := nodeKey(name, version)
+	for idx, part := range chain {
+		if part == target {
+			return formatChain(append(append([]string(nil), chain[idx:]...), target))
+		}
+	}
+	return formatChain(append(append([]string(nil), chain...), target))
 }
 
 func validateSyncDependencies(deps []DependencyMetadata) error {

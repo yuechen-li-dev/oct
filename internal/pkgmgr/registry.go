@@ -1,13 +1,17 @@
 package pkgmgr
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
@@ -38,6 +42,7 @@ type PackageEntry struct {
 	Kind        string
 	SourceKind  string
 	Source      string
+	Ref         string
 	Path        string
 	Description string
 }
@@ -47,16 +52,21 @@ type RegistryIndex struct {
 }
 
 type ResolvedPackage struct {
-	Registry     RegistrySource
-	RegistryRoot string
-	Entry        PackageEntry
+	Registry       RegistrySource
+	RegistryRoot   string
+	Entry          PackageEntry
+	ResolvedCommit string
 }
 
 type RegistrySyncResult struct {
-	Name        string
-	Version     string
-	Registry    string
-	Destination string
+	Name           string
+	Version        string
+	Registry       string
+	SourceKind     string
+	Ref            string
+	ResolvedCommit string
+	Destination    string
+	Chain          []string
 }
 
 var registryNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
@@ -274,15 +284,56 @@ func SyncRegistryDependency(projectRoot string, dep DependencyMetadata) (Registr
 
 func syncResolvedRegistryPackage(projectRoot string, resolved ResolvedPackage) (RegistrySyncResult, error) {
 	entry := resolved.Entry
-	sourceRoot := entry.Source
-	if !filepath.IsAbs(sourceRoot) {
-		sourceRoot = filepath.Join(resolved.RegistryRoot, sourceRoot)
+	switch entry.SourceKind {
+	case "local":
+		sourceRoot := entry.Source
+		if !filepath.IsAbs(sourceRoot) {
+			sourceRoot = filepath.Join(resolved.RegistryRoot, sourceRoot)
+		}
+		sourceRoot = filepath.Clean(sourceRoot)
+		packageRoot, err := safePackageSourcePath(sourceRoot, entry.Path)
+		if err != nil {
+			return RegistrySyncResult{}, fmt.Errorf("dependency %s %s from registry %s: %w", entry.Name, entry.Version, resolved.Registry.Name, err)
+		}
+		return installResolvedPackage(projectRoot, resolved, packageRoot)
+	case "git":
+		return syncGitRegistryPackage(projectRoot, resolved)
+	default:
+		return RegistrySyncResult{}, fmt.Errorf("dependency %s %s from registry %s has unsupported SourceKind %q; supported SourceKind values are local, git", entry.Name, entry.Version, resolved.Registry.Name, entry.SourceKind)
 	}
-	sourceRoot = filepath.Clean(sourceRoot)
-	packageRoot, err := safePackageSourcePath(sourceRoot, entry.Path)
+}
+
+func syncGitRegistryPackage(projectRoot string, resolved ResolvedPackage) (RegistrySyncResult, error) {
+	entry := resolved.Entry
+	baseDir := filepath.Join(projectRoot, ProjectPackagesRelDir, entry.Name)
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return RegistrySyncResult{}, fmt.Errorf("create package cache directory: %w", err)
+	}
+	cloneDir, err := os.MkdirTemp(baseDir, ".tmp-git-*")
 	if err != nil {
-		return RegistrySyncResult{}, fmt.Errorf("dependency %s %s from registry %s: %w", entry.Name, entry.Version, resolved.Registry.Name, err)
+		return RegistrySyncResult{}, fmt.Errorf("create temporary git clone directory: %w", err)
 	}
+	defer os.RemoveAll(cloneDir)
+	if err := runGitPackageCommand(entry, resolved.Registry.Name, "clone", "git", "clone", entry.Source, cloneDir); err != nil {
+		return RegistrySyncResult{}, err
+	}
+	if err := runGitPackageCommand(entry, resolved.Registry.Name, "checkout", "git", "-C", cloneDir, "checkout", "--detach", entry.Ref); err != nil {
+		return RegistrySyncResult{}, err
+	}
+	commit, err := runGitPackageOutput(entry, resolved.Registry.Name, "rev-parse", "git", "-C", cloneDir, "rev-parse", "HEAD")
+	if err != nil {
+		return RegistrySyncResult{}, err
+	}
+	resolved.ResolvedCommit = commit
+	packageRoot, err := safePackageSourcePath(cloneDir, entry.Path)
+	if err != nil {
+		return RegistrySyncResult{}, fmt.Errorf("dependency %s %s from registry %s git source %s ref %s: %w", entry.Name, entry.Version, resolved.Registry.Name, entry.Source, entry.Ref, err)
+	}
+	return installResolvedPackage(projectRoot, resolved, packageRoot)
+}
+
+func installResolvedPackage(projectRoot string, resolved ResolvedPackage, packageRoot string) (RegistrySyncResult, error) {
+	entry := resolved.Entry
 	if _, err := os.Stat(filepath.Join(packageRoot, manifestFileName)); err != nil {
 		if os.IsNotExist(err) {
 			return RegistrySyncResult{}, fmt.Errorf("dependency %s %s from registry %s source %s has no manifest.oct", entry.Name, entry.Version, resolved.Registry.Name, packageRoot)
@@ -294,7 +345,7 @@ func syncResolvedRegistryPackage(projectRoot string, resolved ResolvedPackage) (
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return RegistrySyncResult{}, fmt.Errorf("create package cache directory: %w", err)
 	}
-	tmp, err := os.MkdirTemp(baseDir, ".tmp-*")
+	tmp, err := os.MkdirTemp(baseDir, ".tmp-install-*")
 	if err != nil {
 		return RegistrySyncResult{}, fmt.Errorf("create temporary package sync directory: %w", err)
 	}
@@ -320,7 +371,33 @@ func syncResolvedRegistryPackage(projectRoot string, resolved ResolvedPackage) (
 		return RegistrySyncResult{}, fmt.Errorf("install synced package %s: %w", finalDir, err)
 	}
 	cleanup = false
-	return RegistrySyncResult{Name: entry.Name, Version: entry.Version, Registry: resolved.Registry.Name, Destination: finalDir}, nil
+	return RegistrySyncResult{Name: entry.Name, Version: entry.Version, Registry: resolved.Registry.Name, SourceKind: entry.SourceKind, Ref: entry.Ref, ResolvedCommit: resolved.ResolvedCommit, Destination: finalDir}, nil
+}
+
+func runGitPackageCommand(entry PackageEntry, registry string, operation string, name string, args ...string) error {
+	_, err := runGitPackageOutput(entry, registry, operation, name, args...)
+	return err
+}
+
+func runGitPackageOutput(entry PackageEntry, registry string, operation string, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	trimmed := strings.TrimSpace(string(output))
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", fmt.Errorf("git executable not found while syncing %s %s from registry %s source %s ref %s during %s", entry.Name, entry.Version, registry, entry.Source, entry.Ref, operation)
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", fmt.Errorf("git %s timed out while syncing %s %s from registry %s source %s ref %s", operation, entry.Name, entry.Version, registry, entry.Source, entry.Ref)
+		}
+		if trimmed == "" {
+			trimmed = err.Error()
+		}
+		return "", fmt.Errorf("git %s failed while syncing %s %s from registry %s source %s ref %s: %s", operation, entry.Name, entry.Version, registry, entry.Source, entry.Ref, trimmed)
+	}
+	return trimmed, nil
 }
 
 func parseOctFile(path string) (ast.File, error) {
@@ -403,7 +480,8 @@ func extractRegistryIndex(file ast.File) (RegistryIndex, error) {
 		return RegistryIndex{}, err
 	}
 	req := map[string]ast.TypeRef{"Name": {Name: "String"}, "Version": {Name: "String"}, "Kind": {Name: "String"}, "SourceKind": {Name: "String"}, "Source": {Name: "String"}, "Path": {Name: "String"}, "Description": {Name: "String"}}
-	if err := requireRecordShape(file, "PackageEntry", req, nil); err != nil {
+	optional := map[string]ast.TypeRef{"Ref": {Name: "String"}}
+	if err := requireRecordShape(file, "PackageEntry", req, optional); err != nil {
 		return RegistryIndex{}, err
 	}
 	fn, ok := findNoArgFunction(file, "Registry", "RegistryIndex")
@@ -424,7 +502,7 @@ func extractRegistryIndex(file ast.File) (RegistryIndex, error) {
 	}
 	idx := RegistryIndex{Packages: make([]PackageEntry, 0, len(arr.Elements))}
 	seen := map[string]bool{}
-	allowed := map[string]bool{"Name": true, "Version": true, "Kind": true, "SourceKind": true, "Source": true, "Path": true, "Description": true}
+	allowed := map[string]bool{"Name": true, "Version": true, "Kind": true, "SourceKind": true, "Source": true, "Ref": true, "Path": true, "Description": true}
 	for i, expr := range arr.Elements {
 		rec, ok := expr.(ast.RecordLiteralExpr)
 		if !ok || rec.TypeName != "PackageEntry" {
@@ -445,6 +523,11 @@ func extractRegistryIndex(file ast.File) (RegistryIndex, error) {
 			}
 			*field.dst = value
 		}
+		ref, err := optionalStringField(fs, "Ref")
+		if err != nil {
+			return RegistryIndex{}, fmt.Errorf("registry package entry at index %d: %w", i, err)
+		}
+		entry.Ref = ref
 		if err := validatePackageEntry(entry); err != nil {
 			return RegistryIndex{}, fmt.Errorf("registry package entry at index %d: %w", i, err)
 		}
@@ -470,8 +553,17 @@ func validatePackageEntry(entry PackageEntry) error {
 	default:
 		return fmt.Errorf("Kind must be one of library, experiment, wrapper")
 	}
-	if entry.SourceKind != "local" {
-		return fmt.Errorf("SourceKind must be local")
+	switch entry.SourceKind {
+	case "local":
+		if strings.TrimSpace(entry.Ref) != "" {
+			return fmt.Errorf("Ref must be empty for local sources")
+		}
+	case "git":
+		if strings.TrimSpace(entry.Ref) == "" {
+			return fmt.Errorf("Ref is required for git sources")
+		}
+	default:
+		return fmt.Errorf("SourceKind must be one of local, git")
 	}
 	if strings.TrimSpace(entry.Source) == "" {
 		return fmt.Errorf("Source must not be empty")
@@ -480,6 +572,19 @@ func validatePackageEntry(entry PackageEntry) error {
 		return fmt.Errorf("Path must not be empty")
 	}
 	return nil
+}
+
+func IsFullCommitSHA(ref string) bool {
+	if len(ref) != 40 {
+		return false
+	}
+	for _, r := range ref {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func findNoArgFunction(file ast.File, name string, returnType string) (ast.FunctionDecl, bool) {
@@ -610,6 +715,8 @@ record PackageSource {
     RegistryPath: String
     SourceKind: String
     Source: String
+    Ref: String
+    ResolvedCommit: String
     Path: String
 }
 
@@ -621,9 +728,11 @@ fn PackageSource() -> PackageSource {
         RegistryPath: %s
         SourceKind: %s
         Source: %s
+        Ref: %s
+        ResolvedCommit: %s
         Path: %s
     }
 }
-`, strconv.Quote(entry.Name), strconv.Quote(entry.Version), strconv.Quote(resolved.Registry.Name), strconv.Quote(resolved.Registry.Path), strconv.Quote(entry.SourceKind), strconv.Quote(entry.Source), strconv.Quote(entry.Path))
+`, strconv.Quote(entry.Name), strconv.Quote(entry.Version), strconv.Quote(resolved.Registry.Name), strconv.Quote(resolved.Registry.Path), strconv.Quote(entry.SourceKind), strconv.Quote(entry.Source), strconv.Quote(entry.Ref), strconv.Quote(resolved.ResolvedCommit), strconv.Quote(entry.Path))
 	return os.WriteFile(path, []byte(content), 0o644)
 }

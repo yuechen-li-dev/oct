@@ -105,6 +105,7 @@ record PackageEntry {
     Kind: String
     SourceKind: String
     Source: String
+    Ref: String
     Path: String
     Description: String
 }
@@ -118,6 +119,7 @@ fn Registry() -> RegistryIndex {
                 Kind: "library"
                 SourceKind: "local"
                 Source: "../SignalTools"
+                Ref: ""
                 Path: "."
                 Description: "Signal helper functions"
             }
@@ -126,7 +128,9 @@ fn Registry() -> RegistryIndex {
 }
 ```
 
-PM2 supports only `SourceKind: "local"`. Registry `Kind` values are `library`, `experiment`, and `wrapper`; `library` maps to ordinary manifests with omitted/empty/normalized pure `Kind`. Versions are exact text only. There is no `latest`, range solving, semver interpretation, remote registry, registry clone, publishing, signing, lockfile, `oct.lock`, or content-addressed package artifact support yet.
+PM4 supports `SourceKind: "local"` and `SourceKind: "git"`. `Ref` is optional in the record shape for compatibility with PM2 local registries, but its value must be omitted or empty for local sources and must be non-empty for Git sources. Git sources are acquired with the installed `git` executable using `git clone <Source>` followed by a detached checkout of `Ref`; supported source strings are whatever local Git accepts, including HTTPS URLs, SSH URLs when the user environment supports them, local repository paths, and `file://` repository URLs. Submodules, LFS, auth storage, registry cloning, publishing, mirrors, federation, P2P, signing, lockfiles, `oct.lock`, and content-addressed `.octpkg` artifacts are not part of PM4.
+
+Registry `Kind` values are `library`, `experiment`, and `wrapper`; `library` maps to ordinary manifests with omitted/empty/normalized pure `Kind`. Versions are exact text only. There is no `latest`, range solving, semver interpretation, solver, or backtracking behavior.
 
 Add an exact registry dependency with:
 
@@ -136,13 +140,15 @@ oct pkg add <Name>@<exact-version> [--registry <name>]
 
 `oct pkg add` resolves the exact package/version first, rejects duplicate dependency names, and writes a `Dependency` entry without `Source`. It does not sync automatically. If multiple registries contain the same exact package/version, the command reports ambiguity and asks for `--registry <name>`.
 
-`oct pkg sync` preserves explicit `Dependency.Source` behavior. Dependencies without `Source` are resolved through configured registries and copied into:
+`oct pkg sync` preserves explicit `Dependency.Source` behavior. Dependencies without `Source` are resolved through the project's configured registries and recursively synced as an exact-version dependency graph. Each graph node is `<Name>@<exact-version>`; duplicate identical nodes are synced once, while the same package name with different exact versions is an error. Cycles, missing transitive dependencies, ambiguous transitive registry entries, and non-exact transitive `VersionRequirement` values fail with dependency-chain diagnostics such as `App -> SignalTools@0.1.0 -> MathCore@0.2.0`.
+
+Synced registry packages are copied into:
 
 ```text
 .oct/packages/<Name>/<Version>/
 ```
 
-Each synced package receives `.oct-package-source.oct` metadata with no timestamp. The project loader uses the exact manifest dependency version when searching `.oct/packages`; it does not fall back by name only. Sync copies wrapper package source, including `sidecars/...`, but it does not build sidecars and does not create `.oct/wrappers`. Use `oct pkg build-wrappers --allow-native` only for current-package wrapper sidecar builds.
+Each synced package receives `.oct-package-source.oct` metadata with no timestamp. PM4 metadata includes diagnostic-only `Ref` and `ResolvedCommit` fields; local sources write both as empty strings, and Git sources record the requested ref plus the checked-out commit. If a Git ref is not a full 40-character commit SHA, sync warns and records the resolved commit, but this is not lockfile pinning. The project loader uses the exact manifest dependency version when searching `.oct/packages`; it does not fall back by name only. Sync copies wrapper package source, including `sidecars/...`, but it does not build sidecars and does not create `.oct/wrappers`. Use `oct pkg build-wrappers --allow-native` only for current-package wrapper sidecar builds.
 
 ## Wrapper package source contract
 

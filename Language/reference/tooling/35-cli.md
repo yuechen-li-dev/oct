@@ -34,7 +34,7 @@
 - `oct new wrapper-library` creates manifest wrapper metadata and sidecar reference files but does not build or run the sidecar.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
-- `oct pkg sync` syncs direct manifest dependencies for the current directory.
+- `oct pkg sync` syncs explicit-source dependencies and recursively syncs exact-version registry dependencies for the current directory.
 - `oct exp run <git-url>` clones and runs an experimental remote package entry workflow.
 
 ## Test execution modes

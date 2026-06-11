@@ -2,6 +2,7 @@ package pkgmgr
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -41,8 +42,26 @@ func TestLoadRegistryIndexParsesValidRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load registry index: %v", err)
 	}
-	if len(idx.Packages) != 1 || idx.Packages[0].Name != "SignalTools" {
+	if len(idx.Packages) != 1 || idx.Packages[0].Name != "SignalTools" || idx.Packages[0].Ref != "" {
 		t.Fatalf("unexpected registry index: %#v", idx)
+	}
+
+	root = writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "local", "../SignalTools", "", ".")}))
+	idx, err = LoadRegistryIndex(root)
+	if err != nil {
+		t.Fatalf("load registry index with empty local ref: %v", err)
+	}
+	if idx.Packages[0].Ref != "" {
+		t.Fatalf("unexpected local ref: %#v", idx.Packages[0])
+	}
+
+	root = writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", "https://example.invalid/repo.git", "v0.1.0", ".")}))
+	idx, err = LoadRegistryIndex(root)
+	if err != nil {
+		t.Fatalf("load registry index with git ref: %v", err)
+	}
+	if idx.Packages[0].SourceKind != "git" || idx.Packages[0].Ref != "v0.1.0" {
+		t.Fatalf("unexpected git entry: %#v", idx.Packages[0])
 	}
 }
 
@@ -73,7 +92,10 @@ func TestLoadRegistryIndexValidation(t *testing.T) {
 	}{
 		{"invalid package name", validRegistryIndex("signal-tools", "0.1.0", "library", "local", "../SignalTools", "."), "invalid package name"},
 		{"duplicate", registryIndexWithEntries([]string{packageEntry("SignalTools", "0.1.0", "library", "local", "../SignalTools", "."), packageEntry("SignalTools", "0.1.0", "library", "local", "../SignalTools", ".")}), "duplicate package entry"},
-		{"source kind", validRegistryIndex("SignalTools", "0.1.0", "library", "git", "../SignalTools", "."), "SourceKind must be local"},
+		{"unsupported source kind", validRegistryIndex("SignalTools", "0.1.0", "library", "ftp", "../SignalTools", "."), "SourceKind must be one of local, git"},
+		{"local non-empty ref", registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "local", "../SignalTools", "v0.1.0", ".")}), "Ref must be empty for local"},
+		{"git missing ref", validRegistryIndex("SignalTools", "0.1.0", "library", "git", "../SignalTools", "."), "Ref is required for git sources"},
+		{"git empty ref", registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", "../SignalTools", "", ".")}), "Ref is required for git sources"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,6 +171,228 @@ func TestSyncRegistryDependencyCopiesAndWritesMetadata(t *testing.T) {
 	}
 }
 
+func TestSyncRegistryDependencyGitTagWritesMetadataAndSkipsGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	project := t.TempDir()
+	repo := writePackageSource(t, "SignalTools", "0.1.0", "")
+	runGitTestCommand(t, repo, "init")
+	runGitTestCommand(t, repo, "config", "user.email", "oct@example.invalid")
+	runGitTestCommand(t, repo, "config", "user.name", "Oct Test")
+	runGitTestCommand(t, repo, "add", ".")
+	runGitTestCommand(t, repo, "commit", "-m", "initial")
+	runGitTestCommand(t, repo, "tag", "v0.1.0")
+	commit := strings.TrimSpace(runGitTestCommand(t, repo, "rev-parse", "HEAD"))
+
+	reg := writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", repo, "v0.1.0", ".")}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	result, err := SyncRegistryDependency(project, DependencyMetadata{Name: "SignalTools", VersionRequirement: "0.1.0"})
+	if err != nil {
+		t.Fatalf("sync git registry dependency: %v", err)
+	}
+	if result.SourceKind != "git" || result.Ref != "v0.1.0" || result.ResolvedCommit != commit {
+		t.Fatalf("unexpected git sync result: %#v", result)
+	}
+	if _, err := os.Stat(filepath.Join(result.Destination, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("expected .git skipped from final copy, err=%v", err)
+	}
+	metadata, err := os.ReadFile(filepath.Join(result.Destination, PackageSourceFileName))
+	if err != nil {
+		t.Fatalf("read metadata: %v", err)
+	}
+	body := string(metadata)
+	if !strings.Contains(body, `Ref: "v0.1.0"`) || !strings.Contains(body, `ResolvedCommit: "`+commit+`"`) {
+		t.Fatalf("metadata missing ref/commit: %s", body)
+	}
+}
+
+func TestSyncRegistryDependencyGitSubpath(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	project := t.TempDir()
+	repo := t.TempDir()
+	pkg := writePackageSource(t, "SignalTools", "0.1.0", "")
+	if err := os.MkdirAll(filepath.Join(repo, "packages"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(pkg, filepath.Join(repo, "packages", "SignalTools")); err != nil {
+		t.Fatal(err)
+	}
+	runGitTestCommand(t, repo, "init")
+	runGitTestCommand(t, repo, "config", "user.email", "oct@example.invalid")
+	runGitTestCommand(t, repo, "config", "user.name", "Oct Test")
+	runGitTestCommand(t, repo, "add", ".")
+	runGitTestCommand(t, repo, "commit", "-m", "initial")
+	commit := strings.TrimSpace(runGitTestCommand(t, repo, "rev-parse", "HEAD"))
+
+	reg := writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", repo, commit, "packages/SignalTools")}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	result, err := SyncRegistryDependency(project, DependencyMetadata{Name: "SignalTools", VersionRequirement: "0.1.0"})
+	if err != nil {
+		t.Fatalf("sync git subpath dependency: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(result.Destination, "manifest.oct")); err != nil {
+		t.Fatalf("missing synced subpath manifest: %v", err)
+	}
+}
+
+func TestSyncRegistryDependencyGitCheckoutFailureIncludesRef(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	project := t.TempDir()
+	repo := writePackageSource(t, "SignalTools", "0.1.0", "")
+	runGitTestCommand(t, repo, "init")
+	runGitTestCommand(t, repo, "config", "user.email", "oct@example.invalid")
+	runGitTestCommand(t, repo, "config", "user.name", "Oct Test")
+	runGitTestCommand(t, repo, "add", ".")
+	runGitTestCommand(t, repo, "commit", "-m", "initial")
+	reg := writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", repo, "missing-ref", ".")}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	_, err := SyncRegistryDependency(project, DependencyMetadata{Name: "SignalTools", VersionRequirement: "0.1.0"})
+	if err == nil || !strings.Contains(err.Error(), "checkout") || !strings.Contains(err.Error(), "missing-ref") {
+		t.Fatalf("expected checkout ref error, got %v", err)
+	}
+}
+
+func runGitTestCommand(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, strings.TrimSpace(string(out)))
+	}
+	return string(out)
+}
+
+func TestManagerSyncTransitiveRegistryDependencies(t *testing.T) {
+	project := writePackageSourceWithDeps(t, "App", "0.1.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}})
+	pkgA := writePackageSourceWithDeps(t, "A", "1.0.0", "", []DependencyMetadata{{Name: "B", VersionRequirement: "2.0.0"}})
+	pkgB := writePackageSourceWithDeps(t, "B", "2.0.0", "", nil)
+	reg := writeRegistryIndex(t, registryIndexWithEntries([]string{
+		packageEntry("A", "1.0.0", "library", "local", pkgA, "."),
+		packageEntry("B", "2.0.0", "library", "local", pkgB, "."),
+	}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.Sync(project)
+	if err != nil {
+		t.Fatalf("sync transitive: %v", err)
+	}
+	if len(result.RegistryDependencies) != 2 || result.RegistryDependencies[0].Name != "B" || result.RegistryDependencies[1].Name != "A" {
+		t.Fatalf("expected dependency-before-importer order B,A; got %#v", result.RegistryDependencies)
+	}
+	for _, dep := range []struct{ name, version string }{{"A", "1.0.0"}, {"B", "2.0.0"}} {
+		if _, err := os.Stat(filepath.Join(project, ProjectPackagesRelDir, dep.name, dep.version, manifestFileName)); err != nil {
+			t.Fatalf("missing synced %s@%s: %v", dep.name, dep.version, err)
+		}
+	}
+}
+
+func TestManagerSyncConflictingExactVersionsIncludesChains(t *testing.T) {
+	project := writePackageSourceWithDeps(t, "App", "0.1.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}, {Name: "B", VersionRequirement: "1.0.0"}})
+	pkgA := writePackageSourceWithDeps(t, "A", "1.0.0", "", []DependencyMetadata{{Name: "C", VersionRequirement: "1.0.0"}})
+	pkgB := writePackageSourceWithDeps(t, "B", "1.0.0", "", []DependencyMetadata{{Name: "C", VersionRequirement: "2.0.0"}})
+	pkgC1 := writePackageSourceWithDeps(t, "C", "1.0.0", "", nil)
+	pkgC2 := writePackageSourceWithDeps(t, "C", "2.0.0", "", nil)
+	reg := writeRegistryIndex(t, registryIndexWithEntries([]string{
+		packageEntry("A", "1.0.0", "library", "local", pkgA, "."),
+		packageEntry("B", "1.0.0", "library", "local", pkgB, "."),
+		packageEntry("C", "1.0.0", "library", "local", pkgC1, "."),
+		packageEntry("C", "2.0.0", "library", "local", pkgC2, "."),
+	}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	manager, _ := NewManager()
+	_, err := manager.Sync(project)
+	if err == nil || !strings.Contains(err.Error(), "conflicting exact versions") || !strings.Contains(err.Error(), "App -> A@1.0.0 -> C@1.0.0") || !strings.Contains(err.Error(), "App -> B@1.0.0 -> C@2.0.0") {
+		t.Fatalf("expected conflict with chains, got %v", err)
+	}
+}
+
+func TestManagerSyncCycleIncludesCyclePath(t *testing.T) {
+	project := writePackageSourceWithDeps(t, "App", "0.1.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}})
+	pkgA := writePackageSourceWithDeps(t, "A", "1.0.0", "", []DependencyMetadata{{Name: "B", VersionRequirement: "1.0.0"}})
+	pkgB := writePackageSourceWithDeps(t, "B", "1.0.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}})
+	reg := writeRegistryIndex(t, registryIndexWithEntries([]string{
+		packageEntry("A", "1.0.0", "library", "local", pkgA, "."),
+		packageEntry("B", "1.0.0", "library", "local", pkgB, "."),
+	}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	manager, _ := NewManager()
+	_, err := manager.Sync(project)
+	if err == nil || !strings.Contains(err.Error(), "dependency cycle detected") || !strings.Contains(err.Error(), "A@1.0.0 -> B@1.0.0 -> A@1.0.0") {
+		t.Fatalf("expected cycle path, got %v", err)
+	}
+}
+
+func TestManagerSyncTransitiveAmbiguityAndMissingIncludeChain(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		secondRegistry bool
+		want           string
+	}{
+		{"ambiguous", true, "multiple registries"},
+		{"missing", false, "not found in registries"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			project := writePackageSourceWithDeps(t, "App", "0.1.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}})
+			pkgA := writePackageSourceWithDeps(t, "A", "1.0.0", "", []DependencyMetadata{{Name: "B", VersionRequirement: "2.0.0"}})
+			pkgB := writePackageSourceWithDeps(t, "B", "2.0.0", "", nil)
+			reg1Entries := []string{packageEntry("A", "1.0.0", "library", "local", pkgA, ".")}
+			if tc.secondRegistry {
+				reg1Entries = append(reg1Entries, packageEntry("B", "2.0.0", "library", "local", pkgB, "."))
+			}
+			reg1 := writeRegistryIndex(t, registryIndexWithEntries(reg1Entries))
+			if _, err := AddRegistry(project, "local", reg1); err != nil {
+				t.Fatal(err)
+			}
+			if tc.secondRegistry {
+				reg2 := writeRegistryIndex(t, registryIndexWithEntries([]string{packageEntry("B", "2.0.0", "library", "local", pkgB, ".")}))
+				if _, err := AddRegistry(project, "vendor", reg2); err != nil {
+					t.Fatal(err)
+				}
+			}
+			manager, _ := NewManager()
+			_, err := manager.Sync(project)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "App -> A@1.0.0 -> B@2.0.0") {
+				t.Fatalf("expected %s with chain, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestManagerSyncNonExactTransitiveVersionErrors(t *testing.T) {
+	project := writePackageSourceWithDeps(t, "App", "0.1.0", "", []DependencyMetadata{{Name: "A", VersionRequirement: "1.0.0"}})
+	pkgA := writePackageSourceWithDeps(t, "A", "1.0.0", "", []DependencyMetadata{{Name: "B", VersionRequirement: "^2.0.0"}})
+	reg := writeRegistryIndex(t, registryIndexWithEntries([]string{packageEntry("A", "1.0.0", "library", "local", pkgA, ".")}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	manager, _ := NewManager()
+	_, err := manager.Sync(project)
+	if err == nil || !strings.Contains(err.Error(), "not an exact version") || !strings.Contains(err.Error(), "App -> A@1.0.0 -> B@^2.0.0") {
+		t.Fatalf("expected non-exact chain error, got %v", err)
+	}
+}
+
 func TestSafePackageSourcePathRejectsTraversal(t *testing.T) {
 	if _, err := safePackageSourcePath(t.TempDir(), "../escape"); err == nil || !strings.Contains(err.Error(), "escapes") {
 		t.Fatalf("expected traversal rejection, got %v", err)
@@ -177,15 +421,69 @@ func validRegistryIndex(name, version, kind, sourceKind, source, path string) st
 }
 
 func registryIndexWithEntries(entries []string) string {
-	return "package Registry\n\nrecord RegistryIndex {\n    Packages: PackageEntry[]\n}\n\nrecord PackageEntry {\n    Name: String\n    Version: String\n    Kind: String\n    SourceKind: String\n    Source: String\n    Path: String\n    Description: String\n}\n\nfn Registry() -> RegistryIndex {\n    return RegistryIndex {\n        Packages: [\n            " + strings.Join(entries, ",\n            ") + "\n        ]\n    }\n}\n"
+	return registryIndexRecord(entries, false)
+}
+
+func registryIndexWithRefEntries(entries []string) string {
+	return registryIndexRecord(entries, true)
+}
+
+func registryIndexRecord(entries []string, includeRef bool) string {
+	refField := ""
+	if includeRef {
+		refField = "    Ref: String\n"
+	}
+	return "package Registry\n\nrecord RegistryIndex {\n    Packages: PackageEntry[]\n}\n\nrecord PackageEntry {\n    Name: String\n    Version: String\n    Kind: String\n    SourceKind: String\n    Source: String\n" + refField + "    Path: String\n    Description: String\n}\n\nfn Registry() -> RegistryIndex {\n    return RegistryIndex {\n        Packages: [\n            " + strings.Join(entries, ",\n            ") + "\n        ]\n    }\n}\n"
 }
 
 func packageEntry(name, version, kind, sourceKind, source, path string) string {
 	return `PackageEntry { Name: "` + name + `" Version: "` + version + `" Kind: "` + kind + `" SourceKind: "` + sourceKind + `" Source: ` + octStringLiteralPath(source) + ` Path: ` + octStringLiteralPath(path) + ` Description: "test" }`
 }
 
+func packageEntryWithRef(name, version, kind, sourceKind, source, ref, path string) string {
+	return `PackageEntry { Name: "` + name + `" Version: "` + version + `" Kind: "` + kind + `" SourceKind: "` + sourceKind + `" Source: ` + octStringLiteralPath(source) + ` Ref: "` + ref + `" Path: ` + octStringLiteralPath(path) + ` Description: "test" }`
+}
+
 func octStringLiteralPath(path string) string {
 	return strconv.Quote(strings.ReplaceAll(filepath.ToSlash(path), `\`, "/"))
+}
+
+func writePackageSourceWithDeps(t *testing.T, name, version, kind string, deps []DependencyMetadata) string {
+	t.Helper()
+	root := t.TempDir()
+	fields := ""
+	if kind != "" {
+		fields = "        Kind: \"" + kind + "\"\n"
+	}
+	depLits := make([]string, 0, len(deps))
+	for _, dep := range deps {
+		lit := "Dependency { Name: \"" + dep.Name + "\" VersionRequirement: \"" + dep.VersionRequirement + "\""
+		if dep.Source != "" {
+			lit += " Source: \"" + dep.Source + "\""
+		}
+		lit += " }"
+		depLits = append(depLits, lit)
+	}
+	manifest := "package Manifest\n\nrecord PackageManifest {\n    Name: String\n    Version: String\n    Description: String\n" + func() string {
+		if kind != "" {
+			return "    Kind: String\n"
+		}
+		return ""
+	}() + "    Dependencies: Dependency[]\n}\n\nrecord Dependency {\n    Name: String\n    VersionRequirement: String\n" + func() string {
+		for _, d := range deps {
+			if d.Source != "" {
+				return "    Source: String\n"
+			}
+		}
+		return ""
+	}() + "}\n\nfn Manifest() -> PackageManifest {\n    return PackageManifest {\n        Name: \"" + name + "\"\n        Version: \"" + version + "\"\n        Description: \"test\"\n" + fields + "        Dependencies: [" + strings.Join(depLits, ", ") + "]\n    }\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "manifest.oct"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, name+".oct"), []byte("package "+name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func writePackageSource(t *testing.T, name, version, kind string) string {
