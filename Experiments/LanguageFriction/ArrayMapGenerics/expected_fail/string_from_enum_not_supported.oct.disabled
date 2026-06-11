@@ -1,0 +1,9 @@
+package LanguageFrictionArrayMapGenerics
+
+import String
+
+enum Mode { Fast Slow }
+
+fn Main() -> String {
+    return String.From<Mode>(Mode.Fast)
+}

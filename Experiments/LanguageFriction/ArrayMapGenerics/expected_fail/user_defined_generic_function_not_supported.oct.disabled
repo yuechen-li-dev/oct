@@ -1,0 +1,9 @@
+package LanguageFrictionArrayMapGenerics
+
+fn Identity<T>(x: T) -> T {
+    return x
+}
+
+fn Main() -> Int {
+    return Identity<Int>(1)
+}

@@ -1,0 +1,6 @@
+package LanguageFrictionArrayMapGenerics
+
+fn Main() -> Int[] {
+    let xs = [1, 2, 3, 4]
+    return xs[1:3]
+}

@@ -1,0 +1,8 @@
+package LanguageFrictionArrayMapGenerics
+
+fn Main() -> Float {
+    let m = map[String, Float] {
+        "alpha": 1.0
+    }
+    return m["alpha"]
+}
