@@ -9,17 +9,18 @@ import (
 )
 
 func TestIOXlsxWrapper(t *testing.T) {
-	outputPath := filepath.Join("io_xlsx_m0.xlsx")
+	outputPath := filepath.Join("..", "..", "io_xlsx_m0.xlsx")
 	_ = os.Remove(outputPath)
 	t.Cleanup(func() {
 		_ = os.Remove(outputPath)
 	})
 
 	root := filepath.Join("..", "..", "Libraries", "IO")
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
+	assertNoMissingSidecarFallback(t, stdout, stderr)
 
 	if !strings.Contains(stdout, "PASS IO.XlsxWriteMiniWorkflow") {
 		t.Fatalf("expected workflow fact pass output, got %q", stdout)

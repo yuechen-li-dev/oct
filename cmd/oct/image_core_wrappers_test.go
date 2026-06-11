@@ -13,7 +13,8 @@ import (
 )
 
 func TestImageCoreWrappers(t *testing.T) {
-	if err := synthesizeImageCoreFixtures("."); err != nil {
+	repo := filepath.Join("..", "..")
+	if err := synthesizeImageCoreFixtures(repo); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
 	t.Cleanup(func() {
@@ -23,15 +24,16 @@ func TestImageCoreWrappers(t *testing.T) {
 			"mx103d_fixture_corrupt.img",
 			"mx103d_roundtrip.jpg",
 		} {
-			_ = os.Remove(path)
+			_ = os.Remove(filepath.Join(repo, path))
 		}
 	})
 
 	root := "../../Libraries/Image"
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-image")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
+	assertNoMissingSidecarFallback(t, stdout, stderr)
 
 	expectedPasses := []string{
 		"PASS Image.LoadInspectAndSaveRoundTrip",
